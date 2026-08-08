@@ -5532,7 +5532,12 @@ app.MapPost("/api/projects/{id}/screenplay/sign-off", async (
         {
             try
             {
-                var castResult = await castService.ExtractAsync(id, force: true, ct: ct);
+                // force:false — respects ExtractAsync's own skip-if-present guard. Sign-off still
+                // auto-populates cast the first time (file doesn't exist yet), but never blows away
+                // an existing cast_seeds.json (voice clones, portrait locks, curated looks) just
+                // because the Fountain changed. Use the explicit "Extract Cast" button/endpoint
+                // (force:true) to intentionally rebuild after adding a character.
+                var castResult = await castService.ExtractAsync(id, force: false, ct: ct);
                 cast = new
                 {
                     ok = castResult.Ok,
