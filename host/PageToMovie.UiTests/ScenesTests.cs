@@ -19,7 +19,7 @@ public class ScenesTests
             await Assertions.Expect(page.GetByRole(AriaRole.Heading, new() { Name = "Scenes & clips" })).ToBeVisibleAsync();
             await Assertions.Expect(page.GetByRole(AriaRole.Button, new() { Name = "Generate Batch" })).ToBeVisibleAsync();
             await Assertions.Expect(page.GetByRole(AriaRole.Button, new() { Name = "Add scene" })).ToBeVisibleAsync();
-            await Assertions.Expect(page.GetByRole(AriaRole.Button, new() { Name = "Rebuild shot plan" })).ToBeVisibleAsync();
+            await Assertions.Expect(page.GetByRole(AriaRole.Button, new() { Name = "Regenerate Selected Scenes" })).ToBeVisibleAsync();
             await Assertions.Expect(page.GetByRole(AriaRole.Button, new() { Name = "Filters" })).ToBeVisibleAsync();
         }
         finally { await ctx.CloseAsync(); }

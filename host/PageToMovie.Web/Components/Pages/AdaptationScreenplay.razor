@@ -109,7 +109,7 @@
                         </summary>
                         <div class="fe-advanced-panel d-flex flex-wrap gap-1">
                             <button type="button" class="btn btn-outline-secondary btn-sm" data-testid="screenplay-insert-title" disabled="@(!CanEdit)" @onclick='() => InsertTitleFieldAsync("Title")' title="Insert or jump to the Title: line on the title page (shown on the end-credits card)">Title:</button>
-                            <button type="button" class="btn btn-outline-secondary btn-sm" data-testid="screenplay-insert-author" disabled="@(!CanEdit)" @onclick='() => InsertTitleFieldAsync("Author")' title="Insert or jump to the Author: line on the title page (shown on the end-credits card)">Author:</button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" data-testid="screenplay-insert-author" disabled="@(!CanEdit)" @onclick='() => InsertTitleFieldAsync("Author", "Title")' title="Insert or jump to the Author: line on the title page (shown on the end-credits card)">Author:</button>
                             <button type="button" class="btn btn-outline-secondary btn-sm" disabled="@(!CanEdit)" @onclick='() => InsertAsync("\n\nCHARACTER\n")'>Character</button>
                             <button type="button" class="btn btn-outline-secondary btn-sm" disabled="@(!CanEdit)" @onclick='() => InsertAsync("\n\nCUT TO:\n\n")'>Transition</button>
                             <button type="button" class="btn btn-outline-secondary btn-sm" disabled="@(!CanEdit)" @onclick='() => InsertAsync("\n\n> THE END <\n\n")'>Centered</button>

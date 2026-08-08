@@ -22,6 +22,10 @@ public class AppFixture : IAsyncLifetime
     /// <summary>Workspace (projects) root the host uses. Override to isolate — e.g. a fresh temp
     /// workspace for the end-to-end pipeline test so creating a project doesn't touch the demos.</summary>
     protected virtual string WorkspaceRoot => FindRepoRoot();
+    /// <summary>Public read of <see cref="WorkspaceRoot"/> — lets tests point a real
+    /// <c>ProjectStore</c> at the same workspace (including an isolated temp one, e.g.
+    /// <see cref="PipelineFixture"/>) the running host is using, to read/verify on-disk project state.</summary>
+    public string WorkspaceRootPath => WorkspaceRoot;
     private static readonly IReadOnlyDictionary<string, string> EmptyEnv = new Dictionary<string, string>();
 
     public string BaseUrl { get; }
