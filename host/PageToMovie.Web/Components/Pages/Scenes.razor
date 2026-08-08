@@ -40,12 +40,11 @@
 
 @if (_gateChecked && !ActiveProject.CanScenes)
 {
-    <p class="text-muted mb-3">
-        @(string.IsNullOrWhiteSpace(ActiveProject.ScenesBlockedReason)
-            ? "Finish the shot plan first."
-            : ActiveProject.ScenesBlockedReason)
-        <a href="adaptation/shots">Open shot plan →</a>
-    </p>
+    <ReadinessGateBanner Visible="true"
+                         Reason="@ActiveProject.ScenesBlockedReason"
+                         FallbackReason="Finish the shot plan first."
+                         ActionHref="adaptation/shots"
+                         ActionLabel="Open shot plan →" />
 }
 else
 {

@@ -104,78 +104,39 @@ else
    Skip on Import: that page already has its own progress card. *@
 @if (Host.Busy && !Host.JobRunning && Step is not "import" and not "book")
 {
-    <div class="card mb-3 border-primary" data-testid="busy-progress">
-        <div class="card-body py-2">
-            <div class="small mb-1">@(string.IsNullOrWhiteSpace(Host.BusyMessage) ? "Working…" : Host.BusyMessage)</div>
-            <div class="progress" style="height: 0.85rem;" role="progressbar"
-                 aria-valuemin="0" aria-valuemax="100" aria-valuenow="45"
-                 aria-label="@(Host.BusyMessage ?? "Working")">
-                <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
-                     style="width: 45%"></div>
-            </div>
-        </div>
-    </div>
+    <JobProgressCard Visible="true"
+                     Indeterminate="true"
+                     Message="@(string.IsNullOrWhiteSpace(Host.BusyMessage) ? "Working…" : Host.BusyMessage)"
+                     TestId="busy-progress" />
 }
 
 @* Job panel: progress + Cancel only while running. Admin can expand Details. *@
 @if (ShowJobPanel)
 {
-    <div class="card mb-3 border-@(Host.Job!.Status is "running" or "queued" ? "primary" : Host.Job.Status == "error" ? "danger" : "secondary")"
-         data-testid="job-panel"
-         data-job-status="@Host.Job.Status"
-         data-job-kind="@(Host.Job.Kind ?? "")"
-         data-job-running="@(Host.JobRunning ? "true" : "false")">
-        <div class="card-body py-2">
-            @{
-                var (jobIdx, jobTot, waiting, displayIdx) = AdaptationPageBase.ComputeJobProgress(
-                    Host.Job, Host.ProgressIndex, Host.ProgressTotal, Host.JobRunning);
-            }
-            <div class="d-flex justify-content-between flex-wrap gap-2 align-items-center">
-                <div class="small">
-                    <span class="visually-hidden" data-testid="job-status">@Host.Job.Status</span>
-                    @if (Host.JobRunning)
-                    {
-                        <span>@AdaptationPageBase.OperatorJobRunningMessage(Host.Job)</span>
-                    }
-                    else
-                    {
-                        <span>@AdaptationPageBase.OperatorJobDoneMessage(Host.Job)</span>
-                    }
-                </div>
-                @if (Host.JobRunning)
-                {
-                    <button type="button"
-                            class="btn btn-sm btn-outline-danger"
-                            data-testid="job-cancel"
-                            @onclick="Host.CancelAsync">Cancel</button>
-                }
-            </div>
-            @if (Host.JobRunning)
-            {
-                var pct = AdaptationPageBase.ComputeProgressPercent(
-                    displayIdx, jobTot, waiting, Host.JobRunning, Host.Job.StartedAt);
-                <div class="progress mt-2" style="height: 0.85rem;" role="progressbar"
-                     aria-valuenow="@pct" aria-valuemin="0" aria-valuemax="100"
-                     aria-label="@AdaptationPageBase.OperatorJobRunningMessage(Host.Job)">
-                    <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
-                         style="width: @pct%"></div>
-                </div>
-            }
-            @* Admin-only: expandable log — not shown by default (avoids stacking with the message line). *@
-            @if (Session.IsAdmin && Host.Job.Log.Count > 0 && !Host.JobRunning)
-            {
-                <button type="button"
-                        class="btn btn-sm btn-link text-muted p-0 mt-1 text-decoration-none"
-                        @onclick="() => _showHistory = !_showHistory">
-                    @(_showHistory ? "Hide details" : "Details (admin)")
-                </button>
-                @if (_showHistory)
-                {
-                    <pre class="small mb-0 mt-1" style="max-height: 200px; overflow: auto;">@string.Join("\n", Host.Job.Log.TakeLast(40))</pre>
-                }
-            }
-        </div>
-    </div>
+    var (jobIdx, jobTot, waiting, displayIdx) = AdaptationPageBase.ComputeJobProgress(
+        Host.Job!, Host.ProgressIndex, Host.ProgressTotal, Host.JobRunning);
+    var runPct = Host.JobRunning
+        ? AdaptationPageBase.ComputeProgressPercent(
+            displayIdx, jobTot, waiting, Host.JobRunning, Host.Job!.StartedAt)
+        : (int?)null;
+    var jobMsg = Host.JobRunning
+        ? AdaptationPageBase.OperatorJobRunningMessage(Host.Job!)
+        : AdaptationPageBase.OperatorJobDoneMessage(Host.Job!);
+    <JobProgressCard Visible="true"
+                     Status="@Host.Job!.Status"
+                     Message="@jobMsg"
+                     Index="displayIdx"
+                     Total="jobTot"
+                     Percent="runPct"
+                     ShowCancel="Host.JobRunning"
+                     OnCancel="Host.CancelAsync"
+                     Kind="@Host.Job.Kind"
+                     ShowLog="@(Session.IsAdmin && !Host.JobRunning)"
+                     LogLines="Host.Job.Log"
+                     LogMaxLines="40"
+                     TestId="job-panel"
+                     StatusTestId="job-status"
+                     CancelTestId="job-cancel" />
 }
 
 @if (Host.Status is null)
@@ -204,7 +165,6 @@ else
     [Parameter, EditorRequired] public string Step { get; set; } = "book";
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
-    private bool _showHistory;
 
     private bool OutlineEnabled => AdaptationPageBase.OutlineEnabled(Host.Status);
 

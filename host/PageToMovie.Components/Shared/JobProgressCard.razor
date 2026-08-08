@@ -11,7 +11,7 @@
         <div class="card-body py-2">
             <div class="d-flex justify-content-between flex-wrap gap-2 align-items-center">
                 <div class="small">
-                    <span class="visually-hidden" data-testid="@(TestId)-status">@Status</span>
+                    <span class="visually-hidden" data-testid="@(StatusTestId ?? $"{TestId}-status")">@Status</span>
                     @if (!string.IsNullOrWhiteSpace(Message))
                     {
                         <span>@Message</span>
@@ -29,7 +29,7 @@
                 {
                     <button type="button"
                             class="btn btn-sm btn-outline-danger"
-                            data-testid="@(TestId)-cancel"
+                            data-testid="@(CancelTestId ?? $"{TestId}-cancel")"
                             disabled="@CancelDisabled"
                             @onclick="OnCancel">
                         @CancelLabel
@@ -83,6 +83,10 @@
     [Parameter] public int LogMaxLines { get; set; } = 24;
     [Parameter] public string? Kind { get; set; }
     [Parameter] public string TestId { get; set; } = "job-panel";
+    /// <summary>Override for status span testid (e.g. "job-status" for existing Playwright).</summary>
+    [Parameter] public string? StatusTestId { get; set; }
+    /// <summary>Override for cancel button testid (e.g. "job-cancel").</summary>
+    [Parameter] public string? CancelTestId { get; set; }
     [Parameter] public string? CssClass { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
 

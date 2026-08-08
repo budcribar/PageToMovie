@@ -44,12 +44,11 @@
 
 @if (_gateChecked && !ActiveProject.CanCharacters)
 {
-    <p class="text-muted mb-3">
-        @(string.IsNullOrWhiteSpace(ActiveProject.CharactersBlockedReason)
-            ? "Approve the screenplay first."
-            : ActiveProject.CharactersBlockedReason)
-        <a href="adaptation/screenplay">Open screenplay →</a>
-    </p>
+    <ReadinessGateBanner Visible="true"
+                         Reason="@ActiveProject.CharactersBlockedReason"
+                         FallbackReason="Approve the screenplay first."
+                         ActionHref="adaptation/screenplay"
+                         ActionLabel="Open screenplay →" />
 }
 else
 {
@@ -193,62 +192,28 @@ else if (_job is not null &&
      (_job.Kind is "character" or "character-plates" or "voice-preview") &&
      (_job.Status is "running" or "queued"))
 {
-    <div class="card mb-3 border-primary" @key="_job.JobId">
-        <div class="card-body py-2">
-            <div class="d-flex flex-wrap align-items-center gap-2">
-                <span class="small">@FriendlyCharacterJobStatus(_job)</span>
-                @if (_job.Total > 0 && _job.Status == "running")
-                {
-                    <span class="small text-muted">
-                        @if (string.Equals(_job.Kind, "voice-preview", StringComparison.OrdinalIgnoreCase) && _job.Total == 100)
-                        {
-                            @($"{_job.Index}%")
-                        }
-                        else
-                        {
-                            @($"{_job.Index} / {_job.Total}")
-                        }
-                    </span>
-                }
-                <button type="button" class="btn btn-sm btn-outline-danger ms-auto" disabled="@_busy" @onclick="CancelAsync">
-                    Cancel
-                </button>
-            </div>
-            @{
-                // Index 0 → empty bar (not min 8%). Remount via @key so CSS width resets on new JobId.
-                var pct = _job.Status == "queued" || _job.Total <= 0
-                    ? 8
-                    : (int)Math.Round(100.0 * Math.Clamp(_job.Index, 0, _job.Total) / Math.Max(1, _job.Total));
-                if (_job.Status == "running" && _job.Index <= 0)
-                    pct = 0;
-            }
-            <div class="progress mt-2" style="height: 0.5rem;">
-                <div class="progress-bar progress-bar-striped progress-bar-animated"
-                     role="progressbar"
-                     style="width: @(pct)%"
-                     aria-valuenow="@pct"
-                     aria-valuemin="0"
-                     aria-valuemax="100"></div>
-            </div>
-            @if (!string.IsNullOrEmpty(_job.Message) &&
-                 string.Equals(_job.Kind, "voice-preview", StringComparison.OrdinalIgnoreCase))
-            {
-                <div class="form-text mt-1">@_job.Message</div>
-            }
-            @if (Session.IsAdmin && _job.Log.Count > 0)
-            {
-                <details class="mt-2">
-                    <summary class="small text-muted" style="cursor:pointer">Details (admin)</summary>
-                    <pre class="small mb-0 mt-1" style="max-height: 160px; overflow: auto;">@string.Join("\n", _job.Log.TakeLast(24))</pre>
-                </details>
-            }
-        </div>
-    </div>
+    var voiceDetail = !string.IsNullOrEmpty(_job.Message)
+        && string.Equals(_job.Kind, "voice-preview", StringComparison.OrdinalIgnoreCase)
+            ? _job.Message
+            : null;
+    <JobProgressCard @key="_job.JobId"
+                     Status="@_job.Status"
+                     Message="@FriendlyCharacterJobStatus(_job)"
+                     Index="_job.Index"
+                     Total="_job.Total"
+                     DetailMessage="@voiceDetail"
+                     ShowCancel="true"
+                     CancelDisabled="_busy"
+                     OnCancel="CancelAsync"
+                     Kind="@_job.Kind"
+                     ShowLog="Session.IsAdmin"
+                     LogLines="_job.Log"
+                     TestId="characters-job" />
 }
 
 @if (_chars is null)
 {
-    <p class="text-muted">Loading…</p>
+    <EmptyState Message="Loading…" CssClass="text-muted" />
 }
 else if (_extractingCast)
 {
@@ -256,9 +221,8 @@ else if (_extractingCast)
 }
 else if (!HasCast)
 {
-    <div class="alert alert-warning" data-testid="characters-empty">
-        No cast yet. Approve the screenplay, then build the cast.
-    </div>
+    <InlineAlert Variant="warning" Message="No cast yet. Approve the screenplay, then build the cast."
+                 data-testid="characters-empty" />
 }
 else if (OperatorCastCount == 0)
 {
