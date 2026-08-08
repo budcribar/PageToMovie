@@ -321,8 +321,7 @@ else if (_showPreviewPlayer && _clientStitching)
     }
     else
     {
-        @* Authoritative scene/clip counts for tests — the visible rows are virtualized, so a DOM
-           count of scene-row is not reliable for the full total. *@
+        @* Authoritative scene/clip counts for tests, queryable in one place without counting rows. *@
         <div data-testid="scenes-status"
              data-scene-count="@_scenes.Count"
              data-clip-count="@_scenes.Sum(s => s.ClipCount)"
@@ -448,7 +447,9 @@ else if (_showPreviewPlayer && _clientStitching)
                     <button type="button"
                             class="btn btn-outline-secondary btn-sm"
                             disabled="@(_busy || JobRunning)"
-                            title="Rebuild shot plan from the screenplay to restore missing scenes or clips"
+                            title="@(_selected.Count > 0
+                                ? $"Regenerate only the {_selected.Count} checked scene(s) from the screenplay — other scenes are left untouched"
+                                : "Check scenes first to regenerate just those — with nothing checked, this rebuilds every scene from the screenplay")"
                             @onclick="RebuildShotPlanAsync">
                         🔄 @L["ScenesPage.RebuildShotPlan"]
                     </button>
@@ -540,11 +541,10 @@ else if (_showPreviewPlayer && _clientStitching)
                     </tr>
                 </thead>
                 <tbody>
-                    <Virtualize TItem="SceneSummary" Items="SortedVisibleScenes.ToList()" Context="s">
-                        @{
-                            var sn = s.SceneNumber;
-                            var isSel = _selected.Contains(sn);
-                        }
+                    @foreach (var s in SortedVisibleScenes)
+                    {
+                        var sn = s.SceneNumber;
+                        var isSel = _selected.Contains(sn);
                         <tr class="@(isSel ? "table-active" : "")" style="cursor:pointer;" @key="sn"
                             data-testid="scene-row" data-scene-number="@sn">
                             <td @onclick:stopPropagation="true">
@@ -651,7 +651,7 @@ else if (_showPreviewPlayer && _clientStitching)
                                 }
                             </td>
                         </tr>
-                    </Virtualize>
+                    }
                 </tbody>
             </table>
         </div>
@@ -1334,7 +1334,7 @@ else
                   OnConfirm="ConfirmDeleteSceneAsync" OnCancel="() => { _deleteSceneTarget = null; }">
         Are you sure you want to delete <strong>Scene @deleteSn.ToString("D2")</strong> from the shot plan?
         <div class="text-muted small mt-2">
-            Note: You can easily restore missing scenes anytime by clicking <strong>Rebuild shot plan</strong>.
+            Note: You can easily restore missing scenes anytime by clicking <strong>Regenerate Selected Scenes</strong> with nothing checked (rebuilds every scene from the screenplay).
         </div>
     </ConfirmModal>
 }

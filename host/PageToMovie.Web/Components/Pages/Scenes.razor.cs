@@ -3,7 +3,6 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.AspNetCore.Components.Web;
-using Microsoft.AspNetCore.Components.Web.Virtualization;
 using Microsoft.JSInterop;
 using PageToMovie.Core.Models;
 using PageToMovie.Web.Services;
@@ -612,6 +611,13 @@ public partial class Scenes
             Nav.NavigateTo(route);
     }
 
+    /// <summary>
+    /// Replan from the screenplay — scoped to the checked scenes when any are selected, so editing
+    /// the Fountain (e.g. just the title) and regenerating doesn't re-prompt the AI for scenes whose
+    /// script text didn't change (Stage2PlannerService merges a scoped replan into the existing
+    /// blueprint instead of rebuilding it from scratch). Falls back to every scene — the original
+    /// "restore missing scenes" behavior — when nothing is checked.
+    /// </summary>
     private async Task RebuildShotPlanAsync()
     {
         _busy = true;
@@ -619,12 +625,15 @@ public partial class Scenes
         _message = null;
         try
         {
+            var scoped = _selected.Count > 0;
             await Engine.StartStage2Async(new StartStage2Request
             {
                 ProjectId = _projectId,
-                Scenes = "all"
+                Scenes = scoped ? string.Join(",", _selected.OrderBy(x => x)) : "all"
             });
-            _message = "Rebuilding shot plan from screenplay…";
+            _message = scoped
+                ? $"Regenerating {_selected.Count} selected scene(s) from the screenplay…"
+                : "Rebuilding shot plan from screenplay…";
             await SoftReloadAsync();
         }
         catch (Exception ex)

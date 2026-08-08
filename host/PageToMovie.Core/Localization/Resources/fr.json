@@ -310,7 +310,7 @@
     "SelectMissing": "Sélectionner les manquants",
     "PlaySelected": "Lire la sélection",
     "VerifySceneDialogue": "Vérifier le dialogue de la scène",
-    "RebuildShotPlan": "Reconstruire le plan de prise",
+    "RebuildShotPlan": "Régénérer les scènes sélectionnées",
     "AddScene": "Ajouter une scène",
     "AddCredits": "Ajouter le générique",
     "Filters": "Filtres",

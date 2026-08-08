@@ -310,7 +310,7 @@
     "SelectMissing": "Fehlende auswählen",
     "PlaySelected": "Auswahl abspielen",
     "VerifySceneDialogue": "Szenendialog prüfen",
-    "RebuildShotPlan": "Aufnahmeplan neu erstellen",
+    "RebuildShotPlan": "Ausgewählte Szenen neu generieren",
     "AddScene": "Szene hinzufügen",
     "AddCredits": "Abspann hinzufügen",
     "Filters": "Filter",
