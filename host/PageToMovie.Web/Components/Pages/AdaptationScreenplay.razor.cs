@@ -330,6 +330,28 @@ public partial class AdaptationScreenplay
         }
     }
 
+    /// <summary>
+    /// Title:/Author: only parse as title-page metadata near the top of the file, so unlike every
+    /// other Advanced helper (which inserts at the cursor) this always targets the document start —
+    /// see ProjectStore.ReadScreenplayTitle/ReadScreenplayAuthor, which scan the same first-30-lines
+    /// window for the credits card.
+    /// </summary>
+    private async Task InsertTitleFieldAsync(string key)
+    {
+        if (!_editorReady) return;
+        try
+        {
+            await Js.InvokeVoidAsync("fountainEditor.insertTitleField", EditorId, key);
+            _text = await Js.InvokeAsync<string>("fountainEditor.getValue", EditorId);
+            _dirtyLocal = !string.Equals(_text, _loadedText, StringComparison.Ordinal);
+            ScheduleAutosave();
+        }
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+        }
+    }
+
     private async Task SyncTextFromEditorAsync()
     {
         if (!_editorReady) return;

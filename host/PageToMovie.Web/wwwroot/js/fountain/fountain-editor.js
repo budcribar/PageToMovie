@@ -379,6 +379,34 @@
     scheduleRefresh(id);
   }
 
+  // Title-page fields (Title:/Author:) only parse when they're near the top of the file, unlike
+  // every other Advanced helper which is fine wherever the cursor happens to be — so this always
+  // targets the document start rather than the cursor. If the key is already present in the first
+  // 30 lines (the same window ProjectStore's title/author scanners read), jump there instead of
+  // stacking a duplicate line.
+  function insertTitleField(id, key) {
+    var inst = instances[id];
+    if (!inst) return;
+    var cm = inst.cm;
+    var doc = cm.getDoc();
+    var prefix = (key + ':').toLowerCase();
+    var scanMax = Math.min(30, doc.lineCount());
+    for (var i = 0; i < scanMax; i++) {
+      var line = doc.getLine(i) || "";
+      if (line.trim().toLowerCase().indexOf(prefix) === 0) {
+        doc.setCursor({ line: i, ch: line.length });
+        cm.focus();
+        cm.scrollIntoView({ line: i, ch: line.length }, 80);
+        return;
+      }
+    }
+    var snippet = key + ': \n';
+    doc.replaceRange(snippet, { line: 0, ch: 0 });
+    doc.setCursor({ line: 0, ch: snippet.length - 1 });
+    cm.focus();
+    scheduleRefresh(id);
+  }
+
   function gotoLine(id, line1Based) {
     var inst = instances[id];
     if (!inst) return;
@@ -529,6 +557,7 @@
     getValue: getValue,
     setValue: setValue,
     insertAtCursor: insertAtCursor,
+    insertTitleField: insertTitleField,
     gotoLine: gotoLine,
     setReadOnly: setReadOnly,
     refresh: refresh,
