@@ -383,8 +383,10 @@
   // every other Advanced helper which is fine wherever the cursor happens to be — so this always
   // targets the document start rather than the cursor. If the key is already present in the first
   // 30 lines (the same window ProjectStore's title/author scanners read), jump there instead of
-  // stacking a duplicate line.
-  function insertTitleField(id, key) {
+  // stacking a duplicate line. `afterKey`, if given and present, anchors the new line right after
+  // it instead of at line 0 — e.g. Author passes "Title" so clicking Title then Author doesn't
+  // leave Author sitting above Title (both would otherwise target line 0).
+  function insertTitleField(id, key, afterKey) {
     var inst = instances[id];
     if (!inst) return;
     var cm = inst.cm;
@@ -400,9 +402,20 @@
         return;
       }
     }
+    var insertLine = 0;
+    if (afterKey) {
+      var afterPrefix = (afterKey + ':').toLowerCase();
+      for (var j = 0; j < scanMax; j++) {
+        var l2 = doc.getLine(j) || "";
+        if (l2.trim().toLowerCase().indexOf(afterPrefix) === 0) {
+          insertLine = j + 1;
+          break;
+        }
+      }
+    }
     var snippet = key + ': \n';
-    doc.replaceRange(snippet, { line: 0, ch: 0 });
-    doc.setCursor({ line: 0, ch: snippet.length - 1 });
+    doc.replaceRange(snippet, { line: insertLine, ch: 0 });
+    doc.setCursor({ line: insertLine, ch: snippet.length - 1 });
     cm.focus();
     scheduleRefresh(id);
   }

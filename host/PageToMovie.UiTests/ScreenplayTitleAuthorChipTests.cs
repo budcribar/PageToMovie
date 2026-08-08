@@ -42,12 +42,10 @@ public class ScreenplayTitleAuthorChipTests
         return re.Matches(text).Count;
     }
 
-    // FINDING: both chips always insert at line 0 (never at the cursor), so clicking Title then
-    // Author leaves Author ABOVE Title on the title page — the reverse of standard Fountain
-    // convention (Title is conventionally first). This test documents that ordering rather than
-    // silently accepting it; see the task report for the flag raised to the requester.
+    // Author anchors after an existing Title: line (insertTitleField's afterKey) instead of always
+    // targeting line 0, so clicking Title then Author lands in standard Fountain title-page order.
     [Fact]
-    public async Task Fresh_project_title_then_author_insert_at_top_in_reverse_order_and_persist()
+    public async Task Fresh_project_title_then_author_insert_at_top_in_order_and_persist()
     {
         var (ctx, page) = await _fx.NewPageAsync();
         try
@@ -80,17 +78,19 @@ public class ScreenplayTitleAuthorChipTests
                 await OpenAdvancedPanelAsync(page);
             await Assertions.Expect(authorBtn).ToBeEnabledAsync(new() { Timeout = 15_000 });
             await authorBtn.ClickAsync();
+            // Anchors after the existing Title: line (not line 0), so the document's SECOND line —
+            // not its start — is where the cursor now lands.
             await page.WaitForFunctionAsync(
-                $"() => window.fountainEditor.getValue('{EditorId}').toLowerCase().startsWith('author:')",
+                $"() => (window.fountainEditor.getValue('{EditorId}').split(/\\r?\\n/)[1] || '').toLowerCase().startsWith('author:')",
                 new PageWaitForFunctionOptions { Timeout = 10_000 });
             await page.Keyboard.TypeAsync("Jane Test Author");
 
             var final = await GetEditorValueAsync(page);
             var lines = final.Replace("\r\n", "\n").Split('\n');
 
-            // The edge case: Author (inserted second, also targeting line 0) ends up ABOVE Title.
-            Assert.StartsWith("Author: Jane Test Author", lines[0]);
-            Assert.StartsWith("Title: Batman Begins Again", lines[1]);
+            // Author anchors after the existing Title: line, so standard order is preserved.
+            Assert.StartsWith("Title: Batman Begins Again", lines[0]);
+            Assert.StartsWith("Author: Jane Test Author", lines[1]);
             // Neither insert duplicated — exactly one of each line in the whole document.
             Assert.Equal(1, CountLinesStartingWith(final, "Title:"));
             Assert.Equal(1, CountLinesStartingWith(final, "Author:"));
