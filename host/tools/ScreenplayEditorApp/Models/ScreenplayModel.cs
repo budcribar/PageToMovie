@@ -50,6 +50,22 @@ public enum SpeakerExtension
     CONTD
 }
 
+public enum TransitionPreset
+{
+    [Description("CUT TO:")]
+    CutTo,
+    [Description("FADE IN:")]
+    FadeIn,
+    [Description("FADE OUT.")]
+    FadeOut,
+    [Description("DISSOLVE TO:")]
+    DissolveTo,
+    [Description("SMASH CUT TO:")]
+    SmashCutTo,
+    [Description("BLACKOUT")]
+    Blackout
+}
+
 public enum ComponentVariant
 {
     Primary,
@@ -117,6 +133,14 @@ public static class EnumExtensions
         _ => ""
     };
 
+    public static string GetJargonHint(this SpeakerExtension ext) => ext switch
+    {
+        SpeakerExtension.VO => "V.O. (Voice Over) - Character speaking off-camera or internal monologue",
+        SpeakerExtension.OS => "O.S. (Off Screen) - Character physically present in room but not in camera frame",
+        SpeakerExtension.CONTD => "CONT'D (Continued) - Character continuing dialogue after an action break",
+        _ => "Standard dialogue extension"
+    };
+
     public static SpeakerExtension ParseSpeakerExtension(string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return SpeakerExtension.None;
@@ -125,6 +149,29 @@ public static class EnumExtensions
         if (upper.Contains("O.S")) return SpeakerExtension.OS;
         if (upper.Contains("CONT")) return SpeakerExtension.CONTD;
         return SpeakerExtension.None;
+    }
+
+    public static string ToDisplayString(this TransitionPreset preset) => preset switch
+    {
+        TransitionPreset.CutTo => "CUT TO:",
+        TransitionPreset.FadeIn => "FADE IN:",
+        TransitionPreset.FadeOut => "FADE OUT.",
+        TransitionPreset.DissolveTo => "DISSOLVE TO:",
+        TransitionPreset.SmashCutTo => "SMASH CUT TO:",
+        TransitionPreset.Blackout => "BLACKOUT",
+        _ => "CUT TO:"
+    };
+
+    public static TransitionPreset ParseTransitionPreset(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return TransitionPreset.CutTo;
+        var upper = text.Trim().ToUpperInvariant();
+        if (upper.Contains("FADE IN")) return TransitionPreset.FadeIn;
+        if (upper.Contains("FADE OUT")) return TransitionPreset.FadeOut;
+        if (upper.Contains("DISSOLVE")) return TransitionPreset.DissolveTo;
+        if (upper.Contains("SMASH")) return TransitionPreset.SmashCutTo;
+        if (upper.Contains("BLACK")) return TransitionPreset.Blackout;
+        return TransitionPreset.CutTo;
     }
 
     public static string ToCssClass(this ComponentVariant variant) => variant switch
@@ -185,6 +232,12 @@ public class ScreenplayBeat
     public string Parenthetical { get; set; } = "";
     public string Text { get; set; } = "";
 
+    public TransitionPreset TransitionPreset
+    {
+        get => EnumExtensions.ParseTransitionPreset(Text);
+        set => Text = value.ToDisplayString();
+    }
+
     public string ActionText { get => Text; set => Text = value; }
     public string SpokenText { get => Text; set => Text = value; }
     public string TransitionText { get => Text; set => Text = value; }
@@ -223,6 +276,7 @@ public class ScreenplayScene
     }
     public string SceneTitle { get; set; } = "";
     public bool IsCollapsed { get; set; } = false;
+    public bool IsSelected { get; set; } = false;
 
     public List<ScreenplayBeat> Beats { get; set; } = new();
 
@@ -239,7 +293,8 @@ public class ScreenplayScene
             Location = Location,
             TimeOfDay = TimeOfDay,
             SceneTitle = SceneTitle,
-            IsCollapsed = IsCollapsed
+            IsCollapsed = IsCollapsed,
+            IsSelected = IsSelected
         };
         foreach (var b in Beats)
         {

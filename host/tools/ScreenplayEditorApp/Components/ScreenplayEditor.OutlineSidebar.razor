@@ -4,7 +4,7 @@
             <i class="bi bi-journal-text text-info fs-5"></i>
             @if (!IsCompact)
             {
-                <h6 class="mb-0 fw-bold text-light text-nowrap">Script Outline</h6>
+                <h6 class="mb-0 fw-bold text-light text-nowrap">Outline Navigator</h6>
             }
         </div>
         <button class="btn btn-sm btn-outline-secondary py-0 px-2" type="button" @onclick="ToggleCompact" title="@(IsCompact ? "Expand Sidebar" : "Shrink Sidebar to Numbers Only")">
@@ -28,7 +28,6 @@
 
             <hr class="my-1 border-secondary-subtle" />
 
-            <!-- Scenes Outline Header / Compact Label -->
             @if (!IsCompact)
             {
                 <div class="d-flex justify-content-between align-items-center px-1 mb-1">
@@ -52,22 +51,37 @@
                     var scene = Scenes[index];
                     var isSelected = ActiveView == "scene" && SelectedSceneIndex == index;
 
-                    <button type="button"
-                            class="btn btn-sm text-start w-100 d-flex align-items-center justify-content-between @(isSelected ? "btn-warning text-dark fw-bold" : "btn-outline-dark text-light border-secondary-subtle")"
-                            @onclick="() => SelectScene(index)"
-                            title="@($"Scene {scene.SceneNumber}: {scene.HeaderText}")">
-                        <div class="d-flex align-items-center gap-2 overflow-hidden">
-                            <span class="badge @(isSelected ? "text-bg-dark" : "text-bg-warning") fw-bold">@scene.SceneNumber</span>
+                    <div class="d-flex align-items-center gap-1 w-100 rounded border p-1 @(isSelected ? "bg-primary text-white border-primary" : "bg-dark text-light border-secondary-subtle")"
+                         draggable="true"
+                         @ondragstart="() => HandleDragStart(index)"
+                         @ondragover:preventDefault
+                         @ondrop="() => HandleDrop(index)"
+                         title="Drag & drop to reorder scene">
+                        
+                        <input type="checkbox" class="form-check-input my-0 ms-1 me-1" @bind="scene.IsSelected" title="Select scene" />
+
+                        <button type="button"
+                                class="btn btn-sm text-start flex-grow-1 p-0 border-0 bg-transparent text-reset text-truncate"
+                                @onclick="() => SelectScene(index)">
+                            <span class="badge @(isSelected ? "text-bg-dark" : "text-bg-warning") me-1 fw-bold">@scene.SceneNumber</span>
                             @if (!IsCompact)
                             {
-                                <span class="text-truncate small">@scene.HeaderText</span>
+                                <span class="small font-monospace">@scene.HeaderText</span>
+                            }
+                        </button>
+
+                        <div class="d-flex align-items-center gap-1 ms-auto">
+                            <button class="btn btn-sm btn-link text-info p-0 me-1" type="button" title="Play / Preview Scene" @onclick="() => PreviewScene(index)">
+                                <i class="bi bi-play-circle"></i>
+                            </button>
+                            @if (!IsCompact)
+                            {
+                                <button class="btn btn-sm btn-link text-danger p-0 me-1" type="button" title="Delete Scene with Confirm" @onclick="() => RequestDelete(index)">
+                                    <i class="bi bi-trash"></i>
+                                </button>
                             }
                         </div>
-                        @if (!IsCompact)
-                        {
-                            <span class="badge text-bg-dark text-secondary small">@scene.Beats.Count</span>
-                        }
-                    </button>
+                    </div>
                 }
             }
 
@@ -80,3 +94,71 @@
         </div>
     </div>
 </div>
+
+<!-- Delete Confirmation Modal -->
+@if (DeletingIndex >= 0 && DeletingIndex < Scenes.Count)
+{
+    var deletingScene = Scenes[DeletingIndex];
+    <div class="modal fade show d-block" tabindex="-1" style="background: rgba(0,0,0,0.75);">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content bg-dark text-light border-danger shadow-lg">
+                <div class="modal-header bg-danger text-white py-2">
+                    <h5 class="modal-title fw-bold">Delete Scene @deletingScene.SceneNumber?</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CancelDelete"></button>
+                </div>
+                <div class="modal-body py-3">
+                    <p class="mb-1">Are you sure you want to delete <strong>Scene @deletingScene.SceneNumber: @deletingScene.HeaderText</strong>?</p>
+                    <p class="text-secondary small mb-0">This will remove all @deletingScene.Beats.Count beats in this scene from your screenplay.</p>
+                </div>
+                <div class="modal-footer py-2 border-secondary-subtle">
+                    <button type="button" class="btn btn-danger btn-sm px-3" @onclick="ConfirmDelete">Yes, Delete Scene</button>
+                    <button type="button" class="btn btn-secondary btn-sm px-3" @onclick="CancelDelete">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Play / Preview Scene Modal -->
+@if (PreviewingIndex >= 0 && PreviewingIndex < Scenes.Count)
+{
+    var previewScene = Scenes[PreviewingIndex];
+    <div class="modal fade show d-block" tabindex="-1" style="background: rgba(0,0,0,0.75);">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content bg-dark text-light border-info shadow-lg">
+                <div class="modal-header bg-info text-dark py-2">
+                    <h5 class="modal-title fw-bold">▶ Preview: Scene @previewScene.SceneNumber - @previewScene.HeaderText</h5>
+                    <button type="button" class="btn-close" @onclick="ClosePreview"></button>
+                </div>
+                <div class="modal-body p-4 font-monospace">
+                    <h5 class="fw-bold text-center text-uppercase mb-4">@previewScene.HeaderText</h5>
+                    @foreach (var beat in previewScene.Beats)
+                    {
+                        if (beat.BeatType == BeatType.Action)
+                        {
+                            <p class="mb-3 text-light">@beat.ActionText</p>
+                        }
+                        else if (beat.BeatType == BeatType.Dialogue)
+                        {
+                            <div class="text-center my-2">
+                                <strong class="text-warning text-uppercase">@beat.Speaker @beat.Extension</strong>
+                                @if (!string.IsNullOrEmpty(beat.Parenthetical))
+                                {
+                                    <div class="fst-italic text-secondary">@beat.Parenthetical</div>
+                                }
+                                <div class="text-light">@beat.SpokenText</div>
+                            </div>
+                        }
+                        else if (beat.BeatType == BeatType.Transition)
+                        {
+                            <p class="text-end fw-bold text-info my-3">@beat.TransitionText</p>
+                        }
+                    }
+                </div>
+                <div class="modal-footer py-2 border-secondary-subtle">
+                    <button type="button" class="btn btn-secondary btn-sm px-4" @onclick="ClosePreview">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}

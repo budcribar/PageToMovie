@@ -1,29 +1,63 @@
-<div class="container-fluid py-4 px-md-4">
-    <!-- Studio Header -->
-    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4 pb-3 border-bottom border-secondary-subtle">
-        <div>
-            <div class="d-flex align-items-center gap-2 mb-1">
+<div class="container-fluid py-2 px-md-3">
+    <!-- Compact Studio Header (Max 2 Rows) -->
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3 pb-2 border-bottom border-secondary-subtle">
+        <div class="d-flex align-items-center gap-3">
+            <div class="d-flex align-items-center gap-2">
                 <ScreenplayEditor_BadgePill Variant="@ComponentVariant.Primary" Text="PageToMovie" />
-                <span class="text-secondary small fw-semibold">Screenplay Editor</span>
+                <h5 class="mb-0 fw-bold text-light text-nowrap">Screenplay Editor</h5>
             </div>
-            <h2 class="mb-0 fw-bold text-light">
-                @(!string.IsNullOrWhiteSpace(Model.Metadata.Title) ? Model.Metadata.Title : "Untitled Screenplay")
-            </h2>
-            <p class="text-secondary small mb-0 mt-1">
+            <span class="text-secondary small d-none d-md-inline">
+                Title: <strong class="text-light">@(!string.IsNullOrWhiteSpace(Model.Metadata.Title) ? Model.Metadata.Title : "Untitled")</strong> ·
                 Author: <strong class="text-light">@(!string.IsNullOrWhiteSpace(Model.Metadata.Author) ? Model.Metadata.Author : "Unknown")</strong> ·
                 Scenes: <strong class="text-light">@Model.Scenes.Count</strong> ·
-                Total Beats: <strong class="text-light">@TotalBeats</strong>
-            </p>
+                Beats: <strong class="text-light">@TotalBeats</strong>
+            </span>
         </div>
+
+        <!-- Right Side: Single Hamburger Menu Dropdown & Add Scene Action -->
         <div class="d-flex align-items-center gap-2">
-            <ScreenplayEditor_ActionButton Variant="@(ActiveViewMode == "all" ? ComponentVariant.Info : ComponentVariant.OutlineInfo)" Icon="bi-card-list" Text="Show All Scenes" OnClick="ShowAllScenesView" />
-            <ScreenplayEditor_ActionButton Variant="@ComponentVariant.OutlineInfo" Icon="bi-box-arrow-in-down" Text="Import Fountain" OnClick="OpenImportModal" />
-            <ScreenplayEditor_ActionButton Variant="@ComponentVariant.Primary" Icon="bi-box-arrow-up-right" Text="Export Fountain" OnClick="OpenExportModal" />
+            <ScreenplayEditor_ActionButton Variant="@ComponentVariant.Success" Icon="bi-plus-lg" Text="Add Scene" OnClick="AddScene" />
+
+            <div class="dropdown">
+                <button class="btn btn-sm btn-outline-secondary dropdown-toggle px-3" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Studio Menu">
+                    <i class="bi bi-list fs-5 align-middle"></i> Menu
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end dropdown-menu-dark shadow-lg">
+                    <li><h6 class="dropdown-header">Screenplay Exchange</h6></li>
+                    <li>
+                        <button class="dropdown-item" type="button" @onclick="OpenImportModal">
+                            <i class="bi bi-box-arrow-in-down text-info me-2"></i> Import Fountain...
+                        </button>
+                    </li>
+                    <li>
+                        <button class="dropdown-item" type="button" @onclick="OpenExportModal">
+                            <i class="bi bi-box-arrow-up-right text-primary me-2"></i> Export Fountain...
+                        </button>
+                    </li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><h6 class="dropdown-header">View Controls</h6></li>
+                    <li>
+                        <button class="dropdown-item" type="button" @onclick="ShowAllScenesView">
+                            <i class="bi bi-card-list text-warning me-2"></i> @(ActiveViewMode == "all" ? "Switch to Single Scene Inspector" : "Show All Scenes View")
+                        </button>
+                    </li>
+                    <li>
+                        <button class="dropdown-item" type="button" @onclick="CollapseAllScenes">
+                            <i class="bi bi-arrows-collapse me-2"></i> Collapse All Scenes
+                        </button>
+                    </li>
+                    <li>
+                        <button class="dropdown-item" type="button" @onclick="ExpandAllScenes">
+                            <i class="bi bi-arrows-expand me-2"></i> Expand All Scenes
+                        </button>
+                    </li>
+                </ul>
+            </div>
         </div>
     </div>
 
     <!-- Two-Column Master-Detail Layout -->
-    <div class="row g-4">
+    <div class="row g-3">
         <!-- Column 1: Left Outline Navigation Sidebar -->
         <div class="@(IsSidebarCompact ? "col-auto" : "col-md-3")">
             <ScreenplayEditor_OutlineSidebar Scenes="Model.Scenes"
@@ -32,7 +66,9 @@
                                               @bind-IsCompact="IsSidebarCompact"
                                               OnSelectMetadata="SelectMetadataView"
                                               OnSelectScene="SelectSceneView"
-                                              OnAddScene="AddScene" />
+                                              OnAddScene="AddScene"
+                                              OnDeleteScene="DeleteScene"
+                                              OnReorderScenes="ReorderScenes" />
         </div>
 
         <!-- Column 2: Right Active View Inspector -->
@@ -44,7 +80,7 @@
             else if (ActiveViewMode == "scene" && Model.Scenes.Count > 0 && SelectedSceneIndex >= 0 && SelectedSceneIndex < Model.Scenes.Count)
             {
                 var scene = Model.Scenes[SelectedSceneIndex];
-                <div class="mb-3 d-flex justify-content-between align-items-center">
+                <div class="mb-2 d-flex justify-content-between align-items-center">
                     <div class="d-flex align-items-center gap-2">
                         <ScreenplayEditor_ActionButton Variant="@ComponentVariant.OutlineSecondary" Text="◄ Prev Scene" Disabled="@(SelectedSceneIndex == 0)" OnClick="SelectPreviousScene" />
                         <ScreenplayEditor_ActionButton Variant="@ComponentVariant.OutlineSecondary" Text="Next Scene ►" Disabled="@(SelectedSceneIndex >= Model.Scenes.Count - 1)" OnClick="SelectNextScene" />
@@ -66,7 +102,7 @@
 
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <div class="d-flex align-items-center gap-2">
-                        <h4 class="mb-0 fw-bold text-light">Scenes</h4>
+                        <h5 class="mb-0 fw-bold text-light">Scenes</h5>
                         <ScreenplayEditor_BadgePill Variant="@ComponentVariant.Secondary" Text="@Model.Scenes.Count.ToString()" />
                     </div>
                     <div class="d-flex align-items-center gap-2">
@@ -86,7 +122,7 @@
                             <div class="display-6 text-info mb-3">🎬</div>
                             <h5 class="fw-bold text-light">No scenes in screenplay</h5>
                             <p class="text-secondary mb-0">
-                                Use the <strong class="text-success">+ Add Scene</strong> button above to create your first scene, or click <strong class="text-info">Import Fountain</strong> to load an existing screenplay file.
+                                Use the <strong class="text-success">+ Add Scene</strong> button above to create your first scene, or click <strong class="text-info">Import Fountain</strong> in the menu to load an existing screenplay file.
                             </p>
                         </div>
                     </div>

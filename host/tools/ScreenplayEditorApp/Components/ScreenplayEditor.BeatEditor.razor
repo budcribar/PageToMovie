@@ -1,20 +1,33 @@
 <div class="border border-secondary-subtle rounded p-2 mb-2 bg-dark text-light shadow-sm">
     <div class="d-flex justify-content-between align-items-center mb-2 gap-2 flex-wrap">
-        <div class="d-flex align-items-center gap-2">
+        <div class="d-flex align-items-center gap-2 flex-wrap">
             <select class="form-select form-select-sm fw-bold border-secondary bg-dark text-light" style="width: 140px;" @bind="Beat.BeatType" @bind:after="OnChanged">
                 <option value="@BeatType.Action">🎬 Action</option>
                 <option value="@BeatType.Dialogue">🗣️ Dialogue</option>
                 <option value="@BeatType.Parenthetical">💬 Parenthetical</option>
                 <option value="@BeatType.Transition">🎞️ Transition</option>
             </select>
+
             @if (Beat.BeatType == BeatType.Dialogue)
             {
-                <input type="text" class="form-control form-control-sm text-uppercase fw-bold border-secondary bg-dark text-light" style="width: 180px;" @bind="Beat.Speaker" @bind:after="OnChanged" placeholder="SPEAKER" />
-                <select class="form-select form-select-sm border-secondary bg-dark text-light" style="width: 110px;" @bind="Beat.SpeakerExt" @bind:after="OnChanged">
-                    <option value="@SpeakerExtension.None">(None)</option>
-                    <option value="@SpeakerExtension.VO">V.O.</option>
-                    <option value="@SpeakerExtension.OS">O.S.</option>
-                    <option value="@SpeakerExtension.CONTD">CONT'D</option>
+                <input type="text" class="form-control form-control-sm text-uppercase fw-bold border-secondary bg-dark text-light" style="width: 160px;" @bind="Beat.Speaker" @bind:after="OnChanged" placeholder="SPEAKER" />
+                <select class="form-select form-select-sm border-secondary bg-dark text-light" style="width: 120px;" @bind="Beat.SpeakerExt" @bind:after="OnChanged" title="@Beat.SpeakerExt.GetJargonHint()">
+                    <option value="@SpeakerExtension.None" title="Standard on-screen dialogue">(None)</option>
+                    <option value="@SpeakerExtension.VO" title="V.O. (Voice Over) - Character speaking off-camera or internal monologue">V.O. ℹ️</option>
+                    <option value="@SpeakerExtension.OS" title="O.S. (Off Screen) - Character physically in room but off-camera">O.S. ℹ️</option>
+                    <option value="@SpeakerExtension.CONTD" title="CONT'D (Continued) - Character continuing dialogue after action break">CONT'D ℹ️</option>
+                </select>
+            }
+            else if (Beat.BeatType == BeatType.Transition)
+            {
+                <span class="text-secondary small fw-bold">Transition:</span>
+                <select class="form-select form-select-sm fw-bold border-secondary bg-dark text-light" style="width: 180px;" @bind="Beat.TransitionPreset" @bind:after="OnChanged">
+                    <option value="@TransitionPreset.CutTo">CUT TO:</option>
+                    <option value="@TransitionPreset.FadeIn">FADE IN:</option>
+                    <option value="@TransitionPreset.FadeOut">FADE OUT.</option>
+                    <option value="@TransitionPreset.DissolveTo">DISSOLVE TO:</option>
+                    <option value="@TransitionPreset.SmashCutTo">SMASH CUT TO:</option>
+                    <option value="@TransitionPreset.Blackout">BLACKOUT</option>
                 </select>
             }
         </div>
@@ -37,9 +50,5 @@
     else if (Beat.BeatType == BeatType.Parenthetical)
     {
         <input type="text" class="form-control form-control-sm fst-italic border-secondary bg-dark text-light" @bind="Beat.Parenthetical" @bind:after="OnChanged" placeholder="(whispering)" />
-    }
-    else if (Beat.BeatType == BeatType.Transition)
-    {
-        <input type="text" class="form-control form-control-sm text-uppercase fw-bold border-secondary bg-dark text-light" @bind="Beat.TransitionText" @bind:after="OnChanged" placeholder="CUT TO:" />
     }
 </div>

@@ -15,7 +15,7 @@ public partial class ScreenplayEditor : ComponentBase
     public string FountainModalMode { get; set; } = "import";
     public string FountainModalText { get; set; } = "";
 
-    public string ActiveViewMode { get; set; } = "metadata"; // metadata | scene | all
+    public string ActiveViewMode { get; set; } = "metadata";
     public int SelectedSceneIndex { get; set; } = 0;
     public bool IsSidebarCompact { get; set; } = false;
 
@@ -69,6 +69,21 @@ public partial class ScreenplayEditor : ComponentBase
     public void ShowAllScenesView()
     {
         ActiveViewMode = ActiveViewMode == "all" ? "scene" : "all";
+    }
+
+    public async Task ReorderScenes((int from, int to) args)
+    {
+        int from = args.from;
+        int to = args.to;
+
+        if (from >= 0 && from < Model.Scenes.Count && to >= 0 && to < Model.Scenes.Count && from != to)
+        {
+            var scene = Model.Scenes[from];
+            Model.Scenes.RemoveAt(from);
+            Model.Scenes.Insert(to, scene);
+            SelectedSceneIndex = to;
+            await OnChanged();
+        }
     }
 
     public async Task CollapseAllScenes()
