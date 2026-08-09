@@ -11,7 +11,7 @@ public partial class ScreenplayEditor_ActionButton : ComponentBase
     public string Icon { get; set; } = "";
 
     [Parameter]
-    public string Variant { get; set; } = "primary";
+    public string Variant { get; set; } = "secondary"; // primary, info, success, warning, secondary, dark
 
     [Parameter]
     public string CssClass { get; set; } = "";
