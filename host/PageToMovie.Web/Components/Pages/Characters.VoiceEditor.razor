@@ -1,0 +1,201 @@
+@* Page-local to Characters — voice label/profile + clone *@
+@inject StudioCapabilityState Caps
+@using PageToMovie.Core.Models
+
+
+        @* Simple path (home → library book → your voice): only the clone card.
+           Full cast keeps label/profile + film voice preview for prompt style. *@
+        @if (!SimpleMode)
+        {
+            <CharacterVoicePanel VoiceLabel="@EditVoiceLabel"
+                                 VoiceLabelChanged="VoiceLabelChanged"
+                                 VoiceProfile="@EditVoiceProfile"
+                                 VoiceProfileChanged="VoiceProfileChanged"
+                                 Busy="@(Busy || VoicePreviewBusy || VoiceJobRunning)"
+                                 Hint="@(VoiceSaveHint ?? "Profile saves automatically")"
+                                 Error="@VoicePreviewError"
+                                 TestId="char-voice-panel">
+                <Actions>
+                    <button type="button"
+                            class="btn btn-sm btn-outline-secondary"
+                            disabled="@(Busy || VoicePreviewBusy || VoiceJobRunning)"
+                            title="Play cached sample, or generate a short film clip if missing"
+                            @onclick="() => OnPlayPreview.InvokeAsync(false)">
+                        ▶ Play
+                    </button>
+                    <button type="button"
+                            class="btn btn-sm btn-outline-primary"
+                            disabled="@(Busy || VoicePreviewBusy || VoiceJobRunning)"
+                            title="Always regenerate after editing the profile"
+                            @onclick="() => OnPlayPreview.InvokeAsync(true)">
+                        Regenerate
+                    </button>
+                </Actions>
+            </CharacterVoicePanel>
+            @if (VoiceJobRunning && Job is not null)
+            {
+                <JobProgressCard Status="@Job.Status"
+                                 Message="@(Job.Message ?? "Generating voice…")"
+                                 Index="Job.Index"
+                                 Total="Job.Total"
+                                 Kind="@Job.Kind"
+                                 TestId="char-voice-job"
+                                 CssClass="mt-2 mb-0" />
+            }
+            @if (!string.IsNullOrEmpty(VoicePreviewHint))
+            {
+                <div class="form-text mt-1">@VoicePreviewHint</div>
+            }
+            @if (VoicePreviewStale && !VoiceJobRunning)
+            {
+                <div class="form-text text-warning mt-1">Profile changed — Regenerate to hear the new voice.</div>
+            }
+            @if (!string.IsNullOrEmpty(VoicePreviewUrl) && !VoiceJobRunning)
+            {
+                <video class="mt-2 w-100 rounded border" style="max-height: 240px; background: #000;"
+                       controls autoplay playsinline src="@VoicePreviewUrl" @key="VoicePreviewUrl"></video>
+            }
+
+            <hr class="my-3" />
+        }
+        @* Mic capture is always available (sample stays on the client).
+           Provider key is only required later when applying the clone while filming. *@
+        <div class="ptm-voice-clone" data-testid="voice-clone-gate">
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+                <div>
+                    <strong class="small">@(SimpleMode ? "Your voice" : "Voice sample")</strong>
+                </div>
+                @if (Selected?.HasVoiceCloneSample == true)
+                {
+                    <span class="badge text-bg-success" style="font-size:0.65rem">Ready</span>
+                }
+            </div>
+            @if (!Caps.VoiceCloneReady)
+            {
+                <InlineAlert Variant="warning" CssClass="py-2 small mb-2" data-testid="voice-clone-setup-hint">
+                    <div class="mb-1">@Caps.VoiceCloneBlockedReason</div>
+                    <a class="alert-link" href="@Caps.VoiceCloneSettingsHref">Open Settings →</a>
+                    <div class="text-muted mt-1 mb-0">
+                        You can still record a sample now — the key is only needed when we apply your voice to the film.
+                    </div>
+                </InlineAlert>
+            }
+            <p class="form-text mb-2">@(SimpleMode ? "Record a short sample for the narrator." : "Record a short sample for cloning.")</p>
+            <div class="ptm-voice-script border border-secondary border-opacity-50 rounded p-2 mb-2 bg-dark bg-opacity-25"
+                 data-testid="voice-clone-script">
+                <div class="small fw-semibold text-info mb-1">
+                    @(UseKidsScript ? "Read this aloud (story voice)" : "Read this aloud")
+                </div>
+                @if (UseKidsScript)
+                {
+                    <div class="small text-muted mb-1">Coach: smile, warm energy; soft on the bedtime ending — don't read stage directions.</div>
+                }
+                <p class="mb-0 small lh-sm" style="white-space: pre-wrap;">@VoiceCloneReadScript</p>
+                @if (UseKidsScript)
+                {
+                    <button type="button" class="btn btn-link btn-sm px-0 mt-1"
+                            @onclick="ToggleKidsScript">
+                        @(ShowKidsFullScript ? "Hide longer kids script" : "Longer kids script (richer clone)")
+                    </button>
+                    @if (ShowKidsFullScript)
+                    {
+                        <p class="mb-0 small lh-sm mt-1 text-muted" style="white-space: pre-wrap;">@VoiceCloneScripts.KidsFull</p>
+                    }
+                }
+            </div>
+            <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+                @if (!VoiceRecRecording)
+                {
+                    <button type="button" class="btn btn-sm btn-outline-primary"
+                            disabled="@(Busy || VoiceCloneBusy || VoiceJobRunning)"
+                            @onclick="OnStartMic"
+                            data-testid="voice-clone-mic-start">
+                        Record
+                    </button>
+                }
+                else
+                {
+                    <button type="button" class="btn btn-sm btn-danger"
+                            disabled="@VoiceCloneBusy"
+                            @onclick="OnStopMic"
+                            data-testid="voice-clone-mic-stop">
+                        Done
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary"
+                            disabled="@VoiceCloneBusy"
+                            @onclick="OnCancelMic">
+                        Cancel
+                    </button>
+                    <span class="small text-danger">Recording…</span>
+                }
+                <button type="button" class="btn btn-sm btn-outline-secondary"
+                        disabled="@(Busy || VoiceCloneBusy || VoiceJobRunning)"
+                        @onclick="OnOpenMediaPicker"
+                        data-testid="voice-clone-from-folder">
+                    Use existing audio
+                </button>
+                @if (Selected?.HasVoiceCloneSample == true)
+                {
+                    <button type="button" class="btn btn-sm btn-primary"
+                            disabled="@(Busy || VoiceCloneBusy || VoiceJobRunning)"
+                            @onclick="OnApplyClone"
+                            data-testid="voice-clone-apply">
+                        @(VoiceCloneBusy ? "Applying…" : "Apply voice")
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-danger"
+                            disabled="@(Busy || VoiceCloneBusy)"
+                            @onclick="OnDeleteClone">
+                        Remove sample
+                    </button>
+                }
+            </div>
+            @if (ShowMediaAudioPicker)
+            {
+                <div class="border border-secondary border-opacity-50 rounded p-2 mt-2 bg-dark bg-opacity-50"
+                     data-testid="voice-clone-folder-picker">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <strong class="small">Your audio files</strong>
+                        <button type="button" class="btn btn-sm btn-outline-secondary py-0"
+                                @onclick="CloseMediaPicker">✕</button>
+                    </div>
+                    @if (LoadingMediaAudio)
+                    {
+                        <div class="small text-muted">Scanning folder…</div>
+                    }
+                    else if (MediaAudioFiles?.Count == 0)
+                    {
+                        <div class="small text-muted mb-2">No audio files found yet.</div>
+                        <button type="button" class="btn btn-sm btn-outline-secondary"
+                                @onclick="OnOpenMediaPicker">Refresh</button>
+                    }
+                    else
+                    {
+                        <div class="list-group list-group-flush" style="max-height: 220px; overflow-y: auto;">
+                            @foreach (var f in MediaAudioFiles)
+                            {
+                                <button type="button"
+                                        class="list-group-item list-group-item-action list-group-item-dark py-1 px-2 small text-start"
+                                        disabled="@(Busy || VoiceCloneBusy)"
+                                        @onclick="@(() => OnPickMediaAudio.InvokeAsync(f))">
+                                    <span class="text-truncate d-block">@f.Name</span>
+                                    <span class="text-muted" style="font-size:0.7rem;">@f.RelativePath · @(Math.Max(1, f.SizeBytes / 1024)) KB</span>
+                                </button>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+            @if (!string.IsNullOrEmpty(VoiceCloneHint))
+            {
+                <div class="form-text">@VoiceCloneHint</div>
+            }
+            @if (!string.IsNullOrEmpty(VoiceCloneError))
+            {
+                <InlineAlert Message="@VoiceCloneError" CssClass="py-1 small mb-0" />
+            }
+            @if (!string.IsNullOrEmpty(VoiceClonePlayUrl))
+            {
+                <audio class="mt-2 w-100" controls src="@VoiceClonePlayUrl" @key="VoiceClonePlayUrl"></audio>
+            }
+        </div>
+

@@ -321,7 +321,43 @@ else
                         <p class="small text-muted mb-3">
                             Record (or pick) one sample for this character. Library pictures stay as-is — we re-speak lines in your voice when you film.
                         </p>
-                        @RenderVoiceEditor()
+                        <Characters_VoiceEditor SimpleMode="_simpleMode"
+                                    EditVoiceLabel="@_editVoiceLabel"
+                                    VoiceLabelChanged="OnVoiceLabelChanged"
+                                    EditVoiceProfile="@_editVoiceProfile"
+                                    VoiceProfileChanged="OnVoiceProfileChanged"
+                                    Busy="_busy"
+                                    VoicePreviewBusy="_voicePreviewBusy"
+                                    VoiceJobRunning="VoiceJobRunning"
+                                    VoiceSaveHint="@_voiceSaveHint"
+                                    VoicePreviewError="@_voicePreviewError"
+                                    VoicePreviewHint="@_voicePreviewHint"
+                                    VoicePreviewStale="_voicePreviewStale"
+                                    VoicePreviewUrl="@_voicePreviewUrl"
+                                    Job="_job"
+                                    Selected="_selected"
+                                    VoiceCloneBusy="_voiceCloneBusy"
+                                    VoiceCloneError="@_voiceCloneError"
+                                    VoiceCloneHint="@_voiceCloneHint"
+                                    VoiceClonePlayUrl="@_voiceClonePlayUrl"
+                                    VoiceRecRecording="_voiceRecRecording"
+                                    ShowKidsFullScript="_showKidsFullScript"
+                                    ShowKidsFullScriptChanged="@(v => _showKidsFullScript = v)"
+                                    UseKidsScript="_useKidsScript"
+                                    UseKidsScriptChanged="@(v => _useKidsScript = v)"
+                                    ShowMediaAudioPicker="_showMediaAudioPicker"
+                                    ShowMediaAudioPickerChanged="@(v => _showMediaAudioPicker = v)"
+                                    LoadingMediaAudio="_loadingMediaAudio"
+                                    MediaAudioFiles="_mediaAudioFiles"
+                                    VoiceCloneReadScript="@VoiceCloneReadScript"
+                                    OnPlayPreview="PlayVoicePreviewAsync"
+                                    OnStartMic="StartVoiceCloneMicAsync"
+                                    OnStopMic="StopVoiceCloneMicAsync"
+                                    OnCancelMic="CancelVoiceCloneMicAsync"
+                                    OnOpenMediaPicker="OpenMediaFolderAudioPickerAsync"
+                                    OnApplyClone="ApplyVoiceCloneToProviderAsync"
+                                    OnDeleteClone="DeleteVoiceCloneSampleAsync"
+                                    OnPickMediaAudio="PickMediaFolderAudioAsync" />
                     </div>
                 </div>
                 <p class="small text-muted mb-0">
@@ -340,7 +376,43 @@ else
                         <p class="small text-muted mb-3">
                             <strong>Voice style</strong> — used when this character speaks (for example narrator voice-over).
                         </p>
-                        @RenderVoiceEditor()
+                        <Characters_VoiceEditor SimpleMode="_simpleMode"
+                                    EditVoiceLabel="@_editVoiceLabel"
+                                    VoiceLabelChanged="OnVoiceLabelChanged"
+                                    EditVoiceProfile="@_editVoiceProfile"
+                                    VoiceProfileChanged="OnVoiceProfileChanged"
+                                    Busy="_busy"
+                                    VoicePreviewBusy="_voicePreviewBusy"
+                                    VoiceJobRunning="VoiceJobRunning"
+                                    VoiceSaveHint="@_voiceSaveHint"
+                                    VoicePreviewError="@_voicePreviewError"
+                                    VoicePreviewHint="@_voicePreviewHint"
+                                    VoicePreviewStale="_voicePreviewStale"
+                                    VoicePreviewUrl="@_voicePreviewUrl"
+                                    Job="_job"
+                                    Selected="_selected"
+                                    VoiceCloneBusy="_voiceCloneBusy"
+                                    VoiceCloneError="@_voiceCloneError"
+                                    VoiceCloneHint="@_voiceCloneHint"
+                                    VoiceClonePlayUrl="@_voiceClonePlayUrl"
+                                    VoiceRecRecording="_voiceRecRecording"
+                                    ShowKidsFullScript="_showKidsFullScript"
+                                    ShowKidsFullScriptChanged="@(v => _showKidsFullScript = v)"
+                                    UseKidsScript="_useKidsScript"
+                                    UseKidsScriptChanged="@(v => _useKidsScript = v)"
+                                    ShowMediaAudioPicker="_showMediaAudioPicker"
+                                    ShowMediaAudioPickerChanged="@(v => _showMediaAudioPicker = v)"
+                                    LoadingMediaAudio="_loadingMediaAudio"
+                                    MediaAudioFiles="_mediaAudioFiles"
+                                    VoiceCloneReadScript="@VoiceCloneReadScript"
+                                    OnPlayPreview="PlayVoicePreviewAsync"
+                                    OnStartMic="StartVoiceCloneMicAsync"
+                                    OnStopMic="StopVoiceCloneMicAsync"
+                                    OnCancelMic="CancelVoiceCloneMicAsync"
+                                    OnOpenMediaPicker="OpenMediaFolderAudioPickerAsync"
+                                    OnApplyClone="ApplyVoiceCloneToProviderAsync"
+                                    OnDeleteClone="DeleteVoiceCloneSampleAsync"
+                                    OnPickMediaAudio="PickMediaFolderAudioAsync" />
                     </div>
                 </div>
             }
@@ -693,7 +765,43 @@ else
                                     <p class="small text-muted mb-2">
                                         Describe the voice style, or record a clone sample below.
                                     </p>
-                                    @RenderVoiceEditor()
+                                    <Characters_VoiceEditor SimpleMode="_simpleMode"
+                                    EditVoiceLabel="@_editVoiceLabel"
+                                    VoiceLabelChanged="OnVoiceLabelChanged"
+                                    EditVoiceProfile="@_editVoiceProfile"
+                                    VoiceProfileChanged="OnVoiceProfileChanged"
+                                    Busy="_busy"
+                                    VoicePreviewBusy="_voicePreviewBusy"
+                                    VoiceJobRunning="VoiceJobRunning"
+                                    VoiceSaveHint="@_voiceSaveHint"
+                                    VoicePreviewError="@_voicePreviewError"
+                                    VoicePreviewHint="@_voicePreviewHint"
+                                    VoicePreviewStale="_voicePreviewStale"
+                                    VoicePreviewUrl="@_voicePreviewUrl"
+                                    Job="_job"
+                                    Selected="_selected"
+                                    VoiceCloneBusy="_voiceCloneBusy"
+                                    VoiceCloneError="@_voiceCloneError"
+                                    VoiceCloneHint="@_voiceCloneHint"
+                                    VoiceClonePlayUrl="@_voiceClonePlayUrl"
+                                    VoiceRecRecording="_voiceRecRecording"
+                                    ShowKidsFullScript="_showKidsFullScript"
+                                    ShowKidsFullScriptChanged="@(v => _showKidsFullScript = v)"
+                                    UseKidsScript="_useKidsScript"
+                                    UseKidsScriptChanged="@(v => _useKidsScript = v)"
+                                    ShowMediaAudioPicker="_showMediaAudioPicker"
+                                    ShowMediaAudioPickerChanged="@(v => _showMediaAudioPicker = v)"
+                                    LoadingMediaAudio="_loadingMediaAudio"
+                                    MediaAudioFiles="_mediaAudioFiles"
+                                    VoiceCloneReadScript="@VoiceCloneReadScript"
+                                    OnPlayPreview="PlayVoicePreviewAsync"
+                                    OnStartMic="StartVoiceCloneMicAsync"
+                                    OnStopMic="StopVoiceCloneMicAsync"
+                                    OnCancelMic="CancelVoiceCloneMicAsync"
+                                    OnOpenMediaPicker="OpenMediaFolderAudioPickerAsync"
+                                    OnApplyClone="ApplyVoiceCloneToProviderAsync"
+                                    OnDeleteClone="DeleteVoiceCloneSampleAsync"
+                                    OnPickMediaAudio="PickMediaFolderAudioAsync" />
                                 </div>
                             }
                             else
@@ -727,207 +835,4 @@ else
     </div>
 }
 } @* end CanCharacters gate *@
-
-@code {
-    // RenderVoiceEditor stays here (not in Characters.razor.cs) - it uses inline
-    // markup via a RenderFragment lambda, which only compiles via the Razor compiler.
-    private RenderFragment RenderVoiceEditor() => __builder =>
-    {
-        @* Simple path (home → library book → your voice): only the clone card.
-           Full cast keeps label/profile + film voice preview for prompt style. *@
-        @if (!_simpleMode)
-        {
-            <CharacterVoicePanel VoiceLabel="@_editVoiceLabel"
-                                 VoiceLabelChanged="OnVoiceLabelChanged"
-                                 VoiceProfile="@_editVoiceProfile"
-                                 VoiceProfileChanged="OnVoiceProfileChanged"
-                                 Busy="@(_busy || _voicePreviewBusy || VoiceJobRunning)"
-                                 Hint="@(_voiceSaveHint ?? "Profile saves automatically")"
-                                 Error="@_voicePreviewError"
-                                 TestId="char-voice-panel">
-                <Actions>
-                    <button type="button"
-                            class="btn btn-sm btn-outline-secondary"
-                            disabled="@(_busy || _voicePreviewBusy || VoiceJobRunning)"
-                            title="Play cached sample, or generate a short film clip if missing"
-                            @onclick="() => PlayVoicePreviewAsync(force: false)">
-                        ▶ Play
-                    </button>
-                    <button type="button"
-                            class="btn btn-sm btn-outline-primary"
-                            disabled="@(_busy || _voicePreviewBusy || VoiceJobRunning)"
-                            title="Always regenerate after editing the profile"
-                            @onclick="() => PlayVoicePreviewAsync(force: true)">
-                        Regenerate
-                    </button>
-                </Actions>
-            </CharacterVoicePanel>
-            @if (VoiceJobRunning && _job is not null)
-            {
-                <JobProgressCard Status="@_job.Status"
-                                 Message="@(_job.Message ?? "Generating voice…")"
-                                 Index="_job.Index"
-                                 Total="_job.Total"
-                                 Kind="@_job.Kind"
-                                 TestId="char-voice-job"
-                                 CssClass="mt-2 mb-0" />
-            }
-            @if (!string.IsNullOrEmpty(_voicePreviewHint))
-            {
-                <div class="form-text mt-1">@_voicePreviewHint</div>
-            }
-            @if (_voicePreviewStale && !VoiceJobRunning)
-            {
-                <div class="form-text text-warning mt-1">Profile changed — Regenerate to hear the new voice.</div>
-            }
-            @if (!string.IsNullOrEmpty(_voicePreviewUrl) && !VoiceJobRunning)
-            {
-                <video class="mt-2 w-100 rounded border" style="max-height: 240px; background: #000;"
-                       controls autoplay playsinline src="@_voicePreviewUrl" @key="_voicePreviewUrl"></video>
-            }
-
-            <hr class="my-3" />
-        }
-        @* Mic capture is always available (sample stays on the client).
-           Provider key is only required later when applying the clone while filming. *@
-        <div class="ptm-voice-clone" data-testid="voice-clone-gate">
-            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
-                <div>
-                    <strong class="small">@(_simpleMode ? "Your voice" : "Voice sample")</strong>
-                </div>
-                @if (_selected?.HasVoiceCloneSample == true)
-                {
-                    <span class="badge text-bg-success" style="font-size:0.65rem">Ready</span>
-                }
-            </div>
-            @if (!Caps.VoiceCloneReady)
-            {
-                <InlineAlert Variant="warning" CssClass="py-2 small mb-2" data-testid="voice-clone-setup-hint">
-                    <div class="mb-1">@Caps.VoiceCloneBlockedReason</div>
-                    <a class="alert-link" href="@Caps.VoiceCloneSettingsHref">Open Settings →</a>
-                    <div class="text-muted mt-1 mb-0">
-                        You can still record a sample now — the key is only needed when we apply your voice to the film.
-                    </div>
-                </InlineAlert>
-            }
-            <p class="form-text mb-2">@(_simpleMode ? "Record a short sample for the narrator." : "Record a short sample for cloning.")</p>
-            <div class="ptm-voice-script border border-secondary border-opacity-50 rounded p-2 mb-2 bg-dark bg-opacity-25"
-                 data-testid="voice-clone-script">
-                <div class="small fw-semibold text-info mb-1">
-                    @(_useKidsScript ? "Read this aloud (story voice)" : "Read this aloud")
-                </div>
-                @if (_useKidsScript)
-                {
-                    <div class="small text-muted mb-1">Coach: smile, warm energy; soft on the bedtime ending — don't read stage directions.</div>
-                }
-                <p class="mb-0 small lh-sm" style="white-space: pre-wrap;">@VoiceCloneReadScript</p>
-                @if (_useKidsScript)
-                {
-                    <button type="button" class="btn btn-link btn-sm px-0 mt-1"
-                            @onclick="() => _showKidsFullScript = !_showKidsFullScript">
-                        @(_showKidsFullScript ? "Hide longer kids script" : "Longer kids script (richer clone)")
-                    </button>
-                    @if (_showKidsFullScript)
-                    {
-                        <p class="mb-0 small lh-sm mt-1 text-muted" style="white-space: pre-wrap;">@VoiceCloneScripts.KidsFull</p>
-                    }
-                }
-            </div>
-            <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
-                @if (!_voiceRecRecording)
-                {
-                    <button type="button" class="btn btn-sm btn-outline-primary"
-                            disabled="@(_busy || _voiceCloneBusy || VoiceJobRunning)"
-                            @onclick="StartVoiceCloneMicAsync"
-                            data-testid="voice-clone-mic-start">
-                        Record
-                    </button>
-                }
-                else
-                {
-                    <button type="button" class="btn btn-sm btn-danger"
-                            disabled="@_voiceCloneBusy"
-                            @onclick="StopVoiceCloneMicAsync"
-                            data-testid="voice-clone-mic-stop">
-                        Done
-                    </button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary"
-                            disabled="@_voiceCloneBusy"
-                            @onclick="CancelVoiceCloneMicAsync">
-                        Cancel
-                    </button>
-                    <span class="small text-danger">Recording…</span>
-                }
-                <button type="button" class="btn btn-sm btn-outline-secondary"
-                        disabled="@(_busy || _voiceCloneBusy || VoiceJobRunning)"
-                        @onclick="OpenMediaFolderAudioPickerAsync"
-                        data-testid="voice-clone-from-folder">
-                    Use existing audio
-                </button>
-                @if (_selected?.HasVoiceCloneSample == true)
-                {
-                    <button type="button" class="btn btn-sm btn-primary"
-                            disabled="@(_busy || _voiceCloneBusy || VoiceJobRunning)"
-                            @onclick="ApplyVoiceCloneToProviderAsync"
-                            data-testid="voice-clone-apply">
-                        @(_voiceCloneBusy ? "Applying…" : "Apply voice")
-                    </button>
-                    <button type="button" class="btn btn-sm btn-outline-danger"
-                            disabled="@(_busy || _voiceCloneBusy)"
-                            @onclick="DeleteVoiceCloneSampleAsync">
-                        Remove sample
-                    </button>
-                }
-            </div>
-            @if (_showMediaAudioPicker)
-            {
-                <div class="border border-secondary border-opacity-50 rounded p-2 mt-2 bg-dark bg-opacity-50"
-                     data-testid="voice-clone-folder-picker">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <strong class="small">Your audio files</strong>
-                        <button type="button" class="btn btn-sm btn-outline-secondary py-0"
-                                @onclick="() => _showMediaAudioPicker = false">✕</button>
-                    </div>
-                    @if (_loadingMediaAudio)
-                    {
-                        <div class="small text-muted">Scanning folder…</div>
-                    }
-                    else if (_mediaAudioFiles.Count == 0)
-                    {
-                        <div class="small text-muted mb-2">No audio files found yet.</div>
-                        <button type="button" class="btn btn-sm btn-outline-secondary"
-                                @onclick="OpenMediaFolderAudioPickerAsync">Refresh</button>
-                    }
-                    else
-                    {
-                        <div class="list-group list-group-flush" style="max-height: 220px; overflow-y: auto;">
-                            @foreach (var f in _mediaAudioFiles)
-                            {
-                                <button type="button"
-                                        class="list-group-item list-group-item-action list-group-item-dark py-1 px-2 small text-start"
-                                        disabled="@(_busy || _voiceCloneBusy)"
-                                        @onclick="@(() => PickMediaFolderAudioAsync(f))">
-                                    <span class="text-truncate d-block">@f.Name</span>
-                                    <span class="text-muted" style="font-size:0.7rem;">@f.RelativePath · @(Math.Max(1, f.SizeBytes / 1024)) KB</span>
-                                </button>
-                            }
-                        </div>
-                    }
-                </div>
-            }
-            @if (!string.IsNullOrEmpty(_voiceCloneHint))
-            {
-                <div class="form-text">@_voiceCloneHint</div>
-            }
-            @if (!string.IsNullOrEmpty(_voiceCloneError))
-            {
-                <InlineAlert Message="@_voiceCloneError" CssClass="py-1 small mb-0" />
-            }
-            @if (!string.IsNullOrEmpty(_voiceClonePlayUrl))
-            {
-                <audio class="mt-2 w-100" controls src="@_voiceClonePlayUrl" @key="_voiceClonePlayUrl"></audio>
-            }
-        </div>
-
-    };
 }
