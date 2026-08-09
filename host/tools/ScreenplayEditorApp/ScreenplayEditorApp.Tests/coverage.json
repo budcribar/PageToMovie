@@ -1,0 +1,6170 @@
+{
+  "PageToMovie.Fountain.dll": {
+    "C:\\Users\\budcr\\source\\repos\\gemini\\PageToMovie\\host\\PageToMovie.Fountain\\FountainLexer.cs": {
+      "PageToMovie.Fountain.FountainLexer": {
+        "System.Boolean PageToMovie.Fountain.FountainLexer::IsSceneHeadingStart(System.String)": {
+          "Lines": {
+            "37": 956
+          },
+          "Branches": [
+            {
+              "Line": 37,
+              "Offset": 6,
+              "EndOffset": 8,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 956
+            },
+            {
+              "Line": 37,
+              "Offset": 6,
+              "EndOffset": 21,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 0
+            }
+          ]
+        },
+        "System.String PageToMovie.Fountain.FountainLexer::StripEmphasis(System.String)": {
+          "Lines": {
+            "47": 1601,
+            "48": 1601,
+            "50": 1601,
+            "54": 1601,
+            "55": 1601,
+            "56": 1601,
+            "57": 1601,
+            "58": 1601,
+            "59": 1601
+          },
+          "Branches": [
+            {
+              "Line": 48,
+              "Offset": 9,
+              "EndOffset": 11,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 0
+            },
+            {
+              "Line": 48,
+              "Offset": 9,
+              "EndOffset": 18,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 1601
+            }
+          ]
+        },
+        "System.String PageToMovie.Fountain.FountainLexer::UnescapeFountain(System.String)": {
+          "Lines": {
+            "62": 1185
+          },
+          "Branches": []
+        },
+        "System.String PageToMovie.Fountain.FountainLexer::NormalizeTypographicPunctuation(System.String)": {
+          "Lines": {
+            "68": 207,
+            "69": 207,
+            "70": 207,
+            "71": 207,
+            "72": 207,
+            "73": 207,
+            "74": 207,
+            "75": 207,
+            "76": 207,
+            "77": 207,
+            "78": 207
+          },
+          "Branches": [
+            {
+              "Line": 69,
+              "Offset": 9,
+              "EndOffset": 11,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 0
+            },
+            {
+              "Line": 69,
+              "Offset": 13,
+              "EndOffset": 15,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 0
+            },
+            {
+              "Line": 69,
+              "Offset": 13,
+              "EndOffset": 21,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 0
+            },
+            {
+              "Line": 69,
+              "Offset": 9,
+              "EndOffset": 24,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 207
+            }
+          ]
+        },
+        "System.Boolean PageToMovie.Fountain.FountainLexer::IsAllCapsLine(System.String)": {
+          "Lines": {
+            "82": 574,
+            "83": 574,
+            "84": 3882,
+            "85": 1887,
+            "86": 1887,
+            "87": 1887,
+            "88": 1618,
+            "89": 1618,
+            "90": 2138,
+            "91": 1098,
+            "92": 1367,
+            "93": 54,
+            "94": 574
+          },
+          "Branches": [
+            {
+              "Line": 84,
+              "Offset": 68,
+              "EndOffset": 7,
+              "Path": 1,
+              "Ordinal": 5,
+              "Hits": 1887
+            },
+            {
+              "Line": 87,
+              "Offset": 24,
+              "EndOffset": 26,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 1618
+            },
+            {
+              "Line": 90,
+              "Offset": 42,
+              "EndOffset": 44,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 520
+            },
+            {
+              "Line": 90,
+              "Offset": 42,
+              "EndOffset": 49,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 1098
+            },
+            {
+              "Line": 87,
+              "Offset": 24,
+              "EndOffset": 50,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 1367
+            },
+            {
+              "Line": 84,
+              "Offset": 68,
+              "EndOffset": 70,
+              "Path": 0,
+              "Ordinal": 4,
+              "Hits": 54
+            }
+          ]
+        },
+        "System.Boolean PageToMovie.Fountain.FountainLexer::IsStandaloneTransitionLine(System.String)": {
+          "Lines": {
+            "101": 416,
+            "102": 416,
+            "105": 416,
+            "106": 416,
+            "107": 416,
+            "108": 779,
+            "111": 53,
+            "112": 19,
+            "115": 34,
+            "116": 416
+          },
+          "Branches": [
+            {
+              "Line": 102,
+              "Offset": 9,
+              "EndOffset": 11,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 0
+            },
+            {
+              "Line": 102,
+              "Offset": 9,
+              "EndOffset": 15,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 416
+            },
+            {
+              "Line": 107,
+              "Offset": 47,
+              "EndOffset": 49,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 0
+            },
+            {
+              "Line": 107,
+              "Offset": 47,
+              "EndOffset": 53,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 416
+            },
+            {
+              "Line": 108,
+              "Offset": 66,
+              "EndOffset": 68,
+              "Path": 0,
+              "Ordinal": 4,
+              "Hits": 363
+            },
+            {
+              "Line": 108,
+              "Offset": 66,
+              "EndOffset": 72,
+              "Path": 1,
+              "Ordinal": 5,
+              "Hits": 53
+            },
+            {
+              "Line": 111,
+              "Offset": 87,
+              "EndOffset": 89,
+              "Path": 0,
+              "Ordinal": 6,
+              "Hits": 19
+            },
+            {
+              "Line": 111,
+              "Offset": 87,
+              "EndOffset": 93,
+              "Path": 1,
+              "Ordinal": 7,
+              "Hits": 34
+            }
+          ]
+        },
+        "System.Boolean PageToMovie.Fountain.FountainLexer::IsCharacterLine(System.String)": {
+          "Lines": {
+            "123": 392,
+            "124": 392,
+            "125": 392,
+            "128": 392,
+            "129": 392,
+            "130": 392,
+            "131": 393,
+            "132": 391,
+            "135": 391,
+            "136": 3575,
+            "137": 392
+          },
+          "Branches": [
+            {
+              "Line": 125,
+              "Offset": 19,
+              "EndOffset": 21,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 0
+            },
+            {
+              "Line": 125,
+              "Offset": 19,
+              "EndOffset": 28,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 392
+            },
+            {
+              "Line": 128,
+              "Offset": 43,
+              "EndOffset": 45,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 0
+            },
+            {
+              "Line": 128,
+              "Offset": 43,
+              "EndOffset": 52,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 392
+            },
+            {
+              "Line": 131,
+              "Offset": 106,
+              "EndOffset": 108,
+              "Path": 0,
+              "Ordinal": 4,
+              "Hits": 1
+            },
+            {
+              "Line": 131,
+              "Offset": 106,
+              "EndOffset": 112,
+              "Path": 1,
+              "Ordinal": 5,
+              "Hits": 391
+            },
+            {
+              "Line": 132,
+              "Offset": 152,
+              "EndOffset": 154,
+              "Path": 0,
+              "Ordinal": 6,
+              "Hits": 0
+            },
+            {
+              "Line": 132,
+              "Offset": 152,
+              "EndOffset": 158,
+              "Path": 1,
+              "Ordinal": 7,
+              "Hits": 391
+            },
+            {
+              "Line": 136,
+              "Offset": 6,
+              "EndOffset": 8,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 2922
+            },
+            {
+              "Line": 136,
+              "Offset": 6,
+              "EndOffset": 16,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 262
+            }
+          ]
+        },
+        "System.ValueTuple`2<System.String,System.String> PageToMovie.Fountain.FountainLexer::SplitCharacter(System.String)": {
+          "Lines": {
+            "141": 390,
+            "142": 390,
+            "143": 390,
+            "144": 390,
+            "145": 84,
+            "147": 306,
+            "148": 0,
+            "149": 0,
+            "150": 0,
+            "151": 0,
+            "152": 0,
+            "153": 306,
+            "154": 390
+          },
+          "Branches": [
+            {
+              "Line": 144,
+              "Offset": 32,
+              "EndOffset": 34,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 84
+            },
+            {
+              "Line": 144,
+              "Offset": 32,
+              "EndOffset": 44,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 306
+            },
+            {
+              "Line": 144,
+              "Offset": 47,
+              "EndOffset": 49,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 84
+            },
+            {
+              "Line": 144,
+              "Offset": 47,
+              "EndOffset": 82,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 306
+            },
+            {
+              "Line": 147,
+              "Offset": 88,
+              "EndOffset": 90,
+              "Path": 0,
+              "Ordinal": 4,
+              "Hits": 0
+            },
+            {
+              "Line": 150,
+              "Offset": 110,
+              "EndOffset": 112,
+              "Path": 0,
+              "Ordinal": 6,
+              "Hits": 0
+            },
+            {
+              "Line": 150,
+              "Offset": 110,
+              "EndOffset": 156,
+              "Path": 1,
+              "Ordinal": 7,
+              "Hits": 0
+            },
+            {
+              "Line": 147,
+              "Offset": 88,
+              "EndOffset": 157,
+              "Path": 1,
+              "Ordinal": 5,
+              "Hits": 306
+            }
+          ]
+        },
+        "System.Boolean PageToMovie.Fountain.FountainLexer::PrevBlank(System.String[],System.Int32)": {
+          "Lines": {
+            "158": 1355,
+            "159": 1377,
+            "160": 1333,
+            "161": 1355
+          },
+          "Branches": [
+            {
+              "Line": 159,
+              "Offset": 10,
+              "EndOffset": 12,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 22
+            },
+            {
+              "Line": 159,
+              "Offset": 10,
+              "EndOffset": 16,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 1333
+            }
+          ]
+        },
+        "System.Boolean PageToMovie.Fountain.FountainLexer::NextBlank(System.String[],System.Int32)": {
+          "Lines": {
+            "165": 1355,
+            "166": 1356,
+            "167": 1354,
+            "168": 1355
+          },
+          "Branches": [
+            {
+              "Line": 166,
+              "Offset": 14,
+              "EndOffset": 16,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 1
+            },
+            {
+              "Line": 166,
+              "Offset": 14,
+              "EndOffset": 20,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 1354
+            }
+          ]
+        },
+        "System.Boolean PageToMovie.Fountain.FountainLexer::IsTwoSpaceContinue(System.String)": {
+          "Lines": {
+            "175": 389
+          },
+          "Branches": [
+            {
+              "Line": 175,
+              "Offset": 6,
+              "EndOffset": 8,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 389
+            },
+            {
+              "Line": 175,
+              "Offset": 6,
+              "EndOffset": 22,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 0
+            }
+          ]
+        },
+        "System.Boolean PageToMovie.Fountain.FountainLexer::IsVoiceOverExtension(System.String)": {
+          "Lines": {
+            "182": 0,
+            "183": 0,
+            "184": 0,
+            "185": 0,
+            "186": 0
+          },
+          "Branches": [
+            {
+              "Line": 183,
+              "Offset": 9,
+              "EndOffset": 11,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 0
+            },
+            {
+              "Line": 183,
+              "Offset": 9,
+              "EndOffset": 15,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 0
+            },
+            {
+              "Line": 184,
+              "Offset": 29,
+              "EndOffset": 31,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 0
+            },
+            {
+              "Line": 184,
+              "Offset": 29,
+              "EndOffset": 35,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 0
+            }
+          ]
+        },
+        "System.String PageToMovie.Fountain.FountainLexer::StripFountainPageBreaks(System.String)": {
+          "Lines": {
+            "194": 0,
+            "195": 0,
+            "197": 0,
+            "198": 0,
+            "199": 0,
+            "200": 0,
+            "202": 0,
+            "203": 0,
+            "204": 0,
+            "205": 0
+          },
+          "Branches": [
+            {
+              "Line": 195,
+              "Offset": 9,
+              "EndOffset": 11,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 0
+            },
+            {
+              "Line": 195,
+              "Offset": 13,
+              "EndOffset": 15,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 0
+            },
+            {
+              "Line": 195,
+              "Offset": 13,
+              "EndOffset": 21,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 0
+            },
+            {
+              "Line": 195,
+              "Offset": 9,
+              "EndOffset": 24,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 0
+            },
+            {
+              "Line": 204,
+              "Offset": 73,
+              "EndOffset": 75,
+              "Path": 0,
+              "Ordinal": 4,
+              "Hits": 0
+            },
+            {
+              "Line": 204,
+              "Offset": 73,
+              "EndOffset": 88,
+              "Path": 1,
+              "Ordinal": 5,
+              "Hits": 0
+            }
+          ]
+        },
+        "System.Void PageToMovie.Fountain.FountainLexer::.cctor()": {
+          "Lines": {
+            "16": 1,
+            "17": 1,
+            "18": 1,
+            "20": 1,
+            "21": 1,
+            "22": 1,
+            "27": 1,
+            "28": 1,
+            "29": 1,
+            "31": 1,
+            "32": 1,
+            "33": 1
+          },
+          "Branches": []
+        }
+      }
+    },
+    "C:\\Users\\budcr\\source\\repos\\gemini\\PageToMovie\\host\\PageToMovie.Fountain\\FountainParser.cs": {
+      "PageToMovie.Fountain.FountainParser": {
+        "PageToMovie.Fountain.FountainParser/ParseResult PageToMovie.Fountain.FountainParser::Parse(System.String)": {
+          "Lines": {
+            "74": 56,
+            "75": 56,
+            "77": 56,
+            "79": 56,
+            "82": 56,
+            "83": 56,
+            "84": 3,
+            "85": 3,
+            "86": 3,
+            "87": 59,
+            "89": 56,
+            "91": 5778,
+            "92": 2833,
+            "94": 56,
+            "95": 174,
+            "96": 3,
+            "97": 3,
+            "98": 3,
+            "99": 3,
+            "101": 56,
+            "103": 56,
+            "105": 2140,
+            "106": 2084,
+            "107": 2084,
+            "109": 2084,
+            "110": 2084,
+            "112": 2084,
+            "113": 1043,
+            "114": 1043,
+            "115": 1043,
+            "119": 1041,
+            "120": 3,
+            "121": 3,
+            "122": 3,
+            "123": 3,
+            "127": 1038,
+            "128": 8,
+            "129": 8,
+            "130": 8,
+            "131": 8,
+            "135": 1030,
+            "136": 5,
+            "137": 16,
+            "138": 5,
+            "139": 5,
+            "140": 5,
+            "141": 5,
+            "142": 5,
+            "143": 5,
+            "144": 5,
+            "145": 5,
+            "149": 1025,
+            "150": 5,
+            "151": 5,
+            "152": 5,
+            "153": 5,
+            "154": 5,
+            "155": 5,
+            "156": 5,
+            "157": 5,
+            "161": 1020,
+            "162": 3,
+            "163": 3,
+            "164": 3,
+            "165": 3,
+            "166": 3,
+            "167": 3,
+            "168": 3,
+            "169": 3,
+            "173": 1017,
+            "174": 0,
+            "175": 0,
+            "176": 0,
+            "177": 0,
+            "178": 0,
+            "179": 0,
+            "180": 0,
+            "181": 0,
+            "185": 1017,
+            "186": 1017,
+            "187": 1017,
+            "188": 0,
+            "189": 0,
+            "190": 0,
+            "191": 0,
+            "192": 0,
+            "193": 0,
+            "194": 0,
+            "195": 0,
+            "196": 0,
+            "197": 0,
+            "201": 1017,
+            "202": 0,
+            "203": 0,
+            "204": 0,
+            "205": 0,
+            "206": 0,
+            "207": 0,
+            "208": 0,
+            "209": 0,
+            "210": 0,
+            "211": 0,
+            "212": 0,
+            "213": 0,
+            "214": 0,
+            "218": 1017,
+            "219": 10,
+            "220": 10,
+            "221": 10,
+            "222": 10,
+            "223": 10,
+            "224": 10,
+            "225": 10,
+            "226": 10,
+            "227": 10,
+            "231": 1007,
+            "232": 45,
+            "233": 45,
+            "234": 45,
+            "235": 45,
+            "236": 45,
+            "237": 45,
+            "238": 45,
+            "239": 45,
+            "242": 962,
+            "243": 962,
+            "244": 962,
+            "249": 962,
+            "250": 962,
+            "251": 151,
+            "252": 151,
+            "253": 151,
+            "254": 151,
+            "255": 151,
+            "256": 151,
+            "257": 151,
+            "258": 151,
+            "259": 151,
+            "260": 151,
+            "267": 811,
+            "268": 416,
+            "269": 416,
+            "270": 416,
+            "271": 45,
+            "272": 45,
+            "273": 45,
+            "274": 45,
+            "275": 45,
+            "276": 45,
+            "277": 45,
+            "278": 45,
+            "280": 371,
+            "285": 766,
+            "286": 390,
+            "287": 390,
+            "288": 390,
+            "289": 390,
+            "290": 390,
+            "291": 390,
+            "292": 390,
+            "293": 390,
+            "294": 390,
+            "295": 390,
+            "296": 390,
+            "297": 390,
+            "298": 390,
+            "302": 376,
+            "303": 376,
+            "304": 376,
+            "305": 376,
+            "306": 376,
+            "307": 376,
+            "308": 376,
+            "309": 376,
+            "311": 56,
+            "312": 56
+          },
+          "Branches": [
+            {
+              "Line": 75,
+              "Offset": 8,
+              "EndOffset": 10,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 0
+            },
+            {
+              "Line": 75,
+              "Offset": 8,
+              "EndOffset": 17,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 56
+            },
+            {
+              "Line": 91,
+              "Offset": 158,
+              "EndOffset": 118,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 2833
+            },
+            {
+              "Line": 91,
+              "Offset": 158,
+              "EndOffset": 160,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 56
+            },
+            {
+              "Line": 95,
+              "Offset": 251,
+              "EndOffset": 182,
+              "Path": 1,
+              "Ordinal": 7,
+              "Hits": 3
+            },
+            {
+              "Line": 97,
+              "Offset": 206,
+              "EndOffset": 208,
+              "Path": 0,
+              "Ordinal": 4,
+              "Hits": 3
+            },
+            {
+              "Line": 97,
+              "Offset": 206,
+              "EndOffset": 243,
+              "Path": 1,
+              "Ordinal": 5,
+              "Hits": 3
+            },
+            {
+              "Line": 95,
+              "Offset": 251,
+              "EndOffset": 253,
+              "Path": 0,
+              "Ordinal": 6,
+              "Hits": 56
+            },
+            {
+              "Line": 105,
+              "Offset": 1731,
+              "EndOffset": 287,
+              "Path": 1,
+              "Ordinal": 61,
+              "Hits": 2084
+            },
+            {
+              "Line": 112,
+              "Offset": 325,
+              "EndOffset": 327,
+              "Path": 0,
+              "Ordinal": 8,
+              "Hits": 1043
+            },
+            {
+              "Line": 112,
+              "Offset": 325,
+              "EndOffset": 337,
+              "Path": 1,
+              "Ordinal": 9,
+              "Hits": 1041
+            },
+            {
+              "Line": 119,
+              "Offset": 353,
+              "EndOffset": 355,
+              "Path": 0,
+              "Ordinal": 10,
+              "Hits": 3
+            },
+            {
+              "Line": 119,
+              "Offset": 353,
+              "EndOffset": 368,
+              "Path": 1,
+              "Ordinal": 11,
+              "Hits": 1038
+            },
+            {
+              "Line": 127,
+              "Offset": 384,
+              "EndOffset": 386,
+              "Path": 0,
+              "Ordinal": 12,
+              "Hits": 8
+            },
+            {
+              "Line": 127,
+              "Offset": 384,
+              "EndOffset": 431,
+              "Path": 1,
+              "Ordinal": 13,
+              "Hits": 1030
+            },
+            {
+              "Line": 135,
+              "Offset": 444,
+              "EndOffset": 446,
+              "Path": 0,
+              "Ordinal": 14,
+              "Hits": 5
+            },
+            {
+              "Line": 135,
+              "Offset": 444,
+              "EndOffset": 561,
+              "Path": 1,
+              "Ordinal": 15,
+              "Hits": 1025
+            },
+            {
+              "Line": 149,
+              "Offset": 570,
+              "EndOffset": 572,
+              "Path": 0,
+              "Ordinal": 16,
+              "Hits": 5
+            },
+            {
+              "Line": 149,
+              "Offset": 570,
+              "EndOffset": 589,
+              "Path": 1,
+              "Ordinal": 17,
+              "Hits": 1020
+            },
+            {
+              "Line": 149,
+              "Offset": 594,
+              "EndOffset": 596,
+              "Path": 0,
+              "Ordinal": 18,
+              "Hits": 5
+            },
+            {
+              "Line": 149,
+              "Offset": 594,
+              "EndOffset": 652,
+              "Path": 1,
+              "Ordinal": 19,
+              "Hits": 1020
+            },
+            {
+              "Line": 161,
+              "Offset": 665,
+              "EndOffset": 667,
+              "Path": 0,
+              "Ordinal": 20,
+              "Hits": 3
+            },
+            {
+              "Line": 161,
+              "Offset": 665,
+              "EndOffset": 728,
+              "Path": 1,
+              "Ordinal": 21,
+              "Hits": 1017
+            },
+            {
+              "Line": 173,
+              "Offset": 741,
+              "EndOffset": 743,
+              "Path": 0,
+              "Ordinal": 22,
+              "Hits": 0
+            },
+            {
+              "Line": 173,
+              "Offset": 741,
+              "EndOffset": 810,
+              "Path": 1,
+              "Ordinal": 23,
+              "Hits": 1017
+            },
+            {
+              "Line": 185,
+              "Offset": 819,
+              "EndOffset": 821,
+              "Path": 0,
+              "Ordinal": 24,
+              "Hits": 0
+            },
+            {
+              "Line": 185,
+              "Offset": 829,
+              "EndOffset": 831,
+              "Path": 0,
+              "Ordinal": 26,
+              "Hits": 0
+            },
+            {
+              "Line": 185,
+              "Offset": 819,
+              "EndOffset": 846,
+              "Path": 1,
+              "Ordinal": 25,
+              "Hits": 1017
+            },
+            {
+              "Line": 185,
+              "Offset": 829,
+              "EndOffset": 846,
+              "Path": 1,
+              "Ordinal": 27,
+              "Hits": 1017
+            },
+            {
+              "Line": 185,
+              "Offset": 851,
+              "EndOffset": 853,
+              "Path": 0,
+              "Ordinal": 28,
+              "Hits": 0
+            },
+            {
+              "Line": 185,
+              "Offset": 851,
+              "EndOffset": 939,
+              "Path": 1,
+              "Ordinal": 29,
+              "Hits": 1017
+            },
+            {
+              "Line": 201,
+              "Offset": 952,
+              "EndOffset": 957,
+              "Path": 0,
+              "Ordinal": 30,
+              "Hits": 0
+            },
+            {
+              "Line": 203,
+              "Offset": 960,
+              "EndOffset": 962,
+              "Path": 0,
+              "Ordinal": 32,
+              "Hits": 0
+            },
+            {
+              "Line": 203,
+              "Offset": 960,
+              "EndOffset": 978,
+              "Path": 1,
+              "Ordinal": 33,
+              "Hits": 0
+            },
+            {
+              "Line": 201,
+              "Offset": 952,
+              "EndOffset": 1097,
+              "Path": 1,
+              "Ordinal": 31,
+              "Hits": 1017
+            },
+            {
+              "Line": 218,
+              "Offset": 1108,
+              "EndOffset": 1110,
+              "Path": 0,
+              "Ordinal": 34,
+              "Hits": 10
+            },
+            {
+              "Line": 218,
+              "Offset": 1108,
+              "EndOffset": 1188,
+              "Path": 1,
+              "Ordinal": 35,
+              "Hits": 1007
+            },
+            {
+              "Line": 231,
+              "Offset": 1197,
+              "EndOffset": 1199,
+              "Path": 0,
+              "Ordinal": 36,
+              "Hits": 45
+            },
+            {
+              "Line": 231,
+              "Offset": 1197,
+              "EndOffset": 1211,
+              "Path": 1,
+              "Ordinal": 37,
+              "Hits": 962
+            },
+            {
+              "Line": 231,
+              "Offset": 1216,
+              "EndOffset": 1218,
+              "Path": 0,
+              "Ordinal": 38,
+              "Hits": 45
+            },
+            {
+              "Line": 231,
+              "Offset": 1216,
+              "EndOffset": 1279,
+              "Path": 1,
+              "Ordinal": 39,
+              "Hits": 962
+            },
+            {
+              "Line": 249,
+              "Offset": 1303,
+              "EndOffset": 1305,
+              "Path": 0,
+              "Ordinal": 40,
+              "Hits": 956
+            },
+            {
+              "Line": 249,
+              "Offset": 1312,
+              "EndOffset": 1314,
+              "Path": 0,
+              "Ordinal": 42,
+              "Hits": 151
+            },
+            {
+              "Line": 249,
+              "Offset": 1316,
+              "EndOffset": 1318,
+              "Path": 0,
+              "Ordinal": 44,
+              "Hits": 0
+            },
+            {
+              "Line": 249,
+              "Offset": 1316,
+              "EndOffset": 1327,
+              "Path": 1,
+              "Ordinal": 45,
+              "Hits": 151
+            },
+            {
+              "Line": 249,
+              "Offset": 1303,
+              "EndOffset": 1330,
+              "Path": 1,
+              "Ordinal": 41,
+              "Hits": 811
+            },
+            {
+              "Line": 249,
+              "Offset": 1312,
+              "EndOffset": 1330,
+              "Path": 1,
+              "Ordinal": 43,
+              "Hits": 811
+            },
+            {
+              "Line": 249,
+              "Offset": 1335,
+              "EndOffset": 1337,
+              "Path": 0,
+              "Ordinal": 46,
+              "Hits": 151
+            },
+            {
+              "Line": 249,
+              "Offset": 1335,
+              "EndOffset": 1412,
+              "Path": 1,
+              "Ordinal": 47,
+              "Hits": 811
+            },
+            {
+              "Line": 267,
+              "Offset": 1421,
+              "EndOffset": 1423,
+              "Path": 0,
+              "Ordinal": 48,
+              "Hits": 416
+            },
+            {
+              "Line": 270,
+              "Offset": 1444,
+              "EndOffset": 1446,
+              "Path": 0,
+              "Ordinal": 50,
+              "Hits": 45
+            },
+            {
+              "Line": 270,
+              "Offset": 1444,
+              "EndOffset": 1500,
+              "Path": 1,
+              "Ordinal": 51,
+              "Hits": 371
+            },
+            {
+              "Line": 267,
+              "Offset": 1421,
+              "EndOffset": 1501,
+              "Path": 1,
+              "Ordinal": 49,
+              "Hits": 766
+            },
+            {
+              "Line": 285,
+              "Offset": 1506,
+              "EndOffset": 1508,
+              "Path": 0,
+              "Ordinal": 52,
+              "Hits": 763
+            },
+            {
+              "Line": 285,
+              "Offset": 1510,
+              "EndOffset": 1512,
+              "Path": 0,
+              "Ordinal": 54,
+              "Hits": 392
+            },
+            {
+              "Line": 285,
+              "Offset": 1506,
+              "EndOffset": 1521,
+              "Path": 1,
+              "Ordinal": 53,
+              "Hits": 374
+            },
+            {
+              "Line": 285,
+              "Offset": 1510,
+              "EndOffset": 1521,
+              "Path": 1,
+              "Ordinal": 55,
+              "Hits": 374
+            },
+            {
+              "Line": 285,
+              "Offset": 1526,
+              "EndOffset": 1531,
+              "Path": 0,
+              "Ordinal": 56,
+              "Hits": 390
+            },
+            {
+              "Line": 287,
+              "Offset": 1534,
+              "EndOffset": 1536,
+              "Path": 0,
+              "Ordinal": 58,
+              "Hits": 387
+            },
+            {
+              "Line": 287,
+              "Offset": 1534,
+              "EndOffset": 1552,
+              "Path": 1,
+              "Ordinal": 59,
+              "Hits": 3
+            },
+            {
+              "Line": 285,
+              "Offset": 1526,
+              "EndOffset": 1667,
+              "Path": 1,
+              "Ordinal": 57,
+              "Hits": 376
+            },
+            {
+              "Line": 105,
+              "Offset": 1731,
+              "EndOffset": 1736,
+              "Path": 0,
+              "Ordinal": 60,
+              "Hits": 56
+            }
+          ]
+        },
+        "System.String PageToMovie.Fountain.FountainParser::StripEmphasis(System.String)": {
+          "Lines": {
+            "315": 0
+          },
+          "Branches": []
+        },
+        "System.String PageToMovie.Fountain.FountainParser::UnescapeFountain(System.String)": {
+          "Lines": {
+            "318": 0
+          },
+          "Branches": []
+        },
+        "System.Boolean PageToMovie.Fountain.FountainParser::IsStandaloneTransitionLine(System.String)": {
+          "Lines": {
+            "325": 0
+          },
+          "Branches": []
+        },
+        "System.String PageToMovie.Fountain.FountainParser::NormalizeTypographicPunctuation(System.String)": {
+          "Lines": {
+            "332": 0
+          },
+          "Branches": []
+        },
+        "System.Boolean PageToMovie.Fountain.FountainParser::LooksLikeTitlePageKeyLine(System.String)": {
+          "Lines": {
+            "335": 190,
+            "336": 190,
+            "337": 222,
+            "340": 158,
+            "341": 158,
+            "342": 0,
+            "345": 158,
+            "346": 158,
+            "347": 158,
+            "348": 158,
+            "349": 1,
+            "350": 157,
+            "351": 190
+          },
+          "Branches": [
+            {
+              "Line": 337,
+              "Offset": 26,
+              "EndOffset": 28,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 32
+            },
+            {
+              "Line": 337,
+              "Offset": 26,
+              "EndOffset": 36,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 158
+            },
+            {
+              "Line": 340,
+              "Offset": 48,
+              "EndOffset": 50,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 0
+            },
+            {
+              "Line": 340,
+              "Offset": 48,
+              "EndOffset": 58,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 158
+            },
+            {
+              "Line": 341,
+              "Offset": 64,
+              "EndOffset": 66,
+              "Path": 0,
+              "Ordinal": 4,
+              "Hits": 1
+            },
+            {
+              "Line": 341,
+              "Offset": 64,
+              "EndOffset": 84,
+              "Path": 1,
+              "Ordinal": 5,
+              "Hits": 157
+            },
+            {
+              "Line": 341,
+              "Offset": 89,
+              "EndOffset": 91,
+              "Path": 0,
+              "Ordinal": 6,
+              "Hits": 0
+            },
+            {
+              "Line": 341,
+              "Offset": 89,
+              "EndOffset": 99,
+              "Path": 1,
+              "Ordinal": 7,
+              "Hits": 158
+            },
+            {
+              "Line": 348,
+              "Offset": 158,
+              "EndOffset": 160,
+              "Path": 0,
+              "Ordinal": 8,
+              "Hits": 6
+            },
+            {
+              "Line": 348,
+              "Offset": 193,
+              "EndOffset": 195,
+              "Path": 0,
+              "Ordinal": 10,
+              "Hits": 6
+            },
+            {
+              "Line": 348,
+              "Offset": 158,
+              "EndOffset": 262,
+              "Path": 1,
+              "Ordinal": 9,
+              "Hits": 152
+            },
+            {
+              "Line": 348,
+              "Offset": 193,
+              "EndOffset": 262,
+              "Path": 1,
+              "Ordinal": 11,
+              "Hits": 152
+            },
+            {
+              "Line": 348,
+              "Offset": 267,
+              "EndOffset": 269,
+              "Path": 0,
+              "Ordinal": 12,
+              "Hits": 1
+            },
+            {
+              "Line": 348,
+              "Offset": 267,
+              "EndOffset": 274,
+              "Path": 1,
+              "Ordinal": 13,
+              "Hits": 157
+            }
+          ]
+        },
+        "System.Int32 PageToMovie.Fountain.FountainParser::ParseTitlePage(System.String[],System.Int32,PageToMovie.Fountain.FountainParser/ParseResult)": {
+          "Lines": {
+            "354": 56,
+            "355": 56,
+            "356": 56,
+            "357": 56,
+            "360": 56,
+            "361": 23,
+            "363": 33,
+            "364": 33,
+            "382": 167,
+            "383": 167,
+            "384": 167,
+            "385": 167,
+            "386": 167,
+            "387": 33,
+            "388": 33,
+            "389": 33,
+            "390": 33,
+            "391": 33,
+            "392": 33,
+            "394": 0,
+            "395": 0,
+            "398": 134,
+            "399": 124,
+            "400": 124,
+            "401": 124,
+            "402": 124,
+            "403": 124,
+            "404": 124,
+            "405": 120,
+            "406": 124,
+            "407": 124,
+            "411": 10,
+            "412": 10,
+            "413": 10,
+            "414": 16,
+            "415": 10,
+            "416": 10,
+            "417": 10,
+            "420": 0,
+            "421": 0,
+            "424": 33,
+            "425": 33,
+            "426": 56
+          },
+          "Branches": [
+            {
+              "Line": 356,
+              "Offset": 36,
+              "EndOffset": 13,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 0
+            },
+            {
+              "Line": 356,
+              "Offset": 21,
+              "EndOffset": 23,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 56
+            },
+            {
+              "Line": 356,
+              "Offset": 21,
+              "EndOffset": 33,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 0
+            },
+            {
+              "Line": 356,
+              "Offset": 36,
+              "EndOffset": 38,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 56
+            },
+            {
+              "Line": 357,
+              "Offset": 49,
+              "EndOffset": 51,
+              "Path": 0,
+              "Ordinal": 4,
+              "Hits": 0
+            },
+            {
+              "Line": 357,
+              "Offset": 49,
+              "EndOffset": 59,
+              "Path": 1,
+              "Ordinal": 5,
+              "Hits": 56
+            },
+            {
+              "Line": 360,
+              "Offset": 74,
+              "EndOffset": 76,
+              "Path": 0,
+              "Ordinal": 6,
+              "Hits": 23
+            },
+            {
+              "Line": 360,
+              "Offset": 74,
+              "EndOffset": 84,
+              "Path": 1,
+              "Ordinal": 7,
+              "Hits": 33
+            },
+            {
+              "Line": 382,
+              "Offset": 459,
+              "EndOffset": 110,
+              "Path": 1,
+              "Ordinal": 27,
+              "Hits": 167
+            },
+            {
+              "Line": 386,
+              "Offset": 136,
+              "EndOffset": 138,
+              "Path": 0,
+              "Ordinal": 8,
+              "Hits": 33
+            },
+            {
+              "Line": 388,
+              "Offset": 156,
+              "EndOffset": 158,
+              "Path": 0,
+              "Ordinal": 10,
+              "Hits": 1
+            },
+            {
+              "Line": 388,
+              "Offset": 156,
+              "EndOffset": 169,
+              "Path": 1,
+              "Ordinal": 11,
+              "Hits": 32
+            },
+            {
+              "Line": 388,
+              "Offset": 174,
+              "EndOffset": 176,
+              "Path": 0,
+              "Ordinal": 12,
+              "Hits": 33
+            },
+            {
+              "Line": 388,
+              "Offset": 174,
+              "EndOffset": 194,
+              "Path": 1,
+              "Ordinal": 13,
+              "Hits": 0
+            },
+            {
+              "Line": 386,
+              "Offset": 136,
+              "EndOffset": 203,
+              "Path": 1,
+              "Ordinal": 9,
+              "Hits": 134
+            },
+            {
+              "Line": 398,
+              "Offset": 214,
+              "EndOffset": 216,
+              "Path": 0,
+              "Ordinal": 14,
+              "Hits": 124
+            },
+            {
+              "Line": 404,
+              "Offset": 313,
+              "EndOffset": 315,
+              "Path": 0,
+              "Ordinal": 16,
+              "Hits": 120
+            },
+            {
+              "Line": 404,
+              "Offset": 313,
+              "EndOffset": 329,
+              "Path": 1,
+              "Ordinal": 17,
+              "Hits": 124
+            },
+            {
+              "Line": 398,
+              "Offset": 214,
+              "EndOffset": 335,
+              "Path": 1,
+              "Ordinal": 15,
+              "Hits": 10
+            },
+            {
+              "Line": 411,
+              "Offset": 341,
+              "EndOffset": 343,
+              "Path": 0,
+              "Ordinal": 18,
+              "Hits": 10
+            },
+            {
+              "Line": 411,
+              "Offset": 356,
+              "EndOffset": 358,
+              "Path": 0,
+              "Ordinal": 20,
+              "Hits": 0
+            },
+            {
+              "Line": 411,
+              "Offset": 356,
+              "EndOffset": 369,
+              "Path": 1,
+              "Ordinal": 21,
+              "Hits": 10
+            },
+            {
+              "Line": 411,
+              "Offset": 341,
+              "EndOffset": 372,
+              "Path": 1,
+              "Ordinal": 19,
+              "Hits": 0
+            },
+            {
+              "Line": 411,
+              "Offset": 377,
+              "EndOffset": 379,
+              "Path": 0,
+              "Ordinal": 22,
+              "Hits": 10
+            },
+            {
+              "Line": 414,
+              "Offset": 398,
+              "EndOffset": 400,
+              "Path": 0,
+              "Ordinal": 24,
+              "Hits": 6
+            },
+            {
+              "Line": 414,
+              "Offset": 398,
+              "EndOffset": 414,
+              "Path": 1,
+              "Ordinal": 25,
+              "Hits": 10
+            },
+            {
+              "Line": 411,
+              "Offset": 377,
+              "EndOffset": 439,
+              "Path": 1,
+              "Ordinal": 23,
+              "Hits": 0
+            },
+            {
+              "Line": 382,
+              "Offset": 459,
+              "EndOffset": 464,
+              "Path": 0,
+              "Ordinal": 26,
+              "Hits": 33
+            }
+          ]
+        },
+        "System.Int32 PageToMovie.Fountain.FountainParser::ConsumeDialogueBlock(System.String[],System.Int32,PageToMovie.Fountain.FountainParser/ParseResult)": {
+          "Lines": {
+            "429": 390,
+            "430": 972,
+            "431": 972,
+            "432": 972,
+            "433": 972,
+            "436": 972,
+            "437": 389,
+            "438": 389,
+            "439": 389,
+            "440": 389,
+            "441": 389,
+            "442": 0,
+            "444": 0,
+            "445": 0,
+            "446": 0,
+            "448": 389,
+            "452": 583,
+            "453": 190,
+            "454": 190,
+            "455": 190,
+            "456": 190,
+            "457": 190,
+            "458": 190,
+            "459": 190,
+            "460": 190,
+            "461": 190,
+            "462": 190,
+            "463": 0,
+            "464": 190,
+            "465": 190,
+            "469": 393,
+            "470": 1,
+            "472": 392,
+            "473": 392,
+            "474": 392,
+            "475": 392,
+            "476": 392,
+            "477": 392,
+            "478": 392,
+            "479": 390,
+            "480": 390
+          },
+          "Branches": [
+            {
+              "Line": 430,
+              "Offset": 389,
+              "EndOffset": 6,
+              "Path": 1,
+              "Ordinal": 19,
+              "Hits": 972
+            },
+            {
+              "Line": 436,
+              "Offset": 34,
+              "EndOffset": 36,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 389
+            },
+            {
+              "Line": 438,
+              "Offset": 43,
+              "EndOffset": 45,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 0
+            },
+            {
+              "Line": 438,
+              "Offset": 51,
+              "EndOffset": 53,
+              "Path": 0,
+              "Ordinal": 4,
+              "Hits": 0
+            },
+            {
+              "Line": 438,
+              "Offset": 69,
+              "EndOffset": 71,
+              "Path": 0,
+              "Ordinal": 6,
+              "Hits": 0
+            },
+            {
+              "Line": 438,
+              "Offset": 43,
+              "EndOffset": 85,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 389
+            },
+            {
+              "Line": 438,
+              "Offset": 51,
+              "EndOffset": 85,
+              "Path": 1,
+              "Ordinal": 5,
+              "Hits": 389
+            },
+            {
+              "Line": 438,
+              "Offset": 69,
+              "EndOffset": 85,
+              "Path": 1,
+              "Ordinal": 7,
+              "Hits": 389
+            },
+            {
+              "Line": 438,
+              "Offset": 88,
+              "EndOffset": 90,
+              "Path": 0,
+              "Ordinal": 8,
+              "Hits": 0
+            },
+            {
+              "Line": 436,
+              "Offset": 34,
+              "EndOffset": 143,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 583
+            },
+            {
+              "Line": 452,
+              "Offset": 151,
+              "EndOffset": 153,
+              "Path": 0,
+              "Ordinal": 10,
+              "Hits": 190
+            },
+            {
+              "Line": 452,
+              "Offset": 151,
+              "EndOffset": 163,
+              "Path": 1,
+              "Ordinal": 11,
+              "Hits": 393
+            },
+            {
+              "Line": 452,
+              "Offset": 168,
+              "EndOffset": 173,
+              "Path": 0,
+              "Ordinal": 12,
+              "Hits": 190
+            },
+            {
+              "Line": 462,
+              "Offset": 272,
+              "EndOffset": 274,
+              "Path": 0,
+              "Ordinal": 14,
+              "Hits": 0
+            },
+            {
+              "Line": 462,
+              "Offset": 272,
+              "EndOffset": 313,
+              "Path": 1,
+              "Ordinal": 15,
+              "Hits": 190
+            },
+            {
+              "Line": 452,
+              "Offset": 168,
+              "EndOffset": 320,
+              "Path": 1,
+              "Ordinal": 13,
+              "Hits": 393
+            },
+            {
+              "Line": 469,
+              "Offset": 331,
+              "EndOffset": 335,
+              "Path": 1,
+              "Ordinal": 17,
+              "Hits": 392
+            },
+            {
+              "Line": 438,
+              "Offset": 88,
+              "EndOffset": 394,
+              "Path": 1,
+              "Ordinal": 9,
+              "Hits": 390
+            },
+            {
+              "Line": 469,
+              "Offset": 331,
+              "EndOffset": 394,
+              "Path": 0,
+              "Ordinal": 16,
+              "Hits": 390
+            },
+            {
+              "Line": 430,
+              "Offset": 389,
+              "EndOffset": 394,
+              "Path": 0,
+              "Ordinal": 18,
+              "Hits": 390
+            }
+          ]
+        },
+        "System.Boolean PageToMovie.Fountain.FountainParser::LooksLikeNewBlock(System.String[],System.Int32)": {
+          "Lines": {
+            "483": 393,
+            "484": 393,
+            "485": 393,
+            "486": 393,
+            "487": 393,
+            "489": 393,
+            "490": 393,
+            "491": 393,
+            "492": 393,
+            "493": 393,
+            "494": 393,
+            "495": 394,
+            "496": 392,
+            "497": 392,
+            "498": 392,
+            "499": 392,
+            "500": 0,
+            "501": 392,
+            "502": 0,
+            "503": 392,
+            "504": 392,
+            "505": 393
+          },
+          "Branches": [
+            {
+              "Line": 485,
+              "Offset": 26,
+              "EndOffset": 28,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 0
+            },
+            {
+              "Line": 485,
+              "Offset": 26,
+              "EndOffset": 36,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 393
+            },
+            {
+              "Line": 489,
+              "Offset": 64,
+              "EndOffset": 66,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 0
+            },
+            {
+              "Line": 489,
+              "Offset": 64,
+              "EndOffset": 74,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 393
+            },
+            {
+              "Line": 490,
+              "Offset": 82,
+              "EndOffset": 84,
+              "Path": 0,
+              "Ordinal": 4,
+              "Hits": 0
+            },
+            {
+              "Line": 490,
+              "Offset": 82,
+              "EndOffset": 100,
+              "Path": 1,
+              "Ordinal": 5,
+              "Hits": 393
+            },
+            {
+              "Line": 490,
+              "Offset": 105,
+              "EndOffset": 107,
+              "Path": 0,
+              "Ordinal": 6,
+              "Hits": 0
+            },
+            {
+              "Line": 490,
+              "Offset": 105,
+              "EndOffset": 115,
+              "Path": 1,
+              "Ordinal": 7,
+              "Hits": 393
+            },
+            {
+              "Line": 491,
+              "Offset": 130,
+              "EndOffset": 132,
+              "Path": 0,
+              "Ordinal": 8,
+              "Hits": 0
+            },
+            {
+              "Line": 491,
+              "Offset": 130,
+              "EndOffset": 140,
+              "Path": 1,
+              "Ordinal": 9,
+              "Hits": 393
+            },
+            {
+              "Line": 492,
+              "Offset": 148,
+              "EndOffset": 150,
+              "Path": 0,
+              "Ordinal": 10,
+              "Hits": 4
+            },
+            {
+              "Line": 492,
+              "Offset": 157,
+              "EndOffset": 159,
+              "Path": 0,
+              "Ordinal": 12,
+              "Hits": 4
+            },
+            {
+              "Line": 492,
+              "Offset": 148,
+              "EndOffset": 173,
+              "Path": 1,
+              "Ordinal": 11,
+              "Hits": 389
+            },
+            {
+              "Line": 492,
+              "Offset": 157,
+              "EndOffset": 173,
+              "Path": 1,
+              "Ordinal": 13,
+              "Hits": 389
+            },
+            {
+              "Line": 492,
+              "Offset": 178,
+              "EndOffset": 180,
+              "Path": 0,
+              "Ordinal": 14,
+              "Hits": 0
+            },
+            {
+              "Line": 492,
+              "Offset": 178,
+              "EndOffset": 188,
+              "Path": 1,
+              "Ordinal": 15,
+              "Hits": 393
+            },
+            {
+              "Line": 493,
+              "Offset": 200,
+              "EndOffset": 202,
+              "Path": 0,
+              "Ordinal": 16,
+              "Hits": 0
+            },
+            {
+              "Line": 493,
+              "Offset": 200,
+              "EndOffset": 210,
+              "Path": 1,
+              "Ordinal": 17,
+              "Hits": 393
+            },
+            {
+              "Line": 494,
+              "Offset": 222,
+              "EndOffset": 224,
+              "Path": 0,
+              "Ordinal": 18,
+              "Hits": 0
+            },
+            {
+              "Line": 494,
+              "Offset": 222,
+              "EndOffset": 232,
+              "Path": 1,
+              "Ordinal": 19,
+              "Hits": 393
+            },
+            {
+              "Line": 495,
+              "Offset": 244,
+              "EndOffset": 246,
+              "Path": 0,
+              "Ordinal": 20,
+              "Hits": 1
+            },
+            {
+              "Line": 495,
+              "Offset": 244,
+              "EndOffset": 254,
+              "Path": 1,
+              "Ordinal": 21,
+              "Hits": 392
+            },
+            {
+              "Line": 496,
+              "Offset": 264,
+              "EndOffset": 266,
+              "Path": 0,
+              "Ordinal": 22,
+              "Hits": 0
+            },
+            {
+              "Line": 496,
+              "Offset": 264,
+              "EndOffset": 274,
+              "Path": 1,
+              "Ordinal": 23,
+              "Hits": 392
+            },
+            {
+              "Line": 497,
+              "Offset": 282,
+              "EndOffset": 284,
+              "Path": 0,
+              "Ordinal": 24,
+              "Hits": 0
+            },
+            {
+              "Line": 497,
+              "Offset": 282,
+              "EndOffset": 295,
+              "Path": 1,
+              "Ordinal": 25,
+              "Hits": 392
+            },
+            {
+              "Line": 497,
+              "Offset": 300,
+              "EndOffset": 302,
+              "Path": 0,
+              "Ordinal": 26,
+              "Hits": 0
+            },
+            {
+              "Line": 497,
+              "Offset": 300,
+              "EndOffset": 307,
+              "Path": 1,
+              "Ordinal": 27,
+              "Hits": 392
+            },
+            {
+              "Line": 498,
+              "Offset": 308,
+              "EndOffset": 310,
+              "Path": 0,
+              "Ordinal": 28,
+              "Hits": 0
+            },
+            {
+              "Line": 498,
+              "Offset": 316,
+              "EndOffset": 318,
+              "Path": 0,
+              "Ordinal": 30,
+              "Hits": 0
+            },
+            {
+              "Line": 498,
+              "Offset": 319,
+              "EndOffset": 321,
+              "Path": 0,
+              "Ordinal": 32,
+              "Hits": 0
+            },
+            {
+              "Line": 498,
+              "Offset": 319,
+              "EndOffset": 330,
+              "Path": 1,
+              "Ordinal": 33,
+              "Hits": 0
+            },
+            {
+              "Line": 498,
+              "Offset": 308,
+              "EndOffset": 333,
+              "Path": 1,
+              "Ordinal": 29,
+              "Hits": 392
+            },
+            {
+              "Line": 498,
+              "Offset": 316,
+              "EndOffset": 333,
+              "Path": 1,
+              "Ordinal": 31,
+              "Hits": 392
+            },
+            {
+              "Line": 498,
+              "Offset": 338,
+              "EndOffset": 340,
+              "Path": 0,
+              "Ordinal": 34,
+              "Hits": 0
+            },
+            {
+              "Line": 498,
+              "Offset": 338,
+              "EndOffset": 345,
+              "Path": 1,
+              "Ordinal": 35,
+              "Hits": 392
+            },
+            {
+              "Line": 501,
+              "Offset": 348,
+              "EndOffset": 350,
+              "Path": 0,
+              "Ordinal": 36,
+              "Hits": 0
+            },
+            {
+              "Line": 501,
+              "Offset": 348,
+              "EndOffset": 365,
+              "Path": 1,
+              "Ordinal": 37,
+              "Hits": 392
+            },
+            {
+              "Line": 501,
+              "Offset": 370,
+              "EndOffset": 372,
+              "Path": 0,
+              "Ordinal": 38,
+              "Hits": 0
+            },
+            {
+              "Line": 501,
+              "Offset": 370,
+              "EndOffset": 377,
+              "Path": 1,
+              "Ordinal": 39,
+              "Hits": 392
+            },
+            {
+              "Line": 503,
+              "Offset": 378,
+              "EndOffset": 380,
+              "Path": 0,
+              "Ordinal": 40,
+              "Hits": 0
+            },
+            {
+              "Line": 503,
+              "Offset": 381,
+              "EndOffset": 383,
+              "Path": 0,
+              "Ordinal": 42,
+              "Hits": 0
+            },
+            {
+              "Line": 503,
+              "Offset": 378,
+              "EndOffset": 391,
+              "Path": 1,
+              "Ordinal": 41,
+              "Hits": 392
+            },
+            {
+              "Line": 503,
+              "Offset": 381,
+              "EndOffset": 391,
+              "Path": 1,
+              "Ordinal": 43,
+              "Hits": 392
+            },
+            {
+              "Line": 503,
+              "Offset": 396,
+              "EndOffset": 398,
+              "Path": 0,
+              "Ordinal": 44,
+              "Hits": 0
+            },
+            {
+              "Line": 503,
+              "Offset": 396,
+              "EndOffset": 403,
+              "Path": 1,
+              "Ordinal": 45,
+              "Hits": 392
+            }
+          ]
+        },
+        "System.Boolean PageToMovie.Fountain.FountainParser::IsCentered(System.String)": {
+          "Lines": {
+            "508": 1454,
+            "509": 1454,
+            "510": 1454,
+            "511": 1454
+          },
+          "Branches": [
+            {
+              "Line": 510,
+              "Offset": 17,
+              "EndOffset": 19,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 100
+            },
+            {
+              "Line": 510,
+              "Offset": 27,
+              "EndOffset": 29,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 10
+            },
+            {
+              "Line": 510,
+              "Offset": 17,
+              "EndOffset": 43,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 1444
+            },
+            {
+              "Line": 510,
+              "Offset": 27,
+              "EndOffset": 43,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 1444
+            }
+          ]
+        },
+        "System.Boolean PageToMovie.Fountain.FountainParser::NextIsPageTagOrSynopsis(System.String[],System.Int32)": {
+          "Lines": {
+            "518": 0,
+            "519": 0,
+            "520": 0,
+            "521": 0,
+            "523": 0,
+            "524": 0,
+            "526": 0,
+            "527": 0,
+            "528": 0,
+            "529": 0
+          },
+          "Branches": [
+            {
+              "Line": 519,
+              "Offset": 14,
+              "EndOffset": 16,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 0
+            },
+            {
+              "Line": 519,
+              "Offset": 14,
+              "EndOffset": 20,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 0
+            },
+            {
+              "Line": 521,
+              "Offset": 42,
+              "EndOffset": 44,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 0
+            },
+            {
+              "Line": 521,
+              "Offset": 42,
+              "EndOffset": 48,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 0
+            },
+            {
+              "Line": 523,
+              "Offset": 56,
+              "EndOffset": 58,
+              "Path": 0,
+              "Ordinal": 4,
+              "Hits": 0
+            },
+            {
+              "Line": 523,
+              "Offset": 56,
+              "EndOffset": 75,
+              "Path": 1,
+              "Ordinal": 5,
+              "Hits": 0
+            },
+            {
+              "Line": 523,
+              "Offset": 80,
+              "EndOffset": 82,
+              "Path": 0,
+              "Ordinal": 6,
+              "Hits": 0
+            },
+            {
+              "Line": 523,
+              "Offset": 80,
+              "EndOffset": 86,
+              "Path": 1,
+              "Ordinal": 7,
+              "Hits": 0
+            },
+            {
+              "Line": 526,
+              "Offset": 101,
+              "EndOffset": 103,
+              "Path": 0,
+              "Ordinal": 8,
+              "Hits": 0
+            },
+            {
+              "Line": 526,
+              "Offset": 101,
+              "EndOffset": 107,
+              "Path": 1,
+              "Ordinal": 9,
+              "Hits": 0
+            }
+          ]
+        },
+        "System.String PageToMovie.Fountain.FountainParser::BuildCharMeta(System.String,System.Boolean)": {
+          "Lines": {
+            "532": 390,
+            "533": 693,
+            "534": 90,
+            "535": 84,
+            "536": 84,
+            "537": 390
+          },
+          "Branches": [
+            {
+              "Line": 533,
+              "Offset": 7,
+              "EndOffset": 9,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 306
+            },
+            {
+              "Line": 533,
+              "Offset": 7,
+              "EndOffset": 15,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 84
+            },
+            {
+              "Line": 533,
+              "Offset": 18,
+              "EndOffset": 20,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 303
+            },
+            {
+              "Line": 533,
+              "Offset": 18,
+              "EndOffset": 24,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 87
+            },
+            {
+              "Line": 534,
+              "Offset": 25,
+              "EndOffset": 27,
+              "Path": 0,
+              "Ordinal": 4,
+              "Hits": 3
+            },
+            {
+              "Line": 534,
+              "Offset": 25,
+              "EndOffset": 35,
+              "Path": 1,
+              "Ordinal": 5,
+              "Hits": 84
+            },
+            {
+              "Line": 534,
+              "Offset": 38,
+              "EndOffset": 40,
+              "Path": 0,
+              "Ordinal": 6,
+              "Hits": 3
+            },
+            {
+              "Line": 534,
+              "Offset": 38,
+              "EndOffset": 48,
+              "Path": 1,
+              "Ordinal": 7,
+              "Hits": 84
+            },
+            {
+              "Line": 535,
+              "Offset": 51,
+              "EndOffset": 53,
+              "Path": 0,
+              "Ordinal": 8,
+              "Hits": 0
+            },
+            {
+              "Line": 535,
+              "Offset": 51,
+              "EndOffset": 67,
+              "Path": 1,
+              "Ordinal": 9,
+              "Hits": 84
+            }
+          ]
+        },
+        "System.ValueTuple`2<System.String,System.String> PageToMovie.Fountain.FountainParser::SplitSceneNumber(System.String)": {
+          "Lines": {
+            "540": 151,
+            "541": 151,
+            "542": 226,
+            "543": 76,
+            "544": 151
+          },
+          "Branches": [
+            {
+              "Line": 542,
+              "Offset": 24,
+              "EndOffset": 26,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 75
+            },
+            {
+              "Line": 542,
+              "Offset": 24,
+              "EndOffset": 41,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 76
+            }
+          ]
+        },
+        "System.String PageToMovie.Fountain.FountainParser::PreserveActionIndent(System.String,System.String)": {
+          "Lines": {
+            "547": 376,
+            "549": 376,
+            "550": 376,
+            "551": 752,
+            "552": 0,
+            "553": 376
+          },
+          "Branches": [
+            {
+              "Line": 550,
+              "Offset": 34,
+              "EndOffset": 5,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 0
+            },
+            {
+              "Line": 550,
+              "Offset": 16,
+              "EndOffset": 18,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 376
+            },
+            {
+              "Line": 550,
+              "Offset": 16,
+              "EndOffset": 31,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 0
+            },
+            {
+              "Line": 550,
+              "Offset": 34,
+              "EndOffset": 36,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 376
+            },
+            {
+              "Line": 551,
+              "Offset": 42,
+              "EndOffset": 44,
+              "Path": 0,
+              "Ordinal": 4,
+              "Hits": 376
+            },
+            {
+              "Line": 551,
+              "Offset": 42,
+              "EndOffset": 48,
+              "Path": 1,
+              "Ordinal": 5,
+              "Hits": 0
+            }
+          ]
+        },
+        "System.ValueTuple`2<System.Int32,System.Int32> PageToMovie.Fountain.FountainParser::CountVoiceoverCues(System.String)": {
+          "Lines": {
+            "560": 0,
+            "561": 0,
+            "562": 0,
+            "564": 0,
+            "565": 0,
+            "566": 0,
+            "567": 0,
+            "568": 0,
+            "569": 0
+          },
+          "Branches": [
+            {
+              "Line": 561,
+              "Offset": 9,
+              "EndOffset": 11,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 0
+            },
+            {
+              "Line": 561,
+              "Offset": 9,
+              "EndOffset": 21,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 0
+            }
+          ]
+        },
+        "System.Boolean PageToMovie.Fountain.FountainParser::IsVoiceoverCue(PageToMovie.Fountain.FountainParser/Element)": {
+          "Lines": {
+            "573": 0,
+            "574": 0,
+            "576": 0,
+            "578": 0,
+            "579": 0,
+            "580": 0,
+            "581": 0
+          },
+          "Branches": [
+            {
+              "Line": 574,
+              "Offset": 15,
+              "EndOffset": 17,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 0
+            },
+            {
+              "Line": 574,
+              "Offset": 15,
+              "EndOffset": 21,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 0
+            },
+            {
+              "Line": 576,
+              "Offset": 34,
+              "EndOffset": 36,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 0
+            },
+            {
+              "Line": 576,
+              "Offset": 34,
+              "EndOffset": 40,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 0
+            },
+            {
+              "Line": 578,
+              "Offset": 47,
+              "EndOffset": 49,
+              "Path": 0,
+              "Ordinal": 4,
+              "Hits": 0
+            },
+            {
+              "Line": 578,
+              "Offset": 47,
+              "EndOffset": 55,
+              "Path": 1,
+              "Ordinal": 5,
+              "Hits": 0
+            },
+            {
+              "Line": 579,
+              "Offset": 72,
+              "EndOffset": 74,
+              "Path": 0,
+              "Ordinal": 6,
+              "Hits": 0
+            },
+            {
+              "Line": 579,
+              "Offset": 72,
+              "EndOffset": 78,
+              "Path": 1,
+              "Ordinal": 7,
+              "Hits": 0
+            }
+          ]
+        },
+        "System.Void PageToMovie.Fountain.FountainParser::<ParseTitlePage>g__Flush|15_0(PageToMovie.Fountain.FountainParser/<>c__DisplayClass15_0&)": {
+          "Lines": {
+            "367": 190,
+            "368": 256,
+            "369": 124,
+            "370": 124,
+            "371": 124,
+            "372": 124,
+            "373": 124,
+            "374": 0,
+            "376": 124,
+            "377": 124,
+            "378": 124,
+            "379": 124,
+            "380": 190
+          },
+          "Branches": [
+            {
+              "Line": 368,
+              "Offset": 12,
+              "EndOffset": 19,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 124
+            },
+            {
+              "Line": 370,
+              "Offset": 47,
+              "EndOffset": 49,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 124
+            },
+            {
+              "Line": 373,
+              "Offset": 81,
+              "EndOffset": 83,
+              "Path": 0,
+              "Ordinal": 4,
+              "Hits": 0
+            },
+            {
+              "Line": 373,
+              "Offset": 81,
+              "EndOffset": 94,
+              "Path": 1,
+              "Ordinal": 5,
+              "Hits": 124
+            },
+            {
+              "Line": 373,
+              "Offset": 99,
+              "EndOffset": 101,
+              "Path": 0,
+              "Ordinal": 6,
+              "Hits": 0
+            },
+            {
+              "Line": 373,
+              "Offset": 99,
+              "EndOffset": 138,
+              "Path": 1,
+              "Ordinal": 7,
+              "Hits": 124
+            },
+            {
+              "Line": 370,
+              "Offset": 47,
+              "EndOffset": 163,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 124
+            },
+            {
+              "Line": 368,
+              "Offset": 12,
+              "EndOffset": 182,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 190
+            }
+          ]
+        },
+        "System.Void PageToMovie.Fountain.FountainParser::.cctor()": {
+          "Lines": {
+            "49": 1,
+            "50": 1,
+            "51": 1,
+            "53": 1,
+            "54": 1,
+            "55": 1,
+            "57": 1,
+            "58": 1,
+            "59": 1,
+            "61": 1,
+            "62": 1,
+            "63": 1,
+            "65": 1,
+            "66": 1,
+            "67": 1,
+            "69": 1,
+            "70": 1,
+            "71": 1
+          },
+          "Branches": []
+        }
+      },
+      "PageToMovie.Fountain.FountainParser/Element": {
+        "PageToMovie.Fountain.FountainParser/ElementType PageToMovie.Fountain.FountainParser/Element::get_Type()": {
+          "Lines": {
+            "33": 3246
+          },
+          "Branches": []
+        },
+        "System.String PageToMovie.Fountain.FountainParser/Element::get_Text()": {
+          "Lines": {
+            "34": 4835
+          },
+          "Branches": []
+        },
+        "System.String PageToMovie.Fountain.FountainParser/Element::get_Meta()": {
+          "Lines": {
+            "39": 1163
+          },
+          "Branches": []
+        }
+      },
+      "PageToMovie.Fountain.FountainParser/ParseResult": {
+        "System.Collections.Generic.Dictionary`2<System.String,System.String> PageToMovie.Fountain.FountainParser/ParseResult::get_TitlePage()": {
+          "Lines": {
+            "44": 393
+          },
+          "Branches": []
+        },
+        "System.Collections.Generic.List`1<PageToMovie.Fountain.FountainParser/Element> PageToMovie.Fountain.FountainParser/ParseResult::get_Elements()": {
+          "Lines": {
+            "45": 1735
+          },
+          "Branches": []
+        }
+      }
+    }
+  },
+  "ScreenplayEditorApp.dll": {
+    "C:\\Users\\budcr\\source\\repos\\gemini\\PageToMovie\\host\\tools\\ScreenplayEditorApp\\Program.cs": {
+      "Program": {
+        "System.Void Program::<Main>$(System.String[])": {
+          "Lines": {
+            "5": 0,
+            "7": 0,
+            "8": 0,
+            "10": 0,
+            "12": 0,
+            "13": 0,
+            "14": 0,
+            "15": 0,
+            "16": 0,
+            "18": 0,
+            "19": 0,
+            "20": 0,
+            "22": 0
+          },
+          "Branches": [
+            {
+              "Line": 12,
+              "Offset": 49,
+              "EndOffset": 51,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 0
+            },
+            {
+              "Line": 12,
+              "Offset": 49,
+              "EndOffset": 73,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 0
+            }
+          ]
+        }
+      }
+    },
+    "C:\\Users\\budcr\\source\\repos\\gemini\\PageToMovie\\host\\tools\\ScreenplayEditorApp\\Models\\FountainFormatter.cs": {
+      "ScreenplayEditorApp.Models.FountainFormatter": {
+        "ScreenplayEditorApp.Models.ScreenplayModel ScreenplayEditorApp.Models.FountainFormatter::Parse(System.String)": {
+          "Lines": {
+            "9": 56,
+            "10": 56,
+            "11": 56,
+            "12": 0,
+            "13": 0,
+            "16": 56,
+            "19": 416,
+            "20": 124,
+            "21": 124,
+            "22": 124,
+            "23": 124,
+            "26": 33,
+            "27": 33,
+            "30": 14,
+            "31": 14,
+            "33": 32,
+            "34": 32,
+            "36": 3,
+            "37": 3,
+            "41": 32,
+            "42": 32,
+            "44": 3,
+            "45": 3,
+            "47": 7,
+            "48": 7,
+            "50": 124,
+            "53": 56,
+            "54": 56,
+            "55": 56,
+            "76": 3414,
+            "77": 1623,
+            "78": 1623,
+            "81": 151,
+            "82": 151,
+            "83": 151,
+            "85": 151,
+            "86": 7,
+            "87": 7,
+            "88": 7,
+            "89": 7,
+            "90": 7,
+            "91": 7,
+            "92": 0,
+            "93": 0,
+            "94": 0,
+            "95": 7,
+            "97": 144,
+            "98": 144,
+            "99": 144,
+            "100": 144,
+            "101": 75,
+            "102": 75,
+            "103": 75,
+            "105": 144,
+            "106": 144,
+            "107": 144,
+            "108": 144,
+            "109": 144,
+            "110": 144,
+            "111": 144,
+            "112": 144,
+            "113": 144,
+            "114": 144,
+            "115": 144,
+            "116": 151,
+            "119": 376,
+            "120": 376,
+            "121": 376,
+            "122": 376,
+            "123": 376,
+            "124": 376,
+            "125": 376,
+            "128": 390,
+            "129": 390,
+            "130": 390,
+            "131": 390,
+            "132": 390,
+            "133": 390,
+            "134": 390,
+            "135": 390,
+            "138": 190,
+            "139": 190,
+            "140": 190,
+            "141": 186,
+            "143": 4,
+            "144": 190,
+            "146": 0,
+            "147": 0,
+            "148": 0,
+            "149": 0,
+            "150": 0,
+            "151": 0,
+            "152": 0,
+            "153": 0,
+            "154": 190,
+            "157": 392,
+            "158": 388,
+            "159": 388,
+            "160": 388,
+            "161": 4,
+            "162": 4,
+            "163": 4,
+            "164": 4,
+            "166": 0,
+            "167": 0,
+            "168": 0,
+            "169": 0,
+            "170": 0,
+            "171": 0,
+            "172": 0,
+            "173": 0,
+            "174": 392,
+            "177": 90,
+            "178": 90,
+            "179": 90,
+            "180": 90,
+            "181": 90,
+            "182": 90,
+            "183": 90,
+            "185": 1623,
+            "187": 56,
+            "188": 56
+          },
+          "Branches": [
+            {
+              "Line": 11,
+              "Offset": 21,
+              "EndOffset": 23,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 0
+            },
+            {
+              "Line": 11,
+              "Offset": 21,
+              "EndOffset": 37,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 56
+            },
+            {
+              "Line": 19,
+              "Offset": 668,
+              "EndOffset": 63,
+              "Path": 1,
+              "Ordinal": 49,
+              "Hits": 124
+            },
+            {
+              "Line": 23,
+              "Offset": 130,
+              "EndOffset": 132,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 52
+            },
+            {
+              "Line": 23,
+              "Offset": 139,
+              "EndOffset": 141,
+              "Path": 0,
+              "Ordinal": 4,
+              "Hits": 6
+            },
+            {
+              "Line": 23,
+              "Offset": 148,
+              "EndOffset": 155,
+              "Path": 0,
+              "Ordinal": 6,
+              "Hits": 3
+            },
+            {
+              "Line": 23,
+              "Offset": 139,
+              "EndOffset": 172,
+              "Path": 1,
+              "Ordinal": 5,
+              "Hits": 46
+            },
+            {
+              "Line": 23,
+              "Offset": 179,
+              "EndOffset": 186,
+              "Path": 0,
+              "Ordinal": 10,
+              "Hits": 46
+            },
+            {
+              "Line": 23,
+              "Offset": 193,
+              "EndOffset": 200,
+              "Path": 0,
+              "Ordinal": 12,
+              "Hits": 14
+            },
+            {
+              "Line": 23,
+              "Offset": 130,
+              "EndOffset": 214,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 72
+            },
+            {
+              "Line": 23,
+              "Offset": 221,
+              "EndOffset": 223,
+              "Path": 0,
+              "Ordinal": 16,
+              "Hits": 40
+            },
+            {
+              "Line": 23,
+              "Offset": 230,
+              "EndOffset": 237,
+              "Path": 0,
+              "Ordinal": 18,
+              "Hits": 33
+            },
+            {
+              "Line": 23,
+              "Offset": 221,
+              "EndOffset": 251,
+              "Path": 1,
+              "Ordinal": 17,
+              "Hits": 32
+            },
+            {
+              "Line": 23,
+              "Offset": 258,
+              "EndOffset": 265,
+              "Path": 0,
+              "Ordinal": 22,
+              "Hits": 32
+            },
+            {
+              "Line": 23,
+              "Offset": 272,
+              "EndOffset": 279,
+              "Path": 0,
+              "Ordinal": 24,
+              "Hits": 32
+            },
+            {
+              "Line": 23,
+              "Offset": 244,
+              "EndOffset": 293,
+              "Path": 1,
+              "Ordinal": 21,
+              "Hits": 33
+            },
+            {
+              "Line": 23,
+              "Offset": 207,
+              "EndOffset": 315,
+              "Path": 1,
+              "Ordinal": 15,
+              "Hits": 14
+            },
+            {
+              "Line": 23,
+              "Offset": 179,
+              "EndOffset": 337,
+              "Path": 1,
+              "Ordinal": 11,
+              "Hits": 0
+            },
+            {
+              "Line": 23,
+              "Offset": 286,
+              "EndOffset": 359,
+              "Path": 1,
+              "Ordinal": 27,
+              "Hits": 32
+            },
+            {
+              "Line": 23,
+              "Offset": 148,
+              "EndOffset": 381,
+              "Path": 1,
+              "Ordinal": 7,
+              "Hits": 3
+            },
+            {
+              "Line": 23,
+              "Offset": 193,
+              "EndOffset": 403,
+              "Path": 1,
+              "Ordinal": 13,
+              "Hits": 32
+            },
+            {
+              "Line": 23,
+              "Offset": 258,
+              "EndOffset": 425,
+              "Path": 1,
+              "Ordinal": 23,
+              "Hits": 0
+            },
+            {
+              "Line": 23,
+              "Offset": 272,
+              "EndOffset": 447,
+              "Path": 1,
+              "Ordinal": 25,
+              "Hits": 0
+            },
+            {
+              "Line": 23,
+              "Offset": 162,
+              "EndOffset": 469,
+              "Path": 1,
+              "Ordinal": 9,
+              "Hits": 3
+            },
+            {
+              "Line": 23,
+              "Offset": 230,
+              "EndOffset": 491,
+              "Path": 1,
+              "Ordinal": 19,
+              "Hits": 7
+            },
+            {
+              "Line": 23,
+              "Offset": 305,
+              "EndOffset": 513,
+              "Path": 1,
+              "Ordinal": 29,
+              "Hits": 33
+            },
+            {
+              "Line": 23,
+              "Offset": 327,
+              "EndOffset": 534,
+              "Path": 1,
+              "Ordinal": 31,
+              "Hits": 14
+            },
+            {
+              "Line": 23,
+              "Offset": 349,
+              "EndOffset": 534,
+              "Path": 1,
+              "Ordinal": 33,
+              "Hits": 14
+            },
+            {
+              "Line": 23,
+              "Offset": 371,
+              "EndOffset": 555,
+              "Path": 1,
+              "Ordinal": 35,
+              "Hits": 32
+            },
+            {
+              "Line": 23,
+              "Offset": 393,
+              "EndOffset": 576,
+              "Path": 1,
+              "Ordinal": 37,
+              "Hits": 3
+            },
+            {
+              "Line": 23,
+              "Offset": 415,
+              "EndOffset": 597,
+              "Path": 1,
+              "Ordinal": 39,
+              "Hits": 32
+            },
+            {
+              "Line": 23,
+              "Offset": 437,
+              "EndOffset": 597,
+              "Path": 1,
+              "Ordinal": 41,
+              "Hits": 32
+            },
+            {
+              "Line": 23,
+              "Offset": 459,
+              "EndOffset": 597,
+              "Path": 1,
+              "Ordinal": 43,
+              "Hits": 32
+            },
+            {
+              "Line": 23,
+              "Offset": 481,
+              "EndOffset": 618,
+              "Path": 1,
+              "Ordinal": 45,
+              "Hits": 3
+            },
+            {
+              "Line": 23,
+              "Offset": 503,
+              "EndOffset": 639,
+              "Path": 1,
+              "Ordinal": 47,
+              "Hits": 7
+            },
+            {
+              "Line": 23,
+              "Offset": 162,
+              "EndOffset": 660,
+              "Path": 0,
+              "Ordinal": 8,
+              "Hits": 124
+            },
+            {
+              "Line": 23,
+              "Offset": 207,
+              "EndOffset": 660,
+              "Path": 0,
+              "Ordinal": 14,
+              "Hits": 124
+            },
+            {
+              "Line": 23,
+              "Offset": 244,
+              "EndOffset": 660,
+              "Path": 0,
+              "Ordinal": 20,
+              "Hits": 124
+            },
+            {
+              "Line": 23,
+              "Offset": 286,
+              "EndOffset": 660,
+              "Path": 0,
+              "Ordinal": 26,
+              "Hits": 124
+            },
+            {
+              "Line": 23,
+              "Offset": 305,
+              "EndOffset": 660,
+              "Path": 0,
+              "Ordinal": 28,
+              "Hits": 124
+            },
+            {
+              "Line": 23,
+              "Offset": 327,
+              "EndOffset": 660,
+              "Path": 0,
+              "Ordinal": 30,
+              "Hits": 124
+            },
+            {
+              "Line": 23,
+              "Offset": 349,
+              "EndOffset": 660,
+              "Path": 0,
+              "Ordinal": 32,
+              "Hits": 124
+            },
+            {
+              "Line": 23,
+              "Offset": 371,
+              "EndOffset": 660,
+              "Path": 0,
+              "Ordinal": 34,
+              "Hits": 124
+            },
+            {
+              "Line": 23,
+              "Offset": 393,
+              "EndOffset": 660,
+              "Path": 0,
+              "Ordinal": 36,
+              "Hits": 124
+            },
+            {
+              "Line": 23,
+              "Offset": 415,
+              "EndOffset": 660,
+              "Path": 0,
+              "Ordinal": 38,
+              "Hits": 124
+            },
+            {
+              "Line": 23,
+              "Offset": 437,
+              "EndOffset": 660,
+              "Path": 0,
+              "Ordinal": 40,
+              "Hits": 124
+            },
+            {
+              "Line": 23,
+              "Offset": 459,
+              "EndOffset": 660,
+              "Path": 0,
+              "Ordinal": 42,
+              "Hits": 124
+            },
+            {
+              "Line": 23,
+              "Offset": 481,
+              "EndOffset": 660,
+              "Path": 0,
+              "Ordinal": 44,
+              "Hits": 124
+            },
+            {
+              "Line": 23,
+              "Offset": 503,
+              "EndOffset": 660,
+              "Path": 0,
+              "Ordinal": 46,
+              "Hits": 124
+            },
+            {
+              "Line": 19,
+              "Offset": 668,
+              "EndOffset": 673,
+              "Path": 0,
+              "Ordinal": 48,
+              "Hits": 56
+            },
+            {
+              "Line": 76,
+              "Offset": 1591,
+              "EndOffset": 728,
+              "Path": 1,
+              "Ordinal": 82,
+              "Hits": 1623
+            },
+            {
+              "Line": 78,
+              "Offset": 753,
+              "EndOffset": 787,
+              "Path": 1,
+              "Ordinal": 51,
+              "Hits": 151
+            },
+            {
+              "Line": 85,
+              "Offset": 823,
+              "EndOffset": 825,
+              "Path": 0,
+              "Ordinal": 57,
+              "Hits": 105
+            },
+            {
+              "Line": 85,
+              "Offset": 823,
+              "EndOffset": 843,
+              "Path": 1,
+              "Ordinal": 58,
+              "Hits": 46
+            },
+            {
+              "Line": 85,
+              "Offset": 848,
+              "EndOffset": 850,
+              "Path": 0,
+              "Ordinal": 59,
+              "Hits": 7
+            },
+            {
+              "Line": 91,
+              "Offset": 919,
+              "EndOffset": 921,
+              "Path": 0,
+              "Ordinal": 61,
+              "Hits": 0
+            },
+            {
+              "Line": 91,
+              "Offset": 919,
+              "EndOffset": 937,
+              "Path": 1,
+              "Ordinal": 62,
+              "Hits": 7
+            },
+            {
+              "Line": 91,
+              "Offset": 942,
+              "EndOffset": 944,
+              "Path": 0,
+              "Ordinal": 63,
+              "Hits": 0
+            },
+            {
+              "Line": 91,
+              "Offset": 942,
+              "EndOffset": 960,
+              "Path": 1,
+              "Ordinal": 64,
+              "Hits": 7
+            },
+            {
+              "Line": 85,
+              "Offset": 848,
+              "EndOffset": 966,
+              "Path": 1,
+              "Ordinal": 60,
+              "Hits": 144
+            },
+            {
+              "Line": 100,
+              "Offset": 1006,
+              "EndOffset": 1008,
+              "Path": 0,
+              "Ordinal": 65,
+              "Hits": 76
+            },
+            {
+              "Line": 100,
+              "Offset": 1006,
+              "EndOffset": 1024,
+              "Path": 1,
+              "Ordinal": 66,
+              "Hits": 68
+            },
+            {
+              "Line": 100,
+              "Offset": 1029,
+              "EndOffset": 1031,
+              "Path": 0,
+              "Ordinal": 67,
+              "Hits": 75
+            },
+            {
+              "Line": 100,
+              "Offset": 1029,
+              "EndOffset": 1037,
+              "Path": 1,
+              "Ordinal": 68,
+              "Hits": 144
+            },
+            {
+              "Line": 78,
+              "Offset": 753,
+              "EndOffset": 1135,
+              "Path": 2,
+              "Ordinal": 52,
+              "Hits": 376
+            },
+            {
+              "Line": 78,
+              "Offset": 753,
+              "EndOffset": 1187,
+              "Path": 3,
+              "Ordinal": 53,
+              "Hits": 390
+            },
+            {
+              "Line": 128,
+              "Offset": 1223,
+              "EndOffset": 1225,
+              "Path": 0,
+              "Ordinal": 69,
+              "Hits": 303
+            },
+            {
+              "Line": 128,
+              "Offset": 1223,
+              "EndOffset": 1231,
+              "Path": 1,
+              "Ordinal": 70,
+              "Hits": 390
+            },
+            {
+              "Line": 78,
+              "Offset": 753,
+              "EndOffset": 1262,
+              "Path": 4,
+              "Ordinal": 54,
+              "Hits": 190
+            },
+            {
+              "Line": 138,
+              "Offset": 1270,
+              "EndOffset": 1272,
+              "Path": 0,
+              "Ordinal": 71,
+              "Hits": 190
+            },
+            {
+              "Line": 140,
+              "Offset": 1288,
+              "EndOffset": 1290,
+              "Path": 0,
+              "Ordinal": 73,
+              "Hits": 186
+            },
+            {
+              "Line": 140,
+              "Offset": 1288,
+              "EndOffset": 1306,
+              "Path": 1,
+              "Ordinal": 74,
+              "Hits": 4
+            },
+            {
+              "Line": 138,
+              "Offset": 1270,
+              "EndOffset": 1339,
+              "Path": 1,
+              "Ordinal": 72,
+              "Hits": 0
+            },
+            {
+              "Line": 78,
+              "Offset": 753,
+              "EndOffset": 1393,
+              "Path": 5,
+              "Ordinal": 55,
+              "Hits": 392
+            },
+            {
+              "Line": 157,
+              "Offset": 1394,
+              "EndOffset": 1396,
+              "Path": 0,
+              "Ordinal": 75,
+              "Hits": 392
+            },
+            {
+              "Line": 157,
+              "Offset": 1394,
+              "EndOffset": 1409,
+              "Path": 1,
+              "Ordinal": 76,
+              "Hits": 0
+            },
+            {
+              "Line": 157,
+              "Offset": 1414,
+              "EndOffset": 1416,
+              "Path": 0,
+              "Ordinal": 77,
+              "Hits": 388
+            },
+            {
+              "Line": 157,
+              "Offset": 1414,
+              "EndOffset": 1434,
+              "Path": 1,
+              "Ordinal": 78,
+              "Hits": 4
+            },
+            {
+              "Line": 161,
+              "Offset": 1442,
+              "EndOffset": 1444,
+              "Path": 0,
+              "Ordinal": 79,
+              "Hits": 4
+            },
+            {
+              "Line": 161,
+              "Offset": 1442,
+              "EndOffset": 1483,
+              "Path": 1,
+              "Ordinal": 80,
+              "Hits": 0
+            },
+            {
+              "Line": 78,
+              "Offset": 753,
+              "EndOffset": 1534,
+              "Path": 6,
+              "Ordinal": 56,
+              "Hits": 90
+            },
+            {
+              "Line": 78,
+              "Offset": 753,
+              "EndOffset": 1583,
+              "Path": 0,
+              "Ordinal": 50,
+              "Hits": 1623
+            },
+            {
+              "Line": 76,
+              "Offset": 1591,
+              "EndOffset": 1596,
+              "Path": 0,
+              "Ordinal": 81,
+              "Hits": 56
+            }
+          ]
+        },
+        "System.Void ScreenplayEditorApp.Models.FountainFormatter::ParseSceneHeadingParts(System.String,System.String&,System.String&,System.String&)": {
+          "Lines": {
+            "191": 151,
+            "192": 151,
+            "194": 151,
+            "195": 151,
+            "196": 151,
+            "197": 151,
+            "198": 6,
+            "199": 6,
+            "200": 6,
+            "201": 145,
+            "202": 145,
+            "203": 31,
+            "204": 31,
+            "205": 31,
+            "207": 114,
+            "208": 114,
+            "209": 114,
+            "211": 151,
+            "212": 151,
+            "213": 151,
+            "214": 151,
+            "215": 151,
+            "216": 151,
+            "217": 0,
+            "218": 0,
+            "219": 0,
+            "220": 0,
+            "222": 151,
+            "223": 151,
+            "224": 150,
+            "225": 150,
+            "226": 150,
+            "227": 150,
+            "229": 1,
+            "230": 1,
+            "231": 1,
+            "232": 1,
+            "233": 151
+          },
+          "Branches": [
+            {
+              "Line": 194,
+              "Offset": 25,
+              "EndOffset": 27,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 149
+            },
+            {
+              "Line": 194,
+              "Offset": 39,
+              "EndOffset": 41,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 148
+            },
+            {
+              "Line": 194,
+              "Offset": 53,
+              "EndOffset": 55,
+              "Path": 0,
+              "Ordinal": 4,
+              "Hits": 145
+            },
+            {
+              "Line": 194,
+              "Offset": 25,
+              "EndOffset": 69,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 6
+            },
+            {
+              "Line": 194,
+              "Offset": 39,
+              "EndOffset": 69,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 6
+            },
+            {
+              "Line": 194,
+              "Offset": 53,
+              "EndOffset": 69,
+              "Path": 1,
+              "Ordinal": 5,
+              "Hits": 6
+            },
+            {
+              "Line": 194,
+              "Offset": 74,
+              "EndOffset": 76,
+              "Path": 0,
+              "Ordinal": 6,
+              "Hits": 6
+            },
+            {
+              "Line": 194,
+              "Offset": 74,
+              "EndOffset": 87,
+              "Path": 1,
+              "Ordinal": 7,
+              "Hits": 145
+            },
+            {
+              "Line": 201,
+              "Offset": 99,
+              "EndOffset": 101,
+              "Path": 0,
+              "Ordinal": 8,
+              "Hits": 114
+            },
+            {
+              "Line": 201,
+              "Offset": 99,
+              "EndOffset": 115,
+              "Path": 1,
+              "Ordinal": 9,
+              "Hits": 31
+            },
+            {
+              "Line": 201,
+              "Offset": 120,
+              "EndOffset": 122,
+              "Path": 0,
+              "Ordinal": 10,
+              "Hits": 31
+            },
+            {
+              "Line": 201,
+              "Offset": 120,
+              "EndOffset": 133,
+              "Path": 1,
+              "Ordinal": 11,
+              "Hits": 114
+            },
+            {
+              "Line": 213,
+              "Offset": 161,
+              "EndOffset": 163,
+              "Path": 0,
+              "Ordinal": 12,
+              "Hits": 151
+            },
+            {
+              "Line": 213,
+              "Offset": 161,
+              "EndOffset": 180,
+              "Path": 1,
+              "Ordinal": 13,
+              "Hits": 0
+            },
+            {
+              "Line": 217,
+              "Offset": 195,
+              "EndOffset": 197,
+              "Path": 0,
+              "Ordinal": 14,
+              "Hits": 0
+            },
+            {
+              "Line": 217,
+              "Offset": 195,
+              "EndOffset": 221,
+              "Path": 1,
+              "Ordinal": 15,
+              "Hits": 151
+            },
+            {
+              "Line": 223,
+              "Offset": 241,
+              "EndOffset": 243,
+              "Path": 0,
+              "Ordinal": 16,
+              "Hits": 150
+            },
+            {
+              "Line": 223,
+              "Offset": 241,
+              "EndOffset": 278,
+              "Path": 1,
+              "Ordinal": 17,
+              "Hits": 1
+            }
+          ]
+        },
+        "System.String ScreenplayEditorApp.Models.FountainFormatter::ToFountain(ScreenplayEditorApp.Models.ScreenplayModel)": {
+          "Lines": {
+            "236": 27,
+            "237": 27,
+            "258": 27,
+            "259": 27,
+            "260": 27,
+            "261": 27,
+            "262": 27,
+            "263": 27,
+            "264": 27,
+            "266": 27,
+            "267": 27,
+            "270": 229,
+            "271": 74,
+            "272": 74,
+            "273": 74,
+            "274": 74,
+            "275": 74,
+            "276": 74,
+            "278": 74,
+            "279": 74,
+            "280": 74,
+            "281": 74,
+            "283": 74,
+            "284": 74,
+            "285": 74,
+            "287": 1076,
+            "288": 427,
+            "289": 427,
+            "292": 185,
+            "293": 185,
+            "294": 185,
+            "295": 185,
+            "296": 185,
+            "297": 185,
+            "300": 195,
+            "301": 195,
+            "302": 195,
+            "303": 195,
+            "304": 44,
+            "305": 44,
+            "306": 44,
+            "307": 44,
+            "308": 195,
+            "309": 195,
+            "311": 195,
+            "312": 93,
+            "313": 93,
+            "314": 469,
+            "315": 95,
+            "316": 95,
+            "317": 190,
+            "318": 190,
+            "319": 95,
+            "320": 95,
+            "321": 93,
+            "323": 195,
+            "324": 194,
+            "325": 194,
+            "326": 194,
+            "327": 195,
+            "328": 195,
+            "331": 47,
+            "332": 47,
+            "333": 47,
+            "334": 47,
+            "335": 1,
+            "337": 46,
+            "338": 47,
+            "339": 47,
+            "340": 47,
+            "342": 427,
+            "343": 74,
+            "345": 27,
+            "346": 27
+          },
+          "Branches": [
+            {
+              "Line": 266,
+              "Offset": 198,
+              "EndOffset": 200,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 27
+            },
+            {
+              "Line": 266,
+              "Offset": 198,
+              "EndOffset": 212,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 27
+            },
+            {
+              "Line": 270,
+              "Offset": 1204,
+              "EndOffset": 230,
+              "Path": 1,
+              "Ordinal": 42,
+              "Hits": 74
+            },
+            {
+              "Line": 272,
+              "Offset": 250,
+              "EndOffset": 252,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 3
+            },
+            {
+              "Line": 272,
+              "Offset": 263,
+              "EndOffset": 265,
+              "Path": 0,
+              "Ordinal": 4,
+              "Hits": 0
+            },
+            {
+              "Line": 272,
+              "Offset": 250,
+              "EndOffset": 281,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 74
+            },
+            {
+              "Line": 272,
+              "Offset": 263,
+              "EndOffset": 281,
+              "Path": 1,
+              "Ordinal": 5,
+              "Hits": 74
+            },
+            {
+              "Line": 272,
+              "Offset": 286,
+              "EndOffset": 291,
+              "Path": 0,
+              "Ordinal": 6,
+              "Hits": 74
+            },
+            {
+              "Line": 274,
+              "Offset": 303,
+              "EndOffset": 305,
+              "Path": 0,
+              "Ordinal": 8,
+              "Hits": 3
+            },
+            {
+              "Line": 274,
+              "Offset": 303,
+              "EndOffset": 412,
+              "Path": 1,
+              "Ordinal": 9,
+              "Hits": 71
+            },
+            {
+              "Line": 278,
+              "Offset": 427,
+              "EndOffset": 429,
+              "Path": 0,
+              "Ordinal": 10,
+              "Hits": 74
+            },
+            {
+              "Line": 278,
+              "Offset": 427,
+              "EndOffset": 446,
+              "Path": 1,
+              "Ordinal": 11,
+              "Hits": 0
+            },
+            {
+              "Line": 278,
+              "Offset": 451,
+              "EndOffset": 453,
+              "Path": 0,
+              "Ordinal": 12,
+              "Hits": 74
+            },
+            {
+              "Line": 278,
+              "Offset": 451,
+              "EndOffset": 520,
+              "Path": 1,
+              "Ordinal": 13,
+              "Hits": 74
+            },
+            {
+              "Line": 272,
+              "Offset": 286,
+              "EndOffset": 547,
+              "Path": 1,
+              "Ordinal": 7,
+              "Hits": 74
+            },
+            {
+              "Line": 287,
+              "Offset": 1174,
+              "EndOffset": 566,
+              "Path": 1,
+              "Ordinal": 40,
+              "Hits": 427
+            },
+            {
+              "Line": 289,
+              "Offset": 591,
+              "EndOffset": 617,
+              "Path": 1,
+              "Ordinal": 15,
+              "Hits": 185
+            },
+            {
+              "Line": 292,
+              "Offset": 636,
+              "EndOffset": 638,
+              "Path": 0,
+              "Ordinal": 19,
+              "Hits": 185
+            },
+            {
+              "Line": 289,
+              "Offset": 591,
+              "EndOffset": 676,
+              "Path": 2,
+              "Ordinal": 16,
+              "Hits": 195
+            },
+            {
+              "Line": 300,
+              "Offset": 695,
+              "EndOffset": 697,
+              "Path": 0,
+              "Ordinal": 21,
+              "Hits": 195
+            },
+            {
+              "Line": 303,
+              "Offset": 731,
+              "EndOffset": 733,
+              "Path": 0,
+              "Ordinal": 23,
+              "Hits": 44
+            },
+            {
+              "Line": 303,
+              "Offset": 731,
+              "EndOffset": 786,
+              "Path": 1,
+              "Ordinal": 24,
+              "Hits": 195
+            },
+            {
+              "Line": 300,
+              "Offset": 695,
+              "EndOffset": 801,
+              "Path": 1,
+              "Ordinal": 22,
+              "Hits": 195
+            },
+            {
+              "Line": 311,
+              "Offset": 820,
+              "EndOffset": 825,
+              "Path": 0,
+              "Ordinal": 25,
+              "Hits": 93
+            },
+            {
+              "Line": 314,
+              "Offset": 967,
+              "EndOffset": 853,
+              "Path": 1,
+              "Ordinal": 32,
+              "Hits": 95
+            },
+            {
+              "Line": 317,
+              "Offset": 889,
+              "EndOffset": 891,
+              "Path": 0,
+              "Ordinal": 27,
+              "Hits": 95
+            },
+            {
+              "Line": 317,
+              "Offset": 889,
+              "EndOffset": 905,
+              "Path": 1,
+              "Ordinal": 28,
+              "Hits": 95
+            },
+            {
+              "Line": 318,
+              "Offset": 924,
+              "EndOffset": 926,
+              "Path": 0,
+              "Ordinal": 29,
+              "Hits": 95
+            },
+            {
+              "Line": 318,
+              "Offset": 924,
+              "EndOffset": 940,
+              "Path": 1,
+              "Ordinal": 30,
+              "Hits": 95
+            },
+            {
+              "Line": 314,
+              "Offset": 967,
+              "EndOffset": 969,
+              "Path": 0,
+              "Ordinal": 31,
+              "Hits": 93
+            },
+            {
+              "Line": 311,
+              "Offset": 820,
+              "EndOffset": 970,
+              "Path": 1,
+              "Ordinal": 26,
+              "Hits": 195
+            },
+            {
+              "Line": 323,
+              "Offset": 989,
+              "EndOffset": 991,
+              "Path": 0,
+              "Ordinal": 33,
+              "Hits": 194
+            },
+            {
+              "Line": 323,
+              "Offset": 989,
+              "EndOffset": 1012,
+              "Path": 1,
+              "Ordinal": 34,
+              "Hits": 195
+            },
+            {
+              "Line": 289,
+              "Offset": 591,
+              "EndOffset": 1029,
+              "Path": 4,
+              "Ordinal": 18,
+              "Hits": 47
+            },
+            {
+              "Line": 331,
+              "Offset": 1048,
+              "EndOffset": 1050,
+              "Path": 0,
+              "Ordinal": 35,
+              "Hits": 47
+            },
+            {
+              "Line": 334,
+              "Offset": 1081,
+              "EndOffset": 1083,
+              "Path": 0,
+              "Ordinal": 37,
+              "Hits": 1
+            },
+            {
+              "Line": 334,
+              "Offset": 1081,
+              "EndOffset": 1099,
+              "Path": 1,
+              "Ordinal": 38,
+              "Hits": 46
+            },
+            {
+              "Line": 289,
+              "Offset": 591,
+              "EndOffset": 1166,
+              "Path": 0,
+              "Ordinal": 14,
+              "Hits": 427
+            },
+            {
+              "Line": 289,
+              "Offset": 591,
+              "EndOffset": 1166,
+              "Path": 3,
+              "Ordinal": 17,
+              "Hits": 427
+            },
+            {
+              "Line": 292,
+              "Offset": 636,
+              "EndOffset": 1166,
+              "Path": 1,
+              "Ordinal": 20,
+              "Hits": 427
+            },
+            {
+              "Line": 331,
+              "Offset": 1048,
+              "EndOffset": 1166,
+              "Path": 1,
+              "Ordinal": 36,
+              "Hits": 427
+            },
+            {
+              "Line": 287,
+              "Offset": 1174,
+              "EndOffset": 1179,
+              "Path": 0,
+              "Ordinal": 39,
+              "Hits": 74
+            },
+            {
+              "Line": 270,
+              "Offset": 1204,
+              "EndOffset": 1209,
+              "Path": 0,
+              "Ordinal": 41,
+              "Hits": 27
+            }
+          ]
+        },
+        "ScreenplayEditorApp.Models.ScreenplayScene ScreenplayEditorApp.Models.FountainFormatter::<Parse>g__GetOrCreateCurrentScene|0_0(ScreenplayEditorApp.Models.FountainFormatter/<>c__DisplayClass0_0&)": {
+          "Lines": {
+            "58": 856,
+            "59": 856,
+            "60": 8,
+            "61": 8,
+            "62": 8,
+            "63": 8,
+            "64": 8,
+            "65": 8,
+            "66": 8,
+            "67": 8,
+            "68": 8,
+            "69": 8,
+            "70": 8,
+            "71": 8,
+            "72": 8,
+            "73": 856,
+            "74": 856
+          },
+          "Branches": [
+            {
+              "Line": 59,
+              "Offset": 12,
+              "EndOffset": 14,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 8
+            },
+            {
+              "Line": 59,
+              "Offset": 12,
+              "EndOffset": 139,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 856
+            }
+          ]
+        },
+        "System.Void ScreenplayEditorApp.Models.FountainFormatter::<ToFountain>g__AppendMeta|2_0(System.String,System.String,ScreenplayEditorApp.Models.FountainFormatter/<>c__DisplayClass2_0&)": {
+          "Lines": {
+            "240": 189,
+            "241": 285,
+            "242": 93,
+            "243": 93,
+            "244": 90,
+            "245": 90,
+            "246": 90,
+            "248": 3,
+            "249": 3,
+            "250": 23,
+            "251": 7,
+            "252": 7,
+            "253": 7,
+            "254": 3,
+            "255": 189
+          },
+          "Branches": [
+            {
+              "Line": 241,
+              "Offset": 9,
+              "EndOffset": 16,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 93
+            },
+            {
+              "Line": 243,
+              "Offset": 34,
+              "EndOffset": 36,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 90
+            },
+            {
+              "Line": 243,
+              "Offset": 34,
+              "EndOffset": 107,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 3
+            },
+            {
+              "Line": 250,
+              "Offset": 240,
+              "EndOffset": 165,
+              "Path": 1,
+              "Ordinal": 5,
+              "Hits": 7
+            },
+            {
+              "Line": 250,
+              "Offset": 240,
+              "EndOffset": 242,
+              "Path": 0,
+              "Ordinal": 4,
+              "Hits": 3
+            },
+            {
+              "Line": 241,
+              "Offset": 9,
+              "EndOffset": 243,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 189
+            }
+          ]
+        }
+      }
+    },
+    "C:\\Users\\budcr\\source\\repos\\gemini\\PageToMovie\\host\\tools\\ScreenplayEditorApp\\Models\\ScreenplayModel.cs": {
+      "ScreenplayEditorApp.Models.ScreenplayMetadata": {
+        "System.String ScreenplayEditorApp.Models.ScreenplayMetadata::get_Title()": {
+          "Lines": {
+            "15": 177
+          },
+          "Branches": []
+        },
+        "System.String ScreenplayEditorApp.Models.ScreenplayMetadata::get_Author()": {
+          "Lines": {
+            "16": 108
+          },
+          "Branches": []
+        },
+        "System.String ScreenplayEditorApp.Models.ScreenplayMetadata::get_Credit()": {
+          "Lines": {
+            "17": 125
+          },
+          "Branches": []
+        },
+        "System.String ScreenplayEditorApp.Models.ScreenplayMetadata::get_Source()": {
+          "Lines": {
+            "18": 96
+          },
+          "Branches": []
+        },
+        "System.String ScreenplayEditorApp.Models.ScreenplayMetadata::get_DraftDate()": {
+          "Lines": {
+            "19": 125
+          },
+          "Branches": []
+        },
+        "System.String ScreenplayEditorApp.Models.ScreenplayMetadata::get_Contact()": {
+          "Lines": {
+            "20": 96
+          },
+          "Branches": []
+        },
+        "System.String ScreenplayEditorApp.Models.ScreenplayMetadata::get_Notes()": {
+          "Lines": {
+            "21": 100
+          },
+          "Branches": []
+        }
+      },
+      "ScreenplayEditorApp.Models.ScreenplayBeat": {
+        "System.String ScreenplayEditorApp.Models.ScreenplayBeat::get_Id()": {
+          "Lines": {
+            "26": 869
+          },
+          "Branches": []
+        },
+        "ScreenplayEditorApp.Models.BeatType ScreenplayEditorApp.Models.ScreenplayBeat::get_Type()": {
+          "Lines": {
+            "27": 2172
+          },
+          "Branches": []
+        },
+        "ScreenplayEditorApp.Models.BeatType ScreenplayEditorApp.Models.ScreenplayBeat::get_BeatType()": {
+          "Lines": {
+            "28": 1303
+          },
+          "Branches": []
+        },
+        "System.String ScreenplayEditorApp.Models.ScreenplayBeat::get_Speaker()": {
+          "Lines": {
+            "30": 1655
+          },
+          "Branches": []
+        },
+        "System.String ScreenplayEditorApp.Models.ScreenplayBeat::get_Extension()": {
+          "Lines": {
+            "31": 1502
+          },
+          "Branches": []
+        },
+        "System.String ScreenplayEditorApp.Models.ScreenplayBeat::get_Parenthetical()": {
+          "Lines": {
+            "32": 1546
+          },
+          "Branches": []
+        },
+        "System.String ScreenplayEditorApp.Models.ScreenplayBeat::get_Text()": {
+          "Lines": {
+            "33": 2994
+          },
+          "Branches": []
+        },
+        "System.String ScreenplayEditorApp.Models.ScreenplayBeat::get_ActionText()": {
+          "Lines": {
+            "35": 753
+          },
+          "Branches": []
+        },
+        "System.String ScreenplayEditorApp.Models.ScreenplayBeat::get_SpokenText()": {
+          "Lines": {
+            "36": 1183
+          },
+          "Branches": []
+        },
+        "System.String ScreenplayEditorApp.Models.ScreenplayBeat::get_TransitionText()": {
+          "Lines": {
+            "37": 189
+          },
+          "Branches": []
+        },
+        "ScreenplayEditorApp.Models.ScreenplayBeat ScreenplayEditorApp.Models.ScreenplayBeat::Clone()": {
+          "Lines": {
+            "40": 0,
+            "41": 0,
+            "42": 0,
+            "43": 0,
+            "44": 0,
+            "45": 0,
+            "46": 0,
+            "47": 0,
+            "48": 0,
+            "49": 0,
+            "50": 0
+          },
+          "Branches": []
+        }
+      },
+      "ScreenplayEditorApp.Models.ScreenplayScene": {
+        "System.String ScreenplayEditorApp.Models.ScreenplayScene::get_Id()": {
+          "Lines": {
+            "55": 158
+          },
+          "Branches": []
+        },
+        "System.Int32 ScreenplayEditorApp.Models.ScreenplayScene::get_SceneNumber()": {
+          "Lines": {
+            "56": 475
+          },
+          "Branches": []
+        },
+        "System.String ScreenplayEditorApp.Models.ScreenplayScene::get_Environment()": {
+          "Lines": {
+            "57": 338
+          },
+          "Branches": []
+        },
+        "System.String ScreenplayEditorApp.Models.ScreenplayScene::get_Location()": {
+          "Lines": {
+            "58": 337
+          },
+          "Branches": []
+        },
+        "System.String ScreenplayEditorApp.Models.ScreenplayScene::get_TimeOfDay()": {
+          "Lines": {
+            "59": 335
+          },
+          "Branches": []
+        },
+        "System.String ScreenplayEditorApp.Models.ScreenplayScene::get_SceneTitle()": {
+          "Lines": {
+            "60": 641
+          },
+          "Branches": []
+        },
+        "System.Collections.Generic.List`1<ScreenplayEditorApp.Models.ScreenplayBeat> ScreenplayEditorApp.Models.ScreenplayScene::get_Beats()": {
+          "Lines": {
+            "61": 1272
+          },
+          "Branches": []
+        },
+        "System.String ScreenplayEditorApp.Models.ScreenplayScene::get_HeaderText()": {
+          "Lines": {
+            "63": 4
+          },
+          "Branches": []
+        },
+        "ScreenplayEditorApp.Models.ScreenplayScene ScreenplayEditorApp.Models.ScreenplayScene::Clone()": {
+          "Lines": {
+            "66": 0,
+            "67": 0,
+            "68": 0,
+            "69": 0,
+            "70": 0,
+            "71": 0,
+            "72": 0,
+            "73": 0,
+            "74": 0,
+            "75": 0,
+            "76": 0,
+            "77": 0
+          },
+          "Branches": []
+        }
+      },
+      "ScreenplayEditorApp.Models.ScreenplayDocument": {
+        "ScreenplayEditorApp.Models.ScreenplayMetadata ScreenplayEditorApp.Models.ScreenplayDocument::get_Metadata()": {
+          "Lines": {
+            "82": 434
+          },
+          "Branches": []
+        },
+        "System.Collections.Generic.List`1<ScreenplayEditorApp.Models.ScreenplayScene> ScreenplayEditorApp.Models.ScreenplayDocument::get_Scenes()": {
+          "Lines": {
+            "83": 356
+          },
+          "Branches": []
+        },
+        "System.String ScreenplayEditorApp.Models.ScreenplayDocument::ToFountain()": {
+          "Lines": {
+            "85": 26
+          },
+          "Branches": []
+        }
+      }
+    },
+    "C:\\Users\\budcr\\source\\repos\\gemini\\PageToMovie\\host\\tools\\ScreenplayEditorApp\\Components\\ScreenplayEditor.BeatEditor.razor.cs": {
+      "ScreenplayEditorApp.Components.ScreenplayEditor_BeatEditor": {
+        "ScreenplayEditorApp.Models.ScreenplayBeat ScreenplayEditorApp.Components.ScreenplayEditor_BeatEditor::get_Beat()": {
+          "Lines": {
+            "9": 2
+          },
+          "Branches": []
+        },
+        "System.Boolean ScreenplayEditorApp.Components.ScreenplayEditor_BeatEditor::get_IsFirst()": {
+          "Lines": {
+            "12": 0
+          },
+          "Branches": []
+        },
+        "System.Boolean ScreenplayEditorApp.Components.ScreenplayEditor_BeatEditor::get_IsLast()": {
+          "Lines": {
+            "15": 0
+          },
+          "Branches": []
+        },
+        "Microsoft.AspNetCore.Components.EventCallback ScreenplayEditorApp.Components.ScreenplayEditor_BeatEditor::get_OnChangedCallback()": {
+          "Lines": {
+            "18": 3
+          },
+          "Branches": []
+        },
+        "Microsoft.AspNetCore.Components.EventCallback ScreenplayEditorApp.Components.ScreenplayEditor_BeatEditor::get_OnMoveUpCallback()": {
+          "Lines": {
+            "21": 3
+          },
+          "Branches": []
+        },
+        "Microsoft.AspNetCore.Components.EventCallback ScreenplayEditorApp.Components.ScreenplayEditor_BeatEditor::get_OnMoveDownCallback()": {
+          "Lines": {
+            "24": 3
+          },
+          "Branches": []
+        },
+        "Microsoft.AspNetCore.Components.EventCallback ScreenplayEditorApp.Components.ScreenplayEditor_BeatEditor::get_OnDeleteCallback()": {
+          "Lines": {
+            "27": 3
+          },
+          "Branches": []
+        }
+      },
+      "ScreenplayEditorApp.Components.ScreenplayEditor_BeatEditor/<Delete>d__31": {
+        "System.Void ScreenplayEditorApp.Components.ScreenplayEditor_BeatEditor/<Delete>d__31::MoveNext()": {
+          "Lines": {
+            "54": 1,
+            "55": 1,
+            "56": 1,
+            "57": 1,
+            "58": 1,
+            "59": 1
+          },
+          "Branches": [
+            {
+              "Line": 55,
+              "Offset": 36,
+              "EndOffset": 38,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 1
+            },
+            {
+              "Line": 55,
+              "Offset": 36,
+              "EndOffset": 147,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 1
+            }
+          ]
+        }
+      },
+      "ScreenplayEditorApp.Components.ScreenplayEditor_BeatEditor/<MoveDown>d__30": {
+        "System.Void ScreenplayEditorApp.Components.ScreenplayEditor_BeatEditor/<MoveDown>d__30::MoveNext()": {
+          "Lines": {
+            "46": 1,
+            "47": 1,
+            "48": 1,
+            "49": 1,
+            "50": 1,
+            "51": 1
+          },
+          "Branches": [
+            {
+              "Line": 47,
+              "Offset": 36,
+              "EndOffset": 38,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 1
+            },
+            {
+              "Line": 47,
+              "Offset": 36,
+              "EndOffset": 147,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 1
+            }
+          ]
+        }
+      },
+      "ScreenplayEditorApp.Components.ScreenplayEditor_BeatEditor/<MoveUp>d__29": {
+        "System.Void ScreenplayEditorApp.Components.ScreenplayEditor_BeatEditor/<MoveUp>d__29::MoveNext()": {
+          "Lines": {
+            "38": 1,
+            "39": 1,
+            "40": 1,
+            "41": 1,
+            "42": 1,
+            "43": 1
+          },
+          "Branches": [
+            {
+              "Line": 39,
+              "Offset": 36,
+              "EndOffset": 38,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 1
+            },
+            {
+              "Line": 39,
+              "Offset": 36,
+              "EndOffset": 147,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 1
+            }
+          ]
+        }
+      },
+      "ScreenplayEditorApp.Components.ScreenplayEditor_BeatEditor/<OnChanged>d__28": {
+        "System.Void ScreenplayEditorApp.Components.ScreenplayEditor_BeatEditor/<OnChanged>d__28::MoveNext()": {
+          "Lines": {
+            "30": 1,
+            "31": 1,
+            "32": 1,
+            "33": 1,
+            "34": 1,
+            "35": 1
+          },
+          "Branches": [
+            {
+              "Line": 31,
+              "Offset": 36,
+              "EndOffset": 38,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 1
+            },
+            {
+              "Line": 31,
+              "Offset": 36,
+              "EndOffset": 147,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 1
+            }
+          ]
+        }
+      }
+    },
+    "C:\\Users\\budcr\\source\\repos\\gemini\\PageToMovie\\host\\tools\\ScreenplayEditorApp\\Components\\ScreenplayEditor.BeatEditor.razor": {
+      "ScreenplayEditorApp.Components.ScreenplayEditor_BeatEditor": {
+        "System.Void ScreenplayEditorApp.Components.ScreenplayEditor_BeatEditor::BuildRenderTree(Microsoft.AspNetCore.Components.Rendering.RenderTreeBuilder)": {
+          "Lines": {
+            "10": 0,
+            "11": 0,
+            "19": 0,
+            "28": 0,
+            "29": 0,
+            "31": 0,
+            "32": 0,
+            "33": 0,
+            "36": 0,
+            "37": 0,
+            "38": 0,
+            "40": 0,
+            "41": 0,
+            "42": 0,
+            "44": 0
+          },
+          "Branches": [
+            {
+              "Line": 10,
+              "Offset": 536,
+              "EndOffset": 541,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 0
+            },
+            {
+              "Line": 10,
+              "Offset": 536,
+              "EndOffset": 1182,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 0
+            },
+            {
+              "Line": 28,
+              "Offset": 1721,
+              "EndOffset": 1726,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 0
+            },
+            {
+              "Line": 28,
+              "Offset": 1721,
+              "EndOffset": 1919,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 0
+            },
+            {
+              "Line": 32,
+              "Offset": 1935,
+              "EndOffset": 1940,
+              "Path": 0,
+              "Ordinal": 4,
+              "Hits": 0
+            },
+            {
+              "Line": 32,
+              "Offset": 1935,
+              "EndOffset": 2333,
+              "Path": 1,
+              "Ordinal": 5,
+              "Hits": 0
+            },
+            {
+              "Line": 37,
+              "Offset": 2349,
+              "EndOffset": 2354,
+              "Path": 0,
+              "Ordinal": 6,
+              "Hits": 0
+            },
+            {
+              "Line": 37,
+              "Offset": 2349,
+              "EndOffset": 2547,
+              "Path": 1,
+              "Ordinal": 7,
+              "Hits": 0
+            },
+            {
+              "Line": 41,
+              "Offset": 2565,
+              "EndOffset": 2570,
+              "Path": 0,
+              "Ordinal": 8,
+              "Hits": 0
+            },
+            {
+              "Line": 41,
+              "Offset": 2565,
+              "EndOffset": 2758,
+              "Path": 1,
+              "Ordinal": 9,
+              "Hits": 0
+            }
+          ]
+        }
+      }
+    },
+    "C:\\Users\\budcr\\source\\repos\\gemini\\PageToMovie\\host\\tools\\ScreenplayEditorApp\\Components\\ScreenplayEditor.FountainModal.razor.cs": {
+      "ScreenplayEditorApp.Components.ScreenplayEditor_FountainModal": {
+        "Microsoft.JSInterop.IJSRuntime ScreenplayEditorApp.Components.ScreenplayEditor_FountainModal::get_Js()": {
+          "Lines": {
+            "9": 2
+          },
+          "Branches": []
+        },
+        "System.Boolean ScreenplayEditorApp.Components.ScreenplayEditor_FountainModal::get_IsOpen()": {
+          "Lines": {
+            "12": 6
+          },
+          "Branches": []
+        },
+        "System.String ScreenplayEditorApp.Components.ScreenplayEditor_FountainModal::get_Mode()": {
+          "Lines": {
+            "15": 2
+          },
+          "Branches": []
+        },
+        "System.String ScreenplayEditorApp.Components.ScreenplayEditor_FountainModal::get_FountainText()": {
+          "Lines": {
+            "18": 4
+          },
+          "Branches": []
+        },
+        "Microsoft.AspNetCore.Components.EventCallback`1<System.Boolean> ScreenplayEditorApp.Components.ScreenplayEditor_FountainModal::get_IsOpenChanged()": {
+          "Lines": {
+            "21": 2
+          },
+          "Branches": []
+        },
+        "Microsoft.AspNetCore.Components.EventCallback`1<System.String> ScreenplayEditorApp.Components.ScreenplayEditor_FountainModal::get_OnImportCallback()": {
+          "Lines": {
+            "24": 3
+          },
+          "Branches": []
+        }
+      },
+      "ScreenplayEditorApp.Components.ScreenplayEditor_FountainModal/<Close>d__24": {
+        "System.Void ScreenplayEditorApp.Components.ScreenplayEditor_FountainModal/<Close>d__24::MoveNext()": {
+          "Lines": {
+            "27": 2,
+            "28": 2,
+            "29": 2,
+            "30": 0,
+            "31": 0,
+            "32": 0,
+            "33": 2
+          },
+          "Branches": [
+            {
+              "Line": 29,
+              "Offset": 49,
+              "EndOffset": 51,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 0
+            },
+            {
+              "Line": 29,
+              "Offset": 49,
+              "EndOffset": 161,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 2
+            }
+          ]
+        }
+      },
+      "ScreenplayEditorApp.Components.ScreenplayEditor_FountainModal/<CopyText>d__26": {
+        "System.Void ScreenplayEditorApp.Components.ScreenplayEditor_FountainModal/<CopyText>d__26::MoveNext()": {
+          "Lines": {
+            "45": 1,
+            "47": 1,
+            "48": 1,
+            "49": 0,
+            "50": 3,
+            "51": 1
+          },
+          "Branches": []
+        }
+      },
+      "ScreenplayEditorApp.Components.ScreenplayEditor_FountainModal/<Import>d__25": {
+        "System.Void ScreenplayEditorApp.Components.ScreenplayEditor_FountainModal/<Import>d__25::MoveNext()": {
+          "Lines": {
+            "36": 1,
+            "37": 1,
+            "38": 1,
+            "39": 1,
+            "40": 1,
+            "41": 1,
+            "42": 1
+          },
+          "Branches": [
+            {
+              "Line": 37,
+              "Offset": 47,
+              "EndOffset": 49,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 1
+            },
+            {
+              "Line": 37,
+              "Offset": 47,
+              "EndOffset": 172,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 1
+            }
+          ]
+        }
+      }
+    },
+    "C:\\Users\\budcr\\source\\repos\\gemini\\PageToMovie\\host\\tools\\ScreenplayEditorApp\\Components\\ScreenplayEditor.FountainModal.razor": {
+      "ScreenplayEditorApp.Components.ScreenplayEditor_FountainModal": {
+        "System.Void ScreenplayEditorApp.Components.ScreenplayEditor_FountainModal::BuildRenderTree(Microsoft.AspNetCore.Components.Rendering.RenderTreeBuilder)": {
+          "Lines": {
+            "1": 0,
+            "2": 0,
+            "8": 0,
+            "13": 0,
+            "14": 0,
+            "19": 0,
+            "21": 0,
+            "29": 0,
+            "32": 0,
+            "33": 0,
+            "35": 0,
+            "41": 0
+          },
+          "Branches": [
+            {
+              "Line": 1,
+              "Offset": 9,
+              "EndOffset": 14,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 0
+            },
+            {
+              "Line": 8,
+              "Offset": 228,
+              "EndOffset": 230,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 0
+            },
+            {
+              "Line": 8,
+              "Offset": 228,
+              "EndOffset": 237,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 0
+            },
+            {
+              "Line": 13,
+              "Offset": 437,
+              "EndOffset": 442,
+              "Path": 0,
+              "Ordinal": 4,
+              "Hits": 0
+            },
+            {
+              "Line": 13,
+              "Offset": 437,
+              "EndOffset": 663,
+              "Path": 1,
+              "Ordinal": 5,
+              "Hits": 0
+            },
+            {
+              "Line": 32,
+              "Offset": 1048,
+              "EndOffset": 1050,
+              "Path": 0,
+              "Ordinal": 6,
+              "Hits": 0
+            },
+            {
+              "Line": 32,
+              "Offset": 1048,
+              "EndOffset": 1162,
+              "Path": 1,
+              "Ordinal": 7,
+              "Hits": 0
+            },
+            {
+              "Line": 1,
+              "Offset": 9,
+              "EndOffset": 1301,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 0
+            }
+          ]
+        }
+      }
+    },
+    "C:\\Users\\budcr\\source\\repos\\gemini\\PageToMovie\\host\\tools\\ScreenplayEditorApp\\Components\\ScreenplayEditor.MetadataHeader.razor.cs": {
+      "ScreenplayEditorApp.Components.ScreenplayEditor_MetadataHeader": {
+        "ScreenplayEditorApp.Models.ScreenplayMetadata ScreenplayEditorApp.Components.ScreenplayEditor_MetadataHeader::get_Metadata()": {
+          "Lines": {
+            "9": 2
+          },
+          "Branches": []
+        },
+        "Microsoft.AspNetCore.Components.EventCallback ScreenplayEditorApp.Components.ScreenplayEditor_MetadataHeader::get_OnChangedCallback()": {
+          "Lines": {
+            "12": 3
+          },
+          "Branches": []
+        },
+        "System.Boolean ScreenplayEditorApp.Components.ScreenplayEditor_MetadataHeader::get_IsCollapsed()": {
+          "Lines": {
+            "14": 7
+          },
+          "Branches": []
+        },
+        "System.Void ScreenplayEditorApp.Components.ScreenplayEditor_MetadataHeader::ToggleCollapse()": {
+          "Lines": {
+            "17": 2,
+            "18": 2,
+            "19": 2
+          },
+          "Branches": []
+        }
+      },
+      "ScreenplayEditorApp.Components.ScreenplayEditor_MetadataHeader/<OnChanged>d__13": {
+        "System.Void ScreenplayEditorApp.Components.ScreenplayEditor_MetadataHeader/<OnChanged>d__13::MoveNext()": {
+          "Lines": {
+            "22": 1,
+            "23": 1,
+            "24": 1,
+            "25": 1,
+            "26": 1,
+            "27": 1
+          },
+          "Branches": [
+            {
+              "Line": 23,
+              "Offset": 36,
+              "EndOffset": 38,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 1
+            },
+            {
+              "Line": 23,
+              "Offset": 36,
+              "EndOffset": 147,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 1
+            }
+          ]
+        }
+      }
+    },
+    "C:\\Users\\budcr\\source\\repos\\gemini\\PageToMovie\\host\\tools\\ScreenplayEditorApp\\Components\\ScreenplayEditor.MetadataHeader.razor": {
+      "ScreenplayEditorApp.Components.ScreenplayEditor_MetadataHeader": {
+        "System.Void ScreenplayEditorApp.Components.ScreenplayEditor_MetadataHeader::BuildRenderTree(Microsoft.AspNetCore.Components.Rendering.RenderTreeBuilder)": {
+          "Lines": {
+            "8": 0,
+            "11": 0,
+            "12": 0,
+            "41": 0
+          },
+          "Branches": [
+            {
+              "Line": 8,
+              "Offset": 170,
+              "EndOffset": 172,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 0
+            },
+            {
+              "Line": 8,
+              "Offset": 170,
+              "EndOffset": 179,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 0
+            },
+            {
+              "Line": 11,
+              "Offset": 215,
+              "EndOffset": 220,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 0
+            },
+            {
+              "Line": 11,
+              "Offset": 215,
+              "EndOffset": 1812,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 0
+            }
+          ]
+        }
+      }
+    },
+    "C:\\Users\\budcr\\source\\repos\\gemini\\PageToMovie\\host\\tools\\ScreenplayEditorApp\\Components\\ScreenplayEditor.razor.cs": {
+      "ScreenplayEditorApp.Components.ScreenplayEditor": {
+        "ScreenplayEditorApp.Models.ScreenplayModel ScreenplayEditorApp.Components.ScreenplayEditor::get_Model()": {
+          "Lines": {
+            "9": 52
+          },
+          "Branches": []
+        },
+        "Microsoft.AspNetCore.Components.EventCallback`1<ScreenplayEditorApp.Models.ScreenplayModel> ScreenplayEditorApp.Components.ScreenplayEditor::get_ModelChanged()": {
+          "Lines": {
+            "12": 13
+          },
+          "Branches": []
+        },
+        "System.Boolean ScreenplayEditorApp.Components.ScreenplayEditor::get_ShowFountainModal()": {
+          "Lines": {
+            "14": 3
+          },
+          "Branches": []
+        },
+        "System.String ScreenplayEditorApp.Components.ScreenplayEditor::get_FountainModalMode()": {
+          "Lines": {
+            "15": 5
+          },
+          "Branches": []
+        },
+        "System.String ScreenplayEditorApp.Components.ScreenplayEditor::get_FountainModalText()": {
+          "Lines": {
+            "16": 3
+          },
+          "Branches": []
+        },
+        "System.Int32 ScreenplayEditorApp.Components.ScreenplayEditor::get_TotalBeats()": {
+          "Lines": {
+            "18": 1
+          },
+          "Branches": []
+        },
+        "System.Void ScreenplayEditorApp.Components.ScreenplayEditor::ReindexSceneNumbers()": {
+          "Lines": {
+            "30": 6,
+            "31": 28,
+            "32": 8,
+            "33": 8,
+            "34": 8,
+            "35": 6
+          },
+          "Branches": [
+            {
+              "Line": 31,
+              "Offset": 58,
+              "EndOffset": 5,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 8
+            },
+            {
+              "Line": 31,
+              "Offset": 58,
+              "EndOffset": 60,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 6
+            }
+          ]
+        },
+        "System.Void ScreenplayEditorApp.Components.ScreenplayEditor::OpenImportModal()": {
+          "Lines": {
+            "87": 1,
+            "88": 1,
+            "89": 1,
+            "90": 1,
+            "91": 1
+          },
+          "Branches": []
+        },
+        "System.Void ScreenplayEditorApp.Components.ScreenplayEditor::OpenExportModal()": {
+          "Lines": {
+            "94": 1,
+            "95": 1,
+            "96": 1,
+            "97": 1,
+            "98": 1
+          },
+          "Branches": []
+        }
+      },
+      "ScreenplayEditorApp.Components.ScreenplayEditor/<AddScene>d__24": {
+        "System.Void ScreenplayEditorApp.Components.ScreenplayEditor/<AddScene>d__24::MoveNext()": {
+          "Lines": {
+            "38": 2,
+            "39": 2,
+            "40": 2,
+            "41": 2,
+            "42": 2,
+            "43": 2,
+            "44": 2,
+            "45": 2,
+            "46": 2,
+            "47": 2,
+            "48": 2,
+            "49": 2,
+            "50": 2,
+            "51": 2,
+            "52": 2,
+            "53": 2
+          },
+          "Branches": []
+        }
+      },
+      "ScreenplayEditorApp.Components.ScreenplayEditor/<DeleteScene>d__27": {
+        "System.Void ScreenplayEditorApp.Components.ScreenplayEditor/<DeleteScene>d__27::MoveNext()": {
+          "Lines": {
+            "78": 3,
+            "79": 3,
+            "80": 1,
+            "81": 1,
+            "82": 1,
+            "83": 1,
+            "84": 3
+          },
+          "Branches": [
+            {
+              "Line": 79,
+              "Offset": 25,
+              "EndOffset": 27,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 2
+            },
+            {
+              "Line": 79,
+              "Offset": 25,
+              "EndOffset": 58,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 1
+            },
+            {
+              "Line": 79,
+              "Offset": 61,
+              "EndOffset": 66,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 1
+            },
+            {
+              "Line": 79,
+              "Offset": 61,
+              "EndOffset": 194,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 3
+            }
+          ]
+        }
+      },
+      "ScreenplayEditorApp.Components.ScreenplayEditor/<HandleFountainImport>d__30": {
+        "System.Void ScreenplayEditorApp.Components.ScreenplayEditor/<HandleFountainImport>d__30::MoveNext()": {
+          "Lines": {
+            "101": 2,
+            "102": 2,
+            "103": 1,
+            "104": 1,
+            "105": 1,
+            "106": 1,
+            "107": 2
+          },
+          "Branches": [
+            {
+              "Line": 102,
+              "Offset": 31,
+              "EndOffset": 33,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 1
+            },
+            {
+              "Line": 102,
+              "Offset": 31,
+              "EndOffset": 156,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 2
+            }
+          ]
+        }
+      },
+      "ScreenplayEditorApp.Components.ScreenplayEditor/<MoveSceneDown>d__26": {
+        "System.Void ScreenplayEditorApp.Components.ScreenplayEditor/<MoveSceneDown>d__26::MoveNext()": {
+          "Lines": {
+            "67": 2,
+            "68": 2,
+            "69": 1,
+            "70": 1,
+            "71": 1,
+            "72": 1,
+            "73": 1,
+            "74": 1,
+            "75": 2
+          },
+          "Branches": [
+            {
+              "Line": 68,
+              "Offset": 25,
+              "EndOffset": 27,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 2
+            },
+            {
+              "Line": 68,
+              "Offset": 25,
+              "EndOffset": 60,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 0
+            },
+            {
+              "Line": 68,
+              "Offset": 63,
+              "EndOffset": 68,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 1
+            },
+            {
+              "Line": 68,
+              "Offset": 63,
+              "EndOffset": 272,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 2
+            }
+          ]
+        }
+      },
+      "ScreenplayEditorApp.Components.ScreenplayEditor/<MoveSceneUp>d__25": {
+        "System.Void ScreenplayEditorApp.Components.ScreenplayEditor/<MoveSceneUp>d__25::MoveNext()": {
+          "Lines": {
+            "56": 3,
+            "57": 3,
+            "58": 1,
+            "59": 1,
+            "60": 1,
+            "61": 1,
+            "62": 1,
+            "63": 1,
+            "64": 3
+          },
+          "Branches": [
+            {
+              "Line": 57,
+              "Offset": 25,
+              "EndOffset": 27,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 1
+            },
+            {
+              "Line": 57,
+              "Offset": 25,
+              "EndOffset": 58,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 2
+            },
+            {
+              "Line": 57,
+              "Offset": 61,
+              "EndOffset": 66,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 1
+            },
+            {
+              "Line": 57,
+              "Offset": 61,
+              "EndOffset": 270,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 3
+            }
+          ]
+        }
+      },
+      "ScreenplayEditorApp.Components.ScreenplayEditor/<OnChanged>d__22": {
+        "System.Void ScreenplayEditorApp.Components.ScreenplayEditor/<OnChanged>d__22::MoveNext()": {
+          "Lines": {
+            "21": 6,
+            "22": 6,
+            "23": 6,
+            "24": 6,
+            "25": 6,
+            "26": 6,
+            "27": 6
+          },
+          "Branches": [
+            {
+              "Line": 23,
+              "Offset": 48,
+              "EndOffset": 50,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 6
+            },
+            {
+              "Line": 23,
+              "Offset": 48,
+              "EndOffset": 170,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 6
+            }
+          ]
+        }
+      }
+    },
+    "C:\\Users\\budcr\\source\\repos\\gemini\\PageToMovie\\host\\tools\\ScreenplayEditorApp\\Components\\ScreenplayEditor.razor": {
+      "ScreenplayEditorApp.Components.ScreenplayEditor": {
+        "System.Void ScreenplayEditorApp.Components.ScreenplayEditor::BuildRenderTree(Microsoft.AspNetCore.Components.Rendering.RenderTreeBuilder)": {
+          "Lines": {
+            "5": 0,
+            "7": 0,
+            "8": 0,
+            "9": 0,
+            "22": 0,
+            "26": 0,
+            "27": 0,
+            "33": 0,
+            "35": 0,
+            "36": 0,
+            "37": 0,
+            "38": 0,
+            "39": 0,
+            "47": 0,
+            "48": 0
+          },
+          "Branches": [
+            {
+              "Line": 5,
+              "Offset": 143,
+              "EndOffset": 145,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 0
+            },
+            {
+              "Line": 5,
+              "Offset": 143,
+              "EndOffset": 152,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 0
+            },
+            {
+              "Line": 7,
+              "Offset": 280,
+              "EndOffset": 282,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 0
+            },
+            {
+              "Line": 7,
+              "Offset": 280,
+              "EndOffset": 289,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 0
+            },
+            {
+              "Line": 26,
+              "Offset": 1275,
+              "EndOffset": 1280,
+              "Path": 0,
+              "Ordinal": 4,
+              "Hits": 0
+            },
+            {
+              "Line": 26,
+              "Offset": 1275,
+              "EndOffset": 1465,
+              "Path": 1,
+              "Ordinal": 5,
+              "Hits": 0
+            },
+            {
+              "Line": 36,
+              "Offset": 1852,
+              "EndOffset": 1473,
+              "Path": 1,
+              "Ordinal": 7,
+              "Hits": 0
+            },
+            {
+              "Line": 36,
+              "Offset": 1852,
+              "EndOffset": 1857,
+              "Path": 0,
+              "Ordinal": 6,
+              "Hits": 0
+            }
+          ]
+        }
+      },
+      "ScreenplayEditorApp.Components.ScreenplayEditor/<>c__DisplayClass31_0": {
+        "System.Threading.Tasks.Task ScreenplayEditorApp.Components.ScreenplayEditor/<>c__DisplayClass31_0::<BuildRenderTree>b__1()": {
+          "Lines": {
+            "44": 0
+          },
+          "Branches": []
+        },
+        "System.Threading.Tasks.Task ScreenplayEditorApp.Components.ScreenplayEditor/<>c__DisplayClass31_0::<BuildRenderTree>b__2()": {
+          "Lines": {
+            "45": 0
+          },
+          "Branches": []
+        },
+        "System.Threading.Tasks.Task ScreenplayEditorApp.Components.ScreenplayEditor/<>c__DisplayClass31_0::<BuildRenderTree>b__3()": {
+          "Lines": {
+            "46": 0
+          },
+          "Branches": []
+        }
+      }
+    },
+    "C:\\Users\\budcr\\source\\repos\\gemini\\PageToMovie\\host\\tools\\ScreenplayEditorApp\\Components\\ScreenplayEditor.SceneCard.razor.cs": {
+      "ScreenplayEditorApp.Components.ScreenplayEditor_SceneCard": {
+        "ScreenplayEditorApp.Models.ScreenplayScene ScreenplayEditorApp.Components.ScreenplayEditor_SceneCard::get_Scene()": {
+          "Lines": {
+            "9": 18
+          },
+          "Branches": []
+        },
+        "System.Boolean ScreenplayEditorApp.Components.ScreenplayEditor_SceneCard::get_IsFirst()": {
+          "Lines": {
+            "12": 0
+          },
+          "Branches": []
+        },
+        "System.Boolean ScreenplayEditorApp.Components.ScreenplayEditor_SceneCard::get_IsLast()": {
+          "Lines": {
+            "15": 0
+          },
+          "Branches": []
+        },
+        "Microsoft.AspNetCore.Components.EventCallback ScreenplayEditorApp.Components.ScreenplayEditor_SceneCard::get_OnChangedCallback()": {
+          "Lines": {
+            "18": 13
+          },
+          "Branches": []
+        },
+        "Microsoft.AspNetCore.Components.EventCallback ScreenplayEditorApp.Components.ScreenplayEditor_SceneCard::get_OnMoveUpCallback()": {
+          "Lines": {
+            "21": 3
+          },
+          "Branches": []
+        },
+        "Microsoft.AspNetCore.Components.EventCallback ScreenplayEditorApp.Components.ScreenplayEditor_SceneCard::get_OnMoveDownCallback()": {
+          "Lines": {
+            "24": 3
+          },
+          "Branches": []
+        },
+        "Microsoft.AspNetCore.Components.EventCallback ScreenplayEditorApp.Components.ScreenplayEditor_SceneCard::get_OnDeleteCallback()": {
+          "Lines": {
+            "27": 3
+          },
+          "Branches": []
+        }
+      },
+      "ScreenplayEditorApp.Components.ScreenplayEditor_SceneCard/<AddBeat>d__32": {
+        "System.Void ScreenplayEditorApp.Components.ScreenplayEditor_SceneCard/<AddBeat>d__32::MoveNext()": {
+          "Lines": {
+            "62": 3,
+            "63": 3,
+            "64": 3,
+            "65": 1,
+            "66": 1,
+            "67": 1,
+            "68": 1,
+            "69": 2,
+            "70": 1,
+            "71": 1,
+            "72": 1,
+            "73": 1,
+            "74": 1,
+            "75": 1,
+            "76": 1,
+            "77": 3,
+            "78": 3,
+            "79": 3
+          },
+          "Branches": [
+            {
+              "Line": 64,
+              "Offset": 53,
+              "EndOffset": 55,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 1
+            },
+            {
+              "Line": 64,
+              "Offset": 53,
+              "EndOffset": 93,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 2
+            },
+            {
+              "Line": 69,
+              "Offset": 104,
+              "EndOffset": 106,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 1
+            },
+            {
+              "Line": 69,
+              "Offset": 104,
+              "EndOffset": 127,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 1
+            },
+            {
+              "Line": 73,
+              "Offset": 138,
+              "EndOffset": 140,
+              "Path": 0,
+              "Ordinal": 4,
+              "Hits": 1
+            },
+            {
+              "Line": 73,
+              "Offset": 138,
+              "EndOffset": 159,
+              "Path": 1,
+              "Ordinal": 5,
+              "Hits": 3
+            }
+          ]
+        }
+      },
+      "ScreenplayEditorApp.Components.ScreenplayEditor_SceneCard/<Delete>d__31": {
+        "System.Void ScreenplayEditorApp.Components.ScreenplayEditor_SceneCard/<Delete>d__31::MoveNext()": {
+          "Lines": {
+            "54": 1,
+            "55": 1,
+            "56": 1,
+            "57": 1,
+            "58": 1,
+            "59": 1
+          },
+          "Branches": [
+            {
+              "Line": 55,
+              "Offset": 36,
+              "EndOffset": 38,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 1
+            },
+            {
+              "Line": 55,
+              "Offset": 36,
+              "EndOffset": 147,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 1
+            }
+          ]
+        }
+      },
+      "ScreenplayEditorApp.Components.ScreenplayEditor_SceneCard/<DeleteBeat>d__35": {
+        "System.Void ScreenplayEditorApp.Components.ScreenplayEditor_SceneCard/<DeleteBeat>d__35::MoveNext()": {
+          "Lines": {
+            "104": 3,
+            "105": 3,
+            "106": 1,
+            "107": 1,
+            "108": 1,
+            "109": 1,
+            "110": 3
+          },
+          "Branches": [
+            {
+              "Line": 105,
+              "Offset": 25,
+              "EndOffset": 27,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 2
+            },
+            {
+              "Line": 105,
+              "Offset": 25,
+              "EndOffset": 58,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 1
+            },
+            {
+              "Line": 105,
+              "Offset": 61,
+              "EndOffset": 66,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 1
+            },
+            {
+              "Line": 105,
+              "Offset": 61,
+              "EndOffset": 194,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 3
+            }
+          ]
+        }
+      },
+      "ScreenplayEditorApp.Components.ScreenplayEditor_SceneCard/<MoveBeatDown>d__34": {
+        "System.Void ScreenplayEditorApp.Components.ScreenplayEditor_SceneCard/<MoveBeatDown>d__34::MoveNext()": {
+          "Lines": {
+            "93": 3,
+            "94": 3,
+            "95": 1,
+            "96": 1,
+            "97": 1,
+            "98": 1,
+            "99": 1,
+            "100": 1,
+            "101": 3
+          },
+          "Branches": [
+            {
+              "Line": 94,
+              "Offset": 25,
+              "EndOffset": 27,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 3
+            },
+            {
+              "Line": 94,
+              "Offset": 25,
+              "EndOffset": 60,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 0
+            },
+            {
+              "Line": 94,
+              "Offset": 63,
+              "EndOffset": 68,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 1
+            },
+            {
+              "Line": 94,
+              "Offset": 63,
+              "EndOffset": 272,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 3
+            }
+          ]
+        }
+      },
+      "ScreenplayEditorApp.Components.ScreenplayEditor_SceneCard/<MoveBeatUp>d__33": {
+        "System.Void ScreenplayEditorApp.Components.ScreenplayEditor_SceneCard/<MoveBeatUp>d__33::MoveNext()": {
+          "Lines": {
+            "82": 3,
+            "83": 3,
+            "84": 1,
+            "85": 1,
+            "86": 1,
+            "87": 1,
+            "88": 1,
+            "89": 1,
+            "90": 3
+          },
+          "Branches": [
+            {
+              "Line": 83,
+              "Offset": 25,
+              "EndOffset": 27,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 1
+            },
+            {
+              "Line": 83,
+              "Offset": 25,
+              "EndOffset": 58,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 2
+            },
+            {
+              "Line": 83,
+              "Offset": 61,
+              "EndOffset": 66,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 1
+            },
+            {
+              "Line": 83,
+              "Offset": 61,
+              "EndOffset": 270,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 3
+            }
+          ]
+        }
+      },
+      "ScreenplayEditorApp.Components.ScreenplayEditor_SceneCard/<MoveDown>d__30": {
+        "System.Void ScreenplayEditorApp.Components.ScreenplayEditor_SceneCard/<MoveDown>d__30::MoveNext()": {
+          "Lines": {
+            "46": 1,
+            "47": 1,
+            "48": 1,
+            "49": 1,
+            "50": 1,
+            "51": 1
+          },
+          "Branches": [
+            {
+              "Line": 47,
+              "Offset": 36,
+              "EndOffset": 38,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 1
+            },
+            {
+              "Line": 47,
+              "Offset": 36,
+              "EndOffset": 147,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 1
+            }
+          ]
+        }
+      },
+      "ScreenplayEditorApp.Components.ScreenplayEditor_SceneCard/<MoveUp>d__29": {
+        "System.Void ScreenplayEditorApp.Components.ScreenplayEditor_SceneCard/<MoveUp>d__29::MoveNext()": {
+          "Lines": {
+            "38": 1,
+            "39": 1,
+            "40": 1,
+            "41": 1,
+            "42": 1,
+            "43": 1
+          },
+          "Branches": [
+            {
+              "Line": 39,
+              "Offset": 36,
+              "EndOffset": 38,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 1
+            },
+            {
+              "Line": 39,
+              "Offset": 36,
+              "EndOffset": 147,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 1
+            }
+          ]
+        }
+      },
+      "ScreenplayEditorApp.Components.ScreenplayEditor_SceneCard/<OnChanged>d__28": {
+        "System.Void ScreenplayEditorApp.Components.ScreenplayEditor_SceneCard/<OnChanged>d__28::MoveNext()": {
+          "Lines": {
+            "30": 6,
+            "31": 6,
+            "32": 6,
+            "33": 6,
+            "34": 6,
+            "35": 6
+          },
+          "Branches": [
+            {
+              "Line": 31,
+              "Offset": 36,
+              "EndOffset": 38,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 6
+            },
+            {
+              "Line": 31,
+              "Offset": 36,
+              "EndOffset": 147,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 6
+            }
+          ]
+        }
+      }
+    },
+    "C:\\Users\\budcr\\source\\repos\\gemini\\PageToMovie\\host\\tools\\ScreenplayEditorApp\\Components\\ScreenplayEditor.SceneCard.razor": {
+      "ScreenplayEditorApp.Components.ScreenplayEditor_SceneCard": {
+        "System.Void ScreenplayEditorApp.Components.ScreenplayEditor_SceneCard::BuildRenderTree(Microsoft.AspNetCore.Components.Rendering.RenderTreeBuilder)": {
+          "Lines": {
+            "4": 0,
+            "36": 0,
+            "37": 0,
+            "39": 0,
+            "41": 0,
+            "42": 0,
+            "43": 0,
+            "44": 0,
+            "45": 0,
+            "53": 0,
+            "54": 0
+          },
+          "Branches": [
+            {
+              "Line": 36,
+              "Offset": 2392,
+              "EndOffset": 2394,
+              "Path": 0,
+              "Ordinal": 0,
+              "Hits": 0
+            },
+            {
+              "Line": 36,
+              "Offset": 2392,
+              "EndOffset": 2415,
+              "Path": 1,
+              "Ordinal": 1,
+              "Hits": 0
+            },
+            {
+              "Line": 42,
+              "Offset": 2802,
+              "EndOffset": 2423,
+              "Path": 1,
+              "Ordinal": 3,
+              "Hits": 0
+            },
+            {
+              "Line": 42,
+              "Offset": 2802,
+              "EndOffset": 2807,
+              "Path": 0,
+              "Ordinal": 2,
+              "Hits": 0
+            }
+          ]
+        },
+        "System.Threading.Tasks.Task ScreenplayEditorApp.Components.ScreenplayEditor_SceneCard::<BuildRenderTree>b__36_3()": {
+          "Lines": {
+            "31": 0
+          },
+          "Branches": []
+        },
+        "System.Threading.Tasks.Task ScreenplayEditorApp.Components.ScreenplayEditor_SceneCard::<BuildRenderTree>b__36_4()": {
+          "Lines": {
+            "32": 0
+          },
+          "Branches": []
+        },
+        "System.Threading.Tasks.Task ScreenplayEditorApp.Components.ScreenplayEditor_SceneCard::<BuildRenderTree>b__36_5()": {
+          "Lines": {
+            "33": 0
+          },
+          "Branches": []
+        }
+      },
+      "ScreenplayEditorApp.Components.ScreenplayEditor_SceneCard/<>c__DisplayClass36_0": {
+        "System.Threading.Tasks.Task ScreenplayEditorApp.Components.ScreenplayEditor_SceneCard/<>c__DisplayClass36_0::<BuildRenderTree>b__6()": {
+          "Lines": {
+            "50": 0
+          },
+          "Branches": []
+        },
+        "System.Threading.Tasks.Task ScreenplayEditorApp.Components.ScreenplayEditor_SceneCard/<>c__DisplayClass36_0::<BuildRenderTree>b__7()": {
+          "Lines": {
+            "51": 0
+          },
+          "Branches": []
+        },
+        "System.Threading.Tasks.Task ScreenplayEditorApp.Components.ScreenplayEditor_SceneCard/<>c__DisplayClass36_0::<BuildRenderTree>b__8()": {
+          "Lines": {
+            "52": 0
+          },
+          "Branches": []
+        }
+      }
+    }
+  }
+}

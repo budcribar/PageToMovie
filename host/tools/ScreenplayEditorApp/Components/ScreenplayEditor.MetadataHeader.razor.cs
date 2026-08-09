@@ -11,14 +11,14 @@ public partial class ScreenplayEditor_MetadataHeader
     [Parameter]
     public EventCallback OnChangedCallback { get; set; }
 
-    protected bool IsCollapsed { get; set; } = false;
+    public bool IsCollapsed { get; set; } = false;
 
-    protected void ToggleCollapse()
+    public void ToggleCollapse()
     {
         IsCollapsed = !IsCollapsed;
     }
 
-    protected async Task OnChanged()
+    public async Task OnChanged()
     {
         if (OnChangedCallback.HasDelegate)
         {

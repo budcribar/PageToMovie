@@ -26,7 +26,7 @@ public partial class ScreenplayEditor_BeatEditor
     [Parameter]
     public EventCallback OnDeleteCallback { get; set; }
 
-    protected async Task OnChanged()
+    public async Task OnChanged()
     {
         if (OnChangedCallback.HasDelegate)
         {
@@ -34,7 +34,7 @@ public partial class ScreenplayEditor_BeatEditor
         }
     }
 
-    protected async Task MoveUp()
+    public async Task MoveUp()
     {
         if (OnMoveUpCallback.HasDelegate)
         {
@@ -42,7 +42,7 @@ public partial class ScreenplayEditor_BeatEditor
         }
     }
 
-    protected async Task MoveDown()
+    public async Task MoveDown()
     {
         if (OnMoveDownCallback.HasDelegate)
         {
@@ -50,7 +50,7 @@ public partial class ScreenplayEditor_BeatEditor
         }
     }
 
-    protected async Task Delete()
+    public async Task Delete()
     {
         if (OnDeleteCallback.HasDelegate)
         {

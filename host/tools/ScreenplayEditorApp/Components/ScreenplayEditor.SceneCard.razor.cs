@@ -26,7 +26,7 @@ public partial class ScreenplayEditor_SceneCard
     [Parameter]
     public EventCallback OnDeleteCallback { get; set; }
 
-    protected async Task OnChanged()
+    public async Task OnChanged()
     {
         if (OnChangedCallback.HasDelegate)
         {
@@ -34,7 +34,7 @@ public partial class ScreenplayEditor_SceneCard
         }
     }
 
-    protected async Task MoveUp()
+    public async Task MoveUp()
     {
         if (OnMoveUpCallback.HasDelegate)
         {
@@ -42,7 +42,7 @@ public partial class ScreenplayEditor_SceneCard
         }
     }
 
-    protected async Task MoveDown()
+    public async Task MoveDown()
     {
         if (OnMoveDownCallback.HasDelegate)
         {
@@ -50,7 +50,7 @@ public partial class ScreenplayEditor_SceneCard
         }
     }
 
-    protected async Task Delete()
+    public async Task Delete()
     {
         if (OnDeleteCallback.HasDelegate)
         {
@@ -58,7 +58,7 @@ public partial class ScreenplayEditor_SceneCard
         }
     }
 
-    protected async Task AddBeat(BeatType type)
+    public async Task AddBeat(BeatType type)
     {
         var newBeat = new ScreenplayBeat { BeatType = type };
         if (type == BeatType.Dialogue)
@@ -78,7 +78,7 @@ public partial class ScreenplayEditor_SceneCard
         await OnChanged();
     }
 
-    protected async Task MoveBeatUp(int index)
+    public async Task MoveBeatUp(int index)
     {
         if (index > 0 && index < Scene.Beats.Count)
         {
@@ -89,7 +89,7 @@ public partial class ScreenplayEditor_SceneCard
         }
     }
 
-    protected async Task MoveBeatDown(int index)
+    public async Task MoveBeatDown(int index)
     {
         if (index >= 0 && index < Scene.Beats.Count - 1)
         {
@@ -100,7 +100,7 @@ public partial class ScreenplayEditor_SceneCard
         }
     }
 
-    protected async Task DeleteBeat(int index)
+    public async Task DeleteBeat(int index)
     {
         if (index >= 0 && index < Scene.Beats.Count)
         {

@@ -11,13 +11,13 @@ public partial class ScreenplayEditor
     [Parameter]
     public EventCallback<ScreenplayModel> ModelChanged { get; set; }
 
-    protected bool ShowFountainModal { get; set; }
-    protected string FountainModalMode { get; set; } = "import";
-    protected string FountainModalText { get; set; } = "";
+    public bool ShowFountainModal { get; set; }
+    public string FountainModalMode { get; set; } = "import";
+    public string FountainModalText { get; set; } = "";
 
-    protected int TotalBeats => Model.Scenes.Sum(s => s.Beats.Count);
+    public int TotalBeats => Model.Scenes.Sum(s => s.Beats.Count);
 
-    protected async Task OnChanged()
+    public async Task OnChanged()
     {
         ReindexSceneNumbers();
         if (ModelChanged.HasDelegate)
@@ -26,7 +26,7 @@ public partial class ScreenplayEditor
         }
     }
 
-    protected void ReindexSceneNumbers()
+    public void ReindexSceneNumbers()
     {
         for (var i = 0; i < Model.Scenes.Count; i++)
         {
@@ -34,7 +34,7 @@ public partial class ScreenplayEditor
         }
     }
 
-    protected async Task AddScene()
+    public async Task AddScene()
     {
         var newScene = new ScreenplayScene
         {
@@ -52,7 +52,7 @@ public partial class ScreenplayEditor
         await OnChanged();
     }
 
-    protected async Task MoveSceneUp(int index)
+    public async Task MoveSceneUp(int index)
     {
         if (index > 0 && index < Model.Scenes.Count)
         {
@@ -63,7 +63,7 @@ public partial class ScreenplayEditor
         }
     }
 
-    protected async Task MoveSceneDown(int index)
+    public async Task MoveSceneDown(int index)
     {
         if (index >= 0 && index < Model.Scenes.Count - 1)
         {
@@ -74,7 +74,7 @@ public partial class ScreenplayEditor
         }
     }
 
-    protected async Task DeleteScene(int index)
+    public async Task DeleteScene(int index)
     {
         if (index >= 0 && index < Model.Scenes.Count)
         {
@@ -83,21 +83,21 @@ public partial class ScreenplayEditor
         }
     }
 
-    protected void OpenImportModal()
+    public void OpenImportModal()
     {
         FountainModalMode = "import";
         FountainModalText = "";
         ShowFountainModal = true;
     }
 
-    protected void OpenExportModal()
+    public void OpenExportModal()
     {
         FountainModalMode = "export";
         FountainModalText = FountainFormatter.ToFountain(Model);
         ShowFountainModal = true;
     }
 
-    protected async Task HandleFountainImport(string text)
+    public async Task HandleFountainImport(string text)
     {
         if (!string.IsNullOrWhiteSpace(text))
         {

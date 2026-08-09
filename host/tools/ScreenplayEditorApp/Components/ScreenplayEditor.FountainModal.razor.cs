@@ -23,7 +23,7 @@ public partial class ScreenplayEditor_FountainModal
     [Parameter]
     public EventCallback<string> OnImportCallback { get; set; }
 
-    protected async Task Close()
+    public async Task Close()
     {
         IsOpen = false;
         if (IsOpenChanged.HasDelegate)
@@ -32,7 +32,7 @@ public partial class ScreenplayEditor_FountainModal
         }
     }
 
-    protected async Task Import()
+    public async Task Import()
     {
         if (OnImportCallback.HasDelegate)
         {
@@ -41,7 +41,7 @@ public partial class ScreenplayEditor_FountainModal
         await Close();
     }
 
-    protected async Task CopyText()
+    public async Task CopyText()
     {
         try
         {
