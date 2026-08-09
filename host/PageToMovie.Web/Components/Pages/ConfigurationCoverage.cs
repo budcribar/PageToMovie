@@ -1,0 +1,653 @@
+using System.Net.Http.Json;
+using System.Text.Json;
+using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Forms;
+using Microsoft.AspNetCore.Components.Web;
+using Microsoft.JSInterop;
+using PageToMovie.Core.Models;
+using PageToMovie.Core.Localization;
+using PageToMovie.Web.Services;
+
+namespace PageToMovie.Web.Components.Pages;
+
+public partial class Configuration
+{
+    /// <summary>Coverage domain for the Configuration page. Owns related UI state and behavior.</summary>
+    internal sealed class ConfigurationCoverage
+    {
+        private readonly Configuration S;
+        public ConfigurationCoverage(Configuration host) => S = host;
+
+        internal string _audioModel = "none";
+
+        internal int _backgroundMusicVolumePercent = 20;
+
+        /// <summary>Coverage row open for just-in-time key entry.</summary>
+            internal string? _coverageEditId;
+
+        /// <summary>replace | add-key | add-provider</summary>
+            internal string _coverageKeyMode = "add-provider";
+
+        internal string? _coverageKeyProviderId;
+
+        internal bool _enableBackgroundMusic = true;
+
+        /// <summary>Deep-link from gated features: music | voice | review | video | …</summary>
+            internal string? _focusCapability;
+
+        internal string _imageModel = "";
+
+        internal string _modelName = "";
+
+        internal string _planningModel = "";
+
+        internal string _qualityModel = "";
+
+        internal string _visionModel = "";
+
+        internal string _voiceModel = "none";
+
+
+
+        internal void ParseFocusFromUri()
+        {
+            try
+            {
+                var uri = S.Nav.ToAbsoluteUri(S.Nav.Uri);
+                var q = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
+                if (q.TryGetValue("focus", out var f) && !string.IsNullOrWhiteSpace(f))
+                    _focusCapability = NormalizeFocus(f.ToString());
+            }
+            catch { _focusCapability = null; }
+        }
+
+
+        internal static string? NormalizeFocus(string? raw)
+        {
+            var s = (raw ?? "").Trim().ToLowerInvariant();
+            return s switch
+            {
+                "music" or "audio" or "bgm" => "music",
+                "voice" or "voice_clone" or "clone" or "tts" => "voice",
+                "review" or "qa" or "video_review" or "quality" => "review",
+                "video" or "film" => "video",
+                "image" or "portrait" or "characters" => "image",
+                "planning" or "script" or "chat" or "screenplay" => "planning",
+                "vision" or "ocr" => "vision",
+                _ => string.IsNullOrWhiteSpace(s) ? null : s,
+            };
+        }
+
+
+        internal bool FocusActive => !string.IsNullOrWhiteSpace(_focusCapability);
+
+
+        internal sealed class CoverageRow
+        {
+            public string Id { get; set; } = "";
+            public string Label { get; set; } = "";
+            public string Hint { get; set; } = "";
+            public string ModelId { get; set; } = "";
+            public string ProviderId { get; set; } = "";
+            public string ProviderDisplay { get; set; } = "";
+            public bool Required { get; set; } = true;
+            public bool OptionalOff { get; set; }
+            public bool KeyReady { get; set; }
+        }
+
+
+        internal IReadOnlyList<CoverageRow> BuildCoverageRows()
+        {
+            var rows = new List<CoverageRow>
+            {
+                MakeCoverage("video", "Video generation", "Clips / film", _modelName, "video", required: true),
+                MakeCoverage("image", "Character portraits", "Image gen", _imageModel, "image", required: true),
+                MakeCoverage("planning", "Script & planning", "Screenplay, cast, shot plan", _planningModel, "chat", required: true),
+                MakeCoverage("vision", "Image vision / OCR", "Book pages & image understanding", _visionModel, "vision", required: true),
+                MakeCoverage("review", "Video review (QA)", "Dialogue check & auto-review", _qualityModel, "chat", required: true, preferVideoReview: true),
+                MakeCoverage("music", "Background music", "Optional scores", _audioModel, "audio", required: false),
+                MakeCoverage("voice", "Voice clone & speech", "Clones your voice and speaks the dialogue (text-to-speech)", _voiceModel, "voice", required: false),
+            };
+            return rows;
+        }
+
+
+        internal CoverageRow MakeCoverage(
+            string id,
+            string label,
+            string hint,
+            string modelId,
+            string capability,
+            bool required,
+            bool preferVideoReview = false,
+            string? forceProviderId = null)
+        {
+            // Optional stage turned off (music "none", etc.).
+            var off = string.IsNullOrWhiteSpace(modelId)
+                      || modelId.Equals("none", StringComparison.OrdinalIgnoreCase)
+                      || modelId.Equals("disabled", StringComparison.OrdinalIgnoreCase);
+
+
+            string providerId;
+            if (!string.IsNullOrWhiteSpace(forceProviderId))
+                providerId = SupportedModelCatalog.NormalizeProviderId(forceProviderId);
+            else if (off)
+                providerId = "";
+            else
+                providerId = ResolveProviderIdForModel(modelId, capability, preferVideoReview);
+
+            var providerRow = S.ProviderRows.FirstOrDefault(pr =>
+                string.Equals(
+                    SupportedModelCatalog.NormalizeProviderId(pr.ProviderId),
+                    providerId,
+                    StringComparison.OrdinalIgnoreCase));
+            var display = string.IsNullOrWhiteSpace(providerId) ? "" : ConfigurationCatalog.FriendlyProviderLabel(providerId);
+            var keyReady = off || string.IsNullOrWhiteSpace(providerId) || (providerRow?.IsConfigured ?? false);
+
+            return new CoverageRow
+            {
+                Id = id,
+                Label = label,
+                Hint = hint,
+                ModelId = off ? "Off" : modelId,
+                ProviderId = providerId,
+                ProviderDisplay = display,
+                Required = required,
+                OptionalOff = !required && off,
+                // Optional + off counts as "ready" for the checklist (nothing missing).
+                KeyReady = keyReady || (!required && off),
+            };
+        }
+
+
+        internal string ResolveProviderIdForModel(string modelId, string capability, bool preferVideoReview)
+        {
+            if (string.IsNullOrWhiteSpace(modelId)
+                || modelId.Equals("none", StringComparison.OrdinalIgnoreCase)
+                || modelId.Equals("disabled", StringComparison.OrdinalIgnoreCase))
+                return "";
+
+            // Only models that exist in the loaded catalog (or catalog static after hydrate).
+            var m = S._allModels.FirstOrDefault(x =>
+                string.Equals(x.Id, modelId, StringComparison.OrdinalIgnoreCase) &&
+                (preferVideoReview
+                    ? (x.SupportsVideoReview || string.Equals(x.Capability, capability, StringComparison.OrdinalIgnoreCase))
+                    : string.Equals(x.Capability, capability, StringComparison.OrdinalIgnoreCase)))
+                ?? S._allModels.FirstOrDefault(x => string.Equals(x.Id, modelId, StringComparison.OrdinalIgnoreCase));
+
+            if (m is not null)
+                return ConfigurationCatalog.ModelProviderId(m);
+
+            // Server-side catalog (if WASM hydrated SupportedModelCatalog).
+            var cap = capability.ToLowerInvariant() switch
+            {
+                "video" => ModelCapability.Video,
+                "image" => ModelCapability.Image,
+                "vision" => ModelCapability.Vision,
+                "audio" => ModelCapability.Audio,
+                "voice" => ModelCapability.Voice,
+                _ => ModelCapability.Chat,
+            };
+            var entry = SupportedModelCatalog.Find(modelId, cap) ?? SupportedModelCatalog.Find(modelId);
+            if (entry is null || !entry.Enabled)
+                return ""; // not in catalog → not real
+            return SupportedModelCatalog.NormalizeProviderId(entry.ProviderId);
+        }
+
+
+        internal List<string> CoverageUsesForProvider(string providerId)
+        {
+            return BuildCoverageRows()
+                .Where(c => !c.OptionalOff
+                            && !string.IsNullOrWhiteSpace(c.ProviderId)
+                            && string.Equals(c.ProviderId, providerId, StringComparison.OrdinalIgnoreCase))
+                .Select(c => c.Label)
+                .Distinct()
+                .ToList();
+        }
+
+
+        /// <summary>
+        /// Click on a provider card. If a personal key is already saved, use it and align the model.
+        /// Otherwise open the paste form for that provider only.
+        /// </summary>
+        internal async Task ChooseProviderForCoverageAsync(string providerId, string coverageId)
+        {
+            var row = S.ProviderRows.FirstOrDefault(pr =>
+                string.Equals(pr.ProviderId, providerId, StringComparison.OrdinalIgnoreCase));
+            if (row?.IsConfigured == true)
+            {
+                await UseSavedProviderForCoverageAsync(providerId, coverageId);
+                return;
+            }
+            S.SelectKeyProvider(providerId);
+        }
+
+
+        /// <summary>
+        /// User already saved this provider key — point the coverage model at it and close the panel.
+        /// Fixes: model is aimusicapi-suno but Suno (sunoapi) key exists → switch to suno-v5-5.
+        /// </summary>
+        internal async Task UseSavedProviderForCoverageAsync(string providerId, string coverageId)
+        {
+            S._error = null;
+            S._apiKeyFeedback = null;
+            var label = ConfigurationCatalog.FriendlyProviderLabel(providerId);
+
+            if (string.Equals(coverageId, "music", StringComparison.OrdinalIgnoreCase))
+                EnsureMusicModelForProvider(providerId);
+            else if (string.Equals(coverageId, "voice", StringComparison.OrdinalIgnoreCase))
+                EnsureVoiceModelForProvider(providerId);
+            else
+            {
+                // Required stages (video, image, …): switch selected model to one from this provider if possible.
+                AlignCoverageModelToProvider(coverageId, providerId);
+            }
+
+            if (!string.IsNullOrWhiteSpace(S._projectId) && S._cfg is not null)
+            {
+                try { await S.PersistProjectConfigAsync(); }
+                catch (Exception ex) { S._error = ex.Message; return; }
+            }
+
+            var ready = BuildCoverageRows().FirstOrDefault(c =>
+                string.Equals(c.Id, coverageId, StringComparison.OrdinalIgnoreCase));
+            if (ready?.KeyReady == true)
+            {
+                S._apiKeyFeedback = $"{label}: using your saved key · model set to match.";
+                S._message = S._apiKeyFeedback;
+                S.CancelAddKey();
+            }
+            else
+            {
+                // Still not ready — open paste (key missing or model couldn't align).
+                S.SelectKeyProvider(providerId);
+                S._apiKeyFeedback =
+                    $"{label}: key is on file, but no catalog model was selected for this job. " +
+                    "Pick a provider/model in the dropdowns above (music & voice start as Off until you choose one).";
+            }
+        }
+
+
+        internal void AlignCoverageModelToProvider(string coverageId, string providerId)
+        {
+            var pid = SupportedModelCatalog.NormalizeProviderId(providerId);
+            var models = ModelsForCoverage(coverageId);
+            static string PidOf(SupportedModelDto m) =>
+                !string.IsNullOrWhiteSpace(m.ProviderId)
+                    ? SupportedModelCatalog.NormalizeProviderId(m.ProviderId)
+                    : SupportedModelCatalog.NormalizeProviderId(m.Provider);
+
+            var pick = models.FirstOrDefault(m =>
+                !string.Equals(m.Id, "none", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(PidOf(m), pid, StringComparison.OrdinalIgnoreCase));
+            if (pick is not null)
+                SetCoverageModelId(coverageId, pick.Id);
+        }
+
+
+        internal string GetCoverageModelId(string coverageId) => coverageId switch
+        {
+            "video" => _modelName,
+            "image" => _imageModel,
+            "planning" => _planningModel,
+            "vision" => _visionModel,
+            "review" => _qualityModel,
+            "music" => _audioModel,
+            "voice" => _voiceModel,
+            _ => "",
+        };
+
+
+        internal void SetCoverageModelId(string coverageId, string modelId)
+        {
+            switch (coverageId)
+            {
+                case "video": _modelName = modelId; break;
+                case "image": _imageModel = modelId; break;
+                case "planning": _planningModel = modelId; break;
+                case "vision": _visionModel = modelId; break;
+                case "review": _qualityModel = modelId; break;
+                case "music": _audioModel = modelId; break;
+                case "voice": _voiceModel = modelId; break;
+            }
+        }
+
+
+        internal IReadOnlyList<SupportedModelDto> ModelsForCoverage(string coverageId) => coverageId switch
+        {
+            "video" => S._videoModels,
+            "image" => S._imageModels,
+            "planning" => S._planningModels,
+            "vision" => S._visionModels,
+            "review" => S._videoReviewModels,
+            "music" => S._audioModels,
+            "voice" => S._voiceModels,
+            _ => Array.Empty<SupportedModelDto>(),
+        };
+
+
+        /// <summary>Models for a coverage job limited to one provider (second-stage dropdown).</summary>
+        internal IReadOnlyList<SupportedModelDto> ModelsForCoverageProvider(string coverageId, string? providerId)
+        {
+            var all = ModelsForCoverage(coverageId);
+            if (string.IsNullOrWhiteSpace(providerId))
+                return Array.Empty<SupportedModelDto>();
+            var pid = SupportedModelCatalog.NormalizeProviderId(providerId);
+            var list = all
+                .Where(m => !string.Equals(m.Id, "none", StringComparison.OrdinalIgnoreCase))
+                .Where(m => string.Equals(ConfigurationCatalog.ModelProviderId(m), pid, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(m => m.IsVoiceCloneStep ? 0 : 1)
+                .ThenBy(m => ModelOptionLabel(m), StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            return list;
+        }
+
+
+        internal async Task OnCoverageProviderChangedAsync(string coverageId, string? providerId)
+        {
+            if (string.IsNullOrWhiteSpace(providerId))
+                return;
+            var pid = SupportedModelCatalog.NormalizeProviderId(providerId);
+            var models = ModelsForCoverageProvider(coverageId, pid);
+            var current = GetCoverageModelId(coverageId);
+            var stillValid = models.Any(m => string.Equals(m.Id, current, StringComparison.OrdinalIgnoreCase));
+            if (!stillValid)
+            {
+                // Prefer clone-step for voice; otherwise first model for this provider.
+                var pick = models.FirstOrDefault(m => m.IsVoiceCloneStep) ?? models.FirstOrDefault();
+                if (pick is not null)
+                    SetCoverageModelId(coverageId, pick.Id);
+                else if (coverageId is "music" or "voice")
+                    SetCoverageModelId(coverageId, "none");
+            }
+
+            _coverageEditId = null;
+            S._message = null;
+            if (!string.IsNullOrEmpty(S._projectId) && S._cfg is not null)
+            {
+                try
+                {
+                    await S.SaveAsync();
+                    S._message = $"Provider set to {FriendlyProviderLabel(pid)}.";
+                }
+                catch (Exception ex)
+                {
+                    S._error = ex.Message;
+                }
+            }
+
+            var row = BuildCoverageRows().FirstOrDefault(c =>
+                string.Equals(c.Id, coverageId, StringComparison.OrdinalIgnoreCase));
+            if (row is { KeyReady: false, OptionalOff: false } && !string.IsNullOrWhiteSpace(row.ProviderId))
+                S.BeginAddKey(coverageId, row.ProviderId);
+        }
+
+
+        internal IEnumerable<ProviderKeyStatusDto> ProvidersForCoverage(string coverageId)
+        {
+            var models = ModelsForCoverage(coverageId);
+            var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var m in models)
+            {
+                if (string.Equals(m.Id, "none", StringComparison.OrdinalIgnoreCase)) continue;
+                var pid = ConfigurationCatalog.ModelProviderId(m);
+                if (!string.IsNullOrWhiteSpace(pid) && !pid.Equals("none", StringComparison.OrdinalIgnoreCase))
+                    ids.Add(pid);
+            }
+
+            if (ids.Count == 0)
+            {
+                foreach (var pr in S.ProviderRows)
+                {
+                    var ok = coverageId switch
+                    {
+                        "video" => pr.SupportsVideoGen || pr.SupportsVideo,
+                        "image" => pr.SupportsImageGen || pr.SupportsImage,
+                        "planning" => pr.SupportsScriptPlanning || pr.SupportsChat,
+                        "vision" => pr.SupportsImageVision || pr.SupportsVision,
+                        "review" => pr.SupportsVideoReview || pr.SupportsChat,
+                        "music" => string.Equals(pr.ProviderId, "fal", StringComparison.OrdinalIgnoreCase)
+                                   || string.Equals(pr.ProviderId, "suno", StringComparison.OrdinalIgnoreCase)
+                                   || string.Equals(pr.ProviderId, "aimusicapi", StringComparison.OrdinalIgnoreCase),
+                        "voice" => string.Equals(pr.ProviderId, "elevenlabs", StringComparison.OrdinalIgnoreCase)
+                                   || string.Equals(pr.ProviderId, "fal", StringComparison.OrdinalIgnoreCase),
+                        _ => false,
+                    };
+                    if (ok) ids.Add(pr.ProviderId);
+                }
+            }
+
+            // Include any provider id we discovered from models even if ProviderRows lacks it (e.g. OpenAI).
+            var rows = S.ProviderRows
+                .Select(pr => new ProviderKeyStatusDto
+                {
+                    ProviderId = SupportedModelCatalog.NormalizeProviderId(pr.ProviderId),
+                    DisplayName = pr.DisplayName,
+                    Family = pr.Family,
+                    HasPersonalKey = pr.HasPersonalKey,
+                    MaskedPersonalKey = pr.MaskedPersonalKey,
+                    HasServerKey = pr.HasServerKey,
+                    ActiveSource = pr.ActiveSource,
+                    CapabilitiesSummary = pr.CapabilitiesSummary,
+                    SupportsVideo = pr.SupportsVideo,
+                    SupportsImage = pr.SupportsImage,
+                    SupportsChat = pr.SupportsChat,
+                    SupportsVision = pr.SupportsVision,
+                    SupportsVideoGen = pr.SupportsVideoGen,
+                    SupportsVideoReview = pr.SupportsVideoReview,
+                    SupportsImageGen = pr.SupportsImageGen,
+                    SupportsScriptPlanning = pr.SupportsScriptPlanning,
+                    SupportsImageVision = pr.SupportsImageVision,
+                    RequiredEnvKeys = pr.RequiredEnvKeys,
+                    Notes = pr.Notes,
+                })
+                .Where(pr => ids.Contains(pr.ProviderId))
+                .GroupBy(pr => pr.ProviderId, StringComparer.OrdinalIgnoreCase)
+                .Select(g => g.First())
+                .ToList();
+            foreach (var id in ids)
+            {
+                if (rows.Any(r => string.Equals(r.ProviderId, id, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+                rows.Add(new ProviderKeyStatusDto
+                {
+                    ProviderId = id,
+                    DisplayName = ConfigurationCatalog.FriendlyProviderLabel(id),
+                    ActiveSource = "none",
+                    CapabilitiesSummary = "—",
+                    RequiredEnvKeys = new List<string>(),
+                });
+            }
+
+            // Selected provider (from model) first so the <select> cannot fall back to a random first option.
+            var currentModelId = GetCoverageModelId(coverageId);
+            var currentPid = "";
+            if (!string.IsNullOrWhiteSpace(currentModelId)
+                && !string.Equals(currentModelId, "none", StringComparison.OrdinalIgnoreCase))
+            {
+                var cap = coverageId switch
+                {
+                    "video" => "video",
+                    "image" => "image",
+                    "planning" => "chat",
+                    "vision" => "vision",
+                    "review" => "chat",
+                    "music" => "audio",
+                    "voice" => "voice",
+                    _ => "chat",
+                };
+                currentPid = ResolveProviderIdForModel(currentModelId, cap, preferVideoReview: coverageId == "review");
+                if (!string.IsNullOrWhiteSpace(currentPid)
+                    && !rows.Any(r => string.Equals(r.ProviderId, currentPid, StringComparison.OrdinalIgnoreCase)))
+                {
+                    rows.Insert(0, new ProviderKeyStatusDto
+                    {
+                        ProviderId = currentPid,
+                        DisplayName = ConfigurationCatalog.FriendlyProviderLabel(currentPid),
+                        ActiveSource = "none",
+                        CapabilitiesSummary = "—",
+                        RequiredEnvKeys = new List<string>(),
+                    });
+                }
+            }
+
+            return rows
+                .OrderBy(pr => string.Equals(pr.ProviderId, currentPid, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                .ThenBy(pr => pr.IsConfigured ? 0 : 1)
+                .ThenBy(pr => ConfigurationCatalog.FriendlyProviderLabel(pr.ProviderId));
+        }
+
+
+        internal async Task OnCoverageModelChangedAsync(string coverageId, string? modelId)
+        {
+            if (string.IsNullOrWhiteSpace(modelId)) return;
+            SetCoverageModelId(coverageId, modelId);
+            _coverageEditId = null;
+            S._message = null;
+            if (!string.IsNullOrEmpty(S._projectId) && S._cfg is not null)
+            {
+                try
+                {
+                    await S.SaveAsync();
+                    S._message = "Model saved.";
+                }
+                catch (Exception ex)
+                {
+                    S._error = ex.Message;
+                }
+            }
+            var row = BuildCoverageRows().FirstOrDefault(c => string.Equals(c.Id, coverageId, StringComparison.OrdinalIgnoreCase));
+            if (row is { KeyReady: false, OptionalOff: false } && !string.IsNullOrWhiteSpace(row.ProviderId))
+                S.BeginAddKey(coverageId, row.ProviderId);
+        }
+
+
+        internal async Task TurnOffOptionalAsync(string coverageId)
+        {
+            if (coverageId == "music")
+            {
+                _audioModel = "none";
+                _enableBackgroundMusic = false;
+            }
+            else if (coverageId == "voice")
+            {
+                _voiceModel = "none";
+            }
+            S.CancelAddKey();
+            if (!string.IsNullOrEmpty(S._projectId) && S._cfg is not null)
+            {
+                try { await S.SaveAsync(); }
+                catch (Exception ex) { S._error = ex.Message; }
+            }
+        }
+
+
+        /// <summary>Model product name from catalog displayName only.</summary>
+        internal static string ModelOptionLabel(SupportedModelDto m)
+        {
+            var name = string.IsNullOrWhiteSpace(m.DisplayName) ? m.Id : m.DisplayName.Trim();
+            return m.LabMode ? $"{name} [LAB]" : name;
+        }
+
+
+
+
+        /// <summary>After saving a voice-provider key, pick a clone-step model from the catalog for that provider.</summary>
+        internal void EnsureVoiceModelForProvider(string providerId)
+        {
+            var pid = SupportedModelCatalog.NormalizeProviderId(providerId);
+            var currentProvider = ResolveProviderIdForModel(_voiceModel, "voice", preferVideoReview: false);
+            var off = string.IsNullOrWhiteSpace(_voiceModel)
+                      || _voiceModel.Equals("none", StringComparison.OrdinalIgnoreCase)
+                      || _voiceModel.Equals("disabled", StringComparison.OrdinalIgnoreCase);
+
+            if (!off && string.Equals(currentProvider, pid, StringComparison.OrdinalIgnoreCase))
+            {
+                var cur = S._voiceModels.FirstOrDefault(m => string.Equals(m.Id, _voiceModel, StringComparison.OrdinalIgnoreCase));
+                if (cur is { IsVoiceCloneStep: true })
+                    return;
+                // Prefer clone-step over TTS-only when switching within same provider.
+            }
+
+            var pick = S._voiceModels.FirstOrDefault(m =>
+                !string.Equals(m.Id, "none", StringComparison.OrdinalIgnoreCase)
+                && m.IsVoiceCloneStep
+                && string.Equals(ConfigurationCatalog.ModelProviderId(m), pid, StringComparison.OrdinalIgnoreCase))
+                ?? S._voiceModels.FirstOrDefault(m =>
+                    !string.Equals(m.Id, "none", StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(ConfigurationCatalog.ModelProviderId(m), pid, StringComparison.OrdinalIgnoreCase));
+
+            if (pick is null)
+            {
+                try
+                {
+                    var fromCatalog = SupportedModelCatalog.ForCapability(ModelCapability.Voice)
+                        .Where(e =>
+                            e.Enabled &&
+                            string.Equals(
+                                SupportedModelCatalog.NormalizeProviderId(e.ProviderId),
+                                pid,
+                                StringComparison.OrdinalIgnoreCase))
+                        .OrderByDescending(e => e.IsVoiceCloneStep)
+                        .FirstOrDefault();
+                    if (fromCatalog is not null)
+                    {
+                        pick = SupportedModelCatalog.ToDto(fromCatalog);
+                        if (!S._voiceModels.Any(m => string.Equals(m.Id, pick.Id, StringComparison.OrdinalIgnoreCase)))
+                            S._voiceModels.Add(pick);
+                    }
+                }
+                catch { /* ignore */ }
+            }
+
+            if (pick is not null)
+                _voiceModel = pick.Id;
+            // else leave as-is — no invented model id
+        }
+
+
+        /// <summary>After saving a music-provider key, pick a matching music model from the catalog.</summary>
+        internal void EnsureMusicModelForProvider(string providerId)
+        {
+            var pid = SupportedModelCatalog.NormalizeProviderId(providerId);
+            var currentProvider = ResolveProviderIdForModel(_audioModel, "audio", preferVideoReview: false);
+            var off = string.IsNullOrWhiteSpace(_audioModel)
+                      || _audioModel.Equals("none", StringComparison.OrdinalIgnoreCase)
+                      || _audioModel.Equals("disabled", StringComparison.OrdinalIgnoreCase);
+            if (!off && string.Equals(currentProvider, pid, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            var pick = S._audioModels.FirstOrDefault(m =>
+                !string.Equals(m.Id, "none", StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(ConfigurationCatalog.ModelProviderId(m), pid, StringComparison.OrdinalIgnoreCase));
+            if (pick is null)
+            {
+                // Last resort: catalog static (provider must still exist in models_catalog.json).
+                try
+                {
+                    var fromCatalog = SupportedModelCatalog.ForCapability(ModelCapability.Audio)
+                        .FirstOrDefault(e =>
+                            e.Enabled &&
+                            string.Equals(
+                                SupportedModelCatalog.NormalizeProviderId(e.ProviderId),
+                                pid,
+                                StringComparison.OrdinalIgnoreCase));
+                    if (fromCatalog is not null)
+                    {
+                        pick = SupportedModelCatalog.ToDto(fromCatalog);
+                        if (!S._audioModels.Any(m => string.Equals(m.Id, pick.Id, StringComparison.OrdinalIgnoreCase)))
+                            S._audioModels.Add(pick);
+                    }
+                }
+                catch { /* ignore */ }
+            }
+            if (pick is not null)
+            {
+                _audioModel = pick.Id;
+                _enableBackgroundMusic = true;
+            }
+        }
+
+    }
+}
