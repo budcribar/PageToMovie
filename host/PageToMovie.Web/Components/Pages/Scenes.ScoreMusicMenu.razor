@@ -1,0 +1,40 @@
+@* Page-local to Scenes — score music chooser *@
+
+@if (Visible)
+{
+    <DarkModalShell Visible="true" OnClose="OnClose">
+        <Title>🎵 Score music — Scene S@(SceneNumber.ToString("D2"))</Title>
+        <ChildContent>
+            <label class="form-label small text-muted" for="scoreMusicStyle">Music style</label>
+            <select id="scoreMusicStyle"
+                    class="form-select form-select-sm bg-dark text-white border-secondary mb-3"
+                    data-testid="score-menu-model"
+                    disabled="@Disabled"
+                    value="@SelectedModelId"
+                    @onchange="OnModelChange">
+                @foreach (var m in Models)
+                {
+                    <option value="@m.Id">@m.DisplayName</option>
+                }
+            </select>
+            @if (CanSing)
+            {
+                <ToggleSwitch Value="WantVocal" ValueChanged="WantVocalChanged" Id="scoreMenuSing"
+                              Disabled="@Disabled" LabelClass="form-check-label small"
+                              data-testid="score-menu-sing">
+                    <Label>Sing lyrics for this scene</Label>
+                </ToggleSwitch>
+            }
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-sm btn-outline-secondary"
+                    disabled="@Scoring" @onclick="OnClose">Cancel</button>
+            <button type="button" class="btn btn-sm btn-warning text-black fw-bold"
+                    data-testid="score-menu-generate"
+                    disabled="@GenerateDisabled"
+                    @onclick="OnGenerate">
+                @(WantVocal && CanSing ? "🎤" : "🎵") Generate music
+            </button>
+        </Footer>
+    </DarkModalShell>
+}

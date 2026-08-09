@@ -58,69 +58,10 @@ public partial class Admin
     private const long MaxImportBytes = 512L * 1024 * 1024;
 
     private bool _showTestEmailModal;
-    private string _testEmailAddress = "";
-    private string? _testEmailStatus;
-    private string? _testEmailError;
-    private bool _testEmailBusy;
-    private TestEmailResponse? _testEmailResult;
 
-    private void OpenTestEmailModal()
-    {
-        _showTestEmailModal = true;
-        _testEmailStatus = null;
-        _testEmailError = null;
-        _testEmailResult = null;
-        if (string.IsNullOrWhiteSpace(_testEmailAddress) && !string.IsNullOrWhiteSpace(Session.UserId))
-        {
-            _testEmailAddress = Session.UserId.Contains('@') ? Session.UserId : "";
-        }
-    }
+    private void OpenTestEmailModal() => _showTestEmailModal = true;
 
-    private void CloseTestEmailModal()
-    {
-        _showTestEmailModal = false;
-        _testEmailStatus = null;
-        _testEmailError = null;
-        _testEmailResult = null;
-    }
-
-    private async Task SendTestEmailAsync()
-    {
-        _testEmailStatus = null;
-        _testEmailError = null;
-        _testEmailResult = null;
-
-        var to = _testEmailAddress.Trim();
-        if (string.IsNullOrWhiteSpace(to) || !to.Contains('@'))
-        {
-            _testEmailError = "Enter a valid recipient email address.";
-            return;
-        }
-
-        _testEmailBusy = true;
-        try
-        {
-            var res = await Api.TestEmailAsync(to);
-            _testEmailResult = res;
-            if (res.Ok)
-            {
-                _testEmailStatus = $"✓ {res.Message ?? "Test email sent successfully."}";
-            }
-            else
-            {
-                _testEmailError = $"✕ {res.Error ?? res.Message ?? "Failed to send test email."}";
-            }
-        }
-        catch (Exception ex)
-        {
-            _testEmailError = $"✕ Error sending test email: {ex.Message}";
-        }
-        finally
-        {
-            _testEmailBusy = false;
-            StateHasChanged();
-        }
-    }
+    private void CloseTestEmailModal() => _showTestEmailModal = false;
 
     private bool _showJobsAndLocks = true;
     private bool _showProjectArchiving = true;

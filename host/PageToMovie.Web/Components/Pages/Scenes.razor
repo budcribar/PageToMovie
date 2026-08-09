@@ -1864,41 +1864,19 @@ else
    live at the point of use instead of parked in the toolbar. *@
 @if (_scoreMenuScene is int scoreSn)
 {
-    <DarkModalShell Visible="true" OnClose="CloseScoreMenu">
-        <Title>🎵 Score music — Scene S@(scoreSn.ToString("D2"))</Title>
-        <ChildContent>
-                    <label class="form-label small text-muted" for="scoreMusicStyle">Music style</label>
-                    <select id="scoreMusicStyle"
-                            class="form-select form-select-sm bg-dark text-white border-secondary mb-3"
-                            data-testid="score-menu-model"
-                            disabled="@(_busy || _scoringMusic)"
-                            value="@_selectedAudioModel"
-                            @onchange="@(e => _selectedAudioModel = e.Value?.ToString() ?? _selectedAudioModel)">
-                        @foreach (var m in _audioModels)
-                        {
-                            <option value="@m.Id">@m.DisplayName</option>
-                        }
-                    </select>
-                    @if (SelectedAudioModelCanSing)
-                    {
-                        <ToggleSwitch Value="_wantVocal" ValueChanged="@(v => _wantVocal = v)" Id="scoreMenuSing"
-                                      Disabled="@(_busy || _scoringMusic)" LabelClass="form-check-label small"
-                                      data-testid="score-menu-sing">
-                            <Label>Sing lyrics for this scene</Label>
-                        </ToggleSwitch>
-                    }
-        </ChildContent>
-        <Footer>
-            <button type="button" class="btn btn-sm btn-outline-secondary"
-                    disabled="@_scoringMusic" @onclick="CloseScoreMenu">Cancel</button>
-            <button type="button" class="btn btn-sm btn-warning text-black fw-bold"
-                    data-testid="score-menu-generate"
-                    disabled="@(_busy || JobRunning || _scoringMusic)"
-                    @onclick="() => ScoreFromMenuAsync(scoreSn)">
-                @(_wantVocal && SelectedAudioModelCanSing ? "🎤" : "🎵") Generate music
-            </button>
-        </Footer>
-    </DarkModalShell>
+    <Scenes_ScoreMusicMenu Visible="true"
+                           SceneNumber="scoreSn"
+                           Models="_audioModels"
+                           SelectedModelId="@_selectedAudioModel"
+                           SelectedModelIdChanged="@(v => _selectedAudioModel = v)"
+                           WantVocal="_wantVocal"
+                           WantVocalChanged="@(v => _wantVocal = v)"
+                           CanSing="SelectedAudioModelCanSing"
+                           Disabled="@(_busy || _scoringMusic)"
+                           Scoring="_scoringMusic"
+                           GenerateDisabled="@(_busy || JobRunning || _scoringMusic)"
+                           OnClose="CloseScoreMenu"
+                           OnGenerate="@(() => ScoreFromMenuAsync(scoreSn))" />
 }
 
 @* Audio Takes Modal — compares scene background-audio generation runs (model, vocal/instrumental,

@@ -75,31 +75,3 @@
         }
     }
 </AdaptationShell>
-
-@code {
-    public override string StepKey => "embellish";
-
-    private async Task EmbellishAsync()
-    {
-        Busy = true;
-        BusyMessage = "Enriching the screenplay…";
-        Error = null;
-        Message = null;
-        await InvokeAsync(StateHasChanged);
-        try
-        {
-            var result = await Engine.EmbellishScreenplayAsync(ProjectId);
-            Message = result?.Message ?? "Done.";
-            await SoftLoadAsync();
-        }
-        catch (Exception ex)
-        {
-            Error = ex.Message;
-        }
-        finally
-        {
-            Busy = false;
-            BusyMessage = null;
-        }
-    }
-}

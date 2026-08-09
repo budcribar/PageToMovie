@@ -1030,76 +1030,7 @@
         </div>
     }
 
-    @if (_showTestEmailModal)
-    {
-        <div class="modal fade show d-block" tabindex="-1" role="dialog" aria-modal="true" style="background:rgba(0,0,0,0.5);" @onclick="CloseTestEmailModal">
-            <div class="modal-dialog modal-dialog-centered" @onclick:stopPropagation="true">
-                <div class="modal-content">
-                    <div class="modal-header py-2">
-                        <h5 class="modal-title">✉️ Send Test Outbound Email</h5>
-                        <button type="button" class="btn-close" aria-label="Close" @onclick="CloseTestEmailModal"></button>
-                    </div>
-                    <div class="modal-body py-3">
-                        <p class="small text-muted mb-3">
-                            Send a test email to verify your active mail sender configuration (Resend API key, SMTP server, or log fallback).
-                        </p>
-                        <div class="mb-3">
-                            <label class="form-label small fw-semibold">Recipient Email Address</label>
-                            <input type="email"
-                                   class="form-control form-control-sm"
-                                   placeholder="you@example.com"
-                                   @bind="_testEmailAddress"
-                                   @bind:event="oninput" />
-                        </div>
-                        @if (!string.IsNullOrEmpty(_testEmailStatus))
-                        {
-                            <div class="alert alert-success py-2 small mb-3" role="status">@_testEmailStatus</div>
-                        }
-                        @if (!string.IsNullOrEmpty(_testEmailError))
-                        {
-                            <div class="alert alert-danger py-2 small mb-3" role="alert">@_testEmailError</div>
-                        }
-
-                        @if (_testEmailResult is { } res)
-                        {
-                            <div class="card bg-dark border-secondary text-light small mb-0">
-                                <div class="card-header py-1 fw-semibold d-flex justify-content-between align-items-center">
-                                    <span>🔍 Mail Sender Diagnostic Report</span>
-                                    <span class="badge @(res.Ok ? "bg-success" : "bg-danger")">@(res.Ok ? "PASSED" : "FAILED")</span>
-                                </div>
-                                <div class="card-body p-2">
-                                    <div class="mb-1">Active Provider: <code class="text-info">@(res.SenderType ?? "Unknown")</code></div>
-                                    <div class="mb-1">Resend Key Resolved: <strong>@(res.ResendKeyResolved ? "Yes ✓" : "No ✕")</strong></div>
-                                    @if (res.CheckedEnvs is { Count: > 0 } envs)
-                                    {
-                                        <div class="mt-2 fw-semibold">Detected Environment Variables:</div>
-                                        <div class="d-flex flex-wrap gap-1 mt-1">
-                                            @foreach (var env in envs)
-                                            {
-                                                <span class="badge @(env.Value ? "text-bg-success" : "text-bg-secondary")">
-                                                    @env.Key: @(env.Value ? "SET" : "NOT SET")
-                                                </span>
-                                            }
-                                        </div>
-                                    }
-                                    @if (res.SenderType == "LoggingEmailSender")
-                                    {
-                                        <div class="alert alert-warning py-1 px-2 small mt-2 mb-0">
-                                            ⚠️ <strong>Server is in Log-Only Mode:</strong> No real email was transmitted to an inbox. Outbound email links are logged to server stdout. Set the <code>Resend_Key</code> environment variable on Railway to enable live email delivery.
-                                        </div>
-                                    }
-                                </div>
-                            </div>
-                        }
-                    </div>
-                    <div class="modal-footer py-2">
-                        <button type="button" class="btn btn-sm btn-secondary" @onclick="CloseTestEmailModal" disabled="@_testEmailBusy">Close</button>
-                        <button type="button" class="btn btn-sm btn-warning" @onclick="SendTestEmailAsync" disabled="@_testEmailBusy">
-                            @(_testEmailBusy ? "Sending Email…" : "Send Test Email")
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    }
+    <Admin_TestEmailModal Visible="_showTestEmailModal"
+                          DefaultAddress="@Session.UserId"
+                          OnClose="CloseTestEmailModal" />
 </div>

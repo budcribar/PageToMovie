@@ -1,0 +1,50 @@
+@* Page-local to Characters — full-screen look zoom lightbox *@
+
+@if (Visible && !string.IsNullOrEmpty(ImageUrl))
+{
+    <div class="char-zoom"
+         role="dialog"
+         aria-modal="true"
+         aria-label="Zoomed character look"
+         data-testid="char-look-zoom"
+         @onclick="OnClose">
+        <div class="char-zoom__panel" @onclick:stopPropagation="true">
+            <div class="char-zoom__toolbar">
+                <span class="char-zoom__title">@Label</span>
+                <div class="d-flex flex-wrap gap-2 align-items-center">
+                    <button type="button" class="btn btn-sm btn-outline-light"
+                            disabled="@(!CanNavigate)"
+                            @onclick="OnPrev"
+                            title="Previous look">←</button>
+                    <button type="button" class="btn btn-sm btn-outline-light"
+                            disabled="@(!CanNavigate)"
+                            @onclick="OnNext"
+                            title="Next look">→</button>
+                    <button type="button" class="btn btn-sm btn-outline-light"
+                            @onclick="OnToggleScale"
+                            title="Toggle 1× / 2×">
+                        @(Scale > 1.01 ? "1× fit" : "2× zoom")
+                    </button>
+                    <button type="button" class="btn btn-sm btn-primary"
+                            disabled="@UseDisabled"
+                            @onclick="OnUse">
+                        Use this look
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary"
+                            @onclick="OnClose">Close</button>
+                </div>
+            </div>
+            <div class="char-zoom__stage @(Scale > 1.01 ? "is-zoomed" : null)"
+                 @onclick="OnToggleScale">
+                <img src="@ImageUrl"
+                     alt="@Label"
+                     class="char-zoom__img"
+                     style="transform: scale(@Scale.ToString(System.Globalization.CultureInfo.InvariantCulture));"
+                     draggable="false" />
+            </div>
+            <p class="char-zoom__hint small text-muted mb-0">
+                Click image to toggle 2× · arrows switch looks · Esc closes
+            </p>
+        </div>
+    </div>
+}
