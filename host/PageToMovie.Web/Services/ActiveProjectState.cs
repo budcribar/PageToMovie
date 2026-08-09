@@ -5,6 +5,7 @@ namespace PageToMovie.Web.Services;
 /// <summary>
 /// Scoped active project for nav gating, readiness flags, and a shared load lifecycle
 /// (<see cref="IsLoading"/> / <see cref="IsReady"/> / <see cref="EnsureLoadedAsync"/>).
+/// Nav gates are evaluated by <see cref="StudioStateMachine"/> (single source of truth).
 /// </summary>
 public sealed class ActiveProjectState
 {
@@ -12,7 +13,10 @@ public sealed class ActiveProjectState
     public string? Label { get; private set; }
     public string? ParentProjectId { get; private set; }
     public string StudioPath { get; private set; } = ProjectStudioPaths.Full;
-    public PageToMovie.Core.Models.AdaptationStatus? Status { get; private set; }
+    public AdaptationStatus? Status { get; private set; }
+
+    /// <summary>Latest derived pipeline phase from <see cref="StudioStateMachine.DeterminePhase"/>.</summary>
+    public StudioPhase CurrentPhase { get; private set; } = StudioPhase.ImportRequired;
 
     public bool HasProject => !string.IsNullOrWhiteSpace(ProjectId);
     public bool IsLoading { get; private set; }
@@ -193,9 +197,8 @@ public sealed class ActiveProjectState
     }
 
     /// <summary>
-    /// Stores the adaptation status and maps it into nav gate flags. Gating is read via JSON probe
-    /// (tolerant of camel/Pascal casing); <see cref="Status"/> itself is set so consumers
-    /// (StudioProcessStrip model badge, Home BYOK prompts, Characters book substep) see real data.
+    /// Stores the adaptation status and maps it into nav gate flags via
+    /// <see cref="StudioStateMachine"/> (phase + <see cref="StudioStateMachine.CanNavigateTo"/>).
     /// </summary>
     private void ApplyFromStatusPayload(AdaptationStatus? statusObj)
     {
@@ -206,83 +209,35 @@ public sealed class ActiveProjectState
             return;
         }
 
-        try
-        {
-            var json = System.Text.Json.JsonSerializer.Serialize(statusObj);
-            using var doc = System.Text.Json.JsonDocument.Parse(json);
-            var root = doc.RootElement;
+        var phase = StudioStateMachine.DeterminePhase(statusObj);
+        CurrentPhase = phase;
 
-            static bool PropBool(System.Text.Json.JsonElement el, string camel, string pascal)
-            {
-                if (el.TryGetProperty(camel, out var v) && v.ValueKind is System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False)
-                    return v.GetBoolean();
-                if (el.TryGetProperty(pascal, out v) && v.ValueKind is System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False)
-                    return v.GetBoolean();
-                return false;
-            }
+        var castReady = statusObj.Cast.ReadyForShots;
+        var stage2Stale = statusObj.Stage2.Stage2Stale;
 
-            static int PropInt(System.Text.Json.JsonElement el, string camel, string pascal)
-            {
-                if (el.TryGetProperty(camel, out var v) && v.TryGetInt32(out var i)) return i;
-                if (el.TryGetProperty(pascal, out v) && v.TryGetInt32(out i)) return i;
-                return 0;
-            }
+        var cast = StudioStateMachine.CanNavigateTo(StudioStep.Cast, phase);
+        CanCharacters = cast.Allowed;
+        CharactersBlockedReason = cast.Allowed ? "" : cast.BlockedReason;
 
-            var screenplayReady = false;
-            if (root.TryGetProperty("screenplay", out var sp) || root.TryGetProperty("Screenplay", out sp))
-            {
-                screenplayReady = PropBool(sp, "readyForShots", "ReadyForShots")
-                    || PropBool(sp, "signed", "Signed");
-            }
-            if (root.TryGetProperty("stage1", out var s1) || root.TryGetProperty("Stage1", out s1))
-            {
-                if (PropBool(s1, "present", "Present") && PropInt(s1, "sceneCount", "SceneCount") > 0)
-                    screenplayReady = true;
-            }
+        var estimate = StudioStateMachine.CanNavigateTo(StudioStep.Estimate, phase);
+        CanEstimate = estimate.Allowed;
+        EstimateBlockedReason = estimate.Allowed ? "" : estimate.BlockedReason;
 
-            var shotsReady = false;
-            var stage2Stale = false;
-            if (root.TryGetProperty("stage2", out var s2) || root.TryGetProperty("Stage2", out s2))
-            {
-                shotsReady = PropBool(s2, "stage2Ready", "Stage2Ready")
-                    && PropInt(s2, "stage2Clips", "Stage2Clips") > 0;
-                stage2Stale = PropBool(s2, "stage2Stale", "Stage2Stale");
-            }
+        var film = StudioStateMachine.CanNavigateTo(
+            StudioStep.Film, phase, castReady: castReady, isStage2Stale: stage2Stale);
+        CanScenes = film.Allowed;
+        ScenesBlockedReason = film.Allowed ? "" : film.BlockedReason;
 
-            var castReady = true;
-            if (root.TryGetProperty("cast", out var ca) || root.TryGetProperty("Cast", out ca))
-                castReady = PropBool(ca, "readyForShots", "ReadyForShots");
-
-            CanCharacters = screenplayReady;
-            CharactersBlockedReason = screenplayReady ? "" : "Approve the screenplay first";
-            CanScenes = shotsReady;
-            CanReview = shotsReady;
-            CanEstimate = screenplayReady;
-            EstimateBlockedReason = screenplayReady
-                ? ""
-                : "Finish importing the book and approve the screenplay first";
-
-            if (shotsReady)
-                ScenesBlockedReason = castReady
-                    ? ""
-                    : "Approve every character voice + locked image before generating video";
-            else if (stage2Stale)
-                ScenesBlockedReason = "Update the shot plan first";
-            else if (!castReady)
-                ScenesBlockedReason = "Finish characters (voice + locked image), then the shot plan";
-            else
-                ScenesBlockedReason = "Finish the shot plan first";
-            ReviewBlockedReason = ScenesBlockedReason;
-        }
-        catch
-        {
-            ClearReadiness();
-        }
+        var review = StudioStateMachine.CanNavigateTo(
+            StudioStep.Review, phase, castReady: castReady, isStage2Stale: stage2Stale);
+        CanReview = review.Allowed;
+        ReviewBlockedReason = review.Allowed ? "" : review.BlockedReason;
     }
 
     private void ClearReadiness()
     {
         Status = null;
+        CurrentPhase = StudioPhase.ImportRequired;
         CanCharacters = false;
         CanScenes = false;
         CanReview = false;

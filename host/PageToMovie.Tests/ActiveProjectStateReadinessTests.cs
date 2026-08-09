@@ -5,6 +5,7 @@ using System.Net.Http;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using PageToMovie.Core.Models;
 using PageToMovie.Web.Services;
 using Xunit;
 
@@ -20,6 +21,7 @@ namespace PageToMovie.Tests;
 /// These tests drive the real load methods through a stub transport, so they also cover the
 /// neighbouring failure modes: server casing changes, a missing status node, transport errors, the
 /// exact endpoint called, stale-shot gating, and cold-load hydration of the active project.
+/// Nav gates are evaluated by <see cref="StudioStateMachine"/>.
 /// </summary>
 public class ActiveProjectStateReadinessTests
 {
@@ -89,6 +91,8 @@ public class ActiveProjectStateReadinessTests
         Assert.True(state.CanCharacters);
         Assert.True(state.CanScenes);
         Assert.True(state.CanEstimate);
+        Assert.True(state.CanReview);
+        Assert.Equal(StudioPhase.ShotPlanReady, state.CurrentPhase);
         Assert.Equal("", state.ScenesBlockedReason);
     }
 
@@ -272,5 +276,82 @@ public class ActiveProjectStateReadinessTests
 
         Assert.Equal("Demo", state.ProjectId);
         Assert.DoesNotContain(handler.Requests, u => u.AbsolutePath == "/api/projects");
+    }
+
+    [Fact]
+    public async Task Stage1_alone_does_not_unlock_Cast()
+    {
+        // Product rule (StudioStateMachine): Stage 1 package without Fountain sign-off stays Draft.
+        const string json = """
+            {
+              "ok": true,
+              "projectId": "Demo",
+              "adaptation": {
+                "xaiConfigured": true,
+                "planningModel": "grok-4",
+                "screenplay": { "draftExists": true, "readyForShots": false, "signed": false },
+                "stage1": { "present": true, "sceneCount": 4 },
+                "stage2": { "stage2Ready": false, "stage2Clips": 0 },
+                "cast": { "readyForShots": false }
+              }
+            }
+            """;
+
+        var state = await LoadReadiness(json);
+
+        Assert.Equal(StudioPhase.ScreenplayDraft, state.CurrentPhase);
+        Assert.False(state.CanCharacters);
+        Assert.False(state.CanEstimate);
+        Assert.Contains("screenplay", state.CharactersBlockedReason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Signed_screenplay_unlocks_Cast_and_Estimate_via_machine()
+    {
+        const string json = """
+            {
+              "ok": true,
+              "projectId": "Demo",
+              "adaptation": {
+                "xaiConfigured": true,
+                "planningModel": "grok-4",
+                "screenplay": { "draftExists": true, "readyForShots": true, "signed": true },
+                "stage2": { "stage2Ready": false, "stage2Clips": 0 },
+                "cast": { "readyForShots": false }
+              }
+            }
+            """;
+
+        var state = await LoadReadiness(json);
+
+        Assert.Equal(StudioPhase.ScreenplayApproved, state.CurrentPhase);
+        Assert.True(state.CanCharacters);
+        Assert.True(state.CanEstimate);
+        Assert.False(state.CanScenes);
+        Assert.Contains("shot plan", state.ScenesBlockedReason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Incomplete_cast_blocks_Film_but_not_Review_when_plan_ready()
+    {
+        const string json = """
+            {
+              "ok": true,
+              "projectId": "Demo",
+              "adaptation": {
+                "xaiConfigured": true,
+                "screenplay": { "draftExists": true, "readyForShots": true, "signed": true },
+                "stage2": { "stage2Ready": true, "stage2Clips": 8, "stage2Stale": false },
+                "cast": { "readyForShots": false, "total": 2, "ready": 0 }
+              }
+            }
+            """;
+
+        var state = await LoadReadiness(json);
+
+        Assert.Equal(StudioPhase.ShotPlanReady, state.CurrentPhase);
+        Assert.False(state.CanScenes);
+        Assert.Contains("voice", state.ScenesBlockedReason, StringComparison.OrdinalIgnoreCase);
+        Assert.True(state.CanReview);
     }
 }

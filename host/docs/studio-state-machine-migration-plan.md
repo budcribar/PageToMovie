@@ -1,7 +1,8 @@
 # Migration Plan: Centralize Pipeline Gating on `StudioStateMachine`
 
 **Working branch:** `feature/studio-state-machine-migration`  
-**PR1 status:** Core machine hardened + unit tests (this branch).
+**PR1 status:** Core machine hardened + unit tests.  
+**PR2 status:** `ActiveProjectState` façade → `StudioStateMachine` (this branch).
 
 **Goal:** Make [`StudioStateMachine`](../PageToMovie.Core/Models/StudioStateMachine.cs) the **single source of truth** for studio pipeline phase and step navigation, so readiness rules are not duplicated in Web nav, adaptation UI helpers, and server `NextStep` logic.
 
@@ -112,13 +113,13 @@ dotnet test host/PageToMovie.Tests/PageToMovie.Tests.csproj --filter "FullyQuali
 
 ### 2.A Implementation
 
-- [ ] **2.1** In `ApplyFromStatusPayload`, after resolving `AdaptationStatus`:
+- [x] **2.1** In `ApplyFromStatusPayload`, after resolving `AdaptationStatus`:
   - [ ] `var phase = StudioStateMachine.DeterminePhase(status);`
   - [ ] Read `castReady` / `stage2Stale` once from status (keep existing property reads).
   - [ ] For each of Cast, Estimate, Film, Review: call `CanNavigateTo` and assign `Can*` + `*BlockedReason`.
-- [ ] **2.2** Delete duplicated boolean soup that reimplements the same rules (keep JSON prop helpers only if still needed for cast/stage2 inputs).
-- [ ] **2.3** Optionally expose `StudioPhase CurrentPhase { get; private set; }` on `ActiveProjectState` for debugging / future UI badges.
-- [ ] **2.4** Ensure `ClearReadiness` messages still match machine default blocked strings (or call machine with a null/empty status).
+- [x] **2.2** Delete duplicated boolean soup that reimplements the same rules (keep JSON prop helpers only if still needed for cast/stage2 inputs).
+- [x] **2.3** Optionally expose `StudioPhase CurrentPhase { get; private set; }` on `ActiveProjectState` for debugging / future UI badges.
+- [x] **2.4** Ensure `ClearReadiness` messages still match machine default blocked strings (or call machine with a null/empty status).
 
 ### 2.B Verification
 

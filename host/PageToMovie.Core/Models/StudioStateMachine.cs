@@ -80,7 +80,10 @@ public static class StudioStateMachine
         if (book?.BookTextExists == true)
             return SourceDocumentType.Text;
 
-        if (screenplay?.DraftExists == true)
+        // Draft or sign-off implies a Fountain source even when DraftExists was omitted from a partial DTO.
+        if (screenplay?.DraftExists == true
+            || screenplay?.Signed == true
+            || screenplay?.ReadyForShots == true)
             return SourceDocumentType.Fountain;
 
         return SourceDocumentType.None;
@@ -126,9 +129,10 @@ public static class StudioStateMachine
         if (sourceType == SourceDocumentType.None)
             return StudioPhase.ImportRequired;
 
-        // PDF imported but text/OCR extraction not completed yet (no book text and no screenplay draft).
+        // PDF imported but text/OCR extraction not completed yet (no book text and no screenplay draft/sign-off).
         if (sourceType == SourceDocumentType.Pdf
             && status.Book is { BookTextExists: false }
+            && !IsScreenplayApproved(status.Screenplay)
             && status.Screenplay is not { DraftExists: true })
         {
             return StudioPhase.TextExtractionPending;
