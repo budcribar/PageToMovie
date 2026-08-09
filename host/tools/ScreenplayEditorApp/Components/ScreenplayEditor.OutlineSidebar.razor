@@ -1,0 +1,82 @@
+<div class="card bg-dark-subtle border-secondary-subtle h-100 shadow-sm">
+    <div class="card-header bg-dark text-light d-flex justify-content-between align-items-center py-2 px-3 border-bottom border-secondary-subtle">
+        <div class="d-flex align-items-center gap-2 overflow-hidden">
+            <i class="bi bi-journal-text text-info fs-5"></i>
+            @if (!IsCompact)
+            {
+                <h6 class="mb-0 fw-bold text-light text-nowrap">Script Outline</h6>
+            }
+        </div>
+        <button class="btn btn-sm btn-outline-secondary py-0 px-2" type="button" @onclick="ToggleCompact" title="@(IsCompact ? "Expand Sidebar" : "Shrink Sidebar to Numbers Only")">
+            @(IsCompact ? "⟫" : "⟪")
+        </button>
+    </div>
+    
+    <div class="card-body p-2 overflow-auto" style="max-height: calc(100vh - 180px);">
+        <div class="d-flex flex-column gap-2">
+            <!-- Metadata & Title Page Navigation Item -->
+            <button type="button"
+                    class="btn btn-sm text-start w-100 d-flex align-items-center gap-2 @(ActiveView == "metadata" ? "btn-primary fw-bold" : "btn-outline-secondary text-light")"
+                    @onclick="SelectMetadata"
+                    title="Story Metadata & Title Page">
+                <span class="fs-6">📋</span>
+                @if (!IsCompact)
+                {
+                    <span class="text-truncate">Metadata & Title Page</span>
+                }
+            </button>
+
+            <hr class="my-1 border-secondary-subtle" />
+
+            <!-- Scenes Outline Header / Compact Label -->
+            @if (!IsCompact)
+            {
+                <div class="d-flex justify-content-between align-items-center px-1 mb-1">
+                    <span class="text-secondary small fw-semibold">SCENES (@Scenes.Count)</span>
+                    <ScreenplayEditor_ActionButton Variant="@ComponentVariant.OutlineSuccess" Icon="bi-plus-lg" Text="Add" OnClick="OnAddScene" />
+                </div>
+            }
+
+            @if (Scenes.Count == 0)
+            {
+                @if (!IsCompact)
+                {
+                    <p class="text-secondary small px-1 mb-0">No scenes added.</p>
+                }
+            }
+            else
+            {
+                @for (var i = 0; i < Scenes.Count; i++)
+                {
+                    var index = i;
+                    var scene = Scenes[index];
+                    var isSelected = ActiveView == "scene" && SelectedSceneIndex == index;
+
+                    <button type="button"
+                            class="btn btn-sm text-start w-100 d-flex align-items-center justify-content-between @(isSelected ? "btn-warning text-dark fw-bold" : "btn-outline-dark text-light border-secondary-subtle")"
+                            @onclick="() => SelectScene(index)"
+                            title="@($"Scene {scene.SceneNumber}: {scene.HeaderText}")">
+                        <div class="d-flex align-items-center gap-2 overflow-hidden">
+                            <span class="badge @(isSelected ? "text-bg-dark" : "text-bg-warning") fw-bold">@scene.SceneNumber</span>
+                            @if (!IsCompact)
+                            {
+                                <span class="text-truncate small">@scene.HeaderText</span>
+                            }
+                        </div>
+                        @if (!IsCompact)
+                        {
+                            <span class="badge text-bg-dark text-secondary small">@scene.Beats.Count</span>
+                        }
+                    </button>
+                }
+            }
+
+            @if (IsCompact)
+            {
+                <button type="button" class="btn btn-sm btn-outline-success w-100 mt-2" @onclick="OnAddScene" title="Add Scene">
+                    <i class="bi bi-plus-lg"></i>
+                </button>
+            }
+        </div>
+    </div>
+</div>

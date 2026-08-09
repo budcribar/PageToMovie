@@ -14,22 +14,61 @@ public partial class ScreenplayEditor : ComponentBase
     public bool ShowFountainModal { get; set; }
     public string FountainModalMode { get; set; } = "import";
     public string FountainModalText { get; set; } = "";
-    public bool ShowOutlineSidebar { get; set; } = false;
+
+    public string ActiveViewMode { get; set; } = "metadata"; // metadata | scene | all
+    public int SelectedSceneIndex { get; set; } = 0;
+    public bool IsSidebarCompact { get; set; } = false;
 
     public int TotalBeats => Model.Scenes.Sum(s => s.Beats.Count);
 
     public async Task OnChanged()
     {
         ReindexSceneNumbers();
+        if (SelectedSceneIndex >= Model.Scenes.Count && Model.Scenes.Count > 0)
+        {
+            SelectedSceneIndex = Model.Scenes.Count - 1;
+        }
         if (ModelChanged.HasDelegate)
         {
             await ModelChanged.InvokeAsync(Model);
         }
     }
 
-    public void ToggleOutlineSidebar()
+    public void SelectMetadataView()
     {
-        ShowOutlineSidebar = !ShowOutlineSidebar;
+        ActiveViewMode = "metadata";
+    }
+
+    public void SelectSceneView(int index)
+    {
+        if (index >= 0 && index < Model.Scenes.Count)
+        {
+            SelectedSceneIndex = index;
+            ActiveViewMode = "scene";
+        }
+    }
+
+    public void SelectPreviousScene()
+    {
+        if (SelectedSceneIndex > 0)
+        {
+            SelectedSceneIndex--;
+            ActiveViewMode = "scene";
+        }
+    }
+
+    public void SelectNextScene()
+    {
+        if (SelectedSceneIndex < Model.Scenes.Count - 1)
+        {
+            SelectedSceneIndex++;
+            ActiveViewMode = "scene";
+        }
+    }
+
+    public void ShowAllScenesView()
+    {
+        ActiveViewMode = ActiveViewMode == "all" ? "scene" : "all";
     }
 
     public async Task CollapseAllScenes()
@@ -73,6 +112,8 @@ public partial class ScreenplayEditor : ComponentBase
             ActionText = "Describe visual scene action here..."
         });
         Model.Scenes.Add(newScene);
+        SelectedSceneIndex = Model.Scenes.Count - 1;
+        ActiveViewMode = "scene";
         await OnChanged();
     }
 
@@ -83,6 +124,7 @@ public partial class ScreenplayEditor : ComponentBase
             var item = Model.Scenes[index];
             Model.Scenes.RemoveAt(index);
             Model.Scenes.Insert(index - 1, item);
+            SelectedSceneIndex = index - 1;
             await OnChanged();
         }
     }
@@ -94,6 +136,7 @@ public partial class ScreenplayEditor : ComponentBase
             var item = Model.Scenes[index];
             Model.Scenes.RemoveAt(index);
             Model.Scenes.Insert(index + 1, item);
+            SelectedSceneIndex = index + 1;
             await OnChanged();
         }
     }
@@ -103,6 +146,15 @@ public partial class ScreenplayEditor : ComponentBase
         if (index >= 0 && index < Model.Scenes.Count)
         {
             Model.Scenes.RemoveAt(index);
+            if (Model.Scenes.Count == 0)
+            {
+                ActiveViewMode = "metadata";
+                SelectedSceneIndex = 0;
+            }
+            else if (SelectedSceneIndex >= Model.Scenes.Count)
+            {
+                SelectedSceneIndex = Model.Scenes.Count - 1;
+            }
             await OnChanged();
         }
     }
@@ -127,6 +179,15 @@ public partial class ScreenplayEditor : ComponentBase
         {
             Model = FountainFormatter.Parse(text);
             ReindexSceneNumbers();
+            if (Model.Scenes.Count > 0)
+            {
+                SelectedSceneIndex = 0;
+                ActiveViewMode = "scene";
+            }
+            else
+            {
+                ActiveViewMode = "metadata";
+            }
             await OnChanged();
         }
     }
