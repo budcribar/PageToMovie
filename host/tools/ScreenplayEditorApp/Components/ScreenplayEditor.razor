@@ -1,34 +1,54 @@
 <div class="container-fluid py-4 px-md-5">
-    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4 pb-3 border-bottom">
+    <!-- Studio Header -->
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4 pb-3 border-bottom border-secondary-subtle">
         <div>
-            <span class="badge text-bg-primary fs-6 mb-1">PageToMovie · Structured Screenplay Editor</span>
-            <h2 class="mb-0 fw-bold">@(!string.IsNullOrWhiteSpace(Model.Metadata.Title) ? Model.Metadata.Title : "Untitled Screenplay")</h2>
-            <p class="text-muted small mb-0">
-                Author: <strong>@(!string.IsNullOrWhiteSpace(Model.Metadata.Author) ? Model.Metadata.Author : "Unknown")</strong> ·
-                Scenes: <strong>@Model.Scenes.Count</strong> ·
-                Total Beats: <strong>@TotalBeats</strong>
+            <div class="d-flex align-items-center gap-2 mb-1">
+                <span class="badge text-bg-primary px-2 py-1">PageToMovie</span>
+                <span class="text-secondary small fw-semibold">Structured Screenplay Editor</span>
+            </div>
+            <h2 class="mb-0 fw-bold text-light">
+                @(!string.IsNullOrWhiteSpace(Model.Metadata.Title) ? Model.Metadata.Title : "Untitled Screenplay")
+            </h2>
+            <p class="text-secondary small mb-0 mt-1">
+                Author: <strong class="text-light">@(!string.IsNullOrWhiteSpace(Model.Metadata.Author) ? Model.Metadata.Author : "Unknown")</strong> ·
+                Scenes: <strong class="text-light">@Model.Scenes.Count</strong> ·
+                Total Beats: <strong class="text-light">@TotalBeats</strong>
             </p>
         </div>
         <div class="d-flex align-items-center gap-2">
-            <button class="btn btn-outline-primary btn-sm" type="button" @onclick="OpenImportModal">📥 Import Fountain</button>
-            <button class="btn btn-primary btn-sm" type="button" @onclick="OpenExportModal">📤 Export Fountain</button>
-            <button class="btn btn-success btn-sm" type="button" @onclick="AddScene">+ Add Scene</button>
+            <button class="btn btn-outline-info btn-sm px-3" type="button" @onclick="OpenImportModal">
+                <i class="bi bi-box-arrow-in-down me-1"></i> Import Fountain
+            </button>
+            <button class="btn btn-primary btn-sm px-3" type="button" @onclick="OpenExportModal">
+                <i class="bi bi-box-arrow-up-right me-1"></i> Export Fountain
+            </button>
         </div>
     </div>
 
+    <!-- Metadata Header Panel -->
     <ScreenplayEditor_MetadataHeader Metadata="Model.Metadata" OnChangedCallback="OnChanged" />
 
+    <!-- Scenes Header with SINGLE PRIMARY "+ Add Scene" BUTTON -->
     <div class="d-flex justify-content-between align-items-center mb-3">
-        <h4 class="mb-0 fw-bold">Scenes (@Model.Scenes.Count)</h4>
-        <button class="btn btn-sm btn-outline-success" type="button" @onclick="AddScene">+ Add Scene</button>
+        <div class="d-flex align-items-center gap-2">
+            <h4 class="mb-0 fw-bold text-light">Scenes</h4>
+            <span class="badge rounded-pill bg-secondary text-light">@Model.Scenes.Count</span>
+        </div>
+        <button class="btn btn-success btn-sm px-3 fw-semibold shadow-sm" type="button" @onclick="AddScene">
+            <i class="bi bi-plus-lg me-1"></i> Add Scene
+        </button>
     </div>
 
     @if (Model.Scenes.Count == 0)
     {
-        <div class="alert alert-info text-center p-4">
-            <h5 class="alert-heading fw-bold">No scenes in screenplay</h5>
-            <p class="mb-3">Click <strong>+ Add Scene</strong> above to create your first scene, or click <strong>Import Fountain</strong> to load a screenplay file.</p>
-            <button class="btn btn-primary btn-sm" type="button" @onclick="AddScene">+ Add Scene</button>
+        <div class="card bg-dark-subtle border-secondary-subtle text-center p-5 mb-4 shadow-sm">
+            <div class="card-body">
+                <div class="display-6 text-info mb-3">🎬</div>
+                <h5 class="fw-bold text-light">No scenes in screenplay</h5>
+                <p class="text-secondary mb-0">
+                    Use the <strong class="text-success">+ Add Scene</strong> button above to create your first scene, or click <strong class="text-info">Import Fountain</strong> to load an existing screenplay file.
+                </p>
+            </div>
         </div>
     }
     else
@@ -48,7 +68,7 @@
     }
 
     <ScreenplayEditor_FountainModal @bind-IsOpen="ShowFountainModal"
-                                    Mode="@FountainModalMode"
-                                    FountainText="@FountainModalText"
-                                    OnImportCallback="HandleFountainImport" />
+                                     Mode="@FountainModalMode"
+                                     FountainText="@FountainModalText"
+                                     OnImportCallback="HandleFountainImport" />
 </div>
