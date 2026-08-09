@@ -17,14 +17,14 @@
                                        data-testid="clip-select-all"
                                        title="Select all clips"
                                        checked="@Host.AllClipsSelected"
-                                       disabled="@(Host._busy || Host._detail is not { Clips.Count: > 0 })"
+                                       disabled="@(Host._busy || List!._detail is not { Clips.Count: > 0 })"
                                        @onchange="e => Host.ToggleSelectAllClips((bool)(e.Value ?? false))" />
                             </th>
                             <th style="width:7rem;">Clip</th>
                             <th style="width:6rem; cursor:pointer; user-select:none;"
                                 @onclick="Host.ToggleClipDurationSort"
                                 title="Click to sort by duration">
-                                Dur @(Host._clipSortByDuration ? (Host._clipSortAscending ? "▲" : "▼") : "⇅")
+                                Dur @(ClipSel!._clipSortByDuration ? (ClipSel!._clipSortAscending ? "▲" : "▼") : "⇅")
                             </th>
                             <th>Dialogue</th>
                         </tr>
@@ -32,9 +32,9 @@
                     <tbody>
                         @foreach (var c in Host.SortedDetailClips)
                         {
-                            var active = Host._selectedClip == c.ClipNumber;
+                            var active = ClipForm!._selectedClip == c.ClipNumber;
                             var cn = c.ClipNumber;
-                            var isChecked = Host._selectedClips.Contains(cn);
+                            var isChecked = ClipSel!._selectedClips.Contains(cn);
                             <tr class="@(active ? "table-primary" : isChecked ? "table-warning" : "")" style="cursor:pointer;"
                                 @onclick="() => Host.SelectClip(cn)">
                                 <td @onclick:stopPropagation="true">
@@ -82,7 +82,7 @@
                                         };
                                         <button type="button" class="btn btn-sm p-0 border-0 align-baseline"
                                                 @onclick:stopPropagation="true"
-                                                @onclick="() => Host.OpenVerificationModal(Host._detail.SceneNumber, cn, ver)">
+                                                @onclick="() => Host.OpenVerificationModal(List!._detail.SceneNumber, cn, ver)">
                                             <span class="badge @badgeClass ms-1 d-inline-block text-center" style="min-width: 140px; cursor:pointer; padding: 0.35em 0.6em; font-size: 0.75rem;" title="Click to view verification report details">
                                                 @badgeText 📋
                                             </span>
@@ -93,7 +93,7 @@
                                             disabled="@(Host._busy || Host.JobRunning)"
                                             title="View past takes & version comparison grid for this clip"
                                             @onclick:stopPropagation="true"
-                                            @onclick="() => Host.OpenClipCompareAsync(Host._detail.SceneNumber, cn)">
+                                            @onclick="() => Host.OpenClipCompareAsync(List!._detail.SceneNumber, cn)">
                                         🎬 Takes
                                     </button>
                                     <button type="button"
@@ -102,7 +102,7 @@
                                             disabled="@(Host._busy || Host.JobRunning)"
                                             title="Delete this clip (video + shot plan entry)"
                                             @onclick:stopPropagation="true"
-                                            @onclick="() => Host.RequestDeleteClip(Host._detail.SceneNumber, cn)">
+                                            @onclick="() => Host.RequestDeleteClip(List!._detail.SceneNumber, cn)">
                                         🗑️
                                     </button>
                                 </td>

@@ -8,11 +8,11 @@
 
 
     @* ---- Scene list ---- *@
-    @if (Host._scenes is null)
+    @if (List!._scenes is null)
     {
         <EmptyState Message="Loading scenes…" CssClass="text-muted" />
     }
-    else if (Host._scenes.Count == 0)
+    else if (List!._scenes.Count == 0)
     {
         <EmptyState Message="No scenes in the shot plan yet."
                     ActionHref="adaptation/shots"
@@ -23,10 +23,10 @@
     {
         @* Authoritative scene/clip counts for tests, queryable in one place without counting rows. *@
         <div data-testid="scenes-status"
-             data-scene-count="@Host._scenes.Count"
-             data-clip-count="@Host._scenes.Sum(s => s.ClipCount)"
-             data-clips-on-disk="@Host._scenes.Sum(s => s.ClipsOnDisk)"
-             data-scenes-complete="@Host._scenes.Count(s => s.ClipsComplete)"
+             data-scene-count="@List!._scenes.Count"
+             data-clip-count="@List!._scenes.Sum(s => s.ClipCount)"
+             data-clips-on-disk="@List!._scenes.Sum(s => s.ClipsOnDisk)"
+             data-scenes-complete="@List!._scenes.Count(s => s.ClipsComplete)"
              class="visually-hidden" aria-hidden="true"></div>
         @* Batch generation is started from THIS all-scenes view, so its progress/message/result must
            show here too — the detail view below has its own copy for single-scene work. Without this,
@@ -36,25 +36,25 @@
         {
             <InlineAlert Message="@Host._message" Variant="info" CssClass="mb-3" />
         }
-        @if (Host.ShowLiveGenProgress && Host._job is not null)
+        @if (Host.ShowLiveGenProgress && Gen!._job is not null)
         {
-            <JobProgressCard Status="@Host._job.Status"
-                             Message="@Scenes.LiveGenStatusLabel(Host._job)"
-                             Index="Host._job.Index"
-                             Total="Host._job.Total"
-                             Percent="Host.LiveGenProgressPercent(Host._job)"
+            <JobProgressCard Status="@Gen!._job.Status"
+                             Message="@Scenes.LiveGenStatusLabel(Gen!._job)"
+                             Index="Gen!._job.Index"
+                             Total="Gen!._job.Total"
+                             Percent="Host.LiveGenProgressPercent(Gen!._job)"
                              ShowCancel="true"
                              CancelDisabled="Host._busy"
                              OnCancel="Host.CancelAsync"
-                             Kind="@Host._job.Kind"
+                             Kind="@Gen!._job.Kind"
                              TestId="scenes-gen-progress"
                              CancelTestId="scenes-gen-cancel" />
         }
-        else if (Host.ShowOperatorGenPartial && Host._job is not null)
+        else if (Host.ShowOperatorGenPartial && Gen!._job is not null)
         {
             <Scenes_GenPartialAlert />
         }
-        else if (Host.ShowOperatorGenError && Host._job is not null)
+        else if (Host.ShowOperatorGenError && Gen!._job is not null)
         {
             <Scenes_GenErrorAlert />
         }
@@ -68,8 +68,8 @@
                                              TestId="scenes-generate-batch-cap">
                     <button type="button"
                             data-testid="scenes-generate-batch"
-                            class="btn batch-go @(Host._selected.Count > 0 && !Host.JobRunning && Host.CastReady ? "batch-go--ready" : "")"
-                            disabled="@(Host._busy || Host._selected.Count == 0 || Host.JobRunning || !Host.CastReady || Host.SelectedLockedByOther)"
+                            class="btn batch-go @(List!._selected.Count > 0 && !Host.JobRunning && Host.CastReady ? "batch-go--ready" : "")"
+                            disabled="@(Host._busy || List!._selected.Count == 0 || Host.JobRunning || !Host.CastReady || Host.SelectedLockedByOther)"
                             title="@(!Host.CastReady ? Host.CastBlockedTitle : Host.SelectedLockedByOther ? "Selection includes scenes locked by another user" : null)"
                             @onclick="Host.OpenGenerateConfirmAsync">
                         @if (Host.JobRunning)
@@ -81,8 +81,8 @@
                         {
                             <span class="batch-go__play" aria-hidden="true">▶</span>
                             <span>
-                                Generate @(Host._selected.Count > 0 ? $"{Host._selected.Count} scene{(Host._selected.Count == 1 ? "" : "s")}" : "Batch")
-                                @if (Host._selected.Count > 0)
+                                Generate @(List!._selected.Count > 0 ? $"{List!._selected.Count} scene{(List!._selected.Count == 1 ? "" : "s")}" : "Batch")
+                                @if (List!._selected.Count > 0)
                                 {
                                     <span class="batch-go__meta">· ~@Host.EstimateSelectedClips() clips</span>
                                 }
@@ -91,7 +91,7 @@
                     </button>
                     </CapabilityLockedControl>
 
-                    @if (Host._scenes is not null && Host.VisibleScenes.Any(s => !s.ClipsComplete || s.ClipsOnDisk < s.ClipCount))
+                    @if (List!._scenes is not null && Host.VisibleScenes.Any(s => !s.ClipsComplete || s.ClipsOnDisk < s.ClipCount))
                     {
                         <button type="button"
                                 class="btn btn-sm btn-outline-secondary ms-2"
@@ -109,14 +109,14 @@
                     <button type="button"
                             data-testid="scenes-play-selected"
                             class="btn btn-outline-primary btn-sm"
-                            disabled="@(Host._busy || Host._clientStitching || !Host.CanPlaySelected)"
+                            disabled="@(Host._busy || Playback!._clientStitching || !Host.CanPlaySelected)"
                             title="@(Host.CanPlaySelected
                                 ? "Stitch selected scenes in the browser (composites or clips)"
-                                : Host._selected.Count == 0
+                                : List!._selected.Count == 0
                                     ? "Select one or more scenes first"
                                     : "Selected scenes have no clips or composites to play yet")"
                             @onclick="Host.PlaySelectedAsync">
-                        ▶ @L["ScenesPage.PlaySelected"]@(Host._selected.Count > 0 ? $" ({Host._selected.Count})" : "")
+                        ▶ @L["ScenesPage.PlaySelected"]@(List!._selected.Count > 0 ? $" ({List!._selected.Count})" : "")
                     </button>
                     <CapabilityLockedControl Enabled="Caps.VideoReviewReady"
                                              BlockedReason="@Caps.VideoReviewBlockedReason"
@@ -124,21 +124,21 @@
                                              TestId="scenes-verify-dialogue-cap">
                     <button type="button"
                             class="btn btn-outline-primary btn-sm"
-                            disabled="@(Host._busy || Host.JobRunning || Host._verifyingClip || !Host.SelectedScenesHaveClipsToVerify)"
+                            disabled="@(Host._busy || Host.JobRunning || Dialogue!._verifyingClip || !Host.SelectedScenesHaveClipsToVerify)"
                             title="@(Host.SelectedScenesHaveClipsToVerify
                                 ? "Check the spoken words in each finished clip against the screenplay"
-                                : Host._selected.Count == 0
+                                : List!._selected.Count == 0
                                     ? "Select one or more scenes with finished clips first"
                                     : "Selected scenes have no finished clips to check yet")"
                             @onclick="Host.VerifySelectedScenesDialogueAsync">
-                        🔍 @L["ScenesPage.VerifySceneDialogue"]@(Host._selected.Count > 0 ? $" ({Host._selected.Count})" : "")
+                        🔍 @L["ScenesPage.VerifySceneDialogue"]@(List!._selected.Count > 0 ? $" ({List!._selected.Count})" : "")
                     </button>
                     </CapabilityLockedControl>
                     <button type="button"
                             class="btn btn-outline-secondary btn-sm"
                             disabled="@(Host._busy || Host.JobRunning)"
-                            title="@(Host._selected.Count > 0
-                                ? $"Regenerate only the {Host._selected.Count} checked scene(s) from the screenplay — other scenes are left untouched"
+                            title="@(List!._selected.Count > 0
+                                ? $"Regenerate only the {List!._selected.Count} checked scene(s) from the screenplay — other scenes are left untouched"
                                 : "Check scenes first to regenerate just those — with nothing checked, this rebuilds every scene from the screenplay")"
                             @onclick="Host.RebuildShotPlanAsync">
                         🔄 @L["ScenesPage.RebuildShotPlan"]
@@ -164,7 +164,7 @@
                         </button>
                     }
                     <button class="btn btn-sm btn-outline-secondary" data-testid="scenes-select-toggle"
-                            disabled="@Host._busy" @onclick="() => Host._showFilters = !Host._showFilters">
+                            disabled="@Host._busy" @onclick="() => List!._showFilters = !List!._showFilters">
                         🔍 @L["ScenesPage.Filters"] @(Host.HasActiveFilters ? " (Active)" : "")
                     </button>
                 </div>
@@ -219,13 +219,13 @@
                                    @onchange="e => Host.ToggleSelectAllShown((bool)(e.Value ?? false))" />
                         </th>
                         <th style="width:7rem; cursor:pointer; user-select:none;" @onclick='() => Host.ToggleSort("number")' title="Click to sort by Scene Number">
-                            # @(Host._sortBy == "number" ? (Host._sortAscending ? "▲" : "▼") : "⇅")
+                            # @(List!._sortBy == "number" ? (List!._sortAscending ? "▲" : "▼") : "⇅")
                         </th>
                         <th>@L["ScenesPage.Setting"]</th>
                         <th>@L["ScenesPage.CastLocation"]</th>
                         <th style="width:6rem;">@L["ReviewPage.Clips"]</th>
                         <th style="width:7.5rem; cursor:pointer; user-select:none;" @onclick='() => Host.ToggleSort("duration")' title="Click to sort by Duration">
-                            @L["ReviewPage.Dur"] @(Host._sortBy == "duration" ? (Host._sortAscending ? "▲" : "▼") : "⇅")
+                            @L["ReviewPage.Dur"] @(List!._sortBy == "duration" ? (List!._sortAscending ? "▲" : "▼") : "⇅")
                         </th>
                         <th style="width:9rem;" title="Score background music for this scene">@L["ScenesPage.Music"]</th>
                     </tr>
@@ -234,7 +234,7 @@
                     @foreach (var s in Host.SortedVisibleScenes)
                     {
                         var sn = s.SceneNumber;
-                        var isSel = Host._selected.Contains(sn);
+                        var isSel = List!._selected.Contains(sn);
                         <tr class="@(isSel ? "table-active" : "")" style="cursor:pointer;" @key="sn"
                             data-testid="scene-row" data-scene-number="@sn">
                             <td @onclick:stopPropagation="true">
@@ -325,7 +325,7 @@
                                 <button type="button"
                                         class="btn btn-sm btn-warning text-black fw-bold py-0 px-2"
                                         data-testid="scene-row-score-music"
-                                        disabled="@(Host._busy || Host.JobRunning || Host._scoringMusic || !Caps.MusicReady || s.LockedByOther)"
+                                        disabled="@(Host._busy || Host.JobRunning || Music!._scoringMusic || !Caps.MusicReady || s.LockedByOther)"
                                         title="@(Caps.MusicReady ? "Score background music for this scene" : Caps.MusicBlockedReason)"
                                         @onclick="() => Host.OpenScoreMenu(sn)">
                                     🎵 Score

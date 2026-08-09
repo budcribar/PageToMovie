@@ -13,7 +13,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Scenes
 {
     /// <summary>Clip multi-select / sort domain for the Scenes page.</summary>
-    internal sealed class ScenesClipSelection
+    public sealed class ScenesClipSelection
     {
         private readonly Scenes S;
         public ScenesClipSelection(Scenes host) => S = host;
@@ -42,15 +42,15 @@ public partial class Scenes
         {
             get
             {
-                if (S._detail?.Clips is null)
+                if (S.List._detail?.Clips is null)
                     return Array.Empty<ClipSummary>();
                 if (!_clipSortByDuration)
-                    return S._detail.Clips.OrderBy(c => c.ClipNumber);
+                    return S.List._detail.Clips.OrderBy(c => c.ClipNumber);
                 static double Dur(ClipSummary c) =>
                     c.ActualDurationSeconds ?? (c.DurationSeconds > 0 ? c.DurationSeconds : 0);
                 return _clipSortAscending
-                    ? S._detail.Clips.OrderBy(Dur).ThenBy(c => c.ClipNumber)
-                    : S._detail.Clips.OrderByDescending(Dur).ThenBy(c => c.ClipNumber);
+                    ? S.List._detail.Clips.OrderBy(Dur).ThenBy(c => c.ClipNumber)
+                    : S.List._detail.Clips.OrderByDescending(Dur).ThenBy(c => c.ClipNumber);
             }
         }
 
@@ -62,9 +62,9 @@ public partial class Scenes
         /// </summary>
         internal bool IsClipGenBusy(int clipNumber)
         {
-            if (S._detail is null) return false;
-            var sn = S._detail.SceneNumber;
-            if (S._pendingRegenScene == sn) return true;
+            if (S.List._detail is null) return false;
+            var sn = S.List._detail.SceneNumber;
+            if (S.Gen._pendingRegenScene == sn) return true;
 
             bool Affects(JobSnapshot j) =>
                 (string.Equals(j.Status, "running", StringComparison.OrdinalIgnoreCase) ||
@@ -72,9 +72,9 @@ public partial class Scenes
                 Scenes.IsScenesWorkflowJob(j.Kind) &&
                 j.Scene == sn && j.Clip == clipNumber;
 
-            if (S._job is not null && Affects(S._job))
+            if (S.Gen._job is not null && Affects(S.Gen._job))
                 return true;
-            return S._myJobs.Any(Affects);
+            return S.Gen._myJobs.Any(Affects);
         }
 
         /// <summary>
@@ -82,17 +82,17 @@ public partial class Scenes
         /// </summary>
         internal bool PreviousClipMissing(int clipNumber)
         {
-            if (clipNumber <= 1 || S._detail is null) return false;
-            var prev = S._detail.Clips.FirstOrDefault(c => c.ClipNumber == clipNumber - 1);
+            if (clipNumber <= 1 || S.List._detail is null) return false;
+            var prev = S.List._detail.Clips.FirstOrDefault(c => c.ClipNumber == clipNumber - 1);
             return prev is null || !prev.OnDisk;
         }
 
         /// <summary>Select clips in the open scene that are not on disk yet.</summary>
         internal void SelectMissingClips()
         {
-            if (S._detail is null) return;
+            if (S.List._detail is null) return;
             _selectedClips.Clear();
-            foreach (var c in S._detail.Clips.Where(c => !c.OnDisk))
+            foreach (var c in S.List._detail.Clips.Where(c => !c.OnDisk))
                 _selectedClips.Add(c.ClipNumber);
         }
 
@@ -105,14 +105,14 @@ public partial class Scenes
         internal void ClearClipSelection() => _selectedClips.Clear();
 
         internal bool AllClipsSelected =>
-            S._detail is { Clips.Count: > 0 } && S._detail.Clips.All(c => _selectedClips.Contains(c.ClipNumber));
+            S.List._detail is { Clips.Count: > 0 } && S.List._detail.Clips.All(c => _selectedClips.Contains(c.ClipNumber));
 
         internal void ToggleSelectAllClips(bool on)
         {
-            if (S._detail is null) return;
+            if (S.List._detail is null) return;
             if (on)
             {
-                foreach (var c in S._detail.Clips)
+                foreach (var c in S.List._detail.Clips)
                     _selectedClips.Add(c.ClipNumber);
             }
             else
@@ -123,8 +123,8 @@ public partial class Scenes
 
         internal double? EstimateSelectedClipsCostUsd()
         {
-            if (S._costReport is null || S._detail is null) return null;
-            var row = S._costReport.Scenes.FirstOrDefault(r => r.Scene == S._detail.SceneNumber);
+            if (S.List._costReport is null || S.List._detail is null) return null;
+            var row = S.List._costReport.Scenes.FirstOrDefault(r => r.Scene == S.List._detail.SceneNumber);
             if (row is null || row.ClipsTotal <= 0) return null;
             // Approximate: whole-scene draft cost spread evenly per clip (force-regen ignores on-disk state).
             return row.AllDraftUsd / row.ClipsTotal * _selectedClips.Count;
@@ -132,10 +132,10 @@ public partial class Scenes
 
         internal int EstimateSelectedClips()
         {
-            if (S._scenes is null) return 0;
+            if (S.List._scenes is null) return 0;
             // Generate always fills missing only — estimate remaining work on selected scenes.
-            return S._scenes
-                .Where(x => S._selected.Contains(x.SceneNumber))
+            return S.List._scenes
+                .Where(x => S.List._selected.Contains(x.SceneNumber))
                 .Sum(s => Math.Max(0, s.ClipCount - s.ClipsOnDisk));
         }
     }

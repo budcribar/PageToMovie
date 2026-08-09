@@ -13,7 +13,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Scenes
 {
     /// <summary>DialogueVerify domain for the Scenes page. Owns related UI state and behavior.</summary>
-    internal sealed class ScenesDialogueVerify
+    public sealed class ScenesDialogueVerify
     {
 
     private readonly Scenes S;
@@ -53,10 +53,10 @@ public partial class Scenes
     /// <summary>Select clips in the open scene that have dialogue mismatches or speaker swaps.</summary>
     internal void SelectMismatchedClips()
     {
-        if (S._detail is null) return;
-        S._selectedClips.Clear();
-        foreach (var c in S._detail.Clips.Where(c => c.DialogueVerification is { Status: "mismatch" } or { Status: "speaker_swap" }))
-            S._selectedClips.Add(c.ClipNumber);
+        if (S.List._detail is null) return;
+        S.ClipSel._selectedClips.Clear();
+        foreach (var c in S.List._detail.Clips.Where(c => c.DialogueVerification is { Status: "mismatch" } or { Status: "speaker_swap" }))
+            S.ClipSel._selectedClips.Add(c.ClipNumber);
     }
 
 
@@ -120,23 +120,23 @@ public partial class Scenes
 
     internal async Task VerifyClipDialogueManualAsync(ClipSummary clip)
     {
-        if (string.IsNullOrWhiteSpace(S._projectId) || S._detail is null || clip is null) return;
+        if (string.IsNullOrWhiteSpace(S._projectId) || S.List._detail is null || clip is null) return;
         try
         {
             _verifyingClip = true;
             _verifyingClipNumber = clip.ClipNumber;
             _verifyCurrent = 1;
             _verifyTotal = 1;
-            _verifyStatusLabel = $"Verifying dialogue for S{S._detail.SceneNumber:D2} C{clip.ClipNumber:D2}...";
+            _verifyStatusLabel = $"Verifying dialogue for S{S.List._detail.SceneNumber:D2} C{clip.ClipNumber:D2}...";
             S.StateHasChanged();
 
-            var expectedSize = await S.ResolveExpectedClipSizeAsync(S._detail.SceneNumber, clip.ClipNumber);
-            var videoBytes = await S.MediaFolder.GetClipBytesAsync(S._projectId, S._detail.SceneNumber, clip.ClipNumber, expectedSize);
-            var ver = await S.Engine.VerifyClipDialogueAsync(S._projectId, S._detail.SceneNumber, clip.ClipNumber, videoBytes: videoBytes, force: true);
+            var expectedSize = await S.ResolveExpectedClipSizeAsync(S.List._detail.SceneNumber, clip.ClipNumber);
+            var videoBytes = await S.MediaFolder.GetClipBytesAsync(S._projectId, S.List._detail.SceneNumber, clip.ClipNumber, expectedSize);
+            var ver = await S.Engine.VerifyClipDialogueAsync(S._projectId, S.List._detail.SceneNumber, clip.ClipNumber, videoBytes: videoBytes, force: true);
             if (ver is not null)
             {
                 clip.DialogueVerification = ver;
-                if (_showVerificationModal && _verifModalClipNumber == clip.ClipNumber && _verifModalSceneNumber == S._detail.SceneNumber)
+                if (_showVerificationModal && _verifModalClipNumber == clip.ClipNumber && _verifModalSceneNumber == S.List._detail.SceneNumber)
                 {
                     _verifModalResult = ver;
                 }
@@ -145,11 +145,11 @@ public partial class Scenes
                     S._error = ver.SummaryNote ?? "Clip Dialogue Verification requires Google Gemini (GEMINI_API_KEY). Gemini is the only provider that supports native video & audio dialogue analysis. Please add your Gemini key in Configuration.";
                 }
 
-                S._detail = (await S.Engine.GetSceneDetailAsync(S._projectId, S._detail.SceneNumber))?.Scene;
+                S.List._detail = (await S.Engine.GetSceneDetailAsync(S._projectId, S.List._detail.SceneNumber))?.Scene;
                 var scenesDto = await S.Engine.GetScenesAsync(S._projectId);
                 if (scenesDto?.Scenes is not null)
                 {
-                    S._scenes = scenesDto.Scenes;
+                    S.List._scenes = scenesDto.Scenes;
                 }
             }
         }
@@ -175,9 +175,9 @@ public partial class Scenes
     /// Gates the list-view "Verify Scene Dialogue" button so it never reads as a dead click.
     /// </summary>
     internal bool SelectedScenesHaveClipsToVerify =>
-        S._scenes is not null &&
-        S._selected.Count > 0 &&
-        S._scenes.Any(s => S._selected.Contains(s.SceneNumber) && s.ClipsOnDisk > 0);
+        S.List._scenes is not null &&
+        S.List._selected.Count > 0 &&
+        S.List._scenes.Any(s => S.List._selected.Contains(s.SceneNumber) && s.ClipsOnDisk > 0);
 
 
 
@@ -190,26 +190,26 @@ public partial class Scenes
         // Only clips with video on disk can be checked — there's nothing to analyse otherwise.
         var targets = new List<(int Scene, int Clip)>();
 
-        if (S._detail is not null)
+        if (S.List._detail is not null)
         {
-            if (S._selectedClips.Count > 0)
+            if (S.ClipSel._selectedClips.Count > 0)
             {
-                foreach (var cn in S._selectedClips.OrderBy(c => c))
-                    targets.Add((S._detail.SceneNumber, cn));
+                foreach (var cn in S.ClipSel._selectedClips.OrderBy(c => c))
+                    targets.Add((S.List._detail.SceneNumber, cn));
             }
             else
             {
-                foreach (var c in S._detail.Clips
+                foreach (var c in S.List._detail.Clips
                     .Where(c => c.OnDisk && (c.DialogueVerification is null || !string.Equals(c.DialogueVerification.Status, "verified", StringComparison.OrdinalIgnoreCase)))
                     .OrderBy(c => c.ClipNumber))
-                    targets.Add((S._detail.SceneNumber, c.ClipNumber));
+                    targets.Add((S.List._detail.SceneNumber, c.ClipNumber));
             }
         }
-        else if (S._selected.Count > 0)
+        else if (S.List._selected.Count > 0)
         {
             // All-scenes view: gather each selected scene's on-disk clips (the button is gated so this
             // path only runs when at least one selected scene actually has finished clips).
-            foreach (var sn in S._selected.OrderBy(x => x))
+            foreach (var sn in S.List._selected.OrderBy(x => x))
             {
                 var det = (await S.Engine.GetSceneDetailAsync(S._projectId, sn))?.Scene;
                 if (det?.Clips is null) continue;
@@ -221,9 +221,9 @@ public partial class Scenes
         if (targets.Count == 0)
         {
             // Never a silent dead click — say why there's nothing to do.
-            S._message = S._detail is not null
+            S._message = S.List._detail is not null
                 ? "All clips verified. Tick specific clip boxes in the first column to force a re-check."
-                : S._selected.Count == 0
+                : S.List._selected.Count == 0
                     ? "Select one or more scenes with finished clips to verify."
                     : "Selected scenes have no finished clips to verify yet.";
             return;
@@ -241,8 +241,8 @@ public partial class Scenes
             {
                 _verifyCurrent++;
                 _verifyingClipNumber = cn;
-                var clip = S._detail?.SceneNumber == sceneNum
-                    ? S._detail?.Clips?.FirstOrDefault(c => c.ClipNumber == cn)
+                var clip = S.List._detail?.SceneNumber == sceneNum
+                    ? S.List._detail?.Clips?.FirstOrDefault(c => c.ClipNumber == cn)
                     : null;
                 _verifyStatusLabel = $"Verifying dialogue for S{sceneNum:D2} C{cn:D2} (Speaker: {clip?.Speaker ?? "Unknown"})...";
                 S.StateHasChanged();
@@ -268,14 +268,14 @@ public partial class Scenes
                 }
             }
 
-            if (S._detail is not null)
+            if (S.List._detail is not null)
             {
-                S._detail = (await S.Engine.GetSceneDetailAsync(S._projectId, S._detail.SceneNumber))?.Scene;
+                S.List._detail = (await S.Engine.GetSceneDetailAsync(S._projectId, S.List._detail.SceneNumber))?.Scene;
             }
             var scenesDto = await S.Engine.GetScenesAsync(S._projectId);
             if (scenesDto?.Scenes is not null)
             {
-                S._scenes = scenesDto.Scenes;
+                S.List._scenes = scenesDto.Scenes;
             }
         }
         catch (Exception ex)

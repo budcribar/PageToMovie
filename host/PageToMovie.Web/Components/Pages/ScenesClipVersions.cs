@@ -13,7 +13,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Scenes
 {
     /// <summary>Clip version compare / history domain for the Scenes page.</summary>
-    internal sealed class ScenesClipVersions
+    public sealed class ScenesClipVersions
     {
         private readonly Scenes S;
         public ScenesClipVersions(Scenes host) => S = host;
@@ -91,9 +91,9 @@ public partial class Scenes
                     _clipVersions = resV?.Versions;
                     _selectedCompareVersionId = _clipVersions?.FirstOrDefault(v => !v.IsCurrent)?.VersionId ?? _clipVersions?.FirstOrDefault()?.VersionId;
                     await S.RefreshCompareVideoUrlsAsync();
-                    if (S._detail is not null && S._detail.SceneNumber == sceneNumber)
+                    if (S.List._detail is not null && S.List._detail.SceneNumber == sceneNumber)
                     {
-                        S._detail = (await S.Engine.GetSceneDetailAsync(S._projectId, sceneNumber))?.Scene;
+                        S.List._detail = (await S.Engine.GetSceneDetailAsync(S._projectId, sceneNumber))?.Scene;
                     }
                     await S.RefreshUncommittedStatusAsync();
                 }

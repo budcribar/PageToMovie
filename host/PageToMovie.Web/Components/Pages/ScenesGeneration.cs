@@ -13,7 +13,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Scenes
 {
     /// <summary>Generation domain for the Scenes page. Owns related UI state and behavior.</summary>
-    internal sealed class ScenesGeneration
+    public sealed class ScenesGeneration
     {
 
     private readonly Scenes S;
@@ -83,7 +83,7 @@ public partial class Scenes
 
 
     /// <summary>True once the shot plan already has an end-credits scene (auto-inserted or re-added).</summary>
-    internal bool HasCreditsScene => S._scenes?.Any(s => s.IsCredits) == true;
+    internal bool HasCreditsScene => S.List._scenes?.Any(s => s.IsCredits) == true;
 
 
 
@@ -270,34 +270,34 @@ public partial class Scenes
                 {
                     // Bust cache so next manual play / inline preview loads the new file.
                     var bust = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                    S._sceneVideoKey = bust;
-                    S._inlineCompositeKey = bust;
+                    S.Playback._sceneVideoKey = bust;
+                    S.Playback._inlineCompositeKey = bust;
 
-                    if (S._playSceneAfterRemux is int playSn)
+                    if (S.Playback._playSceneAfterRemux is int playSn)
                     {
                         // Play scene (auto-remux) — open player once remux finishes.
-                        S._playSceneAfterRemux = null;
-                        S._playingScene = playSn;
-                        S._showScenePlayer = true;
+                        S.Playback._playSceneAfterRemux = null;
+                        S.Playback._playingScene = playSn;
+                        S.Playback._showScenePlayer = true;
                         S._message = $"Scene S{playSn:D2} ready — playing";
                     }
                 }
                 else if (snap.Status == "done" &&
                          string.Equals(snap.Kind, "preview", StringComparison.OrdinalIgnoreCase))
                 {
-                    S._previewVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                    S._showPreviewPlayer = true;
-                    S._message = $"Preview ready — {S._previewScenes.Count} scene(s): " +
-                                string.Join(", ", S._previewScenes.Select(s => $"S{s:D2}"));
+                    S.Playback._previewVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                    S.Playback._showPreviewPlayer = true;
+                    S._message = $"Preview ready — {S.Playback._previewScenes.Count} scene(s): " +
+                                string.Join(", ", S.Playback._previewScenes.Select(s => $"S{s:D2}"));
                 }
                 else if (snap.Status == "done" &&
                          string.Equals(snap.Kind, "scene", StringComparison.OrdinalIgnoreCase) &&
                          snap.Clip is int cn &&
                          snap.Scene is int gsn)
                 {
-                    S._clipVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                    S.Playback._clipVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                     S._message = $"Clip S{gsn:D2}C{cn:D2} finished — Play scene when you want the updated composite";
-                    if (S._selectedClip == cn)
+                    if (S.ClipForm._selectedClip == cn)
                         S.SelectClip(cn);
                 }
                 else if (snap.Status == "done" &&
@@ -309,8 +309,8 @@ public partial class Scenes
                     // <video> shows the edit result, and refresh the open clip's Takes list.
                     // SelectClip clears S._message as its first line, so it must run BEFORE the
                     // completion message is set, not after (setting it after got silently wiped).
-                    S._clipVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                    if (S._selectedClip == vecn)
+                    S.Playback._clipVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                    if (S.ClipForm._selectedClip == vecn)
                         S.SelectClip(vecn);
                     S._message = $"Clip S{vesn:D2}C{vecn:D2} edited — saved as a new take";
                 }
@@ -319,7 +319,7 @@ public partial class Scenes
                 {
                     // Batch generation finished — clear the scene selection so the toolbar no longer
                     // reads "Generate N scenes" (which looked like it would regenerate everything).
-                    S._selected.Clear();
+                    S.List._selected.Clear();
                 }
             }
             else if (ShouldRefreshSceneListWhileRunning(snap))
@@ -389,14 +389,14 @@ public partial class Scenes
         try
         {
             var dto = await S.Engine.GetScenesAsync(S._projectId);
-            S._scenes = dto?.Scenes ?? new List<SceneSummary>();
+            S.List._scenes = dto?.Scenes ?? new List<SceneSummary>();
             await S.RefreshUncommittedStatusAsync();
-            if (S._selectedScene is int sn)
+            if (S.List._selectedScene is int sn)
             {
                 var detail = await S.Engine.GetSceneDetailAsync(S._projectId, sn);
-                S._detail = detail?.Scene;
-                if (S._selectedClip is int cn && S._detail is not null)
-                    S._clip = S._detail.Clips.FirstOrDefault(c => c.ClipNumber == cn);
+                S.List._detail = detail?.Scene;
+                if (S.ClipForm._selectedClip is int cn && S.List._detail is not null)
+                    S.ClipForm._clip = S.List._detail.Clips.FirstOrDefault(c => c.ClipNumber == cn);
             }
         }
         catch { /* ignore mid-job refresh errors */ }
@@ -427,16 +427,16 @@ public partial class Scenes
         try
         {
             var dto = await S.Engine.GetScenesAsync(S._projectId);
-            S._scenes = dto?.Scenes ?? new List<SceneSummary>();
+            S.List._scenes = dto?.Scenes ?? new List<SceneSummary>();
             await RefreshMyJobsAsync();
             await S.RefreshCastGateAsync();
             await S.RefreshResolutionLockAsync();
-            if (S._selectedScene is int sn)
+            if (S.List._selectedScene is int sn)
             {
                 var detail = await S.Engine.GetSceneDetailAsync(S._projectId, sn);
-                S._detail = detail?.Scene;
-                if (S._selectedClip is int cn && S._detail is not null)
-                    S._clip = S._detail.Clips.FirstOrDefault(c => c.ClipNumber == cn);
+                S.List._detail = detail?.Scene;
+                if (S.ClipForm._selectedClip is int cn && S.List._detail is not null)
+                    S.ClipForm._clip = S.List._detail.Clips.FirstOrDefault(c => c.ClipNumber == cn);
             }
         }
         catch { /* ignore soft reload errors */ }
@@ -504,7 +504,7 @@ public partial class Scenes
 
     internal async Task StartBatchAsync()
     {
-        if (S._selected.Count == 0) return;
+        if (S.List._selected.Count == 0) return;
         if (!S.CastReady)
         {
             S._error = S.CastBlockedTitle;
@@ -522,7 +522,7 @@ public partial class Scenes
         _lastListRefreshMessage = null;
         try
         {
-            var list = S._selected.OrderBy(x => x).ToList();
+            var list = S.List._selected.OrderBy(x => x).ToList();
             await EnsureHubAsync();
 
             // The end-credits card is rendered deterministically in the browser (canvas → ffmpeg.wasm),
@@ -559,7 +559,7 @@ public partial class Scenes
 
 
     internal bool IsCreditsSceneNum(int sn) =>
-        S._scenes?.FirstOrDefault(s => s.SceneNumber == sn)?.IsCredits == true;
+        S.List._scenes?.FirstOrDefault(s => s.SceneNumber == sn)?.IsCredits == true;
 
 
 
@@ -654,7 +654,7 @@ public partial class Scenes
 
     internal async Task OpenGenerateConfirmAsync()
     {
-        if (S._selected.Count == 0) return;
+        if (S.List._selected.Count == 0) return;
         if (!S.CastReady) { S._error = S.CastBlockedTitle; return; }
         _showGenerateConfirm = true;
         await S.RefreshCostEstimateAsync();

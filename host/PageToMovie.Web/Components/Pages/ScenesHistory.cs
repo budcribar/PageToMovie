@@ -13,7 +13,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Scenes
 {
     /// <summary>History domain for the Scenes page. Owns related UI state and behavior.</summary>
-    internal sealed class ScenesHistory
+    public sealed class ScenesHistory
     {
 
     private readonly Scenes S;
@@ -106,14 +106,14 @@ public partial class Scenes
             if (res.Ok)
             {
                 _sceneRevertMessage = $"Successfully reverted Scene {sceneNumber:D2} to version {commitHash[..Math.Min(8, commitHash.Length)]}.";
-                if (S._detail is not null && S._detail.SceneNumber == sceneNumber)
+                if (S.List._detail is not null && S.List._detail.SceneNumber == sceneNumber)
                 {
-                    S._detail = (await S.Engine.GetSceneDetailAsync(S._projectId, sceneNumber))?.Scene;
+                    S.List._detail = (await S.Engine.GetSceneDetailAsync(S._projectId, sceneNumber))?.Scene;
                 }
                 var scenesDto = await S.Engine.GetScenesAsync(S._projectId);
                 if (scenesDto?.Scenes is not null)
                 {
-                    S._scenes = scenesDto.Scenes;
+                    S.List._scenes = scenesDto.Scenes;
                 }
             }
             else

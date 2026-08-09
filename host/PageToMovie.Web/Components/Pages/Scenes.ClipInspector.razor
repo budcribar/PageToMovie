@@ -8,38 +8,38 @@
 @using PageToMovie.Core.Models
 
 
-    @if (Host._clip is not null)
+    @if (ClipForm!._clip is not null)
     {
         <div class="card mb-3">
             <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <span>
-                    Clip <code>S@(Host._detail.SceneNumber.ToString("D2"))C@(Host._clip.ClipNumber.ToString("D2"))</code>
-                    @if (!string.IsNullOrEmpty(Host._clip.Timestamp))
+                    Clip <code>S@(List!._detail.SceneNumber.ToString("D2"))C@(ClipForm!._clip.ClipNumber.ToString("D2"))</code>
+                    @if (!string.IsNullOrEmpty(ClipForm!._clip.Timestamp))
                     {
-                        <span class="text-muted ms-2">@Host._clip.Timestamp</span>
+                        <span class="text-muted ms-2">@ClipForm!._clip.Timestamp</span>
                     }
                 </span>
                 <div class="d-flex gap-1">
                     @{
-                        var clipNeedsPrev = Host.PreviousClipMissing(Host._clip.ClipNumber);
+                        var clipNeedsPrev = Host.PreviousClipMissing(ClipForm!._clip.ClipNumber);
                     }
                     <button class="btn btn-sm btn-outline-warning"
                             disabled="@(Host._busy || Host.JobRunning || !Host.CastReady || clipNeedsPrev)"
                             title="@(!Host.CastReady
                                 ? Host.CastBlockedTitle
                                 : clipNeedsPrev
-                                ? $"Generate C{(Host._clip.ClipNumber - 1):D2} first — continues from previous video"
+                                ? $"Generate C{(ClipForm!._clip.ClipNumber - 1):D2} first — continues from previous video"
                                 : "Force re-generate this clip (overwrites if present)")"
-                            @onclick="() => Host.RegenClipAsync(Host._detail.SceneNumber, Host._clip.ClipNumber)">
+                            @onclick="() => Host.RegenClipAsync(List!._detail.SceneNumber, ClipForm!._clip.ClipNumber)">
                         Regen clip
                     </button>
                     <button class="btn btn-sm btn-outline-primary"
                             data-testid="clip-video-edit-open"
-                            disabled="@(Host._busy || Host.JobRunning || !Host._clip.OnDisk || Scenes.ClipExceedsEditDurationCap(Host._clip))"
-                            title="@(!Host._clip.OnDisk
+                            disabled="@(Host._busy || Host.JobRunning || !ClipForm!._clip.OnDisk || Scenes.ClipExceedsEditDurationCap(ClipForm!._clip))"
+                            title="@(!ClipForm!._clip.OnDisk
                                 ? "Generate this clip first"
-                                : Scenes.ClipExceedsEditDurationCap(Host._clip)
-                                ? $"Clip is {(Host._clip.ActualDurationSeconds ?? Host._clip.DurationSeconds):0.#}s — Grok can only edit clips up to {Scenes.MaxVideoEditInputSeconds:0.#}s"
+                                : Scenes.ClipExceedsEditDurationCap(ClipForm!._clip)
+                                ? $"Clip is {(ClipForm!._clip.ActualDurationSeconds ?? ClipForm!._clip.DurationSeconds):0.#}s — Grok can only edit clips up to {Scenes.MaxVideoEditInputSeconds:0.#}s"
                                 : "Edit this clip with an AI text prompt (new take, spends provider credit)")"
                             @onclick="Host.OpenVideoEditPrompt">
                         ✂️ AI Edit
@@ -47,19 +47,19 @@
                     <button class="btn btn-sm btn-outline-info"
                             disabled="@(Host._busy || Host.JobRunning)"
                             title="View past takes & version comparison grid for this clip"
-                            @onclick="() => Host.OpenClipCompareAsync(Host._detail.SceneNumber, Host._clip.ClipNumber)">
-                        🎬 Takes (@(Host._clipVersions?.Count ?? 1))
+                            @onclick="() => Host.OpenClipCompareAsync(List!._detail.SceneNumber, ClipForm!._clip.ClipNumber)">
+                        🎬 Takes (@(ClipVer!._clipVersions?.Count ?? 1))
                     </button>
                     <button class="btn btn-sm btn-outline-secondary"
                             disabled="@(Host._busy || Host.JobRunning)"
                             title="Edit clip fields (dialogue, prompt, characters, lighting…)"
-                            @onclick="() => Host.OpenClipEditor(Host._clip)">
+                            @onclick="() => Host.OpenClipEditor(ClipForm!._clip)">
                         Edit clip
                     </button>
                     <button class="btn btn-sm btn-outline-danger"
                             disabled="@(Host._busy || Host.JobRunning)"
                             title="Delete this clip (video + shot plan entry)"
-                            @onclick="() => Host.RequestDeleteClip(Host._detail.SceneNumber, Host._clip.ClipNumber)">
+                            @onclick="() => Host.RequestDeleteClip(List!._detail.SceneNumber, ClipForm!._clip.ClipNumber)">
                         Delete clip
                     </button>
                     <button class="btn btn-sm btn-outline-secondary" @onclick="() => Host.SelectClip(null)">Close</button>
@@ -67,17 +67,17 @@
             </div>
             <div class="card-body row">
                 <div class="col-md-5 mb-3">
-                    @if (Host._clip.OnDisk)
+                    @if (ClipForm!._clip.OnDisk)
                     {
                         <div class="small text-success mb-1">
                             Single clip only
-                            @if (Host._clip.ActualDurationSeconds is double cad)
+                            @if (ClipForm!._clip.ActualDurationSeconds is double cad)
                             {
                                 <span>· @Scenes.FormatClock(cad)</span>
                             }
                             · not the full scene
                         </div>
-                        @if (Host._clipVideoLoading)
+                        @if (Playback!._clipVideoLoading)
                         {
                             <MediaDownloadProgress Label="Checking for a newer local copy…" ShowProgress="false" />
                         }
@@ -85,34 +85,34 @@
                         {
                             <video controls playsinline autoplay
                                    style="width:100%; max-height:320px; background:#111; border-radius:0.35rem;"
-                                   src="@(Host._clipVideoUrl ?? Host._clipServerVideoUrl)"
-                                   @key="@($"clip-{Host._detail.SceneNumber}-{Host._clip.ClipNumber}-{Host._clipVideoKey}")"
+                                   src="@(Playback!._clipVideoUrl ?? Playback!._clipServerVideoUrl)"
+                                   @key="@($"clip-{List!._detail.SceneNumber}-{ClipForm!._clip.ClipNumber}-{Playback!._clipVideoKey}")"
                                    onloadeddata="this.play().catch(function(){})"></video>
                         }
                         <div class="small text-muted mt-1">
-                            @Host._clip.FileName · @Scenes.FormatSize(Host._clip.SizeBytes)
-                            · <a href="@Engine.ClipVideoUrl(Host._projectId, Host._detail.SceneNumber, Host._clip.ClipNumber)" target="Host._blank" rel="noopener">open clip URL</a>
+                            @ClipForm!._clip.FileName · @Scenes.FormatSize(ClipForm!._clip.SizeBytes)
+                            · <a href="@Engine.ClipVideoUrl(Host._projectId, List!._detail.SceneNumber, ClipForm!._clip.ClipNumber)" target="_blank" rel="noopener">open clip URL</a>
                         </div>
                     }
                     else
                     {
                         <div class="border rounded p-4 text-center text-muted">
                             No video on disk
-                            @if (Host.PreviousClipMissing(Host._clip.ClipNumber))
+                            @if (Host.PreviousClipMissing(ClipForm!._clip.ClipNumber))
                             {
                                 <div class="small text-warning mt-2">
-                                    Generate C@((Host._clip.ClipNumber - 1).ToString("D2")) first — this clip continues from the previous video.
+                                    Generate C@((ClipForm!._clip.ClipNumber - 1).ToString("D2")) first — this clip continues from the previous video.
                                 </div>
                             }
                             <div class="mt-2">
                                 <button class="btn btn-sm btn-warning"
-                                        disabled="@(Host._busy || Host.JobRunning || !Host.CastReady || Host.PreviousClipMissing(Host._clip.ClipNumber))"
+                                        disabled="@(Host._busy || Host.JobRunning || !Host.CastReady || Host.PreviousClipMissing(ClipForm!._clip.ClipNumber))"
                                         title="@(!Host.CastReady
                                             ? Host.CastBlockedTitle
-                                            : Host.PreviousClipMissing(Host._clip.ClipNumber)
-                                            ? $"Need C{(Host._clip.ClipNumber - 1):D2} on disk"
+                                            : Host.PreviousClipMissing(ClipForm!._clip.ClipNumber)
+                                            ? $"Need C{(ClipForm!._clip.ClipNumber - 1):D2} on disk"
                                             : null)"
-                                        @onclick="() => Host.RegenClipAsync(Host._detail.SceneNumber, Host._clip.ClipNumber)">
+                                        @onclick="() => Host.RegenClipAsync(List!._detail.SceneNumber, ClipForm!._clip.ClipNumber)">
                                     Generate this clip
                                 </button>
                             </div>
@@ -121,17 +121,17 @@
                 </div>
                 <div class="col-md-7">
                     <h6>Visual prompt</h6>
-                    <pre class="small bg-light border rounded p-2" style="max-height:200px; overflow:auto; white-space:pre-wrap;">@(Host._clip.VisualPrompt is { Length: > 0 } vp ? vp : "—")</pre>
+                    <pre class="small bg-light border rounded p-2" style="max-height:200px; overflow:auto; white-space:pre-wrap;">@(ClipForm!._clip.VisualPrompt is { Length: > 0 } vp ? vp : "—")</pre>
 
                     <button class="btn btn-sm btn-outline-secondary mb-2"
-                            @onclick="() => Host.OpenClipCompareAsync(Host._detail.SceneNumber, Host._clip.ClipNumber)">
-                        🎬 Takes (@(Host._clipVersions?.Count ?? 1))
+                            @onclick="() => Host.OpenClipCompareAsync(List!._detail.SceneNumber, ClipForm!._clip.ClipNumber)">
+                        🎬 Takes (@(ClipVer!._clipVersions?.Count ?? 1))
                     </button>
                     }
                     <h6 class="mt-2">Negative</h6>
-                    @if (!string.IsNullOrWhiteSpace(Host._clip.NegativePrompt))
+                    @if (!string.IsNullOrWhiteSpace(ClipForm!._clip.NegativePrompt))
                     {
-                        <pre class="small bg-light border rounded p-2" style="max-height:80px; overflow:auto; white-space:pre-wrap;">@Host._clip.NegativePrompt</pre>
+                        <pre class="small bg-light border rounded p-2" style="max-height:80px; overflow:auto; white-space:pre-wrap;">@ClipForm!._clip.NegativePrompt</pre>
                         <div class="form-text small">Plus global bans at gen (text/watermarks/limbs/name tags…).</div>
                     }
                     else
@@ -143,28 +143,28 @@
                     }
                     <h6>Audio</h6>
                     <p class="small mb-1">
-                        <strong>@(string.IsNullOrEmpty(Host._clip.Speaker) ? "—" : Scenes.ShortChar(Host._clip.Speaker))</strong>
-                        @if (!string.IsNullOrEmpty(Host._clip.Delivery))
+                        <strong>@(string.IsNullOrEmpty(ClipForm!._clip.Speaker) ? "—" : Scenes.ShortChar(ClipForm!._clip.Speaker))</strong>
+                        @if (!string.IsNullOrEmpty(ClipForm!._clip.Delivery))
                         {
-                            <span class="text-muted">· @Scenes.ShortDelivery(Host._clip.Delivery)</span>
+                            <span class="text-muted">· @Scenes.ShortDelivery(ClipForm!._clip.Delivery)</span>
                         }
                     </p>
-                    @if (Host._clip.Dialogue is { Length: > 0 } fullDlg)
+                    @if (ClipForm!._clip.Dialogue is { Length: > 0 } fullDlg)
                     {
                         <pre class="small bg-light border rounded p-2 mb-2" style="cursor:pointer;
                              max-height:160px; overflow:auto; white-space:pre-wrap; word-break:break-word;"
-                             @onclick="() => Host.OpenClipEditor(Host._clip)" title="Click to edit">@fullDlg</pre>
+                             @onclick="() => Host.OpenClipEditor(ClipForm!._clip)" title="Click to edit">@fullDlg</pre>
                     }
                     else
                     {
-                        <p class="small text-muted" style="cursor:pointer;" @onclick="() => Host.OpenClipEditor(Host._clip)" title="Click to add dialogue">— (click to add)</p>
+                        <p class="small text-muted" style="cursor:pointer;" @onclick="() => Host.OpenClipEditor(ClipForm!._clip)" title="Click to add dialogue">— (click to add)</p>
                     }
-                    @if (Host._clip.DialogueVerification is { } ver)
+                    @if (ClipForm!._clip.DialogueVerification is { } ver)
                     {
                         @if (string.Equals(ver.Status, "verified", StringComparison.OrdinalIgnoreCase))
                         {
                             <button type="button" class="btn btn-sm p-0 border-0 text-start align-baseline"
-                                    @onclick="() => Host.OpenVerificationModal(Host._detail.SceneNumber, Host._clip.ClipNumber, ver)">
+                                    @onclick="() => Host.OpenVerificationModal(List!._detail.SceneNumber, ClipForm!._clip.ClipNumber, ver)">
                                 <div class="badge bg-success-subtle text-success border border-success-subtle rounded-pill mb-2 px-2 py-1 small" style="cursor:pointer;" title="Click to view complete verification report">
                                     ✓ Dialogue &amp; Speaker Verified (@($"{ver.DialogueAccuracyScore:P0}")) 📋
                                 </div>
@@ -173,7 +173,7 @@
                         else if (string.Equals(ver.Status, "speaker_swap", StringComparison.OrdinalIgnoreCase))
                         {
                             <button type="button" class="btn btn-sm p-0 border-0 text-start align-baseline"
-                                    @onclick="() => Host.OpenVerificationModal(Host._detail.SceneNumber, Host._clip.ClipNumber, ver)">
+                                    @onclick="() => Host.OpenVerificationModal(List!._detail.SceneNumber, ClipForm!._clip.ClipNumber, ver)">
                                 <div class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill mb-2 px-2 py-1 small" style="cursor:pointer;" title="Click to view complete verification report">
                                     ⚠ Speaker Swap (Expected @ver.ExpectedSpeaker, Detected @(ver.DetectedSpeaker ?? "Other")) 📋
                                 </div>
@@ -182,7 +182,7 @@
                         else if (string.Equals(ver.Status, "mismatch", StringComparison.OrdinalIgnoreCase))
                         {
                             <button type="button" class="btn btn-sm p-0 border-0 text-start align-baseline"
-                                    @onclick="() => Host.OpenVerificationModal(Host._detail.SceneNumber, Host._clip.ClipNumber, ver)">
+                                    @onclick="() => Host.OpenVerificationModal(List!._detail.SceneNumber, ClipForm!._clip.ClipNumber, ver)">
                                 <div class="badge bg-warning-subtle text-warning border border-warning-subtle rounded-pill mb-2 px-2 py-1 small" style="cursor:pointer;" title="Click to view complete verification report">
                                     ⚠ Dialogue Mismatch (@($"{ver.DialogueAccuracyScore:P0}")) 📋
                                 </div>
@@ -204,23 +204,23 @@
                             </div>
                         }
 
-                        @if (Host._musicTrashVersions is { Count: > 0 })
+                        @if (Music!._musicTrashVersions is { Count: > 0 })
                         {
                             <hr class="border-secondary my-4" />
                             <button type="button" class="btn btn-sm btn-outline-secondary text-white mb-2"
-                                    @onclick="() => Host._showMusicTrash = !Host._showMusicTrash">
-                                Deleted takes (@Host._musicTrashVersions.Count) @(Host._showMusicTrash ? "▲ Hide" : "▼ Show")
+                                    @onclick="() => Music!._showMusicTrash = !Music!._showMusicTrash">
+                                Deleted takes (@Music!._musicTrashVersions.Count) @(Music!._showMusicTrash ? "▲ Hide" : "▼ Show")
                             </button>
-                            @if (Host._showMusicTrash)
+                            @if (Music!._showMusicTrash)
                             {
-                                @foreach (var take in Host._musicTrashVersions)
+                                @foreach (var take in Music!._musicTrashVersions)
                                 {
                                     <div class="card bg-dark border-secondary p-2 mb-2 opacity-75">
                                         <div class="d-flex justify-content-between align-items-center gap-2">
                                             <span class="small text-muted">@take.CreatedAtUtc.ToLocalTime().ToString("g")</span>
                                             <button type="button" class="btn btn-sm btn-outline-info"
-                                                    disabled="@Host._promotingMusicVersion"
-                                                    @onclick="() => Host.RestoreMusicVersionAsync(Host._compareMusicSceneNumber, take.TakeId)">
+                                                    disabled="@Music!._promotingMusicVersion"
+                                                    @onclick="() => Host.RestoreMusicVersionAsync(Music!._compareMusicSceneNumber, take.TakeId)">
                                                 Restore take
                                             </button>
                                         </div>
@@ -229,23 +229,23 @@
                             }
                         }
                     }
-                    @if (Host._clip.OnDisk)
+                    @if (ClipForm!._clip.OnDisk)
                     {
                         <button type="button" class="btn btn-outline-primary btn-sm rounded-pill mb-2 px-2 py-0 ms-1 small"
-                                disabled="@Host._verifyingClip"
-                                @onclick="() => Host.VerifyClipDialogueManualAsync(Host._clip)"
+                                disabled="@Dialogue!._verifyingClip"
+                                @onclick="() => Host.VerifyClipDialogueManualAsync(ClipForm!._clip)"
                                 title="Run automated dialogue verification on this existing clip">
-                            @(Host._verifyingClip && Host._verifyingClipNumber == Host._clip.ClipNumber ? "Verifying..." : "Verify Dialogue")
+                            @(Dialogue!._verifyingClip && Dialogue!._verifyingClipNumber == ClipForm!._clip.ClipNumber ? "Verifying..." : "Verify Dialogue")
                         </button>
                     }
-                    @if (Host._clip.CharactersOnScreen.Count > 0)
+                    @if (ClipForm!._clip.CharactersOnScreen.Count > 0)
                     {
-                        <p class="small text-muted mb-1">on screen: @string.Join(", ", Host._clip.CharactersOnScreen.Select(Scenes.ShortChar))</p>
+                        <p class="small text-muted mb-1">on screen: @string.Join(", ", ClipForm!._clip.CharactersOnScreen.Select(Scenes.ShortChar))</p>
                     }
                     <p class="small text-muted mb-0">
-                        subject: @(Host._clip.PrimarySubject is { Length: > 0 } ps ? ps : "—")
-                        · continuation: @Host._clip.Continuation
-                        · @Host._clip.DurationSeconds s
+                        subject: @(ClipForm!._clip.PrimarySubject is { Length: > 0 } ps ? ps : "—")
+                        · continuation: @ClipForm!._clip.Continuation
+                        · @ClipForm!._clip.DurationSeconds s
                     </p>
                 </div>
             </div>

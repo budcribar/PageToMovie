@@ -13,7 +13,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Scenes
 {
     /// <summary>ListState domain for the Scenes page. Owns related UI state and behavior.</summary>
-    internal sealed class ScenesListState
+    public sealed class ScenesListState
     {
 
     private readonly Scenes S;
@@ -361,7 +361,7 @@ public partial class Scenes
                     el.ValueKind == JsonValueKind.String &&
                     el.GetString() is { Length: > 0 } res)
                 {
-                    S._genResolution = res.Trim().ToLowerInvariant() switch
+                    S.Gen._genResolution = res.Trim().ToLowerInvariant() switch
                     {
                         "480" or "480p" => "480p",
                         "720" or "720p" => "720p",
@@ -373,14 +373,14 @@ public partial class Scenes
                     edEl.ValueKind == JsonValueKind.String &&
                     edEl.GetString() is { Length: > 0 } pve)
                 {
-                    S._preferredVideoEditor = pve.Trim();
+                    S.ClipRegen._preferredVideoEditor = pve.Trim();
                 }
                 if (cfg.TryGetValue("audio_model_name", out var amEl) &&
                     amEl.ValueKind == JsonValueKind.String &&
                     amEl.GetString() is { Length: > 0 } am &&
                     !string.Equals(am, "none", StringComparison.OrdinalIgnoreCase))
                 {
-                    S._selectedAudioModel = am.Trim();
+                    S.Music._selectedAudioModel = am.Trim();
                 }
             }
         }
@@ -402,7 +402,7 @@ public partial class Scenes
             if (_selectedScene is int sn)
                 await LoadDetailAsync(sn);
             var jobs = await S.Engine.GetJobAsync();
-            S._job = jobs?.Job;
+            S.Gen._job = jobs?.Job;
             await S.RefreshMyJobsAsync();
             await RefreshCastGateAsync();
             await RefreshResolutionLockAsync();
@@ -428,7 +428,7 @@ public partial class Scenes
         {
             _resolutionLock = await S.Engine.GetResolutionLockAsync(S._projectId);
             if (_resolutionLock is { Length: > 0 })
-                S._genResolution = _resolutionLock;
+                S.Gen._genResolution = _resolutionLock;
         }
         catch { /* fail open — leave picker editable */ }
     }
@@ -441,7 +441,7 @@ public partial class Scenes
         if (string.IsNullOrEmpty(S._projectId)) return;
         try
         {
-            var dto = await S.Engine.GetCostAsync(S._projectId, draftResolution: S._genResolution, heroResolution: S._genResolution);
+            var dto = await S.Engine.GetCostAsync(S._projectId, draftResolution: S.Gen._genResolution, heroResolution: S.Gen._genResolution);
             _costReport = dto?.Cost;
         }
         catch { _costReport = null; }
@@ -518,9 +518,9 @@ public partial class Scenes
         {
             await LoadDetailAsync(sn);
             _selectedScene = sn;
-            S._selectedClip = null;
-            S._clip = null;
-            S._selectedClips.Clear();
+            S.ClipForm._selectedClip = null;
+            S.ClipForm._clip = null;
+            S.ClipSel._selectedClips.Clear();
         }
         catch (Exception ex) { S._error = ex.Message; }
         finally { S._busy = false; }
@@ -534,19 +534,19 @@ public partial class Scenes
         _detail = dto?.Scene
             ?? throw new InvalidOperationException($"Scene {sn} not found");
 
-        S._sceneCompositeVideoUrl = null;
+        S.Playback._sceneCompositeVideoUrl = null;
         // Resolved once per scene load, not inline in markup — CacheBust() stamps the current
         // second, so calling it inline re-evaluates on every render (any SignalR/job-poll
         // re-render elsewhere on the page) and gives the <video> a new src each time, which
         // makes the browser reload the resource and restart playback — looks like looping.
-        S._sceneCompositeServerUrl = Scenes.CacheBust(S.Engine.CompositeVideoUrl(S._projectId, sn));
+        S.Playback._sceneCompositeServerUrl = Scenes.CacheBust(S.Engine.CompositeVideoUrl(S._projectId, sn));
         if (S.MediaFolder.IsConnected && _detail.CompositeExists)
         {
             try
             {
                 var localBlob = await S.MediaFolder.GetLocalBlobUrlAsync(S._projectId, $"assets/video/scene_{sn:D2}.mp4");
                 if (!string.IsNullOrWhiteSpace(localBlob))
-                    S._sceneCompositeVideoUrl = localBlob;
+                    S.Playback._sceneCompositeVideoUrl = localBlob;
             }
             catch { /* fallback */ }
         }
@@ -558,9 +558,9 @@ public partial class Scenes
     {
         _selectedScene = null;
         _detail = null;
-        S._selectedClip = null;
-        S._clip = null;
-        S._selectedClips.Clear();
+        S.ClipForm._selectedClip = null;
+        S.ClipForm._clip = null;
+        S.ClipSel._selectedClips.Clear();
         S._message = null; // clear any leftover completion message from a previous scene/action
         await ReloadListAsync();
     }
@@ -615,7 +615,7 @@ public partial class Scenes
 
 
     internal ClipVersionItem? _selectedCompareVersion =>
-        S._clipVersions?.FirstOrDefault(v => string.Equals(v.VersionId, S._selectedCompareVersionId, StringComparison.OrdinalIgnoreCase));
+        S.ClipVer._clipVersions?.FirstOrDefault(v => string.Equals(v.VersionId, S.ClipVer._selectedCompareVersionId, StringComparison.OrdinalIgnoreCase));
 
 
     }

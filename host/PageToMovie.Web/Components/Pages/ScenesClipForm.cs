@@ -13,7 +13,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Scenes
 {
     /// <summary>Clip editor dialog domain for the Scenes page.</summary>
-    internal sealed class ScenesClipForm
+    public sealed class ScenesClipForm
     {
         private readonly Scenes S;
         public ScenesClipForm(Scenes host) => S = host;
@@ -35,44 +35,44 @@ public partial class Scenes
             S._message = null; // clear any leftover completion message from a previous scene/action
             _selectedClip = cn;
             _clip = cn is int n
-                ? S._detail?.Clips.FirstOrDefault(c => c.ClipNumber == n)
+                ? S.List._detail?.Clips.FirstOrDefault(c => c.ClipNumber == n)
                 : null;
-            S._clipVersions = null;
-            S._clipVideoUrl = null;
+            S.ClipVer._clipVersions = null;
+            S.Playback._clipVideoUrl = null;
             if (cn is int cnv)
             {
                 // Force new <video> mount so we never keep a previous composite/clip stream
-                S._clipVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                S.Playback._clipVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                 // Resolved once, not inline in markup — CacheBust() stamps the current second, so
                 // calling it inline re-evaluates on every render (any SignalR/job-poll re-render
                 // elsewhere on the page) and gives the <video> a new src each time, which makes the
                 // browser reload the resource and restart playback — looks like looping.
-                S._clipServerVideoUrl = S._detail is not null
-                    ? Scenes.CacheBust(S.Engine.ClipVideoUrl(S._projectId, S._detail.SceneNumber, cnv))
+                S.Playback._clipServerVideoUrl = S.List._detail is not null
+                    ? Scenes.CacheBust(S.Engine.ClipVideoUrl(S._projectId, S.List._detail.SceneNumber, cnv))
                     : null;
                 // Gate the <video> behind a loading spinner while we check for a newer local copy —
                 // otherwise it renders immediately with the (possibly stale) server fallback src and
                 // autoplays that before swapping to the fresh one once the check resolves.
-                S._clipVideoLoading = S.MediaFolder.IsConnected;
+                S.Playback._clipVideoLoading = S.MediaFolder.IsConnected;
                 // Stop full-scene autoplay panel if open
-                if (S._showScenePlayer && S._playingScene == S._detail?.SceneNumber)
+                if (S.Playback._showScenePlayer && S.Playback._playingScene == S.List._detail?.SceneNumber)
                 {
-                    S._showScenePlayer = false;
-                    S._playingScene = null;
+                    S.Playback._showScenePlayer = false;
+                    S.Playback._playingScene = null;
                 }
-                if (S._detail is not null)
-                    _ = S.LoadClipVideoAndTakesCountAsync(S._detail.SceneNumber, cnv);
+                if (S.List._detail is not null)
+                    _ = S.LoadClipVideoAndTakesCountAsync(S.List._detail.SceneNumber, cnv);
             }
         }
 
         internal void OpenClipEditor(ClipSummary clip)
         {
-            if (S._detail is null) return;
+            if (S.List._detail is null) return;
             _clipEditorIsNew = false;
             _clipEditor = new ClipEditRequest
             {
                 ProjectId = S._projectId,
-                Scene = S._detail.SceneNumber,
+                Scene = S.List._detail.SceneNumber,
                 Clip = clip.ClipNumber,
                 VisualPrompt = clip.VisualPrompt,
                 NegativePrompt = clip.NegativePrompt,
@@ -91,13 +91,13 @@ public partial class Scenes
 
         internal void OpenAddClipDialog()
         {
-            if (S._detail is null) return;
-            var nextClip = S._detail.Clips.Count == 0 ? 1 : S._detail.Clips.Max(c => c.ClipNumber) + 1;
+            if (S.List._detail is null) return;
+            var nextClip = S.List._detail.Clips.Count == 0 ? 1 : S.List._detail.Clips.Max(c => c.ClipNumber) + 1;
             _clipEditorIsNew = true;
             _clipEditor = new ClipEditRequest
             {
                 ProjectId = S._projectId,
-                Scene = S._detail.SceneNumber,
+                Scene = S.List._detail.SceneNumber,
                 Clip = nextClip,
                 DurationSeconds = 5,
             };
@@ -120,7 +120,7 @@ public partial class Scenes
 
         internal async Task SaveClipEditorAsync()
         {
-            if (_clipEditor is null || S._detail is null) return;
+            if (_clipEditor is null || S.List._detail is null) return;
 
             // Mirror server rules for fast feedback (server still authoritative).
             if (string.IsNullOrWhiteSpace(_clipEditor.VisualPrompt))
@@ -170,25 +170,25 @@ public partial class Scenes
                 _clipEditor.CharactersOnScreen = _clipEditorCast.ToList();
                 if (_clipEditorIsNew)
                 {
-                    await S.Engine.AddClipAsync(S._projectId, S._detail.SceneNumber, _clipEditor);
-                    S._message = $"Added S{S._detail.SceneNumber:D2}C{_clipEditor.Clip:D2} — generate its video when ready";
+                    await S.Engine.AddClipAsync(S._projectId, S.List._detail.SceneNumber, _clipEditor);
+                    S._message = $"Added S{S.List._detail.SceneNumber:D2}C{_clipEditor.Clip:D2} — generate its video when ready";
                 }
                 else
                 {
-                    await S.Engine.UpdateClipAsync(S._projectId, S._detail.SceneNumber, _clipEditor.Clip, _clipEditor);
-                    S._message = $"Saved S{S._detail.SceneNumber:D2}C{_clipEditor.Clip:D2} — Regen the clip to re-render video/audio with the new fields";
+                    await S.Engine.UpdateClipAsync(S._projectId, S.List._detail.SceneNumber, _clipEditor.Clip, _clipEditor);
+                    S._message = $"Saved S{S.List._detail.SceneNumber:D2}C{_clipEditor.Clip:D2} — Regen the clip to re-render video/audio with the new fields";
                 }
-                try { await S.Engine.CommitProjectChangesAsync(S._projectId, $"Saved clip S{S._detail.SceneNumber:D2}C{_clipEditor.Clip:D2}"); } catch { }
+                try { await S.Engine.CommitProjectChangesAsync(S._projectId, $"Saved clip S{S.List._detail.SceneNumber:D2}C{_clipEditor.Clip:D2}"); } catch { }
                 await S.RefreshUncommittedStatusAsync();
                 _clipEditor = null;
-                await S.LoadDetailAsync(S._detail.SceneNumber);
+                await S.LoadDetailAsync(S.List._detail.SceneNumber);
                 var scenesDto = await S.Engine.GetScenesAsync(S._projectId);
                 if (scenesDto?.Scenes is not null)
                 {
-                    S._scenes = scenesDto.Scenes;
+                    S.List._scenes = scenesDto.Scenes;
                 }
                 if (_selectedClip is int sel)
-                    _clip = S._detail.Clips.FirstOrDefault(c => c.ClipNumber == sel);
+                    _clip = S.List._detail.Clips.FirstOrDefault(c => c.ClipNumber == sel);
             }
             catch (Exception ex) { S._error = ex.Message; }
             finally { S._busy = false; }

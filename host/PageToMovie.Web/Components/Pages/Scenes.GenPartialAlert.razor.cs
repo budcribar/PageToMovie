@@ -5,4 +5,6 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Scenes_GenPartialAlert
 {
     [CascadingParameter] public Scenes Host { get; set; } = default!;
+    [CascadingParameter] public Scenes.ScenesGeneration? Gen { get; set; }
+
 }

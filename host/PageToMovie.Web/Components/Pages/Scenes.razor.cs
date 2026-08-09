@@ -68,15 +68,15 @@ public partial class Scenes
 
 
     internal bool DetailLockedByOther =>
-        _detail is not null &&
-        (_scenes?.FirstOrDefault(s => s.SceneNumber == _detail.SceneNumber)?.LockedByOther ?? false);
+        List._detail is not null &&
+        (List._scenes?.FirstOrDefault(s => s.SceneNumber == List._detail.SceneNumber)?.LockedByOther ?? false);
 
 
 
     internal string? _detailLockOwner =>
-        _detail is null
+        List._detail is null
             ? null
-            : _scenes?.FirstOrDefault(s => s.SceneNumber == _detail.SceneNumber)?.LockOwnerUserId;
+            : List._scenes?.FirstOrDefault(s => s.SceneNumber == List._detail.SceneNumber)?.LockOwnerUserId;
 
 
 
@@ -85,36 +85,36 @@ public partial class Scenes
         get
         {
             var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            if (_scenes is not null)
+            if (List._scenes is not null)
             {
-                foreach (var s in _scenes)
+                foreach (var s in List._scenes)
                 {
                     foreach (var c in s.CharactersOnScreen)
                         if (!string.IsNullOrWhiteSpace(c)) set.Add(c);
                 }
             }
-            if (_detail is not null)
+            if (List._detail is not null)
             {
-                foreach (var c in _detail.CharactersOnScreen)
+                foreach (var c in List._detail.CharactersOnScreen)
                     if (!string.IsNullOrWhiteSpace(c)) set.Add(c);
 
-                if (_detail.Clips is not null)
+                if (List._detail.Clips is not null)
                 {
-                    foreach (var cl in _detail.Clips)
+                    foreach (var cl in List._detail.Clips)
                     {
                         foreach (var c in cl.CharactersOnScreen)
                             if (!string.IsNullOrWhiteSpace(c)) set.Add(c);
                     }
                 }
             }
-            if (_clipEditorCast is not null)
+            if (ClipForm._clipEditorCast is not null)
             {
-                foreach (var c in _clipEditorCast)
+                foreach (var c in ClipForm._clipEditorCast)
                     if (!string.IsNullOrWhiteSpace(c)) set.Add(c);
             }
-            if (_castMissing is not null)
+            if (List._castMissing is not null)
             {
-                foreach (var c in _castMissing)
+                foreach (var c in List._castMissing)
                     if (!string.IsNullOrWhiteSpace(c)) set.Add(c);
             }
             return set.OrderBy(c => ShortChar(c), StringComparer.OrdinalIgnoreCase).ToList();
@@ -124,9 +124,9 @@ public partial class Scenes
 
 
     internal List<string> LocationOptions =>
-        _scenes is null
+        List._scenes is null
             ? new List<string>()
-            : _scenes
+            : List._scenes
                 .SelectMany(s =>
                 {
                     var list = new List<string>(s.LocationIds);
@@ -174,9 +174,9 @@ public partial class Scenes
 
     internal void ResetPickers()
     {
-        _pickSetting = "";
-        _pickCharacter = "";
-        _pickLocation = "";
+        List._pickSetting = "";
+        List._pickCharacter = "";
+        List._pickLocation = "";
     }
 
 
@@ -232,7 +232,7 @@ public partial class Scenes
             catch { /* SignalR / media folder optional for browse */ }
 
             var jobs = await Engine.GetJobAsync();
-            _job = jobs?.Job;
+            Gen._job = jobs?.Job;
             if (Session.IsAdmin)
                 await RefreshMyJobsAsync();
 
@@ -249,7 +249,7 @@ public partial class Scenes
 
     internal void OnMediaFolderChanged() => _ = InvokeAsync(async () =>
     {
-        if (_showScenePlayer && _playingScene is int sn && !MediaFolder.IsSyncing && string.IsNullOrEmpty(_clientSceneUrl))
+        if (Playback._showScenePlayer && Playback._playingScene is int sn && !MediaFolder.IsSyncing && string.IsNullOrEmpty(Playback._clientSceneUrl))
         {
             await PlaySceneCompositeAsync(sn);
         }
@@ -282,11 +282,11 @@ public partial class Scenes
 
     internal async Task OnProjectChangedAsync()
     {
-        _selectedScene = null;
-        _detail = null;
-        _selectedClip = null;
-        _clip = null;
-        _selected.Clear();
+        List._selectedScene = null;
+        List._detail = null;
+        ClipForm._selectedClip = null;
+        ClipForm._clip = null;
+        List._selected.Clear();
         ResetPickers();
         await LoadGenResolutionFromConfigAsync();
         await ReloadListAsync();
@@ -411,18 +411,18 @@ public partial class Scenes
 
     internal void OpenVerificationModal(int sceneNumber, int clipNumber, ClipDialogueVerificationResult ver)
     {
-        _verifModalSceneNumber = sceneNumber;
-        _verifModalClipNumber = clipNumber;
-        _verifModalResult = ver;
-        _showVerificationModal = true;
+        Dialogue._verifModalSceneNumber = sceneNumber;
+        Dialogue._verifModalClipNumber = clipNumber;
+        Dialogue._verifModalResult = ver;
+        Dialogue._showVerificationModal = true;
     }
 
 
 
     internal void CloseVerificationModal()
     {
-        _showVerificationModal = false;
-        _verifModalResult = null;
+        Dialogue._showVerificationModal = false;
+        Dialogue._verifModalResult = null;
     }
 
 
@@ -432,527 +432,8 @@ public partial class Scenes
         Hub.JobUpdated -= OnJobUpdated;
         Hub.JobLog -= OnJobLog;
         MediaFolder.Changed -= OnMediaFolderChanged;
-        _clientPreviewUrl = null;
-        _clientSceneUrl = null;
+        Playback._clientPreviewUrl = null;
+        Playback._clientSceneUrl = null;
         await Stitch.RevokePreviewUrlAsync();
-    }
-
-
-    // ── Field forwarders (Host._x still works for markup children) ──
-    internal bool _showSceneHistory
-    {
-        get => History._showSceneHistory;
-        set => History._showSceneHistory = value;
-    }
-    internal int _historySceneNumber
-    {
-        get => History._historySceneNumber;
-        set => History._historySceneNumber = value;
-    }
-    internal bool _loadingHistory
-    {
-        get => History._loadingHistory;
-        set => History._loadingHistory = value;
-    }
-    internal bool _revertingScene
-    {
-        get => History._revertingScene;
-        set => History._revertingScene = value;
-    }
-    internal string? _sceneRevertMessage
-    {
-        get => History._sceneRevertMessage;
-        set => History._sceneRevertMessage = value;
-    }
-    internal List<SceneCommitHistoryItem>? _sceneHistory
-    {
-        get => History._sceneHistory;
-        set => History._sceneHistory = value;
-    }
-    internal bool _showInlineSceneHistory
-    {
-        get => History._showInlineSceneHistory;
-        set => History._showInlineSceneHistory = value;
-    }
-    internal bool _scoringMusic
-    {
-        get => Music._scoringMusic;
-        set => Music._scoringMusic = value;
-    }
-    internal List<SupportedModelDto> _audioModels
-    {
-        get => Music._audioModels;
-        set => Music._audioModels = value;
-    }
-    internal string _selectedAudioModel
-    {
-        get => Music._selectedAudioModel;
-        set => Music._selectedAudioModel = value;
-    }
-    internal bool _wantVocal
-    {
-        get => Music._wantVocal;
-        set => Music._wantVocal = value;
-    }
-    internal int? _scoreMenuScene
-    {
-        get => Music._scoreMenuScene;
-        set => Music._scoreMenuScene = value;
-    }
-    internal bool _showMusicCompare
-    {
-        get => Music._showMusicCompare;
-        set => Music._showMusicCompare = value;
-    }
-    internal int _compareMusicSceneNumber
-    {
-        get => Music._compareMusicSceneNumber;
-        set => Music._compareMusicSceneNumber = value;
-    }
-    internal List<MusicVersionItem>? _musicVersions
-    {
-        get => Music._musicVersions;
-        set => Music._musicVersions = value;
-    }
-    internal List<MusicVersionItem>? _musicTrashVersions
-    {
-        get => Music._musicTrashVersions;
-        set => Music._musicTrashVersions = value;
-    }
-    internal bool _loadingMusicVersions
-    {
-        get => Music._loadingMusicVersions;
-        set => Music._loadingMusicVersions = value;
-    }
-    internal string? _musicCompareMessage
-    {
-        get => Music._musicCompareMessage;
-        set => Music._musicCompareMessage = value;
-    }
-    internal bool _promotingMusicVersion
-    {
-        get => Music._promotingMusicVersion;
-        set => Music._promotingMusicVersion = value;
-    }
-    internal bool _showMusicTrash
-    {
-        get => Music._showMusicTrash;
-        set => Music._showMusicTrash = value;
-    }
-    internal bool _verifyingClip
-    {
-        get => Dialogue._verifyingClip;
-        set => Dialogue._verifyingClip = value;
-    }
-    internal int _verifyingClipNumber
-    {
-        get => Dialogue._verifyingClipNumber;
-        set => Dialogue._verifyingClipNumber = value;
-    }
-    internal int _verifyCurrent
-    {
-        get => Dialogue._verifyCurrent;
-        set => Dialogue._verifyCurrent = value;
-    }
-    internal int _verifyTotal
-    {
-        get => Dialogue._verifyTotal;
-        set => Dialogue._verifyTotal = value;
-    }
-    internal string _verifyStatusLabel
-    {
-        get => Dialogue._verifyStatusLabel;
-        set => Dialogue._verifyStatusLabel = value;
-    }
-    internal bool _showVerificationModal
-    {
-        get => Dialogue._showVerificationModal;
-        set => Dialogue._showVerificationModal = value;
-    }
-    internal int _verifModalSceneNumber
-    {
-        get => Dialogue._verifModalSceneNumber;
-        set => Dialogue._verifModalSceneNumber = value;
-    }
-    internal int _verifModalClipNumber
-    {
-        get => Dialogue._verifModalClipNumber;
-        set => Dialogue._verifModalClipNumber = value;
-    }
-    internal ClipDialogueVerificationResult? _verifModalResult
-    {
-        get => Dialogue._verifModalResult;
-        set => Dialogue._verifModalResult = value;
-    }
-    internal int? _playSceneAfterRemux
-    {
-        get => Playback._playSceneAfterRemux;
-        set => Playback._playSceneAfterRemux = value;
-    }
-    internal bool _showScenePlayer
-    {
-        get => Playback._showScenePlayer;
-        set => Playback._showScenePlayer = value;
-    }
-    internal int? _playingScene
-    {
-        get => Playback._playingScene;
-        set => Playback._playingScene = value;
-    }
-    internal long _sceneVideoKey
-    {
-        get => Playback._sceneVideoKey;
-        set => Playback._sceneVideoKey = value;
-    }
-    internal long _inlineCompositeKey
-    {
-        get => Playback._inlineCompositeKey;
-        set => Playback._inlineCompositeKey = value;
-    }
-    internal long _clipVideoKey
-    {
-        get => Playback._clipVideoKey;
-        set => Playback._clipVideoKey = value;
-    }
-    internal bool _showPreviewPlayer
-    {
-        get => Playback._showPreviewPlayer;
-        set => Playback._showPreviewPlayer = value;
-    }
-    internal long _previewVideoKey
-    {
-        get => Playback._previewVideoKey;
-        set => Playback._previewVideoKey = value;
-    }
-    internal List<int> _previewScenes
-    {
-        get => Playback._previewScenes;
-        set => Playback._previewScenes = value;
-    }
-    internal string? _clientPreviewUrl
-    {
-        get => Playback._clientPreviewUrl;
-        set => Playback._clientPreviewUrl = value;
-    }
-    internal string? _clientSceneUrl
-    {
-        get => Playback._clientSceneUrl;
-        set => Playback._clientSceneUrl = value;
-    }
-    internal bool _clientStitching
-    {
-        get => Playback._clientStitching;
-        set => Playback._clientStitching = value;
-    }
-    internal string? _clientStitchStatus
-    {
-        get => Playback._clientStitchStatus;
-        set => Playback._clientStitchStatus = value;
-    }
-    internal string? _clipVideoUrl
-    {
-        get => Playback._clipVideoUrl;
-        set => Playback._clipVideoUrl = value;
-    }
-    internal string? _clipServerVideoUrl
-    {
-        get => Playback._clipServerVideoUrl;
-        set => Playback._clipServerVideoUrl = value;
-    }
-    internal bool _clipVideoLoading
-    {
-        get => Playback._clipVideoLoading;
-        set => Playback._clipVideoLoading = value;
-    }
-    internal string? _sceneCompositeVideoUrl
-    {
-        get => Playback._sceneCompositeVideoUrl;
-        set => Playback._sceneCompositeVideoUrl = value;
-    }
-    internal string? _sceneCompositeServerUrl
-    {
-        get => Playback._sceneCompositeServerUrl;
-        set => Playback._sceneCompositeServerUrl = value;
-    }
-    internal int? _scenePlayerServerSrcScene
-    {
-        get => Playback._scenePlayerServerSrcScene;
-        set => Playback._scenePlayerServerSrcScene = value;
-    }
-    internal string? _scenePlayerServerSrcCached
-    {
-        get => Playback._scenePlayerServerSrcCached;
-        set => Playback._scenePlayerServerSrcCached = value;
-    }
-    internal Dictionary<string, string?> _compareVideoUrls
-    {
-        get => Playback._compareVideoUrls;
-        set => Playback._compareVideoUrls = value;
-    }
-    internal JobSnapshot? _job
-    {
-        get => Gen._job;
-        set => Gen._job = value;
-    }
-    internal List<JobSnapshot> _myJobs
-    {
-        get => Gen._myJobs;
-        set => Gen._myJobs = value;
-    }
-    internal bool _showAdminJobLog
-    {
-        get => Gen._showAdminJobLog;
-        set => Gen._showAdminJobLog = value;
-    }
-    internal int _progressFloor
-    {
-        get => Gen._progressFloor;
-        set => Gen._progressFloor = value;
-    }
-    internal string? _progressFloorJobId
-    {
-        get => Gen._progressFloorJobId;
-        set => Gen._progressFloorJobId = value;
-    }
-    internal int _lastListRefreshIndex
-    {
-        get => Gen._lastListRefreshIndex;
-        set => Gen._lastListRefreshIndex = value;
-    }
-    internal int? _lastListRefreshScene
-    {
-        get => Gen._lastListRefreshScene;
-        set => Gen._lastListRefreshScene = value;
-    }
-    internal string? _lastListRefreshMessage
-    {
-        get => Gen._lastListRefreshMessage;
-        set => Gen._lastListRefreshMessage = value;
-    }
-    internal DateTimeOffset _lastListRefreshAt
-    {
-        get => Gen._lastListRefreshAt;
-        set => Gen._lastListRefreshAt = value;
-    }
-    internal bool _listRefreshInFlight
-    {
-        get => Gen._listRefreshInFlight;
-        set => Gen._listRefreshInFlight = value;
-    }
-    internal int? _pendingRegenScene
-    {
-        get => Gen._pendingRegenScene;
-        set => Gen._pendingRegenScene = value;
-    }
-    internal bool _showGenerateConfirm
-    {
-        get => Gen._showGenerateConfirm;
-        set => Gen._showGenerateConfirm = value;
-    }
-    internal List<SupportedModelDto> _videoModels
-    {
-        get => Gen._videoModels;
-        set => Gen._videoModels = value;
-    }
-    internal string _selectedVideoModel
-    {
-        get => Gen._selectedVideoModel;
-        set => Gen._selectedVideoModel = value;
-    }
-    internal string _genResolution
-    {
-        get => Gen._genResolution;
-        set => Gen._genResolution = value;
-    }
-    internal string _pickSetting
-    {
-        get => List._pickSetting;
-        set => List._pickSetting = value;
-    }
-    internal string _pickCharacter
-    {
-        get => List._pickCharacter;
-        set => List._pickCharacter = value;
-    }
-    internal string _pickLocation
-    {
-        get => List._pickLocation;
-        set => List._pickLocation = value;
-    }
-    internal bool _showFilters
-    {
-        get => List._showFilters;
-        set => List._showFilters = value;
-    }
-    internal string? _resolutionLock
-    {
-        get => List._resolutionLock;
-        set => List._resolutionLock = value;
-    }
-    internal string _sortBy
-    {
-        get => List._sortBy;
-        set => List._sortBy = value;
-    }
-    internal bool _sortAscending
-    {
-        get => List._sortAscending;
-        set => List._sortAscending = value;
-    }
-    internal CostReport? _costReport
-    {
-        get => List._costReport;
-        set => List._costReport = value;
-    }
-    internal bool _castChecked
-    {
-        get => List._castChecked;
-        set => List._castChecked = value;
-    }
-    internal bool _castReady
-    {
-        get => List._castReady;
-        set => List._castReady = value;
-    }
-    internal int? _castReadyCount
-    {
-        get => List._castReadyCount;
-        set => List._castReadyCount = value;
-    }
-    internal int? _castTotal
-    {
-        get => List._castTotal;
-        set => List._castTotal = value;
-    }
-    internal List<string> _castMissing
-    {
-        get => List._castMissing;
-        set => List._castMissing = value;
-    }
-    internal List<SceneSummary>? _scenes
-    {
-        get => List._scenes;
-        set => List._scenes = value;
-    }
-    internal HashSet<int> _selected
-    {
-        get => List._selected;
-        set => List._selected = value;
-    }
-    internal string _selectionMode
-    {
-        get => List._selectionMode;
-        set => List._selectionMode = value;
-    }
-    internal int? _selectedScene
-    {
-        get => List._selectedScene;
-        set => List._selectedScene = value;
-    }
-    internal SceneDetail? _detail
-    {
-        get => List._detail;
-        set => List._detail = value;
-    }
-    internal int? _deleteSceneTarget
-    {
-        get => List._deleteSceneTarget;
-        set => List._deleteSceneTarget = value;
-    }
-    internal bool _clipSortByDuration
-    {
-        get => ClipSel._clipSortByDuration;
-        set => ClipSel._clipSortByDuration = value;
-    }
-    internal bool _clipSortAscending
-    {
-        get => ClipSel._clipSortAscending;
-        set => ClipSel._clipSortAscending = value;
-    }
-    internal int? _selectedClip
-    {
-        get => ClipForm._selectedClip;
-        set => ClipForm._selectedClip = value;
-    }
-    internal ClipSummary? _clip
-    {
-        get => ClipForm._clip;
-        set => ClipForm._clip = value;
-    }
-    internal ClipEditRequest? _clipEditor
-    {
-        get => ClipForm._clipEditor;
-        set => ClipForm._clipEditor = value;
-    }
-    internal bool _clipEditorIsNew
-    {
-        get => ClipForm._clipEditorIsNew;
-        set => ClipForm._clipEditorIsNew = value;
-    }
-    internal HashSet<string> _clipEditorCast
-    {
-        get => ClipForm._clipEditorCast;
-        set => ClipForm._clipEditorCast = value;
-    }
-    internal HashSet<int> _selectedClips => ClipSel._selectedClips;
-    internal bool _showVideoEditPrompt
-    {
-        get => ClipRegen._showVideoEditPrompt;
-        set => ClipRegen._showVideoEditPrompt = value;
-    }
-    internal string _videoEditPromptText
-    {
-        get => ClipRegen._videoEditPromptText;
-        set => ClipRegen._videoEditPromptText = value;
-    }
-    internal string _preferredVideoEditor
-    {
-        get => ClipRegen._preferredVideoEditor;
-        set => ClipRegen._preferredVideoEditor = value;
-    }
-    internal bool _showClipCompare
-    {
-        get => ClipVer._showClipCompare;
-        set => ClipVer._showClipCompare = value;
-    }
-    internal int _compareSceneNumber
-    {
-        get => ClipVer._compareSceneNumber;
-        set => ClipVer._compareSceneNumber = value;
-    }
-    internal int _compareClipNumber
-    {
-        get => ClipVer._compareClipNumber;
-        set => ClipVer._compareClipNumber = value;
-    }
-    internal bool _loadingClipVersions
-    {
-        get => ClipVer._loadingClipVersions;
-        set => ClipVer._loadingClipVersions = value;
-    }
-    internal bool _promotingVersion
-    {
-        get => ClipVer._promotingVersion;
-        set => ClipVer._promotingVersion = value;
-    }
-    internal string? _clipCompareMessage
-    {
-        get => ClipVer._clipCompareMessage;
-        set => ClipVer._clipCompareMessage = value;
-    }
-    internal List<ClipVersionItem>? _clipVersions
-    {
-        get => ClipVer._clipVersions;
-        set => ClipVer._clipVersions = value;
-    }
-    internal List<ClipVersionItem>? _trashVersions
-    {
-        get => ClipVer._trashVersions;
-        set => ClipVer._trashVersions = value;
-    }
-    internal string? _selectedCompareVersionId
-    {
-        get => ClipVer._selectedCompareVersionId;
-        set => ClipVer._selectedCompareVersionId = value;
     }
 }

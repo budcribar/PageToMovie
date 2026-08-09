@@ -13,7 +13,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Scenes
 {
     /// <summary>Playback domain for the Scenes page. Owns related UI state and behavior.</summary>
-    internal sealed class ScenesPlayback
+    public sealed class ScenesPlayback
     {
 
     private readonly Scenes S;
@@ -119,7 +119,7 @@ public partial class Scenes
         try
         {
             var res = await S.Engine.GetClipVersionsAsync(S._projectId, scene, clip);
-            S._clipVersions = res?.Versions;
+            S.ClipVer._clipVersions = res?.Versions;
             S.StateHasChanged();
         }
         catch { /* label falls back to "1" */ }
@@ -137,11 +137,11 @@ public partial class Scenes
         try
         {
             var meta = await S.Engine.GetWipMovieMetaAsync(S._projectId);
-            var summary = S._scenes?.FirstOrDefault(s => s.SceneNumber == sn);
+            var summary = S.List._scenes?.FirstOrDefault(s => s.SceneNumber == sn);
             var compositeOk = summary?.CompositeExists == true
-                              || (S._detail is { SceneNumber: var dsn, CompositeExists: true } && dsn == sn);
+                              || (S.List._detail is { SceneNumber: var dsn, CompositeExists: true } && dsn == sn);
             var clipsOnDisk = summary?.ClipsOnDisk
-                              ?? (S._detail is { SceneNumber: var d2 } && d2 == sn ? S._detail.ClipsOnDisk : 0);
+                              ?? (S.List._detail is { SceneNumber: var d2 } && d2 == sn ? S.List._detail.ClipsOnDisk : 0);
             var stale = meta?.StaleScenes?.Contains(sn) == true;
             var needsStitch = !compositeOk || stale;
 
@@ -185,8 +185,8 @@ public partial class Scenes
             _clientSceneUrl = null;
             try
             {
-                SceneDetail? detail = S._detail is { SceneNumber: var d } && d == sn
-                    ? S._detail
+                SceneDetail? detail = S.List._detail is { SceneNumber: var d } && d == sn
+                    ? S.List._detail
                     : null;
                 var urls = await S.Stitch.CollectClipUrlsAsync(S._projectId, sn, detail);
                 if (urls.Count == 0 && compositeOk)
@@ -295,12 +295,12 @@ public partial class Scenes
     {
         get
         {
-            if (S._selected.Count == 0 || S._scenes is null)
+            if (S.List._selected.Count == 0 || S.List._scenes is null)
                 return false;
             if (S.MediaFolder.IsConnected || S.MediaFolder.IsSyncing)
                 return true;
-            return S._scenes.Any(s =>
-                S._selected.Contains(s.SceneNumber)
+            return S.List._scenes.Any(s =>
+                S.List._selected.Contains(s.SceneNumber)
                 && (s.CompositeExists || s.ClipsOnDisk > 0));
         }
     }
@@ -318,7 +318,7 @@ public partial class Scenes
         S._error = null;
         S._message = null;
         _clientStitchStatus = "Preparing…";
-        _previewScenes = S._selected.OrderBy(x => x).ToList();
+        _previewScenes = S.List._selected.OrderBy(x => x).ToList();
         _showScenePlayer = false;
         _playingScene = null;
         _clientSceneUrl = null;
@@ -334,7 +334,7 @@ public partial class Scenes
             var stale = meta?.StaleScenes?.ToHashSet() ?? new HashSet<int>();
             _clientStitchStatus = "Collecting media…";
             var urls = await S.Stitch.CollectAndMixSceneSegmentsAsync(
-                S._projectId, _previewScenes, S._scenes, stale);
+                S._projectId, _previewScenes, S.List._scenes, stale);
             if (urls.Count == 0)
             {
                 S._error = "No composites or on-disk clips for the selected scenes";
@@ -378,7 +378,7 @@ public partial class Scenes
 
 
     /// <summary>
-    /// Resolves a playable URL for every take in S._clipVersions, once, instead of computing it
+    /// Resolves a playable URL for every take in S.ClipVer._clipVersions, once, instead of computing it
     /// inline per-render (both the grid and split-view markup need this, and a take flagged
     /// ClientOnly has no server bytes to stream — it has to go through the local media folder
     /// instead of the server URL the "normal" server-backed case uses).
@@ -386,14 +386,14 @@ public partial class Scenes
     internal async Task RefreshCompareVideoUrlsAsync()
     {
         var map = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
-        if (S._clipVersions is { Count: > 0 })
+        if (S.ClipVer._clipVersions is { Count: > 0 })
         {
-            foreach (var v in S._clipVersions)
+            foreach (var v in S.ClipVer._clipVersions)
             {
                 map[v.VersionId] = v.ClientOnly && !string.IsNullOrEmpty(v.RelativePath)
                     ? await S.MediaFolder.GetLocalBlobUrlAsync(S._projectId, v.RelativePath)
                     : v.IsCurrent
-                        ? S.Engine.ClipVideoUrl(S._projectId, S._compareSceneNumber, S._compareClipNumber)
+                        ? S.Engine.ClipVideoUrl(S._projectId, S.ClipVer._compareSceneNumber, S.ClipVer._compareClipNumber)
                         : S.Engine.BrowserMediaPath($"/api/projects/{Uri.EscapeDataString(S._projectId)}/assets/video/history/{v.Mp4FileName}");
             }
         }

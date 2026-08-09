@@ -13,7 +13,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Scenes
 {
     /// <summary>Music domain for the Scenes page. Owns related UI state and behavior.</summary>
-    internal sealed class ScenesMusic
+    public sealed class ScenesMusic
     {
 
     private readonly Scenes S;
@@ -128,7 +128,7 @@ if (string.IsNullOrWhiteSpace(S._projectId)) return;
             var started = await S.Engine.StartSceneMusicGenAsync(S._projectId, sceneNum, _selectedAudioModel, isVocal);
             // Live progress card only — no duplicate "started" banner (same as scene gen).
             var jobs = await S.Engine.GetJobAsync();
-            S._job = jobs?.Job ?? started;
+            S.Gen._job = jobs?.Job ?? started;
             if (!string.IsNullOrWhiteSpace(started?.JobId))
                 _ = CompleteSceneMusicDownloadAsync(started.JobId, sceneNum);
         }
@@ -288,9 +288,9 @@ if (string.IsNullOrWhiteSpace(S._projectId)) return;
                 var resV = await S.Engine.GetMusicVersionsAsync(S._projectId, sceneNumber);
                 _musicVersions = resV?.Versions;
                 await RefreshMusicCompareUrlsAsync();
-                if (S._detail is not null && S._detail.SceneNumber == sceneNumber)
+                if (S.List._detail is not null && S.List._detail.SceneNumber == sceneNumber)
                 {
-                    S._detail = (await S.Engine.GetSceneDetailAsync(S._projectId, sceneNumber))?.Scene;
+                    S.List._detail = (await S.Engine.GetSceneDetailAsync(S._projectId, sceneNumber))?.Scene;
                 }
             }
             else

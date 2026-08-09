@@ -13,7 +13,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Scenes
 {
     /// <summary>Clip regen + video-edit domain for the Scenes page.</summary>
-    internal sealed class ScenesClipRegen
+    public sealed class ScenesClipRegen
     {
         private readonly Scenes S;
         public ScenesClipRegen(Scenes host) => S = host;
@@ -69,13 +69,13 @@ public partial class Scenes
             if (!S.MediaFolder.IsConnected || string.IsNullOrEmpty(S._projectId) || targets.Count == 0) return;
 
             // Cache scene detail per scene number — targets can span scenes (multi-scene batch),
-            // and S._detail may be loaded for a different scene than the one we're checking (or null,
+            // and S.List._detail may be loaded for a different scene than the one we're checking (or null,
             // when this runs from the scene-list page rather than a scene-detail view).
             var detailCache = new Dictionary<int, SceneDetail?>();
             async Task<SceneDetail?> GetSceneAsync(int sn)
             {
                 if (detailCache.TryGetValue(sn, out var cached)) return cached;
-                var d = S._detail?.SceneNumber == sn ? S._detail : (await S.Engine.GetSceneDetailAsync(S._projectId, sn))?.Scene;
+                var d = S.List._detail?.SceneNumber == sn ? S.List._detail : (await S.Engine.GetSceneDetailAsync(S._projectId, sn))?.Scene;
                 detailCache[sn] = d;
                 return d;
             }
@@ -154,31 +154,31 @@ public partial class Scenes
         /// used to pre-check predecessors before an "only missing" generation batch.</summary>
         internal async Task<List<(int Scene, int Clip)>> MissingClipTargetsAsync(int sn)
         {
-            var detail = S._detail?.SceneNumber == sn ? S._detail : (await S.Engine.GetSceneDetailAsync(S._projectId, sn))?.Scene;
+            var detail = S.List._detail?.SceneNumber == sn ? S.List._detail : (await S.Engine.GetSceneDetailAsync(S._projectId, sn))?.Scene;
             return detail?.Clips?.Where(c => !c.OnDisk).Select(c => (Scene: sn, Clip: c.ClipNumber)).ToList()
                 ?? new List<(int Scene, int Clip)>();
         }
 
         internal async Task RegenSelectedClipsAsync()
         {
-            if (S._detail is null || S._selectedClips.Count == 0) return;
-            var sn = S._detail.SceneNumber;
+            if (S.List._detail is null || S.ClipSel._selectedClips.Count == 0) return;
+            var sn = S.List._detail.SceneNumber;
             S._busy = true;
             S._error = null;
             S._message = null;
-            S._pendingRegenScene = sn;
+            S.Gen._pendingRegenScene = sn;
             try
             {
-                var targets = S._selectedClips.OrderBy(c => c).Select(c => (Scene: sn, Clip: c)).ToList();
+                var targets = S.ClipSel._selectedClips.OrderBy(c => c).Select(c => (Scene: sn, Clip: c)).ToList();
                 await S.EnsureHubAsync();
                 await EnsurePredecessorsUploadedAsync(targets);
-                S._job = await S.Engine.StartClipBatchGenAsync(S._projectId, targets, resolution: S._genResolution);
-                S._message = $"Regenerating {targets.Count} clip(s) in S{sn:D2} @ {S._genResolution}…";
-                S._selectedClips.Clear();
+                S.Gen._job = await S.Engine.StartClipBatchGenAsync(S._projectId, targets, resolution: S.Gen._genResolution);
+                S._message = $"Regenerating {targets.Count} clip(s) in S{sn:D2} @ {S.Gen._genResolution}…";
+                S.ClipSel._selectedClips.Clear();
                 S.StateHasChanged();
             }
             catch (Exception ex) { S._error = ex.Message; }
-            finally { S._busy = false; S._pendingRegenScene = null; }
+            finally { S._busy = false; S.Gen._pendingRegenScene = null; }
         }
 
         /// <summary>
@@ -217,18 +217,18 @@ public partial class Scenes
             S._busy = true;
             S._error = null;
             S._message = null;
-            S._pendingRegenScene = sn;
+            S.Gen._pendingRegenScene = sn;
             try
             {
                 await S.EnsureHubAsync();
                 await EnsurePredecessorsUploadedAsync(new List<(int Scene, int Clip)> { (sn, cn) });
-                await S.Engine.StartSceneGenAsync(S._projectId, sn, onlyMissing: false, clip: cn, resolution: S._genResolution);
-                S._message = $"Regenerating S{sn:D2}C{cn:D2} @ {S._genResolution}…";
+                await S.Engine.StartSceneGenAsync(S._projectId, sn, onlyMissing: false, clip: cn, resolution: S.Gen._genResolution);
+                S._message = $"Regenerating S{sn:D2}C{cn:D2} @ {S.Gen._genResolution}…";
                 var jobs = await S.Engine.GetJobAsync();
-                S._job = jobs?.Job;
+                S.Gen._job = jobs?.Job;
             }
             catch (Exception ex) { S._error = ex.Message; }
-            finally { S._busy = false; S._pendingRegenScene = null; }
+            finally { S._busy = false; S.Gen._pendingRegenScene = null; }
         }
 
         /// <summary>xAI's edit input cap — see MaxVideoEditInputSeconds's doc comment (client hint;
@@ -246,11 +246,11 @@ public partial class Scenes
 
         internal async Task SubmitVideoEditAsync()
         {
-            if (S._detail is null || S._clip is null || string.IsNullOrWhiteSpace(_videoEditPromptText))
+            if (S.List._detail is null || S.ClipForm._clip is null || string.IsNullOrWhiteSpace(_videoEditPromptText))
                 return;
 
-            var sn = S._detail.SceneNumber;
-            var cn = S._clip.ClipNumber;
+            var sn = S.List._detail.SceneNumber;
+            var cn = S.ClipForm._clip.ClipNumber;
             _showVideoEditPrompt = false;
             S._busy = true;
             S._error = null;
@@ -261,7 +261,7 @@ public partial class Scenes
                 await S.Engine.StartVideoEditAsync(S._projectId, sn, cn, _videoEditPromptText.Trim());
                 S._message = $"Editing S{sn:D2}C{cn:D2}…";
                 var jobs = await S.Engine.GetJobAsync();
-                S._job = jobs?.Job;
+                S.Gen._job = jobs?.Job;
             }
             catch (Exception ex) { S._error = ex.Message; }
             finally { S._busy = false; }
