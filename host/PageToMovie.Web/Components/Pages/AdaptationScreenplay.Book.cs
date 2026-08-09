@@ -50,7 +50,7 @@ public partial class AdaptationScreenplay
                 {
                     try
                     {
-                        S.Editor._text = await S.Js.InvokeAsync<string>("fountainEditor.getValue", ScreenplayEditor.EditorId) ?? S.Editor._text;
+                        await S.Editor.SyncTextFromEditorAsync();
                     }
                     catch { /* keep */ }
                 }
@@ -149,7 +149,7 @@ public partial class AdaptationScreenplay
                 await S.SoftLoadAsync();
                 await S.Editor.LoadEditorDataAsync();
                 if (S.Editor._editorReady)
-                    await S.Js.InvokeVoidAsync("fountainEditor.setValue", ScreenplayEditor.EditorId, S.Editor._text);
+                    S.Editor.HydrateModelFromText();
             }
             catch (Exception ex)
             {

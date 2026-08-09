@@ -116,10 +116,10 @@ git push origin master
 
 ## 5. Checklist Matrix
 
-- [ ] **Step 1**: Reference Screenplay Editor components in `PageToMovie.Web`.
-- [ ] **Step 2**: Hydrate `ScreenplayModel` from SQLite `ProjectStore` and sidecar files.
-- [ ] **Step 3**: Wire **"Looks Good — Continue"** button to transition `StudioStateMachine` to `ScreenplayApproved`.
+- [x] **Step 1**: Reference Screenplay Editor components in `PageToMovie.Web`.
+- [x] **Step 2**: Hydrate `ScreenplayModel` from SQLite `ProjectStore` and sidecar files.
+- [x] **Step 3**: Wire **"Looks Good — Continue"** button to transition `StudioStateMachine` to `ScreenplayApproved`.
 - [ ] **Step 4**: Trigger `AdaptationService.BuildShotPlanAsync(ProjectId)` to generate `blueprint.json`.
 - [ ] **Step 5**: Persist character voice/image locks to `characters.json`.
-- [ ] **Step 6**: Confirm 100% test pass on `ScreenplayEditorApp.Tests` and `PageToMovie.Tests`.
+- [x] **Step 6**: Confirm 100% test pass on `ScreenplayEditorApp.Tests` and `PageToMovie.Tests`.
 - [ ] **Step 7**: Commit and push to `origin/master`.

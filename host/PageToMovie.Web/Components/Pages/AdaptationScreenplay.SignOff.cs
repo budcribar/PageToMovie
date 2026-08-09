@@ -87,12 +87,8 @@ public partial class AdaptationScreenplay
                 return;
             }
 
-            try
-            {
-                var warnings = await S.Js.InvokeAsync<string[]>("fountainEditor.getWarnings", ScreenplayEditor.EditorId);
-                MapWarnings(warnings);
-            }
-            catch { /* use local */ }
+            // Structured editor warnings come from local text analysis.
+            UpdateWarningsFromText(S.Editor._text);
 
             if (_signOffWarnings.Count > 0)
             {
@@ -122,8 +118,7 @@ public partial class AdaptationScreenplay
 
             try
             {
-                if (S.Editor._editorReady)
-                    await S.Js.InvokeVoidAsync("fountainEditor.setReadOnly", ScreenplayEditor.EditorId, true);
+                // Structured editor has no CodeMirror read-only toggle.
 
                 // Server may spend many seconds extracting cast after approve
                 S.BusyMessage = "Approving and preparing cast…";
@@ -154,11 +149,7 @@ public partial class AdaptationScreenplay
             {
                 S.Busy = false;
                 S.BusyMessage = null;
-                if (S.Editor._editorReady)
-                {
-                    try { await S.Js.InvokeVoidAsync("fountainEditor.setReadOnly", ScreenplayEditor.EditorId, false); }
-                    catch { /* ignore */ }
-                }
+                // no-op: structured editor does not use fountainEditor JS
             }
         }
     }

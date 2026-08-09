@@ -1,0 +1,68 @@
+<div class="border border-secondary-subtle rounded py-1 px-2 mb-1 bg-dark text-light shadow-sm"
+     draggable="true"
+     @ondragstart="HandleDragStart"
+     @ondragover:preventDefault
+     @ondrop="HandleDrop"
+     title="Drag to reorder beat">
+    
+    <!-- Single Guaranteed 1-Line Flex Row -->
+    <div class="d-flex flex-nowrap align-items-center gap-1 w-100 overflow-hidden" style="min-height: 28px;">
+        <span class="text-secondary flex-shrink-0 me-1" style="cursor: grab; user-select: none;" title="Drag beat">⋮⋮</span>
+
+        <select class="form-select form-select-sm fw-bold border-secondary bg-dark text-light py-0 px-1 flex-shrink-0" style="width: 115px; height: 26px; font-size: 0.8rem;" @bind="Beat.BeatType" @bind:after="OnChanged">
+            <option value="@BeatType.Action">🎬 Action</option>
+            <option value="@BeatType.Dialogue">🗣️ Dialogue</option>
+            <option value="@BeatType.Parenthetical">💬 Parenthetical</option>
+            <option value="@BeatType.Transition">🎞️ Transition</option>
+        </select>
+
+        @if (Beat.BeatType == BeatType.Action)
+        {
+            <input type="text" class="form-control form-control-sm border-secondary bg-dark text-light py-0 px-2 flex-grow-1" style="height: 26px; font-size: 0.85rem;" @bind="Beat.ActionText" @bind:after="OnChanged" placeholder="Visual action description..." />
+        }
+        else if (Beat.BeatType == BeatType.Dialogue)
+        {
+            <select class="form-select form-select-sm fw-bold border-secondary bg-dark text-light py-0 px-1 flex-shrink-0" style="width: 110px; height: 26px; font-size: 0.8rem;" @bind="Beat.Speaker" @bind:after="OnChanged">
+                @if (!AvailableCharacters.Contains(Beat.Speaker) && !string.IsNullOrWhiteSpace(Beat.Speaker))
+                {
+                    <option value="@Beat.Speaker">@Beat.Speaker (Current)</option>
+                }
+                @foreach (var chara in AvailableCharacters)
+                {
+                    <option value="@chara">@chara</option>
+                }
+            </select>
+
+            <button class="btn btn-sm btn-outline-warning py-0 px-1 flex-shrink-0" type="button" @onclick="OnEditCharactersClick" title="Manage / Edit Story Characters" style="height: 26px; font-size: 0.75rem;">
+                ⚙
+            </button>
+
+            <select class="form-select form-select-sm border-secondary bg-dark text-light py-0 px-1 flex-shrink-0" style="width: 85px; height: 26px; font-size: 0.75rem;" @bind="Beat.SpeakerExt" @bind:after="OnChanged" title="@Beat.SpeakerExt.GetJargonHint()">
+                <option value="@SpeakerExtension.None" title="Standard dialogue">(None)</option>
+                <option value="@SpeakerExtension.VO" title="V.O. (Voice Over)">V.O.</option>
+                <option value="@SpeakerExtension.OS" title="O.S. (Off Screen)">O.S.</option>
+                <option value="@SpeakerExtension.CONTD" title="CONT'D (Continued)">CONT'D</option>
+            </select>
+
+            <input type="text" class="form-control form-control-sm fst-italic border-secondary bg-dark text-light py-0 px-1 flex-shrink-0" style="width: 110px; height: 26px; font-size: 0.8rem;" @bind="Beat.Parenthetical" @bind:after="OnChanged" placeholder="(parenthetical)" />
+            <input type="text" class="form-control form-control-sm border-secondary bg-dark text-light py-0 px-2 flex-grow-1" style="height: 26px; font-size: 0.85rem;" @bind="Beat.SpokenText" @bind:after="OnChanged" placeholder="Spoken dialogue line..." />
+        }
+        else if (Beat.BeatType == BeatType.Transition)
+        {
+            <select class="form-select form-select-sm fw-bold border-secondary bg-dark text-light py-0 px-2 flex-grow-1" style="height: 26px; font-size: 0.8rem;" @bind="Beat.TransitionPreset" @bind:after="OnChanged">
+                <option value="@TransitionPreset.CutTo">CUT TO:</option>
+                <option value="@TransitionPreset.FadeIn">FADE IN:</option>
+                <option value="@TransitionPreset.FadeOut">FADE OUT.</option>
+                <option value="@TransitionPreset.DissolveTo">DISSOLVE TO:</option>
+                <option value="@TransitionPreset.SmashCutTo">SMASH CUT TO:</option>
+                <option value="@TransitionPreset.Blackout">BLACKOUT</option>
+            </select>
+        }
+        else if (Beat.BeatType == BeatType.Parenthetical)
+        {
+            <input type="text" class="form-control form-control-sm fst-italic border-secondary bg-dark text-light py-0 px-2 flex-grow-1" style="height: 26px; font-size: 0.8rem;" @bind="Beat.Parenthetical" @bind:after="OnChanged" placeholder="(parenthetical direction)" />
+        }
+
+        <button class="btn btn-sm btn-outline-danger py-0 px-1 flex-shrink-0 ms-1" type="button" @onclick="Delete" title="Delete Beat" style="height: 26px; width: 26px; line-height: 1;">✕</button>
+    </div>
+</div>

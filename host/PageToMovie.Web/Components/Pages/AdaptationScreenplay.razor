@@ -78,51 +78,16 @@
 
             <div class="fe-wrap">
                 <div class="fe-toolbar">
-                    <details class="fe-scenes-pop">
-                        <summary class="btn btn-outline-secondary btn-sm"
-                                 title="Jump to a scene heading in the editor">
-                            Jump to scene@(Editor._sceneCount > 0 ? $" ({Editor._sceneCount})" : "")
-                        </summary>
-                        <div class="fe-scenes-pop-panel" @ref="Editor._scenesEl"></div>
-                    </details>
-
-                    <button type="button"
-                            class="btn btn-outline-secondary btn-sm"
-                            disabled="@(!Editor.CanEdit)"
-                            @onclick='() => Editor.InsertAsync("\n\nINT.  - DAY\n\n")'
-                            title="Insert a new scene heading">
-                        New scene
-                    </button>
-
                     <button type="button"
                             class="btn btn-outline-secondary btn-sm"
                             data-testid="screenplay-copy"
                             @onclick="Editor.CopyScreenplayAsync"
                             title="Copy the whole screenplay to the clipboard">
-                        @(Editor._copied ? "Copied ✓" : "📋 Copy")
+                        @(Editor._copied ? "Copied" : "Copy")
                     </button>
-
-                    <details class="fe-advanced-pop">
-                        <summary class="btn btn-outline-secondary btn-sm"
-                                 title="Fountain formatting helpers for advanced edits">
-                            Advanced…
-                        </summary>
-                        <div class="fe-advanced-panel d-flex flex-wrap gap-1">
-                            <button type="button" class="btn btn-outline-secondary btn-sm" data-testid="screenplay-insert-title" disabled="@(!Editor.CanEdit)" @onclick='() => Editor.InsertTitleFieldAsync("Title")' title="Insert or jump to the Title: line on the title page (shown on the end-credits card)">Title:</button>
-                            <button type="button" class="btn btn-outline-secondary btn-sm" data-testid="screenplay-insert-author" disabled="@(!Editor.CanEdit)" @onclick='() => Editor.InsertTitleFieldAsync("Author", "Title")' title="Insert or jump to the Author: line on the title page (shown on the end-credits card)">Author:</button>
-                            <button type="button" class="btn btn-outline-secondary btn-sm" disabled="@(!Editor.CanEdit)" @onclick='() => Editor.InsertAsync("\n\nCHARACTER\n")'>Character</button>
-                            <button type="button" class="btn btn-outline-secondary btn-sm" disabled="@(!Editor.CanEdit)" @onclick='() => Editor.InsertAsync("\n\nCUT TO:\n\n")'>Transition</button>
-                            <button type="button" class="btn btn-outline-secondary btn-sm" disabled="@(!Editor.CanEdit)" @onclick='() => Editor.InsertAsync("\n\n> THE END <\n\n")'>Centered</button>
-                            <button type="button" class="btn btn-outline-secondary btn-sm" disabled="@(!Editor.CanEdit)" @onclick='() => Editor.InsertAsync("\n\n.FORCED HEADING\n\n")'>Force scene</button>
-                            <button type="button" class="btn btn-outline-secondary btn-sm" disabled="@(!Editor.CanEdit)" @onclick='() => Editor.InsertAsync("\n\n@Name\n")'>Force character</button>
-                            <button type="button" class="btn btn-outline-secondary btn-sm" disabled="@(!Editor.CanEdit)" @onclick='() => Editor.InsertAsync("\n!ACTION LINE\n")'>Force action</button>
-                            <button type="button" class="btn btn-outline-secondary btn-sm" disabled="@(!Editor.CanEdit)" @onclick='() => Editor.InsertAsync("\n~Lyric line\n")'>Lyric</button>
-                        </div>
-                    </details>
 
                     <span class="flex-grow-1"></span>
 
-                    @* Autosave keeps drafts; quiet Save for dirty state / tests (stable DOM so scenes popover stays). *@
                     <button type="button"
                             class="@(Save._dirtyLocal ? "btn btn-link btn-sm text-muted px-1" : "visually-hidden")"
                             data-testid="screenplay-save"
@@ -169,25 +134,22 @@
                          aria-hidden="true"></div>
                 </div>
 
-                <div class="fe-main fe-main-two-col">
-                    <div class="fe-panel fe-editor-col">
-                        <div class="fe-panel-header">
-                            <span>Edit</span>
-                            <span class="fe-preview-hint">scroll to read</span>
-                        </div>
-                        <div class="fe-editor-host" @ref="Editor._editorHost"></div>
-                    </div>
-                    <div class="fe-panel fe-preview-col">
-                        <div class="fe-panel-header">
-                            <span>Preview</span>
-                            <span class="fe-preview-hint">read only</span>
-                        </div>
-                        <div class="fe-preview-body"
-                             @ref="Editor._previewEl"
-                             tabindex="-1"
-                             aria-readonly="true"
-                             title="Read-only layout — edit on the left"></div>
-                    </div>
+                <div class="fe-structured-editor border rounded-3 overflow-hidden bg-body-tertiary" data-testid="screenplay-structured-editor">
+                    @if (Editor._editorReady)
+                    {
+                        <PageToMovie.ScreenplayEditor.Components.ScreenplayEditor Model="Editor._model"
+                                                                                   ModelChanged="Editor.OnStructuredModelChanged" />
+                    }
+                    else
+                    {
+                        <div class="p-4 text-muted small">Loading screenplay editor…</div>
+                    }
+                </div>
+                @* Hidden refs retained for book-context host bindings. *@
+                <div class="visually-hidden" aria-hidden="true">
+                    <div @ref="Editor._editorHost"></div>
+                    <div @ref="Editor._previewEl"></div>
+                    <div @ref="Editor._scenesEl"></div>
                 </div>
             </div>
 

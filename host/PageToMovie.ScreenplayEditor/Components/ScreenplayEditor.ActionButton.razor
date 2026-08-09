@@ -1,0 +1,11 @@
+<button type="button"
+        class="btn btn-sm @Variant.ToCssClass() @CssClass"
+        disabled="@Disabled"
+        title="@Title"
+        @onclick="OnClick">
+    @if (!string.IsNullOrEmpty(Icon))
+    {
+        <i class="bi @Icon me-1"></i>
+    }
+    @Text
+</button>

@@ -1,0 +1,146 @@
+<div class="container-fluid py-2 px-md-3">
+    <!-- Compact Studio Header (Max 2 Rows) -->
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3 pb-2 border-bottom border-secondary-subtle">
+        <div class="d-flex align-items-center gap-3">
+            <div class="d-flex align-items-center gap-2">
+                <ScreenplayEditor_BadgePill Variant="@ComponentVariant.Primary" Text="PageToMovie" />
+                <h5 class="mb-0 fw-bold text-light text-nowrap">Screenplay Editor</h5>
+            </div>
+            <span class="text-secondary small d-none d-md-inline">
+                Title: <strong class="text-light">@(!string.IsNullOrWhiteSpace(Model.Metadata.Title) ? Model.Metadata.Title : "Untitled")</strong> ·
+                Author: <strong class="text-light">@(!string.IsNullOrWhiteSpace(Model.Metadata.Author) ? Model.Metadata.Author : "Unknown")</strong> ·
+                Scenes: <strong class="text-light">@Model.Scenes.Count</strong> ·
+                Beats: <strong class="text-light">@TotalBeats</strong>
+            </span>
+        </div>
+
+        <!-- Right Side: Hamburger Menu -->
+        <div class="d-flex align-items-center gap-2">
+            <div class="dropdown">
+                <button class="btn btn-sm btn-outline-secondary dropdown-toggle px-3" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Studio Menu">
+                    <i class="bi bi-list fs-5 align-middle"></i> Menu
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end dropdown-menu-dark shadow-lg">
+                    <li><h6 class="dropdown-header">Story Setup</h6></li>
+                    <li>
+                        <button class="dropdown-item" type="button" @onclick="OpenCharacterModal">
+                            <i class="bi bi-people text-warning me-2"></i> Edit Story Characters...
+                        </button>
+                    </li>
+                    <li>
+                        <button class="dropdown-item" type="button" @onclick="OpenLocationModal">
+                            <i class="bi bi-geo-alt text-info me-2"></i> Edit Story Locations...
+                        </button>
+                    </li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><h6 class="dropdown-header">Screenplay Exchange</h6></li>
+                    <li>
+                        <button class="dropdown-item" type="button" @onclick="OpenImportModal">
+                            <i class="bi bi-box-arrow-in-down text-info me-2"></i> Import Fountain...
+                        </button>
+                    </li>
+                    <li>
+                        <button class="dropdown-item" type="button" @onclick="OpenExportModal">
+                            <i class="bi bi-box-arrow-up-right text-primary me-2"></i> Export Fountain...
+                        </button>
+                    </li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><h6 class="dropdown-header">View Controls</h6></li>
+                    <li>
+                        <button class="dropdown-item" type="button" @onclick="CollapseAllScenes">
+                            <i class="bi bi-arrows-collapse me-2"></i> Collapse All Scenes
+                        </button>
+                    </li>
+                    <li>
+                        <button class="dropdown-item" type="button" @onclick="ExpandAllScenes">
+                            <i class="bi bi-arrows-expand me-2"></i> Expand All Scenes
+                        </button>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Two-Column Master-Detail Layout -->
+    <div class="row g-3">
+        <!-- Column 1: Left Outline Navigation Sidebar -->
+        <div class="@(IsSidebarCompact ? "col-auto" : "col-md-3")">
+            <ScreenplayEditor_OutlineSidebar Scenes="Model.Scenes"
+                                              ActiveView="@ActiveViewMode"
+                                              SelectedSceneIndex="SelectedSceneIndex"
+                                              @bind-IsCompact="IsSidebarCompact"
+                                              OnSelectMetadata="SelectMetadataView"
+                                              OnSelectCredits="SelectCreditsView"
+                                              OnSelectScene="SelectSceneView"
+                                              OnAddScene="AddScene"
+                                              OnDeleteScene="DeleteScene"
+                                              OnSelectionChangedCallback="OnSelectionChanged"
+                                              OnReorderScenes="ReorderScenes" />
+        </div>
+
+        <!-- Column 2: Right Active View Inspector -->
+        <div class="@(IsSidebarCompact ? "col" : "col-md-9")">
+            @if (ActiveViewMode == "metadata")
+            {
+                <ScreenplayEditor_MetadataHeader Metadata="Model.Metadata" OnChangedCallback="OnChanged" />
+            }
+            else if (ActiveViewMode == "credits")
+            {
+                <ScreenplayEditor_CreditsHeader Credits="Model.Credits" OnChangedCallback="OnChanged" />
+            }
+            else
+            {
+                var selectedScenes = Model.Scenes.Where(s => s.IsSelected).ToList();
+                @if (selectedScenes.Count == 0 && Model.Scenes.Count > 0)
+                {
+                    <div class="card bg-dark-subtle border-secondary-subtle text-center p-4 mb-3 shadow-sm">
+                        <div class="card-body">
+                            <h6 class="fw-bold text-light mb-1">No scenes currently checked</h6>
+                            <p class="text-secondary small mb-0">Check one or more scenes in the Outline Navigator on the left to display them here.</p>
+                        </div>
+                    </div>
+                }
+                else if (Model.Scenes.Count == 0)
+                {
+                    <div class="card bg-dark-subtle border-secondary-subtle text-center p-5 mb-4 shadow-sm">
+                        <div class="card-body">
+                            <div class="display-6 text-info mb-3">🎬</div>
+                            <h5 class="fw-bold text-light">No scenes in screenplay</h5>
+                            <p class="text-secondary mb-0">
+                                Click <strong class="text-success">+ Add</strong> in the Outline Navigator to create your first scene, or use <strong class="text-info">Import Fountain</strong> in the menu.
+                            </p>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    @foreach (var scene in selectedScenes)
+                    {
+                        var index = Model.Scenes.IndexOf(scene);
+                        <ScreenplayEditor_SceneCard Scene="scene"
+                                                    IsFirst="@(index == 0)"
+                                                    IsLast="@(index == Model.Scenes.Count - 1)"
+                                                    AvailableLocations="Model.GetAllLocations()"
+                                                    AvailableCharacters="Model.GetAllCharacters()"
+                                                    OnChangedCallback="OnChanged"
+                                                    OnEditLocationsClick="OpenLocationModal"
+                                                    OnEditCharactersClick="OpenCharacterModal" />
+                    }
+                }
+            }
+        </div>
+    </div>
+
+    <ScreenplayEditor_FountainModal @bind-IsOpen="ShowFountainModal"
+                                     Mode="@FountainModalMode"
+                                     FountainText="@FountainModalText"
+                                     OnImportCallback="HandleFountainImport" />
+
+    <ScreenplayEditor_LocationModal @bind-IsOpen="ShowLocationModal"
+                                     Model="Model"
+                                     OnChangedCallback="OnChanged" />
+
+    <ScreenplayEditor_CharacterModal @bind-IsOpen="ShowCharacterModal"
+                                      Model="Model"
+                                      OnChangedCallback="OnChanged" />
+</div>

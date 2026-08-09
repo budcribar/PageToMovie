@@ -1,12 +1,13 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using PageToMovie.Core.Models;
+using PageToMovie.ScreenplayEditor.Models;
 
 namespace PageToMovie.Web.Components.Pages;
 
 public partial class AdaptationScreenplay
 {
-    /// <summary>Editor text / JS lifecycle for the screenplay page.</summary>
+    /// <summary>Structured screenplay editor + fountain text bridge for the screenplay page.</summary>
     public sealed class ScreenplayEditor
     {
         private readonly AdaptationScreenplay S;
@@ -22,6 +23,10 @@ public partial class AdaptationScreenplay
         internal bool _copied;
         internal int _sceneCount;
 
+        /// <summary>Structured model driving the Screenplay Editor workbench.</summary>
+        internal ScreenplayModel _model = new();
+
+        // Kept for book modal / residual host references.
         internal ElementReference _editorHost;
         internal ElementReference _previewEl;
         internal ElementReference _scenesEl;
@@ -29,24 +34,20 @@ public partial class AdaptationScreenplay
 
         internal bool CanEdit => _editorReady && !S.Busy && !S.Jobs.JobRunning;
 
-        /// <summary>Copy the full screenplay to the clipboard — read action, works even while read-only.</summary>
         internal async Task CopyScreenplayAsync()
         {
-            string text;
-            try { text = await S.Js.InvokeAsync<string>("fountainEditor.getValue", EditorId); }
-            catch { text = _text; }
-            if (string.IsNullOrEmpty(text)) text = _text;
-
+            await SyncTextFromEditorAsync();
+            var text = _text ?? "";
             try
             {
-                await S.Js.InvokeVoidAsync("PageToMovieExport.copyTextAsync", text ?? "");
+                await S.Js.InvokeVoidAsync("PageToMovieExport.copyTextAsync", text);
                 _copied = true;
                 S.StateHasChanged();
                 await Task.Delay(1500);
                 _copied = false;
                 S.StateHasChanged();
             }
-            catch { /* clipboard may be blocked (permissions / non-secure context) — non-fatal */ }
+            catch { /* clipboard may be blocked */ }
         }
 
         internal async Task LoadEditorDataAsync()
@@ -58,143 +59,132 @@ public partial class AdaptationScreenplay
                 _loadedText = _text;
                 S.Save._dirtyLocal = false;
                 S.SignOff._screenplayStatus = doc?.Screenplay ?? S.Status?.Screenplay;
-                _sceneCount = S.SignOff._screenplayStatus?.SceneHeadingCount ?? 0;
                 if (doc?.Adaptation is not null)
                     S.Status = doc.Adaptation;
+
+                HydrateModelFromText();
+                _editorReady = true;
                 _editorDataLoaded = true;
                 S.SignOff.UpdateWarningsFromText(_text);
-
-                if (_editorReady)
-                {
-                    await S.Js.InvokeVoidAsync("fountainEditor.setValue", EditorId, _text);
-                }
             }
             catch (Exception ex)
             {
                 S.Error = ex.Message;
-                _editorDataLoaded = true; // still try to init empty editor
-            }
-        }
-
-        /// <summary>After host LoadAsync: push text into an already-ready editor, or allow re-init.</summary>
-        internal async Task OnHostLoadAsync()
-        {
-            if (_editorReady)
-            {
-                await S.Js.InvokeVoidAsync("fountainEditor.setValue", EditorId, _text);
-                await S.Js.InvokeVoidAsync("fountainEditor.refresh", EditorId);
-                if (!S.Busy && !S.Jobs.JobRunning)
-                    await S.Js.InvokeVoidAsync("fountainEditor.setReadOnly", EditorId, false);
-            }
-            else
-            {
-                _jsInitStarted = false; // allow re-init after project switch
-                S.StateHasChanged();
-            }
-        }
-
-        internal async Task TryInitEditorAsync()
-        {
-            if (_jsInitStarted || string.IsNullOrEmpty(S.ProjectId)) return;
-            // Wait until we have loaded draft at least once
-            if (!_editorDataLoaded) return;
-
-            _jsInitStarted = true;
-            try
-            {
-                _dotNetRef = DotNetObjectReference.Create(S);
-                await S.Js.InvokeVoidAsync(
-                    "fountainEditor.init",
-                    EditorId,
-                    _editorHost,
-                    _text,
-                    _dotNetRef,
-                    _previewEl,
-                    _scenesEl,
-                    S.Busy || S.Jobs.JobRunning);
+                HydrateModelFromText();
                 _editorReady = true;
-                if (!S.Busy && !S.Jobs.JobRunning)
-                    await S.Js.InvokeVoidAsync("fountainEditor.setReadOnly", EditorId, false);
-                S.StateHasChanged();
+                _editorDataLoaded = true;
             }
-            catch (Exception ex)
+        }
+
+        internal void HydrateModelFromText()
+        {
+            _model = FountainFormatter.Parse(_text ?? "");
+            if (_model.Scenes.Count == 0)
             {
-                S.Error = "Could not start the editor: " + ex.Message;
-                _jsInitStarted = false;
+                _model.Scenes.Add(new ScreenplayScene
+                {
+                    SceneNumber = 1,
+                    Environment = "INT.",
+                    Location = "LOCATION",
+                    TimeOfDay = "DAY",
+                    IsSelected = true,
+                    Beats =
+                    {
+                        new ScreenplayBeat { Type = BeatType.Action, Text = "" }
+                    }
+                });
             }
+            else if (!_model.Scenes.Any(s => s.IsSelected))
+            {
+                _model.Scenes[0].IsSelected = true;
+            }
+            _sceneCount = _model.Scenes.Count;
+        }
+
+        internal Task OnStructuredModelChanged(ScreenplayModel model)
+        {
+            _model = model ?? new ScreenplayModel();
+            _text = FountainFormatter.ToFountain(_model);
+            _sceneCount = _model.Scenes.Count;
+            S.Save._dirtyLocal = !string.Equals(_text, _loadedText, StringComparison.Ordinal);
+            S.SignOff.UpdateWarningsFromText(_text);
+            S.Save.ScheduleAutosave();
+            return S.InvokeAsync(S.StateHasChanged);
+        }
+
+        internal Task OnHostLoadAsync()
+        {
+            HydrateModelFromText();
+            _editorReady = true;
+            S.StateHasChanged();
+            return Task.CompletedTask;
+        }
+
+        internal Task TryInitEditorAsync()
+        {
+            if (!_editorDataLoaded) return Task.CompletedTask;
+            _editorReady = true;
+            _jsInitStarted = true;
+            return Task.CompletedTask;
         }
 
         internal Task OnEditorChanged(string text, string[] warnings, int sceneCount)
         {
             _text = text ?? "";
             _sceneCount = sceneCount;
+            HydrateModelFromText();
             S.Save._dirtyLocal = !string.Equals(_text, _loadedText, StringComparison.Ordinal);
             S.SignOff.MapWarnings(warnings);
             S.Save.ScheduleAutosave();
             return S.InvokeAsync(S.StateHasChanged);
         }
 
-        internal async Task InsertAsync(string snippet)
+        internal Task InsertAsync(string snippet)
         {
-            if (!_editorReady) return;
-            try
-            {
-                await S.Js.InvokeVoidAsync("fountainEditor.insertAtCursor", EditorId, snippet);
-                _text = await S.Js.InvokeAsync<string>("fountainEditor.getValue", EditorId);
-                S.Save._dirtyLocal = !string.Equals(_text, _loadedText, StringComparison.Ordinal);
-                S.Save.ScheduleAutosave();
-            }
-            catch (Exception ex)
-            {
-                S.Error = ex.Message;
-            }
+            if (!CanEdit) return Task.CompletedTask;
+            _text = (_text ?? "").TrimEnd() + snippet;
+            HydrateModelFromText();
+            S.Save._dirtyLocal = !string.Equals(_text, _loadedText, StringComparison.Ordinal);
+            S.Save.ScheduleAutosave();
+            S.StateHasChanged();
+            return Task.CompletedTask;
         }
 
-        /// <summary>
-        /// Title:/Author: only parse as title-page metadata near the top of the file, so unlike every
-        /// other Advanced helper (which inserts at the cursor) this always targets the document start —
-        /// see ProjectStore.ReadScreenplayTitle/ReadScreenplayAuthor, which scan the same first-30-lines
-        /// window for the credits card. <paramref name="afterKey"/> anchors a new line after an existing
-        /// one instead of at line 0 (Author passes "Title" so it lands below Title, not above it).
-        /// </summary>
-        internal async Task InsertTitleFieldAsync(string key, string? afterKey = null)
+        internal Task InsertTitleFieldAsync(string key, string? afterKey = null)
         {
-            if (!_editorReady) return;
-            try
+            if (!CanEdit) return Task.CompletedTask;
+            switch (key.Trim().ToLowerInvariant())
             {
-                await S.Js.InvokeVoidAsync("fountainEditor.insertTitleField", EditorId, key, afterKey);
-                _text = await S.Js.InvokeAsync<string>("fountainEditor.getValue", EditorId);
-                S.Save._dirtyLocal = !string.Equals(_text, _loadedText, StringComparison.Ordinal);
-                S.Save.ScheduleAutosave();
+                case "title":
+                    if (string.IsNullOrWhiteSpace(_model.Metadata.Title))
+                        _model.Metadata.Title = "Untitled";
+                    break;
+                case "author":
+                case "authors":
+                    if (string.IsNullOrWhiteSpace(_model.Metadata.Author))
+                        _model.Metadata.Author = "Unknown";
+                    break;
             }
-            catch (Exception ex)
-            {
-                S.Error = ex.Message;
-            }
+            _ = afterKey;
+            _text = FountainFormatter.ToFountain(_model);
+            S.Save._dirtyLocal = !string.Equals(_text, _loadedText, StringComparison.Ordinal);
+            S.Save.ScheduleAutosave();
+            S.StateHasChanged();
+            return Task.CompletedTask;
         }
 
-        internal async Task SyncTextFromEditorAsync()
+        internal Task SyncTextFromEditorAsync()
         {
-            if (!_editorReady) return;
-            try
-            {
-                _text = await S.Js.InvokeAsync<string>("fountainEditor.getValue", EditorId) ?? _text;
-            }
-            catch { /* keep local */ }
+            _text = FountainFormatter.ToFountain(_model);
+            _sceneCount = _model.Scenes.Count;
+            return Task.CompletedTask;
         }
 
-        internal async Task DisposeEditorAsync()
+        internal Task DisposeEditorAsync()
         {
-            try
-            {
-                if (_jsInitStarted)
-                    await S.Js.InvokeVoidAsync("fountainEditor.dispose", EditorId);
-            }
-            catch { /* ignore */ }
             _dotNetRef?.Dispose();
             _dotNetRef = null;
+            return Task.CompletedTask;
         }
     }
-
-
 }

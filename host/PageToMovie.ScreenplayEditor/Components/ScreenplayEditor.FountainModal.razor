@@ -1,0 +1,59 @@
+@if (IsOpen)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background: rgba(0,0,0,0.75);">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content bg-dark text-light border-secondary-subtle shadow-lg">
+                <div class="modal-header bg-dark-subtle border-bottom border-secondary-subtle">
+                    <h5 class="modal-title fw-bold text-light">
+                        @(Mode == "import" ? "📥 Import Fountain Screenplay" : "📤 Export Fountain Screenplay")
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    @if (Mode == "import")
+                    {
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold text-secondary small">Option 1: Upload .fountain / .txt File</label>
+                            <InputFile OnChange="HandleFileSelected" accept=".fountain,.txt" class="form-control form-control-sm bg-dark text-light border-secondary mb-2" />
+                            @if (!string.IsNullOrEmpty(SelectedFileName))
+                            {
+                                <div class="alert alert-success py-1 px-2 small mb-3">
+                                    <i class="bi bi-file-earmark-check me-1"></i> Loaded file: <strong>@SelectedFileName</strong> (@(FountainText.Length) characters)
+                                </div>
+                            }
+
+                            <label class="form-label fw-semibold text-secondary small">Option 2: Or Paste Fountain Screenplay Text</label>
+                            <textarea class="form-control font-monospace bg-dark text-light border-secondary" rows="11" @bind="FountainText" @bind:event="oninput" placeholder="Title: The Tell-Tale Heart..."></textarea>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <label class="form-label fw-semibold text-secondary small mb-0">Formatted Fountain Screenplay</label>
+                                <div class="d-flex align-items-center gap-2">
+                                    @if (ShowCopyFeedback)
+                                    {
+                                        <ScreenplayEditor_BadgePill Variant="@ComponentVariant.Success" Text="Copied!" />
+                                    }
+                                    <ScreenplayEditor_ActionButton Variant="@ComponentVariant.OutlineInfo" Icon="bi-clipboard" Text="Copy Text" OnClick="CopyText" />
+                                    <ScreenplayEditor_ActionButton Variant="@ComponentVariant.Primary" Icon="bi-download" Text="Download File" OnClick="DownloadFile" />
+                                </div>
+                            </div>
+                            <textarea class="form-control font-monospace bg-dark text-light border-secondary" rows="14" readonly value="@FountainText"></textarea>
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer bg-dark-subtle border-top border-secondary-subtle">
+                    @if (Mode == "import")
+                    {
+                        <button type="button" class="btn btn-info px-4 fw-semibold" @onclick="Import" disabled="@string.IsNullOrWhiteSpace(FountainText)">
+                            Import into Editor
+                        </button>
+                    }
+                    <button type="button" class="btn btn-outline-secondary px-4" @onclick="Close">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
