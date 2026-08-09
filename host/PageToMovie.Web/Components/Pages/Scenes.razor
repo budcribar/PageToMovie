@@ -1355,93 +1355,27 @@ else
                         EmptyTrash="@(() => EmptyClipTrashAsync(_compareSceneNumber, _compareClipNumber))" />
 }
 
-@* Generate confirm — opens from the batch "Generate" button so resolution + cost are decided at
-   the moment of spend instead of parked in the toolbar. *@
 @if (_showGenerateConfirm)
 {
-    <DarkModalShell Visible="true" OnClose="CloseGenerateConfirm">
-        <Title>▶ Generate video</Title>
-        <ChildContent>
-                    <p class="mb-3">
-                        Making <strong>~@EstimateSelectedClips()</strong> clip@(EstimateSelectedClips() == 1 ? "" : "s")
-                        across <strong>@_selected.Count</strong> scene@(_selected.Count == 1 ? "" : "s").
-                    </p>
-
-                    <div class="mb-3">
-                        <label class="form-label small text-muted" for="genResConfirm">Resolution</label>
-                        @if (ResolutionLocked)
-                        {
-                            <div class="d-flex align-items-center gap-2">
-                                <span class="badge bg-secondary">@(_resolutionLock ?? _genResolution)</span>
-                                <span class="small text-muted">🔒 Locked — clips already exist for this movie</span>
-                            </div>
-                        }
-                        else
-                        {
-                            <select id="genResConfirm"
-                                    data-testid="generate-confirm-resolution"
-                                    class="form-select form-select-sm bg-dark text-white border-secondary"
-                                    style="width:auto"
-                                    @bind="_genResolution"
-                                    @bind:after="RefreshCostEstimateAsync"
-                                    disabled="@_busy">
-                                <option value="480p">480p</option>
-                                <option value="720p">720p</option>
-                                <option value="1080p">1080p</option>
-                            </select>
-                        }
-                    </div>
-
-                    @if (Session.IsAdmin && _videoModels.Count > 0 && _selected.Any(sn => !IsCreditsSceneNum(sn)))
-                    {
-                        <div class="mb-3">
-                            <label class="form-label small text-muted" for="genModelConfirm">
-                                Video model <span class="badge bg-secondary align-middle">admin</span>
-                            </label>
-                            <select id="genModelConfirm"
-                                    data-testid="generate-confirm-model"
-                                    class="form-select form-select-sm bg-dark text-white border-secondary"
-                                    style="width:auto"
-                                    disabled="@_busy"
-                                    value="@_selectedVideoModel"
-                                    @onchange="@(e => _selectedVideoModel = e.Value?.ToString() ?? "")">
-                                <option value="">Project default</option>
-                                @foreach (var m in _videoModels)
-                                {
-                                    <option value="@m.Id">@m.DisplayName</option>
-                                }
-                            </select>
-                            <div class="form-text text-muted">One-off for this batch — compare generators without changing project settings.</div>
-                        </div>
-                    }
-
-                    <div class="d-flex align-items-baseline gap-2">
-                        <span class="small text-muted">Estimated cost</span>
-                        @if (_costReport is null)
-                        {
-                            <span class="small text-muted">calculating…</span>
-                        }
-                        else
-                        {
-                            <span class="fs-5 fw-bold" data-testid="generate-confirm-cost">~$@(EstimateSelectedCostUsd().ToString("0.00"))</span>
-                        }
-                    </div>
-                    @if (_selected.All(IsCreditsSceneNum))
-                    {
-                        <div class="small text-muted mt-1">End credits render instantly in your browser — no video model, no cost.</div>
-                    }
-        </ChildContent>
-        <Footer>
-            <button type="button" class="btn btn-sm btn-outline-secondary"
-                    disabled="@_busy" @onclick="CloseGenerateConfirm">Cancel</button>
-            <button type="button" class="btn btn-sm btn-success fw-bold"
-                    data-testid="generate-confirm-go"
-                    disabled="@(_busy || _selected.Count == 0 || JobRunning || !CastReady || SelectedLockedByOther)"
-                    @onclick="ConfirmGenerateAsync">
-                ▶ Generate @_selected.Count scene@(_selected.Count == 1 ? "" : "s")
-            </button>
-        </Footer>
-    </DarkModalShell>
+    <Scenes_GenerateConfirm Visible="true"
+                            EstimatedClips="EstimateSelectedClips()"
+                            SelectedCount="_selected.Count"
+                            ResolutionLocked="ResolutionLocked"
+                            ResolutionLock="@_resolutionLock"
+                            Resolution="@_genResolution"
+                            ResolutionChanged="@(v => _genResolution = v)"
+                            OnResolutionCommitted="RefreshCostEstimateAsync"
+                            ShowModelPicker="@(Session.IsAdmin && _videoModels.Count > 0 && _selected.Any(sn => !IsCreditsSceneNum(sn)))"
+                            VideoModels="_videoModels"
+                            SelectedVideoModel="@_selectedVideoModel"
+                            SelectedVideoModelChanged="@(v => _selectedVideoModel = v)"
+                            CostReady="@(_costReport is not null)"
+                            EstimatedCostUsd="EstimateSelectedCostUsd()"
+                            AllCredits="@(_selected.All(IsCreditsSceneNum))"
+                            Busy="_busy"
+                            GenerateDisabled="@(_busy || _selected.Count == 0 || JobRunning || !CastReady || SelectedLockedByOther)"
+                            OnClose="CloseGenerateConfirm"
+                            OnConfirm="ConfirmGenerateAsync" />
 }
 
 @* AI clip edit — point-of-use prompt for a text-based edit of the currently open clip (xAI
@@ -1491,161 +1425,13 @@ else
                          OnDelete="@(id => SoftDeleteMusicVersionAsync(_compareMusicSceneNumber, id))" />
 }
 
-@* Clip Dialogue Verification Report Modal *@
-@if (_showVerificationModal && _verifModalResult is { } verReport)
+@if (_showVerificationModal && _verifModalResult is not null)
 {
-    <DarkModalShell Visible="true" OnClose="CloseVerificationModal" HeaderClass="" TitleClass="" DialogClass="modal-lg modal-dialog-scrollable">
-        <Title>📋 Verification Report — Scene S@(_verifModalSceneNumber.ToString("D2")) Clip C@(_verifModalClipNumber.ToString("D2"))</Title>
-        <ChildContent>
-                    @* Header Status Badge *@
-                    <div class="d-flex justify-content-between align-items-center mb-3 p-3 rounded border border-secondary bg-black bg-opacity-40">
-                        <div>
-                            <div class="text-secondary small">Verification Status</div>
-                            @if (string.Equals(verReport.Status, "verified", StringComparison.OrdinalIgnoreCase))
-                            {
-                                <span class="badge bg-success fs-6 px-3 py-1">✓ Verified Match (@($"{verReport.DialogueAccuracyScore:P0}"))</span>
-                            }
-                            else if (string.Equals(verReport.Status, "speaker_swap", StringComparison.OrdinalIgnoreCase))
-                            {
-                                <span class="badge bg-danger fs-6 px-3 py-1">⚠ Speaker Swap Detected</span>
-                            }
-                            else if (string.Equals(verReport.Status, "mismatch", StringComparison.OrdinalIgnoreCase))
-                            {
-                                <span class="badge bg-warning text-dark fs-6 px-3 py-1">⚠ Spoken Dialogue Mismatch (@($"{verReport.DialogueAccuracyScore:P0}"))</span>
-                            }
-                            else
-                            {
-                                <span class="badge bg-secondary fs-6 px-3 py-1">@verReport.Status</span>
-                            }
-                        </div>
-                        <div class="text-end small text-secondary">
-                            <div>Verified: @verReport.VerifiedAt.ToLocalTime().ToString("MMM d, yyyy h:mm tt")</div>
-                            <div>Engine: Multimodal Video &amp; Audio QA</div>
-                        </div>
-                    </div>
-
-                    @* Clip Duration & Pacing Telemetry *@
-                    @if (verReport.EstimatedDurationSeconds > 0 || verReport.ActualDurationSeconds > 0)
-                    {
-                        <div class="card bg-dark border-secondary mb-3">
-                            <div class="card-header bg-secondary bg-opacity-20 border-secondary fw-semibold text-light d-flex justify-content-between align-items-center">
-                                <span>⏱️ Clip Duration &amp; Pacing Analysis</span>
-                                @if (verReport.SpeechTruncated)
-                                {
-                                    <span class="badge bg-danger text-white">⚠ Speech Truncated</span>
-                                }
-                            </div>
-                            <div class="card-body">
-                                <div class="row g-3 mb-2">
-                                    <div class="col-4">
-                                        <div class="small text-secondary">Planned Total Duration</div>
-                                        <div class="fw-bold fs-6 text-light">@($"{verReport.EstimatedDurationSeconds:F1}s")</div>
-                                    </div>
-                                    <div class="col-4">
-                                        <div class="small text-secondary">Actual Measured MP4</div>
-                                        <div class="fw-bold fs-6 text-light">@($"{verReport.ActualDurationSeconds:F1}s")</div>
-                                    </div>
-                                    <div class="col-4">
-                                        <div class="small text-secondary">Pacing Variance</div>
-                                        @{
-                                            var diff = verReport.ActualDurationSeconds - verReport.EstimatedDurationSeconds;
-                                            var diffText = diff >= 0 ? $"+{diff:F1}s" : $"{diff:F1}s";
-                                            var diffClass = Math.Abs(diff) <= 1.0 ? "text-success" : "text-warning";
-                                        }
-                                        <div class="fw-bold fs-6 @diffClass">@diffText</div>
-                                    </div>
-                                </div>
-                                @if (verReport.SpeechDurationSeconds > 0 || verReport.ActionDurationSeconds > 0)
-                                {
-                                    <div class="row g-3 pt-2 border-top border-secondary-subtle">
-                                        <div class="col-6">
-                                            <div class="small text-secondary">🗣️ Dialogue Speech Length</div>
-                                            <div class="fw-semibold text-info">@($"{verReport.SpeechDurationSeconds:F1}s")</div>
-                                        </div>
-                                        <div class="col-6">
-                                            <div class="small text-secondary">🎬 Action &amp; Camera Movement</div>
-                                            <div class="fw-semibold text-light">@($"{verReport.ActionDurationSeconds:F1}s")</div>
-                                        </div>
-                                    </div>
-                                }
-                                @if (verReport.SpeechTruncated)
-                                {
-                                    <div class="alert alert-danger py-2 mt-3 mb-0 small d-flex align-items-center gap-2">
-                                        <span>⚠ <strong>Speech Truncation Warning:</strong> Transcribed speech was cut off mid-line because the video rendered shorter than required for the dialogue.</span>
-                                    </div>
-                                }
-                            </div>
-                        </div>
-                    }
-
-                    @* Speaker Match Breakdown *@
-                    <div class="card bg-dark border-secondary mb-3">
-                        <div class="card-header bg-secondary bg-opacity-20 border-secondary fw-semibold text-light">
-                            🗣️ Character &amp; Speaker Verification
-                        </div>
-                        <div class="card-body">
-                            <div class="row g-3">
-                                <div class="col-6">
-                                    <div class="small text-secondary">Expected Speaker (Script)</div>
-                                    <div class="fw-bold fs-6 text-light">@(string.IsNullOrWhiteSpace(verReport.ExpectedSpeaker) ? "None" : verReport.ExpectedSpeaker)</div>
-                                </div>
-                                <div class="col-6">
-                                    <div class="small text-secondary">Heard / Observed Speaker</div>
-                                    <div class="fw-bold fs-6 @(verReport.SpeakerMatch ? "text-success" : "text-danger")">
-                                        @(string.IsNullOrWhiteSpace(verReport.DetectedSpeaker) ? "Unknown" : verReport.DetectedSpeaker)
-                                        @(verReport.SpeakerMatch ? " ✓" : " ⚠ (Swap)")
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    @* Spoken Dialogue Breakdown *@
-                    <div class="card bg-dark border-secondary mb-3">
-                        <div class="card-header bg-secondary bg-opacity-20 border-secondary fw-semibold d-flex justify-content-between align-items-center text-light">
-                            <span>🎙️ Spoken Dialogue &amp; Audio Track Transcription</span>
-                            <span class="badge bg-info text-dark">Accuracy: @($"{verReport.DialogueAccuracyScore:P0}")</span>
-                        </div>
-                        <div class="card-body">
-                            <div class="mb-3">
-                                <div class="small text-secondary mb-1">Expected Script Dialogue</div>
-                                <div class="p-2 rounded bg-black border border-secondary text-light font-monospace small">
-                                    @(string.IsNullOrWhiteSpace(verReport.ExpectedDialogue) ? "(No dialogue planned)" : verReport.ExpectedDialogue)
-                                </div>
-                            </div>
-                            <div class="mb-3">
-                                <div class="small text-secondary mb-1">Transcribed Audio Dialogue (Heard on MP4 Track)</div>
-                                <div class="p-2 rounded bg-black border border-secondary text-light font-monospace small">
-                                    @(string.IsNullOrWhiteSpace(verReport.TranscribedDialogue) ? "(No speech detected in audio)" : verReport.TranscribedDialogue)
-                                </div>
-                            </div>
-                            @if (!string.IsNullOrWhiteSpace(verReport.ExpectedDialogue) && !string.IsNullOrWhiteSpace(verReport.TranscribedDialogue))
-                            {
-                                <div class="mb-1">
-                                    <div class="small text-secondary mb-1">Visual Script Diff</div>
-                                    @RenderDiffHtml(verReport.ExpectedDialogue, verReport.TranscribedDialogue)
-                                </div>
-                            }
-                        </div>
-                    </div>
-
-                    @* AI Inspector Notes *@
-                    @if (!string.IsNullOrWhiteSpace(verReport.SummaryNote))
-                    {
-                        <div class="card bg-dark border-secondary">
-                            <div class="card-header bg-secondary bg-opacity-20 border-secondary fw-semibold text-light">
-                                📝 QA Inspector Summary Notes
-                            </div>
-                            <div class="card-body">
-                                <div class="small text-light" style="white-space:pre-wrap;">@verReport.SummaryNote</div>
-                            </div>
-                        </div>
-                    }
-        </ChildContent>
-        <Footer>
-            <button type="button" class="btn btn-secondary" @onclick="CloseVerificationModal">Close Report</button>
-        </Footer>
-    </DarkModalShell>
+    <Scenes_VerificationReport Visible="true"
+                               SceneNumber="_verifModalSceneNumber"
+                               ClipNumber="_verifModalClipNumber"
+                               Report="_verifModalResult"
+                               OnClose="CloseVerificationModal" />
 }
 
 @code {

@@ -1,0 +1,160 @@
+@* Page-local to Scenes — dialogue verification report *@
+@using PageToMovie.Core.Models
+
+@if (Visible && Report is not null)
+{
+
+    <DarkModalShell Visible="true" OnClose="OnClose" HeaderClass="" TitleClass="" DialogClass="modal-lg modal-dialog-scrollable">
+        <Title>📋 Verification Report — Scene S@(SceneNumber.ToString("D2")) Clip C@(ClipNumber.ToString("D2"))</Title>
+        <ChildContent>
+                    @* Header Status Badge *@
+                    <div class="d-flex justify-content-between align-items-center mb-3 p-3 rounded border border-secondary bg-black bg-opacity-40">
+                        <div>
+                            <div class="text-secondary small">Verification Status</div>
+                            @if (string.Equals(Report.Status, "verified", StringComparison.OrdinalIgnoreCase))
+                            {
+                                <span class="badge bg-success fs-6 px-3 py-1">✓ Verified Match (@($"{Report.DialogueAccuracyScore:P0}"))</span>
+                            }
+                            else if (string.Equals(Report.Status, "speaker_swap", StringComparison.OrdinalIgnoreCase))
+                            {
+                                <span class="badge bg-danger fs-6 px-3 py-1">⚠ Speaker Swap Detected</span>
+                            }
+                            else if (string.Equals(Report.Status, "mismatch", StringComparison.OrdinalIgnoreCase))
+                            {
+                                <span class="badge bg-warning text-dark fs-6 px-3 py-1">⚠ Spoken Dialogue Mismatch (@($"{Report.DialogueAccuracyScore:P0}"))</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-secondary fs-6 px-3 py-1">@Report.Status</span>
+                            }
+                        </div>
+                        <div class="text-end small text-secondary">
+                            <div>Verified: @Report.VerifiedAt.ToLocalTime().ToString("MMM d, yyyy h:mm tt")</div>
+                            <div>Engine: Multimodal Video &amp; Audio QA</div>
+                        </div>
+                    </div>
+
+                    @* Clip Duration & Pacing Telemetry *@
+                    @if (Report.EstimatedDurationSeconds > 0 || Report.ActualDurationSeconds > 0)
+                    {
+                        <div class="card bg-dark border-secondary mb-3">
+                            <div class="card-header bg-secondary bg-opacity-20 border-secondary fw-semibold text-light d-flex justify-content-between align-items-center">
+                                <span>⏱️ Clip Duration &amp; Pacing Analysis</span>
+                                @if (Report.SpeechTruncated)
+                                {
+                                    <span class="badge bg-danger text-white">⚠ Speech Truncated</span>
+                                }
+                            </div>
+                            <div class="card-body">
+                                <div class="row g-3 mb-2">
+                                    <div class="col-4">
+                                        <div class="small text-secondary">Planned Total Duration</div>
+                                        <div class="fw-bold fs-6 text-light">@($"{Report.EstimatedDurationSeconds:F1}s")</div>
+                                    </div>
+                                    <div class="col-4">
+                                        <div class="small text-secondary">Actual Measured MP4</div>
+                                        <div class="fw-bold fs-6 text-light">@($"{Report.ActualDurationSeconds:F1}s")</div>
+                                    </div>
+                                    <div class="col-4">
+                                        <div class="small text-secondary">Pacing Variance</div>
+                                        @{
+                                            var diff = Report.ActualDurationSeconds - Report.EstimatedDurationSeconds;
+                                            var diffText = diff >= 0 ? $"+{diff:F1}s" : $"{diff:F1}s";
+                                            var diffClass = Math.Abs(diff) <= 1.0 ? "text-success" : "text-warning";
+                                        }
+                                        <div class="fw-bold fs-6 @diffClass">@diffText</div>
+                                    </div>
+                                </div>
+                                @if (Report.SpeechDurationSeconds > 0 || Report.ActionDurationSeconds > 0)
+                                {
+                                    <div class="row g-3 pt-2 border-top border-secondary-subtle">
+                                        <div class="col-6">
+                                            <div class="small text-secondary">🗣️ Dialogue Speech Length</div>
+                                            <div class="fw-semibold text-info">@($"{Report.SpeechDurationSeconds:F1}s")</div>
+                                        </div>
+                                        <div class="col-6">
+                                            <div class="small text-secondary">🎬 Action &amp; Camera Movement</div>
+                                            <div class="fw-semibold text-light">@($"{Report.ActionDurationSeconds:F1}s")</div>
+                                        </div>
+                                    </div>
+                                }
+                                @if (Report.SpeechTruncated)
+                                {
+                                    <div class="alert alert-danger py-2 mt-3 mb-0 small d-flex align-items-center gap-2">
+                                        <span>⚠ <strong>Speech Truncation Warning:</strong> Transcribed speech was cut off mid-line because the video rendered shorter than required for the dialogue.</span>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+
+                    @* Speaker Match Breakdown *@
+                    <div class="card bg-dark border-secondary mb-3">
+                        <div class="card-header bg-secondary bg-opacity-20 border-secondary fw-semibold text-light">
+                            🗣️ Character &amp; Speaker Verification
+                        </div>
+                        <div class="card-body">
+                            <div class="row g-3">
+                                <div class="col-6">
+                                    <div class="small text-secondary">Expected Speaker (Script)</div>
+                                    <div class="fw-bold fs-6 text-light">@(string.IsNullOrWhiteSpace(Report.ExpectedSpeaker) ? "None" : Report.ExpectedSpeaker)</div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="small text-secondary">Heard / Observed Speaker</div>
+                                    <div class="fw-bold fs-6 @(Report.SpeakerMatch ? "text-success" : "text-danger")">
+                                        @(string.IsNullOrWhiteSpace(Report.DetectedSpeaker) ? "Unknown" : Report.DetectedSpeaker)
+                                        @(Report.SpeakerMatch ? " ✓" : " ⚠ (Swap)")
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    @* Spoken Dialogue Breakdown *@
+                    <div class="card bg-dark border-secondary mb-3">
+                        <div class="card-header bg-secondary bg-opacity-20 border-secondary fw-semibold d-flex justify-content-between align-items-center text-light">
+                            <span>🎙️ Spoken Dialogue &amp; Audio Track Transcription</span>
+                            <span class="badge bg-info text-dark">Accuracy: @($"{Report.DialogueAccuracyScore:P0}")</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <div class="small text-secondary mb-1">Expected Script Dialogue</div>
+                                <div class="p-2 rounded bg-black border border-secondary text-light font-monospace small">
+                                    @(string.IsNullOrWhiteSpace(Report.ExpectedDialogue) ? "(No dialogue planned)" : Report.ExpectedDialogue)
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <div class="small text-secondary mb-1">Transcribed Audio Dialogue (Heard on MP4 Track)</div>
+                                <div class="p-2 rounded bg-black border border-secondary text-light font-monospace small">
+                                    @(string.IsNullOrWhiteSpace(Report.TranscribedDialogue) ? "(No speech detected in audio)" : Report.TranscribedDialogue)
+                                </div>
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(Report.ExpectedDialogue) && !string.IsNullOrWhiteSpace(Report.TranscribedDialogue))
+                            {
+                                <div class="mb-1">
+                                    <div class="small text-secondary mb-1">Visual Script Diff</div>
+                                    @RenderDiffHtml(Report.ExpectedDialogue, Report.TranscribedDialogue)
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    @* AI Inspector Notes *@
+                    @if (!string.IsNullOrWhiteSpace(Report.SummaryNote))
+                    {
+                        <div class="card bg-dark border-secondary">
+                            <div class="card-header bg-secondary bg-opacity-20 border-secondary fw-semibold text-light">
+                                📝 QA Inspector Summary Notes
+                            </div>
+                            <div class="card-body">
+                                <div class="small text-light" style="white-space:pre-wrap;">@Report.SummaryNote</div>
+                            </div>
+                        </div>
+                    }
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-secondary" @onclick="OnClose">Close Report</button>
+        </Footer>
+    </DarkModalShell>
+
+}

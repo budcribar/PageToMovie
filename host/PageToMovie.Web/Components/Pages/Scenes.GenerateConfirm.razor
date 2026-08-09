@@ -1,0 +1,89 @@
+@* Page-local to Scenes — batch generate confirmation *@
+@using PageToMovie.Core.Models
+
+@if (Visible)
+{
+    <DarkModalShell Visible="true" OnClose="OnClose">
+        <Title>▶ Generate video</Title>
+        <ChildContent>
+            <p class="mb-3">
+                Making <strong>~@EstimatedClips</strong> clip@(EstimatedClips == 1 ? "" : "s")
+                across <strong>@SelectedCount</strong> scene@(SelectedCount == 1 ? "" : "s").
+            </p>
+
+            <div class="mb-3">
+                <label class="form-label small text-muted" for="genResConfirm">Resolution</label>
+                @if (ResolutionLocked)
+                {
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="badge bg-secondary">@(ResolutionLock ?? Resolution)</span>
+                        <span class="small text-muted">🔒 Locked — clips already exist for this movie</span>
+                    </div>
+                }
+                else
+                {
+                    <select id="genResConfirm"
+                            data-testid="generate-confirm-resolution"
+                            class="form-select form-select-sm bg-dark text-white border-secondary"
+                            style="width:auto"
+                            value="@Resolution"
+                            @onchange="OnResolutionChange"
+                            disabled="@Busy">
+                        <option value="480p">480p</option>
+                        <option value="720p">720p</option>
+                        <option value="1080p">1080p</option>
+                    </select>
+                }
+            </div>
+
+            @if (ShowModelPicker && VideoModels.Count > 0)
+            {
+                <div class="mb-3">
+                    <label class="form-label small text-muted" for="genModelConfirm">
+                        Video model <span class="badge bg-secondary align-middle">admin</span>
+                    </label>
+                    <select id="genModelConfirm"
+                            data-testid="generate-confirm-model"
+                            class="form-select form-select-sm bg-dark text-white border-secondary"
+                            style="width:auto"
+                            disabled="@Busy"
+                            value="@SelectedVideoModel"
+                            @onchange="OnModelChange">
+                        <option value="">Project default</option>
+                        @foreach (var m in VideoModels)
+                        {
+                            <option value="@m.Id">@m.DisplayName</option>
+                        }
+                    </select>
+                    <div class="form-text text-muted">One-off for this batch — compare generators without changing project settings.</div>
+                </div>
+            }
+
+            <div class="d-flex align-items-baseline gap-2">
+                <span class="small text-muted">Estimated cost</span>
+                @if (!CostReady)
+                {
+                    <span class="small text-muted">calculating…</span>
+                }
+                else
+                {
+                    <span class="fs-5 fw-bold" data-testid="generate-confirm-cost">~$@(EstimatedCostUsd.ToString("0.00"))</span>
+                }
+            </div>
+            @if (AllCredits)
+            {
+                <div class="small text-muted mt-1">End credits render instantly in your browser — no video model, no cost.</div>
+            }
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-sm btn-outline-secondary"
+                    disabled="@Busy" @onclick="OnClose">Cancel</button>
+            <button type="button" class="btn btn-sm btn-success fw-bold"
+                    data-testid="generate-confirm-go"
+                    disabled="@GenerateDisabled"
+                    @onclick="OnConfirm">
+                ▶ Generate @SelectedCount scene@(SelectedCount == 1 ? "" : "s")
+            </button>
+        </Footer>
+    </DarkModalShell>
+}
