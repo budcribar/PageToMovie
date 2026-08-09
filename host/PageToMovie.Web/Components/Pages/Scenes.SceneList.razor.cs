@@ -15,7 +15,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Scenes_SceneList
 {
     [CascadingParameter] public Scenes Host { get; set; } = default!;
-    [CascadingParameter] public Scenes.ScenesListState? List { get; set; }
+    [CascadingParameter] public Scenes.ScenesListState? ListState { get; set; }
 
     [CascadingParameter] public Scenes.ScenesGeneration? Gen { get; set; }
 
@@ -25,4 +25,8 @@ public partial class Scenes_SceneList
 
     [CascadingParameter] public Scenes.ScenesDialogueVerify? Dialogue { get; set; }
 
+
+    [CascadingParameter] public Scenes.ScenesHistory? History { get; set; }
+
+    [CascadingParameter] public Scenes.ScenesClipSelection? ClipSel { get; set; }
 }

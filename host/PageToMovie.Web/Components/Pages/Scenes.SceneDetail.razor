@@ -9,31 +9,31 @@
 
 
     <InlineAlert Message="@Host._error" CssClass="mb-3" />
-    @if (!Host.JobRunning)
+    @if (!Gen!.JobRunning)
     {
         <InlineAlert Message="@Host._message" Variant="info" CssClass="mb-3" />
     }
 
     @* Live gen: one compact surface — status + bar + Cancel only (no badges, no Grok dump, no log). *@
-    @if (Host.ShowLiveGenProgress && Gen!._job is not null)
+    @if (Gen!.ShowLiveGenProgress && Gen!._job is not null)
     {
         <JobProgressCard Status="@Gen!._job.Status"
-                         Message="@Scenes.LiveGenStatusLabel(Gen!._job)"
+                         Message="@Scenes.ScenesGeneration.LiveGenStatusLabel(Gen!._job)"
                          Index="Gen!._job.Index"
                          Total="Gen!._job.Total"
-                         Percent="Host.LiveGenProgressPercent(Gen!._job)"
+                         Percent="Gen!.LiveGenProgressPercent(Gen!._job)"
                          ShowCancel="true"
                          CancelDisabled="Host._busy"
-                         OnCancel="Host.CancelAsync"
+                         OnCancel="Gen!.CancelAsync"
                          Kind="@Gen!._job.Kind"
                          TestId="scenes-gen-progress"
                          CancelTestId="scenes-gen-cancel" />
     }
-    else if (Host.ShowOperatorGenPartial && Gen!._job is not null)
+    else if (Gen!.ShowOperatorGenPartial && Gen!._job is not null)
     {
         <Scenes_GenPartialAlert />
     }
-    else if (Host.ShowOperatorGenError && Gen!._job is not null)
+    else if (Gen!.ShowOperatorGenError && Gen!._job is not null)
     {
         <Scenes_GenErrorAlert />
     }
@@ -45,7 +45,7 @@
             <div class="card-body py-2">
                 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <span class="small">@(Gen!._job.Message ?? Gen!._job.Status)</span>
-                    <button class="btn btn-sm btn-outline-secondary" disabled="@Host._busy" @onclick="Host.ReloadListAsync">Refresh list</button>
+                    <button class="btn btn-sm btn-outline-secondary" disabled="@Host._busy" @onclick="ListState!.ReloadListAsync">Refresh list</button>
                 </div>
                 @if (Gen!._job.Log.Count > 0)
                 {
@@ -67,14 +67,14 @@
     <div class="card mb-3">
         <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
             <span>
-                <strong>Scene @(List!._detail.SceneNumber.ToString("D2"))</strong>
-                — @(List!._detail.Setting is { Length: > 0 } st ? st : "—")
+                <strong>Scene @(ListState!._detail.SceneNumber.ToString("D2"))</strong>
+                — @(ListState!._detail.Setting is { Length: > 0 } st ? st : "—")
             </span>
             <div class="d-flex gap-2 align-items-center flex-wrap">
                 <button type="button"
                         class="btn btn-sm btn-outline-info"
                         title="View history & changes for this scene"
-                        @onclick="() => Host.OpenSceneHistoryAsync(List!._detail.SceneNumber)">
+                        @onclick="() => History!.OpenSceneHistoryAsync(ListState!._detail.SceneNumber)">
                     📜 History
                 </button>
                 <div class="d-flex align-items-center gap-1">
@@ -83,62 +83,62 @@
                             class="form-select form-select-sm"
                             style="width:auto"
                             @bind="Gen!._genResolution"
-                            @bind:after="Host.RefreshCostEstimateAsync"
-                            disabled="@(Host._busy || Host.ResolutionLocked)"
-                            title="@(Host.ResolutionLocked ? $"Locked at {List!._resolutionLock} — this project already has clips at that resolution." : null)">
+                            @bind:after="ListState!.RefreshCostEstimateAsync"
+                            disabled="@(Host._busy || ListState!.ResolutionLocked)"
+                            title="@(ListState!.ResolutionLocked ? $"Locked at {ListState!._resolutionLock} — this project already has clips at that resolution." : null)">
                         <option value="480p">480p</option>
                         <option value="720p">720p</option>
                         <option value="1080p">1080p</option>
                     </select>
-                    @if (Host.ResolutionLocked)
+                    @if (ListState!.ResolutionLocked)
                     {
                         <span class="small text-muted" title="Locked to on-disk resolution">🔒</span>
                     }
                 </div>
                 <button class="btn btn-sm btn-success"
-                        disabled="@(Host._busy || Host.JobRunning || (List!._detail.ClipsOnDisk == 0 && !List!._detail.CompositeExists))"
+                        disabled="@(Host._busy || Gen!.JobRunning || (ListState!._detail.ClipsOnDisk == 0 && !ListState!._detail.CompositeExists))"
                         title="Play scene (browser stitch from clips)"
-                        @onclick="() => Host.PlaySceneCompositeAsync(List!._detail.SceneNumber)">
+                        @onclick="() => Playback!.PlaySceneCompositeAsync(ListState!._detail.SceneNumber)">
                     ▶ Play scene
                 </button>
                 <button class="btn btn-sm btn-outline-secondary"
                         data-testid="clip-add-open"
-                        disabled="@(Host._busy || Host.JobRunning)"
+                        disabled="@(Host._busy || Gen!.JobRunning)"
                         title="Add a new clip to this scene (define fields, then generate its video)"
-                        @onclick="Host.OpenAddClipDialog">
+                        @onclick="ClipForm!.OpenAddClipDialog">
                     + Add clip
                 </button>
-                @if (List!._detail.ClipsOnDisk > 0)
+                @if (ListState!._detail.ClipsOnDisk > 0)
                 {
                     <button type="button"
                             class="btn btn-sm btn-outline-primary"
-                            disabled="@(Host._busy || Host.JobRunning || Dialogue!._verifyingClip)"
+                            disabled="@(Host._busy || Gen!.JobRunning || Dialogue!._verifyingClip)"
                             title="@(ClipSel!._selectedClips.Count > 0 ? $"Run dialogue & speaker verification on {ClipSel!._selectedClips.Count} selected clip(s)" : "Run dialogue & speaker verification on selected clips in the first column")"
-                            @onclick="Host.VerifySelectedScenesDialogueAsync">
+                            @onclick="Dialogue!.VerifySelectedScenesDialogueAsync">
                         @(ClipSel!._selectedClips.Count > 0 ? $"🔍 Verify ({ClipSel!._selectedClips.Count}) Selected Clips" : "🔍 Verify Clip Dialogue")
                     </button>
                 }
                 @* Background music is scored from the All-scenes overview (one control per scene row),
                    since music is a per-scene concern and this view is about the scene's clips. *@
-                @if (List!._detail.HasBackgroundMusic)
+                @if (ListState!._detail.HasBackgroundMusic)
                 {
                     <button type="button"
                             class="btn btn-sm btn-outline-info"
-                            disabled="@(Host._busy || Host.JobRunning)"
+                            disabled="@(Host._busy || Gen!.JobRunning)"
                             title="View past audio takes & compare against the current one"
-                            @onclick="() => Host.OpenMusicCompareAsync(List!._detail.SceneNumber)">
+                            @onclick="() => Music!.OpenMusicCompareAsync(ListState!._detail.SceneNumber)">
                         🎧 Audio Takes
                     </button>
                 }
-                @if (List!._detail.CompositeExists || List!._detail.ClipsOnDisk > 0)
+                @if (ListState!._detail.CompositeExists || ListState!._detail.ClipsOnDisk > 0)
                 {
                     <button type="button"
                             class="btn btn-sm btn-outline-info"
                             data-testid="scene-open-external-editor"
-                            disabled="@(Host._busy || Host.JobRunning)"
-                            title="Open scene video in @Host.ClipRegen._preferredVideoEditor"
-                            @onclick="() => Host.OpenInExternalEditorAsync(List!._detail.SceneNumber, ClipForm!._selectedClip)">
-                        🎬 Open in @Host.ClipRegen._preferredVideoEditor
+                            disabled="@(Host._busy || Gen!.JobRunning)"
+                            title="Open scene video in @ClipRegen!._preferredVideoEditor"
+                            @onclick="() => ClipRegen!.OpenInExternalEditorAsync(ListState!._detail.SceneNumber, ClipForm!._selectedClip)">
+                        🎬 Open in @ClipRegen!._preferredVideoEditor
                     </button>
                 }
                 @if (Host.DetailLockedByOther)
@@ -149,30 +149,30 @@
         </div>
         <div class="card-body">
             <p class="small text-muted mb-2">
-                @List!._detail.ClipsOnDisk/@List!._detail.ClipCount clips on disk
-                @if (List!._detail.ActualDurationSeconds is double actD)
+                @ListState!._detail.ClipsOnDisk/@ListState!._detail.ClipCount clips on disk
+                @if (ListState!._detail.ActualDurationSeconds is double actD)
                 {
                     <span>· <strong class="text-body">@Scenes.FormatClock(actD)</strong> actual</span>
-                    @if (List!._detail.PlannedDurationSeconds is double planD)
+                    @if (ListState!._detail.PlannedDurationSeconds is double planD)
                     {
                         <span>· plan @Scenes.FormatClock(planD)</span>
                     }
                 }
-                else if (List!._detail.PlannedDurationSeconds is double planOnly)
+                else if (ListState!._detail.PlannedDurationSeconds is double planOnly)
                 {
                     <span>· plan ~@Scenes.FormatClock(planOnly)</span>
                 }
-                @if (List!._detail.CharactersOnScreen.Count > 0)
+                @if (ListState!._detail.CharactersOnScreen.Count > 0)
                 {
-                    <span>· cast: @string.Join(", ", List!._detail.CharactersOnScreen.Select(Scenes.ShortChar))</span>
+                    <span>· cast: @string.Join(", ", ListState!._detail.CharactersOnScreen.Select(Scenes.ShortChar))</span>
                 }
-                @if (!string.IsNullOrEmpty(List!._detail.PrimaryLocationId))
+                @if (!string.IsNullOrEmpty(ListState!._detail.PrimaryLocationId))
                 {
-                    <span>· loc: <code>@Scenes.ShortLoc(List!._detail.PrimaryLocationId)</code></span>
+                    <span>· loc: <code>@Scenes.ShortLoc(ListState!._detail.PrimaryLocationId)</code></span>
                 }
                 @{
-                    var verifiedCount = List!._detail.Clips.Count(c => c.DialogueVerification is { } v && (string.Equals(v.Status, "verified", StringComparison.OrdinalIgnoreCase) || string.Equals(v.Status, "no_speech", StringComparison.OrdinalIgnoreCase)));
-                    var totalWithDialogue = List!._detail.Clips.Count(c => !string.IsNullOrWhiteSpace(c.Dialogue));
+                    var verifiedCount = ListState!._detail.Clips.Count(c => c.DialogueVerification is { } v && (string.Equals(v.Status, "verified", StringComparison.OrdinalIgnoreCase) || string.Equals(v.Status, "no_speech", StringComparison.OrdinalIgnoreCase)));
+                    var totalWithDialogue = ListState!._detail.Clips.Count(c => !string.IsNullOrWhiteSpace(c.Dialogue));
                 }
                 @if (totalWithDialogue > 0 && verifiedCount > 0)
                 {
@@ -181,26 +181,26 @@
             </p>
 
             @* Full scene composite — hide while clip selected, remux/gen busy, or full player open *@
-            @if (Host.IsSceneGenBusy(List!._detail.SceneNumber))
+            @if (Gen!.IsSceneGenBusy(ListState!._detail.SceneNumber))
             {
                 <p class="small text-muted mb-2">
                     Scene composite hidden while combining…
                 </p>
             }
-            else if (Playback!._showScenePlayer && Playback!._playingScene == List!._detail.SceneNumber)
+            else if (Playback!._showScenePlayer && Playback!._playingScene == ListState!._detail.SceneNumber)
             {
                 <p class="small text-muted mb-2">
                     Playing full scene above.
-                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline" @onclick="Host.HideScenePlayer">Show inline preview</button>
+                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline" @onclick="Playback!.HideScenePlayer">Show inline preview</button>
                 </p>
             }
-            else if (List!._detail.CompositeExists && ClipForm!._selectedClip is null)
+            else if (ListState!._detail.CompositeExists && ClipForm!._selectedClip is null)
             {
                 <div class="mb-3">
                     <div class="d-flex justify-content-between align-items-center mb-1">
                         <h6 class="text-muted mb-0">Scene composite <span class="small fw-normal">(all clips · full scene)</span></h6>
                         <button class="btn btn-sm btn-link" type="button"
-                                @onclick="() => Host.PlaySceneCompositeAsync(List!._detail.SceneNumber)">
+                                @onclick="() => Playback!.PlaySceneCompositeAsync(ListState!._detail.SceneNumber)">
                             Play full scene
                         </button>
                     </div>
@@ -210,21 +210,21 @@
                            @key="Playback!._inlineCompositeKey"
                            poster=""></video>
                     <p class="small text-muted mb-0 mt-1">
-                        Scene composite on disk (~@(List!._detail.ActualDurationSeconds is double ad ? Scenes.FormatClock(ad) : "?")).
+                        Scene composite on disk (~@(ListState!._detail.ActualDurationSeconds is double ad ? Scenes.FormatClock(ad) : "?")).
                         Select a clip row below to play one clip only.
                     </p>
                 </div>
             }
-            else if (List!._detail.CompositeExists && ClipForm!._selectedClip is int)
+            else if (ListState!._detail.CompositeExists && ClipForm!._selectedClip is int)
             {
                 <p class="small text-muted mb-2">
                     Viewing single clip — full scene composite hidden.
-                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline" @onclick="() => Host.SelectClip(null)">Show scene composite</button>
+                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline" @onclick="() => ClipForm!.SelectClip(null)">Show scene composite</button>
                 </p>
             }
 
             @{
-                var hasMissingClips = List!._detail.Clips.Any(c => !c.OnDisk);
+                var hasMissingClips = ListState!._detail.Clips.Any(c => !c.OnDisk);
             }
             @if (hasMissingClips || ClipSel!._selectedClips.Count > 0)
             {
@@ -236,39 +236,39 @@
                                 data-testid="clip-select-missing"
                                 disabled="@Host._busy"
                                 title="Check clips not yet on disk"
-                                @onclick="Host.SelectMissingClips">
+                                @onclick="ClipSel!.SelectMissingClips">
                             Select missing
                         </button>
                     }
-                    @if (List!._detail.Clips.Any(c => c.DialogueVerification is { Status: "mismatch" } or { Status: "speaker_swap" }))
+                    @if (ListState!._detail.Clips.Any(c => c.DialogueVerification is { Status: "mismatch" } or { Status: "speaker_swap" }))
                     {
                         <button type="button"
                                 class="btn btn-sm btn-warning text-black fw-semibold"
                                 data-testid="clip-select-mismatched"
                                 disabled="@Host._busy"
                                 title="Check all clips in this scene with dialogue mismatches or speaker swaps"
-                                @onclick="Host.SelectMismatchedClips">
-                            Select mismatched (@List!._detail.Clips.Count(c => c.DialogueVerification is { Status: "mismatch" } or { Status: "speaker_swap" }))
+                                @onclick="Dialogue!.SelectMismatchedClips">
+                            Select mismatched (@ListState!._detail.Clips.Count(c => c.DialogueVerification is { Status: "mismatch" } or { Status: "speaker_swap" }))
                         </button>
                     }
                     @if (ClipSel!._selectedClips.Count > 0)
                     {
                         <span class="small">
                             <strong>@ClipSel!._selectedClips.Count</strong> selected
-                            @if (Host.EstimateSelectedClipsCostUsd() is { } scc)
+                            @if (ClipSel!.EstimateSelectedClipsCostUsd() is { } scc)
                             {
                                 <span class="text-muted">· ~$@(scc.ToString("0.00"))</span>
                             }
                         </span>
                         <button type="button" class="btn btn-sm btn-warning"
                                 data-testid="clip-batch-regen"
-                                disabled="@(Host._busy || Host.JobRunning || !Host.CastReady || Host.DetailLockedByOther)"
-                                title="@(!Host.CastReady
-                                    ? Host.CastBlockedTitle
+                                disabled="@(Host._busy || Gen!.JobRunning || !ListState!.CastReady || Host.DetailLockedByOther)"
+                                title="@(!ListState!.CastReady
+                                    ? ListState!.CastBlockedTitle
                                     : Host.DetailLockedByOther
                                     ? $"Locked by {Host._detailLockOwner}"
                                     : "Generate (or re-generate) every selected clip")"
-                                @onclick="Host.RegenSelectedClipsAsync">
+                                @onclick="ClipRegen!.RegenSelectedClipsAsync">
                             Generate selected
                         </button>
                     }

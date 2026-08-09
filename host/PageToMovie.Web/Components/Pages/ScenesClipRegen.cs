@@ -170,7 +170,7 @@ public partial class Scenes
             try
             {
                 var targets = S.ClipSel._selectedClips.OrderBy(c => c).Select(c => (Scene: sn, Clip: c)).ToList();
-                await S.EnsureHubAsync();
+                await S.Gen.EnsureHubAsync();
                 await EnsurePredecessorsUploadedAsync(targets);
                 S.Gen._job = await S.Engine.StartClipBatchGenAsync(S._projectId, targets, resolution: S.Gen._genResolution);
                 S._message = $"Regenerating {targets.Count} clip(s) in S{sn:D2} @ {S.Gen._genResolution}…";
@@ -207,10 +207,10 @@ public partial class Scenes
         internal async Task RegenClipAsync(int sn, int cn)
         {
             // Credits are rendered deterministically client-side — never sent to the video model.
-            if (S.IsCreditsSceneNum(sn)) { await S.GenerateCreditsEntryAsync(sn); return; }
-            if (!S.CastReady)
+            if (S.Gen.IsCreditsSceneNum(sn)) { await S.Gen.GenerateCreditsEntryAsync(sn); return; }
+            if (!S.List.CastReady)
             {
-                S._error = S.CastBlockedTitle;
+                S._error = S.List.CastBlockedTitle;
                 return;
             }
 
@@ -220,7 +220,7 @@ public partial class Scenes
             S.Gen._pendingRegenScene = sn;
             try
             {
-                await S.EnsureHubAsync();
+                await S.Gen.EnsureHubAsync();
                 await EnsurePredecessorsUploadedAsync(new List<(int Scene, int Clip)> { (sn, cn) });
                 await S.Engine.StartSceneGenAsync(S._projectId, sn, onlyMissing: false, clip: cn, resolution: S.Gen._genResolution);
                 S._message = $"Regenerating S{sn:D2}C{cn:D2} @ {S.Gen._genResolution}…";
@@ -257,7 +257,7 @@ public partial class Scenes
             S._message = null;
             try
             {
-                await S.EnsureHubAsync();
+                await S.Gen.EnsureHubAsync();
                 await S.Engine.StartVideoEditAsync(S._projectId, sn, cn, _videoEditPromptText.Trim());
                 S._message = $"Editing S{sn:D2}C{cn:D2}…";
                 var jobs = await S.Engine.GetJobAsync();

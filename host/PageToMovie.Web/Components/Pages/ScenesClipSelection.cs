@@ -69,7 +69,7 @@ public partial class Scenes
             bool Affects(JobSnapshot j) =>
                 (string.Equals(j.Status, "running", StringComparison.OrdinalIgnoreCase) ||
                  string.Equals(j.Status, "queued", StringComparison.OrdinalIgnoreCase)) &&
-                Scenes.IsScenesWorkflowJob(j.Kind) &&
+                ScenesGeneration.IsScenesWorkflowJob(j.Kind) &&
                 j.Scene == sn && j.Clip == clipNumber;
 
             if (S.Gen._job is not null && Affects(S.Gen._job))

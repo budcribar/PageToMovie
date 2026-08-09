@@ -130,7 +130,7 @@ public partial class Scenes
             _verifyStatusLabel = $"Verifying dialogue for S{S.List._detail.SceneNumber:D2} C{clip.ClipNumber:D2}...";
             S.StateHasChanged();
 
-            var expectedSize = await S.ResolveExpectedClipSizeAsync(S.List._detail.SceneNumber, clip.ClipNumber);
+            var expectedSize = await S.ClipRegen.ResolveExpectedClipSizeAsync(S.List._detail.SceneNumber, clip.ClipNumber);
             var videoBytes = await S.MediaFolder.GetClipBytesAsync(S._projectId, S.List._detail.SceneNumber, clip.ClipNumber, expectedSize);
             var ver = await S.Engine.VerifyClipDialogueAsync(S._projectId, S.List._detail.SceneNumber, clip.ClipNumber, videoBytes: videoBytes, force: true);
             if (ver is not null)
@@ -247,7 +247,7 @@ public partial class Scenes
                 _verifyStatusLabel = $"Verifying dialogue for S{sceneNum:D2} C{cn:D2} (Speaker: {clip?.Speaker ?? "Unknown"})...";
                 S.StateHasChanged();
 
-                var expectedSize = await S.ResolveExpectedClipSizeAsync(sceneNum, cn);
+                var expectedSize = await S.ClipRegen.ResolveExpectedClipSizeAsync(sceneNum, cn);
                 var videoBytes = await S.MediaFolder.GetClipBytesAsync(S._projectId, sceneNum, cn, expectedSize);
                 var ver = await S.Engine.VerifyClipDialogueAsync(S._projectId, sceneNum, cn, videoBytes: videoBytes, force: true);
                 if (ver is not null)

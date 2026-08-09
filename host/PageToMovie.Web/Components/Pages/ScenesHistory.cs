@@ -89,7 +89,7 @@ public partial class Scenes
     {
         // A snapshot was restored server-side — refresh the scene list/detail to reflect it.
         _showInlineSceneHistory = false;
-        await S.SoftReloadAsync();
+        await S.Gen.SoftReloadAsync();
     }
 
 

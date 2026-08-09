@@ -7,4 +7,6 @@ public partial class Scenes_GenPartialAlert
     [CascadingParameter] public Scenes Host { get; set; } = default!;
     [CascadingParameter] public Scenes.ScenesGeneration? Gen { get; set; }
 
+
+    [CascadingParameter] public Scenes.ScenesListState? ListState { get; set; }
 }

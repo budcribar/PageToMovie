@@ -95,7 +95,7 @@ public partial class Scenes
             try
             {
                 var relPath = $"assets/video/scene_{scene:D2}_clip_{clip:D2}.mp4";
-                var expectedSize = await S.ResolveExpectedClipSizeAsync(scene, clip);
+                var expectedSize = await S.ClipRegen.ResolveExpectedClipSizeAsync(scene, clip);
 
                 var localBlob = expectedSize is long exp
                     ? await S.MediaFolder.GetCurrentBlobUrlAsync(S._projectId, relPath, exp)

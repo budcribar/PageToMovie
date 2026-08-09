@@ -15,10 +15,14 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Scenes_ClipTable
 {
     [CascadingParameter] public Scenes Host { get; set; } = default!;
-    [CascadingParameter] public Scenes.ScenesListState? List { get; set; }
+    [CascadingParameter] public Scenes.ScenesListState? ListState { get; set; }
 
     [CascadingParameter] public Scenes.ScenesClipSelection? ClipSel { get; set; }
 
     [CascadingParameter] public Scenes.ScenesClipForm? ClipForm { get; set; }
 
+
+    [CascadingParameter] public Scenes.ScenesGeneration? Gen { get; set; }
+
+    [CascadingParameter] public Scenes.ScenesClipVersions? ClipVer { get; set; }
 }

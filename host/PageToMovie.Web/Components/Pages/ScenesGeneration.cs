@@ -298,7 +298,7 @@ public partial class Scenes
                     S.Playback._clipVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                     S._message = $"Clip S{gsn:D2}C{cn:D2} finished — Play scene when you want the updated composite";
                     if (S.ClipForm._selectedClip == cn)
-                        S.SelectClip(cn);
+                        S.ClipForm.SelectClip(cn);
                 }
                 else if (snap.Status == "done" &&
                          string.Equals(snap.Kind, "video_edit", StringComparison.OrdinalIgnoreCase) &&
@@ -311,7 +311,7 @@ public partial class Scenes
                     // completion message is set, not after (setting it after got silently wiped).
                     S.Playback._clipVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                     if (S.ClipForm._selectedClip == vecn)
-                        S.SelectClip(vecn);
+                        S.ClipForm.SelectClip(vecn);
                     S._message = $"Clip S{vesn:D2}C{vecn:D2} edited — saved as a new take";
                 }
                 else if (snap.Status == "done" &&
@@ -429,8 +429,8 @@ public partial class Scenes
             var dto = await S.Engine.GetScenesAsync(S._projectId);
             S.List._scenes = dto?.Scenes ?? new List<SceneSummary>();
             await RefreshMyJobsAsync();
-            await S.RefreshCastGateAsync();
-            await S.RefreshResolutionLockAsync();
+            await S.List.RefreshCastGateAsync();
+            await S.List.RefreshResolutionLockAsync();
             if (S.List._selectedScene is int sn)
             {
                 var detail = await S.Engine.GetSceneDetailAsync(S._projectId, sn);
@@ -471,9 +471,9 @@ public partial class Scenes
     {
         // Credits are rendered deterministically client-side — never sent to the video model.
         if (IsCreditsSceneNum(sn)) { await GenerateCreditsEntryAsync(sn); return; }
-        if (!S.CastReady)
+        if (!S.List.CastReady)
         {
-            S._error = S.CastBlockedTitle;
+            S._error = S.List.CastBlockedTitle;
             return;
         }
 
@@ -490,7 +490,7 @@ public partial class Scenes
         try
         {
             await EnsureHubAsync();
-            await S.EnsurePredecessorsUploadedAsync(await S.MissingClipTargetsAsync(sn));
+            await S.ClipRegen.EnsurePredecessorsUploadedAsync(await S.ClipRegen.MissingClipTargetsAsync(sn));
             await S.Engine.StartSceneGenAsync(S._projectId, sn, onlyMissing: true, resolution: _genResolution);
             // Live progress card only — no duplicate "started" banner.
             var jobs = await S.Engine.GetJobAsync();
@@ -505,9 +505,9 @@ public partial class Scenes
     internal async Task StartBatchAsync()
     {
         if (S.List._selected.Count == 0) return;
-        if (!S.CastReady)
+        if (!S.List.CastReady)
         {
-            S._error = S.CastBlockedTitle;
+            S._error = S.List.CastBlockedTitle;
             return;
         }
 
@@ -532,7 +532,7 @@ public partial class Scenes
 
             foreach (var sn in videoScenes)
             {
-                await S.EnsurePredecessorsUploadedAsync(await S.MissingClipTargetsAsync(sn));
+                await S.ClipRegen.EnsurePredecessorsUploadedAsync(await S.ClipRegen.MissingClipTargetsAsync(sn));
             }
             if (videoScenes.Count > 0)
             {
@@ -655,9 +655,9 @@ public partial class Scenes
     internal async Task OpenGenerateConfirmAsync()
     {
         if (S.List._selected.Count == 0) return;
-        if (!S.CastReady) { S._error = S.CastBlockedTitle; return; }
+        if (!S.List.CastReady) { S._error = S.List.CastBlockedTitle; return; }
         _showGenerateConfirm = true;
-        await S.RefreshCostEstimateAsync();
+        await S.List.RefreshCostEstimateAsync();
     }
 
 

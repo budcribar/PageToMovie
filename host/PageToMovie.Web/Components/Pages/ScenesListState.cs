@@ -274,7 +274,7 @@ public partial class Scenes
             }
             _selected.Remove(sn);
             S._message = res.Message ?? $"Deleted Scene {sn:D2}";
-            await S.SoftReloadAsync();
+            await S.Gen.SoftReloadAsync();
         }
         catch (Exception ex)
         {
@@ -302,7 +302,7 @@ public partial class Scenes
                 return;
             }
             S._message = res.Message ?? (credits ? "Added credits scene" : $"Added Scene {res.Scene:D2}");
-            await S.SoftReloadAsync();
+            await S.Gen.SoftReloadAsync();
         }
         catch (Exception ex)
         {
@@ -339,7 +339,7 @@ public partial class Scenes
             S._message = scoped
                 ? $"Regenerating {_selected.Count} selected scene(s) from the screenplay…"
                 : "Rebuilding shot plan from screenplay…";
-            await S.SoftReloadAsync();
+            await S.Gen.SoftReloadAsync();
         }
         catch (Exception ex)
         {
@@ -403,7 +403,7 @@ public partial class Scenes
                 await LoadDetailAsync(sn);
             var jobs = await S.Engine.GetJobAsync();
             S.Gen._job = jobs?.Job;
-            await S.RefreshMyJobsAsync();
+            await S.Gen.RefreshMyJobsAsync();
             await RefreshCastGateAsync();
             await RefreshResolutionLockAsync();
             await RefreshCostEstimateAsync();
@@ -457,7 +457,7 @@ public partial class Scenes
         // StartBatchAsync, which already splits it out of the paid video-model batch. The cost
         // report itself doesn't know that, so exclude it here too or the confirm modal quotes a
         // price for a scene that will never actually be sent to a video model.
-        foreach (var row in _costReport.Scenes.Where(r => _selected.Contains(r.Scene) && !S.IsCreditsSceneNum(r.Scene)))
+        foreach (var row in _costReport.Scenes.Where(r => _selected.Contains(r.Scene) && !S.Gen.IsCreditsSceneNum(r.Scene)))
             sum += row.RemainingDraftUsd;
         return sum;
     }

@@ -92,7 +92,7 @@ else
     </InlineAlert>
 }
 
-@if (List._castChecked && !CastReady)
+@if (List._castChecked && !List.CastReady)
 {
     <InlineAlert Variant="warning" CssClass="py-2" data-testid="scenes-cast-gate">
         Cast incomplete
@@ -121,15 +121,15 @@ else
     {
         <SceneVersionHistory ProjectId="@_projectId"
                              SceneKey="@($"scene:{snHist}")"
-                             OnClose="HideSceneHistory"
-                             OnRestored="OnSceneHistoryRestored" />
+                             OnClose="History.HideSceneHistory"
+                             OnRestored="History.OnSceneHistoryRestored" />
     }
 }
 
 @if (List._selectedScene is int)
 {
     <div class="mb-3">
-        <button class="btn btn-outline-primary" disabled="@_busy" @onclick="BackToListAsync">← All scenes</button>
+        <button class="btn btn-outline-primary" disabled="@_busy" @onclick="List.BackToListAsync">← All scenes</button>
     </div>
 }
 
@@ -148,7 +148,7 @@ else
         <div class="row g-3 align-items-end">
             <div class="col-md-3">
                 <label class="form-label small text-muted">Character</label>
-                <select class="form-select form-select-sm bg-dark text-white border-secondary" @bind="List._pickCharacter" @bind:after="SelectByCharacter" disabled="@_busy">
+                <select class="form-select form-select-sm bg-dark text-white border-secondary" @bind="List._pickCharacter" @bind:after="List.SelectByCharacter" disabled="@_busy">
                     <option value="">All characters…</option>
                     @foreach (var c in CharacterOptions)
                     {
@@ -158,7 +158,7 @@ else
             </div>
             <div class="col-md-3">
                 <label class="form-label small text-muted">Location</label>
-                <select class="form-select form-select-sm bg-dark text-white border-secondary" @bind="List._pickLocation" @bind:after="SelectByLocation" disabled="@_busy">
+                <select class="form-select form-select-sm bg-dark text-white border-secondary" @bind="List._pickLocation" @bind:after="List.SelectByLocation" disabled="@_busy">
                     <option value="">All locations…</option>
                     @foreach (var loc in LocationOptions)
                     {
@@ -171,9 +171,9 @@ else
                 <input class="form-control form-control-sm bg-dark text-white border-secondary" @bind="List._pickSetting" @bind:event="oninput" disabled="@_busy" placeholder="Filter by text e.g. pajamas" />
             </div>
             <div class="col-md-2">
-                @if (HasActiveFilters)
+                @if (List.HasActiveFilters)
                 {
-                    <button class="btn btn-sm btn-outline-danger w-100" type="button" @onclick="ClearFilters">
+                    <button class="btn btn-sm btn-outline-danger w-100" type="button" @onclick="List.ClearFilters">
                         Clear filters
                     </button>
                 }
@@ -182,14 +182,14 @@ else
     </div>
 }
 
-@if (Playback._showScenePlayer && Playback._playingScene is int playSn && !IsSceneGenBusy(playSn) && !Playback._clientStitching)
+@if (Playback._showScenePlayer && Playback._playingScene is int playSn && !Gen.IsSceneGenBusy(playSn) && !Playback._clientStitching)
 {
     <div class="card mb-3 border-primary">
         <div class="card-header d-flex justify-content-between align-items-center py-2">
             <span>
                 Scene <code class="small">S@(playSn.ToString("D2"))</code>
             </span>
-            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="HideScenePlayer">Hide</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="Playback.HideScenePlayer">Hide</button>
         </div>
         <div class="card-body py-2">
             @if (MediaFolder.IsSyncing && string.IsNullOrEmpty(Playback._clientSceneUrl))
@@ -204,7 +204,7 @@ else
             {
                 <video controls playsinline autoplay
                        style="width:100%;max-height:70vh;background:#000;border-radius:0.35rem;"
-                       src="@ScenePlayerSrc(playSn)"
+                       src="@Playback.ScenePlayerSrc(playSn)"
                        @key="Playback._sceneVideoKey"
                        onloadeddata="this.play().catch(function(){})">
                     Your browser does not support HTML5 video.
@@ -226,7 +226,7 @@ else
         </div>
     </div>
 }
-else if (Playback._showScenePlayer && Playback._playingScene is int busySn && (IsSceneGenBusy(busySn) || Playback._clientStitching))
+else if (Playback._showScenePlayer && Playback._playingScene is int busySn && (Gen.IsSceneGenBusy(busySn) || Playback._clientStitching))
 {
     <div class="card mb-3 border-secondary">
         <div class="card-body py-2 small text-muted">
@@ -238,7 +238,7 @@ else if (Playback._showScenePlayer && Playback._playingScene is int busySn && (I
             {
                 <span>Scene hidden while generating <code>S@(busySn.ToString("D2"))</code>.</span>
             }
-            <button type="button" class="btn btn-link btn-sm p-0 align-baseline ms-1" @onclick="HideScenePlayer">Dismiss</button>
+            <button type="button" class="btn btn-link btn-sm p-0 align-baseline ms-1" @onclick="Playback.HideScenePlayer">Dismiss</button>
         </div>
     </div>
 }
@@ -251,7 +251,7 @@ else if (Playback._showScenePlayer && Playback._playingScene is int busySn && (I
                 Preview — @Playback._previewScenes.Count scene@(Playback._previewScenes.Count == 1 ? "" : "s"):
                 <code class="small">@string.Join(", ", Playback._previewScenes.Select(s => $"S{s:D2}"))</code>
             </span>
-            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="HidePreviewPlayerAsync">Hide</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="Playback.HidePreviewPlayerAsync">Hide</button>
         </div>
         <div class="card-body py-2">
             <video controls playsinline autoplay
@@ -351,7 +351,7 @@ else
 {
     <ConfirmModal Visible="true" Title="@($"Delete Scene S{deleteSn:D2}?")"
                   ConfirmLabel="Delete Scene" Busy="_busy"
-                  OnConfirm="ConfirmDeleteSceneAsync" OnCancel="() => { List._deleteSceneTarget = null; }">
+                  OnConfirm="List.ConfirmDeleteSceneAsync" OnCancel="() => { List._deleteSceneTarget = null; }">
         Are you sure you want to delete <strong>Scene @deleteSn.ToString("D2")</strong> from the shot plan?
         <div class="text-muted small mt-2">
             Note: You can easily restore missing scenes anytime by clicking <strong>Regenerate Selected Scenes</strong> with nothing checked (rebuilds every scene from the screenplay).
@@ -359,11 +359,11 @@ else
     </ConfirmModal>
 }
 
-@if (_deleteClipTarget is { } delTarget)
+@if (ClipForm._deleteClipTarget is { } delTarget)
 {
     <ConfirmModal Visible="true" Title="Delete clip?" ConfirmLabel="Delete clip"
                   ConfirmTestId="clip-delete-confirm" Busy="_busy" BodyClass="" BackdropOpacity=".45"
-                  OnConfirm="ConfirmDeleteClipAsync" OnCancel="CancelDeleteClip">
+                  OnConfirm="ClipForm.ConfirmDeleteClipAsync" OnCancel="ClipForm.CancelDeleteClip">
         <p class="mb-0">
             Delete <code>S@(delTarget.Scene.ToString("D2"))C@(delTarget.Clip.ToString("D2"))</code>?
             This removes the video file and its shot-plan entry — cannot be undone.
@@ -380,9 +380,9 @@ else
                             Error="@_error"
                             CharacterOptions="CharacterOptions"
                             CastKeys="ClipForm._clipEditorCast"
-                            OnClose="CloseClipEditor"
-                            OnSave="SaveClipEditorAsync"
-                            CastToggled="OnClipEditorCastToggled" />
+                            OnClose="ClipForm.CloseClipEditor"
+                            OnSave="ClipForm.SaveClipEditorAsync"
+                            CastToggled="ClipForm.OnClipEditorCastToggled" />
 }
 
 @if (History._showSceneHistory)
@@ -393,8 +393,8 @@ else
                          Loading="History._loadingHistory"
                          Reverting="History._revertingScene"
                          History="History._sceneHistory"
-                         OnClose="CloseSceneHistory"
-                         OnRevert="@(hash => RevertSceneToVersionAsync(History._historySceneNumber, hash))" />
+                         OnClose="History.CloseSceneHistory"
+                         OnRevert="@(hash => History.RevertSceneToVersionAsync(History._historySceneNumber, hash))" />
 }
 
 @if (ClipVer._showClipCompare)
@@ -408,34 +408,34 @@ else
                         Versions="ClipVer._clipVersions"
                         TrashVersions="ClipVer._trashVersions"
                         VideoUrls="Playback._compareVideoUrls"
-                        OnClose="CloseClipCompare"
-                        Promote="@(id => PromoteClipVersionAsync(ClipVer._compareSceneNumber, ClipVer._compareClipNumber, id))"
-                        Delete="@(id => SoftDeleteClipVersionAsync(ClipVer._compareSceneNumber, ClipVer._compareClipNumber, id))"
-                        Restore="@(id => RestoreClipVersionAsync(ClipVer._compareSceneNumber, ClipVer._compareClipNumber, id))"
-                        EmptyTrash="@(() => EmptyClipTrashAsync(ClipVer._compareSceneNumber, ClipVer._compareClipNumber))" />
+                        OnClose="ClipVer.CloseClipCompare"
+                        Promote="@(id => ClipVer.PromoteClipVersionAsync(ClipVer._compareSceneNumber, ClipVer._compareClipNumber, id))"
+                        Delete="@(id => ClipVer.SoftDeleteClipVersionAsync(ClipVer._compareSceneNumber, ClipVer._compareClipNumber, id))"
+                        Restore="@(id => ClipVer.RestoreClipVersionAsync(ClipVer._compareSceneNumber, ClipVer._compareClipNumber, id))"
+                        EmptyTrash="@(() => ClipVer.EmptyClipTrashAsync(ClipVer._compareSceneNumber, ClipVer._compareClipNumber))" />
 }
 
 @if (Gen._showGenerateConfirm)
 {
     <Scenes_GenerateConfirm Visible="true"
-                            EstimatedClips="EstimateSelectedClips()"
+                            EstimatedClips="ClipSel.EstimateSelectedClips()"
                             SelectedCount="List._selected.Count"
-                            ResolutionLocked="ResolutionLocked"
+                            List.ResolutionLocked="List.ResolutionLocked"
                             ResolutionLock="@List._resolutionLock"
                             Resolution="@Gen._genResolution"
                             ResolutionChanged="@(v => Gen._genResolution = v)"
-                            OnResolutionCommitted="RefreshCostEstimateAsync"
-                            ShowModelPicker="@(Session.IsAdmin && Gen._videoModels.Count > 0 && List._selected.Any(sn => !IsCreditsSceneNum(sn)))"
+                            OnResolutionCommitted="List.RefreshCostEstimateAsync"
+                            ShowModelPicker="@(Session.IsAdmin && Gen._videoModels.Count > 0 && List._selected.Any(sn => !Gen.IsCreditsSceneNum(sn)))"
                             VideoModels="Gen._videoModels"
                             SelectedVideoModel="@Gen._selectedVideoModel"
                             SelectedVideoModelChanged="@(v => Gen._selectedVideoModel = v)"
                             CostReady="@(List._costReport is not null)"
-                            EstimatedCostUsd="EstimateSelectedCostUsd()"
-                            AllCredits="@(List._selected.All(IsCreditsSceneNum))"
+                            EstimatedCostUsd="List.EstimateSelectedCostUsd()"
+                            AllCredits="@(List._selected.All(Gen.IsCreditsSceneNum))"
                             Busy="_busy"
-                            GenerateDisabled="@(_busy || List._selected.Count == 0 || JobRunning || !CastReady || SelectedLockedByOther)"
-                            OnClose="CloseGenerateConfirm"
-                            OnConfirm="ConfirmGenerateAsync" />
+                            GenerateDisabled="@(_busy || List._selected.Count == 0 || Gen.JobRunning || !List.CastReady || List.SelectedLockedByOther)"
+                            OnClose="Gen.CloseGenerateConfirm"
+                            OnConfirm="Gen.ConfirmGenerateAsync" />
 }
 
 @* AI clip edit — point-of-use prompt for a text-based edit of the currently open clip (xAI
@@ -447,9 +447,9 @@ else
                             Prompt="@ClipRegen._videoEditPromptText"
                             PromptChanged="@(v => ClipRegen._videoEditPromptText = v)"
                             Busy="_busy"
-                            JobRunning="JobRunning"
-                            OnClose="CloseVideoEditPrompt"
-                            OnSubmit="SubmitVideoEditAsync" />
+                            Gen.JobRunning="Gen.JobRunning"
+                            OnClose="ClipRegen.CloseVideoEditPrompt"
+                            OnSubmit="ClipRegen.SubmitVideoEditAsync" />
 }
 
 @* Score-music chooser — opens from a scene's "Score" button so the music style + Sing choice
@@ -463,12 +463,12 @@ else
                            SelectedModelIdChanged="@(v => Music._selectedAudioModel = v)"
                            WantVocal="Music._wantVocal"
                            WantVocalChanged="@(v => Music._wantVocal = v)"
-                           CanSing="SelectedAudioModelCanSing"
+                           CanSing="Music.SelectedAudioModelCanSing"
                            Disabled="@(_busy || Music._scoringMusic)"
                            Scoring="Music._scoringMusic"
-                           GenerateDisabled="@(_busy || JobRunning || Music._scoringMusic)"
-                           OnClose="CloseScoreMenu"
-                           OnGenerate="@(() => ScoreFromMenuAsync(scoreSn))" />
+                           GenerateDisabled="@(_busy || Gen.JobRunning || Music._scoringMusic)"
+                           OnClose="Music.CloseScoreMenu"
+                           OnGenerate="@(() => Music.ScoreFromMenuAsync(scoreSn))" />
 }
 
 @if (Music._showMusicCompare)
@@ -480,9 +480,9 @@ else
                          Busy="Music._promotingMusicVersion"
                          Versions="Music._musicVersions"
                          Urls="_musicCompareUrls"
-                         OnClose="CloseMusicCompare"
-                         OnPromote="@(id => PromoteMusicVersionAsync(Music._compareMusicSceneNumber, id))"
-                         OnDelete="@(id => SoftDeleteMusicVersionAsync(Music._compareMusicSceneNumber, id))" />
+                         OnClose="Music.CloseMusicCompare"
+                         OnPromote="@(id => Music.PromoteMusicVersionAsync(Music._compareMusicSceneNumber, id))"
+                         OnDelete="@(id => Music.SoftDeleteMusicVersionAsync(Music._compareMusicSceneNumber, id))" />
 }
 
 @if (Dialogue._showVerificationModal && Dialogue._verifModalResult is not null)

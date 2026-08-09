@@ -51,7 +51,7 @@ public partial class Scenes
                 var res = await S.Engine.GetClipVersionsAsync(S._projectId, sceneNumber, clipNumber);
                 _clipVersions = res?.Versions;
                 _selectedCompareVersionId = _clipVersions?.FirstOrDefault(v => !v.IsCurrent)?.VersionId ?? _clipVersions?.FirstOrDefault()?.VersionId;
-                await S.RefreshCompareVideoUrlsAsync();
+                await S.Playback.RefreshCompareVideoUrlsAsync();
 
                 var trashRes = await S.Engine.GetTrashClipVersionsAsync(S._projectId, sceneNumber, clipNumber);
                 _trashVersions = trashRes?.Versions;
@@ -90,7 +90,7 @@ public partial class Scenes
                     var resV = await S.Engine.GetClipVersionsAsync(S._projectId, sceneNumber, clipNumber);
                     _clipVersions = resV?.Versions;
                     _selectedCompareVersionId = _clipVersions?.FirstOrDefault(v => !v.IsCurrent)?.VersionId ?? _clipVersions?.FirstOrDefault()?.VersionId;
-                    await S.RefreshCompareVideoUrlsAsync();
+                    await S.Playback.RefreshCompareVideoUrlsAsync();
                     if (S.List._detail is not null && S.List._detail.SceneNumber == sceneNumber)
                     {
                         S.List._detail = (await S.Engine.GetSceneDetailAsync(S._projectId, sceneNumber))?.Scene;

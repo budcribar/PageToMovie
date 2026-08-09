@@ -124,7 +124,7 @@ if (string.IsNullOrWhiteSpace(S._projectId)) return;
 
         try
         {
-            await S.EnsureHubAsync();
+            await S.Gen.EnsureHubAsync();
             var started = await S.Engine.StartSceneMusicGenAsync(S._projectId, sceneNum, _selectedAudioModel, isVocal);
             // Live progress card only — no duplicate "started" banner (same as scene gen).
             var jobs = await S.Engine.GetJobAsync();

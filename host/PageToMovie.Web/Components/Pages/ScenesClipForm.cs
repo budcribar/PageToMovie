@@ -61,7 +61,7 @@ public partial class Scenes
                     S.Playback._playingScene = null;
                 }
                 if (S.List._detail is not null)
-                    _ = S.LoadClipVideoAndTakesCountAsync(S.List._detail.SceneNumber, cnv);
+                    _ = S.Playback.LoadClipVideoAndTakesCountAsync(S.List._detail.SceneNumber, cnv);
             }
         }
 
@@ -181,7 +181,7 @@ public partial class Scenes
                 try { await S.Engine.CommitProjectChangesAsync(S._projectId, $"Saved clip S{S.List._detail.SceneNumber:D2}C{_clipEditor.Clip:D2}"); } catch { }
                 await S.RefreshUncommittedStatusAsync();
                 _clipEditor = null;
-                await S.LoadDetailAsync(S.List._detail.SceneNumber);
+                await S.List.LoadDetailAsync(S.List._detail.SceneNumber);
                 var scenesDto = await S.Engine.GetScenesAsync(S._projectId);
                 if (scenesDto?.Scenes is not null)
                 {
@@ -213,7 +213,7 @@ public partial class Scenes
                     _clip = null;
                 }
                 S._message = $"Deleted S{target.Scene:D2}C{target.Clip:D2} — Play scene / Play WIP to refresh the assembled cut";
-                await S.ReloadListAsync();
+                await S.List.ReloadListAsync();
             }
             catch (Exception ex) { S._error = ex.Message; }
             finally { S._busy = false; }

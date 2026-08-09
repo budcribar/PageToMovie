@@ -15,7 +15,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Scenes_ClipInspector
 {
     [CascadingParameter] public Scenes Host { get; set; } = default!;
-    [CascadingParameter] public Scenes.ScenesListState? List { get; set; }
+    [CascadingParameter] public Scenes.ScenesListState? ListState { get; set; }
 
     [CascadingParameter] public Scenes.ScenesClipForm? ClipForm { get; set; }
 
@@ -29,4 +29,8 @@ public partial class Scenes_ClipInspector
 
     [CascadingParameter] public Scenes.ScenesGeneration? Gen { get; set; }
 
+
+    [CascadingParameter] public Scenes.ScenesClipSelection? ClipSel { get; set; }
+
+    [CascadingParameter] public Scenes.ScenesClipRegen? ClipRegen { get; set; }
 }

@@ -161,7 +161,7 @@ public partial class Scenes
     /// </summary>
     internal async Task ConfirmScreenplayAdjustAndNavigateAsync(string route)
     {
-        if (JobRunning) return;
+        if (Gen.JobRunning) return;
         var ok = await JS.InvokeAsync<bool>(
             "confirm",
             "This opens the screenplay to change it. You'll re-approve the screenplay afterward, " +
@@ -186,8 +186,8 @@ public partial class Scenes
         EnsureDomains();
         EnsureDomains();
         await ActiveProject.EnsureLoadedAsync(Engine);
-        Hub.JobUpdated += OnJobUpdated;
-        Hub.JobLog += OnJobLog;
+        Hub.JobUpdated += Gen.OnJobUpdated;
+        Hub.JobLog += Gen.OnJobLog;
         MediaFolder.Changed += OnMediaFolderChanged;
         try
         {
@@ -215,10 +215,10 @@ public partial class Scenes
             if (string.IsNullOrEmpty(_projectId) || !ActiveProject.CanScenes)
                 return;
 
-            await LoadGenResolutionFromConfigAsync();
-            await LoadAudioModelsAsync();
+            await List.LoadGenResolutionFromConfigAsync();
+            await Music.LoadAudioModelsAsync();
             if (Session.IsAdmin)
-                await LoadVideoModelsAsync();
+                await Gen.LoadVideoModelsAsync();
 
             try
             {
@@ -234,9 +234,9 @@ public partial class Scenes
             var jobs = await Engine.GetJobAsync();
             Gen._job = jobs?.Job;
             if (Session.IsAdmin)
-                await RefreshMyJobsAsync();
+                await Gen.RefreshMyJobsAsync();
 
-            await ReloadListAsync();
+            await List.ReloadListAsync();
         }
         catch (Exception ex)
         {
@@ -251,7 +251,7 @@ public partial class Scenes
     {
         if (Playback._showScenePlayer && Playback._playingScene is int sn && !MediaFolder.IsSyncing && string.IsNullOrEmpty(Playback._clientSceneUrl))
         {
-            await PlaySceneCompositeAsync(sn);
+            await Playback.PlaySceneCompositeAsync(sn);
         }
         StateHasChanged();
     });
@@ -288,8 +288,8 @@ public partial class Scenes
         ClipForm._clip = null;
         List._selected.Clear();
         ResetPickers();
-        await LoadGenResolutionFromConfigAsync();
-        await ReloadListAsync();
+        await List.LoadGenResolutionFromConfigAsync();
+        await List.ReloadListAsync();
     }
 
 
@@ -429,8 +429,8 @@ public partial class Scenes
 
     public async ValueTask DisposeAsync()
     {
-        Hub.JobUpdated -= OnJobUpdated;
-        Hub.JobLog -= OnJobLog;
+        Hub.JobUpdated -= Gen.OnJobUpdated;
+        Hub.JobLog -= Gen.OnJobLog;
         MediaFolder.Changed -= OnMediaFolderChanged;
         Playback._clientPreviewUrl = null;
         Playback._clientSceneUrl = null;
