@@ -1,0 +1,36 @@
+@* Shared extract of VoiceCaptureStep — record / keep / finish controls *@
+@using Microsoft.AspNetCore.Components
+
+<div class="d-flex flex-wrap gap-2">
+    @if (Host._recording)
+    {
+        <button class="btn btn-outline-secondary" disabled="@Host._busy" @onclick="Host.StopAndScoreAsync">
+            ⏹ Stop
+        </button>
+    }
+    else if (Host._light == 0)
+    {
+        <button class="btn btn-danger" disabled="@(Host._busy || string.IsNullOrEmpty(Host._originalUrl))"
+                data-testid="voice-capture-record" @onclick="Host.RecordAsync">
+            🔴 @(Host._takeUrl is null ? "Record" : "Re-record")
+        </button>
+
+        @if (!string.IsNullOrEmpty(Host._takeUrl))
+        {
+            <button class="btn btn-primary" disabled="@Host._busy" data-testid="voice-capture-keep" @onclick="Host.KeepAndNextAsync">
+                Keep & @(Host._i + 1 < Host._phrases.Count ? "next →" : "finish")
+            </button>
+        }
+
+        @if (Host._kept.Count > 0)
+        {
+            <button class="btn btn-success ms-auto" disabled="@Host._busy" data-testid="voice-capture-finish" @onclick="Host.FinishAsync">
+                ✓ Create my voice (@Host._kept.Count)
+            </button>
+        }
+    }
+</div>
+
+@code {
+    [CascadingParameter] public VoiceCaptureStep Host { get; set; } = default!;
+}

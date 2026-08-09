@@ -12,14 +12,14 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Home
 {
     /// <summary>Show Setup keys only while personal BYOK studio keys are missing.</summary>
-    private bool NeedsApiSetup =>
+    internal bool NeedsApiSetup =>
         ActiveProject.Status is { XaiConfigured: false };
 
     /// <summary>Default home = easy start. Full studio hides easy cards and shows project picker.</summary>
-    private bool ShowEasyHome => !_fullStudioHome;
+    internal bool ShowEasyHome => !_fullStudioHome;
 
     /// <summary>Only the real current step is highlighted. Setup (0) until keys exist, then pipeline.</summary>
-    private string HomeActiveStep
+    internal string HomeActiveStep
     {
         get
         {
@@ -33,41 +33,41 @@ public partial class Home
         }
     }
 
-    private bool? _healthOk;
-    private bool _busy;
-    private string? _error;
-    private string? _message;
-    private ProjectsDto? _projects;
-    private bool _showCollaboratorsModal;
-    private string _collaboratorsProjectId = "";
+    internal bool? _healthOk;
+    internal bool _busy;
+    internal string? _error;
+    internal string? _message;
+    internal ProjectsDto? _projects;
+    internal bool _showCollaboratorsModal;
+    internal string _collaboratorsProjectId = "";
     /// <summary>Last successful push history URL per project id (session-local).</summary>
-    private readonly Dictionary<string, string> _historyUrls =
+    internal readonly Dictionary<string, string> _historyUrls =
         new(StringComparer.OrdinalIgnoreCase);
     /// <summary>Last saved revision hash per project id (session-local).</summary>
-    private readonly Dictionary<string, string> _revisionHashes =
+    internal readonly Dictionary<string, string> _revisionHashes =
         new(StringComparer.OrdinalIgnoreCase);
-    private UncommittedStatusDto? _packageStatus;
-    private bool _packageStatusLoading;
+    internal UncommittedStatusDto? _packageStatus;
+    internal bool _packageStatusLoading;
 
-    private void OpenCollaboratorsModal(string projectId)
+    internal void OpenCollaboratorsModal(string projectId)
     {
         _collaboratorsProjectId = projectId;
         _showCollaboratorsModal = true;
     }
 
-    private void CloseCollaboratorsModal() => _showCollaboratorsModal = false;
+    internal void CloseCollaboratorsModal() => _showCollaboratorsModal = false;
 
-    private static string ShortHash(string? hash)
+    internal static string ShortHash(string? hash)
     {
         if (string.IsNullOrWhiteSpace(hash)) return "";
         var h = hash.Trim();
         return h.Length <= 7 ? h : h[..7];
     }
 
-    private string ActivePackageProjectId =>
+    internal string ActivePackageProjectId =>
         ActiveProject.ProjectId ?? _projects?.Active?.Id ?? "";
 
-    private string? PackageHistoryUrl
+    internal string? PackageHistoryUrl
     {
         get
         {
@@ -79,7 +79,7 @@ public partial class Home
         }
     }
 
-    private bool CanSavePackageRevision
+    internal bool CanSavePackageRevision
     {
         get
         {
@@ -92,57 +92,57 @@ public partial class Home
             return string.Equals(Session.UserId, owner, StringComparison.OrdinalIgnoreCase);
         }
     }
-    private JobSnapshot? _job;
-    private List<JobSnapshot> _myJobs = new();
-    private bool _showNew;
-    private bool _showRename;
-    private bool _showImport;
-    private bool _importing;
-    private bool _backingUp;
-    private string _importName = "";
-    private IBrowserFile? _importFile;
-    private bool _showCheckpoints;
-    private bool _checkpointBusy;
-    private string _checkpointName = "";
-    private List<CheckpointDto> _checkpoints = new();
-    private string _renameName = "";
+    internal JobSnapshot? _job;
+    internal List<JobSnapshot> _myJobs = new();
+    internal bool _showNew;
+    internal bool _showRename;
+    internal bool _showImport;
+    internal bool _importing;
+    internal bool _backingUp;
+    internal string _importName = "";
+    internal IBrowserFile? _importFile;
+    internal bool _showCheckpoints;
+    internal bool _checkpointBusy;
+    internal string _checkpointName = "";
+    internal List<CheckpointDto> _checkpoints = new();
+    internal string _renameName = "";
     /// <summary>Home defaults to a one-row project picker; full project management
     /// (visibility, collaborate, delete, fork/sync) is opt-in via "Manage".</summary>
-    private bool _manageExpanded;
+    internal bool _manageExpanded;
     /// <summary>When true, show project picker / active project; hide easy-start card.</summary>
-    private bool _fullStudioHome;
+    internal bool _fullStudioHome;
 
-    private string _newName = "";
-    private ElementReference _nameInputRef;
-    private string? _deleteId;
-    private string _deleteLabel = "";
-    private string _deleteConfirm = "";
+    internal string _newName = "";
+    internal ElementReference _nameInputRef;
+    internal string? _deleteId;
+    internal string _deleteLabel = "";
+    internal string _deleteConfirm = "";
     /// <summary>My jobs panel; collapsed by default, auto-opens when a job is running/queued.</summary>
-    private bool _jobsExpanded;
+    internal bool _jobsExpanded;
     /// <summary>Null = follow auto rules; otherwise honor last user click.</summary>
-    private bool? _jobsUserPreference;
+    internal bool? _jobsUserPreference;
     /// <summary>Titles of real public demos (never invented marketing names).</summary>
-    private string _demoShowcaseHint = "Loading gallery…";
-    private List<DemoListItem> _publicDemos = new();
+    internal string _demoShowcaseHint = "Loading gallery…";
+    internal List<DemoListItem> _publicDemos = new();
 
     /// <summary>Planning estimate for the full film (draft path) from cost report.</summary>
-    private double? _costEstimateUsd;
+    internal double? _costEstimateUsd;
     /// <summary>Ledger actual spend for this project (catalog list rates).</summary>
-    private double? _costActualUsd;
-    private string? _costResolution;
-    private double? _costVideoRate;
-    private bool _costLoading;
+    internal double? _costActualUsd;
+    internal string? _costResolution;
+    internal double? _costVideoRate;
+    internal bool _costLoading;
     /// <summary>True when no generation model is chosen yet, so an estimate can't be produced.</summary>
-    private bool _costNeedsModels;
+    internal bool _costNeedsModels;
 
-    private void EnterFullStudio()
+    internal void EnterFullStudio()
     {
         _fullStudioHome = true;
         _manageExpanded = false;
         _ = PersistHomeModeAsync("full");
     }
 
-    private void ExitFullStudio()
+    internal void ExitFullStudio()
     {
         _fullStudioHome = false;
         _manageExpanded = false;
@@ -151,7 +151,7 @@ public partial class Home
         _ = PersistHomeModeAsync("easy");
     }
 
-    private async Task PersistHomeModeAsync(string mode)
+    internal async Task PersistHomeModeAsync(string mode)
     {
         try { await Js.InvokeVoidAsync("localStorage.setItem", "ptm.homeMode", mode); }
         catch { /* non-fatal */ }
@@ -161,7 +161,7 @@ public partial class Home
     /// Prefer full studio when the user already has projects (or last chose full),
     /// so creating a project and returning home still shows it in the list.
     /// </summary>
-    private async Task ResolveHomeModeAsync()
+    internal async Task ResolveHomeModeAsync()
     {
         string? mode = null;
         try { mode = await Js.InvokeAsync<string?>("localStorage.getItem", "ptm.homeMode"); }
@@ -181,7 +181,7 @@ public partial class Home
         _fullStudioHome = _projects?.Projects is { Count: > 0 };
     }
 
-    private async Task ToggleNewProjectAsync()
+    internal async Task ToggleNewProjectAsync()
     {
         _showNew = !_showNew;
         if (_showNew)
@@ -194,7 +194,7 @@ public partial class Home
     }
 
     /// <summary>"+ New" in the compact bar: opens Manage and the create-project form together.</summary>
-    private async Task OpenNewProjectAsync()
+    internal async Task OpenNewProjectAsync()
     {
         _fullStudioHome = true;
         await PersistHomeModeAsync("full");
@@ -206,34 +206,34 @@ public partial class Home
     }
 
     /// <summary>Compact picker &lt;select&gt; — switches the active project without navigating away.</summary>
-    private async Task OnPickerChangedAsync(ChangeEventArgs e)
+    internal async Task OnPickerChangedAsync(ChangeEventArgs e)
     {
         var id = e.Value?.ToString();
         if (!string.IsNullOrWhiteSpace(id))
             await SelectProjectAsync(id);
     }
 
-    private static string VisibilityBadgeClass(string? mode) => mode?.Trim().ToLowerInvariant() switch
+    internal static string VisibilityBadgeClass(string? mode) => mode?.Trim().ToLowerInvariant() switch
     {
         "open" => "bg-success",
         "public" => "bg-info text-dark",
         _ => "bg-dark border border-secondary text-muted",
     };
 
-    private static string VisibilityBadgeText(string? mode) => mode?.Trim().ToLowerInvariant() switch
+    internal static string VisibilityBadgeText(string? mode) => mode?.Trim().ToLowerInvariant() switch
     {
         "open" => "🍴 Forkable",
         "public" => "👁️ Public",
         _ => "🔒 Private",
     };
 
-    private static string FormatUsd(double? amount)
+    internal static string FormatUsd(double? amount)
     {
         if (amount is null) return "—";
         return amount.Value.ToString("C2", System.Globalization.CultureInfo.GetCultureInfo("en-US"));
     }
 
-    private static string FormatRelativeUtc(DateTime utc)
+    internal static string FormatRelativeUtc(DateTime utc)
     {
         var t = utc.Kind == DateTimeKind.Unspecified
             ? DateTime.SpecifyKind(utc, DateTimeKind.Utc)
@@ -246,7 +246,7 @@ public partial class Home
         return t.ToString("MMM d");
     }
 
-    private async Task RefreshPackageStatusAsync()
+    internal async Task RefreshPackageStatusAsync()
     {
         var pid = ActiveProject.ProjectId ?? _projects?.Active?.Id;
         if (string.IsNullOrWhiteSpace(pid) || !Session.IsLoggedIn)
@@ -276,7 +276,7 @@ public partial class Home
         }
     }
 
-    private async Task RefreshProjectCostAsync()
+    internal async Task RefreshProjectCostAsync()
     {
         var pid = ActiveProject.ProjectId ?? _projects?.Active?.Id;
         if (string.IsNullOrWhiteSpace(pid) || !Session.IsLoggedIn)
@@ -343,20 +343,20 @@ public partial class Home
         await RefreshPackageStatusAsync();
     }
 
-    private bool CanConfirmDelete => _deleteId is not null;
+    internal bool CanConfirmDelete => _deleteId is not null;
 
-    private bool HasActiveJob =>
+    internal bool HasActiveJob =>
         _job is not null &&
         (string.Equals(_job.Status, "running", StringComparison.OrdinalIgnoreCase) ||
          string.Equals(_job.Status, "queued", StringComparison.OrdinalIgnoreCase));
 
-    private void ToggleJobsExpanded()
+    internal void ToggleJobsExpanded()
     {
         _jobsExpanded = !_jobsExpanded;
         _jobsUserPreference = _jobsExpanded;
     }
 
-    private void SyncJobsExpandedFromJob()
+    internal void SyncJobsExpandedFromJob()
     {
         if (_jobsUserPreference is bool prefer)
             _jobsExpanded = prefer;
@@ -382,7 +382,7 @@ public partial class Home
         }
     }
 
-    private void OnJobUpdated(JobSnapshot snap)
+    internal void OnJobUpdated(JobSnapshot snap)
     {
         _job = snap;
         SyncJobsExpandedFromJob();
@@ -409,7 +409,7 @@ public partial class Home
         });
     }
 
-    private void OnJobLog(string line)
+    internal void OnJobLog(string line)
     {
         if (_job is not null)
         {
@@ -423,7 +423,7 @@ public partial class Home
         _ = InvokeAsync(StateHasChanged);
     }
 
-    private static bool JobLogHasVideoPayload(JobSnapshot j) =>
+    internal static bool JobLogHasVideoPayload(JobSnapshot j) =>
         j.Log.Any(l =>
             l.Contains("PROMPT BEGIN", StringComparison.OrdinalIgnoreCase) ||
             l.Contains("[Grok] Submit", StringComparison.OrdinalIgnoreCase) ||
@@ -432,7 +432,7 @@ public partial class Home
 
 
     /// <summary>Fill the home gallery blurb from real public demos only.</summary>
-    private async Task LoadDemoShowcaseAsync()
+    internal async Task LoadDemoShowcaseAsync()
     {
         try
         {
@@ -467,7 +467,7 @@ public partial class Home
         }
     }
 
-    private async Task LoadAsync()
+    internal async Task LoadAsync()
     {
         _error = null;
         _busy = true;
@@ -537,12 +537,12 @@ public partial class Home
         }
     }
 
-    private void OnNewNameInput(ChangeEventArgs e)
+    internal void OnNewNameInput(ChangeEventArgs e)
     {
         _newName = e.Value?.ToString() ?? "";
     }
 
-    private async Task OnNewNameKeyDown(KeyboardEventArgs e)
+    internal async Task OnNewNameKeyDown(KeyboardEventArgs e)
     {
         if (e.Key == "Enter" && !_busy && !string.IsNullOrWhiteSpace(_newName))
             await CreateProjectAsync();
@@ -557,7 +557,7 @@ public partial class Home
     /// is already scoped to owned projects) so a project you own with an empty OwnerUserId field
     /// still shows its rename affordance.
     /// </summary>
-    private bool CanManageProject(ProjectInfo? p)
+    internal bool CanManageProject(ProjectInfo? p)
     {
         if (p is null) return false;
         if (Session.IsAdmin) return true;
@@ -576,7 +576,7 @@ public partial class Home
     /// (video/audio the server offloaded) → download one complete zip. Falls back to a server-only zip
     /// when the media folder isn't connected or the client merge is unavailable.
     /// </summary>
-    private async Task BackupProjectAsync()
+    internal async Task BackupProjectAsync()
     {
         var id = _projects?.Active?.Id ?? ActiveProject.ProjectId;
         if (string.IsNullOrWhiteSpace(id)) return;
@@ -655,7 +655,7 @@ public partial class Home
             _busy = false;
         }
     }
-    private async Task ToggleCheckpointsAsync()
+    internal async Task ToggleCheckpointsAsync()
     {
         _showCheckpoints = !_showCheckpoints;
         _error = null;
@@ -668,7 +668,7 @@ public partial class Home
         }
     }
 
-    private async Task LoadCheckpointsAsync()
+    internal async Task LoadCheckpointsAsync()
     {
         var id = _projects?.Active?.Id ?? ActiveProject.ProjectId;
         if (string.IsNullOrWhiteSpace(id)) return;
@@ -676,7 +676,7 @@ public partial class Home
         StateHasChanged();
     }
 
-    private async Task CreateCheckpointAsync()
+    internal async Task CreateCheckpointAsync()
     {
         var id = _projects?.Active?.Id ?? ActiveProject.ProjectId;
         if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(_checkpointName)) return;
@@ -701,7 +701,7 @@ public partial class Home
         finally { _checkpointBusy = false; }
     }
 
-    private async Task RevertCheckpointAsync(CheckpointDto cp)
+    internal async Task RevertCheckpointAsync(CheckpointDto cp)
     {
         var id = _projects?.Active?.Id ?? ActiveProject.ProjectId;
         if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(cp.CommitHash)) return;
@@ -728,7 +728,7 @@ public partial class Home
         finally { _checkpointBusy = false; }
     }
 
-    private void ToggleImport()
+    internal void ToggleImport()
     {
         _showImport = !_showImport;
         if (_showImport)
@@ -744,7 +744,7 @@ public partial class Home
 
     /// <summary>Stage 1 of import: a file was picked. Hold it and pre-fill an editable default name,
     /// then reveal the Import button — the actual import waits for the user to confirm.</summary>
-    private void OnImportFileSelected(InputFileChangeEventArgs e)
+    internal void OnImportFileSelected(InputFileChangeEventArgs e)
     {
         _importFile = e.File;
         _error = null;
@@ -756,7 +756,7 @@ public partial class Home
 
     /// <summary>Friendly default project name from an export file name — strips the .zip extension,
     /// any owner/slug prefix, and the "PageToMovie_…_export"/timestamp decorations.</summary>
-    private static string DefaultNameFromFileName(string? fileName)
+    internal static string DefaultNameFromFileName(string? fileName)
     {
         var name = (fileName ?? "").Trim();
         var dot = name.LastIndexOf('.');
@@ -774,7 +774,7 @@ public partial class Home
     }
 
     /// <summary>Stage 2 of import: user confirmed. Import the held file under the (editable) name.</summary>
-    private async Task HandleImportAsync()
+    internal async Task HandleImportAsync()
     {
         var file = _importFile;
         if (file is null) return;
@@ -808,7 +808,7 @@ public partial class Home
         }
     }
 
-    private void BeginRenameAsync()
+    internal void BeginRenameAsync()
     {
         _showRename = true;
         _manageExpanded = true;
@@ -820,15 +820,15 @@ public partial class Home
             ?? "";
     }
 
-    private void OnRenameNameInput(ChangeEventArgs e) => _renameName = e.Value?.ToString() ?? "";
+    internal void OnRenameNameInput(ChangeEventArgs e) => _renameName = e.Value?.ToString() ?? "";
 
-    private void CancelRename()
+    internal void CancelRename()
     {
         _showRename = false;
         _renameName = "";
     }
 
-    private async Task ConfirmRenameAsync()
+    internal async Task ConfirmRenameAsync()
     {
         var id = _projects?.Active?.Id ?? ActiveProject.ProjectId;
         if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(_renameName)) return;
@@ -854,7 +854,7 @@ public partial class Home
         }
     }
 
-    private async Task CreateProjectAsync()
+    internal async Task CreateProjectAsync()
     {
         if (string.IsNullOrWhiteSpace(_newName)) return;
         if (!Session.IsLoggedIn)
@@ -898,7 +898,7 @@ public partial class Home
         finally { _busy = false; }
     }
 
-    private async Task SelectProjectAsync(string id)
+    internal async Task SelectProjectAsync(string id)
     {
         if (string.IsNullOrWhiteSpace(id)) return;
         if (string.Equals(id, _projects?.Active?.Id, StringComparison.OrdinalIgnoreCase))
@@ -921,14 +921,14 @@ public partial class Home
         finally { _busy = false; }
     }
 
-    private async Task OpenProjectAsync(string id)
+    internal async Task OpenProjectAsync(string id)
     {
         if (string.IsNullOrWhiteSpace(id)) return;
         await SelectProjectAsync(id);
         Nav.NavigateTo("adaptation");
     }
 
-    private Task BeginDeleteAsync(string id, string label)
+    internal Task BeginDeleteAsync(string id, string label)
     {
         _deleteId = id;
         _deleteLabel = label;
@@ -938,17 +938,17 @@ public partial class Home
         return Task.CompletedTask;
     }
 
-    private void OnDeleteConfirmInput(ChangeEventArgs e) =>
+    internal void OnDeleteConfirmInput(ChangeEventArgs e) =>
         _deleteConfirm = e.Value?.ToString() ?? "";
 
-    private void CancelDelete()
+    internal void CancelDelete()
     {
         _deleteId = null;
         _deleteLabel = "";
         _deleteConfirm = "";
     }
 
-    private async Task ConfirmDeleteAsync()
+    internal async Task ConfirmDeleteAsync()
     {
         if (_deleteId is null || !CanConfirmDelete) return;
         var id = _deleteId;
@@ -966,7 +966,7 @@ public partial class Home
         finally { _busy = false; }
     }
 
-    private async Task CancelAsync()
+    internal async Task CancelAsync()
     {
         _busy = true;
         try
@@ -978,7 +978,7 @@ public partial class Home
         finally { _busy = false; }
     }
 
-    private static string FriendlyStatus(string? status) =>
+    internal static string FriendlyStatus(string? status) =>
         string.IsNullOrWhiteSpace(status) ? "…" : status!;
 
     private static string FriendlyKind(string? kind) => kind switch
@@ -1054,7 +1054,7 @@ public partial class Home
         return null;
     }
 
-    private async Task ChangeVisibilityAsync(string projectId, string? mode)
+    internal async Task ChangeVisibilityAsync(string projectId, string? mode)
     {
         if (string.IsNullOrWhiteSpace(mode)) return;
         _busy = true;
@@ -1142,7 +1142,7 @@ public partial class Home
         return s;
     }
 
-    private async Task SyncOriginAsync(string projectId, string parentProjectId)
+    internal async Task SyncOriginAsync(string projectId, string parentProjectId)
     {
         _busy = true;
         _error = null;
@@ -1176,7 +1176,7 @@ public partial class Home
         }
     }
 
-    private async Task SaveRevisionAsync(string projectId)
+    internal async Task SaveRevisionAsync(string projectId)
     {
         if (string.IsNullOrWhiteSpace(projectId)) return;
         _busy = true;
@@ -1212,7 +1212,7 @@ public partial class Home
         }
     }
 
-    private async Task OpenHistoryAsync(string historyUrl)
+    internal async Task OpenHistoryAsync(string historyUrl)
     {
         if (string.IsNullOrWhiteSpace(historyUrl)) return;
         try

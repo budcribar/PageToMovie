@@ -1,0 +1,404 @@
+@* Page-local to Home — full-studio project card (picker, cost, manage, empty list) *@
+@inject ActiveProjectState ActiveProject
+@inject AdminSessionService Session
+@inject IAppLocalizer L
+@using PageToMovie.Core.Models
+@using Microsoft.AspNetCore.Components
+
+<div class="card mb-3 home-studio-card" data-testid="home-studio-card">
+    <div class="card-body py-3">
+        @{
+            var activeMeta = Host._projects!.Projects.FirstOrDefault(p =>
+                string.Equals(p.Id, Host._projects.Active?.Id, StringComparison.OrdinalIgnoreCase));
+            var hasActive = ActiveProject.HasProject || !string.IsNullOrWhiteSpace(Host._projects.Active?.Id);
+        }
+        @if (hasActive)
+        {
+            @* Single studio bar: Project · name · visibility · New · Manage · [Setup if keys missing] *@
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-2 home-active-toolbar">
+                <span class="home-project-label text-muted small text-uppercase flex-shrink-0">Project</span>
+                <select class="form-select form-select-sm home-project-select flex-grow-1"
+                        style="min-width: 10rem; max-width: 22rem;"
+                        data-testid="home-project-picker"
+                        value="@(Host._projects.Active?.Id ?? ActiveProject.ProjectId)"
+                        disabled="@Host._busy"
+                        title="Project"
+                        aria-label="Project"
+                        @onchange="Host.OnPickerChangedAsync">
+                    @foreach (var p in Host._projects.Projects)
+                    {
+                        <option @key="p.Id" value="@p.Id">@(p.Label ?? p.Title ?? p.Id)</option>
+                    }
+                </select>
+                @if (activeMeta is not null)
+                {
+                    <span class="badge @Home.VisibilityBadgeClass(activeMeta.VisibilityMode) small fw-normal flex-shrink-0"
+                          title="Visibility">
+                        @Home.VisibilityBadgeText(activeMeta.VisibilityMode)
+                    </span>
+                }
+                <button type="button"
+                        class="btn btn-outline-primary btn-sm flex-shrink-0"
+                        data-testid="home-new-project"
+                        disabled="@Host._busy"
+                        @onclick="Host.OpenNewProjectAsync"
+                        title="New project">
+                    + New
+                </button>
+                <button type="button"
+                        class="btn btn-outline-secondary btn-sm flex-shrink-0"
+                        data-testid="home-import-project"
+                        disabled="@(Host._busy || Host._importing)"
+                        @onclick="Host.ToggleImport"
+                        title="Import a project zip">
+                    Import
+                </button>
+                <button type="button"
+                        class="btn btn-outline-secondary btn-sm flex-shrink-0"
+                        data-testid="home-manage-projects"
+                        aria-expanded="@(Host._manageExpanded ? "true" : "false")"
+                        @onclick="() => Host._manageExpanded = !Host._manageExpanded">
+                    Manage @(Host._manageExpanded ? "▴" : "▾")
+                </button>
+                @if (Host.NeedsApiSetup)
+                {
+                    <a href="configuration"
+                       class="btn btn-warning btn-sm flex-shrink-0"
+                       data-testid="home-setup-config"
+                       title="Connect your AI API keys">
+                        Setup keys
+                    </a>
+                }
+            </div>
+
+            <div class="home-project-cost d-flex flex-wrap align-items-center gap-2 gap-md-3 mb-2"
+                 data-testid="home-project-cost">
+                @if (Host._costLoading && Host._costEstimateUsd is null && Host._costActualUsd is null)
+                {
+                    <span class="small text-muted">Loading cost…</span>
+                }
+                else if (Host._costNeedsModels)
+                {
+                    <span class="small text-muted" data-testid="home-cost-needs-setup">
+                        Estimate available after <a href="/configuration">setup</a>.
+                    </span>
+                }
+                else
+                {
+                    <span class="small">
+                        <span class="text-muted">Estimate</span>
+                        <strong class="ms-1" data-testid="home-cost-estimate">@Home.FormatUsd(Host._costEstimateUsd)</strong>
+                        @if (!string.IsNullOrWhiteSpace(Host._costResolution))
+                        {
+                            <span class="text-muted ms-1">(@Host._costResolution</span>
+                            @if (Host._costVideoRate is > 0)
+                            {
+                                <span class="text-muted"> · @Home.FormatUsd(Host._costVideoRate)/s</span>
+                            }
+                            <span class="text-muted">)</span>
+                        }
+                    </span>
+                    <span class="text-muted small d-none d-sm-inline">·</span>
+                    <span class="small">
+                        <span class="text-muted">Spent</span>
+                        <strong class="ms-1" data-testid="home-cost-spent">@Home.FormatUsd(Host._costActualUsd)</strong>
+                    </span>
+                    <a href="/cost" class="small ms-sm-1" data-testid="home-cost-details">Details</a>
+                }
+            </div>
+
+            @* Package history: auto-commits on save; never auto-reverts. *@
+            <div class="d-flex flex-wrap align-items-center gap-2 gap-md-3 mb-2 small"
+                 data-testid="home-package-history">
+                @if (Host._packageStatusLoading && Host._packageStatus is null)
+                {
+                    <span class="text-muted">Checking package history…</span>
+                }
+                else if (Host._packageStatus is { GitAvailable: true })
+                {
+                    <span>
+                        <span class="text-muted">Last saved</span>
+                        @if (!string.IsNullOrWhiteSpace(Host._packageStatus.LastCommitHash))
+                        {
+                            <strong class="ms-1 font-monospace" data-testid="home-last-saved-hash">@Home.ShortHash(Host._packageStatus.LastCommitHash)</strong>
+                        }
+                        else
+                        {
+                            <span class="ms-1 text-muted">—</span>
+                        }
+                        @if (Host._packageStatus.LastCommitAtUtc is DateTime when)
+                        {
+                            <span class="text-muted ms-1" title="@when.ToString("u")">@Home.FormatRelativeUtc(when)</span>
+                        }
+                    </span>
+                    @if (Host._packageStatus.HasUncommittedChanges)
+                    {
+                        <span class="badge text-bg-warning text-dark fw-normal" data-testid="home-package-dirty">
+                            Unsaved package changes
+                        </span>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(Host.PackageHistoryUrl))
+                    {
+                        <button type="button" class="btn btn-link btn-sm p-0 align-baseline"
+                                data-testid="home-package-history-link"
+                                disabled="@Host._busy"
+                                @onclick="() => Host.OpenHistoryAsync(Host.PackageHistoryUrl!)">
+                            History
+                        </button>
+                    }
+                    @if (Host.CanSavePackageRevision)
+                    {
+                        <button type="button" class="btn btn-link btn-sm p-0 align-baseline"
+                                data-testid="home-package-save-revision"
+                                disabled="@Host._busy"
+                                title="Commit text package and push to backup when configured"
+                                @onclick="() => Host.SaveRevisionAsync(Host.ActivePackageProjectId)">
+                            Save revision
+                        </button>
+                    }
+                }
+                else if (Host._packageStatus is not null && !string.IsNullOrWhiteSpace(Host._packageStatus.SkipReason))
+                {
+                    <span class="text-muted" title="@Host._packageStatus.SkipReason">Package history off on this host</span>
+                }
+            </div>
+
+            @if (Host._manageExpanded && hasActive)
+            {
+                <div class="home-manage-panel mb-3 p-2 rounded border border-secondary border-opacity-25">
+                    @{
+                        var id = Host._projects.Active?.Id ?? ActiveProject.ProjectId ?? "";
+                        var p = activeMeta ?? Host._projects.Projects.FirstOrDefault(x =>
+                            string.Equals(x.Id, id, StringComparison.OrdinalIgnoreCase));
+                        var canManage = Host.CanManageProject(p);
+                    }
+                    @if (p is not null)
+                    {
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            @if (!string.IsNullOrWhiteSpace(p.ParentProjectId) && canManage)
+                            {
+                                <a class="btn btn-sm btn-outline-warning"
+                                   href="projects/@id/review-contribution?originProjectId=@p.ParentProjectId">
+                                    Diff
+                                </a>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@Host._busy"
+                                        @onclick="() => Host.SyncOriginAsync(id, p.ParentProjectId!)">
+                                    Sync origin
+                                </button>
+                            }
+                            @if (canManage)
+                            {
+                                <select class="form-select form-select-sm w-auto"
+                                        value="@p.VisibilityMode"
+                                        disabled="@Host._busy"
+                                        @onchange="(e) => Host.ChangeVisibilityAsync(id, e.Value?.ToString())">
+                                    <option value="Private">Private</option>
+                                    <option value="Public">Public (Read-Only)</option>
+                                    <option value="Open">Public (Forkable)</option>
+                                </select>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@Host._busy"
+                                        @onclick="Host.BeginRenameAsync">
+                                    Rename
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary"
+                                        disabled="@(Host._busy || Host._backingUp)"
+                                        data-testid="home-backup-project"
+                                        title="Download a full backup zip (project files + all media)"
+                                        @onclick="Host.BackupProjectAsync">
+                                    @(Host._backingUp ? "Backing up…" : "Back up")
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary"
+                                        disabled="@Host._busy"
+                                        data-testid="home-checkpoints"
+                                        title="Save named checkpoints of this project and roll back to one (your clips are kept)"
+                                        @onclick="Host.ToggleCheckpointsAsync">
+                                    Checkpoints
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@Host._busy"
+                                        @onclick="() => Host.OpenCollaboratorsModal(id)">
+                                    Collaborate
+                                </button>
+                                @if (Host._historyUrls.TryGetValue(id, out var historyUrl) && !string.IsNullOrWhiteSpace(historyUrl))
+                                {
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@Host._busy"
+                                            @onclick="() => Host.OpenHistoryAsync(historyUrl)">
+                                        GitHub
+                                    </button>
+                                }
+                            }
+                            <button type="button" class="btn btn-sm btn-outline-danger ms-auto" disabled="@Host._busy"
+                                    @onclick="() => Host.BeginDeleteAsync(id, p.Label ?? p.Title ?? id)">
+                                Delete
+                            </button>
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="small text-muted mb-0">No project details to manage.</p>
+                    }
+                </div>
+            }
+
+            @if (Host._showRename && hasActive)
+            {
+                <div class="border border-secondary border-opacity-50 rounded p-3 mt-2 bg-dark bg-opacity-75 text-white shadow-sm">
+                    <div class="fw-semibold small text-light mb-2">Rename project</div>
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        <input class="form-control form-control-sm flex-grow-1 bg-white text-dark border-secondary fw-medium"
+                               style="min-width: 10rem; color: #111111 !important; background-color: #ffffff !important;"
+                               data-testid="home-rename-project-name"
+                               value="@Host._renameName"
+                               @oninput="Host.OnRenameNameInput"
+                               disabled="@Host._busy"
+                               maxlength="80"
+                               placeholder="New display name"
+                               aria-label="Rename project" />
+                        <button class="btn btn-success btn-sm"
+                                data-testid="home-rename-project-save"
+                                disabled="@(Host._busy || string.IsNullOrWhiteSpace(Host._renameName))"
+                                @onclick="Host.ConfirmRenameAsync">
+                            Save name
+                        </button>
+                        <button class="btn btn-outline-secondary btn-sm text-light border-secondary"
+                                disabled="@Host._busy"
+                                @onclick="Host.CancelRename">
+                            Cancel
+                        </button>
+                    </div>
+                    <div class="form-text text-muted mt-1">Changes the display name only — project id stays the same.</div>
+                </div>
+            }
+
+            @if (Host._showCheckpoints && hasActive)
+            {
+                <Home_CheckpointsPanel />
+            }
+
+            @if (Host._deleteId is not null)
+            {
+                <div class="border border-danger border-opacity-50 rounded p-3 mt-2 bg-dark bg-opacity-75 text-white shadow-sm">
+                    <p class="small mb-2 text-white">
+                        Delete <strong>@Host._deleteLabel</strong>? This removes the project folder and all its files.
+                    </p>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-danger btn-sm" disabled="@Host._busy" @onclick="Host.ConfirmDeleteAsync">Delete project</button>
+                        <button class="btn btn-outline-secondary btn-sm" disabled="@Host._busy" @onclick="Host.CancelDelete">Cancel</button>
+                    </div>
+                </div>
+            }
+
+            <StudioProcessStrip Active="@Host.HomeActiveStep" FullStudio="true" />
+        }
+        else
+        {
+            @* Empty studio: brand + pick/create only. *@
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+                <div class="d-flex align-items-center gap-2 min-w-0">
+                    <img src="/favicon.png" alt="" width="36" height="36" class="rounded-2 shadow-sm flex-shrink-0" />
+                    <div class="min-w-0">
+                        <div class="small text-muted">Full studio</div>
+                        <h1 class="home-top__title mb-0">Choose a film</h1>
+                        <div class="home-top__sub">Import a book, cast, estimate, film</div>
+                    </div>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <button class="btn btn-outline-secondary btn-sm"
+                            data-testid="home-import-project"
+                            disabled="@(Host._busy || Host._importing)"
+                            @onclick="Host.ToggleImport">
+                        Import
+                    </button>
+                    <button class="btn btn-primary btn-sm"
+                            data-testid="home-new-project"
+                            disabled="@Host._busy"
+                            @onclick="Host.OpenNewProjectAsync">
+                        + New project
+                    </button>
+                </div>
+            </div>
+
+            @if (ActiveProject.Status is { XaiConfigured: false })
+            {
+                <StudioProcessStrip Active="setup" FullStudio="true" />
+            }
+
+            @if (Host._projects.Projects.Count == 0 && !Host._showNew)
+            {
+                <p class="small text-muted mb-0">No projects yet — create one to start Book → Cast → Film.</p>
+            }
+            else if (Host._projects.Projects.Count > 0)
+            {
+                <div class="list-group project-list">
+                    @foreach (var p in Host._projects.Projects)
+                    {
+                        var id = p.Id ?? "";
+                        <button type="button"
+                                class="list-group-item list-group-item-action d-flex align-items-center justify-content-between gap-2"
+                                data-testid="@($"home-project-{id}")"
+                                disabled="@Host._busy"
+                                @onclick="() => Host.OpenProjectAsync(id)">
+                            <span class="text-truncate fw-semibold">@(p.Label ?? p.Title ?? id)</span>
+                            <span class="badge @Home.VisibilityBadgeClass(p.VisibilityMode) small fw-normal flex-shrink-0">
+                                @Home.VisibilityBadgeText(p.VisibilityMode)
+                            </span>
+                        </button>
+                    }
+                </div>
+            }
+        }
+
+        @if (Host._showNew)
+        {
+            <div class="border border-secondary border-opacity-50 rounded p-3 mt-3 bg-dark bg-opacity-75 text-white shadow-sm">
+                <div class="fw-semibold small text-light mb-2">Create New Project</div>
+                @if (ActiveProject.Status is not null && !ActiveProject.Status.XaiConfigured)
+                {
+                    <div class="alert alert-warning py-1 px-2 small mb-2">
+                        No AI provider connected yet — finish <strong>Setup</strong> (step 0) first.
+                        <a href="configuration" class="alert-link">Open Setup →</a>
+                    </div>
+                }
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <input @ref="NameInputRef"
+                           class="form-control form-control-sm flex-grow-1 bg-white text-dark border-secondary fw-medium"
+                           style="min-width: 10rem; color: #111111 !important; background-color: #ffffff !important; caret-color: #000000 !important;"
+                           data-testid="home-new-project-name"
+                           value="@Host._newName"
+                           @oninput="Host.OnNewNameInput"
+                           @onkeydown="Host.OnNewNameKeyDown"
+                           disabled="@Host._busy"
+                           placeholder="Enter project name..."
+                           maxlength="80"
+                           autofocus
+                           aria-label="New project name" />
+                    <button class="btn btn-success btn-sm flex-shrink-0 px-3"
+                            data-testid="home-create-project"
+                            disabled="@(Host._busy || string.IsNullOrWhiteSpace(Host._newName))"
+                            @onclick="Host.CreateProjectAsync">
+                        Create
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm flex-shrink-0 px-3 text-light border-secondary"
+                            disabled="@Host._busy"
+                            @onclick="Host.ToggleNewProjectAsync">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        }
+
+        @if (Host._showImport)
+        {
+            @Host.ImportPanel
+        }
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] public Home Host { get; set; } = default!;
+
+    private ElementReference NameInputRef
+    {
+        get => Host._nameInputRef;
+        set => Host._nameInputRef = value;
+    }
+}

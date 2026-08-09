@@ -1,0 +1,55 @@
+@* Page-local to Home — demo films showcase card *@
+@inject IAppLocalizer L
+@using PageToMovie.Core.Util
+@using Microsoft.AspNetCore.Components
+
+<div class="card home-showcase-card mb-3" data-testid="home-demo-films-card">
+    <div class="card-body py-3">
+        <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-2">
+            <div class="min-w-0">
+                <div class="ptm-adapt-kicker mb-1">@L["Home.PageToMovieChannel"]</div>
+                <div class="fw-semibold fs-5 mb-0">@L["Home.DemoFilms"]</div>
+                <div class="small text-muted text-truncate" title="@Host._demoShowcaseHint">@Host._demoShowcaseHint</div>
+            </div>
+            <a href="/demo" class="btn btn-sm btn-primary flex-shrink-0" data-testid="home-open-demo-gallery">
+                @L["Home.OpenGallery"]
+            </a>
+        </div>
+        @if (Host._publicDemos.Count > 0)
+        {
+            <div class="home-showcase-thumbs" aria-label="Recent demo films">
+                @foreach (var d in Host._publicDemos.Take(4))
+                {
+                    var yt = YouTubeVideoId.Extract(d.YoutubeId) ?? YouTubeVideoId.Extract(d.YoutubeUrl);
+                    var href = yt is not null
+                        ? YouTubeVideoId.WatchUrl(yt)
+                        : (!string.IsNullOrWhiteSpace(d.YoutubeUrl) && Uri.TryCreate(d.YoutubeUrl.Trim(), UriKind.Absolute, out _)
+                            ? d.YoutubeUrl!.Trim()
+                            : "/demo");
+                    var thumb = yt is not null
+                        ? YouTubeVideoId.ThumbnailUrl(yt, "mqdefault")
+                        : null;
+                    <a class="home-showcase-thumb"
+                       href="@href"
+                       target="@(yt is not null || href.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? "_blank" : null)"
+                       rel="@(yt is not null || href.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? "noopener noreferrer" : null)"
+                       title="@d.Title">
+                        @if (thumb is not null)
+                        {
+                            <img src="@thumb" alt="" loading="lazy" />
+                        }
+                        else
+                        {
+                            <span class="home-showcase-thumb__ph" aria-hidden="true">▶</span>
+                        }
+                        <span class="home-showcase-thumb__label">@d.Title</span>
+                    </a>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] public Home Host { get; set; } = default!;
+}

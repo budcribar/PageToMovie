@@ -1,0 +1,55 @@
+@* Shared extract of VoiceCaptureStep — teleprompter / script text + countdown light *@
+@using Microsoft.AspNetCore.Components
+
+@{ var words = VoiceCaptureStep.SplitWords(Host.CurrentPhrase.Text); }
+@{ var inTele = Host._recording || Host._light > 0 || Host._listening; }
+@if (inTele)
+{
+    @* The light sits just left of the marker, so your eye flows light → start → scrolling
+       words. Shown for Listen (original scrolls), the countdown (static), and recording. *@
+    <div class="d-flex align-items-center gap-2 mb-1">
+        <div class="ptm-light-box-h" data-testid="voice-capture-light">
+            <span class="ptm-light-sm @(Host._light == 1 ? "ptm-red-on" : "ptm-red-off")"></span>
+            <span class="ptm-light-sm @(Host._light == 2 ? "ptm-yellow-on" : "ptm-yellow-off")"></span>
+            <span class="ptm-light-sm @(Host._light == 3 ? "ptm-green-on" : "ptm-green-off")"></span>
+        </div>
+        <div class="tele-viewport flex-grow-1">
+            <div id="tele-text" @key="Host._teleSession" class="tele-text fs-5">
+                @foreach (var w in words)
+                {
+                    <span class="tele-w">@w</span>
+                }
+            </div>
+        </div>
+    </div>
+    <div class="small mb-3 @(Host._listening ? "text-info" : "text-danger")">
+        @(Host._light == 1 ? "Get ready…"
+            : Host._light == 2 ? "Set…"
+            : Host._light == 3 ? "Go — read it!"
+            : Host._listening ? "This is how the narrator reads it — watch the words"
+            : "● Read the word at the line")
+    </div>
+}
+else
+{
+    <div style="overflow-x:auto; max-width:100%;" class="mb-1">
+        <p class="fs-5 mb-0" data-testid="voice-capture-text" style="white-space:nowrap;">
+            @for (var wi = 0; wi < words.Count; wi++)
+            {
+                <span style="@Host.WordStyle(wi)">@words[wi]</span>@(" ")
+            }
+        </p>
+    </div>
+    @if (Host._regions is { Count: > 0 })
+    {
+        <div class="small text-muted mb-3">Colours show where your rhythm matched — aim to turn the red/orange words green.</div>
+    }
+    else
+    {
+        <div class="mb-3"></div>
+    }
+}
+
+@code {
+    [CascadingParameter] public VoiceCaptureStep Host { get; set; } = default!;
+}

@@ -1,0 +1,43 @@
+@* Shared extract of VoiceCaptureStep — listen / play you / play both + score waveforms *@
+@using Microsoft.AspNetCore.Components
+
+<div class="mb-3">
+    <div class="d-flex flex-wrap gap-2 mb-2">
+        <button class="btn btn-outline-primary btn-sm"
+                disabled="@(Host._busy || Host._recording || Host._light > 0 || Host._listening || string.IsNullOrEmpty(Host._originalUrl))"
+                data-testid="voice-capture-listen" @onclick="Host.ListenAsync">
+            @(Host._listening ? "▶ Narrator…" : "▶ Narrator")
+        </button>
+        @if (!string.IsNullOrEmpty(Host._takeUrl))
+        {
+            <button class="btn btn-outline-secondary btn-sm" disabled="@(Host._busy || Host._recording || Host._light > 0 || Host._listening)"
+                    data-testid="voice-capture-play-you" @onclick="Host.PlayYouAsync">▶ You</button>
+            <button class="btn btn-outline-secondary btn-sm" disabled="@(Host._busy || Host._recording || Host._light > 0 || Host._listening)"
+                    data-testid="voice-capture-play-both" @onclick="Host.PlayBothAsync">▶ Both</button>
+        }
+        @if (string.IsNullOrEmpty(Host._originalUrl))
+        {
+            <span class="text-muted small align-self-center">Loading original…</span>
+        }
+    </div>
+
+    <div class="ptm-wave-row">
+        <span class="ptm-wave-label">Narrator</span>
+        <canvas id="ptm-wave-narrator" class="ptm-wave" height="34"></canvas>
+    </div>
+    @if (!string.IsNullOrEmpty(Host._takeUrl))
+    {
+        <div class="ptm-wave-row">
+            <span class="ptm-wave-label">You</span>
+            <canvas id="ptm-wave-you" class="ptm-wave" height="34"></canvas>
+        </div>
+        @if (Host._score is int sc)
+        {
+            <div class="mt-1 small fw-semibold @VoiceCaptureStep.ScoreClass(sc)" data-testid="voice-capture-score">@VoiceCaptureStep.ScoreLabel(sc)</div>
+        }
+    }
+</div>
+
+@code {
+    [CascadingParameter] public VoiceCaptureStep Host { get; set; } = default!;
+}
