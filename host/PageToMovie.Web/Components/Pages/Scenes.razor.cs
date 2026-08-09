@@ -2833,9 +2833,6 @@ if (string.IsNullOrWhiteSpace(_projectId)) return;
     private List<ClipVersionItem>? _clipVersions;
     private List<ClipVersionItem>? _trashVersions;
     private string? _selectedCompareVersionId;
-    private bool _compareGridView = true;
-    private bool _showTrashBin;
-    private bool _showEmptyTrashConfirm;
 
     private ClipVersionItem? _selectedCompareVersion =>
         _clipVersions?.FirstOrDefault(v => string.Equals(v.VersionId, _selectedCompareVersionId, StringComparison.OrdinalIgnoreCase));
@@ -2917,8 +2914,6 @@ if (string.IsNullOrWhiteSpace(_projectId)) return;
         _loadingClipVersions = true;
         _clipCompareMessage = null;
         _selectedCompareVersionId = null;
-        _showTrashBin = false;
-        _showEmptyTrashConfirm = false;
         StateHasChanged();
 
         try
@@ -2948,7 +2943,6 @@ if (string.IsNullOrWhiteSpace(_projectId)) return;
         _clipVersions = null;
         _trashVersions = null;
         _clipCompareMessage = null;
-        _showEmptyTrashConfirm = false;
     }
 
     private async Task PromoteClipVersionAsync(int sceneNumber, int clipNumber, string versionId)
@@ -3058,7 +3052,6 @@ if (string.IsNullOrWhiteSpace(_projectId)) return;
     private async Task EmptyClipTrashAsync(int sceneNumber, int clipNumber)
     {
         _promotingVersion = true;
-        _showEmptyTrashConfirm = false;
         _clipCompareMessage = null;
         StateHasChanged();
 
