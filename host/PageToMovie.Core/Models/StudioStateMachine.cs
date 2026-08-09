@@ -13,6 +13,7 @@ public enum SourceDocumentType
 
 /// <summary>
 /// Discrete phases in the PageToMovie studio production pipeline.
+/// Derived from project status — not a separately stored workflow column.
 /// </summary>
 public enum StudioPhase
 {
@@ -25,16 +26,21 @@ public enum StudioPhase
     /// <summary>Step 1b: PDF uploaded but raw text / OCR extraction is still needed before Stage 1.</summary>
     TextExtractionPending = 2,
 
-    /// <summary>Step 1c: Source text ready, Fountain screenplay draft created but unapproved.</summary>
+    /// <summary>Step 1c: Source present; screenplay draft not yet signed off for cast/shots.</summary>
     ScreenplayDraft = 3,
 
-    /// <summary>Step 1d: Screenplay signed off/approved. Unlocks Cast & Estimate.</summary>
+    /// <summary>Step 1d: Screenplay signed off. Unlocks Cast & Estimate.</summary>
     ScreenplayApproved = 4,
 
-    /// <summary>Step 2: Shot plan (Stage 2) built and up to date. Unlocks Film / Scenes generation.</summary>
+    /// <summary>Step 2: Shot plan (Stage 2) built and up to date. Unlocks Film generation (with cast).</summary>
     ShotPlanReady = 5,
 
-    /// <summary>Step 3: All scene clips generated and ready for review, playback, and export.</summary>
+    /// <summary>
+    /// Step 3: Production media ready for review/export.
+    /// Reserved until <see cref="AdaptationStatus"/> exposes clip-completeness rollup;
+    /// <see cref="StudioStateMachine.DeterminePhase"/> does not return this yet.
+    /// Navigation to Review currently opens at <see cref="ShotPlanReady"/> (same as legacy strip).
+    /// </summary>
     ReviewReady = 6
 }
 
@@ -53,6 +59,7 @@ public enum StudioStep
 
 /// <summary>
 /// Single source of truth for studio pipeline state evaluation and step transition gating.
+/// Phase is derived from <see cref="AdaptationStatus"/>; mutations stay event-driven (sign-off, stage2, generate).
 /// </summary>
 public static class StudioStateMachine
 {
@@ -80,6 +87,30 @@ public static class StudioStateMachine
     }
 
     /// <summary>
+    /// True when the operator has signed off a Fountain draft for cast / shot planning.
+    /// Stage 1 package alone does <b>not</b> count — sign-off is the product gate
+    /// (<see cref="ScreenplayStatus.Signed"/> / <see cref="ScreenplayStatus.ReadyForShots"/>).
+    /// </summary>
+    public static bool IsScreenplayApproved(ScreenplayStatus? screenplay)
+    {
+        if (screenplay is null)
+            return false;
+        return screenplay.ReadyForShots || screenplay.Signed;
+    }
+
+    /// <summary>
+    /// True when Stage 2 blueprint is present, has clips, and is not stale vs the screenplay.
+    /// </summary>
+    public static bool IsShotPlanReady(Stage2PlanStatus? stage2)
+    {
+        if (stage2 is null)
+            return false;
+        return stage2.Stage2Ready
+            && stage2.Stage2Clips > 0
+            && !stage2.Stage2Stale;
+    }
+
+    /// <summary>
     /// Evaluates the discrete pipeline phase given the project's <see cref="AdaptationStatus"/>.
     /// Handles Fountain (direct screenplay), TXT (plain text), and PDF (native or OCR text extraction).
     /// </summary>
@@ -95,35 +126,33 @@ public static class StudioStateMachine
         if (sourceType == SourceDocumentType.None)
             return StudioPhase.ImportRequired;
 
-        // PDF or TXT source imported but text/OCR extraction not completed yet
-        if (sourceType == SourceDocumentType.Pdf && !status.Book.BookTextExists && !status.Screenplay.DraftExists)
+        // PDF imported but text/OCR extraction not completed yet (no book text and no screenplay draft).
+        if (sourceType == SourceDocumentType.Pdf
+            && status.Book is { BookTextExists: false }
+            && status.Screenplay is not { DraftExists: true })
         {
             return StudioPhase.TextExtractionPending;
         }
 
-        // Direct Fountain import bypasses Stage 1 book conversion.
-        // TXT / PDF sources require Stage 1 conversion to produce a screenplay draft.
-        var screenplayApproved = status.Screenplay.Signed
-            || status.Screenplay.ReadyForShots
-            || (status.Stage1.Present && status.Stage1.SceneCount > 0);
-
-        if (!screenplayApproved)
+        if (!IsScreenplayApproved(status.Screenplay))
             return StudioPhase.ScreenplayDraft;
 
-        var shotPlanReady = status.Stage2.Stage2Ready
-            && status.Stage2.Stage2Clips > 0
-            && !status.Stage2.Stage2Stale;
-
-        if (!shotPlanReady)
+        if (!IsShotPlanReady(status.Stage2))
             return StudioPhase.ScreenplayApproved;
 
-        return status.Stage2.Stage2Ready ? StudioPhase.ShotPlanReady : StudioPhase.ScreenplayApproved;
+        // Clip-completeness is not yet on AdaptationStatus — stay on ShotPlanReady.
+        // When a rollup lands, return ReviewReady here without changing call sites.
+        return StudioPhase.ShotPlanReady;
     }
 
     /// <summary>
     /// Determines whether navigation to a target step is permitted under the current phase.
     /// Returns (allowed, blockedReason).
     /// </summary>
+    /// <param name="targetStep">Studio chrome step.</param>
+    /// <param name="currentPhase">From <see cref="DeterminePhase"/>.</param>
+    /// <param name="castReady">Every cast member has approved voice + locked look when required.</param>
+    /// <param name="isStage2Stale">Shot plan out of date vs screenplay (Film blocked even if phase lags).</param>
     public static (bool Allowed, string BlockedReason) CanNavigateTo(
         StudioStep targetStep,
         StudioPhase currentPhase,
@@ -164,6 +193,8 @@ public static class StudioStateMachine
                 return (true, string.Empty);
 
             case StudioStep.Review:
+                // Legacy strip unlocked Review with the shot plan (same as Film phase).
+                // Cast is not required to open Review chrome; Film generation still checks castReady.
                 if (currentPhase < StudioPhase.ShotPlanReady)
                     return (false, "Finish the shot plan first");
                 return (true, string.Empty);
