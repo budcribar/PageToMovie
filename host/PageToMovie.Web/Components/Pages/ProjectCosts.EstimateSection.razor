@@ -1,0 +1,102 @@
+@* Page-local to ProjectCosts — estimate basis/history badges + pie *@
+@inject AdminSessionService Session
+@using static PageToMovie.Web.Components.CostFormatting
+
+@* Technical estimate basis / model rates / history — admin only. *@
+@if (Session.IsAdmin)
+{
+    @if (!string.IsNullOrWhiteSpace(Host._report!.Notes))
+    {
+        <p class="small text-muted mb-2" data-testid="cost-estimate-basis">@Host._report.Notes</p>
+    }
+    @if (Host._report.Refinement is { UsedHistory: true } hist)
+    {
+        <p class="small mb-3" data-testid="cost-estimate-history">
+            <span class="badge text-bg-success fw-normal me-1">Using history</span>
+            @if (hist.AppliedVideoMultiplier > 1.001)
+            {
+                <span class="text-muted">Video ×@hist.AppliedVideoMultiplier.ToString("0.##")</span>
+            }
+            @if (hist.LearnedFailRate is double failRate)
+            {
+                <span class="text-muted ms-1">· observed fail ~@failRate.ToString("P0")</span>
+            }
+            @if (hist.VideoApiSamples + hist.ReviewApiSamples + hist.TimingSamples > 0)
+            {
+                <span class="text-muted ms-1">
+                    · samples video @hist.VideoApiSamples / review @hist.ReviewApiSamples / timing @hist.TimingSamples
+                </span>
+            }
+        </p>
+    }
+    <div class="small text-muted mb-3 d-flex flex-wrap gap-2">
+        @if (!string.IsNullOrWhiteSpace(Host._report.ModelName))
+        {
+            <span class="badge text-bg-secondary fw-normal">Video · @Host._report.ModelName</span>
+        }
+        @if (!string.IsNullOrWhiteSpace(Host._report.ImageModelName))
+        {
+            <span class="badge text-bg-secondary fw-normal">Portraits · @Host._report.ImageModelName</span>
+        }
+        @if (!string.IsNullOrWhiteSpace(Host._report.PlanningModelName))
+        {
+            <span class="badge text-bg-secondary fw-normal">Planning · @Host._report.PlanningModelName</span>
+        }
+        @if (Host._report.VoiceIncludedInEstimate && !string.IsNullOrWhiteSpace(Host._report.VoiceModelName))
+        {
+            <span class="badge text-bg-secondary fw-normal">Voice · @Host._report.VoiceModelName</span>
+        }
+        else
+        {
+            <span class="badge text-bg-dark border border-secondary fw-normal text-muted">Voice · not in estimate</span>
+        }
+        <span class="badge text-bg-primary fw-normal" data-testid="cost-res-badge">
+            Video · @Host._report.DraftResolution · @Usd(Host._report.OutputRateDraft)/sec
+        </span>
+    </div>
+}
+
+@{
+    var estSlices = Host.BuildEstimateSlices();
+    var estTotal = estSlices.Sum(x => x.Usd);
+}
+
+@* —— Estimate pie —— *@
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="fw-semibold mb-1">Planned cost breakdown</div>
+        <p class="small text-muted mb-3">
+            @if (string.Equals(Host._report!.EstimateBasis, "none", StringComparison.OrdinalIgnoreCase))
+            {
+                <span>Import a book so we can size the film. Estimates use your selected models.</span>
+            }
+            else if (string.Equals(Host._report.EstimateBasis, "screenplay", StringComparison.OrdinalIgnoreCase))
+            {
+                <span>From the imported screenplay (scene lengths). Refines after the shot plan and cast choices.</span>
+            }
+            else
+            {
+                <span>From the shot plan and current cast / voice choices. Model rates from Settings.</span>
+            }
+        </p>
+        <div class="row g-4 align-items-center">
+            <div class="col-md-5 d-flex justify-content-center">
+                <CostPie Segments="@estSlices.Select(s => new CostPie.Segment(s.Usd, s.Color)).ToList()"
+                         Total="estTotal"
+                         CenterLabel="Estimate"
+                         CenterValue="@Usd(estTotal)"
+                         TestId="cost-estimate-pie"
+                         Size="220"
+                         AriaLabel="Estimate by category"
+                         EmptyText="No estimate yet" />
+            </div>
+            <div class="col-md-7">
+                <CostLegend Items="@estSlices.Select(s => new CostLegend.Item(s.Label, s.Usd, s.Color)).ToList()" Total="estTotal" />
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] public ProjectCosts Host { get; set; } = default!;
+}

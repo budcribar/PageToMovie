@@ -1,0 +1,33 @@
+@* Page-local to ProjectCosts — spent pie + legend *@
+@using static PageToMovie.Web.Components.CostFormatting
+
+@{
+    var slices = Host.BuildSpentSlices();
+    var totalSpent = slices.Sum(x => x.Usd);
+}
+
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="fw-semibold mb-1">Where spend went</div>
+        <p class="small text-muted mb-3">Tracked work so far. Open a category for details.</p>
+        <div class="row g-4 align-items-center">
+            <div class="col-md-5 d-flex justify-content-center">
+                <CostPie Segments="@slices.Select(s => new CostPie.Segment(s.Usd, s.Color)).ToList()"
+                         Total="totalSpent"
+                         CenterLabel="Spent"
+                         CenterValue="@Usd(totalSpent)"
+                         TestId="cost-spent-pie"
+                         Size="220"
+                         AriaLabel="Spent by category"
+                         EmptyText="No spent yet" />
+            </div>
+            <div class="col-md-7">
+                <CostLegend Items="@slices.Select(s => new CostLegend.Item(s.Label, s.Usd, s.Color)).ToList()" Total="totalSpent" />
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] public ProjectCosts Host { get; set; } = default!;
+}

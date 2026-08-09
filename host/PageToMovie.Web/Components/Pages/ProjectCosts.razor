@@ -20,69 +20,9 @@
 }
 else
 {
-    var s = _report.Summary;
-    var slices = BuildSpentSlices();
-    var totalSpent = slices.Sum(x => x.Usd);
-    var estSlices = BuildEstimateSlices();
-    var estTotal = estSlices.Sum(x => x.Usd);
-
     <div class="d-flex justify-content-end mb-3">
         <a class="btn btn-sm btn-outline-secondary" href="cost" data-testid="breakdown-back-estimate">← @L["Nav.Estimate"]</a>
     </div>
-
-    @* Technical estimate basis / model rates / history — admin only. *@
-    @if (Session.IsAdmin)
-    {
-        @if (!string.IsNullOrWhiteSpace(_report.Notes))
-        {
-            <p class="small text-muted mb-2" data-testid="cost-estimate-basis">@_report.Notes</p>
-        }
-        @if (_report.Refinement is { UsedHistory: true } hist)
-        {
-            <p class="small mb-3" data-testid="cost-estimate-history">
-                <span class="badge text-bg-success fw-normal me-1">Using history</span>
-                @if (hist.AppliedVideoMultiplier > 1.001)
-                {
-                    <span class="text-muted">Video ×@hist.AppliedVideoMultiplier.ToString("0.##")</span>
-                }
-                @if (hist.LearnedFailRate is double failRate)
-                {
-                    <span class="text-muted ms-1">· observed fail ~@failRate.ToString("P0")</span>
-                }
-                @if (hist.VideoApiSamples + hist.ReviewApiSamples + hist.TimingSamples > 0)
-                {
-                    <span class="text-muted ms-1">
-                        · samples video @hist.VideoApiSamples / review @hist.ReviewApiSamples / timing @hist.TimingSamples
-                    </span>
-                }
-            </p>
-        }
-        <div class="small text-muted mb-3 d-flex flex-wrap gap-2">
-            @if (!string.IsNullOrWhiteSpace(_report.ModelName))
-            {
-                <span class="badge text-bg-secondary fw-normal">Video · @_report.ModelName</span>
-            }
-            @if (!string.IsNullOrWhiteSpace(_report.ImageModelName))
-            {
-                <span class="badge text-bg-secondary fw-normal">Portraits · @_report.ImageModelName</span>
-            }
-            @if (!string.IsNullOrWhiteSpace(_report.PlanningModelName))
-            {
-                <span class="badge text-bg-secondary fw-normal">Planning · @_report.PlanningModelName</span>
-            }
-            @if (_report.VoiceIncludedInEstimate && !string.IsNullOrWhiteSpace(_report.VoiceModelName))
-            {
-                <span class="badge text-bg-secondary fw-normal">Voice · @_report.VoiceModelName</span>
-            }
-            else
-            {
-                <span class="badge text-bg-dark border border-secondary fw-normal text-muted">Voice · not in estimate</span>
-            }
-            <span class="badge text-bg-primary fw-normal" data-testid="cost-res-badge">
-                Video · @_report.DraftResolution · @Usd(_report.OutputRateDraft)/sec
-            </span>
-        </div>
-    }
 
     @if (_report.Scenarios.Count > 0)
     {
@@ -110,245 +50,26 @@ else
         </div>
     }
 
-    @* —— Estimate pie —— *@
-    <div class="card mb-4">
-        <div class="card-body">
-            <div class="fw-semibold mb-1">Planned cost breakdown</div>
-            <p class="small text-muted mb-3">
-                @if (string.Equals(_report.EstimateBasis, "none", StringComparison.OrdinalIgnoreCase))
-                {
-                    <span>Import a book so we can size the film. Estimates use your selected models.</span>
-                }
-                else if (string.Equals(_report.EstimateBasis, "screenplay", StringComparison.OrdinalIgnoreCase))
-                {
-                    <span>From the imported screenplay (scene lengths). Refines after the shot plan and cast choices.</span>
-                }
-                else
-                {
-                    <span>From the shot plan and current cast / voice choices. Model rates from Settings.</span>
-                }
-            </p>
-            <div class="row g-4 align-items-center">
-                <div class="col-md-5 d-flex justify-content-center">
-                    @RenderPie(estSlices, estTotal, "Estimate", "cost-estimate-pie")
-                </div>
-                <div class="col-md-7">
-                    @RenderLegend(estSlices, estTotal)
-                </div>
-            </div>
-        </div>
-    </div>
-
-    @* —— Spent pie + legend —— *@
-    <div class="card mb-4">
-        <div class="card-body">
-            <div class="fw-semibold mb-1">Where spend went</div>
-            <p class="small text-muted mb-3">Tracked work so far. Open a category for details.</p>
-            <div class="row g-4 align-items-center">
-                <div class="col-md-5 d-flex justify-content-center">
-                    @RenderPie(slices, totalSpent, "Spent", "cost-spent-pie")
-                </div>
-                <div class="col-md-7">
-                    @RenderLegend(slices, totalSpent)
-                </div>
-            </div>
-        </div>
-    </div>
-
-    @* —— Expandable category cards —— *@
-    <div class="fw-semibold mb-2">Categories</div>
-    <div class="vstack gap-2 mb-4">
-        @foreach (var slice in slices)
-        {
-            var open = _openCategory == slice.Id;
-            var events = EventsForCategory(slice.Id);
-            <div class="card cost-cat-card" data-testid="@($"cost-cat-{slice.Id}")">
-                <button type="button"
-                        class="cost-cat-toggle btn btn-link text-start text-decoration-none w-100 px-3 py-3"
-                        @onclick="() => ToggleCategory(slice.Id)">
-                    <div class="d-flex align-items-center justify-content-between gap-2">
-                        <span class="d-flex align-items-center gap-2 min-w-0">
-                            <span class="cost-swatch" style="background:@slice.Color"></span>
-                            <span class="fw-semibold text-body">@slice.Label</span>
-                            <span class="badge text-bg-secondary fw-normal">@events.Count</span>
-                        </span>
-                        <span class="d-flex align-items-center gap-2 flex-shrink-0">
-                            <strong class="text-body">@Usd(slice.Usd)</strong>
-                            <span class="text-muted small">@(open ? "▴" : "▾")</span>
-                        </span>
-                    </div>
-                </button>
-                @if (open)
-                {
-                    <div class="border-top px-3 pb-3">
-                        @if (events.Count == 0)
-                        {
-                            <p class="small text-muted mb-0 pt-2">Nothing tracked in this category yet.</p>
-                        }
-                        else
-                        {
-                            <div class="table-responsive pt-2">
-                                <table class="table table-sm mb-0 align-middle">
-                                    <thead>
-                                        <tr class="small text-muted">
-                                            <th>When</th>
-                                            <th>Detail</th>
-                                            <th class="text-end">Cost</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        @foreach (var e in events)
-                                        {
-                                            <tr>
-                                                <td class="small text-nowrap">@FormatTs(e.Ts)</td>
-                                                <td class="small">@EventDetail(e)</td>
-                                                <td class="small text-end text-nowrap">@Usd(e.Usd)</td>
-                                            </tr>
-                                        }
-                                    </tbody>
-                                </table>
-                            </div>
-                        }
-                    </div>
-                }
-            </div>
-        }
-    </div>
-
-    @* —— Advanced (collapsed) — admin only —— *@
-    @if (Session.IsAdmin)
-    {
-        <div class="card mb-3">
-            <button type="button"
-                    class="btn btn-link text-start text-decoration-none w-100 px-3 py-2 d-flex justify-content-between align-items-center"
-                    @onclick="() => _showAdvanced = !_showAdvanced">
-                <span class="small fw-semibold text-body">More options</span>
-                <span class="text-muted small">@(_showAdvanced ? "▴" : "▾")</span>
-            </button>
-            @if (_showAdvanced)
-            {
-                <div class="card-body border-top pt-3">
-                    <div class="row g-2 align-items-end mb-3">
-                        <div class="col-6 col-md-2">
-                            <label class="form-label small mb-0">Draft res</label>
-                            <select class="form-select form-select-sm" value="@_draftRes"
-                                    @onchange="OnAdvancedDraftResAsync" disabled="@_busy">
-                                <option value="480p">480p</option>
-                                <option value="720p">720p</option>
-                                <option value="1080p">1080p</option>
-                            </select>
-                        </div>
-                        <div class="col-6 col-md-2">
-                            <label class="form-label small mb-0">Hero res</label>
-                            <select class="form-select form-select-sm" @bind="_heroRes" @bind:after="LoadAsync" disabled="@_busy">
-                                <option value="720p">720p</option>
-                                <option value="1080p">1080p</option>
-                                <option value="480p">480p</option>
-                            </select>
-                        </div>
-                        <div class="col-6 col-md-2">
-                            <label class="form-label small mb-0">Avg retries</label>
-                            <input type="number" class="form-control form-control-sm" min="0" max="3" step="0.25"
-                                   @bind="_retries" @bind:after="LoadAsync" disabled="@_busy" />
-                        </div>
-                        <div class="col-6 col-md-3">
-                            <BusyButton Label="Rebuild spend from clips" Busy="_busy"
-                                        CssClass="btn btn-sm btn-outline-primary" OnClick="BackfillAsync" />
-                        </div>
-                    </div>
-
-                    <div class="small text-muted mb-2">
-                        Clips @s.ClipsOnDisk / @s.ClipsTotal · Scenes with media @s.ScenesWithMedia / @s.ScenesTotal
-                    </div>
-                    <div class="progress mb-3" style="height: 0.65rem;">
-                        <div class="progress-bar" role="progressbar" style="width: @(ProgressPct(s))%"></div>
-                    </div>
-
-                    @if (_report.Scenarios.Count > 0)
-                    {
-                        <div class="fw-semibold small mb-2">Resolution scenarios</div>
-                        <div class="table-responsive">
-                            <table class="table table-sm mb-0">
-                                <thead>
-                                    <tr>
-                                        <th>Scenario</th>
-                                        <th class="text-end">Full film</th>
-                                        <th class="text-end">Still to generate</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var r in _report.Scenarios)
-                                    {
-                                        <tr>
-                                            <td>@r.Label</td>
-                                            <td class="text-end">@Usd(r.FullFilmUsd)</td>
-                                            <td class="text-end">@Usd(r.RemainingMissingUsd)</td>
-                                        </tr>
-                                    }
-                                </tbody>
-                            </table>
-                        </div>
-                    }
-
-                    @if (_byProvider is { ByProvider.Count: > 0 })
-                    {
-                        <div class="fw-semibold small mb-2 mt-3">This project · by vendor (your account)</div>
-                        <p class="small text-muted mb-2">
-                            Your spend on this project only. List = catalog rate in the ledger; Charge = list × current multiplier (display only).
-                        </p>
-                        <div class="table-responsive">
-                            <table class="table table-sm mb-0">
-                                <thead>
-                                    <tr>
-                                        <th>Vendor</th>
-                                        <th class="text-end">Calls</th>
-                                        <th class="text-end">List</th>
-                                        <th class="text-end">Charge</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var kv in _byProvider.ByProvider.OrderByDescending(kv =>
-                                        kv.Value.TotalChargeUsd > 0 ? kv.Value.TotalChargeUsd : kv.Value.TotalUsd))
-                                    {
-                                        var charge = kv.Value.TotalChargeUsd > 0 ? kv.Value.TotalChargeUsd : kv.Value.TotalUsd;
-                                        var list = kv.Value.TotalListUsd > 0 ? kv.Value.TotalListUsd : kv.Value.TotalUsd;
-                                        <tr>
-                                            <td>@ProviderLabel(kv.Key)</td>
-                                            <td class="text-end">@kv.Value.Count</td>
-                                            <td class="text-end">@Usd(list)</td>
-                                            <td class="text-end">@Usd(charge)</td>
-                                        </tr>
-                                    }
-                                </tbody>
-                                <tfoot>
-                                    <tr class="fw-semibold">
-                                        <td>Total</td>
-                                        <td class="text-end">@_byProvider.TotalCalls</td>
-                                        <td class="text-end">@Usd(_byProvider.TotalListUsd > 0 ? _byProvider.TotalListUsd : _byProvider.TotalUsd)</td>
-                                        <td class="text-end">@Usd(_byProvider.TotalChargeUsd > 0 ? _byProvider.TotalChargeUsd : _byProvider.TotalUsd)</td>
-                                    </tr>
-                                </tfoot>
-                            </table>
-                        </div>
-                    }
-                </div>
-            }
-        </div>
-    }
+    <CascadingValue Value="this" IsFixed="true">
+        <ProjectCosts_EstimateSection />
+        <ProjectCosts_SpentSection />
+        <ProjectCosts_CategoryCards />
+        <ProjectCosts_AdvancedSection />
+    </CascadingValue>
 }
 
 @code {
-    private bool _busy;
+    internal bool _busy;
     private string? _error;
     private string? _message;
     private string _projectId = "";
-    private CostReport? _report;
-    private string _draftRes = "480p";
-    private string _heroRes = "720p";
-    private double _retries = 0.5;
-    private string? _openCategory;
-    private bool _showAdvanced;
-    private EngineApiClient.ApiCostByProviderStatsDto? _byProvider;
+    internal CostReport? _report;
+    internal string _draftRes = "480p";
+    internal string _heroRes = "720p";
+    internal double _retries = 0.5;
+    internal string? _openCategory;
+    internal bool _showAdvanced;
+    internal EngineApiClient.ApiCostByProviderStatsDto? _byProvider;
 
     private static readonly (string Id, string Label, string Color)[] Categories =
     {
@@ -361,7 +82,7 @@ else
         (CostCategories.Other, CostCategories.Label(CostCategories.Other), "#94a3b8"),
     };
 
-    private sealed record CostSlice(string Id, string Label, double Usd, string Color);
+    internal sealed record CostSlice(string Id, string Label, double Usd, string Color);
 
     protected override async Task OnInitializedAsync()
     {
@@ -380,7 +101,7 @@ else
         }
     }
 
-    private Task OnAdvancedDraftResAsync(ChangeEventArgs e) =>
+    internal Task OnAdvancedDraftResAsync(ChangeEventArgs e) =>
         SetDraftResolutionAsync(e.Value?.ToString() ?? _draftRes);
 
     private async Task SetDraftResolutionAsync(string res)
@@ -391,7 +112,7 @@ else
         await LoadAsync();
     }
 
-    private async Task LoadAsync()
+    internal async Task LoadAsync()
     {
         _busy = true;
         _error = null;
@@ -417,7 +138,7 @@ else
         catch { _byProvider = null; }
     }
 
-    private async Task BackfillAsync()
+    internal async Task BackfillAsync()
     {
         _busy = true;
         _error = null;
@@ -433,10 +154,10 @@ else
         finally { _busy = false; }
     }
 
-    private void ToggleCategory(string id) =>
+    internal void ToggleCategory(string id) =>
         _openCategory = string.Equals(_openCategory, id, StringComparison.OrdinalIgnoreCase) ? null : id;
 
-    private List<CostSlice> BuildSpentSlices()
+    internal List<CostSlice> BuildSpentSlices()
     {
         var totals = Categories.ToDictionary(c => c.Id, _ => 0.0, StringComparer.OrdinalIgnoreCase);
         if (_report?.RecentEvents is { Count: > 0 } events)
@@ -473,7 +194,7 @@ else
             .ToList();
     }
 
-    private List<CostEvent> EventsForCategory(string categoryId)
+    internal List<CostEvent> EventsForCategory(string categoryId)
     {
         if (_report?.RecentEvents is not { Count: > 0 } events)
             return new List<CostEvent>();
@@ -483,7 +204,7 @@ else
             .ToList();
     }
 
-    private List<CostSlice> BuildEstimateSlices()
+    internal List<CostSlice> BuildEstimateSlices()
     {
         var by = _report?.EstimateByCategory;
         return Categories
@@ -510,27 +231,10 @@ else
             .ToList();
     }
 
-    private RenderFragment RenderPie(List<CostSlice> slices, double total, string centerLabel, string testId) => __builder =>
-    {
-        <CostPie Segments="@slices.Select(s => new CostPie.Segment(s.Usd, s.Color)).ToList()"
-                 Total="total"
-                 CenterLabel="@centerLabel"
-                 CenterValue="@Usd(total)"
-                 TestId="@testId"
-                 Size="220"
-                 AriaLabel="@($"{centerLabel} by category")"
-                 EmptyText="@($"No {centerLabel.ToLowerInvariant()} yet")" />
-    };
-
-    private RenderFragment RenderLegend(List<CostSlice> slices, double total) => __builder =>
-    {
-        <CostLegend Items="@slices.Select(s => new CostLegend.Item(s.Label, s.Usd, s.Color)).ToList()" Total="total" />
-    };
-
     internal static string MapCategory(string? kind, string? mode = null, string? category = null) =>
         CostCategories.Resolve(kind, mode, category);
 
-    private static string EventDetail(CostEvent e)
+    internal static string EventDetail(CostEvent e)
     {
         var bits = new List<string>();
         if (e.Scene is int sn)
@@ -548,7 +252,7 @@ else
         return string.Join(" · ", bits);
     }
 
-    private static string FormatTs(string? ts)
+    internal static string FormatTs(string? ts)
     {
         if (string.IsNullOrWhiteSpace(ts)) return "—";
         if (DateTimeOffset.TryParse(ts, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var dto))
@@ -556,6 +260,6 @@ else
         return ts.Length <= 16 ? ts : ts[..16];
     }
 
-    private static int ProgressPct(CostReportSummary s) =>
+    internal static int ProgressPct(CostReportSummary s) =>
         (int)Math.Round(100.0 * s.ClipsOnDisk / Math.Max(1, s.ClipsTotal));
 }

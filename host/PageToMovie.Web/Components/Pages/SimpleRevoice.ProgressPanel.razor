@@ -1,0 +1,45 @@
+@* Page-local to SimpleRevoice — progress bar + clip status log *@
+
+<div class="mb-2">
+    <div class="d-flex justify-content-between small text-muted mb-1">
+        <span>@Host._status</span>
+        <span>@Host._doneCount / @Host._clips.Count</span>
+    </div>
+    <div class="progress" style="height: 10px;" data-testid="simple-revoice-progress">
+        @{
+            var pct = Host._clips.Count == 0 ? 0 : (int)Math.Round(100.0 * Host._doneCount / Host._clips.Count);
+        }
+        <div class="progress-bar @( Host._busy ? "progress-bar-striped progress-bar-animated" : "")"
+             role="progressbar"
+             style="width: @(pct)%"
+             aria-valuenow="@pct" aria-valuemin="0" aria-valuemax="100"></div>
+    </div>
+</div>
+
+<ul class="list-group list-group-flush small" data-testid="simple-revoice-log">
+    @foreach (var row in Host._clips)
+    {
+        <li class="list-group-item d-flex justify-content-between align-items-start gap-2 px-0">
+            <div>
+                <span class="fw-semibold">S@(row.Scene.ToString("D2")) C@(row.Clip.ToString("D2"))</span>
+                @if (!string.IsNullOrWhiteSpace(row.SpeakerLabel))
+                {
+                    <span class="badge @row.SpeakerBadgeClass ms-1">@row.SpeakerLabel</span>
+                }
+                @if (!string.IsNullOrWhiteSpace(row.DialoguePreview))
+                {
+                    <span class="text-muted"> — @row.DialoguePreview</span>
+                }
+                else
+                {
+                    <span class="text-muted"> — (no dialogue)</span>
+                }
+            </div>
+            <span class="@SimpleRevoice.StatusClass(row.Status)">@row.Status</span>
+        </li>
+    }
+</ul>
+
+@code {
+    [CascadingParameter] public SimpleRevoice Host { get; set; } = default!;
+}

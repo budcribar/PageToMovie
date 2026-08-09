@@ -32,146 +32,28 @@ else
     <InlineAlert Message="@_error" data-testid="simple-revoice-error" />
     <InlineAlert Message="@_message" Variant="success" CssClass="py-2" data-testid="simple-revoice-message" />
 
-    <div class="card border-primary border-opacity-50 mb-3" data-testid="simple-revoice-card">
-        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
-            <span class="fw-semibold">Automatic re-voice</span>
-            @if (!string.IsNullOrWhiteSpace(_projectId))
-            {
-                <span class="badge text-bg-secondary">@_projectId</span>
-            }
-        </div>
-        <div class="card-body">
-            @if (string.IsNullOrWhiteSpace(_projectId))
-            {
-                <p class="mb-2">No active project. Start from story & voice first.</p>
-                <a class="btn btn-primary" href="simple-voice">← Back to story & voice</a>
-            }
-            else if (!_hasClone)
-            {
-                <p class="mb-2">No cloned voice on the narrator yet.</p>
-                <a class="btn btn-primary" href="simple-voice">← Record your voice</a>
-            }
-            else
-            {
-                <p class="small text-muted mb-3">
-                    Only clips whose speaker is the narrator get TTS + audio replace.
-                    Everyone else keeps the original soundtrack. Nothing goes through the video model.
-                    @if (_narratorClipCount > 0)
-                    {
-                        <span class="d-block mt-1">
-                            <strong>@_narratorClipCount</strong> narrator clip(s) to re-voice
-                            · <strong>@_keepClipCount</strong> left as-is
-                        </span>
-                    }
-                </p>
-
-                <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-                    <button type="button"
-                            class="btn btn-primary btn-lg"
-                            data-testid="simple-revoice-start"
-                            disabled="@(_busy || _narratorClipCount == 0)"
-                            @onclick="RunAsync">
-                        @if (_busy)
-                        {
-                            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                            <span>Working…</span>
-                        }
-                        else if (_done)
-                        {
-                            <span>Run again</span>
-                        }
-                        else
-                        {
-                            <span>Replace narrator audio →</span>
-                        }
-                    </button>
-                    <a class="btn btn-outline-secondary" href="simple-voice">← Voice sample</a>
-                    @if (_done)
-                    {
-                        <a class="btn btn-outline-primary" href="scenes?simple=1">Open scenes</a>
-                        <a class="btn btn-outline-primary" href="review">Preview / stitch</a>
-                    }
-                </div>
-
-                @if (_clips.Count == 0 && !_loading)
-                {
-                    <div class="alert alert-warning mb-0">
-                        No clips found yet. Finish the library film (shot plan + video) in full studio first,
-                        or open a project that already has picture clips.
-                    </div>
-                }
-                else
-                {
-                    <div class="mb-2">
-                        <div class="d-flex justify-content-between small text-muted mb-1">
-                            <span>@_status</span>
-                            <span>@_doneCount / @_clips.Count</span>
-                        </div>
-                        <div class="progress" style="height: 10px;" data-testid="simple-revoice-progress">
-                            @{
-                                var pct = _clips.Count == 0 ? 0 : (int)Math.Round(100.0 * _doneCount / _clips.Count);
-                            }
-                            <div class="progress-bar @( _busy ? "progress-bar-striped progress-bar-animated" : "")"
-                                 role="progressbar"
-                                 style="width: @(pct)%"
-                                 aria-valuenow="@pct" aria-valuemin="0" aria-valuemax="100"></div>
-                        </div>
-                    </div>
-
-                    <ul class="list-group list-group-flush small" data-testid="simple-revoice-log">
-                        @foreach (var row in _clips)
-                        {
-                            <li class="list-group-item d-flex justify-content-between align-items-start gap-2 px-0">
-                                <div>
-                                    <span class="fw-semibold">S@(row.Scene.ToString("D2")) C@(row.Clip.ToString("D2"))</span>
-                                    @if (!string.IsNullOrWhiteSpace(row.SpeakerLabel))
-                                    {
-                                        <span class="badge @row.SpeakerBadgeClass ms-1">@row.SpeakerLabel</span>
-                                    }
-                                    @if (!string.IsNullOrWhiteSpace(row.DialoguePreview))
-                                    {
-                                        <span class="text-muted"> — @row.DialoguePreview</span>
-                                    }
-                                    else
-                                    {
-                                        <span class="text-muted"> — (no dialogue)</span>
-                                    }
-                                </div>
-                                <span class="@StatusClass(row.Status)">@row.Status</span>
-                            </li>
-                        }
-                    </ul>
-                }
-
-                @if (!string.IsNullOrEmpty(_previewUrl))
-                {
-                    <div class="mt-3">
-                        <div class="fw-semibold mb-1">Last clip preview</div>
-                        <video class="w-100 rounded border" controls src="@_previewUrl" @key="_previewUrl"></video>
-                    </div>
-                }
-            }
-        </div>
-    </div>
+    <CascadingValue Value="this" IsFixed="true">
+        <SimpleRevoice_MainCard />
+    </CascadingValue>
 }
 
 @code {
-    private string? _projectId;
-    private string _narratorKey = "Character_Narrator";
-    private bool _hasClone;
-    private bool _busy;
-    private bool _loading = true;
-    private bool _done;
+    internal string? _projectId;
+    internal string _narratorKey = "Character_Narrator";
+    internal bool _hasClone;
+    internal bool _busy;
+    internal bool _loading = true;
+    internal bool _done;
     private string? _error;
     private string? _message;
-    private string _status = "Ready";
-    private int _doneCount;
-    private string? _previewUrl;
-    private readonly List<ClipRow> _clips = new();
+    internal string _status = "Ready";
+    internal int _doneCount;
+    internal string? _previewUrl;
+    internal readonly List<ClipRow> _clips = new();
     private readonly List<string> _blobUrls = new();
     private bool _autoStarted;
 
-    private sealed class ClipRow
+    internal sealed class ClipRow
     {
         public int Scene { get; init; }
         public int Clip { get; init; }
@@ -205,8 +87,8 @@ else
                 : "text-bg-secondary";
     }
 
-    private int _narratorClipCount => _clips.Count(c => c.WillRevoice);
-    private int _keepClipCount => _clips.Count - _narratorClipCount;
+    internal int _narratorClipCount => _clips.Count(c => c.WillRevoice);
+    internal int _keepClipCount => _clips.Count - _narratorClipCount;
 
     protected override async Task OnInitializedAsync()
     {
@@ -306,7 +188,7 @@ else
         await RunAsync();
     }
 
-    private async Task RunAsync()
+    internal async Task RunAsync()
     {
         if (string.IsNullOrWhiteSpace(_projectId) || _narratorClipCount == 0 || _busy) return;
         _busy = true;
@@ -515,7 +397,7 @@ else
         return null;
     }
 
-    private static string StatusClass(string status) => status switch
+    internal static string StatusClass(string status) => status switch
     {
         "Done" => "badge text-bg-success",
         "Queued" => "badge text-bg-primary",

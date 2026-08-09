@@ -1,0 +1,127 @@
+@* Page-local to ProjectCosts — admin advanced / resolution / vendor tables *@
+@inject AdminSessionService Session
+@using static PageToMovie.Web.Components.CostFormatting
+
+@if (Session.IsAdmin)
+{
+    <div class="card mb-3">
+        <button type="button"
+                class="btn btn-link text-start text-decoration-none w-100 px-3 py-2 d-flex justify-content-between align-items-center"
+                @onclick="() => Host._showAdvanced = !Host._showAdvanced">
+            <span class="small fw-semibold text-body">More options</span>
+            <span class="text-muted small">@(Host._showAdvanced ? "▴" : "▾")</span>
+        </button>
+        @if (Host._showAdvanced)
+        {
+            <div class="card-body border-top pt-3">
+                <div class="row g-2 align-items-end mb-3">
+                    <div class="col-6 col-md-2">
+                        <label class="form-label small mb-0">Draft res</label>
+                        <select class="form-select form-select-sm" value="@Host._draftRes"
+                                @onchange="Host.OnAdvancedDraftResAsync" disabled="@Host._busy">
+                            <option value="480p">480p</option>
+                            <option value="720p">720p</option>
+                            <option value="1080p">1080p</option>
+                        </select>
+                    </div>
+                    <div class="col-6 col-md-2">
+                        <label class="form-label small mb-0">Hero res</label>
+                        <select class="form-select form-select-sm" @bind="Host._heroRes" @bind:after="Host.LoadAsync" disabled="@Host._busy">
+                            <option value="720p">720p</option>
+                            <option value="1080p">1080p</option>
+                            <option value="480p">480p</option>
+                        </select>
+                    </div>
+                    <div class="col-6 col-md-2">
+                        <label class="form-label small mb-0">Avg retries</label>
+                        <input type="number" class="form-control form-control-sm" min="0" max="3" step="0.25"
+                               @bind="Host._retries" @bind:after="Host.LoadAsync" disabled="@Host._busy" />
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <BusyButton Label="Rebuild spend from clips" Busy="Host._busy"
+                                    CssClass="btn btn-sm btn-outline-primary" OnClick="Host.BackfillAsync" />
+                    </div>
+                </div>
+
+                <div class="small text-muted mb-2">
+                    Clips @Host._report!.Summary.ClipsOnDisk / @Host._report.Summary.ClipsTotal · Scenes with media @Host._report.Summary.ScenesWithMedia / @Host._report.Summary.ScenesTotal
+                </div>
+                <div class="progress mb-3" style="height: 0.65rem;">
+                    <div class="progress-bar" role="progressbar" style="width: @(ProjectCosts.ProgressPct(Host._report.Summary))%"></div>
+                </div>
+
+                @if (Host._report.Scenarios.Count > 0)
+                {
+                    <div class="fw-semibold small mb-2">Resolution scenarios</div>
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Scenario</th>
+                                    <th class="text-end">Full film</th>
+                                    <th class="text-end">Still to generate</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var r in Host._report.Scenarios)
+                                {
+                                    <tr>
+                                        <td>@r.Label</td>
+                                        <td class="text-end">@Usd(r.FullFilmUsd)</td>
+                                        <td class="text-end">@Usd(r.RemainingMissingUsd)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+
+                @if (Host._byProvider is { ByProvider.Count: > 0 })
+                {
+                    <div class="fw-semibold small mb-2 mt-3">This project · by vendor (your account)</div>
+                    <p class="small text-muted mb-2">
+                        Your spend on this project only. List = catalog rate in the ledger; Charge = list × current multiplier (display only).
+                    </p>
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Vendor</th>
+                                    <th class="text-end">Calls</th>
+                                    <th class="text-end">List</th>
+                                    <th class="text-end">Charge</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var kv in Host._byProvider.ByProvider.OrderByDescending(kv =>
+                                    kv.Value.TotalChargeUsd > 0 ? kv.Value.TotalChargeUsd : kv.Value.TotalUsd))
+                                {
+                                    var charge = kv.Value.TotalChargeUsd > 0 ? kv.Value.TotalChargeUsd : kv.Value.TotalUsd;
+                                    var list = kv.Value.TotalListUsd > 0 ? kv.Value.TotalListUsd : kv.Value.TotalUsd;
+                                    <tr>
+                                        <td>@ProviderLabel(kv.Key)</td>
+                                        <td class="text-end">@kv.Value.Count</td>
+                                        <td class="text-end">@Usd(list)</td>
+                                        <td class="text-end">@Usd(charge)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                            <tfoot>
+                                <tr class="fw-semibold">
+                                    <td>Total</td>
+                                    <td class="text-end">@Host._byProvider.TotalCalls</td>
+                                    <td class="text-end">@Usd(Host._byProvider.TotalListUsd > 0 ? Host._byProvider.TotalListUsd : Host._byProvider.TotalUsd)</td>
+                                    <td class="text-end">@Usd(Host._byProvider.TotalChargeUsd > 0 ? Host._byProvider.TotalChargeUsd : Host._byProvider.TotalUsd)</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [CascadingParameter] public ProjectCosts Host { get; set; } = default!;
+}

@@ -1,0 +1,69 @@
+@* Page-local to ProjectCosts — expandable category spend cards *@
+@using static PageToMovie.Web.Components.CostFormatting
+
+@{
+    var slices = Host.BuildSpentSlices();
+}
+
+<div class="fw-semibold mb-2">Categories</div>
+<div class="vstack gap-2 mb-4">
+    @foreach (var slice in slices)
+    {
+        var open = Host._openCategory == slice.Id;
+        var events = Host.EventsForCategory(slice.Id);
+        <div class="card cost-cat-card" data-testid="@($"cost-cat-{slice.Id}")">
+            <button type="button"
+                    class="cost-cat-toggle btn btn-link text-start text-decoration-none w-100 px-3 py-3"
+                    @onclick="() => Host.ToggleCategory(slice.Id)">
+                <div class="d-flex align-items-center justify-content-between gap-2">
+                    <span class="d-flex align-items-center gap-2 min-w-0">
+                        <span class="cost-swatch" style="background:@slice.Color"></span>
+                        <span class="fw-semibold text-body">@slice.Label</span>
+                        <span class="badge text-bg-secondary fw-normal">@events.Count</span>
+                    </span>
+                    <span class="d-flex align-items-center gap-2 flex-shrink-0">
+                        <strong class="text-body">@Usd(slice.Usd)</strong>
+                        <span class="text-muted small">@(open ? "▴" : "▾")</span>
+                    </span>
+                </div>
+            </button>
+            @if (open)
+            {
+                <div class="border-top px-3 pb-3">
+                    @if (events.Count == 0)
+                    {
+                        <p class="small text-muted mb-0 pt-2">Nothing tracked in this category yet.</p>
+                    }
+                    else
+                    {
+                        <div class="table-responsive pt-2">
+                            <table class="table table-sm mb-0 align-middle">
+                                <thead>
+                                    <tr class="small text-muted">
+                                        <th>When</th>
+                                        <th>Detail</th>
+                                        <th class="text-end">Cost</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var e in events)
+                                    {
+                                        <tr>
+                                            <td class="small text-nowrap">@ProjectCosts.FormatTs(e.Ts)</td>
+                                            <td class="small">@ProjectCosts.EventDetail(e)</td>
+                                            <td class="small text-end text-nowrap">@Usd(e.Usd)</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [CascadingParameter] public ProjectCosts Host { get; set; } = default!;
+}
