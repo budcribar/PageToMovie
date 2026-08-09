@@ -458,39 +458,24 @@ else if (_showScenePlayer && _clientStitching)
      (_job.Status is "running" or "done" or "error" or "cancelled") &&
      (_job.Kind is "remux" or "scene" or "batch" or "book_prepare" or "book_import" or "stage1" or "stage2"))
 {
-    <div class="card mb-3 border-@(_job.Status == "running" ? "primary" : _job.Status == "error" ? "danger" : "secondary")">
-        <div class="card-body py-2">
-            <span class="badge bg-secondary">@_job.Status</span>
-            @if (_job.Kind is { Length: > 0 } k)
-            {
-                <span class="badge bg-info text-dark ms-1">@k</span>
-            }
-            @if (_job.Scene is int jsn)
-            {
-                <span class="ms-1">S@(jsn.ToString("D2"))</span>
-            }
-            @if (_job.Clip is int jcn)
-            {
-                <span>C@jcn</span>
-            }
-            <span class="ms-2 small">@_job.Message</span>
-            @if (_job.Total > 0 && string.Equals(_job.Status, "running", StringComparison.OrdinalIgnoreCase))
-            {
-                @if (KeyFormatting.EstimateTimeRemaining(_job.StartedAt, _job.Index, _job.Total) is { } eta)
-                {
-                    <span class="ms-2 small text-muted">@eta</span>
-                }
-                <div class="progress mt-2" style="height:6px">
-                    <div class="progress-bar" role="progressbar"
-                         style="width:@((_job.Index * 100.0 / Math.Max(1, _job.Total)).ToString("0.#"))%"></div>
-                </div>
-            }
-            @if (_job.Log.Count > 0)
-            {
-                <pre class="small mb-0 mt-2" style="max-height:160px;overflow:auto;">@string.Join("\n", _job.Log.TakeLast(30))</pre>
-            }
-        </div>
-    </div>
+    var reviewJobMsg = string.Join(" ", new[]
+    {
+        _job.Message,
+        _job.Scene is int jsn ? $"S{jsn:D2}" : null,
+        _job.Clip is int jcn ? $"C{jcn}" : null,
+        _job.Total > 0 && string.Equals(_job.Status, "running", StringComparison.OrdinalIgnoreCase)
+            && KeyFormatting.EstimateTimeRemaining(_job.StartedAt, _job.Index, _job.Total) is { } eta
+            ? eta : null
+    }.Where(s => !string.IsNullOrWhiteSpace(s))!);
+    <JobProgressCard Status="@_job.Status"
+                     Message="@(string.IsNullOrWhiteSpace(reviewJobMsg) ? _job.Status : reviewJobMsg)"
+                     Index="_job.Index"
+                     Total="_job.Total"
+                     Kind="@_job.Kind"
+                     ShowLog="_job.Log.Count > 0"
+                     LogLines="_job.Log"
+                     LogMaxLines="30"
+                     TestId="review-job" />
 }
 
 
@@ -504,7 +489,7 @@ else if (_showScenePlayer && _clientStitching)
             <div class="card-body p-0">
                 @if (_scenes.Count == 0)
                 {
-                    <p class="text-muted p-3 mb-0">No scenes — finish Adaptation first.</p>
+                    <EmptyState Message="No scenes — finish Adaptation first." CssClass="text-muted p-3 mb-0" />
                 }
                 else
                 {

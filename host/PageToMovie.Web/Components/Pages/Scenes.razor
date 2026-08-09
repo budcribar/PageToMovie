@@ -99,7 +99,7 @@ else
 
 @if (_castChecked && !CastReady)
 {
-    <div class="alert alert-warning py-2" data-testid="scenes-cast-gate">
+    <InlineAlert Variant="warning" CssClass="py-2" data-testid="scenes-cast-gate">
         Cast incomplete
         @if (_castReadyCount is int cr && _castTotal is int ct)
         {
@@ -107,7 +107,7 @@ else
         }
         — finish voice + locks on
         <a class="alert-link" href="characters">Characters →</a>
-    </div>
+    </InlineAlert>
 }
 
 
@@ -280,28 +280,14 @@ else if (_showPreviewPlayer && _clientStitching)
 
 @if (_verifyingClip)
 {
-    <div class="card mb-3 border-info shadow-sm" data-testid="scenes-verify-progress">
-        <div class="card-body py-2">
-            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-                <span class="small font-monospace">
-                    <span class="spinner-border spinner-border-sm me-2 text-info" role="status" aria-hidden="true"></span>
-                    @_verifyStatusLabel
-                </span>
-                <span class="badge bg-info-subtle text-info border border-info-subtle">
-                    @_verifyCurrent / @_verifyTotal clips
-                </span>
-            </div>
-            @{
-                var vPct = _verifyTotal > 0 ? Math.Min(100, Math.Max(5, (int)Math.Round((double)_verifyCurrent / _verifyTotal * 100.0))) : 0;
-            }
-            <div class="progress mt-2" style="height: 0.85rem;" role="progressbar"
-                 aria-valuenow="@vPct" aria-valuemin="0" aria-valuemax="100"
-                 aria-label="@_verifyStatusLabel">
-                <div class="progress-bar progress-bar-striped progress-bar-animated bg-info"
-                     style="width: @vPct%">@vPct%</div>
-            </div>
-        </div>
-    </div>
+    var vPct = _verifyTotal > 0 ? Math.Min(100, Math.Max(5, (int)Math.Round((double)_verifyCurrent / _verifyTotal * 100.0))) : 0;
+    <JobProgressCard Status="running"
+                     Message="@_verifyStatusLabel"
+                     Index="_verifyCurrent"
+                     Total="_verifyTotal"
+                     Percent="vPct"
+                     TestId="scenes-verify-progress"
+                     CssClass="border-info shadow-sm" />
 }
 
 @if (_selectedScene is null)
@@ -309,14 +295,14 @@ else if (_showPreviewPlayer && _clientStitching)
     @* ---- Scene list ---- *@
     @if (_scenes is null)
     {
-        <p class="text-muted">Loading scenes…</p>
+        <EmptyState Message="Loading scenes…" CssClass="text-muted" />
     }
     else if (_scenes.Count == 0)
     {
-        <p class="text-muted">
-            No scenes in the shot plan yet.
-            <a href="adaptation/shots">Open shot plan →</a>
-        </p>
+        <EmptyState Message="No scenes in the shot plan yet."
+                    ActionHref="adaptation/shots"
+                    ActionLabel="Open shot plan →"
+                    CssClass="text-muted" />
     }
     else
     {
@@ -337,27 +323,17 @@ else if (_showPreviewPlayer && _clientStitching)
         }
         @if (ShowLiveGenProgress && _job is not null)
         {
-            <div class="card mb-3 border-primary" data-testid="scenes-gen-progress">
-                <div class="card-body py-2">
-                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-                        <span class="small">@LiveGenStatusLabel(_job)</span>
-                        <button type="button"
-                                class="btn btn-sm btn-outline-danger"
-                                data-testid="scenes-gen-cancel"
-                                disabled="@_busy"
-                                @onclick="CancelAsync">Cancel</button>
-                    </div>
-                    @{
-                        var listPct = LiveGenProgressPercent(_job);
-                    }
-                    <div class="progress mt-2" style="height: 0.85rem;" role="progressbar"
-                         aria-valuenow="@listPct" aria-valuemin="0" aria-valuemax="100"
-                         aria-label="@LiveGenStatusLabel(_job)">
-                        <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
-                             style="width: @listPct%"></div>
-                    </div>
-                </div>
-            </div>
+            <JobProgressCard Status="@_job.Status"
+                             Message="@LiveGenStatusLabel(_job)"
+                             Index="_job.Index"
+                             Total="_job.Total"
+                             Percent="LiveGenProgressPercent(_job)"
+                             ShowCancel="true"
+                             CancelDisabled="_busy"
+                             OnCancel="CancelAsync"
+                             Kind="@_job.Kind"
+                             TestId="scenes-gen-progress"
+                             CancelTestId="scenes-gen-cancel" />
         }
         else if (ShowOperatorGenPartial && _job is not null)
         {
@@ -671,27 +647,17 @@ else
     @* Live gen: one compact surface — status + bar + Cancel only (no badges, no Grok dump, no log). *@
     @if (ShowLiveGenProgress && _job is not null)
     {
-        <div class="card mb-3 border-primary" data-testid="scenes-gen-progress">
-            <div class="card-body py-2">
-                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-                    <span class="small">@LiveGenStatusLabel(_job)</span>
-                    <button type="button"
-                            class="btn btn-sm btn-outline-danger"
-                            data-testid="scenes-gen-cancel"
-                            disabled="@_busy"
-                            @onclick="CancelAsync">Cancel</button>
-                </div>
-                @{
-                    var pct = LiveGenProgressPercent(_job);
-                }
-                <div class="progress mt-2" style="height: 0.85rem;" role="progressbar"
-                     aria-valuenow="@pct" aria-valuemin="0" aria-valuemax="100"
-                     aria-label="@LiveGenStatusLabel(_job)">
-                    <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
-                         style="width: @pct%"></div>
-                </div>
-            </div>
-        </div>
+        <JobProgressCard Status="@_job.Status"
+                         Message="@LiveGenStatusLabel(_job)"
+                         Index="_job.Index"
+                         Total="_job.Total"
+                         Percent="LiveGenProgressPercent(_job)"
+                         ShowCancel="true"
+                         CancelDisabled="_busy"
+                         OnCancel="CancelAsync"
+                         Kind="@_job.Kind"
+                         TestId="scenes-gen-progress"
+                         CancelTestId="scenes-gen-cancel" />
     }
     else if (ShowOperatorGenPartial && _job is not null)
     {

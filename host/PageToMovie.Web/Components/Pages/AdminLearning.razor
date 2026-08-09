@@ -10,7 +10,7 @@
     <AdminPageHeader Title="Learning">
         <Subtitle>Review events · project rules (admin)</Subtitle>
         <Actions>
-            <button class="btn btn-sm btn-outline-primary" disabled="@_busy" @onclick="RefreshAsync">Refresh</button>
+            <BusyButton Label="Refresh" Busy="_busy" CssClass="btn btn-sm btn-outline-primary" OnClick="RefreshAsync" />
         </Actions>
     </AdminPageHeader>
 

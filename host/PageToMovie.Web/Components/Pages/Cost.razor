@@ -36,7 +36,7 @@
 
     @if (_report is null)
     {
-        <p class="text-muted">@L["Common.Loading"]</p>
+        <EmptyState Message="@L["Common.Loading"]" CssClass="text-muted" />
     }
     else
     {

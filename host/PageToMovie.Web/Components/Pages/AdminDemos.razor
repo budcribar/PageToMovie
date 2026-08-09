@@ -14,7 +14,7 @@
         </Subtitle>
         <Actions>
             <a class="btn btn-sm btn-outline-primary" href="/demo">Public gallery</a>
-            <button class="btn btn-sm btn-outline-secondary" disabled="@_busy" @onclick="ReloadAllAsync">Refresh</button>
+            <BusyButton Label="Refresh" Busy="_busy" CssClass="btn btn-sm btn-outline-secondary" OnClick="ReloadAllAsync" />
         </Actions>
     </AdminPageHeader>
 
@@ -134,9 +134,8 @@
         }
         else if (_demos.Count == 0)
         {
-            <div class="alert alert-secondary">
-                No demos in this filter. Link a YouTube video above — the public gallery only lists entries with a YouTube id.
-            </div>
+            <InlineAlert Variant="secondary"
+                         Message="No demos in this filter. Link a YouTube video above — the public gallery only lists entries with a YouTube id." />
         }
         else
         {

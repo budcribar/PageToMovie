@@ -11,11 +11,11 @@
 }
 else if (!string.IsNullOrEmpty(_error))
 {
-    <div class="alert alert-danger my-4">
+    <InlineAlert Variant="danger" CssClass="my-4">
         <h4>Creator Not Found</h4>
         <p>@_error</p>
         <a href="demo" class="btn btn-outline-primary mt-2">← Back to Gallery</a>
-    </div>
+    </InlineAlert>
 }
 else if (_profile is not null)
 {
@@ -30,9 +30,8 @@ else if (_profile is not null)
 
         @if (_demos is null || _demos.Count == 0)
         {
-            <div class="text-muted p-4 border border-secondary rounded bg-dark">
-                No public movies published yet by @@@_profile.Username.
-            </div>
+            <EmptyState Message="@($"No public movies published yet by @{_profile.Username}.")"
+                        CssClass="text-muted p-4 border border-secondary rounded bg-dark" />
         }
         else
         {

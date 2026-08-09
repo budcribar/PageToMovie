@@ -17,7 +17,7 @@
     }
     else if (_cfg is null && string.IsNullOrEmpty(_error))
     {
-        <p class="text-muted">Loading…</p>
+        <EmptyState Message="Loading…" CssClass="text-muted" />
     }
     else
     {
@@ -115,9 +115,8 @@
                             </div>
                         </div>
                         <div class="card-footer bg-transparent border-top-0 pt-0">
-                            <button class="btn btn-primary w-100" disabled="@_busy" @onclick="SaveAsync">
-                                @(_busy ? "Saving…" : "Save & hot-apply")
-                            </button>
+                            <BusyButton Label="Save & hot-apply" BusyLabel="Saving…" Busy="_busy"
+                                        CssClass="btn btn-primary w-100" OnClick="SaveAsync" />
                         </div>
                     </div>
                 </div>

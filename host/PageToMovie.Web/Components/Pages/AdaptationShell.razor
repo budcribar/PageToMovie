@@ -97,7 +97,7 @@ else
    outcome when the job panel below is already showing this exact message (one fact, one place). *@
 @if (!string.IsNullOrEmpty(Host.Message) && !Host.SuppressGuidanceBanners && !MessageDuplicatesJobPanel)
 {
-    <div class="alert alert-info">@Host.Message</div>
+    <InlineAlert Variant="info" Message="@Host.Message" />
 }
 
 @* In-page busy (e.g. screenplay approve) — not a background job, but can take many seconds.

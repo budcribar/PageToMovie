@@ -20,15 +20,12 @@
             <button class="btn btn-outline-primary btn-sm" @onclick="ToggleRawJsonEditor">
                 @(_showRawJson ? "📋 Table" : "📝 Raw JSON")
             </button>
-            <button class="btn btn-outline-success btn-sm" disabled="@_busy" @onclick="ValidateCatalogAsync">
-                ✓ Validate all
-            </button>
-            <button class="btn btn-outline-info btn-sm" disabled="@_busy" @onclick="ScanUpdatesAsync">
-                @(_scanning ? "Scanning…" : "🔍 Scan for updates")
-            </button>
-            <button class="btn btn-primary btn-sm" disabled="@_busy" @onclick="SaveCatalogAsync">
-                @(_busy ? "Saving…" : "💾 Save & hot-apply")
-            </button>
+            <BusyButton Label="✓ Validate all" Busy="_busy" CssClass="btn btn-outline-success btn-sm"
+                        OnClick="ValidateCatalogAsync" />
+            <BusyButton Label="🔍 Scan for updates" BusyLabel="Scanning…" Busy="_scanning"
+                        CssClass="btn btn-outline-info btn-sm" OnClick="ScanUpdatesAsync" />
+            <BusyButton Label="💾 Save & hot-apply" BusyLabel="Saving…" Busy="_busy"
+                        CssClass="btn btn-primary btn-sm" OnClick="SaveCatalogAsync" />
         </Actions>
     </AdminPageHeader>
 

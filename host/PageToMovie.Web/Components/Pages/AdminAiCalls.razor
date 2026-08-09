@@ -36,10 +36,10 @@
 
         @if (_data.TotalCalls == 0)
         {
-            <div class="alert alert-info" data-testid="ai-calls-empty">
+            <InlineAlert Variant="info" data-testid="ai-calls-empty">
                 No AI calls have been logged yet. Run the pipeline (or a live generation) to collect data —
                 each model call appends one line to its project's <code>telemetry/api_calls.jsonl</code>.
-            </div>
+            </InlineAlert>
         }
         else
         {

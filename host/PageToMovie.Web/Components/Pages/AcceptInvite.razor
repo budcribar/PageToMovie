@@ -13,10 +13,10 @@
             <p>You have been invited to collaborate on <code>@_preview.ProjectId</code></p>
             <p>Role: <span class="badge text-bg-primary">@_preview.Role</span></p>
             @if (!string.IsNullOrEmpty(_status)) {
-                <div class="alert @(_accepted ? "alert-success" : "alert-warning") py-2">@_status</div>
+                <InlineAlert Variant="@(_accepted ? "success" : "warning")" CssClass="py-2" Message="@_status" />
             }
             @if (!_accepted) {
-                <button class="btn btn-primary" disabled="@_busy" @onclick="AcceptAsync">Accept invite</button>
+                <BusyButton Label="Accept invite" Busy="_busy" CssClass="btn btn-primary" OnClick="AcceptAsync" />
                 <p class="small text-muted mt-2">Sign in first; access is granted to your current user id.</p>
             } else {
                 <a class="btn btn-success" href="@($"/studio?project={Uri.EscapeDataString(_preview.ProjectId)}")">Open project</a>
