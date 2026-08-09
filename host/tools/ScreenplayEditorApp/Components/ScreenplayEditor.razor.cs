@@ -16,6 +16,7 @@ public partial class ScreenplayEditor : ComponentBase
     public string FountainModalText { get; set; } = "";
 
     public bool ShowLocationModal { get; set; } = false;
+    public bool ShowCharacterModal { get; set; } = false;
 
     public string ActiveViewMode { get; set; } = "metadata";
     public int SelectedSceneIndex { get; set; } = 0;
@@ -39,6 +40,11 @@ public partial class ScreenplayEditor : ComponentBase
     public void OpenLocationModal()
     {
         ShowLocationModal = true;
+    }
+
+    public void OpenCharacterModal()
+    {
+        ShowCharacterModal = true;
     }
 
     public void SelectMetadataView()

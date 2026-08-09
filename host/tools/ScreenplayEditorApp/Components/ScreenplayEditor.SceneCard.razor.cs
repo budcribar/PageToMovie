@@ -27,6 +27,9 @@ public partial class ScreenplayEditor_SceneCard : ComponentBase
     public EventCallback OnEditLocationsClick { get; set; }
 
     [Parameter]
+    public EventCallback OnEditCharactersClick { get; set; }
+
+    [Parameter]
     public EventCallback OnMoveUpCallback { get; set; }
 
     [Parameter]

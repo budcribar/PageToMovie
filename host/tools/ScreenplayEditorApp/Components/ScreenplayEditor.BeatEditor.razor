@@ -29,6 +29,10 @@
                     }
                 </select>
 
+                <button class="btn btn-sm btn-outline-warning py-0 px-1" type="button" @onclick="OnEditCharactersClick" title="Manage / Edit Story Characters">
+                    ⚙
+                </button>
+
                 <select class="form-select form-select-sm border-secondary bg-dark text-light py-0 px-2" style="width: 110px; height: 28px;" @bind="Beat.SpeakerExt" @bind:after="OnChanged" title="@Beat.SpeakerExt.GetJargonHint()">
                     <option value="@SpeakerExtension.None" title="Standard on-screen dialogue">(None)</option>
                     <option value="@SpeakerExtension.VO" title="V.O. (Voice Over) - Character speaking off-camera or internal monologue">V.O. ℹ️</option>

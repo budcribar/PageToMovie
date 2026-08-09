@@ -24,6 +24,9 @@ public partial class ScreenplayEditor_BeatEditor : ComponentBase
     public EventCallback OnChangedCallback { get; set; }
 
     [Parameter]
+    public EventCallback OnEditCharactersClick { get; set; }
+
+    [Parameter]
     public EventCallback OnMoveUpCallback { get; set; }
 
     [Parameter]
