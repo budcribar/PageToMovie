@@ -1,0 +1,41 @@
+@if (IsOpen)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content shadow-lg">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title fw-bold">
+                        @(Mode == "import" ? "📥 Import Fountain Markup" : "📤 Export Fountain Markup")
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    @if (Mode == "import")
+                    {
+                        <div class="mb-3">
+                            <label class="form-label fw-bold small text-muted">Paste Fountain Screenplay Text</label>
+                            <textarea class="form-control font-monospace" rows="12" @bind="FountainText" placeholder="Title: The Tell-Tale Heart..."></textarea>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <label class="form-label fw-bold small text-muted mb-0">Formatted Fountain Screenplay</label>
+                                <button class="btn btn-sm btn-outline-secondary" type="button" @onclick="CopyText">📋 Copy to Clipboard</button>
+                            </div>
+                            <textarea class="form-control font-monospace bg-light" rows="14" readonly value="@FountainText"></textarea>
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer bg-light">
+                    @if (Mode == "import")
+                    {
+                        <button type="button" class="btn btn-primary" @onclick="Import">Import into Editor</button>
+                    }
+                    <button type="button" class="btn btn-secondary" @onclick="Close">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}

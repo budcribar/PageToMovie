@@ -1,0 +1,42 @@
+<div class="card mb-4 border shadow-sm">
+    <div class="card-header bg-light d-flex justify-content-between align-items-center py-2 px-3">
+        <div class="d-flex align-items-center gap-2">
+            <span class="fs-5">🎬</span>
+            <h5 class="mb-0 fw-bold">Story Metadata & Title Page</h5>
+        </div>
+        <button class="btn btn-sm btn-outline-secondary" type="button" @onclick="ToggleCollapse">
+            @(IsCollapsed ? "Show Details ▾" : "Collapse ▴")
+        </button>
+    </div>
+    @if (!IsCollapsed)
+    {
+        <div class="card-body p-3">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold small text-muted mb-1">Film / Story Title</label>
+                    <input type="text" class="form-control form-control-sm" @bind="Metadata.Title" @bind:after="OnChanged" placeholder="e.g. The Tell-Tale Heart" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold small text-muted mb-1">Author / Screenwriter</label>
+                    <input type="text" class="form-control form-control-sm" @bind="Metadata.Author" @bind:after="OnChanged" placeholder="e.g. Edgar Allan Poe" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold small text-muted mb-1">Credit Line</label>
+                    <input type="text" class="form-control form-control-sm" @bind="Metadata.Credit" @bind:after="OnChanged" placeholder="e.g. Adapted by Nick & Me" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold small text-muted mb-1">Source Material</label>
+                    <input type="text" class="form-control form-control-sm" @bind="Metadata.Source" @bind:after="OnChanged" placeholder="e.g. Based on the short story by Edgar Allan Poe" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold small text-muted mb-1">Draft Date / Version</label>
+                    <input type="text" class="form-control form-control-sm" @bind="Metadata.DraftDate" @bind:after="OnChanged" placeholder="e.g. August 2026 - Draft 1" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold small text-muted mb-1">Contact Info</label>
+                    <input type="text" class="form-control form-control-sm" @bind="Metadata.Contact" @bind:after="OnChanged" placeholder="e.g. contact@pagetomovie.com" />
+                </div>
+            </div>
+        </div>
+    }
+</div>

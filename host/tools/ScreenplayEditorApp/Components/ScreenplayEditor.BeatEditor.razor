@@ -1,0 +1,45 @@
+<div class="border rounded p-2 mb-2 bg-light-subtle shadow-sm">
+    <div class="d-flex justify-content-between align-items-center mb-2 gap-2 flex-wrap">
+        <div class="d-flex align-items-center gap-2">
+            <select class="form-select form-select-sm fw-bold border-secondary" style="width: 140px;" @bind="Beat.BeatType" @bind:after="OnChanged">
+                <option value="@BeatType.Action">🎬 Action</option>
+                <option value="@BeatType.Dialogue">🗣️ Dialogue</option>
+                <option value="@BeatType.Parenthetical">💬 Parenthetical</option>
+                <option value="@BeatType.Transition">🎞️ Transition</option>
+            </select>
+            @if (Beat.BeatType == BeatType.Dialogue)
+            {
+                <input type="text" class="form-control form-control-sm text-uppercase fw-bold" style="width: 180px;" @bind="Beat.Speaker" @bind:after="OnChanged" placeholder="SPEAKER" />
+                <select class="form-select form-select-sm" style="width: 110px;" @bind="Beat.Extension" @bind:after="OnChanged">
+                    <option value="">(None)</option>
+                    <option value="V.O.">V.O.</option>
+                    <option value="O.S.">O.S.</option>
+                    <option value="CONT'D">CONT'D</option>
+                </select>
+            }
+        </div>
+        <div class="btn-group btn-group-sm">
+            <button class="btn btn-outline-secondary" type="button" title="Move Up" disabled="@IsFirst" @onclick="MoveUp">▲</button>
+            <button class="btn btn-outline-secondary" type="button" title="Move Down" disabled="@IsLast" @onclick="MoveDown">▼</button>
+            <button class="btn btn-outline-danger" type="button" title="Delete Beat" @onclick="Delete">✕</button>
+        </div>
+    </div>
+
+    @if (Beat.BeatType == BeatType.Action)
+    {
+        <textarea class="form-control form-control-sm" rows="2" @bind="Beat.ActionText" @bind:after="OnChanged" placeholder="Visual action description..."></textarea>
+    }
+    else if (Beat.BeatType == BeatType.Dialogue)
+    {
+        <input type="text" class="form-control form-control-sm mb-1 fst-italic text-muted" @bind="Beat.Parenthetical" @bind:after="OnChanged" placeholder="(parenthetical direction, e.g. whispering)" />
+        <textarea class="form-control form-control-sm" rows="2" @bind="Beat.SpokenText" @bind:after="OnChanged" placeholder="Spoken dialogue line..."></textarea>
+    }
+    else if (Beat.BeatType == BeatType.Parenthetical)
+    {
+        <input type="text" class="form-control form-control-sm fst-italic" @bind="Beat.Parenthetical" @bind:after="OnChanged" placeholder="(whispering)" />
+    }
+    else if (Beat.BeatType == BeatType.Transition)
+    {
+        <input type="text" class="form-control form-control-sm text-uppercase fw-bold" @bind="Beat.TransitionText" @bind:after="OnChanged" placeholder="CUT TO:" />
+    }
+</div>
