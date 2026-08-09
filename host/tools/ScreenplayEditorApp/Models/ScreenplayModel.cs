@@ -304,13 +304,24 @@ public class ScreenplayScene
     }
 }
 
+public class ScreenplayCharacter
+{
+    public string Name { get; set; } = "";
+    public string VoiceId { get; set; } = "";
+    public string VisualDescription { get; set; } = "";
+    public string WardrobeAlways { get; set; } = "";
+    public int ReferenceImageCount { get; set; } = 1;
+}
+
 public class ScreenplayModel
 {
     public ScreenplayMetadata Metadata { get; set; } = new();
     public List<ScreenplayScene> Scenes { get; set; } = new();
 
-    public List<string> MasterLocations { get; set; } = new() { "KITCHEN", "LIVING ROOM", "ALLEYWAY", "POLICE STATION", "HIGHWAY" };
-    public List<string> MasterCharacters { get; set; } = new() { "HERO", "NARRATOR", "DETECTIVE", "STRANGER" };
+    public List<string> MasterLocations { get; set; } = new();
+    public List<string> MasterCharacters { get; set; } = new();
+
+    public List<ScreenplayCharacter> CharacterProfiles { get; set; } = new();
 
     public List<string> GetAllLocations()
     {

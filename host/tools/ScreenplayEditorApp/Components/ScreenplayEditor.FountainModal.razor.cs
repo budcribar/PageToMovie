@@ -13,7 +13,7 @@ public partial class ScreenplayEditor_FountainModal
     public bool IsOpen { get; set; }
 
     [Parameter]
-    public string Mode { get; set; } = "import"; // import | export
+    public string Mode { get; set; } = "import";
 
     [Parameter]
     public string FountainText { get; set; } = "";
@@ -59,7 +59,7 @@ public partial class ScreenplayEditor_FountainModal
                 using var stream = file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
                 using var reader = new StreamReader(stream);
                 FountainText = await reader.ReadToEndAsync();
-                StateHasChanged();
+                await Import(); // 1-Click Instant Import!
             }
         }
         catch (Exception ex)
