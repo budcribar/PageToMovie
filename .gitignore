@@ -263,11 +263,6 @@ host/**/.vs/
 /projects/Buster/assets/video/_review_1fps
 /projects/Buster/assets/video/_review_5fps
 
-# Buster demo project (now under the owner/slug layout) generates video takes/sidecars/transcripts
-# on every local dev-server run or UI-test pass — already-tracked baseline files stay tracked, this
-# just stops new dev-server output from showing up as untracked noise.
-/projects/budcribar/Buster/assets/
-
 # ── Project video assets — live on Railway /data volume, NOT in git ──────────
 # Individual clip and scene MP4s are large generated outputs. Only the seed
 # WIP movie (projects/TellTaleHeart/assets/movie_wip.mp4) needs Docker image
