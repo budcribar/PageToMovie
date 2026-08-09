@@ -1,0 +1,416 @@
+using System.Net.Http.Json;
+using System.Text.Json;
+using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Forms;
+using Microsoft.AspNetCore.Components.Web;
+using Microsoft.JSInterop;
+using PageToMovie.Core.Models;
+using PageToMovie.Core.Localization;
+using PageToMovie.Web.Services;
+
+namespace PageToMovie.Web.Components.Pages;
+
+public partial class Characters
+{
+    /// <summary>List domain for the Characters page. Owns related UI state and behavior.</summary>
+    internal sealed class CharactersListState
+    {
+        private readonly Characters S;
+        public CharactersListState(Characters host) => S = host;
+
+        internal List<CharacterSummary>? _chars;
+
+        internal bool _extractingCast;
+
+        internal string? _focusHint;
+
+        internal List<string>? _lastCastExtractKeys;
+
+        internal CharacterPlatesState? _plates;
+
+        /// <summary>True when extract started with an existing cast (rebuild vs first build).</summary>
+        internal bool _rebuildCastHadExisting;
+
+        internal CharacterSummary? _selected;
+
+        internal string? _selectedKey;
+
+        internal bool _simpleMode;
+
+
+        internal string? PreferredImageUrl
+        {
+            get
+            {
+                if (_selected is null || !_selected.HasPreferred) return null;
+                return ListThumbUrl(_selected);
+            }
+        }
+
+
+        /// <summary>List thumbnail: preferred/lock/variant1, else first book pic, else null (empty placeholder).</summary>
+        internal string? ListThumbUrl(CharacterSummary c)
+        {
+            if (c.VoiceOnly) return null;
+            // Groups may optionally have a ref; do not invent one for list thumbs.
+            // Locked / preferred ref always wins over old generate variants (uploads used to look
+            // "gone" after reload when variant_01 still existed and was preferred in the list).
+            if (c.Locked || !string.IsNullOrWhiteSpace(c.RefUrl))
+                return S.CacheBust(S.Engine.CharacterRefUrl(S._projectId, c.Key));
+            if (c.HasPreferred)
+            {
+                if (c.PreferredUrl is { Length: > 0 } u)
+                    return S.CacheBust(S.Engine.AbsolutizeMediaUrl(u) ?? u);
+                if (c.RefUrl is { Length: > 0 } r)
+                    return S.CacheBust(S.Engine.AbsolutizeMediaUrl(r) ?? r);
+                if (c.Variants.Any(v => v.Index == 1 && v.Exists))
+                    return S.CacheBust(S.Engine.CharacterVariantUrl(S._projectId, c.Key, 1));
+            }
+            var book = c.BookRefs.FirstOrDefault(b => b.Exists);
+            if (book is not null)
+            {
+                if (!string.IsNullOrEmpty(book.Url))
+                    return S.CacheBust(S.Engine.AbsolutizeMediaUrl(book.Url) ?? book.Url);
+                if (book.Index is int bi)
+                    return S.CacheBust(S.Engine.CharacterBookRefUrl(S._projectId, c.Key, bi));
+            }
+            return null;
+        }
+
+
+        internal string PreferredImageLabel =>
+            _selected is null ? ""
+            : _selected.HasPreferred
+                ? $"Preferred · {_selected.PreferredLabel}"
+                : "No preferred image";
+
+
+        internal bool HasCast => _chars is { Count: > 0 };
+
+
+        /// <summary>Operator-facing cast: hide group/chorus seeds (too abstract for average users).</summary>
+        internal IEnumerable<CharacterSummary> CharactersForUi =>
+            _chars?.Where(c => !c.IsGroup) ?? Enumerable.Empty<CharacterSummary>();
+
+
+        internal int OperatorCastCount => CharactersForUi.Count();
+
+
+        /// <summary>Every cast member has look (if needed) + voice — next is shot plan or scenes.</summary>
+        internal bool IsCastComplete =>
+            OperatorCastCount > 0 &&
+            CharactersForUi.All(c =>
+                Characters.HasVoiceProfile(c) &&
+                (c.VoiceOnly || c.HasPreferred || c.Locked));
+
+
+        /// <summary>Show primary Build cast only when there is no cast yet.</summary>
+        internal bool NeedsCastBuild =>
+            _chars is not null && OperatorCastCount == 0 && !_extractingCast;
+
+
+        /// <summary>Book picture matching is now automated on cast extract.</summary>
+        internal bool NeedsFindCharacters => false;
+
+
+        /// <summary>
+        /// Single user step: closed cast + book-aware looks (description / visual_lock) for portraits.
+        /// </summary>
+        internal async Task ExtractCastAsync()
+        {
+            if (string.IsNullOrWhiteSpace(S._projectId) || _extractingCast) return;
+            _rebuildCastHadExisting = _chars is { Count: > 0 };
+            _extractingCast = true;
+            S._busy = true;
+            S._error = null;
+            S._message = null; // progress card owns in-progress UI (not the green success alert)
+            // Drop selection so we don't re-open a character that may disappear after rebuild.
+            _selectedKey = null;
+            _selected = null;
+            S.StateHasChanged();
+            try
+            {
+                var result = await S.Engine.ExtractCastFromScreenplayAsync(S._projectId, force: true);
+                if (result is null || result.Ok != true)
+                {
+                    S._error = result?.Error ?? "Could not build cast.";
+                    if (S.Session.IsAdmin && !string.IsNullOrWhiteSpace(result?.RawPath))
+                        S._error += $" (admin raw dump: {result.RawPath})";
+                    S._message = null;
+                    _lastCastExtractKeys = null;
+                }
+                else
+                {
+                    _lastCastExtractKeys = result.Characters?
+                        .Where(k => !string.IsNullOrWhiteSpace(k))
+                        .ToList();
+                    // Operators get a short outcome; full key dump lives in the admin panel only.
+                    var n = result.CharacterCount > 0
+                        ? result.CharacterCount
+                        : _lastCastExtractKeys?.Count ?? 0;
+                    S._message = !string.IsNullOrWhiteSpace(result.Message)
+                        ? Characters.StripTrailingKeyDump(result.Message!)
+                        : $"Cast ready · {n} character(s) — review looks, then lock portraits";
+                    await LoadAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                S._error = ex.Message;
+                S._message = null;
+            }
+            finally
+            {
+                _extractingCast = false;
+                _rebuildCastHadExisting = false;
+                S._busy = false;
+                S.StateHasChanged();
+            }
+        }
+
+
+        internal async Task OnProjectChangedAsync()
+        {
+            S.ResetCompare();
+            S._mode = Mode.PickSource;
+            await LoadAsync();
+        }
+
+
+        internal async Task LoadAsync()
+        {
+            S._busy = true;
+            S._error = null;
+            try
+            {
+                var dto = await S.Engine.GetCharactersAsync(S._projectId);
+                _chars = dto?.Characters ?? new List<CharacterSummary>();
+                _plates = dto?.CharacterPlates;
+                S._imageSeedLimits = dto?.ImageSeedLimits;
+                S._imgBust = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                // Do not auto-open a character — user clicks the list to choose source.
+                if (_selectedKey is not null && CharactersForUi.Any(c => c.Key == _selectedKey))
+                    await SelectCoreAsync(_selectedKey, resetMode: false, flushPending: false);
+                else
+                {
+                    _selectedKey = null;
+                    _selected = null;
+                    S.ResetCompare();
+                    S._mode = Mode.PickSource;
+                }
+
+                FocusNarratorIfNeeded();
+
+                var jobs = await S.Engine.GetJobAsync();
+                S._job = jobs?.Job;
+            }
+            catch (Exception ex)
+            {
+                S._error = ex.Message;
+                _chars = null;
+                _plates = null;
+                S._imageSeedLimits = null;
+            }
+            finally { S._busy = false; }
+        }
+
+
+        internal async Task SoftReloadAsync()
+        {
+            try
+            {
+                var dto = await S.Engine.GetCharactersAsync(S._projectId);
+                _chars = dto?.Characters ?? new List<CharacterSummary>();
+                _plates = dto?.CharacterPlates;
+                S._imageSeedLimits = dto?.ImageSeedLimits;
+                S._imgBust = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                if (_selectedKey is not null)
+                    await SelectCoreAsync(_selectedKey, resetMode: false, flushPending: false);
+            }
+            catch { /* ignore */ }
+        }
+
+
+        /// <summary>
+        /// Block cast-list switches while save/generate/etc. runs so async completion
+        /// cannot paste one character's look into another's editors.
+        /// </summary>
+        internal bool CastListLocked => S._busy || S._savingLook || S.JobRunning || _extractingCast;
+
+
+        internal Task SelectAsync(string key) => SelectCoreAsync(key, resetMode: true, flushPending: true);
+
+
+        /// <summary>
+        /// Switch cast member. When the operator leaves a character with a pending chosen look
+        /// (or mid-compare selection), we lock it first so pictures do not vanish on switch.
+        /// </summary>
+        internal async Task SelectCoreAsync(string key, bool resetMode, bool flushPending)
+        {
+            var switched = !string.Equals(_selectedKey, key, StringComparison.OrdinalIgnoreCase);
+            // SoftReload re-selects the same key while _busy — allow that.
+            if (switched && CastListLocked && !flushPending)
+                return;
+
+            if (switched && flushPending && _selected is not null && S._pendingLockCandidate is not null)
+            {
+                try
+                {
+                    await S.LockCandidateAsync(S._pendingLockCandidate);
+                }
+                catch
+                {
+                    // LockCandidateAsync already sets _error
+                }
+            }
+
+            // Block switch only while another action still runs after flush.
+            if (switched && CastListLocked)
+                return;
+
+            _selectedKey = key;
+            _selected = CharactersForUi.FirstOrDefault(c =>
+                string.Equals(c.Key, key, StringComparison.OrdinalIgnoreCase));
+            S._pendingLockCandidate = null;
+            S._chosenCandidateKey = null;
+            if (_selected is not null)
+            {
+                S._editDescription = _selected.Description ?? "";
+                S._editVisualLock = _selected.VisualLock ?? "";
+                S._savedLookDescription = S._editDescription;
+                S._savedLookVisualLock = S._editVisualLock;
+                S._lookSaveHint = null;
+                S._lookSaveCts?.Cancel();
+                S._lookSaveCts?.Dispose();
+                S._lookSaveCts = null;
+                S._editVoiceLabel = _selected.VoiceLabel ?? "";
+                S._editVoiceProfile = _selected.VoiceProfile ?? "";
+                S._forceShowVoice = false;
+                S.RefreshVoiceClonePlayUrl();
+                S._voiceCloneHint = null;
+                S._voiceCloneError = null;
+                S._voicePreviewUrl = null;
+                S._voicePreviewError = null;
+                S._voicePreviewHint = null;
+                S._voicePreviewStale = false;
+                _ = S.InvokeAsync(() => S.TryLoadCachedVoiceAsync());
+            }
+            if (switched)
+            {
+                S._deleteConfirm = null;
+                ApplyPanelsForSelected();
+            }
+            if (resetMode)
+            {
+                S.ResetCompare();
+                S._mode = Mode.PickSource;
+                if (switched)
+                    S._pictureRoute = PictureRoute.Choose;
+                S._error = null;
+                S._message = null;
+                S.ResetSeedSelection();
+                ApplyPanelsForSelected();
+            }
+        }
+
+
+        /// <summary>
+        /// Look & voice live on one card — keep it open so neither section is buried.
+        /// </summary>
+        internal void ApplyPanelsForSelected()
+        {
+            // Single card for picture + voice; always expanded when a character is selected.
+            S._panelPictureOpen = true;
+        }
+
+
+
+
+        internal void ApplySimpleModeFromUri()
+        {
+            var querySimple = false;
+            try
+            {
+                var uri = S.Nav.ToAbsoluteUri(S.Nav.Uri);
+                var q = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
+                querySimple = q.TryGetValue("simple", out var sVals) &&
+                              sVals.Any(v => v is "1" or "true" or "yes");
+                if (q.TryGetValue("focus", out var fVals))
+                    _focusHint = fVals.FirstOrDefault();
+            }
+            catch
+            {
+                /* ignore */
+            }
+
+            // project.json studioPath is source of truth; ?simple=1 still works as override entry
+            _simpleMode = S.ActiveProject.IsSimpleVoice || querySimple;
+
+            S._useKidsScript = _simpleMode ||
+                VoiceCloneScripts.LooksLikeChildrensStory(
+                    S.ActiveProject.Label,
+                    genre: null,
+                    projectId: S._projectId);
+        }
+
+
+        internal async Task ExitSimplePathAsync()
+        {
+            if (string.IsNullOrEmpty(S._projectId)) return;
+            try
+            {
+                await S.Engine.SetStudioPathAsync(S._projectId, ProjectStudioPaths.Full);
+                S.ActiveProject.Set(S.ActiveProject.ProjectId, S.ActiveProject.Label, S.ActiveProject.ParentProjectId, ProjectStudioPaths.Full);
+                _simpleMode = false;
+                S._useKidsScript = VoiceCloneScripts.LooksLikeChildrensStory(
+                    S.ActiveProject.Label, null, S._projectId);
+                S.Nav.NavigateTo("characters", forceLoad: false);
+            }
+            catch (Exception ex)
+            {
+                S._error = ex.Message;
+            }
+        }
+
+
+        internal void FocusNarratorIfNeeded()
+        {
+            if (_chars is null || _chars.Count == 0) return;
+            var wantNarrator = _simpleMode
+                || string.Equals(_focusHint, "narrator", StringComparison.OrdinalIgnoreCase);
+            if (!wantNarrator) return;
+
+            var ui = CharactersForUi.ToList();
+            if (ui.Count == 0) return;
+            var pick = ui.FirstOrDefault(c =>
+                           (c.Key?.Contains("narrator", StringComparison.OrdinalIgnoreCase) ?? false)
+                           || (c.DisplayName?.Contains("narrator", StringComparison.OrdinalIgnoreCase) ?? false))
+                       ?? ui.FirstOrDefault(c => c.VoiceOnly)
+                       ?? ui[0];
+            if (pick is null) return;
+            if (!string.Equals(_selectedKey, pick.Key, StringComparison.OrdinalIgnoreCase))
+                _ = SelectAsync(pick.Key);
+        }
+
+
+        internal async Task ReloadSelectedCharacterAsync()
+        {
+            if (string.IsNullOrEmpty(S._projectId)) return;
+            try
+            {
+                var dto = await S.Engine.GetCharactersAsync(S._projectId);
+                _chars = dto?.Characters ?? new List<CharacterSummary>();
+                _selected = CharactersForUi.FirstOrDefault(c =>
+                    string.Equals(c.Key, _selectedKey, StringComparison.OrdinalIgnoreCase));
+                if (_selected is not null)
+                {
+                    S._editVoiceLabel = _selected.VoiceLabel ?? "";
+                    S._editVoiceProfile = _selected.VoiceProfile ?? "";
+                    S.RefreshVoiceClonePlayUrl();
+                }
+            }
+            catch { }
+        }
+
+    }
+}
