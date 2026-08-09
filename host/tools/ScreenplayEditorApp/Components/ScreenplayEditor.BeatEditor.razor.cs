@@ -3,16 +3,22 @@ using ScreenplayEditorApp.Models;
 
 namespace ScreenplayEditorApp.Components;
 
-public partial class ScreenplayEditor_BeatEditor
+public partial class ScreenplayEditor_BeatEditor : ComponentBase
 {
     [Parameter]
     public ScreenplayBeat Beat { get; set; } = new();
+
+    [Parameter]
+    public int Index { get; set; }
 
     [Parameter]
     public bool IsFirst { get; set; }
 
     [Parameter]
     public bool IsLast { get; set; }
+
+    [Parameter]
+    public List<string> AvailableCharacters { get; set; } = new();
 
     [Parameter]
     public EventCallback OnChangedCallback { get; set; }
@@ -25,6 +31,11 @@ public partial class ScreenplayEditor_BeatEditor
 
     [Parameter]
     public EventCallback OnDeleteCallback { get; set; }
+
+    [Parameter]
+    public EventCallback<(int from, int to)> OnReorderBeats { get; set; }
+
+    public static int ActiveDragIndex { get; set; } = -1;
 
     public async Task OnChanged()
     {
@@ -56,5 +67,22 @@ public partial class ScreenplayEditor_BeatEditor
         {
             await OnDeleteCallback.InvokeAsync();
         }
+    }
+
+    public void HandleDragStart()
+    {
+        ActiveDragIndex = Index;
+    }
+
+    public async Task HandleDrop()
+    {
+        if (ActiveDragIndex >= 0 && ActiveDragIndex != Index)
+        {
+            if (OnReorderBeats.HasDelegate)
+            {
+                await OnReorderBeats.InvokeAsync((ActiveDragIndex, Index));
+            }
+        }
+        ActiveDragIndex = -1;
     }
 }

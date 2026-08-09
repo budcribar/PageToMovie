@@ -15,7 +15,16 @@ public partial class ScreenplayEditor_SceneCard : ComponentBase
     public bool IsLast { get; set; }
 
     [Parameter]
+    public List<string> AvailableLocations { get; set; } = new();
+
+    [Parameter]
+    public List<string> AvailableCharacters { get; set; } = new();
+
+    [Parameter]
     public EventCallback OnChangedCallback { get; set; }
+
+    [Parameter]
+    public EventCallback OnEditLocationsClick { get; set; }
 
     [Parameter]
     public EventCallback OnMoveUpCallback { get; set; }
@@ -73,7 +82,7 @@ public partial class ScreenplayEditor_SceneCard : ComponentBase
         }
         else if (type == BeatType.Dialogue)
         {
-            newBeat.Speaker = "CHARACTER";
+            newBeat.Speaker = AvailableCharacters.Count > 0 ? AvailableCharacters[0] : "HERO";
             newBeat.SpokenText = "Spoken line...";
         }
         else if (type == BeatType.Transition)
@@ -102,6 +111,20 @@ public partial class ScreenplayEditor_SceneCard : ComponentBase
             var item = Scene.Beats[index];
             Scene.Beats.RemoveAt(index);
             Scene.Beats.Insert(index + 1, item);
+            await OnChanged();
+        }
+    }
+
+    public async Task ReorderBeats((int from, int to) args)
+    {
+        int from = args.from;
+        int to = args.to;
+
+        if (from >= 0 && from < Scene.Beats.Count && to >= 0 && to < Scene.Beats.Count && from != to)
+        {
+            var beat = Scene.Beats[from];
+            Scene.Beats.RemoveAt(from);
+            Scene.Beats.Insert(to, beat);
             await OnChanged();
         }
     }

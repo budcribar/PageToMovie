@@ -15,6 +15,8 @@ public partial class ScreenplayEditor : ComponentBase
     public string FountainModalMode { get; set; } = "import";
     public string FountainModalText { get; set; } = "";
 
+    public bool ShowLocationModal { get; set; } = false;
+
     public string ActiveViewMode { get; set; } = "metadata";
     public int SelectedSceneIndex { get; set; } = 0;
     public bool IsSidebarCompact { get; set; } = false;
@@ -32,6 +34,11 @@ public partial class ScreenplayEditor : ComponentBase
         {
             await ModelChanged.InvokeAsync(Model);
         }
+    }
+
+    public void OpenLocationModal()
+    {
+        ShowLocationModal = true;
     }
 
     public void SelectMetadataView()
@@ -114,6 +121,7 @@ public partial class ScreenplayEditor : ComponentBase
 
     public async Task AddScene()
     {
+        var locs = Model.GetAllLocations();
         var newScene = new ScreenplayScene
         {
             SceneNumber = Model.Scenes.Count + 1,

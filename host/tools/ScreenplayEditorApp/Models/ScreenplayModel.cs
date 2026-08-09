@@ -308,4 +308,41 @@ public class ScreenplayModel
 {
     public ScreenplayMetadata Metadata { get; set; } = new();
     public List<ScreenplayScene> Scenes { get; set; } = new();
+
+    public List<string> MasterLocations { get; set; } = new() { "KITCHEN", "LIVING ROOM", "ALLEYWAY", "POLICE STATION", "HIGHWAY" };
+    public List<string> MasterCharacters { get; set; } = new() { "HERO", "NARRATOR", "DETECTIVE", "STRANGER" };
+
+    public List<string> GetAllLocations()
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var loc in MasterLocations)
+        {
+            if (!string.IsNullOrWhiteSpace(loc)) set.Add(loc.Trim().ToUpperInvariant());
+        }
+        foreach (var scene in Scenes)
+        {
+            if (!string.IsNullOrWhiteSpace(scene.Location)) set.Add(scene.Location.Trim().ToUpperInvariant());
+        }
+        return set.OrderBy(x => x).ToList();
+    }
+
+    public List<string> GetAllCharacters()
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var chara in MasterCharacters)
+        {
+            if (!string.IsNullOrWhiteSpace(chara)) set.Add(chara.Trim().ToUpperInvariant());
+        }
+        foreach (var scene in Scenes)
+        {
+            foreach (var beat in scene.Beats)
+            {
+                if (beat.BeatType == BeatType.Dialogue && !string.IsNullOrWhiteSpace(beat.Speaker))
+                {
+                    set.Add(beat.Speaker.Trim().ToUpperInvariant());
+                }
+            }
+        }
+        return set.OrderBy(x => x).ToList();
+    }
 }
