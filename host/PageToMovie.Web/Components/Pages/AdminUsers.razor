@@ -193,9 +193,8 @@
                             <InputText class="form-control" @bind-Value="_grantNote" />
                         </div>
                         <div class="col-md-2 d-flex gap-2">
-                            <button class="btn btn-primary flex-grow-1" disabled="@_busy" @onclick="SubmitGrantAsync">
-                                @(_busy ? "…" : "Apply")
-                            </button>
+                            <BusyButton Label="Apply" BusyLabel="…" Busy="_busy"
+                                        CssClass="btn btn-primary flex-grow-1" OnClick="SubmitGrantAsync" />
                             <button class="btn btn-outline-secondary" disabled="@_busy" @onclick="CloseGrant">Cancel</button>
                         </div>
                     </div>
@@ -259,9 +258,9 @@
                         <div class="col-md-2 d-flex flex-column justify-content-start">
                             <label class="form-label d-none d-md-block mb-1">&nbsp;</label>
                             <div class="d-flex gap-2">
-                                <button class="btn btn-warning flex-grow-1 text-nowrap" disabled="@_busy" @onclick="SubmitResetPasswordAsync">
-                                    @(_busy ? "…" : "Set password")
-                                </button>
+                                <BusyButton Label="Set password" BusyLabel="…" Busy="_busy"
+                                            CssClass="btn btn-warning flex-grow-1 text-nowrap"
+                                            OnClick="SubmitResetPasswordAsync" />
                                 <button class="btn btn-outline-secondary" disabled="@_busy" @onclick="CloseResetPassword">Cancel</button>
                             </div>
                         </div>
@@ -307,9 +306,8 @@
                                 <label class="form-check-label small" for="delProjects">Delete owned projects</label>
                             </div>
                             <div class="d-flex gap-2">
-                                <button class="btn btn-danger text-nowrap" disabled="@_busy" @onclick="SubmitDeleteAsync">
-                                    @(_busy ? "…" : "Delete permanently")
-                                </button>
+                                <BusyButton Label="Delete permanently" BusyLabel="…" Busy="_busy"
+                                            CssClass="btn btn-danger text-nowrap" OnClick="SubmitDeleteAsync" />
                                 <button class="btn btn-outline-secondary" disabled="@_busy" @onclick="CloseDelete">Cancel</button>
                             </div>
                         </div>

@@ -252,9 +252,8 @@ else
                                    @bind="_retries" @bind:after="LoadAsync" disabled="@_busy" />
                         </div>
                         <div class="col-6 col-md-3">
-                            <button class="btn btn-sm btn-outline-primary" disabled="@_busy" @onclick="BackfillAsync">
-                                Rebuild spend from clips
-                            </button>
+                            <BusyButton Label="Rebuild spend from clips" Busy="_busy"
+                                        CssClass="btn btn-sm btn-outline-primary" OnClick="BackfillAsync" />
                         </div>
                     </div>
 

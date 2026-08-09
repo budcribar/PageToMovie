@@ -53,52 +53,20 @@
                         <p class="text-muted small mb-3">Hang tight — the pipeline is running.</p>
                     }
 
-                    <div class="mb-1">
-                        <div class="d-flex justify-content-between align-items-center small mb-1 gap-2">
-                            <span class="fw-semibold">@(_importStatus.Length > 0 ? _importStatus : "Working…")</span>
-                            <div class="d-flex align-items-center gap-2">
-                                @if (_importPct is int p)
-                                {
-                                    <span class="text-muted">@p%</span>
-                                }
-                                @if (JobRunning)
-                                {
-                                    <button type="button"
-                                            class="btn btn-sm btn-outline-danger py-0"
-                                            disabled="@Busy"
-                                            @onclick="CancelAsync">
-                                        Cancel
-                                    </button>
-                                }
-                            </div>
-                        </div>
-                        <div class="progress" style="height: 1rem;" role="progressbar"
-                             aria-valuenow="@(_importPct ?? 40)" aria-valuemin="0" aria-valuemax="100"
-                             aria-label="@_importStatus">
-                            <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
-                                 style="width: @(_importPct ?? 40)%"></div>
-                        </div>
-
-                        @if (Session.IsAdmin && Job?.Log is { Count: > 0 })
-                        {
-                            <details class="mt-2">
-                                <summary class="small text-muted" style="cursor:pointer">Details (admin)</summary>
-                                <div class="small text-muted mb-1 mt-1">
-                                    @if (Job.Kind is { Length: > 0 } k)
-                                    {
-                                        <span class="badge bg-info text-dark me-1">@JobKindLabel(k)</span>
-                                    }
-                                    <span class="badge bg-secondary me-1">@Job.Status</span>
-                                    @if (Job.Total > 0)
-                                    {
-                                        <span>@Job.Index / @Job.Total</span>
-                                    }
-                                </div>
-                                <pre class="small mb-0 mt-1 p-2 bg-light border rounded"
-                                     style="max-height: 220px; overflow: auto;">@string.Join("\n", Job.Log.TakeLast(50))</pre>
-                            </details>
-                        }
-                    </div>
+                    <JobProgressCard Status="@(JobRunning ? (Job?.Status ?? "running") : "running")"
+                                     Message="@(_importStatus.Length > 0 ? _importStatus : "Working…")"
+                                     Index="@(Job?.Index ?? 0)"
+                                     Total="@(Job?.Total ?? 0)"
+                                     Percent="@(_importPct ?? 40)"
+                                     ShowCancel="JobRunning"
+                                     CancelDisabled="Busy"
+                                     OnCancel="CancelAsync"
+                                     Kind="@(Job?.Kind)"
+                                     ShowLog="@(Session.IsAdmin && Job?.Log is { Count: > 0 })"
+                                     LogLines="@(Job?.Log)"
+                                     LogMaxLines="50"
+                                     TestId="import-progress"
+                                     CssClass="mb-1" />
                 }
                 else
                 {

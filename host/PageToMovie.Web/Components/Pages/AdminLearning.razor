@@ -224,8 +224,10 @@
                 </p>
                 <div class="d-flex flex-wrap gap-2 mb-3">
                     <input type="number" class="form-control form-control-sm" style="max-width:6rem" @bind="_proposeN" min="5" max="200" />
-                    <button class="btn btn-sm btn-primary" data-testid="learning-propose" disabled="@_busy" @onclick="ProposeAsync">Propose from last N fails</button>
-                    <button class="btn btn-sm btn-outline-secondary" data-testid="learning-checklist-reload" disabled="@_busy" @onclick="LoadChecklistAsync">Reload checklist</button>
+                    <BusyButton Label="Propose from last N fails" Busy="_busy" CssClass="btn btn-sm btn-primary"
+                                TestId="learning-propose" OnClick="ProposeAsync" />
+                    <BusyButton Label="Reload checklist" Busy="_busy" CssClass="btn btn-sm btn-outline-secondary"
+                                TestId="learning-checklist-reload" OnClick="LoadChecklistAsync" />
                     @if (DoneCount > 0)
                     {
                         <button type="button"
@@ -337,7 +339,8 @@
                         <label class="form-label small mb-0">Project</label>
                         <input class="form-control form-control-sm" data-testid="learning-rules-project" @bind="_rulesProject" placeholder="project id" />
                     </div>
-                    <button class="btn btn-sm btn-outline-primary" data-testid="learning-rules-load" disabled="@_busy" @onclick="LoadRulesAsync">Load</button>
+                    <BusyButton Label="Load" Busy="_busy" CssClass="btn btn-sm btn-outline-primary"
+                                TestId="learning-rules-load" OnClick="LoadRulesAsync" />
                     <button class="btn btn-sm btn-outline-secondary" data-testid="learning-rules-suggest" disabled="@(_busy || string.IsNullOrWhiteSpace(_rulesProject))"
                             @onclick="SuggestRulesAsync">Suggest from fails</button>
                 </div>

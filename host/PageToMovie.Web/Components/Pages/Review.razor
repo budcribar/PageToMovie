@@ -123,7 +123,7 @@ else
         }
         @if (JobRunning)
         {
-            <button class="btn btn-sm btn-outline-danger" disabled="@_busy" @onclick="CancelAsync">Cancel job</button>
+            <BusyButton Label="Cancel job" Busy="_busy" CssClass="btn btn-sm btn-outline-danger" OnClick="CancelAsync" />
         }
     </div>
 </div>
