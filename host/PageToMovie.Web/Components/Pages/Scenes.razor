@@ -1312,212 +1312,29 @@ else
     </ConfirmModal>
 }
 
-@if (_clipEditor is { } ed)
+@if (_clipEditor is not null)
 {
-    <DarkModalShell Visible="true" OnClose="CloseClipEditor"
-                    DialogClass="modal-dialog-centered modal-dialog-scrollable modal-lg"
-                    BackdropOpacity=".45"
-                    data-testid="clip-editor-modal">
-        <Title>
-            <span data-testid="clip-editor-title">
-                @(_clipEditorIsNew ? "Add clip" : "Edit clip") <code>S@(ed.Scene.ToString("D2"))C@(ed.Clip.ToString("D2"))</code>
-            </span>
-        </Title>
-        <ChildContent>
-                    <InlineAlert Message="@_error" CssClass="p-2 small mb-3" />
-                    <div class="row g-2 mb-3">
-                        <div class="col-4">
-                            <label class="form-label small mb-0">Clip number</label>
-                            <input type="number" class="form-control form-control-sm" min="1"
-                                   data-testid="clip-editor-number"
-                                   @bind="ed.Clip" disabled="@(!_clipEditorIsNew)" />
-                        </div>
-                        <div class="col-4">
-                            <label class="form-label small mb-0">Duration (s)</label>
-                            <input type="number" class="form-control form-control-sm"
-                                   min="0" max="12"
-                                   @bind="ed.DurationSeconds" />
-                            <div class="form-text small">0 = unset · 3–12s if set</div>
-                        </div>
-                        <div class="col-4">
-                            <label class="form-label small mb-0">Primary subject</label>
-                            <select class="form-select form-select-sm" @bind="ed.PrimarySubject">
-                                <option value="">— none —</option>
-                                @foreach (var ck in CharacterOptions)
-                                {
-                                    <option value="@ck">@ShortChar(ck)</option>
-                                }
-                            </select>
-                        </div>
-                    </div>
-
-                    <h6 class="mb-1">Characters</h6>
-                    <div class="d-flex flex-wrap gap-2 mb-3 p-2 border rounded">
-                        @if (CharacterOptions.Count == 0)
-                        {
-                            <span class="small text-muted">No characters yet — add them on the Characters page.</span>
-                        }
-                        @foreach (var ck in CharacterOptions)
-                        {
-                            var isOn = _clipEditorCast.Contains(ck);
-                            <div class="form-check form-check-inline mb-0">
-                                <input class="form-check-input" type="checkbox" id="@($"cast-{ck}")"
-                                       checked="@isOn"
-                                       @onchange="e => ToggleClipEditorCast(ck, (bool)(e.Value ?? false))" />
-                                <label class="form-check-label small" for="@($"cast-{ck}")">@ShortChar(ck)</label>
-                            </div>
-                        }
-                    </div>
-
-                    <h6 class="mb-1">Visual</h6>
-                    <label class="form-label small mb-0">Prompt <span class="text-danger">*</span></label>
-                    <textarea class="form-control form-control-sm mb-3" rows="4" required
-                              placeholder="Required — action / framing for this take"
-                              @bind="ed.VisualPrompt"></textarea>
-
-                    <h6 class="mb-1">Dialogue</h6>
-                    <div class="row g-2 mb-2">
-                        <div class="col-6">
-                            <label class="form-label small mb-0">Speaker</label>
-                            <select class="form-select form-select-sm" @bind="ed.Speaker">
-                                <option value="">— none —</option>
-                                @foreach (var ck in CharacterOptions)
-                                {
-                                    <option value="@ck">@ShortChar(ck)</option>
-                                }
-                            </select>
-                        </div>
-                        <div class="col-6">
-                            <label class="form-label small mb-0">Delivery</label>
-                            <select class="form-select form-select-sm" @bind="ed.Delivery">
-                                <option value="">— none —</option>
-                                <option value="spoken_on_camera">Spoken (on camera)</option>
-                                <option value="voiceover_internal">Voiceover (internal)</option>
-                                <option value="off_camera">Off camera</option>
-                            </select>
-                        </div>
-                    </div>
-                    <textarea class="form-control form-control-sm mb-1" rows="2"
-                              data-testid="clip-editor-dialogue"
-                              placeholder="Dialogue / voiceover text (requires speaker + delivery)…"
-                              @bind="ed.Dialogue"></textarea>
-                    <div class="form-text small mb-2">
-                        Silent clips: leave speaker none and dialogue empty. Spoken/VO lines need both a speaker and a delivery other than none.
-                    </div>
-                    <label class="form-label small mb-0 mt-1">Pronunciation hint</label>
-                    <input type="text" class="form-control form-control-sm mb-1"
-                           data-testid="clip-editor-pronunciation-hint"
-                           placeholder="Optional — e.g. Pronounce 'tear' as verb /tɛər/ ('tare' / rip apart)"
-                           @bind="ed.PronunciationHint" />
-                    <div class="form-text small mb-3">
-                        Phonetic guidance for homographs or unusual names (e.g. tear, lead, wind, bow).
-                    </div>
-
-                    <!-- Collapsible Advanced Options -->
-                    <div class="mb-3">
-                        <button type="button" class="btn btn-sm btn-outline-secondary w-100 text-start d-flex justify-content-between align-items-center"
-                                @onclick="() => _showEditClipAdvanced = !_showEditClipAdvanced">
-                            <span>⚙️ Advanced options (Negative prompt, Lighting &amp; Color, Film stock)</span>
-                            <span>@(_showEditClipAdvanced ? "▲ Hide" : "▼ Expand")</span>
-                        </button>
-
-                        @if (_showEditClipAdvanced)
-                        {
-                            <div class="p-3 border border-top-0 rounded-bottom bg-dark bg-opacity-75 border-secondary border-opacity-50 text-white">
-                                <label class="form-label small mb-1 fw-medium text-light">Negative prompt (clip extras)</label>
-                                <textarea class="form-control form-control-sm mb-1 bg-dark text-white border-secondary" rows="2" @bind="ed.NegativePrompt"
-                                          placeholder="Optional — story-specific bans only"></textarea>
-                                <div class="form-text small mb-3 text-muted">
-                                    Empty is normal. Shared global bans (no watermarks, logos, extra limbs, name tags) are automatically applied at video gen.
-                                </div>
-
-                                <h6 class="mb-2 fw-semibold text-light">Lighting &amp; Color</h6>
-                                <div class="row g-2">
-                                    <div class="col-6">
-                                        <label class="form-label small mb-1 text-light">Color palette</label>
-                                        <input class="form-control form-control-sm bg-dark text-white border-secondary" @bind="ed.ColorPalette"
-                                               placeholder="e.g. Warm golden hour, Neon noir" />
-                                    </div>
-                                    <div class="col-6">
-                                        <label class="form-label small mb-1 text-light">Film stock / Lens</label>
-                                        <input class="form-control form-control-sm bg-dark text-white border-secondary" @bind="ed.FilmStock"
-                                               placeholder="e.g. 35mm anamorphic, Kodak Vision3" />
-                                    </div>
-                                </div>
-                                <div class="form-text small mt-2 mb-0 text-muted">
-                                    Empty is fine. Shot plan bakes grading into the visual prompt; fill these only to pin palette or stock for this clip.
-                                </div>
-                            </div>
-                        }
-                    </div>
-        </ChildContent>
-        <Footer>
-            <span class="small text-muted me-auto">
-                @(_clipEditorIsNew
-                    ? "Creates the shot-plan entry only — generate its video afterward."
-                    : "Regen the clip afterward to re-render video/audio with these fields.")
-            </span>
-            <BusyButton Label="Cancel" Busy="_busy" CssClass="btn btn-sm btn-secondary" OnClick="CloseClipEditor" />
-            <BusyButton Label="@(_clipEditorIsNew ? "Add clip" : "Save clip")" Busy="_busy"
-                        CssClass="btn btn-sm btn-primary" TestId="clip-editor-save" OnClick="SaveClipEditorAsync" />
-        </Footer>
-    </DarkModalShell>
+    <Scenes_ClipFieldEditor Editor="_clipEditor"
+                            IsNew="_clipEditorIsNew"
+                            Busy="_busy"
+                            Error="@_error"
+                            CharacterOptions="CharacterOptions"
+                            CastKeys="_clipEditorCast"
+                            OnClose="CloseClipEditor"
+                            OnSave="SaveClipEditorAsync"
+                            CastToggled="OnClipEditorCastToggled" />
 }
 
-@* Scene History & Revert Modal *@
 @if (_showSceneHistory)
 {
-    <DarkModalShell Visible="true" OnClose="CloseSceneHistory" HeaderClass="" TitleClass="" DialogClass="modal-lg modal-dialog-scrollable">
-        <Title>Scene S@(_historySceneNumber.ToString("D2")) History &amp; Changes</Title>
-        <ChildContent>
-                    <InlineAlert Message="@_sceneRevertMessage" Variant="info" CssClass="py-2 mb-3" />
-
-                    @if (_loadingHistory)
-                    {
-                        <p class="text-muted">Loading scene changes…</p>
-                    }
-                    else if (_sceneHistory is null || _sceneHistory.Count == 0)
-                    {
-                        <p class="text-muted">No change history recorded for this scene yet.</p>
-                    }
-                    else
-                    {
-                        <div class="list-group list-group-flush">
-                            @foreach (var item in _sceneHistory)
-                            {
-                                <div class="list-group-item bg-dark text-white border-secondary py-3">
-                                    <div class="d-flex justify-content-between align-items-start mb-2">
-                                        <div>
-                                            <strong>@item.Message</strong>
-                                            <div class="small text-muted">
-                                                <code>@item.ShortHash</code> · by @item.Author · @item.CommittedAt.ToLocalTime().ToString("MMM d, yyyy h:mm tt")
-                                            </div>
-                                        </div>
-                                        <button type="button"
-                                                class="btn btn-sm btn-outline-warning"
-                                                disabled="@_revertingScene"
-                                                @onclick="() => RevertSceneToVersionAsync(_historySceneNumber, item.CommitHash)">
-                                            Revert to version
-                                        </button>
-                                    </div>
-                                    @if (item.Changes.Count > 0)
-                                    {
-                                        <ul class="small text-secondary mb-0 ps-3">
-                                            @foreach (var change in item.Changes)
-                                            {
-                                                <li>@change</li>
-                                            }
-                                        </ul>
-                                    }
-                                </div>
-                            }
-                        </div>
-                    }
-        </ChildContent>
-        <Footer>
-            <button type="button" class="btn btn-secondary" @onclick="CloseSceneHistory">Close</button>
-        </Footer>
-    </DarkModalShell>
+    <Scenes_SceneHistory Visible="true"
+                         SceneNumber="_historySceneNumber"
+                         Message="@_sceneRevertMessage"
+                         Loading="_loadingHistory"
+                         Reverting="_revertingScene"
+                         History="_sceneHistory"
+                         OnClose="CloseSceneHistory"
+                         OnRevert="@(hash => RevertSceneToVersionAsync(_historySceneNumber, hash))" />
 }
 
 @* Clip Version Take Comparison Grid & Trash Bin Modal *@
@@ -1833,31 +1650,13 @@ else
    blocking request — edit processing time isn't guaranteed short just because the clip is short. *@
 @if (_showVideoEditPrompt && _clip is not null)
 {
-    <DarkModalShell Visible="true" OnClose="CloseVideoEditPrompt">
-        <Title>✂️ AI edit clip</Title>
-        <ChildContent>
-            <p class="small text-muted">
-                Describe the change — e.g. "change her jacket to red" or "make him wave instead of nod".
-                Saved as a new take; the current version stays in 🎬 Takes.
-            </p>
-            <textarea class="form-control bg-dark text-white border-secondary"
-                      data-testid="clip-video-edit-prompt"
-                      rows="3"
-                      placeholder="Edit instruction…"
-                      disabled="@_busy"
-                      @bind="_videoEditPromptText" @bind:event="oninput"></textarea>
-        </ChildContent>
-        <Footer>
-            <button type="button" class="btn btn-sm btn-outline-secondary"
-                    disabled="@_busy" @onclick="CloseVideoEditPrompt">Cancel</button>
-            <button type="button" class="btn btn-sm btn-primary fw-bold"
-                    data-testid="clip-video-edit-go"
-                    disabled="@(_busy || JobRunning || string.IsNullOrWhiteSpace(_videoEditPromptText))"
-                    @onclick="SubmitVideoEditAsync">
-                ✂️ Edit clip
-            </button>
-        </Footer>
-    </DarkModalShell>
+    <Scenes_VideoEditPrompt Visible="true"
+                            Prompt="@_videoEditPromptText"
+                            PromptChanged="@(v => _videoEditPromptText = v)"
+                            Busy="_busy"
+                            JobRunning="JobRunning"
+                            OnClose="CloseVideoEditPrompt"
+                            OnSubmit="SubmitVideoEditAsync" />
 }
 
 @* Score-music chooser — opens from a scene's "Score" button so the music style + Sing choice
@@ -1879,93 +1678,18 @@ else
                            OnGenerate="@(() => ScoreFromMenuAsync(scoreSn))" />
 }
 
-@* Audio Takes Modal — compares scene background-audio generation runs (model, vocal/instrumental,
-   prompt/lyrics), listen-based rather than the clip modal's dual video player since comparing audio
-   just means playing one take, then another. *@
 @if (_showMusicCompare)
 {
-    <DarkModalShell Visible="true" OnClose="CloseMusicCompare" DialogClass="modal-lg modal-dialog-scrollable">
-        <Title>Audio Takes — Scene S@(_compareMusicSceneNumber.ToString("D2"))</Title>
-        <ChildContent>
-                    <InlineAlert Message="@_musicCompareMessage" Variant="info" CssClass="py-2 mb-3" />
-
-                    @if (_loadingMusicVersions)
-                    {
-                        <p class="text-muted">Loading audio take history…</p>
-                    }
-                    else if (_musicVersions is null || _musicVersions.Count == 0)
-                    {
-                        <p class="text-muted">No audio takes recorded yet for this scene.</p>
-                    }
-                    else
-                    {
-                        @foreach (var v in _musicVersions.OrderByDescending(x => x.IsCurrent).ThenByDescending(x => x.CreatedAtUtc))
-                        {
-                            <div class="card bg-secondary bg-opacity-10 border-secondary mb-3">
-                                <div class="card-body">
-                                    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
-                                        <div>
-                                            @if (v.IsCurrent)
-                                            {
-                                                <span class="badge bg-success me-1">Current</span>
-                                            }
-                                            @if (v.IsVocal)
-                                            {
-                                                <span class="badge bg-info text-dark me-1">🎤 Singing</span>
-                                            }
-                                            else
-                                            {
-                                                <span class="badge bg-secondary me-1">🎵 Instrumental</span>
-                                            }
-                                            <span class="text-muted small">@(string.IsNullOrEmpty(v.Model) ? "unknown model" : v.Model) · @v.CreatedAtUtc.ToLocalTime().ToString("g")</span>
-                                        </div>
-                                        <div class="d-flex gap-1">
-                                            <button type="button" class="btn btn-sm btn-outline-primary"
-                                                    disabled="@(_promotingMusicVersion || v.IsCurrent)"
-                                                    @onclick="() => PromoteMusicVersionAsync(_compareMusicSceneNumber, v.TakeId)">
-                                                Make Active
-                                            </button>
-                                            <button type="button" class="btn btn-sm btn-outline-danger"
-                                                    disabled="@(_promotingMusicVersion || v.IsCurrent)"
-                                                    @onclick="() => SoftDeleteMusicVersionAsync(_compareMusicSceneNumber, v.TakeId)">
-                                                Delete
-                                            </button>
-                                        </div>
-                                    </div>
-                                    @if (!string.IsNullOrWhiteSpace(v.Prompt))
-                                    {
-                                        <div class="small text-muted mb-1"><strong>Style:</strong> @v.Prompt</div>
-                                    }
-                                    @if (!string.IsNullOrWhiteSpace(v.Lyrics))
-                                    {
-                                        <div class="small text-muted mb-2"><strong>Lyrics:</strong> @v.Lyrics</div>
-                                    }
-                                    <div class="d-flex flex-column gap-1">
-                                        @if (_musicCompareUrls.TryGetValue(v.TakeId, out var urls) && urls.Count > 0)
-                                        {
-                                            @for (var i = 0; i < urls.Count; i++)
-                                            {
-                                                var segLabel = urls.Count > 1 ? $"Segment {i + 1}" : "Audio";
-                                                <div class="d-flex align-items-center gap-2">
-                                                    <span class="small text-muted" style="min-width:5.5rem">@segLabel</span>
-                                                    <audio controls preload="none" src="@urls[i]" style="height:32px;flex:1"></audio>
-                                                </div>
-                                            }
-                                        }
-                                        else
-                                        {
-                                            <span class="small text-muted">Not available locally — reconnect your media folder to sync it back.</span>
-                                        }
-                                    </div>
-                                </div>
-                            </div>
-                        }
-                    }
-        </ChildContent>
-        <Footer>
-            <button type="button" class="btn btn-secondary" @onclick="CloseMusicCompare">Close</button>
-        </Footer>
-    </DarkModalShell>
+    <Scenes_MusicCompare Visible="true"
+                         SceneNumber="_compareMusicSceneNumber"
+                         Message="@_musicCompareMessage"
+                         Loading="_loadingMusicVersions"
+                         Busy="_promotingMusicVersion"
+                         Versions="_musicVersions"
+                         Urls="_musicCompareUrls"
+                         OnClose="CloseMusicCompare"
+                         OnPromote="@(id => PromoteMusicVersionAsync(_compareMusicSceneNumber, id))"
+                         OnDelete="@(id => SoftDeleteMusicVersionAsync(_compareMusicSceneNumber, id))" />
 }
 
 @* Clip Dialogue Verification Report Modal *@

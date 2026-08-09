@@ -1,0 +1,156 @@
+@* Page-local to Scenes — clip field editor *@
+@using PageToMovie.Core.Models
+
+@if (Editor is { } ed)
+{
+
+    <DarkModalShell Visible="true" OnClose="OnClose"
+                    DialogClass="modal-dialog-centered modal-dialog-scrollable modal-lg"
+                    BackdropOpacity=".45"
+                    data-testid="clip-editor-modal">
+        <Title>
+            <span data-testid="clip-editor-title">
+                @(IsNew ? "Add clip" : "Edit clip") <code>S@(ed.Scene.ToString("D2"))C@(ed.Clip.ToString("D2"))</code>
+            </span>
+        </Title>
+        <ChildContent>
+                    <InlineAlert Message="@Error" CssClass="p-2 small mb-3" />
+                    <div class="row g-2 mb-3">
+                        <div class="col-4">
+                            <label class="form-label small mb-0">Clip number</label>
+                            <input type="number" class="form-control form-control-sm" min="1"
+                                   data-testid="clip-editor-number"
+                                   @bind="ed.Clip" disabled="@(!IsNew)" />
+                        </div>
+                        <div class="col-4">
+                            <label class="form-label small mb-0">Duration (s)</label>
+                            <input type="number" class="form-control form-control-sm"
+                                   min="0" max="12"
+                                   @bind="ed.DurationSeconds" />
+                            <div class="form-text small">0 = unset · 3–12s if set</div>
+                        </div>
+                        <div class="col-4">
+                            <label class="form-label small mb-0">Primary subject</label>
+                            <select class="form-select form-select-sm" @bind="ed.PrimarySubject">
+                                <option value="">— none —</option>
+                                @foreach (var ck in CharacterOptions)
+                                {
+                                    <option value="@ck">@FormatChar(ck)</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+
+                    <h6 class="mb-1">Characters</h6>
+                    <div class="d-flex flex-wrap gap-2 mb-3 p-2 border rounded">
+                        @if (CharacterOptions.Count == 0)
+                        {
+                            <span class="small text-muted">No characters yet — add them on the Characters page.</span>
+                        }
+                        @foreach (var ck in CharacterOptions)
+                        {
+                            var isOn = CastKeys.Contains(ck);
+                            <div class="form-check form-check-inline mb-0">
+                                <input class="form-check-input" type="checkbox" id="@($"cast-{ck}")"
+                                       checked="@isOn"
+                                       @onchange="e => ToggleCast(ck, (bool)(e.Value ?? false))" />
+                                <label class="form-check-label small" for="@($"cast-{ck}")">@FormatChar(ck)</label>
+                            </div>
+                        }
+                    </div>
+
+                    <h6 class="mb-1">Visual</h6>
+                    <label class="form-label small mb-0">Prompt <span class="text-danger">*</span></label>
+                    <textarea class="form-control form-control-sm mb-3" rows="4" required
+                              placeholder="Required — action / framing for this take"
+                              @bind="ed.VisualPrompt"></textarea>
+
+                    <h6 class="mb-1">Dialogue</h6>
+                    <div class="row g-2 mb-2">
+                        <div class="col-6">
+                            <label class="form-label small mb-0">Speaker</label>
+                            <select class="form-select form-select-sm" @bind="ed.Speaker">
+                                <option value="">— none —</option>
+                                @foreach (var ck in CharacterOptions)
+                                {
+                                    <option value="@ck">@FormatChar(ck)</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small mb-0">Delivery</label>
+                            <select class="form-select form-select-sm" @bind="ed.Delivery">
+                                <option value="">— none —</option>
+                                <option value="spoken_on_camera">Spoken (on camera)</option>
+                                <option value="voiceover_internal">Voiceover (internal)</option>
+                                <option value="off_camera">Off camera</option>
+                            </select>
+                        </div>
+                    </div>
+                    <textarea class="form-control form-control-sm mb-1" rows="2"
+                              data-testid="clip-editor-dialogue"
+                              placeholder="Dialogue / voiceover text (requires speaker + delivery)…"
+                              @bind="ed.Dialogue"></textarea>
+                    <div class="form-text small mb-2">
+                        Silent clips: leave speaker none and dialogue empty. Spoken/VO lines need both a speaker and a delivery other than none.
+                    </div>
+                    <label class="form-label small mb-0 mt-1">Pronunciation hint</label>
+                    <input type="text" class="form-control form-control-sm mb-1"
+                           data-testid="clip-editor-pronunciation-hint"
+                           placeholder="Optional — e.g. Pronounce 'tear' as verb /tɛər/ ('tare' / rip apart)"
+                           @bind="ed.PronunciationHint" />
+                    <div class="form-text small mb-3">
+                        Phonetic guidance for homographs or unusual names (e.g. tear, lead, wind, bow).
+                    </div>
+
+                    <!-- Collapsible Advanced Options -->
+                    <div class="mb-3">
+                        <button type="button" class="btn btn-sm btn-outline-secondary w-100 text-start d-flex justify-content-between align-items-center"
+                                @onclick="() => ShowAdvanced = !ShowAdvanced">
+                            <span>⚙️ Advanced options (Negative prompt, Lighting &amp; Color, Film stock)</span>
+                            <span>@(ShowAdvanced ? "▲ Hide" : "▼ Expand")</span>
+                        </button>
+
+                        @if (ShowAdvanced)
+                        {
+                            <div class="p-3 border border-top-0 rounded-bottom bg-dark bg-opacity-75 border-secondary border-opacity-50 text-white">
+                                <label class="form-label small mb-1 fw-medium text-light">Negative prompt (clip extras)</label>
+                                <textarea class="form-control form-control-sm mb-1 bg-dark text-white border-secondary" rows="2" @bind="ed.NegativePrompt"
+                                          placeholder="Optional — story-specific bans only"></textarea>
+                                <div class="form-text small mb-3 text-muted">
+                                    Empty is normal. Shared global bans (no watermarks, logos, extra limbs, name tags) are automatically applied at video gen.
+                                </div>
+
+                                <h6 class="mb-2 fw-semibold text-light">Lighting &amp; Color</h6>
+                                <div class="row g-2">
+                                    <div class="col-6">
+                                        <label class="form-label small mb-1 text-light">Color palette</label>
+                                        <input class="form-control form-control-sm bg-dark text-white border-secondary" @bind="ed.ColorPalette"
+                                               placeholder="e.g. Warm golden hour, Neon noir" />
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="form-label small mb-1 text-light">Film stock / Lens</label>
+                                        <input class="form-control form-control-sm bg-dark text-white border-secondary" @bind="ed.FilmStock"
+                                               placeholder="e.g. 35mm anamorphic, Kodak Vision3" />
+                                    </div>
+                                </div>
+                                <div class="form-text small mt-2 mb-0 text-muted">
+                                    Empty is fine. Shot plan bakes grading into the visual prompt; fill these only to pin palette or stock for this clip.
+                                </div>
+                            </div>
+                        }
+                    </div>
+        </ChildContent>
+        <Footer>
+            <span class="small text-muted me-auto">
+                @(IsNew
+                    ? "Creates the shot-plan entry only — generate its video afterward."
+                    : "Regen the clip afterward to re-render video/audio with these fields.")
+            </span>
+            <BusyButton Label="Cancel" Busy="Busy" CssClass="btn btn-sm btn-secondary" OnClick="OnClose" />
+            <BusyButton Label="@(IsNew ? "Add clip" : "Save clip")" Busy="Busy"
+                        CssClass="btn btn-sm btn-primary" TestId="clip-editor-save" OnClick="OnSave" />
+        </Footer>
+    </DarkModalShell>
+
+}

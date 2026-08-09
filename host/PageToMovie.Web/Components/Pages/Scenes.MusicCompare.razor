@@ -1,0 +1,63 @@
+@* Page-local to Scenes — audio takes compare *@
+@using PageToMovie.Core.Models
+
+@if (Visible)
+{
+    <DarkModalShell Visible="true" OnClose="OnClose" DialogClass="modal-lg modal-dialog-scrollable">
+        <Title>Audio Takes — Scene S@(SceneNumber.ToString("D2"))</Title>
+        <ChildContent>
+            <InlineAlert Message="@Message" Variant="info" CssClass="py-2 mb-3" />
+
+            @if (Loading)
+            {
+                <p class="text-muted">Loading audio take history…</p>
+            }
+            else if (Versions is null || Versions.Count == 0)
+            {
+                <p class="text-muted">No audio takes recorded yet for this scene.</p>
+            }
+            else
+            {
+                @foreach (var v in Versions.OrderByDescending(x => x.IsCurrent).ThenByDescending(x => x.CreatedAtUtc))
+                {
+                    <div class="border border-secondary rounded p-2 mb-2">
+                        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                            <div>
+                                <strong>@(v.TakeId)</strong>
+                                @if (v.IsCurrent)
+                                {
+                                    <span class="badge text-bg-success ms-1">Current</span>
+                                }
+                                <div class="small text-muted">@v.CreatedAtUtc.ToLocalTime().ToString("MMM d, yyyy h:mm tt") · @v.Model</div>
+                            </div>
+                            <div class="d-flex gap-1">
+                                <button type="button" class="btn btn-sm btn-outline-primary"
+                                        disabled="@(Busy || v.IsCurrent)"
+                                        @onclick="() => OnPromote.InvokeAsync(v.TakeId)">Make current</button>
+                                <button type="button" class="btn btn-sm btn-outline-danger"
+                                        disabled="@(Busy || v.IsCurrent)"
+                                        @onclick="() => OnDelete.InvokeAsync(v.TakeId)">Delete</button>
+                            </div>
+                        </div>
+                        @if (Urls is not null && Urls.TryGetValue(v.TakeId, out var urls) && urls.Count > 0)
+                        {
+                            <div class="mt-2">
+                                @foreach (var u in urls)
+                                {
+                                    <audio class="w-100 mb-1" controls src="@u"></audio>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <span class="small text-muted">Not available locally — reconnect your media folder to sync it back.</span>
+                        }
+                    </div>
+                }
+            }
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-secondary" @onclick="OnClose">Close</button>
+        </Footer>
+    </DarkModalShell>
+}

@@ -116,7 +116,6 @@ public partial class Scenes
     private int? _deleteSceneTarget;
     private ClipEditRequest? _clipEditor;
     private bool _clipEditorIsNew;
-    private bool _showEditClipAdvanced;
     private HashSet<string> _clipEditorCast = new(StringComparer.OrdinalIgnoreCase);
     /// <summary>Multi-select clip numbers within the currently open scene's clip table, for batch regen.</summary>
     private readonly HashSet<int> _selectedClips = new();
@@ -1749,7 +1748,6 @@ public partial class Scenes
     private void OpenClipEditor(ClipSummary clip)
     {
         if (_detail is null) return;
-        _showEditClipAdvanced = false;
         _clipEditorIsNew = false;
         _clipEditor = new ClipEditRequest
         {
@@ -1774,7 +1772,6 @@ public partial class Scenes
     private void OpenAddClipDialog()
     {
         if (_detail is null) return;
-        _showEditClipAdvanced = false;
         var nextClip = _detail.Clips.Count == 0 ? 1 : _detail.Clips.Max(c => c.ClipNumber) + 1;
         _clipEditorIsNew = true;
         _clipEditor = new ClipEditRequest
@@ -1794,6 +1791,13 @@ public partial class Scenes
         if (on) _clipEditorCast.Add(charKey);
         else _clipEditorCast.Remove(charKey);
     }
+    private Task OnClipEditorCastToggled((string Key, bool On) args)
+    {
+        ToggleClipEditorCast(args.Key, args.On);
+        return Task.CompletedTask;
+    }
+
+
 
     private async Task SaveClipEditorAsync()
     {

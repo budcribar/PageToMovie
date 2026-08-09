@@ -1,0 +1,22 @@
+@* Page-local to Admin — collapsible dashboard section *@
+
+<div class="card mb-3 border @CssClass">
+    <div class="card-header d-flex justify-content-between align-items-center py-2">
+        <div class="d-flex align-items-center gap-2">
+            <span class="fw-semibold">@Title</span>
+            @if (!string.IsNullOrEmpty(Badge))
+            {
+                <span class="badge @BadgeClass">@Badge</span>
+            }
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="Toggle">
+            @(Expanded ? "▲ Collapse" : "▼ Expand")
+        </button>
+    </div>
+    @if (Expanded)
+    {
+        <div class="card-body p-3">
+            @ChildContent
+        </div>
+    }
+</div>

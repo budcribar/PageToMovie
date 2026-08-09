@@ -22,64 +22,7 @@
 }
 
 
-@* Landing-style header — brand + promise above the action cards *@
-<header class="home-landing mb-4" data-testid="home-landing-header">
-    <div class="home-landing__inner">
-        <div class="home-landing__copy">
-            <div class="d-flex align-items-center gap-2 mb-2">
-                <img src="/favicon.png" alt="" width="40" height="40" class="rounded-2 shadow-sm flex-shrink-0" />
-                <span class="home-landing__brand">PageToMovie</span>
-            </div>
-            <h1 class="home-landing__title">@L["Home.DropABook"]</h1>
-            <p class="home-landing__lede mb-0">
-                @L["Home.LandingSubtitle"]
-            </p>
-            @* Actions live on the cards below — avoid duplicate Easy start / Full studio / Demos buttons here. *@
-            @if (!Session.IsLoggedIn)
-            {
-                <div class="home-landing__actions d-flex flex-wrap gap-2 mt-3">
-                    <a href="login?returnUrl=/" class="btn btn-primary" data-testid="home-landing-signin">@L["Nav.SignIn"]</a>
-                </div>
-            }
-        </div>
-        <div class="home-landing__visual d-none d-md-flex" aria-hidden="true">
-            <div class="home-pipeline">
-                <div class="home-pipeline__stage">
-                    <div class="home-pipeline__icon home-pipeline__pages">
-                        <span class="home-pipeline__sheet s1"></span>
-                        <span class="home-pipeline__sheet s2"></span>
-                        <span class="home-pipeline__sheet s3"></span>
-                    </div>
-                    <span class="home-pipeline__label">@L["Home.Book"]</span>
-                </div>
-                <div class="home-pipeline__arrows" aria-hidden="true">
-                    <span class="home-pipeline__chev c1">›</span>
-                    <span class="home-pipeline__chev c2">›</span>
-                    <span class="home-pipeline__chev c3">›</span>
-                </div>
-                <div class="home-pipeline__stage">
-                    <div class="home-pipeline__icon home-pipeline__ai">
-                        <span class="home-pipeline__brain"></span>
-                    </div>
-                    <span class="home-pipeline__label">@L["Home.Studio"]</span>
-                </div>
-                <div class="home-pipeline__arrows" aria-hidden="true">
-                    <span class="home-pipeline__chev c1">›</span>
-                    <span class="home-pipeline__chev c2">›</span>
-                    <span class="home-pipeline__chev c3">›</span>
-                </div>
-                <div class="home-pipeline__stage">
-                    <div class="home-pipeline__icon home-pipeline__movie">
-                        <span class="home-pipeline__clapper">
-                            <span class="home-pipeline__clapper-body"></span>
-                        </span>
-                    </div>
-                    <span class="home-pipeline__label">@L["Home.Film"]</span>
-                </div>
-            </div>
-        </div>
-    </div>
-</header>
+<Home_Landing IsLoggedIn="Session.IsLoggedIn" />
 
 @if (!Session.IsLoggedIn)
 {

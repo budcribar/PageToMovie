@@ -1,0 +1,57 @@
+@* Page-local to Scenes *@
+@using PageToMovie.Core.Models
+
+@if (Visible)
+{
+    <DarkModalShell Visible="true" OnClose="OnClose" HeaderClass="" TitleClass="" DialogClass="modal-lg modal-dialog-scrollable">
+        <Title>Scene S@(SceneNumber.ToString("D2")) History &amp; Changes</Title>
+        <ChildContent>
+            <InlineAlert Message="@Message" Variant="info" CssClass="py-2 mb-3" />
+
+            @if (Loading)
+            {
+                <p class="text-muted">Loading scene changes…</p>
+            }
+            else if (History is null || History.Count == 0)
+            {
+                <p class="text-muted">No change history recorded for this scene yet.</p>
+            }
+            else
+            {
+                <div class="list-group list-group-flush">
+                    @foreach (var item in History)
+                    {
+                        <div class="list-group-item bg-dark text-white border-secondary py-3">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <div>
+                                    <strong>@item.Message</strong>
+                                    <div class="small text-muted">
+                                        <code>@item.ShortHash</code> · by @item.Author · @item.CommittedAt.ToLocalTime().ToString("MMM d, yyyy h:mm tt")
+                                    </div>
+                                </div>
+                                <button type="button"
+                                        class="btn btn-sm btn-outline-warning"
+                                        disabled="@Reverting"
+                                        @onclick="() => OnRevert.InvokeAsync(item.CommitHash)">
+                                    Revert to version
+                                </button>
+                            </div>
+                            @if (item.Changes.Count > 0)
+                            {
+                                <ul class="small text-secondary mb-0 ps-3">
+                                    @foreach (var change in item.Changes)
+                                    {
+                                        <li>@change</li>
+                                    }
+                                </ul>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-secondary" @onclick="OnClose">Close</button>
+        </Footer>
+    </DarkModalShell>
+}

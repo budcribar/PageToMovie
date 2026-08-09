@@ -1,0 +1,31 @@
+@* Page-local to Scenes — AI video edit prompt *@
+
+@if (Visible)
+{
+    <DarkModalShell Visible="true" OnClose="OnClose">
+        <Title>✂️ AI edit clip</Title>
+        <ChildContent>
+            <p class="small text-muted">
+                Describe the change — e.g. "change her jacket to red" or "make him wave instead of nod".
+                Saved as a new take; the current version stays in 🎬 Takes.
+            </p>
+            <textarea class="form-control bg-dark text-white border-secondary"
+                      data-testid="clip-video-edit-prompt"
+                      rows="3"
+                      placeholder="Edit instruction…"
+                      disabled="@Busy"
+                      value="@Prompt"
+                      @oninput="OnPromptInput"></textarea>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-sm btn-outline-secondary"
+                    disabled="@Busy" @onclick="OnClose">Cancel</button>
+            <button type="button" class="btn btn-sm btn-primary fw-bold"
+                    data-testid="clip-video-edit-go"
+                    disabled="@(Busy || JobRunning || string.IsNullOrWhiteSpace(Prompt))"
+                    @onclick="OnSubmit">
+                ✂️ Edit clip
+            </button>
+        </Footer>
+    </DarkModalShell>
+}
