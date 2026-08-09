@@ -1,24 +1,24 @@
 <div class="card mb-2 border-secondary-subtle bg-dark-subtle shadow-sm" id="scene-card-@Scene.SceneNumber">
-    <!-- Single Clean Line Header Row -->
-    <div class="card-header bg-dark text-light d-flex align-items-center flex-wrap gap-2 py-1 px-2 border-bottom border-secondary-subtle">
-        <button class="btn btn-sm btn-link text-light text-decoration-none p-0 me-1" type="button" @onclick="ToggleCollapse" title="Toggle Scene Details">
+    <!-- Guaranteed 1 Single Line Scene Heading Row -->
+    <div class="card-header bg-dark text-light d-flex flex-nowrap align-items-center gap-1 py-1 px-2 border-bottom border-secondary-subtle overflow-hidden">
+        <button class="btn btn-sm btn-link text-light text-decoration-none p-0 me-1 flex-shrink-0" type="button" @onclick="ToggleCollapse" title="Toggle Scene Details">
             @(Scene.IsCollapsed ? "▶" : "▼")
         </button>
 
-        <ScreenplayEditor_BadgePill Variant="@ComponentVariant.Warning" Text="@($"Scene {Scene.SceneNumber}")" />
-        
-        <button class="btn btn-sm btn-outline-info py-0 px-1" type="button" @onclick="OnEditLocationsClick" title="Manage / Edit Story Locations">
+        <span class="badge text-bg-warning fw-bold flex-shrink-0">Scene @Scene.SceneNumber</span>
+
+        <button class="btn btn-sm btn-outline-info py-0 px-1 text-nowrap flex-shrink-0" style="height: 26px; font-size: 0.75rem;" type="button" @onclick="OnEditLocationsClick" title="Manage / Edit Story Locations">
             ⚙ Locations
         </button>
 
-        <select class="form-select form-select-sm fw-bold border-secondary bg-dark text-light py-0 px-2" style="width: 105px; height: 28px;" @bind="Scene.Env" @bind:after="OnChanged">
+        <select class="form-select form-select-sm fw-bold border-secondary bg-dark text-light py-0 px-1 flex-shrink-0" style="width: 85px; height: 26px; font-size: 0.8rem;" @bind="Scene.Env" @bind:after="OnChanged">
             <option value="@SceneEnvironment.INT">INT.</option>
             <option value="@SceneEnvironment.EXT">EXT.</option>
             <option value="@SceneEnvironment.INT_EXT">INT./EXT.</option>
         </select>
         
-        <!-- Location Dropdown (e.g. Suburban Backyard) -->
-        <select class="form-select form-select-sm text-uppercase fw-bold border-secondary bg-dark text-light py-0 px-2 flex-grow-1" style="min-width: 150px; height: 28px;" @bind="Scene.Location" @bind:after="OnChanged">
+        <!-- Location Dropdown (e.g. SUBURBAN BACKYARD) -->
+        <select class="form-select form-select-sm text-uppercase fw-bold border-secondary bg-dark text-light py-0 px-2 flex-grow-1 text-truncate" style="min-width: 120px; height: 26px; font-size: 0.8rem;" @bind="Scene.Location" @bind:after="OnChanged">
             @if (!AvailableLocations.Contains(Scene.Location) && !string.IsNullOrWhiteSpace(Scene.Location))
             {
                 <option value="@Scene.Location">@Scene.Location (Current)</option>
@@ -29,7 +29,7 @@
             }
         </select>
 
-        <select class="form-select form-select-sm fw-bold border-secondary bg-dark text-light py-0 px-2" style="width: 135px; height: 28px;" @bind="Scene.TimeOfDayEnum" @bind:after="OnChanged">
+        <select class="form-select form-select-sm fw-bold border-secondary bg-dark text-light py-0 px-1 flex-shrink-0" style="width: 120px; height: 26px; font-size: 0.8rem;" @bind="Scene.TimeOfDayEnum" @bind:after="OnChanged">
             <option value="@TimeOfDay.DAY">DAY</option>
             <option value="@TimeOfDay.NIGHT">NIGHT</option>
             <option value="@TimeOfDay.CONTINUOUS">CONTINUOUS</option>
