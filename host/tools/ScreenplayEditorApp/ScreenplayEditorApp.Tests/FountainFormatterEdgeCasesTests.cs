@@ -93,7 +93,6 @@ Spoken line without preceding speaker name.
             TimeOfDay = "DAY"
         };
 
-        // Dialogue with extension with parens and parenthetical without parens
         scene.Beats.Add(new ScreenplayBeat
         {
             BeatType = BeatType.Dialogue,
@@ -103,14 +102,12 @@ Spoken line without preceding speaker name.
             SpokenText = "Is anyone there?"
         });
 
-        // Transition with '>'
         scene.Beats.Add(new ScreenplayBeat
         {
             BeatType = BeatType.Transition,
             TransitionText = "> FADE OUT."
         });
 
-        // Transition without '>'
         scene.Beats.Add(new ScreenplayBeat
         {
             BeatType = BeatType.Transition,
@@ -124,5 +121,32 @@ Spoken line without preceding speaker name.
         Assert.Contains("(nervously)", fountain);
         Assert.Contains("> FADE OUT.", fountain);
         Assert.Contains("> CUT TO:", fountain);
+    }
+
+    [Fact]
+    public void TestForcedElementsParsingAndExport()
+    {
+        string fountain = @".OPENING SHOT
+
+A single candle flickers in total darkness.
+
+!This is forced action text even though it starts like a character cue: JONAH WALKS IN.
+
+@MCDONALD'S CASHIER
+Welcome, can I take your order?
+
+.INT. UNUSUAL LOCATION NAME THAT MIGHT NOT PARSE AS SCENE
+
+Something strange is happening here.
+";
+        var model1 = FountainFormatter.Parse(fountain);
+        Assert.NotNull(model1);
+        Assert.Equal(2, model1.Scenes.Count);
+
+        string export1 = model1.ToFountain();
+        var model2 = FountainFormatter.Parse(export1);
+        string export2 = model2.ToFountain();
+
+        Assert.Equal(export1, export2);
     }
 }

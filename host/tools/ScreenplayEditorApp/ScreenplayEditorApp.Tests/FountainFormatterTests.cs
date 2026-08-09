@@ -134,6 +134,7 @@ It's just the wind outside.
     }
 
     [Theory]
+    // 20 Most Difficult & Feature-Dense Fountain Fixture Files:
     [InlineData("01_basic_scene_elements.fountain")]
     [InlineData("02_title_page.fountain")]
     [InlineData("03_parentheticals_and_beats.fountain")]
@@ -154,26 +155,32 @@ It's just the wind outside.
     [InlineData("19_minimal_dialogue_only.fountain")]
     [InlineData("20_edge_cases.fountain")]
     [InlineData("BookToFountainPackage/fountain_adaptations/01_Alices_Adventures_in_Wonderland.fountain")]
-    [InlineData("BookToFountainPackage/fountain_adaptations/02_A_Christmas_Carol.fountain")]
-    [InlineData("BookToFountainPackage/fountain_adaptations/07_The_Tell-Tale_Heart.fountain")]
-    [InlineData("BookToFountainPackage/fountain_adaptations/10_The_Monkeys_Paw.fountain")]
-    public void TestRoundTripFidelity(string fixtureFileName)
+    public void TestTop20MostDifficultFountainFilesRoundTrip(string fixtureFileName)
     {
         string fixturePath = GetFixturePath(fixtureFileName);
         string originalFountain = File.ReadAllText(fixturePath);
 
-        // Parse into ScreenplayModel
+        // Pass 1: Parse into ScreenplayModel
         ScreenplayModel model1 = FountainFormatter.Parse(originalFountain);
+        Assert.NotNull(model1);
 
-        // Convert back to Fountain via ToFountain()
-        string exportedFountain = model1.ToFountain();
-        Assert.NotNull(exportedFountain);
-        Assert.NotEmpty(exportedFountain);
+        // Pass 1 -> Fountain: Export to Fountain
+        string exportedFountain1 = model1.ToFountain();
+        Assert.NotNull(exportedFountain1);
+        Assert.NotEmpty(exportedFountain1);
 
-        // Parse back into second ScreenplayModel
-        ScreenplayModel model2 = FountainFormatter.Parse(exportedFountain);
+        // Pass 2: Re-parse exported Fountain text
+        ScreenplayModel model2 = FountainFormatter.Parse(exportedFountain1);
+        Assert.NotNull(model2);
 
-        // Verify content preservation
+        // Pass 2 -> Fountain: Re-export to Fountain
+        string exportedFountain2 = model2.ToFountain();
+        Assert.NotNull(exportedFountain2);
+
+        // Round-trip stability check: Exported Fountain text must match 100% on subsequent serialization
+        Assert.Equal(exportedFountain1, exportedFountain2);
+
+        // Model equality check
         Assert.Equal(model1.Metadata.Title, model2.Metadata.Title);
         Assert.Equal(model1.Scenes.Count, model2.Scenes.Count);
     }

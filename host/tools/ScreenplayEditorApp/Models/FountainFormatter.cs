@@ -82,7 +82,7 @@ public static class FountainFormatter
                     var headingText = element.Text.Trim();
                     ParseSceneHeadingParts(headingText, out string env, out string location, out string timeOfDay);
 
-                    if (currentScene != null && string.IsNullOrEmpty(currentScene.SceneTitle))
+                    if (currentScene != null && (string.IsNullOrEmpty(currentScene.SceneTitle) || currentScene.Location == "UNSPECIFIED"))
                     {
                         currentScene.Environment = env;
                         currentScene.Location = location;
@@ -181,6 +181,24 @@ public static class FountainFormatter
                         TransitionText = element.Text
                     });
                     break;
+
+                case FountainParser.ElementType.Note:
+                    activeDialogueBeat = null;
+                    GetOrCreateCurrentScene().Beats.Add(new ScreenplayBeat
+                    {
+                        BeatType = BeatType.Note,
+                        ActionText = element.Text
+                    });
+                    break;
+
+                case FountainParser.ElementType.Centered:
+                    activeDialogueBeat = null;
+                    GetOrCreateCurrentScene().Beats.Add(new ScreenplayBeat
+                    {
+                        BeatType = BeatType.Centered,
+                        ActionText = element.Text
+                    });
+                    break;
             }
         }
 
@@ -271,9 +289,24 @@ public static class FountainFormatter
         {
             if (!string.IsNullOrWhiteSpace(scene.SceneTitle) || !string.IsNullOrWhiteSpace(scene.Environment) || !string.IsNullOrWhiteSpace(scene.Location))
             {
-                string heading = !string.IsNullOrWhiteSpace(scene.SceneTitle)
-                    ? scene.SceneTitle
-                    : $"{scene.Environment} {scene.Location} - {scene.TimeOfDay}".Trim(' ', '-');
+                string heading;
+                if (!string.IsNullOrWhiteSpace(scene.SceneTitle))
+                {
+                    heading = scene.SceneTitle;
+                    if (!heading.StartsWith("INT.", StringComparison.OrdinalIgnoreCase) &&
+                        !heading.StartsWith("EXT.", StringComparison.OrdinalIgnoreCase) &&
+                        !heading.StartsWith("INT./EXT.", StringComparison.OrdinalIgnoreCase) &&
+                        !heading.StartsWith("INT/EXT.", StringComparison.OrdinalIgnoreCase) &&
+                        !heading.StartsWith("I/E.", StringComparison.OrdinalIgnoreCase) &&
+                        !heading.StartsWith("."))
+                    {
+                        heading = "." + heading;
+                    }
+                }
+                else
+                {
+                    heading = $"{scene.Environment} {scene.Location} - {scene.TimeOfDay}".Trim(' ', '-');
+                }
 
                 if (scene.SceneNumber > 0 && !heading.Contains("#"))
                 {
@@ -335,6 +368,22 @@ public static class FountainFormatter
                                 sb.AppendLine(trans);
                             else
                                 sb.AppendLine($"> {trans}");
+                            sb.AppendLine();
+                        }
+                        break;
+
+                    case BeatType.Note:
+                        if (!string.IsNullOrWhiteSpace(beat.ActionText))
+                        {
+                            sb.AppendLine($"[[{beat.ActionText.Trim('[', ']')}]]");
+                            sb.AppendLine();
+                        }
+                        break;
+
+                    case BeatType.Centered:
+                        if (!string.IsNullOrWhiteSpace(beat.ActionText))
+                        {
+                            sb.AppendLine($"> {beat.ActionText.Trim('>', '<', ' ')} <");
                             sb.AppendLine();
                         }
                         break;
