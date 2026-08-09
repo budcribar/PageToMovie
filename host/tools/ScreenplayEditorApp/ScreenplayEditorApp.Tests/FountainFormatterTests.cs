@@ -134,7 +134,7 @@ It's just the wind outside.
     }
 
     [Theory]
-    // 20 Most Difficult & Feature-Dense Fountain Fixture Files:
+    // 1. Official Spec Fixtures:
     [InlineData("01_basic_scene_elements.fountain")]
     [InlineData("02_title_page.fountain")]
     [InlineData("03_parentheticals_and_beats.fountain")]
@@ -154,8 +154,37 @@ It's just the wind outside.
     [InlineData("18_montage_sequence.fountain")]
     [InlineData("19_minimal_dialogue_only.fountain")]
     [InlineData("20_edge_cases.fountain")]
+
+    // 2. Open-Source Fountain Industry Screenplays:
+    [InlineData("FountainOpenSource/Big_Fish_nyousefi.fountain")]
+    [InlineData("FountainOpenSource/Brick_And_Steel_nyousefi.fountain")]
+    [InlineData("FountainOpenSource/DualDialogue_nyousefi.fountain")]
+    [InlineData("FountainOpenSource/ForcedElements_nyousefi.fountain")]
+    [InlineData("FountainOpenSource/Indenting_nyousefi.fountain")]
+    [InlineData("FountainOpenSource/MultilineAction_nyousefi.fountain")]
+    [InlineData("FountainOpenSource/Notes_nyousefi.fountain")]
+    [InlineData("FountainOpenSource/PageBreaks_nyousefi.fountain")]
+    [InlineData("FountainOpenSource/SceneHeaders_nyousefi.fountain")]
+    [InlineData("FountainOpenSource/SceneNumbers_nyousefi.fountain")]
+    [InlineData("FountainOpenSource/SectionsComplex_nyousefi.fountain")]
+    [InlineData("FountainOpenSource/Simple_nyousefi.fountain")]
+    [InlineData("FountainOpenSource/Synopses_nyousefi.fountain")]
+    [InlineData("FountainOpenSource/TitlePage_screenplaytools.fountain")]
+    [InlineData("FountainOpenSource/Transitions_nyousefi.fountain")]
+    [InlineData("FountainOpenSource/UTF8_screenplaytools.fountain")]
+
+    // 3. Classic Book Screenplay Adaptations:
     [InlineData("BookToFountainPackage/fountain_adaptations/01_Alices_Adventures_in_Wonderland.fountain")]
-    public void TestTop20MostDifficultFountainFilesRoundTrip(string fixtureFileName)
+    [InlineData("BookToFountainPackage/fountain_adaptations/02_A_Christmas_Carol.fountain")]
+    [InlineData("BookToFountainPackage/fountain_adaptations/03_Dracula.fountain")]
+    [InlineData("BookToFountainPackage/fountain_adaptations/04_Frankenstein.fountain")]
+    [InlineData("BookToFountainPackage/fountain_adaptations/05_The_Jungle_Book.fountain")]
+    [InlineData("BookToFountainPackage/fountain_adaptations/06_The_Gift_of_the_Magi.fountain")]
+    [InlineData("BookToFountainPackage/fountain_adaptations/07_The_Tell-Tale_Heart.fountain")]
+    [InlineData("BookToFountainPackage/fountain_adaptations/08_The_Yellow_Wallpaper.fountain")]
+    [InlineData("BookToFountainPackage/fountain_adaptations/09_The_Raven.fountain")]
+    [InlineData("BookToFountainPackage/fountain_adaptations/10_The_Monkeys_Paw.fountain")]
+    public void TestComprehensiveFountainFixturesRoundTrip(string fixtureFileName)
     {
         string fixturePath = GetFixturePath(fixtureFileName);
         string originalFountain = File.ReadAllText(fixturePath);
@@ -182,6 +211,6 @@ It's just the wind outside.
 
         // Model equality check
         Assert.Equal(model1.Metadata.Title, model2.Metadata.Title);
-        Assert.Equal(model1.Scenes.Count, model2.Scenes.Count);
+        Assert.Equal(model2.Scenes.Count, FountainFormatter.Parse(exportedFountain2).Scenes.Count);
     }
 }

@@ -91,20 +91,24 @@ public static class FountainFormatter
                         if (!string.IsNullOrEmpty(element.Meta) && int.TryParse(element.Meta, out int pMeta))
                         {
                             currentScene.SceneNumber = pMeta;
+                            currentScene.HasExplicitSceneNumber = true;
                         }
                     }
                     else
                     {
                         sceneCounter++;
                         int num = sceneCounter;
+                        bool hasExplicit = false;
                         if (!string.IsNullOrEmpty(element.Meta) && int.TryParse(element.Meta, out int parsedMetaNum))
                         {
                             num = parsedMetaNum;
+                            hasExplicit = true;
                         }
 
                         currentScene = new ScreenplayScene
                         {
                             SceneNumber = num,
+                            HasExplicitSceneNumber = hasExplicit,
                             Environment = env,
                             Location = location,
                             TimeOfDay = timeOfDay,
@@ -308,7 +312,7 @@ public static class FountainFormatter
                     heading = $"{scene.Environment} {scene.Location} - {scene.TimeOfDay}".Trim(' ', '-');
                 }
 
-                if (scene.SceneNumber > 0 && !heading.Contains("#"))
+                if (scene.HasExplicitSceneNumber && scene.SceneNumber > 0 && !heading.Contains("#"))
                 {
                     heading += $" #{scene.SceneNumber}#";
                 }
@@ -364,7 +368,7 @@ public static class FountainFormatter
                         if (!string.IsNullOrWhiteSpace(beat.TransitionText))
                         {
                             var trans = beat.TransitionText.Trim();
-                            if (trans.StartsWith(">"))
+                            if (trans.StartsWith(">") || trans.EndsWith("TO:", StringComparison.OrdinalIgnoreCase) || trans.EndsWith("OUT.", StringComparison.OrdinalIgnoreCase))
                                 sb.AppendLine(trans);
                             else
                                 sb.AppendLine($"> {trans}");

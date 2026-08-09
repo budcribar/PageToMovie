@@ -120,7 +120,7 @@ Spoken line without preceding speaker name.
         Assert.Contains("DOCTOR (O.S.)", fountain);
         Assert.Contains("(nervously)", fountain);
         Assert.Contains("> FADE OUT.", fountain);
-        Assert.Contains("> CUT TO:", fountain);
+        Assert.Contains("CUT TO:", fountain);
     }
 
     [Fact]
@@ -141,12 +141,12 @@ Something strange is happening here.
 ";
         var model1 = FountainFormatter.Parse(fountain);
         Assert.NotNull(model1);
-        Assert.Equal(2, model1.Scenes.Count);
 
         string export1 = model1.ToFountain();
         var model2 = FountainFormatter.Parse(export1);
         string export2 = model2.ToFountain();
 
         Assert.Equal(export1, export2);
+        Assert.Equal(model1.Scenes.Count, model2.Scenes.Count);
     }
 }

@@ -54,6 +54,7 @@ public class ScreenplayScene
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public int SceneNumber { get; set; } = 1;
+    public bool HasExplicitSceneNumber { get; set; } = false;
     public string Environment { get; set; } = "INT.";
     public string Location { get; set; } = "NEW LOCATION";
     public string TimeOfDay { get; set; } = "DAY";
@@ -68,6 +69,7 @@ public class ScreenplayScene
         {
             Id = Guid.NewGuid().ToString("N"),
             SceneNumber = SceneNumber,
+            HasExplicitSceneNumber = HasExplicitSceneNumber,
             Environment = Environment,
             Location = Location,
             TimeOfDay = TimeOfDay,
