@@ -1,0 +1,666 @@
+@* Page-local to Scenes — scene detail *@
+@inject StudioCapabilityState Caps
+@inject AdminSessionService Session
+@inject IAppLocalizer L
+@inject ClientMediaFolderService MediaFolder
+@inject EngineApiClient Engine
+@using Microsoft.AspNetCore.Components
+@using PageToMovie.Core.Models
+
+
+    <InlineAlert Message="@Host._error" CssClass="mb-3" />
+    @if (!Host.JobRunning)
+    {
+        <InlineAlert Message="@Host._message" Variant="info" CssClass="mb-3" />
+    }
+
+    @* Live gen: one compact surface — status + bar + Cancel only (no badges, no Grok dump, no log). *@
+    @if (Host.ShowLiveGenProgress && Host._job is not null)
+    {
+        <JobProgressCard Status="@Host._job.Status"
+                         Message="@Scenes.LiveGenStatusLabel(Host._job)"
+                         Index="Host._job.Index"
+                         Total="Host._job.Total"
+                         Percent="Host.LiveGenProgressPercent(Host._job)"
+                         ShowCancel="true"
+                         CancelDisabled="Host._busy"
+                         OnCancel="Host.CancelAsync"
+                         Kind="@Host._job.Kind"
+                         TestId="scenes-gen-progress"
+                         CancelTestId="scenes-gen-cancel" />
+    }
+    else if (Host.ShowOperatorGenPartial && Host._job is not null)
+    {
+        @Host.GenPartialAlert
+    }
+    else if (Host.ShowOperatorGenError && Host._job is not null)
+    {
+        @Host.GenErrorAlert
+    }
+    else if (Session.IsAdmin && Host._job is not null &&
+             (Host._job.Status is "done" or "partial" or "error" or "cancelled"))
+    {
+        @* Admin: finished-job summary only — no live log dump (that belonged under generating). *@
+        <div class="card mb-3 border-@(Host._job.Status == "error" ? "danger" : Host._job.Status == "partial" ? "warning" : "secondary")">
+            <div class="card-body py-2">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <span class="small">@(Host._job.Message ?? Host._job.Status)</span>
+                    <button class="btn btn-sm btn-outline-secondary" disabled="@Host._busy" @onclick="Host.ReloadListAsync">Refresh list</button>
+                </div>
+                @if (Host._job.Log.Count > 0)
+                {
+                    <button type="button"
+                            class="btn btn-sm btn-link text-muted p-0 mt-1 text-decoration-none"
+                            @onclick="() => Host._showAdminJobLog = !Host._showAdminJobLog">
+                        @(Host._showAdminJobLog ? "Hide details" : "Details (admin)")
+                    </button>
+                    @if (Host._showAdminJobLog)
+                    {
+                        <pre class="small mb-0 mt-1" style="max-height: 120px; overflow: auto;">@string.Join("\n", Host._job.Log.TakeLast(20))</pre>
+                    }
+                }
+            </div>
+        </div>
+    }
+
+    @* ---- Scene detail ---- *@
+    <div class="card mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <span>
+                <strong>Scene @(Host._detail.SceneNumber.ToString("D2"))</strong>
+                — @(Host._detail.Setting is { Length: > 0 } st ? st : "—")
+            </span>
+            <div class="d-flex gap-2 align-items-center flex-wrap">
+                <button type="button"
+                        class="btn btn-sm btn-outline-info"
+                        title="View history & changes for this scene"
+                        @onclick="() => Host.OpenSceneHistoryAsync(Host._detail.SceneNumber)">
+                    📜 History
+                </button>
+                <div class="d-flex align-items-center gap-1">
+                    <label class="small text-muted mb-0" for="genResDetail">Res</label>
+                    <select id="genResDetail"
+                            class="form-select form-select-sm"
+                            style="width:auto"
+                            @bind="Host._genResolution"
+                            @bind:after="Host.RefreshCostEstimateAsync"
+                            disabled="@(Host._busy || Host.ResolutionLocked)"
+                            title="@(Host.ResolutionLocked ? $"Locked at {Host._resolutionLock} — this project already has clips at that resolution." : null)">
+                        <option value="480p">480p</option>
+                        <option value="720p">720p</option>
+                        <option value="1080p">1080p</option>
+                    </select>
+                    @if (Host.ResolutionLocked)
+                    {
+                        <span class="small text-muted" title="Locked to on-disk resolution">🔒</span>
+                    }
+                </div>
+                <button class="btn btn-sm btn-success"
+                        disabled="@(Host._busy || Host.JobRunning || (Host._detail.ClipsOnDisk == 0 && !Host._detail.CompositeExists))"
+                        title="Play scene (browser stitch from clips)"
+                        @onclick="() => Host.PlaySceneCompositeAsync(Host._detail.SceneNumber)">
+                    ▶ Play scene
+                </button>
+                <button class="btn btn-sm btn-outline-secondary"
+                        data-testid="clip-add-open"
+                        disabled="@(Host._busy || Host.JobRunning)"
+                        title="Add a new clip to this scene (define fields, then generate its video)"
+                        @onclick="Host.OpenAddClipDialog">
+                    + Add clip
+                </button>
+                @if (Host._detail.ClipsOnDisk > 0)
+                {
+                    <button type="button"
+                            class="btn btn-sm btn-outline-primary"
+                            disabled="@(Host._busy || Host.JobRunning || Host._verifyingClip)"
+                            title="@(Host._selectedClips.Count > 0 ? $"Run dialogue & speaker verification on {Host._selectedClips.Count} selected clip(s)" : "Run dialogue & speaker verification on selected clips in the first column")"
+                            @onclick="Host.VerifySelectedScenesDialogueAsync">
+                        @(Host._selectedClips.Count > 0 ? $"🔍 Verify ({Host._selectedClips.Count}) Selected Clips" : "🔍 Verify Clip Dialogue")
+                    </button>
+                }
+                @* Background music is scored from the All-scenes overview (one control per scene row),
+                   since music is a per-scene concern and this view is about the scene's clips. *@
+                @if (Host._detail.HasBackgroundMusic)
+                {
+                    <button type="button"
+                            class="btn btn-sm btn-outline-info"
+                            disabled="@(Host._busy || Host.JobRunning)"
+                            title="View past audio takes & compare against the current one"
+                            @onclick="() => Host.OpenMusicCompareAsync(Host._detail.SceneNumber)">
+                        🎧 Audio Takes
+                    </button>
+                }
+                @if (Host._detail.CompositeExists || Host._detail.ClipsOnDisk > 0)
+                {
+                    <button type="button"
+                            class="btn btn-sm btn-outline-info"
+                            data-testid="scene-open-external-editor"
+                            disabled="@(Host._busy || Host.JobRunning)"
+                            title="Open scene video in @Host._preferredVideoEditor"
+                            @onclick="() => Host.OpenInExternalEditorAsync(Host._detail.SceneNumber, Host._selectedClip)">
+                        🎬 Open in @Host._preferredVideoEditor
+                    </button>
+                }
+                @if (Host.DetailLockedByOther)
+                {
+                    <span class="badge bg-warning text-dark">🔒 @Host._detailLockOwner</span>
+                }
+            </div>
+        </div>
+        <div class="card-body">
+            <p class="small text-muted mb-2">
+                @Host._detail.ClipsOnDisk/@Host._detail.ClipCount clips on disk
+                @if (Host._detail.ActualDurationSeconds is double actD)
+                {
+                    <span>· <strong class="text-body">@Scenes.FormatClock(actD)</strong> actual</span>
+                    @if (Host._detail.PlannedDurationSeconds is double planD)
+                    {
+                        <span>· plan @Scenes.FormatClock(planD)</span>
+                    }
+                }
+                else if (Host._detail.PlannedDurationSeconds is double planOnly)
+                {
+                    <span>· plan ~@Scenes.FormatClock(planOnly)</span>
+                }
+                @if (Host._detail.CharactersOnScreen.Count > 0)
+                {
+                    <span>· cast: @string.Join(", ", Host._detail.CharactersOnScreen.Select(Scenes.ShortChar))</span>
+                }
+                @if (!string.IsNullOrEmpty(Host._detail.PrimaryLocationId))
+                {
+                    <span>· loc: <code>@Scenes.ShortLoc(Host._detail.PrimaryLocationId)</code></span>
+                }
+                @{
+                    var verifiedCount = Host._detail.Clips.Count(c => c.DialogueVerification is { } v && (string.Equals(v.Status, "verified", StringComparison.OrdinalIgnoreCase) || string.Equals(v.Status, "no_speech", StringComparison.OrdinalIgnoreCase)));
+                    var totalWithDialogue = Host._detail.Clips.Count(c => !string.IsNullOrWhiteSpace(c.Dialogue));
+                }
+                @if (totalWithDialogue > 0 && verifiedCount > 0)
+                {
+                    <span>· <span class="text-success fw-semibold" title="Clips with dialogue verified via native video/audio QA">✓ @verifiedCount/@totalWithDialogue dialogue verified</span></span>
+                }
+            </p>
+
+            @* Full scene composite — hide while clip selected, remux/gen busy, or full player open *@
+            @if (Host.IsSceneGenBusy(Host._detail.SceneNumber))
+            {
+                <p class="small text-muted mb-2">
+                    Scene composite hidden while combining…
+                </p>
+            }
+            else if (Host._showScenePlayer && Host._playingScene == Host._detail.SceneNumber)
+            {
+                <p class="small text-muted mb-2">
+                    Playing full scene above.
+                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline" @onclick="Host.HideScenePlayer">Show inline preview</button>
+                </p>
+            }
+            else if (Host._detail.CompositeExists && Host._selectedClip is null)
+            {
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <h6 class="text-muted mb-0">Scene composite <span class="small fw-normal">(all clips · full scene)</span></h6>
+                        <button class="btn btn-sm btn-link" type="button"
+                                @onclick="() => Host.PlaySceneCompositeAsync(Host._detail.SceneNumber)">
+                            Play full scene
+                        </button>
+                    </div>
+                    <video controls playsinline
+                           style="max-width:100%; max-height:280px; background:#111; border-radius:0.35rem;"
+                           src="@(Host._sceneCompositeVideoUrl ?? Host._sceneCompositeServerUrl)"
+                           @key="Host._inlineCompositeKey"
+                           poster=""></video>
+                    <p class="small text-muted mb-0 mt-1">
+                        Scene composite on disk (~@(Host._detail.ActualDurationSeconds is double ad ? Scenes.FormatClock(ad) : "?")).
+                        Select a clip row below to play one clip only.
+                    </p>
+                </div>
+            }
+            else if (Host._detail.CompositeExists && Host._selectedClip is int)
+            {
+                <p class="small text-muted mb-2">
+                    Viewing single clip — full scene composite hidden.
+                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline" @onclick="() => Host.SelectClip(null)">Show scene composite</button>
+                </p>
+            }
+
+            @{
+                var hasMissingClips = Host._detail.Clips.Any(c => !c.OnDisk);
+            }
+            @if (hasMissingClips || Host._selectedClips.Count > 0)
+            {
+                <div class="d-flex align-items-center flex-wrap gap-2 mb-2" data-testid="clip-select-bar">
+                    @if (hasMissingClips)
+                    {
+                        <button type="button"
+                                class="btn btn-sm btn-outline-secondary"
+                                data-testid="clip-select-missing"
+                                disabled="@Host._busy"
+                                title="Check clips not yet on disk"
+                                @onclick="Host.SelectMissingClips">
+                            Select missing
+                        </button>
+                    }
+                    @if (Host._detail.Clips.Any(c => c.DialogueVerification is { Status: "mismatch" } or { Status: "speaker_swap" }))
+                    {
+                        <button type="button"
+                                class="btn btn-sm btn-warning text-black fw-semibold"
+                                data-testid="clip-select-mismatched"
+                                disabled="@Host._busy"
+                                title="Check all clips in this scene with dialogue mismatches or speaker swaps"
+                                @onclick="Host.SelectMismatchedClips">
+                            Select mismatched (@Host._detail.Clips.Count(c => c.DialogueVerification is { Status: "mismatch" } or { Status: "speaker_swap" }))
+                        </button>
+                    }
+                    @if (Host._selectedClips.Count > 0)
+                    {
+                        <span class="small">
+                            <strong>@Host._selectedClips.Count</strong> selected
+                            @if (Host.EstimateSelectedClipsCostUsd() is { } scc)
+                            {
+                                <span class="text-muted">· ~$@(scc.ToString("0.00"))</span>
+                            }
+                        </span>
+                        <button type="button" class="btn btn-sm btn-warning"
+                                data-testid="clip-batch-regen"
+                                disabled="@(Host._busy || Host.JobRunning || !Host.CastReady || Host.DetailLockedByOther)"
+                                title="@(!Host.CastReady
+                                    ? Host.CastBlockedTitle
+                                    : Host.DetailLockedByOther
+                                    ? $"Locked by {Host._detailLockOwner}"
+                                    : "Generate (or re-generate) every selected clip")"
+                                @onclick="Host.RegenSelectedClipsAsync">
+                            Generate selected
+                        </button>
+                    }
+                </div>
+            }
+
+            <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th style="width:2rem;">
+                                <input class="form-check-input" type="checkbox"
+                                       data-testid="clip-select-all"
+                                       title="Select all clips"
+                                       checked="@Host.AllClipsSelected"
+                                       disabled="@(Host._busy || Host._detail is not { Clips.Count: > 0 })"
+                                       @onchange="e => Host.ToggleSelectAllClips((bool)(e.Value ?? false))" />
+                            </th>
+                            <th style="width:7rem;">Clip</th>
+                            <th style="width:6rem; cursor:pointer; user-select:none;"
+                                @onclick="Host.ToggleClipDurationSort"
+                                title="Click to sort by duration">
+                                Dur @(Host._clipSortByDuration ? (Host._clipSortAscending ? "▲" : "▼") : "⇅")
+                            </th>
+                            <th>Dialogue</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var c in Host.SortedDetailClips)
+                        {
+                            var active = Host._selectedClip == c.ClipNumber;
+                            var cn = c.ClipNumber;
+                            var isChecked = Host._selectedClips.Contains(cn);
+                            <tr class="@(active ? "table-primary" : isChecked ? "table-warning" : "")" style="cursor:pointer;"
+                                @onclick="() => Host.SelectClip(cn)">
+                                <td @onclick:stopPropagation="true">
+                                    <input class="form-check-input" type="checkbox"
+                                           data-testid="@($"clip-select-{cn}")"
+                                           checked="@isChecked"
+                                           disabled="@Host._busy"
+                                           @onchange="e => Host.ToggleClipSelect(cn, (bool)(e.Value ?? false))" />
+                                </td>
+                                <td class="text-nowrap" @onclick:stopPropagation="true">
+                                    @{
+                                        var clipBusy = Host.IsClipGenBusy(cn);
+                                    }
+                                    @if (clipBusy)
+                                    {
+                                        <span class="badge bg-warning text-dark px-2 py-1 rounded-pill font-monospace me-1" style="font-size:0.8rem;"
+                                              title="Generating — file is about to change">⏳ C@(cn.ToString("D2"))</span>
+                                    }
+                                    else if (c.OnDisk)
+                                    {
+                                        <button type="button"
+                                                class="btn btn-sm btn-success rounded-pill px-2 py-0 font-monospace fw-semibold align-baseline me-1 shadow-sm"
+                                                style="font-size:0.78rem; border-width:1px;"
+                                                title="Click to play clip C@(cn.ToString("D2")) video"
+                                                @onclick="() => Host.SelectClip(cn)">
+                                            ▶ Play C@(cn.ToString("D2"))
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-secondary text-light px-2 py-1 rounded-pill font-monospace me-1" style="font-size:0.8rem;"
+                                              title="Not on disk yet">C@(cn.ToString("D2"))</span>
+                                    }
+                                    @if (c.DialogueVerification is { } ver)
+                                    {
+                                        var isNoSpeechFail = string.Equals(ver.Status, "no_speech", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(ver.ExpectedDialogue);
+                                        var (badgeClass, badgeText) = ver.Status?.ToLowerInvariant() switch
+                                        {
+                                            "verified" => ("bg-success-subtle text-success border border-success-subtle", $"✓ Verified ({ver.DialogueAccuracyScore:P0})"),
+                                            "speaker_swap" => ("bg-danger-subtle text-danger border border-danger-subtle", "⚠ Speaker Swap"),
+                                            "mismatch" => ("bg-warning-subtle text-warning border border-warning-subtle", $"⚠ Mismatch ({ver.DialogueAccuracyScore:P0})"),
+                                            "no_speech" when isNoSpeechFail => ("bg-danger-subtle text-danger border border-danger-subtle", "⚠ No speech (0%)"),
+                                            "no_speech" => ("bg-secondary-subtle text-secondary border border-secondary-subtle", "✓ No speech"),
+                                            _ => ("bg-secondary-subtle text-secondary border border-secondary-subtle", ver.Status ?? "unverified"),
+                                        };
+                                        <button type="button" class="btn btn-sm p-0 border-0 align-baseline"
+                                                @onclick:stopPropagation="true"
+                                                @onclick="() => Host.OpenVerificationModal(Host._detail.SceneNumber, cn, ver)">
+                                            <span class="badge @badgeClass ms-1 d-inline-block text-center" style="min-width: 140px; cursor:pointer; padding: 0.35em 0.6em; font-size: 0.75rem;" title="Click to view verification report details">
+                                                @badgeText 📋
+                                            </span>
+                                        </button>
+                                    }
+                                    <button type="button"
+                                            class="btn btn-sm btn-outline-info py-0 px-1 ms-2 text-decoration-none small"
+                                            disabled="@(Host._busy || Host.JobRunning)"
+                                            title="View past takes & version comparison grid for this clip"
+                                            @onclick:stopPropagation="true"
+                                            @onclick="() => Host.OpenClipCompareAsync(Host._detail.SceneNumber, cn)">
+                                        🎬 Takes
+                                    </button>
+                                    <button type="button"
+                                            class="btn btn-sm btn-link text-danger p-0 ms-2 text-decoration-none"
+                                            data-testid="@($"clip-delete-{cn}")"
+                                            disabled="@(Host._busy || Host.JobRunning)"
+                                            title="Delete this clip (video + shot plan entry)"
+                                            @onclick:stopPropagation="true"
+                                            @onclick="() => Host.RequestDeleteClip(Host._detail.SceneNumber, cn)">
+                                        🗑️
+                                    </button>
+                                </td>
+                                <td class="small">
+                                    @if (c.ActualDurationSeconds is double ca)
+                                    {
+                                        <span>@Scenes.FormatClock(ca)</span>
+                                        @if (c.DurationSeconds > 0 && Math.Abs(c.DurationSeconds - ca) > 1.5)
+                                        {
+                                            <span class="text-muted"> · plan @c.DurationSeconds s</span>
+                                        }
+                                    }
+                                    else if (c.DurationSeconds > 0)
+                                    {
+                                        <span class="text-muted">~@c.DurationSeconds s</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">—</span>
+                                    }
+                                </td>
+                                <td class="small clip-dialogue-cell"
+                                    title="@(string.IsNullOrWhiteSpace(c.Dialogue) ? "Click to add dialogue" : c.Dialogue + " (click to edit)")"
+                                    style="cursor:pointer;"
+                                    @onclick:stopPropagation="true"
+                                    @onclick="() => Host.OpenClipEditor(c)">
+                                    @if (string.IsNullOrWhiteSpace(c.Dialogue))
+                                    {
+                                        <span class="clip-dialogue-link clip-dialogue-link--empty">—</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="clip-dialogue-link">@Scenes.Trunc(c.Dialogue, 90)</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    @if (Host._clip is not null)
+    {
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <span>
+                    Clip <code>S@(Host._detail.SceneNumber.ToString("D2"))C@(Host._clip.ClipNumber.ToString("D2"))</code>
+                    @if (!string.IsNullOrEmpty(Host._clip.Timestamp))
+                    {
+                        <span class="text-muted ms-2">@Host._clip.Timestamp</span>
+                    }
+                </span>
+                <div class="d-flex gap-1">
+                    @{
+                        var clipNeedsPrev = Host.PreviousClipMissing(Host._clip.ClipNumber);
+                    }
+                    <button class="btn btn-sm btn-outline-warning"
+                            disabled="@(Host._busy || Host.JobRunning || !Host.CastReady || clipNeedsPrev)"
+                            title="@(!Host.CastReady
+                                ? Host.CastBlockedTitle
+                                : clipNeedsPrev
+                                ? $"Generate C{(Host._clip.ClipNumber - 1):D2} first — continues from previous video"
+                                : "Force re-generate this clip (overwrites if present)")"
+                            @onclick="() => Host.RegenClipAsync(Host._detail.SceneNumber, Host._clip.ClipNumber)">
+                        Regen clip
+                    </button>
+                    <button class="btn btn-sm btn-outline-primary"
+                            data-testid="clip-video-edit-open"
+                            disabled="@(Host._busy || Host.JobRunning || !Host._clip.OnDisk || Scenes.ClipExceedsEditDurationCap(Host._clip))"
+                            title="@(!Host._clip.OnDisk
+                                ? "Generate this clip first"
+                                : Scenes.ClipExceedsEditDurationCap(Host._clip)
+                                ? $"Clip is {(Host._clip.ActualDurationSeconds ?? Host._clip.DurationSeconds):0.#}s — Grok can only edit clips up to {Scenes.MaxVideoEditInputSeconds:0.#}s"
+                                : "Edit this clip with an AI text prompt (new take, spends provider credit)")"
+                            @onclick="Host.OpenVideoEditPrompt">
+                        ✂️ AI Edit
+                    </button>
+                    <button class="btn btn-sm btn-outline-info"
+                            disabled="@(Host._busy || Host.JobRunning)"
+                            title="View past takes & version comparison grid for this clip"
+                            @onclick="() => Host.OpenClipCompareAsync(Host._detail.SceneNumber, Host._clip.ClipNumber)">
+                        🎬 Takes (@(Host._clipVersions?.Count ?? 1))
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary"
+                            disabled="@(Host._busy || Host.JobRunning)"
+                            title="Edit clip fields (dialogue, prompt, characters, lighting…)"
+                            @onclick="() => Host.OpenClipEditor(Host._clip)">
+                        Edit clip
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger"
+                            disabled="@(Host._busy || Host.JobRunning)"
+                            title="Delete this clip (video + shot plan entry)"
+                            @onclick="() => Host.RequestDeleteClip(Host._detail.SceneNumber, Host._clip.ClipNumber)">
+                        Delete clip
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => Host.SelectClip(null)">Close</button>
+                </div>
+            </div>
+            <div class="card-body row">
+                <div class="col-md-5 mb-3">
+                    @if (Host._clip.OnDisk)
+                    {
+                        <div class="small text-success mb-1">
+                            Single clip only
+                            @if (Host._clip.ActualDurationSeconds is double cad)
+                            {
+                                <span>· @Scenes.FormatClock(cad)</span>
+                            }
+                            · not the full scene
+                        </div>
+                        @if (Host._clipVideoLoading)
+                        {
+                            <MediaDownloadProgress Label="Checking for a newer local copy…" ShowProgress="false" />
+                        }
+                        else
+                        {
+                            <video controls playsinline autoplay
+                                   style="width:100%; max-height:320px; background:#111; border-radius:0.35rem;"
+                                   src="@(Host._clipVideoUrl ?? Host._clipServerVideoUrl)"
+                                   @key="@($"clip-{Host._detail.SceneNumber}-{Host._clip.ClipNumber}-{Host._clipVideoKey}")"
+                                   onloadeddata="this.play().catch(function(){})"></video>
+                        }
+                        <div class="small text-muted mt-1">
+                            @Host._clip.FileName · @Scenes.FormatSize(Host._clip.SizeBytes)
+                            · <a href="@Engine.ClipVideoUrl(Host._projectId, Host._detail.SceneNumber, Host._clip.ClipNumber)" target="Host._blank" rel="noopener">open clip URL</a>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="border rounded p-4 text-center text-muted">
+                            No video on disk
+                            @if (Host.PreviousClipMissing(Host._clip.ClipNumber))
+                            {
+                                <div class="small text-warning mt-2">
+                                    Generate C@((Host._clip.ClipNumber - 1).ToString("D2")) first — this clip continues from the previous video.
+                                </div>
+                            }
+                            <div class="mt-2">
+                                <button class="btn btn-sm btn-warning"
+                                        disabled="@(Host._busy || Host.JobRunning || !Host.CastReady || Host.PreviousClipMissing(Host._clip.ClipNumber))"
+                                        title="@(!Host.CastReady
+                                            ? Host.CastBlockedTitle
+                                            : Host.PreviousClipMissing(Host._clip.ClipNumber)
+                                            ? $"Need C{(Host._clip.ClipNumber - 1):D2} on disk"
+                                            : null)"
+                                        @onclick="() => Host.RegenClipAsync(Host._detail.SceneNumber, Host._clip.ClipNumber)">
+                                    Generate this clip
+                                </button>
+                            </div>
+                        </div>
+                    }
+                </div>
+                <div class="col-md-7">
+                    <h6>Visual prompt</h6>
+                    <pre class="small bg-light border rounded p-2" style="max-height:200px; overflow:auto; white-space:pre-wrap;">@(Host._clip.VisualPrompt is { Length: > 0 } vp ? vp : "—")</pre>
+
+                    <button class="btn btn-sm btn-outline-secondary mb-2"
+                            @onclick="() => Host.OpenClipCompareAsync(Host._detail.SceneNumber, Host._clip.ClipNumber)">
+                        🎬 Takes (@(Host._clipVersions?.Count ?? 1))
+                    </button>
+                    }
+                    <h6 class="mt-2">Negative</h6>
+                    @if (!string.IsNullOrWhiteSpace(Host._clip.NegativePrompt))
+                    {
+                        <pre class="small bg-light border rounded p-2" style="max-height:80px; overflow:auto; white-space:pre-wrap;">@Host._clip.NegativePrompt</pre>
+                        <div class="form-text small">Plus global bans at gen (text/watermarks/limbs/name tags…).</div>
+                    }
+                    else
+                    {
+                        <p class="small text-muted mb-0">
+                            No clip-specific extras. Global bans still apply at video gen
+                            (no legible text, watermarks, logos, extra limbs, name tags…).
+                        </p>
+                    }
+                    <h6>Audio</h6>
+                    <p class="small mb-1">
+                        <strong>@(string.IsNullOrEmpty(Host._clip.Speaker) ? "—" : Scenes.ShortChar(Host._clip.Speaker))</strong>
+                        @if (!string.IsNullOrEmpty(Host._clip.Delivery))
+                        {
+                            <span class="text-muted">· @Scenes.ShortDelivery(Host._clip.Delivery)</span>
+                        }
+                    </p>
+                    @if (Host._clip.Dialogue is { Length: > 0 } fullDlg)
+                    {
+                        <pre class="small bg-light border rounded p-2 mb-2" style="cursor:pointer;
+                             max-height:160px; overflow:auto; white-space:pre-wrap; word-break:break-word;"
+                             @onclick="() => Host.OpenClipEditor(Host._clip)" title="Click to edit">@fullDlg</pre>
+                    }
+                    else
+                    {
+                        <p class="small text-muted" style="cursor:pointer;" @onclick="() => Host.OpenClipEditor(Host._clip)" title="Click to add dialogue">— (click to add)</p>
+                    }
+                    @if (Host._clip.DialogueVerification is { } ver)
+                    {
+                        @if (string.Equals(ver.Status, "verified", StringComparison.OrdinalIgnoreCase))
+                        {
+                            <button type="button" class="btn btn-sm p-0 border-0 text-start align-baseline"
+                                    @onclick="() => Host.OpenVerificationModal(Host._detail.SceneNumber, Host._clip.ClipNumber, ver)">
+                                <div class="badge bg-success-subtle text-success border border-success-subtle rounded-pill mb-2 px-2 py-1 small" style="cursor:pointer;" title="Click to view complete verification report">
+                                    ✓ Dialogue &amp; Speaker Verified (@($"{ver.DialogueAccuracyScore:P0}")) 📋
+                                </div>
+                            </button>
+                        }
+                        else if (string.Equals(ver.Status, "speaker_swap", StringComparison.OrdinalIgnoreCase))
+                        {
+                            <button type="button" class="btn btn-sm p-0 border-0 text-start align-baseline"
+                                    @onclick="() => Host.OpenVerificationModal(Host._detail.SceneNumber, Host._clip.ClipNumber, ver)">
+                                <div class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill mb-2 px-2 py-1 small" style="cursor:pointer;" title="Click to view complete verification report">
+                                    ⚠ Speaker Swap (Expected @ver.ExpectedSpeaker, Detected @(ver.DetectedSpeaker ?? "Other")) 📋
+                                </div>
+                            </button>
+                        }
+                        else if (string.Equals(ver.Status, "mismatch", StringComparison.OrdinalIgnoreCase))
+                        {
+                            <button type="button" class="btn btn-sm p-0 border-0 text-start align-baseline"
+                                    @onclick="() => Host.OpenVerificationModal(Host._detail.SceneNumber, Host._clip.ClipNumber, ver)">
+                                <div class="badge bg-warning-subtle text-warning border border-warning-subtle rounded-pill mb-2 px-2 py-1 small" style="cursor:pointer;" title="Click to view complete verification report">
+                                    ⚠ Dialogue Mismatch (@($"{ver.DialogueAccuracyScore:P0}")) 📋
+                                </div>
+                            </button>
+                        }
+
+                        @if (!string.IsNullOrWhiteSpace(ver.TranscribedDialogue) || !string.IsNullOrWhiteSpace(ver.DetectedSpeaker))
+                        {
+                            <div class="p-2 mb-2 rounded bg-body-tertiary border border-secondary-subtle x-small text-start">
+                                <div class="mb-1">
+                                    <span class="fw-bold me-1">Speaker:</span>
+                                    <span>Expected <em>@(ver.ExpectedSpeaker ?? "None")</em></span>
+                                    @if (!string.IsNullOrWhiteSpace(ver.DetectedSpeaker))
+                                    {
+                                        <span class="ms-1">· Heard <em>@ver.DetectedSpeaker</em></span>
+                                    }
+                                </div>
+                                @Scenes.RenderDiffHtml(ver.ExpectedDialogue, ver.TranscribedDialogue)
+                            </div>
+                        }
+
+                        @if (Host._musicTrashVersions is { Count: > 0 })
+                        {
+                            <hr class="border-secondary my-4" />
+                            <button type="button" class="btn btn-sm btn-outline-secondary text-white mb-2"
+                                    @onclick="() => Host._showMusicTrash = !Host._showMusicTrash">
+                                Deleted takes (@Host._musicTrashVersions.Count) @(Host._showMusicTrash ? "▲ Hide" : "▼ Show")
+                            </button>
+                            @if (Host._showMusicTrash)
+                            {
+                                @foreach (var take in Host._musicTrashVersions)
+                                {
+                                    <div class="card bg-dark border-secondary p-2 mb-2 opacity-75">
+                                        <div class="d-flex justify-content-between align-items-center gap-2">
+                                            <span class="small text-muted">@take.CreatedAtUtc.ToLocalTime().ToString("g")</span>
+                                            <button type="button" class="btn btn-sm btn-outline-info"
+                                                    disabled="@Host._promotingMusicVersion"
+                                                    @onclick="() => Host.RestoreMusicVersionAsync(Host._compareMusicSceneNumber, take.TakeId)">
+                                                Restore take
+                                            </button>
+                                        </div>
+                                    </div>
+                                }
+                            }
+                        }
+                    }
+                    @if (Host._clip.OnDisk)
+                    {
+                        <button type="button" class="btn btn-outline-primary btn-sm rounded-pill mb-2 px-2 py-0 ms-1 small"
+                                disabled="@Host._verifyingClip"
+                                @onclick="() => Host.VerifyClipDialogueManualAsync(Host._clip)"
+                                title="Run automated dialogue verification on this existing clip">
+                            @(Host._verifyingClip && Host._verifyingClipNumber == Host._clip.ClipNumber ? "Verifying..." : "Verify Dialogue")
+                        </button>
+                    }
+                    @if (Host._clip.CharactersOnScreen.Count > 0)
+                    {
+                        <p class="small text-muted mb-1">on screen: @string.Join(", ", Host._clip.CharactersOnScreen.Select(Scenes.ShortChar))</p>
+                    }
+                    <p class="small text-muted mb-0">
+                        subject: @(Host._clip.PrimarySubject is { Length: > 0 } ps ? ps : "—")
+                        · continuation: @Host._clip.Continuation
+                        · @Host._clip.DurationSeconds s
+                    </p>
+                </div>
+            </div>
+            <div class="card-footer small text-muted">
+                Use <strong>Play scene</strong> to preview video or <a href="review">Review</a> to rate takes.
+            </div>
+        </div>
+    }
+}
+
+@code {
+    [CascadingParameter] public Scenes Host { get; set; } = default!;
+}

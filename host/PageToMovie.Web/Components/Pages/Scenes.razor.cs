@@ -11,33 +11,33 @@ namespace PageToMovie.Web.Components.Pages;
 
 public partial class Scenes
 {
-    private bool IsSimpleFilm =>
+    internal bool IsSimpleFilm =>
         ActiveProject.IsSimpleVoice
         || (Nav.ToAbsoluteUri(Nav.Uri).Query?.Contains("simple=1", StringComparison.OrdinalIgnoreCase) ?? false);
 
-    private bool _busy;
-    private bool _gateChecked;
-    private string? _error;
-    private string? _message;
-    private string _projectId = "";
-    private List<string> _projectIds = new();
-    private string _pickSetting = "";
-    private string _pickCharacter = "";
-    private string _pickLocation = "";
-    private bool _showFilters;
+    internal bool _busy;
+    internal bool _gateChecked;
+    internal string? _error;
+    internal string? _message;
+    internal string _projectId = "";
+    internal List<string> _projectIds = new();
+    internal string _pickSetting = "";
+    internal string _pickCharacter = "";
+    internal string _pickLocation = "";
+    internal bool _showFilters;
 
     /// <summary>Video gen resolution (defaults from Configuration).</summary>
-    private string _genResolution = "480p";
+    internal string _genResolution = "480p";
     /// <summary>Resolution already used by this project's on-disk clips, if consistent — null when unset.</summary>
-    private string? _resolutionLock;
-    private bool ResolutionLocked => !string.IsNullOrWhiteSpace(_resolutionLock) || (_scenes is not null && _scenes.Sum(s => s.ClipsOnDisk) > 0);
-    private string _sortBy = "number"; // "number" or "duration"
-    private bool _sortAscending = true;
+    internal string? _resolutionLock;
+    internal bool ResolutionLocked => !string.IsNullOrWhiteSpace(_resolutionLock) || (_scenes is not null && _scenes.Sum(s => s.ClipsOnDisk) > 0);
+    internal string _sortBy = "number"; // "number" or "duration"
+    internal bool _sortAscending = true;
     /// <summary>Clip table: when true, sort by duration; else keep plan order (clip number).</summary>
-    private bool _clipSortByDuration;
-    private bool _clipSortAscending = true;
+    internal bool _clipSortByDuration;
+    internal bool _clipSortAscending = true;
 
-    private void ToggleSort(string column)
+    internal void ToggleSort(string column)
     {
         if (_sortBy == column)
         {
@@ -50,7 +50,7 @@ public partial class Scenes
         }
     }
 
-    private void ToggleClipDurationSort()
+    internal void ToggleClipDurationSort()
     {
         if (_clipSortByDuration)
             _clipSortAscending = !_clipSortAscending;
@@ -61,7 +61,7 @@ public partial class Scenes
         }
     }
 
-    private IEnumerable<SceneSummary> SortedVisibleScenes
+    internal IEnumerable<SceneSummary> SortedVisibleScenes
     {
         get
         {
@@ -79,7 +79,7 @@ public partial class Scenes
     }
 
     /// <summary>Clips in open scene, optionally sorted by actual/plan duration.</summary>
-    private IEnumerable<ClipSummary> SortedDetailClips
+    internal IEnumerable<ClipSummary> SortedDetailClips
     {
         get
         {
@@ -95,59 +95,59 @@ public partial class Scenes
         }
     }
     /// <summary>Cost estimate at the current resolution, refreshed on load and resolution change.</summary>
-    private CostReport? _costReport;
+    internal CostReport? _costReport;
     /// <summary>Project-wide cast gate: every character voice + locked image before video spend.</summary>
-    private bool _castChecked;
-    private bool _castReady;
-    private int? _castReadyCount;
-    private int? _castTotal;
-    private List<string> _castMissing = new();
-    private List<SceneSummary>? _scenes;
+    internal bool _castChecked;
+    internal bool _castReady;
+    internal int? _castReadyCount;
+    internal int? _castTotal;
+    internal List<string> _castMissing = new();
+    internal List<SceneSummary>? _scenes;
 
     /// <summary>True once the shot plan already has an end-credits scene (auto-inserted or re-added).</summary>
-    private bool HasCreditsScene => _scenes?.Any(s => s.IsCredits) == true;
-    private HashSet<int> _selected = new();
-    private string _selectionMode = ""; // "" | incomplete | all
-    private int? _selectedScene;
-    private SceneDetail? _detail;
-    private int? _selectedClip;
-    private ClipSummary? _clip;
-    private (int Scene, int Clip)? _deleteClipTarget;
-    private int? _deleteSceneTarget;
-    private ClipEditRequest? _clipEditor;
-    private bool _clipEditorIsNew;
-    private HashSet<string> _clipEditorCast = new(StringComparer.OrdinalIgnoreCase);
+    internal bool HasCreditsScene => _scenes?.Any(s => s.IsCredits) == true;
+    internal HashSet<int> _selected = new();
+    internal string _selectionMode = ""; // "" | incomplete | all
+    internal int? _selectedScene;
+    internal SceneDetail? _detail;
+    internal int? _selectedClip;
+    internal ClipSummary? _clip;
+    internal (int Scene, int Clip)? _deleteClipTarget;
+    internal int? _deleteSceneTarget;
+    internal ClipEditRequest? _clipEditor;
+    internal bool _clipEditorIsNew;
+    internal HashSet<string> _clipEditorCast = new(StringComparer.OrdinalIgnoreCase);
     /// <summary>Multi-select clip numbers within the currently open scene's clip table, for batch regen.</summary>
-    private readonly HashSet<int> _selectedClips = new();
-    private JobSnapshot? _job;
-    private List<JobSnapshot> _myJobs = new();
+    internal readonly HashSet<int> _selectedClips = new();
+    internal JobSnapshot? _job;
+    internal List<JobSnapshot> _myJobs = new();
     /// <summary>Admin-only: expand finished-job log under the compact result card.</summary>
-    private bool _showAdminJobLog;
+    internal bool _showAdminJobLog;
     /// <summary>Highest progress % shown for the current job — bar never bounces backward.</summary>
-    private int _progressFloor;
-    private string? _progressFloorJobId;
+    internal int _progressFloor;
+    internal string? _progressFloorJobId;
     /// <summary>Throttle mid-job list refresh so clips x/y + status pills stay live without thrashing.</summary>
-    private int _lastListRefreshIndex = -1;
-    private int? _lastListRefreshScene;
-    private string? _lastListRefreshMessage;
-    private DateTimeOffset _lastListRefreshAt = DateTimeOffset.MinValue;
-    private bool _listRefreshInFlight;
-    private int? _playSceneAfterRemux;
-    private bool _showScenePlayer;
-    private int? _playingScene;
-    private long _sceneVideoKey;
-    private long _inlineCompositeKey;
-    private long _clipVideoKey;
+    internal int _lastListRefreshIndex = -1;
+    internal int? _lastListRefreshScene;
+    internal string? _lastListRefreshMessage;
+    internal DateTimeOffset _lastListRefreshAt = DateTimeOffset.MinValue;
+    internal bool _listRefreshInFlight;
+    internal int? _playSceneAfterRemux;
+    internal bool _showScenePlayer;
+    internal int? _playingScene;
+    internal long _sceneVideoKey;
+    internal long _inlineCompositeKey;
+    internal long _clipVideoKey;
     /// <summary>"Play selected" — multi-scene (possibly non-contiguous) client-stitched preview.</summary>
-    private bool _showPreviewPlayer;
-    private long _previewVideoKey;
-    private List<int> _previewScenes = new();
-    private string? _clientPreviewUrl;
-    private string? _clientSceneUrl;
-    private bool _clientStitching;
-    private string? _clientStitchStatus;
+    internal bool _showPreviewPlayer;
+    internal long _previewVideoKey;
+    internal List<int> _previewScenes = new();
+    internal string? _clientPreviewUrl;
+    internal string? _clientSceneUrl;
+    internal bool _clientStitching;
+    internal string? _clientStitchStatus;
 
-    private bool JobRunning =>
+    internal bool JobRunning =>
         string.Equals(_job?.Status, "running", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(_job?.Status, "queued", StringComparison.OrdinalIgnoreCase) ||
         _myJobs.Any(j =>
@@ -159,12 +159,12 @@ public partial class Scenes
     /// confirming it server-side — closes the gap where <see cref="IsSceneGenBusy"/> would
     /// otherwise still see the previous (already-finished) job and let a stale composite show.
     /// </summary>
-    private int? _pendingRegenScene;
+    internal int? _pendingRegenScene;
 
     /// <summary>
     /// True when a clip/scene/remux job is active for this scene — hide stale composite player.
     /// </summary>
-    private bool IsSceneGenBusy(int sceneNumber)
+    internal bool IsSceneGenBusy(int sceneNumber)
     {
         if (sceneNumber <= 0) return false;
         if (_pendingRegenScene == sceneNumber) return true;
@@ -198,7 +198,7 @@ public partial class Scenes
     /// regen (kind "scene") and multi-select batch regen (kind "batch"). Used to avoid showing
     /// a stale "on disk" pill or letting Play open the file mid-overwrite.
     /// </summary>
-    private bool IsClipGenBusy(int clipNumber)
+    internal bool IsClipGenBusy(int clipNumber)
     {
         if (_detail is null) return false;
         var sn = _detail.SceneNumber;
@@ -216,9 +216,9 @@ public partial class Scenes
     }
 
     /// <summary>True when every cast member has approved voice + locked look (or voice-only + voice).</summary>
-    private bool CastReady => _castReady;
+    internal bool CastReady => _castReady;
 
-    private string CastBlockedTitle =>
+    internal string CastBlockedTitle =>
         _castMissing.Count > 0
             ? $"Approve voice + locked image first: {string.Join(", ", _castMissing.Take(4))}{(_castMissing.Count > 4 ? "…" : "")}"
             : "Approve voice + locked image for every character before generating video";
@@ -226,7 +226,7 @@ public partial class Scenes
     /// <summary>
     /// Clip N (N&gt;1) needs clip N-1 on disk — Imagine continues from the previous video.
     /// </summary>
-    private bool PreviousClipMissing(int clipNumber)
+    internal bool PreviousClipMissing(int clipNumber)
     {
         if (clipNumber <= 1 || _detail is null) return false;
         var prev = _detail.Clips.FirstOrDefault(c => c.ClipNumber == clipNumber - 1);
@@ -234,32 +234,32 @@ public partial class Scenes
     }
 
     /// <summary>Jobs that belong on Scenes (not leftover stage2 / character jobs).</summary>
-    private static bool IsScenesWorkflowJob(string? kind) =>
+    internal static bool IsScenesWorkflowJob(string? kind) =>
         kind is "scene" or "batch" or "remux" or "music" or "lip_sync" or "video_edit";
 
     /// <summary>
     /// One compact progress card while video work runs — operators and admin.
     /// No badges, provider names, raw engine message, or live log.
     /// </summary>
-    private bool ShowLiveGenProgress =>
+    internal bool ShowLiveGenProgress =>
         _job is not null &&
         IsScenesWorkflowJob(_job.Kind) &&
         (_job.Status is "running" or "queued");
 
-    private bool ShowOperatorGenError =>
+    internal bool ShowOperatorGenError =>
         !Session.IsAdmin &&
         _job is not null &&
         IsScenesWorkflowJob(_job.Kind) &&
         string.Equals(_job.Status, "error", StringComparison.OrdinalIgnoreCase);
 
-    private bool ShowOperatorGenPartial =>
+    internal bool ShowOperatorGenPartial =>
         !Session.IsAdmin &&
         _job is not null &&
         IsScenesWorkflowJob(_job.Kind) &&
         string.Equals(_job.Status, "partial", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Short outcome label for the live bar (no provider / path / status dump).</summary>
-    private static string LiveGenStatusLabel(JobSnapshot job)
+    internal static string LiveGenStatusLabel(JobSnapshot job)
     {
         var kind = job.Kind ?? "";
         if (string.Equals(job.Status, "queued", StringComparison.OrdinalIgnoreCase))
@@ -301,7 +301,7 @@ public partial class Scenes
     /// Progress percent while running. Remux uses a fixed 0–100 scale and is monotonic
     /// (no soft-crawl / waiting math that made the bar bounce during ffmpeg).
     /// </summary>
-    private int LiveGenProgressPercent(JobSnapshot job)
+    internal int LiveGenProgressPercent(JobSnapshot job)
     {
         // New job id → reset floor so a finished 92% doesn't pin the next job.
         var jid = job.JobId ?? "";
@@ -343,26 +343,26 @@ public partial class Scenes
         return pct;
     }
 
-    private bool SelectedLockedByOther =>
+    internal bool SelectedLockedByOther =>
         _scenes is not null &&
         _selected.Any(sn => _scenes.Any(s => s.SceneNumber == sn && s.LockedByOther));
 
-    private bool DetailLockedByOther =>
+    internal bool DetailLockedByOther =>
         _detail is not null &&
         (_scenes?.FirstOrDefault(s => s.SceneNumber == _detail.SceneNumber)?.LockedByOther ?? false);
 
-    private string? _detailLockOwner =>
+    internal string? _detailLockOwner =>
         _detail is null
             ? null
             : _scenes?.FirstOrDefault(s => s.SceneNumber == _detail.SceneNumber)?.LockOwnerUserId;
 
-    private string SelectionMode => _selectionMode;
+    internal string SelectionMode => _selectionMode;
 
     // Tri-state progress glyph for a scene's clip generation:
     //   ○ (muted)   nothing generated yet, or no clips planned
     //   ◐ (warning) some clips on disk, not all
     //   ● (success) every planned clip generated
-    private (string Glyph, string Css, string Title) SceneProgressGlyph(SceneSummary s)
+    internal (string Glyph, string Css, string Title) SceneProgressGlyph(SceneSummary s)
     {
         if (s.ClipCount <= 0)
             return ("○", "text-muted", "No clips planned");
@@ -373,7 +373,7 @@ public partial class Scenes
         return ("○", "text-muted", $"0 of {s.ClipCount} clips generated");
     }
 
-    private List<string> CharacterOptions
+    internal List<string> CharacterOptions
     {
         get
         {
@@ -414,7 +414,7 @@ public partial class Scenes
         }
     }
 
-    private List<string> LocationOptions =>
+    internal List<string> LocationOptions =>
         _scenes is null
             ? new List<string>()
             : _scenes
@@ -430,19 +430,19 @@ public partial class Scenes
                 .OrderBy(ShortLoc, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-    private bool HasActiveFilters =>
+    internal bool HasActiveFilters =>
         !string.IsNullOrWhiteSpace(_pickCharacter) ||
         !string.IsNullOrWhiteSpace(_pickLocation) ||
         !string.IsNullOrWhiteSpace(_pickSetting);
 
-    private void ClearFilters()
+    internal void ClearFilters()
     {
         _pickCharacter = "";
         _pickLocation = "";
         _pickSetting = "";
     }
 
-    private IEnumerable<SceneSummary> FilteredScenes
+    internal IEnumerable<SceneSummary> FilteredScenes
     {
         get
         {
@@ -471,9 +471,9 @@ public partial class Scenes
         }
     }
 
-    private List<SceneSummary> VisibleScenes => FilteredScenes.ToList();
+    internal List<SceneSummary> VisibleScenes => FilteredScenes.ToList();
 
-    private void SelectByCharacter()
+    internal void SelectByCharacter()
     {
         if (_scenes is null) return;
         if (string.IsNullOrWhiteSpace(_pickCharacter)) return;
@@ -488,7 +488,7 @@ public partial class Scenes
         }
     }
 
-    private void SelectByLocation()
+    internal void SelectByLocation()
     {
         if (_scenes is null || string.IsNullOrWhiteSpace(_pickLocation)) return;
         var match = _pickLocation;
@@ -502,7 +502,7 @@ public partial class Scenes
     }
 
     /// <summary>Select scenes that still need clips (not fully on disk).</summary>
-    private void SelectMissingScenes()
+    internal void SelectMissingScenes()
     {
         if (_scenes is null) return;
         _selected.Clear();
@@ -512,7 +512,7 @@ public partial class Scenes
     }
 
     /// <summary>Select clips in the open scene that are not on disk yet.</summary>
-    private void SelectMissingClips()
+    internal void SelectMissingClips()
     {
         if (_detail is null) return;
         _selectedClips.Clear();
@@ -521,7 +521,7 @@ public partial class Scenes
     }
 
     /// <summary>Select clips in the open scene that have dialogue mismatches or speaker swaps.</summary>
-    private void SelectMismatchedClips()
+    internal void SelectMismatchedClips()
     {
         if (_detail is null) return;
         _selectedClips.Clear();
@@ -529,9 +529,9 @@ public partial class Scenes
             _selectedClips.Add(c.ClipNumber);
     }
 
-    private void RequestDeleteScene(int sn) => _deleteSceneTarget = sn;
+    internal void RequestDeleteScene(int sn) => _deleteSceneTarget = sn;
 
-    private async Task ConfirmDeleteSceneAsync()
+    internal async Task ConfirmDeleteSceneAsync()
     {
         if (_deleteSceneTarget is not int sn) return;
         _deleteSceneTarget = null;
@@ -561,7 +561,7 @@ public partial class Scenes
         }
     }
 
-    private async Task AddSceneAsync(bool credits)
+    internal async Task AddSceneAsync(bool credits)
     {
         _busy = true;
         _error = null;
@@ -587,19 +587,19 @@ public partial class Scenes
         }
     }
 
-    private Task AdjustFitLengthAsync() => ConfirmScreenplayAdjustAndNavigateAsync("adaptation/trim");
+    internal Task AdjustFitLengthAsync() => ConfirmScreenplayAdjustAndNavigateAsync("adaptation/trim");
 
-    private Task AdjustEmbellishAsync() => ConfirmScreenplayAdjustAndNavigateAsync("adaptation/embellish");
+    internal Task AdjustEmbellishAsync() => ConfirmScreenplayAdjustAndNavigateAsync("adaptation/embellish");
 
     // Read-only: just open the screenplay view. Unlike Fit length / Embellish it does not re-open
     // (un-approve) the screenplay, so no confirm — the user asked to "go back and see" it from Film.
-    private void ViewScreenplay() => Nav.NavigateTo("adaptation/screenplay");
+    internal void ViewScreenplay() => Nav.NavigateTo("adaptation/screenplay");
 
     /// <summary>
     /// Navigate to a screenplay-shaping step (Fit length / Enrich). Those edit the screenplay, which
     /// un-approves it and re-gates cast, so confirm first rather than surprising the user mid-Film.
     /// </summary>
-    private async Task ConfirmScreenplayAdjustAndNavigateAsync(string route)
+    internal async Task ConfirmScreenplayAdjustAndNavigateAsync(string route)
     {
         if (JobRunning) return;
         var ok = await JS.InvokeAsync<bool>(
@@ -617,7 +617,7 @@ public partial class Scenes
     /// blueprint instead of rebuilding it from scratch). Falls back to every scene — the original
     /// "restore missing scenes" behavior — when nothing is checked.
     /// </summary>
-    private async Task RebuildShotPlanAsync()
+    internal async Task RebuildShotPlanAsync()
     {
         _busy = true;
         _error = null;
@@ -642,7 +642,7 @@ public partial class Scenes
         finally { _busy = false; }
     }
 
-    private void ResetPickers()
+    internal void ResetPickers()
     {
         _pickSetting = "";
         _pickCharacter = "";
@@ -711,7 +711,7 @@ public partial class Scenes
         }
     }
 
-    private void OnMediaFolderChanged() => _ = InvokeAsync(async () =>
+    internal void OnMediaFolderChanged() => _ = InvokeAsync(async () =>
     {
         if (_showScenePlayer && _playingScene is int sn && !MediaFolder.IsSyncing && string.IsNullOrEmpty(_clientSceneUrl))
         {
@@ -720,9 +720,9 @@ public partial class Scenes
         StateHasChanged();
     });
 
-    private void DismissLocalSaveWarning() => MediaFolder.DismissLocalSaveWarning();
+    internal void DismissLocalSaveWarning() => MediaFolder.DismissLocalSaveWarning();
 
-    private async Task ConnectMediaFolderFromWarningAsync()
+    internal async Task ConnectMediaFolderFromWarningAsync()
     {
         try
         {
@@ -738,9 +738,9 @@ public partial class Scenes
         }
     }
 
-    private string _preferredVideoEditor = "ClipChamp";
+    internal string _preferredVideoEditor = "ClipChamp";
 
-    private async Task LoadGenResolutionFromConfigAsync()
+    internal async Task LoadGenResolutionFromConfigAsync()
     {
         try
         {
@@ -777,7 +777,7 @@ public partial class Scenes
         catch { /* keep default */ }
     }
 
-    private async Task OpenInExternalEditorAsync(int? sceneNumber = null, int? clipNumber = null)
+    internal async Task OpenInExternalEditorAsync(int? sceneNumber = null, int? clipNumber = null)
     {
         _busy = true;
         _error = null;
@@ -817,7 +817,7 @@ public partial class Scenes
         }
     }
 
-    private void OnJobUpdated(JobSnapshot snap)
+    internal void OnJobUpdated(JobSnapshot snap)
     {
         _job = snap;
         _ = InvokeAsync(async () =>
@@ -902,7 +902,7 @@ public partial class Scenes
     /// True when a live scene/batch/remux job advanced far enough that list counts may have changed.
     /// Throttled so long ffmpeg/API polls don't hammer GetScenes.
     /// </summary>
-    private bool ShouldRefreshSceneListWhileRunning(JobSnapshot snap)
+    internal bool ShouldRefreshSceneListWhileRunning(JobSnapshot snap)
     {
         if (!IsScenesWorkflowJob(snap.Kind))
             return false;
@@ -944,7 +944,7 @@ public partial class Scenes
     }
 
     /// <summary>Light list/detail refresh while a job runs (no cast/cost thrash).</summary>
-    private async Task SoftReloadListLiveAsync()
+    internal async Task SoftReloadListLiveAsync()
     {
         if (_listRefreshInFlight) return;
         _listRefreshInFlight = true;
@@ -965,7 +965,7 @@ public partial class Scenes
         finally { _listRefreshInFlight = false; }
     }
 
-    private void OnJobLog(string line)
+    internal void OnJobLog(string line)
     {
         // Keep log for admin "Details" after finish — never push raw engine lines into the live status.
         if (_job is not null && !string.IsNullOrWhiteSpace(line))
@@ -980,7 +980,7 @@ public partial class Scenes
             _ = InvokeAsync(StateHasChanged);
     }
 
-    private async Task OnProjectChangedAsync()
+    internal async Task OnProjectChangedAsync()
     {
         _selectedScene = null;
         _detail = null;
@@ -992,7 +992,7 @@ public partial class Scenes
         await ReloadListAsync();
     }
 
-    private async Task ReloadListAsync()
+    internal async Task ReloadListAsync()
     {
         _busy = true;
         _error = null;
@@ -1023,7 +1023,7 @@ public partial class Scenes
     /// Once a project has on-disk clips at a consistent resolution, lock the resolution
     /// picker to it so a later Regen/batch can't silently mix resolutions in one movie.
     /// </summary>
-    private async Task RefreshResolutionLockAsync()
+    internal async Task RefreshResolutionLockAsync()
     {
         try
         {
@@ -1035,7 +1035,7 @@ public partial class Scenes
     }
 
     /// <summary>Refreshes the per-scene cost report at the currently selected generation resolution.</summary>
-    private async Task RefreshCostEstimateAsync()
+    internal async Task RefreshCostEstimateAsync()
     {
         if (string.IsNullOrEmpty(_projectId)) return;
         try
@@ -1046,7 +1046,7 @@ public partial class Scenes
         catch { _costReport = null; }
     }
 
-    private double EstimateSelectedCostUsd()
+    internal double EstimateSelectedCostUsd()
     {
         if (_costReport is null) return 0;
         var sum = 0.0;
@@ -1059,7 +1059,7 @@ public partial class Scenes
         return sum;
     }
 
-    private double? EstimateSceneCostUsd(int sceneNumber)
+    internal double? EstimateSceneCostUsd(int sceneNumber)
     {
         var row = _costReport?.Scenes.FirstOrDefault(r => r.Scene == sceneNumber);
         return row?.RemainingDraftUsd;
@@ -1069,7 +1069,7 @@ public partial class Scenes
     /// Refresh project-wide cast readiness (voice + locked image for every character).
     /// Soft-fails: if adaptation cannot load, keep previous gate state.
     /// </summary>
-    private async Task RefreshCastGateAsync()
+    internal async Task RefreshCastGateAsync()
     {
         try
         {
@@ -1100,7 +1100,7 @@ public partial class Scenes
         }
     }
 
-    private async Task SoftReloadAsync()
+    internal async Task SoftReloadAsync()
     {
         try
         {
@@ -1120,7 +1120,7 @@ public partial class Scenes
         catch { /* ignore soft reload errors */ }
     }
 
-    private async Task RefreshMyJobsAsync()
+    internal async Task RefreshMyJobsAsync()
     {
         try
         {
@@ -1141,7 +1141,7 @@ public partial class Scenes
         }
     }
 
-    private async Task OpenSceneAsync(int sn)
+    internal async Task OpenSceneAsync(int sn)
     {
         _busy = true;
         _error = null;
@@ -1158,7 +1158,7 @@ public partial class Scenes
         finally { _busy = false; }
     }
 
-    private async Task LoadDetailAsync(int sn)
+    internal async Task LoadDetailAsync(int sn)
     {
         var dto = await Engine.GetSceneDetailAsync(_projectId, sn);
         _detail = dto?.Scene
@@ -1182,7 +1182,7 @@ public partial class Scenes
         }
     }
 
-    private async Task BackToListAsync()
+    internal async Task BackToListAsync()
     {
         _selectedScene = null;
         _detail = null;
@@ -1193,18 +1193,18 @@ public partial class Scenes
         await ReloadListAsync();
     }
 
-    private void ToggleClipSelect(int cn, bool on)
+    internal void ToggleClipSelect(int cn, bool on)
     {
         if (on) _selectedClips.Add(cn);
         else _selectedClips.Remove(cn);
     }
 
-    private void ClearClipSelection() => _selectedClips.Clear();
+    internal void ClearClipSelection() => _selectedClips.Clear();
 
-    private bool AllClipsSelected =>
+    internal bool AllClipsSelected =>
         _detail is { Clips.Count: > 0 } && _detail.Clips.All(c => _selectedClips.Contains(c.ClipNumber));
 
-    private void ToggleSelectAllClips(bool on)
+    internal void ToggleSelectAllClips(bool on)
     {
         if (_detail is null) return;
         if (on)
@@ -1218,7 +1218,7 @@ public partial class Scenes
         }
     }
 
-    private double? EstimateSelectedClipsCostUsd()
+    internal double? EstimateSelectedClipsCostUsd()
     {
         if (_costReport is null || _detail is null) return null;
         var row = _costReport.Scenes.FirstOrDefault(r => r.Scene == _detail.SceneNumber);
@@ -1227,7 +1227,7 @@ public partial class Scenes
         return row.AllDraftUsd / row.ClipsTotal * _selectedClips.Count;
     }
 
-    private async Task EnsurePredecessorsUploadedAsync(List<(int Scene, int Clip)> targets)
+    internal async Task EnsurePredecessorsUploadedAsync(List<(int Scene, int Clip)> targets)
     {
         if (!MediaFolder.IsConnected || string.IsNullOrEmpty(_projectId) || targets.Count == 0) return;
 
@@ -1290,7 +1290,7 @@ public partial class Scenes
     /// <summary>Active project video model's max input length for a real video-extend call, or
     /// null when the model doesn't support real continuity (today: only Grok's video model does)
     /// or lookup fails.</summary>
-    private async Task<double?> ResolveActiveVideoExtendModelAsync()
+    internal async Task<double?> ResolveActiveVideoExtendModelAsync()
     {
         try
         {
@@ -1315,14 +1315,14 @@ public partial class Scenes
 
     /// <summary>Clip numbers in scene <paramref name="sn"/> not yet on server disk (or synced-only) —
     /// used to pre-check predecessors before an "only missing" generation batch.</summary>
-    private async Task<List<(int Scene, int Clip)>> MissingClipTargetsAsync(int sn)
+    internal async Task<List<(int Scene, int Clip)>> MissingClipTargetsAsync(int sn)
     {
         var detail = _detail?.SceneNumber == sn ? _detail : (await Engine.GetSceneDetailAsync(_projectId, sn))?.Scene;
         return detail?.Clips?.Where(c => !c.OnDisk).Select(c => (Scene: sn, Clip: c.ClipNumber)).ToList()
             ?? new List<(int Scene, int Clip)>();
     }
 
-    private async Task RegenSelectedClipsAsync()
+    internal async Task RegenSelectedClipsAsync()
     {
         if (_detail is null || _selectedClips.Count == 0) return;
         var sn = _detail.SceneNumber;
@@ -1344,13 +1344,13 @@ public partial class Scenes
         finally { _busy = false; _pendingRegenScene = null; }
     }
 
-    private string? _clipVideoUrl;
-    private string? _clipServerVideoUrl;
-    private bool _clipVideoLoading;
-    private string? _sceneCompositeVideoUrl;
-    private string? _sceneCompositeServerUrl;
+    internal string? _clipVideoUrl;
+    internal string? _clipServerVideoUrl;
+    internal bool _clipVideoLoading;
+    internal string? _sceneCompositeVideoUrl;
+    internal string? _sceneCompositeServerUrl;
 
-    private void SelectClip(int? cn)
+    internal void SelectClip(int? cn)
     {
         _message = null; // clear any leftover completion message from a previous scene/action
         _selectedClip = cn;
@@ -1393,7 +1393,7 @@ public partial class Scenes
     /// size rather than assuming presence means current. Returns null on any lookup failure —
     /// callers then fall back to their own "trust local unconditionally" or "use server" default.
     /// </summary>
-    private async Task<long?> ResolveExpectedClipSizeAsync(int scene, int clip)
+    internal async Task<long?> ResolveExpectedClipSizeAsync(int scene, int clip)
     {
         try
         {
@@ -1407,7 +1407,7 @@ public partial class Scenes
         return null;
     }
 
-    private async Task LoadClipVideoAndTakesCountAsync(int scene, int clip)
+    internal async Task LoadClipVideoAndTakesCountAsync(int scene, int clip)
     {
         if (MediaFolder.IsConnected)
         {
@@ -1444,7 +1444,7 @@ public partial class Scenes
         catch { /* label falls back to "1" */ }
     }
 
-    private async Task PlaySceneCompositeAsync(int sn)
+    internal async Task PlaySceneCompositeAsync(int sn)
     {
         // _busy flips true synchronously, before the first await — see PlaySceneAsync's comment
         // in Review.razor for why (a fast second click otherwise slips past this guard and races
@@ -1562,7 +1562,7 @@ public partial class Scenes
         }
     }
 
-    private async Task HideScenePlayer()
+    internal async Task HideScenePlayer()
     {
         _showScenePlayer = false;
         _playingScene = null;
@@ -1573,8 +1573,8 @@ public partial class Scenes
         }
     }
 
-    private int? _scenePlayerServerSrcScene;
-    private string? _scenePlayerServerSrcCached;
+    internal int? _scenePlayerServerSrcScene;
+    internal string? _scenePlayerServerSrcCached;
 
     /// <summary>
     /// Cache-busted server URL is memoized per scene number rather than recomputed on every call
@@ -1582,7 +1582,7 @@ public partial class Scenes
     /// job-poll re-render elsewhere on the page) gives the &lt;video&gt; a new src each time,
     /// which makes the browser reload the resource and restart playback — looks like looping.
     /// </summary>
-    private string? ScenePlayerSrc(int sn)
+    internal string? ScenePlayerSrc(int sn)
     {
         if (!string.IsNullOrEmpty(_clientSceneUrl) && _playingScene == sn)
             return _clientSceneUrl;
@@ -1595,7 +1595,7 @@ public partial class Scenes
         return _scenePlayerServerSrcCached;
     }
 
-    private async Task HidePreviewPlayerAsync()
+    internal async Task HidePreviewPlayerAsync()
     {
         _showPreviewPlayer = false;
         _clientPreviewUrl = null;
@@ -1603,7 +1603,7 @@ public partial class Scenes
     }
 
     /// <summary>True when selection has at least one scene to play (or local media folder connected).</summary>
-    private bool CanPlaySelected
+    internal bool CanPlaySelected
     {
         get
         {
@@ -1618,7 +1618,7 @@ public partial class Scenes
     }
 
     /// <summary>Stitch the current selection in the browser (composites preferred, else clips).</summary>
-    private async Task PlaySelectedAsync()
+    internal async Task PlaySelectedAsync()
     {
         if (!CanPlaySelected || _busy || _clientStitching)
             return;
@@ -1682,7 +1682,7 @@ public partial class Scenes
     }
 
     /// <summary>Force re-generate a single clip (onlyMissing: false).</summary>
-    private async Task RegenClipAsync(int sn, int cn)
+    internal async Task RegenClipAsync(int sn, int cn)
     {
         // Credits are rendered deterministically client-side — never sent to the video model.
         if (IsCreditsSceneNum(sn)) { await GenerateCreditsEntryAsync(sn); return; }
@@ -1711,18 +1711,18 @@ public partial class Scenes
 
     /// <summary>xAI's edit input cap — see MaxVideoEditInputSeconds's doc comment (client hint;
     /// RunVideoEditAsync is the authoritative server-side check).</summary>
-    private static bool ClipExceedsEditDurationCap(ClipSummary clip) =>
+    internal static bool ClipExceedsEditDurationCap(ClipSummary clip) =>
         (clip.ActualDurationSeconds ?? clip.DurationSeconds) > MaxVideoEditInputSeconds + 0.01;
 
-    private void OpenVideoEditPrompt()
+    internal void OpenVideoEditPrompt()
     {
         _videoEditPromptText = "";
         _showVideoEditPrompt = true;
     }
 
-    private void CloseVideoEditPrompt() => _showVideoEditPrompt = false;
+    internal void CloseVideoEditPrompt() => _showVideoEditPrompt = false;
 
-    private async Task SubmitVideoEditAsync()
+    internal async Task SubmitVideoEditAsync()
     {
         if (_detail is null || _clip is null || string.IsNullOrWhiteSpace(_videoEditPromptText))
             return;
@@ -1745,7 +1745,7 @@ public partial class Scenes
         finally { _busy = false; }
     }
 
-    private void OpenClipEditor(ClipSummary clip)
+    internal void OpenClipEditor(ClipSummary clip)
     {
         if (_detail is null) return;
         _clipEditorIsNew = false;
@@ -1769,7 +1769,7 @@ public partial class Scenes
         _clipEditorCast = new HashSet<string>(clip.CharactersOnScreen, StringComparer.OrdinalIgnoreCase);
     }
 
-    private void OpenAddClipDialog()
+    internal void OpenAddClipDialog()
     {
         if (_detail is null) return;
         var nextClip = _detail.Clips.Count == 0 ? 1 : _detail.Clips.Max(c => c.ClipNumber) + 1;
@@ -1784,14 +1784,14 @@ public partial class Scenes
         _clipEditorCast = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     }
 
-    private void CloseClipEditor() => _clipEditor = null;
+    internal void CloseClipEditor() => _clipEditor = null;
 
-    private void ToggleClipEditorCast(string charKey, bool on)
+    internal void ToggleClipEditorCast(string charKey, bool on)
     {
         if (on) _clipEditorCast.Add(charKey);
         else _clipEditorCast.Remove(charKey);
     }
-    private Task OnClipEditorCastToggled((string Key, bool On) args)
+    internal Task OnClipEditorCastToggled((string Key, bool On) args)
     {
         ToggleClipEditorCast(args.Key, args.On);
         return Task.CompletedTask;
@@ -1799,7 +1799,7 @@ public partial class Scenes
 
 
 
-    private async Task SaveClipEditorAsync()
+    internal async Task SaveClipEditorAsync()
     {
         if (_clipEditor is null || _detail is null) return;
 
@@ -1875,11 +1875,11 @@ public partial class Scenes
         finally { _busy = false; }
     }
 
-    private void RequestDeleteClip(int scene, int clip) => _deleteClipTarget = (scene, clip);
+    internal void RequestDeleteClip(int scene, int clip) => _deleteClipTarget = (scene, clip);
 
-    private void CancelDeleteClip() => _deleteClipTarget = null;
+    internal void CancelDeleteClip() => _deleteClipTarget = null;
 
-    private async Task ConfirmDeleteClipAsync()
+    internal async Task ConfirmDeleteClipAsync()
     {
         if (_deleteClipTarget is not { } target) return;
         _busy = true;
@@ -1900,35 +1900,35 @@ public partial class Scenes
         finally { _busy = false; }
     }
 
-    private void ToggleSelect(int sn, bool on)
+    internal void ToggleSelect(int sn, bool on)
     {
         if (on) _selected.Add(sn);
         else _selected.Remove(sn);
         _selectionMode = "";
     }
 
-    private void SelectAll()
+    internal void SelectAll()
     {
         _selected = VisibleScenes.Select(s => s.SceneNumber).ToHashSet();
         _selectionMode = "all";
     }
 
-    private void ClearSelection()
+    internal void ClearSelection()
     {
         _selected.Clear();
         _selectionMode = "";
     }
 
-    private bool AllShownScenesSelected =>
+    internal bool AllShownScenesSelected =>
         VisibleScenes.Count > 0 && VisibleScenes.All(s => _selected.Contains(s.SceneNumber));
 
-    private void ToggleSelectAllShown(bool on)
+    internal void ToggleSelectAllShown(bool on)
     {
         if (on) SelectAll();
         else ClearSelection();
     }
 
-    private int EstimateSelectedClips()
+    internal int EstimateSelectedClips()
     {
         if (_scenes is null) return 0;
         // Generate always fills missing only — estimate remaining work on selected scenes.
@@ -1937,7 +1937,7 @@ public partial class Scenes
             .Sum(s => Math.Max(0, s.ClipCount - s.ClipsOnDisk));
     }
 
-    private async Task GenOneSceneAsync(int sn)
+    internal async Task GenOneSceneAsync(int sn)
     {
         // Credits are rendered deterministically client-side — never sent to the video model.
         if (IsCreditsSceneNum(sn)) { await GenerateCreditsEntryAsync(sn); return; }
@@ -1970,7 +1970,7 @@ public partial class Scenes
         finally { _busy = false; _pendingRegenScene = null; }
     }
 
-    private async Task StartBatchAsync()
+    internal async Task StartBatchAsync()
     {
         if (_selected.Count == 0) return;
         if (!CastReady)
@@ -2024,14 +2024,14 @@ public partial class Scenes
         finally { _busy = false; }
     }
 
-    private static (int W, int H) ResolutionDims(string? res) => (res ?? "").Trim().ToLowerInvariant() switch
+    internal static (int W, int H) ResolutionDims(string? res) => (res ?? "").Trim().ToLowerInvariant() switch
     {
         "1080p" => (1920, 1080),
         "480p" => (854, 480),
         _ => (1280, 720),
     };
 
-    private bool IsCreditsSceneNum(int sn) =>
+    internal bool IsCreditsSceneNum(int sn) =>
         _scenes?.FirstOrDefault(s => s.SceneNumber == sn)?.IsCredits == true;
 
     /// <summary>
@@ -2039,7 +2039,7 @@ public partial class Scenes
     /// card client-side instead of calling the video model, so no path (batch, per-clip regen, single
     /// scene) can ever produce a hallucinated credits clip. No cast gate — a credits card has no cast.
     /// </summary>
-    private async Task GenerateCreditsEntryAsync(int sn)
+    internal async Task GenerateCreditsEntryAsync(int sn)
     {
         _busy = true;
         _error = null;
@@ -2059,7 +2059,7 @@ public partial class Scenes
     /// of a credits scene and store each as a normal on-disk clip, so the stitch concatenates it like any
     /// other clip. Replaces the hallucination-prone video-gen path for the credits scene.
     /// </summary>
-    private async Task RenderCreditsSceneClientSideAsync(int sn)
+    internal async Task RenderCreditsSceneClientSideAsync(int sn)
     {
         var (w, h) = ResolutionDims(_genResolution);
         SceneDetail? detail = null;
@@ -2081,7 +2081,7 @@ public partial class Scenes
         }
     }
 
-    private async Task RenderOneCreditsClipAsync(int sn, int clip, double durationSeconds, int width, int height)
+    internal async Task RenderOneCreditsClipAsync(int sn, int clip, double durationSeconds, int width, int height)
     {
         _message = "Rendering end-credits card…";
         await InvokeAsync(StateHasChanged);
@@ -2093,7 +2093,7 @@ public partial class Scenes
             _message = "End-credits card ready";
     }
 
-    private async Task CancelAsync()
+    internal async Task CancelAsync()
     {
         _busy = true;
         try
@@ -2107,42 +2107,42 @@ public partial class Scenes
         finally { _busy = false; }
     }
 
-    private async Task EnsureHubAsync()
+    internal async Task EnsureHubAsync()
     {
         await Hub.EnsureStartedAsync();
         try { await MediaFolder.EnsureHubHookAsync(); } catch { /* optional */ }
     }
 
-    private static string StatusBadge(string status) => status switch
+    internal static string StatusBadge(string status) => status switch
     {
         "complete" => "bg-success",
         "partial" => "bg-warning text-dark",
         _ => "bg-secondary",
     };
 
-    private static string Trunc(string? s, int n)
+    internal static string Trunc(string? s, int n)
     {
         if (string.IsNullOrEmpty(s)) return "—";
         return s.Length <= n ? s : s[..(n - 1)] + "…";
     }
 
-    private static string ShortChar(string key) => KeyFormatting.ShortChar(key);
+    internal static string ShortChar(string key) => KeyFormatting.ShortChar(key);
 
-    private static string ShortLoc(string key) => KeyFormatting.ShortLoc(key);
+    internal static string ShortLoc(string key) => KeyFormatting.ShortLoc(key);
 
-    private static string ShortDelivery(string? key) => KeyFormatting.ShortDelivery(key);
+    internal static string ShortDelivery(string? key) => KeyFormatting.ShortDelivery(key);
 
-    private static string FormatSize(long bytes)
+    internal static string FormatSize(long bytes)
     {
         if (bytes < 1024) return $"{bytes} B";
         if (bytes < 1024 * 1024) return $"{bytes / 1024.0:0.#} KB";
         return $"{bytes / (1024.0 * 1024):0.#} MB";
     }
 
-    private static string CacheBust(string url) => KeyFormatting.CacheBust(url);
+    internal static string CacheBust(string url) => KeyFormatting.CacheBust(url);
 
     /// <summary>Format seconds as m:ss or plain seconds when under a minute.</summary>
-    private static string FormatClock(double seconds)
+    internal static string FormatClock(double seconds)
     {
         if (seconds < 0) seconds = 0;
         var whole = (int)Math.Round(seconds);
@@ -2152,7 +2152,7 @@ public partial class Scenes
         return $"{m}:{s:D2}";
     }
 
-    private static MarkupString RenderDiffHtml(string? expected, string? heard)
+    internal static MarkupString RenderDiffHtml(string? expected, string? heard)
     {
         var expStr = expected ?? "";
         var heardStr = heard ?? "";
@@ -2207,13 +2207,13 @@ public partial class Scenes
         return new MarkupString(sb.ToString());
     }
 
-    private bool _verifyingClip;
-    private int _verifyingClipNumber;
-    private int _verifyCurrent;
-    private int _verifyTotal;
-    private string _verifyStatusLabel = "Verifying dialogue...";
+    internal bool _verifyingClip;
+    internal int _verifyingClipNumber;
+    internal int _verifyCurrent;
+    internal int _verifyTotal;
+    internal string _verifyStatusLabel = "Verifying dialogue...";
 
-    private async Task VerifyClipDialogueManualAsync(ClipSummary clip)
+    internal async Task VerifyClipDialogueManualAsync(ClipSummary clip)
     {
         if (string.IsNullOrWhiteSpace(_projectId) || _detail is null || clip is null) return;
         try
@@ -2267,12 +2267,12 @@ public partial class Scenes
     /// Dialogue verification reads the clip's video, so scenes with nothing on disk have nothing to check.
     /// Gates the list-view "Verify Scene Dialogue" button so it never reads as a dead click.
     /// </summary>
-    private bool SelectedScenesHaveClipsToVerify =>
+    internal bool SelectedScenesHaveClipsToVerify =>
         _scenes is not null &&
         _selected.Count > 0 &&
         _scenes.Any(s => _selected.Contains(s.SceneNumber) && s.ClipsOnDisk > 0);
 
-    private async Task VerifySelectedScenesDialogueAsync()
+    internal async Task VerifySelectedScenesDialogueAsync()
     {
         if (string.IsNullOrWhiteSpace(_projectId)) return;
 
@@ -2383,37 +2383,37 @@ public partial class Scenes
         }
     }
 
-    private bool _scoringMusic;
-    private List<SupportedModelDto> _audioModels = new();
-    private string _selectedAudioModel = "fal-ai/stable-audio";
-    private bool _wantVocal;
+    internal bool _scoringMusic;
+    internal List<SupportedModelDto> _audioModels = new();
+    internal string _selectedAudioModel = "fal-ai/stable-audio";
+    internal bool _wantVocal;
 
     // Which scene's Score chooser is open (null = closed). The model/Sing picks it edits are the
     // shared _selectedAudioModel/_wantVocal, so they persist as the defaults for the next scene.
-    private int? _scoreMenuScene;
+    internal int? _scoreMenuScene;
 
-    private void OpenScoreMenu(int sceneNum) => _scoreMenuScene = sceneNum;
+    internal void OpenScoreMenu(int sceneNum) => _scoreMenuScene = sceneNum;
 
-    private void CloseScoreMenu() => _scoreMenuScene = null;
+    internal void CloseScoreMenu() => _scoreMenuScene = null;
 
-    private async Task ScoreFromMenuAsync(int sceneNum)
+    internal async Task ScoreFromMenuAsync(int sceneNum)
     {
         _scoreMenuScene = null;
         await ScoreSceneBackgroundMusicAsync(sceneNum);
     }
 
     // Batch-generate confirm modal: resolution + cost decided at the moment of spend.
-    private bool _showGenerateConfirm;
-    private bool _showVideoEditPrompt;
-    private string _videoEditPromptText = "";
+    internal bool _showGenerateConfirm;
+    internal bool _showVideoEditPrompt;
+    internal string _videoEditPromptText = "";
     /// <summary>
     /// xAI's /v1/videos/edits input cap (grok-imagine-video-edit's maxEditInputDurationSeconds).
     /// A client-side UX hint only — RunVideoEditAsync re-checks the real catalog value
     /// server-side and is the authoritative gate; this just disables the button early.
     /// </summary>
-    private const double MaxVideoEditInputSeconds = 8.7;
+    internal const double MaxVideoEditInputSeconds = 8.7;
 
-    private async Task OpenGenerateConfirmAsync()
+    internal async Task OpenGenerateConfirmAsync()
     {
         if (_selected.Count == 0) return;
         if (!CastReady) { _error = CastBlockedTitle; return; }
@@ -2421,20 +2421,20 @@ public partial class Scenes
         await RefreshCostEstimateAsync();
     }
 
-    private void CloseGenerateConfirm() => _showGenerateConfirm = false;
+    internal void CloseGenerateConfirm() => _showGenerateConfirm = false;
 
-    private async Task ConfirmGenerateAsync()
+    internal async Task ConfirmGenerateAsync()
     {
         _showGenerateConfirm = false;
         await StartBatchAsync();
     }
 
     /// <summary>Catalog <c>supportsVocals</c> on the selected audio model — not provider id.</summary>
-    private bool SelectedAudioModelCanSing =>
+    internal bool SelectedAudioModelCanSing =>
         _audioModels.FirstOrDefault(m => string.Equals(m.Id, _selectedAudioModel, StringComparison.OrdinalIgnoreCase))
             ?.SupportsVocals == true;
 
-    private async Task LoadAudioModelsAsync()
+    internal async Task LoadAudioModelsAsync()
     {
         try
         {
@@ -2449,10 +2449,10 @@ public partial class Scenes
 
     // Admin-only: video models offered as a one-off per-batch override in the Generate modal, so an
     // admin can A/B different generators without editing project Configuration. "" = project default.
-    private List<SupportedModelDto> _videoModels = new();
-    private string _selectedVideoModel = "";
+    internal List<SupportedModelDto> _videoModels = new();
+    internal string _selectedVideoModel = "";
 
-    private async Task LoadVideoModelsAsync()
+    internal async Task LoadVideoModelsAsync()
     {
         try
         {
@@ -2463,7 +2463,7 @@ public partial class Scenes
         catch { /* leave empty — modal then offers project default only */ }
     }
 
-    private async Task ScoreSceneBackgroundMusicAsync(int sceneNum)
+    internal async Task ScoreSceneBackgroundMusicAsync(int sceneNum)
     {
         
         if (!Caps.MusicReady)
@@ -2509,7 +2509,7 @@ if (string.IsNullOrWhiteSpace(_projectId)) return;
     /// terminal job here closes the gap when that transient event is missed, and gives the operator
     /// a normal browser download even when no folder has been connected.
     /// </summary>
-    private async Task CompleteSceneMusicDownloadAsync(string jobId, int sceneNum)
+    internal async Task CompleteSceneMusicDownloadAsync(string jobId, int sceneNum)
     {
         try
         {
@@ -2545,17 +2545,17 @@ if (string.IsNullOrWhiteSpace(_projectId)) return;
         }
     }
 
-    private bool _showMusicCompare;
-    private int _compareMusicSceneNumber;
-    private List<MusicVersionItem>? _musicVersions;
-    private List<MusicVersionItem>? _musicTrashVersions;
-    private bool _loadingMusicVersions;
-    private string? _musicCompareMessage;
-    private bool _promotingMusicVersion;
-    private bool _showMusicTrash;
-    private Dictionary<string, List<string>> _musicCompareUrls = new(StringComparer.OrdinalIgnoreCase);
+    internal bool _showMusicCompare;
+    internal int _compareMusicSceneNumber;
+    internal List<MusicVersionItem>? _musicVersions;
+    internal List<MusicVersionItem>? _musicTrashVersions;
+    internal bool _loadingMusicVersions;
+    internal string? _musicCompareMessage;
+    internal bool _promotingMusicVersion;
+    internal bool _showMusicTrash;
+    internal Dictionary<string, List<string>> _musicCompareUrls = new(StringComparer.OrdinalIgnoreCase);
 
-    private async Task OpenMusicCompareAsync(int sceneNumber)
+    internal async Task OpenMusicCompareAsync(int sceneNumber)
     {
         _compareMusicSceneNumber = sceneNumber;
         _showMusicCompare = true;
@@ -2583,7 +2583,7 @@ if (string.IsNullOrWhiteSpace(_projectId)) return;
         }
     }
 
-    private void CloseMusicCompare()
+    internal void CloseMusicCompare()
     {
         _showMusicCompare = false;
         _musicVersions = null;
@@ -2593,7 +2593,7 @@ if (string.IsNullOrWhiteSpace(_projectId)) return;
         _musicCompareMessage = null;
     }
 
-    private async Task RefreshMusicCompareUrlsAsync()
+    internal async Task RefreshMusicCompareUrlsAsync()
     {
         var map = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
         if (_musicVersions is { Count: > 0 })
@@ -2613,7 +2613,7 @@ if (string.IsNullOrWhiteSpace(_projectId)) return;
         StateHasChanged();
     }
 
-    private async Task PromoteMusicVersionAsync(int sceneNumber, string takeId)
+    internal async Task PromoteMusicVersionAsync(int sceneNumber, string takeId)
     {
         _promotingMusicVersion = true;
         _musicCompareMessage = null;
@@ -2669,7 +2669,7 @@ if (string.IsNullOrWhiteSpace(_projectId)) return;
         }
     }
 
-    private async Task SoftDeleteMusicVersionAsync(int sceneNumber, string takeId)
+    internal async Task SoftDeleteMusicVersionAsync(int sceneNumber, string takeId)
     {
         _musicCompareMessage = null;
         StateHasChanged();
@@ -2701,7 +2701,7 @@ if (string.IsNullOrWhiteSpace(_projectId)) return;
         }
     }
 
-    private async Task RestoreMusicVersionAsync(int sceneNumber, string takeId)
+    internal async Task RestoreMusicVersionAsync(int sceneNumber, string takeId)
     {
         _promotingMusicVersion = true;
         _musicCompareMessage = null;
@@ -2734,14 +2734,14 @@ if (string.IsNullOrWhiteSpace(_projectId)) return;
         }
     }
 
-    private bool _showSceneHistory;
-    private int _historySceneNumber;
-    private bool _loadingHistory;
-    private bool _revertingScene;
-    private string? _sceneRevertMessage;
-    private List<SceneCommitHistoryItem>? _sceneHistory;
+    internal bool _showSceneHistory;
+    internal int _historySceneNumber;
+    internal bool _loadingHistory;
+    internal bool _revertingScene;
+    internal string? _sceneRevertMessage;
+    internal List<SceneCommitHistoryItem>? _sceneHistory;
 
-    private async Task OpenSceneHistoryAsync(int sceneNumber)
+    internal async Task OpenSceneHistoryAsync(int sceneNumber)
     {
         _historySceneNumber = sceneNumber;
         _showSceneHistory = true;
@@ -2765,7 +2765,7 @@ if (string.IsNullOrWhiteSpace(_projectId)) return;
         }
     }
 
-    private void CloseSceneHistory()
+    internal void CloseSceneHistory()
     {
         _showSceneHistory = false;
         _sceneHistory = null;
@@ -2774,18 +2774,18 @@ if (string.IsNullOrWhiteSpace(_projectId)) return;
 
     // ---- Inline scene VERSION history panel (SceneVersionHistory component, P3) — separate from
     // the git-commit history modal above; distinct state so the two panels never collide. ----
-    private bool _showInlineSceneHistory;
+    internal bool _showInlineSceneHistory;
 
-    private void HideSceneHistory() => _showInlineSceneHistory = false;
+    internal void HideSceneHistory() => _showInlineSceneHistory = false;
 
-    private async Task OnSceneHistoryRestored()
+    internal async Task OnSceneHistoryRestored()
     {
         // A snapshot was restored server-side — refresh the scene list/detail to reflect it.
         _showInlineSceneHistory = false;
         await SoftReloadAsync();
     }
 
-    private async Task RevertSceneToVersionAsync(int sceneNumber, string commitHash)
+    internal async Task RevertSceneToVersionAsync(int sceneNumber, string commitHash)
     {
         _revertingScene = true;
         _sceneRevertMessage = null;
@@ -2823,23 +2823,23 @@ if (string.IsNullOrWhiteSpace(_projectId)) return;
         }
     }
 
-    private UncommittedStatusDto? _uncommittedStatus;
-    private bool _showClipCompare;
-    private int _compareSceneNumber;
-    private int _compareClipNumber;
-    private bool _loadingClipVersions;
-    private bool _promotingVersion;
-    private string? _clipCompareMessage;
-    private List<ClipVersionItem>? _clipVersions;
-    private List<ClipVersionItem>? _trashVersions;
-    private string? _selectedCompareVersionId;
+    internal UncommittedStatusDto? _uncommittedStatus;
+    internal bool _showClipCompare;
+    internal int _compareSceneNumber;
+    internal int _compareClipNumber;
+    internal bool _loadingClipVersions;
+    internal bool _promotingVersion;
+    internal string? _clipCompareMessage;
+    internal List<ClipVersionItem>? _clipVersions;
+    internal List<ClipVersionItem>? _trashVersions;
+    internal string? _selectedCompareVersionId;
 
-    private ClipVersionItem? _selectedCompareVersion =>
+    internal ClipVersionItem? _selectedCompareVersion =>
         _clipVersions?.FirstOrDefault(v => string.Equals(v.VersionId, _selectedCompareVersionId, StringComparison.OrdinalIgnoreCase));
 
-    private Dictionary<string, string?> _compareVideoUrls = new(StringComparer.OrdinalIgnoreCase);
+    internal Dictionary<string, string?> _compareVideoUrls = new(StringComparer.OrdinalIgnoreCase);
 
-    private string? CompareVideoUrl(ClipVersionItem v) => _compareVideoUrls.GetValueOrDefault(v.VersionId);
+    internal string? CompareVideoUrl(ClipVersionItem v) => _compareVideoUrls.GetValueOrDefault(v.VersionId);
 
     /// <summary>
     /// Resolves a playable URL for every take in _clipVersions, once, instead of computing it
@@ -2847,7 +2847,7 @@ if (string.IsNullOrWhiteSpace(_projectId)) return;
     /// ClientOnly has no server bytes to stream — it has to go through the local media folder
     /// instead of the server URL the "normal" server-backed case uses).
     /// </summary>
-    private async Task RefreshCompareVideoUrlsAsync()
+    internal async Task RefreshCompareVideoUrlsAsync()
     {
         var map = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         if (_clipVersions is { Count: > 0 })
@@ -2865,7 +2865,7 @@ if (string.IsNullOrWhiteSpace(_projectId)) return;
         StateHasChanged();
     }
 
-    private async Task RefreshUncommittedStatusAsync()
+    internal async Task RefreshUncommittedStatusAsync()
     {
         try
         {
@@ -2875,7 +2875,7 @@ if (string.IsNullOrWhiteSpace(_projectId)) return;
         catch { /* best effort */ }
     }
 
-    private async Task CommitCurrentChangesAsync()
+    internal async Task CommitCurrentChangesAsync()
     {
         _busy = true;
         _message = null;
@@ -2906,7 +2906,7 @@ if (string.IsNullOrWhiteSpace(_projectId)) return;
         }
     }
 
-    private async Task OpenClipCompareAsync(int sceneNumber, int clipNumber)
+    internal async Task OpenClipCompareAsync(int sceneNumber, int clipNumber)
     {
         _compareSceneNumber = sceneNumber;
         _compareClipNumber = clipNumber;
@@ -2937,7 +2937,7 @@ if (string.IsNullOrWhiteSpace(_projectId)) return;
         }
     }
 
-    private void CloseClipCompare()
+    internal void CloseClipCompare()
     {
         _showClipCompare = false;
         _clipVersions = null;
@@ -2945,7 +2945,7 @@ if (string.IsNullOrWhiteSpace(_projectId)) return;
         _clipCompareMessage = null;
     }
 
-    private async Task PromoteClipVersionAsync(int sceneNumber, int clipNumber, string versionId)
+    internal async Task PromoteClipVersionAsync(int sceneNumber, int clipNumber, string versionId)
     {
         _promotingVersion = true;
         _clipCompareMessage = null;
@@ -2983,7 +2983,7 @@ if (string.IsNullOrWhiteSpace(_projectId)) return;
         }
     }
 
-    private async Task SoftDeleteClipVersionAsync(int sceneNumber, int clipNumber, string versionId)
+    internal async Task SoftDeleteClipVersionAsync(int sceneNumber, int clipNumber, string versionId)
     {
         _promotingVersion = true;
         _clipCompareMessage = null;
@@ -3016,7 +3016,7 @@ if (string.IsNullOrWhiteSpace(_projectId)) return;
         }
     }
 
-    private async Task RestoreClipVersionAsync(int sceneNumber, int clipNumber, string versionId)
+    internal async Task RestoreClipVersionAsync(int sceneNumber, int clipNumber, string versionId)
     {
         _promotingVersion = true;
         _clipCompareMessage = null;
@@ -3049,7 +3049,7 @@ if (string.IsNullOrWhiteSpace(_projectId)) return;
         }
     }
 
-    private async Task EmptyClipTrashAsync(int sceneNumber, int clipNumber)
+    internal async Task EmptyClipTrashAsync(int sceneNumber, int clipNumber)
     {
         _promotingVersion = true;
         _clipCompareMessage = null;
@@ -3080,12 +3080,12 @@ if (string.IsNullOrWhiteSpace(_projectId)) return;
         }
     }
 
-    private bool _showVerificationModal;
-    private int _verifModalSceneNumber;
-    private int _verifModalClipNumber;
-    private ClipDialogueVerificationResult? _verifModalResult;
+    internal bool _showVerificationModal;
+    internal int _verifModalSceneNumber;
+    internal int _verifModalClipNumber;
+    internal ClipDialogueVerificationResult? _verifModalResult;
 
-    private void OpenVerificationModal(int sceneNumber, int clipNumber, ClipDialogueVerificationResult ver)
+    internal void OpenVerificationModal(int sceneNumber, int clipNumber, ClipDialogueVerificationResult ver)
     {
         _verifModalSceneNumber = sceneNumber;
         _verifModalClipNumber = clipNumber;
@@ -3093,7 +3093,7 @@ if (string.IsNullOrWhiteSpace(_projectId)) return;
         _showVerificationModal = true;
     }
 
-    private void CloseVerificationModal()
+    internal void CloseVerificationModal()
     {
         _showVerificationModal = false;
         _verifModalResult = null;
