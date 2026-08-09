@@ -5160,32 +5160,8 @@ public sealed partial class ProjectStore
 
         var cast = ReadCastStatus(projectId);
 
-        // Fountain is the screenplay source of truth.
-        // Flow: import → draft/approve → pin characters → shot plan → generate clips (Scenes).
-        var next = "done";
-        var hasSource = book.PdfExists || book.BookTextExists || screenplay.DraftExists ||
-                        (stage1.Present && stage1.SceneCount > 0);
-        if (!hasSource)
-            next = "import_book";
-        else if ((!stage1.Present || stage1.SceneCount == 0) && book.BookTextExists && !book.ReadyForStage1 &&
-                 !screenplay.DraftExists)
-            next = "fix_book_text";
-        else if (!screenplay.DraftExists && book.BookTextExists)
-            next = "draft_screenplay";
-        else if (screenplay.DraftExists && (!screenplay.Signed || screenplay.Dirty))
-            next = "sign_screenplay";
-        else if (!stage1.Present || stage1.SceneCount == 0)
-            next = screenplay.DraftExists ? "sign_screenplay" : "import_book";
-        else if (!cast.ReadyForShots)
-            next = "pin_characters";
-        else if (!stage2.Stage2Ready)
-            next = "run_stage2";
-        else if (stage2.Stage2Stale)
-            next = "replan_stage2";
-        else
-            next = "generate_clips";
-
-        return new AdaptationStatus
+        // Next-action string + phase live in StudioStateMachine (SSoT for banners / redirects / gates).
+        var status = new AdaptationStatus
         {
             ProjectId = projectId,
             Book = book,
@@ -5195,9 +5171,10 @@ public sealed partial class ProjectStore
             Cast = cast,
             XaiConfigured = xai,
             PlanningModel = planningModel,
-            NextStep = next,
             BookSubsteps = ReadBookSubsteps(projectId),
         };
+        status.NextStep = StudioStateMachine.DetermineNextStep(status);
+        return status;
     }
 
     /// <summary>

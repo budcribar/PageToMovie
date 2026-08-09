@@ -60,6 +60,8 @@ public enum StudioStep
 /// <summary>
 /// Single source of truth for studio pipeline state evaluation and step transition gating.
 /// Phase is derived from <see cref="AdaptationStatus"/>; mutations stay event-driven (sign-off, stage2, generate).
+/// Operator "next action" strings (<see cref="DetermineNextStep"/>) also live here so server banners
+/// and Web redirects share one algorithm.
 /// </summary>
 public static class StudioStateMachine
 {
@@ -147,6 +149,56 @@ public static class StudioStateMachine
         // Clip-completeness is not yet on AdaptationStatus — stay on ShotPlanReady.
         // When a rollup lands, return ReviewReady here without changing call sites.
         return StudioPhase.ShotPlanReady;
+    }
+
+    /// <summary>
+    /// Operator-facing next-action key for banners and redirects
+    /// (<c>import_book</c>, <c>sign_screenplay</c>, <c>pin_characters</c>, …).
+    /// More granular than <see cref="DeterminePhase"/> (e.g. re-approve dirty draft, cast pin, replan).
+    /// Kept in Core so <c>ProjectStore</c> and Web share one algorithm.
+    /// </summary>
+    public static string DetermineNextStep(AdaptationStatus? status)
+    {
+        if (status is null)
+            return "import_book";
+
+        var book = status.Book;
+        var screenplay = status.Screenplay;
+        var stage1 = status.Stage1;
+        var stage2 = status.Stage2;
+        var cast = status.Cast;
+
+        // Fountain is the screenplay source of truth.
+        // Flow: import → draft/approve → pin characters → shot plan → generate clips (Scenes).
+        var hasSource = book.PdfExists || book.BookTextExists || screenplay.DraftExists ||
+                        (stage1.Present && stage1.SceneCount > 0);
+        if (!hasSource)
+            return "import_book";
+
+        if ((!stage1.Present || stage1.SceneCount == 0) && book.BookTextExists && !book.ReadyForStage1 &&
+            !screenplay.DraftExists)
+            return "fix_book_text";
+
+        if (!screenplay.DraftExists && book.BookTextExists)
+            return "draft_screenplay";
+
+        // Unsigned draft, or approved draft that has been edited since sign-off.
+        if (screenplay.DraftExists && (!screenplay.Signed || screenplay.Dirty))
+            return "sign_screenplay";
+
+        if (!stage1.Present || stage1.SceneCount == 0)
+            return screenplay.DraftExists ? "sign_screenplay" : "import_book";
+
+        if (!cast.ReadyForShots)
+            return "pin_characters";
+
+        if (!stage2.Stage2Ready)
+            return "run_stage2";
+
+        if (stage2.Stage2Stale)
+            return "replan_stage2";
+
+        return "generate_clips";
     }
 
     /// <summary>

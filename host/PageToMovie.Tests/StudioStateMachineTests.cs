@@ -328,4 +328,120 @@ public class StudioStateMachineTests
         Assert.True(StudioStateMachine.CanNavigateTo(StudioStep.Cast, phaseAfter).Allowed);
         Assert.True(StudioStateMachine.CanNavigateTo(StudioStep.Estimate, phaseAfter).Allowed);
     }
+
+    // ── DetermineNextStep ───────────────────────────────────────────────────
+
+    [Fact]
+    public void DetermineNextStep_import_when_empty()
+    {
+        Assert.Equal("import_book", StudioStateMachine.DetermineNextStep(null));
+        Assert.Equal("import_book", StudioStateMachine.DetermineNextStep(BaseStatus()));
+    }
+
+    [Fact]
+    public void DetermineNextStep_sign_screenplay_for_unsigned_draft()
+    {
+        var s = BaseStatus(st =>
+        {
+            st.Screenplay.DraftExists = true;
+            st.Screenplay.Signed = false;
+            st.Stage1.Present = true;
+            st.Stage1.SceneCount = 2;
+        });
+        Assert.Equal("sign_screenplay", StudioStateMachine.DetermineNextStep(s));
+    }
+
+    [Fact]
+    public void DetermineNextStep_pin_characters_after_signed_until_cast_ready()
+    {
+        var s = BaseStatus(st =>
+        {
+            st.Screenplay.DraftExists = true;
+            st.Screenplay.Signed = true;
+            st.Screenplay.ReadyForShots = true;
+            st.Stage1.Present = true;
+            st.Stage1.SceneCount = 2;
+            st.Cast.ReadyForShots = false;
+        });
+        Assert.Equal("pin_characters", StudioStateMachine.DetermineNextStep(s));
+    }
+
+    [Fact]
+    public void DetermineNextStep_run_stage2_when_cast_ready_no_plan()
+    {
+        var s = BaseStatus(st =>
+        {
+            st.Screenplay.DraftExists = true;
+            st.Screenplay.Signed = true;
+            st.Screenplay.ReadyForShots = true;
+            st.Stage1.Present = true;
+            st.Stage1.SceneCount = 2;
+            st.Cast.ReadyForShots = true;
+            st.Stage2.Stage2Ready = false;
+        });
+        Assert.Equal("run_stage2", StudioStateMachine.DetermineNextStep(s));
+    }
+
+    [Fact]
+    public void DetermineNextStep_replan_when_stage2_stale()
+    {
+        var s = BaseStatus(st =>
+        {
+            st.Screenplay.DraftExists = true;
+            st.Screenplay.Signed = true;
+            st.Screenplay.ReadyForShots = true;
+            st.Stage1.Present = true;
+            st.Stage1.SceneCount = 2;
+            st.Cast.ReadyForShots = true;
+            st.Stage2.Stage2Ready = true;
+            st.Stage2.Stage2Stale = true;
+            st.Stage2.Stage2Clips = 4;
+        });
+        Assert.Equal("replan_stage2", StudioStateMachine.DetermineNextStep(s));
+    }
+
+    [Fact]
+    public void DetermineNextStep_generate_clips_when_plan_ready()
+    {
+        var s = BaseStatus(st =>
+        {
+            st.Screenplay.DraftExists = true;
+            st.Screenplay.Signed = true;
+            st.Screenplay.ReadyForShots = true;
+            st.Stage1.Present = true;
+            st.Stage1.SceneCount = 2;
+            st.Cast.ReadyForShots = true;
+            st.Stage2.Stage2Ready = true;
+            st.Stage2.Stage2Stale = false;
+            st.Stage2.Stage2Clips = 4;
+        });
+        Assert.Equal("generate_clips", StudioStateMachine.DetermineNextStep(s));
+    }
+
+    [Fact]
+    public void DetermineNextStep_and_CanNavigateTo_agree_on_Cast_unlock()
+    {
+        var draft = BaseStatus(st =>
+        {
+            st.Screenplay.DraftExists = true;
+            st.Stage1.Present = true;
+            st.Stage1.SceneCount = 1;
+        });
+        Assert.Equal("sign_screenplay", StudioStateMachine.DetermineNextStep(draft));
+        Assert.False(StudioStateMachine.CanNavigateTo(
+            StudioStep.Cast, StudioStateMachine.DeterminePhase(draft)).Allowed);
+
+        var signed = BaseStatus(st =>
+        {
+            st.Screenplay.DraftExists = true;
+            st.Screenplay.Signed = true;
+            st.Screenplay.ReadyForShots = true;
+            st.Stage1.Present = true;
+            st.Stage1.SceneCount = 1;
+            st.Cast.ReadyForShots = false;
+        });
+        Assert.Equal("pin_characters", StudioStateMachine.DetermineNextStep(signed));
+        Assert.True(StudioStateMachine.CanNavigateTo(
+            StudioStep.Cast, StudioStateMachine.DeterminePhase(signed)).Allowed);
+    }
 }
