@@ -8,6 +8,7 @@ using Microsoft.JSInterop;
 using PageToMovie.Core.Models;
 using PageToMovie.Core.Options;
 using PageToMovie.Web.Services;
+using PageToMovie.Core.Auth;
 
 namespace PageToMovie.Web.Components.Pages;
 

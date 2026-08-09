@@ -7,11 +7,3 @@
         @ChildContent
     </p>
 </div>
-
-@code {
-    [Parameter] public string Kicker { get; set; } = "";
-    [Parameter] public string Title { get; set; } = "";
-    [Parameter] public string CssClass { get; set; } = "mb-3";
-    [Parameter] public string LedeClass { get; set; } = "mb-0";
-    [Parameter] public RenderFragment? ChildContent { get; set; }
-}

@@ -5,6 +5,8 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 using PageToMovie.Core.Models;
 using PageToMovie.Web.Services;
+using System.Globalization;
+using static PageToMovie.Web.Components.CostFormatting;
 
 namespace PageToMovie.Web.Components.Pages;
 

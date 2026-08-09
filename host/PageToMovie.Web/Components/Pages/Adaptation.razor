@@ -8,30 +8,3 @@
     <p class="ptm-adapt-kicker mb-2">Studio</p>
     <p class="text-muted mb-0">Opening the right book step for this project…</p>
 </div>
-
-@code {
-    protected override async Task OnInitializedAsync()
-    {
-        try
-        {
-            var projs = await Engine.GetProjectsAsync();
-            var projectId = projs?.Active?.Id;
-            if (string.IsNullOrEmpty(projectId))
-                projectId = projs?.Projects.Select(p => p.Id).FirstOrDefault(id => !string.IsNullOrEmpty(id));
-
-            if (string.IsNullOrEmpty(projectId))
-            {
-                Nav.NavigateTo("/adaptation/import", replace: true);
-                return;
-            }
-
-            var dto = await Engine.GetAdaptationAsync(projectId);
-            var path = AdaptationPageBase.SuggestedStepPath(dto?.Adaptation);
-            Nav.NavigateTo(path, replace: true);
-        }
-        catch
-        {
-            Nav.NavigateTo("/adaptation/import", replace: true);
-        }
-    }
-}

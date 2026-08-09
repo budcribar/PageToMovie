@@ -52,11 +52,11 @@
         }
         else if (Host.ShowOperatorGenPartial && Host._job is not null)
         {
-            @Host.GenPartialAlert
+            <Scenes_GenPartialAlert />
         }
         else if (Host.ShowOperatorGenError && Host._job is not null)
         {
-            @Host.GenErrorAlert
+            <Scenes_GenErrorAlert />
         }
 
         <div class="card mb-3 p-3">
@@ -346,7 +346,3 @@
             </table>
         </div>
     }
-
-@code {
-    [CascadingParameter] public Scenes Host { get; set; } = default!;
-}

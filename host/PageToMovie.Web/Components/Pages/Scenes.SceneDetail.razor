@@ -31,11 +31,11 @@
     }
     else if (Host.ShowOperatorGenPartial && Host._job is not null)
     {
-        @Host.GenPartialAlert
+        <Scenes_GenPartialAlert />
     }
     else if (Host.ShowOperatorGenError && Host._job is not null)
     {
-        @Host.GenErrorAlert
+        <Scenes_GenErrorAlert />
     }
     else if (Session.IsAdmin && Host._job is not null &&
              (Host._job.Status is "done" or "partial" or "error" or "cancelled"))
@@ -282,8 +282,4 @@
     </div>
 
     <Scenes_ClipInspector />
-}
-
-@code {
-    [CascadingParameter] public Scenes Host { get; set; } = default!;
 }

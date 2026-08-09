@@ -13,11 +13,3 @@
         }
     </div>
 }
-
-@code {
-    [Parameter] public string? Message { get; set; }
-    [Parameter] public string Variant { get; set; } = "danger";
-    [Parameter] public string CssClass { get; set; } = "";
-    [Parameter] public RenderFragment? ChildContent { get; set; }
-    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
-}

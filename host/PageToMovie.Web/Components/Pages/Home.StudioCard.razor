@@ -388,17 +388,7 @@
 
         @if (Host._showImport)
         {
-            @Host.ImportPanel
+            <Home_ImportPanel />
         }
     </div>
 </div>
-
-@code {
-    [CascadingParameter] public Home Host { get; set; } = default!;
-
-    private ElementReference NameInputRef
-    {
-        get => Host._nameInputRef;
-        set => Host._nameInputRef = value;
-    }
-}

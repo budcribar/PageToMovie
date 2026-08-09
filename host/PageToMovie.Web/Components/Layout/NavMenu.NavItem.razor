@@ -1,0 +1,22 @@
+@* Single nav link row used by NavMenu *@
+@using Microsoft.AspNetCore.Components.Routing
+
+<div class="nav-item px-3">
+    @if (Enabled)
+    {
+        <NavLink class="nav-link" href="@Href" title="@Title" data-testid="@TestId">
+            <span class="bi @IconClass" aria-hidden="true"></span>
+            @if (!Collapsed) { <span class="nav-label">@Label</span> }
+        </NavLink>
+    }
+    else
+    {
+        <span class="nav-link nav-link-disabled"
+              title="@Title"
+              data-testid="@(TestId is null ? null : TestId + "-disabled")"
+              aria-disabled="true">
+            <span class="bi @IconClass" aria-hidden="true"></span>
+            @if (!Collapsed) { <span class="nav-label">@Label</span> }
+        </span>
+    }
+</div>

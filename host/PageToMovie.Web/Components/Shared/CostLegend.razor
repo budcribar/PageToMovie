@@ -25,11 +25,3 @@
         </li>
     }
 </ul>
-
-@code {
-    /// <summary>A single legend row: label, dollar value, and swatch color.</summary>
-    public sealed record Item(string Label, double Usd, string Color);
-
-    [Parameter, EditorRequired] public IReadOnlyList<Item> Items { get; set; } = Array.Empty<Item>();
-    [Parameter, EditorRequired] public double Total { get; set; }
-}

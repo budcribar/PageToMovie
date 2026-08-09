@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 using PageToMovie.Core.Models;
 using PageToMovie.Web.Services;
+using System.Net.Http;
 
 namespace PageToMovie.Web.Components.Pages;
 

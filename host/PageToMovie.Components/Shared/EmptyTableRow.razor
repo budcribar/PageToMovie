@@ -3,9 +3,3 @@
 <tr>
     <td colspan="@ColSpan" class="text-muted @CssClass">@Message</td>
 </tr>
-
-@code {
-    [Parameter] public int ColSpan { get; set; }
-    [Parameter] public string Message { get; set; } = "";
-    [Parameter] public string CssClass { get; set; } = "text-center py-3";
-}
