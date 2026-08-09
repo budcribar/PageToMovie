@@ -21,7 +21,7 @@ public partial class ScreenplayEditor_OutlineSidebar : ComponentBase
     public EventCallback<bool> IsCompactChanged { get; set; }
 
     [Parameter]
-    public EventCallback<string> OnSelectMetadata { get; set; }
+    public EventCallback OnSelectMetadata { get; set; }
 
     [Parameter]
     public EventCallback<int> OnSelectScene { get; set; }
@@ -33,11 +33,35 @@ public partial class ScreenplayEditor_OutlineSidebar : ComponentBase
     public EventCallback<int> OnDeleteScene { get; set; }
 
     [Parameter]
+    public EventCallback OnSelectionChangedCallback { get; set; }
+
+    [Parameter]
     public EventCallback<(int from, int to)> OnReorderScenes { get; set; }
 
-    public int DraggedIndex { get; set; } = -1;
     public int DeletingIndex { get; set; } = -1;
     public int PreviewingIndex { get; set; } = -1;
+
+    public int ActiveDragIndex { get; set; } = -1;
+
+    public bool IsAllSelected => Scenes.Count > 0 && Scenes.All(s => s.IsSelected);
+
+    public async Task ToggleSelectAll(ChangeEventArgs e)
+    {
+        bool selected = e.Value is bool b && b;
+        foreach (var scene in Scenes)
+        {
+            scene.IsSelected = selected;
+        }
+        await OnSelectionChanged();
+    }
+
+    public async Task OnSelectionChanged()
+    {
+        if (OnSelectionChangedCallback.HasDelegate)
+        {
+            await OnSelectionChangedCallback.InvokeAsync();
+        }
+    }
 
     public async Task ToggleCompact()
     {
@@ -52,33 +76,23 @@ public partial class ScreenplayEditor_OutlineSidebar : ComponentBase
     {
         if (OnSelectMetadata.HasDelegate)
         {
-            await OnSelectMetadata.InvokeAsync("metadata");
+            await OnSelectMetadata.InvokeAsync();
         }
     }
 
     public async Task SelectScene(int index)
     {
-        if (OnSelectScene.HasDelegate)
+        if (index >= 0 && index < Scenes.Count)
         {
-            await OnSelectScene.InvokeAsync(index);
-        }
-    }
+            // Uncheck all other scenes and check ONLY this scene on single click
+            foreach (var s in Scenes) s.IsSelected = false;
+            Scenes[index].IsSelected = true;
 
-    public void HandleDragStart(int index)
-    {
-        DraggedIndex = index;
-    }
-
-    public async Task HandleDrop(int targetIndex)
-    {
-        if (DraggedIndex >= 0 && DraggedIndex < Scenes.Count && targetIndex >= 0 && targetIndex < Scenes.Count && DraggedIndex != targetIndex)
-        {
-            if (OnReorderScenes.HasDelegate)
+            if (OnSelectScene.HasDelegate)
             {
-                await OnReorderScenes.InvokeAsync((DraggedIndex, targetIndex));
+                await OnSelectScene.InvokeAsync(index);
             }
         }
-        DraggedIndex = -1;
     }
 
     public void RequestDelete(int index)
@@ -93,11 +107,14 @@ public partial class ScreenplayEditor_OutlineSidebar : ComponentBase
 
     public async Task ConfirmDelete()
     {
-        int indexToDelete = DeletingIndex;
-        DeletingIndex = -1;
-        if (indexToDelete >= 0 && OnDeleteScene.HasDelegate)
+        if (DeletingIndex >= 0 && DeletingIndex < Scenes.Count)
         {
-            await OnDeleteScene.InvokeAsync(indexToDelete);
+            int idx = DeletingIndex;
+            DeletingIndex = -1;
+            if (OnDeleteScene.HasDelegate)
+            {
+                await OnDeleteScene.InvokeAsync(idx);
+            }
         }
     }
 
@@ -109,5 +126,22 @@ public partial class ScreenplayEditor_OutlineSidebar : ComponentBase
     public void ClosePreview()
     {
         PreviewingIndex = -1;
+    }
+
+    public void HandleDragStart(int index)
+    {
+        ActiveDragIndex = index;
+    }
+
+    public async Task HandleDrop(int targetIndex)
+    {
+        if (ActiveDragIndex >= 0 && ActiveDragIndex != targetIndex)
+        {
+            if (OnReorderScenes.HasDelegate)
+            {
+                await OnReorderScenes.InvokeAsync((ActiveDragIndex, targetIndex));
+            }
+        }
+        ActiveDragIndex = -1;
     }
 }

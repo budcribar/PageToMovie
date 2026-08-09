@@ -1,15 +1,21 @@
 <div class="card bg-dark-subtle border-secondary-subtle h-100 shadow-sm">
     <div class="card-header bg-dark text-light d-flex justify-content-between align-items-center py-2 px-3 border-bottom border-secondary-subtle">
         <div class="d-flex align-items-center gap-2 overflow-hidden">
-            <i class="bi bi-journal-text text-info fs-5"></i>
+            <input type="checkbox" class="form-check-input my-0" checked="@IsAllSelected" @onchange="ToggleSelectAll" title="Select / Deselect All Scenes" />
             @if (!IsCompact)
             {
                 <h6 class="mb-0 fw-bold text-light text-nowrap">Outline Navigator</h6>
             }
         </div>
-        <button class="btn btn-sm btn-outline-secondary py-0 px-2" type="button" @onclick="ToggleCompact" title="@(IsCompact ? "Expand Sidebar" : "Shrink Sidebar to Numbers Only")">
-            @(IsCompact ? "⟫" : "⟪")
-        </button>
+        <div class="d-flex align-items-center gap-1">
+            @if (!IsCompact)
+            {
+                <ScreenplayEditor_ActionButton Variant="@ComponentVariant.OutlineSuccess" Icon="bi-plus-lg" Text="Add" OnClick="OnAddScene" />
+            }
+            <button class="btn btn-sm btn-outline-secondary py-0 px-2" type="button" @onclick="ToggleCompact" title="@(IsCompact ? "Expand Sidebar" : "Shrink Sidebar to Numbers Only")">
+                @(IsCompact ? "⟫" : "⟪")
+            </button>
+        </div>
     </div>
     
     <div class="card-body p-2 overflow-auto" style="max-height: calc(100vh - 180px);">
@@ -28,14 +34,6 @@
 
             <hr class="my-1 border-secondary-subtle" />
 
-            @if (!IsCompact)
-            {
-                <div class="d-flex justify-content-between align-items-center px-1 mb-1">
-                    <span class="text-secondary small fw-semibold">SCENES (@Scenes.Count)</span>
-                    <ScreenplayEditor_ActionButton Variant="@ComponentVariant.OutlineSuccess" Icon="bi-plus-lg" Text="Add" OnClick="OnAddScene" />
-                </div>
-            }
-
             @if (Scenes.Count == 0)
             {
                 @if (!IsCompact)
@@ -49,21 +47,20 @@
                 {
                     var index = i;
                     var scene = Scenes[index];
-                    var isSelected = ActiveView == "scene" && SelectedSceneIndex == index;
 
-                    <div class="d-flex align-items-center gap-1 w-100 rounded border p-1 @(isSelected ? "bg-primary text-white border-primary" : "bg-dark text-light border-secondary-subtle")"
+                    <div class="d-flex align-items-center gap-1 w-100 rounded border p-1 @(scene.IsSelected ? "bg-primary text-white border-primary" : "bg-dark text-light border-secondary-subtle")"
                          draggable="true"
                          @ondragstart="() => HandleDragStart(index)"
                          @ondragover:preventDefault
                          @ondrop="() => HandleDrop(index)"
                          title="Drag & drop to reorder scene">
                         
-                        <input type="checkbox" class="form-check-input my-0 ms-1 me-1" @bind="scene.IsSelected" title="Select scene" />
+                        <input type="checkbox" class="form-check-input my-0 ms-1 me-1" @bind="scene.IsSelected" @bind:after="OnSelectionChanged" title="Select scene for display" />
 
                         <button type="button"
                                 class="btn btn-sm text-start flex-grow-1 p-0 border-0 bg-transparent text-reset text-truncate"
                                 @onclick="() => SelectScene(index)">
-                            <span class="badge @(isSelected ? "text-bg-dark" : "text-bg-warning") me-1 fw-bold">@scene.SceneNumber</span>
+                            <span class="badge @(scene.IsSelected ? "text-bg-dark" : "text-bg-warning") me-1 fw-bold">@scene.SceneNumber</span>
                             @if (!IsCompact)
                             {
                                 <span class="small font-monospace">@scene.HeaderText</span>

@@ -1,45 +1,42 @@
-<div class="card mb-3 border-secondary-subtle bg-dark-subtle shadow-sm" id="scene-card-@Scene.SceneNumber">
-    <div class="card-header bg-dark text-light d-flex justify-content-between align-items-center flex-wrap gap-2 py-1 px-2 border-bottom border-secondary-subtle">
-        <div class="d-flex align-items-center gap-2 flex-grow-1 flex-wrap">
-            <button class="btn btn-sm btn-link text-light text-decoration-none p-0 me-1" type="button" @onclick="ToggleCollapse" title="Toggle Scene Details">
-                @(Scene.IsCollapsed ? "▶" : "▼")
-            </button>
-            <ScreenplayEditor_BadgePill Variant="@ComponentVariant.Warning" Text="@($"Scene {Scene.SceneNumber}")" />
-            
-            <select class="form-select form-select-sm fw-bold border-secondary bg-dark text-light py-0 px-2" style="width: 110px; height: 28px;" @bind="Scene.Env" @bind:after="OnChanged">
-                <option value="@SceneEnvironment.INT">INT.</option>
-                <option value="@SceneEnvironment.EXT">EXT.</option>
-                <option value="@SceneEnvironment.INT_EXT">INT./EXT.</option>
-            </select>
-            
-            <!-- Location Dropdown from Master Locations -->
-            <select class="form-select form-select-sm text-uppercase fw-bold border-secondary bg-dark text-light py-0 px-2 flex-grow-1" style="min-width: 140px; height: 28px;" @bind="Scene.Location" @bind:after="OnChanged">
-                @if (!AvailableLocations.Contains(Scene.Location) && !string.IsNullOrWhiteSpace(Scene.Location))
-                {
-                    <option value="@Scene.Location">@Scene.Location (Current)</option>
-                }
-                @foreach (var loc in AvailableLocations)
-                {
-                    <option value="@loc">@loc</option>
-                }
-            </select>
+<div class="card mb-2 border-secondary-subtle bg-dark-subtle shadow-sm" id="scene-card-@Scene.SceneNumber">
+    <!-- Single Clean Line Header Row -->
+    <div class="card-header bg-dark text-light d-flex align-items-center flex-wrap gap-2 py-1 px-2 border-bottom border-secondary-subtle">
+        <button class="btn btn-sm btn-link text-light text-decoration-none p-0 me-1" type="button" @onclick="ToggleCollapse" title="Toggle Scene Details">
+            @(Scene.IsCollapsed ? "▶" : "▼")
+        </button>
 
-            <button class="btn btn-sm btn-outline-info py-0 px-1" type="button" @onclick="OnEditLocationsClick" title="Manage / Edit Story Locations">
-                ⚙ Locations
-            </button>
-            
-            <select class="form-select form-select-sm fw-bold border-secondary bg-dark text-light py-0 px-2" style="width: 135px; height: 28px;" @bind="Scene.TimeOfDayEnum" @bind:after="OnChanged">
-                <option value="@TimeOfDay.DAY">DAY</option>
-                <option value="@TimeOfDay.NIGHT">NIGHT</option>
-                <option value="@TimeOfDay.CONTINUOUS">CONTINUOUS</option>
-                <option value="@TimeOfDay.MOMENTS_LATER">MOMENTS LATER</option>
-                <option value="@TimeOfDay.DAWN">DAWN</option>
-                <option value="@TimeOfDay.DUSK">DUSK</option>
-            </select>
-        </div>
-        <div class="d-flex align-items-center gap-1">
-            <ScreenplayEditor_ActionButton Variant="@ComponentVariant.OutlineDanger" Text="✕ Delete" Title="Delete Scene" OnClick="Delete" />
-        </div>
+        <ScreenplayEditor_BadgePill Variant="@ComponentVariant.Warning" Text="@($"Scene {Scene.SceneNumber}")" />
+        
+        <button class="btn btn-sm btn-outline-info py-0 px-1" type="button" @onclick="OnEditLocationsClick" title="Manage / Edit Story Locations">
+            ⚙ Locations
+        </button>
+
+        <select class="form-select form-select-sm fw-bold border-secondary bg-dark text-light py-0 px-2" style="width: 105px; height: 28px;" @bind="Scene.Env" @bind:after="OnChanged">
+            <option value="@SceneEnvironment.INT">INT.</option>
+            <option value="@SceneEnvironment.EXT">EXT.</option>
+            <option value="@SceneEnvironment.INT_EXT">INT./EXT.</option>
+        </select>
+        
+        <!-- Location Dropdown (e.g. Suburban Backyard) -->
+        <select class="form-select form-select-sm text-uppercase fw-bold border-secondary bg-dark text-light py-0 px-2 flex-grow-1" style="min-width: 150px; height: 28px;" @bind="Scene.Location" @bind:after="OnChanged">
+            @if (!AvailableLocations.Contains(Scene.Location) && !string.IsNullOrWhiteSpace(Scene.Location))
+            {
+                <option value="@Scene.Location">@Scene.Location (Current)</option>
+            }
+            @foreach (var loc in AvailableLocations)
+            {
+                <option value="@loc">@loc</option>
+            }
+        </select>
+
+        <select class="form-select form-select-sm fw-bold border-secondary bg-dark text-light py-0 px-2" style="width: 135px; height: 28px;" @bind="Scene.TimeOfDayEnum" @bind:after="OnChanged">
+            <option value="@TimeOfDay.DAY">DAY</option>
+            <option value="@TimeOfDay.NIGHT">NIGHT</option>
+            <option value="@TimeOfDay.CONTINUOUS">CONTINUOUS</option>
+            <option value="@TimeOfDay.MOMENTS_LATER">MOMENTS LATER</option>
+            <option value="@TimeOfDay.DAWN">DAWN</option>
+            <option value="@TimeOfDay.DUSK">DUSK</option>
+        </select>
     </div>
     
     @if (Scene.IsCollapsed)
@@ -52,9 +49,9 @@
     else
     {
         <div class="card-body p-2 text-light">
-            <div class="mb-2">
+            <div class="mb-1">
                 <div class="d-flex justify-content-between align-items-center mb-1">
-                    <h6 class="mb-0 fw-bold text-secondary small">Scene Beats & Actions (@Scene.Beats.Count)</h6>
+                    <h6 class="mb-0 fw-bold text-secondary small">Beats (@Scene.Beats.Count)</h6>
                     <div class="btn-group btn-group-sm">
                         <ScreenplayEditor_ActionButton Variant="@ComponentVariant.OutlineInfo" Text="+ Action" OnClick="() => AddBeat(BeatType.Action)" />
                         <ScreenplayEditor_ActionButton Variant="@ComponentVariant.OutlineSuccess" Text="+ Dialogue" OnClick="() => AddBeat(BeatType.Dialogue)" />

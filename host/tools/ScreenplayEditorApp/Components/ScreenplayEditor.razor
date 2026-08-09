@@ -14,10 +14,8 @@
             </span>
         </div>
 
-        <!-- Right Side: Hamburger Menu & Add Scene Action -->
+        <!-- Right Side: Hamburger Menu -->
         <div class="d-flex align-items-center gap-2">
-            <ScreenplayEditor_ActionButton Variant="@ComponentVariant.Success" Icon="bi-plus-lg" Text="Add Scene" OnClick="AddScene" />
-
             <div class="dropdown">
                 <button class="btn btn-sm btn-outline-secondary dropdown-toggle px-3" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Studio Menu">
                     <i class="bi bi-list fs-5 align-middle"></i> Menu
@@ -49,11 +47,6 @@
                     <li><hr class="dropdown-divider"></li>
                     <li><h6 class="dropdown-header">View Controls</h6></li>
                     <li>
-                        <button class="dropdown-item" type="button" @onclick="ShowAllScenesView">
-                            <i class="bi bi-card-list text-warning me-2"></i> @(ActiveViewMode == "all" ? "Switch to Single Scene Inspector" : "Show All Scenes View")
-                        </button>
-                    </li>
-                    <li>
                         <button class="dropdown-item" type="button" @onclick="CollapseAllScenes">
                             <i class="bi bi-arrows-collapse me-2"></i> Collapse All Scenes
                         </button>
@@ -80,6 +73,7 @@
                                               OnSelectScene="SelectSceneView"
                                               OnAddScene="AddScene"
                                               OnDeleteScene="DeleteScene"
+                                              OnSelectionChangedCallback="OnSelectionChanged"
                                               OnReorderScenes="ReorderScenes" />
         </div>
 
@@ -89,64 +83,35 @@
             {
                 <ScreenplayEditor_MetadataHeader Metadata="Model.Metadata" OnChangedCallback="OnChanged" />
             }
-            else if (ActiveViewMode == "scene" && Model.Scenes.Count > 0 && SelectedSceneIndex >= 0 && SelectedSceneIndex < Model.Scenes.Count)
+            else
             {
-                var scene = Model.Scenes[SelectedSceneIndex];
-                <div class="mb-2 d-flex justify-content-between align-items-center">
-                    <div class="d-flex align-items-center gap-2">
-                        <ScreenplayEditor_ActionButton Variant="@ComponentVariant.OutlineSecondary" Text="◄ Prev Scene" Disabled="@(SelectedSceneIndex == 0)" OnClick="SelectPreviousScene" />
-                        <ScreenplayEditor_ActionButton Variant="@ComponentVariant.OutlineSecondary" Text="Next Scene ►" Disabled="@(SelectedSceneIndex >= Model.Scenes.Count - 1)" OnClick="SelectNextScene" />
+                var selectedScenes = Model.Scenes.Where(s => s.IsSelected).ToList();
+                @if (selectedScenes.Count == 0 && Model.Scenes.Count > 0)
+                {
+                    <div class="card bg-dark-subtle border-secondary-subtle text-center p-4 mb-3 shadow-sm">
+                        <div class="card-body">
+                            <h6 class="fw-bold text-light mb-1">No scenes currently checked</h6>
+                            <p class="text-secondary small mb-0">Check one or more scenes in the Outline Navigator on the left to display them here.</p>
+                        </div>
                     </div>
-                    <span class="text-secondary small">Viewing Scene <strong>@(SelectedSceneIndex + 1)</strong> of <strong>@Model.Scenes.Count</strong></span>
-                </div>
-
-                <ScreenplayEditor_SceneCard Scene="scene"
-                                            IsFirst="@(SelectedSceneIndex == 0)"
-                                            IsLast="@(SelectedSceneIndex == Model.Scenes.Count - 1)"
-                                            AvailableLocations="Model.GetAllLocations()"
-                                            AvailableCharacters="Model.GetAllCharacters()"
-                                            OnChangedCallback="OnChanged"
-                                            OnEditLocationsClick="OpenLocationModal"
-                                            OnEditCharactersClick="OpenCharacterModal"
-                                            OnDeleteCallback="() => DeleteScene(SelectedSceneIndex)" />
-            }
-            else if (ActiveViewMode == "all" || Model.Scenes.Count == 0)
-            {
-                <ScreenplayEditor_MetadataHeader Metadata="Model.Metadata" OnChangedCallback="OnChanged" />
-
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <div class="d-flex align-items-center gap-2">
-                        <h5 class="mb-0 fw-bold text-light">Scenes</h5>
-                        <ScreenplayEditor_BadgePill Variant="@ComponentVariant.Secondary" Text="@Model.Scenes.Count.ToString()" />
-                    </div>
-                    <div class="d-flex align-items-center gap-2">
-                        @if (Model.Scenes.Count > 0)
-                        {
-                            <ScreenplayEditor_ActionButton Variant="@ComponentVariant.OutlineSecondary" Text="Collapse All" OnClick="CollapseAllScenes" />
-                            <ScreenplayEditor_ActionButton Variant="@ComponentVariant.OutlineSecondary" Text="Expand All" OnClick="ExpandAllScenes" />
-                        }
-                        <ScreenplayEditor_ActionButton Variant="@ComponentVariant.Success" Icon="bi-plus-lg" Text="Add Scene" OnClick="AddScene" />
-                    </div>
-                </div>
-
-                @if (Model.Scenes.Count == 0)
+                }
+                else if (Model.Scenes.Count == 0)
                 {
                     <div class="card bg-dark-subtle border-secondary-subtle text-center p-5 mb-4 shadow-sm">
                         <div class="card-body">
                             <div class="display-6 text-info mb-3">🎬</div>
                             <h5 class="fw-bold text-light">No scenes in screenplay</h5>
                             <p class="text-secondary mb-0">
-                                Use the <strong class="text-success">+ Add Scene</strong> button above to create your first scene, or click <strong class="text-info">Import Fountain</strong> in the menu to load an existing screenplay file.
+                                Click <strong class="text-success">+ Add</strong> in the Outline Navigator to create your first scene, or use <strong class="text-info">Import Fountain</strong> in the menu.
                             </p>
                         </div>
                     </div>
                 }
                 else
                 {
-                    @for (var i = 0; i < Model.Scenes.Count; i++)
+                    @foreach (var scene in selectedScenes)
                     {
-                        var index = i;
-                        var scene = Model.Scenes[index];
+                        var index = Model.Scenes.IndexOf(scene);
                         <ScreenplayEditor_SceneCard Scene="scene"
                                                     IsFirst="@(index == 0)"
                                                     IsLast="@(index == Model.Scenes.Count - 1)"
@@ -154,8 +119,7 @@
                                                     AvailableCharacters="Model.GetAllCharacters()"
                                                     OnChangedCallback="OnChanged"
                                                     OnEditLocationsClick="OpenLocationModal"
-                                                    OnEditCharactersClick="OpenCharacterModal"
-                                                    OnDeleteCallback="() => DeleteScene(index)" />
+                                                    OnEditCharactersClick="OpenCharacterModal" />
                     }
                 }
             }

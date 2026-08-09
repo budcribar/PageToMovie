@@ -18,23 +18,39 @@ public partial class ScreenplayEditor : ComponentBase
     public bool ShowLocationModal { get; set; } = false;
     public bool ShowCharacterModal { get; set; } = false;
 
-    public string ActiveViewMode { get; set; } = "metadata";
+    public string ActiveViewMode { get; set; } = "scene";
     public int SelectedSceneIndex { get; set; } = 0;
     public bool IsSidebarCompact { get; set; } = false;
 
     public int TotalBeats => Model.Scenes.Sum(s => s.Beats.Count);
 
+    protected override void OnInitialized()
+    {
+        EnsureSceneSelection();
+    }
+
     public async Task OnChanged()
     {
         ReindexSceneNumbers();
-        if (SelectedSceneIndex >= Model.Scenes.Count && Model.Scenes.Count > 0)
-        {
-            SelectedSceneIndex = Model.Scenes.Count - 1;
-        }
+        EnsureSceneSelection();
         if (ModelChanged.HasDelegate)
         {
             await ModelChanged.InvokeAsync(Model);
         }
+    }
+
+    public void EnsureSceneSelection()
+    {
+        if (Model.Scenes.Count > 0 && !Model.Scenes.Any(s => s.IsSelected))
+        {
+            Model.Scenes[0].IsSelected = true;
+        }
+    }
+
+    public void OnSelectionChanged()
+    {
+        ActiveViewMode = "scene";
+        StateHasChanged();
     }
 
     public void OpenLocationModal()
@@ -133,7 +149,8 @@ public partial class ScreenplayEditor : ComponentBase
             SceneNumber = Model.Scenes.Count + 1,
             Environment = "INT.",
             Location = "NEW LOCATION",
-            TimeOfDay = "DAY"
+            TimeOfDay = "DAY",
+            IsSelected = true
         };
         newScene.Beats.Add(new ScreenplayBeat
         {
@@ -212,6 +229,7 @@ public partial class ScreenplayEditor : ComponentBase
             {
                 SelectedSceneIndex = 0;
                 ActiveViewMode = "scene";
+                EnsureSceneSelection();
             }
             else
             {
