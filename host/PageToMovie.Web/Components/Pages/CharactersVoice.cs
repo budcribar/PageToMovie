@@ -13,7 +13,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Characters
 {
     /// <summary>Voice domain for the Characters page. Owns related UI state and behavior.</summary>
-    internal sealed class CharactersVoice
+    public sealed class CharactersVoice
     {
         private readonly Characters S;
         public CharactersVoice(Characters host) => S = host;
@@ -93,7 +93,7 @@ public partial class Characters
 
         internal async Task SaveVoiceAsync(bool silent = false)
         {
-            if (S._selected is null) return;
+            if (S.List._selected is null) return;
             if (!silent)
             {
                 S._busy = true;
@@ -103,19 +103,19 @@ public partial class Characters
             {
                 await S.Engine.UpdateCharacterVoiceAsync(
                     S._projectId,
-                    S._selected.Key,
+                    S.List._selected.Key,
                     voiceProfile: _editVoiceProfile,
                     voiceLabel: _editVoiceLabel);
                 if (!silent)
-                    S._message = $"Saved voice for {S._selected.DisplayName}";
-                await S.SoftReloadAsync();
-                if (S._selected is not null)
+                    S._message = $"Saved voice for {S.List._selected.DisplayName}";
+                await S.List.SoftReloadAsync();
+                if (S.List._selected is not null)
                 {
-                    _editVoiceLabel = S._selected.VoiceLabel ?? "";
-                    _editVoiceProfile = S._selected.VoiceProfile ?? "";
+                    _editVoiceLabel = S.List._selected.VoiceLabel ?? "";
+                    _editVoiceProfile = S.List._selected.VoiceProfile ?? "";
                 }
                 try { await S.ActiveProject.RefreshReadinessAsync(S.Engine); } catch { /* nav */ }
-                if (S.IsCastComplete && !silent)
+                if (S.List.IsCastComplete && !silent)
                     S._message = null;
             }
             catch (Exception ex)
@@ -168,8 +168,8 @@ public partial class Characters
         {
             _voiceSaveCts?.Cancel();
             _voiceSaveCts?.Dispose();
-            S._lookSaveCts?.Cancel();
-            S._lookSaveCts?.Dispose();
+            S.LookEdit._lookSaveCts?.Cancel();
+            S.LookEdit._lookSaveCts?.Dispose();
             _voiceSaveCts = new CancellationTokenSource();
             var token = _voiceSaveCts.Token;
             _ = AutoSaveVoiceDebouncedAsync(token);
@@ -181,7 +181,7 @@ public partial class Characters
             try
             {
                 await Task.Delay(700, token);
-                if (token.IsCancellationRequested || S._selected is null) return;
+                if (token.IsCancellationRequested || S.List._selected is null) return;
                 _voiceSaveHint = "Saving…";
                 await S.InvokeAsync(S.StateHasChanged);
                 await SaveVoiceAsync(silent: true);
@@ -210,19 +210,19 @@ public partial class Characters
 
         internal async Task TryLoadCachedVoiceAsync()
         {
-            if (S._selected is null) return;
+            if (S.List._selected is null) return;
             try
             {
                 var st = await S.Engine.GetVoicePreviewStatusAsync(
                     S._projectId,
-                    S._selected.Key,
+                    S.List._selected.Key,
                     voiceProfile: _editVoiceProfile,
                     voiceLabel: _editVoiceLabel);
                 if (st is { Exists: true, Matches: true })
                 {
                     _voiceAudioBust = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                     _voicePreviewUrl = S.Engine.CharacterVoiceAudioUrl(
-                        S._projectId, S._selected.Key, _voiceAudioBust);
+                        S._projectId, S.List._selected.Key, _voiceAudioBust);
                     _voicePreviewStale = false;
                     _voicePreviewHint = "Cached film voice sample.";
                 }
@@ -240,7 +240,7 @@ public partial class Characters
         /// <param name="force">true = always regenerate (after editing profile).</param>
         internal async Task PlayVoicePreviewAsync(bool force)
         {
-            if (S._selected is null) return;
+            if (S.List._selected is null) return;
             _voicePreviewError = null;
             _voicePreviewHint = null;
             S.StateHasChanged();
@@ -251,14 +251,14 @@ public partial class Characters
                 {
                     var st = await S.Engine.GetVoicePreviewStatusAsync(
                         S._projectId,
-                        S._selected.Key,
+                        S.List._selected.Key,
                         voiceProfile: _editVoiceProfile,
                         voiceLabel: _editVoiceLabel);
                     if (st is { Exists: true, Matches: true })
                     {
                         _voiceAudioBust = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                         _voicePreviewUrl = S.Engine.CharacterVoiceAudioUrl(
-                            S._projectId, S._selected.Key, _voiceAudioBust);
+                            S._projectId, S.List._selected.Key, _voiceAudioBust);
                         _voicePreviewStale = false;
                         _voicePreviewHint = "Cached film voice sample.";
                         return;
@@ -275,16 +275,16 @@ public partial class Characters
                 await S.Engine.StartVoicePreviewAsync(new StartVoicePreviewRequest
                 {
                     ProjectId = S._projectId,
-                    CharKey = S._selected.Key,
+                    CharKey = S.List._selected.Key,
                     VoiceProfile = _editVoiceProfile,
                     VoiceLabel = _editVoiceLabel,
-                    DisplayName = S._selected.DisplayName,
+                    DisplayName = S.List._selected.DisplayName,
                     // force: always regen; cache miss also generates (service skips only matching cache)
                     Force = force,
                 });
                 // Job progress via SignalR; keep busy until done handler clears it
                 var jobs = await S.Engine.GetJobAsync();
-                S._job = jobs?.Job;
+                S.Jobs._job = jobs?.Job;
             }
             catch (Exception ex)
             {
@@ -296,10 +296,10 @@ public partial class Characters
 
         internal void RefreshVoiceClonePlayUrl()
         {
-            if (S._selected?.HasVoiceCloneSample == true && !string.IsNullOrEmpty(S._projectId) && !string.IsNullOrEmpty(S._selectedKey))
+            if (S.List._selected?.HasVoiceCloneSample == true && !string.IsNullOrEmpty(S._projectId) && !string.IsNullOrEmpty(S.List._selectedKey))
             {
                 _voiceCloneBust = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                _voiceClonePlayUrl = S.Engine.CharacterVoiceCloneSampleUrl(S._projectId, S._selectedKey, _voiceCloneBust);
+                _voiceClonePlayUrl = S.Engine.CharacterVoiceCloneSampleUrl(S._projectId, S.List._selectedKey, _voiceCloneBust);
             }
             else
                 _voiceClonePlayUrl = null;
@@ -314,14 +314,14 @@ public partial class Characters
 
         internal async Task ApplyVoiceCloneToProviderAsync()
         {
-            if (S._selected is null || string.IsNullOrEmpty(S._selectedKey) || string.IsNullOrEmpty(S._projectId))
+            if (S.List._selected is null || string.IsNullOrEmpty(S.List._selectedKey) || string.IsNullOrEmpty(S._projectId))
                 return;
             _voiceCloneBusy = true;
             _voiceCloneError = null;
             _voiceCloneHint = "Applying voice…";
             try
             {
-                var result = await S.Engine.ApplyVoiceCloneAsync(S._projectId, S._selectedKey);
+                var result = await S.Engine.ApplyVoiceCloneAsync(S._projectId, S.List._selectedKey);
                 if (!result.Ok)
                 {
                     _voiceCloneError = result.Error ?? "Apply failed";
@@ -331,9 +331,9 @@ public partial class Characters
                     ?? (result.UsedMock
                         ? "Demo voice applied. Preview saved."
                         : $"Voice applied ({result.ProviderId ?? "provider"}) — id saved on this character.");
-                await S.LoadAsync();
-                if (!string.IsNullOrEmpty(S._selectedKey))
-                    await S.SelectCoreAsync(S._selectedKey, resetMode: false, flushPending: false);
+                await S.List.LoadAsync();
+                if (!string.IsNullOrEmpty(S.List._selectedKey))
+                    await S.List.SelectCoreAsync(S.List._selectedKey, resetMode: false, flushPending: false);
             }
             catch (Exception ex)
             {
@@ -419,7 +419,7 @@ public partial class Characters
 
         internal async Task StopVoiceCloneMicAsync()
         {
-            if (S._selected is null || string.IsNullOrEmpty(S._selectedKey)) return;
+            if (S.List._selected is null || string.IsNullOrEmpty(S.List._selectedKey)) return;
             _voiceCloneBusy = true;
             _voiceCloneError = null;
             _voiceCloneHint = "Saving…";
@@ -499,7 +499,7 @@ public partial class Characters
 
         internal async Task PickMediaFolderAudioAsync(ClientMediaFolderService.LocalAudioFile file)
         {
-            if (S._selected is null || string.IsNullOrEmpty(S._selectedKey)) return;
+            if (S.List._selected is null || string.IsNullOrEmpty(S.List._selectedKey)) return;
             _voiceCloneBusy = true;
             _voiceCloneError = null;
             _voiceCloneHint = $"Loading {file.Name}…";
@@ -533,12 +533,12 @@ public partial class Characters
         /// </summary>
         internal async Task PersistVoiceCloneSampleAsync(byte[] bytes, string fileName)
         {
-            if (S._selected is null || string.IsNullOrEmpty(S._selectedKey)) return;
+            if (S.List._selected is null || string.IsNullOrEmpty(S.List._selectedKey)) return;
             var ext = Path.GetExtension(fileName).ToLowerInvariant();
             if (ext is not (".webm" or ".mp3" or ".wav" or ".m4a" or ".ogg" or ".aac" or ".mp4"))
                 ext = ".webm";
             if (ext == ".mp4") ext = ".webm";
-            var safeKey = PageToMovie.Core.Utils.FileNameSanitizer.SanitizeFileName(S._selectedKey ?? "character");
+            var safeKey = PageToMovie.Core.Utils.FileNameSanitizer.SanitizeFileName(S.List._selectedKey ?? "character");
             var rel = $"assets/characters/{safeKey}/voice_clone_sample{ext}";
 
             // Client media folder when already connected (no folder picker mid-recording).
@@ -551,10 +551,10 @@ public partial class Characters
             _voiceCloneHint = "Saving…";
 
             await using var ms = new MemoryStream(bytes);
-            if (string.IsNullOrWhiteSpace(S._selectedKey))
+            if (string.IsNullOrWhiteSpace(S.List._selectedKey))
                 throw new InvalidOperationException("No character selected for voice sample.");
-            await S.Engine.UploadVoiceCloneSampleAsync(S._projectId, S._selectedKey!, ms, "voice_clone_sample" + ext);
-            await S.SoftReloadAsync();
+            await S.Engine.UploadVoiceCloneSampleAsync(S._projectId, S.List._selectedKey!, ms, "voice_clone_sample" + ext);
+            await S.List.SoftReloadAsync();
             RefreshVoiceClonePlayUrl();
             _voiceCloneBust = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             RefreshVoiceClonePlayUrl();
@@ -565,7 +565,7 @@ public partial class Characters
         internal async Task OnVoiceCloneUploadAsync(InputFileChangeEventArgs e)
         {
             // Legacy OS file picker path — prefer media folder; still supported if invoked.
-            if (S._selected is null || S._selected.VoiceOnly || S._selected.IsGroup) return;
+            if (S.List._selected is null || S.List._selected.VoiceOnly || S.List._selected.IsGroup) return;
             var file = e.File;
             if (file is null) return;
             _voiceCloneBusy = true;
@@ -585,14 +585,14 @@ public partial class Characters
 
         internal async Task DeleteVoiceCloneSampleAsync()
         {
-            if (string.IsNullOrEmpty(S._projectId) || string.IsNullOrEmpty(S._selectedKey)) return;
+            if (string.IsNullOrEmpty(S._projectId) || string.IsNullOrEmpty(S.List._selectedKey)) return;
             _voiceCloneBusy = true;
             try
             {
-                await S.Engine.DeleteVoiceCloneSampleAsync(S._projectId, S._selectedKey);
+                await S.Engine.DeleteVoiceCloneSampleAsync(S._projectId, S.List._selectedKey);
                 _voiceCloneHint = "Sample removed.";
                 _voiceClonePlayUrl = null;
-                await S.ReloadSelectedCharacterAsync();
+                await S.List.ReloadSelectedCharacterAsync();
             }
             catch (Exception ex) { _voiceCloneError = ex.Message; }
             finally { _voiceCloneBusy = false; }

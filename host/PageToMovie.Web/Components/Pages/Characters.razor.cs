@@ -74,8 +74,8 @@ public partial class Characters
     {
         EnsureDomains();
         await ActiveProject.EnsureLoadedAsync(Engine);
-        Hub.JobUpdated += OnJobUpdated;
-        Hub.JobLog += OnJobLog;
+        Hub.JobUpdated += Jobs.OnJobUpdated;
+        Hub.JobLog += Jobs.OnJobLog;
         try
         {
             try { await Session.EnsureHydratedAsync(); } catch { /* optional */ }
@@ -99,9 +99,9 @@ public partial class Characters
             if (!string.IsNullOrEmpty(_projectId))
                 await Caps.RefreshAsync(Engine);
 
-            ApplySimpleModeFromUri();
+            List.ApplySimpleModeFromUri();
             // Easy-start lives entirely on /simple-voice (story + record). No cast list.
-            if (_simpleMode)
+            if (List._simpleMode)
             {
                 Nav.NavigateTo("simple-voice");
                 return;
@@ -114,9 +114,9 @@ public partial class Characters
             try { await Hub.StartAsync(); } catch { /* optional */ }
 
             var jobs = await Engine.GetJobAsync();
-            _job = jobs?.Job;
+            Jobs._job = jobs?.Job;
 
-            await LoadAsync();
+            await List.LoadAsync();
         }
         catch (Exception ex)
         {
@@ -178,7 +178,7 @@ public partial class Characters
 
 
     internal string CacheBust(string url) =>
-        url + (url.Contains('?') ? "&" : "?") + "v=" + _imgBust;
+        url + (url.Contains('?') ? "&" : "?") + "v=" + LookPipe._imgBust;
 
 
     internal static string Trunc(string? s, int n)
@@ -190,13 +190,13 @@ public partial class Characters
 
     public async ValueTask DisposeAsync()
     {
-        _voiceSaveCts?.Cancel();
-        _voiceSaveCts?.Dispose();
-        _voiceSaveCts = null;
-        _lookSaveCts?.Cancel();
-        _lookSaveCts?.Dispose();
-        _lookSaveCts = null;
-        await DisposeAsyncCore();
+        Voice._voiceSaveCts?.Cancel();
+        Voice._voiceSaveCts?.Dispose();
+        Voice._voiceSaveCts = null;
+        LookEdit._lookSaveCts?.Cancel();
+        LookEdit._lookSaveCts?.Dispose();
+        LookEdit._lookSaveCts = null;
+        await Jobs.DisposeAsyncCore();
     }
 
 
@@ -204,332 +204,43 @@ public partial class Characters
     internal RenderFragment VoiceEditorUI() => builder =>
     {
         builder.OpenComponent<Characters_VoiceEditor>(0);
-        builder.AddAttribute(1, "SimpleMode", _simpleMode);
-        builder.AddAttribute(2, "EditVoiceLabel", _editVoiceLabel);
-        builder.AddAttribute(3, "VoiceLabelChanged", EventCallback.Factory.Create<string>(this, OnVoiceLabelChanged));
-        builder.AddAttribute(4, "EditVoiceProfile", _editVoiceProfile);
-        builder.AddAttribute(5, "VoiceProfileChanged", EventCallback.Factory.Create<string>(this, OnVoiceProfileChanged));
+        builder.AddAttribute(1, "SimpleMode", List._simpleMode);
+        builder.AddAttribute(2, "EditVoiceLabel", Voice._editVoiceLabel);
+        builder.AddAttribute(3, "VoiceLabelChanged", EventCallback.Factory.Create<string>(this, Voice.OnVoiceLabelChanged));
+        builder.AddAttribute(4, "EditVoiceProfile", Voice._editVoiceProfile);
+        builder.AddAttribute(5, "VoiceProfileChanged", EventCallback.Factory.Create<string>(this, Voice.OnVoiceProfileChanged));
         builder.AddAttribute(6, "Busy", _busy);
-        builder.AddAttribute(7, "VoicePreviewBusy", _voicePreviewBusy);
-        builder.AddAttribute(8, "VoiceJobRunning", VoiceJobRunning);
-        builder.AddAttribute(9, "VoiceSaveHint", _voiceSaveHint);
-        builder.AddAttribute(10, "VoicePreviewError", _voicePreviewError);
-        builder.AddAttribute(11, "VoicePreviewHint", _voicePreviewHint);
-        builder.AddAttribute(12, "VoicePreviewStale", _voicePreviewStale);
-        builder.AddAttribute(13, "VoicePreviewUrl", _voicePreviewUrl);
-        builder.AddAttribute(14, "Job", _job);
-        builder.AddAttribute(15, "Selected", _selected);
-        builder.AddAttribute(16, "VoiceCloneBusy", _voiceCloneBusy);
-        builder.AddAttribute(17, "VoiceCloneError", _voiceCloneError);
-        builder.AddAttribute(18, "VoiceCloneHint", _voiceCloneHint);
-        builder.AddAttribute(19, "VoiceClonePlayUrl", _voiceClonePlayUrl);
-        builder.AddAttribute(20, "VoiceRecRecording", _voiceRecRecording);
-        builder.AddAttribute(21, "ShowKidsFullScript", _showKidsFullScript);
-        builder.AddAttribute(22, "ShowKidsFullScriptChanged", EventCallback.Factory.Create<bool>(this, v => _showKidsFullScript = v));
-        builder.AddAttribute(23, "UseKidsScript", _useKidsScript);
-        builder.AddAttribute(24, "UseKidsScriptChanged", EventCallback.Factory.Create<bool>(this, v => _useKidsScript = v));
-        builder.AddAttribute(25, "ShowMediaAudioPicker", _showMediaAudioPicker);
-        builder.AddAttribute(26, "ShowMediaAudioPickerChanged", EventCallback.Factory.Create<bool>(this, v => _showMediaAudioPicker = v));
-        builder.AddAttribute(27, "LoadingMediaAudio", _loadingMediaAudio);
-        builder.AddAttribute(28, "MediaAudioFiles", _mediaAudioFiles);
-        builder.AddAttribute(29, "VoiceCloneReadScript", VoiceCloneReadScript);
-        builder.AddAttribute(30, "OnPlayPreview", EventCallback.Factory.Create<bool>(this, PlayVoicePreviewAsync));
-        builder.AddAttribute(31, "OnStartMic", EventCallback.Factory.Create(this, StartVoiceCloneMicAsync));
-        builder.AddAttribute(32, "OnStopMic", EventCallback.Factory.Create(this, StopVoiceCloneMicAsync));
-        builder.AddAttribute(33, "OnCancelMic", EventCallback.Factory.Create(this, CancelVoiceCloneMicAsync));
-        builder.AddAttribute(34, "OnOpenMediaPicker", EventCallback.Factory.Create(this, OpenMediaFolderAudioPickerAsync));
-        builder.AddAttribute(35, "OnApplyClone", EventCallback.Factory.Create(this, ApplyVoiceCloneToProviderAsync));
-        builder.AddAttribute(36, "OnDeleteClone", EventCallback.Factory.Create(this, DeleteVoiceCloneSampleAsync));
-        builder.AddAttribute(37, "OnPickMediaAudio", EventCallback.Factory.Create<ClientMediaFolderService.LocalAudioFile>(this, PickMediaFolderAudioAsync));
+        builder.AddAttribute(7, "VoicePreviewBusy", Voice._voicePreviewBusy);
+        builder.AddAttribute(8, "VoiceJobRunning", Jobs.VoiceJobRunning);
+        builder.AddAttribute(9, "VoiceSaveHint", Voice._voiceSaveHint);
+        builder.AddAttribute(10, "VoicePreviewError", Voice._voicePreviewError);
+        builder.AddAttribute(11, "VoicePreviewHint", Voice._voicePreviewHint);
+        builder.AddAttribute(12, "VoicePreviewStale", Voice._voicePreviewStale);
+        builder.AddAttribute(13, "VoicePreviewUrl", Voice._voicePreviewUrl);
+        builder.AddAttribute(14, "Job", Jobs._job);
+        builder.AddAttribute(15, "Selected", List._selected);
+        builder.AddAttribute(16, "VoiceCloneBusy", Voice._voiceCloneBusy);
+        builder.AddAttribute(17, "VoiceCloneError", Voice._voiceCloneError);
+        builder.AddAttribute(18, "VoiceCloneHint", Voice._voiceCloneHint);
+        builder.AddAttribute(19, "VoiceClonePlayUrl", Voice._voiceClonePlayUrl);
+        builder.AddAttribute(20, "VoiceRecRecording", Voice._voiceRecRecording);
+        builder.AddAttribute(21, "ShowKidsFullScript", Voice._showKidsFullScript);
+        builder.AddAttribute(22, "ShowKidsFullScriptChanged", EventCallback.Factory.Create<bool>(this, v => Voice._showKidsFullScript = v));
+        builder.AddAttribute(23, "UseKidsScript", Voice._useKidsScript);
+        builder.AddAttribute(24, "UseKidsScriptChanged", EventCallback.Factory.Create<bool>(this, v => Voice._useKidsScript = v));
+        builder.AddAttribute(25, "ShowMediaAudioPicker", Voice._showMediaAudioPicker);
+        builder.AddAttribute(26, "ShowMediaAudioPickerChanged", EventCallback.Factory.Create<bool>(this, v => Voice._showMediaAudioPicker = v));
+        builder.AddAttribute(27, "LoadingMediaAudio", Voice._loadingMediaAudio);
+        builder.AddAttribute(28, "MediaAudioFiles", Voice._mediaAudioFiles);
+        builder.AddAttribute(29, "VoiceCloneReadScript", Voice.VoiceCloneReadScript);
+        builder.AddAttribute(30, "OnPlayPreview", EventCallback.Factory.Create<bool>(this, Voice.PlayVoicePreviewAsync));
+        builder.AddAttribute(31, "OnStartMic", EventCallback.Factory.Create(this, Voice.StartVoiceCloneMicAsync));
+        builder.AddAttribute(32, "OnStopMic", EventCallback.Factory.Create(this, Voice.StopVoiceCloneMicAsync));
+        builder.AddAttribute(33, "OnCancelMic", EventCallback.Factory.Create(this, Voice.CancelVoiceCloneMicAsync));
+        builder.AddAttribute(34, "OnOpenMediaPicker", EventCallback.Factory.Create(this, Voice.OpenMediaFolderAudioPickerAsync));
+        builder.AddAttribute(35, "OnApplyClone", EventCallback.Factory.Create(this, Voice.ApplyVoiceCloneToProviderAsync));
+        builder.AddAttribute(36, "OnDeleteClone", EventCallback.Factory.Create(this, Voice.DeleteVoiceCloneSampleAsync));
+        builder.AddAttribute(37, "OnPickMediaAudio", EventCallback.Factory.Create<ClientMediaFolderService.LocalAudioFile>(this, Voice.PickMediaFolderAudioAsync));
         builder.CloseComponent();
     };
-
-
-    // ── Field forwarders (Host._x for markup children) ──
-    internal List<CharacterSummary>? _chars
-    {
-        get => List._chars;
-        set => List._chars = value;
-    }
-    internal bool _extractingCast
-    {
-        get => List._extractingCast;
-        set => List._extractingCast = value;
-    }
-    internal string? _focusHint
-    {
-        get => List._focusHint;
-        set => List._focusHint = value;
-    }
-    internal List<string>? _lastCastExtractKeys
-    {
-        get => List._lastCastExtractKeys;
-        set => List._lastCastExtractKeys = value;
-    }
-    internal CharacterPlatesState? _plates
-    {
-        get => List._plates;
-        set => List._plates = value;
-    }
-    internal bool _rebuildCastHadExisting
-    {
-        get => List._rebuildCastHadExisting;
-        set => List._rebuildCastHadExisting = value;
-    }
-    internal CharacterSummary? _selected
-    {
-        get => List._selected;
-        set => List._selected = value;
-    }
-    internal string? _selectedKey
-    {
-        get => List._selectedKey;
-        set => List._selectedKey = value;
-    }
-    internal bool _simpleMode
-    {
-        get => List._simpleMode;
-        set => List._simpleMode = value;
-    }
-    // Look pipeline
-    internal List<Candidate> _allCandidates
-    {
-        get => LookPipe._allCandidates;
-        set => LookPipe._allCandidates = value;
-    }
-    internal string? _chosenCandidateKey
-    {
-        get => LookPipe._chosenCandidateKey;
-        set => LookPipe._chosenCandidateKey = value;
-    }
-    internal PendingDelete? _deleteConfirm
-    {
-        get => LookPipe._deleteConfirm;
-        set => LookPipe._deleteConfirm = value;
-    }
-    internal long _imgBust
-    {
-        get => LookPipe._imgBust;
-        set => LookPipe._imgBust = value;
-    }
-    internal Mode _mode
-    {
-        get => LookPipe._mode;
-        set => LookPipe._mode = value;
-    }
-    internal Candidate? _pendingLockCandidate
-    {
-        get => LookPipe._pendingLockCandidate;
-        set => LookPipe._pendingLockCandidate = value;
-    }
-    internal PictureRoute _pictureRoute
-    {
-        get => LookPipe._pictureRoute;
-        set => LookPipe._pictureRoute = value;
-    }
-    internal Candidate? _styleRejectCandidate
-    {
-        get => LookPipe._styleRejectCandidate;
-        set => LookPipe._styleRejectCandidate = value;
-    }
-    internal string? _styleRejectMessage
-    {
-        get => LookPipe._styleRejectMessage;
-        set => LookPipe._styleRejectMessage = value;
-    }
-    internal Candidate? _zoomCandidate
-    {
-        get => LookPipe._zoomCandidate;
-        set => LookPipe._zoomCandidate = value;
-    }
-    internal double _zoomScale
-    {
-        get => LookPipe._zoomScale;
-        set => LookPipe._zoomScale = value;
-    }
-    // Look book / seeds
-    internal ImageSeedLimits? _imageSeedLimits
-    {
-        get => LookBook._imageSeedLimits;
-        set => LookBook._imageSeedLimits = value;
-    }
-    internal bool _loadingBookCandidates
-    {
-        get => LookBook._loadingBookCandidates;
-        set => LookBook._loadingBookCandidates = value;
-    }
-    internal List<RankedBookCandidateDto>? _rankedBookCandidates
-    {
-        get => LookBook._rankedBookCandidates;
-        set => LookBook._rankedBookCandidates = value;
-    }
-    internal bool _savingBookRefs
-    {
-        get => LookBook._savingBookRefs;
-        set => LookBook._savingBookRefs = value;
-    }
-    internal List<string> _seedOrder => LookBook._seedOrder;
-    internal List<string> _selectedBookCandidatePaths => LookBook._selectedBookCandidatePaths;
-    internal bool _showBookCandidateGallery
-    {
-        get => LookBook._showBookCandidateGallery;
-        set => LookBook._showBookCandidateGallery = value;
-    }
-    // Look editors / autosave
-    internal string _editDescription
-    {
-        get => LookEdit._editDescription;
-        set => LookEdit._editDescription = value;
-    }
-    internal string _editVisualLock
-    {
-        get => LookEdit._editVisualLock;
-        set => LookEdit._editVisualLock = value;
-    }
-    internal CancellationTokenSource? _lookSaveCts
-    {
-        get => LookEdit._lookSaveCts;
-        set => LookEdit._lookSaveCts = value;
-    }
-    internal string? _lookSaveHint
-    {
-        get => LookEdit._lookSaveHint;
-        set => LookEdit._lookSaveHint = value;
-    }
-    internal bool _panelPictureOpen
-    {
-        get => LookEdit._panelPictureOpen;
-        set => LookEdit._panelPictureOpen = value;
-    }
-    internal string _savedLookDescription
-    {
-        get => LookEdit._savedLookDescription;
-        set => LookEdit._savedLookDescription = value;
-    }
-    internal string _savedLookVisualLock
-    {
-        get => LookEdit._savedLookVisualLock;
-        set => LookEdit._savedLookVisualLock = value;
-    }
-    internal bool _savingLook
-    {
-        get => LookEdit._savingLook;
-        set => LookEdit._savingLook = value;
-    }
-    // Voice
-    internal string _editVoiceLabel
-    {
-        get => Voice._editVoiceLabel;
-        set => Voice._editVoiceLabel = value;
-    }
-    internal string _editVoiceProfile
-    {
-        get => Voice._editVoiceProfile;
-        set => Voice._editVoiceProfile = value;
-    }
-    internal bool _forceShowVoice
-    {
-        get => Voice._forceShowVoice;
-        set => Voice._forceShowVoice = value;
-    }
-    internal bool _loadingMediaAudio
-    {
-        get => Voice._loadingMediaAudio;
-        set => Voice._loadingMediaAudio = value;
-    }
-    internal List<ClientMediaFolderService.LocalAudioFile> _mediaAudioFiles
-    {
-        get => Voice._mediaAudioFiles;
-        set => Voice._mediaAudioFiles = value;
-    }
-    internal bool _showKidsFullScript
-    {
-        get => Voice._showKidsFullScript;
-        set => Voice._showKidsFullScript = value;
-    }
-    internal bool _showMediaAudioPicker
-    {
-        get => Voice._showMediaAudioPicker;
-        set => Voice._showMediaAudioPicker = value;
-    }
-    internal bool _useKidsScript
-    {
-        get => Voice._useKidsScript;
-        set => Voice._useKidsScript = value;
-    }
-    internal long _voiceAudioBust
-    {
-        get => Voice._voiceAudioBust;
-        set => Voice._voiceAudioBust = value;
-    }
-    internal long _voiceCloneBust
-    {
-        get => Voice._voiceCloneBust;
-        set => Voice._voiceCloneBust = value;
-    }
-    internal bool _voiceCloneBusy
-    {
-        get => Voice._voiceCloneBusy;
-        set => Voice._voiceCloneBusy = value;
-    }
-    internal string? _voiceCloneError
-    {
-        get => Voice._voiceCloneError;
-        set => Voice._voiceCloneError = value;
-    }
-    internal string? _voiceCloneHint
-    {
-        get => Voice._voiceCloneHint;
-        set => Voice._voiceCloneHint = value;
-    }
-    internal string? _voiceClonePlayUrl
-    {
-        get => Voice._voiceClonePlayUrl;
-        set => Voice._voiceClonePlayUrl = value;
-    }
-    internal bool _voicePreviewBusy
-    {
-        get => Voice._voicePreviewBusy;
-        set => Voice._voicePreviewBusy = value;
-    }
-    internal string? _voicePreviewError
-    {
-        get => Voice._voicePreviewError;
-        set => Voice._voicePreviewError = value;
-    }
-    internal string? _voicePreviewHint
-    {
-        get => Voice._voicePreviewHint;
-        set => Voice._voicePreviewHint = value;
-    }
-    internal bool _voicePreviewStale
-    {
-        get => Voice._voicePreviewStale;
-        set => Voice._voicePreviewStale = value;
-    }
-    internal string? _voicePreviewUrl
-    {
-        get => Voice._voicePreviewUrl;
-        set => Voice._voicePreviewUrl = value;
-    }
-    internal bool _voiceRecRecording
-    {
-        get => Voice._voiceRecRecording;
-        set => Voice._voiceRecRecording = value;
-    }
-    internal CancellationTokenSource? _voiceSaveCts
-    {
-        get => Voice._voiceSaveCts;
-        set => Voice._voiceSaveCts = value;
-    }
-    internal string? _voiceSaveHint
-    {
-        get => Voice._voiceSaveHint;
-        set => Voice._voiceSaveHint = value;
-    }
-    internal JobSnapshot? _job
-    {
-        get => Jobs._job;
-        set => Jobs._job = value;
-    }
 }

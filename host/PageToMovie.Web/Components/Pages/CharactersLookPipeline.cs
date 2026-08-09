@@ -13,7 +13,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Characters
 {
     /// <summary>Look generate / compare / lock / zoom pipeline for Characters.</summary>
-    internal sealed class CharactersLookPipeline
+    public sealed class CharactersLookPipeline
     {
         private readonly Characters S;
         public CharactersLookPipeline(Characters host) => S = host;
@@ -58,16 +58,16 @@ public partial class Characters
 
         internal async Task ConfirmDeleteImageAsync()
         {
-            if (S._selected is null || _deleteConfirm is null) return;
+            if (S.List._selected is null || _deleteConfirm is null) return;
             S._busy = true;
             S._error = null;
             try
             {
                 await S.Engine.DeleteCharacterImageAsync(
-                    S._projectId, S._selected.Key, _deleteConfirm.Kind, _deleteConfirm.Index);
+                    S._projectId, S.List._selected.Key, _deleteConfirm.Kind, _deleteConfirm.Index);
                 _deleteConfirm = null;
-                await S.SoftReloadAsync();
-                S.ResetSeedSelection();
+                await S.List.SoftReloadAsync();
+                S.LookBook.ResetSeedSelection();
                 S._message = "Picture deleted.";
             }
             catch (Exception ex) { S._error = ex.Message; }
@@ -80,9 +80,9 @@ public partial class Characters
             _pictureRoute = route;
             S._error = null;
             if (route == PictureRoute.Book)
-                _ = S.ToggleBookCandidateGalleryAsync();
+                _ = S.LookBook.ToggleBookCandidateGalleryAsync();
             if (route == PictureRoute.Choose)
-                S._showBookCandidateGallery = false;
+                S.LookBook._showBookCandidateGallery = false;
             S.StateHasChanged();
         }
 
@@ -90,19 +90,19 @@ public partial class Characters
         /// <summary>Book path: ensure selected plates are seeds, then generate 3 looks.</summary>
         internal async Task StartBookGuidedGenerateAsync()
         {
-            if (S._selected is null) return;
-            if (S._selectedBookCandidatePaths.Count > 0)
+            if (S.List._selected is null) return;
+            if (S.LookBook._selectedBookCandidatePaths.Count > 0)
             {
-                var ok = await S.EnsureGalleryBookSelectionAppliedAsync();
+                var ok = await S.LookBook.EnsureGalleryBookSelectionAppliedAsync();
                 if (!ok) return;
             }
-            if (!S._selected.BookRefs.Any(b => b.Exists) && S.SelectedSeedCount == 0)
+            if (!S.List._selected.BookRefs.Any(b => b.Exists) && S.LookBook.SelectedSeedCount == 0)
             {
                 S._error = "Select at least one book picture first.";
                 return;
             }
-            S._seedOrder.Clear();
-            S.AddBookRefsToSeedOrder();
+            S.LookBook._seedOrder.Clear();
+            S.LookBook.AddBookRefsToSeedOrder();
             await StartRegenerateAsync();
         }
 
@@ -112,7 +112,7 @@ public partial class Characters
             CloseLookZoom();
             ResetCompare();
             _mode = Mode.PickSource;
-            if (S._selected?.HasPreferred == true)
+            if (S.List._selected?.HasPreferred == true)
                 _pictureRoute = PictureRoute.Choose;
         }
 
@@ -126,25 +126,25 @@ public partial class Characters
 
         internal async Task StartRegenerateAsync()
         {
-            if (S._selected is null) return;
+            if (S.List._selected is null) return;
 
             // Gallery checkmarks are the intended seeds — do not require a separate "Use for generation"
             // click, and do not mix in preferred/variants the operator did not rank as tiles.
-            if (S._selectedBookCandidatePaths.Count > 0)
+            if (S.LookBook._selectedBookCandidatePaths.Count > 0)
             {
-                var prepared = await S.EnsureGalleryBookSelectionAppliedAsync();
+                var prepared = await S.LookBook.EnsureGalleryBookSelectionAppliedAsync();
                 if (!prepared)
                     return;
             }
 
-            if (S.SelectedSeedCount == 0 && string.IsNullOrWhiteSpace(S._editDescription))
+            if (S.LookBook.SelectedSeedCount == 0 && string.IsNullOrWhiteSpace(S.LookEdit._editDescription))
             {
                 S._error = "Select book pictures (or another reference) or enter a description.";
                 return;
             }
 
-            var maxSend = S.ApiMaxSeedRefs;
-            var sendOrder = S._seedOrder.Take(maxSend).ToList();
+            var maxSend = S.LookBook.ApiMaxSeedRefs;
+            var sendOrder = S.LookBook._seedOrder.Take(maxSend).ToList();
             var includePref = sendOrder.Any(k => k is "p");
             var variants = new List<int>();
             var books = new List<int>();
@@ -161,17 +161,17 @@ public partial class Characters
             await StartGenerateCoreAsync(new StartCharacterVariantsRequest
             {
                 ProjectId = S._projectId,
-                CharKey = S._selected.Key,
+                CharKey = S.List._selected.Key,
                 Count = 3,
-                SeedMode = S.SelectedSeedCount == 0 ? "none" : "explicit",
+                SeedMode = S.LookBook.SelectedSeedCount == 0 ? "none" : "explicit",
                 IncludePreferred = includePref,
                 IncludeLockedRef = includePref,
                 BookRefIndices = books,
                 VariantIndices = variants,
                 SeedOrderKeys = sendOrder,
                 MaxRefs = maxSend,
-                DescriptionOverride = S._editDescription,
-                VisualLockOverride = S._editVisualLock,
+                DescriptionOverride = S.LookEdit._editDescription,
+                VisualLockOverride = S.LookEdit._editVisualLock,
                 PersistDescription = true,
             });
         }
@@ -179,13 +179,13 @@ public partial class Characters
 
         internal async Task StartGenerateCoreAsync(StartCharacterVariantsRequest req)
         {
-            if (S._selected is null) return;
+            if (S.List._selected is null) return;
             S._busy = true;
             S._error = null;
             S._message = null;
             // Reset progress UI immediately so a prior 3/3 bar never carries over
             var total = req.Count > 0 ? req.Count : 3;
-            S._job = new JobSnapshot
+            S.Jobs._job = new JobSnapshot
             {
                 Status = "queued",
                 Kind = "character",
@@ -211,14 +211,14 @@ public partial class Characters
                     // Never adopt a finished job's Index/Total for the new run
                     if (j.Index > 0 && string.Equals(j.Status, "queued", StringComparison.OrdinalIgnoreCase))
                         j.Index = 0;
-                    S._job = j;
+                    S.Jobs._job = j;
                 }
             }
             catch (Exception ex)
             {
                 S._error = ex.Message;
                 _mode = Mode.PickSource;
-                S._job = null;
+                S.Jobs._job = null;
             }
             finally { S._busy = false; }
         }
@@ -226,13 +226,13 @@ public partial class Characters
 
         internal void BeginCompareFromVariants()
         {
-            if (S._selected is null)
+            if (S.List._selected is null)
             {
                 _mode = Mode.PickSource;
                 return;
             }
 
-            var vars = S._selected.Variants.Where(v => v.Exists).OrderBy(v => v.Index).ToList();
+            var vars = S.List._selected.Variants.Where(v => v.Exists).OrderBy(v => v.Index).ToList();
             if (vars.Count == 0)
             {
                 _mode = Mode.PickSource;
@@ -246,11 +246,11 @@ public partial class Characters
                 Index = v.Index ?? 1,
                 Label = $"Option {v.Index}",
                 // Bust cache so second generate doesn't show stale first-round images
-                Url = S.CacheBust(S.Engine.CharacterVariantUrl(S._projectId, S._selected.Key, v.Index ?? 1)),
+                Url = S.CacheBust(S.Engine.CharacterVariantUrl(S._projectId, S.List._selected.Key, v.Index ?? 1)),
             }).ToList();
 
             _mode = Mode.Compare;
-            S._panelPictureOpen = true;
+            S.LookEdit._panelPictureOpen = true;
             S._message = null;
         }
 
@@ -312,12 +312,12 @@ public partial class Characters
 
         internal async Task LockCandidateAsync(Candidate c, bool overrideStyle = false, string? overrideReason = null)
         {
-            if (S._selected is null) return;
+            if (S.List._selected is null) return;
             // Remember choice so a cast-list switch can finish the save if this call is in flight.
             _pendingLockCandidate = c;
             _chosenCandidateKey = CandidateKey(c);
-            var charKey = S._selected.Key;
-            var display = S._selected.DisplayName;
+            var charKey = S.List._selected.Key;
+            var display = S.List._selected.DisplayName;
             S._busy = true;
             S._error = null;
             if (overrideStyle) { _styleRejectCandidate = null; _styleRejectMessage = null; }
@@ -336,21 +336,21 @@ public partial class Characters
                 _pendingLockCandidate = null;
                 _chosenCandidateKey = null;
                 _imgBust = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                await S.SoftReloadAsync();
+                await S.List.SoftReloadAsync();
                 await S.RefreshNavReadinessAsync();
                 // Stay on this character; show the preferred look (do not wipe list state for others).
                 ResetCompare();
                 _mode = Mode.PickSource;
                 _pictureRoute = PictureRoute.Choose;
-                S.ApplyPanelsForSelected();
-                S.ResetSeedSelection();
-                if (S._selected is not null)
+                S.List.ApplyPanelsForSelected();
+                S.LookBook.ResetSeedSelection();
+                if (S.List._selected is not null)
                 {
-                    foreach (var v in S._selected.Variants.Where(x => x.Exists))
+                    foreach (var v in S.List._selected.Variants.Where(x => x.Exists))
                     {
                         var key = $"v{v.Index ?? 0}";
-                        if (!S._seedOrder.Contains(key, StringComparer.OrdinalIgnoreCase))
-                            S._seedOrder.Add(key);
+                        if (!S.LookBook._seedOrder.Contains(key, StringComparer.OrdinalIgnoreCase))
+                            S.LookBook._seedOrder.Add(key);
                     }
                 }
             }
@@ -393,14 +393,14 @@ public partial class Characters
 
         internal async Task UnlockAsync()
         {
-            if (S._selected is null) return;
+            if (S.List._selected is null) return;
             S._busy = true;
             S._error = null;
             try
             {
-                await S.Engine.UnlockCharacterAsync(S._projectId, S._selected.Key);
-                S._message = $"Unlocked {S._selected.DisplayName}";
-                await S.LoadAsync();
+                await S.Engine.UnlockCharacterAsync(S._projectId, S.List._selected.Key);
+                S._message = $"Unlocked {S.List._selected.DisplayName}";
+                await S.List.LoadAsync();
                 ResetCompare();
                 _mode = Mode.PickSource;
             }
@@ -411,13 +411,13 @@ public partial class Characters
 
         internal async Task OnUploadRefAsync(InputFileChangeEventArgs e)
         {
-            if (S._selected is null || S._selected.VoiceOnly || S._selected.IsGroup) return;
+            if (S.List._selected is null || S.List._selected.VoiceOnly || S.List._selected.IsGroup) return;
             var file = e.File;
             if (file is null) return;
 
             // Capture identity before any re-render; buffer bytes while InputFile is still mounted.
-            var charKey = S._selected.Key;
-            var display = S._selected.DisplayName;
+            var charKey = S.List._selected.Key;
+            var display = S.List._selected.DisplayName;
             var fileName = file.Name;
             byte[] bytes;
             try
@@ -449,7 +449,7 @@ public partial class Characters
                 await S.Engine.UploadCharacterRefAsync(S._projectId, charKey, stream, fileName);
                 // Saved thumbnail/icon is the confirmation — no redundant "Saved look" banner.
                 _imgBust = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                await S.SoftReloadAsync();
+                await S.List.SoftReloadAsync();
                 try { await S.ActiveProject.RefreshReadinessAsync(S.Engine); } catch { /* nav */ }
                 ResetCompare();
                 _mode = Mode.PickSource;

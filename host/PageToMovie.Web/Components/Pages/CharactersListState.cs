@@ -13,7 +13,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Characters
 {
     /// <summary>List domain for the Characters page. Owns related UI state and behavior.</summary>
-    internal sealed class CharactersListState
+    public sealed class CharactersListState
     {
         private readonly Characters S;
         public CharactersListState(Characters host) => S = host;
@@ -100,7 +100,7 @@ public partial class Characters
         internal bool IsCastComplete =>
             OperatorCastCount > 0 &&
             CharactersForUi.All(c =>
-                Characters.HasVoiceProfile(c) &&
+                Characters.CharactersVoice.HasVoiceProfile(c) &&
                 (c.VoiceOnly || c.HasPreferred || c.Locked));
 
 
@@ -171,8 +171,8 @@ public partial class Characters
 
         internal async Task OnProjectChangedAsync()
         {
-            S.ResetCompare();
-            S._mode = Mode.PickSource;
+            S.LookPipe.ResetCompare();
+            S.LookPipe._mode = Mode.PickSource;
             await LoadAsync();
         }
 
@@ -186,8 +186,8 @@ public partial class Characters
                 var dto = await S.Engine.GetCharactersAsync(S._projectId);
                 _chars = dto?.Characters ?? new List<CharacterSummary>();
                 _plates = dto?.CharacterPlates;
-                S._imageSeedLimits = dto?.ImageSeedLimits;
-                S._imgBust = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                S.LookBook._imageSeedLimits = dto?.ImageSeedLimits;
+                S.LookPipe._imgBust = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                 // Do not auto-open a character — user clicks the list to choose source.
                 if (_selectedKey is not null && CharactersForUi.Any(c => c.Key == _selectedKey))
                     await SelectCoreAsync(_selectedKey, resetMode: false, flushPending: false);
@@ -195,21 +195,21 @@ public partial class Characters
                 {
                     _selectedKey = null;
                     _selected = null;
-                    S.ResetCompare();
-                    S._mode = Mode.PickSource;
+                    S.LookPipe.ResetCompare();
+                    S.LookPipe._mode = Mode.PickSource;
                 }
 
                 FocusNarratorIfNeeded();
 
                 var jobs = await S.Engine.GetJobAsync();
-                S._job = jobs?.Job;
+                S.Jobs._job = jobs?.Job;
             }
             catch (Exception ex)
             {
                 S._error = ex.Message;
                 _chars = null;
                 _plates = null;
-                S._imageSeedLimits = null;
+                S.LookBook._imageSeedLimits = null;
             }
             finally { S._busy = false; }
         }
@@ -222,8 +222,8 @@ public partial class Characters
                 var dto = await S.Engine.GetCharactersAsync(S._projectId);
                 _chars = dto?.Characters ?? new List<CharacterSummary>();
                 _plates = dto?.CharacterPlates;
-                S._imageSeedLimits = dto?.ImageSeedLimits;
-                S._imgBust = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                S.LookBook._imageSeedLimits = dto?.ImageSeedLimits;
+                S.LookPipe._imgBust = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                 if (_selectedKey is not null)
                     await SelectCoreAsync(_selectedKey, resetMode: false, flushPending: false);
             }
@@ -235,7 +235,7 @@ public partial class Characters
         /// Block cast-list switches while save/generate/etc. runs so async completion
         /// cannot paste one character's look into another's editors.
         /// </summary>
-        internal bool CastListLocked => S._busy || S._savingLook || S.JobRunning || _extractingCast;
+        internal bool CastListLocked => S._busy || S.LookEdit._savingLook || S.Jobs.JobRunning || _extractingCast;
 
 
         internal Task SelectAsync(string key) => SelectCoreAsync(key, resetMode: true, flushPending: true);
@@ -252,11 +252,11 @@ public partial class Characters
             if (switched && CastListLocked && !flushPending)
                 return;
 
-            if (switched && flushPending && _selected is not null && S._pendingLockCandidate is not null)
+            if (switched && flushPending && _selected is not null && S.LookPipe._pendingLockCandidate is not null)
             {
                 try
                 {
-                    await S.LockCandidateAsync(S._pendingLockCandidate);
+                    await S.LookPipe.LockCandidateAsync(S.LookPipe._pendingLockCandidate);
                 }
                 catch
                 {
@@ -271,44 +271,44 @@ public partial class Characters
             _selectedKey = key;
             _selected = CharactersForUi.FirstOrDefault(c =>
                 string.Equals(c.Key, key, StringComparison.OrdinalIgnoreCase));
-            S._pendingLockCandidate = null;
-            S._chosenCandidateKey = null;
+            S.LookPipe._pendingLockCandidate = null;
+            S.LookPipe._chosenCandidateKey = null;
             if (_selected is not null)
             {
-                S._editDescription = _selected.Description ?? "";
-                S._editVisualLock = _selected.VisualLock ?? "";
-                S._savedLookDescription = S._editDescription;
-                S._savedLookVisualLock = S._editVisualLock;
-                S._lookSaveHint = null;
-                S._lookSaveCts?.Cancel();
-                S._lookSaveCts?.Dispose();
-                S._lookSaveCts = null;
-                S._editVoiceLabel = _selected.VoiceLabel ?? "";
-                S._editVoiceProfile = _selected.VoiceProfile ?? "";
-                S._forceShowVoice = false;
-                S.RefreshVoiceClonePlayUrl();
-                S._voiceCloneHint = null;
-                S._voiceCloneError = null;
-                S._voicePreviewUrl = null;
-                S._voicePreviewError = null;
-                S._voicePreviewHint = null;
-                S._voicePreviewStale = false;
-                _ = S.InvokeAsync(() => S.TryLoadCachedVoiceAsync());
+                S.LookEdit._editDescription = _selected.Description ?? "";
+                S.LookEdit._editVisualLock = _selected.VisualLock ?? "";
+                S.LookEdit._savedLookDescription = S.LookEdit._editDescription;
+                S.LookEdit._savedLookVisualLock = S.LookEdit._editVisualLock;
+                S.LookEdit._lookSaveHint = null;
+                S.LookEdit._lookSaveCts?.Cancel();
+                S.LookEdit._lookSaveCts?.Dispose();
+                S.LookEdit._lookSaveCts = null;
+                S.Voice._editVoiceLabel = _selected.VoiceLabel ?? "";
+                S.Voice._editVoiceProfile = _selected.VoiceProfile ?? "";
+                S.Voice._forceShowVoice = false;
+                S.Voice.RefreshVoiceClonePlayUrl();
+                S.Voice._voiceCloneHint = null;
+                S.Voice._voiceCloneError = null;
+                S.Voice._voicePreviewUrl = null;
+                S.Voice._voicePreviewError = null;
+                S.Voice._voicePreviewHint = null;
+                S.Voice._voicePreviewStale = false;
+                _ = S.InvokeAsync(() => S.Voice.TryLoadCachedVoiceAsync());
             }
             if (switched)
             {
-                S._deleteConfirm = null;
+                S.LookPipe._deleteConfirm = null;
                 ApplyPanelsForSelected();
             }
             if (resetMode)
             {
-                S.ResetCompare();
-                S._mode = Mode.PickSource;
+                S.LookPipe.ResetCompare();
+                S.LookPipe._mode = Mode.PickSource;
                 if (switched)
-                    S._pictureRoute = PictureRoute.Choose;
+                    S.LookPipe._pictureRoute = PictureRoute.Choose;
                 S._error = null;
                 S._message = null;
-                S.ResetSeedSelection();
+                S.LookBook.ResetSeedSelection();
                 ApplyPanelsForSelected();
             }
         }
@@ -320,7 +320,7 @@ public partial class Characters
         internal void ApplyPanelsForSelected()
         {
             // Single card for picture + voice; always expanded when a character is selected.
-            S._panelPictureOpen = true;
+            S.LookEdit._panelPictureOpen = true;
         }
 
 
@@ -346,7 +346,7 @@ public partial class Characters
             // project.json studioPath is source of truth; ?simple=1 still works as override entry
             _simpleMode = S.ActiveProject.IsSimpleVoice || querySimple;
 
-            S._useKidsScript = _simpleMode ||
+            S.Voice._useKidsScript = _simpleMode ||
                 VoiceCloneScripts.LooksLikeChildrensStory(
                     S.ActiveProject.Label,
                     genre: null,
@@ -362,7 +362,7 @@ public partial class Characters
                 await S.Engine.SetStudioPathAsync(S._projectId, ProjectStudioPaths.Full);
                 S.ActiveProject.Set(S.ActiveProject.ProjectId, S.ActiveProject.Label, S.ActiveProject.ParentProjectId, ProjectStudioPaths.Full);
                 _simpleMode = false;
-                S._useKidsScript = VoiceCloneScripts.LooksLikeChildrensStory(
+                S.Voice._useKidsScript = VoiceCloneScripts.LooksLikeChildrensStory(
                     S.ActiveProject.Label, null, S._projectId);
                 S.Nav.NavigateTo("characters", forceLoad: false);
             }
@@ -404,9 +404,9 @@ public partial class Characters
                     string.Equals(c.Key, _selectedKey, StringComparison.OrdinalIgnoreCase));
                 if (_selected is not null)
                 {
-                    S._editVoiceLabel = _selected.VoiceLabel ?? "";
-                    S._editVoiceProfile = _selected.VoiceProfile ?? "";
-                    S.RefreshVoiceClonePlayUrl();
+                    S.Voice._editVoiceLabel = _selected.VoiceLabel ?? "";
+                    S.Voice._editVoiceProfile = _selected.VoiceProfile ?? "";
+                    S.Voice.RefreshVoiceClonePlayUrl();
                 }
             }
             catch { }

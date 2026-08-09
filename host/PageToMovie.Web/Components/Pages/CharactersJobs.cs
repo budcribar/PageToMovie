@@ -13,7 +13,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Characters
 {
     /// <summary>Jobs domain for the Characters page. Owns related UI state and behavior.</summary>
-    internal sealed class CharactersJobs
+    public sealed class CharactersJobs
     {
         private readonly Characters S;
         public CharactersJobs(Characters host) => S = host;
@@ -25,7 +25,7 @@ public partial class Characters
             _job is not null &&
             string.Equals(_job.Kind, "voice-preview", StringComparison.OrdinalIgnoreCase) &&
             (_job.Status is "running" or "queued") &&
-            string.Equals(_job.CharKey, S._selectedKey, StringComparison.OrdinalIgnoreCase);
+            string.Equals(_job.CharKey, S.List._selectedKey, StringComparison.OrdinalIgnoreCase);
 
 
         internal bool JobRunning =>
@@ -62,30 +62,30 @@ public partial class Characters
             {
                 _ = S.InvokeAsync(async () =>
                 {
-                    S._voicePreviewBusy = false;
+                    S.Voice._voicePreviewBusy = false;
                     if (snap.Status == "done" &&
-                        string.Equals(snap.CharKey, S._selectedKey, StringComparison.OrdinalIgnoreCase))
+                        string.Equals(snap.CharKey, S.List._selectedKey, StringComparison.OrdinalIgnoreCase))
                     {
                         S._error = null;
-                        S._voicePreviewError = null;
-                        S._voiceAudioBust = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                        S._voicePreviewUrl = S.Engine.CharacterVoiceAudioUrl(
-                            S._projectId, snap.CharKey!, S._voiceAudioBust);
-                        S._voicePreviewStale = false;
-                        S._voicePreviewHint = "Film voice sample ready.";
+                        S.Voice._voicePreviewError = null;
+                        S.Voice._voiceAudioBust = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                        S.Voice._voicePreviewUrl = S.Engine.CharacterVoiceAudioUrl(
+                            S._projectId, snap.CharKey!, S.Voice._voiceAudioBust);
+                        S.Voice._voicePreviewStale = false;
+                        S.Voice._voicePreviewHint = "Film voice sample ready.";
                         S._message = null;
                     }
                     else if (snap.Status == "error")
                     {
                         S._message = null;
-                        S._voicePreviewError = S.Session.IsAdmin
+                        S.Voice._voicePreviewError = S.Session.IsAdmin
                             ? (snap.Error ?? snap.Message ?? "Voice sample failed.")
                             : "Could not generate voice sample. Try again.";
                     }
                     else if (snap.Status == "cancelled")
                     {
-                        S._voicePreviewError = null;
-                        S._voicePreviewHint = "Voice sample cancelled.";
+                        S.Voice._voicePreviewError = null;
+                        S.Voice._voicePreviewHint = "Voice sample cancelled.";
                     }
                     S.StateHasChanged();
                     await Task.CompletedTask;
@@ -96,7 +96,7 @@ public partial class Characters
             {
                 _ = S.InvokeAsync(async () =>
                 {
-                    await S.SoftReloadAsync();
+                    await S.List.SoftReloadAsync();
                     if (snap.Status == "done")
                     {
                         S._error = null;
@@ -125,20 +125,20 @@ public partial class Characters
                     // Leave "Generating…" as soon as the job finishes (even if files need a moment)
                     if (snap.Status is "done" or "error" or "cancelled")
                     {
-                        if (S._mode == Mode.WaitingGenerate)
-                            S._mode = Mode.PickSource;
+                        if (S.LookPipe._mode == Mode.WaitingGenerate)
+                            S.LookPipe._mode = Mode.PickSource;
                     }
 
-                    await S.SoftReloadAsync();
+                    await S.List.SoftReloadAsync();
                     if (snap.Status == "done" &&
-                        string.Equals(snap.CharKey, S._selectedKey, StringComparison.OrdinalIgnoreCase))
+                        string.Equals(snap.CharKey, S.List._selectedKey, StringComparison.OrdinalIgnoreCase))
                     {
                         S._error = null;
                         S._message = null;
                         // Brief delay so variant files are visible after write/flush
                         await Task.Delay(150);
-                        await S.SoftReloadAsync();
-                        S.BeginCompareFromVariants();
+                        await S.List.SoftReloadAsync();
+                        S.LookPipe.BeginCompareFromVariants();
                     }
                     else if (snap.Status == "error")
                     {
@@ -146,11 +146,11 @@ public partial class Characters
                         S._error = S.Session.IsAdmin
                             ? (snap.Error ?? snap.Message ?? "Portrait generation failed.")
                             : "Portrait generation failed. Try again.";
-                        S._mode = Mode.PickSource;
+                        S.LookPipe._mode = Mode.PickSource;
                     }
                     else if (snap.Status == "cancelled")
                     {
-                        S._mode = Mode.PickSource;
+                        S.LookPipe._mode = Mode.PickSource;
                     }
                     S.StateHasChanged();
                 });
@@ -187,8 +187,8 @@ public partial class Characters
                 S._message = "Cancel requested";
                 var jobs = await S.Engine.GetJobAsync();
                 _job = jobs?.Job;
-                if (S._mode == Mode.WaitingGenerate)
-                    S._mode = Mode.PickSource;
+                if (S.LookPipe._mode == Mode.WaitingGenerate)
+                    S.LookPipe._mode = Mode.PickSource;
             }
             catch (Exception ex) { S._error = ex.Message; }
             finally { S._busy = false; }

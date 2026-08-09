@@ -15,4 +15,8 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Characters_CastList
 {
     [CascadingParameter] public Characters Host { get; set; } = default!;
+    [CascadingParameter] public Characters.CharactersListState? List { get; set; }
+
+    [CascadingParameter] public Characters.CharactersLookPipeline? LookPipe { get; set; }
+
 }

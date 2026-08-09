@@ -13,7 +13,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Characters
 {
     /// <summary>Look text editors and debounced autosave for Characters.</summary>
-    internal sealed class CharactersLookEditors
+    public sealed class CharactersLookEditors
     {
         private readonly Characters S;
         public CharactersLookEditors(Characters host) => S = host;
@@ -86,7 +86,7 @@ public partial class Characters
             try
             {
                 await Task.Delay(Characters.LookAutosaveDebounceMs, token);
-                if (token.IsCancellationRequested || S._selected is null) return;
+                if (token.IsCancellationRequested || S.List._selected is null) return;
                 _lookSaveHint = "Saving…";
                 await S.InvokeAsync(S.StateHasChanged);
                 await SaveLookAsync(silent: true);
@@ -109,11 +109,11 @@ public partial class Characters
         /// <param name="silent">Autosave: no full-page busy, no toast spam; skip AI scrub (cheap disk write).</param>
         internal async Task SaveLookAsync(bool silent = false)
         {
-            if (S._selected is null) return;
+            if (S.List._selected is null) return;
 
-            // Snapshot identity + text — never re-read S._selected after await for the POST.
-            var charKey = S._selected.Key;
-            var displayName = S._selected.DisplayName;
+            // Snapshot identity + text — never re-read S.List._selected after await for the POST.
+            var charKey = S.List._selected.Key;
+            var displayName = S.List._selected.DisplayName;
 
             // No text change → no API
             var desc = _editDescription ?? "";
@@ -146,7 +146,7 @@ public partial class Characters
                     visualLock: vis,
                     scrubWithAi: !silent);
 
-                var stillOnChar = string.Equals(S._selectedKey, charKey, StringComparison.OrdinalIgnoreCase);
+                var stillOnChar = string.Equals(S.List._selectedKey, charKey, StringComparison.OrdinalIgnoreCase);
                 if (stillOnChar && !silent)
                 {
                     if (!string.IsNullOrWhiteSpace(result.Description))
@@ -158,10 +158,10 @@ public partial class Characters
                 // Saved thumbnail/icon is the confirmation — no redundant "Saved look" banner.
 
                 // Soft reload on silent is fine but keep editors stable if scrub didn't rewrite.
-                await S.SoftReloadAsync();
+                await S.List.SoftReloadAsync();
                 if (stillOnChar &&
-                    string.Equals(S._selectedKey, charKey, StringComparison.OrdinalIgnoreCase) &&
-                    S._selected is not null)
+                    string.Equals(S.List._selectedKey, charKey, StringComparison.OrdinalIgnoreCase) &&
+                    S.List._selected is not null)
                 {
                     if (!silent && !string.IsNullOrWhiteSpace(result.Description))
                         _editDescription = result.Description!;
@@ -170,12 +170,12 @@ public partial class Characters
                         // Keep what the operator typed; mark as saved baseline
                     }
                     else
-                        _editDescription = S._selected.Description ?? _editDescription ?? "";
+                        _editDescription = S.List._selected.Description ?? _editDescription ?? "";
 
                     if (!silent && result.VisualLock is not null)
                         _editVisualLock = result.VisualLock;
                     else if (!silent)
-                        _editVisualLock = S._selected.VisualLock ?? _editVisualLock ?? "";
+                        _editVisualLock = S.List._selected.VisualLock ?? _editVisualLock ?? "";
 
                     _savedLookDescription = _editDescription ?? "";
                     _savedLookVisualLock = _editVisualLock ?? "";

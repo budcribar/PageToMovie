@@ -13,7 +13,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Characters
 {
     /// <summary>Book gallery + seed selection for Characters look workflow.</summary>
-    internal sealed class CharactersLookBook
+    public sealed class CharactersLookBook
     {
         private readonly Characters S;
         public CharactersLookBook(Characters host) => S = host;
@@ -36,7 +36,7 @@ public partial class Characters
         internal async Task ToggleBookCandidateGalleryAsync()
         {
             _showBookCandidateGallery = !_showBookCandidateGallery;
-            if (_showBookCandidateGallery && S._selected is not null)
+            if (_showBookCandidateGallery && S.List._selected is not null)
             {
                 await LoadBookCandidatesAsync();
             }
@@ -45,13 +45,13 @@ public partial class Characters
 
         internal async Task LoadBookCandidatesAsync()
         {
-            if (S._selected is null || string.IsNullOrWhiteSpace(S._projectId)) return;
+            if (S.List._selected is null || string.IsNullOrWhiteSpace(S._projectId)) return;
             _loadingBookCandidates = true;
             S._error = null;
             S.StateHasChanged();
             try
             {
-                _rankedBookCandidates = await S.Engine.GetRankedBookCandidatesAsync(S._projectId, S._selected.Key);
+                _rankedBookCandidates = await S.Engine.GetRankedBookCandidatesAsync(S._projectId, S.List._selected.Key);
                 _selectedBookCandidatePaths.Clear();
                 if (_rankedBookCandidates is not null)
                 {
@@ -96,15 +96,15 @@ public partial class Characters
 
         internal async Task ApplySelectedBookCandidatesAsync()
         {
-            if (S._selected is null || string.IsNullOrWhiteSpace(S._projectId)) return;
+            if (S.List._selected is null || string.IsNullOrWhiteSpace(S._projectId)) return;
             if (_selectedBookCandidatePaths.Count == 0)
             {
                 // Clear stored book refs when nothing selected
                 _savingBookRefs = true;
                 try
                 {
-                    await S.Engine.SetCharacterBookRefsAsync(S._projectId, S._selected.Key, []);
-                    await S.SoftReloadAsync();
+                    await S.Engine.SetCharacterBookRefsAsync(S._projectId, S.List._selected.Key, []);
+                    await S.List.SoftReloadAsync();
                     _seedOrder.Clear();
                     S._message = "Book pictures cleared.";
                     _showBookCandidateGallery = false;
@@ -115,10 +115,10 @@ public partial class Characters
             }
 
             var ok = await EnsureGalleryBookSelectionAppliedAsync();
-            if (ok && S._selected is not null)
+            if (ok && S.List._selected is not null)
             {
                 S._message =
-                    $"Saved {_seedOrder.Count} book picture(s) for {S._selected.DisplayName}. " +
+                    $"Saved {_seedOrder.Count} book picture(s) for {S.List._selected.DisplayName}. " +
                     "Only those are selected for Generate (click Book tiles to change).";
             }
         }
@@ -133,13 +133,13 @@ public partial class Characters
         internal void ResetSeedSelection()
         {
             _seedOrder.Clear();
-            if (S._selected is null) return;
+            if (S.List._selected is null) return;
             // Book plates first (identity from the book), then preferred lock, then gen options.
             // Old order put preferred+variants first and often filled the 3-ref cap before any book pic.
             AddBookRefsToSeedOrder();
-            if (S._selected.HasPreferred && _seedOrder.Count < ApiMaxSeedRefs)
+            if (S.List._selected.HasPreferred && _seedOrder.Count < ApiMaxSeedRefs)
                 _seedOrder.Add("p");
-            foreach (var v in S._selected.Variants.Where(x => x.Exists).OrderBy(x => x.Index))
+            foreach (var v in S.List._selected.Variants.Where(x => x.Exists).OrderBy(x => x.Index))
             {
                 if (_seedOrder.Count >= ApiMaxSeedRefs) break;
                 var key = $"v{v.Index ?? 0}";
@@ -153,18 +153,18 @@ public partial class Characters
         internal void PreferBookRefsAsSeeds()
         {
             _seedOrder.Clear();
-            if (S._selected is null) return;
+            if (S.List._selected is null) return;
             AddBookRefsToSeedOrder();
             // Keep preferred only if there is room — never let old variants crowd out book plates
-            if (S._selected.HasPreferred && _seedOrder.Count < ApiMaxSeedRefs)
+            if (S.List._selected.HasPreferred && _seedOrder.Count < ApiMaxSeedRefs)
                 _seedOrder.Add("p");
         }
 
 
         internal void AddBookRefsToSeedOrder()
         {
-            if (S._selected is null) return;
-            foreach (var b in S._selected.BookRefs.Where(x => x.Exists).OrderBy(x => x.Index ?? 0))
+            if (S.List._selected is null) return;
+            foreach (var b in S.List._selected.BookRefs.Where(x => x.Exists).OrderBy(x => x.Index ?? 0))
             {
                 if (_seedOrder.Count >= ApiMaxSeedRefs) break;
                 if (b.Index is not int i) continue;
@@ -222,7 +222,7 @@ public partial class Characters
         /// </summary>
         internal async Task<bool> EnsureGalleryBookSelectionAppliedAsync()
         {
-            if (S._selected is null || _selectedBookCandidatePaths.Count == 0)
+            if (S.List._selected is null || _selectedBookCandidatePaths.Count == 0)
                 return true;
 
             _savingBookRefs = true;
@@ -231,14 +231,14 @@ public partial class Characters
             try
             {
                 var paths = _selectedBookCandidatePaths.Take(ApiMaxSeedRefs).ToList();
-                var ok = await S.Engine.SetCharacterBookRefsAsync(S._projectId, S._selected.Key, paths);
+                var ok = await S.Engine.SetCharacterBookRefsAsync(S._projectId, S.List._selected.Key, paths);
                 if (!ok)
                 {
                     S._error = "Could not save the selected book pictures for generation.";
                     return false;
                 }
 
-                await S.SoftReloadAsync();
+                await S.List.SoftReloadAsync();
                 // ONLY the checked book plates — not preferred, not previous options
                 _seedOrder.Clear();
                 AddBookRefsToSeedOrder();
@@ -276,7 +276,7 @@ public partial class Characters
                 // Progress card owns in-progress UI (one Cancel there) — no green status banner
                 S._message = null;
                 var jobs = await S.Engine.GetJobAsync();
-                S._job = jobs?.Job;
+                S.Jobs._job = jobs?.Job;
             }
             catch (Exception ex) { S._error = ex.Message; }
             finally { S._busy = false; }

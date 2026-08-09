@@ -15,9 +15,9 @@
 
 <PageTitle>@L["Nav.Cast"]</PageTitle>
 
-<StudioPageHeader Kicker="@(_simpleMode ? "Simple · your voice" : "Studio · Step 2")"
-                   Title="@(_simpleMode ? L["CharactersPage.NarratorVoice"] : L["Nav.Cast"])" LedeClass="">
-    @if (_simpleMode)
+<StudioPageHeader Kicker="@(List._simpleMode ? "Simple · your voice" : "Studio · Step 2")"
+                   Title="@(List._simpleMode ? L["CharactersPage.NarratorVoice"] : L["Nav.Cast"])" LedeClass="">
+    @if (List._simpleMode)
     {
         <text>Record one sample for the narrator. Library pictures stay as-is — we only re-voice the lines. Want faces of family? Use full studio.</text>
     }
@@ -27,20 +27,20 @@
     }
 </StudioPageHeader>
 
-@if (_simpleMode)
+@if (List._simpleMode)
 {
     <div class="alert alert-primary border-primary border-opacity-50 py-2 small mb-3" data-testid="simple-voice-banner">
         <strong>Simple path.</strong>
         Pick the narrator (or lead), record the script below, then go to
         <a href="cost" class="alert-link">Estimate</a> or
         <a href="scenes" class="alert-link">Film</a>.
-        <button type="button" class="btn btn-link btn-sm p-0 align-baseline alert-link" @onclick="ExitSimplePathAsync">Exit simple → full cast</button>
+        <button type="button" class="btn btn-link btn-sm p-0 align-baseline alert-link" @onclick="List.ExitSimplePathAsync">Exit simple → full cast</button>
         ·
         <a href="simple-voice" class="alert-link">Library books</a>
     </div>
 }
 
-<StudioProcessStrip Active="cast" SimpleMode="@_simpleMode" FullStudio="@(!_simpleMode)" />
+<StudioProcessStrip Active="cast" SimpleMode="@List._simpleMode" FullStudio="@(!List._simpleMode)" />
 
 @if (_gateChecked && !ActiveProject.CanCharacters)
 {
@@ -53,21 +53,21 @@
 else
 {
 @* Setup actions only when needed — hide once cast exists / book pictures are matched *@
-@if (NeedsCastBuild)
+@if (List.NeedsCastBuild)
 {
     <div class="mb-3">
         <button type="button"
                 class="btn btn-primary btn-sm"
                 data-testid="characters-extract-cast"
-                disabled="@(_busy || JobRunning || _extractingCast)"
+                disabled="@(_busy || Jobs.JobRunning || List._extractingCast)"
                 title="One step: names + looks from screenplay and book (when present)"
-                @onclick="ExtractCastAsync">
-            @(_extractingCast ? "Building cast…" : L["CharactersPage.BuildCast"])
+                @onclick="List.ExtractCastAsync">
+            @(List._extractingCast ? "Building cast…" : L["CharactersPage.BuildCast"])
         </button>
         <span class="small text-muted ms-2">Screenplay + book → names, voices, and portrait-ready looks</span>
     </div>
 }
-else if (Session.IsAdmin && HasCast && !JobRunning && !_extractingCast)
+else if (Session.IsAdmin && List.HasCast && !Jobs.JobRunning && !List._extractingCast)
 {
     @* Advanced re-run only for admin — operators are not offered redo of finished setup *@
     <details class="mb-2">
@@ -77,19 +77,19 @@ else if (Session.IsAdmin && HasCast && !JobRunning && !_extractingCast)
                     data-testid="characters-extract-cast"
                     disabled="@_busy"
                     title="Rebuild names and looks from screenplay + book in one step"
-                    @onclick="ExtractCastAsync">
+                    @onclick="List.ExtractCastAsync">
                 Rebuild cast
             </button>
             <button type="button" class="btn btn-sm btn-outline-secondary"
                     disabled="@_busy"
-                    @onclick="() => StartSortCharacterPlatesAsync(useGrok: true)">
+                    @onclick="() => LookBook.StartSortCharacterPlatesAsync(useGrok: true)">
                 Find characters again
             </button>
         </div>
     </details>
 }
 
-@if (_styleRejectCandidate is not null && !JobRunning)
+@if (LookPipe._styleRejectCandidate is not null && !Jobs.JobRunning)
 {
     @* Style classifier flagged a mismatch — but the creator's intent wins. Two-step: pick WHY you're
        overriding (feeds the AI feedback loop: a wrong verdict is a defect to tune; a creative choice
@@ -98,53 +98,53 @@ else if (Session.IsAdmin && HasCast && !JobRunning && !_extractingCast)
         <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
             <div>
                 <strong>This look's style doesn't match the project.</strong>
-                <div class="small">@_styleRejectMessage</div>
+                <div class="small">@LookPipe._styleRejectMessage</div>
                 <div class="small mt-1">To use it anyway, tell us why — it helps improve the checks:</div>
             </div>
             <button type="button" class="btn-close" aria-label="Keep the suggestion (don't use this look)"
                     data-testid="char-style-override-dismiss"
-                    @onclick="DismissStyleReject"></button>
+                    @onclick="LookPipe.DismissStyleReject"></button>
         </div>
         <div class="d-flex flex-wrap gap-2 mt-2">
             <button type="button" class="btn btn-sm btn-warning fw-semibold"
                     data-testid="char-override-ai-wrong"
                     disabled="@_busy"
-                    @onclick='() => LockCandidateAsync(_styleRejectCandidate!, overrideStyle: true, overrideReason: "ai_wrong")'>
+                    @onclick='() => LookPipe.LockCandidateAsync(LookPipe._styleRejectCandidate!, overrideStyle: true, overrideReason: "ai_wrong")'>
                 The check is wrong — this look does match
             </button>
             <button type="button" class="btn btn-sm btn-warning fw-semibold"
                     data-testid="char-override-preference"
                     disabled="@_busy"
-                    @onclick='() => LockCandidateAsync(_styleRejectCandidate!, overrideStyle: true, overrideReason: "user_preference")'>
+                    @onclick='() => LookPipe.LockCandidateAsync(LookPipe._styleRejectCandidate!, overrideStyle: true, overrideReason: "user_preference")'>
                 My creative choice — mix styles on purpose
             </button>
             <button type="button" class="btn btn-sm btn-outline-secondary"
                     data-testid="char-override-other"
                     disabled="@_busy"
-                    @onclick='() => LockCandidateAsync(_styleRejectCandidate!, overrideStyle: true, overrideReason: "other")'>
+                    @onclick='() => LookPipe.LockCandidateAsync(LookPipe._styleRejectCandidate!, overrideStyle: true, overrideReason: "other")'>
                 Other
             </button>
         </div>
     </div>
 }
-else if (!string.IsNullOrEmpty(_error) && !JobRunning)
+else if (!string.IsNullOrEmpty(_error) && !Jobs.JobRunning)
 {
     <InlineAlert Message="@_error" />
 }
 @* One outcome surface: success flash OR next-step CTA — not both saying “ready” *@
-@if (!string.IsNullOrEmpty(_message) && !_extractingCast && !JobRunning && !IsCastComplete)
+@if (!string.IsNullOrEmpty(_message) && !List._extractingCast && !Jobs.JobRunning && !List.IsCastComplete)
 {
     <InlineAlert Message="@_message" Variant="success" />
 }
-@if (Session.IsAdmin && _lastCastExtractKeys is { Count: > 0 } && !_extractingCast)
+@if (Session.IsAdmin && List._lastCastExtractKeys is { Count: > 0 } && !List._extractingCast)
 {
     <div class="alert alert-secondary py-2 small mb-3">
         <strong>Admin · last cast extract</strong>
-        · @_lastCastExtractKeys.Count:
-        <code class="user-select-all">@string.Join(", ", _lastCastExtractKeys)</code>
+        · @List._lastCastExtractKeys.Count:
+        <code class="user-select-all">@string.Join(", ", List._lastCastExtractKeys)</code>
     </div>
 }
-else if (IsCastComplete && !JobRunning && !_extractingCast)
+else if (List.IsCastComplete && !Jobs.JobRunning && !List._extractingCast)
 {
     <div class="alert alert-info py-2 d-flex flex-wrap align-items-center justify-content-between gap-2">
         @if (ActiveProject.CanScenes)
@@ -158,28 +158,28 @@ else if (IsCastComplete && !JobRunning && !_extractingCast)
             <a class="btn btn-sm btn-primary" data-testid="characters-to-shots" href="adaptation/shots">@L["CharactersPage.BuildShotPlan"]</a>
         }
         <div data-testid="characters-status"
-             data-cast-complete="@(IsCastComplete ? "true" : "false")"
-             data-has-cast="@(HasCast ? "true" : "false")"
+             data-cast-complete="@(List.IsCastComplete ? "true" : "false")"
+             data-has-cast="@(List.HasCast ? "true" : "false")"
              class="visually-hidden"
              aria-hidden="true"></div>
     </div>
 }
 
 @* In-progress: busy shimmer (not a fake % bar that looks done at 100% or stuck at 30%). *@
-@if (_extractingCast)
+@if (List._extractingCast)
 {
     <div class="card mb-3 border-primary" data-testid="characters-building-cast">
         <div class="card-body py-3">
             <div class="d-flex align-items-center gap-2 mb-2">
                 <div class="spinner-border spinner-border-sm text-primary" role="status" aria-hidden="true"></div>
                 <div class="small fw-semibold">
-                    @(_rebuildCastHadExisting ? "Rebuilding cast…" : "Building cast…")
+                    @(List._rebuildCastHadExisting ? "Rebuilding cast…" : "Building cast…")
                 </div>
             </div>
             <div class="progress progress-busy" style="height: 0.35rem;"
                  role="progressbar"
                  aria-valuetext="in progress"
-                 aria-label="@(_rebuildCastHadExisting ? "Rebuilding cast" : "Building cast")">
+                 aria-label="@(List._rebuildCastHadExisting ? "Rebuilding cast" : "Building cast")">
                 <div class="progress-busy__shine" aria-hidden="true"></div>
             </div>
             <div class="form-text mt-2 mb-0">
@@ -188,49 +188,49 @@ else if (IsCastComplete && !JobRunning && !_extractingCast)
         </div>
     </div>
 }
-else if (_job is not null &&
-     (_job.Kind is "character" or "character-plates" or "voice-preview") &&
-     (_job.Status is "running" or "queued"))
+else if (Jobs._job is not null &&
+     (Jobs._job.Kind is "character" or "character-plates" or "voice-preview") &&
+     (Jobs._job.Status is "running" or "queued"))
 {
-    var voiceDetail = !string.IsNullOrEmpty(_job.Message)
-        && string.Equals(_job.Kind, "voice-preview", StringComparison.OrdinalIgnoreCase)
-            ? _job.Message
+    var voiceDetail = !string.IsNullOrEmpty(Jobs._job.Message)
+        && string.Equals(Jobs._job.Kind, "voice-preview", StringComparison.OrdinalIgnoreCase)
+            ? Jobs._job.Message
             : null;
-    <JobProgressCard @key="_job.JobId"
-                     Status="@_job.Status"
-                     Message="@FriendlyCharacterJobStatus(_job)"
-                     Index="_job.Index"
-                     Total="_job.Total"
+    <JobProgressCard @key="Jobs._job.JobId"
+                     Status="@Jobs._job.Status"
+                     Message="@CharactersJobs.FriendlyCharacterJobStatus(Jobs._job)"
+                     Index="Jobs._job.Index"
+                     Total="Jobs._job.Total"
                      DetailMessage="@voiceDetail"
                      ShowCancel="true"
                      CancelDisabled="_busy"
-                     OnCancel="CancelAsync"
-                     Kind="@_job.Kind"
+                     OnCancel="Jobs.CancelAsync"
+                     Kind="@Jobs._job.Kind"
                      ShowLog="Session.IsAdmin"
-                     LogLines="_job.Log"
+                     LogLines="Jobs._job.Log"
                      TestId="characters-job" />
 }
 
-@if (_chars is null)
+@if (List._chars is null)
 {
     <EmptyState Message="Loading…" CssClass="text-muted" />
 }
-else if (_extractingCast)
+else if (List._extractingCast)
 {
     @* Hide stale cast while rebuild/build runs — avoids editing the old list mid-flight. *@
 }
-else if (!HasCast)
+else if (!List.HasCast)
 {
     <InlineAlert Variant="warning" Message="No cast yet. Approve the screenplay, then build the cast."
                  data-testid="characters-empty" />
 }
-else if (OperatorCastCount == 0)
+else if (List.OperatorCastCount == 0)
 {
     @* Cast exists but is entirely ensemble/crowd roles — those need no individual portraits, so the
        operator roster below is empty. Acknowledge the cast instead of the misleading "No cast yet". *@
     <div class="alert alert-info" data-testid="characters-all-ensembles">
         The speaking cast here are all ensemble roles
-        (@string.Join(", ", _chars!.Where(c => c.IsGroup).Select(c => c.DisplayName))) —
+        (@string.Join(", ", List._chars!.Where(c => c.IsGroup).Select(c => c.DisplayName))) —
         no individual portraits needed. You can continue to the next step.
     </div>
 }
@@ -239,22 +239,29 @@ else
     <div class="row">
 
     <CascadingValue Value="this" IsFixed="true">
+    <CascadingValue Value="List" IsFixed="true">
+    <CascadingValue Value="Jobs" IsFixed="true">
+    <CascadingValue Value="LookPipe" IsFixed="true">
+    <CascadingValue Value="LookEdit" IsFixed="true">
+    <CascadingValue Value="LookBook" IsFixed="true">
+    <CascadingValue Value="Voice" IsFixed="true">
+
         <Characters_CastList />
         <div class="col-md-9">
-            @if (_selected is null)
+            @if (List._selected is null)
             {
                 <p class="text-muted">
-                    @(_simpleMode
+                    @(List._simpleMode
                         ? "Pick the narrator (or lead) on the left, then record your sample."
                         : "Click a character on the left to set a preferred look and choose how to generate.")
                 </p>
             }
-            else if (_simpleMode)
+            else if (List._simpleMode)
             {
                 @* Simple path: voice first — no picture routing required to reach Record. *@
                 <div class="card mb-3 border-primary border-opacity-50" data-testid="simple-voice-card">
                     <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-                        <span class="fw-semibold">@_selected.DisplayName · voice sample</span>
+                        <span class="fw-semibold">@List._selected.DisplayName · voice sample</span>
                         <span class="badge text-bg-primary">Simple · your voice</span>
                     </div>
                     <div class="card-body">
@@ -266,14 +273,14 @@ else
                 </div>
                 <p class="small text-muted mb-0">
                     Want to change looks later?
-                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline" @onclick="ExitSimplePathAsync">Switch to full cast</button>
+                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline" @onclick="List.ExitSimplePathAsync">Switch to full cast</button>
                 </p>
             }
-            else if (_selected.VoiceOnly)
+            else if (List._selected.VoiceOnly)
             {
                 <div class="card mb-3">
                     <div class="card-header d-flex justify-content-between align-items-center">
-                        <span><code>@_selected.Key</code> — @_selected.DisplayName</span>
+                        <span><code>@List._selected.Key</code> — @List._selected.DisplayName</span>
                         <span class="badge bg-secondary">voice-only (no image)</span>
                     </div>
                     <div class="card-body">
@@ -284,39 +291,46 @@ else
                     </div>
                 </div>
             }
-            else if (_selected.IsGroup)
+            else if (List._selected.IsGroup)
             {
                 // Groups are filtered from the list; clear stale selection.
-                _selectedKey = null;
-                _selected = null;
+                List._selectedKey = null;
+                List._selected = null;
             }
             else
             {
                 @* Name + actions — no middle thumbnail (sidebar already shows look). *@
                 <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
-                    <div class="fw-semibold">@_selected.DisplayName</div>
+                    <div class="fw-semibold">@List._selected.DisplayName</div>
                     <div class="ms-auto d-flex flex-wrap gap-1">
-                        @if (_mode != Mode.PickSource)
+                        @if (LookPipe._mode != Mode.PickSource)
                         {
-                            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="BackToSource">← Edit</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="LookPipe.BackToSource">← Edit</button>
                         }
                     </div>
                 </div>
 
 
                 <Characters_LookPanel />
-                @if (_deleteConfirm is not null)
+                @if (LookPipe._deleteConfirm is not null)
                 {
                     <div class="alert alert-warning d-flex flex-wrap align-items-center gap-2 py-2">
                         <span class="small">Delete this picture?</span>
-                        <button type="button" class="btn btn-sm btn-danger" disabled="@_busy" @onclick="ConfirmDeleteImageAsync">Delete</button>
-                        <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@_busy" @onclick="CancelDeleteImage">Cancel</button>
+                        <button type="button" class="btn btn-sm btn-danger" disabled="@_busy" @onclick="LookPipe.ConfirmDeleteImageAsync">Delete</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@_busy" @onclick="LookPipe.CancelDeleteImage">Cancel</button>
                     </div>
                 }
             }
 
         </div>
+    
     </CascadingValue>
+    </CascadingValue>
+    </CascadingValue>
+    </CascadingValue>
+    </CascadingValue>
+    </CascadingValue>
+</CascadingValue>
     </div>
 }
 } @* end CanCharacters gate *@
