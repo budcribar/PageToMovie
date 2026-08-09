@@ -76,6 +76,17 @@ public partial class ScreenplayEditor_SceneCard : ComponentBase
         }
     }
 
+    public async Task OnInsertBeatSelected(ChangeEventArgs e)
+    {
+        if (e.Value is string val && !string.IsNullOrWhiteSpace(val))
+        {
+            if (Enum.TryParse<BeatType>(val, true, out var beatType))
+            {
+                await AddBeat(beatType);
+            }
+        }
+    }
+
     public async Task AddBeat(BeatType type)
     {
         var newBeat = new ScreenplayBeat { BeatType = type };
@@ -85,7 +96,7 @@ public partial class ScreenplayEditor_SceneCard : ComponentBase
         }
         else if (type == BeatType.Dialogue)
         {
-            newBeat.Speaker = AvailableCharacters.Count > 0 ? AvailableCharacters[0] : "HERO";
+            newBeat.Speaker = AvailableCharacters.Count > 0 ? AvailableCharacters[0] : "CHARACTER";
             newBeat.SpokenText = "Spoken line...";
         }
         else if (type == BeatType.Transition)

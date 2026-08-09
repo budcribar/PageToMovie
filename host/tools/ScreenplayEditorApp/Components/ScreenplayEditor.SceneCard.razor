@@ -1,5 +1,5 @@
 <div class="card mb-2 border-secondary-subtle bg-dark-subtle shadow-sm" id="scene-card-@Scene.SceneNumber">
-    <!-- Guaranteed 1 Single Line Scene Heading Row -->
+    <!-- Single Clean Line Header Row -->
     <div class="card-header bg-dark text-light d-flex flex-nowrap align-items-center gap-1 py-1 px-2 border-bottom border-secondary-subtle overflow-hidden">
         <button class="btn btn-sm btn-link text-light text-decoration-none p-0 me-1 flex-shrink-0" type="button" @onclick="ToggleCollapse" title="Toggle Scene Details">
             @(Scene.IsCollapsed ? "▶" : "▼")
@@ -50,17 +50,9 @@
     {
         <div class="card-body p-2 text-light">
             <div class="mb-1">
-                <div class="d-flex justify-content-between align-items-center mb-1">
-                    <h6 class="mb-0 fw-bold text-secondary small">Beats (@Scene.Beats.Count)</h6>
-                    <div class="btn-group btn-group-sm">
-                        <ScreenplayEditor_ActionButton Variant="@ComponentVariant.OutlineInfo" Text="+ Action" OnClick="() => AddBeat(BeatType.Action)" />
-                        <ScreenplayEditor_ActionButton Variant="@ComponentVariant.OutlineSuccess" Text="+ Dialogue" OnClick="() => AddBeat(BeatType.Dialogue)" />
-                        <ScreenplayEditor_ActionButton Variant="@ComponentVariant.OutlineSecondary" Text="+ Transition" OnClick="() => AddBeat(BeatType.Transition)" />
-                    </div>
-                </div>
                 @if (Scene.Beats.Count == 0)
                 {
-                    <div class="bg-dark border border-secondary-subtle text-secondary rounded text-center py-2 small mb-0">No beats in this scene yet. Click <strong>+ Action</strong> or <strong>+ Dialogue</strong> above to add one.</div>
+                    <div class="bg-dark border border-secondary-subtle text-secondary rounded text-center py-2 small mb-2">No beats in this scene yet. Use the dropdown at the bottom left to add one.</div>
                 }
                 else
                 {
@@ -79,6 +71,19 @@
                                                      OnReorderBeats="ReorderBeats" />
                     }
                 }
+
+                <!-- Bottom Left Add Beat Type Selector Dropdown -->
+                <div class="d-flex justify-content-between align-items-center mt-2 pt-1 border-top border-secondary-subtle">
+                    <div class="d-flex align-items-center gap-2">
+                        <select class="form-select form-select-sm bg-dark text-success border-success fw-bold py-0 px-2" style="width: 170px; height: 28px; font-size: 0.82rem;" value="" @onchange="OnInsertBeatSelected">
+                            <option value="" disabled selected>➕ Add Beat...</option>
+                            <option value="Action">🎬 Action</option>
+                            <option value="Dialogue">🗣️ Dialogue</option>
+                            <option value="Transition">🎞️ Transition</option>
+                        </select>
+                    </div>
+                    <span class="text-secondary small font-monospace">@Scene.Beats.Count Beats Total</span>
+                </div>
             </div>
         </div>
     }

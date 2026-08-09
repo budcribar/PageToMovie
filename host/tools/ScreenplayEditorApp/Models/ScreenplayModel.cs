@@ -359,6 +359,18 @@ public class ScreenplayModel
                 {
                     set.Add(beat.Speaker.Trim().ToUpperInvariant());
                 }
+                else if (beat.BeatType == BeatType.Action && !string.IsNullOrWhiteSpace(beat.ActionText))
+                {
+                    // Match ALL CAPS character words (e.g. BUSTER, MOMMA)
+                    var words = beat.ActionText.Split(new[] { ' ', '.', ',', '!', '?', ';', ':', '(', ')', '"' }, StringSplitOptions.RemoveEmptyEntries);
+                    foreach (var w in words)
+                    {
+                        if (w.Length >= 3 && w.All(char.IsUpper) && !w.Equals("INT") && !w.Equals("EXT") && !w.Equals("DAY") && !w.Equals("NIGHT") && !w.Equals("AND") && !w.Equals("THE"))
+                        {
+                            set.Add(w);
+                        }
+                    }
+                }
             }
         }
         return set.OrderBy(x => x).ToList();
