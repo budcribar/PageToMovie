@@ -11,7 +11,7 @@ public partial class ScreenplayEditor_ActionButton : ComponentBase
     public string Icon { get; set; } = "";
 
     [Parameter]
-    public string Variant { get; set; } = "primary"; // primary, info, success, outline-secondary, outline-danger, etc.
+    public string Variant { get; set; } = "primary";
 
     [Parameter]
     public string CssClass { get; set; } = "";
@@ -26,12 +26,4 @@ public partial class ScreenplayEditor_ActionButton : ComponentBase
     public EventCallback OnClick { get; set; }
 
     public string VariantClass => Variant.StartsWith("btn-") ? Variant : $"btn-{Variant}";
-
-    public async Task HandleClick()
-    {
-        if (!Disabled && OnClick.HasDelegate)
-        {
-            await OnClick.InvokeAsync();
-        }
-    }
 }
