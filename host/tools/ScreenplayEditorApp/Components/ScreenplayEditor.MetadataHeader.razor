@@ -4,38 +4,18 @@
             <span class="fs-5">📋</span>
             <h5 class="mb-0 fw-bold text-light">Story Metadata & Title Page</h5>
         </div>
-        <button class="btn btn-sm btn-outline-light" type="button" @onclick="ToggleCollapse">
-            @(IsCollapsed ? "Show Details ▾" : "Collapse ▴")
-        </button>
+        <ScreenplayEditor_ActionButton Variant="outline-light" Text="@(IsCollapsed ? "Show Details ▾" : "Collapse ▴")" OnClick="ToggleCollapse" />
     </div>
     @if (!IsCollapsed)
     {
         <div class="card-body p-3 text-light">
             <div class="row g-3">
-                <div class="col-md-6">
-                    <label class="form-label fw-semibold small text-secondary mb-1">Film / Story Title</label>
-                    <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary" @bind="Metadata.Title" @bind:after="OnChanged" placeholder="e.g. The Tell-Tale Heart" />
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label fw-semibold small text-secondary mb-1">Author / Screenwriter</label>
-                    <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary" @bind="Metadata.Author" @bind:after="OnChanged" placeholder="e.g. Edgar Allan Poe" />
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label fw-semibold small text-secondary mb-1">Credit Line</label>
-                    <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary" @bind="Metadata.Credit" @bind:after="OnChanged" placeholder="e.g. Written by" />
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label fw-semibold small text-secondary mb-1">Source Material</label>
-                    <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary" @bind="Metadata.Source" @bind:after="OnChanged" placeholder="e.g. Based on the short story by Edgar Allan Poe" />
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label fw-semibold small text-secondary mb-1">Draft Date / Version</label>
-                    <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary" @bind="Metadata.DraftDate" @bind:after="OnChanged" placeholder="e.g. 2026-08-09" />
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label fw-semibold small text-secondary mb-1">Contact Info</label>
-                    <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary" @bind="Metadata.Contact" @bind:after="OnChanged" placeholder="e.g. contact@pagetomovie.com" />
-                </div>
+                <ScreenplayEditor_StyledInput CssClass="col-md-6" Label="Film / Story Title" @bind-Value="Metadata.Title" OnChanged="OnChanged" Placeholder="e.g. The Tell-Tale Heart" />
+                <ScreenplayEditor_StyledInput CssClass="col-md-6" Label="Author / Screenwriter" @bind-Value="Metadata.Author" OnChanged="OnChanged" Placeholder="e.g. Edgar Allan Poe" />
+                <ScreenplayEditor_StyledInput CssClass="col-md-6" Label="Credit Line" @bind-Value="Metadata.Credit" OnChanged="OnChanged" Placeholder="e.g. Written by" />
+                <ScreenplayEditor_StyledInput CssClass="col-md-6" Label="Source Material" @bind-Value="Metadata.Source" OnChanged="OnChanged" Placeholder="e.g. Based on the short story by Edgar Allan Poe" />
+                <ScreenplayEditor_StyledInput CssClass="col-md-6" Label="Draft Date / Version" @bind-Value="Metadata.DraftDate" OnChanged="OnChanged" Placeholder="e.g. 2026-08-09" />
+                <ScreenplayEditor_StyledInput CssClass="col-md-6" Label="Contact Info" @bind-Value="Metadata.Contact" OnChanged="OnChanged" Placeholder="e.g. contact@pagetomovie.com" />
             </div>
         </div>
     }

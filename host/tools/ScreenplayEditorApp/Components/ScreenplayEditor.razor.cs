@@ -3,7 +3,7 @@ using ScreenplayEditorApp.Models;
 
 namespace ScreenplayEditorApp.Components;
 
-public partial class ScreenplayEditor
+public partial class ScreenplayEditor : ComponentBase
 {
     [Parameter]
     public ScreenplayModel Model { get; set; } = new();
@@ -102,6 +102,7 @@ public partial class ScreenplayEditor
         if (!string.IsNullOrWhiteSpace(text))
         {
             Model = FountainFormatter.Parse(text);
+            ReindexSceneNumbers();
             await OnChanged();
         }
     }

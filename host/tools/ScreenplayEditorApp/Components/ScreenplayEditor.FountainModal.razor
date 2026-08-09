@@ -13,11 +13,17 @@
                     @if (Mode == "import")
                     {
                         <div class="mb-3">
-                            <label class="form-label fw-semibold text-secondary small">Option 1: Select & Upload .fountain File</label>
-                            <InputFile OnChange="HandleFileSelected" accept=".fountain,.txt" class="form-control form-control-sm bg-dark text-light border-secondary mb-3" />
-                            
+                            <label class="form-label fw-semibold text-secondary small">Option 1: Upload .fountain / .txt File</label>
+                            <InputFile OnChange="HandleFileSelected" accept=".fountain,.txt" class="form-control form-control-sm bg-dark text-light border-secondary mb-2" />
+                            @if (!string.IsNullOrEmpty(SelectedFileName))
+                            {
+                                <div class="alert alert-success py-1 px-2 small mb-3">
+                                    <i class="bi bi-file-earmark-check me-1"></i> Loaded file: <strong>@SelectedFileName</strong> (@(FountainText.Length) characters)
+                                </div>
+                            }
+
                             <label class="form-label fw-semibold text-secondary small">Option 2: Or Paste Fountain Screenplay Text</label>
-                            <textarea class="form-control font-monospace bg-dark text-light border-secondary" rows="12" @bind="FountainText" placeholder="Title: The Tell-Tale Heart..."></textarea>
+                            <textarea class="form-control font-monospace bg-dark text-light border-secondary" rows="11" @bind="FountainText" @bind:event="oninput" placeholder="Title: The Tell-Tale Heart..."></textarea>
                         </div>
                     }
                     else
@@ -28,10 +34,10 @@
                                 <div class="d-flex align-items-center gap-2">
                                     @if (ShowCopyFeedback)
                                     {
-                                        <span class="badge text-bg-success px-2 py-1">Copied!</span>
+                                        <ScreenplayEditor_BadgePill Variant="success" Text="Copied!" />
                                     }
-                                    <button class="btn btn-sm btn-outline-info" type="button" @onclick="CopyText">📋 Copy Text</button>
-                                    <button class="btn btn-sm btn-primary" type="button" @onclick="DownloadFile">💾 Download .fountain File</button>
+                                    <ScreenplayEditor_ActionButton Variant="outline-info" Icon="bi-clipboard" Text="Copy Text" OnClick="CopyText" />
+                                    <ScreenplayEditor_ActionButton Variant="primary" Icon="bi-download" Text="Download File" OnClick="DownloadFile" />
                                 </div>
                             </div>
                             <textarea class="form-control font-monospace bg-dark text-light border-secondary" rows="14" readonly value="@FountainText"></textarea>

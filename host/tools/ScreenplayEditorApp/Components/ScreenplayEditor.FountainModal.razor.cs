@@ -25,11 +25,13 @@ public partial class ScreenplayEditor_FountainModal
     public EventCallback<string> OnImportCallback { get; set; }
 
     public bool ShowCopyFeedback { get; set; } = false;
+    public string SelectedFileName { get; set; } = "";
 
     public async Task Close()
     {
         IsOpen = false;
         ShowCopyFeedback = false;
+        SelectedFileName = "";
         if (IsOpenChanged.HasDelegate)
         {
             await IsOpenChanged.InvokeAsync(false);
@@ -38,7 +40,7 @@ public partial class ScreenplayEditor_FountainModal
 
     public async Task Import()
     {
-        if (OnImportCallback.HasDelegate)
+        if (OnImportCallback.HasDelegate && !string.IsNullOrWhiteSpace(FountainText))
         {
             await OnImportCallback.InvokeAsync(FountainText);
         }
@@ -49,12 +51,15 @@ public partial class ScreenplayEditor_FountainModal
     {
         try
         {
+            SelectedFileName = "";
             var file = e.File;
             if (file != null)
             {
-                using var stream = file.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
+                SelectedFileName = file.Name;
+                using var stream = file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
                 using var reader = new StreamReader(stream);
                 FountainText = await reader.ReadToEndAsync();
+                StateHasChanged();
             }
         }
         catch (Exception ex)

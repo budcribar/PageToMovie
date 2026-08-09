@@ -1,0 +1,11 @@
+<div class="@CssClass">
+    @if (!string.IsNullOrEmpty(Label))
+    {
+        <label class="form-label fw-semibold small text-secondary mb-1">@Label</label>
+    }
+    <input type="@Type"
+           class="form-control form-control-sm bg-dark text-light border-secondary @InputCssClass"
+           value="@Value"
+           @onchange="HandleChange"
+           placeholder="@Placeholder" />
+</div>
