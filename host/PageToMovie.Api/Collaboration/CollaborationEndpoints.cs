@@ -49,7 +49,7 @@ public static class CollaborationEndpoints
         var uid = UserId(http, user);
         if (string.IsNullOrWhiteSpace(uid)) return Results.Unauthorized();
         if (!await acl.CanAccessAsync(projectId, uid, ProjectAccessLevel.Viewer, ct))
-            return Results.Forbid();
+            return Results.Json(new { error = "project_access_denied" }, statusCode: StatusCodes.Status403Forbidden);
         var doc = await acl.GetOrCreateAclAsync(projectId, uid, ct);
         return Results.Json(doc);
     }
@@ -127,7 +127,7 @@ public static class CollaborationEndpoints
         var uid = UserId(http, user);
         if (string.IsNullOrWhiteSpace(uid)) return Results.Unauthorized();
         if (!await acl.CanAccessAsync(projectId, uid, ProjectAccessLevel.Editor, ct))
-            return Results.Forbid();
+            return Results.Json(new { error = "project_access_denied" }, statusCode: StatusCodes.Status403Forbidden);
 
         var (ok, lease) = await leases.TryAcquireAsync(projectId, resourceKey, uid, DefaultLeaseTtl, ct);
         if (!ok)
@@ -147,7 +147,7 @@ public static class CollaborationEndpoints
         var uid = UserId(http, user);
         if (string.IsNullOrWhiteSpace(uid)) return Results.Unauthorized();
         if (!await acl.CanAccessAsync(projectId, uid, ProjectAccessLevel.Editor, ct))
-            return Results.Forbid();
+            return Results.Json(new { error = "project_access_denied" }, statusCode: StatusCodes.Status403Forbidden);
         var ok = await leases.ReleaseAsync(projectId, resourceKey, uid, ct);
         if (!ok) return Results.Json(new { error = "not_holder" }, statusCode: StatusCodes.Status409Conflict);
         if (hub is not null)
@@ -163,7 +163,7 @@ public static class CollaborationEndpoints
         var uid = UserId(http, user);
         if (string.IsNullOrWhiteSpace(uid)) return Results.Unauthorized();
         if (!await acl.CanAccessAsync(projectId, uid, ProjectAccessLevel.Editor, ct))
-            return Results.Forbid();
+            return Results.Json(new { error = "project_access_denied" }, statusCode: StatusCodes.Status403Forbidden);
         var (ok, lease) = await leases.TryRenewAsync(projectId, resourceKey, uid, DefaultLeaseTtl, ct);
         if (!ok) return Results.Json(new { error = "not_holder", lease }, statusCode: StatusCodes.Status423Locked);
         return Results.Ok(lease);
@@ -177,7 +177,7 @@ public static class CollaborationEndpoints
         if (string.IsNullOrWhiteSpace(uid)) return Results.Unauthorized();
         if (string.IsNullOrWhiteSpace(body.ToUserId)) return Results.BadRequest(new { error = "toUserId required" });
         if (!await acl.CanAccessAsync(projectId, uid, ProjectAccessLevel.Editor, ct))
-            return Results.Forbid();
+            return Results.Json(new { error = "project_access_denied" }, statusCode: StatusCodes.Status403Forbidden);
         var (ok, lease) = await leases.TryTransferAsync(projectId, resourceKey, uid, body.ToUserId, DefaultLeaseTtl, ct);
         if (!ok) return Results.Json(new { error = "not_holder", lease }, statusCode: StatusCodes.Status423Locked);
         if (hub is not null)
@@ -193,7 +193,7 @@ public static class CollaborationEndpoints
         var uid = UserId(http, user);
         if (string.IsNullOrWhiteSpace(uid)) return Results.Unauthorized();
         if (!await acl.CanAccessAsync(projectId, uid, ProjectAccessLevel.Viewer, ct))
-            return Results.Forbid();
+            return Results.Json(new { error = "project_access_denied" }, statusCode: StatusCodes.Status403Forbidden);
         var lease = await leases.GetAsync(projectId, resourceKey, ct);
         return lease is null ? Results.NoContent() : Results.Ok(lease);
     }
@@ -205,7 +205,7 @@ public static class CollaborationEndpoints
         var uid = UserId(http, user);
         if (string.IsNullOrWhiteSpace(uid)) return Results.Unauthorized();
         if (!await acl.CanAccessAsync(projectId, uid, ProjectAccessLevel.Viewer, ct))
-            return Results.Forbid();
+            return Results.Json(new { error = "project_access_denied" }, statusCode: StatusCodes.Status403Forbidden);
         return Results.Ok(await presence.ListAsync(projectId, ct));
     }
 
@@ -216,7 +216,7 @@ public static class CollaborationEndpoints
         var uid = UserId(http, user);
         if (string.IsNullOrWhiteSpace(uid)) return Results.Unauthorized();
         if (!await acl.CanAccessAsync(projectId, uid, ProjectAccessLevel.Viewer, ct))
-            return Results.Forbid();
+            return Results.Json(new { error = "project_access_denied" }, statusCode: StatusCodes.Status403Forbidden);
         await presence.HeartbeatAsync(projectId, uid, null, ct);
         return Results.Ok();
     }
@@ -236,7 +236,7 @@ public static class CollaborationEndpoints
         var uid = UserId(http, user);
         if (string.IsNullOrWhiteSpace(uid)) return Results.Unauthorized();
         if (!await acl.CanAccessAsync(projectId, uid, ProjectAccessLevel.Viewer, ct))
-            return Results.Forbid();
+            return Results.Json(new { error = "project_access_denied" }, statusCode: StatusCodes.Status403Forbidden);
         var doc = await acl.GetOrCreateAclAsync(projectId, uid, ct);
         return Results.Ok(new { rev = doc.Rev });
     }
@@ -247,7 +247,7 @@ public static class CollaborationEndpoints
         var uid = UserId(http, user);
         if (string.IsNullOrWhiteSpace(uid)) return Results.Unauthorized();
         if (!await acl.CanAccessAsync(projectId, uid, ProjectAccessLevel.Editor, ct))
-            return Results.Forbid();
+            return Results.Json(new { error = "project_access_denied" }, statusCode: StatusCodes.Status403Forbidden);
         var doc = await acl.GetOrCreateAclAsync(projectId, uid, ct);
         doc.Rev++;
         await acl.SaveAclAsync(projectId, doc, ct);

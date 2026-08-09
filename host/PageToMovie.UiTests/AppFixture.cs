@@ -229,3 +229,40 @@ public sealed class StyleRejectFixture : AppFixture
 
 [CollectionDefinition("ui-style-reject")]
 public sealed class StyleRejectCollection : ICollectionFixture<StyleRejectFixture> { }
+
+/// <summary>
+/// A pipeline host (own port, own temp workspace) with <c>Auth:RequireLogin</c> forced off — so
+/// synthetic per-test identities sent only via <c>X-User-Id</c> (no real signup/email-confirm) are
+/// treated as distinct, non-admin users. Matches the same bypass the API test suite already relies on
+/// (see <c>FilmStudioApiFactory</c>) rather than routing test users through the shared host's real
+/// login/terms gate, which would require either real signup+email-confirmation per user or the
+/// dev/admin bypass — and the latter would make every synthetic user an admin, defeating the point of
+/// a multi-user ownership/lease isolation test.
+/// </summary>
+public sealed class MultiUserLeaseFixture : AppFixture
+{
+    private readonly string _workspace;
+
+    public MultiUserLeaseFixture()
+    {
+        _workspace = Path.Combine(Path.GetTempPath(), "ptm-lease-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(Path.Combine(_workspace, "projects"));
+    }
+
+    protected override int DefaultPort => 5083;
+    protected override bool HonorEnvBaseUrl => false;
+    protected override string WorkspaceRoot => _workspace;
+    protected override IReadOnlyDictionary<string, string> ExtraEnv => new Dictionary<string, string>
+    {
+        ["PageToMovie__Auth__RequireLogin"] = "false",
+    };
+
+    public override async Task DisposeAsync()
+    {
+        await base.DisposeAsync();
+        try { Directory.Delete(_workspace, recursive: true); } catch { /* best effort */ }
+    }
+}
+
+[CollectionDefinition("ui-multiuser-lease")]
+public sealed class MultiUserLeaseCollection : ICollectionFixture<MultiUserLeaseFixture> { }

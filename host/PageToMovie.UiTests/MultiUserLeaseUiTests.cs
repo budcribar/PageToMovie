@@ -10,12 +10,12 @@ namespace PageToMovie.UiTests;
 /// P5 dual-user Playwright tests: two browser contexts (alice / bob) with
 /// distinct X-User-Id headers, exercising project leases end-to-end.
 /// </summary>
-[Collection("ui")]
+[Collection("ui-multiuser-lease")]
 public sealed class MultiUserLeaseUiTests
 {
-    private readonly AppFixture _fx;
+    private readonly MultiUserLeaseFixture _fx;
 
-    public MultiUserLeaseUiTests(AppFixture fx) => _fx = fx;
+    public MultiUserLeaseUiTests(MultiUserLeaseFixture fx) => _fx = fx;
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -53,13 +53,11 @@ public sealed class MultiUserLeaseUiTests
 
         var (aliceStatus, aliceBody) = await alice.AcquireLeaseAsync(projectId!, resource);
         Assert.Equal(HttpStatusCode.OK, aliceStatus);
-        Assert.True(aliceBody.GetProperty("ok").GetBoolean());
-        Assert.True(aliceBody.GetProperty("acquired").GetBoolean());
+        Assert.Equal("alice", aliceBody.GetProperty("holderUserId").GetString());
 
         var (bobStatus, bobBody) = await bob.AcquireLeaseAsync(projectId!, resource);
         Assert.Equal(HttpStatusCode.Locked, bobStatus); // 423
-        Assert.False(bobBody.GetProperty("ok").GetBoolean());
-        Assert.False(bobBody.GetProperty("acquired").GetBoolean());
+        Assert.Equal("lease_held", bobBody.GetProperty("error").GetString());
         Assert.Equal("alice", bobBody.GetProperty("holderUserId").GetString());
 
         // Alice releases → bob can acquire
@@ -68,8 +66,7 @@ public sealed class MultiUserLeaseUiTests
 
         var (bob2Status, bob2Body) = await bob.AcquireLeaseAsync(projectId!, resource);
         Assert.Equal(HttpStatusCode.OK, bob2Status);
-        Assert.True(bob2Body.GetProperty("acquired").GetBoolean());
-        Assert.Equal("bob", bob2Body.GetProperty("lease").GetProperty("holderUserId").GetString());
+        Assert.Equal("bob", bob2Body.GetProperty("holderUserId").GetString());
     }
 
     [Fact]
@@ -83,11 +80,11 @@ public sealed class MultiUserLeaseUiTests
         var resource = "scene:refresh";
         var (s1, b1) = await alice.AcquireLeaseAsync(projectId!, resource);
         Assert.Equal(HttpStatusCode.OK, s1);
-        Assert.True(b1.GetProperty("acquired").GetBoolean());
+        Assert.Equal("alice-refresh", b1.GetProperty("holderUserId").GetString());
 
         var (s2, b2) = await alice.AcquireLeaseAsync(projectId!, resource);
         Assert.Equal(HttpStatusCode.OK, s2);
-        Assert.True(b2.GetProperty("acquired").GetBoolean());
+        Assert.Equal("alice-refresh", b2.GetProperty("holderUserId").GetString());
     }
 
     [Fact]
@@ -105,7 +102,7 @@ public sealed class MultiUserLeaseUiTests
 
         Assert.Equal(HttpStatusCode.OK, aStatus);
         Assert.Equal(HttpStatusCode.OK, bStatus);
-        Assert.True(bBody.GetProperty("acquired").GetBoolean());
+        Assert.Equal("bob-indep", bBody.GetProperty("holderUserId").GetString());
     }
 
     [Fact]
@@ -120,26 +117,13 @@ public sealed class MultiUserLeaseUiTests
 
         await alice.AcquireLeaseAsync(projectId!, "scene:listed");
 
-        var (status, body) = await bob.GetAsync($"/api/projects/{projectId}/leases");
+        // No bulk-list endpoint exists server-side (CollaborationEndpoints only exposes
+        // single-resource GET /leases/{resourceKey}); query the held resource directly.
+        var (status, body) = await bob.GetAsync(
+            $"/api/projects/{Uri.EscapeDataString(projectId!)}/leases/{Uri.EscapeDataString("scene:listed")}");
         Assert.Equal(HttpStatusCode.OK, status);
-        Assert.True(body.GetProperty("ok").GetBoolean());
-        var leases = body.GetProperty("leases");
-        Assert.Equal(JsonValueKind.Array, leases.ValueKind);
-        Assert.True(leases.GetArrayLength() >= 1);
-
-        var found = false;
-        foreach (var el in leases.EnumerateArray())
-        {
-            if (el.TryGetProperty("resourceKey", out var rk) &&
-                rk.GetString() == "scene:listed" &&
-                el.TryGetProperty("holderUserId", out var h) &&
-                h.GetString() == "alice-list")
-            {
-                found = true;
-                break;
-            }
-        }
-        Assert.True(found, "bob should see alice-list holding scene:listed");
+        Assert.Equal("scene:listed", body.GetProperty("resourceKey").GetString());
+        Assert.Equal("alice-list", body.GetProperty("holderUserId").GetString());
     }
 
     [Fact]
@@ -202,16 +186,18 @@ public sealed class MultiUserLeaseUiTests
 
         public async Task<string?> CreateProjectAsync(string title)
         {
-            // API creates an empty project; title is only for our logging/debug.
-            _ = title;
-            using var content = new StringContent("{}", Encoding.UTF8, "application/json");
+            var payload = JsonSerializer.Serialize(new { name = title });
+            using var content = new StringContent(payload, Encoding.UTF8, "application/json");
             using var resp = await _http.PostAsync("api/projects", content);
             var body = await resp.Content.ReadAsStringAsync();
             if (!resp.IsSuccessStatusCode)
                 return null;
             using var doc = JsonDocument.Parse(body);
-            if (doc.RootElement.TryGetProperty("id", out var id))
+            if (doc.RootElement.TryGetProperty("active", out var active) &&
+                active.TryGetProperty("id", out var id))
                 return id.GetString();
+            if (doc.RootElement.TryGetProperty("id", out var topId))
+                return topId.GetString();
             if (doc.RootElement.TryGetProperty("projectId", out var pid))
                 return pid.GetString();
             return null;
@@ -219,17 +205,16 @@ public sealed class MultiUserLeaseUiTests
 
         public async Task<bool> GrantEditorAsync(string projectId, string userId)
         {
-            var payload = JsonSerializer.Serialize(new { userId, role = "Editor" });
+            var payload = JsonSerializer.Serialize(new { userId });
             using var content = new StringContent(payload, Encoding.UTF8, "application/json");
-            using var req = new HttpRequestMessage(HttpMethod.Put, $"api/projects/{projectId}/acl/grant") { Content = content };
-            using var resp = await _http.SendAsync(req);
+            using var resp = await _http.PostAsync($"api/projects/{Uri.EscapeDataString(projectId)}/acl/editors", content);
             return resp.IsSuccessStatusCode;
         }
 
         public async Task<(HttpStatusCode Status, JsonElement Body)> AcquireLeaseAsync(string projectId, string resourceKey)
         {
             var encoded = Uri.EscapeDataString(resourceKey);
-            using var resp = await _http.PostAsync($"api/projects/{projectId}/leases/{encoded}", content: null);
+            using var resp = await _http.PostAsync($"api/projects/{Uri.EscapeDataString(projectId)}/leases/{encoded}/acquire", content: null);
             var text = await resp.Content.ReadAsStringAsync();
             JsonElement body;
             try { body = JsonDocument.Parse(string.IsNullOrWhiteSpace(text) ? "{}" : text).RootElement.Clone(); }
@@ -240,7 +225,7 @@ public sealed class MultiUserLeaseUiTests
         public async Task<bool> ReleaseLeaseAsync(string projectId, string resourceKey)
         {
             var encoded = Uri.EscapeDataString(resourceKey);
-            using var resp = await _http.DeleteAsync($"api/projects/{projectId}/leases/{encoded}");
+            using var resp = await _http.PostAsync($"api/projects/{Uri.EscapeDataString(projectId)}/leases/{encoded}/release", content: null);
             return resp.IsSuccessStatusCode;
         }
 
