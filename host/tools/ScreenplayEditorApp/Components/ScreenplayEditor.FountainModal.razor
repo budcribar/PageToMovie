@@ -34,10 +34,10 @@
                                 <div class="d-flex align-items-center gap-2">
                                     @if (ShowCopyFeedback)
                                     {
-                                        <ScreenplayEditor_BadgePill Variant="success" Text="Copied!" />
+                                        <ScreenplayEditor_BadgePill Variant="@ComponentVariant.Success" Text="Copied!" />
                                     }
-                                    <ScreenplayEditor_ActionButton Variant="outline-info" Icon="bi-clipboard" Text="Copy Text" OnClick="CopyText" />
-                                    <ScreenplayEditor_ActionButton Variant="primary" Icon="bi-download" Text="Download File" OnClick="DownloadFile" />
+                                    <ScreenplayEditor_ActionButton Variant="@ComponentVariant.OutlineInfo" Icon="bi-clipboard" Text="Copy Text" OnClick="CopyText" />
+                                    <ScreenplayEditor_ActionButton Variant="@ComponentVariant.Primary" Icon="bi-download" Text="Download File" OnClick="DownloadFile" />
                                 </div>
                             </div>
                             <textarea class="form-control font-monospace bg-dark text-light border-secondary" rows="14" readonly value="@FountainText"></textarea>

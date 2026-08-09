@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Components;
+using ScreenplayEditorApp.Models;
 
 namespace ScreenplayEditorApp.Components;
 
@@ -8,10 +9,8 @@ public partial class ScreenplayEditor_BadgePill : ComponentBase
     public string Text { get; set; } = "";
 
     [Parameter]
-    public string Variant { get; set; } = "secondary"; // primary, info, success, warning, secondary, dark
+    public ComponentVariant Variant { get; set; } = ComponentVariant.Secondary;
 
     [Parameter]
     public string CssClass { get; set; } = "";
-
-    public string VariantClass => Variant.StartsWith("text-bg-") || Variant.StartsWith("bg-") ? Variant : $"text-bg-{Variant}";
 }

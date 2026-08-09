@@ -10,18 +10,18 @@
             @if (Beat.BeatType == BeatType.Dialogue)
             {
                 <input type="text" class="form-control form-control-sm text-uppercase fw-bold border-secondary bg-dark text-light" style="width: 180px;" @bind="Beat.Speaker" @bind:after="OnChanged" placeholder="SPEAKER" />
-                <select class="form-select form-select-sm border-secondary bg-dark text-light" style="width: 110px;" @bind="Beat.Extension" @bind:after="OnChanged">
-                    <option value="">(None)</option>
-                    <option value="V.O.">V.O.</option>
-                    <option value="O.S.">O.S.</option>
-                    <option value="CONT'D">CONT'D</option>
+                <select class="form-select form-select-sm border-secondary bg-dark text-light" style="width: 110px;" @bind="Beat.SpeakerExt" @bind:after="OnChanged">
+                    <option value="@SpeakerExtension.None">(None)</option>
+                    <option value="@SpeakerExtension.VO">V.O.</option>
+                    <option value="@SpeakerExtension.OS">O.S.</option>
+                    <option value="@SpeakerExtension.CONTD">CONT'D</option>
                 </select>
             }
         </div>
-        <div class="btn-group btn-group-sm">
-            <button class="btn btn-outline-secondary" type="button" title="Move Up" disabled="@IsFirst" @onclick="MoveUp">▲</button>
-            <button class="btn btn-outline-secondary" type="button" title="Move Down" disabled="@IsLast" @onclick="MoveDown">▼</button>
-            <button class="btn btn-outline-danger" type="button" title="Delete Beat" @onclick="Delete">✕</button>
+        <div class="d-flex align-items-center gap-1">
+            <ScreenplayEditor_ActionButton Variant="@ComponentVariant.OutlineSecondary" Text="▲" Title="Move Up" Disabled="@IsFirst" OnClick="MoveUp" />
+            <ScreenplayEditor_ActionButton Variant="@ComponentVariant.OutlineSecondary" Text="▼" Title="Move Down" Disabled="@IsLast" OnClick="MoveDown" />
+            <ScreenplayEditor_ActionButton Variant="@ComponentVariant.OutlineDanger" Text="✕" Title="Delete Beat" OnClick="Delete" />
         </div>
     </div>
 

@@ -4,7 +4,7 @@
             <span class="fs-5">📋</span>
             <h5 class="mb-0 fw-bold text-light">Story Metadata & Title Page</h5>
         </div>
-        <ScreenplayEditor_ActionButton Variant="outline-light" Text="@(IsCollapsed ? "Show Details ▾" : "Collapse ▴")" OnClick="ToggleCollapse" />
+        <ScreenplayEditor_ActionButton Variant="@ComponentVariant.OutlineLight" Text="@(IsCollapsed ? "Show Details ▾" : "Collapse ▴")" OnClick="ToggleCollapse" />
     </div>
     @if (!IsCollapsed)
     {

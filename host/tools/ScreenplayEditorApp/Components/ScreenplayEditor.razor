@@ -3,7 +3,7 @@
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4 pb-3 border-bottom border-secondary-subtle">
         <div>
             <div class="d-flex align-items-center gap-2 mb-1">
-                <ScreenplayEditor_BadgePill Variant="primary" Text="PageToMovie" />
+                <ScreenplayEditor_BadgePill Variant="@ComponentVariant.Primary" Text="PageToMovie" />
                 <span class="text-secondary small fw-semibold">Structured Screenplay Editor</span>
             </div>
             <h2 class="mb-0 fw-bold text-light">
@@ -16,50 +16,94 @@
             </p>
         </div>
         <div class="d-flex align-items-center gap-2">
-            <ScreenplayEditor_ActionButton Variant="outline-info" Icon="bi-box-arrow-in-down" Text="Import Fountain" OnClick="OpenImportModal" />
-            <ScreenplayEditor_ActionButton Variant="primary" Icon="bi-box-arrow-up-right" Text="Export Fountain" OnClick="OpenExportModal" />
+            <ScreenplayEditor_ActionButton Variant="@ComponentVariant.OutlineInfo" Icon="bi-compass" Text="@(ShowOutlineSidebar ? "Hide Outline Tree" : "Show Outline Tree")" OnClick="ToggleOutlineSidebar" />
+            <ScreenplayEditor_ActionButton Variant="@ComponentVariant.OutlineInfo" Icon="bi-box-arrow-in-down" Text="Import Fountain" OnClick="OpenImportModal" />
+            <ScreenplayEditor_ActionButton Variant="@ComponentVariant.Primary" Icon="bi-box-arrow-up-right" Text="Export Fountain" OnClick="OpenExportModal" />
         </div>
     </div>
 
-    <!-- Metadata Header Panel -->
-    <ScreenplayEditor_MetadataHeader Metadata="Model.Metadata" OnChangedCallback="OnChanged" />
-
-    <!-- Scenes Header with SINGLE PRIMARY "+ Add Scene" BUTTON -->
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <div class="d-flex align-items-center gap-2">
-            <h4 class="mb-0 fw-bold text-light">Scenes</h4>
-            <ScreenplayEditor_BadgePill Variant="secondary" Text="@Model.Scenes.Count.ToString()" />
-        </div>
-        <ScreenplayEditor_ActionButton Variant="success" Icon="bi-plus-lg" Text="Add Scene" OnClick="AddScene" />
-    </div>
-
-    @if (Model.Scenes.Count == 0)
-    {
-        <div class="card bg-dark-subtle border-secondary-subtle text-center p-5 mb-4 shadow-sm">
-            <div class="card-body">
-                <div class="display-6 text-info mb-3">🎬</div>
-                <h5 class="fw-bold text-light">No scenes in screenplay</h5>
-                <p class="text-secondary mb-0">
-                    Use the <strong class="text-success">+ Add Scene</strong> button above to create your first scene, or click <strong class="text-info">Import Fountain</strong> to load an existing screenplay file.
-                </p>
-            </div>
-        </div>
-    }
-    else
-    {
-        @for (var i = 0; i < Model.Scenes.Count; i++)
+    <!-- Main Content Area with Optional Outline Tree Sidebar -->
+    <div class="row g-4">
+        @if (ShowOutlineSidebar)
         {
-            var index = i;
-            var scene = Model.Scenes[index];
-            <ScreenplayEditor_SceneCard Scene="scene"
-                                        IsFirst="@(index == 0)"
-                                        IsLast="@(index == Model.Scenes.Count - 1)"
-                                        OnChangedCallback="OnChanged"
-                                        OnMoveUpCallback="() => MoveSceneUp(index)"
-                                        OnMoveDownCallback="() => MoveSceneDown(index)"
-                                        OnDeleteCallback="() => DeleteScene(index)" />
+            <div class="col-md-3">
+                <div class="card bg-dark-subtle border-secondary-subtle p-3 sticky-top" style="top: 20px;">
+                    <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom border-secondary-subtle">
+                        <h6 class="fw-bold text-light mb-0"><i class="bi bi-list-nested me-1 text-info"></i> Scene Outline</h6>
+                        <span class="badge text-bg-secondary">@Model.Scenes.Count</span>
+                    </div>
+                    @if (Model.Scenes.Count == 0)
+                    {
+                        <p class="text-secondary small mb-0">No scenes in outline.</p>
+                    }
+                    else
+                    {
+                        <div class="list-group list-group-flush overflow-auto" style="max-height: 70vh;">
+                            @foreach (var scene in Model.Scenes)
+                            {
+                                <a href="#scene-card-@scene.SceneNumber" class="list-group-item list-group-item-action bg-transparent text-light border-0 py-1 px-2 small d-flex justify-content-between align-items-center">
+                                    <span class="text-truncate">
+                                        <span class="badge text-bg-warning me-1">@scene.SceneNumber</span>
+                                        @scene.HeaderText
+                                    </span>
+                                    <span class="badge text-bg-dark text-secondary">@scene.Beats.Count</span>
+                                </a>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
         }
-    }
+
+        <div class="@(ShowOutlineSidebar ? "col-md-9" : "col-md-12")">
+            <!-- Metadata Header Panel -->
+            <ScreenplayEditor_MetadataHeader Metadata="Model.Metadata" OnChangedCallback="OnChanged" />
+
+            <!-- Scenes Header with SINGLE PRIMARY "+ Add Scene" BUTTON & Collapse Controls -->
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                <div class="d-flex align-items-center gap-2">
+                    <h4 class="mb-0 fw-bold text-light">Scenes</h4>
+                    <ScreenplayEditor_BadgePill Variant="@ComponentVariant.Secondary" Text="@Model.Scenes.Count.ToString()" />
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    @if (Model.Scenes.Count > 0)
+                    {
+                        <ScreenplayEditor_ActionButton Variant="@ComponentVariant.OutlineSecondary" Text="Collapse All" OnClick="CollapseAllScenes" />
+                        <ScreenplayEditor_ActionButton Variant="@ComponentVariant.OutlineSecondary" Text="Expand All" OnClick="ExpandAllScenes" />
+                    }
+                    <ScreenplayEditor_ActionButton Variant="@ComponentVariant.Success" Icon="bi-plus-lg" Text="Add Scene" OnClick="AddScene" />
+                </div>
+            </div>
+
+            @if (Model.Scenes.Count == 0)
+            {
+                <div class="card bg-dark-subtle border-secondary-subtle text-center p-5 mb-4 shadow-sm">
+                    <div class="card-body">
+                        <div class="display-6 text-info mb-3">🎬</div>
+                        <h5 class="fw-bold text-light">No scenes in screenplay</h5>
+                        <p class="text-secondary mb-0">
+                            Use the <strong class="text-success">+ Add Scene</strong> button above to create your first scene, or click <strong class="text-info">Import Fountain</strong> to load an existing screenplay file.
+                        </p>
+                    </div>
+                </div>
+            }
+            else
+            {
+                @for (var i = 0; i < Model.Scenes.Count; i++)
+                {
+                    var index = i;
+                    var scene = Model.Scenes[index];
+                    <ScreenplayEditor_SceneCard Scene="scene"
+                                                IsFirst="@(index == 0)"
+                                                IsLast="@(index == Model.Scenes.Count - 1)"
+                                                OnChangedCallback="OnChanged"
+                                                OnMoveUpCallback="() => MoveSceneUp(index)"
+                                                OnMoveDownCallback="() => MoveSceneDown(index)"
+                                                OnDeleteCallback="() => DeleteScene(index)" />
+                }
+            }
+        </div>
+    </div>
 
     <ScreenplayEditor_FountainModal @bind-IsOpen="ShowFountainModal"
                                      Mode="@FountainModalMode"

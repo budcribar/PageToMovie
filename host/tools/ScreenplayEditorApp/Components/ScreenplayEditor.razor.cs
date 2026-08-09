@@ -14,6 +14,7 @@ public partial class ScreenplayEditor : ComponentBase
     public bool ShowFountainModal { get; set; }
     public string FountainModalMode { get; set; } = "import";
     public string FountainModalText { get; set; } = "";
+    public bool ShowOutlineSidebar { get; set; } = false;
 
     public int TotalBeats => Model.Scenes.Sum(s => s.Beats.Count);
 
@@ -24,6 +25,29 @@ public partial class ScreenplayEditor : ComponentBase
         {
             await ModelChanged.InvokeAsync(Model);
         }
+    }
+
+    public void ToggleOutlineSidebar()
+    {
+        ShowOutlineSidebar = !ShowOutlineSidebar;
+    }
+
+    public async Task CollapseAllScenes()
+    {
+        foreach (var s in Model.Scenes)
+        {
+            s.IsCollapsed = true;
+        }
+        await OnChanged();
+    }
+
+    public async Task ExpandAllScenes()
+    {
+        foreach (var s in Model.Scenes)
+        {
+            s.IsCollapsed = false;
+        }
+        await OnChanged();
     }
 
     public void ReindexSceneNumbers()

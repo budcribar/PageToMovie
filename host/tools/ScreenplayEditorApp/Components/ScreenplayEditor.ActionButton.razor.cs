@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Components;
+using ScreenplayEditorApp.Models;
 
 namespace ScreenplayEditorApp.Components;
 
@@ -11,7 +12,7 @@ public partial class ScreenplayEditor_ActionButton : ComponentBase
     public string Icon { get; set; } = "";
 
     [Parameter]
-    public string Variant { get; set; } = "secondary"; // primary, info, success, warning, secondary, dark
+    public ComponentVariant Variant { get; set; } = ComponentVariant.Secondary;
 
     [Parameter]
     public string CssClass { get; set; } = "";
@@ -24,6 +25,4 @@ public partial class ScreenplayEditor_ActionButton : ComponentBase
 
     [Parameter]
     public EventCallback OnClick { get; set; }
-
-    public string VariantClass => Variant.StartsWith("btn-") ? Variant : $"btn-{Variant}";
 }

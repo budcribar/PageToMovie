@@ -3,7 +3,7 @@ using ScreenplayEditorApp.Models;
 
 namespace ScreenplayEditorApp.Components;
 
-public partial class ScreenplayEditor_SceneCard
+public partial class ScreenplayEditor_SceneCard : ComponentBase
 {
     [Parameter]
     public ScreenplayScene Scene { get; set; } = new();
@@ -25,6 +25,12 @@ public partial class ScreenplayEditor_SceneCard
 
     [Parameter]
     public EventCallback OnDeleteCallback { get; set; }
+
+    public async Task ToggleCollapse()
+    {
+        Scene.IsCollapsed = !Scene.IsCollapsed;
+        await OnChanged();
+    }
 
     public async Task OnChanged()
     {
@@ -61,14 +67,14 @@ public partial class ScreenplayEditor_SceneCard
     public async Task AddBeat(BeatType type)
     {
         var newBeat = new ScreenplayBeat { BeatType = type };
-        if (type == BeatType.Dialogue)
+        if (type == BeatType.Action)
+        {
+            newBeat.ActionText = "Describe visual scene action...";
+        }
+        else if (type == BeatType.Dialogue)
         {
             newBeat.Speaker = "CHARACTER";
-            newBeat.SpokenText = "Dialogue text...";
-        }
-        else if (type == BeatType.Action)
-        {
-            newBeat.ActionText = "Visual description...";
+            newBeat.SpokenText = "Spoken line...";
         }
         else if (type == BeatType.Transition)
         {
