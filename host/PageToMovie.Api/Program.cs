@@ -2569,6 +2569,7 @@ app.MapDelete("/api/projects/{id}", async (
     string id,
     ProjectStore store,
     IUserContext user,
+    UserDatabaseService userDb,
     IOptions<PageToMovieOptions> opts,
     CancellationToken ct) =>
 {
@@ -2577,10 +2578,34 @@ app.MapDelete("/api/projects/{id}", async (
     try
     {
         await store.DeleteProjectAsync(id, ct);
-        var list = await store.ListProjectsAsync(ct);
-        var activeId = store.ActiveProjectId;
+
+        // Same non-public-inventory + per-user active-project rules as GET /api/projects —
+        // this response used to leak every user's projects and whichever project any other
+        // user last activated process-wide.
+        var all = await store.ListProjectsAsync(ct);
+        IReadOnlyList<ProjectInfo> list;
+        if (user.IsAdmin)
+        {
+            list = all;
+        }
+        else
+        {
+            UserEntity? me = null;
+            try
+            {
+                me = await userDb.GetUserByIdAsync(user.UserId, ct).ConfigureAwait(false)
+                     ?? await userDb.GetUserByUsernameAsync(user.UserId, ct).ConfigureAwait(false);
+            }
+            catch { /* offline */ }
+            var aliases = ProjectOwnership.CollectAliases(
+                user.UserId, canonicalUserId: me?.UserId, username: me?.Username, email: me?.Email);
+            list = all.Where(p => ProjectOwnership.IsOwnedBy(p, aliases)).ToList();
+        }
+
+        var userActiveId = await userDb.GetUserActiveProjectAsync(user.UserId, ct);
+        var activeId = !string.IsNullOrWhiteSpace(userActiveId) ? userActiveId : store.ActiveProjectId;
         var active = list.FirstOrDefault(p =>
-            string.Equals(p.Id, activeId, StringComparison.OrdinalIgnoreCase));
+            string.Equals(p.Id, activeId, StringComparison.OrdinalIgnoreCase)) ?? (list.Count > 0 ? list[0] : null);
         return Results.Ok(new
         {
             ok = true,
@@ -2934,9 +2959,13 @@ app.MapPost("/api/jobs/cancel", async (
     });
 });
 
-app.MapGet("/api/stage2-status", async (ProjectStore store, CancellationToken ct) =>
+app.MapGet("/api/stage2-status", async (
+    ProjectStore store, IUserContext user, UserDatabaseService userDb, IOptions<PageToMovieOptions> opts, CancellationToken ct) =>
 {
-    var id = store.ActiveProjectId;
+    if (AuthGate.RequireLogin(user, opts) is { } denied)
+        return denied;
+    var userActiveId = await userDb.GetUserActiveProjectAsync(user.UserId, ct);
+    var id = !string.IsNullOrWhiteSpace(userActiveId) ? userActiveId : store.ActiveProjectId;
     if (string.IsNullOrEmpty(id))
         return Results.Ok(new { ok = true, stage2_ready = false });
     var bp = await store.FindBlueprintPathAsync(id, ct);
