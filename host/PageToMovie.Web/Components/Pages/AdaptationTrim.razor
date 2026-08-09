@@ -17,18 +17,18 @@
 
                 @if (!string.IsNullOrEmpty(ActiveProject.ParentProjectId))
                 {
-                    <div class="alert alert-info small" data-testid="trim-fork-note">
+                    <InlineAlert Variant="info" CssClass="small" data-testid="trim-fork-note">
                         This project was forked with a finished screenplay — just fit it to your own length and
                         budget here. No need to re-import or rewrite.
-                    </div>
+                    </InlineAlert>
                 }
 
                 @if (Status?.Screenplay.DraftExists != true)
                 {
-                    <div class="alert alert-light border small mb-0">
+                    <InlineAlert Variant="light" CssClass="border small mb-0">
                         Import a book first — the screenplay is written automatically, then you fit it to length.
                         <a class="ms-1" href="adaptation/import">Go to Book →</a>
-                    </div>
+                    </InlineAlert>
                 }
                 else
                 {

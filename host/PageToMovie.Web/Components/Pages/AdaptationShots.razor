@@ -27,21 +27,21 @@
                 {
                     @if (!Status.Stage1.Present || Status.Stage1.SceneCount <= 0)
                     {
-                        <div class="alert alert-secondary py-2 small mb-3">
+                        <InlineAlert Variant="secondary" CssClass="py-2 small mb-3">
                             Approve the <a href="adaptation/screenplay">screenplay</a> first.
-                        </div>
+                        </InlineAlert>
                     }
                     else if (Status.Stage2.Stage2Stale)
                     {
-                        <div class="alert alert-warning py-2 small mb-3">
+                        <InlineAlert Variant="warning" CssClass="py-2 small mb-3">
                             Screenplay changed — update the shot plan before making video.
-                        </div>
+                        </InlineAlert>
                     }
                     else if (!Status.Stage2.Stage2Ready)
                     {
-                        <div class="alert alert-warning py-2 small mb-3">
+                        <InlineAlert Variant="warning" CssClass="py-2 small mb-3">
                             Screenplay has @Status.Stage2.Stage1Scenes scene(s) but no shot plan yet.
-                        </div>
+                        </InlineAlert>
                     }
                 }
 
