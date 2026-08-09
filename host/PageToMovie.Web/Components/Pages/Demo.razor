@@ -67,154 +67,15 @@
         <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4 demo-grid">
             @foreach (var d in _demos)
             {
-                var about = AboutText(d);
-                var isHighlight = _highlightId == d.Id;
-                // Prefer parsed id (handles raw id, watch URL, or embed URL stored in either field).
-                // Use thumbnail + external link — embeds fail for private / restricted channel videos.
-                var ytId = ResolveYoutubeId(d);
-                var ytWatchUrl = ytId is not null
-                    ? YouTubeVideoId.WatchUrl(ytId)
-                    : AbsoluteYoutubeUrl(d.YoutubeUrl);
-                var thumbUrl = ytId is not null
-                    ? YouTubeVideoId.ThumbnailUrl(ytId, "hqdefault")
-                    : null;
                 <div class="col d-flex" @key="d.Id">
-                <article class="demo-card w-100 @(isHighlight ? "is-highlight" : "")"
-                         id="@d.Id"
-                         data-testid="demo-card">
-                    <div class="demo-card-media">
-                        @if (ytWatchUrl is not null)
-                        {
-                            <a class="demo-yt-frame demo-yt-thumb-link"
-                               href="@ytWatchUrl"
-                               target="_blank"
-                               rel="noopener noreferrer"
-                               title="Watch @d.Title on YouTube"
-                               data-testid="demo-watch-link">
-                                @if (thumbUrl is not null)
-                                {
-                                    <img class="demo-yt-thumb"
-                                         src="@thumbUrl"
-                                         alt=""
-                                         loading="lazy"
-                                         decoding="async" />
-                                }
-                                else
-                                {
-                                    <span class="demo-yt-thumb-fallback" aria-hidden="true"></span>
-                                }
-                                <span class="demo-yt-play" aria-hidden="true">▶</span>
-                                <span class="visually-hidden">Watch on YouTube</span>
-                            </a>
-                        }
-                        else
-                        {
-                            <div class="demo-yt-frame demo-yt-frame--empty">
-                                <span class="small text-secondary">Video not available yet</span>
-                            </div>
-                        }
-                    </div>
-                    <div class="demo-card-body">
-                        <header class="demo-card-header">
-                            <div class="d-flex justify-content-between align-items-start gap-2">
-                                <h2 class="demo-card-title mb-0">
-                                    @if (ytWatchUrl is not null)
-                                    {
-                                        <a href="@ytWatchUrl"
-                                           target="_blank"
-                                           rel="noopener noreferrer"
-                                           class="demo-card-title-link">@d.Title</a>
-                                    }
-                                    else
-                                    {
-                                        @d.Title
-                                    }
-                                </h2>
-                                @if (ytWatchUrl is not null)
-                                {
-                                    <a href="@ytWatchUrl"
-                                       target="_blank"
-                                       rel="noopener noreferrer"
-                                       class="demo-yt-open-link flex-shrink-0">Watch on YouTube ↗</a>
-                                }
-                            </div>
-                            <div class="demo-card-chips mt-2">
-                                @if (!string.IsNullOrWhiteSpace(d.ProjectId))
-                                {
-                                    <span class="demo-chip" title="Studio project">@d.ProjectId</span>
-                                }
-                                <span class="demo-chip demo-chip-muted">@RelativeDate(d.CreatedAt)</span>
-                            </div>
-                        </header>
-
-                        <div class="demo-card-about">
-                            <h3 class="demo-about-label">About this film</h3>
-                            <p class="demo-about-text">@about</p>
-                        </div>
-
-                        <footer class="demo-card-footer">
-                            <div class="demo-card-byline">
-                                @if (!string.IsNullOrWhiteSpace(d.CreatedBy))
-                                {
-                                    <span>Shared by <a href="creator/@Uri.EscapeDataString(d.CreatedBy)" class="text-decoration-none text-info fw-bold">@@@d.CreatedBy</a></span>
-                                }
-                                else
-                                {
-                                    <span class="text-muted">Community share</span>
-                                }
-                                <span class="demo-card-date" title="@d.CreatedAt.ToLocalTime().ToString("f")">
-                                    · @d.CreatedAt.ToLocalTime().ToString("MMM d, yyyy")
-                                </span>
-                            </div>
-                            <div class="demo-card-actions">
-                                <button type="button"
-                                        class="btn btn-sm @(d.UpvotedByMe ? "btn-warning" : "btn-outline-secondary") demo-star-btn"
-                                        disabled="@(_busy || IsOwnDemo(d))"
-                                        title="@(StarButtonTitle(d))"
-                                        aria-pressed="@(d.UpvotedByMe ? "true" : "false")"
-                                        @onclick="() => ToggleStarAsync(d)">
-                                    <span aria-hidden="true">★</span>
-                                    <span class="demo-star-count">@d.TotalStars</span>
-                                </button>
-
-                                @if (d.CanFork && (d.IsForkable || Session.IsAdmin))
-                                {
-                                    <button type="button"
-                                            class="btn btn-sm btn-success"
-                                            disabled="@_busy"
-                                            title="@(Session.IsLoggedIn
-                                                ? "Fork script, cast, and shot plan into your workspace"
-                                                : "Sign in to fork this project")"
-                                            data-testid="demo-fork"
-                                            @onclick="() => ForkDemoAsync(d)">
-                                        Fork
-                                    </button>
-                                }
-                                @if (Session.IsLoggedIn && !IsOwnDemo(d))
-                                {
-                                    <button type="button"
-                                            class="btn btn-sm btn-outline-warning"
-                                            disabled="@(_busy || _reported.Contains(d.Id))"
-                                            title="Report inappropriate content"
-                                            @onclick="() => ReportAsync(d)">
-                                        @(_reported.Contains(d.Id) ? "Reported" : "Report")
-                                    </button>
-                                }
-                                @if (CanRemove(d))
-                                {
-                                    <button type="button"
-                                            class="btn btn-sm btn-outline-danger"
-                                            disabled="@_busy"
-                                            title="@(Session.IsAdmin ? "Remove (admin)" : "Remove your film from the gallery")"
-                                            data-testid="demo-remove"
-                                            @onclick="() => DeleteAsync(d.Id)">
-                                        Remove
-                                    </button>
-                                }
-                            </div>
-                        </footer>
-                    </div>
-                </article>
+                    <Demo_FilmCard Film="d"
+                                   IsHighlight="@(_highlightId == d.Id)"
+                                   Busy="_busy"
+                                   IsReported="@_reported.Contains(d.Id)"
+                                   OnToggleStar="ToggleStarAsync"
+                                   OnFork="ForkDemoAsync"
+                                   OnReport="ReportAsync"
+                                   OnDelete="DeleteAsync" />
                 </div>
             }
         </div>
@@ -310,26 +171,11 @@
         && !string.IsNullOrWhiteSpace(d.CreatedBy)
         && IdentitiesMatch(Session.UserId, d.CreatedBy);
 
-    /// <summary>Remove only for admin or the publisher who uploaded the demo.</summary>
-    private bool CanRemove(DemoListItem d)
-    {
-        if (!Session.IsLoggedIn) return false;
-        if (Session.IsAdmin) return true;
-        return IdentitiesMatch(Session.UserId, d.CreatedBy);
-    }
-
     private static bool IdentitiesMatch(string? a, string? b)
     {
         if (string.IsNullOrWhiteSpace(a) || string.IsNullOrWhiteSpace(b)) return false;
         static string Norm(string s) => s.Trim().TrimStart('@');
         return string.Equals(Norm(a), Norm(b), StringComparison.OrdinalIgnoreCase);
-    }
-
-    private string StarButtonTitle(DemoListItem d)
-    {
-        if (IsOwnDemo(d)) return "You can’t star your own demo";
-        if (!Session.IsLoggedIn) return "Sign in to star this film";
-        return d.UpvotedByMe ? "Remove star" : "Star this film";
     }
 
     private async Task ForkDemoAsync(DemoListItem d)
@@ -473,59 +319,5 @@
         {
             _busy = false;
         }
-    }
-
-    private static string AboutText(DemoListItem d)
-    {
-        if (!string.IsNullOrWhiteSpace(d.Description))
-            return d.Description.Trim();
-        var title = !string.IsNullOrWhiteSpace(d.Title) ? d.Title.Trim() : d.ProjectId?.Trim();
-        if (!string.IsNullOrWhiteSpace(title))
-            return $"A cinematic short film adaptation of “{title}” produced with PageToMovie.";
-        return "A cinematic short film adaptation produced with PageToMovie.";
-    }
-
-    private static string FormatBytes(long bytes)
-    {
-        if (bytes < 1024) return $"{bytes} B";
-        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:0.#} KB";
-        if (bytes < 1024L * 1024 * 1024) return $"{bytes / (1024.0 * 1024):0.#} MB";
-        return $"{bytes / (1024.0 * 1024 * 1024):0.##} GB";
-    }
-
-
-    private static string? ResolveYoutubeId(DemoListItem d)
-    {
-        var fromId = YouTubeVideoId.Extract(d.YoutubeId);
-        if (!string.IsNullOrWhiteSpace(fromId)) return fromId;
-        return YouTubeVideoId.Extract(d.YoutubeUrl);
-    }
-
-    /// <summary>Only absolute http(s) watch URLs — never relative paths that break in the SPA.</summary>
-    private static string? AbsoluteYoutubeUrl(string? url)
-    {
-        if (string.IsNullOrWhiteSpace(url)) return null;
-        var s = url.Trim();
-        if (s.StartsWith("//", StringComparison.Ordinal))
-            s = "https:" + s;
-        if (!Uri.TryCreate(s, UriKind.Absolute, out var uri))
-            return null;
-        if (uri.Scheme is not ("http" or "https"))
-            return null;
-        // Prefer canonical watch URL when we can extract an id.
-        var id = YouTubeVideoId.Extract(s);
-        return id is not null ? YouTubeVideoId.WatchUrl(id) : uri.AbsoluteUri;
-    }
-
-    private static string RelativeDate(DateTimeOffset when)
-    {
-        var local = when.ToLocalTime();
-        var span = DateTimeOffset.Now - when;
-        if (span.TotalMinutes < 2) return "Just now";
-        if (span.TotalHours < 1) return $"{(int)span.TotalMinutes}m ago";
-        if (span.TotalDays < 1) return $"{(int)span.TotalHours}h ago";
-        if (span.TotalDays < 14) return $"{(int)span.TotalDays}d ago";
-        if (local.Year == DateTime.Now.Year) return local.ToString("MMM d");
-        return local.ToString("MMM d, yyyy");
     }
 }

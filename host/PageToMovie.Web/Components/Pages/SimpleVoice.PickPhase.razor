@@ -1,0 +1,49 @@
+@* Page-local to SimpleVoice — Phase.Pick (choose story) *@
+
+<div class="card border-primary border-opacity-50 mb-3" data-testid="simple-voice-pick">
+    <div class="card-body">
+        <div class="d-flex align-items-center gap-2 mb-2">
+            <span class="badge text-bg-primary">Step 1 of 2</span>
+            <span class="badge text-bg-secondary">Voice-only · low cost</span>
+        </div>
+        <h2 class="h5 mb-2">Choose a story</h2>
+        <p class="small text-muted mb-3">
+            Pick a film — we make your own copy, then you record one sample and we put your voice on the narrator.
+        </p>
+        @if (Host._storiesLoading)
+        {
+            <p class="small text-muted">Loading stories…</p>
+        }
+        else if (Host._forkableStories.Count == 0)
+        {
+            <div class="alert alert-light border small mb-3">
+                No shareable stories yet. Mark a film “Public (Forkable)” in the full studio to see it here.
+            </div>
+        }
+        else
+        {
+            <div class="list-group mb-3">
+                @foreach (var story in Host._forkableStories)
+                {
+                    <button type="button"
+                            class="list-group-item list-group-item-action"
+                            disabled="@Host._busy"
+                            data-testid="@($"simple-voice-story-{story.Id}")"
+                            @onclick="() => Host.SelectStoryAsync(story)">
+                        <div class="d-flex justify-content-between gap-2 align-items-center">
+                            <div class="fw-semibold text-start">@story.Title</div>
+                            <span class="small text-muted flex-shrink-0">Read in my voice →</span>
+                        </div>
+                    </button>
+                }
+            </div>
+        }
+        <a class="btn btn-link btn-sm px-0" href="/" data-testid="simple-voice-home">
+            Full studio instead
+        </a>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] public SimpleVoice Host { get; set; } = default!;
+}

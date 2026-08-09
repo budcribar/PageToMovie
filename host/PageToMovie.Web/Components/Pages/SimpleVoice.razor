@@ -34,227 +34,46 @@ else
         <InlineAlert Message="@_message" Variant="success" CssClass="py-2" data-testid="simple-voice-message" />
     }
 
-    @* ── Step 1: choose story ─────────────────────────────────────────── *@
-    @if (_phase == Phase.Pick)
-    {
-        <div class="card border-primary border-opacity-50 mb-3" data-testid="simple-voice-pick">
-            <div class="card-body">
-                <div class="d-flex align-items-center gap-2 mb-2">
-                    <span class="badge text-bg-primary">Step 1 of 2</span>
-                    <span class="badge text-bg-secondary">Voice-only · low cost</span>
-                </div>
-                <h2 class="h5 mb-2">Choose a story</h2>
-                <p class="small text-muted mb-3">
-                    Pick a film — we make your own copy, then you record one sample and we put your voice on the narrator.
-                </p>
-                @if (_storiesLoading)
-                {
-                    <p class="small text-muted">Loading stories…</p>
-                }
-                else if (_forkableStories.Count == 0)
-                {
-                    <div class="alert alert-light border small mb-3">
-                        No shareable stories yet. Mark a film “Public (Forkable)” in the full studio to see it here.
-                    </div>
-                }
-                else
-                {
-                    <div class="list-group mb-3">
-                        @foreach (var story in _forkableStories)
-                        {
-                            <button type="button"
-                                    class="list-group-item list-group-item-action"
-                                    disabled="@_busy"
-                                    data-testid="@($"simple-voice-story-{story.Id}")"
-                                    @onclick="() => SelectStoryAsync(story)">
-                                <div class="d-flex justify-content-between gap-2 align-items-center">
-                                    <div class="fw-semibold text-start">@story.Title</div>
-                                    <span class="small text-muted flex-shrink-0">Read in my voice →</span>
-                                </div>
-                            </button>
-                        }
-                    </div>
-                }
-                <a class="btn btn-link btn-sm px-0" href="/" data-testid="simple-voice-home">
-                    Full studio instead
-                </a>
-            </div>
-        </div>
-    }
-
-    @* ── Step 2: record narrator (no character list) ──────────────────── *@
-    else if (_phase is Phase.Record or Phase.Done)
-    {
-        <div class="card border-primary border-opacity-50 mb-3" data-testid="simple-voice-record">
-            <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
-                <div>
-                    <span class="badge text-bg-primary me-2">Step 2 of 3</span>
-                    <span class="fw-semibold">Record your voice</span>
-                    @if (!string.IsNullOrEmpty(_projectLabel))
-                    {
-                        <span class="text-muted small ms-2">· @_projectLabel</span>
-                    }
-                </div>
-                <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@_busy" @onclick="BackToPick">
-                    ← Change story
-                </button>
-            </div>
-            <div class="card-body">
-                @if (_needsCharacterPick)
-                {
-                    <div data-testid="simple-voice-character-pick">
-                        <p class="small text-muted mb-2">
-                            This story doesn’t have a clear narrator — who do you want to voice?
-                        </p>
-                        <div class="list-group mb-2">
-                            @foreach (var c in _narratorCandidates)
-                            {
-                                <button type="button"
-                                        class="list-group-item list-group-item-action"
-                                        disabled="@_busy"
-                                        data-testid="@($"simple-voice-character-{c.Key}")"
-                                        @onclick="() => PickCharacterAsync(c)">
-                                    <div class="d-flex justify-content-between gap-2 align-items-center">
-                                        <div class="fw-semibold text-start">@c.DisplayName</div>
-                                        <span class="small text-muted flex-shrink-0">Voice this character →</span>
-                                    </div>
-                                </button>
-                            }
-                        </div>
-                    </div>
-                }
-                else if (!_voiceReady)
-                {
-                    @* The good "read along in your voice" recorder, shared with anywhere else that needs it. *@
-                    <VoiceCaptureStep ProjectId="@_projectId" CharKey="@_narratorKey" OnComplete="OnVoiceReadyAsync" />
-                }
-                else
-                {
-                    <div class="d-flex flex-wrap align-items-center gap-2" data-testid="simple-voice-finish">
-                        <div class="flex-grow-1">
-                            <div class="fw-semibold">You’re set</div>
-                            <div class="small text-muted">
-                                We keep the pictures and put your voice on every line — no video regen.
-                            </div>
-                        </div>
-                        <button type="button"
-                                class="btn btn-outline-secondary"
-                                data-testid="simple-voice-rerecord"
-                                disabled="@_busy"
-                                @onclick="BeginReRecord">
-                            🎙️ Re-record
-                        </button>
-                        <button type="button"
-                                class="btn btn-primary btn-lg"
-                                data-testid="simple-voice-make-movie"
-                                disabled="@_busy"
-                                @onclick="MakeMovieAsync">
-                            Make my movie →
-                        </button>
-                    </div>
-                }
-            </div>
-        </div>
-
-        <p class="small text-muted mb-0">
-            Want faces of family in the frame later?
-            <button type="button" class="btn btn-link btn-sm p-0 align-baseline" @onclick="SwitchToFullStudioAsync">
-                Switch to full studio
-            </button>
-        </p>
-    }
-
-    @* ── Step 3: your movie ───────────────────────────────────────────── *@
-    else if (_phase == Phase.Movie)
-    {
-        <div class="card border-primary border-opacity-50 mb-3" data-testid="simple-voice-movie">
-            <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
-                <div>
-                    <span class="badge text-bg-primary me-2">Step 3</span>
-                    <span class="fw-semibold">Your movie</span>
-                    @if (!string.IsNullOrEmpty(_projectLabel))
-                    {
-                        <span class="text-muted small ms-2">· @_projectLabel</span>
-                    }
-                </div>
-                <button type="button" class="btn btn-sm btn-outline-secondary"
-                        disabled="@_dubbing"
-                        data-testid="simple-voice-movie-back"
-                        @onclick="@(() => { _phase = Phase.Done; _dubbedUrl = null; _error = null; })">
-                    ← Back to my voice
-                </button>
-            </div>
-            <div class="card-body">
-                @if (_dubbedUrl is not null)
-                {
-                    <div data-testid="simple-voice-result">
-                        <div class="fw-semibold mb-1">Your movie, in your voice 🎉</div>
-                        @if (!string.IsNullOrEmpty(_dubSummary))
-                        {
-                            <div class="small text-muted mb-2" data-testid="simple-voice-dub-summary">@_dubSummary</div>
-                        }
-                        <video class="w-100 rounded" style="max-height: 60vh; background:#000;"
-                               src="@_dubbedUrl" controls autoplay playsinline
-                               data-testid="simple-voice-player"></video>
-                        <div class="d-flex flex-wrap gap-2 mt-2">
-                            <button type="button" class="btn btn-primary"
-                                    data-testid="simple-voice-download"
-                                    @onclick="DownloadDubbedAsync">
-                                Download
-                            </button>
-                            <button type="button" class="btn btn-outline-secondary"
-                                    disabled="@_dubbing"
-                                    data-testid="simple-voice-remake"
-                                    @onclick="MakeMovieAsync">
-                                Make again
-                            </button>
-                        </div>
-                    </div>
-                }
-                else if (_dubbing)
-                {
-                    <div data-testid="simple-voice-progress">
-                        <div class="fw-semibold mb-2">Making your movie…</div>
-                        <div class="progress" role="progressbar" aria-label="Making your movie">
-                            <div class="progress-bar progress-bar-striped progress-bar-animated"
-                                 style="width: 100%"></div>
-                        </div>
-                        <div class="small text-muted mt-1">@(_dubStatus ?? "Working…")</div>
-                    </div>
-                }
-                else
-                {
-                    <InlineAlert Variant="danger" CssClass="py-2 small mb-2"
-                                 Message="@(_error ?? "Something went wrong making your movie.")"
-                                 data-testid="simple-voice-movie-error" />
-                    <BusyButton Label="Try again" Busy="_busy" CssClass="btn btn-primary" OnClick="MakeMovieAsync" />
-                }
-            </div>
-        </div>
-    }
+    <CascadingValue Value="this" IsFixed="true">
+        @if (_phase == Phase.Pick)
+        {
+            <SimpleVoice_PickPhase />
+        }
+        else if (_phase is Phase.Record or Phase.Done)
+        {
+            <SimpleVoice_RecordPhase />
+        }
+        else if (_phase == Phase.Movie)
+        {
+            <SimpleVoice_MoviePhase />
+        }
+    </CascadingValue>
 }
 
 @code {
-    private enum Phase { Pick, Record, Done, Movie }
+    internal enum Phase { Pick, Record, Done, Movie }
 
-    private Phase _phase = Phase.Pick;
-    private List<ForkableStoryDto> _forkableStories = new();
-    private bool _storiesLoading = true;
-    private bool _voiceReady; // narrator has a cloned voice (freshly captured or already applied) → show "make movie"
-    private bool _dubbing;
-    private string? _dubStatus;
-    private string? _dubbedUrl;
-    private string? _dubSummary;
-    private string? _projectId;
-    private string? _projectLabel;
-    private string _narratorKey = "Character_Narrator";
+    internal Phase _phase = Phase.Pick;
+    internal List<ForkableStoryDto> _forkableStories = new();
+    internal bool _storiesLoading = true;
+    internal bool _voiceReady; // narrator has a cloned voice (freshly captured or already applied) → show "make movie"
+    internal bool _dubbing;
+    internal string? _dubStatus;
+    internal string? _dubbedUrl;
+    internal string? _dubSummary;
+    internal string? _projectId;
+    internal string? _projectLabel;
+    internal string _narratorKey = "Character_Narrator";
     /// <summary>True when the story has no character confidently identified as the narrator — the
     /// user must pick which speaking character to voice instead of us silently guessing one.</summary>
-    private bool _needsCharacterPick;
-    private List<CharacterSummary> _narratorCandidates = new();
-    private bool _busy;
-    private string? _error;
-    private string? _message;
+    internal bool _needsCharacterPick;
+    internal List<CharacterSummary> _narratorCandidates = new();
+    internal bool _busy;
+    internal string? _error;
+    internal string? _message;
+
+    /// <summary>Child phase components mutate host state; ensure shell re-renders (phase switch).</summary>
+    internal void Notify() => StateHasChanged();
 
     protected override async Task OnInitializedAsync()
     {
@@ -278,7 +97,7 @@ else
         }
     }
 
-    private async Task SelectStoryAsync(ForkableStoryDto story)
+    internal async Task SelectStoryAsync(ForkableStoryDto story)
     {
         if (!Session.IsLoggedIn)
         {
@@ -317,15 +136,17 @@ else
         finally
         {
             _busy = false;
+            Notify();
         }
     }
 
-    private void BackToPick()
+    internal void BackToPick()
     {
         _phase = Phase.Pick;
         _voiceReady = false;
         _error = null;
         _message = null;
+        Notify();
     }
 
     private async Task ResolveNarratorKeyAsync()
@@ -367,7 +188,7 @@ else
     }
 
     /// <summary>User picked who to voice when no narrator could be confidently identified.</summary>
-    private async Task PickCharacterAsync(CharacterSummary c)
+    internal async Task PickCharacterAsync(CharacterSummary c)
     {
         if (string.IsNullOrEmpty(c.Key)) return;
         _narratorKey = c.Key;
@@ -375,7 +196,7 @@ else
         _error = null;
         await EnsureVoiceModelAsync();
         await RefreshSampleStateAsync();
-        StateHasChanged();
+        Notify();
     }
 
     private async Task EnsureVoiceModelAsync()
@@ -424,7 +245,7 @@ else
     }
 
     // Fired by <VoiceCaptureStep> once the cloned voice is built + applied — advance to "make movie".
-    private async Task OnVoiceReadyAsync()
+    internal async Task OnVoiceReadyAsync()
     {
         _voiceReady = true;
         _phase = Phase.Done;
@@ -433,15 +254,24 @@ else
     }
 
     /// <summary>Not happy with the take? Drop back into the recorder for the same character — a
-    /// fresh &lt;VoiceCaptureStep&gt; instance re-runs its own phrase prep and replaces the sample.</summary>
-    private void BeginReRecord()
+    /// fresh <VoiceCaptureStep> instance re-runs its own phrase prep and replaces the sample.</summary>
+    internal void BeginReRecord()
     {
         _voiceReady = false;
         _error = null;
         _message = null;
+        Notify();
     }
 
-    private async Task MakeMovieAsync()
+    internal void BackToVoiceFromMovie()
+    {
+        _phase = Phase.Done;
+        _dubbedUrl = null;
+        _error = null;
+        Notify();
+    }
+
+    internal async Task MakeMovieAsync()
     {
         if (string.IsNullOrEmpty(_projectId)) return;
         // Clips + synthesized audio live in the browser media folder — it must be connected.
@@ -451,6 +281,7 @@ else
             if (!connected && !MediaFolder.IsConnected)
             {
                 _error = "Connect your media folder so we can build your movie.";
+                Notify();
                 return;
             }
         }
@@ -461,6 +292,7 @@ else
         _message = null;
         _dubbedUrl = null;
         _dubStatus = "Starting…";
+        Notify();
         try
         {
             var res = await VoiceSub.DubMovieInMyVoiceAsync(
@@ -483,17 +315,18 @@ else
             _dubbing = false;
             _busy = false;
             _dubStatus = null;
+            Notify();
         }
     }
 
-    private async Task DownloadDubbedAsync()
+    internal async Task DownloadDubbedAsync()
     {
         if (string.IsNullOrWhiteSpace(_dubbedUrl)) return;
         var name = string.IsNullOrWhiteSpace(_projectLabel) ? "movie" : _projectLabel;
         await VoiceSub.DownloadAsync(_dubbedUrl, $"{name}-in-my-voice.mp4");
     }
 
-    private async Task SwitchToFullStudioAsync()
+    internal async Task SwitchToFullStudioAsync()
     {
         if (!string.IsNullOrEmpty(_projectId))
         {

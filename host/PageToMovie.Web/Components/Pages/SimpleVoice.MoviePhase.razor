@@ -1,0 +1,70 @@
+@* Page-local to SimpleVoice — Step 3 player / download / remake *@
+
+<div class="card border-primary border-opacity-50 mb-3" data-testid="simple-voice-movie">
+    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div>
+            <span class="badge text-bg-primary me-2">Step 3</span>
+            <span class="fw-semibold">Your movie</span>
+            @if (!string.IsNullOrEmpty(Host._projectLabel))
+            {
+                <span class="text-muted small ms-2">· @Host._projectLabel</span>
+            }
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-secondary"
+                disabled="@Host._dubbing"
+                data-testid="simple-voice-movie-back"
+                @onclick="Host.BackToVoiceFromMovie">
+            ← Back to my voice
+        </button>
+    </div>
+    <div class="card-body">
+        @if (Host._dubbedUrl is not null)
+        {
+            <div data-testid="simple-voice-result">
+                <div class="fw-semibold mb-1">Your movie, in your voice 🎉</div>
+                @if (!string.IsNullOrEmpty(Host._dubSummary))
+                {
+                    <div class="small text-muted mb-2" data-testid="simple-voice-dub-summary">@Host._dubSummary</div>
+                }
+                <video class="w-100 rounded" style="max-height: 60vh; background:#000;"
+                       src="@Host._dubbedUrl" controls autoplay playsinline
+                       data-testid="simple-voice-player"></video>
+                <div class="d-flex flex-wrap gap-2 mt-2">
+                    <button type="button" class="btn btn-primary"
+                            data-testid="simple-voice-download"
+                            @onclick="Host.DownloadDubbedAsync">
+                        Download
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary"
+                            disabled="@Host._dubbing"
+                            data-testid="simple-voice-remake"
+                            @onclick="Host.MakeMovieAsync">
+                        Make again
+                    </button>
+                </div>
+            </div>
+        }
+        else if (Host._dubbing)
+        {
+            <div data-testid="simple-voice-progress">
+                <div class="fw-semibold mb-2">Making your movie…</div>
+                <div class="progress" role="progressbar" aria-label="Making your movie">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated"
+                         style="width: 100%"></div>
+                </div>
+                <div class="small text-muted mt-1">@(Host._dubStatus ?? "Working…")</div>
+            </div>
+        }
+        else
+        {
+            <InlineAlert Variant="danger" CssClass="py-2 small mb-2"
+                         Message="@(Host._error ?? "Something went wrong making your movie.")"
+                         data-testid="simple-voice-movie-error" />
+            <BusyButton Label="Try again" Busy="Host._busy" CssClass="btn btn-primary" OnClick="Host.MakeMovieAsync" />
+        }
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] public SimpleVoice Host { get; set; } = default!;
+}

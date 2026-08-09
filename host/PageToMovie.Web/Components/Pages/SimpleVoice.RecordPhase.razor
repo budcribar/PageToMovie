@@ -1,0 +1,83 @@
+@* Page-local to SimpleVoice — Step 2 record narrator *@
+
+<div class="card border-primary border-opacity-50 mb-3" data-testid="simple-voice-record">
+    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div>
+            <span class="badge text-bg-primary me-2">Step 2 of 3</span>
+            <span class="fw-semibold">Record your voice</span>
+            @if (!string.IsNullOrEmpty(Host._projectLabel))
+            {
+                <span class="text-muted small ms-2">· @Host._projectLabel</span>
+            }
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@Host._busy" @onclick="Host.BackToPick">
+            ← Change story
+        </button>
+    </div>
+    <div class="card-body">
+        @if (Host._needsCharacterPick)
+        {
+            <div data-testid="simple-voice-character-pick">
+                <p class="small text-muted mb-2">
+                    This story doesn’t have a clear narrator — who do you want to voice?
+                </p>
+                <div class="list-group mb-2">
+                    @foreach (var c in Host._narratorCandidates)
+                    {
+                        <button type="button"
+                                class="list-group-item list-group-item-action"
+                                disabled="@Host._busy"
+                                data-testid="@($"simple-voice-character-{c.Key}")"
+                                @onclick="() => Host.PickCharacterAsync(c)">
+                            <div class="d-flex justify-content-between gap-2 align-items-center">
+                                <div class="fw-semibold text-start">@c.DisplayName</div>
+                                <span class="small text-muted flex-shrink-0">Voice this character →</span>
+                            </div>
+                        </button>
+                    }
+                </div>
+            </div>
+        }
+        else if (!Host._voiceReady)
+        {
+            @* The good "read along in your voice" recorder, shared with anywhere else that needs it. *@
+            <VoiceCaptureStep ProjectId="@Host._projectId" CharKey="@Host._narratorKey" OnComplete="Host.OnVoiceReadyAsync" />
+        }
+        else
+        {
+            <div class="d-flex flex-wrap align-items-center gap-2" data-testid="simple-voice-finish">
+                <div class="flex-grow-1">
+                    <div class="fw-semibold">You’re set</div>
+                    <div class="small text-muted">
+                        We keep the pictures and put your voice on every line — no video regen.
+                    </div>
+                </div>
+                <button type="button"
+                        class="btn btn-outline-secondary"
+                        data-testid="simple-voice-rerecord"
+                        disabled="@Host._busy"
+                        @onclick="Host.BeginReRecord">
+                    🎙️ Re-record
+                </button>
+                <button type="button"
+                        class="btn btn-primary btn-lg"
+                        data-testid="simple-voice-make-movie"
+                        disabled="@Host._busy"
+                        @onclick="Host.MakeMovieAsync">
+                    Make my movie →
+                </button>
+            </div>
+        }
+    </div>
+</div>
+
+<p class="small text-muted mb-0">
+    Want faces of family in the frame later?
+    <button type="button" class="btn btn-link btn-sm p-0 align-baseline" @onclick="Host.SwitchToFullStudioAsync">
+        Switch to full studio
+    </button>
+</p>
+
+@code {
+    [CascadingParameter] public SimpleVoice Host { get; set; } = default!;
+}
