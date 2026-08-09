@@ -1,0 +1,331 @@
+using PageToMovie.Core.Models;
+using PageToMovie.Web.Services;
+using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Forms;
+
+namespace PageToMovie.Web.Components.Pages;
+
+public abstract partial class AdaptationPageBase
+{
+    /// <summary>Job hub / poll / progress domain for adaptation step pages.</summary>
+    public sealed class AdaptationJobs
+    {
+        private readonly AdaptationPageBase S;
+        public AdaptationJobs(AdaptationPageBase host) => S = host;
+
+        public JobSnapshot? Job;
+        public int ProgressIndex;
+        public int ProgressTotal;
+        private CancellationTokenSource? _pollCts;
+
+        public bool JobRunning =>
+            string.Equals(Job?.Status, "running", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(Job?.Status, "queued", StringComparison.OrdinalIgnoreCase);
+
+        public void OnJobUpdated(JobSnapshot snap)
+        {
+            Job = snap;
+            AbsorbProgressFromSnapshot(snap);
+            AbsorbProgressFromLine(snap.Message);
+            if (snap.Status is "done" or "error" or "cancelled")
+            {
+                _pollCts?.Cancel();
+                _pollCts?.Dispose();
+                _pollCts = null;
+                if (snap.Status == "done" && ProgressTotal > 0)
+                    ProgressIndex = ProgressTotal;
+                _ = S.InvokeAsync(async () =>
+                {
+                    await S.SoftLoadAsync();
+                    try { await S.ActiveProject.RefreshReadinessAsync(S.Engine); } catch { /* nav gates */ }
+                    if (snap.Status == "done")
+                    {
+                        // Avoid flashing technical “Book ready · quality=good…” while Import
+                        // continues into draft generation (Busy stays true).
+                        if (!S.Busy)
+                            S.Message = AdaptationStepUi.OperatorJobDoneMessage(snap);
+                    }
+                    else if (snap.Status == "error")
+                        S.Error = snap.Error ?? snap.Message ?? "Job failed";
+                    S.StateHasChanged();
+                });
+            }
+            else
+            {
+                _ = S.InvokeAsync(S.StateHasChanged);
+            }
+        }
+
+        public void OnJobLog(string line)
+        {
+            if (Job is null)
+            {
+                // Preserve phase Total when log arrives before full snapshot (avoid Total=0 → 35% bar).
+                Job = new JobSnapshot
+                {
+                    Status = "running",
+                    Message = line,
+                    Log = new List<string> { line },
+                    Index = ProgressIndex,
+                    Total = ProgressTotal > 0 ? ProgressTotal : 10,
+                };
+            }
+            else
+            {
+                Job.Message = line;
+                if (Job.Log.Count == 0 || Job.Log[^1] != line)
+                {
+                    Job.Log.Add(line);
+                    if (Job.Log.Count > 120)
+                        Job.Log = Job.Log.TakeLast(120).ToList();
+                }
+            }
+            AbsorbProgressFromLine(line);
+            if (Job is not null)
+            {
+                // Always keep a positive Total for adapt jobs so the bar can move.
+                if (Job.Total <= 0)
+                    Job.Total = ProgressTotal > 0 ? ProgressTotal : 10;
+                if (ProgressTotal > 0)
+                    Job.Total = Math.Max(Job.Total, ProgressTotal);
+                if (ProgressIndex > 0)
+                    Job.Index = Math.Max(Job.Index, ProgressIndex);
+            }
+            _ = S.InvokeAsync(S.StateHasChanged);
+        }
+
+        public void AbsorbProgressFromSnapshot(JobSnapshot snap)
+        {
+            if (snap.Total > 0)
+                ProgressTotal = Math.Max(ProgressTotal, snap.Total);
+            if (snap.Index > 0)
+                ProgressIndex = Math.Max(ProgressIndex, snap.Index);
+            // Never let a live adapt job report Total=0 after we have phase scale.
+            if (JobRunning && ProgressTotal <= 0 &&
+                snap.Kind is "stage1" or "stage2" or "book_import" or "book_prepare")
+                ProgressTotal = 10;
+        }
+
+        public void AbsorbProgressFromLine(string? line)
+        {
+            if (string.IsNullOrWhiteSpace(line)) return;
+
+            // Prefer a fixed 10-step phase scale for screenplay/shot-plan jobs so the bar
+            // moves on phase messages even when there are no "chunk i/N" lines (single-pass).
+            ProgressTotal = Math.Max(ProgressTotal, 10);
+
+            var mChunk = System.Text.RegularExpressions.Regex.Match(
+                line, @"chunk\s+(\d+)\s*/\s*(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (mChunk.Success &&
+                int.TryParse(mChunk.Groups[1].Value, out var cIdx) &&
+                int.TryParse(mChunk.Groups[2].Value, out var cTot) &&
+                cTot > 0)
+            {
+                var done = line.Contains("done", StringComparison.OrdinalIgnoreCase);
+                var frac = done
+                    ? Math.Clamp((double)cIdx / cTot, 0, 1)
+                    : Math.Clamp((cIdx - 1.0) / cTot, 0, 1);
+                ProgressIndex = Math.Max(ProgressIndex, 4 + (int)Math.Round(4.0 * frac));
+                return;
+            }
+
+            var mVis = System.Text.RegularExpressions.Regex.Match(
+                line, @"(?:Grok vision|Reading page|page)\s+(\d+)\s*/\s*(\d+)",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (mVis.Success &&
+                int.TryParse(mVis.Groups[1].Value, out var vIdx) &&
+                int.TryParse(mVis.Groups[2].Value, out var vTot) &&
+                vTot > 0)
+            {
+                var frac = Math.Clamp((vIdx - 1.0) / vTot, 0, 1);
+                ProgressIndex = Math.Max(ProgressIndex, 1 + (int)Math.Round(2.0 * frac));
+                return;
+            }
+
+            if (line.Contains("Screenplay ready", StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("Stage 2 complete", StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("shot plan ready", StringComparison.OrdinalIgnoreCase))
+                ProgressIndex = Math.Max(ProgressIndex, 10);
+            else if (line.Contains("approving", StringComparison.OrdinalIgnoreCase) ||
+                     line.Contains("Fountain draft saved", StringComparison.OrdinalIgnoreCase) ||
+                     line.Contains("plate", StringComparison.OrdinalIgnoreCase) ||
+                     line.Contains("Attaching", StringComparison.OrdinalIgnoreCase) ||
+                     line.Contains("Merged", StringComparison.OrdinalIgnoreCase))
+                ProgressIndex = Math.Max(ProgressIndex, 9);
+            else if (line.Contains("Merge", StringComparison.OrdinalIgnoreCase) ||
+                     line.Contains("Stitch", StringComparison.OrdinalIgnoreCase))
+                ProgressIndex = Math.Max(ProgressIndex, 8);
+            else if (line.Contains("repair", StringComparison.OrdinalIgnoreCase) ||
+                     line.Contains("retry", StringComparison.OrdinalIgnoreCase))
+                ProgressIndex = Math.Max(ProgressIndex, 7);
+            else if (line.Contains("single pass", StringComparison.OrdinalIgnoreCase) ||
+                     line.Contains("Adapting", StringComparison.OrdinalIgnoreCase) ||
+                     line.Contains("Book split", StringComparison.OrdinalIgnoreCase) ||
+                     line.Contains("Writing screenplay", StringComparison.OrdinalIgnoreCase) ||
+                     line.Contains("Drafting", StringComparison.OrdinalIgnoreCase))
+                ProgressIndex = Math.Max(ProgressIndex, 5);
+            else if (line.Contains("Target runtime", StringComparison.OrdinalIgnoreCase) ||
+                     line.Contains("Planning", StringComparison.OrdinalIgnoreCase) ||
+                     line.Contains("building", StringComparison.OrdinalIgnoreCase))
+                ProgressIndex = Math.Max(ProgressIndex, 3);
+            else if (line.Contains("prepare", StringComparison.OrdinalIgnoreCase) ||
+                     line.Contains("Extract", StringComparison.OrdinalIgnoreCase) ||
+                     line.Contains("Checking book", StringComparison.OrdinalIgnoreCase) ||
+                     line.Contains("book text", StringComparison.OrdinalIgnoreCase) ||
+                     line.Contains("Loading screenplay", StringComparison.OrdinalIgnoreCase))
+                ProgressIndex = Math.Max(ProgressIndex, 1);
+        }
+
+        public void StartJobPolling()
+        {
+            _pollCts?.Cancel();
+            _pollCts?.Dispose();
+            _pollCts = new CancellationTokenSource();
+            var ct = _pollCts.Token;
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    while (!ct.IsCancellationRequested)
+                    {
+                        await Task.Delay(1500, ct);
+                        var jobs = await S.Engine.GetJobAsync(ct);
+                        var snap = jobs?.Job;
+                        if (snap is null) continue;
+                        await S.InvokeAsync(() =>
+                        {
+                            Job = snap;
+                            AbsorbProgressFromSnapshot(snap);
+                            AbsorbProgressFromLine(snap.Message);
+                            if (Job is not null && ProgressTotal > 0)
+                            {
+                                Job.Index = Math.Max(Job.Index, ProgressIndex);
+                                Job.Total = Math.Max(Job.Total, ProgressTotal);
+                            }
+                            S.StateHasChanged();
+                        });
+                        if (snap.IsFinished)
+                        {
+                            if (snap.Status is "done" or "error" or "cancelled")
+                                await S.InvokeAsync(async () => { await S.SoftLoadAsync(); S.StateHasChanged(); });
+                            break;
+                        }
+                    }
+                }
+                catch (OperationCanceledException) { /* expected */ }
+                catch { /* ignore poll errors */ }
+            }, CancellationToken.None);
+        }
+
+        public async Task CancelAsync()
+        {
+            S.Busy = true;
+            try
+            {
+                await S.Engine.CancelJobAsync();
+                S.Message = "Cancel requested";
+                var jobs = await S.Engine.GetJobAsync();
+                Job = jobs?.Job;
+            }
+            catch (Exception ex) { S.Error = ex.Message; }
+            finally { S.Busy = false; }
+        }
+
+        public Task EnsureHubAsync() => S.Hub.EnsureStartedAsync();
+
+        public void DisposePolling()
+        {
+            _pollCts?.Cancel();
+            _pollCts?.Dispose();
+            _pollCts = null;
+        }
+
+        public static bool IsJobInFlightMessage(string? message)
+        {
+            if (string.IsNullOrWhiteSpace(message)) return false;
+            return message.Contains("waiting", StringComparison.OrdinalIgnoreCase)
+                   || message.Contains("calling", StringComparison.OrdinalIgnoreCase)
+                   || message.Contains("parsing", StringComparison.OrdinalIgnoreCase)
+                   || message.Contains("Grok vision", StringComparison.OrdinalIgnoreCase)
+                   || message.Contains("Reading page", StringComparison.OrdinalIgnoreCase)
+                   || message.Contains("single pass", StringComparison.OrdinalIgnoreCase)
+                   || message.Contains("Adapting", StringComparison.OrdinalIgnoreCase)
+                   || message.Contains("Writing screenplay", StringComparison.OrdinalIgnoreCase)
+                   || message.Contains("Drafting", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Operator-facing live job line (no provider / path / mechanism jargon).
+        /// </summary>
+        public static string OperatorJobRunningMessage(JobSnapshot snap)
+        {
+            if (string.Equals(snap.Status, "queued", StringComparison.OrdinalIgnoreCase))
+                return "Waiting…";
+
+            var msg = snap.Message ?? "";
+            var kind = snap.Kind ?? "";
+
+            var page = System.Text.RegularExpressions.Regex.Match(
+                msg, @"page\s+(\d+)\s*/\s*(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (page.Success)
+                return $"Reading book — page {page.Groups[1].Value} of {page.Groups[2].Value}";
+
+            var chunk = System.Text.RegularExpressions.Regex.Match(
+                msg, @"chunk\s+(\d+)\s*/\s*(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (chunk.Success)
+                return $"Writing screenplay — part {chunk.Groups[1].Value} of {chunk.Groups[2].Value}";
+
+            var scene = System.Text.RegularExpressions.Regex.Match(
+                msg, @"Scene\s+(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (scene.Success && kind is "stage2")
+                return $"Planning shots — scene {scene.Groups[1].Value}";
+
+            if (msg.Contains("Merge", StringComparison.OrdinalIgnoreCase) ||
+                msg.Contains("Stitch", StringComparison.OrdinalIgnoreCase) ||
+                msg.Contains("Combining", StringComparison.OrdinalIgnoreCase))
+                return "Combining screenplay parts…";
+            if (msg.Contains("repair", StringComparison.OrdinalIgnoreCase) ||
+                msg.Contains("retry", StringComparison.OrdinalIgnoreCase) ||
+                msg.Contains("Refin", StringComparison.OrdinalIgnoreCase))
+                return "Refining screenplay…";
+            if (msg.Contains("approving", StringComparison.OrdinalIgnoreCase))
+                return "Approving screenplay…";
+            if (msg.Contains("plate", StringComparison.OrdinalIgnoreCase) ||
+                msg.Contains("Attaching", StringComparison.OrdinalIgnoreCase))
+                return "Matching book pictures…";
+            if (msg.Contains("Adapting", StringComparison.OrdinalIgnoreCase) ||
+                msg.Contains("single pass", StringComparison.OrdinalIgnoreCase) ||
+                msg.Contains("Fountain", StringComparison.OrdinalIgnoreCase) ||
+                msg.Contains("screenplay", StringComparison.OrdinalIgnoreCase) ||
+                msg.Contains("Phase 2", StringComparison.OrdinalIgnoreCase) ||
+                msg.Contains("Writing", StringComparison.OrdinalIgnoreCase) ||
+                msg.Contains("Drafting", StringComparison.OrdinalIgnoreCase) ||
+                kind is "stage1" or "book_import")
+            {
+                if (kind is "stage2")
+                    return "Building shot plan…";
+                return "Writing screenplay…";
+            }
+            if (msg.Contains("Planning", StringComparison.OrdinalIgnoreCase) || kind is "stage2")
+                return "Building shot plan…";
+            if (msg.Contains("extract", StringComparison.OrdinalIgnoreCase))
+                return "Extracting text from the book…";
+            if (msg.Contains("vision", StringComparison.OrdinalIgnoreCase) ||
+                msg.Contains("OCR", StringComparison.OrdinalIgnoreCase) ||
+                msg.Contains("Grok", StringComparison.OrdinalIgnoreCase) ||
+                msg.Contains("Reading", StringComparison.OrdinalIgnoreCase) ||
+                msg.Contains("prepare", StringComparison.OrdinalIgnoreCase) ||
+                kind is "book_prepare")
+                return "Reading book…";
+            if (string.IsNullOrWhiteSpace(msg))
+                return kind switch
+                {
+                    "stage2" => "Building shot plan…",
+                    "stage1" or "book_import" => "Writing screenplay…",
+                    _ => "Working…",
+                };
+            // Last resort: short clean message, never dump long engine lines
+            return msg.Length > 80 ? msg[..77] + "…" : msg;
+        }
+    }
+}

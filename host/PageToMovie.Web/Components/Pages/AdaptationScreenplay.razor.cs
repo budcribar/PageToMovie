@@ -1,8 +1,4 @@
-using System.Net.Http.Json;
-using System.Text.Json;
 using Microsoft.AspNetCore.Components;
-using Microsoft.AspNetCore.Components.Forms;
-using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 using PageToMovie.Core.Models;
 using PageToMovie.Web.Services;
@@ -13,561 +9,159 @@ public partial class AdaptationScreenplay
 {
     public override string StepKey => "screenplay";
 
-    private const string EditorId = "screenplay-main";
+    // ── Domain modules (lazy; own their state) ─────────────────────────────
+    private ScreenplayEditor? _editorDomain;
+    internal ScreenplayEditor Editor => _editorDomain ??= new ScreenplayEditor(this);
+    private ScreenplaySave? _saveDomain;
+    internal ScreenplaySave Save => _saveDomain ??= new ScreenplaySave(this);
+    private ScreenplaySignOff? _signOffDomain;
+    internal ScreenplaySignOff SignOff => _signOffDomain ??= new ScreenplaySignOff(this);
+    private ScreenplayBook? _bookDomain;
+    internal ScreenplayBook Book => _bookDomain ??= new ScreenplayBook(this);
 
-    private string _text = "";
-    private string _loadedText = "";
-    private bool _dirtyLocal;
-    private bool _editorReady;
-    private bool _jsInitStarted;
-    private DateTime? _lastSavedUtc;
-    private ScreenplayStatus? _screenplayStatus;
-    private int _saveGeneration;
-    private int _sceneCount;
-    private List<string> _signOffWarnings = new();
-    private CancellationTokenSource? _saveCts;
-    private DotNetObjectReference<AdaptationScreenplay>? _dotNetRef;
-    private BookContextDto? _bookContext;
-    private bool _showBookModal;
-    private ElementReference _bookWindowEl;
-    private bool _bookWindowNeedsDragBind;
-    private bool _bookLoading;
-    private int _bookRequestGen;
-
-    private ElementReference _editorHost;
-    private ElementReference _previewEl;
-    private ElementReference _scenesEl;
-
-    private bool CanEdit => _editorReady && !Busy && !JobRunning;
-
-    private bool _copied;
-
-    /// <summary>Copy the full screenplay to the clipboard — read action, works even while read-only.</summary>
-    private async Task CopyScreenplayAsync()
+    internal void EnsureDomains()
     {
-        string text;
-        try { text = await Js.InvokeAsync<string>("fountainEditor.getValue", EditorId); }
-        catch { text = _text; }
-        if (string.IsNullOrEmpty(text)) text = _text;
-
-        try
-        {
-            await Js.InvokeVoidAsync("PageToMovieExport.copyTextAsync", text ?? "");
-            _copied = true;
-            StateHasChanged();
-            await Task.Delay(1500);
-            _copied = false;
-            StateHasChanged();
-        }
-        catch { /* clipboard may be blocked (permissions / non-secure context) — non-fatal */ }
-    }
-
-    /// <summary>User has approved at least once (signed hash recorded).</summary>
-    private bool WasEverSigned =>
-        _screenplayStatus?.Signed == true
-        || !string.IsNullOrWhiteSpace(_screenplayStatus?.SignedHash);
-
-    /// <summary>Approved and not edited since sign-off.</summary>
-    private bool IsApprovedClean =>
-        _screenplayStatus?.Signed == true
-        && _screenplayStatus.Dirty != true
-        && !_dirtyLocal;
-
-    /// <summary>Had an approval but draft changed (or local unsaved edits after sign-off).</summary>
-    private bool NeedsReapprove =>
-        WasEverSigned
-        && (_screenplayStatus?.Dirty == true || _dirtyLocal)
-        && !string.IsNullOrWhiteSpace(_text);
-
-
-    private string StatusTitle
-    {
-        get
-        {
-            if (_screenplayStatus?.Title is { Length: > 0 } t)
-                return t;
-            return string.IsNullOrWhiteSpace(_text) ? "" : "Untitled";
-        }
+        _ = Editor; _ = Save; _ = SignOff; _ = Book;
     }
 
     protected override async Task OnInitializedAsync()
     {
+        EnsureDomains();
         await base.OnInitializedAsync();
-        await LoadEditorDataAsync();
+        await Editor.LoadEditorDataAsync();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (_bookWindowNeedsDragBind && _showBookModal)
-        {
-            _bookWindowNeedsDragBind = false;
-            try
-            {
-                await Js.InvokeVoidAsync("fountainEditor.bindBookWindowDrag", _bookWindowEl);
-            }
-            catch { /* optional */ }
-        }
-
-        if (_jsInitStarted || string.IsNullOrEmpty(ProjectId)) return;
-        // Wait until we have loaded draft at least once
-        if (!_editorDataLoaded) return;
-
-        _jsInitStarted = true;
-        try
-        {
-            _dotNetRef = DotNetObjectReference.Create(this);
-            await Js.InvokeVoidAsync(
-                "fountainEditor.init",
-                EditorId,
-                _editorHost,
-                _text,
-                _dotNetRef,
-                _previewEl,
-                _scenesEl,
-                Busy || JobRunning);
-            _editorReady = true;
-            if (!Busy && !JobRunning)
-                await Js.InvokeVoidAsync("fountainEditor.setReadOnly", EditorId, false);
-            StateHasChanged();
-        }
-        catch (Exception ex)
-        {
-            Error = "Could not start the editor: " + ex.Message;
-            _jsInitStarted = false;
-        }
-    }
-
-    private bool _editorDataLoaded;
-
-    private async Task LoadEditorDataAsync()
-    {
-        try
-        {
-            var doc = await Engine.GetScreenplayAsync(ProjectId);
-            _text = doc?.Text ?? "";
-            _loadedText = _text;
-            _dirtyLocal = false;
-            _screenplayStatus = doc?.Screenplay ?? Status?.Screenplay;
-            _sceneCount = _screenplayStatus?.SceneHeadingCount ?? 0;
-            if (doc?.Adaptation is not null)
-                Status = doc.Adaptation;
-            _editorDataLoaded = true;
-            UpdateWarningsFromText(_text);
-
-            if (_editorReady)
-            {
-                await Js.InvokeVoidAsync("fountainEditor.setValue", EditorId, _text);
-            }
-        }
-        catch (Exception ex)
-        {
-            Error = ex.Message;
-            _editorDataLoaded = true; // still try to init empty editor
-        }
+        await Book.AfterRenderDragBindAsync();
+        await Editor.TryInitEditorAsync();
     }
 
     public override async Task LoadAsync()
     {
         await base.LoadAsync();
-        await LoadEditorDataAsync();
-        if (_editorReady)
-        {
-            await Js.InvokeVoidAsync("fountainEditor.setValue", EditorId, _text);
-            await Js.InvokeVoidAsync("fountainEditor.refresh", EditorId);
-            if (!Busy && !JobRunning)
-                await Js.InvokeVoidAsync("fountainEditor.setReadOnly", EditorId, false);
-        }
-        else
-        {
-            _jsInitStarted = false; // allow re-init after project switch
-            StateHasChanged();
-        }
-    }
-
-    [JSInvokable]
-    public Task OnEditorChanged(string text, string[] warnings, int sceneCount)
-    {
-        _text = text ?? "";
-        _sceneCount = sceneCount;
-        _dirtyLocal = !string.Equals(_text, _loadedText, StringComparison.Ordinal);
-        MapWarnings(warnings);
-        ScheduleAutosave();
-        return InvokeAsync(StateHasChanged);
-    }
-
-    /// <param name="openBookModal">True when user clicked Book link (popup); false = jump only.</param>
-    [JSInvokable]
-    public async Task OnSceneSelected(int line, int sceneIndex, string heading, bool openBookModal = false)
-    {
-        if (!openBookModal)
-            return; // Scene click only navigates in the editor (handled in JS)
-
-        _showBookModal = true;
-        _bookWindowNeedsDragBind = true;
-        _bookLoading = true;
-        await InvokeAsync(StateHasChanged);
-
-        var gen = ++_bookRequestGen;
-        try
-        {
-            if (_editorReady)
-            {
-                try
-                {
-                    _text = await Js.InvokeAsync<string>("fountainEditor.getValue", EditorId) ?? _text;
-                }
-                catch { /* keep */ }
-            }
-
-            var ctx = await Engine.GetBookContextAsync(
-                ProjectId,
-                sceneIndex: Math.Max(1, sceneIndex),
-                line: line,
-                heading: heading,
-                fountainText: _text);
-            if (gen != _bookRequestGen) return;
-            _bookContext = ctx;
-        }
-        catch (Exception ex)
-        {
-            if (gen == _bookRequestGen)
-            {
-                _bookContext = new BookContextDto
-                {
-                    Ok = false,
-                    HasBook = Status?.Book.BookTextExists == true,
-                    Heading = heading,
-                    SceneIndex = sceneIndex,
-                    Excerpt = "",
-                    Message = ex.Message,
-                };
-            }
-        }
-        finally
-        {
-            if (gen == _bookRequestGen)
-            {
-                _bookLoading = false;
-                await InvokeAsync(StateHasChanged);
-            }
-        }
-    }
-
-    private void CloseBookModal()
-    {
-        _showBookModal = false;
-    }
-
-    private void MapWarnings(string[]? codes)
-    {
-        _signOffWarnings = new List<string>();
-        if (codes is null) return;
-        foreach (var c in codes)
-        {
-            switch (c)
-            {
-                case "empty":
-                    _signOffWarnings.Add("The screenplay is empty.");
-                    break;
-                case "no_scenes":
-                    _signOffWarnings.Add("No scene headings found — add lines like INT. ROOM - DAY.");
-                    break;
-                case "very_short":
-                    _signOffWarnings.Add("This draft is very short.");
-                    break;
-            }
-        }
-    }
-
-    private void UpdateWarningsFromText(string text)
-    {
-        var codes = new List<string>();
-        if (string.IsNullOrWhiteSpace(text)) codes.Add("empty");
-        else
-        {
-            if (text.Trim().Length < 40) codes.Add("very_short");
-            // crude scene check until JS reports
-            if (!System.Text.RegularExpressions.Regex.IsMatch(text, @"(?im)^(INT|EXT|EST|I/E|\.)"))
-                codes.Add("no_scenes");
-        }
-        MapWarnings(codes.ToArray());
-    }
-
-    private void ScheduleAutosave()
-    {
-        _saveCts?.Cancel();
-        _saveCts?.Dispose();
-        _saveCts = new CancellationTokenSource();
-        var ct = _saveCts.Token;
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await Task.Delay(900, ct);
-                await InvokeAsync(async () =>
-                {
-                    if (_dirtyLocal && !Busy && !ct.IsCancellationRequested)
-                        await SaveDraftAsync(manual: false);
-                });
-            }
-            catch (OperationCanceledException) { /* expected */ }
-        });
-    }
-
-    private async Task InsertAsync(string snippet)
-    {
-        if (!_editorReady) return;
-        try
-        {
-            await Js.InvokeVoidAsync("fountainEditor.insertAtCursor", EditorId, snippet);
-            _text = await Js.InvokeAsync<string>("fountainEditor.getValue", EditorId);
-            _dirtyLocal = !string.Equals(_text, _loadedText, StringComparison.Ordinal);
-            ScheduleAutosave();
-        }
-        catch (Exception ex)
-        {
-            Error = ex.Message;
-        }
-    }
-
-    /// <summary>
-    /// Title:/Author: only parse as title-page metadata near the top of the file, so unlike every
-    /// other Advanced helper (which inserts at the cursor) this always targets the document start —
-    /// see ProjectStore.ReadScreenplayTitle/ReadScreenplayAuthor, which scan the same first-30-lines
-    /// window for the credits card. <paramref name="afterKey"/> anchors a new line after an existing
-    /// one instead of at line 0 (Author passes "Title" so it lands below Title, not above it).
-    /// </summary>
-    private async Task InsertTitleFieldAsync(string key, string? afterKey = null)
-    {
-        if (!_editorReady) return;
-        try
-        {
-            await Js.InvokeVoidAsync("fountainEditor.insertTitleField", EditorId, key, afterKey);
-            _text = await Js.InvokeAsync<string>("fountainEditor.getValue", EditorId);
-            _dirtyLocal = !string.Equals(_text, _loadedText, StringComparison.Ordinal);
-            ScheduleAutosave();
-        }
-        catch (Exception ex)
-        {
-            Error = ex.Message;
-        }
-    }
-
-    private async Task SyncTextFromEditorAsync()
-    {
-        if (!_editorReady) return;
-        try
-        {
-            _text = await Js.InvokeAsync<string>("fountainEditor.getValue", EditorId) ?? _text;
-        }
-        catch { /* keep local */ }
-    }
-
-    private async Task SaveDraftAsync(bool manual)
-    {
-        await SyncTextFromEditorAsync();
-        if (string.IsNullOrEmpty(_text) && !_dirtyLocal && !manual)
-            return;
-
-        var gen = ++_saveGeneration;
-        try
-        {
-            if (manual) Busy = true;
-            var result = await Engine.SaveScreenplayAsync(ProjectId, _text);
-            if (gen != _saveGeneration) return;
-            _loadedText = _text;
-            _dirtyLocal = false;
-            _lastSavedUtc = DateTime.UtcNow;
-            _screenplayStatus = result?.Screenplay ?? _screenplayStatus;
-            if (result?.Adaptation is not null)
-                Status = result.Adaptation;
-            if (manual)
-                Message = result?.Message ?? "Draft saved";
-        }
-        catch (Exception ex)
-        {
-            if (manual || gen == _saveGeneration)
-                Error = ex.Message;
-        }
-        finally
-        {
-            if (manual) Busy = false;
-            StateHasChanged();
-        }
-    }
-
-    private async Task SignOffAsync()
-    {
-        await SyncTextFromEditorAsync();
-
-        // Soft gate: confirm if warnings
-        if (string.IsNullOrWhiteSpace(_text))
-        {
-            Error = "Add some screenplay text before approving.";
-            return;
-        }
-
-        try
-        {
-            var warnings = await Js.InvokeAsync<string[]>("fountainEditor.getWarnings", EditorId);
-            MapWarnings(warnings);
-        }
-        catch { /* use local */ }
-
-        if (_signOffWarnings.Count > 0)
-        {
-            // Still allow, but set message so user sees why
-            Message = "Approving with notes: " + string.Join(" ", _signOffWarnings);
-        }
-
-        Busy = true;
-        BusyMessage = "Saving…";
-        Error = null;
-        // Paint progress before the long sign-off call (includes cast build on the server)
-        await InvokeAsync(StateHasChanged);
-
-        // Continue always persists first (merged Save + approve).
-        if (_dirtyLocal)
-        {
-            try { await SaveDraftAsync(manual: false); }
-            catch { /* sign-off still sends full text */ }
-            Busy = true;
-            BusyMessage = "Approving…";
-            await InvokeAsync(StateHasChanged);
-        }
-        else
-        {
-            BusyMessage = "Approving…";
-        }
-
-        try
-        {
-            if (_editorReady)
-                await Js.InvokeVoidAsync("fountainEditor.setReadOnly", EditorId, true);
-
-            // Server may spend many seconds extracting cast after approve
-            BusyMessage = "Approving and preparing cast…";
-            await InvokeAsync(StateHasChanged);
-
-            var result = await Engine.SignOffScreenplayAsync(ProjectId, _text);
-            _loadedText = _text;
-            _dirtyLocal = false;
-            _lastSavedUtc = DateTime.UtcNow;
-            _screenplayStatus = result?.Screenplay;
-            if (result?.Adaptation is not null)
-                Status = result.Adaptation;
-            else
-                await SoftLoadAsync();
-            Message = result?.Message ?? "Screenplay approved";
-            if (result?.Ok == true)
-            {
-                BusyMessage = "Opening cast…";
-                await InvokeAsync(StateHasChanged);
-                Nav.NavigateTo("characters");
-            }
-        }
-        catch (Exception ex)
-        {
-            Error = ex.Message;
-        }
-        finally
-        {
-            Busy = false;
-            BusyMessage = null;
-            if (_editorReady)
-            {
-                try { await Js.InvokeVoidAsync("fountainEditor.setReadOnly", EditorId, false); }
-                catch { /* ignore */ }
-            }
-        }
-    }
-
-    private async Task CreateFromBookAsync()
-    {
-        if (_dirtyLocal && !string.IsNullOrWhiteSpace(_text))
-        {
-            try { await SaveDraftAsync(manual: false); } catch { /* ignore */ }
-        }
-
-        Busy = true;
-        BusyMessage = "Writing screenplay…";
-        Error = null;
-        Message = null;
-        ProgressIndex = 0;
-        ProgressTotal = 10;
-        await InvokeAsync(StateHasChanged);
-        try
-        {
-            await EnsureHubAsync();
-            await Engine.StartBookImportAsync(
-                ProjectId,
-                skipPrepare: true,
-                forceExtract: false,
-                forceVision: false,
-                autoVision: false,
-                model: Model);
-            var jobs0 = await Engine.GetJobAsync();
-            Job = jobs0?.Job;
-            AbsorbProgressFromSnapshot(Job ?? new JobSnapshot());
-            // Shared poller re-renders soft progress while the long draft call is quiet.
-            StartJobPolling();
-            // Wait until draft job finishes (poller keeps Job + bar live)
-            for (var i = 0; i < 3600; i++)
-            {
-                var snap = Job;
-                if (snap is not null)
-                {
-                    BusyMessage = AdaptationPageBase.OperatorJobRunningMessage(snap);
-                    await InvokeAsync(StateHasChanged);
-                    var st = snap.Status ?? "";
-                    if (st is "error" or "cancelled")
-                    {
-                        Error = snap.Error ?? snap.Message ?? "Could not create draft. Try again.";
-                        return;
-                    }
-                    if (st == "done" &&
-                        (string.IsNullOrEmpty(snap.Kind) ||
-                         snap.Kind is "book_import" or "book_prepare" or "stage1"))
-                        break;
-                }
-                await Task.Delay(1000);
-            }
-
-            Message = "Draft created from book";
-            await SoftLoadAsync();
-            await LoadEditorDataAsync();
-            if (_editorReady)
-                await Js.InvokeVoidAsync("fountainEditor.setValue", EditorId, _text);
-        }
-        catch (Exception ex)
-        {
-            Error = ex.Message;
-        }
-        finally
-        {
-            Busy = false;
-            BusyMessage = null;
-        }
+        await Editor.LoadEditorDataAsync();
+        await Editor.OnHostLoadAsync();
     }
 
     public override async ValueTask DisposeAsync()
     {
-        _saveCts?.Cancel();
-        _saveCts?.Dispose();
-        _saveCts = null;
-        try
-        {
-            if (_jsInitStarted)
-                await Js.InvokeVoidAsync("fountainEditor.dispose", EditorId);
-        }
-        catch { /* ignore */ }
-        _dotNetRef?.Dispose();
+        Save.DisposeSaveCts();
+        await Editor.DisposeEditorAsync();
         await base.DisposeAsync();
     }
-    private async Task OnFilmLengthChangedAsync()
+
+    // ── Field forwarders (Host._x for markup) ──
+    // Editor
+    private string _text
     {
-        try { await SoftLoadAsync(); } catch { /* ignore */ }
+        get => Editor._text;
+        set => Editor._text = value;
+    }
+    private string _loadedText
+    {
+        get => Editor._loadedText;
+        set => Editor._loadedText = value;
+    }
+    private bool _editorReady
+    {
+        get => Editor._editorReady;
+        set => Editor._editorReady = value;
+    }
+    private bool _jsInitStarted
+    {
+        get => Editor._jsInitStarted;
+        set => Editor._jsInitStarted = value;
+    }
+    private bool _editorDataLoaded
+    {
+        get => Editor._editorDataLoaded;
+        set => Editor._editorDataLoaded = value;
+    }
+    private bool _copied
+    {
+        get => Editor._copied;
+        set => Editor._copied = value;
+    }
+    private int _sceneCount
+    {
+        get => Editor._sceneCount;
+        set => Editor._sceneCount = value;
+    }
+    private ElementReference _editorHost
+    {
+        get => Editor._editorHost;
+        set => Editor._editorHost = value;
+    }
+    private ElementReference _previewEl
+    {
+        get => Editor._previewEl;
+        set => Editor._previewEl = value;
+    }
+    private ElementReference _scenesEl
+    {
+        get => Editor._scenesEl;
+        set => Editor._scenesEl = value;
     }
 
-}
+    // Save
+    private bool _dirtyLocal
+    {
+        get => Save._dirtyLocal;
+        set => Save._dirtyLocal = value;
+    }
+    private int _saveGeneration
+    {
+        get => Save._saveGeneration;
+        set => Save._saveGeneration = value;
+    }
+    private DateTime? _lastSavedUtc
+    {
+        get => Save._lastSavedUtc;
+        set => Save._lastSavedUtc = value;
+    }
 
+    // SignOff
+    private List<string> _signOffWarnings
+    {
+        get => SignOff._signOffWarnings;
+        set => SignOff._signOffWarnings = value;
+    }
+    private ScreenplayStatus? _screenplayStatus
+    {
+        get => SignOff._screenplayStatus;
+        set => SignOff._screenplayStatus = value;
+    }
+
+    // Book
+    private bool _showBookModal
+    {
+        get => Book._showBookModal;
+        set => Book._showBookModal = value;
+    }
+    private bool _bookWindowNeedsDragBind
+    {
+        get => Book._bookWindowNeedsDragBind;
+        set => Book._bookWindowNeedsDragBind = value;
+    }
+    private bool _bookLoading
+    {
+        get => Book._bookLoading;
+        set => Book._bookLoading = value;
+    }
+    private int _bookRequestGen
+    {
+        get => Book._bookRequestGen;
+        set => Book._bookRequestGen = value;
+    }
+    private BookContextDto? _bookContext
+    {
+        get => Book._bookContext;
+        set => Book._bookContext = value;
+    }
+    private ElementReference _bookWindowEl
+    {
+        get => Book._bookWindowEl;
+        set => Book._bookWindowEl = value;
+    }
+}
