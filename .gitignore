@@ -388,3 +388,8 @@ host/**/.nuget/
 
 # Local API key store — never commit
 data/keys/
+
+# budcribar's live personal workspace (owner-namespaced projects/budcribar/*) — real,
+# constantly-regenerated usage data (character images, voice clones, video clips), not a
+# fixed eval/demo fixture like Buster2/TellTaleHeartV7. Keep it out of git entirely.
+/projects/budcribar/
