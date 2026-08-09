@@ -312,11 +312,17 @@ public sealed class ProjectAclService : IProjectAclService
         return acl;
     }
 
-    private string AclPath(string projectId) => Path.Combine(_projectsRoot, projectId, "project-acl.json");
+    // Route-bound projectId parameters often arrive with a %2F-encoded slash still intact (ASP.NET
+    // routing doesn't decode %2F within a single segment — see ProjectStore.NormalizeProjectId's
+    // remarks). Normalize the same way ProjectStore does so ACL reads/writes and the access-check
+    // middleware (which decodes manually) always agree on the same on-disk path.
+    private string AclPath(string projectId) =>
+        Path.Combine(_projectsRoot, ProjectStore.NormalizeProjectId(projectId), "project-acl.json");
     private static string InferOwner(string projectId)
     {
-        var parts = projectId.Split('/', 2, StringSplitOptions.RemoveEmptyEntries);
-        return parts.Length > 0 ? parts[0] : projectId;
+        var normalized = ProjectStore.NormalizeProjectId(projectId);
+        var parts = normalized.Split('/', 2, StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length > 0 ? parts[0] : normalized;
     }
     private static void EnsureOwner(ProjectAclDocument acl, string callerUserId)
     {

@@ -24,10 +24,14 @@ using PageToMovie.Core.Localization;
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddAppLocalization();
 builder.Services.AddSingleton<PageToMovie.Engine.Collaboration.IProjectInviteMailer, PageToMovie.Engine.LoggingEmailSender>();
+// Root matches ProjectStore's own convention (WorkspaceRoot/projects), not IHostEnvironment
+// .ContentRootPath — those differ under PageToMovie__WorkspaceRoot / fakes tests (same class of bug
+// fixed for CostLedgerService/SceneVersionStore below). Using ContentRootPath silently wrote ACL docs
+// under the API project's source tree instead of alongside the actual project files, so grants never
+// took effect for the workspace the rest of the app was reading from.
 builder.Services.AddSingleton<ProjectAclService>(sp =>
 {
-    var env = sp.GetRequiredService<Microsoft.Extensions.Hosting.IHostEnvironment>();
-    var root = Path.Combine(env.ContentRootPath, "projects");
+    var root = Path.Combine(sp.GetRequiredService<ProjectStore>().WorkspaceRoot, "projects");
     var email = sp.GetService<PageToMovie.Engine.Collaboration.IProjectInviteMailer>();
     return new ProjectAclService(root, null, email);
 });
