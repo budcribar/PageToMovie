@@ -35,37 +35,58 @@ The standalone editor is built and 100% verified in `host/tools/ScreenplayEditor
 
 ---
 
-## 3. Step-by-Step Integration Tasks
+## 3. Step-by-Step Integration Tasks & Exact Code Contracts
 
 ### Step 1: Web Project Integration (`PageToMovie.Web`)
-1. Reference `ScreenplayEditorApp.csproj` in `PageToMovie.Web.csproj` (or copy/share components under `PageToMovie.Components` / `PageToMovie.Web/Components/Pages/`).
-2. Add page route `/adaptation/{ProjectId}/editor` or integrate into `AdaptationScreenplay.razor` / `AdaptationScreenplay.Editor.cs`.
+1. **Target File**: `host/PageToMovie.Web/Components/Pages/AdaptationScreenplay.razor` & `AdaptationScreenplay.Editor.cs`.
+2. Reference shared assembly or copy component pair to `PageToMovie.Web/Components/Pages/`.
+3. Support route `/adaptation/{projectId}/screenplay` and render `<ScreenplayEditor Model="model" ModelChanged="HandleModelChanged" />`.
 
 ### Step 2: Data Hydration & SQLite `ProjectStore` Bridge
-1. In `AdaptationScreenplay.Editor.cs`, load `ScreenplayModel` when opening a project:
+1. **Load Project**:
    ```csharp
+   // In AdaptationScreenplay.Editor.cs
    var project = await ProjectStore.GetProjectAsync(ProjectId);
-   var model = FountainFormatter.Parse(project.FountainText);
+   string fountainContent = await ProjectStore.ReadFountainTextAsync(ProjectId);
+   var model = FountainFormatter.Parse(fountainContent);
    ```
-2. Hydrate Location Descriptions and Character Cast Packages (`characters.json`) into `model.LocationProfiles` and `model.CharacterProfiles`.
-3. Auto-save edits back to SQLite on change (`project.FountainText = FountainFormatter.ToFountain(model)`).
+2. **Hydrate Cast & Location Sidecars**:
+   ```csharp
+   var charSummaries = await CharacterBookPlateService.GetCharactersAsync(ProjectId);
+   foreach (var c in charSummaries)
+   {
+       var profile = model.GetOrCreateCharacterProfile(c.Name);
+       profile.VoiceId = c.VoiceId;
+       profile.VisualLockPrompt = c.VisualLock;
+       profile.WardrobeAlways = c.WardrobeAlways;
+   }
+   ```
+3. **Persist Edits**:
+   ```csharp
+   string updatedFountain = FountainFormatter.ToFountain(model);
+   await ProjectStore.WriteFountainTextAsync(ProjectId, updatedFountain);
+   ```
 
 ### Step 3: Operator Sign-off & State Machine Transition
-1. In `ScreenplayEditor.razor` header, include the primary **"Looks Good — Continue"** sign-off button.
-2. Clicking sign-off invokes `ProjectStore.UpdateStateAsync(ProjectId, StudioState.ScreenplayApproved)`.
-3. Transition `StudioStateMachine` navigation steps from Step 2 (Screenplay) ➔ Step 3 (Shot Plan).
+1. In `ScreenplayEditor.razor` header, render the primary **"Looks Good — Continue"** button.
+2. **Sign-off Handler**:
+   ```csharp
+   await ProjectStore.SetStateAsync(ProjectId, StudioState.ScreenplayApproved);
+   await AdaptationService.SignOffScreenplayAsync(ProjectId);
+   NavigationManager.NavigateTo($"/adaptation/{ProjectId}/shots");
+   ```
 
 ### Step 4: Shot Plan Rebuild (`blueprint.json`)
-1. On screenplay sign-off (or manual rebuild), call:
+1. On screenplay sign-off or explicit rebuild, execute:
    ```csharp
    await AdaptationService.BuildShotPlanAsync(ProjectId);
    ```
-2. `AdaptationService` calculates natural runtime, clip durations, and model clip bounds, generating `blueprint.json`.
-3. `SceneDependencyGraph` updates SHA-256 scene hashes so modifying Scene X flags ONLY Scene X as `Stale`, preserving cached clips for unchanged scenes.
+2. `AdaptationService` calculates natural runtime, scene density, and model clip bounds, outputting `blueprint.json`.
+3. `SceneDependencyGraph.UpdateSceneHashes(ProjectId, model)` updates SHA-256 scene hashes so modifying Scene X flags ONLY Scene X as `Stale`, preserving cached clips for unchanged scenes.
 
 ### Step 5: Cast Package & Location Sidecar Persistence
-1. Sync `model.CharacterProfiles` to `characters.json` (`CharacterSummary` sidecar records).
-2. Ensure voice clone selections feed into TTS voice generation and visual lock prompts feed into Stage-2 portrait & clip prompts.
+1. Save updated character profiles to `assets/characters.json` (`CharacterBookPlateService.SaveCharactersAsync(ProjectId, charSummaries)`).
+2. Save updated location descriptions to `assets/locations.json`.
 
 ---
 
@@ -96,7 +117,7 @@ git push origin master
 ## 5. Checklist Matrix
 
 - [ ] **Step 1**: Reference Screenplay Editor components in `PageToMovie.Web`.
-- [ ] **Step 2**: Hydrate `ScreenplayModel` from SQLite `ProjectStore`.
+- [ ] **Step 2**: Hydrate `ScreenplayModel` from SQLite `ProjectStore` and sidecar files.
 - [ ] **Step 3**: Wire **"Looks Good — Continue"** button to transition `StudioStateMachine` to `ScreenplayApproved`.
 - [ ] **Step 4**: Trigger `AdaptationService.BuildShotPlanAsync(ProjectId)` to generate `blueprint.json`.
 - [ ] **Step 5**: Persist character voice/image locks to `characters.json`.
