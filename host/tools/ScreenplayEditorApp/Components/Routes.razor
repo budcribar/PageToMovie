@@ -1,0 +1,16 @@
+<Router AppAssembly="@typeof(Program).Assembly">
+    <Found Context="routeData">
+        <RouteView RouteData="@routeData" DefaultLayout="@typeof(Layout.MainLayout)" />
+        <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+    </Found>
+    <NotFound>
+        <PageTitle>Not found</PageTitle>
+        <LayoutView Layout="@typeof(Layout.MainLayout)">
+            <div class="container py-5 text-center">
+                <h2>Page Not Found</h2>
+                <p>Sorry, there is no page at this address.</p>
+                <a href="/" class="btn btn-primary">Go to Screenplay Editor</a>
+            </div>
+        </LayoutView>
+    </NotFound>
+</Router>
