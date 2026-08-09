@@ -202,6 +202,75 @@ Slightly more technical language is OK on **About** or a collapsible “For deve
 
 ---
 
+## Razor UI file size & split rules
+
+Goals for Blazor `.razor` markup size so agents and humans keep pages navigable. **Code-behind** (`.razor.cs`) is counted separately — a lean markup file with a larger partial class is fine.
+
+### Size targets
+
+| Kind of file | Soft target | Hard ceiling |
+|--------------|------------:|-------------:|
+| Shared RCL (`PageToMovie.Components/Shared/*`) | 80–150 | **200** |
+| Page-local extract (`Pages/Foo.Bar.razor`) | 100–250 | **350** |
+| Page shell (`Pages/Foo.razor`) | 200–350 | **500** |
+| Layout (`MainLayout`, `NavMenu`) | 300–400 | **500** |
+
+- **New work:** prefer the soft target.
+- **Existing pages:** hard ceiling **500** for shells; only split when the extract has a clear name and boundary.
+- Do **not** force everything under 300 — that produces parameter-heavy or opaque `CascadingParameter` children that are harder to read than a cohesive ~400-line block.
+
+### When to split
+
+Split when you can name the piece as a **logical unit**:
+
+- A modal or dialog (`Admin.TestEmailModal`, `Scenes.GenerateConfirm`)
+- A tab body (`Review.PlayTab`)
+- A section card / panel (`Home.CheckpointsPanel`, `Admin.JobsSection`)
+- A table vs inspector (`Scenes.ClipTable`, `Scenes.ClipInspector`)
+- A wizard step (`SimpleVoice.PickPhase`)
+
+Do **not** split only to hit a number. If the extract needs 15+ parameters or most of the parent’s private state, fix the state shape first (small view-model or cascade), then extract.
+
+### Naming & wiring
+
+| Convention | Rule |
+|------------|------|
+| File name | Dotted page-local: `Review.PlayTab.razor`, `Scenes.ClipTable.razor` |
+| Markup tag | Dots → underscores: `<Review_PlayTab />`, `<Scenes_ClipTable />` |
+| Dense parent state | `<CascadingValue Value="this" IsFixed="true">` + `[CascadingParameter] public ParentType Host` |
+| Parent members used by children | `internal` (same assembly), not `private` |
+| Static helpers | Call as `ParentType.Method`, not `Host.Method` |
+| Services in children | Prefer `@inject` in the child (`Caps`, `Session`, `L`, `MediaFolder`, `Engine`) over `Host.Session` when injects are private on the parent |
+
+Shared, reusable controls belong in `PageToMovie.Components/Shared/` with a stable public parameter API. Page-only chrome stays under `Pages/` with the dotted name.
+
+### Preserve behavior
+
+- Keep every existing `data-testid` string **exactly**.
+- Do not change operator-visible copy unless the task asks for it (see **UI copy principles** above).
+- `dotnet build host/PageToMovie.Web/PageToMovie.Web.csproj -c Release` must stay **0 errors** after a split.
+
+### Prefer this order of extraction
+
+1. Modals / confirms  
+2. Tab bodies or wizard phases  
+3. Large cards / collapsible sections  
+4. Tables vs detail inspectors  
+5. Only then: further subdivision of a child that is still over its ceiling
+
+### Anti-patterns
+
+- Copy-paste of the same large parameter block to three call sites — use one `RenderFragment` factory or one child component.
+- Extracting markup while leaving the only consumers unable to compile because members stayed `private`.
+- New shared RCL controls that embed page-specific workflow copy; keep those page-local.
+- Parallel “cleanup” renames unrelated to the split in the same change set.
+
+### Related assignment notes
+
+Current over-ceiling backlog and agent pairing live in the working tree under split-assignment notes when present (e.g. four-agent over-500 plan). Prefer those for *what* to extract next; this section is the durable *how* and *how large*.
+
+---
+
 ## Related docs
 
 | Doc | Purpose |
