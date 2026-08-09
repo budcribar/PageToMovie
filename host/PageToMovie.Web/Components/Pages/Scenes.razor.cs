@@ -5,32 +5,35 @@ using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 using PageToMovie.Core.Models;
+using PageToMovie.Core.Localization;
 using PageToMovie.Web.Services;
 
 namespace PageToMovie.Web.Components.Pages;
 
 public partial class Scenes
 {
-    // ── Domain facades (typed modules; behavior in Scenes.*.cs partials) ──
-    internal ScenesListState List { get; private set; } = null!;
-    internal ScenesClipEditor ClipEd { get; private set; } = null!;
-    internal ScenesGeneration Gen { get; private set; } = null!;
-    internal ScenesPlayback Playback { get; private set; } = null!;
-    internal ScenesDialogueVerify Dialogue { get; private set; } = null!;
-    internal ScenesMusic Music { get; private set; } = null!;
-    internal ScenesHistory History { get; private set; } = null!;
+    // ── Domain modules (lazy; own their state) ─────────────────────────────
+    private ScenesHistory? _history;
+    internal ScenesHistory History => _history ??= new ScenesHistory(this);
+    private ScenesMusic? _music;
+    internal ScenesMusic Music => _music ??= new ScenesMusic(this);
+    private ScenesDialogueVerify? _dialogue;
+    internal ScenesDialogueVerify Dialogue => _dialogue ??= new ScenesDialogueVerify(this);
+    private ScenesPlayback? _playback;
+    internal ScenesPlayback Playback => _playback ??= new ScenesPlayback(this);
+    private ScenesGeneration? _gen;
+    internal ScenesGeneration Gen => _gen ??= new ScenesGeneration(this);
+    private ScenesListState? _list;
+    internal ScenesListState List => _list ??= new ScenesListState(this);
+    private ScenesClipEditor? _clipEd;
+    internal ScenesClipEditor ClipEd => _clipEd ??= new ScenesClipEditor(this);
 
-    /// <summary>Construct domain facades. Idempotent.</summary>
+    /// <summary>Eagerly construct all domain modules (optional; lazy props also work).</summary>
     internal void EnsureDomains()
     {
-        List ??= new ScenesListState(this);
-        ClipEd ??= new ScenesClipEditor(this);
-        Gen ??= new ScenesGeneration(this);
-        Playback ??= new ScenesPlayback(this);
-        Dialogue ??= new ScenesDialogueVerify(this);
-        Music ??= new ScenesMusic(this);
-        History ??= new ScenesHistory(this);
+        _ = List; _ = ClipEd; _ = Gen; _ = Playback; _ = Dialogue; _ = Music; _ = History;
     }
+
 
 
     internal bool IsSimpleFilm =>
@@ -38,140 +41,24 @@ public partial class Scenes
         || (Nav.ToAbsoluteUri(Nav.Uri).Query?.Contains("simple=1", StringComparison.OrdinalIgnoreCase) ?? false);
 
 
+
     internal bool _busy;
+
 
     internal bool _gateChecked;
 
+
     internal string? _error;
+
 
     internal string? _message;
 
+
     internal string _projectId = "";
+
 
     internal List<string> _projectIds = new();
 
-    internal string _pickSetting = "";
-
-    internal string _pickCharacter = "";
-
-    internal string _pickLocation = "";
-
-    internal bool _showFilters;
-
-
-    /// <summary>Video gen resolution (defaults from Configuration).</summary>
-    internal string _genResolution = "480p";
-
-    /// <summary>Resolution already used by this project's on-disk clips, if consistent — null when unset.</summary>
-    internal string? _resolutionLock;
-
-    internal string _sortBy = "number";
-
-    internal bool _sortAscending = true;
-
-    /// <summary>Clip table: when true, sort by duration; else keep plan order (clip number).</summary>
-    internal bool _clipSortByDuration;
-
-    internal bool _clipSortAscending = true;
-
-    /// <summary>Cost estimate at the current resolution, refreshed on load and resolution change.</summary>
-    internal CostReport? _costReport;
-
-    /// <summary>Project-wide cast gate: every character voice + locked image before video spend.</summary>
-    internal bool _castChecked;
-
-    internal bool _castReady;
-
-    internal int? _castReadyCount;
-
-    internal int? _castTotal;
-
-    internal List<string> _castMissing = new();
-
-    internal List<SceneSummary>? _scenes;
-
-    internal HashSet<int> _selected = new();
-
-    internal string _selectionMode = "";
-
-    internal int? _selectedScene;
-
-    internal SceneDetail? _detail;
-
-    internal int? _selectedClip;
-
-    internal ClipSummary? _clip;
-
-    internal (int Scene, int Clip)? _deleteClipTarget;
-
-    internal int? _deleteSceneTarget;
-
-    internal ClipEditRequest? _clipEditor;
-
-    internal bool _clipEditorIsNew;
-
-    internal HashSet<string> _clipEditorCast = new(StringComparer.OrdinalIgnoreCase);
-
-    /// <summary>Multi-select clip numbers within the currently open scene's clip table, for batch regen.</summary>
-    internal readonly HashSet<int> _selectedClips = new();
-
-    internal JobSnapshot? _job;
-
-    internal List<JobSnapshot> _myJobs = new();
-
-    /// <summary>Admin-only: expand finished-job log under the compact result card.</summary>
-    internal bool _showAdminJobLog;
-
-    /// <summary>Highest progress % shown for the current job — bar never bounces backward.</summary>
-    internal int _progressFloor;
-
-    internal string? _progressFloorJobId;
-
-    /// <summary>Throttle mid-job list refresh so clips x/y + status pills stay live without thrashing.</summary>
-    internal int _lastListRefreshIndex = -1;
-
-    internal int? _lastListRefreshScene;
-
-    internal string? _lastListRefreshMessage;
-
-    internal DateTimeOffset _lastListRefreshAt = DateTimeOffset.MinValue;
-
-    internal bool _listRefreshInFlight;
-
-    internal int? _playSceneAfterRemux;
-
-    internal bool _showScenePlayer;
-
-    internal int? _playingScene;
-
-    internal long _sceneVideoKey;
-
-    internal long _inlineCompositeKey;
-
-    internal long _clipVideoKey;
-
-    /// <summary>"Play selected" — multi-scene (possibly non-contiguous) client-stitched preview.</summary>
-    internal bool _showPreviewPlayer;
-
-    internal long _previewVideoKey;
-
-    internal List<int> _previewScenes = new();
-
-    internal string? _clientPreviewUrl;
-
-    internal string? _clientSceneUrl;
-
-    internal bool _clientStitching;
-
-    internal string? _clientStitchStatus;
-
-
-    /// <summary>
-    /// Set for the brief window between kicking off a regen and the job snapshot round-trip
-    /// confirming it server-side — closes the gap where <see cref="IsSceneGenBusy"/> would
-    /// otherwise still see the previous (already-finished) job and let a stale composite show.
-    /// </summary>
-    internal int? _pendingRegenScene;
 
 
     internal bool DetailLockedByOther =>
@@ -179,10 +66,12 @@ public partial class Scenes
         (_scenes?.FirstOrDefault(s => s.SceneNumber == _detail.SceneNumber)?.LockedByOther ?? false);
 
 
+
     internal string? _detailLockOwner =>
         _detail is null
             ? null
             : _scenes?.FirstOrDefault(s => s.SceneNumber == _detail.SceneNumber)?.LockOwnerUserId;
+
 
 
     internal List<string> CharacterOptions
@@ -227,6 +116,7 @@ public partial class Scenes
     }
 
 
+
     internal List<string> LocationOptions =>
         _scenes is null
             ? new List<string>()
@@ -244,15 +134,19 @@ public partial class Scenes
                 .ToList();
 
 
+
     internal Task AdjustFitLengthAsync() => ConfirmScreenplayAdjustAndNavigateAsync("adaptation/trim");
+
 
 
     internal Task AdjustEmbellishAsync() => ConfirmScreenplayAdjustAndNavigateAsync("adaptation/embellish");
 
 
+
     // Read-only: just open the screenplay view. Unlike Fit length / Embellish it does not re-open
     // (un-approve) the screenplay, so no confirm — the user asked to "go back and see" it from Film.
     internal void ViewScreenplay() => Nav.NavigateTo("adaptation/screenplay");
+
 
 
     /// <summary>
@@ -271,6 +165,7 @@ public partial class Scenes
     }
 
 
+
     internal void ResetPickers()
     {
         _pickSetting = "";
@@ -279,8 +174,10 @@ public partial class Scenes
     }
 
 
+
     protected override async Task OnInitializedAsync()
     {
+        EnsureDomains();
         EnsureDomains();
         await ActiveProject.EnsureLoadedAsync(Engine);
         Hub.JobUpdated += OnJobUpdated;
@@ -343,6 +240,7 @@ public partial class Scenes
     }
 
 
+
     internal void OnMediaFolderChanged() => _ = InvokeAsync(async () =>
     {
         if (_showScenePlayer && _playingScene is int sn && !MediaFolder.IsSyncing && string.IsNullOrEmpty(_clientSceneUrl))
@@ -353,7 +251,9 @@ public partial class Scenes
     });
 
 
+
     internal void DismissLocalSaveWarning() => MediaFolder.DismissLocalSaveWarning();
+
 
 
     internal async Task ConnectMediaFolderFromWarningAsync()
@@ -373,8 +273,6 @@ public partial class Scenes
     }
 
 
-    internal string _preferredVideoEditor = "ClipChamp";
-
 
     internal async Task OnProjectChangedAsync()
     {
@@ -389,21 +287,6 @@ public partial class Scenes
     }
 
 
-    internal string? _clipVideoUrl;
-
-    internal string? _clipServerVideoUrl;
-
-    internal bool _clipVideoLoading;
-
-    internal string? _sceneCompositeVideoUrl;
-
-    internal string? _sceneCompositeServerUrl;
-
-
-    internal int? _scenePlayerServerSrcScene;
-
-    internal string? _scenePlayerServerSrcCached;
-
 
     internal static string StatusBadge(string status) => status switch
     {
@@ -413,6 +296,7 @@ public partial class Scenes
     };
 
 
+
     internal static string Trunc(string? s, int n)
     {
         if (string.IsNullOrEmpty(s)) return "—";
@@ -420,13 +304,17 @@ public partial class Scenes
     }
 
 
+
     internal static string ShortChar(string key) => KeyFormatting.ShortChar(key);
+
 
 
     internal static string ShortLoc(string key) => KeyFormatting.ShortLoc(key);
 
 
+
     internal static string ShortDelivery(string? key) => KeyFormatting.ShortDelivery(key);
+
 
 
     internal static string FormatSize(long bytes)
@@ -437,7 +325,9 @@ public partial class Scenes
     }
 
 
+
     internal static string CacheBust(string url) => KeyFormatting.CacheBust(url);
+
 
 
     /// <summary>Format seconds as m:ss or plain seconds when under a minute.</summary>
@@ -452,38 +342,6 @@ public partial class Scenes
     }
 
 
-    internal bool _verifyingClip;
-
-    internal int _verifyingClipNumber;
-
-    internal int _verifyCurrent;
-
-    internal int _verifyTotal;
-
-    internal string _verifyStatusLabel = "Verifying dialogue...";
-
-
-    internal bool _scoringMusic;
-
-    internal List<SupportedModelDto> _audioModels = new();
-
-    internal string _selectedAudioModel = "fal-ai/stable-audio";
-
-    internal bool _wantVocal;
-
-
-    // Which scene's Score chooser is open (null = closed). The model/Sing picks it edits are the
-    // shared _selectedAudioModel/_wantVocal, so they persist as the defaults for the next scene.
-    internal int? _scoreMenuScene;
-
-
-    // Batch-generate confirm modal: resolution + cost decided at the moment of spend.
-    internal bool _showGenerateConfirm;
-
-    internal bool _showVideoEditPrompt;
-
-    internal string _videoEditPromptText = "";
-
     /// <summary>
     /// xAI's /v1/videos/edits input cap (grok-imagine-video-edit's maxEditInputDurationSeconds).
     /// A client-side UX hint only — RunVideoEditAsync re-checks the real catalog value
@@ -492,72 +350,12 @@ public partial class Scenes
     internal const double MaxVideoEditInputSeconds = 8.7;
 
 
-    // Admin-only: video models offered as a one-off per-batch override in the Generate modal, so an
-    // admin can A/B different generators without editing project Configuration. "" = project default.
-    internal List<SupportedModelDto> _videoModels = new();
-
-    internal string _selectedVideoModel = "";
-
-
-    internal bool _showMusicCompare;
-
-    internal int _compareMusicSceneNumber;
-
-    internal List<MusicVersionItem>? _musicVersions;
-
-    internal List<MusicVersionItem>? _musicTrashVersions;
-
-    internal bool _loadingMusicVersions;
-
-    internal string? _musicCompareMessage;
-
-    internal bool _promotingMusicVersion;
-
-    internal bool _showMusicTrash;
-
     internal Dictionary<string, List<string>> _musicCompareUrls = new(StringComparer.OrdinalIgnoreCase);
 
-
-    internal bool _showSceneHistory;
-
-    internal int _historySceneNumber;
-
-    internal bool _loadingHistory;
-
-    internal bool _revertingScene;
-
-    internal string? _sceneRevertMessage;
-
-    internal List<SceneCommitHistoryItem>? _sceneHistory;
-
-
-    // ---- Inline scene VERSION history panel (SceneVersionHistory component, P3) — separate from
-    // the git-commit history modal above; distinct state so the two panels never collide. ----
-    internal bool _showInlineSceneHistory;
 
 
     internal UncommittedStatusDto? _uncommittedStatus;
 
-    internal bool _showClipCompare;
-
-    internal int _compareSceneNumber;
-
-    internal int _compareClipNumber;
-
-    internal bool _loadingClipVersions;
-
-    internal bool _promotingVersion;
-
-    internal string? _clipCompareMessage;
-
-    internal List<ClipVersionItem>? _clipVersions;
-
-    internal List<ClipVersionItem>? _trashVersions;
-
-    internal string? _selectedCompareVersionId;
-
-
-    internal Dictionary<string, string?> _compareVideoUrls = new(StringComparer.OrdinalIgnoreCase);
 
 
     internal async Task RefreshUncommittedStatusAsync()
@@ -569,6 +367,7 @@ public partial class Scenes
         }
         catch { /* best effort */ }
     }
+
 
 
     internal async Task CommitCurrentChangesAsync()
@@ -603,14 +402,6 @@ public partial class Scenes
     }
 
 
-    internal bool _showVerificationModal;
-
-    internal int _verifModalSceneNumber;
-
-    internal int _verifModalClipNumber;
-
-    internal ClipDialogueVerificationResult? _verifModalResult;
-
 
     internal void OpenVerificationModal(int sceneNumber, int clipNumber, ClipDialogueVerificationResult ver)
     {
@@ -621,11 +412,13 @@ public partial class Scenes
     }
 
 
+
     internal void CloseVerificationModal()
     {
         _showVerificationModal = false;
         _verifModalResult = null;
     }
+
 
 
     public async ValueTask DisposeAsync()
@@ -638,4 +431,522 @@ public partial class Scenes
         await Stitch.RevokePreviewUrlAsync();
     }
 
+
+    // ── Field forwarders (Host._x still works for markup children) ──
+    internal bool _showSceneHistory
+    {
+        get => History._showSceneHistory;
+        set => History._showSceneHistory = value;
+    }
+    internal int _historySceneNumber
+    {
+        get => History._historySceneNumber;
+        set => History._historySceneNumber = value;
+    }
+    internal bool _loadingHistory
+    {
+        get => History._loadingHistory;
+        set => History._loadingHistory = value;
+    }
+    internal bool _revertingScene
+    {
+        get => History._revertingScene;
+        set => History._revertingScene = value;
+    }
+    internal string? _sceneRevertMessage
+    {
+        get => History._sceneRevertMessage;
+        set => History._sceneRevertMessage = value;
+    }
+    internal List<SceneCommitHistoryItem>? _sceneHistory
+    {
+        get => History._sceneHistory;
+        set => History._sceneHistory = value;
+    }
+    internal bool _showInlineSceneHistory
+    {
+        get => History._showInlineSceneHistory;
+        set => History._showInlineSceneHistory = value;
+    }
+    internal bool _scoringMusic
+    {
+        get => Music._scoringMusic;
+        set => Music._scoringMusic = value;
+    }
+    internal List<SupportedModelDto> _audioModels
+    {
+        get => Music._audioModels;
+        set => Music._audioModels = value;
+    }
+    internal string _selectedAudioModel
+    {
+        get => Music._selectedAudioModel;
+        set => Music._selectedAudioModel = value;
+    }
+    internal bool _wantVocal
+    {
+        get => Music._wantVocal;
+        set => Music._wantVocal = value;
+    }
+    internal int? _scoreMenuScene
+    {
+        get => Music._scoreMenuScene;
+        set => Music._scoreMenuScene = value;
+    }
+    internal bool _showMusicCompare
+    {
+        get => Music._showMusicCompare;
+        set => Music._showMusicCompare = value;
+    }
+    internal int _compareMusicSceneNumber
+    {
+        get => Music._compareMusicSceneNumber;
+        set => Music._compareMusicSceneNumber = value;
+    }
+    internal List<MusicVersionItem>? _musicVersions
+    {
+        get => Music._musicVersions;
+        set => Music._musicVersions = value;
+    }
+    internal List<MusicVersionItem>? _musicTrashVersions
+    {
+        get => Music._musicTrashVersions;
+        set => Music._musicTrashVersions = value;
+    }
+    internal bool _loadingMusicVersions
+    {
+        get => Music._loadingMusicVersions;
+        set => Music._loadingMusicVersions = value;
+    }
+    internal string? _musicCompareMessage
+    {
+        get => Music._musicCompareMessage;
+        set => Music._musicCompareMessage = value;
+    }
+    internal bool _promotingMusicVersion
+    {
+        get => Music._promotingMusicVersion;
+        set => Music._promotingMusicVersion = value;
+    }
+    internal bool _showMusicTrash
+    {
+        get => Music._showMusicTrash;
+        set => Music._showMusicTrash = value;
+    }
+    internal bool _verifyingClip
+    {
+        get => Dialogue._verifyingClip;
+        set => Dialogue._verifyingClip = value;
+    }
+    internal int _verifyingClipNumber
+    {
+        get => Dialogue._verifyingClipNumber;
+        set => Dialogue._verifyingClipNumber = value;
+    }
+    internal int _verifyCurrent
+    {
+        get => Dialogue._verifyCurrent;
+        set => Dialogue._verifyCurrent = value;
+    }
+    internal int _verifyTotal
+    {
+        get => Dialogue._verifyTotal;
+        set => Dialogue._verifyTotal = value;
+    }
+    internal string _verifyStatusLabel
+    {
+        get => Dialogue._verifyStatusLabel;
+        set => Dialogue._verifyStatusLabel = value;
+    }
+    internal bool _showVerificationModal
+    {
+        get => Dialogue._showVerificationModal;
+        set => Dialogue._showVerificationModal = value;
+    }
+    internal int _verifModalSceneNumber
+    {
+        get => Dialogue._verifModalSceneNumber;
+        set => Dialogue._verifModalSceneNumber = value;
+    }
+    internal int _verifModalClipNumber
+    {
+        get => Dialogue._verifModalClipNumber;
+        set => Dialogue._verifModalClipNumber = value;
+    }
+    internal ClipDialogueVerificationResult? _verifModalResult
+    {
+        get => Dialogue._verifModalResult;
+        set => Dialogue._verifModalResult = value;
+    }
+    internal int? _playSceneAfterRemux
+    {
+        get => Playback._playSceneAfterRemux;
+        set => Playback._playSceneAfterRemux = value;
+    }
+    internal bool _showScenePlayer
+    {
+        get => Playback._showScenePlayer;
+        set => Playback._showScenePlayer = value;
+    }
+    internal int? _playingScene
+    {
+        get => Playback._playingScene;
+        set => Playback._playingScene = value;
+    }
+    internal long _sceneVideoKey
+    {
+        get => Playback._sceneVideoKey;
+        set => Playback._sceneVideoKey = value;
+    }
+    internal long _inlineCompositeKey
+    {
+        get => Playback._inlineCompositeKey;
+        set => Playback._inlineCompositeKey = value;
+    }
+    internal long _clipVideoKey
+    {
+        get => Playback._clipVideoKey;
+        set => Playback._clipVideoKey = value;
+    }
+    internal bool _showPreviewPlayer
+    {
+        get => Playback._showPreviewPlayer;
+        set => Playback._showPreviewPlayer = value;
+    }
+    internal long _previewVideoKey
+    {
+        get => Playback._previewVideoKey;
+        set => Playback._previewVideoKey = value;
+    }
+    internal List<int> _previewScenes
+    {
+        get => Playback._previewScenes;
+        set => Playback._previewScenes = value;
+    }
+    internal string? _clientPreviewUrl
+    {
+        get => Playback._clientPreviewUrl;
+        set => Playback._clientPreviewUrl = value;
+    }
+    internal string? _clientSceneUrl
+    {
+        get => Playback._clientSceneUrl;
+        set => Playback._clientSceneUrl = value;
+    }
+    internal bool _clientStitching
+    {
+        get => Playback._clientStitching;
+        set => Playback._clientStitching = value;
+    }
+    internal string? _clientStitchStatus
+    {
+        get => Playback._clientStitchStatus;
+        set => Playback._clientStitchStatus = value;
+    }
+    internal string? _clipVideoUrl
+    {
+        get => Playback._clipVideoUrl;
+        set => Playback._clipVideoUrl = value;
+    }
+    internal string? _clipServerVideoUrl
+    {
+        get => Playback._clipServerVideoUrl;
+        set => Playback._clipServerVideoUrl = value;
+    }
+    internal bool _clipVideoLoading
+    {
+        get => Playback._clipVideoLoading;
+        set => Playback._clipVideoLoading = value;
+    }
+    internal string? _sceneCompositeVideoUrl
+    {
+        get => Playback._sceneCompositeVideoUrl;
+        set => Playback._sceneCompositeVideoUrl = value;
+    }
+    internal string? _sceneCompositeServerUrl
+    {
+        get => Playback._sceneCompositeServerUrl;
+        set => Playback._sceneCompositeServerUrl = value;
+    }
+    internal int? _scenePlayerServerSrcScene
+    {
+        get => Playback._scenePlayerServerSrcScene;
+        set => Playback._scenePlayerServerSrcScene = value;
+    }
+    internal string? _scenePlayerServerSrcCached
+    {
+        get => Playback._scenePlayerServerSrcCached;
+        set => Playback._scenePlayerServerSrcCached = value;
+    }
+    internal Dictionary<string, string?> _compareVideoUrls
+    {
+        get => Playback._compareVideoUrls;
+        set => Playback._compareVideoUrls = value;
+    }
+    internal JobSnapshot? _job
+    {
+        get => Gen._job;
+        set => Gen._job = value;
+    }
+    internal List<JobSnapshot> _myJobs
+    {
+        get => Gen._myJobs;
+        set => Gen._myJobs = value;
+    }
+    internal bool _showAdminJobLog
+    {
+        get => Gen._showAdminJobLog;
+        set => Gen._showAdminJobLog = value;
+    }
+    internal int _progressFloor
+    {
+        get => Gen._progressFloor;
+        set => Gen._progressFloor = value;
+    }
+    internal string? _progressFloorJobId
+    {
+        get => Gen._progressFloorJobId;
+        set => Gen._progressFloorJobId = value;
+    }
+    internal int _lastListRefreshIndex
+    {
+        get => Gen._lastListRefreshIndex;
+        set => Gen._lastListRefreshIndex = value;
+    }
+    internal int? _lastListRefreshScene
+    {
+        get => Gen._lastListRefreshScene;
+        set => Gen._lastListRefreshScene = value;
+    }
+    internal string? _lastListRefreshMessage
+    {
+        get => Gen._lastListRefreshMessage;
+        set => Gen._lastListRefreshMessage = value;
+    }
+    internal DateTimeOffset _lastListRefreshAt
+    {
+        get => Gen._lastListRefreshAt;
+        set => Gen._lastListRefreshAt = value;
+    }
+    internal bool _listRefreshInFlight
+    {
+        get => Gen._listRefreshInFlight;
+        set => Gen._listRefreshInFlight = value;
+    }
+    internal int? _pendingRegenScene
+    {
+        get => Gen._pendingRegenScene;
+        set => Gen._pendingRegenScene = value;
+    }
+    internal bool _showGenerateConfirm
+    {
+        get => Gen._showGenerateConfirm;
+        set => Gen._showGenerateConfirm = value;
+    }
+    internal List<SupportedModelDto> _videoModels
+    {
+        get => Gen._videoModels;
+        set => Gen._videoModels = value;
+    }
+    internal string _selectedVideoModel
+    {
+        get => Gen._selectedVideoModel;
+        set => Gen._selectedVideoModel = value;
+    }
+    internal string _genResolution
+    {
+        get => Gen._genResolution;
+        set => Gen._genResolution = value;
+    }
+    internal string _pickSetting
+    {
+        get => List._pickSetting;
+        set => List._pickSetting = value;
+    }
+    internal string _pickCharacter
+    {
+        get => List._pickCharacter;
+        set => List._pickCharacter = value;
+    }
+    internal string _pickLocation
+    {
+        get => List._pickLocation;
+        set => List._pickLocation = value;
+    }
+    internal bool _showFilters
+    {
+        get => List._showFilters;
+        set => List._showFilters = value;
+    }
+    internal string? _resolutionLock
+    {
+        get => List._resolutionLock;
+        set => List._resolutionLock = value;
+    }
+    internal string _sortBy
+    {
+        get => List._sortBy;
+        set => List._sortBy = value;
+    }
+    internal bool _sortAscending
+    {
+        get => List._sortAscending;
+        set => List._sortAscending = value;
+    }
+    internal CostReport? _costReport
+    {
+        get => List._costReport;
+        set => List._costReport = value;
+    }
+    internal bool _castChecked
+    {
+        get => List._castChecked;
+        set => List._castChecked = value;
+    }
+    internal bool _castReady
+    {
+        get => List._castReady;
+        set => List._castReady = value;
+    }
+    internal int? _castReadyCount
+    {
+        get => List._castReadyCount;
+        set => List._castReadyCount = value;
+    }
+    internal int? _castTotal
+    {
+        get => List._castTotal;
+        set => List._castTotal = value;
+    }
+    internal List<string> _castMissing
+    {
+        get => List._castMissing;
+        set => List._castMissing = value;
+    }
+    internal List<SceneSummary>? _scenes
+    {
+        get => List._scenes;
+        set => List._scenes = value;
+    }
+    internal HashSet<int> _selected
+    {
+        get => List._selected;
+        set => List._selected = value;
+    }
+    internal string _selectionMode
+    {
+        get => List._selectionMode;
+        set => List._selectionMode = value;
+    }
+    internal int? _selectedScene
+    {
+        get => List._selectedScene;
+        set => List._selectedScene = value;
+    }
+    internal SceneDetail? _detail
+    {
+        get => List._detail;
+        set => List._detail = value;
+    }
+    internal int? _deleteSceneTarget
+    {
+        get => List._deleteSceneTarget;
+        set => List._deleteSceneTarget = value;
+    }
+    internal bool _clipSortByDuration
+    {
+        get => ClipEd._clipSortByDuration;
+        set => ClipEd._clipSortByDuration = value;
+    }
+    internal bool _clipSortAscending
+    {
+        get => ClipEd._clipSortAscending;
+        set => ClipEd._clipSortAscending = value;
+    }
+    internal int? _selectedClip
+    {
+        get => ClipEd._selectedClip;
+        set => ClipEd._selectedClip = value;
+    }
+    internal ClipSummary? _clip
+    {
+        get => ClipEd._clip;
+        set => ClipEd._clip = value;
+    }
+    internal ClipEditRequest? _clipEditor
+    {
+        get => ClipEd._clipEditor;
+        set => ClipEd._clipEditor = value;
+    }
+    internal bool _clipEditorIsNew
+    {
+        get => ClipEd._clipEditorIsNew;
+        set => ClipEd._clipEditorIsNew = value;
+    }
+    internal HashSet<string> _clipEditorCast
+    {
+        get => ClipEd._clipEditorCast;
+        set => ClipEd._clipEditorCast = value;
+    }
+    internal HashSet<int> _selectedClips => ClipEd._selectedClips;
+    internal bool _showVideoEditPrompt
+    {
+        get => ClipEd._showVideoEditPrompt;
+        set => ClipEd._showVideoEditPrompt = value;
+    }
+    internal string _videoEditPromptText
+    {
+        get => ClipEd._videoEditPromptText;
+        set => ClipEd._videoEditPromptText = value;
+    }
+    internal string _preferredVideoEditor
+    {
+        get => ClipEd._preferredVideoEditor;
+        set => ClipEd._preferredVideoEditor = value;
+    }
+    internal bool _showClipCompare
+    {
+        get => ClipEd._showClipCompare;
+        set => ClipEd._showClipCompare = value;
+    }
+    internal int _compareSceneNumber
+    {
+        get => ClipEd._compareSceneNumber;
+        set => ClipEd._compareSceneNumber = value;
+    }
+    internal int _compareClipNumber
+    {
+        get => ClipEd._compareClipNumber;
+        set => ClipEd._compareClipNumber = value;
+    }
+    internal bool _loadingClipVersions
+    {
+        get => ClipEd._loadingClipVersions;
+        set => ClipEd._loadingClipVersions = value;
+    }
+    internal bool _promotingVersion
+    {
+        get => ClipEd._promotingVersion;
+        set => ClipEd._promotingVersion = value;
+    }
+    internal string? _clipCompareMessage
+    {
+        get => ClipEd._clipCompareMessage;
+        set => ClipEd._clipCompareMessage = value;
+    }
+    internal List<ClipVersionItem>? _clipVersions
+    {
+        get => ClipEd._clipVersions;
+        set => ClipEd._clipVersions = value;
+    }
+    internal List<ClipVersionItem>? _trashVersions
+    {
+        get => ClipEd._trashVersions;
+        set => ClipEd._trashVersions = value;
+    }
+    internal string? _selectedCompareVersionId
+    {
+        get => ClipEd._selectedCompareVersionId;
+        set => ClipEd._selectedCompareVersionId = value;
+    }
 }
