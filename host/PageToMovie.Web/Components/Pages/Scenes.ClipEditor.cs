@@ -10,90 +10,92 @@ using PageToMovie.Web.Services;
 
 namespace PageToMovie.Web.Components.Pages;
 
-// Forwarders: ScenesClipEditor → Host.*
+// Forwarders: clip domains → Host.*
 public partial class Scenes
 {
-    internal void ToggleClipDurationSort() => ClipEd.ToggleClipDurationSort();
+    // ── Selection ──────────────────────────────────────────────────────────
+    internal void ToggleClipDurationSort() => ClipSel.ToggleClipDurationSort();
 
-    internal IEnumerable<ClipSummary> SortedDetailClips => ClipEd.SortedDetailClips;
+    internal IEnumerable<ClipSummary> SortedDetailClips => ClipSel.SortedDetailClips;
 
-    internal bool IsClipGenBusy(int clipNumber) => ClipEd.IsClipGenBusy(clipNumber);
+    internal bool IsClipGenBusy(int clipNumber) => ClipSel.IsClipGenBusy(clipNumber);
 
-    internal bool PreviousClipMissing(int clipNumber) => ClipEd.PreviousClipMissing(clipNumber);
+    internal bool PreviousClipMissing(int clipNumber) => ClipSel.PreviousClipMissing(clipNumber);
 
-    internal void SelectMissingClips() => ClipEd.SelectMissingClips();
+    internal void SelectMissingClips() => ClipSel.SelectMissingClips();
 
-    internal Task OpenInExternalEditorAsync(int? sceneNumber = null, int? clipNumber = null) => ClipEd.OpenInExternalEditorAsync(sceneNumber, clipNumber);
+    internal void ToggleClipSelect(int cn, bool on) => ClipSel.ToggleClipSelect(cn, on);
 
-    internal void ToggleClipSelect(int cn, bool on) => ClipEd.ToggleClipSelect(cn, on);
+    internal void ClearClipSelection() => ClipSel.ClearClipSelection();
 
-    internal void ClearClipSelection() => ClipEd.ClearClipSelection();
+    internal void ToggleSelectAllClips(bool on) => ClipSel.ToggleSelectAllClips(on);
 
-    internal void ToggleSelectAllClips(bool on) => ClipEd.ToggleSelectAllClips(on);
+    internal double? EstimateSelectedClipsCostUsd() => ClipSel.EstimateSelectedClipsCostUsd();
 
-    internal double? EstimateSelectedClipsCostUsd() => ClipEd.EstimateSelectedClipsCostUsd();
+    internal int EstimateSelectedClips() => ClipSel.EstimateSelectedClips();
 
-    internal Task EnsurePredecessorsUploadedAsync(List<(int Scene, int Clip)> targets) => ClipEd.EnsurePredecessorsUploadedAsync(targets);
+    internal bool AllClipsSelected => ClipSel.AllClipsSelected;
 
-    internal Task<double?> ResolveActiveVideoExtendModelAsync() => ClipEd.ResolveActiveVideoExtendModelAsync();
+    // ── Regen ──────────────────────────────────────────────────────────────
+    internal Task OpenInExternalEditorAsync(int? sceneNumber = null, int? clipNumber = null) => ClipRegen.OpenInExternalEditorAsync(sceneNumber, clipNumber);
 
-    internal Task<List<(int Scene, int Clip)>> MissingClipTargetsAsync(int sn) => ClipEd.MissingClipTargetsAsync(sn);
+    internal Task EnsurePredecessorsUploadedAsync(List<(int Scene, int Clip)> targets) => ClipRegen.EnsurePredecessorsUploadedAsync(targets);
 
-    internal Task RegenSelectedClipsAsync() => ClipEd.RegenSelectedClipsAsync();
+    internal Task<double?> ResolveActiveVideoExtendModelAsync() => ClipRegen.ResolveActiveVideoExtendModelAsync();
 
-    internal void SelectClip(int? cn) => ClipEd.SelectClip(cn);
+    internal Task<List<(int Scene, int Clip)>> MissingClipTargetsAsync(int sn) => ClipRegen.MissingClipTargetsAsync(sn);
 
-    internal Task<long?> ResolveExpectedClipSizeAsync(int scene, int clip) => ClipEd.ResolveExpectedClipSizeAsync(scene, clip);
+    internal Task RegenSelectedClipsAsync() => ClipRegen.RegenSelectedClipsAsync();
 
-    internal Task RegenClipAsync(int sn, int cn) => ClipEd.RegenClipAsync(sn, cn);
+    internal Task<long?> ResolveExpectedClipSizeAsync(int scene, int clip) => ClipRegen.ResolveExpectedClipSizeAsync(scene, clip);
 
-    internal static bool ClipExceedsEditDurationCap(ClipSummary clip) => ScenesClipEditor.ClipExceedsEditDurationCap(clip);
+    internal Task RegenClipAsync(int sn, int cn) => ClipRegen.RegenClipAsync(sn, cn);
 
-    internal void OpenVideoEditPrompt() => ClipEd.OpenVideoEditPrompt();
+    internal static bool ClipExceedsEditDurationCap(ClipSummary clip) => ScenesClipRegen.ClipExceedsEditDurationCap(clip);
 
-    internal void CloseVideoEditPrompt() => ClipEd.CloseVideoEditPrompt();
+    internal void OpenVideoEditPrompt() => ClipRegen.OpenVideoEditPrompt();
 
-    internal Task SubmitVideoEditAsync() => ClipEd.SubmitVideoEditAsync();
+    internal void CloseVideoEditPrompt() => ClipRegen.CloseVideoEditPrompt();
 
-    internal void OpenClipEditor(ClipSummary clip) => ClipEd.OpenClipEditor(clip);
+    internal Task SubmitVideoEditAsync() => ClipRegen.SubmitVideoEditAsync();
 
-    internal void OpenAddClipDialog() => ClipEd.OpenAddClipDialog();
+    // ── Form ───────────────────────────────────────────────────────────────
+    internal void SelectClip(int? cn) => ClipForm.SelectClip(cn);
 
-    internal void CloseClipEditor() => ClipEd.CloseClipEditor();
+    internal void OpenClipEditor(ClipSummary clip) => ClipForm.OpenClipEditor(clip);
 
-    internal void ToggleClipEditorCast(string charKey, bool on) => ClipEd.ToggleClipEditorCast(charKey, on);
+    internal void OpenAddClipDialog() => ClipForm.OpenAddClipDialog();
 
-    internal Task OnClipEditorCastToggled((string Key, bool On) args) => ClipEd.OnClipEditorCastToggled(args);
+    internal void CloseClipEditor() => ClipForm.CloseClipEditor();
 
-    internal Task SaveClipEditorAsync() => ClipEd.SaveClipEditorAsync();
+    internal void ToggleClipEditorCast(string charKey, bool on) => ClipForm.ToggleClipEditorCast(charKey, on);
 
-    internal void RequestDeleteClip(int scene, int clip) => ClipEd.RequestDeleteClip(scene, clip);
+    internal Task OnClipEditorCastToggled((string Key, bool On) args) => ClipForm.OnClipEditorCastToggled(args);
 
-    internal void CancelDeleteClip() => ClipEd.CancelDeleteClip();
+    internal Task SaveClipEditorAsync() => ClipForm.SaveClipEditorAsync();
 
-    internal Task ConfirmDeleteClipAsync() => ClipEd.ConfirmDeleteClipAsync();
+    internal void RequestDeleteClip(int scene, int clip) => ClipForm.RequestDeleteClip(scene, clip);
 
-    internal int EstimateSelectedClips() => ClipEd.EstimateSelectedClips();
+    internal void CancelDeleteClip() => ClipForm.CancelDeleteClip();
 
-    internal Task OpenClipCompareAsync(int sceneNumber, int clipNumber) => ClipEd.OpenClipCompareAsync(sceneNumber, clipNumber);
+    internal Task ConfirmDeleteClipAsync() => ClipForm.ConfirmDeleteClipAsync();
 
-    internal void CloseClipCompare() => ClipEd.CloseClipCompare();
-
-    internal Task PromoteClipVersionAsync(int sceneNumber, int clipNumber, string versionId) => ClipEd.PromoteClipVersionAsync(sceneNumber, clipNumber, versionId);
-
-    internal Task SoftDeleteClipVersionAsync(int sceneNumber, int clipNumber, string versionId) => ClipEd.SoftDeleteClipVersionAsync(sceneNumber, clipNumber, versionId);
-
-    internal Task RestoreClipVersionAsync(int sceneNumber, int clipNumber, string versionId) => ClipEd.RestoreClipVersionAsync(sceneNumber, clipNumber, versionId);
-
-    internal Task EmptyClipTrashAsync(int sceneNumber, int clipNumber) => ClipEd.EmptyClipTrashAsync(sceneNumber, clipNumber);
-
-
-
-    internal bool AllClipsSelected => ClipEd.AllClipsSelected;
     internal (int Scene, int Clip)? _deleteClipTarget
     {
-        get => ClipEd._deleteClipTarget;
-        set => ClipEd._deleteClipTarget = value;
+        get => ClipForm._deleteClipTarget;
+        set => ClipForm._deleteClipTarget = value;
     }
 
+    // ── Versions ───────────────────────────────────────────────────────────
+    internal Task OpenClipCompareAsync(int sceneNumber, int clipNumber) => ClipVer.OpenClipCompareAsync(sceneNumber, clipNumber);
+
+    internal void CloseClipCompare() => ClipVer.CloseClipCompare();
+
+    internal Task PromoteClipVersionAsync(int sceneNumber, int clipNumber, string versionId) => ClipVer.PromoteClipVersionAsync(sceneNumber, clipNumber, versionId);
+
+    internal Task SoftDeleteClipVersionAsync(int sceneNumber, int clipNumber, string versionId) => ClipVer.SoftDeleteClipVersionAsync(sceneNumber, clipNumber, versionId);
+
+    internal Task RestoreClipVersionAsync(int sceneNumber, int clipNumber, string versionId) => ClipVer.RestoreClipVersionAsync(sceneNumber, clipNumber, versionId);
+
+    internal Task EmptyClipTrashAsync(int sceneNumber, int clipNumber) => ClipVer.EmptyClipTrashAsync(sceneNumber, clipNumber);
 }

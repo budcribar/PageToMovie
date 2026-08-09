@@ -15,8 +15,12 @@ public partial class Characters
     // ── Domain modules (lazy; own their state) ─────────────────────────────
     private CharactersListState? _list;
     internal CharactersListState List => _list ??= new CharactersListState(this);
-    private CharactersLook? _look;
-    internal CharactersLook Look => _look ??= new CharactersLook(this);
+    private CharactersLookBook? _lookBook;
+    internal CharactersLookBook LookBook => _lookBook ??= new CharactersLookBook(this);
+    private CharactersLookPipeline? _lookPipe;
+    internal CharactersLookPipeline LookPipe => _lookPipe ??= new CharactersLookPipeline(this);
+    private CharactersLookEditors? _lookEdit;
+    internal CharactersLookEditors LookEdit => _lookEdit ??= new CharactersLookEditors(this);
     private CharactersVoice? _voice;
     internal CharactersVoice Voice => _voice ??= new CharactersVoice(this);
     private CharactersJobs? _jobs;
@@ -24,7 +28,7 @@ public partial class Characters
 
     internal void EnsureDomains()
     {
-        _ = List; _ = Look; _ = Voice; _ = Jobs;
+        _ = List; _ = LookBook; _ = LookPipe; _ = LookEdit; _ = Voice; _ = Jobs;
     }
 
 
@@ -287,128 +291,132 @@ public partial class Characters
         get => List._simpleMode;
         set => List._simpleMode = value;
     }
+    // Look pipeline
     internal List<Candidate> _allCandidates
     {
-        get => Look._allCandidates;
-        set => Look._allCandidates = value;
+        get => LookPipe._allCandidates;
+        set => LookPipe._allCandidates = value;
     }
     internal string? _chosenCandidateKey
     {
-        get => Look._chosenCandidateKey;
-        set => Look._chosenCandidateKey = value;
+        get => LookPipe._chosenCandidateKey;
+        set => LookPipe._chosenCandidateKey = value;
     }
     internal PendingDelete? _deleteConfirm
     {
-        get => Look._deleteConfirm;
-        set => Look._deleteConfirm = value;
-    }
-    internal string _editDescription
-    {
-        get => Look._editDescription;
-        set => Look._editDescription = value;
-    }
-    internal string _editVisualLock
-    {
-        get => Look._editVisualLock;
-        set => Look._editVisualLock = value;
-    }
-    internal ImageSeedLimits? _imageSeedLimits
-    {
-        get => Look._imageSeedLimits;
-        set => Look._imageSeedLimits = value;
+        get => LookPipe._deleteConfirm;
+        set => LookPipe._deleteConfirm = value;
     }
     internal long _imgBust
     {
-        get => Look._imgBust;
-        set => Look._imgBust = value;
-    }
-    internal bool _loadingBookCandidates
-    {
-        get => Look._loadingBookCandidates;
-        set => Look._loadingBookCandidates = value;
-    }
-    internal CancellationTokenSource? _lookSaveCts
-    {
-        get => Look._lookSaveCts;
-        set => Look._lookSaveCts = value;
-    }
-    internal string? _lookSaveHint
-    {
-        get => Look._lookSaveHint;
-        set => Look._lookSaveHint = value;
+        get => LookPipe._imgBust;
+        set => LookPipe._imgBust = value;
     }
     internal Mode _mode
     {
-        get => Look._mode;
-        set => Look._mode = value;
-    }
-    internal bool _panelPictureOpen
-    {
-        get => Look._panelPictureOpen;
-        set => Look._panelPictureOpen = value;
+        get => LookPipe._mode;
+        set => LookPipe._mode = value;
     }
     internal Candidate? _pendingLockCandidate
     {
-        get => Look._pendingLockCandidate;
-        set => Look._pendingLockCandidate = value;
+        get => LookPipe._pendingLockCandidate;
+        set => LookPipe._pendingLockCandidate = value;
     }
     internal PictureRoute _pictureRoute
     {
-        get => Look._pictureRoute;
-        set => Look._pictureRoute = value;
-    }
-    internal List<RankedBookCandidateDto>? _rankedBookCandidates
-    {
-        get => Look._rankedBookCandidates;
-        set => Look._rankedBookCandidates = value;
-    }
-    internal string _savedLookDescription
-    {
-        get => Look._savedLookDescription;
-        set => Look._savedLookDescription = value;
-    }
-    internal string _savedLookVisualLock
-    {
-        get => Look._savedLookVisualLock;
-        set => Look._savedLookVisualLock = value;
-    }
-    internal bool _savingBookRefs
-    {
-        get => Look._savingBookRefs;
-        set => Look._savingBookRefs = value;
-    }
-    internal bool _savingLook
-    {
-        get => Look._savingLook;
-        set => Look._savingLook = value;
-    }
-    internal List<string> _seedOrder => Look._seedOrder;
-    internal List<string> _selectedBookCandidatePaths => Look._selectedBookCandidatePaths;
-    internal bool _showBookCandidateGallery
-    {
-        get => Look._showBookCandidateGallery;
-        set => Look._showBookCandidateGallery = value;
+        get => LookPipe._pictureRoute;
+        set => LookPipe._pictureRoute = value;
     }
     internal Candidate? _styleRejectCandidate
     {
-        get => Look._styleRejectCandidate;
-        set => Look._styleRejectCandidate = value;
+        get => LookPipe._styleRejectCandidate;
+        set => LookPipe._styleRejectCandidate = value;
     }
     internal string? _styleRejectMessage
     {
-        get => Look._styleRejectMessage;
-        set => Look._styleRejectMessage = value;
+        get => LookPipe._styleRejectMessage;
+        set => LookPipe._styleRejectMessage = value;
     }
     internal Candidate? _zoomCandidate
     {
-        get => Look._zoomCandidate;
-        set => Look._zoomCandidate = value;
+        get => LookPipe._zoomCandidate;
+        set => LookPipe._zoomCandidate = value;
     }
     internal double _zoomScale
     {
-        get => Look._zoomScale;
-        set => Look._zoomScale = value;
+        get => LookPipe._zoomScale;
+        set => LookPipe._zoomScale = value;
     }
+    // Look book / seeds
+    internal ImageSeedLimits? _imageSeedLimits
+    {
+        get => LookBook._imageSeedLimits;
+        set => LookBook._imageSeedLimits = value;
+    }
+    internal bool _loadingBookCandidates
+    {
+        get => LookBook._loadingBookCandidates;
+        set => LookBook._loadingBookCandidates = value;
+    }
+    internal List<RankedBookCandidateDto>? _rankedBookCandidates
+    {
+        get => LookBook._rankedBookCandidates;
+        set => LookBook._rankedBookCandidates = value;
+    }
+    internal bool _savingBookRefs
+    {
+        get => LookBook._savingBookRefs;
+        set => LookBook._savingBookRefs = value;
+    }
+    internal List<string> _seedOrder => LookBook._seedOrder;
+    internal List<string> _selectedBookCandidatePaths => LookBook._selectedBookCandidatePaths;
+    internal bool _showBookCandidateGallery
+    {
+        get => LookBook._showBookCandidateGallery;
+        set => LookBook._showBookCandidateGallery = value;
+    }
+    // Look editors / autosave
+    internal string _editDescription
+    {
+        get => LookEdit._editDescription;
+        set => LookEdit._editDescription = value;
+    }
+    internal string _editVisualLock
+    {
+        get => LookEdit._editVisualLock;
+        set => LookEdit._editVisualLock = value;
+    }
+    internal CancellationTokenSource? _lookSaveCts
+    {
+        get => LookEdit._lookSaveCts;
+        set => LookEdit._lookSaveCts = value;
+    }
+    internal string? _lookSaveHint
+    {
+        get => LookEdit._lookSaveHint;
+        set => LookEdit._lookSaveHint = value;
+    }
+    internal bool _panelPictureOpen
+    {
+        get => LookEdit._panelPictureOpen;
+        set => LookEdit._panelPictureOpen = value;
+    }
+    internal string _savedLookDescription
+    {
+        get => LookEdit._savedLookDescription;
+        set => LookEdit._savedLookDescription = value;
+    }
+    internal string _savedLookVisualLock
+    {
+        get => LookEdit._savedLookVisualLock;
+        set => LookEdit._savedLookVisualLock = value;
+    }
+    internal bool _savingLook
+    {
+        get => LookEdit._savingLook;
+        set => LookEdit._savingLook = value;
+    }
+    // Voice
     internal string _editVoiceLabel
     {
         get => Voice._editVoiceLabel;

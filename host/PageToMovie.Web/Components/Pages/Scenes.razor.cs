@@ -25,13 +25,19 @@ public partial class Scenes
     internal ScenesGeneration Gen => _gen ??= new ScenesGeneration(this);
     private ScenesListState? _list;
     internal ScenesListState List => _list ??= new ScenesListState(this);
-    private ScenesClipEditor? _clipEd;
-    internal ScenesClipEditor ClipEd => _clipEd ??= new ScenesClipEditor(this);
+    private ScenesClipSelection? _clipSel;
+    internal ScenesClipSelection ClipSel => _clipSel ??= new ScenesClipSelection(this);
+    private ScenesClipForm? _clipForm;
+    internal ScenesClipForm ClipForm => _clipForm ??= new ScenesClipForm(this);
+    private ScenesClipVersions? _clipVer;
+    internal ScenesClipVersions ClipVer => _clipVer ??= new ScenesClipVersions(this);
+    private ScenesClipRegen? _clipRegen;
+    internal ScenesClipRegen ClipRegen => _clipRegen ??= new ScenesClipRegen(this);
 
     /// <summary>Eagerly construct all domain modules (optional; lazy props also work).</summary>
     internal void EnsureDomains()
     {
-        _ = List; _ = ClipEd; _ = Gen; _ = Playback; _ = Dialogue; _ = Music; _ = History;
+        _ = List; _ = ClipSel; _ = ClipForm; _ = ClipVer; _ = ClipRegen; _ = Gen; _ = Playback; _ = Dialogue; _ = Music; _ = History;
     }
 
 
@@ -855,98 +861,98 @@ public partial class Scenes
     }
     internal bool _clipSortByDuration
     {
-        get => ClipEd._clipSortByDuration;
-        set => ClipEd._clipSortByDuration = value;
+        get => ClipSel._clipSortByDuration;
+        set => ClipSel._clipSortByDuration = value;
     }
     internal bool _clipSortAscending
     {
-        get => ClipEd._clipSortAscending;
-        set => ClipEd._clipSortAscending = value;
+        get => ClipSel._clipSortAscending;
+        set => ClipSel._clipSortAscending = value;
     }
     internal int? _selectedClip
     {
-        get => ClipEd._selectedClip;
-        set => ClipEd._selectedClip = value;
+        get => ClipForm._selectedClip;
+        set => ClipForm._selectedClip = value;
     }
     internal ClipSummary? _clip
     {
-        get => ClipEd._clip;
-        set => ClipEd._clip = value;
+        get => ClipForm._clip;
+        set => ClipForm._clip = value;
     }
     internal ClipEditRequest? _clipEditor
     {
-        get => ClipEd._clipEditor;
-        set => ClipEd._clipEditor = value;
+        get => ClipForm._clipEditor;
+        set => ClipForm._clipEditor = value;
     }
     internal bool _clipEditorIsNew
     {
-        get => ClipEd._clipEditorIsNew;
-        set => ClipEd._clipEditorIsNew = value;
+        get => ClipForm._clipEditorIsNew;
+        set => ClipForm._clipEditorIsNew = value;
     }
     internal HashSet<string> _clipEditorCast
     {
-        get => ClipEd._clipEditorCast;
-        set => ClipEd._clipEditorCast = value;
+        get => ClipForm._clipEditorCast;
+        set => ClipForm._clipEditorCast = value;
     }
-    internal HashSet<int> _selectedClips => ClipEd._selectedClips;
+    internal HashSet<int> _selectedClips => ClipSel._selectedClips;
     internal bool _showVideoEditPrompt
     {
-        get => ClipEd._showVideoEditPrompt;
-        set => ClipEd._showVideoEditPrompt = value;
+        get => ClipRegen._showVideoEditPrompt;
+        set => ClipRegen._showVideoEditPrompt = value;
     }
     internal string _videoEditPromptText
     {
-        get => ClipEd._videoEditPromptText;
-        set => ClipEd._videoEditPromptText = value;
+        get => ClipRegen._videoEditPromptText;
+        set => ClipRegen._videoEditPromptText = value;
     }
     internal string _preferredVideoEditor
     {
-        get => ClipEd._preferredVideoEditor;
-        set => ClipEd._preferredVideoEditor = value;
+        get => ClipRegen._preferredVideoEditor;
+        set => ClipRegen._preferredVideoEditor = value;
     }
     internal bool _showClipCompare
     {
-        get => ClipEd._showClipCompare;
-        set => ClipEd._showClipCompare = value;
+        get => ClipVer._showClipCompare;
+        set => ClipVer._showClipCompare = value;
     }
     internal int _compareSceneNumber
     {
-        get => ClipEd._compareSceneNumber;
-        set => ClipEd._compareSceneNumber = value;
+        get => ClipVer._compareSceneNumber;
+        set => ClipVer._compareSceneNumber = value;
     }
     internal int _compareClipNumber
     {
-        get => ClipEd._compareClipNumber;
-        set => ClipEd._compareClipNumber = value;
+        get => ClipVer._compareClipNumber;
+        set => ClipVer._compareClipNumber = value;
     }
     internal bool _loadingClipVersions
     {
-        get => ClipEd._loadingClipVersions;
-        set => ClipEd._loadingClipVersions = value;
+        get => ClipVer._loadingClipVersions;
+        set => ClipVer._loadingClipVersions = value;
     }
     internal bool _promotingVersion
     {
-        get => ClipEd._promotingVersion;
-        set => ClipEd._promotingVersion = value;
+        get => ClipVer._promotingVersion;
+        set => ClipVer._promotingVersion = value;
     }
     internal string? _clipCompareMessage
     {
-        get => ClipEd._clipCompareMessage;
-        set => ClipEd._clipCompareMessage = value;
+        get => ClipVer._clipCompareMessage;
+        set => ClipVer._clipCompareMessage = value;
     }
     internal List<ClipVersionItem>? _clipVersions
     {
-        get => ClipEd._clipVersions;
-        set => ClipEd._clipVersions = value;
+        get => ClipVer._clipVersions;
+        set => ClipVer._clipVersions = value;
     }
     internal List<ClipVersionItem>? _trashVersions
     {
-        get => ClipEd._trashVersions;
-        set => ClipEd._trashVersions = value;
+        get => ClipVer._trashVersions;
+        set => ClipVer._trashVersions = value;
     }
     internal string? _selectedCompareVersionId
     {
-        get => ClipEd._selectedCompareVersionId;
-        set => ClipEd._selectedCompareVersionId = value;
+        get => ClipVer._selectedCompareVersionId;
+        set => ClipVer._selectedCompareVersionId = value;
     }
 }
