@@ -8,41 +8,41 @@
 @using PageToMovie.Core.Models
 
 
-@if (Host._youTubeUpload is not null)
+@if (Share!._youTubeUpload is not null)
 {
     <p class="small text-muted mb-3" data-testid="review-youtube-last-upload">
-        Last YouTube upload: <strong>@Host._youTubeUpload.Title</strong> (@Host._youTubeUpload.PrivacyStatus, @Host._youTubeUpload.UploadedAt.ToLocalTime().ToString("g")) —
-        <a href="@Host._youTubeUpload.Url" target="_blank" rel="noopener">@Host._youTubeUpload.Url</a>
+        Last YouTube upload: <strong>@Share!._youTubeUpload.Title</strong> (@Share!._youTubeUpload.PrivacyStatus, @Share!._youTubeUpload.UploadedAt.ToLocalTime().ToString("g")) —
+        <a href="@Share!._youTubeUpload.Url" target="_blank" rel="noopener">@Share!._youTubeUpload.Url</a>
         @if (Session.IsAdmin)
         {
-            <a href="#" class="ms-2" @onclick="Host.DisconnectYouTubeAsync" @onclick:preventDefault="true">(disconnect channel)</a>
+            <a href="#" class="ms-2" @onclick="Share!.DisconnectYouTubeAsync" @onclick:preventDefault="true">(disconnect channel)</a>
         }
     </p>
 }
 
 
 
-@if (Host._showWipPlayer && Host._clientStitching)
+@if (Playback!._showWipPlayer && Playback!._clientStitching)
 {
     <div class="card mb-3 border-secondary">
         <div class="card-body py-2 small text-muted">
-            Combining full cut in browser… @Host._clientStitchStatus
+            Combining full cut in browser… @Playback!._clientStitchStatus
         </div>
     </div>
 }
-else if (Host._showWipPlayer && (!string.IsNullOrEmpty(Host._clientWipUrl) || Host._wipExists))
+else if (Playback!._showWipPlayer && (!string.IsNullOrEmpty(Playback!._clientWipUrl) || Playback!._wipExists))
 {
     <div class="card mb-3 border-success">
         <div class="card-header d-flex justify-content-between align-items-center py-2 flex-wrap gap-2">
             <span>
-                @if (!string.IsNullOrEmpty(Host._clientWipUrl))
+                @if (!string.IsNullOrEmpty(Playback!._clientWipUrl))
                 {
                     <span>WIP preview <span class="badge bg-info text-dark ms-1">client stitch</span></span>
                 }
                 else
                 {
-                    <span>WIP movie <code class="small">@(Host._wipPath ?? "assets/movie_wip.mp4")</code></span>
-                    @if (Host._wipStale)
+                    <span>WIP movie <code class="small">@(Playback!._wipPath ?? "assets/movie_wip.mp4")</code></span>
+                    @if (Playback!._wipStale)
                     {
                         <span class="badge bg-warning text-dark ms-1">stale</span>
                     }
@@ -52,14 +52,14 @@ else if (Host._showWipPlayer && (!string.IsNullOrEmpty(Host._clientWipUrl) || Ho
                     }
                 }
             </span>
-            @if (string.IsNullOrEmpty(Host._clientWipUrl) && !string.IsNullOrEmpty(Host._wipUpdatedAt))
+            @if (string.IsNullOrEmpty(Playback!._clientWipUrl) && !string.IsNullOrEmpty(Playback!._wipUpdatedAt))
             {
-                <span class="small text-muted">updated @Host._wipUpdatedAt · @Review.FormatBytes(Host._wipBytes)</span>
+                <span class="small text-muted">updated @Playback!._wipUpdatedAt · @Review.FormatBytes(Playback!._wipBytes)</span>
             }
-            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="Host.HideWipPlayerAsync">Hide</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="Playback!.HideWipPlayerAsync">Hide</button>
         </div>
         <div class="card-body py-2">
-            @{ var wipNeedsRebuild = Host._wipStale && string.IsNullOrEmpty(Host._clientWipUrl); }
+            @{ var wipNeedsRebuild = Playback!._wipStale && string.IsNullOrEmpty(Playback!._clientWipUrl); }
             @if (wipNeedsRebuild && MediaFolder.IsSyncing)
             {
                 <MediaDownloadProgress Label="Downloading media to rebuild the movie…"
@@ -69,24 +69,24 @@ else if (Host._showWipPlayer && (!string.IsNullOrEmpty(Host._clientWipUrl) || Ho
             else if (wipNeedsRebuild && !MediaFolder.IsConnected)
             {
                 <div class="py-3 text-center text-muted">
-                    <p class="mb-2">@Host._wipReason — connect your local media folder to rebuild this movie from your synced clips.</p>
-                    <button type="button" class="btn btn-sm btn-outline-primary" @onclick="Host.ConnectFolderForWipAsync">Connect folder</button>
+                    <p class="mb-2">@Playback!._wipReason — connect your local media folder to rebuild this movie from your synced clips.</p>
+                    <button type="button" class="btn btn-sm btn-outline-primary" @onclick="Playback!.ConnectFolderForWipAsync">Connect folder</button>
                 </div>
             }
             else
             {
-                @if (wipNeedsRebuild && !string.IsNullOrEmpty(Host._wipReason))
+                @if (wipNeedsRebuild && !string.IsNullOrEmpty(Playback!._wipReason))
                 {
-                    <p class="small text-warning mb-2">@Host._wipReason — showing the last built copy, not current.</p>
+                    <p class="small text-warning mb-2">@Playback!._wipReason — showing the last built copy, not current.</p>
                 }
                 <video controls playsinline autoplay="@(!wipNeedsRebuild)"
                        style="width:100%;max-height:70vh;background:#000;border-radius:0.35rem;"
-                       src="@(string.IsNullOrEmpty(Host._clientWipUrl) ? Host.WipServerSrc() : Host._clientWipUrl)"
-                       @key="Host._wipVideoKey"
+                       src="@(string.IsNullOrEmpty(Playback!._clientWipUrl) ? Playback!.WipServerSrc() : Playback!._clientWipUrl)"
+                       @key="Playback!._wipVideoKey"
                        onloadeddata="this.play().catch(function(){})">
                     Your browser does not support HTML5 video.
                 </video>
-                @if (string.IsNullOrEmpty(Host._clientWipUrl))
+                @if (string.IsNullOrEmpty(Playback!._clientWipUrl))
                 {
                     <div class="mt-2">
                         <a href="@Engine.WipMovieUrl(Host._projectId)" target="_blank" rel="noopener" class="small text-muted">Open in new tab</a>
@@ -97,30 +97,30 @@ else if (Host._showWipPlayer && (!string.IsNullOrEmpty(Host._clientWipUrl) || Ho
     </div>
 }
 
-@if (Host._showScenePlayer && Host._playingScene is int playSn && !Host._clientStitching)
+@if (Playback!._showScenePlayer && Playback!._playingScene is int playSn && !Playback!._clientStitching)
 {
     <div class="card mb-3 border-primary">
         <div class="card-header d-flex justify-content-between align-items-center py-2">
             <span>
                 Scene
                 <code class="small">S@(playSn.ToString("D2"))</code>
-                @if (!string.IsNullOrEmpty(Host._clientSceneUrl))
+                @if (!string.IsNullOrEmpty(Playback!._clientSceneUrl))
                 {
                     <span class="badge bg-info text-dark ms-1">client stitch</span>
                 }
             </span>
-            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="Host.HideScenePlayerAsync">Hide</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="Playback!.HideScenePlayerAsync">Hide</button>
         </div>
         <div class="card-body py-2">
             <video controls playsinline autoplay
                    style="width:100%;max-height:70vh;background:#000;border-radius:0.35rem;"
-                   src="@(string.IsNullOrEmpty(Host._clientSceneUrl) ? Host.SceneServerSrc(playSn) : Host._clientSceneUrl)"
-                   @key="Host._sceneVideoKey"
+                   src="@(string.IsNullOrEmpty(Playback!._clientSceneUrl) ? Playback!.SceneServerSrc(playSn) : Playback!._clientSceneUrl)"
+                   @key="Playback!._sceneVideoKey"
                    onloadeddata="this.play().catch(function(){})">
                 Your browser does not support HTML5 video.
             </video>
             <p class="small text-muted mb-0 mt-2">
-                @if (string.IsNullOrEmpty(Host._clientSceneUrl))
+                @if (string.IsNullOrEmpty(Playback!._clientSceneUrl))
                 {
                     <a href="@Engine.CompositeVideoUrl(Host._projectId, playSn)" target="_blank" rel="noopener">Open in new tab</a>
                 }
@@ -132,16 +132,16 @@ else if (Host._showWipPlayer && (!string.IsNullOrEmpty(Host._clientWipUrl) || Ho
         </div>
     </div>
 }
-else if (Host._showScenePlayer && Host._clientStitching)
+else if (Playback!._showScenePlayer && Playback!._clientStitching)
 {
     <div class="card mb-3 border-secondary">
         <div class="card-body py-2 small text-muted">
-            Combining scene in browser… @Host._clientStitchStatus
+            Combining scene in browser… @Playback!._clientStitchStatus
         </div>
     </div>
 }
 
-@if (Host._showClipPlayer && Host._playingClipScene is int clipSn && Host._playingClipNum is int clipCn)
+@if (Playback!._showClipPlayer && Playback!._playingClipScene is int clipSn && Playback!._playingClipNum is int clipCn)
 {
     <div class="card mb-3 border-info">
         <div class="card-header d-flex justify-content-between align-items-center py-2">
@@ -149,13 +149,13 @@ else if (Host._showScenePlayer && Host._clientStitching)
                 Clip
                 <code class="small">S@(clipSn.ToString("D2"))C@(clipCn.ToString("D2"))</code>
             </span>
-            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="Host.HideClipPlayer">Hide</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="Playback!.HideClipPlayer">Hide</button>
         </div>
         <div class="card-body py-2">
             <video controls playsinline autoplay
                    style="width:100%;max-height:50vh;background:#000;border-radius:0.35rem;"
-                   src="@Host.ClipServerSrc(clipSn, clipCn)"
-                   @key="Host._clipVideoKey"
+                   src="@Playback!.ClipServerSrc(clipSn, clipCn)"
+                   @key="Playback!._clipVideoKey"
                    onloadeddata="this.play().catch(function(){})">
                 Your browser does not support HTML5 video.
             </video>
@@ -172,33 +172,33 @@ else if (Host._showScenePlayer && Host._clientStitching)
             <div class="d-flex align-items-center gap-2">
                 <span class="fs-5">🎬</span>
                 <span class="fw-bold fs-6">Full Movie Player</span>
-                @if (string.IsNullOrEmpty(Host._clientWipUrl) && !string.IsNullOrEmpty(Host._wipUpdatedAt))
+                @if (string.IsNullOrEmpty(Playback!._clientWipUrl) && !string.IsNullOrEmpty(Playback!._wipUpdatedAt))
                 {
-                    <span class="badge bg-dark border border-secondary text-white-50">updated @Host._wipUpdatedAt · @Review.FormatBytes(Host._wipBytes)</span>
+                    <span class="badge bg-dark border border-secondary text-white-50">updated @Playback!._wipUpdatedAt · @Review.FormatBytes(Playback!._wipBytes)</span>
                 }
             </div>
-            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="Host.SetTabReview">Back to Review</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="List!.SetTabReview">Back to Review</button>
         </div>
         <div class="card-body p-3">
-            @if (Host._clientStitching)
+            @if (Playback!._clientStitching)
             {
                 <div class="p-5 text-center text-info">
                     <div class="spinner-border text-info me-2" role="status"></div>
                     <div class="fw-semibold mt-2">Stitching full movie preview in browser…</div>
-                    <div class="small text-muted mt-1">@Host._clientStitchStatus</div>
+                    <div class="small text-muted mt-1">@Playback!._clientStitchStatus</div>
                 </div>
             }
             else
             {
                 <video controls playsinline autoplay
                        style="width:100%;max-height:75vh;background:#000;border-radius:0.5rem;"
-                       src="@(string.IsNullOrEmpty(Host._clientWipUrl) ? Host.WipServerSrc() : Host._clientWipUrl)"
-                       @key="Host._wipVideoKey">
+                       src="@(string.IsNullOrEmpty(Playback!._clientWipUrl) ? Playback!.WipServerSrc() : Playback!._clientWipUrl)"
+                       @key="Playback!._wipVideoKey">
                     Your browser does not support HTML5 video.
                 </video>
                 <div class="d-flex justify-content-between align-items-center mt-3 pt-2 border-top border-secondary flex-wrap gap-2">
                     <span class="small text-muted">
-                        @if (!string.IsNullOrEmpty(Host._clientWipUrl))
+                        @if (!string.IsNullOrEmpty(Playback!._clientWipUrl))
                         {
                             <span>Stitched directly in browser from scene clips</span>
                         }
@@ -208,11 +208,11 @@ else if (Host._showScenePlayer && Host._clientStitching)
                         }
                     </span>
                     <div class="d-flex gap-2">
-                        @if (string.IsNullOrEmpty(Host._clientWipUrl))
+                        @if (string.IsNullOrEmpty(Playback!._clientWipUrl))
                         {
                             <a href="@Engine.WipMovieUrl(Host._projectId)" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary">Open MP4 in new tab</a>
                         }
-                        <button type="button" class="btn btn-sm btn-info text-white" @onclick="Host.SetTabShare">
+                        <button type="button" class="btn btn-sm btn-info text-white" @onclick="List!.SetTabShare">
                             Share film →
                         </button>
                     </div>

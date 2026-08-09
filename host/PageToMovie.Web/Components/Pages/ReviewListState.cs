@@ -13,7 +13,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Review
 {
     /// <summary>List domain for the Review page. Owns related UI state and behavior.</summary>
-    internal sealed class ReviewListState
+    public sealed class ReviewListState
     {
         private readonly Review S;
         public ReviewListState(Review host) => S = host;
@@ -53,7 +53,7 @@ public partial class Review
             {
                 if (tab == "play")
                 {
-                    await S.PlayWipAsync();
+                    await S.Playback.PlayWipAsync();
                     return;
                 }
                 _activeTab = null; // Toggle off / collapse card
@@ -63,12 +63,12 @@ public partial class Review
                 _activeTab = tab;
                 if (tab == "play")
                 {
-                    await S.PlayWipAsync();
+                    await S.Playback.PlayWipAsync();
                 }
                 else if (tab == "share")
                 {
-                    S.PrepopulateDemoFields();
-                    await S.RefreshYouTubeStatusAsync();
+                    S.Share.PrepopulateDemoFields();
+                    await S.Share.RefreshYouTubeStatusAsync();
                 }
             }
         }
@@ -92,7 +92,7 @@ public partial class Review
         internal void ToggleAllSceneGroups(bool expand)
         {
             _expandedSceneGroups.Clear();
-            if (expand && S._movieReport?.GroupFeedback is { Count: > 0 } groups)
+            if (expand && S.AutoReview._movieReport?.GroupFeedback is { Count: > 0 } groups)
             {
                 foreach (var g in groups)
                     _expandedSceneGroups.Add(g.SceneRange);
@@ -106,19 +106,19 @@ public partial class Review
             S._error = null;
             try
             {
-                await S.LoadPreferredVideoEditorAsync();
+                await S.Playback.LoadPreferredVideoEditorAsync();
                 var scenes = await S.Engine.GetScenesAsync(S._projectId);
                 _scenes = scenes?.Scenes ?? new();
                 var log = await S.Engine.GetEditLogAsync(S._projectId);
-                S._entries = log?.EditLog?.Entries ?? new();
+                S.AutoReview._entries = log?.EditLog?.Entries ?? new();
                 var revs = await S.Engine.GetClipReviewsAsync(S._projectId);
-                S._reviews = revs?.Reviews ?? new();
+                S.AutoReview._reviews = revs?.Reviews ?? new();
                 var jobs = await S.Engine.GetJobAsync();
-                S._job = jobs?.Job;
-                await S.RefreshWipMetaAsync();
-                await S.RefreshYouTubeStatusAsync();
+                S.Jobs._job = jobs?.Job;
+                await S.Playback.RefreshWipMetaAsync();
+                await S.Share.RefreshYouTubeStatusAsync();
                 var movieRes = await S.Engine.GetMovieReviewReportAsync(S._projectId);
-                S._movieReport = movieRes?.Report;
+                S.AutoReview._movieReport = movieRes?.Report;
                 if (_selectedScene is int sn)
                     await LoadSelectedDetailAsync(sn);
             }
@@ -132,12 +132,12 @@ public partial class Review
             try
             {
                 var log = await S.Engine.GetEditLogAsync(S._projectId);
-                S._entries = log?.EditLog?.Entries ?? new();
+                S.AutoReview._entries = log?.EditLog?.Entries ?? new();
                 var revs = await S.Engine.GetClipReviewsAsync(S._projectId);
-                S._reviews = revs?.Reviews ?? new();
+                S.AutoReview._reviews = revs?.Reviews ?? new();
                 var scenes = await S.Engine.GetScenesAsync(S._projectId);
                 _scenes = scenes?.Scenes ?? new();
-                await S.RefreshWipMetaAsync();
+                await S.Playback.RefreshWipMetaAsync();
                 if (_selectedScene is int snSelected)
                     await TryLoadDraftsForSceneAsync(snSelected);
                 if (_selectedScene is int sn)
@@ -156,7 +156,7 @@ public partial class Review
                 {
                     var d = await S.Engine.GetClipAutoReviewDraftAsync(S._projectId, scene, c);
                     if (d is not null)
-                        S._drafts[ReviewAutoReview.ClipKey(scene, c)] = d;
+                        S.AutoReview._drafts[ReviewAutoReview.ClipKey(scene, c)] = d;
                 }
                 catch { /* optional */ }
             }
@@ -180,7 +180,7 @@ public partial class Review
         internal async Task SelectSceneAsync(int scene)
         {
             _selectedScene = scene;
-            S.CloseApplyPanel();
+            S.AutoReview.CloseApplyPanel();
             await LoadSelectedDetailAsync(scene);
             await TryLoadDraftsForSceneAsync(scene);
         }
@@ -217,13 +217,13 @@ public partial class Review
             S._error = null;
             try
             {
-                await S.EnsureHubAsync();
+                await S.Jobs.EnsureHubAsync();
                 // Approve is review state only — Play stitches in the browser (no server remux).
-                await S.Engine.ApproveSceneAsync(S._projectId, scene, S._note);
+                await S.Engine.ApproveSceneAsync(S._projectId, scene, S.AutoReview._note);
                 S._message = $"Approved S{scene:D2}";
                 await SoftLoadAsync();
                 var jobs = await S.Engine.GetJobAsync();
-                S._job = jobs?.Job;
+                S.Jobs._job = jobs?.Job;
             }
             catch (Exception ex) { S._error = ex.Message; }
             finally { S._busy = false; }

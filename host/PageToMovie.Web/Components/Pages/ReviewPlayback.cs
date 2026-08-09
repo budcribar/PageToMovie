@@ -13,7 +13,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Review
 {
     /// <summary>Playback domain for the Review page. Owns related UI state and behavior.</summary>
-    internal sealed class ReviewPlayback
+    public sealed class ReviewPlayback
     {
         private readonly Review S;
         public ReviewPlayback(Review host) => S = host;
@@ -84,7 +84,7 @@ public partial class Review
 
 
         internal bool CanPlayMovie =>
-            _wipExists || _wipCanBuild || S.MediaFolder.IsConnected || S.MediaFolder.IsSyncing || S._scenes.Any(s => s.CompositeExists || s.ClipsOnDisk > 0);
+            _wipExists || _wipCanBuild || S.MediaFolder.IsConnected || S.MediaFolder.IsSyncing || S.List._scenes.Any(s => s.CompositeExists || s.ClipsOnDisk > 0);
 
 
         /// <summary>
@@ -95,7 +95,7 @@ public partial class Review
         internal bool HasGeneratedClips =>
             _wipExists
             || !string.IsNullOrEmpty(_clientWipUrl)
-            || S._scenes.Any(s => s.CompositeExists || s.ClipsOnDisk > 0);
+            || S.List._scenes.Any(s => s.CompositeExists || s.ClipsOnDisk > 0);
 
 
         internal string WipPlayTitle =>
@@ -202,13 +202,13 @@ public partial class Review
                 {
                     S._message = "Preparing movie for download…";
                     S.StateHasChanged();
-                    var movieUrl = await S.EnsureShareableMovieUrlAsync();
+                    var movieUrl = await S.Share.EnsureShareableMovieUrlAsync();
                     if (!string.IsNullOrEmpty(movieUrl))
                     {
                         var cleanPid = System.Text.RegularExpressions.Regex.Replace(S._projectId, @"[^\w\.-]", "_");
                         var fileName = $"{cleanPid}_full.mp4";
                         S._message = $"🎬 Downloaded movie to your PC — opening in {res.Editor ?? _preferredVideoEditor}." +
-                            (S._lastExportMissingMusic ? " (No local media folder connected — background music not included.)" : "");
+                            (S.Share._lastExportMissingMusic ? " (No local media folder connected — background music not included.)" : "");
                         await S.JS.InvokeVoidAsync("eval", $"const a=document.createElement('a');a.href='{movieUrl}';a.download='{fileName}';document.body.appendChild(a);a.click();document.body.removeChild(a);");
                     }
                     else
@@ -264,7 +264,7 @@ public partial class Review
             S._busy = true;
             try
             {
-                S._activeTab = "play";
+                S.List._activeTab = "play";
                 _showWipPlayer = true;
                 await RefreshWipMetaAsync();
 
@@ -285,7 +285,7 @@ public partial class Review
                     return;
                 }
 
-                var sceneNums = S._scenes
+                var sceneNums = S.List._scenes
                     .Where(s => s.CompositeExists || s.ClipsOnDisk > 0 || S.MediaFolder.IsConnected || S.MediaFolder.IsSyncing)
                     .OrderBy(s => s.SceneNumber)
                     .Select(s => s.SceneNumber)
@@ -314,7 +314,7 @@ public partial class Review
                     await S.Stitch.RevokePreviewUrlAsync();
                     var meta = await S.Engine.GetWipMovieMetaAsync(S._projectId);
                     var stale = meta?.StaleScenes?.ToHashSet() ?? new HashSet<int>();
-                    var segs = await S.Stitch.CollectAndMixSceneSegmentInfosAsync(S._projectId, sceneNums, S._scenes, stale);
+                    var segs = await S.Stitch.CollectAndMixSceneSegmentInfosAsync(S._projectId, sceneNums, S.List._scenes, stale);
                     if (segs.Count == 0)
                     {
                         S._error = "No scene videos were found";
@@ -395,7 +395,7 @@ public partial class Review
             {
                 _showClipPlayer = false;
                 await RefreshWipMetaAsync();
-                var summary = S._scenes.FirstOrDefault(s => s.SceneNumber == scene);
+                var summary = S.List._scenes.FirstOrDefault(s => s.SceneNumber == scene);
                 var stale = (await S.Engine.GetWipMovieMetaAsync(S._projectId))?.StaleScenes?.Contains(scene) == true;
                 var compositeOk = summary?.CompositeExists == true;
                 var needsStitch = !compositeOk || stale;

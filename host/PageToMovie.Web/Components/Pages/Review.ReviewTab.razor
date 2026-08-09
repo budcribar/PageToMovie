@@ -8,7 +8,7 @@
 @using PageToMovie.Core.Models
 
 
-    @if (Host._isReviewing)
+    @if (AutoReview!._isReviewing)
     {
         <div class="card p-4 mb-3 bg-dark text-white border-info shadow" data-testid="review-ai-progress">
             <div class="d-flex justify-content-between align-items-center mb-2">
@@ -16,19 +16,19 @@
                     <div class="spinner-border text-info" role="status" style="width: 2rem; height: 2rem;"></div>
                     <div>
                         <h5 class="fw-bold text-white mb-0">🤖 Executive AI Movie Review in Progress</h5>
-                        <div class="small text-light mt-1">@Host._reviewProgressStatus</div>
+                        <div class="small text-light mt-1">@AutoReview!._reviewProgressStatus</div>
                     </div>
                 </div>
-                <span class="badge fs-6 text-bg-info px-3 py-2">@Host._reviewProgressPct%</span>
+                <span class="badge fs-6 text-bg-info px-3 py-2">@AutoReview!._reviewProgressPct%</span>
             </div>
             <div class="progress mb-2" style="height: 18px; background: rgba(255,255,255,0.15); border-radius: 8px;">
                 <div class="progress-bar progress-bar-striped progress-bar-animated bg-info"
                      role="progressbar"
-                     style="width: @(Host._reviewProgressPct)%; font-weight: 700; font-size: 0.85rem;"
-                     aria-valuenow="@Host._reviewProgressPct"
+                     style="width: @(AutoReview!._reviewProgressPct)%; font-weight: 700; font-size: 0.85rem;"
+                     aria-valuenow="@AutoReview!._reviewProgressPct"
                      aria-valuemin="0"
                      aria-valuemax="100">
-                    @Host._reviewProgressPct%
+                    @AutoReview!._reviewProgressPct%
                 </div>
             </div>
             <div class="alert alert-info py-2 px-3 mb-0 small text-start">
@@ -37,14 +37,14 @@
         </div>
     }
 
-    @if (Host._movieReport is not null)
+    @if (AutoReview!._movieReport is not null)
     {
-                <Review_MovieReport Report="Host._movieReport"
-                            OnDismiss="@( () => Host._movieReport = null)"
-                            OnExpandAll="@(() => Host.ToggleAllSceneGroups(true))"
-                            OnCollapseAll="@(() => Host.ToggleAllSceneGroups(false))"
-                            OnToggleGroup="Host.ToggleSceneGroupExpand"
-                            IsGroupExpanded="Host.IsSceneGroupExpanded" />
+                <Review_MovieReport Report="AutoReview!._movieReport"
+                            OnDismiss="@( () => AutoReview!._movieReport = null)"
+                            OnExpandAll="@(() => List!.ToggleAllSceneGroups(true))"
+                            OnCollapseAll="@(() => List!.ToggleAllSceneGroups(false))"
+                            OnToggleGroup="List!.ToggleSceneGroupExpand"
+                            IsGroupExpanded="List!.IsSceneGroupExpanded" />
 
     }
     else
@@ -61,8 +61,8 @@
                                          SettingsHref="@Caps.VideoReviewSettingsHref"
                                          TestId="review-empty-cta-cap">
                     <button class="btn btn-info text-white fw-bold px-4"
-                            disabled="@(Host._busy || Host.JobRunning)"
-                            @onclick="Host.StartFullMovieReviewAsync">
+                            disabled="@(Host._busy || Jobs!.JobRunning)"
+                            @onclick="AutoReview!.StartFullMovieReviewAsync">
                         ⚡ @L["ReviewPage.RunAiContinuityReview"]
                     </button>
                 </CapabilityLockedControl>
@@ -81,7 +81,7 @@
                 <span class="small text-muted fw-normal">@L["ReviewPage.PlayStitchesHint"]</span>
             </div>
             <div class="card-body p-0">
-                @if (Host._scenes.Count == 0)
+                @if (List!._scenes.Count == 0)
                 {
                     <EmptyState Message="No scenes — finish Adaptation first." CssClass="text-muted p-3 mb-0" />
                 }
@@ -91,28 +91,28 @@
                         <table class="table table-sm mb-0 align-middle">
                             <thead>
                                 <tr>
-                                    <th style="cursor:pointer; user-select:none;" @onclick='() => Host.ToggleSceneSort("number")' title="Sort by scene number">
-                                        @L["ReviewPage.Scene"] @(Host._sceneSortBy == "number" ? (Host._sceneSortAsc ? "▲" : "▼") : "⇅")
+                                    <th style="cursor:pointer; user-select:none;" @onclick='() => List!.ToggleSceneSort("number")' title="Sort by scene number">
+                                        @L["ReviewPage.Scene"] @(List!._sceneSortBy == "number" ? (List!._sceneSortAsc ? "▲" : "▼") : "⇅")
                                     </th>
                                     <th>@L["ReviewPage.Clips"]</th>
-                                    <th style="cursor:pointer; user-select:none;" @onclick='() => Host.ToggleSceneSort("duration")' title="Sort by duration">
-                                        @L["ReviewPage.Dur"] @(Host._sceneSortBy == "duration" ? (Host._sceneSortAsc ? "▲" : "▼") : "⇅")
+                                    <th style="cursor:pointer; user-select:none;" @onclick='() => List!.ToggleSceneSort("duration")' title="Sort by duration">
+                                        @L["ReviewPage.Dur"] @(List!._sceneSortBy == "duration" ? (List!._sceneSortAsc ? "▲" : "▼") : "⇅")
                                     </th>
                                     <th>@L["ReviewPage.Composite"]</th>
                                     <th></th>
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach (var s in Host.SortedReviewScenes)
+                                @foreach (var s in AutoReview!.SortedReviewScenes)
                                 {
                                     var sn = s.SceneNumber;
                                     var clipsDone = s.ClipsComplete || (s.ClipCount > 0 && s.ClipsOnDisk >= s.ClipCount);
-                                    <tr class="@(Host._selectedScene == sn ? "table-active" : "")" data-testid="review-scene-row" data-scene-number="@sn" data-approved="@s.IsApproved.ToString().ToLowerInvariant()">
+                                    <tr class="@(List!._selectedScene == sn ? "table-active" : "")" data-testid="review-scene-row" data-scene-number="@sn" data-approved="@s.IsApproved.ToString().ToLowerInvariant()">
                                         <td class="text-nowrap">
                                             <span class="badge @(clipsDone ? "bg-success text-white" : "bg-warning text-dark") px-2 py-1 rounded-pill"
                                                   style="font-weight:600;cursor:pointer;"
                                                   title="@(clipsDone ? "All clips on disk" : "Missing clips")"
-                                                  @onclick="() => Host.SelectSceneAsync(sn)">
+                                                  @onclick="() => List!.SelectSceneAsync(sn)">
                                                 S@(sn.ToString("D2"))
                                             </span>
                                             <div class="small text-muted mt-1">@(string.IsNullOrEmpty(s.Setting) ? "—" : s.Setting)</div>
@@ -146,18 +146,18 @@
                                             <div class="d-flex flex-wrap gap-1 justify-content-end">
                                                 <button class="btn btn-sm btn-success"
                                                         data-testid="@($"review-play-scene-{sn}")"
-                                                        disabled="@(Host._busy || Host.JobRunning || (s.ClipsOnDisk == 0 && !s.CompositeExists))"
+                                                        disabled="@(Host._busy || Jobs!.JobRunning || (s.ClipsOnDisk == 0 && !s.CompositeExists))"
                                                         title="Play scene (browser stitch from clips)"
-                                                        @onclick="() => Host.PlaySceneAsync(sn)">
+                                                        @onclick="() => Playback!.PlaySceneAsync(sn)">
                                                     ▶ Play
                                                 </button>
                                                 @if (s.IsApproved)
                                                 {
                                                     <button class="btn btn-sm btn-success"
                                                             data-testid="@($"review-approve-{sn}")"
-                                                            disabled="@(Host._busy || Host.JobRunning)"
+                                                            disabled="@(Host._busy || Jobs!.JobRunning)"
                                                             title="Scene is approved. Click to toggle."
-                                                            @onclick="() => Host.ApproveAsync(sn)">
+                                                            @onclick="() => List!.ApproveAsync(sn)">
                                                         ✓ Approved
                                                     </button>
                                                 }
@@ -165,15 +165,15 @@
                                                 {
                                                     <button class="btn btn-sm btn-outline-success"
                                                             data-testid="@($"review-approve-{sn}")"
-                                                            disabled="@(Host._busy || Host.JobRunning)"
+                                                            disabled="@(Host._busy || Jobs!.JobRunning)"
                                                             title="Mark scene approved"
-                                                            @onclick="() => Host.ApproveAsync(sn)">
+                                                            @onclick="() => List!.ApproveAsync(sn)">
                                                         ☐ Approve
                                                     </button>
                                                 }
                                                 <button class="btn btn-sm btn-link"
                                                         data-testid="@($"review-clips-{sn}")"
-                                                        @onclick="() => Host.SelectSceneAsync(sn)">
+                                                        @onclick="() => List!.SelectSceneAsync(sn)">
                                                     Clips
                                                 </button>
                                             </div>
@@ -187,16 +187,16 @@
             </div>
         </div>
 
-        @if (Host._selectedScene is int sel)
+        @if (List!._selectedScene is int sel)
         {
             <div class="card mt-3">
                 <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <span>S@(sel.ToString("D2")) clip review</span>
                     <div class="d-flex gap-1">
                         <button class="btn btn-sm btn-success"
-                                disabled="@(Host._busy || Host.JobRunning || (Host.ClipCountOnDisk(sel) == 0 && !Host.SceneHasComposite(sel)))"
+                                disabled="@(Host._busy || Jobs!.JobRunning || (List!.ClipCountOnDisk(sel) == 0 && !List!.SceneHasComposite(sel)))"
                                 title="Play scene (browser stitch from clips)"
-                                @onclick="() => Host.PlaySceneAsync(sel)">
+                                @onclick="() => Playback!.PlaySceneAsync(sel)">
                             ▶ Play scene
                         </button>
                     </div>
@@ -204,19 +204,19 @@
                 <div class="card-body">
                     <div class="mb-2">
                         <label class="form-label small">Note (required to Pass after auto-review fail)</label>
-                        <input class="form-control form-control-sm" @bind="Host._note" disabled="@Host._busy"
+                        <input class="form-control form-control-sm" @bind="AutoReview!._note" disabled="@Host._busy"
                                placeholder="Override reason if auto-review failed…" />
                     </div>
                     <div class="d-flex flex-column gap-3">
-                        @for (var c = 1; c <= Host.ClipCountFor(sel); c++)
+                        @for (var c = 1; c <= List!.ClipCountFor(sel); c++)
                         {
                             var cn = c;
                             var key = $"S{sel:D2}C{cn:D2}";
-                            var st = Host._reviews.TryGetValue(key, out var r) ? r : "—";
-                            var onDisk = Host.ClipOnDisk(sel, cn);
-                            var autoBusy = Host.IsAutoReviewRunning(sel, cn);
-                            var draft = Host.GetLocalDraft(sel, cn);
-                            var editing = Host._editKey == key;
+                            var st = AutoReview!._reviews.TryGetValue(key, out var r) ? r : "—";
+                            var onDisk = List!.ClipOnDisk(sel, cn);
+                            var autoBusy = AutoReview!.IsAutoReviewRunning(sel, cn);
+                            var draft = AutoReview!.GetLocalDraft(sel, cn);
+                            var editing = AutoReview!._editKey == key;
                             <div class="border rounded p-2 small">
                                 <div class="d-flex flex-wrap align-items-center gap-2">
                                     <span class="badge @(onDisk ? "bg-success text-white" : "bg-warning text-dark") px-2 py-1 rounded-pill"
@@ -233,14 +233,14 @@
                                 <div class="btn-group btn-group-sm mt-1 flex-wrap">
                                     <button class="btn btn-outline-dark" disabled="@(Host._busy || !onDisk)"
                                             title="Play this clip"
-                                            @onclick="() => Host.PlayClip(sel, cn)">▶</button>
+                                            @onclick="() => Playback!.PlayClip(sel, cn)">▶</button>
                                     <button class="btn btn-outline-primary"
                                             data-testid="@($"review-auto-{sel}-{cn}")"
                                             data-scene="@sel"
                                             data-clip="@cn"
-                                            disabled="@(Host._busy || !onDisk || Host.JobRunning || autoBusy || !Caps.VideoReviewReady)"
+                                            disabled="@(Host._busy || !onDisk || Jobs!.JobRunning || autoBusy || !Caps.VideoReviewReady)"
                                             title="@(Caps.VideoReviewReady ? "AI review: this clip + end of previous (does not change files)" : Caps.VideoReviewBlockedReason)"
-                                            @onclick="() => Host.StartAutoReviewAsync(sel, cn)">
+                                            @onclick="() => AutoReview!.StartAutoReviewAsync(sel, cn)">
                                         @(autoBusy ? "Reviewing…" : draft is not null && !editing ? "Review again" : "Review")
                                     </button>
                                     @if (draft is not null && !editing && !autoBusy)
@@ -249,7 +249,7 @@
                                                 data-testid="@($"review-apply-open-{sel}-{cn}")"
                                                 disabled="@Host._busy"
                                                 title="Show suggested edits to accept or change"
-                                                @onclick="() => Host.OpenApplyPanel(sel, cn)">
+                                                @onclick="() => AutoReview!.OpenApplyPanel(sel, cn)">
                                             Apply suggestions
                                         </button>
                                     }
@@ -257,31 +257,31 @@
                                     {
                                         <button class="btn btn-warning"
                                                 data-testid="@($"review-apply-regen-{sel}-{cn}")"
-                                                disabled="@(Host._busy || Host.JobRunning || !Host.HasIncludedEdits())"
+                                                disabled="@(Host._busy || Jobs!.JobRunning || !AutoReview!.HasIncludedEdits())"
                                                 title="Save accepted edits and re-generate this clip"
-                                                @onclick="() => Host.ApplyAndRegenAsync(sel, cn)">
+                                                @onclick="() => AutoReview!.ApplyAndRegenAsync(sel, cn)">
                                             Apply + regen
                                         </button>
                                         <button class="btn btn-outline-secondary" disabled="@Host._busy"
-                                                @onclick="Host.CloseApplyPanel">Cancel</button>
+                                                @onclick="AutoReview!.CloseApplyPanel">Cancel</button>
                                     }
                                     <button class="btn btn-outline-success" data-testid="@($"review-pass-{sel}-{cn}")" disabled="@Host._busy"
-                                            @onclick="() => Host.ReviewAsync(sel, cn, Review.passStatus)">Pass</button>
+                                            @onclick="() => AutoReview!.ReviewAsync(sel, cn, Review.passStatus)">Pass</button>
                                     <button class="btn btn-outline-danger" data-testid="@($"review-fail-{sel}-{cn}")" disabled="@Host._busy"
-                                            @onclick="() => Host.ReviewAsync(sel, cn, Review.failStatus)">Fail</button>
+                                            @onclick="() => AutoReview!.ReviewAsync(sel, cn, Review.failStatus)">Fail</button>
                                 </div>
-                                @if (autoBusy && Host._job is not null)
+                                @if (autoBusy && Jobs!._job is not null)
                                 {
-                                    var pct = Host._job.Status == "queued" || Host._job.Total <= 0
+                                    var pct = Jobs!._job.Status == "queued" || Jobs!._job.Total <= 0
                                         ? 8
-                                        : (int)Math.Round(100.0 * Math.Clamp(Host._job.Index, 0, Host._job.Total) / Math.Max(1, Host._job.Total));
-                                    if (Host._job.Status == "running" && Host._job.Index <= 0) pct = 0;
+                                        : (int)Math.Round(100.0 * Math.Clamp(Jobs!._job.Index, 0, Jobs!._job.Total) / Math.Max(1, Jobs!._job.Total));
+                                    if (Jobs!._job.Status == "running" && Jobs!._job.Index <= 0) pct = 0;
                                     <div class="mt-2">
                                         <div class="d-flex justify-content-between text-muted">
-                                            <span>@(Host._job.Message ?? "Reviewing…")</span>
-                                            @if (Host._job.Total == 100 && Host._job.Status == "running")
+                                            <span>@(Jobs!._job.Message ?? "Reviewing…")</span>
+                                            @if (Jobs!._job.Total == 100 && Jobs!._job.Status == "running")
                                             {
-                                                <span>@Host._job.Index%</span>
+                                                <span>@Jobs!._job.Index%</span>
                                             }
                                         </div>
                                         <div class="progress mt-1" style="height: 0.45rem;">
@@ -304,18 +304,18 @@
                                         }
                                     </div>
                                 }
-                                @if (editing && Host._editRows is not null)
+                                @if (editing && AutoReview!._editRows is not null)
                                 {
                                     <div class="mt-2 border-top pt-2">
                                         @if (!string.IsNullOrEmpty(draft?.Note))
                                         {
                                             <div class="mb-2 text-muted">@draft!.Note</div>
                                         }
-                                        @if (Host._editRows.Count == 0)
+                                        @if (AutoReview!._editRows.Count == 0)
                                         {
                                             <p class="text-muted mb-1">No field changes suggested. You can Pass or Apply + regen as-is.</p>
                                         }
-                                        @foreach (var row in Host._editRows)
+                                        @foreach (var row in AutoReview!._editRows)
                                         {
                                             <div class="border rounded p-2 mb-2 bg-light">
                                                 <div class="form-check mb-1">

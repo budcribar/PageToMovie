@@ -15,4 +15,12 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Review_ReviewTab
 {
     [CascadingParameter] public Review Host { get; set; } = default!;
+    [CascadingParameter] public Review.ReviewListState? List { get; set; }
+
+    [CascadingParameter] public Review.ReviewJobs? Jobs { get; set; }
+
+    [CascadingParameter] public Review.ReviewPlayback? Playback { get; set; }
+
+    [CascadingParameter] public Review.ReviewAutoReview? AutoReview { get; set; }
+
 }

@@ -32,13 +32,13 @@
 else
 {
 <div class="d-flex align-items-center justify-content-end flex-wrap gap-2 mb-3">
-    @if (_scenes.Count > 0)
+    @if (List._scenes.Count > 0)
     {
-        var approvedCount = _scenes.Count(s => s.IsApproved);
-        var pct = Math.Round((approvedCount * 100.0) / Math.Max(1, _scenes.Count));
+        var approvedCount = List._scenes.Count(s => s.IsApproved);
+        var pct = Math.Round((approvedCount * 100.0) / Math.Max(1, List._scenes.Count));
         <div class="d-flex align-items-center gap-2 bg-dark border border-secondary px-3 py-1.5 rounded-pill text-white small shadow-sm"
-             data-testid="review-checklist" data-approved-count="@approvedCount" data-scene-count="@_scenes.Count">
-            <span><strong>Checklist:</strong> @approvedCount of @_scenes.Count scenes approved (@pct%)</span>
+             data-testid="review-checklist" data-approved-count="@approvedCount" data-scene-count="@List._scenes.Count">
+            <span><strong>Checklist:</strong> @approvedCount of @List._scenes.Count scenes approved (@pct%)</span>
             <div class="progress ms-1" style="width: 80px; height: 6px;">
                 <div class="progress-bar bg-success" role="progressbar" style="width: @pct%"></div>
             </div>
@@ -47,7 +47,7 @@ else
 </div>
 
 <InlineAlert Message="@_error" />
-@if (!_isReviewing)
+@if (!AutoReview._isReviewing)
 {
     <InlineAlert Message="@_message" Variant="info" />
 }
@@ -55,64 +55,64 @@ else
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4 p-2.5 rounded border border-secondary" style="background-color: #0f172a;">
     <div class="btn-group" role="group" aria-label="Review page views">
         <button type="button" 
-                class="btn @(_activeTab == "review" ? "btn-primary fw-bold" : "btn-outline-secondary text-white-50") px-3"
+                class="btn @(List._activeTab == "review" ? "btn-primary fw-bold" : "btn-outline-secondary text-white-50") px-3"
                 data-testid="review-tab-review"
-                @onclick='() => ToggleTabAsync("review")'>
+                @onclick='() => List.ToggleTabAsync("review")'>
             🤖 @L["ReviewPage.ReviewAndApprove"]
         </button>
         <button type="button" 
-                class="btn @(_activeTab == "play" ? "btn-success fw-bold" : "btn-outline-secondary text-white-50") px-3"
+                class="btn @(List._activeTab == "play" ? "btn-success fw-bold" : "btn-outline-secondary text-white-50") px-3"
                 data-testid="review-tab-play"
-                disabled="@(_busy || JobRunning || !HasGeneratedClips)"
-                @onclick='() => ToggleTabAsync("play")'
-                title="@(HasGeneratedClips ? WipPlayTitle : "Generate clips first")">
+                disabled="@(_busy || Jobs.JobRunning || !Playback.HasGeneratedClips)"
+                @onclick='() => List.ToggleTabAsync("play")'
+                title="@(Playback.HasGeneratedClips ? Playback.WipPlayTitle : "Generate clips first")">
             ▶ @L["ReviewPage.Play"]
         </button>
         <button type="button" 
-                class="btn @(_activeTab == "share" ? "btn-info text-white fw-bold" : "btn-outline-secondary text-white-50") px-3"
+                class="btn @(List._activeTab == "share" ? "btn-info text-white fw-bold" : "btn-outline-secondary text-white-50") px-3"
                 data-testid="review-tab-share"
-                disabled="@(_busy || JobRunning || !HasGeneratedClips)"
-                @onclick='() => ToggleTabAsync("share")'
-                title="@(HasGeneratedClips ? null : "Generate clips first")">
+                disabled="@(_busy || Jobs.JobRunning || !Playback.HasGeneratedClips)"
+                @onclick='() => List.ToggleTabAsync("share")'
+                title="@(Playback.HasGeneratedClips ? null : "Generate clips first")">
             📤 @L["ReviewPage.ShareAndExport"]
         </button>
         <button type="button"
                 class="btn btn-outline-info text-info px-3"
                 data-testid="review-open-editor"
-                disabled="@(_busy || JobRunning || !HasGeneratedClips)"
-                @onclick="OpenInExternalEditorAsync"
-                title="@(HasGeneratedClips ? $"Open full cut video in {_preferredVideoEditor}" : "Generate clips first")">
-            🎬 @L.Format("ReviewPage.OpenInEditor", _preferredVideoEditor)
+                disabled="@(_busy || Jobs.JobRunning || !Playback.HasGeneratedClips)"
+                @onclick="Playback.OpenInExternalEditorAsync"
+                title="@(Playback.HasGeneratedClips ? $"Open full cut video in {Playback._preferredVideoEditor}" : "Generate clips first")">
+            🎬 @L.Format("ReviewPage.OpenInEditor", Playback._preferredVideoEditor)
         </button>
         <button type="button"
                 class="btn btn-outline-primary px-3"
                 data-testid="review-dub-my-voice"
-                disabled="@(_busy || JobRunning || !HasGeneratedClips || _dubbing)"
-                @onclick="DubInMyVoiceAsync"
-                title="@(HasGeneratedClips ? "Replace the narrator with your recorded voice, then download" : "Generate clips first")">
-            🎙️ @(_dubbing ? "Making your version…" : L["ReviewPage.MakeInMyVoice"])
+                disabled="@(_busy || Jobs.JobRunning || !Playback.HasGeneratedClips || Playback._dubbing)"
+                @onclick="Playback.DubInMyVoiceAsync"
+                title="@(Playback.HasGeneratedClips ? "Replace the narrator with your recorded voice, then download" : "Generate clips first")">
+            🎙️ @(Playback._dubbing ? "Making your version…" : L["ReviewPage.MakeInMyVoice"])
         </button>
-        @if (_dubbing && !string.IsNullOrWhiteSpace(_dubStatus))
+        @if (Playback._dubbing && !string.IsNullOrWhiteSpace(Playback._dubStatus))
         {
-            <span class="small text-info align-self-center" data-testid="review-dub-status">@_dubStatus</span>
+            <span class="small text-info align-self-center" data-testid="review-dub-status">@Playback._dubStatus</span>
         }
     </div>
 
     <div class="d-flex align-items-center gap-2">
-        @if (_activeTab == "review")
+        @if (List._activeTab == "review")
         {
             <CapabilityLockedControl Enabled="Caps.VideoReviewReady"
                                      BlockedReason="@Caps.VideoReviewBlockedReason"
                                      SettingsHref="@Caps.VideoReviewSettingsHref"
                                      TestId="review-auto-all-cap">
                 <button class="btn btn-sm btn-outline-info fw-semibold" data-testid="review-auto-all"
-                        disabled="@(_busy || JobRunning || _isReviewing || !HasGeneratedClips)"
-                        title="@(HasGeneratedClips ? "Run AI visual quality and continuity review on the full movie" : "Generate clips first")"
-                        @onclick="StartFullMovieReviewAsync">
-                    @if (_isReviewing)
+                        disabled="@(_busy || Jobs.JobRunning || AutoReview._isReviewing || !Playback.HasGeneratedClips)"
+                        title="@(Playback.HasGeneratedClips ? "Run AI visual quality and continuity review on the full movie" : "Generate clips first")"
+                        @onclick="AutoReview.StartFullMovieReviewAsync">
+                    @if (AutoReview._isReviewing)
                     {
                         <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
-                        <span>Reviewing (@_reviewProgressPct%)…</span>
+                        <span>Reviewing (@AutoReview._reviewProgressPct%)…</span>
                     }
                     else
                     {
@@ -121,64 +121,70 @@ else
                 </button>
             </CapabilityLockedControl>
         }
-        @if (JobRunning)
+        @if (Jobs.JobRunning)
         {
-            <BusyButton Label="Cancel job" Busy="_busy" CssClass="btn btn-sm btn-outline-danger" OnClick="CancelAsync" />
+            <BusyButton Label="Cancel job" Busy="_busy" CssClass="btn btn-sm btn-outline-danger" OnClick="Jobs.CancelAsync" />
         }
     </div>
 </div>
 
-@if (_job is not null &&
-     (_job.Status is "running" or "done" or "error" or "cancelled") &&
-     (_job.Kind is "remux" or "scene" or "batch" or "book_prepare" or "book_import" or "stage1" or "stage2"))
+@if (Jobs._job is not null &&
+     (Jobs._job.Status is "running" or "done" or "error" or "cancelled") &&
+     (Jobs._job.Kind is "remux" or "scene" or "batch" or "book_prepare" or "book_import" or "stage1" or "stage2"))
 {
     var reviewJobMsg = string.Join(" ", new[]
     {
-        _job.Message,
-        _job.Scene is int jsn ? $"S{jsn:D2}" : null,
-        _job.Clip is int jcn ? $"C{jcn}" : null,
-        _job.Total > 0 && string.Equals(_job.Status, "running", StringComparison.OrdinalIgnoreCase)
-            && KeyFormatting.EstimateTimeRemaining(_job.StartedAt, _job.Index, _job.Total) is { } eta
+        Jobs._job.Message,
+        Jobs._job.Scene is int jsn ? $"S{jsn:D2}" : null,
+        Jobs._job.Clip is int jcn ? $"C{jcn}" : null,
+        Jobs._job.Total > 0 && string.Equals(Jobs._job.Status, "running", StringComparison.OrdinalIgnoreCase)
+            && KeyFormatting.EstimateTimeRemaining(Jobs._job.StartedAt, Jobs._job.Index, Jobs._job.Total) is { } eta
             ? eta : null
     }.Where(s => !string.IsNullOrWhiteSpace(s))!);
-    <JobProgressCard Status="@_job.Status"
-                     Message="@(string.IsNullOrWhiteSpace(reviewJobMsg) ? _job.Status : reviewJobMsg)"
-                     Index="_job.Index"
-                     Total="_job.Total"
-                     Kind="@_job.Kind"
-                     ShowLog="_job.Log.Count > 0"
-                     LogLines="_job.Log"
+    <JobProgressCard Status="@Jobs._job.Status"
+                     Message="@(string.IsNullOrWhiteSpace(reviewJobMsg) ? Jobs._job.Status : reviewJobMsg)"
+                     Index="Jobs._job.Index"
+                     Total="Jobs._job.Total"
+                     Kind="@Jobs._job.Kind"
+                     ShowLog="Jobs._job.Log.Count > 0"
+                     LogLines="Jobs._job.Log"
                      LogMaxLines="30"
                      TestId="review-job" />
 }
 
 <CascadingValue Value="this" IsFixed="true">
-@if (_activeTab == "review")
+    <CascadingValue Value="List" IsFixed="true">
+    <CascadingValue Value="Jobs" IsFixed="true">
+    <CascadingValue Value="Playback" IsFixed="true">
+    <CascadingValue Value="Share" IsFixed="true">
+    <CascadingValue Value="AutoReview" IsFixed="true">
+
+@if (List._activeTab == "review")
 {
     <Review_ReviewTab />
     <div class="card mt-3 border-secondary-subtle">
         <div class="card-header py-2 bg-transparent">
             <button type="button"
                     class="btn btn-link text-decoration-none text-body p-0 d-flex align-items-center gap-2 w-100 text-start"
-                    @onclick="() => _showActivity = !_showActivity"
-                    aria-expanded="@_showActivity">
-                <span class="small text-muted" style="width:1rem;display:inline-block;">@(_showActivity ? "▾" : "▸")</span>
+                    @onclick="() => List._showActivity = !List._showActivity"
+                    aria-expanded="@List._showActivity">
+                <span class="small text-muted" style="width:1rem;display:inline-block;">@(List._showActivity ? "▾" : "▸")</span>
                 <span>Activity / history</span>
-                <span class="badge bg-light text-dark border ms-1">@_entries.Count</span>
+                <span class="badge bg-light text-dark border ms-1">@AutoReview._entries.Count</span>
                 <span class="small text-muted ms-auto fw-normal">audit trail of pass / fail / approve</span>
             </button>
         </div>
-        @if (_showActivity)
+        @if (List._showActivity)
         {
             <div class="card-body p-0 border-top">
-                @if (_entries.Count == 0)
+                @if (AutoReview._entries.Count == 0)
                 {
                     <p class="text-muted p-3 mb-0">No entries yet.</p>
                 }
                 else
                 {
                     <ul class="list-group list-group-flush">
-                        @foreach (var e in _entries.Take(40))
+                        @foreach (var e in AutoReview._entries.Take(40))
                         {
                             <li class="list-group-item small">
                                 <div class="d-flex justify-content-between">
@@ -208,13 +214,19 @@ else
         }
     </div>
 }
-else if (_activeTab == "play")
+else if (List._activeTab == "play")
 {
     <Review_PlayTab />
 }
-else if (_activeTab == "share")
+else if (List._activeTab == "share")
 {
     <Review_ShareTab />
 }
+
+    </CascadingValue>
+    </CascadingValue>
+    </CascadingValue>
+    </CascadingValue>
+    </CascadingValue>
 </CascadingValue>
 } @* end CanReview gate *@

@@ -13,7 +13,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Review
 {
     /// <summary>AutoReview domain for the Review page. Owns related UI state and behavior.</summary>
-    internal sealed class ReviewAutoReview
+    public sealed class ReviewAutoReview
     {
         private readonly Review S;
         public ReviewAutoReview(Review host) => S = host;
@@ -44,14 +44,14 @@ public partial class Review
         {
             get
             {
-                return S._sceneSortBy switch
+                return S.List._sceneSortBy switch
                 {
-                    "duration" => S._sceneSortAsc
-                        ? S._scenes.OrderBy(s => s.ActualDurationSeconds ?? s.PlannedDurationSeconds ?? 0)
-                        : S._scenes.OrderByDescending(s => s.ActualDurationSeconds ?? s.PlannedDurationSeconds ?? 0),
-                    _ => S._sceneSortAsc
-                        ? S._scenes.OrderBy(s => s.SceneNumber)
-                        : S._scenes.OrderByDescending(s => s.SceneNumber),
+                    "duration" => S.List._sceneSortAsc
+                        ? S.List._scenes.OrderBy(s => s.ActualDurationSeconds ?? s.PlannedDurationSeconds ?? 0)
+                        : S.List._scenes.OrderByDescending(s => s.ActualDurationSeconds ?? s.PlannedDurationSeconds ?? 0),
+                    _ => S.List._sceneSortAsc
+                        ? S.List._scenes.OrderBy(s => s.SceneNumber)
+                        : S.List._scenes.OrderByDescending(s => s.SceneNumber),
                 };
             }
         }
@@ -66,7 +66,7 @@ public partial class Review
                 await S.Engine.ReviewClipAsync(S._projectId, scene, clip, status, _note);
                 S._message = $"Marked S{scene:D2}C{clip:D2} {status}";
                 _note = "";
-                await S.SoftLoadAsync();
+                await S.List.SoftLoadAsync();
             }
             catch (Exception ex) { S._error = ex.Message; }
             finally { S._busy = false; }
@@ -77,15 +77,15 @@ public partial class Review
 
 
         internal bool IsAutoReviewRunning(int scene, int clip) =>
-            S._job is not null &&
-            (S._job.Status is "running" or "queued") &&
+            S.Jobs._job is not null &&
+            (S.Jobs._job.Status is "running" or "queued") &&
             (
-                (string.Equals(S._job.Kind, "clip-auto-review", StringComparison.OrdinalIgnoreCase) &&
-                 S._job.Scene == scene &&
-                 S._job.Clip == clip)
+                (string.Equals(S.Jobs._job.Kind, "clip-auto-review", StringComparison.OrdinalIgnoreCase) &&
+                 S.Jobs._job.Scene == scene &&
+                 S.Jobs._job.Clip == clip)
                 ||
-                (string.Equals(S._job.Kind, "clip-auto-review-batch", StringComparison.OrdinalIgnoreCase) &&
-                 (S._job.Scene is null || S._job.Scene == scene))
+                (string.Equals(S.Jobs._job.Kind, "clip-auto-review-batch", StringComparison.OrdinalIgnoreCase) &&
+                 (S.Jobs._job.Scene is null || S.Jobs._job.Scene == scene))
             );
 
 
@@ -105,7 +105,7 @@ public partial class Review
             CloseApplyPanel();
             try
             {
-                await S.EnsureHubAsync();
+                await S.Jobs.EnsureHubAsync();
                 S._message = $"Sampling frames S{scene:D2}C{clip:D2}…";
                 S.StateHasChanged();
                 var (frames, sampleErr) = await S.Stitch.SampleAutoReviewFramesAsync(S._projectId, scene, clip);
@@ -115,11 +115,11 @@ public partial class Review
                 S._message = $"Uploading {frames.Count} frame(s) · reviewing S{scene:D2}C{clip:D2}…";
                 S.StateHasChanged();
                 var started = await S.Engine.StartClipAutoReviewAsync(S._projectId, scene, clip, frames);
-                S._job = started;
-                if (S._job is null)
+                S.Jobs._job = started;
+                if (S.Jobs._job is null)
                 {
                     var jobs = await S.Engine.GetJobAsync();
-                    S._job = jobs?.Job;
+                    S.Jobs._job = jobs?.Job;
                 }
                 S._message = $"Reviewing S{scene:D2}C{clip:D2}…";
             }
@@ -130,7 +130,7 @@ public partial class Review
 
         internal async Task<IReadOnlyList<string>> ResolveSceneUrlsForReviewAsync(int scene)
         {
-            var summary = S._scenes.FirstOrDefault(s => s.SceneNumber == scene);
+            var summary = S.List._scenes.FirstOrDefault(s => s.SceneNumber == scene);
             if (summary?.CompositeExists == true)
             {
                 return new List<string> { S.Engine.CompositeVideoUrl(S._projectId, scene) };
@@ -141,7 +141,7 @@ public partial class Review
 
         internal async Task StartFullMovieReviewAsync()
         {
-            if (S._busy || S.JobRunning || _isReviewing) return;
+            if (S._busy || S.Jobs.JobRunning || _isReviewing) return;
             S._busy = true;
             _isReviewing = true;
             _reviewProgressPct = 5;
@@ -152,7 +152,7 @@ public partial class Review
             try
             {
                 var keyframes = new List<MovieAutoReviewKeyframe>();
-                var scenesToReview = S._scenes.OrderBy(x => x.SceneNumber).ToList();
+                var scenesToReview = S.List._scenes.OrderBy(x => x.SceneNumber).ToList();
 
                 for (var i = 0; i < scenesToReview.Count; i++)
                 {
@@ -233,16 +233,16 @@ public partial class Review
             CloseApplyPanel();
             try
             {
-                await S.EnsureHubAsync();
+                await S.Jobs.EnsureHubAsync();
                 // Client-orchestrated: sample frames per clip, then single authenticated review job.
                 var targets = new List<(int Scene, int Clip)>();
-                foreach (var s in S._scenes.OrderBy(x => x.SceneNumber))
+                foreach (var s in S.List._scenes.OrderBy(x => x.SceneNumber))
                 {
                     if (s.ClipsOnDisk <= 0 && s.ClipCount <= 0) continue;
                     // Prefer detail when selected; otherwise use summary counts
                     SceneDetail? detail = null;
-                    if (S._selectedScene == s.SceneNumber)
-                        detail = S._selectedDetail;
+                    if (S.List._selectedScene == s.SceneNumber)
+                        detail = S.List._selectedDetail;
                     else
                     {
                         try
@@ -261,7 +261,7 @@ public partial class Review
                     {
                         for (var c = 1; c <= Math.Max(s.ClipCount, s.ClipsOnDisk); c++)
                         {
-                            if (S.ClipOnDisk(s.SceneNumber, c))
+                            if (S.List.ClipOnDisk(s.SceneNumber, c))
                                 targets.Add((s.SceneNumber, c));
                         }
                     }
@@ -308,11 +308,11 @@ public partial class Review
                         S._message = $"Auto-review {i + 1}/{todo.Count}: reviewing S{scene:D2}C{clip:D2} ({frames.Count} frames)…";
                         S.StateHasChanged();
                         var started = await S.Engine.StartClipAutoReviewAsync(S._projectId, scene, clip, frames);
-                        S._job = started;
+                        S.Jobs._job = started;
                         var snap = await S.Engine.WaitForJobTerminalAsync(
                             jobId: started?.JobId,
                             timeout: TimeSpan.FromMinutes(6));
-                        S._job = snap ?? started;
+                        S.Jobs._job = snap ?? started;
                         if (snap is not null &&
                             string.Equals(snap.Status, "done", StringComparison.OrdinalIgnoreCase))
                         {
@@ -340,7 +340,7 @@ public partial class Review
                 }
 
                 try { await S.Engine.GetReviewIndexAsync(S._projectId, rebuild: true); } catch { /* optional */ }
-                await S.SoftLoadAsync();
+                await S.List.SoftLoadAsync();
                 S._message = $"Batch auto-review done: {ok} ok, {failed} failed of {todo.Count}";
             }
             catch (Exception ex) { S._error = ex.Message; }
@@ -418,10 +418,10 @@ public partial class Review
                     S._message = $"Regenerating S{scene:D2}C{clip:D2} (no field changes)…";
                 }
 
-                await S.EnsureHubAsync();
+                await S.Jobs.EnsureHubAsync();
                 await S.Engine.StartSceneGenAsync(S._projectId, scene, onlyMissing: false, clip: clip);
                 var jobs = await S.Engine.GetJobAsync();
-                S._job = jobs?.Job;
+                S.Jobs._job = jobs?.Job;
                 CloseApplyPanel();
             }
             catch (Exception ex) { S._error = ex.Message; }

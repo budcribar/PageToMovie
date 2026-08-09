@@ -13,7 +13,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Review
 {
     /// <summary>Jobs domain for the Review page. Owns related UI state and behavior.</summary>
-    internal sealed class ReviewJobs
+    public sealed class ReviewJobs
     {
         private readonly Review S;
         public ReviewJobs(Review host) => S = host;
@@ -33,7 +33,7 @@ public partial class Review
             {
                 _ = S.InvokeAsync(async () =>
                 {
-                    await S.SoftLoadAsync();
+                    await S.List.SoftLoadAsync();
                     if (snap.Status == "done" &&
                         string.Equals(snap.Kind, "clip-auto-review", StringComparison.OrdinalIgnoreCase) &&
                         snap.Scene is int rs && snap.Clip is int rc)
@@ -42,7 +42,7 @@ public partial class Review
                         {
                             var d = await S.Engine.GetClipAutoReviewDraftAsync(S._projectId, rs, rc);
                             if (d is not null)
-                                S._drafts[$"S{rs:D2}C{rc:D2}"] = d;
+                                S.AutoReview._drafts[$"S{rs:D2}C{rc:D2}"] = d;
                             S._message = d is null
                                 ? $"Review finished S{rs:D2}C{rc:D2}"
                                 : $"Review ready S{rs:D2}C{rc:D2}: {d.Suggestion} — Apply suggestions or Pass/Fail";
@@ -59,13 +59,13 @@ public partial class Review
                         try
                         {
                             // Refresh per-clip drafts for selected scene after batch
-                            if (S._selectedScene is int sel)
+                            if (S.List._selectedScene is int sel)
                             {
-                                for (var c = 1; c <= S.ClipCountFor(sel); c++)
+                                for (var c = 1; c <= S.List.ClipCountFor(sel); c++)
                                 {
                                     var d = await S.Engine.GetClipAutoReviewDraftAsync(S._projectId, sel, c);
                                     if (d is not null)
-                                        S._drafts[ReviewAutoReview.ClipKey(sel, c)] = d;
+                                        S.AutoReview._drafts[ReviewAutoReview.ClipKey(sel, c)] = d;
                                 }
                             }
                             S._message = snap.Message ?? "Batch auto-review finished";
@@ -88,33 +88,33 @@ public partial class Review
                     else if (snap.Status == "done" &&
                         string.Equals(snap.Kind, "remux", StringComparison.OrdinalIgnoreCase))
                     {
-                        await S.SoftLoadAsync();
-                        await S.RefreshWipMetaAsync();
-                        if (S._playWipAfterRemux)
+                        await S.List.SoftLoadAsync();
+                        await S.Playback.RefreshWipMetaAsync();
+                        if (S.Playback._playWipAfterRemux)
                         {
-                            S._playWipAfterRemux = false;
-                            if (S._wipExists)
+                            S.Playback._playWipAfterRemux = false;
+                            if (S.Playback._wipExists)
                             {
-                                S._showWipPlayer = true;
-                                S._wipVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                                S._message = S._wipStale
+                                S.Playback._showWipPlayer = true;
+                                S.Playback._wipVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                                S._message = S.Playback._wipStale
                                     ? "WIP rebuilt but still marked stale — check clips"
                                     : "WIP ready — player below";
                             }
                         }
-                        else if (S._playSceneAfterRemux is int playSn)
+                        else if (S.Playback._playSceneAfterRemux is int playSn)
                         {
-                            S._playSceneAfterRemux = null;
-                            S._playingScene = playSn;
-                            S._showScenePlayer = true;
-                            S._sceneVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                            S.Playback._playSceneAfterRemux = null;
+                            S.Playback._playingScene = playSn;
+                            S.Playback._showScenePlayer = true;
+                            S.Playback._sceneVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                             S._message = $"Scene S{playSn:D2} ready — playing";
                         }
                         else if (snap.Scene is int sn && sn > 0)
                         {
-                            S._playingScene = sn;
-                            S._showScenePlayer = true;
-                            S._sceneVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                            S.Playback._playingScene = sn;
+                            S.Playback._showScenePlayer = true;
+                            S.Playback._sceneVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                             S._message = $"Scene S{sn:D2} composite rebuilt — player below";
                         }
                     }
@@ -124,14 +124,14 @@ public partial class Review
                              snap.Clip is int genCn)
                     {
                         S._message = $"Clip S{genSn:D2}C{genCn:D2} gen finished — Play scene when you want the updated composite";
-                        if (S._selectedScene == genSn)
-                            await S.LoadSelectedDetailAsync(genSn);
+                        if (S.List._selectedScene == genSn)
+                            await S.List.LoadSelectedDetailAsync(genSn);
                     }
                     else if (string.Equals(snap.Kind, "youtube_upload", StringComparison.OrdinalIgnoreCase))
                     {
                         if (snap.Status == "done")
                         {
-                            await S.RefreshYouTubeStatusAsync();
+                            await S.Share.RefreshYouTubeStatusAsync();
                             S._message = snap.Message ?? "Uploaded to YouTube";
                             S._error = null;
                         }

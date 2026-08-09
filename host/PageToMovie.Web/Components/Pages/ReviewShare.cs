@@ -13,7 +13,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Review
 {
     /// <summary>Share domain for the Review page. Owns related UI state and behavior.</summary>
-    internal sealed class ReviewShare
+    public sealed class ReviewShare
     {
         private readonly Review S;
         public ReviewShare(Review host) => S = host;
@@ -105,7 +105,6 @@ public partial class Review
         }
 
 
-        [JSInvokable]
         public void ReportPublishProgress(int pct, string status)
         {
             _publishProgressPct = Math.Clamp(pct, 0, 100);
@@ -116,11 +115,11 @@ public partial class Review
 
         /// <summary>Can publish when browser stitch or fresh on-disk movie is available, or scenes can be stitched.</summary>
         internal bool CanShareMovie =>
-            !string.IsNullOrEmpty(S._clientWipUrl)
-            || (S._wipExists && !S._wipStale)
+            !string.IsNullOrEmpty(S.Playback._clientWipUrl)
+            || (S.Playback._wipExists && !S.Playback._wipStale)
             || S.MediaFolder.IsConnected
             || S.MediaFolder.IsSyncing
-            || S._scenes.Any(s => s.CompositeExists || s.ClipsOnDisk > 0);
+            || S.List._scenes.Any(s => s.CompositeExists || s.ClipsOnDisk > 0);
 
 
         internal async Task RefreshYouTubeStatusAsync()
@@ -151,10 +150,10 @@ public partial class Review
 
         internal void CheckIncompleteMovieState()
         {
-            _missingClipsCount = S._scenes
+            _missingClipsCount = S.List._scenes
                 .Where(s => !s.CompositeExists)
                 .Sum(s => Math.Max(0, s.ClipCount - s.ClipsOnDisk));
-            _incompleteScenesCount = S._scenes
+            _incompleteScenesCount = S.List._scenes
                 .Count(s => !s.CompositeExists && s.ClipsOnDisk < s.ClipCount);
         }
 
@@ -231,7 +230,7 @@ public partial class Review
 
                 if (!res.TryGetProperty("success", out var ok) || !ok.GetBoolean())
                 {
-                    if (S._wipExists && !S._wipStale && string.IsNullOrEmpty(S._clientWipUrl))
+                    if (S.Playback._wipExists && !S.Playback._wipStale && string.IsNullOrEmpty(S.Playback._clientWipUrl))
                     {
                         var pub = await S.Engine.PublishDemoFromWipAsync(
                             S._projectId,
@@ -242,7 +241,7 @@ public partial class Review
                             isAiSynthetic: _demoIsAiSynthetic);
                         if (pub?.Ok == true)
                         {
-                            S._activeTab = "review";
+                            S.List._activeTab = "review";
                             S._message = (pub.Message ?? $"“{pub.Demo?.Title ?? title}” sent to YouTube — it appears in the gallery when the upload finishes.") +
                                 (_lastExportMissingMusic ? " (No local media folder connected — background music not included.)" : "");
                             return;
@@ -264,7 +263,7 @@ public partial class Review
                 }
 
                 var msg = res.TryGetProperty("message", out var mEl) ? mEl.GetString() : null;
-                S._activeTab = "review";
+                S.List._activeTab = "review";
                 S._message = (msg ?? $"“{publishedTitle}” sent to YouTube — it appears in the gallery when the upload finishes.") +
                     (_lastExportMissingMusic ? " (No local media folder connected — background music not included.)" : "");
             }
@@ -283,7 +282,7 @@ public partial class Review
         /// <summary>Return a browser-fetchable URL for the full cut (blob or authenticated WIP).</summary>
         internal async Task<string?> EnsureShareableMovieUrlAsync()
         {
-            await S.RefreshWipMetaAsync();
+            await S.Playback.RefreshWipMetaAsync();
 
             // Best-effort, no dialog: the common case is the folder was already connected on another
             // tab and this one just never got the silent no-gesture reconnect — try once before
@@ -296,7 +295,7 @@ public partial class Review
             _lastExportMissingMusic = !S.MediaFolder.IsConnected;
 
             // Stitch fresh in browser to ensure all newly generated clips are included with zero duplicates
-            var sceneNums = S._scenes
+            var sceneNums = S.List._scenes
                 .Where(s => s.CompositeExists || s.ClipsOnDisk > 0)
                 .OrderBy(s => s.SceneNumber)
                 .Select(s => s.SceneNumber)
@@ -304,8 +303,8 @@ public partial class Review
             if (sceneNums.Count == 0)
                 return null;
 
-            S._clientStitching = true;
-            S._clientStitchStatus = "Preparing cut for upload…";
+            S.Playback._clientStitching = true;
+            S.Playback._clientStitchStatus = "Preparing cut for upload…";
             try
             {
                 // Revoke the OLD preview before collecting new segments, not after — CollectAndMix-
@@ -319,25 +318,25 @@ public partial class Review
                 await S.Stitch.RevokePreviewUrlAsync();
                 var meta = await S.Engine.GetWipMovieMetaAsync(S._projectId);
                 var stale = meta?.StaleScenes?.ToHashSet() ?? new HashSet<int>();
-                var segs = await S.Stitch.CollectAndMixSceneSegmentInfosAsync(S._projectId, sceneNums, S._scenes, stale);
+                var segs = await S.Stitch.CollectAndMixSceneSegmentInfosAsync(S._projectId, sceneNums, S.List._scenes, stale);
                 if (segs.Count == 0) return null;
                 var result = await S.Stitch.ConcatAsync(segs.Select(s => s.Url).ToList());
                 if (!result.Success || string.IsNullOrWhiteSpace(result.Url))
                     throw new InvalidOperationException(result.Error ?? "Browser stitch failed");
-                S._clientWipUrl = result.Url;
-                S._showWipPlayer = true;
-                S._wipVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                S.Playback._clientWipUrl = result.Url;
+                S.Playback._showWipPlayer = true;
+                S.Playback._wipVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                 try
                 {
                     await S.Stitch.RegisterFilmBuildAfterWipStitchAsync(S._projectId, segs, result);
                 }
                 catch { /* non-fatal */ }
-                return S._clientWipUrl;
+                return S.Playback._clientWipUrl;
             }
             finally
             {
-                S._clientStitching = false;
-                S._clientStitchStatus = null;
+                S.Playback._clientStitching = false;
+                S.Playback._clientStitchStatus = null;
             }
         }
 
@@ -385,7 +384,7 @@ public partial class Review
                     return;
                 }
 
-                await S.EnsureHubAsync();
+                await S.Jobs.EnsureHubAsync();
                 _dotNetRef ??= DotNetObjectReference.Create(S);
 
                 if (mediaUrl.StartsWith("blob:", StringComparison.OrdinalIgnoreCase))
@@ -422,11 +421,11 @@ public partial class Review
                     });
                 }
 
-                S._activeTab = "review";
+                S.List._activeTab = "review";
                 S._message = "Uploading to YouTube…" +
                     (_lastExportMissingMusic ? " (No local media folder connected — background music not included.)" : "");
                 var jobs = await S.Engine.GetJobAsync();
-                S._job = jobs?.Job;
+                S.Jobs._job = jobs?.Job;
             }
             catch (Exception ex) { S._error = ex.Message; }
             finally { S._busy = false; }
