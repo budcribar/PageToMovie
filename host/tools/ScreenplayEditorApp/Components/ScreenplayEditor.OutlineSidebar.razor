@@ -82,6 +82,20 @@
                 }
             }
 
+            <hr class="my-1 border-secondary-subtle" />
+
+            <!-- Final Credits & Closing Copyright Item -->
+            <button type="button"
+                    class="btn btn-sm text-start w-100 d-flex align-items-center gap-2 @(ActiveView == "credits" ? "btn-info fw-bold text-dark" : "btn-outline-secondary text-light")"
+                    @onclick="SelectCredits"
+                    title="Final Credits & Closing Copyright">
+                <span class="fs-6">🎬</span>
+                @if (!IsCompact)
+                {
+                    <span class="text-truncate">Final Credits & Copyright</span>
+                }
+            </button>
+
             @if (IsCompact)
             {
                 <button type="button" class="btn btn-sm btn-outline-success w-100 mt-2" @onclick="OnAddScene" title="Add Scene">

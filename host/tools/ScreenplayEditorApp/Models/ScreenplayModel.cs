@@ -216,6 +216,16 @@ public class ScreenplayMetadata
     public string Notes { get; set; } = "";
 }
 
+public class ScreenplayCredits
+{
+    public string Director { get; set; } = "";
+    public string Producer { get; set; } = "";
+    public string CastCredits { get; set; } = "";
+    public string MusicCredits { get; set; } = "";
+    public string SpecialThanks { get; set; } = "";
+    public string CopyrightNotice { get; set; } = $"© {DateTime.Today.Year} PageToMovie Studios. All Rights Reserved.";
+}
+
 public class ScreenplayBeat
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
@@ -325,6 +335,7 @@ public class ScreenplayCharacterProfile
 public class ScreenplayModel
 {
     public ScreenplayMetadata Metadata { get; set; } = new();
+    public ScreenplayCredits Credits { get; set; } = new();
     public List<ScreenplayScene> Scenes { get; set; } = new();
 
     public List<ScreenplayLocationProfile> LocationProfiles { get; set; } = new();

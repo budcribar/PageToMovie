@@ -24,6 +24,9 @@ public partial class ScreenplayEditor_OutlineSidebar : ComponentBase
     public EventCallback OnSelectMetadata { get; set; }
 
     [Parameter]
+    public EventCallback OnSelectCredits { get; set; }
+
+    [Parameter]
     public EventCallback<int> OnSelectScene { get; set; }
 
     [Parameter]
@@ -80,11 +83,18 @@ public partial class ScreenplayEditor_OutlineSidebar : ComponentBase
         }
     }
 
+    public async Task SelectCredits()
+    {
+        if (OnSelectCredits.HasDelegate)
+        {
+            await OnSelectCredits.InvokeAsync();
+        }
+    }
+
     public async Task SelectScene(int index)
     {
         if (index >= 0 && index < Scenes.Count)
         {
-            // Uncheck all other scenes and check ONLY this scene on single click
             foreach (var s in Scenes) s.IsSelected = false;
             Scenes[index].IsSelected = true;
 

@@ -70,6 +70,7 @@
                                               SelectedSceneIndex="SelectedSceneIndex"
                                               @bind-IsCompact="IsSidebarCompact"
                                               OnSelectMetadata="SelectMetadataView"
+                                              OnSelectCredits="SelectCreditsView"
                                               OnSelectScene="SelectSceneView"
                                               OnAddScene="AddScene"
                                               OnDeleteScene="DeleteScene"
@@ -82,6 +83,10 @@
             @if (ActiveViewMode == "metadata")
             {
                 <ScreenplayEditor_MetadataHeader Metadata="Model.Metadata" OnChangedCallback="OnChanged" />
+            }
+            else if (ActiveViewMode == "credits")
+            {
+                <ScreenplayEditor_CreditsHeader Credits="Model.Credits" OnChangedCallback="OnChanged" />
             }
             else
             {

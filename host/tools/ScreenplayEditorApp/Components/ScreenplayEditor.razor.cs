@@ -68,6 +68,11 @@ public partial class ScreenplayEditor : ComponentBase
         ActiveViewMode = "metadata";
     }
 
+    public void SelectCreditsView()
+    {
+        ActiveViewMode = "credits";
+    }
+
     public void SelectSceneView(int index)
     {
         if (index >= 0 && index < Model.Scenes.Count)

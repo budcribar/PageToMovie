@@ -1,0 +1,55 @@
+<div class="card bg-dark-subtle border-secondary-subtle mb-3 shadow-sm">
+    <div class="card-header bg-dark text-light d-flex justify-content-between align-items-center py-2 px-3 border-bottom border-secondary-subtle">
+        <div class="d-flex align-items-center gap-2">
+            <span class="fs-5">🎬</span>
+            <h5 class="mb-0 fw-bold text-light">Final Credits & Closing Copyright</h5>
+        </div>
+        <ScreenplayEditor_BadgePill Variant="@ComponentVariant.Info" Text="Film Studio End Credits" />
+    </div>
+
+    <div class="card-body p-3 text-light">
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label fw-semibold text-secondary small mb-1">Director</label>
+                <ScreenplayEditor_StyledInput Value="@Credits.Director"
+                                               ValueChanged="async (v) => { Credits.Director = v; await OnChanged(); }"
+                                               Placeholder="e.g. Debra McGuinty" />
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label fw-semibold text-secondary small mb-1">Producer / Executive Producer</label>
+                <ScreenplayEditor_StyledInput Value="@Credits.Producer"
+                                               ValueChanged="async (v) => { Credits.Producer = v; await OnChanged(); }"
+                                               Placeholder="e.g. PageToMovie Film Studio" />
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label fw-semibold text-secondary small mb-1">Cast & Voice Talent Credits</label>
+                <textarea class="form-control form-control-sm bg-dark text-light border-secondary py-1 px-2" rows="3"
+                          @bind="Credits.CastCredits" @bind:after="OnChanged"
+                          placeholder="e.g. BUSTER - Voice Clone #4\nNARRATOR - Voice Clone #1"></textarea>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label fw-semibold text-secondary small mb-1">Music & Sound Credits</label>
+                <textarea class="form-control form-control-sm bg-dark text-light border-secondary py-1 px-2" rows="3"
+                          @bind="Credits.MusicCredits" @bind:after="OnChanged"
+                          placeholder="e.g. Original Soundtrack generated via Suno V5.5"></textarea>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label fw-semibold text-secondary small mb-1">Special Thanks & Acknowledgments</label>
+                <textarea class="form-control form-control-sm bg-dark text-light border-secondary py-1 px-2" rows="2"
+                          @bind="Credits.SpecialThanks" @bind:after="OnChanged"
+                          placeholder="Special thanks to the creative team..."></textarea>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label fw-semibold text-secondary small mb-1">Copyright Notice & Disclaimer</label>
+                <ScreenplayEditor_StyledInput Value="@Credits.CopyrightNotice"
+                                               ValueChanged="async (v) => { Credits.CopyrightNotice = v; await OnChanged(); }"
+                                               Placeholder="© 2026 PageToMovie Studios. All Rights Reserved." />
+            </div>
+        </div>
+    </div>
+</div>
