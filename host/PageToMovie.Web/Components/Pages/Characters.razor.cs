@@ -11,12 +11,12 @@ namespace PageToMovie.Web.Components.Pages;
 
 public partial class Characters
 {
-    private enum Mode { PickSource, WaitingGenerate, Compare }
+    internal enum Mode { PickSource, WaitingGenerate, Compare }
 
     /// <summary>First choose how to set the look — only that path's UI is shown.</summary>
-    private enum PictureRoute { Choose, Generate, Upload, Book }
+    internal enum PictureRoute { Choose, Generate, Upload, Book }
 
-    private sealed class Candidate
+    internal sealed class Candidate
     {
         public string Kind { get; init; } = ""; // book | variant | locked | preferred
         public int Index { get; init; }
@@ -24,13 +24,13 @@ public partial class Characters
         public string Url { get; init; } = "";
     }
 
-    private sealed class PendingDelete
+    internal sealed class PendingDelete
     {
         public string Kind { get; init; } = "";
         public int Index { get; init; }
     }
 
-    private string? PreferredImageUrl
+    internal string? PreferredImageUrl
     {
         get
         {
@@ -40,7 +40,7 @@ public partial class Characters
     }
 
     /// <summary>List thumbnail: preferred/lock/variant1, else first book pic, else null (empty placeholder).</summary>
-    private string? ListThumbUrl(CharacterSummary c)
+    internal string? ListThumbUrl(CharacterSummary c)
     {
         if (c.VoiceOnly) return null;
         // Groups may optionally have a ref; do not invent one for list thumbs.
@@ -68,10 +68,10 @@ public partial class Characters
         return null;
     }
 
-    private static bool HasVoiceProfile(CharacterSummary c) =>
+    internal static bool HasVoiceProfile(CharacterSummary c) =>
         !string.IsNullOrWhiteSpace(c.VoiceProfile);
 
-    private bool ShowVoiceFields(CharacterSummary c)
+    internal bool ShowVoiceFields(CharacterSummary c)
     {
         if (_forceShowVoice) return true;               // explicit "Add voice…" opt-in
         if (c.HasVoiceCloneSample) return true;         // user recorded a clone sample
@@ -89,44 +89,44 @@ public partial class Characters
         return false;
     }
 
-    private string PreferredImageLabel =>
+    internal string PreferredImageLabel =>
         _selected is null ? ""
         : _selected.HasPreferred
             ? $"Preferred · {_selected.PreferredLabel}"
             : "No preferred image";
 
-    private bool _busy;
-    private bool _gateChecked;
-    private string? _error;
-    private string? _message;
-    private List<string>? _lastCastExtractKeys;
-    private string _projectId = "";
-    private List<string> _projectIds = new();
-    private List<CharacterSummary>? _chars;
-    private CharacterPlatesState? _plates;
-    private string? _selectedKey;
-    private CharacterSummary? _selected;
+    internal bool _busy;
+    internal bool _gateChecked;
+    internal string? _error;
+    internal string? _message;
+    internal List<string>? _lastCastExtractKeys;
+    internal string _projectId = "";
+    internal List<string> _projectIds = new();
+    internal List<CharacterSummary>? _chars;
+    internal CharacterPlatesState? _plates;
+    internal string? _selectedKey;
+    internal CharacterSummary? _selected;
     /// <summary>Look chosen in Compare mode, not yet confirmed locked (auto-flushed on cast switch).</summary>
-    private Candidate? _pendingLockCandidate;
-    private string? _chosenCandidateKey;
-    private JobSnapshot? _job;
-    private long _imgBust = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+    internal Candidate? _pendingLockCandidate;
+    internal string? _chosenCandidateKey;
+    internal JobSnapshot? _job;
+    internal long _imgBust = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
-    private Mode _mode = Mode.PickSource;
-    private PictureRoute _pictureRoute = PictureRoute.Choose;
+    internal Mode _mode = Mode.PickSource;
+    internal PictureRoute _pictureRoute = PictureRoute.Choose;
 
-    private List<Candidate> _allCandidates = new();
-    private Candidate? _zoomCandidate;
-    private double _zoomScale = 1;
-    private PendingDelete? _deleteConfirm;
+    internal List<Candidate> _allCandidates = new();
+    internal Candidate? _zoomCandidate;
+    internal double _zoomScale = 1;
+    internal PendingDelete? _deleteConfirm;
 
-    private bool _showBookCandidateGallery;
-    private bool _loadingBookCandidates;
-    private bool _savingBookRefs;
-    private List<RankedBookCandidateDto>? _rankedBookCandidates;
-    private readonly List<string> _selectedBookCandidatePaths = new();
+    internal bool _showBookCandidateGallery;
+    internal bool _loadingBookCandidates;
+    internal bool _savingBookRefs;
+    internal List<RankedBookCandidateDto>? _rankedBookCandidates;
+    internal readonly List<string> _selectedBookCandidatePaths = new();
 
-    private async Task ToggleBookCandidateGalleryAsync()
+    internal async Task ToggleBookCandidateGalleryAsync()
     {
         _showBookCandidateGallery = !_showBookCandidateGallery;
         if (_showBookCandidateGallery && _selected is not null)
@@ -135,7 +135,7 @@ public partial class Characters
         }
     }
 
-    private async Task LoadBookCandidatesAsync()
+    internal async Task LoadBookCandidatesAsync()
     {
         if (_selected is null || string.IsNullOrWhiteSpace(_projectId)) return;
         _loadingBookCandidates = true;
@@ -165,7 +165,7 @@ public partial class Characters
         }
     }
 
-    private void ToggleBookCandidateSelection(string pathRel)
+    internal void ToggleBookCandidateSelection(string pathRel)
     {
         var idx = _selectedBookCandidatePaths.FindIndex(p => string.Equals(p, pathRel, StringComparison.OrdinalIgnoreCase));
         if (idx >= 0)
@@ -184,7 +184,7 @@ public partial class Characters
         _error = null;
     }
 
-    private async Task ApplySelectedBookCandidatesAsync()
+    internal async Task ApplySelectedBookCandidatesAsync()
     {
         if (_selected is null || string.IsNullOrWhiteSpace(_projectId)) return;
         if (_selectedBookCandidatePaths.Count == 0)
@@ -213,96 +213,96 @@ public partial class Characters
         }
     }
 
-    private int ApiMaxSeedRefs => Math.Max(1, _imageSeedLimits?.MaxReferenceImages ?? 3);
+    internal int ApiMaxSeedRefs => Math.Max(1, _imageSeedLimits?.MaxReferenceImages ?? 3);
 
-    private ImageSeedLimits? _imageSeedLimits;
-    private readonly List<string> _seedOrder = new(); // "p", "v1", "b0"… click order = priority
-    private string _editDescription = "";
-    private string _editVisualLock = "";
+    internal ImageSeedLimits? _imageSeedLimits;
+    internal readonly List<string> _seedOrder = new(); // "p", "v1", "b0"… click order = priority
+    internal string _editDescription = "";
+    internal string _editVisualLock = "";
     /// <summary>Last loaded/saved look text — skip scrub API when editors match.</summary>
-    private string _savedLookDescription = "";
-    private string _savedLookVisualLock = "";
-    private bool _savingLook;
-    private string? _lookSaveHint;
-    private CancellationTokenSource? _lookSaveCts;
-    private const int LookAutosaveDebounceMs = 800;
-    private string _editVoiceLabel = "";
-    private string _editVoiceProfile = "";
-    private bool _panelPictureOpen = true;
-    private bool _forceShowVoice;
-    private bool _voicePreviewBusy;
-    private string? _voicePreviewUrl;
-    private string? _voicePreviewError;
-    private string? _voicePreviewHint;
-    private bool _voicePreviewStale;
-    private long _voiceAudioBust;
-    private bool _voiceCloneBusy;
-    private bool _voiceRecRecording;
-    private string? _voiceCloneHint;
-    private string? _voiceCloneError;
-    private string? _voiceClonePlayUrl;
-    private long _voiceCloneBust;
-    private string? _voiceSaveHint;
-    private CancellationTokenSource? _voiceSaveCts;
+    internal string _savedLookDescription = "";
+    internal string _savedLookVisualLock = "";
+    internal bool _savingLook;
+    internal string? _lookSaveHint;
+    internal CancellationTokenSource? _lookSaveCts;
+    internal const int LookAutosaveDebounceMs = 800;
+    internal string _editVoiceLabel = "";
+    internal string _editVoiceProfile = "";
+    internal bool _panelPictureOpen = true;
+    internal bool _forceShowVoice;
+    internal bool _voicePreviewBusy;
+    internal string? _voicePreviewUrl;
+    internal string? _voicePreviewError;
+    internal string? _voicePreviewHint;
+    internal bool _voicePreviewStale;
+    internal long _voiceAudioBust;
+    internal bool _voiceCloneBusy;
+    internal bool _voiceRecRecording;
+    internal string? _voiceCloneHint;
+    internal string? _voiceCloneError;
+    internal string? _voiceClonePlayUrl;
+    internal long _voiceCloneBust;
+    internal string? _voiceSaveHint;
+    internal CancellationTokenSource? _voiceSaveCts;
 
     /// <summary>Kids short script for simple path / children's books; general film otherwise.</summary>
-    private string VoiceCloneReadScript =>
+    internal string VoiceCloneReadScript =>
         _useKidsScript ? VoiceCloneScripts.KidsShort : VoiceCloneScripts.GeneralFilm;
 
-    private bool _simpleMode;
-    private bool _useKidsScript;
-    private bool _showKidsFullScript;
-    private string? _focusHint;
-    private bool _showMediaAudioPicker;
-    private bool _loadingMediaAudio;
-    private List<ClientMediaFolderService.LocalAudioFile> _mediaAudioFiles = new();
+    internal bool _simpleMode;
+    internal bool _useKidsScript;
+    internal bool _showKidsFullScript;
+    internal string? _focusHint;
+    internal bool _showMediaAudioPicker;
+    internal bool _loadingMediaAudio;
+    internal List<ClientMediaFolderService.LocalAudioFile> _mediaAudioFiles = new();
 
-    private int SelectedSeedCount => _seedOrder.Count;
+    internal int SelectedSeedCount => _seedOrder.Count;
 
-    private bool VoiceJobRunning =>
+    internal bool VoiceJobRunning =>
         _job is not null &&
         string.Equals(_job.Kind, "voice-preview", StringComparison.OrdinalIgnoreCase) &&
         (_job.Status is "running" or "queued") &&
         string.Equals(_job.CharKey, _selectedKey, StringComparison.OrdinalIgnoreCase);
 
 
-    private bool _extractingCast;
+    internal bool _extractingCast;
     /// <summary>True when extract started with an existing cast (rebuild vs first build).</summary>
-    private bool _rebuildCastHadExisting;
+    internal bool _rebuildCastHadExisting;
 
-    private bool JobRunning =>
+    internal bool JobRunning =>
         string.Equals(_job?.Status, "running", StringComparison.OrdinalIgnoreCase);
 
-    private bool PlateSortRunning =>
+    internal bool PlateSortRunning =>
         JobRunning &&
         string.Equals(_job?.Kind, "character-plates", StringComparison.OrdinalIgnoreCase);
 
-    private bool HasCast => _chars is { Count: > 0 };
+    internal bool HasCast => _chars is { Count: > 0 };
 
     /// <summary>Operator-facing cast: hide group/chorus seeds (too abstract for average users).</summary>
-    private IEnumerable<CharacterSummary> CharactersForUi =>
+    internal IEnumerable<CharacterSummary> CharactersForUi =>
         _chars?.Where(c => !c.IsGroup) ?? Enumerable.Empty<CharacterSummary>();
 
-    private int OperatorCastCount => CharactersForUi.Count();
+    internal int OperatorCastCount => CharactersForUi.Count();
 
     /// <summary>Every cast member has look (if needed) + voice — next is shot plan or scenes.</summary>
-    private bool IsCastComplete =>
+    internal bool IsCastComplete =>
         OperatorCastCount > 0 &&
         CharactersForUi.All(c =>
             HasVoiceProfile(c) &&
             (c.VoiceOnly || c.HasPreferred || c.Locked));
 
     /// <summary>Show primary Build cast only when there is no cast yet.</summary>
-    private bool NeedsCastBuild =>
+    internal bool NeedsCastBuild =>
         _chars is not null && OperatorCastCount == 0 && !_extractingCast;
 
     /// <summary>Book picture matching is now automated on cast extract.</summary>
-    private bool NeedsFindCharacters => false;
+    internal bool NeedsFindCharacters => false;
 
     /// <summary>
     /// Single user step: closed cast + book-aware looks (description / visual_lock) for portraits.
     /// </summary>
-    private async Task ExtractCastAsync()
+    internal async Task ExtractCastAsync()
     {
         if (string.IsNullOrWhiteSpace(_projectId) || _extractingCast) return;
         _rebuildCastHadExisting = _chars is { Count: > 0 };
@@ -414,7 +414,7 @@ public partial class Characters
         await Task.CompletedTask;
     }
 
-    private static string FriendlyCharacterJobStatus(JobSnapshot job)
+    internal static string FriendlyCharacterJobStatus(JobSnapshot job)
     {
         var kind = job.Kind ?? "";
         if (string.Equals(kind, "character-plates", StringComparison.OrdinalIgnoreCase))
@@ -428,7 +428,7 @@ public partial class Characters
         return "Working…";
     }
 
-    private void OnJobUpdated(JobSnapshot snap)
+    internal void OnJobUpdated(JobSnapshot snap)
     {
         // New job id → always take the snapshot (Index may be 0)
         // Same job → update as usual
@@ -537,7 +537,7 @@ public partial class Characters
         }
     }
 
-    private void OnJobLog(string line)
+    internal void OnJobLog(string line)
     {
         if (_job is not null)
         {
@@ -552,14 +552,14 @@ public partial class Characters
         _ = InvokeAsync(StateHasChanged);
     }
 
-    private async Task OnProjectChangedAsync()
+    internal async Task OnProjectChangedAsync()
     {
         ResetCompare();
         _mode = Mode.PickSource;
         await LoadAsync();
     }
 
-    private async Task LoadAsync()
+    internal async Task LoadAsync()
     {
         _busy = true;
         _error = null;
@@ -596,7 +596,7 @@ public partial class Characters
         finally { _busy = false; }
     }
 
-    private async Task SoftReloadAsync()
+    internal async Task SoftReloadAsync()
     {
         try
         {
@@ -615,7 +615,7 @@ public partial class Characters
     /// Server messages sometimes append " · Character_X, Character_Y…". Drop that list
     /// from the green banner (admin panel still shows full keys).
     /// </summary>
-    private static string StripTrailingKeyDump(string message)
+    internal static string StripTrailingKeyDump(string message)
     {
         if (string.IsNullOrWhiteSpace(message)) return message;
         var idx = message.IndexOf(" · Character_", StringComparison.OrdinalIgnoreCase);
@@ -632,15 +632,15 @@ public partial class Characters
     /// Block cast-list switches while save/generate/etc. runs so async completion
     /// cannot paste one character's look into another's editors.
     /// </summary>
-    private bool CastListLocked => _busy || _savingLook || JobRunning || _extractingCast;
+    internal bool CastListLocked => _busy || _savingLook || JobRunning || _extractingCast;
 
-    private Task SelectAsync(string key) => SelectCoreAsync(key, resetMode: true, flushPending: true);
+    internal Task SelectAsync(string key) => SelectCoreAsync(key, resetMode: true, flushPending: true);
 
     /// <summary>
     /// Switch cast member. When the operator leaves a character with a pending chosen look
     /// (or mid-compare selection), we lock it first so pictures do not vanish on switch.
     /// </summary>
-    private async Task SelectCoreAsync(string key, bool resetMode, bool flushPending)
+    internal async Task SelectCoreAsync(string key, bool resetMode, bool flushPending)
     {
         var switched = !string.Equals(_selectedKey, key, StringComparison.OrdinalIgnoreCase);
         // SoftReload re-selects the same key while _busy — allow that.
@@ -708,19 +708,19 @@ public partial class Characters
         }
     }
 
-    private static string CandidateKey(Candidate c) => $"{c.Kind}:{c.Index}";
+    internal static string CandidateKey(Candidate c) => $"{c.Kind}:{c.Index}";
 
     /// <summary>
     /// Look & voice live on one card — keep it open so neither section is buried.
     /// </summary>
-    private void ApplyPanelsForSelected()
+    internal void ApplyPanelsForSelected()
     {
         // Single card for picture + voice; always expanded when a character is selected.
         _panelPictureOpen = true;
     }
 
 
-    private void ResetSeedSelection()
+    internal void ResetSeedSelection()
     {
         _seedOrder.Clear();
         if (_selected is null) return;
@@ -739,7 +739,7 @@ public partial class Characters
     }
 
     /// <summary>After the operator picks book pictures, those become the generate seeds.</summary>
-    private void PreferBookRefsAsSeeds()
+    internal void PreferBookRefsAsSeeds()
     {
         _seedOrder.Clear();
         if (_selected is null) return;
@@ -749,7 +749,7 @@ public partial class Characters
             _seedOrder.Add("p");
     }
 
-    private void AddBookRefsToSeedOrder()
+    internal void AddBookRefsToSeedOrder()
     {
         if (_selected is null) return;
         foreach (var b in _selected.BookRefs.Where(x => x.Exists).OrderBy(x => x.Index ?? 0))
@@ -762,13 +762,13 @@ public partial class Characters
         }
     }
 
-    private int SeedRank(string key)
+    internal int SeedRank(string key)
     {
         var i = _seedOrder.FindIndex(k => string.Equals(k, key, StringComparison.OrdinalIgnoreCase));
         return i < 0 ? 0 : i + 1;
     }
 
-    private void ToggleSeedKey(string key)
+    internal void ToggleSeedKey(string key)
     {
         var i = _seedOrder.FindIndex(k => string.Equals(k, key, StringComparison.OrdinalIgnoreCase));
         if (i >= 0)
@@ -777,16 +777,16 @@ public partial class Characters
             _seedOrder.Add(key);
     }
 
-    private void RequestDeleteImage(string kind, int index)
+    internal void RequestDeleteImage(string kind, int index)
     {
         _deleteConfirm = new PendingDelete { Kind = kind, Index = index };
         _error = null;
         _message = null;
     }
 
-    private void CancelDeleteImage() => _deleteConfirm = null;
+    internal void CancelDeleteImage() => _deleteConfirm = null;
 
-    private async Task ConfirmDeleteImageAsync()
+    internal async Task ConfirmDeleteImageAsync()
     {
         if (_selected is null || _deleteConfirm is null) return;
         _busy = true;
@@ -804,13 +804,13 @@ public partial class Characters
         finally { _busy = false; }
     }
 
-    private static bool IsWeakBookPlate(string? fileName)
+    internal static bool IsWeakBookPlate(string? fileName)
     {
         var n = (fileName ?? "").ToLowerInvariant();
         return n.Contains("sampled") || n.Contains("text_page") || n.Contains("ocr");
     }
 
-    private static string BookPlateKindLabel(string? fileName)
+    internal static string BookPlateKindLabel(string? fileName)
     {
         var n = (fileName ?? "").ToLowerInvariant();
         if (n.Contains("cover")) return "cover";
@@ -822,11 +822,11 @@ public partial class Characters
     }
 
     /// <summary>Book-guided path only when the project has a PDF or page images.</summary>
-    private bool CanUseBookPictures =>
+    internal bool CanUseBookPictures =>
         ActiveProject.Status?.Book is { } book
         && (book.PdfExists || book.PageImageCount > 0);
 
-    private void ChoosePictureRoute(PictureRoute route)
+    internal void ChoosePictureRoute(PictureRoute route)
     {
         _pictureRoute = route;
         _error = null;
@@ -838,7 +838,7 @@ public partial class Characters
     }
 
     /// <summary>Book path: ensure selected plates are seeds, then generate 3 looks.</summary>
-    private async Task StartBookGuidedGenerateAsync()
+    internal async Task StartBookGuidedGenerateAsync()
     {
         if (_selected is null) return;
         if (_selectedBookCandidatePaths.Count > 0)
@@ -856,7 +856,7 @@ public partial class Characters
         await StartRegenerateAsync();
     }
 
-    private void BackToSource()
+    internal void BackToSource()
     {
         CloseLookZoom();
         ResetCompare();
@@ -865,13 +865,13 @@ public partial class Characters
             _pictureRoute = PictureRoute.Choose;
     }
 
-    private void ResetCompare()
+    internal void ResetCompare()
     {
         _allCandidates = new();
         CloseLookZoom();
     }
 
-    private async Task StartRegenerateAsync()
+    internal async Task StartRegenerateAsync()
     {
         if (_selected is null) return;
 
@@ -926,7 +926,7 @@ public partial class Characters
     /// <summary>
     /// Persist gallery checkmarks as book refs and set generate seed order to those plates only.
     /// </summary>
-    private async Task<bool> EnsureGalleryBookSelectionAppliedAsync()
+    internal async Task<bool> EnsureGalleryBookSelectionAppliedAsync()
     {
         if (_selected is null || _selectedBookCandidatePaths.Count == 0)
             return true;
@@ -969,7 +969,7 @@ public partial class Characters
         }
     }
 
-    private async Task StartSortCharacterPlatesAsync(bool useGrok = true)
+    internal async Task StartSortCharacterPlatesAsync(bool useGrok = true)
     {
         _busy = true;
         _error = null;
@@ -987,7 +987,7 @@ public partial class Characters
         finally { _busy = false; }
     }
 
-    private async Task StartGenerateCoreAsync(StartCharacterVariantsRequest req)
+    internal async Task StartGenerateCoreAsync(StartCharacterVariantsRequest req)
     {
         if (_selected is null) return;
         _busy = true;
@@ -1033,7 +1033,7 @@ public partial class Characters
         finally { _busy = false; }
     }
 
-    private void BeginCompareFromVariants()
+    internal void BeginCompareFromVariants()
     {
         if (_selected is null)
         {
@@ -1064,24 +1064,24 @@ public partial class Characters
     }
 
 
-    private void OpenLookZoom(Candidate c)
+    internal void OpenLookZoom(Candidate c)
     {
         _zoomCandidate = c;
         _zoomScale = 1;
     }
 
-    private void CloseLookZoom()
+    internal void CloseLookZoom()
     {
         _zoomCandidate = null;
         _zoomScale = 1;
     }
 
-    private void ToggleLookZoomScale()
+    internal void ToggleLookZoomScale()
     {
         _zoomScale = _zoomScale > 1.01 ? 1 : 2;
     }
 
-    private void ZoomPrev()
+    internal void ZoomPrev()
     {
         if (_zoomCandidate is null || _allCandidates.Count == 0) return;
         var i = _allCandidates.FindIndex(x =>
@@ -1093,7 +1093,7 @@ public partial class Characters
         _zoomScale = 1;
     }
 
-    private void ZoomNext()
+    internal void ZoomNext()
     {
         if (_zoomCandidate is null || _allCandidates.Count == 0) return;
         var i = _allCandidates.FindIndex(x =>
@@ -1105,7 +1105,7 @@ public partial class Characters
         _zoomScale = 1;
     }
 
-    private async Task LockFromZoomAsync()
+    internal async Task LockFromZoomAsync()
     {
         if (_zoomCandidate is null) return;
         var c = _zoomCandidate;
@@ -1113,7 +1113,7 @@ public partial class Characters
         await LockCandidateAsync(c);
     }
 
-    private async Task LockCandidateAsync(Candidate c, bool overrideStyle = false, string? overrideReason = null)
+    internal async Task LockCandidateAsync(Candidate c, bool overrideStyle = false, string? overrideReason = null)
     {
         if (_selected is null) return;
         // Remember choice so a cast-list switch can finish the save if this call is in flight.
@@ -1172,11 +1172,11 @@ public partial class Characters
         finally { _busy = false; }
     }
 
-    private Candidate? _styleRejectCandidate;
-    private string? _styleRejectMessage;
+    internal Candidate? _styleRejectCandidate;
+    internal string? _styleRejectMessage;
 
     /// <summary>Keep the classifier's verdict (close the override prompt without locking).</summary>
-    private void DismissStyleReject()
+    internal void DismissStyleReject()
     {
         _styleRejectCandidate = null;
         _styleRejectMessage = null;
@@ -1185,7 +1185,7 @@ public partial class Characters
         _chosenCandidateKey = null;
     }
 
-    private static bool IsStyleGateRejection(string? message)
+    internal static bool IsStyleGateRejection(string? message)
     {
         var m = message ?? "";
         return m.Contains("does not match the project style", StringComparison.OrdinalIgnoreCase)
@@ -1194,26 +1194,26 @@ public partial class Characters
             || m.Contains("style check", StringComparison.OrdinalIgnoreCase);
     }
 
-    private void OnLookDescriptionInput(ChangeEventArgs e)
+    internal void OnLookDescriptionInput(ChangeEventArgs e)
     {
         _editDescription = e.Value?.ToString() ?? "";
         ScheduleAutoSaveLook();
     }
 
-    private void OnLookVisualLockInput(ChangeEventArgs e)
+    internal void OnLookVisualLockInput(ChangeEventArgs e)
     {
         _editVisualLock = e.Value?.ToString() ?? "";
         ScheduleAutoSaveLook();
     }
 
-    private Task OnLookDescriptionChanged(string value)
+    internal Task OnLookDescriptionChanged(string value)
     {
         _editDescription = value ?? "";
         ScheduleAutoSaveLook();
         return Task.CompletedTask;
     }
 
-    private Task OnLookVisualLockChanged(string value)
+    internal Task OnLookVisualLockChanged(string value)
     {
         _editVisualLock = value ?? "";
         ScheduleAutoSaveLook();
@@ -1224,7 +1224,7 @@ public partial class Characters
     /// Debounced autosave: wait until typing pauses (~800ms) so we do not hit the API on every keystroke.
     /// Same pattern as voice profile autosave on this card.
     /// </summary>
-    private void ScheduleAutoSaveLook()
+    internal void ScheduleAutoSaveLook()
     {
         _lookSaveCts?.Cancel();
         _lookSaveCts?.Dispose();
@@ -1234,7 +1234,7 @@ public partial class Characters
         _ = AutoSaveLookDebouncedAsync(token);
     }
 
-    private async Task AutoSaveLookDebouncedAsync(CancellationToken token)
+    internal async Task AutoSaveLookDebouncedAsync(CancellationToken token)
     {
         try
         {
@@ -1259,7 +1259,7 @@ public partial class Characters
     }
 
     /// <param name="silent">Autosave: no full-page busy, no toast spam; skip AI scrub (cheap disk write).</param>
-    private async Task SaveLookAsync(bool silent = false)
+    internal async Task SaveLookAsync(bool silent = false)
     {
         if (_selected is null) return;
 
@@ -1349,7 +1349,7 @@ public partial class Characters
         }
     }
 
-    private async Task SaveVoiceAsync(bool silent = false)
+    internal async Task SaveVoiceAsync(bool silent = false)
     {
         if (_selected is null) return;
         if (!silent)
@@ -1387,21 +1387,21 @@ public partial class Characters
         }
     }
 
-    private void OnVoiceLabelInput(ChangeEventArgs e)
+    internal void OnVoiceLabelInput(ChangeEventArgs e)
     {
         _editVoiceLabel = e.Value?.ToString() ?? "";
         MarkVoiceStaleIfPlaying();
         ScheduleAutoSaveVoice();
     }
 
-    private void OnVoiceProfileInput(ChangeEventArgs e)
+    internal void OnVoiceProfileInput(ChangeEventArgs e)
     {
         _editVoiceProfile = e.Value?.ToString() ?? "";
         MarkVoiceStaleIfPlaying();
         ScheduleAutoSaveVoice();
     }
 
-    private Task OnVoiceLabelChanged(string value)
+    internal Task OnVoiceLabelChanged(string value)
     {
         _editVoiceLabel = value ?? "";
         MarkVoiceStaleIfPlaying();
@@ -1409,7 +1409,7 @@ public partial class Characters
         return Task.CompletedTask;
     }
 
-    private Task OnVoiceProfileChanged(string value)
+    internal Task OnVoiceProfileChanged(string value)
     {
         _editVoiceProfile = value ?? "";
         MarkVoiceStaleIfPlaying();
@@ -1417,7 +1417,7 @@ public partial class Characters
         return Task.CompletedTask;
     }
 
-    private void ScheduleAutoSaveVoice()
+    internal void ScheduleAutoSaveVoice()
     {
         _voiceSaveCts?.Cancel();
         _voiceSaveCts?.Dispose();
@@ -1428,7 +1428,7 @@ public partial class Characters
         _ = AutoSaveVoiceDebouncedAsync(token);
     }
 
-    private async Task AutoSaveVoiceDebouncedAsync(CancellationToken token)
+    internal async Task AutoSaveVoiceDebouncedAsync(CancellationToken token)
     {
         try
         {
@@ -1452,13 +1452,13 @@ public partial class Characters
         }
     }
 
-    private void MarkVoiceStaleIfPlaying()
+    internal void MarkVoiceStaleIfPlaying()
     {
         if (!string.IsNullOrEmpty(_voicePreviewUrl))
             _voicePreviewStale = true;
     }
 
-    private async Task TryLoadCachedVoiceAsync()
+    internal async Task TryLoadCachedVoiceAsync()
     {
         if (_selected is null) return;
         try
@@ -1487,7 +1487,7 @@ public partial class Characters
     }
 
     /// <param name="force">true = always regenerate (after editing profile).</param>
-    private async Task PlayVoicePreviewAsync(bool force)
+    internal async Task PlayVoicePreviewAsync(bool force)
     {
         if (_selected is null) return;
         _voicePreviewError = null;
@@ -1542,13 +1542,13 @@ public partial class Characters
         }
     }
 
-    private async Task RefreshNavReadinessAsync()
+    internal async Task RefreshNavReadinessAsync()
     {
         try { await ActiveProject.RefreshReadinessAsync(Engine); }
         catch { /* nav gates */ }
     }
 
-    private async Task UnlockAsync()
+    internal async Task UnlockAsync()
     {
         if (_selected is null) return;
         _busy = true;
@@ -1567,7 +1567,7 @@ public partial class Characters
 
 
 
-    private void ApplySimpleModeFromUri()
+    internal void ApplySimpleModeFromUri()
     {
         var querySimple = false;
         try
@@ -1594,7 +1594,7 @@ public partial class Characters
                 projectId: _projectId);
     }
 
-    private async Task ExitSimplePathAsync()
+    internal async Task ExitSimplePathAsync()
     {
         if (string.IsNullOrEmpty(_projectId)) return;
         try
@@ -1612,7 +1612,7 @@ public partial class Characters
         }
     }
 
-    private void FocusNarratorIfNeeded()
+    internal void FocusNarratorIfNeeded()
     {
         if (_chars is null || _chars.Count == 0) return;
         var wantNarrator = _simpleMode
@@ -1631,7 +1631,7 @@ public partial class Characters
             _ = SelectAsync(pick.Key);
     }
 
-    private void RefreshVoiceClonePlayUrl()
+    internal void RefreshVoiceClonePlayUrl()
     {
         if (_selected?.HasVoiceCloneSample == true && !string.IsNullOrEmpty(_projectId) && !string.IsNullOrEmpty(_selectedKey))
         {
@@ -1648,7 +1648,7 @@ public partial class Characters
     /// Does not block recording if the key is still missing.
     /// </summary>
 
-    private async Task ApplyVoiceCloneToProviderAsync()
+    internal async Task ApplyVoiceCloneToProviderAsync()
     {
         if (_selected is null || string.IsNullOrEmpty(_selectedKey) || string.IsNullOrEmpty(_projectId))
             return;
@@ -1681,7 +1681,7 @@ public partial class Characters
         }
     }
 
-    private async Task EnsureSimpleVoiceModelAsync()
+    internal async Task EnsureSimpleVoiceModelAsync()
     {
         try
         {
@@ -1716,7 +1716,7 @@ public partial class Characters
         }
     }
 
-    private async Task StartVoiceCloneMicAsync()
+    internal async Task StartVoiceCloneMicAsync()
     {
         _voiceCloneError = null;
         _voiceCloneHint = null;
@@ -1750,7 +1750,7 @@ public partial class Characters
         }
     }
 
-    private async Task StopVoiceCloneMicAsync()
+    internal async Task StopVoiceCloneMicAsync()
     {
         if (_selected is null || string.IsNullOrEmpty(_selectedKey)) return;
         _voiceCloneBusy = true;
@@ -1782,14 +1782,14 @@ public partial class Characters
         }
     }
 
-    private async Task CancelVoiceCloneMicAsync()
+    internal async Task CancelVoiceCloneMicAsync()
     {
         try { await Js.InvokeVoidAsync("PageToMovieVoiceCapture.cancel"); } catch { }
         _voiceRecRecording = false;
         _voiceCloneHint = "Recording cancelled.";
     }
 
-    private async Task OpenMediaFolderAudioPickerAsync()
+    internal async Task OpenMediaFolderAudioPickerAsync()
     {
         _voiceCloneError = null;
         _showMediaAudioPicker = true;
@@ -1827,7 +1827,7 @@ public partial class Characters
         }
     }
 
-    private async Task PickMediaFolderAudioAsync(ClientMediaFolderService.LocalAudioFile file)
+    internal async Task PickMediaFolderAudioAsync(ClientMediaFolderService.LocalAudioFile file)
     {
         if (_selected is null || string.IsNullOrEmpty(_selectedKey)) return;
         _voiceCloneBusy = true;
@@ -1860,7 +1860,7 @@ public partial class Characters
     /// Write clone sample to the client media folder (source of truth for large media) and
     /// mirror metadata/bytes to the server so previews still work.
     /// </summary>
-    private async Task PersistVoiceCloneSampleAsync(byte[] bytes, string fileName)
+    internal async Task PersistVoiceCloneSampleAsync(byte[] bytes, string fileName)
     {
         if (_selected is null || string.IsNullOrEmpty(_selectedKey)) return;
         var ext = Path.GetExtension(fileName).ToLowerInvariant();
@@ -1890,7 +1890,7 @@ public partial class Characters
         _voiceCloneHint = "Sample saved.";
     }
 
-    private async Task OnVoiceCloneUploadAsync(InputFileChangeEventArgs e)
+    internal async Task OnVoiceCloneUploadAsync(InputFileChangeEventArgs e)
     {
         // Legacy OS file picker path — prefer media folder; still supported if invoked.
         if (_selected is null || _selected.VoiceOnly || _selected.IsGroup) return;
@@ -1910,7 +1910,7 @@ public partial class Characters
         finally { _voiceCloneBusy = false; }
     }
 
-    private async Task DeleteVoiceCloneSampleAsync()
+    internal async Task DeleteVoiceCloneSampleAsync()
     {
         if (string.IsNullOrEmpty(_projectId) || string.IsNullOrEmpty(_selectedKey)) return;
         _voiceCloneBusy = true;
@@ -1925,7 +1925,7 @@ public partial class Characters
         finally { _voiceCloneBusy = false; }
     }
 
-    private async Task ReloadSelectedCharacterAsync()
+    internal async Task ReloadSelectedCharacterAsync()
     {
         if (string.IsNullOrEmpty(_projectId)) return;
         try
@@ -1944,14 +1944,14 @@ public partial class Characters
         catch { }
     }
 
-    private sealed class VoiceCaptureStartResult
+    internal sealed class VoiceCaptureStartResult
     {
         public bool Ok { get; set; }
         public string? MimeType { get; set; }
         public string? Error { get; set; }
     }
 
-    private sealed class VoiceCaptureStopResult
+    internal sealed class VoiceCaptureStopResult
     {
         public bool Ok { get; set; }
         public string? MimeType { get; set; }
@@ -1961,7 +1961,7 @@ public partial class Characters
         public long ByteLength { get; set; }
     }
 
-    private async Task OnUploadRefAsync(InputFileChangeEventArgs e)
+    internal async Task OnUploadRefAsync(InputFileChangeEventArgs e)
     {
         if (_selected is null || _selected.VoiceOnly || _selected.IsGroup) return;
         var file = e.File;
@@ -2017,7 +2017,7 @@ public partial class Characters
         }
     }
 
-    private async Task CancelAsync()
+    internal async Task CancelAsync()
     {
         _busy = true;
         try
@@ -2033,10 +2033,10 @@ public partial class Characters
         finally { _busy = false; }
     }
 
-    private string CacheBust(string url) =>
+    internal string CacheBust(string url) =>
         url + (url.Contains('?') ? "&" : "?") + "v=" + _imgBust;
 
-    private static string Trunc(string? s, int n)
+    internal static string Trunc(string? s, int n)
     {
         if (string.IsNullOrEmpty(s)) return "—";
         return s.Length <= n ? s : s[..(n - 1)] + "…";
@@ -2053,7 +2053,7 @@ public partial class Characters
         await DisposeAsyncCore();
     }
 
-    private async ValueTask DisposeAsyncCore()
+    internal async ValueTask DisposeAsyncCore()
 
     {
         Hub.JobUpdated -= OnJobUpdated;
@@ -2062,7 +2062,7 @@ public partial class Characters
     }
 
     /// <summary>Shared voice editor instance for simple-mode, cast list, and detail panel.</summary>
-    private RenderFragment VoiceEditorUI() => builder =>
+    internal RenderFragment VoiceEditorUI() => builder =>
     {
         builder.OpenComponent<Characters_VoiceEditor>(0);
         builder.AddAttribute(1, "SimpleMode", _simpleMode);

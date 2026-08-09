@@ -1,0 +1,151 @@
+@* Page-local to Review — share & export *@
+@inject StudioCapabilityState Caps
+@inject AdminSessionService Session
+@inject IAppLocalizer L
+@inject EngineApiClient Engine
+@inject ClientMediaFolderService MediaFolder
+@using Microsoft.AspNetCore.Components
+@using PageToMovie.Core.Models
+
+
+    <div class="card mb-3 border-info text-white shadow-sm" style="background-color: #0f172a !important; border-color: #3b82f6 !important;" data-testid="review-share-card">
+        <div class="card-header border-secondary d-flex justify-content-between align-items-center py-2.5" style="background-color: #1e293b !important;">
+            <div class="d-flex align-items-center gap-2">
+                <span class="fs-5">📤</span>
+                <span class="fw-bold fs-6">Share &amp; Export Film</span>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="Host.SetTabReview">Back to Review</button>
+        </div>
+        <div class="card-body p-4 text-white">
+<div class="alert alert-secondary border-secondary py-2 px-3 mb-3 small" data-testid="review-share-channel-note">
+    Films publish to the private <strong>Page to Movie</strong> YouTube channel <em>only through this app</em>
+    (no YouTube Studio for creators). The gallery plays those uploads.
+</div>
+@if (Host._youTubeStatus is not null && Host._youTubeStatus.Configured)
+{
+    @if (!Host._youTubeStatus.Connected)
+    {
+        @if (Session.IsAdmin)
+        {
+            <div class="alert alert-warning d-flex align-items-center justify-content-between mb-3 py-2 px-3 shadow-sm" data-testid="review-youtube-connect-alert">
+                <div class="small">
+                    <strong>Channel not connected:</strong> One-time admin OAuth so the app can upload to Page to Movie.
+                </div>
+                <button type="button" class="btn btn-sm btn-warning fw-bold text-dark ms-3 text-nowrap" @onclick="Host.ConnectYouTubeAsync">
+                    Connect Page to Movie channel
+                </button>
+            </div>
+        }
+        else
+        {
+            <div class="alert alert-warning py-2 px-3 mb-3 small" data-testid="review-youtube-waiting-admin">
+                The Page to Movie channel isn’t connected yet. An admin must connect it once before publishes can upload.
+            </div>
+        }
+    }
+    else
+    {
+        <div class="alert alert-success py-2 px-3 mb-3 small d-flex align-items-center justify-content-between" data-testid="review-youtube-connected-alert">
+            <span>✅ Page to Movie channel ready — publish from here to put your film on the wall.</span>
+            @if (Session.IsAdmin)
+            {
+                <button type="button" class="btn btn-sm btn-link text-white-50 p-0 ms-2 text-decoration-none" @onclick="Host.DisconnectYouTubeAsync">(disconnect)</button>
+            }
+        </div>
+    }
+}
+@if (Host._isPublishing)
+{
+    <div class="card p-4 my-2 text-center bg-dark text-white border-primary shadow" data-testid="review-publish-progress">
+        <div class="d-flex justify-content-center align-items-center gap-3 mb-3">
+            <div class="spinner-border text-primary" role="status" style="width: 2.2rem; height: 2.2rem;"></div>
+            <h5 class="fw-bold text-white mb-0">Publishing Film to Demo Gallery</h5>
+        </div>
+        <p class="text-light small mb-3">@Host._publishProgressStatus</p>
+        <div class="progress mb-3" style="height: 20px; background: rgba(255,255,255,0.15); border-radius: 8px;">
+            <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
+                 role="progressbar"
+                 style="width: @(Host._publishProgressPct)%; font-weight: 700; font-size: 0.85rem;"
+                 aria-valuenow="@Host._publishProgressPct"
+                 aria-valuemin="0"
+                 aria-valuemax="100">
+                @Host._publishProgressPct%
+            </div>
+        </div>
+        <div class="alert alert-info py-2 px-3 mb-0 small text-start">
+            ℹ️ <strong>Upload in progress:</strong> Please keep this page open while the cut uploads to the server. Once uploaded to 100%, YouTube processing will continue automatically in the background.
+        </div>
+    </div>
+}
+else
+{
+            <div class="mb-3">
+                <label class="form-label small fw-semibold">Film Title</label>
+                <input class="form-control bg-dark text-white border-secondary" @bind="Host._demoTitle" maxlength="120"
+                       placeholder="e.g. The Tell-Tale Heart" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label small fw-semibold">About this film</label>
+                <textarea class="form-control bg-dark text-white border-secondary" rows="3" @bind="Host._demoDescription"
+                          placeholder="A short description for the gallery wall..." maxlength="800"></textarea>
+            </div>
+            <div class="mb-3">
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="demoMadeForKids" @bind="Host._demoMadeForKids" />
+                    <label class="form-check-label small" for="demoMadeForKids">
+                        Made for kids (YouTube child-audience setting).
+                    </label>
+                </div>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="demoAiDisclosure" @bind="Host._demoIsAiSynthetic" />
+                    <label class="form-check-label small" for="demoAiDisclosure">
+                        Contains AI-generated visuals or audio.
+                    </label>
+                </div>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="demoGuidelines" @bind="Host._demoAcceptedGuidelines" />
+                    <label class="form-check-label small" for="demoGuidelines">
+                        I confirm this film is appropriate for a general audience.
+                    </label>
+                </div>
+            </div>
+
+@if (Host._showIncompleteWarning)
+{
+    <div class="alert alert-warning border-warning my-3 p-3 shadow-sm" data-testid="review-incomplete-warning">
+        <div class="d-flex align-items-center gap-2 mb-2">
+            <span class="fs-4">⚠️</span>
+            <div>
+                <strong class="text-warning">Incomplete Movie Warning:</strong>
+                <span class="ms-1">@Host._incompleteScenesCount scene(s) (@Host._missingClipsCount clip(s) total) have not been generated yet.</span>
+            </div>
+        </div>
+        <p class="small mb-3 text-light">
+            Uploading now will build a partial cut using only the available clips. You can click <strong>Proceed &amp; Upload Partial Cut</strong> to publish anyway, or cancel to finish generating clips first.
+        </p>
+        <div class="d-flex gap-2">
+            <button type="button" class="btn btn-warning btn-sm fw-bold text-dark" @onclick="Host.ConfirmIncompleteAndPublishAsync">
+                Proceed &amp; Upload Partial Cut
+            </button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="Host.CancelIncompleteWarning">
+                Cancel
+            </button>
+        </div>
+    </div>
+}
+
+            <div class="d-flex justify-content-end gap-2 pt-3 border-top border-secondary">
+                <button type="button" class="btn btn-outline-secondary" @onclick="Host.SetTabReview">Cancel</button>
+                <button type="button" class="btn btn-primary px-4" data-testid="review-save-confirm"
+                        disabled="@(Host._busy || !Host._demoAcceptedGuidelines)"
+                        @onclick="Host.ConfirmSaveAsync">
+                    Publish to Page to Movie gallery
+                </button>
+            </div>
+}
+        </div>
+    </div>
+
+@code {
+    [CascadingParameter] public Review Host { get; set; } = default!;
+}

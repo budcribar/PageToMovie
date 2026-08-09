@@ -11,16 +11,16 @@ namespace PageToMovie.Web.Components.Pages;
 
 public partial class Review
 {
-    private bool _busy;
-    private bool _gateChecked;
-    private string? _error;
-    private string? _message;
-    private string _projectId = "";
-    private List<SceneSummary> _scenes = new();
-    private string _sceneSortBy = "number"; // "number" | "duration"
-    private bool _sceneSortAsc = true;
+    internal bool _busy;
+    internal bool _gateChecked;
+    internal string? _error;
+    internal string? _message;
+    internal string _projectId = "";
+    internal List<SceneSummary> _scenes = new();
+    internal string _sceneSortBy = "number"; // "number" | "duration"
+    internal bool _sceneSortAsc = true;
 
-    private void ToggleSceneSort(string column)
+    internal void ToggleSceneSort(string column)
     {
         if (_sceneSortBy == column)
             _sceneSortAsc = !_sceneSortAsc;
@@ -31,7 +31,7 @@ public partial class Review
         }
     }
 
-    private IEnumerable<SceneSummary> SortedReviewScenes
+    internal IEnumerable<SceneSummary> SortedReviewScenes
     {
         get
         {
@@ -47,7 +47,7 @@ public partial class Review
         }
     }
 
-    private static string FormatClock(double seconds)
+    internal static string FormatClock(double seconds)
     {
         if (seconds < 0 || double.IsNaN(seconds) || double.IsInfinity(seconds))
             return "—";
@@ -57,9 +57,9 @@ public partial class Review
             : $"{t.Minutes}:{t.Seconds:D2}";
     }
 
-    private string? _activeTab = "review"; // null | "review" | "play" | "share"
+    internal string? _activeTab = "review"; // null | "review" | "play" | "share"
 
-    private async Task ToggleTabAsync(string tab)
+    internal async Task ToggleTabAsync(string tab)
     {
         if (_activeTab == tab)
         {
@@ -85,7 +85,7 @@ public partial class Review
         }
     }
 
-    private void PrepopulateDemoFields()
+    internal void PrepopulateDemoFields()
     {
         if (string.IsNullOrWhiteSpace(_demoTitle))
         {
@@ -97,7 +97,7 @@ public partial class Review
         }
     }
 
-    private static string FormatDisplayTitle(string? rawProjectId)
+    internal static string FormatDisplayTitle(string? rawProjectId)
     {
         if (string.IsNullOrWhiteSpace(rawProjectId))
             return "Untitled Short Film";
@@ -115,7 +115,7 @@ public partial class Review
         return name.Trim();
     }
 
-    private static string BuildSmartDescription(string? rawProjectId, string title)
+    internal static string BuildSmartDescription(string? rawProjectId, string title)
     {
         var clean = (rawProjectId ?? "").Trim();
         if (clean.Contains("TellTaleHeart", StringComparison.OrdinalIgnoreCase))
@@ -125,10 +125,10 @@ public partial class Review
         return $"A cinematic short film adaptation of “{title}”. Produced with PageToMovie AI Film Studio.";
     }
 
-    private Task SetTabReview() => ToggleTabAsync("review");
-    private Task SetTabShare() => ToggleTabAsync("share");
+    internal Task SetTabReview() => ToggleTabAsync("review");
+    internal Task SetTabShare() => ToggleTabAsync("share");
 
-    private bool CanPlayMovie =>
+    internal bool CanPlayMovie =>
         _wipExists || _wipCanBuild || MediaFolder.IsConnected || MediaFolder.IsSyncing || _scenes.Any(s => s.CompositeExists || s.ClipsOnDisk > 0);
 
     /// <summary>
@@ -136,33 +136,33 @@ public partial class Review
     /// on disk. Unlike <see cref="CanPlayMovie"/> this does NOT count a merely-connected media folder, so
     /// clip-dependent actions (Play, Share, Open in editor, AI review) stay disabled until clips exist.
     /// </summary>
-    private bool HasGeneratedClips =>
+    internal bool HasGeneratedClips =>
         _wipExists
         || !string.IsNullOrEmpty(_clientWipUrl)
         || _scenes.Any(s => s.CompositeExists || s.ClipsOnDisk > 0);
 
-    private SceneDetail? _selectedDetail;
-    private bool _wipExists;
-    private bool _wipStale;
-    private bool _wipCanBuild;
-    private string? _wipReason;
-    private bool _showWipPlayer;
-    private bool _playWipAfterRemux;
-    private int? _playSceneAfterRemux;
-    private string? _wipPath;
-    private string? _wipUpdatedAt;
-    private long _wipBytes;
-    private readonly HashSet<string> _expandedSceneGroups = new(StringComparer.OrdinalIgnoreCase);
+    internal SceneDetail? _selectedDetail;
+    internal bool _wipExists;
+    internal bool _wipStale;
+    internal bool _wipCanBuild;
+    internal string? _wipReason;
+    internal bool _showWipPlayer;
+    internal bool _playWipAfterRemux;
+    internal int? _playSceneAfterRemux;
+    internal string? _wipPath;
+    internal string? _wipUpdatedAt;
+    internal long _wipBytes;
+    internal readonly HashSet<string> _expandedSceneGroups = new(StringComparer.OrdinalIgnoreCase);
 
-    private bool IsSceneGroupExpanded(string rangeStr) => _expandedSceneGroups.Contains(rangeStr);
+    internal bool IsSceneGroupExpanded(string rangeStr) => _expandedSceneGroups.Contains(rangeStr);
 
-    private void ToggleSceneGroupExpand(string rangeStr)
+    internal void ToggleSceneGroupExpand(string rangeStr)
     {
         if (!_expandedSceneGroups.Add(rangeStr))
             _expandedSceneGroups.Remove(rangeStr);
     }
 
-    private void ToggleAllSceneGroups(bool expand)
+    internal void ToggleAllSceneGroups(bool expand)
     {
         _expandedSceneGroups.Clear();
         if (expand && _movieReport?.GroupFeedback is { Count: > 0 } groups)
@@ -171,21 +171,21 @@ public partial class Review
                 _expandedSceneGroups.Add(g.SceneRange);
         }
     }
-    private long _wipVideoKey;
-    private YouTubeStatusDto? _youTubeStatus;
-    private YouTubeUploadInfo? _youTubeUpload;
-    private string _youTubeTitle = "";
-    private string _youTubeDescription = "";
-    private string _youTubePrivacy = "unlisted";
-    private string _demoTitle = "";
-    private string _demoDescription = "";
-    private bool _demoAcceptedGuidelines;
-    private bool _demoMadeForKids;
-    private bool _demoIsAiSynthetic = true;
-    private bool _isPublishing;
-    private int _publishProgressPct;
-    private string _publishProgressStatus = "";
-    private DotNetObjectReference<Review>? _dotNetRef;
+    internal long _wipVideoKey;
+    internal YouTubeStatusDto? _youTubeStatus;
+    internal YouTubeUploadInfo? _youTubeUpload;
+    internal string _youTubeTitle = "";
+    internal string _youTubeDescription = "";
+    internal string _youTubePrivacy = "unlisted";
+    internal string _demoTitle = "";
+    internal string _demoDescription = "";
+    internal bool _demoAcceptedGuidelines;
+    internal bool _demoMadeForKids;
+    internal bool _demoIsAiSynthetic = true;
+    internal bool _isPublishing;
+    internal int _publishProgressPct;
+    internal string _publishProgressStatus = "";
+    internal DotNetObjectReference<Review>? _dotNetRef;
 
     [JSInvokable]
     public void ReportPublishProgress(int pct, string status)
@@ -196,49 +196,49 @@ public partial class Review
     }
 
     /// <summary>Can publish when browser stitch or fresh on-disk movie is available, or scenes can be stitched.</summary>
-    private bool CanShareMovie =>
+    internal bool CanShareMovie =>
         !string.IsNullOrEmpty(_clientWipUrl)
         || (_wipExists && !_wipStale)
         || MediaFolder.IsConnected
         || MediaFolder.IsSyncing
         || _scenes.Any(s => s.CompositeExists || s.ClipsOnDisk > 0);
 
-    private string WipPlayTitle =>
+    internal string WipPlayTitle =>
         !_wipCanBuild && !_wipExists && string.IsNullOrEmpty(_clientWipUrl) && !MediaFolder.IsConnected && !MediaFolder.IsSyncing
             ? "No scene videos were found"
             : _wipStale || !_wipExists
                 ? "Play full movie (combine scenes in browser)"
                 : "Play full movie (up to date)";
-    private string? _clientWipUrl;
-    private string? _clientSceneUrl;
-    private bool _clientStitching;
-    private string? _clientStitchStatus;
-    private bool _showScenePlayer;
-    private int? _playingScene;
-    private long _sceneVideoKey;
-    private bool _showClipPlayer;
-    private int? _playingClipScene;
-    private int? _playingClipNum;
-    private long _clipVideoKey;
-    private List<EditLogEntry> _entries = new();
-    private Dictionary<string, string> _reviews = new();
-    private int? _selectedScene;
-    private string _note = "";
-    private JobSnapshot? _job;
-    private bool _showActivity;
-    private const string passStatus = "pass";
-    private const string failStatus = "fail";
+    internal string? _clientWipUrl;
+    internal string? _clientSceneUrl;
+    internal bool _clientStitching;
+    internal string? _clientStitchStatus;
+    internal bool _showScenePlayer;
+    internal int? _playingScene;
+    internal long _sceneVideoKey;
+    internal bool _showClipPlayer;
+    internal int? _playingClipScene;
+    internal int? _playingClipNum;
+    internal long _clipVideoKey;
+    internal List<EditLogEntry> _entries = new();
+    internal Dictionary<string, string> _reviews = new();
+    internal int? _selectedScene;
+    internal string _note = "";
+    internal JobSnapshot? _job;
+    internal bool _showActivity;
+    internal const string passStatus = "pass";
+    internal const string failStatus = "fail";
 
     /// <summary>SxxCyy → draft from last auto-review.</summary>
-    private readonly Dictionary<string, ClipAutoReviewDraft> _drafts = new(StringComparer.OrdinalIgnoreCase);
-    private string? _editKey;
-    private List<EditRow>? _editRows;
+    internal readonly Dictionary<string, ClipAutoReviewDraft> _drafts = new(StringComparer.OrdinalIgnoreCase);
+    internal string? _editKey;
+    internal List<EditRow>? _editRows;
 
-    private bool JobRunning =>
+    internal bool JobRunning =>
         string.Equals(_job?.Status, "running", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(_job?.Status, "queued", StringComparison.OrdinalIgnoreCase);
 
-    private sealed class EditRow
+    internal sealed class EditRow
     {
         public string Id { get; set; } = Guid.NewGuid().ToString("N");
         public string Layer { get; set; } = "clip";
@@ -292,7 +292,7 @@ public partial class Review
         }
     }
 
-    private void OnJobUpdated(JobSnapshot snap)
+    internal void OnJobUpdated(JobSnapshot snap)
     {
         _job = snap;
         if (snap.Status is "done" or "partial" or "error" or "cancelled")
@@ -413,21 +413,21 @@ public partial class Review
         else _ = InvokeAsync(StateHasChanged);
     }
 
-    private void OnJobLog(string line)
+    internal void OnJobLog(string line)
     {
         if (_job is not null)
             _job.Message = line;
         _ = InvokeAsync(StateHasChanged);
     }
 
-    private string _preferredVideoEditor = "ClipChamp";
-    private bool _dubbing;
-    private string? _dubStatus;
-    private bool _isReviewing;
-    private int _reviewProgressPct;
-    private string _reviewProgressStatus = "";
+    internal string _preferredVideoEditor = "ClipChamp";
+    internal bool _dubbing;
+    internal string? _dubStatus;
+    internal bool _isReviewing;
+    internal int _reviewProgressPct;
+    internal string _reviewProgressStatus = "";
 
-    private async Task LoadPreferredVideoEditorAsync()
+    internal async Task LoadPreferredVideoEditorAsync()
     {
         try
         {
@@ -445,7 +445,7 @@ public partial class Review
 
     /// <summary>Dub the whole movie in the user's cloned voice (narrator by default) and download it.
     /// Server synthesizes the cloned voice per line; the browser overlays + stitches + downloads.</summary>
-    private async Task DubInMyVoiceAsync()
+    internal async Task DubInMyVoiceAsync()
     {
         if (string.IsNullOrWhiteSpace(_projectId)) return;
         // The clips + synthesized audio live in the browser media folder — it must be connected.
@@ -492,7 +492,7 @@ public partial class Review
         }
     }
 
-    private async Task OpenInExternalEditorAsync()
+    internal async Task OpenInExternalEditorAsync()
     {
         _busy = true;
         _error = null;
@@ -546,7 +546,7 @@ public partial class Review
         }
     }
 
-    private async Task LoadAsync()
+    internal async Task LoadAsync()
     {
         _busy = true;
         _error = null;
@@ -572,7 +572,7 @@ public partial class Review
         finally { _busy = false; }
     }
 
-    private async Task SoftLoadAsync()
+    internal async Task SoftLoadAsync()
     {
         try
         {
@@ -591,7 +591,7 @@ public partial class Review
         catch { /* ignore */ }
     }
 
-    private async Task TryLoadDraftsForSceneAsync(int scene)
+    internal async Task TryLoadDraftsForSceneAsync(int scene)
     {
         var n = ClipCountFor(scene);
         for (var c = 1; c <= n; c++)
@@ -606,7 +606,7 @@ public partial class Review
         }
     }
 
-    private async Task LoadSelectedDetailAsync(int sn)
+    internal async Task LoadSelectedDetailAsync(int sn)
     {
         try
         {
@@ -619,7 +619,7 @@ public partial class Review
         }
     }
 
-    private async Task RefreshWipMetaAsync()
+    internal async Task RefreshWipMetaAsync()
     {
         try
         {
@@ -642,7 +642,7 @@ public partial class Review
         }
     }
 
-    private async Task RefreshYouTubeStatusAsync()
+    internal async Task RefreshYouTubeStatusAsync()
     {
         try
         {
@@ -655,7 +655,7 @@ public partial class Review
     /// <summary>
     /// Play full cut: stream on-disk WIP when current; otherwise stitch composites/clips in the browser.
     /// </summary>
-    private async Task PlayWipAsync()
+    internal async Task PlayWipAsync()
     {
         // _busy flips true synchronously, before the first await — see PlaySceneAsync's comment
         // for why (a fast second click otherwise slips past this guard and races the first over
@@ -770,7 +770,7 @@ public partial class Review
 
     /// <summary>Connect a local media folder from the WIP player's "needs rebuild" prompt, then
     /// immediately retry the rebuild — a single click instead of connect-then-hunt-for-play-again.</summary>
-    private async Task ConnectFolderForWipAsync()
+    internal async Task ConnectFolderForWipAsync()
     {
         await MediaFolder.EnsureHubHookAsync();
         var connected = await MediaFolder.ConnectFolderAsync();
@@ -778,7 +778,7 @@ public partial class Review
             await PlayWipAsync();
     }
 
-    private async Task PlaySceneAsync(int scene)
+    internal async Task PlaySceneAsync(int scene)
     {
         // _busy must flip true synchronously, before the first await — otherwise a fast second
         // click (e.g. double-click) can slip past this guard during the window between it and
@@ -879,7 +879,7 @@ public partial class Review
         }
     }
 
-    private async Task HideScenePlayerAsync()
+    internal async Task HideScenePlayerAsync()
     {
         _showScenePlayer = false;
         _playingScene = null;
@@ -890,7 +890,7 @@ public partial class Review
         }
     }
 
-    private async Task HideWipPlayerAsync()
+    internal async Task HideWipPlayerAsync()
     {
         _showWipPlayer = false;
         if (!string.IsNullOrEmpty(_clientWipUrl))
@@ -900,7 +900,7 @@ public partial class Review
         }
     }
 
-    private void PlayClip(int scene, int clip)
+    internal void PlayClip(int scene, int clip)
     {
         _playingClipScene = scene;
         _playingClipNum = clip;
@@ -909,23 +909,23 @@ public partial class Review
         _message = $"Playing S{scene:D2}C{clip:D2}";
     }
 
-    private void HideClipPlayer()
+    internal void HideClipPlayer()
     {
         _showClipPlayer = false;
         _playingClipScene = null;
         _playingClipNum = null;
     }
 
-    private static string CacheBust(string url) => KeyFormatting.CacheBust(url);
+    internal static string CacheBust(string url) => KeyFormatting.CacheBust(url);
 
     // CacheBust() stamps the current second, so calling it inline in markup re-evaluates on
     // every render (any SignalR/job-poll re-render elsewhere on the page) and gives the <video>
     // a new src each time, which makes the browser reload the resource and restart playback —
     // looks like looping. Memoized per key below instead of recomputed per call.
-    private string? _wipServerSrcForProject;
-    private string? _wipServerSrcCached;
+    internal string? _wipServerSrcForProject;
+    internal string? _wipServerSrcCached;
 
-    private string? WipServerSrc()
+    internal string? WipServerSrc()
     {
         if (_wipServerSrcForProject != _projectId)
         {
@@ -935,10 +935,10 @@ public partial class Review
         return _wipServerSrcCached;
     }
 
-    private int? _sceneServerSrcScene;
-    private string? _sceneServerSrcCached;
+    internal int? _sceneServerSrcScene;
+    internal string? _sceneServerSrcCached;
 
-    private string? SceneServerSrc(int sn)
+    internal string? SceneServerSrc(int sn)
     {
         if (_sceneServerSrcScene != sn)
         {
@@ -948,10 +948,10 @@ public partial class Review
         return _sceneServerSrcCached;
     }
 
-    private (int Scene, int Clip)? _clipServerSrcKey;
-    private string? _clipServerSrcCached;
+    internal (int Scene, int Clip)? _clipServerSrcKey;
+    internal string? _clipServerSrcCached;
 
-    private string? ClipServerSrc(int scene, int clip)
+    internal string? ClipServerSrc(int scene, int clip)
     {
         if (_clipServerSrcKey != (scene, clip))
         {
@@ -961,11 +961,11 @@ public partial class Review
         return _clipServerSrcCached;
     }
 
-    private static string FormatBytes(long n) =>
+    internal static string FormatBytes(long n) =>
         n >= 1_000_000 ? $"{n / 1_000_000.0:0.#} MB" :
         n >= 1_000 ? $"{n / 1_000.0:0.#} KB" : $"{n} B";
 
-    private async Task SelectSceneAsync(int scene)
+    internal async Task SelectSceneAsync(int scene)
     {
         _selectedScene = scene;
         CloseApplyPanel();
@@ -973,16 +973,16 @@ public partial class Review
         await TryLoadDraftsForSceneAsync(scene);
     }
 
-    private int ClipCountFor(int scene) =>
+    internal int ClipCountFor(int scene) =>
         _scenes.FirstOrDefault(s => s.SceneNumber == scene)?.ClipCount ?? 0;
 
-    private int ClipCountOnDisk(int scene) =>
+    internal int ClipCountOnDisk(int scene) =>
         _scenes.FirstOrDefault(s => s.SceneNumber == scene)?.ClipsOnDisk ?? 0;
 
-    private bool SceneHasComposite(int scene) =>
+    internal bool SceneHasComposite(int scene) =>
         _scenes.FirstOrDefault(s => s.SceneNumber == scene)?.CompositeExists == true;
 
-    private bool ClipOnDisk(int scene, int clip)
+    internal bool ClipOnDisk(int scene, int clip)
     {
         if (_selectedDetail is { } d && d.SceneNumber == scene)
         {
@@ -994,7 +994,7 @@ public partial class Review
         return s is not null && s.ClipsOnDisk >= s.ClipCount && s.ClipCount > 0;
     }
 
-    private async Task ReviewAsync(int scene, int clip, string status)
+    internal async Task ReviewAsync(int scene, int clip, string status)
     {
         _busy = true;
         _error = null;
@@ -1009,9 +1009,9 @@ public partial class Review
         finally { _busy = false; }
     }
 
-    private static string ClipKey(int scene, int clip) => $"S{scene:D2}C{clip:D2}";
+    internal static string ClipKey(int scene, int clip) => $"S{scene:D2}C{clip:D2}";
 
-    private bool IsAutoReviewRunning(int scene, int clip) =>
+    internal bool IsAutoReviewRunning(int scene, int clip) =>
         _job is not null &&
         (_job.Status is "running" or "queued") &&
         (
@@ -1023,13 +1023,13 @@ public partial class Review
              (_job.Scene is null || _job.Scene == scene))
         );
 
-    private ClipAutoReviewDraft? GetLocalDraft(int scene, int clip) =>
+    internal ClipAutoReviewDraft? GetLocalDraft(int scene, int clip) =>
         _drafts.TryGetValue(ClipKey(scene, clip), out var d) ? d : null;
 
-    private bool HasIncludedEdits() =>
+    internal bool HasIncludedEdits() =>
         _editRows is { Count: > 0 } && _editRows.Any(r => r.Include && !string.IsNullOrWhiteSpace(r.Value));
 
-    private async Task StartAutoReviewAsync(int scene, int clip)
+    internal async Task StartAutoReviewAsync(int scene, int clip)
     {
         _busy = true;
         _error = null;
@@ -1059,9 +1059,9 @@ public partial class Review
         finally { _busy = false; }
     }
 
-    private MovieAutoReviewReport? _movieReport;
+    internal MovieAutoReviewReport? _movieReport;
 
-    private async Task<IReadOnlyList<string>> ResolveSceneUrlsForReviewAsync(int scene)
+    internal async Task<IReadOnlyList<string>> ResolveSceneUrlsForReviewAsync(int scene)
     {
         var summary = _scenes.FirstOrDefault(s => s.SceneNumber == scene);
         if (summary?.CompositeExists == true)
@@ -1071,7 +1071,7 @@ public partial class Review
         return await Stitch.CollectClipUrlsAsync(_projectId, scene);
     }
 
-    private async Task StartFullMovieReviewAsync()
+    internal async Task StartFullMovieReviewAsync()
     {
         if (_busy || JobRunning || _isReviewing) return;
         _busy = true;
@@ -1156,7 +1156,7 @@ public partial class Review
         }
     }
 
-    private async Task StartBatchAutoReviewAsync()
+    internal async Task StartBatchAutoReviewAsync()
     {
         _busy = true;
         _error = null;
@@ -1278,7 +1278,7 @@ public partial class Review
         finally { _busy = false; }
     }
 
-    private void OpenApplyPanel(int scene, int clip)
+    internal void OpenApplyPanel(int scene, int clip)
     {
         var draft = GetLocalDraft(scene, clip);
         if (draft is null) return;
@@ -1312,13 +1312,13 @@ public partial class Review
         }
     }
 
-    private void CloseApplyPanel()
+    internal void CloseApplyPanel()
     {
         _editKey = null;
         _editRows = null;
     }
 
-    private async Task ApplyAndRegenAsync(int scene, int clip)
+    internal async Task ApplyAndRegenAsync(int scene, int clip)
     {
         if (_editRows is null) return;
         var items = _editRows
@@ -1356,7 +1356,7 @@ public partial class Review
         finally { _busy = false; }
     }
 
-    private async Task ApproveAsync(int scene)
+    internal async Task ApproveAsync(int scene)
     {
         _busy = true;
         _error = null;
@@ -1374,7 +1374,7 @@ public partial class Review
         finally { _busy = false; }
     }
 
-    private async Task CancelAsync()
+    internal async Task CancelAsync()
     {
         try
         {
@@ -1386,7 +1386,7 @@ public partial class Review
         catch (Exception ex) { _error = ex.Message; }
     }
 
-    private void HandleYouTubeOAuthRedirect()
+    internal void HandleYouTubeOAuthRedirect()
     {
         var uri = new Uri(Nav.Uri);
         var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
@@ -1400,12 +1400,12 @@ public partial class Review
         Nav.NavigateTo(uri.GetLeftPart(UriPartial.Path), replace: true);
     }
 
-    private bool _showIncompleteWarning;
-    private bool _confirmedIncompletePublish;
-    private int _incompleteScenesCount;
-    private int _missingClipsCount;
+    internal bool _showIncompleteWarning;
+    internal bool _confirmedIncompletePublish;
+    internal int _incompleteScenesCount;
+    internal int _missingClipsCount;
 
-    private void CheckIncompleteMovieState()
+    internal void CheckIncompleteMovieState()
     {
         _missingClipsCount = _scenes
             .Where(s => !s.CompositeExists)
@@ -1414,7 +1414,7 @@ public partial class Review
             .Count(s => !s.CompositeExists && s.ClipsOnDisk < s.ClipCount);
     }
 
-    private async Task ConfirmSaveAsync()
+    internal async Task ConfirmSaveAsync()
     {
         CheckIncompleteMovieState();
         if ((_incompleteScenesCount > 0 || _missingClipsCount > 0) && !_confirmedIncompletePublish)
@@ -1428,14 +1428,14 @@ public partial class Review
         await PublishDemoAsync();
     }
 
-    private async Task ConfirmIncompleteAndPublishAsync()
+    internal async Task ConfirmIncompleteAndPublishAsync()
     {
         _confirmedIncompletePublish = true;
         _showIncompleteWarning = false;
         await PublishDemoAsync();
     }
 
-    private void CancelIncompleteWarning()
+    internal void CancelIncompleteWarning()
     {
         _showIncompleteWarning = false;
     }
@@ -1443,7 +1443,7 @@ public partial class Review
     /// <summary>
     /// Build cut + publish to /api/demos → YouTube upload. Gallery lists the film once YouTube id is set.
     /// </summary>
-    private async Task PublishDemoAsync()
+    internal async Task PublishDemoAsync()
     {
         if (!_demoAcceptedGuidelines)
         {
@@ -1551,10 +1551,10 @@ public partial class Review
     /// no server fallback for music (unlike clips) and is deliberately best-effort/never-blocking,
     /// so without this flag a tab that never connected its folder silently exports/uploads a
     /// musicless movie with no indication anything was skipped. Callers append a note using it.</summary>
-    private bool _lastExportMissingMusic;
+    internal bool _lastExportMissingMusic;
 
     /// <summary>Return a browser-fetchable URL for the full cut (blob or authenticated WIP).</summary>
-    private async Task<string?> EnsureShareableMovieUrlAsync()
+    internal async Task<string?> EnsureShareableMovieUrlAsync()
     {
         await RefreshWipMetaAsync();
 
@@ -1614,7 +1614,7 @@ public partial class Review
         }
     }
 
-    private async Task ConnectYouTubeAsync()
+    internal async Task ConnectYouTubeAsync()
     {
         _busy = true;
         _error = null;
@@ -1626,7 +1626,7 @@ public partial class Review
         catch (Exception ex) { _error = ex.Message; _busy = false; }
     }
 
-    private async Task DisconnectYouTubeAsync()
+    internal async Task DisconnectYouTubeAsync()
     {
         _busy = true;
         _error = null;
@@ -1640,7 +1640,7 @@ public partial class Review
         finally { _busy = false; }
     }
 
-    private async Task StartYouTubeUploadAsync()
+    internal async Task StartYouTubeUploadAsync()
     {
         _busy = true;
         _error = null;
@@ -1702,7 +1702,7 @@ public partial class Review
         finally { _busy = false; }
     }
 
-    private Task EnsureHubAsync() => Hub.EnsureStartedAsync();
+    internal Task EnsureHubAsync() => Hub.EnsureStartedAsync();
 
     public async ValueTask DisposeAsync()
     {

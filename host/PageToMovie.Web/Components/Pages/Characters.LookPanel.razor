@@ -1,0 +1,366 @@
+@* Page-local to Characters — look & voice panel *@
+@inject StudioCapabilityState Caps
+@inject AdminSessionService Session
+@inject IAppLocalizer L
+@inject EngineApiClient Engine
+@inject ClientMediaFolderService MediaFolder
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Forms
+@using PageToMovie.Core.Models
+@using PageToMovie.Web.Services
+
+
+                <div class="card mb-2 @(Host._mode == Characters.Mode.PickSource ? "border-primary" : "")">
+                    <div class="card-header py-1 px-2 d-flex justify-content-between align-items-center gap-2">
+                        <button type="button"
+                                class="char-panel-toggle border-0 bg-transparent text-start p-0 flex-grow-1 d-flex justify-content-between align-items-center gap-2"
+                                @onclick="() => Host._panelPictureOpen = !Host._panelPictureOpen">
+                            <span><strong>Look & voice</strong></span>
+                            <span class="small text-muted">@(Host._panelPictureOpen ? "▲" : "▼")</span>
+                        </button>
+                        @if (Host._selected.Locked)
+                        {
+                            <button type="button" class="btn btn-sm btn-outline-warning" disabled="@Host._busy"
+                                    title="Unlock this character look so it can be changed"
+                                    @onclick="Host.UnlockAsync"
+                                    @onclick:stopPropagation="true">Unlock</button>
+                        }
+                    </div>
+                    @if (Host._panelPictureOpen)
+                    {
+                        <div class="card-body py-2">
+                            @if (Host._mode == Characters.Mode.WaitingGenerate)
+                            {
+                                <div class="alert alert-info mb-0 py-2">
+                                    Generating three looks for @Host._selected.DisplayName…
+                                    @if (Host.JobRunning)
+                                    {
+                                        <button type="button" class="btn btn-sm btn-outline-danger ms-2 py-0"
+                                                disabled="@Host._busy" @onclick="Host.CancelAsync">Cancel</button>
+                                    }
+                                </div>
+                            }
+                            else if (Host._mode == Characters.Mode.Compare && Host._allCandidates.Count > 0)
+                            {
+                                <div class="char-pick">
+                                    <div class="small fw-semibold mb-1">Pick the best look</div>
+                                    <p class="small text-muted mb-3 mb-md-2">
+                                        Click a picture to zoom and compare detail. Use <strong>Use this look</strong> only when you’ve chosen.
+                                    </p>
+                                    <div class="char-pick__grid" data-testid="char-pick-grid">
+                                        @foreach (var c in Host._allCandidates)
+                                        {
+                                            <CharacterPickCard Label="@c.Label"
+                                                               ImageUrl="@c.Url"
+                                                               Selected="@(Host._chosenCandidateKey == Characters.CandidateKey(c))"
+                                                               ShowZoomBadge="true"
+                                                               FrameDisabled="@(Host._busy || Host.JobRunning)"
+                                                               FrameTitle="@($"Click to save this look for {Host._selected?.DisplayName}")"
+                                                               FrameAriaLabel="@($"Use look {c.Label}")"
+                                                               OnFrameClick="@(() => Host.LockCandidateAsync(c))"
+                                                               UseLabel="Use this look"
+                                                               UseTitle="Save as preferred look for film"
+                                                               UseDisabled="@(Host._busy || Host.JobRunning)"
+                                                               OnUse="@(() => Host.LockCandidateAsync(c))"
+                                                               UseTestId="char-use-look">
+                                                <ExtraActions>
+                                                    <button type="button"
+                                                            class="btn btn-sm btn-outline-secondary"
+                                                            disabled="@(Host._busy || Host.JobRunning)"
+                                                            title="Zoom — inspect detail"
+                                                            @onclick="@(() => Host.OpenLookZoom(c))">
+                                                        Zoom
+                                                    </button>
+                                                </ExtraActions>
+                                            </CharacterPickCard>
+                                        }
+                                    </div>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary mt-2"
+                                            disabled="@(Host._busy || Host.JobRunning)"
+                                            @onclick="Host.BackToSource">
+                                        ← Change route
+                                    </button>
+                                </div>
+
+                                @* Full-screen zoom lightbox for detail compare *@
+                                <Characters_LookZoom Visible="@(Host._zoomCandidate is not null)"
+                                                     Label="@Host._zoomCandidate?.Label"
+                                                     ImageUrl="@Host._zoomCandidate?.Url"
+                                                     Scale="Host._zoomScale"
+                                                     CanNavigate="@(Host._allCandidates.Count >= 2)"
+                                                     UseDisabled="@(Host._busy || Host.JobRunning)"
+                                                     OnClose="Host.CloseLookZoom"
+                                                     OnPrev="Host.ZoomPrev"
+                                                     OnNext="Host.ZoomNext"
+                                                     OnToggleScale="Host.ToggleLookZoomScale"
+                                                     OnUse="Host.LockFromZoomAsync" />
+                            }
+                            else if (Host._mode == Characters.Mode.PickSource)
+                            {
+                                @* Already have a preferred look *@
+                                @if (Host._selected.HasPreferred && Host._pictureRoute == Characters.PictureRoute.Choose)
+                                {
+                                    <div class="d-flex flex-wrap align-items-start gap-3 mb-2">
+                                        @if (Host.PreferredImageUrl is { Length: > 0 } pu)
+                                        {
+                                            <img src="@pu" alt="Preferred" class="rounded border char-preferred-preview" />
+                                        }
+                                        <div class="flex-grow-1">
+                                            <div class="small fw-semibold mb-1">Preferred look saved</div>
+                                            <p class="small text-muted mb-2">This picture is used for film. Change it anytime.</p>
+                                            <div class="d-flex flex-wrap gap-2">
+                                                <button type="button" class="btn btn-sm btn-outline-primary"
+                                                        disabled="@(Host._busy || Host.JobRunning)"
+                                                        @onclick="() => Host.ChoosePictureRoute(Characters.PictureRoute.Generate)">
+                                                    Generate new looks
+                                                </button>
+                                                <label class="btn btn-sm btn-outline-primary mb-0 @(Host._busy || Host.JobRunning ? "disabled" : "")">
+                                                    Replace with upload
+                                                    <InputFile OnChange="Host.OnUploadRefAsync"
+                                                               accept=".png,.jpg,.jpeg,.webp,.gif"
+                                                               class="d-none"
+                                                               disabled="@(Host._busy || Host.JobRunning)" />
+                                                </label>
+                                                @if (Host.CanUseBookPictures)
+                                                {
+                                                    <button type="button" class="btn btn-sm btn-outline-secondary"
+                                                            disabled="@(Host._busy || Host.JobRunning)"
+                                                            @onclick="() => Host.ChoosePictureRoute(Characters.PictureRoute.Book)">
+                                                        From book pictures
+                                                    </button>
+                                                }
+                                                <button type="button" class="btn btn-sm btn-outline-danger"
+                                                        disabled="@(Host._busy || Host.JobRunning)"
+                                                        @onclick="@(() => Host.RequestDeleteImage("preferred", 0))">
+                                                    Remove
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+                                else if (Host._pictureRoute == Characters.PictureRoute.Choose)
+                                {
+                                    <p class="small text-muted mb-2">How do you want the look for <strong>@Host._selected.DisplayName</strong>?</p>
+                                    <div class="d-flex flex-column gap-2">
+                                        <button type="button"
+                                                class="btn btn-outline-primary text-start"
+                                                disabled="@(Host._busy || Host.JobRunning)"
+                                                @onclick="() => Host.ChoosePictureRoute(Characters.PictureRoute.Generate)"
+                                                data-testid="char-route-generate">
+                                            <strong>Generate from description</strong>
+                                            <div class="small opacity-75">Edit look text → create 3 options → pick one</div>
+                                        </button>
+                                        <label class="btn btn-outline-primary text-start mb-0 @(Host._busy || Host.JobRunning ? "disabled" : "")"
+                                               data-testid="char-route-upload">
+                                            <strong>Upload a photo</strong>
+                                            <div class="small opacity-75">Your picture becomes the preferred look — no description needed</div>
+                                            <InputFile OnChange="Host.OnUploadRefAsync"
+                                                       accept=".png,.jpg,.jpeg,.webp,.gif"
+                                                       class="d-none"
+                                                       disabled="@(Host._busy || Host.JobRunning)" />
+                                        </label>
+                                        @if (Host.CanUseBookPictures)
+                                        {
+                                            <button type="button"
+                                                    class="btn btn-outline-primary text-start"
+                                                    disabled="@(Host._busy || Host.JobRunning)"
+                                                    @onclick="() => Host.ChoosePictureRoute(Characters.PictureRoute.Book)"
+                                                    data-testid="char-route-book">
+                                                <strong>Guide from book pictures</strong>
+                                                <div class="small opacity-75">Pick illustrations from the PDF, then generate looks from them</div>
+                                            </button>
+                                        }
+                                    </div>
+                                }
+                                else if (Host._pictureRoute == Characters.PictureRoute.Generate)
+                                {
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <span class="small fw-semibold">Generate from description</span>
+                                        <button type="button" class="btn btn-link btn-sm text-muted p-0"
+                                                @onclick="() => Host.ChoosePictureRoute(Characters.PictureRoute.Choose)">← Routes</button>
+                                    </div>
+                                    <CharacterLookPanel Description="@Host._editDescription"
+                                                       DescriptionChanged="Host.OnLookDescriptionChanged"
+                                                       VisualLock="@Host._editVisualLock"
+                                                       VisualLockChanged="Host.OnLookVisualLockChanged"
+                                                       Busy="@(Host._busy || Host.JobRunning)"
+                                                       Hint="@(Host._lookSaveHint ?? "Text saves automatically")"
+                                                       TestId="char-look-panel">
+                                        <Actions>
+                                            <CapabilityLockedControl Enabled="Caps.ImageReady"
+                                                                     BlockedReason="@Caps.ImageBlockedReason"
+                                                                     SettingsHref="@Caps.ImageSettingsHref"
+                                                                     TestId="char-generate-looks-cap">
+                                                <button type="button" class="btn btn-primary btn-sm"
+                                                        disabled="@(Host._busy || Host.JobRunning || string.IsNullOrWhiteSpace(Host._editDescription))"
+                                                        @onclick="Host.StartRegenerateAsync"
+                                                        data-testid="char-generate-looks">
+                                                    Generate 3 looks
+                                                </button>
+                                            </CapabilityLockedControl>
+                                            @if (Host._savingLook)
+                                            {
+                                                <span class="small text-muted">Saving…</span>
+                                            }
+                                        </Actions>
+                                    </CharacterLookPanel>
+                                }
+                                else if (Host._pictureRoute == Characters.PictureRoute.Book)
+                                {
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <span class="small fw-semibold">Guide from book pictures</span>
+                                        <button type="button" class="btn btn-link btn-sm text-muted p-0"
+                                                @onclick="() => { Host._showBookCandidateGallery = false; Host.ChoosePictureRoute(Characters.PictureRoute.Choose); }">← Routes</button>
+                                    </div>
+                                    <p class="small text-muted mb-2">
+                                        Select up to 3 illustrations that look like this character, then generate portraits guided by those pages.
+                                    </p>
+                                    @if (!Host._showBookCandidateGallery && !Host._selected.BookRefs.Any(b => b.Exists))
+                                    {
+                                        <button type="button" class="btn btn-primary btn-sm"
+                                                disabled="@(Host._busy || Host.JobRunning)"
+                                                @onclick="Host.ToggleBookCandidateGalleryAsync">
+                                            Browse book pictures…
+                                        </button>
+                                    }
+                                    @if (Host._selected.BookRefs.Any(b => b.Exists))
+                                    {
+                                        <div class="d-flex flex-wrap gap-2 mb-2">
+                                            @foreach (var b in Host._selected.BookRefs.Where(x => x.Exists))
+                                            {
+                                                var bi = b.Index ?? 0;
+                                                var src = !string.IsNullOrEmpty(b.Url)
+                                                    ? Host.CacheBust(b.Url!)
+                                                    : Host.CacheBust(Engine.CharacterBookRefUrl(Host._projectId, Host._selected.Key, bi));
+                                                <div class="char-seed-tile-wrap">
+                                                    <div class="char-seed-tile char-seed-tile--on">
+                                                        <img src="@src" alt="Book" />
+                                                        <span class="char-seed-tile__label">Book</span>
+                                                    </div>
+                                                    <button type="button" class="char-seed-hide" title="Remove"
+                                                            disabled="@(Host._busy || Host.JobRunning)"
+                                                            @onclick="@(() => Host.RequestDeleteImage("bookref", bi))">×</button>
+                                                </div>
+                                            }
+                                        </div>
+                                        <div class="d-flex flex-wrap gap-2">
+                                            <button type="button" class="btn btn-sm btn-outline-secondary"
+                                                    disabled="@(Host._busy || Host.JobRunning)"
+                                                    @onclick="Host.ToggleBookCandidateGalleryAsync">
+                                                Change book picks
+                                            </button>
+                                            <button type="button" class="btn btn-primary btn-sm"
+                                                    disabled="@(Host._busy || Host.JobRunning)"
+                                                    @onclick="Host.StartBookGuidedGenerateAsync">
+                                                Generate 3 looks from book
+                                            </button>
+                                        </div>
+                                    }
+
+                                    @if (Host._showBookCandidateGallery)
+                                    {
+                                        <div class="border border-secondary border-opacity-50 rounded p-3 mt-3 bg-dark bg-opacity-75 text-white shadow-sm">
+                                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                                <strong class="small text-light">Book pictures for @Host._selected.DisplayName</strong>
+                                                <button type="button" class="btn btn-sm btn-outline-secondary"
+                                                        @onclick="() => Host._showBookCandidateGallery = false">✕</button>
+                                            </div>
+                                            @if (Host._loadingBookCandidates)
+                                            {
+                                                <div class="small text-muted py-2">Scanning book illustrations…</div>
+                                            }
+                                            else if (Host._rankedBookCandidates is null || Host._rankedBookCandidates.Count == 0)
+                                            {
+                                                <div class="small text-muted py-2">No book illustration candidates found for this project.</div>
+                                            }
+                                            else
+                                            {
+                                                <div class="d-flex flex-wrap gap-2 py-2" style="max-height: 320px; overflow-y: auto;">
+                                                    @foreach (var cand in Host._rankedBookCandidates)
+                                                    {
+                                                        var isSel = Host._selectedBookCandidatePaths.Contains(cand.PathRel, StringComparer.OrdinalIgnoreCase);
+                                                        <div class="border rounded p-1 text-center bg-dark"
+                                                             style="width: 110px; cursor: pointer; border-color: @(isSel ? "#6366f1" : "#374151"); background: @(isSel ? "rgba(99, 102, 241, 0.25)" : "#151922");"
+                                                             @onclick="() => Host.ToggleBookCandidateSelection(cand.PathRel)">
+                                                            <div class="position-relative mb-1" style="height: 100px; background: #000; overflow: hidden; border-radius: 4px;">
+                                                                <img src="@cand.Url" alt="@cand.Name" style="width: 100%; height: 100%; object-fit: contain;" />
+                                                                @if (isSel)
+                                                                {
+                                                                    <span class="badge bg-primary position-absolute top-0 end-0 m-1">✓</span>
+                                                                }
+                                                            </div>
+                                                            <div class="small text-truncate text-light fw-semibold" style="font-size: 0.72rem;">@(cand.Page > 0 ? $"Page {cand.Page}" : cand.Name)</div>
+                                                        </div>
+                                                    }
+                                                </div>
+                                                <div class="d-flex justify-content-between align-items-center mt-2 pt-2 border-top border-secondary border-opacity-50">
+                                                    <span class="small text-muted">@Host._selectedBookCandidatePaths.Count of 3 selected</span>
+                                                    <button type="button" class="btn btn-sm btn-success"
+                                                            disabled="@(Host._busy || Host._savingBookRefs || Host._selectedBookCandidatePaths.Count == 0)"
+                                                            @onclick="Host.ApplySelectedBookCandidatesAsync">
+                                                        @(Host._savingBookRefs ? "Saving…" : "Use selected")
+                                                    </button>
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                }
+                                else if (Host._pictureRoute == Characters.PictureRoute.Upload)
+                                {
+                                    @* Upload is one-shot via InputFile on route cards; this branch is a fallback *@
+                                    <label class="btn btn-primary btn-sm mb-0">
+                                        Choose photo…
+                                        <InputFile OnChange="Host.OnUploadRefAsync"
+                                                   accept=".png,.jpg,.jpeg,.webp,.gif"
+                                                   class="d-none"
+                                                   disabled="@(Host._busy || Host.JobRunning)" />
+                                    </label>
+                                    <button type="button" class="btn btn-link btn-sm" @onclick="() => Host.ChoosePictureRoute(Characters.PictureRoute.Choose)">← Routes</button>
+                                }
+                            }
+
+                            @if (Host.ShowVoiceFields(Host._selected))
+                            {
+                                <hr class="my-3" />
+                                <div class="char-voice-inline" data-testid="char-voice-section">
+                                    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+                                        <div>
+                                            <strong class="small">Voice</strong>
+                                            <span class="badge text-bg-secondary ms-1" style="font-size:0.65rem">optional</span>
+                                        </div>
+                                        @if (Characters.HasVoiceProfile(Host._selected))
+                                        {
+                                            <span class="badge text-bg-success" style="font-size:0.65rem">Profile set</span>
+                                        }
+                                        else if (Host._selected.HasVoiceCloneSample)
+                                        {
+                                            <span class="badge text-bg-info text-dark" style="font-size:0.65rem">Clone sample</span>
+                                        }
+                                    </div>
+                                    <p class="small text-muted mb-2">
+                                        Describe the voice style, or record a clone sample below.
+                                    </p>
+                                    @Host.VoiceEditorUI()
+                                </div>
+                            }
+                            else
+                            {
+                                <hr class="my-3" />
+                                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2" data-testid="char-voice-hidden-hint">
+                                    <p class="small text-muted mb-0">
+                                        No voice profile — optional (e.g. animal / non-speaking).
+                                    </p>
+                                    <button type="button"
+                                            class="btn btn-sm btn-outline-secondary"
+                                            @onclick="() => Host._forceShowVoice = true">
+                                        Add voice…
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+
+@code {
+    [CascadingParameter] public Characters Host { get; set; } = default!;
+}
