@@ -19,6 +19,7 @@
   <Project Path="PageToMovie.UiTests/PageToMovie.UiTests.csproj" />
   <Project Path="PageToMovie.Web/PageToMovie.Web.csproj" />
   <Project Path="tools/ClassifierBenchmarks/ClassifierBenchmarks.csproj" />
+  <Project Path="tools/FountainParserBenchmark/FountainParserBenchmark.csproj" />
   <Project Path="tools/ScreenplayBenchmark/ScreenplayBenchmark.csproj" />
   <Project Path="tools/ScreenplayEditorApp/ScreenplayEditorApp.csproj" />
   <Project Path="tools/ScreenplayEditorApp/ScreenplayEditorApp.Tests/ScreenplayEditorApp.Tests.csproj" />
