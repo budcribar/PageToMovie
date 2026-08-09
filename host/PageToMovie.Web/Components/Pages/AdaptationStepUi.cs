@@ -53,7 +53,7 @@ public abstract partial class AdaptationPageBase
 
         /// <summary>
         /// Suggested path for /adaptation redirect.
-        /// Prefers server <see cref="AdaptationStatus.NextStep"/> (PR4 will derive that from phase);
+        /// Prefers server <see cref="AdaptationStatus.NextStep"/> (from <see cref="StudioStateMachine.DetermineNextStep"/>);
         /// falls back to <see cref="StudioStateMachine.DeterminePhase"/> when NextStep is empty/unknown.
         /// </summary>
         public static string SuggestedStepPath(AdaptationStatus? status)
@@ -196,9 +196,8 @@ public abstract partial class AdaptationPageBase
         /// <summary>
         /// Hide the "Next" banner when the current step already is the next action
         /// (avoids "Next: import…" on the Import page).
-        /// Presentation still keys off server <see cref="AdaptationStatus.NextStep"/> until PR4
-        /// aligns that string with <see cref="StudioStateMachine"/>; do not invent a second banner
-        /// vocabulary here.
+        /// Presentation keys off server <see cref="AdaptationStatus.NextStep"/>
+        /// (<see cref="StudioStateMachine.DetermineNextStep"/>); do not invent a second banner vocabulary here.
         /// </summary>
         public static bool ShowNextStepBanner(AdaptationStatus? status, bool suppressGuidanceBanners, string step)
         {

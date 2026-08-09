@@ -69,12 +69,17 @@ The standalone editor is built and 100% verified in `host/tools/ScreenplayEditor
 
 ### Step 3: Operator Sign-off & State Machine Transition
 1. In `ScreenplayEditor.razor` header, render the primary **"Looks Good — Continue"** button.
-2. **Sign-off Handler**:
+2. **Sign-off Handler** (mutations only — **do not** store a phase enum):
    ```csharp
-   await ProjectStore.SetStateAsync(ProjectId, StudioState.ScreenplayApproved);
-   await AdaptationService.SignOffScreenplayAsync(ProjectId);
-   NavigationManager.NavigateTo($"/adaptation/{ProjectId}/shots");
+   // Persist + approve via Engine/API (sets Screenplay.Signed / ReadyForShots, cast seeds, etc.)
+   await Engine.SignOffScreenplayAsync(ProjectId, fountainText);
+   // StudioStateMachine.DeterminePhase(status) now returns ScreenplayApproved+
+   // ActiveProjectState re-evaluates CanCharacters / CanEstimate via CanNavigateTo
+   NavigationManager.NavigateTo("characters");
    ```
+   There is **no** `ProjectStore.SetStateAsync(StudioPhase)` — phase is derived from
+   `AdaptationStatus` by [`StudioStateMachine`](../PageToMovie.Core/Models/StudioStateMachine.cs).
+   See also `host/docs/studio-state-machine-migration-plan.md`.
 
 ### Step 4: Shot Plan Rebuild (`blueprint.json`)
 1. On screenplay sign-off or explicit rebuild, execute:

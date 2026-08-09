@@ -3,7 +3,9 @@
 **Working branch:** `feature/studio-state-machine-migration`  
 **PR1 status:** Core machine hardened + unit tests.  
 **PR2 status:** `ActiveProjectState` façade → `StudioStateMachine`.
-**PR3 status:** `AdaptationStepUi` Outline/Shots + SuggestedStepPath phase fallback (this branch).
+**PR3 status:** `AdaptationStepUi` Outline/Shots + SuggestedStepPath phase fallback.
+**PR4 status:** `DetermineNextStep` in Core; ProjectStore delegates.
+**PR5 status:** docs + comment cleanup; phase on ActiveProjectState.
 
 **Goal:** Make [`StudioStateMachine`](../PageToMovie.Core/Models/StudioStateMachine.cs) the **single source of truth** for studio pipeline phase and step navigation, so readiness rules are not duplicated in Web nav, adaptation UI helpers, and server `NextStep` logic.
 
@@ -30,11 +32,11 @@
 
 ## Success criteria
 
-- [ ] Every top-nav gate (`Cast`, `Estimate`, `Film`, `Review`) is computed via `StudioStateMachine.CanNavigateTo` (directly or through a thin façade).
-- [ ] `DeterminePhase` has unit tests covering Setup → Import → Draft → Approved → Shot plan → Review.
-- [ ] No second hand-rolled copy of cast/shot/review unlock rules in `ActiveProjectState`.
-- [ ] Screenplay sign-off still unlocks Cast solely because status flags change and phase re-evaluates (no special-case nav hacks).
-- [ ] Offline tests green for changed projects; no intentional UX change except fixing proven inconsistencies.
+- [x] Every top-nav gate (`Cast`, `Estimate`, `Film`, `Review`) is computed via `StudioStateMachine.CanNavigateTo` (directly or through a thin façade).
+- [x] `DeterminePhase` has unit tests covering Setup → Import → Draft → Approved → Shot plan → Review.
+- [x] No second hand-rolled copy of cast/shot/review unlock rules in `ActiveProjectState`.
+- [x] Screenplay sign-off still unlocks Cast solely because status flags change and phase re-evaluates (no special-case nav hacks).
+- [x] Offline tests green for changed projects; no intentional UX change except fixing proven inconsistencies.
 
 ---
 
@@ -152,13 +154,13 @@ dotnet test host/PageToMovie.Tests/PageToMovie.Tests.csproj --filter "FullyQuali
 
 **Risk:** Medium-high (API consumers, banners, redirects).
 
-- [ ] **4.1** Inventory all readers of `AdaptationStatus.NextStep` (Web, tests, any clients).
-- [ ] **4.2** Choose strategy:
+- [x] **4.1** Inventory all readers of `AdaptationStatus.NextStep` (Web, tests, any clients).
+- [x] **4.2** Choose strategy:
   - **A (preferred):** ProjectStore computes phase via `DeterminePhase`, then maps phase → `NextStep` string in **one** Core helper used by the store; or  
   - **B:** Keep store algorithm but add parity tests: for each fixture, store next-step **implies** the same unlocks as `CanNavigateTo`.
-- [ ] **4.3** Implement chosen strategy; remove divergent branches.
-- [ ] **4.4** Update `SuggestedStepPath` if redirects should follow phase map.
-- [ ] **4.5** Regression: import → draft → sign-off → characters → shots → scenes happy path (UiTest or manual script).
+- [x] **4.3** Implement chosen strategy; remove divergent branches.
+- [x] **4.4** Update `SuggestedStepPath` if redirects should follow phase map.
+- [x] **4.5** Regression: import → draft → sign-off → characters → shots → scenes happy path (UiTest or manual script).
 
 **Exit:** One pipeline story on server and client.
 
@@ -168,11 +170,11 @@ dotnet test host/PageToMovie.Tests/PageToMovie.Tests.csproj --filter "FullyQuali
 
 **Risk:** Low–medium (drive-by refactors).
 
-- [ ] **5.1** Replace obvious duplicate gates in `Cost.razor.cs` / Scenes entry with `ActiveProject.*` (already façade) — avoid re-reading raw stage flags for unlock.
-- [ ] **5.2** Screenplay sign-off path: after success, refresh status → phase must be `≥ ScreenplayApproved` before `NavigateTo("characters")` (assert in test or soft-check).
-- [ ] **5.3** Add debug-only or admin readout: current `StudioPhase` (settings/diagnostics) to validate production projects.
-- [ ] **5.4** Grep guardrail in CI or doc: fail PR review if new `ReadyForShots &&` unlocks appear outside Core/machine façade (manual checklist OK).
-- [ ] **5.5** Update `host/docs/screenplay-editor-integration-plan.md` Step 3 language: **no** `SetStateAsync(ScreenplayApproved)` — sign-off mutates status; machine derives phase.
+- [x] **5.1** Replace obvious duplicate gates in `Cost.razor.cs` / Scenes entry with `ActiveProject.*` (already façade) — avoid re-reading raw stage flags for unlock.
+- [x] **5.2** Screenplay sign-off path: after success, refresh status → phase must be `≥ ScreenplayApproved` before `NavigateTo("characters")` (assert in test or soft-check).
+- [x] **5.3** Add debug-only or admin readout: current `StudioPhase` (settings/diagnostics) to validate production projects.
+- [x] **5.4** Grep guardrail in CI or doc: fail PR review if new `ReadyForShots &&` unlocks appear outside Core/machine façade (manual checklist OK).
+- [x] **5.5** Update `host/docs/screenplay-editor-integration-plan.md` Step 3 language: **no** `SetStateAsync(ScreenplayApproved)` — sign-off mutates status; machine derives phase.
 
 **Exit:** Fewer scattered checks; phase visible for support.
 
@@ -180,11 +182,11 @@ dotnet test host/PageToMovie.Tests/PageToMovie.Tests.csproj --filter "FullyQuali
 
 ## Phase 6 — Hardening & close-out
 
-- [ ] **6.1** Full offline suite:  
+- [x] **6.1** Full offline suite:  
   `dotnet test host/PageToMovie.Tests/PageToMovie.Tests.csproj --filter "FullyQualifiedName!~LiveApi"`
 - [ ] **6.2** Targeted UI tests for nav gates / screenplay sign-off if present under `PageToMovie.UiTests`.
-- [ ] **6.3** Mark completed items in this doc; note any intentional behavior fixes (e.g. Stage1-only no longer unlocks Cast).
-- [ ] **6.4** Short PR description: before/after diagram + list of deleted duplicate logic.
+- [x] **6.3** Mark completed items in this doc; note any intentional behavior fixes (e.g. Stage1-only no longer unlocks Cast).
+- [x] **6.4** Short PR description: before/after diagram + list of deleted duplicate logic.
 - [ ] **6.5** Ship behind no flag if parity tests pass; otherwise feature-flag façade for one release (`UseStudioStateMachineGates`).
 
 **Exit:** Migration complete; machine is the live SSoT.
