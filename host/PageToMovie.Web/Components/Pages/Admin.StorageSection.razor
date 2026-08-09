@@ -1,0 +1,140 @@
+@using Microsoft.AspNetCore.Components
+
+<Admin_CollapsibleCard Title="💾 Storage, Memory & System Metrics"
+                               Expanded="Host._showStorageAndCapacity"
+                               ExpandedChanged="@(v =>
+ Host._showStorageAndCapacity = v)">
+<div class="row g-3 mb-3">
+                        <div class="col-md-6 col-lg-3">
+                            <div class="card h-100 border">
+                                <div class="card-header py-2 fw-semibold">Process</div>
+                                <div class="card-body small">
+                                    <div>Uptime: <strong>@Admin.FormatUptime(Host._state.Process?.UptimeSec ?? 0)</strong></div>
+                                    <div>Working set: <strong>@(Host._state.Process?.WorkingSetMb ?? 0) MB</strong></div>
+                                    <div>GC heap: <strong>@(Host._state.Process?.GcHeapMb ?? 0) MB</strong></div>
+                                    <div>Threads: <strong>@(Host._state.Process?.ThreadCount ?? 0)</strong></div>
+                                    <div>Env: <strong>@(Host._state.Process?.Environment ?? "?")</strong></div>
+                                    <div>Fakes: <strong>@((Host._state.Process?.UseFakes ?? false) ? "ON" : "off")</strong></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 col-lg-3">
+                            <div class="card h-100 border">
+                                <div class="card-header py-2 fw-semibold">Capacity</div>
+                                <div class="card-body small">
+                                    @if (Host._state.Capacity is { } c)
+                                    {
+                                        <div>MaxVideoInFlight: <strong>@c.MaxVideoInFlight</strong></div>
+                                        <div>MaxVideoInFlightPerUser: <strong>@c.MaxVideoInFlightPerUser</strong></div>
+                                        <div>MaxQueuePerUser: <strong>@c.MaxQueuePerUser</strong></div>
+                                    }
+                                    <div class="mt-2">
+                                        API in-flight: <strong>@Host._apiInFlight</strong>
+                                    </div>
+                                    <div>Rejects: <strong>@Host._capacityRejects</strong> · Lock conflicts: <strong>@Host._lockConflicts</strong></div>
+                                    <a class="btn btn-sm btn-link px-0" href="/admin/config">Edit capacity…</a>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 col-lg-3">
+                            <div class="card h-100 border">
+                                <div class="card-header py-2 fw-semibold">Projects</div>
+                                <div class="card-body small">
+                                    <div>Active: <strong>@(Host._state.Projects?.Active ?? "—")</strong></div>
+                                    <div class="text-truncate" title="@Host._state.Projects?.Workspace">
+                                        Workspace: <code class="small">@(Host._state.Projects?.Workspace ?? "—")</code>
+                                    </div>
+                                    <div class="mt-2 text-muted">
+                                        Snapshot @(Host._state.GeneratedAt?.ToLocalTime().ToString("HH:mm:ss") ?? "—")
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 col-lg-3">
+                            <div class="card h-100 border">
+                                <div class="card-header py-2 fw-semibold">Disk Space &amp; Storage</div>
+                                <div class="card-body small">
+                                    <div class="text-truncate" title="@(Host._state.Disk?.VolumePath ?? "/data")">
+                                        Volume: <code class="small">@(Host._state.Disk?.VolumePath ?? "/data")</code>
+                                    </div>
+                                    <div>Total size: <strong>@(Host._state.Disk?.FormattedTotal ?? "—")</strong></div>
+                                    <div>Used: <strong>@(Host._state.Disk?.FormattedUsed ?? "—")</strong> (@(Host._state.Disk?.UsedPercent ?? 0)%)</div>
+                                    <div>Free left: <strong class="text-success">@(Host._state.Disk?.FormattedFree ?? "—")</strong></div>
+                                    <div class="progress mt-2" style="height: 6px;">
+                                        <div class="progress-bar @Admin.GetDiskProgressBarClass(Host._state.Disk?.UsedPercent ?? 0)"
+                                             role="progressbar"
+                                             style="width: @(Math.Min(100, Math.Max(0, Host._state.Disk?.UsedPercent ?? 0)))%"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    @if (Host._state.DiskHistory is { Count: > 0 })
+                    {
+                        <div class="card border">
+                            <div class="card-header d-flex justify-content-between align-items-center py-2">
+                                <span>Daily Storage Usage History (Railway Volume <code>@(Host._state.Disk?.VolumePath ?? "/data")</code>)</span>
+                                <span class="badge bg-secondary">@Host._state.DiskHistory.Count day(s) tracked</span>
+                            </div>
+                            <div class="card-body p-0">
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-hover mb-0 small">
+                                        <thead>
+                                            <tr>
+                                                <th>Date</th>
+                                                <th>Used Space</th>
+                                                <th>Free Space</th>
+                                                <th>Total Capacity</th>
+                                                <th>Daily Usage Change</th>
+                                                <th>Usage %</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var snap in Host._state.DiskHistory)
+                                            {
+                                                <tr>
+                                                    <td><strong>@snap.SnapshotDate</strong></td>
+                                                    <td>@snap.FormattedUsed</td>
+                                                    <td><span class="text-muted">@snap.FormattedFree</span></td>
+                                                    <td>@snap.FormattedTotal</td>
+                                                    <td>
+                                                        @if (string.IsNullOrWhiteSpace(snap.FormattedDailyChange))
+                                                        {
+                                                            <span class="text-muted">—</span>
+                                                        }
+                                                        else if (snap.DailyChangeBytes > 0)
+                                                        {
+                                                            <span class="text-danger fw-semibold">@snap.FormattedDailyChange</span>
+                                                        }
+                                                        else if (snap.DailyChangeBytes < 0)
+                                                        {
+                                                            <span class="text-success fw-semibold">@snap.FormattedDailyChange</span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="text-muted">0 KB</span>
+                                                        }
+                                                    </td>
+                                                    <td>
+                                                        <div class="d-flex align-items-center gap-2">
+                                                            <div class="progress flex-grow-1" style="height: 6px; min-width: 60px;">
+                                                                <div class="progress-bar @Admin.GetDiskProgressBarClass(snap.UsedPercent)" style="width: @(snap.UsedPercent)%"></div>
+                                                            </div>
+                                                            <span>@snap.UsedPercent%</span>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    }
+        
+</Admin_CollapsibleCard>
+
+@code {
+    [CascadingParameter] public Admin Host { get; set; } = default!;
+}

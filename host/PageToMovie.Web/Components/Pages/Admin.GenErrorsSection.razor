@@ -1,0 +1,91 @@
+@using Microsoft.AspNetCore.Components
+
+<Admin_CollapsibleCard Title="⚠️ Generation Errors"
+                               Expanded="Host._showGenErrors"
+                               ExpandedChanged="@(v =>
+ Host._showGenErrors = v)">
+<div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+                        <select class="form-select form-select-sm" style="max-width: 14rem;" @bind="Host._genErrorTypeFilter" @bind:after="Host.RefreshGenerationErrorsAsync">
+                            <option value="">All error types</option>
+                            <option value="partial_coverage">partial_coverage</option>
+                            <option value="empty_response">empty_response</option>
+                            <option value="http_error">http_error</option>
+                            <option value="exception">exception</option>
+                            <option value="structural_gate_failure">structural_gate_failure</option>
+                        </select>
+                        <select class="form-select form-select-sm" style="max-width: 16rem;" @bind="Host._genErrorProjectFilter" @bind:after="Host.RefreshGenerationErrorsAsync">
+                            <option value="">All projects</option>
+                            @foreach (var p in Host._projectOptions)
+                            {
+                                <option value="@p">@p</option>
+                            }
+                        </select>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="Host.RefreshGenerationErrorsAsync" disabled="@Host._genErrorsBusy">
+                            @(Host._genErrorsBusy ? "Loading…" : "Refresh")
+                        </button>
+                        <span class="badge bg-secondary">@(Host._genErrors?.Count ?? 0) row(s)</span>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover mb-0 small">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Stage</th>
+                                    <th>Type</th>
+                                    <th>Project</th>
+                                    <th>Scene</th>
+                                    <th>Coverage</th>
+                                    <th>Attempt</th>
+                                    <th>Resolved</th>
+                                    <th>Message</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (Host._genErrors is { Count: > 0 })
+                                {
+                                    @foreach (var e in Host._genErrors)
+                                    {
+                                        <tr>
+                                            <td class="text-nowrap">@e.Ts</td>
+                                            <td><code>@e.Stage</code></td>
+                                            <td><span class="badge @Admin.GetGenErrorTypeBadgeClass(e.ErrorType)">@e.ErrorType</span></td>
+                                            <td>@e.ProjectId</td>
+                                            <td>@e.Scene</td>
+                                            <td>
+                                                @if (e.RequestedCount is not null)
+                                                {
+                                                    @($"{e.ReturnedCount ?? 0}/{e.RequestedCount}")
+                                                }
+                                                else if (e.HttpStatus is not null)
+                                                {
+                                                    @($"HTTP {e.HttpStatus}")
+                                                }
+                                            </td>
+                                            <td>@e.Attempt</td>
+                                            <td>
+                                                @if (e.Resolved)
+                                                {
+                                                    <span class="text-success">yes</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="text-warning">no</span>
+                                                }
+                                            </td>
+                                            <td class="text-truncate" style="max-width: 28rem;" title="@e.ErrorMessage">@e.ErrorMessage</td>
+                                        </tr>
+                                    }
+                                }
+                                else if (!Host._genErrorsBusy)
+                                {
+                                    <tr><td colspan="9" class="text-muted text-center py-3">No generation-error events recorded.</td></tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+        
+</Admin_CollapsibleCard>
+
+@code {
+    [CascadingParameter] public Admin Host { get; set; } = default!;
+}

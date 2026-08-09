@@ -321,43 +321,7 @@ else
                         <p class="small text-muted mb-3">
                             Record (or pick) one sample for this character. Library pictures stay as-is — we re-speak lines in your voice when you film.
                         </p>
-                        <Characters_VoiceEditor SimpleMode="_simpleMode"
-                                    EditVoiceLabel="@_editVoiceLabel"
-                                    VoiceLabelChanged="OnVoiceLabelChanged"
-                                    EditVoiceProfile="@_editVoiceProfile"
-                                    VoiceProfileChanged="OnVoiceProfileChanged"
-                                    Busy="_busy"
-                                    VoicePreviewBusy="_voicePreviewBusy"
-                                    VoiceJobRunning="VoiceJobRunning"
-                                    VoiceSaveHint="@_voiceSaveHint"
-                                    VoicePreviewError="@_voicePreviewError"
-                                    VoicePreviewHint="@_voicePreviewHint"
-                                    VoicePreviewStale="_voicePreviewStale"
-                                    VoicePreviewUrl="@_voicePreviewUrl"
-                                    Job="_job"
-                                    Selected="_selected"
-                                    VoiceCloneBusy="_voiceCloneBusy"
-                                    VoiceCloneError="@_voiceCloneError"
-                                    VoiceCloneHint="@_voiceCloneHint"
-                                    VoiceClonePlayUrl="@_voiceClonePlayUrl"
-                                    VoiceRecRecording="_voiceRecRecording"
-                                    ShowKidsFullScript="_showKidsFullScript"
-                                    ShowKidsFullScriptChanged="@(v => _showKidsFullScript = v)"
-                                    UseKidsScript="_useKidsScript"
-                                    UseKidsScriptChanged="@(v => _useKidsScript = v)"
-                                    ShowMediaAudioPicker="_showMediaAudioPicker"
-                                    ShowMediaAudioPickerChanged="@(v => _showMediaAudioPicker = v)"
-                                    LoadingMediaAudio="_loadingMediaAudio"
-                                    MediaAudioFiles="_mediaAudioFiles"
-                                    VoiceCloneReadScript="@VoiceCloneReadScript"
-                                    OnPlayPreview="PlayVoicePreviewAsync"
-                                    OnStartMic="StartVoiceCloneMicAsync"
-                                    OnStopMic="StopVoiceCloneMicAsync"
-                                    OnCancelMic="CancelVoiceCloneMicAsync"
-                                    OnOpenMediaPicker="OpenMediaFolderAudioPickerAsync"
-                                    OnApplyClone="ApplyVoiceCloneToProviderAsync"
-                                    OnDeleteClone="DeleteVoiceCloneSampleAsync"
-                                    OnPickMediaAudio="PickMediaFolderAudioAsync" />
+                        @VoiceEditorUI()
                     </div>
                 </div>
                 <p class="small text-muted mb-0">
@@ -376,43 +340,7 @@ else
                         <p class="small text-muted mb-3">
                             <strong>Voice style</strong> — used when this character speaks (for example narrator voice-over).
                         </p>
-                        <Characters_VoiceEditor SimpleMode="_simpleMode"
-                                    EditVoiceLabel="@_editVoiceLabel"
-                                    VoiceLabelChanged="OnVoiceLabelChanged"
-                                    EditVoiceProfile="@_editVoiceProfile"
-                                    VoiceProfileChanged="OnVoiceProfileChanged"
-                                    Busy="_busy"
-                                    VoicePreviewBusy="_voicePreviewBusy"
-                                    VoiceJobRunning="VoiceJobRunning"
-                                    VoiceSaveHint="@_voiceSaveHint"
-                                    VoicePreviewError="@_voicePreviewError"
-                                    VoicePreviewHint="@_voicePreviewHint"
-                                    VoicePreviewStale="_voicePreviewStale"
-                                    VoicePreviewUrl="@_voicePreviewUrl"
-                                    Job="_job"
-                                    Selected="_selected"
-                                    VoiceCloneBusy="_voiceCloneBusy"
-                                    VoiceCloneError="@_voiceCloneError"
-                                    VoiceCloneHint="@_voiceCloneHint"
-                                    VoiceClonePlayUrl="@_voiceClonePlayUrl"
-                                    VoiceRecRecording="_voiceRecRecording"
-                                    ShowKidsFullScript="_showKidsFullScript"
-                                    ShowKidsFullScriptChanged="@(v => _showKidsFullScript = v)"
-                                    UseKidsScript="_useKidsScript"
-                                    UseKidsScriptChanged="@(v => _useKidsScript = v)"
-                                    ShowMediaAudioPicker="_showMediaAudioPicker"
-                                    ShowMediaAudioPickerChanged="@(v => _showMediaAudioPicker = v)"
-                                    LoadingMediaAudio="_loadingMediaAudio"
-                                    MediaAudioFiles="_mediaAudioFiles"
-                                    VoiceCloneReadScript="@VoiceCloneReadScript"
-                                    OnPlayPreview="PlayVoicePreviewAsync"
-                                    OnStartMic="StartVoiceCloneMicAsync"
-                                    OnStopMic="StopVoiceCloneMicAsync"
-                                    OnCancelMic="CancelVoiceCloneMicAsync"
-                                    OnOpenMediaPicker="OpenMediaFolderAudioPickerAsync"
-                                    OnApplyClone="ApplyVoiceCloneToProviderAsync"
-                                    OnDeleteClone="DeleteVoiceCloneSampleAsync"
-                                    OnPickMediaAudio="PickMediaFolderAudioAsync" />
+                        @VoiceEditorUI()
                     </div>
                 </div>
             }
@@ -765,43 +693,7 @@ else
                                     <p class="small text-muted mb-2">
                                         Describe the voice style, or record a clone sample below.
                                     </p>
-                                    <Characters_VoiceEditor SimpleMode="_simpleMode"
-                                    EditVoiceLabel="@_editVoiceLabel"
-                                    VoiceLabelChanged="OnVoiceLabelChanged"
-                                    EditVoiceProfile="@_editVoiceProfile"
-                                    VoiceProfileChanged="OnVoiceProfileChanged"
-                                    Busy="_busy"
-                                    VoicePreviewBusy="_voicePreviewBusy"
-                                    VoiceJobRunning="VoiceJobRunning"
-                                    VoiceSaveHint="@_voiceSaveHint"
-                                    VoicePreviewError="@_voicePreviewError"
-                                    VoicePreviewHint="@_voicePreviewHint"
-                                    VoicePreviewStale="_voicePreviewStale"
-                                    VoicePreviewUrl="@_voicePreviewUrl"
-                                    Job="_job"
-                                    Selected="_selected"
-                                    VoiceCloneBusy="_voiceCloneBusy"
-                                    VoiceCloneError="@_voiceCloneError"
-                                    VoiceCloneHint="@_voiceCloneHint"
-                                    VoiceClonePlayUrl="@_voiceClonePlayUrl"
-                                    VoiceRecRecording="_voiceRecRecording"
-                                    ShowKidsFullScript="_showKidsFullScript"
-                                    ShowKidsFullScriptChanged="@(v => _showKidsFullScript = v)"
-                                    UseKidsScript="_useKidsScript"
-                                    UseKidsScriptChanged="@(v => _useKidsScript = v)"
-                                    ShowMediaAudioPicker="_showMediaAudioPicker"
-                                    ShowMediaAudioPickerChanged="@(v => _showMediaAudioPicker = v)"
-                                    LoadingMediaAudio="_loadingMediaAudio"
-                                    MediaAudioFiles="_mediaAudioFiles"
-                                    VoiceCloneReadScript="@VoiceCloneReadScript"
-                                    OnPlayPreview="PlayVoicePreviewAsync"
-                                    OnStartMic="StartVoiceCloneMicAsync"
-                                    OnStopMic="StopVoiceCloneMicAsync"
-                                    OnCancelMic="CancelVoiceCloneMicAsync"
-                                    OnOpenMediaPicker="OpenMediaFolderAudioPickerAsync"
-                                    OnApplyClone="ApplyVoiceCloneToProviderAsync"
-                                    OnDeleteClone="DeleteVoiceCloneSampleAsync"
-                                    OnPickMediaAudio="PickMediaFolderAudioAsync" />
+                                    @VoiceEditorUI()
                                 </div>
                             }
                             else

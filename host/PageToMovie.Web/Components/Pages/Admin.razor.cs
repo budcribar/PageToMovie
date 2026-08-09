@@ -11,73 +11,73 @@ namespace PageToMovie.Web.Components.Pages;
 
 public partial class Admin
 {
-    private AdminStateDto? _state;
-    private string? _error;
-    private string? _actionMsg;
-    private bool _busy;
-    private bool _hubLive;
-    private PeriodicTimer? _timer;
-    private CancellationTokenSource? _pollCts;
-    private int _apiInFlight;
-    private int _capacityRejects;
-    private int _lockConflicts;
-    private List<AdminLockDto> _locks = new();
-    private LoadSimLiveStateDto? _loadSim;
-    private List<ProcessSampleDto> _processHistory = new();
-    private EngineApiClient.TimingTelemetryTrendDto? _timingTelemetry;
+    internal AdminStateDto? _state;
+    internal string? _error;
+    internal string? _actionMsg;
+    internal bool _busy;
+    internal bool _hubLive;
+    internal PeriodicTimer? _timer;
+    internal CancellationTokenSource? _pollCts;
+    internal int _apiInFlight;
+    internal int _capacityRejects;
+    internal int _lockConflicts;
+    internal List<AdminLockDto> _locks = new();
+    internal LoadSimLiveStateDto? _loadSim;
+    internal List<ProcessSampleDto> _processHistory = new();
+    internal EngineApiClient.TimingTelemetryTrendDto? _timingTelemetry;
     /// <summary>Set when a chart upsert throws after we had real data to draw — surfaced in the UI so failures aren't silent.</summary>
-    private string? _chartWarning;
+    internal string? _chartWarning;
 
-    private List<EngineApiClient.GenerationErrorRowDto>? _genErrors;
-    private bool _genErrorsBusy;
-    private string _genErrorTypeFilter = "";
-    private string _genErrorProjectFilter = "";
+    internal List<EngineApiClient.GenerationErrorRowDto>? _genErrors;
+    internal bool _genErrorsBusy;
+    internal string _genErrorTypeFilter = "";
+    internal string _genErrorProjectFilter = "";
 
-    private string? _logJobId;
-    private string _logJobIdInput = "";
-    private JobSnapshot? _jobLog;
-    private string? _logError;
+    internal string? _logJobId;
+    internal string _logJobIdInput = "";
+    internal JobSnapshot? _jobLog;
+    internal string? _logError;
 
-    private string JobLogText =>
+    internal string JobLogText =>
         _jobLog?.Log is { Count: > 0 } lines
             ? string.Join("\n", lines)
             : "(no log lines — job may have finished and been pruned, or never wrote logs)";
 
-    private List<string> _projectOptions = new();
-    private List<string> _userList = new();
-    private string _exportProjectId = "";
-    private string _augmentProjectId = "";
-    private string _importPreferredId = "";
-    private string _importTargetUserId = "";
-    private bool _importOverwrite;
-    private IBrowserFile? _importFile;
-    private bool _archiveBusy;
-    private string? _archiveAction;
-    private string? _archiveMsg;
-    private string? _archiveError;
-    private const long MaxImportBytes = 512L * 1024 * 1024;
+    internal List<string> _projectOptions = new();
+    internal List<string> _userList = new();
+    internal string _exportProjectId = "";
+    internal string _augmentProjectId = "";
+    internal string _importPreferredId = "";
+    internal string _importTargetUserId = "";
+    internal bool _importOverwrite;
+    internal IBrowserFile? _importFile;
+    internal bool _archiveBusy;
+    internal string? _archiveAction;
+    internal string? _archiveMsg;
+    internal string? _archiveError;
+    internal const long MaxImportBytes = 512L * 1024 * 1024;
 
-    private bool _showTestEmailModal;
+    internal bool _showTestEmailModal;
 
-    private void OpenTestEmailModal() => _showTestEmailModal = true;
+    internal void OpenTestEmailModal() => _showTestEmailModal = true;
 
-    private void CloseTestEmailModal() => _showTestEmailModal = false;
+    internal void CloseTestEmailModal() => _showTestEmailModal = false;
 
-    private bool _showJobsAndLocks = true;
-    private bool _showProjectArchiving = true;
-    private bool _showLoadSim = false;
-    private bool _showTimingTelemetry = false;
-    private bool _showGenErrors = false;
-    private bool _showStorageAndCapacity = false;
+    internal bool _showJobsAndLocks = true;
+    internal bool _showProjectArchiving = true;
+    internal bool _showLoadSim = false;
+    internal bool _showTimingTelemetry = false;
+    internal bool _showGenErrors = false;
+    internal bool _showStorageAndCapacity = false;
 
-    private void ToggleJobsAndLocks() => _showJobsAndLocks = !_showJobsAndLocks;
-    private void ToggleProjectArchiving() => _showProjectArchiving = !_showProjectArchiving;
-    private void ToggleLoadSim() => _showLoadSim = !_showLoadSim;
-    private void ToggleTimingTelemetry() => _showTimingTelemetry = !_showTimingTelemetry;
-    private void ToggleGenErrors() => _showGenErrors = !_showGenErrors;
-    private void ToggleStorageAndCapacity() => _showStorageAndCapacity = !_showStorageAndCapacity;
+    internal void ToggleJobsAndLocks() => _showJobsAndLocks = !_showJobsAndLocks;
+    internal void ToggleProjectArchiving() => _showProjectArchiving = !_showProjectArchiving;
+    internal void ToggleLoadSim() => _showLoadSim = !_showLoadSim;
+    internal void ToggleTimingTelemetry() => _showTimingTelemetry = !_showTimingTelemetry;
+    internal void ToggleGenErrors() => _showGenErrors = !_showGenErrors;
+    internal void ToggleStorageAndCapacity() => _showStorageAndCapacity = !_showStorageAndCapacity;
 
-    private void ExpandAllCards()
+    internal void ExpandAllCards()
     {
         _showJobsAndLocks = true;
         _showProjectArchiving = true;
@@ -87,7 +87,7 @@ public partial class Admin
         _showStorageAndCapacity = true;
     }
 
-    private void CollapseAllCards()
+    internal void CollapseAllCards()
     {
         _showJobsAndLocks = false;
         _showProjectArchiving = false;
@@ -97,7 +97,7 @@ public partial class Admin
         _showStorageAndCapacity = false;
     }
 
-    private bool _started;
+    internal bool _started;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -129,7 +129,7 @@ public partial class Admin
         _ = PollLoopAsync(_pollCts.Token);
     }
 
-    private async Task ConnectHubAsync()
+    internal async Task ConnectHubAsync()
     {
         try
         {
@@ -143,9 +143,9 @@ public partial class Admin
         }
     }
 
-    private void OnMediaFolderChanged() => InvokeAsync(StateHasChanged);
+    internal void OnMediaFolderChanged() => InvokeAsync(StateHasChanged);
 
-    private void OnAdminState(object? payload)
+    internal void OnAdminState(object? payload)
     {
         _hubLive = true;
         if (payload is not null)
@@ -185,7 +185,7 @@ public partial class Admin
         _ = InvokeAsync(RefreshAsync);
     }
 
-    private async Task PollLoopAsync(CancellationToken ct)
+    internal async Task PollLoopAsync(CancellationToken ct)
     {
         try
         {
@@ -206,7 +206,7 @@ public partial class Admin
         catch (OperationCanceledException) { /* disposed */ }
     }
 
-    private async Task RefreshAsync()
+    internal async Task RefreshAsync()
     {
         if (!Session.IsAdmin) return;
         _busy = true;
@@ -248,7 +248,7 @@ public partial class Admin
         }
     }
 
-    private async Task RefreshGenerationErrorsAsync()
+    internal async Task RefreshGenerationErrorsAsync()
     {
         _genErrorsBusy = true;
         try
@@ -269,7 +269,7 @@ public partial class Admin
         }
     }
 
-    private static string GetGenErrorTypeBadgeClass(string errorType) => errorType switch
+    internal static string GetGenErrorTypeBadgeClass(string errorType) => errorType switch
     {
         "http_error" => "bg-danger",
         "exception" => "bg-danger",
@@ -279,7 +279,7 @@ public partial class Admin
         _ => "bg-secondary",
     };
 
-    private async Task RefreshProjectOptionsAsync()
+    internal async Task RefreshProjectOptionsAsync()
     {
         try
         {
@@ -327,7 +327,7 @@ public partial class Admin
         }
     }
 
-    private void OnImportFileSelected(InputFileChangeEventArgs e)
+    internal void OnImportFileSelected(InputFileChangeEventArgs e)
     {
         _importFile = e.FileCount > 0 ? e.File : null;
         _archiveError = null;
@@ -339,7 +339,7 @@ public partial class Admin
     // Shared error/busy wrapper for the archive actions (export / import / logs / augment). The
     // per-action prologue (_archiveBusy/_archiveAction/_archiveMsg) stays in each method; this only
     // wraps the body so the identical catch/finally reset lives in one place.
-    private async Task RunArchiveActionAsync(Func<Task> action)
+    internal async Task RunArchiveActionAsync(Func<Task> action)
     {
         try
         {
@@ -357,7 +357,7 @@ public partial class Admin
         }
     }
 
-    private async Task ExportProjectAsync()
+    internal async Task ExportProjectAsync()
     {
         if (string.IsNullOrWhiteSpace(_exportProjectId)) return;
         _archiveBusy = true;
@@ -419,7 +419,7 @@ public partial class Admin
         });
     }
 
-    private async Task ExportLogsAsync()
+    internal async Task ExportLogsAsync()
     {
         _archiveBusy = true;
         _archiveAction = "export_logs";
@@ -448,7 +448,7 @@ public partial class Admin
         });
     }
 
-    private async Task ImportProjectAsync()
+    internal async Task ImportProjectAsync()
     {
         if (_importFile is null) return;
         if (_importFile.Size > MaxImportBytes)
@@ -532,7 +532,7 @@ public partial class Admin
         });
     }
 
-    private async Task AugmentMusicAsync()
+    internal async Task AugmentMusicAsync()
     {
         if (string.IsNullOrWhiteSpace(_augmentProjectId)) return;
 
@@ -556,10 +556,10 @@ public partial class Admin
         });
     }
 
-    private int _synthesizeCurrent;
-    private int _synthesizeTotal;
+    internal int _synthesizeCurrent;
+    internal int _synthesizeTotal;
 
-    private async Task SynthesizeAudioAsync()
+    internal async Task SynthesizeAudioAsync()
     {
         if (string.IsNullOrWhiteSpace(_augmentProjectId)) return;
 
@@ -712,7 +712,7 @@ public partial class Admin
         }
     }
 
-    private async Task CancelJobAsync(string jobId)
+    internal async Task CancelJobAsync(string jobId)
     {
         _busy = true;
         _actionMsg = null;
@@ -726,7 +726,7 @@ public partial class Admin
         finally { _busy = false; }
     }
 
-    private async Task LoadJobLogAsync(string jobId)
+    internal async Task LoadJobLogAsync(string jobId)
     {
         if (string.IsNullOrWhiteSpace(jobId)) return;
         _logError = null;
@@ -748,14 +748,14 @@ public partial class Admin
         }
     }
 
-    private void ClearJobLog()
+    internal void ClearJobLog()
     {
         _jobLog = null;
         _logJobId = null;
         _logError = null;
     }
 
-    private async Task ReleaseLockAsync(string resource)
+    internal async Task ReleaseLockAsync(string resource)
     {
         _busy = true;
         _actionMsg = null;
@@ -769,15 +769,15 @@ public partial class Admin
         finally { _busy = false; }
     }
 
-    private bool _seedingTiming;
+    internal bool _seedingTiming;
 
-    private async Task LogoutAsync()
+    internal async Task LogoutAsync()
     {
         await Api.LogoutAsync();
         Nav.NavigateTo("/admin/login");
     }
 
-    private async Task SeedTimingDatabaseAsync()
+    internal async Task SeedTimingDatabaseAsync()
     {
         _seedingTiming = true;
         _actionMsg = null;
@@ -796,7 +796,7 @@ public partial class Admin
         }
     }
 
-    private async Task UpdateChartsAsync()
+    internal async Task UpdateChartsAsync()
     {
         try
         {
@@ -863,21 +863,21 @@ public partial class Admin
         }
     }
 
-    private static string GetDiskProgressBarClass(double pct) => pct switch
+    internal static string GetDiskProgressBarClass(double pct) => pct switch
     {
         >= 90.0 => "bg-danger",
         >= 75.0 => "bg-warning",
         _ => "bg-success"
     };
 
-    private static string FormatUptime(long sec)
+    internal static string FormatUptime(long sec)
     {
         if (sec < 60) return $"{sec}s";
         if (sec < 3600) return $"{sec / 60}m {sec % 60}s";
         return $"{sec / 3600}h {(sec % 3600) / 60}m";
     }
 
-    private static string FormatAge(long? ms)
+    internal static string FormatAge(long? ms)
     {
         if (ms is null or < 0) return "—";
         var s = ms.Value / 1000.0;
@@ -886,7 +886,7 @@ public partial class Admin
         return $"{s / 3600:0.0}h";
     }
 
-    private string GetHitRatePolylinePoints()
+    internal string GetHitRatePolylinePoints()
     {
         var trend = _timingTelemetry?.Trend;
         if (trend is null || trend.Count == 0)
@@ -908,7 +908,7 @@ public partial class Admin
         return string.Join(" ", points);
     }
 
-    private string GetMaePolylinePoints()
+    internal string GetMaePolylinePoints()
     {
         var trend = _timingTelemetry?.Trend;
         if (trend is null || trend.Count == 0)
@@ -930,14 +930,14 @@ public partial class Admin
         return string.Join(" ", points);
     }
 
-    private static string FormatTrendTimestamp(string ts)
+    internal static string FormatTrendTimestamp(string ts)
     {
         if (DateTime.TryParse(ts, out var dt))
             return dt.ToString("MM/dd");
         return ts;
     }
 
-    private static string ShortId(string? id)
+    internal static string ShortId(string? id)
     {
         if (string.IsNullOrEmpty(id)) return "—";
         return id.Length <= 10 ? id : id[..8] + "…";

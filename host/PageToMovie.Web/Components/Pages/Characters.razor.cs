@@ -2060,5 +2060,50 @@ public partial class Characters
         Hub.JobLog -= OnJobLog;
         await Task.CompletedTask;
     }
+
+    /// <summary>Shared voice editor instance for simple-mode, cast list, and detail panel.</summary>
+    private RenderFragment VoiceEditorUI() => builder =>
+    {
+        builder.OpenComponent<Characters_VoiceEditor>(0);
+        builder.AddAttribute(1, "SimpleMode", _simpleMode);
+        builder.AddAttribute(2, "EditVoiceLabel", _editVoiceLabel);
+        builder.AddAttribute(3, "VoiceLabelChanged", EventCallback.Factory.Create<string>(this, OnVoiceLabelChanged));
+        builder.AddAttribute(4, "EditVoiceProfile", _editVoiceProfile);
+        builder.AddAttribute(5, "VoiceProfileChanged", EventCallback.Factory.Create<string>(this, OnVoiceProfileChanged));
+        builder.AddAttribute(6, "Busy", _busy);
+        builder.AddAttribute(7, "VoicePreviewBusy", _voicePreviewBusy);
+        builder.AddAttribute(8, "VoiceJobRunning", VoiceJobRunning);
+        builder.AddAttribute(9, "VoiceSaveHint", _voiceSaveHint);
+        builder.AddAttribute(10, "VoicePreviewError", _voicePreviewError);
+        builder.AddAttribute(11, "VoicePreviewHint", _voicePreviewHint);
+        builder.AddAttribute(12, "VoicePreviewStale", _voicePreviewStale);
+        builder.AddAttribute(13, "VoicePreviewUrl", _voicePreviewUrl);
+        builder.AddAttribute(14, "Job", _job);
+        builder.AddAttribute(15, "Selected", _selected);
+        builder.AddAttribute(16, "VoiceCloneBusy", _voiceCloneBusy);
+        builder.AddAttribute(17, "VoiceCloneError", _voiceCloneError);
+        builder.AddAttribute(18, "VoiceCloneHint", _voiceCloneHint);
+        builder.AddAttribute(19, "VoiceClonePlayUrl", _voiceClonePlayUrl);
+        builder.AddAttribute(20, "VoiceRecRecording", _voiceRecRecording);
+        builder.AddAttribute(21, "ShowKidsFullScript", _showKidsFullScript);
+        builder.AddAttribute(22, "ShowKidsFullScriptChanged", EventCallback.Factory.Create<bool>(this, v => _showKidsFullScript = v));
+        builder.AddAttribute(23, "UseKidsScript", _useKidsScript);
+        builder.AddAttribute(24, "UseKidsScriptChanged", EventCallback.Factory.Create<bool>(this, v => _useKidsScript = v));
+        builder.AddAttribute(25, "ShowMediaAudioPicker", _showMediaAudioPicker);
+        builder.AddAttribute(26, "ShowMediaAudioPickerChanged", EventCallback.Factory.Create<bool>(this, v => _showMediaAudioPicker = v));
+        builder.AddAttribute(27, "LoadingMediaAudio", _loadingMediaAudio);
+        builder.AddAttribute(28, "MediaAudioFiles", _mediaAudioFiles);
+        builder.AddAttribute(29, "VoiceCloneReadScript", VoiceCloneReadScript);
+        builder.AddAttribute(30, "OnPlayPreview", EventCallback.Factory.Create<bool>(this, PlayVoicePreviewAsync));
+        builder.AddAttribute(31, "OnStartMic", EventCallback.Factory.Create(this, StartVoiceCloneMicAsync));
+        builder.AddAttribute(32, "OnStopMic", EventCallback.Factory.Create(this, StopVoiceCloneMicAsync));
+        builder.AddAttribute(33, "OnCancelMic", EventCallback.Factory.Create(this, CancelVoiceCloneMicAsync));
+        builder.AddAttribute(34, "OnOpenMediaPicker", EventCallback.Factory.Create(this, OpenMediaFolderAudioPickerAsync));
+        builder.AddAttribute(35, "OnApplyClone", EventCallback.Factory.Create(this, ApplyVoiceCloneToProviderAsync));
+        builder.AddAttribute(36, "OnDeleteClone", EventCallback.Factory.Create(this, DeleteVoiceCloneSampleAsync));
+        builder.AddAttribute(37, "OnPickMediaAudio", EventCallback.Factory.Create<ClientMediaFolderService.LocalAudioFile>(this, PickMediaFolderAudioAsync));
+        builder.CloseComponent();
+    };
+
 }
 

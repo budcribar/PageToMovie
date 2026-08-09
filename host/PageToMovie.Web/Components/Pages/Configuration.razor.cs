@@ -11,54 +11,54 @@ namespace PageToMovie.Web.Components.Pages;
 
 public partial class Configuration
 {
-    private bool _busy;
-    private string? _error;
-    private string? _message;
-    private string? _saveStatus;
-    private bool _dirty;
-    private CancellationTokenSource? _autoSaveCts;
-    private int _autoSaveEpoch;
-    private string _projectId = "";
-    private List<string> _projectIds = new();
-    private Dictionary<string, JsonElement>? _cfg;
-    private string? _projectDir;
+    internal bool _busy;
+    internal string? _error;
+    internal string? _message;
+    internal string? _saveStatus;
+    internal bool _dirty;
+    internal CancellationTokenSource? _autoSaveCts;
+    internal int _autoSaveEpoch;
+    internal string _projectId = "";
+    internal List<string> _projectIds = new();
+    internal Dictionary<string, JsonElement>? _cfg;
+    internal string? _projectDir;
 
-    private string _uiTheme = "dark";
-    private string _preferredVideoEditor = "ClipChamp";
-    private string _blueprintFile = "blueprint.clips.grok.json";
-    private string _modelName = "";
-    private string _imageModel = "";
-    private string _planningModel = "";
-    private string _visionModel = "";
-    private string _qualityModel = "";
-    private string _audioModel = "none";
-    private string _voiceModel = "none";
+    internal string _uiTheme = "dark";
+    internal string _preferredVideoEditor = "ClipChamp";
+    internal string _blueprintFile = "blueprint.clips.grok.json";
+    internal string _modelName = "";
+    internal string _imageModel = "";
+    internal string _planningModel = "";
+    internal string _visionModel = "";
+    internal string _qualityModel = "";
+    internal string _audioModel = "none";
+    internal string _voiceModel = "none";
     /// <summary>Deep-link from gated features: music | voice | review | video | …</summary>
-    private string? _focusCapability;
-    private bool _enableBackgroundMusic = true;
-    private int _backgroundMusicVolumePercent = 20;
-    private string _aspect = "16:9";
-    private string _resolution = "480p";
-    private int _durationSeconds = 8;
-    private bool _useDurationDefaults = true;
-    private bool _smartContinuation = true;
-    private bool _mergeAfterClip = true;
-    private bool _qaRetry = true;
-    private bool _regenSilent = true;
-    private bool _rebuildWip = true;
-    private int _qaMaxRetries = 2;
-    private int _qaFrameCount = 4;
-    private double _audioGain = 6;
-    private string _wipPath = "assets/movie_wip.mp4";
+    internal string? _focusCapability;
+    internal bool _enableBackgroundMusic = true;
+    internal int _backgroundMusicVolumePercent = 20;
+    internal string _aspect = "16:9";
+    internal string _resolution = "480p";
+    internal int _durationSeconds = 8;
+    internal bool _useDurationDefaults = true;
+    internal bool _smartContinuation = true;
+    internal bool _mergeAfterClip = true;
+    internal bool _qaRetry = true;
+    internal bool _regenSilent = true;
+    internal bool _rebuildWip = true;
+    internal int _qaMaxRetries = 2;
+    internal int _qaFrameCount = 4;
+    internal double _audioGain = 6;
+    internal string _wipPath = "assets/movie_wip.mp4";
 
-    private List<SupportedModelDto> _allModels = new();
-    private List<SupportedModelDto> _videoModels = new();
-    private List<SupportedModelDto> _imageModels = new();
-    private List<SupportedModelDto> _planningModels = new();
-    private List<SupportedModelDto> _visionModels = new();
-    private List<SupportedModelDto> _videoReviewModels = new();
-    private List<SupportedModelDto> _audioModels = new();
-    private List<SupportedModelDto> _voiceModels = new();
+    internal List<SupportedModelDto> _allModels = new();
+    internal List<SupportedModelDto> _videoModels = new();
+    internal List<SupportedModelDto> _imageModels = new();
+    internal List<SupportedModelDto> _planningModels = new();
+    internal List<SupportedModelDto> _visionModels = new();
+    internal List<SupportedModelDto> _videoReviewModels = new();
+    internal List<SupportedModelDto> _audioModels = new();
+    internal List<SupportedModelDto> _voiceModels = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -112,7 +112,7 @@ public partial class Configuration
         }
     }
 
-    private async Task OnProjectChangedAsync(ChangeEventArgs e)
+    internal async Task OnProjectChangedAsync(ChangeEventArgs e)
     {
         var id = e.Value?.ToString() ?? "";
         if (string.IsNullOrWhiteSpace(id)) return;
@@ -121,7 +121,7 @@ public partial class Configuration
         await LoadAsync();
     }
 
-    private async Task LoadCatalogAsync()
+    internal async Task LoadCatalogAsync()
     {
         // Catalog is the only source of truth — never invent models in UI code.
         _allModels = new();
@@ -206,7 +206,7 @@ public partial class Configuration
     }
 
     /// <summary>If project has not chosen models yet, use capability defaultModelId from the catalog only.</summary>
-    private void ApplyCatalogDefaultsIfEmpty()
+    internal void ApplyCatalogDefaultsIfEmpty()
     {
         if (string.IsNullOrWhiteSpace(_modelName))
             _modelName = DefaultForCapability("video");
@@ -224,16 +224,16 @@ public partial class Configuration
             _voiceModel = "none";
     }
 
-    private static string DefaultForCapability(string capabilityId) =>
+    internal static string DefaultForCapability(string capabilityId) =>
         SupportedModelCatalog.DefaultModelIdForCapability(capabilityId) ?? "";
 
-    private static string DefaultQualityModel() =>
+    internal static string DefaultQualityModel() =>
         SupportedModelCatalog.DefaultModelIdForCapability("video-review")
         ?? SupportedModelCatalog.DefaultModelIdForCapability("chat")
         ?? "";
 
 
-    private void ParseFocusFromUri()
+    internal void ParseFocusFromUri()
     {
         try
         {
@@ -245,7 +245,7 @@ public partial class Configuration
         catch { _focusCapability = null; }
     }
 
-    private static string? NormalizeFocus(string? raw)
+    internal static string? NormalizeFocus(string? raw)
     {
         var s = (raw ?? "").Trim().ToLowerInvariant();
         return s switch
@@ -261,40 +261,40 @@ public partial class Configuration
         };
     }
 
-    private bool FocusActive => !string.IsNullOrWhiteSpace(_focusCapability);
+    internal bool FocusActive => !string.IsNullOrWhiteSpace(_focusCapability);
 
 
 
 
 
-    private UserSettingsDto? _userSettings;
-    private readonly Dictionary<string, string?> _keyInputs = new(StringComparer.OrdinalIgnoreCase)
+    internal UserSettingsDto? _userSettings;
+    internal readonly Dictionary<string, string?> _keyInputs = new(StringComparer.OrdinalIgnoreCase)
     {
         ["grok"] = null,
         ["gemini"] = null,
         ["anthropic"] = null,
         ["fal"] = null,
     };
-    private readonly HashSet<string> _visibleKeyProviders = new(StringComparer.OrdinalIgnoreCase);
+    internal readonly HashSet<string> _visibleKeyProviders = new(StringComparer.OrdinalIgnoreCase);
 
-    private bool IsKeyVisible(string providerId) => _visibleKeyProviders.Contains(providerId);
+    internal bool IsKeyVisible(string providerId) => _visibleKeyProviders.Contains(providerId);
 
-    private void ToggleKeyVisible(string providerId)
+    internal void ToggleKeyVisible(string providerId)
     {
         if (!IsKeyVisible(providerId)) _visibleKeyProviders.Add(providerId);
         else _visibleKeyProviders.Remove(providerId);
     }
 
-    private bool _apiKeySaving;
-    private string? _savingProviderId;
-    private string? _apiKeyFeedback;
+    internal bool _apiKeySaving;
+    internal string? _savingProviderId;
+    internal string? _apiKeyFeedback;
     /// <summary>Coverage row open for just-in-time key entry.</summary>
-    private string? _coverageEditId;
-    private string? _coverageKeyProviderId;
+    internal string? _coverageEditId;
+    internal string? _coverageKeyProviderId;
     /// <summary>replace | add-key | add-provider</summary>
-    private string _coverageKeyMode = "add-provider";
+    internal string _coverageKeyMode = "add-provider";
 
-    private sealed class CoverageRow
+    internal sealed class CoverageRow
     {
         public string Id { get; set; } = "";
         public string Label { get; set; } = "";
@@ -307,7 +307,7 @@ public partial class Configuration
         public bool KeyReady { get; set; }
     }
 
-    private IReadOnlyList<CoverageRow> BuildCoverageRows()
+    internal IReadOnlyList<CoverageRow> BuildCoverageRows()
     {
         var rows = new List<CoverageRow>
         {
@@ -322,7 +322,7 @@ public partial class Configuration
         return rows;
     }
 
-    private CoverageRow MakeCoverage(
+    internal CoverageRow MakeCoverage(
         string id,
         string label,
         string hint,
@@ -369,7 +369,7 @@ public partial class Configuration
         };
     }
 
-    private string ResolveProviderIdForModel(string modelId, string capability, bool preferVideoReview)
+    internal string ResolveProviderIdForModel(string modelId, string capability, bool preferVideoReview)
     {
         if (string.IsNullOrWhiteSpace(modelId)
             || modelId.Equals("none", StringComparison.OrdinalIgnoreCase)
@@ -403,7 +403,7 @@ public partial class Configuration
         return SupportedModelCatalog.NormalizeProviderId(entry.ProviderId);
     }
 
-    private List<string> CoverageUsesForProvider(string providerId)
+    internal List<string> CoverageUsesForProvider(string providerId)
     {
         return BuildCoverageRows()
             .Where(c => !c.OptionalOff
@@ -415,7 +415,7 @@ public partial class Configuration
     }
 
 
-    private void BeginAddKey(string coverageId, string? preferredProviderId = null)
+    internal void BeginAddKey(string coverageId, string? preferredProviderId = null)
     {
         // Legacy entry — treat as add-provider unless a specific provider is required.
         if (!string.IsNullOrWhiteSpace(preferredProviderId))
@@ -425,7 +425,7 @@ public partial class Configuration
     }
 
     /// <summary>Replace key for one provider only (no multi-provider grid).</summary>
-    private void BeginReplaceKey(string coverageId, string providerId)
+    internal void BeginReplaceKey(string coverageId, string providerId)
     {
         _coverageEditId = coverageId;
         _coverageKeyProviderId = SupportedModelCatalog.NormalizeProviderId(providerId);
@@ -435,7 +435,7 @@ public partial class Configuration
     }
 
     /// <summary>Add/paste key for the provider currently on this coverage row only.</summary>
-    private void BeginAddKeyForProvider(string coverageId, string providerId)
+    internal void BeginAddKeyForProvider(string coverageId, string providerId)
     {
         _coverageEditId = coverageId;
         _coverageKeyProviderId = SupportedModelCatalog.NormalizeProviderId(providerId);
@@ -445,7 +445,7 @@ public partial class Configuration
     }
 
     /// <summary>Choose among all providers that can run this job.</summary>
-    private void BeginAddProvider(string coverageId)
+    internal void BeginAddProvider(string coverageId)
     {
         _coverageEditId = coverageId;
         _coverageKeyMode = "add-provider";
@@ -456,7 +456,7 @@ public partial class Configuration
                                  ?? list.FirstOrDefault()?.ProviderId;
     }
 
-    private void CancelAddKey()
+    internal void CancelAddKey()
     {
         _coverageEditId = null;
         _coverageKeyProviderId = null;
@@ -467,7 +467,7 @@ public partial class Configuration
     /// Providers shown in the open key panel.
     /// Replace / Add key → only the target provider. Add provider → full list for the job.
     /// </summary>
-    private IEnumerable<ProviderKeyStatusDto> ProvidersForKeyPanel(string coverageId)
+    internal IEnumerable<ProviderKeyStatusDto> ProvidersForKeyPanel(string coverageId)
     {
         var all = ProvidersForCoverage(coverageId);
         if (_coverageKeyMode is "replace" or "add-key"
@@ -487,13 +487,13 @@ public partial class Configuration
         return all;
     }
 
-    private void SelectKeyProvider(string providerId) => _coverageKeyProviderId = providerId;
+    internal void SelectKeyProvider(string providerId) => _coverageKeyProviderId = providerId;
 
     /// <summary>
     /// Click on a provider card. If a personal key is already saved, use it and align the model.
     /// Otherwise open the paste form for that provider only.
     /// </summary>
-    private async Task ChooseProviderForCoverageAsync(string providerId, string coverageId)
+    internal async Task ChooseProviderForCoverageAsync(string providerId, string coverageId)
     {
         var row = ProviderRows.FirstOrDefault(pr =>
             string.Equals(pr.ProviderId, providerId, StringComparison.OrdinalIgnoreCase));
@@ -509,7 +509,7 @@ public partial class Configuration
     /// User already saved this provider key — point the coverage model at it and close the panel.
     /// Fixes: model is aimusicapi-suno but Suno (sunoapi) key exists → switch to suno-v5-5.
     /// </summary>
-    private async Task UseSavedProviderForCoverageAsync(string providerId, string coverageId)
+    internal async Task UseSavedProviderForCoverageAsync(string providerId, string coverageId)
     {
         _error = null;
         _apiKeyFeedback = null;
@@ -549,7 +549,7 @@ public partial class Configuration
         }
     }
 
-    private void AlignCoverageModelToProvider(string coverageId, string providerId)
+    internal void AlignCoverageModelToProvider(string coverageId, string providerId)
     {
         var pid = SupportedModelCatalog.NormalizeProviderId(providerId);
         var models = ModelsForCoverage(coverageId);
@@ -565,7 +565,7 @@ public partial class Configuration
             SetCoverageModelId(coverageId, pick.Id);
     }
 
-    private async Task SaveCoverageKeyAsync(string providerId, string coverageId)
+    internal async Task SaveCoverageKeyAsync(string providerId, string coverageId)
     {
         await SaveProviderKeyAsync(providerId);
         var row = BuildCoverageRows().FirstOrDefault(c => string.Equals(c.Id, coverageId, StringComparison.OrdinalIgnoreCase));
@@ -573,7 +573,7 @@ public partial class Configuration
             CancelAddKey();
     }
 
-    private string GetCoverageModelId(string coverageId) => coverageId switch
+    internal string GetCoverageModelId(string coverageId) => coverageId switch
     {
         "video" => _modelName,
         "image" => _imageModel,
@@ -585,7 +585,7 @@ public partial class Configuration
         _ => "",
     };
 
-    private void SetCoverageModelId(string coverageId, string modelId)
+    internal void SetCoverageModelId(string coverageId, string modelId)
     {
         switch (coverageId)
         {
@@ -599,7 +599,7 @@ public partial class Configuration
         }
     }
 
-    private IReadOnlyList<SupportedModelDto> ModelsForCoverage(string coverageId) => coverageId switch
+    internal IReadOnlyList<SupportedModelDto> ModelsForCoverage(string coverageId) => coverageId switch
     {
         "video" => _videoModels,
         "image" => _imageModels,
@@ -611,7 +611,7 @@ public partial class Configuration
         _ => Array.Empty<SupportedModelDto>(),
     };
 
-    private static string ModelProviderId(SupportedModelDto m)
+    internal static string ModelProviderId(SupportedModelDto m)
     {
         // Catalog fields only (providerId / provider). Never guess from model id.
         if (!string.IsNullOrWhiteSpace(m.ProviderId))
@@ -622,7 +622,7 @@ public partial class Configuration
     }
 
     /// <summary>Models for a coverage job limited to one provider (second-stage dropdown).</summary>
-    private IReadOnlyList<SupportedModelDto> ModelsForCoverageProvider(string coverageId, string? providerId)
+    internal IReadOnlyList<SupportedModelDto> ModelsForCoverageProvider(string coverageId, string? providerId)
     {
         var all = ModelsForCoverage(coverageId);
         if (string.IsNullOrWhiteSpace(providerId))
@@ -637,7 +637,7 @@ public partial class Configuration
         return list;
     }
 
-    private async Task OnCoverageProviderChangedAsync(string coverageId, string? providerId)
+    internal async Task OnCoverageProviderChangedAsync(string coverageId, string? providerId)
     {
         if (string.IsNullOrWhiteSpace(providerId))
             return;
@@ -676,7 +676,7 @@ public partial class Configuration
             BeginAddKey(coverageId, row.ProviderId);
     }
 
-    private IEnumerable<ProviderKeyStatusDto> ProvidersForCoverage(string coverageId)
+    internal IEnumerable<ProviderKeyStatusDto> ProvidersForCoverage(string coverageId)
     {
         var models = ModelsForCoverage(coverageId);
         var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -790,7 +790,7 @@ public partial class Configuration
             .ThenBy(pr => FriendlyProviderLabel(pr.ProviderId));
     }
 
-    private async Task OnCoverageModelChangedAsync(string coverageId, string? modelId)
+    internal async Task OnCoverageModelChangedAsync(string coverageId, string? modelId)
     {
         if (string.IsNullOrWhiteSpace(modelId)) return;
         SetCoverageModelId(coverageId, modelId);
@@ -813,7 +813,7 @@ public partial class Configuration
             BeginAddKey(coverageId, row.ProviderId);
     }
 
-    private async Task TurnOffOptionalAsync(string coverageId)
+    internal async Task TurnOffOptionalAsync(string coverageId)
     {
         if (coverageId == "music")
         {
@@ -832,7 +832,7 @@ public partial class Configuration
         }
     }
 
-    private IReadOnlyList<ProviderKeyStatusDto> ProviderRows
+    internal IReadOnlyList<ProviderKeyStatusDto> ProviderRows
     {
         get
         {
@@ -845,7 +845,7 @@ public partial class Configuration
         }
     }
 
-    private static string ProviderPlaceholder(string providerId) => providerId.ToLowerInvariant() switch
+    internal static string ProviderPlaceholder(string providerId) => providerId.ToLowerInvariant() switch
     {
         "grok" => "xai-... (XAI_API_KEY)",
         "gemini" => "AIza... (GEMINI_API_KEY)",
@@ -858,25 +858,25 @@ public partial class Configuration
         _ => "api key",
     };
 
-    private string? GetKeyInput(string providerId) =>
+    internal string? GetKeyInput(string providerId) =>
         _keyInputs.TryGetValue(providerId, out var v) ? v : null;
 
-    private void SetKeyInput(string providerId, string? value) =>
+    internal void SetKeyInput(string providerId, string? value) =>
         _keyInputs[providerId] = value;
 
     /// <summary>Provider UI label — catalog providers[] only.</summary>
-    private static string FriendlyProviderLabel(string? providerId) =>
+    internal static string FriendlyProviderLabel(string? providerId) =>
         SupportedModelCatalog.ProviderLabelFor(providerId);
 
     /// <summary>Model product name from catalog displayName only.</summary>
-    private static string ModelOptionLabel(SupportedModelDto m)
+    internal static string ModelOptionLabel(SupportedModelDto m)
     {
         var name = string.IsNullOrWhiteSpace(m.DisplayName) ? m.Id : m.DisplayName.Trim();
         return m.LabMode ? $"{name} [LAB]" : name;
     }
 
 
-    private string VendorLabel(string modelId, string capability)
+    internal string VendorLabel(string modelId, string capability)
     {
         var m = _allModels.FirstOrDefault(x =>
             string.Equals(x.Id, modelId, StringComparison.OrdinalIgnoreCase) &&
@@ -895,7 +895,7 @@ public partial class Configuration
         return string.IsNullOrWhiteSpace(m.ProviderId) ? m.Provider : m.ProviderId!;
     }
 
-    private double CatalogVideoRate(string resolution)
+    internal double CatalogVideoRate(string resolution)
     {
         try
         {
@@ -921,7 +921,7 @@ public partial class Configuration
         return 0;
     }
 
-    private double CatalogImageRate()
+    internal double CatalogImageRate()
     {
         try
         {
@@ -935,20 +935,20 @@ public partial class Configuration
         }
     }
 
-    private static string UsdRate(double v) =>
+    internal static string UsdRate(double v) =>
         v < 0.01 ? $"${v:0.####}" : $"${v:0.##}";
 
-    private async Task SaveProviderKeyAsync(string providerId)
+    internal async Task SaveProviderKeyAsync(string providerId)
     {
         var value = GetKeyInput(providerId);
         if (string.IsNullOrWhiteSpace(value)) return;
         await PersistProviderKeyAsync(providerId, value.Trim(), clearing: false);
     }
 
-    private async Task ClearProviderKeyAsync(string providerId) =>
+    internal async Task ClearProviderKeyAsync(string providerId) =>
         await PersistProviderKeyAsync(providerId, "", clearing: true);
 
-    private async Task PersistProviderKeyAsync(string providerId, string keyValue, bool clearing)
+    internal async Task PersistProviderKeyAsync(string providerId, string keyValue, bool clearing)
     {
         try
         {
@@ -1016,7 +1016,7 @@ public partial class Configuration
 
 
     /// <summary>After saving a voice-provider key, pick a clone-step model from the catalog for that provider.</summary>
-    private void EnsureVoiceModelForProvider(string providerId)
+    internal void EnsureVoiceModelForProvider(string providerId)
     {
         var pid = SupportedModelCatalog.NormalizeProviderId(providerId);
         var currentProvider = ResolveProviderIdForModel(_voiceModel, "voice", preferVideoReview: false);
@@ -1069,7 +1069,7 @@ public partial class Configuration
     }
 
     /// <summary>After saving a music-provider key, pick a matching music model from the catalog.</summary>
-    private void EnsureMusicModelForProvider(string providerId)
+    internal void EnsureMusicModelForProvider(string providerId)
     {
         var pid = SupportedModelCatalog.NormalizeProviderId(providerId);
         var currentProvider = ResolveProviderIdForModel(_audioModel, "audio", preferVideoReview: false);
@@ -1111,7 +1111,7 @@ public partial class Configuration
     }
 
     /// <summary>After attaching a provider key, set empty required slots to that provider's first catalog model.</summary>
-    private void ApplyProviderModelDefaults(string providerId)
+    internal void ApplyProviderModelDefaults(string providerId)
     {
         var pid = SupportedModelCatalog.NormalizeProviderId(providerId);
         void Prefer(ref string slot, IReadOnlyList<SupportedModelDto> models)
@@ -1130,7 +1130,7 @@ public partial class Configuration
         Prefer(ref _qualityModel, _videoReviewModels);
     }
 
-    private async Task LoadAsync()
+    internal async Task LoadAsync()
     {
         _busy = true;
         _error = null;
@@ -1202,7 +1202,7 @@ public partial class Configuration
         finally { _busy = false; }
     }
 
-    private async Task SaveAsync()
+    internal async Task SaveAsync()
     {
         _busy = true;
         _error = null;
@@ -1227,7 +1227,7 @@ public partial class Configuration
     }
 
     /// <summary>Write current form fields to the project config (no busy flag / reload).</summary>
-    private async Task PersistProjectConfigAsync()
+    internal async Task PersistProjectConfigAsync()
     {
         if (string.IsNullOrWhiteSpace(_projectId))
             throw new InvalidOperationException("Choose a project first.");
@@ -1289,7 +1289,7 @@ public partial class Configuration
         await Engine.SaveConfigAsync(_projectId, updates);
     }
 
-    private Dictionary<string, object?> BuildVendorCostEstimatesSnapshot()
+    internal Dictionary<string, object?> BuildVendorCostEstimatesSnapshot()
     {
         var video = SupportedModelCatalog.ResolveOrDefault(_modelName, ModelCapability.Video);
         var image = SupportedModelCatalog.Find(_imageModel, ModelCapability.Image)
@@ -1336,7 +1336,7 @@ public partial class Configuration
     /// <summary>Live-apply the theme pick to this browser tab so it's visible before Save.
     /// Only touches the DOM when editing the currently-active project — previewing a theme
     /// for some other project you happen to have selected here shouldn't repaint the whole app.</summary>
-    private async Task PreviewThemeAsync()
+    internal async Task PreviewThemeAsync()
     {
         if (!string.Equals(_projectId, ActiveProject.ProjectId, StringComparison.OrdinalIgnoreCase))
             return;
@@ -1345,22 +1345,22 @@ public partial class Configuration
         catch { /* ignore */ }
     }
 
-    private string GetStr(string key, string fallback) =>
+    internal string GetStr(string key, string fallback) =>
         _cfg is not null && _cfg.TryGetValue(key, out var el) && el.ValueKind == JsonValueKind.String
             ? el.GetString() ?? fallback
             : fallback;
 
-    private int GetInt(string key, int fallback) =>
+    internal int GetInt(string key, int fallback) =>
         _cfg is not null && _cfg.TryGetValue(key, out var el) && el.TryGetInt32(out var v)
             ? v
             : fallback;
 
-    private double GetDouble(string key, double fallback) =>
+    internal double GetDouble(string key, double fallback) =>
         _cfg is not null && _cfg.TryGetValue(key, out var el) && el.TryGetDouble(out var v)
             ? v
             : fallback;
 
-    private bool GetBool(string key, bool fallback) =>
+    internal bool GetBool(string key, bool fallback) =>
         _cfg is not null && _cfg.TryGetValue(key, out var el) &&
         (el.ValueKind is JsonValueKind.True or JsonValueKind.False)
             ? el.GetBoolean()
@@ -1371,19 +1371,19 @@ public partial class Configuration
         MediaFolder.Changed += OnMediaFolderChanged;
     }
 
-    private void OnMediaFolderChanged()
+    internal void OnMediaFolderChanged()
     {
         _ = InvokeAsync(StateHasChanged);
     }
 
-    private async Task OnThemeChangedAsync()
+    internal async Task OnThemeChangedAsync()
     {
         await PreviewThemeAsync();
         await ScheduleAutoSaveAsync();
     }
 
     /// <summary>Debounced project-settings save — no bottom Save button.</summary>
-    private async Task ScheduleAutoSaveAsync()
+    internal async Task ScheduleAutoSaveAsync()
     {
         if (string.IsNullOrWhiteSpace(_projectId) || _cfg is null)
             return;
@@ -1427,7 +1427,7 @@ public partial class Configuration
         }
     }
 
-    private async Task ClearSaveStatusLaterAsync(int epoch)
+    internal async Task ClearSaveStatusLaterAsync(int epoch)
     {
         try
         {
@@ -1462,7 +1462,7 @@ public partial class Configuration
         }
     }
 
-    private async Task ConnectMediaFolderAsync()
+    internal async Task ConnectMediaFolderAsync()
     {
         _error = null;
         _message = null;
@@ -1485,7 +1485,7 @@ public partial class Configuration
         }
     }
 
-    private async Task ReconnectMediaFolderAsync()
+    internal async Task ReconnectMediaFolderAsync()
     {
         _error = null;
         _message = null;
