@@ -35,7 +35,7 @@
                     <button type="button"
                             class="btn btn-primary btn-sm"
                             data-testid="embellish-run"
-                            disabled="@(Busy || JobRunning)"
+                            disabled="@(Busy || Jobs.JobRunning)"
                             @onclick="EmbellishAsync">
                         Enrich the screenplay
                     </button>
@@ -50,7 +50,7 @@
                     <button type="button"
                             class="btn btn-outline-secondary btn-sm"
                             data-testid="embellish-run"
-                            disabled="@(Busy || JobRunning)"
+                            disabled="@(Busy || Jobs.JobRunning)"
                             @onclick="EmbellishAsync">
                         Enrich again
                     </button>

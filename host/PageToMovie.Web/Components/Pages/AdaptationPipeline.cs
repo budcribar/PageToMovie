@@ -67,7 +67,7 @@ public abstract partial class AdaptationPageBase
                     ? "Re-reading book pages… watch the log below"
                     : "Preparing book… watch the log below";
                 var jobs = await S.Engine.GetJobAsync();
-                S.Job = jobs?.Job;
+                S.Jobs.Job = jobs?.Job;
                 S.Jobs.StartJobPolling();
             }
             catch (Exception ex) { S.Error = ex.Message; }
@@ -85,8 +85,8 @@ public abstract partial class AdaptationPageBase
             try
             {
                 await S.Jobs.EnsureHubAsync();
-                S.ProgressIndex = 0;
-                S.ProgressTotal = 10;
+                S.Jobs.ProgressIndex = 0;
+                S.Jobs.ProgressTotal = 10;
                 await S.Engine.StartStage1Async(new StartStage1Request
                 {
                     ProjectId = S.ProjectId,
@@ -95,8 +95,8 @@ public abstract partial class AdaptationPageBase
                 });
                 S.Message = null; // live progress card is enough
                 var jobs = await S.Engine.GetJobAsync();
-                S.Job = jobs?.Job;
-                S.Jobs.AbsorbProgressFromSnapshot(S.Job ?? new JobSnapshot());
+                S.Jobs.Job = jobs?.Job;
+                S.Jobs.AbsorbProgressFromSnapshot(S.Jobs.Job ?? new JobSnapshot());
                 S.Jobs.StartJobPolling();
             }
             catch (Exception ex) { S.Error = ex.Message; }
@@ -111,8 +111,8 @@ public abstract partial class AdaptationPageBase
             try
             {
                 await S.Jobs.EnsureHubAsync();
-                S.ProgressIndex = 0;
-                S.ProgressTotal = 10;
+                S.Jobs.ProgressIndex = 0;
+                S.Jobs.ProgressTotal = 10;
                 // Resolution comes from project Configuration (shot plan structure is resolution-independent;
                 // config is only used as a default tag if the planner still stamps prompts).
                 await S.Engine.StartStage2Async(new StartStage2Request
@@ -122,8 +122,8 @@ public abstract partial class AdaptationPageBase
                 });
                 S.Message = null; // live progress card is enough
                 var jobs = await S.Engine.GetJobAsync();
-                S.Job = jobs?.Job;
-                S.Jobs.AbsorbProgressFromSnapshot(S.Job ?? new JobSnapshot());
+                S.Jobs.Job = jobs?.Job;
+                S.Jobs.AbsorbProgressFromSnapshot(S.Jobs.Job ?? new JobSnapshot());
                 S.Jobs.StartJobPolling();
             }
             catch (Exception ex) { S.Error = ex.Message; }

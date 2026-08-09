@@ -33,7 +33,7 @@
 @* ---- Book sub-steps: a light drill-down of the top-level "Book" step. Cast & Film live on the
      top-level strip, not here. Editing (Screenplay) is last so the automatic passes don't clobber it. ---- *@
 @{
-    var stepsLocked = Host.JobRunning;
+    var stepsLocked = Host.Jobs.JobRunning;
     var importActive = Step == "import" || Step == "book";
     var lookActive = Step == "look";
     var embellishActive = Step == "embellish";
@@ -102,7 +102,7 @@ else
 
 @* In-page busy (e.g. screenplay approve) — not a background job, but can take many seconds.
    Skip on Import: that page already has its own progress card. *@
-@if (Host.Busy && !Host.JobRunning && Step is not "import" and not "book")
+@if (Host.Busy && !Host.Jobs.JobRunning && Step is not "import" and not "book")
 {
     <JobProgressCard Visible="true"
                      Indeterminate="true"
@@ -110,29 +110,29 @@ else
                      TestId="busy-progress" />
 }
 
-@* Job panel: progress + Cancel only while running. Admin can expand Details. *@
+@* Jobs.Job panel: progress + Cancel only while running. Admin can expand Details. *@
 @if (ShowJobPanel)
 {
-    var (jobIdx, jobTot, waiting, displayIdx) = AdaptationPageBase.ComputeJobProgress(
-        Host.Job!, Host.ProgressIndex, Host.ProgressTotal, Host.JobRunning);
-    var runPct = Host.JobRunning
-        ? AdaptationPageBase.ComputeProgressPercent(
-            displayIdx, jobTot, waiting, Host.JobRunning, Host.Job!.StartedAt)
+    var (jobIdx, jobTot, waiting, displayIdx) = AdaptationPageBase.AdaptationStepUi.ComputeJobProgress(
+        Host.Jobs.Job!, Host.Jobs.ProgressIndex, Host.Jobs.ProgressTotal, Host.Jobs.JobRunning);
+    var runPct = Host.Jobs.JobRunning
+        ? AdaptationPageBase.AdaptationStepUi.ComputeProgressPercent(
+            displayIdx, jobTot, waiting, Host.Jobs.JobRunning, Host.Jobs.Job!.StartedAt)
         : (int?)null;
-    var jobMsg = Host.JobRunning
-        ? AdaptationPageBase.OperatorJobRunningMessage(Host.Job!)
-        : AdaptationPageBase.OperatorJobDoneMessage(Host.Job!);
+    var jobMsg = Host.Jobs.JobRunning
+        ? AdaptationPageBase.AdaptationJobs.OperatorJobRunningMessage(Host.Jobs.Job!)
+        : AdaptationPageBase.AdaptationStepUi.OperatorJobDoneMessage(Host.Jobs.Job!);
     <JobProgressCard Visible="true"
-                     Status="@Host.Job!.Status"
+                     Status="@Host.Jobs.Job!.Status"
                      Message="@jobMsg"
                      Index="displayIdx"
                      Total="jobTot"
                      Percent="runPct"
-                     ShowCancel="Host.JobRunning"
-                     OnCancel="Host.CancelAsync"
-                     Kind="@Host.Job.Kind"
-                     ShowLog="@(Session.IsAdmin && !Host.JobRunning)"
-                     LogLines="Host.Job.Log"
+                     ShowCancel="Host.Jobs.JobRunning"
+                     OnCancel="Host.Jobs.CancelAsync"
+                     Kind="@Host.Jobs.Job.Kind"
+                     ShowLog="@(Session.IsAdmin && !Host.Jobs.JobRunning)"
+                     LogLines="Host.Jobs.Job.Log"
                      LogMaxLines="40"
                      TestId="job-panel"
                      StatusTestId="job-status"
@@ -148,8 +148,8 @@ else
     @* Skip “Next” when it only restates the step you’re already on *@
     @if (ShowNextBanner)
     {
-        <div class="alert @AdaptationPageBase.NextStepAlertClass(Host.Status.NextStep) py-2">
-            <strong>Next:</strong> @AdaptationPageBase.NextStepLabel(Host.Status.NextStep)
+        <div class="alert @AdaptationPageBase.AdaptationStepUi.NextStepAlertClass(Host.Status.NextStep) py-2">
+            <strong>Next:</strong> @AdaptationPageBase.AdaptationStepUi.NextStepLabel(Host.Status.NextStep)
             @if (!Host.Status.XaiConfigured && Host.Status.NextStep is "draft_screenplay" or "run_stage1" or "run_stage2" or "replan_stage2")
             {
                 <span class="ms-2">· <a href="configuration">Connect service</a></span>

@@ -11,7 +11,7 @@
             <div class="card-body">
                 @{ var hasDraft = Status?.Screenplay.DraftExists == true; }
                 <VisualMediumCard ProjectId="@ProjectId"
-                                  Disabled="@(Busy || JobRunning)"
+                                  Disabled="@(Busy || Jobs.JobRunning)"
                                   SaveLabel="@(hasDraft ? "Save & apply to screenplay" : L["Common.Save"])"
                                   OnChanged="OnLookChangedAsync" />
 

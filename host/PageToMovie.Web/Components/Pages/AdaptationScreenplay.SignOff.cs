@@ -163,12 +163,4 @@ public partial class AdaptationScreenplay
         }
     }
 
-    // ── Method / property forwarders (ScreenplaySignOff) ──
-    private bool WasEverSigned => SignOff.WasEverSigned;
-    private bool IsApprovedClean => SignOff.IsApprovedClean;
-    private bool NeedsReapprove => SignOff.NeedsReapprove;
-    private string StatusTitle => SignOff.StatusTitle;
-    private void MapWarnings(string[]? codes) => SignOff.MapWarnings(codes);
-    private void UpdateWarningsFromText(string text) => SignOff.UpdateWarningsFromText(text);
-    private Task SignOffAsync() => SignOff.SignOffAsync();
 }

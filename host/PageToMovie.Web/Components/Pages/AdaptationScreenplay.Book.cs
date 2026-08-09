@@ -105,31 +105,31 @@ public partial class AdaptationScreenplay
             S.BusyMessage = "Writing screenplay…";
             S.Error = null;
             S.Message = null;
-            S.ProgressIndex = 0;
-            S.ProgressTotal = 10;
+            S.Jobs.ProgressIndex = 0;
+            S.Jobs.ProgressTotal = 10;
             await S.InvokeAsync(S.StateHasChanged);
             try
             {
-                await S.EnsureHubAsync();
+                await S.Jobs.EnsureHubAsync();
                 await S.Engine.StartBookImportAsync(
                     S.ProjectId,
                     skipPrepare: true,
                     forceExtract: false,
                     forceVision: false,
                     autoVision: false,
-                    model: S.Model);
+                    model: S.Pipeline.Model);
                 var jobs0 = await S.Engine.GetJobAsync();
-                S.Job = jobs0?.Job;
-                S.AbsorbProgressFromSnapshot(S.Job ?? new PageToMovie.Core.Models.JobSnapshot());
+                S.Jobs.Job = jobs0?.Job;
+                S.Jobs.AbsorbProgressFromSnapshot(S.Jobs.Job ?? new PageToMovie.Core.Models.JobSnapshot());
                 // Shared poller re-renders soft progress while the long draft call is quiet.
-                S.StartJobPolling();
+                S.Jobs.StartJobPolling();
                 // Wait until draft job finishes (poller keeps Job + bar live)
                 for (var i = 0; i < 3600; i++)
                 {
-                    var snap = S.Job;
+                    var snap = S.Jobs.Job;
                     if (snap is not null)
                     {
-                        S.BusyMessage = AdaptationPageBase.OperatorJobRunningMessage(snap);
+                        S.BusyMessage = AdaptationPageBase.AdaptationJobs.OperatorJobRunningMessage(snap);
                         await S.InvokeAsync(S.StateHasChanged);
                         var st = snap.Status ?? "";
                         if (st is "error" or "cancelled")
@@ -163,11 +163,5 @@ public partial class AdaptationScreenplay
         }
     }
 
-    // ── Method forwarders (ScreenplayBook) ──
-    private void CloseBookModal() => Book.CloseBookModal();
-    private Task CreateFromBookAsync() => Book.CreateFromBookAsync();
 
-    [JSInvokable]
-    public Task OnSceneSelected(int line, int sceneIndex, string heading, bool openBookModal = false) =>
-        Book.OnSceneSelected(line, sceneIndex, heading, openBookModal);
 }

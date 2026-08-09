@@ -233,7 +233,7 @@ public partial class Scenes
             var index = Math.Max(0, job.Index);
             // Clip gen: do not treat as "waiting" soft-crawl — discrete clip steps only.
             // (IsJobInFlightMessage soft-crawl is for long screenplay LLM calls.)
-            pct = AdaptationPageBase.ComputeProgressPercent(
+            pct = AdaptationPageBase.AdaptationStepUi.ComputeProgressPercent(
                 displayIndex: index,
                 total: total,
                 waiting: string.Equals(job.Status, "queued", StringComparison.OrdinalIgnoreCase),

@@ -23,13 +23,13 @@ public partial class AdaptationImport
 
         internal void OnDragEnter(DragEventArgs e)
         {
-            if (_importing || S.Busy || S.JobRunning || !S.Gate.ImportReady) return;
+            if (_importing || S.Busy || S.Jobs.JobRunning || !S.Gate.ImportReady) return;
             _dragOver = true;
         }
 
         internal void OnDragOver(DragEventArgs e)
         {
-            if (_importing || S.Busy || S.JobRunning || !S.Gate.ImportReady) return;
+            if (_importing || S.Busy || S.Jobs.JobRunning || !S.Gate.ImportReady) return;
             _dragOver = true;
         }
 
@@ -44,7 +44,7 @@ public partial class AdaptationImport
 
         internal async Task OnAfterRenderAsync(bool firstRender)
         {
-            if (_importing || S.Busy || S.JobRunning || !S.Gate.ImportReady) return;
+            if (_importing || S.Busy || S.Jobs.JobRunning || !S.Gate.ImportReady) return;
             try
             {
                 // Re-bind after each InputFile remount (@key) so drop keeps working.
@@ -161,14 +161,14 @@ public partial class AdaptationImport
                     _importPct = 20;
                     S.StateHasChanged();
 
-                    await S.EnsureHubAsync();
+                    await S.Jobs.EnsureHubAsync();
                     await S.Engine.StartBookImportAsync(
                         S.ProjectId,
                         skipPrepare: IsTxtName(name), // upload already wrote book text for plain .txt
                         forceExtract: IsPdfName(name),
                         forceVision: false,
                         autoVision: true,
-                        model: S.Model);
+                        model: S.Pipeline.Model);
 
                     var ok = await WaitForJobDoneAsync(
                         "book_import",
@@ -219,16 +219,16 @@ public partial class AdaptationImport
                     var snap = jobs?.Job;
                     if (snap is not null)
                     {
-                        S.Job = snap;
-                        S.AbsorbProgressFromSnapshot(snap);
-                        S.AbsorbProgressFromLine(snap.Message);
+                        S.Jobs.Job = snap;
+                        S.Jobs.AbsorbProgressFromSnapshot(snap);
+                        S.Jobs.AbsorbProgressFromLine(snap.Message);
 
                         _importStatus = FriendlyJobStatus(snap);
 
                         // Prefer engine Index/Total (phase scale); soft-crawl when quiet mid-adapt.
-                        var (_, tot, waiting, displayIdx) = AdaptationPageBase.ComputeJobProgress(
-                            snap, S.ProgressIndex, S.ProgressTotal, jobRunning: true);
-                        var pctWithin = AdaptationPageBase.ComputeProgressPercent(
+                        var (_, tot, waiting, displayIdx) = AdaptationPageBase.AdaptationStepUi.ComputeJobProgress(
+                            snap, S.Jobs.ProgressIndex, S.Jobs.ProgressTotal, jobRunning: true);
+                        var pctWithin = AdaptationPageBase.AdaptationStepUi.ComputeProgressPercent(
                             displayIdx, tot > 0 ? tot : 10, waiting, jobRunning: true, snap.StartedAt);
                         var mapped = basePct + (int)Math.Round(spanPct * (pctWithin / 100.0));
                         var lo = basePct;
@@ -268,7 +268,7 @@ public partial class AdaptationImport
 
         /// <summary>Operator-facing status (no mechanism jargon). Admins still see raw log below.</summary>
         internal static string FriendlyJobStatus(JobSnapshot snap) =>
-            AdaptationPageBase.OperatorJobRunningMessage(snap);
+            AdaptationPageBase.AdaptationJobs.OperatorJobRunningMessage(snap);
 
         internal static string FriendlyError(string? raw)
         {

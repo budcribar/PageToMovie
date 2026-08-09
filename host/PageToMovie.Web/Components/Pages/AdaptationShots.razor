@@ -9,21 +9,21 @@
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <span>Shot plan</span>
-                @if (!JobRunning && Status.Stage2.Stage2Ready && !Status.Stage2.Stage2Stale)
+                @if (!Jobs.JobRunning && Status.Stage2.Stage2Ready && !Status.Stage2.Stage2Stale)
                 {
                     <span class="small text-muted">
                         <strong>@Status.Stage2.Stage2Scenes</strong> scenes ·
                         <strong>@Status.Stage2.Stage2Clips</strong> clips
                     </span>
                 }
-                else if (!JobRunning && Status.Stage2.Stage2Stale)
+                else if (!Jobs.JobRunning && Status.Stage2.Stage2Stale)
                 {
                     <span class="badge bg-warning text-dark">needs update</span>
                 }
             </div>
             <div class="card-body">
                 @* Status alerts only when idle — during a job the progress card is the single surface *@
-                @if (!JobRunning)
+                @if (!Jobs.JobRunning)
                 {
                     @if (!Status.Stage1.Present || Status.Stage1.SceneCount <= 0)
                     {
@@ -46,13 +46,13 @@
                 }
 
                 @* While building: only Cancel (in job panel) is interactive — hide other actions. *@
-                @if (!JobRunning)
+                @if (!Jobs.JobRunning)
                 {
                     <div class="d-flex flex-wrap gap-2 align-items-center">
                         <button class="btn btn-primary"
                                 data-testid="shots-build"
                                 disabled="@(Busy || !Status.Stage2.Stage1Exists)"
-                                @onclick="RunShotsAsync">
+                                @onclick="Pipeline.RunShotsAsync">
                             @(Status.Stage2.Stage2Ready
                                 ? (Status.Stage2.Stage2Stale ? "Update shot plan" : "Rebuild shot plan")
                                 : "Build shot plan")

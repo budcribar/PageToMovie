@@ -53,7 +53,7 @@ public partial class AdaptationImport
             _importBlockedReason = "";
             // Keep base Model in sync so StartBookImportAsync sends the chosen id.
             if (IsUsablePlanningModel(S.Status.PlanningModel))
-                S.Model = S.Status.PlanningModel;
+                S.Pipeline.Model = S.Status.PlanningModel;
         }
     }
 }

@@ -10,24 +10,24 @@
 <AdaptationShell Host="this" Step="import">
     @if (Status is not null)
     {
-        @if (!ImportReady)
+        @if (!Gate.ImportReady)
         {
             <div class="alert alert-warning d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4"
                  data-testid="import-setup-required">
                 <div>
                     <strong>Setup required before import.</strong>
-                    @_importBlockedReason
+                    @Gate._importBlockedReason
                 </div>
                 <a class="btn btn-sm btn-warning fw-semibold"
                    href="configuration?focus=planning"
                    data-testid="import-open-settings">Open Settings →</a>
             </div>
         }
-        else if (IsUsablePlanningModel(Status.PlanningModel))
+        else if (ImportGate.IsUsablePlanningModel(Status.PlanningModel))
         {
             <div class="mb-3 d-flex flex-wrap align-items-center gap-2" data-testid="import-planning-ready">
                 <span class="badge text-bg-success">Ready to import</span>
-                @* Model name is provider jargon — admin only (respects the "view as user" toggle). *@
+                @* Pipeline.Model name is provider jargon — admin only (respects the "view as user" toggle). *@
                 @if (Session.IsAdmin)
                 {
                     <span class="badge text-bg-secondary fw-normal" data-testid="import-planning-model">@Status.PlanningModel</span>
@@ -38,14 +38,14 @@
 
         <div class="card mb-4">
             <div class="card-body p-4">
-                @if (_importing)
+                @if (Drop._importing)
                 {
                     @* Import in flight — hide drop zone so progress has the room. *@
                     <h5 class="card-title mb-1">Importing</h5>
-                    @if (!string.IsNullOrWhiteSpace(_chosenFileName))
+                    @if (!string.IsNullOrWhiteSpace(Drop._chosenFileName))
                     {
-                        <p class="text-muted small mb-3 text-truncate" title="@_chosenFileName">
-                            <span class="text-body-secondary">From</span> @_chosenFileName
+                        <p class="text-muted small mb-3 text-truncate" title="@Drop._chosenFileName">
+                            <span class="text-body-secondary">From</span> @Drop._chosenFileName
                         </p>
                     }
                     else
@@ -53,17 +53,17 @@
                         <p class="text-muted small mb-3">Hang tight — the pipeline is running.</p>
                     }
 
-                    <JobProgressCard Status="@(JobRunning ? (Job?.Status ?? "running") : "running")"
-                                     Message="@(_importStatus.Length > 0 ? _importStatus : "Working…")"
-                                     Index="@(Job?.Index ?? 0)"
-                                     Total="@(Job?.Total ?? 0)"
-                                     Percent="@(_importPct ?? 40)"
-                                     ShowCancel="JobRunning"
+                    <JobProgressCard Status="@(Jobs.JobRunning ? (Jobs.Job?.Status ?? "running") : "running")"
+                                     Message="@(Drop._importStatus.Length > 0 ? Drop._importStatus : "Working…")"
+                                     Index="@(Jobs.Job?.Index ?? 0)"
+                                     Total="@(Jobs.Job?.Total ?? 0)"
+                                     Percent="@(Drop._importPct ?? 40)"
+                                     ShowCancel="Jobs.JobRunning"
                                      CancelDisabled="Busy"
-                                     OnCancel="CancelAsync"
-                                     Kind="@(Job?.Kind)"
-                                     ShowLog="@(Session.IsAdmin && Job?.Log is { Count: > 0 })"
-                                     LogLines="@(Job?.Log)"
+                                     OnCancel="Jobs.CancelAsync"
+                                     Kind="@(Jobs.Job?.Kind)"
+                                     ShowLog="@(Session.IsAdmin && Jobs.Job?.Log is { Count: > 0 })"
+                                     LogLines="@(Jobs.Job?.Log)"
                                      LogMaxLines="50"
                                      TestId="import-progress"
                                      CssClass="mb-1" />
@@ -73,22 +73,22 @@
                     <h5 class="card-title mb-1">Import source</h5>
                     <p class="text-muted small mb-3">PDF, text, or fountain — then the pipeline runs. You can edit after.</p>
 
-                    <label class="ptm-dropzone @(Busy || JobRunning || _importing || !ImportReady ? "ptm-dropzone--disabled" : "") @(_dragOver && ImportReady ? "ptm-dropzone--active" : "")"
+                    <label class="ptm-dropzone @(Busy || Jobs.JobRunning || Drop._importing || !Gate.ImportReady ? "ptm-dropzone--disabled" : "") @(Drop._dragOver && Gate.ImportReady ? "ptm-dropzone--active" : "")"
                            data-testid="import-dropzone"
-                           @ondragenter="OnDragEnter"
+                           @ondragenter="Drop.OnDragEnter"
                            @ondragenter:preventDefault
-                           @ondragover="OnDragOver"
+                           @ondragover="Drop.OnDragOver"
                            @ondragover:preventDefault
-                           @ondragleave="OnDragLeave"
-                           @ondrop="OnDrop"
+                           @ondragleave="Drop.OnDragLeave"
+                           @ondrop="Drop.OnDrop"
                            @ondrop:preventDefault>
                         @* @key remounts InputFile after each pick so Blazor's file map stays valid. *@
-                        <InputFile @key="_inputFileKey"
-                                   OnChange="OnSourceSelectedAsync"
+                        <InputFile @key="Drop._inputFileKey"
+                                   OnChange="Drop.OnSourceSelectedAsync"
                                    class="ptm-dropzone__input"
                                    accept=".fountain,.spmd,.pdf,.txt,text/plain,application/pdf"
                                    data-testid="import-file-input"
-                                   disabled="@(Busy || JobRunning || _importing || !ImportReady)" />
+                                   disabled="@(Busy || Jobs.JobRunning || Drop._importing || !Gate.ImportReady)" />
                         <div class="ptm-dropzone__inner" aria-hidden="true">
                             <div class="ptm-dropzone__icon">📖</div>
                             <div class="ptm-dropzone__title">Drop your book here</div>
@@ -97,25 +97,25 @@
                         </div>
                     </label>
 
-                    @if (!string.IsNullOrWhiteSpace(_chosenFileName))
+                    @if (!string.IsNullOrWhiteSpace(Drop._chosenFileName))
                     {
                         <div class="fs-file-chosen mt-2" data-testid="import-file-name">
-                            <span class="fs-file-chosen-label">Selected:</span>@_chosenFileName
+                            <span class="fs-file-chosen-label">Selected:</span>@Drop._chosenFileName
                         </div>
                     }
 
 
-                    @if (CanContinueToScreenplay)
+                    @if (Gate.CanContinueToScreenplay)
                     {
                         <a class="btn btn-success btn-sm mt-3" data-testid="import-continue-screenplay" href="adaptation/screenplay">Continue to screenplay →</a>
                     }
                 }
 
                 <div data-testid="import-status"
-                     data-importing="@(_importing ? "true" : "false")"
-                     data-can-continue="@(CanContinueToScreenplay ? "true" : "false")"
+                     data-importing="@(Drop._importing ? "true" : "false")"
+                     data-can-continue="@(Gate.CanContinueToScreenplay ? "true" : "false")"
                      class="visually-hidden"
-                     aria-hidden="true">@_importStatus</div>
+                     aria-hidden="true">@Drop._importStatus</div>
             </div>
         </div>
 
@@ -124,7 +124,7 @@
         @* Natural length exists only after book text is prepared. *@
         <FilmLengthCard @key="@(Status.Book.BookTextExists ? (Status.Book.SuggestedTotalMinutes ?? Status.Book.NaturalRuntimeMinutes ?? 1) : 0)"
                         ProjectId="@ProjectId"
-                        Disabled="@(Busy || JobRunning || _importing)"
-                        OnChanged="OnFilmLengthChangedAsync" />
+                        Disabled="@(Busy || Jobs.JobRunning || Drop._importing)"
+                        OnChanged="Runtime.OnFilmLengthChangedAsync" />
     }
 </AdaptationShell>

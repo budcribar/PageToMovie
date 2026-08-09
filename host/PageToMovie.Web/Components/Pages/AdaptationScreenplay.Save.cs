@@ -80,8 +80,4 @@ public partial class AdaptationScreenplay
         }
     }
 
-    // ── Method forwarders (ScreenplaySave) ──
-    private void ScheduleAutosave() => Save.ScheduleAutosave();
-    private Task SaveDraftAsync(bool manual) => Save.SaveDraftAsync(manual);
-    private Task OnFilmLengthChangedAsync() => Save.OnFilmLengthChangedAsync();
 }

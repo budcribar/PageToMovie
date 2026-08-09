@@ -30,7 +30,7 @@ public partial class Adaptation
             }
 
             var dto = await Engine.GetAdaptationAsync(projectId);
-            var path = AdaptationPageBase.SuggestedStepPath(dto?.Adaptation);
+            var path = AdaptationPageBase.AdaptationStepUi.SuggestedStepPath(dto?.Adaptation);
             Nav.NavigateTo(path, replace: true);
         }
         catch

@@ -33,7 +33,7 @@
                 else
                 {
                     <FilmLengthCard ProjectId="@ProjectId"
-                                    Disabled="@(Busy || JobRunning)"
+                                    Disabled="@(Busy || Jobs.JobRunning)"
                                     OnChanged="OnLengthChangedAsync" />
 
                     @if (_estimateUsd is double est)
@@ -50,7 +50,7 @@
                         <button type="button"
                                 class="btn btn-primary btn-sm"
                                 data-testid="trim-run"
-                                disabled="@(Busy || JobRunning)"
+                                disabled="@(Busy || Jobs.JobRunning)"
                                 @onclick="TrimAsync">
                             Fit screenplay to this length
                         </button>

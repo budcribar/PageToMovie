@@ -27,7 +27,7 @@ public partial class AdaptationScreenplay
         internal ElementReference _scenesEl;
         internal DotNetObjectReference<AdaptationScreenplay>? _dotNetRef;
 
-        internal bool CanEdit => _editorReady && !S.Busy && !S.JobRunning;
+        internal bool CanEdit => _editorReady && !S.Busy && !S.Jobs.JobRunning;
 
         /// <summary>Copy the full screenplay to the clipboard — read action, works even while read-only.</summary>
         internal async Task CopyScreenplayAsync()
@@ -83,7 +83,7 @@ public partial class AdaptationScreenplay
             {
                 await S.Js.InvokeVoidAsync("fountainEditor.setValue", EditorId, _text);
                 await S.Js.InvokeVoidAsync("fountainEditor.refresh", EditorId);
-                if (!S.Busy && !S.JobRunning)
+                if (!S.Busy && !S.Jobs.JobRunning)
                     await S.Js.InvokeVoidAsync("fountainEditor.setReadOnly", EditorId, false);
             }
             else
@@ -111,9 +111,9 @@ public partial class AdaptationScreenplay
                     _dotNetRef,
                     _previewEl,
                     _scenesEl,
-                    S.Busy || S.JobRunning);
+                    S.Busy || S.Jobs.JobRunning);
                 _editorReady = true;
-                if (!S.Busy && !S.JobRunning)
+                if (!S.Busy && !S.Jobs.JobRunning)
                     await S.Js.InvokeVoidAsync("fountainEditor.setReadOnly", EditorId, false);
                 S.StateHasChanged();
             }
@@ -196,15 +196,5 @@ public partial class AdaptationScreenplay
         }
     }
 
-    // ── Method forwarders (ScreenplayEditor) ──
-    private bool CanEdit => Editor.CanEdit;
-    private Task CopyScreenplayAsync() => Editor.CopyScreenplayAsync();
-    private Task LoadEditorDataAsync() => Editor.LoadEditorDataAsync();
-    private Task InsertAsync(string snippet) => Editor.InsertAsync(snippet);
-    private Task InsertTitleFieldAsync(string key, string? afterKey = null) => Editor.InsertTitleFieldAsync(key, afterKey);
-    private Task SyncTextFromEditorAsync() => Editor.SyncTextFromEditorAsync();
 
-    [JSInvokable]
-    public Task OnEditorChanged(string text, string[] warnings, int sceneCount) =>
-        Editor.OnEditorChanged(text, warnings, sceneCount);
 }

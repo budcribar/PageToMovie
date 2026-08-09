@@ -17,7 +17,7 @@ public partial class AdaptationImport
             var tmin = S.Status?.Book.TargetRuntimeMinutes
                 ?? S.Status?.Book.SuggestedTotalMinutes
                 ?? S.Status?.Book.NaturalRuntimeMinutes
-                ?? S.TotalMinutes;
+                ?? S.Pipeline.TotalMinutes;
             _targetMinutesEdit = Math.Clamp(tmin, 2, 180);
         }
 
@@ -33,7 +33,7 @@ public partial class AdaptationImport
                 if (dto is null || !dto.Ok)
                     throw new InvalidOperationException("Could not save film length.");
                 _runtimeMessage = dto.Message ?? $"Target set to {dto.TargetMinutes} min.";
-                S.TotalMinutes = dto.TargetMinutes;
+                S.Pipeline.TotalMinutes = dto.TargetMinutes;
                 await S.LoadAsync();
                 SyncTargetEditFromStatus();
             }
