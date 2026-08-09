@@ -4,7 +4,7 @@
         <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
             <div class="modal-content bg-dark text-light border-warning shadow-lg">
                 <div class="modal-header bg-dark-subtle border-secondary-subtle">
-                    <h5 class="modal-title fw-bold text-light">👥 Cast, Voice Clones & Image Reference Locks</h5>
+                    <h5 class="modal-title fw-bold text-light">👥 Cast Packages, Voice Clones & Image Locks</h5>
                     <button type="button" class="btn-close btn-close-white" @onclick="Close"></button>
                 </div>
                 <div class="modal-body p-4">
@@ -14,40 +14,72 @@
                         <button class="btn btn-warning fw-semibold px-3" type="button" @onclick="AddCharacter" disabled="@string.IsNullOrWhiteSpace(NewCharacterName)">+ Add Character</button>
                     </div>
 
-                    <label class="form-label fw-semibold text-secondary small">Master Characters & Voice/Image Sidecar Packages (@Characters.Count)</label>
+                    <label class="form-label fw-semibold text-secondary small">Discovered & Master Characters (@DiscoveredCharacterNames.Count)</label>
                     <div class="d-flex flex-column gap-3 overflow-auto" style="max-height: 450px;">
-                        @for (var i = 0; i < Characters.Count; i++)
+                        @for (var i = 0; i < DiscoveredCharacterNames.Count; i++)
                         {
                             var index = i;
-                            var chara = Characters[index];
+                            var charaName = DiscoveredCharacterNames[index];
+                            var profile = Model.GetOrCreateCharacterProfile(charaName);
+
                             <div class="card bg-dark-subtle border-secondary-subtle p-3 shadow-sm">
                                 <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom border-secondary-subtle">
                                     <div class="d-flex align-items-center gap-2">
                                         <span class="fs-5">🎭</span>
-                                        <h5 class="mb-0 fw-bold text-warning text-uppercase">@chara</h5>
+                                        <h5 class="mb-0 fw-bold text-warning text-uppercase">@charaName</h5>
                                     </div>
-                                    <button class="btn btn-sm btn-outline-danger py-0 px-2" type="button" @onclick="() => RemoveCharacter(index)" title="Remove Character from Cast">✕ Delete</button>
+                                    <button class="btn btn-sm btn-outline-danger py-0 px-2" type="button" @onclick="() => RemoveCharacter(charaName)" title="Delete Character">✕ Delete</button>
                                 </div>
 
-                                <div class="row g-2">
-                                    <div class="col-md-6">
-                                        <label class="form-label fw-semibold text-secondary small mb-1">🗣️ Voice Clone / TTS Style</label>
-                                        <select class="form-select form-select-sm bg-dark text-light border-secondary">
-                                            <option value="eleven_multilingual_v2">ElevenLabs · Multilingual V2 (Default)</option>
-                                            <option value="eleven_turbo_v2">ElevenLabs · Turbo V2</option>
-                                            <option value="suno_v5">Suno V5.5 Voice Clone</option>
-                                        </select>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <label class="form-label fw-semibold text-secondary small mb-1">🖼️ Locked Reference Images</label>
-                                        <div class="input-group input-group-sm">
-                                            <span class="input-group-text bg-dark text-info border-secondary">3 Images Attached</span>
-                                            <button class="btn btn-outline-info" type="button">Manage Plates</button>
+                                <div class="row g-3">
+                                    <!-- Voice Clone Section -->
+                                    <div class="col-md-6 border-end border-secondary-subtle">
+                                        <div class="d-flex justify-content-between align-items-center mb-1">
+                                            <label class="form-label fw-semibold text-light small mb-0">🗣️ Voice Clone & Audio Lock</label>
+                                            <div class="form-check form-switch mb-0">
+                                                <input class="form-check-input" type="checkbox" role="switch" @bind="profile.IsVoiceLocked" @bind:after="OnChanged" id="vlock-@index">
+                                                <label class="form-check-label text-warning small fw-bold" for="vlock-@index">
+                                                    @(profile.IsVoiceLocked ? "🔒 Locked" : "🔓 Unlocked")
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <div class="mb-2">
+                                            <span class="text-secondary small">TTS Provider:</span>
+                                            <select class="form-select form-select-sm bg-dark text-light border-secondary mt-1" @bind="profile.VoiceProvider" @bind:after="OnChanged">
+                                                <option value="ElevenLabs">ElevenLabs (Multilingual V2)</option>
+                                                <option value="Suno">Suno V5.5 Voice Clone</option>
+                                                <option value="Azure">Azure Neural Voice</option>
+                                            </select>
+                                        </div>
+
+                                        <div>
+                                            <span class="text-secondary small">Voice Model / Clone ID:</span>
+                                            <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary font-monospace mt-1" @bind="profile.VoiceId" @bind:after="OnChanged" placeholder="e.g. 21m00Tcm4TlvDq8ikWAM" />
                                         </div>
                                     </div>
-                                    <div class="col-md-12">
-                                        <label class="form-label fw-semibold text-secondary small mb-1">🎨 Visual Appearance & Wardrobe Lock</label>
-                                        <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary" placeholder="e.g. Hero character in dark leather jacket, stubble beard" />
+
+                                    <!-- Image Lock & Appearance Section -->
+                                    <div class="col-md-6">
+                                        <div class="d-flex justify-content-between align-items-center mb-1">
+                                            <label class="form-label fw-semibold text-light small mb-0">🖼️ Visual & Wardrobe Lock</label>
+                                            <div class="form-check form-switch mb-0">
+                                                <input class="form-check-input" type="checkbox" role="switch" @bind="profile.IsImageLocked" @bind:after="OnChanged" id="ilock-@index">
+                                                <label class="form-check-label text-info small fw-bold" for="ilock-@index">
+                                                    @(profile.IsImageLocked ? "🔒 Locked" : "🔓 Unlocked")
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <div class="mb-2">
+                                            <span class="text-secondary small">Visual Lock Prompt:</span>
+                                            <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary mt-1" @bind="profile.VisualLockPrompt" @bind:after="OnChanged" placeholder="e.g. Small black and white dog, frog-like posture..." />
+                                        </div>
+
+                                        <div>
+                                            <span class="text-secondary small">Wardrobe Always:</span>
+                                            <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary mt-1" @bind="profile.WardrobeAlways" @bind:after="OnChanged" placeholder="e.g. Red collar, dark fur patches..." />
+                                        </div>
                                     </div>
                                 </div>
                             </div>

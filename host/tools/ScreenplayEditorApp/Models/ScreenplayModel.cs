@@ -304,12 +304,21 @@ public class ScreenplayScene
     }
 }
 
-public class ScreenplayCharacter
+public class ScreenplayLocationProfile
 {
     public string Name { get; set; } = "";
+    public string Description { get; set; } = "";
+}
+
+public class ScreenplayCharacterProfile
+{
+    public string Name { get; set; } = "";
+    public string VoiceProvider { get; set; } = "ElevenLabs";
     public string VoiceId { get; set; } = "";
-    public string VisualDescription { get; set; } = "";
+    public bool IsVoiceLocked { get; set; } = true;
+    public string VisualLockPrompt { get; set; } = "";
     public string WardrobeAlways { get; set; } = "";
+    public bool IsImageLocked { get; set; } = true;
     public int ReferenceImageCount { get; set; } = 1;
 }
 
@@ -318,17 +327,15 @@ public class ScreenplayModel
     public ScreenplayMetadata Metadata { get; set; } = new();
     public List<ScreenplayScene> Scenes { get; set; } = new();
 
-    public List<string> MasterLocations { get; set; } = new();
-    public List<string> MasterCharacters { get; set; } = new();
-
-    public List<ScreenplayCharacter> CharacterProfiles { get; set; } = new();
+    public List<ScreenplayLocationProfile> LocationProfiles { get; set; } = new();
+    public List<ScreenplayCharacterProfile> CharacterProfiles { get; set; } = new();
 
     public List<string> GetAllLocations()
     {
         var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var loc in MasterLocations)
+        foreach (var loc in LocationProfiles)
         {
-            if (!string.IsNullOrWhiteSpace(loc)) set.Add(loc.Trim().ToUpperInvariant());
+            if (!string.IsNullOrWhiteSpace(loc.Name)) set.Add(loc.Name.Trim().ToUpperInvariant());
         }
         foreach (var scene in Scenes)
         {
@@ -340,9 +347,9 @@ public class ScreenplayModel
     public List<string> GetAllCharacters()
     {
         var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var chara in MasterCharacters)
+        foreach (var chara in CharacterProfiles)
         {
-            if (!string.IsNullOrWhiteSpace(chara)) set.Add(chara.Trim().ToUpperInvariant());
+            if (!string.IsNullOrWhiteSpace(chara.Name)) set.Add(chara.Name.Trim().ToUpperInvariant());
         }
         foreach (var scene in Scenes)
         {
@@ -355,5 +362,29 @@ public class ScreenplayModel
             }
         }
         return set.OrderBy(x => x).ToList();
+    }
+
+    public ScreenplayLocationProfile GetOrCreateLocationProfile(string name)
+    {
+        string upper = name.Trim().ToUpperInvariant();
+        var existing = LocationProfiles.FirstOrDefault(l => l.Name.Equals(upper, StringComparison.OrdinalIgnoreCase));
+        if (existing == null)
+        {
+            existing = new ScreenplayLocationProfile { Name = upper };
+            LocationProfiles.Add(existing);
+        }
+        return existing;
+    }
+
+    public ScreenplayCharacterProfile GetOrCreateCharacterProfile(string name)
+    {
+        string upper = name.Trim().ToUpperInvariant();
+        var existing = CharacterProfiles.FirstOrDefault(c => c.Name.Equals(upper, StringComparison.OrdinalIgnoreCase));
+        if (existing == null)
+        {
+            existing = new ScreenplayCharacterProfile { Name = upper };
+            CharacterProfiles.Add(existing);
+        }
+        return existing;
     }
 }

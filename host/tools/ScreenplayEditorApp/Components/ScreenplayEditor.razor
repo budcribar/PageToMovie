@@ -132,10 +132,10 @@
                                      OnImportCallback="HandleFountainImport" />
 
     <ScreenplayEditor_LocationModal @bind-IsOpen="ShowLocationModal"
-                                     Locations="Model.MasterLocations"
+                                     Model="Model"
                                      OnChangedCallback="OnChanged" />
 
     <ScreenplayEditor_CharacterModal @bind-IsOpen="ShowCharacterModal"
-                                      Characters="Model.MasterCharacters"
+                                      Model="Model"
                                       OnChangedCallback="OnChanged" />
 </div>

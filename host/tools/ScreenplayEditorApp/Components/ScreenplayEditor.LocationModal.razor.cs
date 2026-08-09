@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Components;
+using ScreenplayEditorApp.Models;
 
 namespace ScreenplayEditorApp.Components;
 
@@ -11,12 +12,14 @@ public partial class ScreenplayEditor_LocationModal : ComponentBase
     public EventCallback<bool> IsOpenChanged { get; set; }
 
     [Parameter]
-    public List<string> Locations { get; set; } = new();
+    public ScreenplayModel Model { get; set; } = new();
 
     [Parameter]
     public EventCallback OnChangedCallback { get; set; }
 
     public string NewLocationName { get; set; } = "";
+
+    public List<string> DiscoveredLocationNames => Model.GetAllLocations();
 
     public async Task Close()
     {
@@ -27,32 +30,40 @@ public partial class ScreenplayEditor_LocationModal : ComponentBase
         }
     }
 
+    public async Task OnChanged()
+    {
+        if (OnChangedCallback.HasDelegate)
+        {
+            await OnChangedCallback.InvokeAsync();
+        }
+    }
+
     public async Task AddLocation()
     {
         if (!string.IsNullOrWhiteSpace(NewLocationName))
         {
             string upper = NewLocationName.Trim().ToUpperInvariant();
-            if (!Locations.Contains(upper))
-            {
-                Locations.Add(upper);
-                NewLocationName = "";
-                if (OnChangedCallback.HasDelegate)
-                {
-                    await OnChangedCallback.InvokeAsync();
-                }
-            }
+            Model.GetOrCreateLocationProfile(upper);
+            NewLocationName = "";
+            await OnChanged();
         }
     }
 
-    public async Task RemoveLocation(int index)
+    public async Task RemoveLocation(string name)
     {
-        if (index >= 0 && index < Locations.Count)
+        if (!string.IsNullOrWhiteSpace(name))
         {
-            Locations.RemoveAt(index);
-            if (OnChangedCallback.HasDelegate)
+            string upper = name.Trim().ToUpperInvariant();
+            Model.LocationProfiles.RemoveAll(l => l.Name.Equals(upper, StringComparison.OrdinalIgnoreCase));
+            // Also reset any scene headings using this location to "NEW LOCATION"
+            foreach (var scene in Model.Scenes)
             {
-                await OnChangedCallback.InvokeAsync();
+                if (scene.Location.Equals(upper, StringComparison.OrdinalIgnoreCase))
+                {
+                    scene.Location = "NEW LOCATION";
+                }
             }
+            await OnChanged();
         }
     }
 }

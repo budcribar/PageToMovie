@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Components;
+using ScreenplayEditorApp.Models;
 
 namespace ScreenplayEditorApp.Components;
 
@@ -11,12 +12,14 @@ public partial class ScreenplayEditor_CharacterModal : ComponentBase
     public EventCallback<bool> IsOpenChanged { get; set; }
 
     [Parameter]
-    public List<string> Characters { get; set; } = new();
+    public ScreenplayModel Model { get; set; } = new();
 
     [Parameter]
     public EventCallback OnChangedCallback { get; set; }
 
     public string NewCharacterName { get; set; } = "";
+
+    public List<string> DiscoveredCharacterNames => Model.GetAllCharacters();
 
     public async Task Close()
     {
@@ -27,32 +30,32 @@ public partial class ScreenplayEditor_CharacterModal : ComponentBase
         }
     }
 
+    public async Task OnChanged()
+    {
+        if (OnChangedCallback.HasDelegate)
+        {
+            await OnChangedCallback.InvokeAsync();
+        }
+    }
+
     public async Task AddCharacter()
     {
         if (!string.IsNullOrWhiteSpace(NewCharacterName))
         {
             string upper = NewCharacterName.Trim().ToUpperInvariant();
-            if (!Characters.Contains(upper))
-            {
-                Characters.Add(upper);
-                NewCharacterName = "";
-                if (OnChangedCallback.HasDelegate)
-                {
-                    await OnChangedCallback.InvokeAsync();
-                }
-            }
+            Model.GetOrCreateCharacterProfile(upper);
+            NewCharacterName = "";
+            await OnChanged();
         }
     }
 
-    public async Task RemoveCharacter(int index)
+    public async Task RemoveCharacter(string name)
     {
-        if (index >= 0 && index < Characters.Count)
+        if (!string.IsNullOrWhiteSpace(name))
         {
-            Characters.RemoveAt(index);
-            if (OnChangedCallback.HasDelegate)
-            {
-                await OnChangedCallback.InvokeAsync();
-            }
+            string upper = name.Trim().ToUpperInvariant();
+            Model.CharacterProfiles.RemoveAll(c => c.Name.Equals(upper, StringComparison.OrdinalIgnoreCase));
+            await OnChanged();
         }
     }
 }
