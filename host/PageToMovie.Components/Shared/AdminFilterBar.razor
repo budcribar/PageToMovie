@@ -3,7 +3,7 @@
 <div class="@CssClass" data-testid="@TestId">
     @if (ShowSearch)
     {
-        <input class="form-control form-control-sm"
+        <input class="@SearchInputClass"
                style="max-width: 14rem;"
                placeholder="@SearchPlaceholder"
                value="@Search"
@@ -20,6 +20,7 @@
     [Parameter] public string? Search { get; set; }
     [Parameter] public EventCallback<string?> SearchChanged { get; set; }
     [Parameter] public string SearchPlaceholder { get; set; } = "Search…";
+    [Parameter] public string SearchInputClass { get; set; } = "form-control form-control-sm";
     [Parameter] public bool ShowSearch { get; set; } = true;
     [Parameter] public bool ShowClear { get; set; }
     [Parameter] public EventCallback OnClear { get; set; }

@@ -1,28 +1,57 @@
 @namespace PageToMovie.Web.Components
 
 <div class="char-pick__card @(Selected ? "is-chosen" : null)"
-     data-testid="@(TestId ?? "char-pick-card")"
-     @onclick="OnSelect">
-    <div class="char-pick__frame">
-        @if (!string.IsNullOrWhiteSpace(ImageUrl))
-        {
-            <img src="@ImageUrl" alt="@Label" />
-        }
-        else
-        {
-            <span class="text-muted small">No image</span>
-        }
-    </div>
-    <span class="char-pick__label">@Label</span>
-    @if (ShowUseButton)
+     data-testid="@(TestId ?? "char-pick-card")">
+    @if (OnFrameClick.HasDelegate)
     {
         <button type="button"
-                class="btn btn-sm btn-primary char-pick__use"
-                @onclick:stopPropagation="true"
-                @onclick="OnUse">
-            @UseLabel
+                class="char-pick__frame char-pick__frame--zoomable"
+                disabled="@FrameDisabled"
+                title="@FrameTitle"
+                aria-label="@(FrameAriaLabel ?? Label)"
+                @onclick="OnFrameClick">
+            @if (!string.IsNullOrWhiteSpace(ImageUrl))
+            {
+                <img src="@ImageUrl" alt="@Label" loading="lazy" />
+            }
+            else
+            {
+                <span class="text-muted small">No image</span>
+            }
+            @if (ShowZoomBadge)
+            {
+                <span class="char-pick__zoom-badge" aria-hidden="true">@ZoomBadgeText</span>
+            }
         </button>
     }
+    else
+    {
+        <div class="char-pick__frame" @onclick="OnSelect">
+            @if (!string.IsNullOrWhiteSpace(ImageUrl))
+            {
+                <img src="@ImageUrl" alt="@Label" loading="lazy" />
+            }
+            else
+            {
+                <span class="text-muted small">No image</span>
+            }
+        </div>
+    }
+    <span class="char-pick__label">@Label</span>
+    <div class="d-flex flex-wrap gap-1 justify-content-center">
+        @if (ShowUseButton)
+        {
+            <button type="button"
+                    class="btn btn-sm btn-primary char-pick__use"
+                    data-testid="@UseTestId"
+                    disabled="@UseDisabled"
+                    title="@UseTitle"
+                    @onclick="OnUse">
+                @UseLabel
+            </button>
+        }
+        @ExtraActions
+    </div>
 </div>
 
 @code {
@@ -31,7 +60,17 @@
     [Parameter] public bool Selected { get; set; }
     [Parameter] public bool ShowUseButton { get; set; } = true;
     [Parameter] public string UseLabel { get; set; } = "Use";
+    [Parameter] public string? UseTestId { get; set; } = "char-use-look";
+    [Parameter] public string? UseTitle { get; set; }
+    [Parameter] public bool UseDisabled { get; set; }
     [Parameter] public EventCallback OnSelect { get; set; }
     [Parameter] public EventCallback OnUse { get; set; }
+    [Parameter] public EventCallback OnFrameClick { get; set; }
+    [Parameter] public bool FrameDisabled { get; set; }
+    [Parameter] public string? FrameTitle { get; set; }
+    [Parameter] public string? FrameAriaLabel { get; set; }
+    [Parameter] public bool ShowZoomBadge { get; set; }
+    [Parameter] public string ZoomBadgeText { get; set; } = "Save";
     [Parameter] public string? TestId { get; set; }
+    [Parameter] public RenderFragment? ExtraActions { get; set; }
 }

@@ -175,16 +175,14 @@
         {
             @* ── Search & Filter Toolbar ────────────────────────────────────── *@
             <div class="card p-3 mb-3 border shadow-sm">
-                <div class="row g-2 align-items-center">
-                    <div class="col-md-3">
-                        <div class="input-group input-group-sm">
-                            <span class="input-group-text bg-dark border-secondary text-muted">🔍</span>
-                            <input class="form-control form-control-sm bg-dark text-light border-secondary"
-                                   placeholder="Search model ID, name, provider…"
-                                   @bind="_filterQuery"
-                                   @bind:event="oninput" />
-                        </div>
-                    </div>
+                <AdminFilterBar Search="_filterQuery"
+                                SearchChanged="OnCatalogSearchChanged"
+                                SearchPlaceholder="Search model ID, name, provider…"
+                                SearchInputClass="form-control form-control-sm bg-dark text-light border-secondary"
+                                ShowClear="@( !string.IsNullOrWhiteSpace(_filterQuery) || !string.IsNullOrWhiteSpace(_filterCapability) || !string.IsNullOrWhiteSpace(_filterProvider) || !string.IsNullOrWhiteSpace(_filterStatus) )"
+                                OnClear="ResetFilters"
+                                CssClass="row g-2 align-items-center"
+                                TestId="catalog-filters">
                     <div class="col-md-2">
                         <select class="form-select form-select-sm bg-dark text-light border-secondary" @bind="_filterCapability">
                             <option value="">All Capabilities</option>
@@ -214,16 +212,12 @@
                         </select>
                     </div>
                     <div class="col-md-3 d-flex gap-2 justify-content-end align-items-center">
-                        @if (!string.IsNullOrWhiteSpace(_filterQuery) || !string.IsNullOrWhiteSpace(_filterCapability) || !string.IsNullOrWhiteSpace(_filterProvider) || !string.IsNullOrWhiteSpace(_filterStatus))
-                        {
-                            <button class="btn btn-sm btn-outline-secondary" @onclick="ResetFilters">@L["Common.ClearFilters"]</button>
-                        }
                         <button class="btn btn-sm btn-success" @onclick="() => BeginAdd()">@L["Catalog.AddModel"]</button>
                         <span class="badge bg-secondary">
                             @FilteredModels.Count() of @_modelList.Count models (@_modelList.Count(m => IsEnabled(m) && !IsDeprecated(m)) active enabled, @_modelList.Count(m => IsDeprecated(m)) deprecated)
                         </span>
                     </div>
-                </div>
+                </AdminFilterBar>
             </div>
 
             @if (_editModel is not null)

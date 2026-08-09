@@ -403,26 +403,20 @@ else
                                     <div class="char-pick__grid" data-testid="char-pick-grid">
                                         @foreach (var c in _allCandidates)
                                         {
-                                            <div class="char-pick__card @(_chosenCandidateKey == CandidateKey(c) ? "is-chosen" : "")" data-testid="char-pick-card">
-                                                <button type="button"
-                                                        class="char-pick__frame char-pick__frame--zoomable"
-                                                        disabled="@(_busy || JobRunning)"
-                                                        title="Click to save this look for @_selected?.DisplayName"
-                                                        aria-label="Use look @c.Label"
-                                                        @onclick="@(() => LockCandidateAsync(c))">
-                                                    <img src="@c.Url" alt="@c.Label" loading="lazy" />
-                                                    <span class="char-pick__zoom-badge" aria-hidden="true">Save</span>
-                                                </button>
-                                                <span class="char-pick__label">@c.Label</span>
-                                                <div class="d-flex flex-wrap gap-1 justify-content-center">
-                                                    <button type="button"
-                                                            class="btn btn-sm btn-primary char-pick__use"
-                                                            data-testid="char-use-look"
-                                                            disabled="@(_busy || JobRunning)"
-                                                            title="Save as preferred look for film"
-                                                            @onclick="@(() => LockCandidateAsync(c))">
-                                                        Use this look
-                                                    </button>
+                                            <CharacterPickCard Label="@c.Label"
+                                                               ImageUrl="@c.Url"
+                                                               Selected="@(_chosenCandidateKey == CandidateKey(c))"
+                                                               ShowZoomBadge="true"
+                                                               FrameDisabled="@(_busy || JobRunning)"
+                                                               FrameTitle="@($"Click to save this look for {_selected?.DisplayName}")"
+                                                               FrameAriaLabel="@($"Use look {c.Label}")"
+                                                               OnFrameClick="@(() => LockCandidateAsync(c))"
+                                                               UseLabel="Use this look"
+                                                               UseTitle="Save as preferred look for film"
+                                                               UseDisabled="@(_busy || JobRunning)"
+                                                               OnUse="@(() => LockCandidateAsync(c))"
+                                                               UseTestId="char-use-look">
+                                                <ExtraActions>
                                                     <button type="button"
                                                             class="btn btn-sm btn-outline-secondary"
                                                             disabled="@(_busy || JobRunning)"
@@ -430,8 +424,8 @@ else
                                                             @onclick="@(() => OpenLookZoom(c))">
                                                         Zoom
                                                     </button>
-                                                </div>
-                                            </div>
+                                                </ExtraActions>
+                                            </CharacterPickCard>
                                         }
                                     </div>
                                     <button type="button" class="btn btn-sm btn-outline-secondary mt-2"
@@ -575,44 +569,31 @@ else
                                         <button type="button" class="btn btn-link btn-sm text-muted p-0"
                                                 @onclick="() => ChoosePictureRoute(PictureRoute.Choose)">← Routes</button>
                                     </div>
-                                    <div class="row g-2 mb-2">
-                                        <div class="col-md-7">
-                                            <label class="form-label small fw-semibold mb-0">Description</label>
-                                            <textarea class="form-control form-control-sm" rows="3"
-                                                      value="@_editDescription"
-                                                      @oninput="OnLookDescriptionInput"
-                                                      disabled="@(_busy || JobRunning)"
-                                                      placeholder="How they look"></textarea>
-                                        </div>
-                                        <div class="col-md-5">
-                                            <label class="form-label small fw-semibold mb-0">Visual lock <span class="text-muted fw-normal">(optional)</span></label>
-                                            <textarea class="form-control form-control-sm" rows="3"
-                                                      value="@_editVisualLock"
-                                                      @oninput="OnLookVisualLockInput"
-                                                      disabled="@(_busy || JobRunning)"
-                                                      placeholder="Coat, markings, proportions that must stay fixed"></textarea>
-                                        </div>
-                                    </div>
-                                    <div class="d-flex flex-wrap gap-2 align-items-center">
-                                        <CapabilityLockedControl Enabled="Caps.ImageReady"
-                                                                 BlockedReason="@Caps.ImageBlockedReason"
-                                                                 SettingsHref="@Caps.ImageSettingsHref"
-                                                                 TestId="char-generate-looks-cap">
-                                        <button type="button" class="btn btn-primary btn-sm"
-                                                disabled="@(_busy || JobRunning || string.IsNullOrWhiteSpace(_editDescription))"
-                                                @onclick="StartRegenerateAsync"
-                                                data-testid="char-generate-looks">
-                                            Generate 3 looks
-                                        </button>
-                                        </CapabilityLockedControl>
-                                        <span class="small text-muted" data-testid="look-autosave-hint">
-                                            @(_lookSaveHint ?? "Text saves automatically")
-                                        </span>
-                                        @if (_savingLook)
-                                        {
-                                            <span class="small text-muted">Saving…</span>
-                                        }
-                                    </div>
+                                    <CharacterLookPanel Description="@_editDescription"
+                                                       DescriptionChanged="OnLookDescriptionChanged"
+                                                       VisualLock="@_editVisualLock"
+                                                       VisualLockChanged="OnLookVisualLockChanged"
+                                                       Busy="@(_busy || JobRunning)"
+                                                       Hint="@(_lookSaveHint ?? "Text saves automatically")"
+                                                       TestId="char-look-panel">
+                                        <Actions>
+                                            <CapabilityLockedControl Enabled="Caps.ImageReady"
+                                                                     BlockedReason="@Caps.ImageBlockedReason"
+                                                                     SettingsHref="@Caps.ImageSettingsHref"
+                                                                     TestId="char-generate-looks-cap">
+                                                <button type="button" class="btn btn-primary btn-sm"
+                                                        disabled="@(_busy || JobRunning || string.IsNullOrWhiteSpace(_editDescription))"
+                                                        @onclick="StartRegenerateAsync"
+                                                        data-testid="char-generate-looks">
+                                                    Generate 3 looks
+                                                </button>
+                                            </CapabilityLockedControl>
+                                            @if (_savingLook)
+                                            {
+                                                <span class="small text-muted">Saving…</span>
+                                            }
+                                        </Actions>
+                                    </CharacterLookPanel>
                                 }
                                 else if (_pictureRoute == PictureRoute.Book)
                                 {
@@ -793,66 +774,40 @@ else
            Full cast keeps label/profile + film voice preview for prompt style. *@
         @if (!_simpleMode)
         {
-            <div class="mb-2">
-                <label class="form-label small mb-0">Voice label</label>
-                <input class="form-control form-control-sm"
-                       value="@_editVoiceLabel"
-                       @oninput="OnVoiceLabelInput"
-                       disabled="@(_busy || _voicePreviewBusy || VoiceJobRunning)"
-                       placeholder="e.g. Daddy" />
-            </div>
-            <div class="mb-2">
-                <label class="form-label small mb-0">Voice profile</label>
-                <textarea class="form-control form-control-sm" rows="4"
-                          value="@_editVoiceProfile"
-                          @oninput="OnVoiceProfileInput"
-                          disabled="@(_busy || _voicePreviewBusy || VoiceJobRunning)"
-                          placeholder="Adult male; low soft presence — used in film video prompts (voice style)"></textarea>
-                <div class="form-text">
-                    Optional: describe the voice (or use a personal style label). Play previews a short sample clip with this profile + dialogue.
-                </div>
-            </div>
-            <div class="d-flex flex-wrap gap-2 align-items-center">
-                <span class="small text-muted">@(_voiceSaveHint ?? "Profile saves automatically")</span>
-                <button type="button"
-                        class="btn btn-sm btn-outline-secondary"
-                        disabled="@(_busy || _voicePreviewBusy || VoiceJobRunning)"
-                        title="Play cached sample, or generate a short film clip if missing"
-                        @onclick="() => PlayVoicePreviewAsync(force: false)">
-                    ▶ Play
-                </button>
-                <button type="button"
-                        class="btn btn-sm btn-outline-primary"
-                        disabled="@(_busy || _voicePreviewBusy || VoiceJobRunning)"
-                        title="Always regenerate after editing the profile"
-                        @onclick="() => PlayVoicePreviewAsync(force: true)">
-                    Regenerate
-                </button>
-            </div>
+            <CharacterVoicePanel VoiceLabel="@_editVoiceLabel"
+                                 VoiceLabelChanged="OnVoiceLabelChanged"
+                                 VoiceProfile="@_editVoiceProfile"
+                                 VoiceProfileChanged="OnVoiceProfileChanged"
+                                 Busy="@(_busy || _voicePreviewBusy || VoiceJobRunning)"
+                                 Hint="@(_voiceSaveHint ?? "Profile saves automatically")"
+                                 Error="@_voicePreviewError"
+                                 TestId="char-voice-panel">
+                <Actions>
+                    <button type="button"
+                            class="btn btn-sm btn-outline-secondary"
+                            disabled="@(_busy || _voicePreviewBusy || VoiceJobRunning)"
+                            title="Play cached sample, or generate a short film clip if missing"
+                            @onclick="() => PlayVoicePreviewAsync(force: false)">
+                        ▶ Play
+                    </button>
+                    <button type="button"
+                            class="btn btn-sm btn-outline-primary"
+                            disabled="@(_busy || _voicePreviewBusy || VoiceJobRunning)"
+                            title="Always regenerate after editing the profile"
+                            @onclick="() => PlayVoicePreviewAsync(force: true)">
+                        Regenerate
+                    </button>
+                </Actions>
+            </CharacterVoicePanel>
             @if (VoiceJobRunning && _job is not null)
             {
-                var vpct = _job.Status == "queued" || _job.Total <= 0
-                    ? 8
-                    : (int)Math.Round(100.0 * Math.Clamp(_job.Index, 0, _job.Total) / Math.Max(1, _job.Total));
-                if (_job.Status == "running" && _job.Index <= 0)
-                    vpct = 0;
-                <div class="mt-2">
-                    <div class="d-flex justify-content-between small text-muted">
-                        <span>@(_job.Message ?? "Generating voice…")</span>
-                        @if (_job.Status == "running" && _job.Total == 100)
-                        {
-                            <span>@_job.Index%</span>
-                        }
-                    </div>
-                    <div class="progress mt-1" style="height: 0.5rem;">
-                        <div class="progress-bar progress-bar-striped progress-bar-animated"
-                             role="progressbar"
-                             style="width: @(vpct)%"
-                             aria-valuenow="@vpct"
-                             aria-valuemin="0"
-                             aria-valuemax="100"></div>
-                    </div>
-                </div>
+                <JobProgressCard Status="@_job.Status"
+                                 Message="@(_job.Message ?? "Generating voice…")"
+                                 Index="_job.Index"
+                                 Total="_job.Total"
+                                 Kind="@_job.Kind"
+                                 TestId="char-voice-job"
+                                 CssClass="mt-2 mb-0" />
             }
             @if (!string.IsNullOrEmpty(_voicePreviewHint))
             {
@@ -861,10 +816,6 @@ else
             @if (_voicePreviewStale && !VoiceJobRunning)
             {
                 <div class="form-text text-warning mt-1">Profile changed — Regenerate to hear the new voice.</div>
-            }
-            @if (!string.IsNullOrEmpty(_voicePreviewError))
-            {
-                <InlineAlert Message="@_voicePreviewError" CssClass="py-1 small mt-2 mb-0" />
             }
             @if (!string.IsNullOrEmpty(_voicePreviewUrl) && !VoiceJobRunning)
             {
@@ -888,13 +839,13 @@ else
             </div>
             @if (!Caps.VoiceCloneReady)
             {
-                <div class="alert alert-warning py-2 small mb-2" data-testid="voice-clone-setup-hint">
+                <InlineAlert Variant="warning" CssClass="py-2 small mb-2" data-testid="voice-clone-setup-hint">
                     <div class="mb-1">@Caps.VoiceCloneBlockedReason</div>
                     <a class="alert-link" href="@Caps.VoiceCloneSettingsHref">Open Settings →</a>
                     <div class="text-muted mt-1 mb-0">
                         You can still record a sample now — the key is only needed when we apply your voice to the film.
                     </div>
-                </div>
+                </InlineAlert>
             }
             <p class="form-text mb-2">@(_simpleMode ? "Record a short sample for the narrator." : "Record a short sample for cloning.")</p>
             <div class="ptm-voice-script border border-secondary border-opacity-50 rounded p-2 mb-2 bg-dark bg-opacity-25"

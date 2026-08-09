@@ -52,19 +52,16 @@ else
 @* Feature 8: clip finished but not saved to a local media folder *@
 @if (!string.IsNullOrEmpty(MediaFolder.LocalSaveWarning))
 {
-    <div class="alert alert-warning d-flex flex-wrap align-items-center justify-content-between gap-2 py-2 mb-3"
-         data-testid="scenes-local-save-warning"
-         role="status">
+    <InlineAlert Variant="warning"
+                 CssClass="d-flex flex-wrap align-items-center justify-content-between gap-2 py-2 mb-3"
+                 data-testid="scenes-local-save-warning"
+                 role="status">
         <span>@MediaFolder.LocalSaveWarning</span>
         <div class="d-flex align-items-center gap-2 flex-shrink-0">
             @if (!MediaFolder.IsConnected)
             {
-                <button type="button"
-                        class="btn btn-sm btn-warning text-nowrap"
-                        disabled="@_busy"
-                        @onclick="ConnectMediaFolderFromWarningAsync">
-                    Connect folder
-                </button>
+                <BusyButton Label="Connect folder" Busy="_busy" CssClass="btn btn-sm btn-warning text-nowrap"
+                            OnClick="ConnectMediaFolderFromWarningAsync" />
             }
             <button type="button"
                     class="btn btn-sm btn-outline-secondary"
@@ -72,14 +69,15 @@ else
                 Dismiss
             </button>
         </div>
-    </div>
+    </InlineAlert>
 }
 
 @* Proactive nudge before the reactive warning above ever needs to fire. *@
 @if (!MediaFolder.IsConnected && string.IsNullOrEmpty(MediaFolder.LocalSaveWarning))
 {
-    <div class="alert alert-warning d-flex flex-wrap align-items-center justify-content-between gap-2 py-2 mb-3"
-         data-testid="scenes-connect-folder-banner">
+    <InlineAlert Variant="warning"
+                 CssClass="d-flex flex-wrap align-items-center justify-content-between gap-2 py-2 mb-3"
+                 data-testid="scenes-connect-folder-banner">
         @if (MediaFolder.NeedsReconnect)
         {
             <span>📁 Re-grant access to <strong>@MediaFolder.PendingReconnectFolderName</strong> so clips save on this computer.</span>
@@ -88,13 +86,10 @@ else
         {
             <span>📁 <strong>Connect a folder</strong> so clips save on this computer.</span>
         }
-        <button type="button"
-                class="btn btn-sm btn-warning text-nowrap"
-                disabled="@_busy"
-                @onclick="ConnectMediaFolderFromWarningAsync">
-            @(MediaFolder.NeedsReconnect ? "Reconnect folder" : "Connect folder")
-        </button>
-    </div>
+        <BusyButton Label="@(MediaFolder.NeedsReconnect ? "Reconnect folder" : "Connect folder")"
+                    Busy="_busy" CssClass="btn btn-sm btn-warning text-nowrap"
+                    OnClick="ConnectMediaFolderFromWarningAsync" />
+    </InlineAlert>
 }
 
 @if (_castChecked && !CastReady)
@@ -634,7 +629,7 @@ else if (_showPreviewPlayer && _clientStitching)
 }
 else if (_detail is null)
 {
-    <p class="text-muted">Loading scene…</p>
+    <EmptyState Message="Loading scene…" CssClass="text-muted" />
 }
 else
 {
@@ -1319,17 +1314,16 @@ else
 
 @if (_clipEditor is { } ed)
 {
-    <div class="modal fade show d-block" tabindex="-1" role="dialog" aria-modal="true"
-         style="background:rgba(0,0,0,.45);" @onclick="CloseClipEditor">
-        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg" @onclick:stopPropagation="true">
-            <div class="modal-content">
-                <div class="modal-header py-2">
-                    <h5 class="modal-title" data-testid="clip-editor-title">
-                        @(_clipEditorIsNew ? "Add clip" : "Edit clip") <code>S@(ed.Scene.ToString("D2"))C@(ed.Clip.ToString("D2"))</code>
-                    </h5>
-                    <button type="button" class="btn-close" aria-label="Close" @onclick="CloseClipEditor"></button>
-                </div>
-                <div class="modal-body">
+    <DarkModalShell Visible="true" OnClose="CloseClipEditor"
+                    DialogClass="modal-dialog-centered modal-dialog-scrollable modal-lg"
+                    BackdropOpacity=".45"
+                    data-testid="clip-editor-modal">
+        <Title>
+            <span data-testid="clip-editor-title">
+                @(_clipEditorIsNew ? "Add clip" : "Edit clip") <code>S@(ed.Scene.ToString("D2"))C@(ed.Clip.ToString("D2"))</code>
+            </span>
+        </Title>
+        <ChildContent>
                     <InlineAlert Message="@_error" CssClass="p-2 small mb-3" />
                     <div class="row g-2 mb-3">
                         <div class="col-4">
@@ -1456,22 +1450,18 @@ else
                             </div>
                         }
                     </div>
-                </div>
-                <div class="modal-footer py-2">
-                    <span class="small text-muted me-auto">
-                        @(_clipEditorIsNew
-                            ? "Creates the shot-plan entry only — generate its video afterward."
-                            : "Regen the clip afterward to re-render video/audio with these fields.")
-                    </span>
-                    <button type="button" class="btn btn-sm btn-secondary" disabled="@_busy" @onclick="CloseClipEditor">Cancel</button>
-                    <button type="button" class="btn btn-sm btn-primary" data-testid="clip-editor-save"
-                            disabled="@_busy" @onclick="SaveClipEditorAsync">
-                        @(_clipEditorIsNew ? "Add clip" : "Save clip")
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
+        </ChildContent>
+        <Footer>
+            <span class="small text-muted me-auto">
+                @(_clipEditorIsNew
+                    ? "Creates the shot-plan entry only — generate its video afterward."
+                    : "Regen the clip afterward to re-render video/audio with these fields.")
+            </span>
+            <BusyButton Label="Cancel" Busy="_busy" CssClass="btn btn-sm btn-secondary" OnClick="CloseClipEditor" />
+            <BusyButton Label="@(_clipEditorIsNew ? "Add clip" : "Save clip")" Busy="_busy"
+                        CssClass="btn btn-sm btn-primary" TestId="clip-editor-save" OnClick="SaveClipEditorAsync" />
+        </Footer>
+    </DarkModalShell>
 }
 
 @* Scene History & Revert Modal *@

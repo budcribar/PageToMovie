@@ -659,5 +659,12 @@ public partial class AdminModelsCatalog
         "LipSync" => "bg-dark",
         _ => "bg-secondary"
     };
+
+    private Task OnCatalogSearchChanged(string? value)
+    {
+        _filterQuery = value ?? "";
+        return Task.CompletedTask;
+    }
+
 }
 

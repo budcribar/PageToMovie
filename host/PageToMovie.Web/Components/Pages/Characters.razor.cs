@@ -1206,6 +1206,20 @@ public partial class Characters
         ScheduleAutoSaveLook();
     }
 
+    private Task OnLookDescriptionChanged(string value)
+    {
+        _editDescription = value ?? "";
+        ScheduleAutoSaveLook();
+        return Task.CompletedTask;
+    }
+
+    private Task OnLookVisualLockChanged(string value)
+    {
+        _editVisualLock = value ?? "";
+        ScheduleAutoSaveLook();
+        return Task.CompletedTask;
+    }
+
     /// <summary>
     /// Debounced autosave: wait until typing pauses (~800ms) so we do not hit the API on every keystroke.
     /// Same pattern as voice profile autosave on this card.
@@ -1385,6 +1399,22 @@ public partial class Characters
         _editVoiceProfile = e.Value?.ToString() ?? "";
         MarkVoiceStaleIfPlaying();
         ScheduleAutoSaveVoice();
+    }
+
+    private Task OnVoiceLabelChanged(string value)
+    {
+        _editVoiceLabel = value ?? "";
+        MarkVoiceStaleIfPlaying();
+        ScheduleAutoSaveVoice();
+        return Task.CompletedTask;
+    }
+
+    private Task OnVoiceProfileChanged(string value)
+    {
+        _editVoiceProfile = value ?? "";
+        MarkVoiceStaleIfPlaying();
+        ScheduleAutoSaveVoice();
+        return Task.CompletedTask;
     }
 
     private void ScheduleAutoSaveVoice()
