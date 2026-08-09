@@ -12,7 +12,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Admin
 {
     /// <summary>Core admin state / poll / hub loop domain.</summary>
-    internal sealed class AdminState
+    public sealed class AdminState
     {
         private readonly Admin S;
         public AdminState(Admin host) => S = host;
@@ -29,18 +29,18 @@ public partial class Admin
             try
             {
                 await S.Hub.StartAsync();
-                S._hubLive = S.Hub.IsConnected;
+                S.Jobs._hubLive = S.Hub.IsConnected;
                 await S.InvokeAsync(S.StateHasChanged);
             }
             catch
             {
-                S._hubLive = false;
+                S.Jobs._hubLive = false;
             }
         }
 
         internal void OnAdminState(object? payload)
         {
-            S._hubLive = true;
+            S.Jobs._hubLive = true;
             if (payload is not null)
             {
                 try
@@ -62,12 +62,12 @@ public partial class Admin
                         if (dto.ApiInFlight > 0) _apiInFlight = dto.ApiInFlight;
                         if (dto.CapacityRejects > 0) _capacityRejects = dto.CapacityRejects;
                         if (dto.LockConflicts > 0) _lockConflicts = dto.LockConflicts;
-                        if (dto.Locks is { Count: > 0 }) S._locks = dto.Locks;
-                        if (dto.LoadSim is not null) S._loadSim = dto.LoadSim;
-                        if (dto.ProcessHistory is { Count: > 0 }) S._processHistory = dto.ProcessHistory;
+                        if (dto.Locks is { Count: > 0 }) S.Jobs._locks = dto.Locks;
+                        if (dto.LoadSim is not null) S.Telemetry._loadSim = dto.LoadSim;
+                        if (dto.ProcessHistory is { Count: > 0 }) S.Telemetry._processHistory = dto.ProcessHistory;
                         _ = S.InvokeAsync(async () =>
                         {
-                            await S.UpdateChartsAsync();
+                            await S.Telemetry.UpdateChartsAsync();
                             S.StateHasChanged();
                         });
                         return;
@@ -87,7 +87,7 @@ public partial class Admin
                     try
                     {
                         // Only poll over HTTP when SignalR is disconnected
-                        if (!S._hubLive)
+                        if (!S.Jobs._hubLive)
                         {
                             await RefreshAsync();
                             await S.InvokeAsync(S.StateHasChanged);
@@ -111,15 +111,15 @@ public partial class Admin
                     _apiInFlight = _state.ApiInFlight;
                     _capacityRejects = _state.CapacityRejects;
                     _lockConflicts = _state.LockConflicts;
-                    S._locks = _state.Locks ?? new();
-                    S._loadSim = _state.LoadSim;
-                    S._processHistory = _state.ProcessHistory ?? new();
+                    S.Jobs._locks = _state.Locks ?? new();
+                    S.Telemetry._loadSim = _state.LoadSim;
+                    S.Telemetry._processHistory = _state.ProcessHistory ?? new();
                 }
-                S._timingTelemetry = await S.Api.GetAdminTimingTelemetryTrendAsync();
+                S.Telemetry._timingTelemetry = await S.Api.GetAdminTimingTelemetryTrendAsync();
                 S._error = null;
-                await S.RefreshProjectOptionsAsync();
-                await S.UpdateChartsAsync();
-                await S.RefreshGenerationErrorsAsync();
+                await S.Archive.RefreshProjectOptionsAsync();
+                await S.Telemetry.UpdateChartsAsync();
+                await S.Telemetry.RefreshGenerationErrorsAsync();
             }
             catch (Exception ex)
             {

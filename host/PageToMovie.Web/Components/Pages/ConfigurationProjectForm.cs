@@ -13,7 +13,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Configuration
 {
     /// <summary>Form domain for the Configuration page. Owns related UI state and behavior.</summary>
-    internal sealed class ConfigurationProjectForm
+    public sealed class ConfigurationProjectForm
     {
         private readonly Configuration S;
         public ConfigurationProjectForm(Configuration host) => S = host;
@@ -76,7 +76,7 @@ public partial class Configuration
             S._message = null;
             try
             {
-                try { S._userSettings = await S.Engine.GetUserSettingsAsync(); } catch { }
+                try { S.Keys._userSettings = await S.Engine.GetUserSettingsAsync(); } catch { }
 
                 if (string.IsNullOrWhiteSpace(S._projectId))
                 {
@@ -88,37 +88,37 @@ public partial class Configuration
                 S._cfg = dto?.Config;
                 _projectDir = dto?.ProjectDir ?? $"projects/{S._projectId}";
                 if (S._cfg is null) return;
-                S._uiTheme = ThemeState.Normalize(GetStr("ui_theme", S._uiTheme));
+                S.Media._uiTheme = ThemeState.Normalize(GetStr("ui_theme", S.Media._uiTheme));
                 _preferredVideoEditor = GetStr("preferred_video_editor", "ClipChamp");
                 _blueprintFile = GetStr("blueprint_file", _blueprintFile);
-                S._modelName = GetStr("model_name", S._modelName);
-                S._imageModel = GetStr("image_model_name", S._imageModel);
-                S._planningModel = GetStr("planning_model_name", S._planningModel);
-                S._visionModel = GetStr("vision_model_name", S._visionModel);
-                S._qualityModel = GetStr("quality_model_name", S._qualityModel);
-                S._audioModel = GetStr("audio_model_name", S._audioModel);
-                S._voiceModel = GetStr("voice_model_name", S._voiceModel);
+                S.Coverage._modelName = GetStr("model_name", S.Coverage._modelName);
+                S.Coverage._imageModel = GetStr("image_model_name", S.Coverage._imageModel);
+                S.Coverage._planningModel = GetStr("planning_model_name", S.Coverage._planningModel);
+                S.Coverage._visionModel = GetStr("vision_model_name", S.Coverage._visionModel);
+                S.Coverage._qualityModel = GetStr("quality_model_name", S.Coverage._qualityModel);
+                S.Coverage._audioModel = GetStr("audio_model_name", S.Coverage._audioModel);
+                S.Coverage._voiceModel = GetStr("voice_model_name", S.Coverage._voiceModel);
                 // Drop ids that are not in the catalog (stale project config).
-                if (!string.IsNullOrWhiteSpace(S._modelName) && !S._videoModels.Any(m => string.Equals(m.Id, S._modelName, StringComparison.OrdinalIgnoreCase)))
-                    S._modelName = ConfigurationCatalog.DefaultForCapability("video");
-                if (!string.IsNullOrWhiteSpace(S._imageModel) && !S._imageModels.Any(m => string.Equals(m.Id, S._imageModel, StringComparison.OrdinalIgnoreCase)))
-                    S._imageModel = ConfigurationCatalog.DefaultForCapability("image");
-                if (!string.IsNullOrWhiteSpace(S._planningModel) && !S._planningModels.Any(m => string.Equals(m.Id, S._planningModel, StringComparison.OrdinalIgnoreCase)))
-                    S._planningModel = ConfigurationCatalog.DefaultForCapability("chat");
-                if (!string.IsNullOrWhiteSpace(S._visionModel) && !S._visionModels.Any(m => string.Equals(m.Id, S._visionModel, StringComparison.OrdinalIgnoreCase)))
-                    S._visionModel = ConfigurationCatalog.DefaultForCapability("vision");
-                if (!string.IsNullOrWhiteSpace(S._qualityModel) && !S._videoReviewModels.Any(m => string.Equals(m.Id, S._qualityModel, StringComparison.OrdinalIgnoreCase)))
-                    S._qualityModel = ConfigurationCatalog.DefaultQualityModel();
-                if (!string.IsNullOrWhiteSpace(S._audioModel)
-                    && !S._audioModel.Equals("none", StringComparison.OrdinalIgnoreCase)
-                    && !S._audioModels.Any(m => string.Equals(m.Id, S._audioModel, StringComparison.OrdinalIgnoreCase)))
-                    S._audioModel = "none";
-                if (!string.IsNullOrWhiteSpace(S._voiceModel)
-                    && !S._voiceModel.Equals("none", StringComparison.OrdinalIgnoreCase)
-                    && !S._voiceModels.Any(m => string.Equals(m.Id, S._voiceModel, StringComparison.OrdinalIgnoreCase)))
-                    S._voiceModel = "none";
-                S._enableBackgroundMusic = GetBool("enable_background_music", S._enableBackgroundMusic);
-                S._backgroundMusicVolumePercent = GetInt("background_music_volume_percent", S._backgroundMusicVolumePercent);
+                if (!string.IsNullOrWhiteSpace(S.Coverage._modelName) && !S.Catalog._videoModels.Any(m => string.Equals(m.Id, S.Coverage._modelName, StringComparison.OrdinalIgnoreCase)))
+                    S.Coverage._modelName = ConfigurationCatalog.DefaultForCapability("video");
+                if (!string.IsNullOrWhiteSpace(S.Coverage._imageModel) && !S.Catalog._imageModels.Any(m => string.Equals(m.Id, S.Coverage._imageModel, StringComparison.OrdinalIgnoreCase)))
+                    S.Coverage._imageModel = ConfigurationCatalog.DefaultForCapability("image");
+                if (!string.IsNullOrWhiteSpace(S.Coverage._planningModel) && !S.Catalog._planningModels.Any(m => string.Equals(m.Id, S.Coverage._planningModel, StringComparison.OrdinalIgnoreCase)))
+                    S.Coverage._planningModel = ConfigurationCatalog.DefaultForCapability("chat");
+                if (!string.IsNullOrWhiteSpace(S.Coverage._visionModel) && !S.Catalog._visionModels.Any(m => string.Equals(m.Id, S.Coverage._visionModel, StringComparison.OrdinalIgnoreCase)))
+                    S.Coverage._visionModel = ConfigurationCatalog.DefaultForCapability("vision");
+                if (!string.IsNullOrWhiteSpace(S.Coverage._qualityModel) && !S.Catalog._videoReviewModels.Any(m => string.Equals(m.Id, S.Coverage._qualityModel, StringComparison.OrdinalIgnoreCase)))
+                    S.Coverage._qualityModel = ConfigurationCatalog.DefaultQualityModel();
+                if (!string.IsNullOrWhiteSpace(S.Coverage._audioModel)
+                    && !S.Coverage._audioModel.Equals("none", StringComparison.OrdinalIgnoreCase)
+                    && !S.Catalog._audioModels.Any(m => string.Equals(m.Id, S.Coverage._audioModel, StringComparison.OrdinalIgnoreCase)))
+                    S.Coverage._audioModel = "none";
+                if (!string.IsNullOrWhiteSpace(S.Coverage._voiceModel)
+                    && !S.Coverage._voiceModel.Equals("none", StringComparison.OrdinalIgnoreCase)
+                    && !S.Catalog._voiceModels.Any(m => string.Equals(m.Id, S.Coverage._voiceModel, StringComparison.OrdinalIgnoreCase)))
+                    S.Coverage._voiceModel = "none";
+                S.Coverage._enableBackgroundMusic = GetBool("enable_background_music", S.Coverage._enableBackgroundMusic);
+                S.Coverage._backgroundMusicVolumePercent = GetInt("background_music_volume_percent", S.Coverage._backgroundMusicVolumePercent);
                 _aspect = GetStr("aspect_ratio", _aspect);
                 _resolution = GetStr("resolution", _resolution);
                 _durationSeconds = GetInt("duration_seconds", _durationSeconds);
@@ -173,16 +173,16 @@ public partial class Configuration
             if (string.IsNullOrWhiteSpace(S._projectId))
                 throw new InvalidOperationException("Choose a project first.");
 
-            var videoProvider = SupportedModelCatalog.ProviderIdFor(S._modelName, ModelCapability.Video);
-            var imageProvider = SupportedModelCatalog.ProviderIdFor(S._imageModel, ModelCapability.Image);
-            var planningProvider = SupportedModelCatalog.ProviderIdFor(S._planningModel, ModelCapability.Chat);
-            var visionProvider = SupportedModelCatalog.ProviderIdFor(S._visionModel, ModelCapability.Vision);
-            var qualityProvider = SupportedModelCatalog.ProviderIdFor(S._qualityModel, ModelCapability.Chat);
+            var videoProvider = SupportedModelCatalog.ProviderIdFor(S.Coverage._modelName, ModelCapability.Video);
+            var imageProvider = SupportedModelCatalog.ProviderIdFor(S.Coverage._imageModel, ModelCapability.Image);
+            var planningProvider = SupportedModelCatalog.ProviderIdFor(S.Coverage._planningModel, ModelCapability.Chat);
+            var visionProvider = SupportedModelCatalog.ProviderIdFor(S.Coverage._visionModel, ModelCapability.Vision);
+            var qualityProvider = SupportedModelCatalog.ProviderIdFor(S.Coverage._qualityModel, ModelCapability.Chat);
 
             var updates = new Dictionary<string, object?>
             {
                 ["version"] = 2,
-                ["ui_theme"] = S._uiTheme,
+                ["ui_theme"] = S.Media._uiTheme,
                 ["preferred_video_editor"] = _preferredVideoEditor,
                 ["blueprint_file"] = _blueprintFile,
                 ["video_provider"] = videoProvider,
@@ -191,23 +191,23 @@ public partial class Configuration
                 ["planning_provider"] = planningProvider,
                 ["vision_provider"] = visionProvider,
                 ["quality_provider"] = qualityProvider,
-                ["model_name"] = S._modelName,
-                ["image_model_name"] = S._imageModel,
-                ["planning_model_name"] = S._planningModel,
-                ["vision_model_name"] = S._visionModel,
-                ["quality_model_name"] = S._qualityModel,
-                ["audio_model_name"] = S._audioModel,
-                ["voice_model_name"] = S._voiceModel,
-                ["enable_background_music"] = S._enableBackgroundMusic,
-                ["background_music_volume_percent"] = S._backgroundMusicVolumePercent,
+                ["model_name"] = S.Coverage._modelName,
+                ["image_model_name"] = S.Coverage._imageModel,
+                ["planning_model_name"] = S.Coverage._planningModel,
+                ["vision_model_name"] = S.Coverage._visionModel,
+                ["quality_model_name"] = S.Coverage._qualityModel,
+                ["audio_model_name"] = S.Coverage._audioModel,
+                ["voice_model_name"] = S.Coverage._voiceModel,
+                ["enable_background_music"] = S.Coverage._enableBackgroundMusic,
+                ["background_music_volume_percent"] = S.Coverage._backgroundMusicVolumePercent,
                 ["model_selections"] = new Dictionary<string, string>
                 {
-                    ["video"] = S._modelName,
-                    ["image"] = S._imageModel,
-                    ["chat"] = S._planningModel,
-                    ["vision"] = S._visionModel,
-                    ["video-review"] = S._qualityModel,
-                    ["audio"] = S._audioModel,
+                    ["video"] = S.Coverage._modelName,
+                    ["image"] = S.Coverage._imageModel,
+                    ["chat"] = S.Coverage._planningModel,
+                    ["vision"] = S.Coverage._visionModel,
+                    ["video-review"] = S.Coverage._qualityModel,
+                    ["audio"] = S.Coverage._audioModel,
                 },
                 ["aspect_ratio"] = _aspect,
                 ["resolution"] = _resolution,
@@ -233,9 +233,9 @@ public partial class Configuration
 
         internal Dictionary<string, object?> BuildVendorCostEstimatesSnapshot()
         {
-            var video = SupportedModelCatalog.ResolveOrDefault(S._modelName, ModelCapability.Video);
-            var image = SupportedModelCatalog.Find(S._imageModel, ModelCapability.Image)
-                        ?? SupportedModelCatalog.ResolveOrDefault(S._imageModel, ModelCapability.Image);
+            var video = SupportedModelCatalog.ResolveOrDefault(S.Coverage._modelName, ModelCapability.Video);
+            var image = SupportedModelCatalog.Find(S.Coverage._imageModel, ModelCapability.Image)
+                        ?? SupportedModelCatalog.ResolveOrDefault(S.Coverage._imageModel, ModelCapability.Image);
             var table = new Dictionary<string, object?>
             {
                 ["480p"] = S.Catalog.CatalogVideoRate("480p"),

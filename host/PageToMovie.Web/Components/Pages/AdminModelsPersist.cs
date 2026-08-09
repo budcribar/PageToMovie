@@ -14,7 +14,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class AdminModelsCatalog
 {
     /// <summary>Persist/scan domain for the AdminModelsCatalog page. Owns related UI state and behavior.</summary>
-    internal sealed class AdminModelsPersist
+    public sealed class AdminModelsPersist
     {
         private readonly AdminModelsCatalog S;
         public AdminModelsPersist(AdminModelsCatalog host) => S = host;

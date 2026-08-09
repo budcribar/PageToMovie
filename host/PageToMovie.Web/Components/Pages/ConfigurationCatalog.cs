@@ -13,7 +13,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Configuration
 {
     /// <summary>Catalog domain for the Configuration page. Owns related UI state and behavior.</summary>
-    internal sealed class ConfigurationCatalog
+    public sealed class ConfigurationCatalog
     {
         private readonly Configuration S;
         public ConfigurationCatalog(Configuration host) => S = host;
@@ -123,20 +123,20 @@ public partial class Configuration
         /// <summary>If project has not chosen models yet, use capability defaultModelId from the catalog only.</summary>
         internal void ApplyCatalogDefaultsIfEmpty()
         {
-            if (string.IsNullOrWhiteSpace(S._modelName))
-                S._modelName = DefaultForCapability("video");
-            if (string.IsNullOrWhiteSpace(S._imageModel))
-                S._imageModel = DefaultForCapability("image");
-            if (string.IsNullOrWhiteSpace(S._planningModel))
-                S._planningModel = DefaultForCapability("chat");
-            if (string.IsNullOrWhiteSpace(S._visionModel))
-                S._visionModel = DefaultForCapability("vision");
-            if (string.IsNullOrWhiteSpace(S._qualityModel))
-                S._qualityModel = DefaultQualityModel();
-            if (string.IsNullOrWhiteSpace(S._audioModel))
-                S._audioModel = "none";
-            if (string.IsNullOrWhiteSpace(S._voiceModel))
-                S._voiceModel = "none";
+            if (string.IsNullOrWhiteSpace(S.Coverage._modelName))
+                S.Coverage._modelName = DefaultForCapability("video");
+            if (string.IsNullOrWhiteSpace(S.Coverage._imageModel))
+                S.Coverage._imageModel = DefaultForCapability("image");
+            if (string.IsNullOrWhiteSpace(S.Coverage._planningModel))
+                S.Coverage._planningModel = DefaultForCapability("chat");
+            if (string.IsNullOrWhiteSpace(S.Coverage._visionModel))
+                S.Coverage._visionModel = DefaultForCapability("vision");
+            if (string.IsNullOrWhiteSpace(S.Coverage._qualityModel))
+                S.Coverage._qualityModel = DefaultQualityModel();
+            if (string.IsNullOrWhiteSpace(S.Coverage._audioModel))
+                S.Coverage._audioModel = "none";
+            if (string.IsNullOrWhiteSpace(S.Coverage._voiceModel))
+                S.Coverage._voiceModel = "none";
         }
 
 
@@ -205,7 +205,7 @@ public partial class Configuration
         {
             try
             {
-                var entry = SupportedModelCatalog.ResolveOrDefault(S._modelName, ModelCapability.Video);
+                var entry = SupportedModelCatalog.ResolveOrDefault(S.Coverage._modelName, ModelCapability.Video);
                 var table = entry.VideoCostPerSecondByResolution;
                 if (table is not null && table.TryGetValue(resolution, out var exact))
                     return exact;
@@ -232,8 +232,8 @@ public partial class Configuration
         {
             try
             {
-                var entry = SupportedModelCatalog.Find(S._imageModel, ModelCapability.Image)
-                            ?? SupportedModelCatalog.ResolveOrDefault(S._imageModel, ModelCapability.Image);
+                var entry = SupportedModelCatalog.Find(S.Coverage._imageModel, ModelCapability.Image)
+                            ?? SupportedModelCatalog.ResolveOrDefault(S.Coverage._imageModel, ModelCapability.Image);
                 return entry.ImageCostPerImage ?? 0;
             }
             catch (Exception)

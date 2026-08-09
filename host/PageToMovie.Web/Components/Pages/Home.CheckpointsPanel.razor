@@ -12,26 +12,26 @@
         <input class="form-control form-control-sm bg-white text-dark border-secondary"
                style="max-width: 20rem;"
                data-testid="home-checkpoint-name"
-               value="@Host._checkpointName"
-               @oninput="@(e => Host._checkpointName = e.Value?.ToString() ?? "")"
-               disabled="@Host._checkpointBusy"
+               value="@Host.Checkpoints._checkpointName"
+               @oninput="@(e => Host.Checkpoints._checkpointName = e.Value?.ToString() ?? "")"
+               disabled="@Host.Checkpoints._checkpointBusy"
                maxlength="80"
                placeholder="Checkpoint name (e.g. Before music)" />
         <button class="btn btn-success btn-sm"
                 data-testid="home-checkpoint-save"
-                disabled="@(Host._checkpointBusy || string.IsNullOrWhiteSpace(Host._checkpointName))"
-                @onclick="Host.CreateCheckpointAsync">
-            @(Host._checkpointBusy ? "Saving…" : "Save checkpoint")
+                disabled="@(Host.Checkpoints._checkpointBusy || string.IsNullOrWhiteSpace(Host.Checkpoints._checkpointName))"
+                @onclick="Host.Checkpoints.CreateCheckpointAsync">
+            @(Host.Checkpoints._checkpointBusy ? "Saving…" : "Save checkpoint")
         </button>
     </div>
-    @if (Host._checkpoints.Count == 0)
+    @if (Host.Checkpoints._checkpoints.Count == 0)
     {
         <div class="small text-light">No checkpoints yet.</div>
     }
     else
     {
         <ul class="list-unstyled mb-0" data-testid="home-checkpoint-list">
-            @foreach (var cp in Host._checkpoints)
+            @foreach (var cp in Host.Checkpoints._checkpoints)
             {
                 <li class="d-flex flex-wrap align-items-center justify-content-between gap-2 py-1 border-top border-secondary border-opacity-25">
                     <span class="min-w-0">
@@ -40,8 +40,8 @@
                     </span>
                     <button class="btn btn-outline-warning btn-sm flex-shrink-0"
                             data-testid="@($"home-checkpoint-revert-{cp.CommitHash[..Math.Min(8, cp.CommitHash.Length)]}")"
-                            disabled="@Host._checkpointBusy"
-                            @onclick="() => Host.RevertCheckpointAsync(cp)">
+                            disabled="@Host.Checkpoints._checkpointBusy"
+                            @onclick="() => Host.Checkpoints.RevertCheckpointAsync(cp)">
                         Roll back
                     </button>
                 </li>

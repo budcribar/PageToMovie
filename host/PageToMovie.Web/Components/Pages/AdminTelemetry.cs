@@ -12,7 +12,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Admin
 {
     /// <summary>LoadSim / timing / gen-errors / charts domain for the Admin page.</summary>
-    internal sealed class AdminTelemetry
+    public sealed class AdminTelemetry
     {
         private readonly Admin S;
         public AdminTelemetry(Admin host) => S = host;

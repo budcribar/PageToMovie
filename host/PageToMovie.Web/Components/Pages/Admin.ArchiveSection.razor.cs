@@ -15,4 +15,6 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Admin_ArchiveSection
 {
     [CascadingParameter] public Admin Host { get; set; } = default!;
+    [CascadingParameter] public Admin.AdminArchive? Archive { get; set; }
+    [CascadingParameter] public Admin.AdminUi? Ui { get; set; }
 }

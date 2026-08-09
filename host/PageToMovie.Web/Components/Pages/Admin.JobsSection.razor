@@ -3,15 +3,15 @@
 @using Microsoft.AspNetCore.Components
 
 <Admin_CollapsibleCard Title="⚡ Active Jobs & Resource Locks"
-                               Expanded="Host._showJobsAndLocks"
+                               Expanded="Ui!._showJobsAndLocks"
                                ExpandedChanged="@(v =>
- Host._showJobsAndLocks = v)">
+ Ui!._showJobsAndLocks = v)">
                     <div class="row g-3">
                         <div class="col-lg-7">
                             <div class="card border">
                                 <div class="card-header d-flex justify-content-between py-2">
                                     <span class="fw-semibold">Jobs (running / queued)</span>
-                                    <span class="badge text-bg-primary">@(Host._state.Jobs?.Count ?? 0)</span>
+                                    <span class="badge text-bg-primary">@(State!._state.Jobs?.Count ?? 0)</span>
                                 </div>
                                 <div class="card-body p-0">
                                     @if (MediaFolder.IsSyncing)
@@ -35,7 +35,7 @@
                                             </div>
                                         </div>
                                     }
-                                    @if (Host._state.Jobs?.Items is { Count: > 0 } items)
+                                    @if (State!._state.Jobs?.Items is { Count: > 0 } items)
                                     {
                                         <div class="table-responsive">
                                             <table class="table table-sm table-striped mb-0">
@@ -54,7 +54,7 @@
                                                 <tbody>
                                                     @foreach (var j in items)
                                                     {
-                                                        var selected = string.Equals(j.JobId, Host._logJobId, StringComparison.OrdinalIgnoreCase);
+                                                        var selected = string.Equals(j.JobId, Jobs!._logJobId, StringComparison.OrdinalIgnoreCase);
                                                         <tr class="@(selected ? "table-active" : null)">
                                                             <td class="font-monospace small">@(Admin.ShortId(j.JobId))</td>
                                                             <td>@(j.UserId ?? "—")</td>
@@ -62,17 +62,17 @@
                                                             <td>@(j.Scene?.ToString() ?? "—")</td>
                                                             <td>@(j.Status ?? "—")</td>
                                                             <td>@(j.Total > 0 ? $"{j.Index}/{j.Total}" : "—")</td>
-                                                            <td>@Admin.FormatAge(j.AgeMs)</td>
+                                                            <td>@Admin.AdminState.FormatAge(j.AgeMs)</td>
                                                             <td class="text-nowrap">
                                                                 <button class="btn btn-sm btn-outline-primary me-1"
                                                                         disabled="@(string.IsNullOrEmpty(j.JobId))"
                                                                         title="Load job log"
-                                                                        @onclick="() => Host.LoadJobLogAsync(j.JobId!)">
+                                                                        @onclick="() => Jobs!.LoadJobLogAsync(j.JobId!)">
                                                                     Log
                                                                 </button>
                                                                 <button class="btn btn-sm btn-outline-danger"
                                                                         disabled="@Host._busy || string.IsNullOrEmpty(j.JobId)"
-                                                                        @onclick="() => Host.CancelJobAsync(j.JobId!)">
+                                                                        @onclick="() => Jobs!.CancelJobAsync(j.JobId!)">
                                                                     Cancel
                                                                 </button>
                                                             </td>
@@ -94,22 +94,22 @@
                                                 <input class="form-control form-control-sm font-monospace"
                                                        style="width: 12rem;"
                                                        placeholder="Job id…"
-                                                       @bind="Host._logJobIdInput"
+                                                       @bind="Jobs!._logJobIdInput"
                                                        @bind:event="oninput"
                                                        title="Paste a job id from Home / Characters or this table" />
                                                 <button class="btn btn-sm btn-outline-secondary"
-                                                        disabled="@(string.IsNullOrWhiteSpace(Host._logJobIdInput))"
-                                                        @onclick="() => Host.LoadJobLogAsync(Host._logJobIdInput.Trim())">
+                                                        disabled="@(string.IsNullOrWhiteSpace(Jobs!._logJobIdInput))"
+                                                        @onclick="() => Jobs!.LoadJobLogAsync(Jobs!._logJobIdInput.Trim())">
                                                     Load
                                                 </button>
-                                                @if (Host._jobLog is not null)
+                                                @if (Jobs!._jobLog is not null)
                                                 {
-                                                    <button class="btn btn-sm btn-outline-secondary" @onclick="Host.ClearJobLog">Clear</button>
+                                                    <button class="btn btn-sm btn-outline-secondary" @onclick="Jobs!.ClearJobLog">Clear</button>
                                                 }
                                             </div>
                                         </div>
-                                        <InlineAlert Message="@Host._logError" Variant="warning" CssClass="py-1 small mb-2" />
-                                        @if (Host._jobLog is null)
+                                        <InlineAlert Message="@Jobs!._logError" Variant="warning" CssClass="py-1 small mb-2" />
+                                        @if (Jobs!._jobLog is null)
                                         {
                                             <p class="text-muted small mb-0">
                                                 Click <strong>Log</strong> on a running job, or paste a job id.
@@ -119,24 +119,24 @@
                                         else
                                         {
                                             <div class="small mb-2">
-                                                <code>@Host._jobLog.JobId</code>
-                                                · @(Host._jobLog.Kind ?? "—")
-                                                · <span class="badge text-bg-secondary">@(Host._jobLog.Status ?? "—")</span>
-                                                @if (!string.IsNullOrWhiteSpace(Host._jobLog.ProjectId))
+                                                <code>@Jobs!._jobLog.JobId</code>
+                                                · @(Jobs!._jobLog.Kind ?? "—")
+                                                · <span class="badge text-bg-secondary">@(Jobs!._jobLog.Status ?? "—")</span>
+                                                @if (!string.IsNullOrWhiteSpace(Jobs!._jobLog.ProjectId))
                                                 {
-                                                    <span class="text-muted"> · @Host._jobLog.ProjectId</span>
+                                                    <span class="text-muted"> · @Jobs!._jobLog.ProjectId</span>
                                                 }
-                                                @if (!string.IsNullOrWhiteSpace(Host._jobLog.Message))
+                                                @if (!string.IsNullOrWhiteSpace(Jobs!._jobLog.Message))
                                                 {
-                                                    <div class="text-muted mt-1">@Host._jobLog.Message</div>
+                                                    <div class="text-muted mt-1">@Jobs!._jobLog.Message</div>
                                                 }
-                                                @if (!string.IsNullOrWhiteSpace(Host._jobLog.Error))
+                                                @if (!string.IsNullOrWhiteSpace(Jobs!._jobLog.Error))
                                                 {
-                                                    <div class="text-danger mt-1">@Host._jobLog.Error</div>
+                                                    <div class="text-danger mt-1">@Jobs!._jobLog.Error</div>
                                                 }
                                             </div>
                                             <pre class="small mb-0 p-2 rounded border bg-dark text-light"
-                                                 style="max-height: 22rem; overflow: auto; white-space: pre-wrap;">@Host.JobLogText</pre>
+                                                 style="max-height: 22rem; overflow: auto; white-space: pre-wrap;">@Jobs!.JobLogText</pre>
                                         }
                                     </div>
                                 </div>
@@ -146,17 +146,17 @@
                             <div class="card border">
                                 <div class="card-header d-flex justify-content-between py-2">
                                     <span class="fw-semibold">Locks</span>
-                                    <span class="badge text-bg-secondary">@Host._locks.Count</span>
+                                    <span class="badge text-bg-secondary">@Jobs!._locks.Count</span>
                                 </div>
                                 <div class="card-body p-0">
-                                    @if (Host._locks.Count == 0)
+                                    @if (Jobs!._locks.Count == 0)
                                     {
                                         <p class="text-muted p-3 mb-0 small">No active locks.</p>
                                     }
                                     else
                                     {
                                         <ul class="list-group list-group-flush small">
-                                            @foreach (var l in Host._locks.Take(20))
+                                            @foreach (var l in Jobs!._locks.Take(20))
                                             {
                                                 <li class="list-group-item d-flex justify-content-between align-items-start py-2">
                                                     <div>
@@ -170,7 +170,7 @@
                                                     </div>
                                                     <button class="btn btn-sm btn-outline-warning"
                                                             disabled="@Host._busy || string.IsNullOrEmpty(l.Resource)"
-                                                            @onclick="() => Host.ReleaseLockAsync(l.Resource!)">
+                                                            @onclick="() => Jobs!.ReleaseLockAsync(l.Resource!)">
                                                         Force release
                                                     </button>
                                                 </li>

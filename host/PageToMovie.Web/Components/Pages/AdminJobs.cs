@@ -12,7 +12,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Admin
 {
     /// <summary>Jobs/locks/log domain for the Admin page.</summary>
-    internal sealed class AdminJobs
+    public sealed class AdminJobs
     {
         private readonly Admin S;
         public AdminJobs(Admin host) => S = host;
@@ -37,7 +37,7 @@ public partial class Admin
             {
                 await S.Api.AdminCancelJobAsync(jobId);
                 S._actionMsg = $"Cancel requested for {jobId}";
-                await S.RefreshAsync();
+                await S.State.RefreshAsync();
             }
             catch (Exception ex) { S._actionMsg = ex.Message; }
             finally { S._busy = false; }
@@ -80,7 +80,7 @@ public partial class Admin
             {
                 await S.Api.AdminReleaseLockAsync(resource, force: true);
                 S._actionMsg = $"Released {resource}";
-                await S.RefreshAsync();
+                await S.State.RefreshAsync();
             }
             catch (Exception ex) { S._actionMsg = ex.Message; }
             finally { S._busy = false; }

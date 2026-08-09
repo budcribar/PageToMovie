@@ -13,7 +13,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Home
 {
     /// <summary>Import domain for the Home page. Owns related UI state and behavior.</summary>
-    internal sealed class HomeImport
+    public sealed class HomeImport
     {
         private readonly Home S;
         public HomeImport(Home host) => S = host;
@@ -36,7 +36,7 @@ public partial class Home
         /// </summary>
         internal async Task BackupProjectAsync()
         {
-            var id = S._projects?.Active?.Id ?? S.ActiveProject.ProjectId;
+            var id = S.Projects._projects?.Active?.Id ?? S.ActiveProject.ProjectId;
             if (string.IsNullOrWhiteSpace(id)) return;
             _backingUp = true;
             S._busy = true;
@@ -120,8 +120,8 @@ public partial class Home
             _showImport = !_showImport;
             if (_showImport)
             {
-                S._showNew = false;
-                S._showRename = false;
+                S.Projects._showNew = false;
+                S.Projects._showRename = false;
             }
             _importFile = null;
             _importName = "";
@@ -183,7 +183,7 @@ public partial class Home
                 _importFile = null;
                 _importName = "";
                 S._message = res?.Message ?? $"Imported “{res?.ProjectId}”.";
-                await S.LoadAsync();
+                await S.Projects.LoadAsync();
                 if (S.ActiveProject.HasProject)
                     await S.ActiveProject.RefreshFromServerAsync(S.Engine);
             }

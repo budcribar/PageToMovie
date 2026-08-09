@@ -15,4 +15,5 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Home_CheckpointsPanel
 {
     [CascadingParameter] public Home Host { get; set; } = default!;
+    [CascadingParameter] public Home.HomeCheckpoints? Checkpoints { get; set; }
 }

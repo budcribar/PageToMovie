@@ -14,7 +14,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class AdminModelsCatalog
 {
     /// <summary>Editor domain for the AdminModelsCatalog page. Owns related UI state and behavior.</summary>
-    internal sealed class AdminModelsEditor
+    public sealed class AdminModelsEditor
     {
         private readonly AdminModelsCatalog S;
         public AdminModelsEditor(AdminModelsCatalog host) => S = host;

@@ -14,7 +14,7 @@
     <AdminPageHeader Title="Admin dashboard">
         <Subtitle>
             Live ops · SignalR <code>admin:ops</code>
-            @if (_hubLive)
+            @if (Jobs._hubLive)
             {
                 <span class="badge text-bg-success ms-1">live</span>
             }
@@ -27,10 +27,10 @@
             @if (Session.IsAuthenticated)
             {
                 <span class="badge text-bg-secondary">@Session.UserId</span>
-                <button class="btn btn-sm btn-outline-info" @onclick="ExportLogsAsync" disabled="@(_archiveBusy && _archiveAction == "export_logs")" title="Download zip archive of all server logs, prompts, edit history, and system state">
-                    @(_archiveBusy && _archiveAction == "export_logs" ? "Exporting logs…" : "📥 Download Server Logs")
+                <button class="btn btn-sm btn-outline-info" @onclick="Archive.ExportLogsAsync" disabled="@(Archive._archiveBusy && Archive._archiveAction == "export_logs")" title="Download zip archive of all server logs, prompts, edit history, and system state">
+                    @(Archive._archiveBusy && Archive._archiveAction == "export_logs" ? "Exporting logs…" : "📥 Download Server Logs")
                 </button>
-                <button class="btn btn-sm btn-outline-warning" @onclick="OpenTestEmailModal" title="Send a test outbound email and verify server mail sender configuration">
+                <button class="btn btn-sm btn-outline-warning" @onclick="Ui.OpenTestEmailModal" title="Send a test outbound email and verify server mail sender configuration">
                     ✉️ Test Email
                 </button>
                 <a href="/admin/demos" class="btn btn-sm btn-outline-primary" title="Connect YouTube channel & sync gallery">🎬 YouTube gallery</a>
@@ -38,15 +38,15 @@
                 <a href="/admin/ai-calls" class="btn btn-sm btn-outline-primary" data-testid="admin-link-ai-calls" title="AI/model call analytics — success, retries, cost, failures">🔁 AI Calls</a>
                 <a href="/admin/generation-errors" class="btn btn-sm btn-outline-primary" data-testid="admin-link-generation-errors" title="Transient-retry and partial-coverage events per call">⚠️ Generation Errors</a>
                 <a href="/admin/book-cache" class="btn btn-sm btn-outline-primary" title="Book text registry, adaptation cache, xAI file_id">📚 Book cache</a>
-                <button class="btn btn-sm btn-outline-secondary" @onclick="ExpandAllCards" title="Expand all card sections">📂 Expand All</button>
-                <button class="btn btn-sm btn-outline-secondary" @onclick="CollapseAllCards" title="Collapse all card sections">📁 Collapse All</button>
-                <button class="btn btn-sm btn-outline-secondary" @onclick="RefreshAsync" disabled="@_busy">Refresh</button>
-                <button class="btn btn-sm btn-outline-danger" @onclick="LogoutAsync">Log out</button>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="Ui.ExpandAllCards" title="Expand all card sections">📂 Expand All</button>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="Ui.CollapseAllCards" title="Collapse all card sections">📁 Collapse All</button>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="State.RefreshAsync" disabled="@_busy">Refresh</button>
+                <button class="btn btn-sm btn-outline-danger" @onclick="Ui.LogoutAsync">Log out</button>
             }
         </Actions>
     </AdminPageHeader>
 
-    @if (!_started)
+    @if (!Ui._started)
     {
         <p class="text-muted">Loading admin session…</p>
     }
@@ -57,9 +57,9 @@
     else if (!string.IsNullOrEmpty(_error))
     {
         <InlineAlert Message="@_error" />
-        <button class="btn btn-sm btn-outline-secondary" @onclick="RefreshAsync">Retry</button>
+        <button class="btn btn-sm btn-outline-secondary" @onclick="State.RefreshAsync">Retry</button>
     }
-    else if (_state is null)
+    else if (State._state is null)
     {
         <p class="text-muted">Loading server state…</p>
     }
@@ -72,39 +72,39 @@
             <div class="col-6 col-sm-4 col-md-2">
                 <div class="p-2 rounded bg-dark border border-secondary text-light text-center small">
                     <div class="text-muted" style="font-size: 0.75rem;">ACTIVE JOBS</div>
-                    <div class="fw-bold text-info fs-5">@(_state.Jobs?.Count ?? 0)</div>
+                    <div class="fw-bold text-info fs-5">@(State._state.Jobs?.Count ?? 0)</div>
                 </div>
             </div>
             <div class="col-6 col-sm-4 col-md-2">
                 <div class="p-2 rounded bg-dark border border-secondary text-light text-center small">
                     <div class="text-muted" style="font-size: 0.75rem;">RESOURCE LOCKS</div>
-                    <div class="fw-bold text-warning fs-5">@_locks.Count</div>
+                    <div class="fw-bold text-warning fs-5">@Jobs._locks.Count</div>
                 </div>
             </div>
             <div class="col-6 col-sm-4 col-md-2">
                 <div class="p-2 rounded bg-dark border border-secondary text-light text-center small">
                     <div class="text-muted" style="font-size: 0.75rem;">UPTIME / HEAP</div>
-                    <div class="fw-bold text-success fs-6">@FormatUptime(_state.Process?.UptimeSec ?? 0)</div>
-                    <div class="text-muted" style="font-size: 0.7rem;">@(_state.Process?.GcHeapMb ?? 0) MB heap</div>
+                    <div class="fw-bold text-success fs-6">@AdminState.FormatUptime(State._state.Process?.UptimeSec ?? 0)</div>
+                    <div class="text-muted" style="font-size: 0.7rem;">@(State._state.Process?.GcHeapMb ?? 0) MB heap</div>
                 </div>
             </div>
             <div class="col-6 col-sm-4 col-md-3">
                 <div class="p-2 rounded bg-dark border border-secondary text-light text-center small">
                     <div class="text-muted" style="font-size: 0.75rem;">HTTP TRAFFIC (5s)</div>
-                    <div class="fw-bold text-primary fs-6">@(_state.Http?.NonAdminLast5Sec ?? 0) non-admin reqs</div>
-                    <div class="text-muted" style="font-size: 0.7rem;">@(_state.Http?.RequestsLast5Sec ?? 0) total (30s: @(_state.Http?.NonAdminLast30Sec ?? 0))</div>
+                    <div class="fw-bold text-primary fs-6">@(State._state.Http?.NonAdminLast5Sec ?? 0) non-admin reqs</div>
+                    <div class="text-muted" style="font-size: 0.7rem;">@(State._state.Http?.RequestsLast5Sec ?? 0) total (30s: @(State._state.Http?.NonAdminLast30Sec ?? 0))</div>
                 </div>
             </div>
             <div class="col-12 col-sm-4 col-md-3">
                 <div class="p-2 rounded bg-dark border border-secondary text-light text-center small">
                     <div class="text-muted" style="font-size: 0.75rem;">STORAGE FREE</div>
-                    <div class="fw-bold text-success fs-6">@(_state.Disk?.FormattedFree ?? "—")</div>
-                    <div class="text-muted" style="font-size: 0.7rem;">@(_state.Disk?.UsedPercent ?? 0)% used of @(_state.Disk?.FormattedTotal ?? "—")</div>
+                    <div class="fw-bold text-success fs-6">@(State._state.Disk?.FormattedFree ?? "—")</div>
+                    <div class="text-muted" style="font-size: 0.7rem;">@(State._state.Disk?.UsedPercent ?? 0)% used of @(State._state.Disk?.FormattedTotal ?? "—")</div>
                 </div>
             </div>
         </div>
 
-        @if (_state.Http is { } http && http.NonAdminLast5Sec <= 2)
+        @if (State._state.Http is { } http && http.NonAdminLast5Sec <= 2)
         {
             <div class="alert alert-warning py-2 small mb-3">
                 <strong>HTTP Traffic Note:</strong> LoadSim does not appear to be hitting this API (only admin poll).
@@ -121,44 +121,41 @@
             </div>
         }
 
-        @* ── Section 1: Active Jobs & Resource Locks (Expanded by Default) ─── *@
-                <CascadingValue Value="this" IsFixed="true">
-            <Admin_JobsSection />
-        </CascadingValue>
+        <CascadingValue Value="this" IsFixed="true">
+        <CascadingValue Value="Jobs" IsFixed="true">
+        <CascadingValue Value="Archive" IsFixed="true">
+        <CascadingValue Value="Telemetry" IsFixed="true">
+        <CascadingValue Value="State" IsFixed="true">
+        <CascadingValue Value="Ui" IsFixed="true">
 
+        @* ── Section 1: Active Jobs & Resource Locks (Expanded by Default) ─── *@
+            <Admin_JobsSection />
 
         @* ── Section 2: Project Export, Import & Music Synthesis (Expanded by Default) ── *@
-                        <CascadingValue Value="this" IsFixed="true">
             <Admin_ArchiveSection />
-        </CascadingValue>
-
 
         @* ── Section 3: LoadSim Performance & Telemetry (Collapsible) ─── *@
-                        <CascadingValue Value="this" IsFixed="true">
             <Admin_LoadSimSection />
-        </CascadingValue>
-
 
         @* ── Section 4: Action & Camera Timing Telemetry (Collapsible) ─── *@
-                        <CascadingValue Value="this" IsFixed="true">
             <Admin_TimingSection />
-        </CascadingValue>
-
 
         @* ── Section 5: Generation Errors Panel (Collapsible) ───────────────── *@
-                        <CascadingValue Value="this" IsFixed="true">
             <Admin_GenErrorsSection />
-        </CascadingValue>
-
 
         @* ── Section 6: Storage, Memory & System Metrics (Collapsible) ──────── *@
-                        <CascadingValue Value="this" IsFixed="true">
             <Admin_StorageSection />
+
+        </CascadingValue>
+        </CascadingValue>
+        </CascadingValue>
+        </CascadingValue>
+        </CascadingValue>
         </CascadingValue>
 
     }
 
-    <Admin_TestEmailModal Visible="_showTestEmailModal"
+    <Admin_TestEmailModal Visible="Ui._showTestEmailModal"
                           DefaultAddress="@Session.UserId"
-                          OnClose="CloseTestEmailModal" />
+                          OnClose="Ui.CloseTestEmailModal" />
 </div>

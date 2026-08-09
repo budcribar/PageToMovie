@@ -9,16 +9,16 @@
             <div class="min-w-0">
                 <div class="ptm-adapt-kicker mb-1">@L["Home.PageToMovieChannel"]</div>
                 <div class="fw-semibold fs-5 mb-0">@L["Home.DemoFilms"]</div>
-                <div class="small text-muted text-truncate" title="@Host._demoShowcaseHint">@Host._demoShowcaseHint</div>
+                <div class="small text-muted text-truncate" title="@Host.Costs._demoShowcaseHint">@Host.Costs._demoShowcaseHint</div>
             </div>
             <a href="/demo" class="btn btn-sm btn-primary flex-shrink-0" data-testid="home-open-demo-gallery">
                 @L["Home.OpenGallery"]
             </a>
         </div>
-        @if (Host._publicDemos.Count > 0)
+        @if (Host.Costs._publicDemos.Count > 0)
         {
             <div class="home-showcase-thumbs" aria-label="Recent demo films">
-                @foreach (var d in Host._publicDemos.Take(4))
+                @foreach (var d in Host.Costs._publicDemos.Take(4))
                 {
                     var yt = YouTubeVideoId.Extract(d.YoutubeId) ?? YouTubeVideoId.Extract(d.YoutubeUrl);
                     var href = yt is not null

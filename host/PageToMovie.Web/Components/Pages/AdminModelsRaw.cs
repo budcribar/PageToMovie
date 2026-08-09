@@ -14,7 +14,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class AdminModelsCatalog
 {
     /// <summary>Raw JSON domain for the AdminModelsCatalog page. Owns related UI state and behavior.</summary>
-    internal sealed class AdminModelsRaw
+    public sealed class AdminModelsRaw
     {
         private readonly AdminModelsCatalog S;
         public AdminModelsRaw(AdminModelsCatalog host) => S = host;

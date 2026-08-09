@@ -3,10 +3,10 @@
 
 <Admin_CollapsibleCard Title="📊 LoadSim Performance & System Latency"
                                CssClass="loadsim-panel"
-                               Expanded="Host._showLoadSim"
+                               Expanded="Ui!._showLoadSim"
                                ExpandedChanged="@(v =>
- Host._showLoadSim = v)">
-@if (Host._loadSim?.Latest is null)
+ Ui!._showLoadSim = v)">
+@if (Telemetry!._loadSim?.Latest is null)
                     {
                         <p class="small mb-0" style="opacity:0.7;">
                             No LoadSim telemetry yet. Start LoadSim — it posts every 2s to
@@ -15,7 +15,7 @@
                     }
                     else
                     {
-                        var L = Host._loadSim.Latest;
+                        var L = Telemetry!._loadSim.Latest;
                         <div class="row g-2 mb-3 text-center">
                             <div class="col-6 col-md-3">
                                 <div class="loadsim-kpi">
@@ -68,11 +68,11 @@
                                 </div>
                             </div>
                         </div>
-                        @if (Host._chartWarning is { Length: > 0 } cw)
+                        @if (Telemetry!._chartWarning is { Length: > 0 } cw)
                         {
                             <InlineAlert Variant="warning" CssClass="py-1 small mb-2">
                                 Charts failed to update: @cw
-                                <button type="button" class="btn btn-sm btn-link p-0 ms-1 align-baseline" @onclick="Host.UpdateChartsAsync">Retry</button>
+                                <button type="button" class="btn btn-sm btn-link p-0 ms-1 align-baseline" @onclick="Telemetry!.UpdateChartsAsync">Retry</button>
                             </InlineAlert>
                         }
                         <div class="row g-3">
@@ -129,7 +129,7 @@
                             <div class="loadsim-chart-wrap loadsim-chart-wrap--tall">
                                 <div class="loadsim-chart-title">
                                     Process memory
-                                    @if (Host._state.Process is { } proc)
+                                    @if (State!._state.Process is { } proc)
                                     {
                                         <span class="ms-2" style="font-weight:400; opacity:0.85;">
                                             WS <strong>@proc.WorkingSetMb</strong> MB · GC <strong>@proc.GcHeapMb</strong> MB · threads @proc.ThreadCount

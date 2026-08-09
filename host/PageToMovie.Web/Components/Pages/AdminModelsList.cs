@@ -14,7 +14,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class AdminModelsCatalog
 {
     /// <summary>List/filter domain for the AdminModelsCatalog page. Owns related UI state and behavior.</summary>
-    internal sealed class AdminModelsList
+    public sealed class AdminModelsList
     {
         private readonly AdminModelsCatalog S;
         public AdminModelsList(AdminModelsCatalog host) => S = host;

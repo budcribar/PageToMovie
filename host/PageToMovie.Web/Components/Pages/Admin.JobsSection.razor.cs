@@ -15,4 +15,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Admin_JobsSection
 {
     [CascadingParameter] public Admin Host { get; set; } = default!;
+    [CascadingParameter] public Admin.AdminJobs? Jobs { get; set; }
+    [CascadingParameter] public Admin.AdminState? State { get; set; }
+    [CascadingParameter] public Admin.AdminUi? Ui { get; set; }
 }

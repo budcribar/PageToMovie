@@ -13,7 +13,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Configuration
 {
     /// <summary>Coverage domain for the Configuration page. Owns related UI state and behavior.</summary>
-    internal sealed class ConfigurationCoverage
+    public sealed class ConfigurationCoverage
     {
         private readonly Configuration S;
         public ConfigurationCoverage(Configuration host) => S = host;
@@ -136,7 +136,7 @@ public partial class Configuration
             else
                 providerId = ResolveProviderIdForModel(modelId, capability, preferVideoReview);
 
-            var providerRow = S.ProviderRows.FirstOrDefault(pr =>
+            var providerRow = S.Keys.ProviderRows.FirstOrDefault(pr =>
                 string.Equals(
                     SupportedModelCatalog.NormalizeProviderId(pr.ProviderId),
                     providerId,
@@ -168,12 +168,12 @@ public partial class Configuration
                 return "";
 
             // Only models that exist in the loaded catalog (or catalog static after hydrate).
-            var m = S._allModels.FirstOrDefault(x =>
+            var m = S.Catalog._allModels.FirstOrDefault(x =>
                 string.Equals(x.Id, modelId, StringComparison.OrdinalIgnoreCase) &&
                 (preferVideoReview
                     ? (x.SupportsVideoReview || string.Equals(x.Capability, capability, StringComparison.OrdinalIgnoreCase))
                     : string.Equals(x.Capability, capability, StringComparison.OrdinalIgnoreCase)))
-                ?? S._allModels.FirstOrDefault(x => string.Equals(x.Id, modelId, StringComparison.OrdinalIgnoreCase));
+                ?? S.Catalog._allModels.FirstOrDefault(x => string.Equals(x.Id, modelId, StringComparison.OrdinalIgnoreCase));
 
             if (m is not null)
                 return ConfigurationCatalog.ModelProviderId(m);
@@ -213,14 +213,14 @@ public partial class Configuration
         /// </summary>
         internal async Task ChooseProviderForCoverageAsync(string providerId, string coverageId)
         {
-            var row = S.ProviderRows.FirstOrDefault(pr =>
+            var row = S.Keys.ProviderRows.FirstOrDefault(pr =>
                 string.Equals(pr.ProviderId, providerId, StringComparison.OrdinalIgnoreCase));
             if (row?.IsConfigured == true)
             {
                 await UseSavedProviderForCoverageAsync(providerId, coverageId);
                 return;
             }
-            S.SelectKeyProvider(providerId);
+            S.Keys.SelectKeyProvider(providerId);
         }
 
 
@@ -231,7 +231,7 @@ public partial class Configuration
         internal async Task UseSavedProviderForCoverageAsync(string providerId, string coverageId)
         {
             S._error = null;
-            S._apiKeyFeedback = null;
+            S.Keys._apiKeyFeedback = null;
             var label = ConfigurationCatalog.FriendlyProviderLabel(providerId);
 
             if (string.Equals(coverageId, "music", StringComparison.OrdinalIgnoreCase))
@@ -246,7 +246,7 @@ public partial class Configuration
 
             if (!string.IsNullOrWhiteSpace(S._projectId) && S._cfg is not null)
             {
-                try { await S.PersistProjectConfigAsync(); }
+                try { await S.Form.PersistProjectConfigAsync(); }
                 catch (Exception ex) { S._error = ex.Message; return; }
             }
 
@@ -254,15 +254,15 @@ public partial class Configuration
                 string.Equals(c.Id, coverageId, StringComparison.OrdinalIgnoreCase));
             if (ready?.KeyReady == true)
             {
-                S._apiKeyFeedback = $"{label}: using your saved key · model set to match.";
-                S._message = S._apiKeyFeedback;
-                S.CancelAddKey();
+                S.Keys._apiKeyFeedback = $"{label}: using your saved key · model set to match.";
+                S._message = S.Keys._apiKeyFeedback;
+                S.Keys.CancelAddKey();
             }
             else
             {
                 // Still not ready — open paste (key missing or model couldn't align).
-                S.SelectKeyProvider(providerId);
-                S._apiKeyFeedback =
+                S.Keys.SelectKeyProvider(providerId);
+                S.Keys._apiKeyFeedback =
                     $"{label}: key is on file, but no catalog model was selected for this job. " +
                     "Pick a provider/model in the dropdowns above (music & voice start as Off until you choose one).";
             }
@@ -316,13 +316,13 @@ public partial class Configuration
 
         internal IReadOnlyList<SupportedModelDto> ModelsForCoverage(string coverageId) => coverageId switch
         {
-            "video" => S._videoModels,
-            "image" => S._imageModels,
-            "planning" => S._planningModels,
-            "vision" => S._visionModels,
-            "review" => S._videoReviewModels,
-            "music" => S._audioModels,
-            "voice" => S._voiceModels,
+            "video" => S.Catalog._videoModels,
+            "image" => S.Catalog._imageModels,
+            "planning" => S.Catalog._planningModels,
+            "vision" => S.Catalog._visionModels,
+            "review" => S.Catalog._videoReviewModels,
+            "music" => S.Catalog._audioModels,
+            "voice" => S.Catalog._voiceModels,
             _ => Array.Empty<SupportedModelDto>(),
         };
 
@@ -368,8 +368,8 @@ public partial class Configuration
             {
                 try
                 {
-                    await S.SaveAsync();
-                    S._message = $"Provider set to {FriendlyProviderLabel(pid)}.";
+                    await S.Form.SaveAsync();
+                    S._message = $"Provider set to {ConfigurationCatalog.FriendlyProviderLabel(pid)}.";
                 }
                 catch (Exception ex)
                 {
@@ -380,7 +380,7 @@ public partial class Configuration
             var row = BuildCoverageRows().FirstOrDefault(c =>
                 string.Equals(c.Id, coverageId, StringComparison.OrdinalIgnoreCase));
             if (row is { KeyReady: false, OptionalOff: false } && !string.IsNullOrWhiteSpace(row.ProviderId))
-                S.BeginAddKey(coverageId, row.ProviderId);
+                S.Keys.BeginAddKey(coverageId, row.ProviderId);
         }
 
 
@@ -398,7 +398,7 @@ public partial class Configuration
 
             if (ids.Count == 0)
             {
-                foreach (var pr in S.ProviderRows)
+                foreach (var pr in S.Keys.ProviderRows)
                 {
                     var ok = coverageId switch
                     {
@@ -419,7 +419,7 @@ public partial class Configuration
             }
 
             // Include any provider id we discovered from models even if ProviderRows lacks it (e.g. OpenAI).
-            var rows = S.ProviderRows
+            var rows = S.Keys.ProviderRows
                 .Select(pr => new ProviderKeyStatusDto
                 {
                     ProviderId = SupportedModelCatalog.NormalizeProviderId(pr.ProviderId),
@@ -509,7 +509,7 @@ public partial class Configuration
             {
                 try
                 {
-                    await S.SaveAsync();
+                    await S.Form.SaveAsync();
                     S._message = "Model saved.";
                 }
                 catch (Exception ex)
@@ -519,7 +519,7 @@ public partial class Configuration
             }
             var row = BuildCoverageRows().FirstOrDefault(c => string.Equals(c.Id, coverageId, StringComparison.OrdinalIgnoreCase));
             if (row is { KeyReady: false, OptionalOff: false } && !string.IsNullOrWhiteSpace(row.ProviderId))
-                S.BeginAddKey(coverageId, row.ProviderId);
+                S.Keys.BeginAddKey(coverageId, row.ProviderId);
         }
 
 
@@ -534,10 +534,10 @@ public partial class Configuration
             {
                 _voiceModel = "none";
             }
-            S.CancelAddKey();
+            S.Keys.CancelAddKey();
             if (!string.IsNullOrEmpty(S._projectId) && S._cfg is not null)
             {
-                try { await S.SaveAsync(); }
+                try { await S.Form.SaveAsync(); }
                 catch (Exception ex) { S._error = ex.Message; }
             }
         }
@@ -564,17 +564,17 @@ public partial class Configuration
 
             if (!off && string.Equals(currentProvider, pid, StringComparison.OrdinalIgnoreCase))
             {
-                var cur = S._voiceModels.FirstOrDefault(m => string.Equals(m.Id, _voiceModel, StringComparison.OrdinalIgnoreCase));
+                var cur = S.Catalog._voiceModels.FirstOrDefault(m => string.Equals(m.Id, _voiceModel, StringComparison.OrdinalIgnoreCase));
                 if (cur is { IsVoiceCloneStep: true })
                     return;
                 // Prefer clone-step over TTS-only when switching within same provider.
             }
 
-            var pick = S._voiceModels.FirstOrDefault(m =>
+            var pick = S.Catalog._voiceModels.FirstOrDefault(m =>
                 !string.Equals(m.Id, "none", StringComparison.OrdinalIgnoreCase)
                 && m.IsVoiceCloneStep
                 && string.Equals(ConfigurationCatalog.ModelProviderId(m), pid, StringComparison.OrdinalIgnoreCase))
-                ?? S._voiceModels.FirstOrDefault(m =>
+                ?? S.Catalog._voiceModels.FirstOrDefault(m =>
                     !string.Equals(m.Id, "none", StringComparison.OrdinalIgnoreCase)
                     && string.Equals(ConfigurationCatalog.ModelProviderId(m), pid, StringComparison.OrdinalIgnoreCase));
 
@@ -594,8 +594,8 @@ public partial class Configuration
                     if (fromCatalog is not null)
                     {
                         pick = SupportedModelCatalog.ToDto(fromCatalog);
-                        if (!S._voiceModels.Any(m => string.Equals(m.Id, pick.Id, StringComparison.OrdinalIgnoreCase)))
-                            S._voiceModels.Add(pick);
+                        if (!S.Catalog._voiceModels.Any(m => string.Equals(m.Id, pick.Id, StringComparison.OrdinalIgnoreCase)))
+                            S.Catalog._voiceModels.Add(pick);
                     }
                 }
                 catch { /* ignore */ }
@@ -618,7 +618,7 @@ public partial class Configuration
             if (!off && string.Equals(currentProvider, pid, StringComparison.OrdinalIgnoreCase))
                 return;
 
-            var pick = S._audioModels.FirstOrDefault(m =>
+            var pick = S.Catalog._audioModels.FirstOrDefault(m =>
                 !string.Equals(m.Id, "none", StringComparison.OrdinalIgnoreCase) &&
                 string.Equals(ConfigurationCatalog.ModelProviderId(m), pid, StringComparison.OrdinalIgnoreCase));
             if (pick is null)
@@ -636,8 +636,8 @@ public partial class Configuration
                     if (fromCatalog is not null)
                     {
                         pick = SupportedModelCatalog.ToDto(fromCatalog);
-                        if (!S._audioModels.Any(m => string.Equals(m.Id, pick.Id, StringComparison.OrdinalIgnoreCase)))
-                            S._audioModels.Add(pick);
+                        if (!S.Catalog._audioModels.Any(m => string.Equals(m.Id, pick.Id, StringComparison.OrdinalIgnoreCase)))
+                            S.Catalog._audioModels.Add(pick);
                     }
                 }
                 catch { /* ignore */ }

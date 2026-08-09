@@ -13,7 +13,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Home
 {
     /// <summary>Projects domain for the Home page. Owns related UI state and behavior.</summary>
-    internal sealed class HomeProjects
+    public sealed class HomeProjects
     {
         private readonly Home S;
         public HomeProjects(Home host) => S = host;
@@ -202,30 +202,30 @@ public partial class Home
                 if (!S.Session.IsLoggedIn)
                 {
                     _projects = new ProjectsDto { Ok = true, Projects = new List<ProjectInfo>() };
-                    S._job = null;
-                    S._myJobs = new List<JobSnapshot>();
-                    S.SyncJobsExpandedFromJob();
+                    S.Jobs._job = null;
+                    S.Jobs._myJobs = new List<JobSnapshot>();
+                    S.Jobs.SyncJobsExpandedFromJob();
                     return;
                 }
 
                 _projects = await S.Engine.GetProjectsAsync();
                 await S.ActiveProject.RefreshFromServerAsync(S.Engine);
-                await S.RefreshProjectCostAsync();
+                await S.Costs.RefreshProjectCostAsync();
                 await ResolveHomeModeAsync();
 
                 var jobs = await S.Engine.GetJobAsync();
-                S._job = jobs?.Job;
+                S.Jobs._job = jobs?.Job;
                 try
                 {
                     var mine = await S.Engine.GetJobsAsync(mine: true);
-                    S._myJobs = mine?.Jobs?
+                    S.Jobs._myJobs = mine?.Jobs?
                         .OrderByDescending(j => j.StartedAt ?? j.QueuedAt)
                         .Take(12)
                         .ToList()
                         ?? new List<JobSnapshot>();
                 }
-                catch { S._myJobs = new List<JobSnapshot>(); }
-                S.SyncJobsExpandedFromJob();
+                catch { S.Jobs._myJobs = new List<JobSnapshot>(); }
+                S.Jobs.SyncJobsExpandedFromJob();
             }
             catch (Exception ex)
             {
@@ -363,7 +363,7 @@ public partial class Home
                 {
                     S.ActiveProject.Set(cid, created.Label ?? created.Title ?? cid, created.ParentProjectId, created.StudioPath);
                     await S.ActiveProject.RefreshReadinessAsync(S.Engine);
-                    await S.RefreshProjectCostAsync();
+                    await S.Costs.RefreshProjectCostAsync();
                 }
                 else
                     await S.ActiveProject.RefreshFromServerAsync(S.Engine);
@@ -399,7 +399,7 @@ public partial class Home
                 var a = _projects?.Active ?? _projects?.Projects.FirstOrDefault(p =>
                     string.Equals(p.Id, id, StringComparison.OrdinalIgnoreCase));
                 await S.ActiveProject.SelectAsync(S.Engine, id, a?.Label ?? a?.Title ?? id, a?.ParentProjectId, a?.StudioPath);
-                await S.RefreshProjectCostAsync();
+                await S.Costs.RefreshProjectCostAsync();
             }
             catch (Exception ex) { S._error = ex.Message; }
             finally { S._busy = false; }
@@ -536,7 +536,7 @@ public partial class Home
                 S._message = string.IsNullOrEmpty(shortHash)
                     ? "Revision saved."
                     : $"Revision saved ({shortHash}).";
-                await S.RefreshPackageStatusAsync();
+                await S.Jobs.RefreshPackageStatusAsync();
             }
             catch (Exception ex)
             {

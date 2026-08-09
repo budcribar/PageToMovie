@@ -48,7 +48,7 @@
         </Cta>
     </PromoCard>
 }
-else if (_projects is null)
+else if (Projects._projects is null)
 {
     <div class="card mb-3 home-studio-card">
         <div class="card-body py-3 text-muted small">@L["Common.Loading"]</div>
@@ -56,7 +56,7 @@ else if (_projects is null)
 }
 else
 {
-    @if (ShowEasyHome)
+    @if (Projects.ShowEasyHome)
     {
         @* Default home: easiest start only — advanced project picker is behind Full studio. *@
         <PromoCard TestId="home-simple-voice-card" Eyebrow="@L["Home.EasiestStart"]" Title="@L["Home.ReadLibraryBook"]">
@@ -78,7 +78,7 @@ else
                 <button type="button"
                         class="btn btn-primary btn-sm flex-shrink-0"
                         data-testid="home-open-full-studio"
-                        @onclick="EnterFullStudio">
+                        @onclick="Projects.EnterFullStudio">
                     @L["Home.OpenFullStudio"]
                 </button>
             </Cta>
@@ -90,22 +90,34 @@ else
             <button type="button"
                     class="btn btn-link btn-sm px-0"
                     data-testid="home-back-easy-start"
-                    @onclick="ExitFullStudio">
+                    @onclick="Projects.ExitFullStudio">
                 @L["Home.BackToEasyStart"]
             </button>
             <span class="small text-muted">@L["Home.FullStudio"]</span>
         </div>
 
         <CascadingValue Value="this" IsFixed="true">
-            <Home_StudioCard />
+            <CascadingValue Value="Projects" IsFixed="true">
+            <CascadingValue Value="Jobs" IsFixed="true">
+            <CascadingValue Value="Import" IsFixed="true">
+            <CascadingValue Value="Checkpoints" IsFixed="true">
+            <CascadingValue Value="Costs" IsFixed="true">
+                <Home_StudioCard />
+            </CascadingValue>
+            </CascadingValue>
+            </CascadingValue>
+            </CascadingValue>
+            </CascadingValue>
         </CascadingValue>
     }
 }
 
 @* Demo films always visible under either mode *@
 <CascadingValue Value="this" IsFixed="true">
-    <Home_DemoFilmsCard />
+    <CascadingValue Value="Costs" IsFixed="true">
+        <Home_DemoFilmsCard />
+    </CascadingValue>
 </CascadingValue>
 
 
-<ProjectCollaboratorsModal IsOpen="_showCollaboratorsModal" ProjectId="_collaboratorsProjectId" OnClose="CloseCollaboratorsModal" />
+<ProjectCollaboratorsModal IsOpen="Projects._showCollaboratorsModal" ProjectId="Projects._collaboratorsProjectId" OnClose="Projects.CloseCollaboratorsModal" />

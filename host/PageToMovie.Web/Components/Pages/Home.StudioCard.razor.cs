@@ -15,10 +15,15 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Home_StudioCard
 {
     [CascadingParameter] public Home Host { get; set; } = default!;
+    [CascadingParameter] public Home.HomeProjects? Projects { get; set; }
+    [CascadingParameter] public Home.HomeJobs? Jobs { get; set; }
+    [CascadingParameter] public Home.HomeImport? Import { get; set; }
+    [CascadingParameter] public Home.HomeCheckpoints? Checkpoints { get; set; }
+    [CascadingParameter] public Home.HomeCosts? Costs { get; set; }
 
     private ElementReference NameInputRef
     {
-        get => Host._nameInputRef;
-        set => Host._nameInputRef = value;
+        get => Host.Projects._nameInputRef;
+        set => Host.Projects._nameInputRef = value;
     }
 }

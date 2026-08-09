@@ -1,11 +1,11 @@
 @using Microsoft.AspNetCore.Components
 
 <Admin_CollapsibleCard Title="⚠️ Generation Errors"
-                               Expanded="Host._showGenErrors"
+                               Expanded="Ui!._showGenErrors"
                                ExpandedChanged="@(v =>
- Host._showGenErrors = v)">
+ Ui!._showGenErrors = v)">
 <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
-                        <select class="form-select form-select-sm" style="max-width: 14rem;" @bind="Host._genErrorTypeFilter" @bind:after="Host.RefreshGenerationErrorsAsync">
+                        <select class="form-select form-select-sm" style="max-width: 14rem;" @bind="Telemetry!._genErrorTypeFilter" @bind:after="Telemetry!.RefreshGenerationErrorsAsync">
                             <option value="">All error types</option>
                             <option value="partial_coverage">partial_coverage</option>
                             <option value="empty_response">empty_response</option>
@@ -13,17 +13,17 @@
                             <option value="exception">exception</option>
                             <option value="structural_gate_failure">structural_gate_failure</option>
                         </select>
-                        <select class="form-select form-select-sm" style="max-width: 16rem;" @bind="Host._genErrorProjectFilter" @bind:after="Host.RefreshGenerationErrorsAsync">
+                        <select class="form-select form-select-sm" style="max-width: 16rem;" @bind="Telemetry!._genErrorProjectFilter" @bind:after="Telemetry!.RefreshGenerationErrorsAsync">
                             <option value="">All projects</option>
-                            @foreach (var p in Host._projectOptions)
+                            @foreach (var p in Archive!._projectOptions)
                             {
                                 <option value="@p">@p</option>
                             }
                         </select>
-                        <button class="btn btn-sm btn-outline-secondary" @onclick="Host.RefreshGenerationErrorsAsync" disabled="@Host._genErrorsBusy">
-                            @(Host._genErrorsBusy ? "Loading…" : "Refresh")
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="Telemetry!.RefreshGenerationErrorsAsync" disabled="@Telemetry!._genErrorsBusy">
+                            @(Telemetry!._genErrorsBusy ? "Loading…" : "Refresh")
                         </button>
-                        <span class="badge bg-secondary">@(Host._genErrors?.Count ?? 0) row(s)</span>
+                        <span class="badge bg-secondary">@(Telemetry!._genErrors?.Count ?? 0) row(s)</span>
                     </div>
                     <div class="table-responsive">
                         <table class="table table-sm table-hover mb-0 small">
@@ -41,14 +41,14 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                @if (Host._genErrors is { Count: > 0 })
+                                @if (Telemetry!._genErrors is { Count: > 0 })
                                 {
-                                    @foreach (var e in Host._genErrors)
+                                    @foreach (var e in Telemetry!._genErrors)
                                     {
                                         <tr>
                                             <td class="text-nowrap">@e.Ts</td>
                                             <td><code>@e.Stage</code></td>
-                                            <td><span class="badge @Admin.GetGenErrorTypeBadgeClass(e.ErrorType)">@e.ErrorType</span></td>
+                                            <td><span class="badge @Admin.AdminTelemetry.GetGenErrorTypeBadgeClass(e.ErrorType)">@e.ErrorType</span></td>
                                             <td>@e.ProjectId</td>
                                             <td>@e.Scene</td>
                                             <td>
@@ -76,7 +76,7 @@
                                         </tr>
                                     }
                                 }
-                                else if (!Host._genErrorsBusy)
+                                else if (!Telemetry!._genErrorsBusy)
                                 {
                                     <tr><td colspan="9" class="text-muted text-center py-3">No generation-error events recorded.</td></tr>
                                 }

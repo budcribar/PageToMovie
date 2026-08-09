@@ -81,11 +81,11 @@ public partial class Home
     {
         EnsureDomains();
         L.CultureChanged += OnCultureChanged;
-        Hub.JobUpdated += OnJobUpdated;
-        Hub.JobLog += OnJobLog;
+        Hub.JobUpdated += Jobs.OnJobUpdated;
+        Hub.JobLog += Jobs.OnJobLog;
         try { await Session.EnsureHydratedAsync(); } catch { /* optional */ }
-        await LoadAsync();
-        await LoadDemoShowcaseAsync();
+        await Projects.LoadAsync();
+        await Costs.LoadDemoShowcaseAsync();
         try
         {
             await Hub.StartAsync();
@@ -124,193 +124,10 @@ public partial class Home
     public async ValueTask DisposeAsync()
     {
         L.CultureChanged -= OnCultureChanged;
-        Hub.JobUpdated -= OnJobUpdated;
-        Hub.JobLog -= OnJobLog;
+        Hub.JobUpdated -= Jobs.OnJobUpdated;
+        Hub.JobLog -= Jobs.OnJobLog;
         await Hub.DisposeAsync();
     }
 
 
-    // ── Field forwarders (Host._x for markup children) ──
-    internal JobSnapshot? _job
-    {
-        get => Jobs._job;
-        set => Jobs._job = value;
-    }
-    internal bool _jobsExpanded
-    {
-        get => Jobs._jobsExpanded;
-        set => Jobs._jobsExpanded = value;
-    }
-    internal bool? _jobsUserPreference
-    {
-        get => Jobs._jobsUserPreference;
-        set => Jobs._jobsUserPreference = value;
-    }
-    internal List<JobSnapshot> _myJobs
-    {
-        get => Jobs._myJobs;
-        set => Jobs._myJobs = value;
-    }
-    internal UncommittedStatusDto? _packageStatus
-    {
-        get => Jobs._packageStatus;
-        set => Jobs._packageStatus = value;
-    }
-    internal bool _packageStatusLoading
-    {
-        get => Jobs._packageStatusLoading;
-        set => Jobs._packageStatusLoading = value;
-    }
-    internal bool _backingUp
-    {
-        get => Import._backingUp;
-        set => Import._backingUp = value;
-    }
-    internal IBrowserFile? _importFile
-    {
-        get => Import._importFile;
-        set => Import._importFile = value;
-    }
-    internal string _importName
-    {
-        get => Import._importName;
-        set => Import._importName = value;
-    }
-    internal bool _importing
-    {
-        get => Import._importing;
-        set => Import._importing = value;
-    }
-    internal bool _showImport
-    {
-        get => Import._showImport;
-        set => Import._showImport = value;
-    }
-    internal bool _checkpointBusy
-    {
-        get => Checkpoints._checkpointBusy;
-        set => Checkpoints._checkpointBusy = value;
-    }
-    internal string _checkpointName
-    {
-        get => Checkpoints._checkpointName;
-        set => Checkpoints._checkpointName = value;
-    }
-    internal List<CheckpointDto> _checkpoints
-    {
-        get => Checkpoints._checkpoints;
-        set => Checkpoints._checkpoints = value;
-    }
-    internal bool _showCheckpoints
-    {
-        get => Checkpoints._showCheckpoints;
-        set => Checkpoints._showCheckpoints = value;
-    }
-    internal double? _costActualUsd
-    {
-        get => Costs._costActualUsd;
-        set => Costs._costActualUsd = value;
-    }
-    internal double? _costEstimateUsd
-    {
-        get => Costs._costEstimateUsd;
-        set => Costs._costEstimateUsd = value;
-    }
-    internal bool _costLoading
-    {
-        get => Costs._costLoading;
-        set => Costs._costLoading = value;
-    }
-    internal bool _costNeedsModels
-    {
-        get => Costs._costNeedsModels;
-        set => Costs._costNeedsModels = value;
-    }
-    internal string? _costResolution
-    {
-        get => Costs._costResolution;
-        set => Costs._costResolution = value;
-    }
-    internal double? _costVideoRate
-    {
-        get => Costs._costVideoRate;
-        set => Costs._costVideoRate = value;
-    }
-    internal string _demoShowcaseHint
-    {
-        get => Costs._demoShowcaseHint;
-        set => Costs._demoShowcaseHint = value;
-    }
-    internal List<DemoListItem> _publicDemos
-    {
-        get => Costs._publicDemos;
-        set => Costs._publicDemos = value;
-    }
-    internal string _collaboratorsProjectId
-    {
-        get => Projects._collaboratorsProjectId;
-        set => Projects._collaboratorsProjectId = value;
-    }
-    internal string _deleteConfirm
-    {
-        get => Projects._deleteConfirm;
-        set => Projects._deleteConfirm = value;
-    }
-    internal string? _deleteId
-    {
-        get => Projects._deleteId;
-        set => Projects._deleteId = value;
-    }
-    internal string _deleteLabel
-    {
-        get => Projects._deleteLabel;
-        set => Projects._deleteLabel = value;
-    }
-    internal bool _fullStudioHome
-    {
-        get => Projects._fullStudioHome;
-        set => Projects._fullStudioHome = value;
-    }
-    internal Dictionary<string, string> _historyUrls => Projects._historyUrls;
-    internal bool _manageExpanded
-    {
-        get => Projects._manageExpanded;
-        set => Projects._manageExpanded = value;
-    }
-    internal ElementReference _nameInputRef
-    {
-        get => Projects._nameInputRef;
-        set => Projects._nameInputRef = value;
-    }
-    internal string _newName
-    {
-        get => Projects._newName;
-        set => Projects._newName = value;
-    }
-    internal ProjectsDto? _projects
-    {
-        get => Projects._projects;
-        set => Projects._projects = value;
-    }
-    internal string _renameName
-    {
-        get => Projects._renameName;
-        set => Projects._renameName = value;
-    }
-    internal Dictionary<string, string> _revisionHashes => Projects._revisionHashes;
-    internal bool _showCollaboratorsModal
-    {
-        get => Projects._showCollaboratorsModal;
-        set => Projects._showCollaboratorsModal = value;
-    }
-    internal bool _showNew
-    {
-        get => Projects._showNew;
-        set => Projects._showNew = value;
-    }
-    internal bool _showRename
-    {
-        get => Projects._showRename;
-        set => Projects._showRename = value;
-    }
 }

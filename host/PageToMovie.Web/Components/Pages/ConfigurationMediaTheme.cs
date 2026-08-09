@@ -13,7 +13,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Configuration
 {
     /// <summary>Media domain for the Configuration page. Owns related UI state and behavior.</summary>
-    internal sealed class ConfigurationMediaTheme
+    public sealed class ConfigurationMediaTheme
     {
         private readonly Configuration S;
         public ConfigurationMediaTheme(Configuration host) => S = host;
@@ -43,7 +43,7 @@ public partial class Configuration
         internal async Task OnThemeChangedAsync()
         {
             await PreviewThemeAsync();
-            await S.ScheduleAutoSaveAsync();
+            await S.Form.ScheduleAutoSaveAsync();
         }
 
 

@@ -13,7 +13,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Configuration
 {
     /// <summary>Keys domain for the Configuration page. Owns related UI state and behavior.</summary>
-    internal sealed class ConfigurationKeys
+    public sealed class ConfigurationKeys
     {
         private readonly Configuration S;
         public ConfigurationKeys(Configuration host) => S = host;
@@ -61,43 +61,43 @@ public partial class Configuration
         /// <summary>Replace key for one provider only (no multi-provider grid).</summary>
         internal void BeginReplaceKey(string coverageId, string providerId)
         {
-            S._coverageEditId = coverageId;
-            S._coverageKeyProviderId = SupportedModelCatalog.NormalizeProviderId(providerId);
-            S._coverageKeyMode = "replace";
+            S.Coverage._coverageEditId = coverageId;
+            S.Coverage._coverageKeyProviderId = SupportedModelCatalog.NormalizeProviderId(providerId);
+            S.Coverage._coverageKeyMode = "replace";
             _apiKeyFeedback = null;
-            _keyInputs[S._coverageKeyProviderId] = null;
+            _keyInputs[S.Coverage._coverageKeyProviderId] = null;
         }
 
 
         /// <summary>Add/paste key for the provider currently on this coverage row only.</summary>
         internal void BeginAddKeyForProvider(string coverageId, string providerId)
         {
-            S._coverageEditId = coverageId;
-            S._coverageKeyProviderId = SupportedModelCatalog.NormalizeProviderId(providerId);
-            S._coverageKeyMode = "add-key";
+            S.Coverage._coverageEditId = coverageId;
+            S.Coverage._coverageKeyProviderId = SupportedModelCatalog.NormalizeProviderId(providerId);
+            S.Coverage._coverageKeyMode = "add-key";
             _apiKeyFeedback = null;
-            _keyInputs[S._coverageKeyProviderId] = null;
+            _keyInputs[S.Coverage._coverageKeyProviderId] = null;
         }
 
 
         /// <summary>Choose among all providers that can run this job.</summary>
         internal void BeginAddProvider(string coverageId)
         {
-            S._coverageEditId = coverageId;
-            S._coverageKeyMode = "add-provider";
+            S.Coverage._coverageEditId = coverageId;
+            S.Coverage._coverageKeyMode = "add-provider";
             _apiKeyFeedback = null;
-            var list = S.ProvidersForCoverage(coverageId).ToList();
+            var list = S.Coverage.ProvidersForCoverage(coverageId).ToList();
             // Prefer first without a key so “Add provider” lands on something useful.
-            S._coverageKeyProviderId = list.FirstOrDefault(p => !p.IsConfigured)?.ProviderId
+            S.Coverage._coverageKeyProviderId = list.FirstOrDefault(p => !p.IsConfigured)?.ProviderId
                                      ?? list.FirstOrDefault()?.ProviderId;
         }
 
 
         internal void CancelAddKey()
         {
-            S._coverageEditId = null;
-            S._coverageKeyProviderId = null;
-            S._coverageKeyMode = "add-provider";
+            S.Coverage._coverageEditId = null;
+            S.Coverage._coverageKeyProviderId = null;
+            S.Coverage._coverageKeyMode = "add-provider";
         }
 
 
@@ -107,18 +107,18 @@ public partial class Configuration
         /// </summary>
         internal IEnumerable<ProviderKeyStatusDto> ProvidersForKeyPanel(string coverageId)
         {
-            var all = S.ProvidersForCoverage(coverageId);
-            if (S._coverageKeyMode is "replace" or "add-key"
-                && !string.IsNullOrWhiteSpace(S._coverageKeyProviderId))
+            var all = S.Coverage.ProvidersForCoverage(coverageId);
+            if (S.Coverage._coverageKeyMode is "replace" or "add-key"
+                && !string.IsNullOrWhiteSpace(S.Coverage._coverageKeyProviderId))
             {
                 var only = all.Where(p =>
-                    string.Equals(p.ProviderId, S._coverageKeyProviderId, StringComparison.OrdinalIgnoreCase))
+                    string.Equals(p.ProviderId, S.Coverage._coverageKeyProviderId, StringComparison.OrdinalIgnoreCase))
                     .ToList();
                 if (only.Count > 0)
                     return only;
                 // Provider might not be in job list yet — synthesize a row from ProviderRows.
                 var row = ProviderRows.FirstOrDefault(p =>
-                    string.Equals(p.ProviderId, S._coverageKeyProviderId, StringComparison.OrdinalIgnoreCase));
+                    string.Equals(p.ProviderId, S.Coverage._coverageKeyProviderId, StringComparison.OrdinalIgnoreCase));
                 if (row is not null)
                     return new[] { row };
             }
@@ -126,13 +126,13 @@ public partial class Configuration
         }
 
 
-        internal void SelectKeyProvider(string providerId) => S._coverageKeyProviderId = providerId;
+        internal void SelectKeyProvider(string providerId) => S.Coverage._coverageKeyProviderId = providerId;
 
 
         internal async Task SaveCoverageKeyAsync(string providerId, string coverageId)
         {
             await SaveProviderKeyAsync(providerId);
-            var row = S.BuildCoverageRows().FirstOrDefault(c => string.Equals(c.Id, coverageId, StringComparison.OrdinalIgnoreCase));
+            var row = S.Coverage.BuildCoverageRows().FirstOrDefault(c => string.Equals(c.Id, coverageId, StringComparison.OrdinalIgnoreCase));
             if (row?.KeyReady == true)
                 CancelAddKey();
         }
@@ -202,23 +202,23 @@ public partial class Configuration
                     if (!string.IsNullOrWhiteSpace(S._projectId) && S._cfg is not null)
                     {
                         ApplyProviderModelDefaults(providerId);
-                        try { await S.PersistProjectConfigAsync(); } catch { /* optional */ }
+                        try { await S.Form.PersistProjectConfigAsync(); } catch { /* optional */ }
                     }
                     // Music key: if coverage model is none/unknown, pick a model for this provider so Ready lights up.
                     if (providerId is "fal" or "suno" or "aimusicapi")
                     {
-                        S.EnsureMusicModelForProvider(providerId);
+                        S.Coverage.EnsureMusicModelForProvider(providerId);
                     }
                     // Voice key (ElevenLabs) or Fal while adding voice coverage: pick clone-step model, not TTS-only.
                     if (providerId is "elevenlabs"
-                        || (providerId is "fal" && string.Equals(S._coverageEditId, "voice", StringComparison.OrdinalIgnoreCase)))
+                        || (providerId is "fal" && string.Equals(S.Coverage._coverageEditId, "voice", StringComparison.OrdinalIgnoreCase)))
                     {
-                        S.EnsureVoiceModelForProvider(providerId);
+                        S.Coverage.EnsureVoiceModelForProvider(providerId);
                     }
                     if ((providerId is "fal" or "suno" or "aimusicapi" or "elevenlabs")
                         && !string.IsNullOrWhiteSpace(S._projectId) && S._cfg is not null)
                     {
-                        try { await S.PersistProjectConfigAsync(); } catch { /* optional */ }
+                        try { await S.Form.PersistProjectConfigAsync(); } catch { /* optional */ }
                     }
                 }
 

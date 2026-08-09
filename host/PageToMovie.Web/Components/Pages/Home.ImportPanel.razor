@@ -7,39 +7,39 @@
             Import a Page to Movie project <code>.zip</code> export into your own workspace.
         </div>
         <div class="mb-2">
-            <InputFile OnChange="Host.OnImportFileSelected" accept=".zip"
+            <InputFile OnChange="Host.Import.OnImportFileSelected" accept=".zip"
                        class="form-control form-control-sm bg-white text-dark"
                        style="max-width: 22rem;"
-                       disabled="@(Host._busy || Host._importing)" />
+                       disabled="@(Host._busy || Host.Import._importing)" />
         </div>
-        @if (Host._importFile is not null)
+        @if (Host.Import._importFile is not null)
         {
             <div class="small text-light mb-1">Import as:</div>
             <div class="mb-2">
                 <input class="form-control form-control-sm bg-white text-dark border-secondary"
                        style="max-width: 22rem;"
                        data-testid="home-import-name"
-                       value="@Host._importName"
-                       @oninput="@(e => Host._importName = e.Value?.ToString() ?? "")"
-                       disabled="@Host._importing"
+                       value="@Host.Import._importName"
+                       @oninput="@(e => Host.Import._importName = e.Value?.ToString() ?? "")"
+                       disabled="@Host.Import._importing"
                        maxlength="80"
                        placeholder="Project name"
                        aria-label="Import as name" />
             </div>
         }
         <div class="d-flex flex-wrap align-items-center gap-2">
-            @if (Host._importFile is not null)
+            @if (Host.Import._importFile is not null)
             {
                 <button class="btn btn-success btn-sm"
                         data-testid="home-import-confirm"
-                        disabled="@(Host._importing || string.IsNullOrWhiteSpace(Host._importName))"
-                        @onclick="Host.HandleImportAsync">
-                    @(Host._importing ? "Importing…" : "Import")
+                        disabled="@(Host.Import._importing || string.IsNullOrWhiteSpace(Host.Import._importName))"
+                        @onclick="Host.Import.HandleImportAsync">
+                    @(Host.Import._importing ? "Importing…" : "Import")
                 </button>
             }
             <button class="btn btn-outline-secondary btn-sm text-light border-secondary"
-                    disabled="@Host._importing"
-                    @onclick="Host.ToggleImport">
+                    disabled="@Host.Import._importing"
+                    @onclick="Host.Import.ToggleImport">
                 Cancel
             </button>
         </div>

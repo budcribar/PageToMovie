@@ -17,15 +17,15 @@
         </Subtitle>
         <Actions>
             <a href="/admin" class="btn btn-outline-secondary btn-sm">← Admin</a>
-            <button class="btn btn-outline-primary btn-sm" @onclick="ToggleRawJsonEditor">
-                @(_showRawJson ? "📋 Table" : "📝 Raw JSON")
+            <button class="btn btn-outline-primary btn-sm" @onclick="Raw.ToggleRawJsonEditor">
+                @(Raw._showRawJson ? "📋 Table" : "📝 Raw JSON")
             </button>
             <BusyButton Label="✓ Validate all" Busy="_busy" CssClass="btn btn-outline-success btn-sm"
-                        OnClick="ValidateCatalogAsync" />
-            <BusyButton Label="🔍 Scan for updates" BusyLabel="Scanning…" Busy="_scanning"
-                        CssClass="btn btn-outline-info btn-sm" OnClick="ScanUpdatesAsync" />
+                        OnClick="Persist.ValidateCatalogAsync" />
+            <BusyButton Label="🔍 Scan for updates" BusyLabel="Scanning…" Busy="Persist._scanning"
+                        CssClass="btn btn-outline-info btn-sm" OnClick="Persist.ScanUpdatesAsync" />
             <BusyButton Label="💾 Save & hot-apply" BusyLabel="Saving…" Busy="_busy"
-                        CssClass="btn btn-primary btn-sm" OnClick="SaveCatalogAsync" />
+                        CssClass="btn btn-primary btn-sm" OnClick="Persist.SaveCatalogAsync" />
         </Actions>
     </AdminPageHeader>
 
@@ -33,7 +33,7 @@
     {
         <InlineAlert Variant="warning">Admin session required. <a href="/admin/login">Sign in</a></InlineAlert>
     }
-    else if (_loading)
+    else if (List._loading)
     {
         <p class="text-muted">Loading models catalog…</p>
     }
@@ -53,12 +53,12 @@
                 <button type="button" class="btn-close" @onclick="() => _message = null"></button>
             </div>
         }
-        @if (_validationErrors is { Count: > 0 })
+        @if (Persist._validationErrors is { Count: > 0 })
         {
             <div class="alert alert-warning mb-3">
-                <strong>Self-test issues (@_validationErrors.Count)</strong>
+                <strong>Self-test issues (@Persist._validationErrors.Count)</strong>
                 <ul class="mb-0 small">
-                    @foreach (var e in _validationErrors.Take(40))
+                    @foreach (var e in Persist._validationErrors.Take(40))
                     {
                         <li>@e</li>
                     }
@@ -66,18 +66,18 @@
             </div>
         }
 
-        @if (_scan is not null)
+        @if (Persist._scan is not null)
         {
             <div class="card mb-3 border-info">
                 <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <span>
-                        Update scan · @_scan.CheckedAtUtc
-                        <span class="badge bg-success ms-1">@_scan.Summary.UnchangedFields same</span>
-                        <span class="badge bg-danger ms-1">@_scan.Summary.ChangedFields changed</span>
-                        <span class="badge bg-warning text-dark ms-1">@_scan.Summary.NotFoundFields not found</span>
-                        <span class="badge bg-primary ms-1">@_scan.Summary.NewModels new</span>
+                        Update scan · @Persist._scan.CheckedAtUtc
+                        <span class="badge bg-success ms-1">@Persist._scan.Summary.UnchangedFields same</span>
+                        <span class="badge bg-danger ms-1">@Persist._scan.Summary.ChangedFields changed</span>
+                        <span class="badge bg-warning text-dark ms-1">@Persist._scan.Summary.NotFoundFields not found</span>
+                        <span class="badge bg-primary ms-1">@Persist._scan.Summary.NewModels new</span>
                     </span>
-                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => _scan = null">Dismiss</button>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => Persist._scan = null">Dismiss</button>
                 </div>
                 <div class="card-body small">
                     <p class="text-muted mb-2">
@@ -85,23 +85,23 @@
                         <span class="badge bg-warning text-dark">yellow</span> not found / no probe ·
                         <span class="badge bg-danger">red</span> found &amp; different — accept to patch the table, then Save
                     </p>
-                    @if (_scan.DiscoveryNotes is { Count: > 0 })
+                    @if (Persist._scan.DiscoveryNotes is { Count: > 0 })
                     {
                         <ul class="text-muted mb-2">
-                            @foreach (var n in _scan.DiscoveryNotes)
+                            @foreach (var n in Persist._scan.DiscoveryNotes)
                             {
                                 <li>@n</li>
                             }
                         </ul>
                     }
-                    @if (_scan.NewModels is { Count: > 0 })
+                    @if (Persist._scan.NewModels is { Count: > 0 })
                     {
                         <h6 class="mt-2">New models (not in catalog)</h6>
                         <div class="table-responsive mb-3">
                             <table class="table table-sm table-bordered align-middle">
                                 <thead><tr><th>Id</th><th>Provider</th><th>Cap</th><th>Source</th><th></th></tr></thead>
                                 <tbody>
-                                @foreach (var nm in _scan.NewModels)
+                                @foreach (var nm in Persist._scan.NewModels)
                                 {
                                     <tr class="table-info">
                                         <td class="font-monospace">@nm.Id</td>
@@ -109,7 +109,7 @@
                                         <td>@nm.SuggestedCapability</td>
                                         <td class="text-muted">@nm.Source</td>
                                         <td>
-                                            <button class="btn btn-sm btn-primary" @onclick="() => AcceptNewModel(nm)">Accept as LAB</button>
+                                            <button class="btn btn-sm btn-primary" @onclick="() => Persist.AcceptNewModel(nm)">Accept as LAB</button>
                                         </td>
                                     </tr>
                                 }
@@ -117,7 +117,7 @@
                             </table>
                         </div>
                     }
-                    @foreach (var m in _scan.Models.Where(x => x.Fields.Any(f => f.Status != "unchanged")).Take(40))
+                    @foreach (var m in Persist._scan.Models.Where(x => x.Fields.Any(f => f.Status != "unchanged")).Take(40))
                     {
                         <div class="mb-2">
                             <strong class="font-monospace">@m.Id</strong>
@@ -127,12 +127,12 @@
                                 <tbody>
                                 @foreach (var f in m.Fields)
                                 {
-                                    <tr class="@StatusRowClass(f.Status)">
+                                    <tr class="@AdminModelsList.StatusRowClass(f.Status)">
                                         <td class="font-monospace">@f.Field</td>
                                         <td>@(f.CatalogValue ?? "—")</td>
                                         <td>@(f.LiveValue ?? "—")</td>
                                         <td>
-                                            <span class="badge @StatusBadgeClass(f.Status)">@f.Status</span>
+                                            <span class="badge @AdminModelsList.StatusBadgeClass(f.Status)">@f.Status</span>
                                             @if (!string.IsNullOrWhiteSpace(f.Message))
                                             {
                                                 <span class="text-muted ms-1">@f.Message</span>
@@ -145,7 +145,7 @@
                                         <td>
                                             @if (f.Status == "changed" && f.LiveValue is not null)
                                             {
-                                                <button class="btn btn-sm btn-outline-danger" @onclick="() => AcceptFieldChange(m.Id, f)">Accept live</button>
+                                                <button class="btn btn-sm btn-outline-danger" @onclick="() => Persist.AcceptFieldChange(m.Id, f)">Accept live</button>
                                             }
                                         </td>
                                     </tr>
@@ -154,7 +154,7 @@
                             </table>
                         </div>
                     }
-                    @if (!_scan.Models.Any(x => x.Fields.Any(f => f.Status != "unchanged")) && _scan.NewModels.Count == 0)
+                    @if (!Persist._scan.Models.Any(x => x.Fields.Any(f => f.Status != "unchanged")) && Persist._scan.NewModels.Count == 0)
                     {
                         <p class="text-success mb-0">No differences or new models reported.</p>
                     }
@@ -162,12 +162,12 @@
             </div>
         }
 
-        @if (_showRawJson)
+        @if (Raw._showRawJson)
         {
             <div class="card mb-3">
                 <div class="card-header font-monospace small">Raw models_catalog.json</div>
                 <div class="card-body p-2">
-                    <textarea class="form-control font-monospace text-light bg-dark" rows="22" style="font-size: 0.85rem;" @bind="_rawJsonText"></textarea>
+                    <textarea class="form-control font-monospace text-light bg-dark" rows="22" style="font-size: 0.85rem;" @bind="Raw._rawJsonText"></textarea>
                 </div>
             </div>
         }
@@ -175,16 +175,16 @@
         {
             @* ── Search & Filter Toolbar ────────────────────────────────────── *@
             <div class="card p-3 mb-3 border shadow-sm">
-                <AdminFilterBar Search="_filterQuery"
-                                SearchChanged="OnCatalogSearchChanged"
+                <AdminFilterBar Search="List._filterQuery"
+                                SearchChanged="List.OnCatalogSearchChanged"
                                 SearchPlaceholder="Search model ID, name, provider…"
                                 SearchInputClass="form-control form-control-sm bg-dark text-light border-secondary"
-                                ShowClear="@( !string.IsNullOrWhiteSpace(_filterQuery) || !string.IsNullOrWhiteSpace(_filterCapability) || !string.IsNullOrWhiteSpace(_filterProvider) || !string.IsNullOrWhiteSpace(_filterStatus) )"
-                                OnClear="ResetFilters"
+                                ShowClear="@( !string.IsNullOrWhiteSpace(List._filterQuery) || !string.IsNullOrWhiteSpace(List._filterCapability) || !string.IsNullOrWhiteSpace(List._filterProvider) || !string.IsNullOrWhiteSpace(List._filterStatus) )"
+                                OnClear="List.ResetFilters"
                                 CssClass="row g-2 align-items-center"
                                 TestId="catalog-filters">
                     <div class="col-md-2">
-                        <select class="form-select form-select-sm bg-dark text-light border-secondary" @bind="_filterCapability">
+                        <select class="form-select form-select-sm bg-dark text-light border-secondary" @bind="List._filterCapability">
                             <option value="">All Capabilities</option>
                             @foreach (var c in Capabilities)
                             {
@@ -193,16 +193,16 @@
                         </select>
                     </div>
                     <div class="col-md-2">
-                        <select class="form-select form-select-sm bg-dark text-light border-secondary" @bind="_filterProvider">
+                        <select class="form-select form-select-sm bg-dark text-light border-secondary" @bind="List._filterProvider">
                             <option value="">All Providers</option>
-                            @foreach (var p in AvailableProviders)
+                            @foreach (var p in List.AvailableProviders)
                             {
                                 <option value="@p">@p</option>
                             }
                         </select>
                     </div>
                     <div class="col-md-2">
-                        <select class="form-select form-select-sm bg-dark text-light border-secondary" @bind="_filterStatus">
+                        <select class="form-select form-select-sm bg-dark text-light border-secondary" @bind="List._filterStatus">
                             <option value="">@L["Catalog.StatusActive"]</option>
                             <option value="enabled">@L["Catalog.EnabledOnly"]</option>
                             <option value="disabled">@L["Catalog.DisabledOnly"]</option>
@@ -212,34 +212,34 @@
                         </select>
                     </div>
                     <div class="col-md-3 d-flex gap-2 justify-content-end align-items-center">
-                        <button class="btn btn-sm btn-success" @onclick="() => BeginAdd()">@L["Catalog.AddModel"]</button>
+                        <button class="btn btn-sm btn-success" @onclick="() => Editor.BeginAdd()">@L["Catalog.AddModel"]</button>
                         <span class="badge bg-secondary">
-                            @FilteredModels.Count() of @_modelList.Count models (@_modelList.Count(m => IsEnabled(m) && !IsDeprecated(m)) active enabled, @_modelList.Count(m => IsDeprecated(m)) deprecated)
+                            @List.FilteredModels.Count() of @List._modelList.Count models (@List._modelList.Count(m => AdminModelsList.IsEnabled(m) && !AdminModelsList.IsDeprecated(m)) active enabled, @List._modelList.Count(m => AdminModelsList.IsDeprecated(m)) deprecated)
                         </span>
                     </div>
                 </AdminFilterBar>
             </div>
 
-            @if (_editModel is not null)
+            @if (Editor._editModel is not null)
             {
                 <div class="card border-primary mb-3">
                     <div class="card-header d-flex justify-content-between align-items-center">
-                        <span>@(_editIsNew ? "Add model" : $"Edit · {_editModel["id"]}")</span>
-                        <button type="button" class="btn-close" @onclick="CloseEditor"></button>
+                        <span>@(Editor._editIsNew ? "Add model" : $"Edit · {Editor._editModel["id"]}")</span>
+                        <button type="button" class="btn-close" @onclick="Editor.CloseEditor"></button>
                     </div>
                     <div class="card-body">
                         <div class="row g-2">
                             <div class="col-md-4">
                                 <label class="form-label small mb-0">Model ID</label>
-                                <input class="form-control form-control-sm font-monospace" @bind="_editId" disabled="@(!_editIsNew)" />
+                                <input class="form-control form-control-sm font-monospace" @bind="Editor._editId" disabled="@(!Editor._editIsNew)" />
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label small mb-0">Display name</label>
-                                <input class="form-control form-control-sm" @bind="_editDisplayName" />
+                                <input class="form-control form-control-sm" @bind="Editor._editDisplayName" />
                             </div>
                             <div class="col-md-2">
                                 <label class="form-label small mb-0">Capability</label>
-                                <select class="form-select form-select-sm" @bind="_editCapability">
+                                <select class="form-select form-select-sm" @bind="Editor._editCapability">
                                     @foreach (var c in Capabilities)
                                     {
                                         <option value="@c">@c</option>
@@ -248,138 +248,138 @@
                             </div>
                             <div class="col-md-2">
                                 <label class="form-label small mb-0">Provider</label>
-                                <input class="form-control form-control-sm" @bind="_editProvider" />
+                                <input class="form-control form-control-sm" @bind="Editor._editProvider" />
                             </div>
                             <div class="col-md-2">
-                                <ToggleSwitch @bind-Value="_editEnabled" Id="editEnabled" WrapperClass="form-check form-switch mt-4">
+                                <ToggleSwitch @bind-Value="Editor._editEnabled" Id="editEnabled" WrapperClass="form-check form-switch mt-4">
                                     <Label>Enabled</Label>
                                 </ToggleSwitch>
                             </div>
                             <div class="col-md-2">
-                                <ToggleSwitch @bind-Value="_editDeprecated" Id="editDeprecated" WrapperClass="form-check form-switch mt-4">
+                                <ToggleSwitch @bind-Value="Editor._editDeprecated" Id="editDeprecated" WrapperClass="form-check form-switch mt-4">
                                     <Label><span class="text-danger fw-bold" title="Hide from pickers and ignore during update scans">Deprecated</span></Label>
                                 </ToggleSwitch>
                             </div>
                             <div class="col-md-2">
-                                <ToggleSwitch @bind-Value="_editLabMode" Id="editLab" WrapperClass="form-check form-switch mt-4">
+                                <ToggleSwitch @bind-Value="Editor._editLabMode" Id="editLab" WrapperClass="form-check form-switch mt-4">
                                     <Label><span title="Incomplete OK for experiments">Lab mode</span></Label>
                                 </ToggleSwitch>
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label small mb-0">Endpoint path</label>
-                                <input class="form-control form-control-sm font-monospace" @bind="_editEndpointPath" />
+                                <input class="form-control form-control-sm font-monospace" @bind="Editor._editEndpointPath" />
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label small mb-0">Max prompt length</label>
-                                <input type="number" class="form-control form-control-sm" @bind="_editMaxPromptLength" />
+                                <input type="number" class="form-control form-control-sm" @bind="Editor._editMaxPromptLength" />
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label small mb-0">lastVerifiedAt</label>
-                                <input class="form-control form-control-sm" @bind="_editLastVerifiedAt" placeholder="yyyy-MM-dd" />
+                                <input class="form-control form-control-sm" @bind="Editor._editLastVerifiedAt" placeholder="yyyy-MM-dd" />
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label small mb-0">pricingLastReviewedAt</label>
-                                <input class="form-control form-control-sm" @bind="_editPricingLastReviewedAt" placeholder="yyyy-MM-dd" />
+                                <input class="form-control form-control-sm" @bind="Editor._editPricingLastReviewedAt" placeholder="yyyy-MM-dd" />
                             </div>
                             <div class="col-12">
                                 <label class="form-label small mb-0">pricingNotes (source of cost figures)</label>
-                                <textarea class="form-control form-control-sm" rows="2" @bind="_editPricingNotes"></textarea>
+                                <textarea class="form-control form-control-sm" rows="2" @bind="Editor._editPricingNotes"></textarea>
                             </div>
                             <div class="col-12">
                                 <label class="form-label small mb-0">labNotes (required when Lab mode)</label>
-                                <input class="form-control form-control-sm" @bind="_editLabNotes" placeholder="Why incomplete / what is being tested" />
+                                <input class="form-control form-control-sm" @bind="Editor._editLabNotes" placeholder="Why incomplete / what is being tested" />
                             </div>
                         </div>
 
-                        @if (_editCapability is "Chat" or "Vision")
+                        @if (Editor._editCapability is "Chat" or "Vision")
                         {
                             <hr class="my-2" />
                             <div class="row g-2">
                                 <div class="col-md-3">
                                     <label class="form-label small mb-0">maxInputTokens</label>
-                                    <input type="number" class="form-control form-control-sm" @bind="_editMaxInputTokens" />
+                                    <input type="number" class="form-control form-control-sm" @bind="Editor._editMaxInputTokens" />
                                 </div>
                                 <div class="col-md-3">
                                     <label class="form-label small mb-0">maxOutputTokens</label>
-                                    <input type="number" class="form-control form-control-sm" @bind="_editMaxOutputTokens" />
+                                    <input type="number" class="form-control form-control-sm" @bind="Editor._editMaxOutputTokens" />
                                 </div>
                                 <div class="col-md-3">
                                     <label class="form-label small mb-0">input $/MTok</label>
-                                    <input type="number" step="0.01" class="form-control form-control-sm" @bind="_editInputCost" />
+                                    <input type="number" step="0.01" class="form-control form-control-sm" @bind="Editor._editInputCost" />
                                 </div>
                                 <div class="col-md-3">
                                     <label class="form-label small mb-0">output $/MTok</label>
-                                    <input type="number" step="0.01" class="form-control form-control-sm" @bind="_editOutputCost" />
+                                    <input type="number" step="0.01" class="form-control form-control-sm" @bind="Editor._editOutputCost" />
                                 </div>
                             </div>
                         }
-                        @if (_editCapability == "Video")
+                        @if (Editor._editCapability == "Video")
                         {
                             <hr class="my-2" />
                             <div class="row g-2">
                                 <div class="col-md-2">
                                     <label class="form-label small mb-0">minClip sec</label>
-                                    <input type="number" class="form-control form-control-sm" @bind="_editMinClip" />
+                                    <input type="number" class="form-control form-control-sm" @bind="Editor._editMinClip" />
                                 </div>
                                 <div class="col-md-2">
                                     <label class="form-label small mb-0">maxClip sec</label>
-                                    <input type="number" class="form-control form-control-sm" @bind="_editMaxClip" />
+                                    <input type="number" class="form-control form-control-sm" @bind="Editor._editMaxClip" />
                                 </div>
                                 <div class="col-md-2">
                                     <label class="form-label small mb-0">absMax sec</label>
-                                    <input type="number" class="form-control form-control-sm" @bind="_editAbsMaxClip" />
+                                    <input type="number" class="form-control form-control-sm" @bind="Editor._editAbsMaxClip" />
                                 </div>
                                 <div class="col-md-2">
                                     <label class="form-label small mb-0">maxRefs</label>
-                                    <input type="number" class="form-control form-control-sm" @bind="_editMaxRefs" />
+                                    <input type="number" class="form-control form-control-sm" @bind="Editor._editMaxRefs" />
                                 </div>
                                 <div class="col-md-2">
-                                    <ToggleSwitch @bind-Value="_editSupportsContinue" Id="editCont" WrapperClass="form-check form-switch mt-4">
+                                    <ToggleSwitch @bind-Value="Editor._editSupportsContinue" Id="editCont" WrapperClass="form-check form-switch mt-4">
                                         <Label>Continue</Label>
                                     </ToggleSwitch>
                                 </div>
                                 <div class="col-md-2">
                                     <label class="form-label small mb-0">extend $/sec</label>
-                                    <input type="number" step="0.001" class="form-control form-control-sm" @bind="_editExtendCost" />
+                                    <input type="number" step="0.001" class="form-control form-control-sm" @bind="Editor._editExtendCost" />
                                 </div>
                                 <div class="col-md-3">
                                     <label class="form-label small mb-0">videoReferenceImageCost</label>
-                                    <input type="number" step="0.001" class="form-control form-control-sm" @bind="_editRefImageCost" />
+                                    <input type="number" step="0.001" class="form-control form-control-sm" @bind="Editor._editRefImageCost" />
                                 </div>
                                 <div class="col-md-4">
                                     <label class="form-label small mb-0">videoCostPerSecond JSON</label>
-                                    <input class="form-control form-control-sm font-monospace" @bind="_editVideoPerSecJson" placeholder='{"720p":0.07}' />
+                                    <input class="form-control form-control-sm font-monospace" @bind="Editor._editVideoPerSecJson" placeholder='{"720p":0.07}' />
                                 </div>
                                 <div class="col-md-4">
                                     <label class="form-label small mb-0">videoBaseCost JSON</label>
-                                    <input class="form-control form-control-sm font-monospace" @bind="_editVideoBaseJson" placeholder='{"720p":0.4}' />
+                                    <input class="form-control form-control-sm font-monospace" @bind="Editor._editVideoBaseJson" placeholder='{"720p":0.4}' />
                                 </div>
                             </div>
                         }
-                        @if (_editCapability == "Image")
+                        @if (Editor._editCapability == "Image")
                         {
                             <hr class="my-2" />
                             <div class="row g-2">
                                 <div class="col-md-3">
                                     <label class="form-label small mb-0">maxReferenceImages</label>
-                                    <input type="number" class="form-control form-control-sm" @bind="_editMaxRefs" />
+                                    <input type="number" class="form-control form-control-sm" @bind="Editor._editMaxRefs" />
                                 </div>
                                 <div class="col-md-3">
                                     <label class="form-label small mb-0">imageCostPerImage</label>
-                                    <input type="number" step="0.001" class="form-control form-control-sm" @bind="_editImageCost" />
+                                    <input type="number" step="0.001" class="form-control form-control-sm" @bind="Editor._editImageCost" />
                                 </div>
                             </div>
                         }
-                        @if (_editCapability == "Audio")
+                        @if (Editor._editCapability == "Audio")
                         {
                             <hr class="my-2" />
                             <div class="row g-2">
                                 <div class="col-md-3">
                                     <label class="form-label small mb-0">maxAudioDurationSeconds</label>
-                                    <input type="number" class="form-control form-control-sm" @bind="_editMaxAudio" />
+                                    <input type="number" class="form-control form-control-sm" @bind="Editor._editMaxAudio" />
                                 </div>
                                 <div class="col-md-3">
-                                    <ToggleSwitch @bind-Value="_editSupportsVocals" Id="editVocals" WrapperClass="form-check form-switch mt-4">
+                                    <ToggleSwitch @bind-Value="Editor._editSupportsVocals" Id="editVocals" WrapperClass="form-check form-switch mt-4">
                                         <Label>supportsVocals</Label>
                                     </ToggleSwitch>
                                 </div>
@@ -387,11 +387,11 @@
                         }
 
                         <div class="mt-3 d-flex flex-wrap gap-2">
-                            <button class="btn btn-primary btn-sm" @onclick="ApplyEditorToList">Apply to table</button>
-                            <button class="btn btn-outline-success btn-sm" @onclick="ReviewAndApplyAsync" title="Stamp review dates to today and apply">
+                            <button class="btn btn-primary btn-sm" @onclick="Editor.ApplyEditorToList">Apply to table</button>
+                            <button class="btn btn-outline-success btn-sm" @onclick="Editor.ReviewAndApplyAsync" title="Stamp review dates to today and apply">
                                 ✓ Mark reviewed (today)
                             </button>
-                            <button class="btn btn-outline-secondary btn-sm" @onclick="CloseEditor">Cancel</button>
+                            <button class="btn btn-outline-secondary btn-sm" @onclick="Editor.CloseEditor">Cancel</button>
                         </div>
                     </div>
                 </div>
@@ -412,7 +412,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            @if (!FilteredModels.Any())
+                            @if (!List.FilteredModels.Any())
                             {
                                 <tr>
                                     <td colspan="7" class="text-center text-muted py-4">
@@ -422,7 +422,7 @@
                             }
                             else
                             {
-                                @foreach (var m in FilteredModels)
+                                @foreach (var m in List.FilteredModels)
                                 {
                                     var modelId = m["id"]?.ToString() ?? "";
                                     var displayName = m["displayName"]?.ToString() ?? "";
@@ -430,18 +430,18 @@
                                     var prov = m["provider"]?.ToString() ?? "";
                                     var verified = m["lastVerifiedAt"]?.ToString() ?? "—";
                                     var priced = m["pricingLastReviewedAt"]?.ToString() ?? "—";
-                                    <tr class="@(IsDeprecated(m) ? "table-dark opacity-75" : IsEnabled(m) ? "" : "table-secondary")">
+                                    <tr class="@(AdminModelsList.IsDeprecated(m) ? "table-dark opacity-75" : AdminModelsList.IsEnabled(m) ? "" : "table-secondary")">
                                         <td>
-                                            @if (IsDeprecated(m))
+                                            @if (AdminModelsList.IsDeprecated(m))
                                             {
                                                 <span class="badge bg-danger" style="font-size: 0.65rem;" title="Deprecated — hidden from pickers & ignored by update scan">DEPRECATED</span>
                                             }
                                             else
                                             {
                                                 <div class="d-flex align-items-center gap-1">
-                                                    <ToggleSwitch Value="@IsEnabled(m)" ValueChanged="@(_ => ToggleModelEnabled(m))" WrapperClass="form-check form-switch mb-0" />
-                                                    <span class="badge @(IsEnabled(m) ? "bg-success" : "bg-secondary")" style="font-size: 0.65rem;">
-                                                        @(IsEnabled(m) ? "ON" : "OFF")
+                                                    <ToggleSwitch Value="@AdminModelsList.IsEnabled(m)" ValueChanged="@(_ => List.ToggleModelEnabled(m))" WrapperClass="form-check form-switch mb-0" />
+                                                    <span class="badge @(AdminModelsList.IsEnabled(m) ? "bg-success" : "bg-secondary")" style="font-size: 0.65rem;">
+                                                        @(AdminModelsList.IsEnabled(m) ? "ON" : "OFF")
                                                     </span>
                                                 </div>
                                             }
@@ -449,7 +449,7 @@
                                         <td class="fw-bold font-monospace">@modelId</td>
                                         <td>
                                             @displayName
-                                            @if (IsDeprecated(m))
+                                            @if (AdminModelsList.IsDeprecated(m))
                                             {
                                                 <span class="badge bg-danger text-light ms-1" title="Deprecated model — hidden from pickers & ignored by update scan">DEPRECATED</span>
                                             }
@@ -458,7 +458,7 @@
                                                 <span class="badge bg-warning text-dark ms-1" title="@(m["labNotes"]?.ToString() ?? "lab")">LAB</span>
                                             }
                                         </td>
-                                        <td><span class="badge @GetCapBadgeClass(cap)">@cap</span></td>
+                                        <td><span class="badge @List.GetCapBadgeClass(cap)">@cap</span></td>
                                         <td class="text-muted fw-semibold">@prov</td>
                                         <td class="small text-muted">
                                             <div>row: <code>@verified</code></div>
@@ -466,17 +466,17 @@
                                         </td>
                                         <td class="text-end pe-3">
                                             <div class="btn-group btn-group-sm">
-                                                <button class="btn btn-outline-primary" title="Edit model settings" @onclick="() => BeginEdit(m)">✎ Edit</button>
-                                                @if (IsDeprecated(m))
+                                                <button class="btn btn-outline-primary" title="Edit model settings" @onclick="() => Editor.BeginEdit(m)">✎ Edit</button>
+                                                @if (AdminModelsList.IsDeprecated(m))
                                                 {
-                                                    <button class="btn btn-outline-info" title="Restore model to active catalog" @onclick="() => ToggleModelDeprecated(m)">Restore</button>
+                                                    <button class="btn btn-outline-info" title="Restore model to active catalog" @onclick="() => List.ToggleModelDeprecated(m)">Restore</button>
                                                 }
                                                 else
                                                 {
-                                                    <button class="btn btn-outline-warning" title="Deprecate model (hide & ignore in update scans)" @onclick="() => ToggleModelDeprecated(m)">Deprecate</button>
+                                                    <button class="btn btn-outline-warning" title="Deprecate model (hide & ignore in update scans)" @onclick="() => List.ToggleModelDeprecated(m)">Deprecate</button>
                                                 }
-                                                <button class="btn btn-outline-success" title="Mark reviewed today" @onclick="() => ReviewModel(m)">✓ Review</button>
-                                                <button class="btn btn-outline-danger" title="Delete model" @onclick="() => RemoveModelAsync(m)">🗑</button>
+                                                <button class="btn btn-outline-success" title="Mark reviewed today" @onclick="() => Editor.ReviewModel(m)">✓ Review</button>
+                                                <button class="btn btn-outline-danger" title="Delete model" @onclick="() => List.RemoveModelAsync(m)">🗑</button>
                                             </div>
                                         </td>
                                     </tr>

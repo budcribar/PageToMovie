@@ -12,7 +12,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Admin
 {
     /// <summary>UI toggles / lifecycle / logout domain for the Admin page.</summary>
-    internal sealed class AdminUi
+    public sealed class AdminUi
     {
         private readonly Admin S;
         public AdminUi(Admin host) => S = host;
@@ -80,20 +80,20 @@ public partial class Admin
 
             S.StateHasChanged();
 
-            S.Hub.AdminState += S.OnAdminState;
-            S.MediaFolder.Changed += S.OnMediaFolderChanged;
+            S.Hub.AdminState += S.State.OnAdminState;
+            S.MediaFolder.Changed += OnMediaFolderChanged;
             // Explicit, not just relying on MainLayout's app-wide hook — makes the local-save pipeline
             // (auto-save-on-generate) definitely live before this page starts queuing gen jobs, and
             // surfaces its status/errors here (see OnMediaFolderChanged) instead of nowhere.
             await S.MediaFolder.EnsureHubHookAsync();
             // Do not block UI on SignalR
-            _ = S.ConnectHubAsync();
-            await S.RefreshAsync();
+            _ = S.State.ConnectHubAsync();
+            await S.State.RefreshAsync();
             S.StateHasChanged();
 
-            S._pollCts = new CancellationTokenSource();
-            S._timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
-            _ = S.PollLoopAsync(S._pollCts.Token);
+            S.State._pollCts = new CancellationTokenSource();
+            S.State._timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
+            _ = S.State.PollLoopAsync(S.State._pollCts.Token);
         }
     }
 }

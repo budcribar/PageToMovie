@@ -13,7 +13,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Home
 {
     /// <summary>Jobs domain for the Home page. Owns related UI state and behavior.</summary>
-    internal sealed class HomeJobs
+    public sealed class HomeJobs
     {
         private readonly Home S;
         public HomeJobs(Home host) => S = host;
@@ -34,7 +34,7 @@ public partial class Home
 
 
         internal string ActivePackageProjectId =>
-            S.ActiveProject.ProjectId ?? S._projects?.Active?.Id ?? "";
+            S.ActiveProject.ProjectId ?? S.Projects._projects?.Active?.Id ?? "";
 
 
         internal string? PackageHistoryUrl
@@ -45,7 +45,7 @@ public partial class Home
                     return _packageStatus!.HistoryUrl;
                 var pid = ActivePackageProjectId;
                 if (string.IsNullOrWhiteSpace(pid)) return null;
-                return S._historyUrls.TryGetValue(pid, out var hu) ? hu : null;
+                return S.Projects._historyUrls.TryGetValue(pid, out var hu) ? hu : null;
             }
         }
 
@@ -57,8 +57,8 @@ public partial class Home
                 var pid = ActivePackageProjectId;
                 if (string.IsNullOrWhiteSpace(pid) || !S.Session.IsLoggedIn) return false;
                 if (S.Session.IsAdmin) return true;
-                var owner = S._projects?.Active?.OwnerUserId
-                            ?? S._projects?.Projects.FirstOrDefault(x =>
+                var owner = S.Projects._projects?.Active?.OwnerUserId
+                            ?? S.Projects._projects?.Projects.FirstOrDefault(x =>
                                 string.Equals(x.Id, pid, StringComparison.OrdinalIgnoreCase))?.OwnerUserId;
                 return string.Equals(S.Session.UserId, owner, StringComparison.OrdinalIgnoreCase);
             }
@@ -67,7 +67,7 @@ public partial class Home
 
         internal async Task RefreshPackageStatusAsync()
         {
-            var pid = S.ActiveProject.ProjectId ?? S._projects?.Active?.Id;
+            var pid = S.ActiveProject.ProjectId ?? S.Projects._projects?.Active?.Id;
             if (string.IsNullOrWhiteSpace(pid) || !S.Session.IsLoggedIn)
             {
                 _packageStatus = null;
@@ -81,9 +81,9 @@ public partial class Home
                 var env = await S.Engine.GetProjectUncommittedStatusAsync(pid);
                 _packageStatus = env?.Status;
                 if (!string.IsNullOrWhiteSpace(_packageStatus?.LastCommitHash))
-                    S._revisionHashes[pid] = _packageStatus!.LastCommitHash!;
+                    S.Projects._revisionHashes[pid] = _packageStatus!.LastCommitHash!;
                 if (!string.IsNullOrWhiteSpace(_packageStatus?.HistoryUrl))
-                    S._historyUrls[pid] = _packageStatus!.HistoryUrl!;
+                    S.Projects._historyUrls[pid] = _packageStatus!.HistoryUrl!;
             }
             catch
             {
@@ -138,7 +138,7 @@ public partial class Home
                 // Jobs write cost_ledger on completion — keep home spend fresh.
                 if (snap.Status is "done" or "error" or "cancelled")
                 {
-                    try { await S.RefreshProjectCostAsync(); }
+                    try { await S.Costs.RefreshProjectCostAsync(); }
                     catch { /* ignore */ }
                 }
                 S.StateHasChanged();

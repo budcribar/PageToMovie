@@ -13,7 +13,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Home
 {
     /// <summary>Costs domain for the Home page. Owns related UI state and behavior.</summary>
-    internal sealed class HomeCosts
+    public sealed class HomeCosts
     {
         private readonly Home S;
         public HomeCosts(Home host) => S = host;
@@ -48,7 +48,7 @@ public partial class Home
 
         internal async Task RefreshProjectCostAsync()
         {
-            var pid = S.ActiveProject.ProjectId ?? S._projects?.Active?.Id;
+            var pid = S.ActiveProject.ProjectId ?? S.Projects._projects?.Active?.Id;
             if (string.IsNullOrWhiteSpace(pid) || !S.Session.IsLoggedIn)
             {
                 _costEstimateUsd = null;
@@ -56,7 +56,7 @@ public partial class Home
                 _costResolution = null;
                 _costVideoRate = null;
                 _costLoading = false;
-                S._packageStatus = null;
+                S.Jobs._packageStatus = null;
                 return;
             }
 
@@ -110,7 +110,7 @@ public partial class Home
                 _costLoading = false;
             }
 
-            await S.RefreshPackageStatusAsync();
+            await S.Jobs.RefreshPackageStatusAsync();
         }
 
 

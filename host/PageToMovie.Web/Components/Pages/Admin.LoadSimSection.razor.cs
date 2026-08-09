@@ -15,4 +15,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Admin_LoadSimSection
 {
     [CascadingParameter] public Admin Host { get; set; } = default!;
+    [CascadingParameter] public Admin.AdminTelemetry? Telemetry { get; set; }
+    [CascadingParameter] public Admin.AdminState? State { get; set; }
+    [CascadingParameter] public Admin.AdminUi? Ui { get; set; }
 }

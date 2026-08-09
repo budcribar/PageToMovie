@@ -12,7 +12,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Admin
 {
     /// <summary>Archive/import/export/augment/synthesize domain for the Admin page.</summary>
-    internal sealed class AdminArchive
+    public sealed class AdminArchive
     {
         private readonly Admin S;
         public AdminArchive(Admin host) => S = host;
@@ -282,7 +282,7 @@ public partial class Admin
                 _archiveMsg = string.Join(" · ", parts.Where(s => !string.IsNullOrWhiteSpace(s)));
                 _importFile = null;
                 await RefreshProjectOptionsAsync();
-                await S.RefreshAsync();
+                await S.State.RefreshAsync();
             });
         }
 
@@ -306,7 +306,7 @@ public partial class Admin
                     _archiveError = $"Failed to augment background music scores for {_augmentProjectId}. Ensure blueprint.clips.grok.json exists.";
                     _archiveMsg = null;
                 }
-                await S.RefreshAsync();
+                await S.State.RefreshAsync();
             });
         }
 
@@ -448,7 +448,7 @@ public partial class Admin
                 {
                     _archiveError = $"{failedCount} scene(s) failed to synthesize: {string.Join(" | ", failureMessages)}";
                 }
-                await S.RefreshAsync();
+                await S.State.RefreshAsync();
             }
             catch (Exception ex)
             {

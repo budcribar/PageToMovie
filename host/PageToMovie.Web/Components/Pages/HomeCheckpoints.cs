@@ -13,7 +13,7 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Home
 {
     /// <summary>Checkpoints domain for the Home page. Owns related UI state and behavior.</summary>
-    internal sealed class HomeCheckpoints
+    public sealed class HomeCheckpoints
     {
         private readonly Home S;
         public HomeCheckpoints(Home host) => S = host;
@@ -33,8 +33,8 @@ public partial class Home
             S._message = null;
             if (_showCheckpoints)
             {
-                S._showRename = false;
-                S._showImport = false;
+                S.Projects._showRename = false;
+                S.Import._showImport = false;
                 await LoadCheckpointsAsync();
             }
         }
@@ -42,7 +42,7 @@ public partial class Home
 
         internal async Task LoadCheckpointsAsync()
         {
-            var id = S._projects?.Active?.Id ?? S.ActiveProject.ProjectId;
+            var id = S.Projects._projects?.Active?.Id ?? S.ActiveProject.ProjectId;
             if (string.IsNullOrWhiteSpace(id)) return;
             _checkpoints = await S.Engine.ListCheckpointsAsync(id);
             S.StateHasChanged();
@@ -51,7 +51,7 @@ public partial class Home
 
         internal async Task CreateCheckpointAsync()
         {
-            var id = S._projects?.Active?.Id ?? S.ActiveProject.ProjectId;
+            var id = S.Projects._projects?.Active?.Id ?? S.ActiveProject.ProjectId;
             if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(_checkpointName)) return;
             _checkpointBusy = true;
             S._error = null;
@@ -77,7 +77,7 @@ public partial class Home
 
         internal async Task RevertCheckpointAsync(CheckpointDto cp)
         {
-            var id = S._projects?.Active?.Id ?? S.ActiveProject.ProjectId;
+            var id = S.Projects._projects?.Active?.Id ?? S.ActiveProject.ProjectId;
             if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(cp.CommitHash)) return;
             _checkpointBusy = true;
             S._error = null;
@@ -89,7 +89,7 @@ public partial class Home
                 {
                     S._message = res.Message ?? "Rolled back to the checkpoint (your clips are unchanged).";
                     await LoadCheckpointsAsync();
-                    await S.LoadAsync();
+                    await S.Projects.LoadAsync();
                     if (S.ActiveProject.HasProject)
                         await S.ActiveProject.RefreshFromServerAsync(S.Engine);
                 }
