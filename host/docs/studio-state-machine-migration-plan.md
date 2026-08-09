@@ -2,7 +2,8 @@
 
 **Working branch:** `feature/studio-state-machine-migration`  
 **PR1 status:** Core machine hardened + unit tests.  
-**PR2 status:** `ActiveProjectState` façade → `StudioStateMachine` (this branch).
+**PR2 status:** `ActiveProjectState` façade → `StudioStateMachine`.
+**PR3 status:** `AdaptationStepUi` Outline/Shots + SuggestedStepPath phase fallback (this branch).
 
 **Goal:** Make [`StudioStateMachine`](../PageToMovie.Core/Models/StudioStateMachine.cs) the **single source of truth** for studio pipeline phase and step navigation, so readiness rules are not duplicated in Web nav, adaptation UI helpers, and server `NextStep` logic.
 
@@ -137,10 +138,10 @@ dotnet test host/PageToMovie.Tests/PageToMovie.Tests.csproj --filter "FullyQuali
 
 **Risk:** Medium (adaptation sub-steps, banners).
 
-- [ ] **3.1** Rewrite `AdaptationStepUi.OutlineEnabled` in terms of phase or shared predicates (draft/import available), not a one-off OR-chain if avoidable.
-- [ ] **3.2** Rewrite `ShotsEnabled` to match machine approval (same as Cast unlock / `ScreenplayApproved+`), not a lone `ReadyForShots` if that diverges from phase.
-- [ ] **3.3** Audit `ShowNextStepBanner` — either leave as presentation-only on server `NextStep`, or gate “should show” using phase to avoid contradictory banners.
-- [ ] **3.4** Audit `AdaptationShell` `NeedsReapprove` (signed hash + not ready) — leave as draft-dirty signal; ensure it doesn’t fight phase.
+- [x] **3.1** Rewrite `AdaptationStepUi.OutlineEnabled` in terms of phase or shared predicates (draft/import available), not a one-off OR-chain if avoidable.
+- [x] **3.2** Rewrite `ShotsEnabled` to match machine approval (same as Cast unlock / `ScreenplayApproved+`), not a lone `ReadyForShots` if that diverges from phase.
+- [x] **3.3** Audit `ShowNextStepBanner` — either leave as presentation-only on server `NextStep`, or gate “should show” using phase to avoid contradictory banners.
+- [x] **3.4** Audit `AdaptationShell` `NeedsReapprove` (signed hash + not ready) — leave as draft-dirty signal; ensure it doesn’t fight phase.
 - [ ] **3.5** UiTests / manual pass on Import → Screenplay → Shots step strip.
 
 **Exit:** Book/adaptation strip unlock rules consistent with top nav.

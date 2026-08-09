@@ -51,37 +51,66 @@ public abstract partial class AdaptationPageBase
             _ => kind ?? "",
         };
 
-        /// <summary>Suggested path for /adaptation redirect.</summary>
+        /// <summary>
+        /// Suggested path for /adaptation redirect.
+        /// Prefers server <see cref="AdaptationStatus.NextStep"/> (PR4 will derive that from phase);
+        /// falls back to <see cref="StudioStateMachine.DeterminePhase"/> when NextStep is empty/unknown.
+        /// </summary>
         public static string SuggestedStepPath(AdaptationStatus? status)
         {
             if (status is null) return "/adaptation/import";
-            return status.NextStep switch
+
+            var fromNext = MapNextStepToPath(status.NextStep);
+            if (fromNext is not null)
+                return fromNext;
+
+            return StudioStateMachine.DeterminePhase(status) switch
             {
-                "import_book" or "fix_book_text" => "/adaptation/import",
-                "sign_screenplay" or "draft_screenplay" or "run_stage1" => "/adaptation/screenplay",
-                // The Book strip step routes through /adaptation. When cast is the next step the book itself is
-                // done, so land on the screenplay editor — never bounce out to /characters (that has its own
-                // strip step), or clicking Book from Cast just returns to Cast.
-                "pin_characters" => "/adaptation/screenplay",
-                // Shot plan is still an Adaptation step (rebuild lives here). Scenes has its own nav item —
-                // do not bounce /adaptation → /scenes or operators cannot find Rebuild shot plan.
-                "run_stage2" or "replan_stage2" or "generate_clips" or "done" => "/adaptation/shots",
+                StudioPhase.SetupRequired or StudioPhase.ImportRequired or StudioPhase.TextExtractionPending
+                    => "/adaptation/import",
+                StudioPhase.ScreenplayDraft or StudioPhase.ScreenplayApproved
+                    => "/adaptation/screenplay",
+                StudioPhase.ShotPlanReady or StudioPhase.ReviewReady
+                    => "/adaptation/shots",
                 _ => "/adaptation/import",
             };
         }
 
-        /// <summary>Step strip: Screenplay tab unlocks once a draft/outline exists in some form.</summary>
-        public static bool OutlineEnabled(AdaptationStatus? status) =>
-            status is not null &&
-            (status.Screenplay.DraftExists ||
-             status.Book.ReadyForStage1 ||
-             status.Book.BookTextExists ||
-             status.Book.PdfExists ||
-             (status.Stage1.Present && status.Stage1.SceneCount > 0));
+        /// <returns>Mapped path, or null when <paramref name="nextStep"/> is empty/unrecognized.</returns>
+        private static string? MapNextStepToPath(string? nextStep) => nextStep switch
+        {
+            null or "" => null,
+            "import_book" or "fix_book_text" => "/adaptation/import",
+            "sign_screenplay" or "draft_screenplay" or "run_stage1" => "/adaptation/screenplay",
+            // Book strip routes through /adaptation — land on screenplay when cast is next
+            // (Characters has its own top-nav step).
+            "pin_characters" => "/adaptation/screenplay",
+            // Shot plan rebuild lives under Adaptation; do not bounce to /scenes.
+            "run_stage2" or "replan_stage2" or "generate_clips" or "done" => "/adaptation/shots",
+            _ => null,
+        };
 
-        /// <summary>Step strip: Characters/Shot-plan tabs unlock once the screenplay is signed off.</summary>
+        /// <summary>
+        /// Book sub-strip: Screenplay tab unlocks once any import/source exists
+        /// (aligned with <see cref="StudioStateMachine.DetectSourceType"/>, plus Stage1 package).
+        /// </summary>
+        public static bool OutlineEnabled(AdaptationStatus? status)
+        {
+            if (status is null) return false;
+
+            if (StudioStateMachine.DetectSourceType(status.Book, status.Screenplay) != SourceDocumentType.None)
+                return true;
+
+            // Stage1 scenes package without fountain/book flags still unlocks the Screenplay tab.
+            return status.Stage1.Present && status.Stage1.SceneCount > 0;
+        }
+
+        /// <summary>
+        /// Book sub-strip: Shots tab unlocks once the screenplay is signed off
+        /// (same approval gate as Cast — <see cref="StudioStateMachine.IsScreenplayApproved"/>).
+        /// </summary>
         public static bool ShotsEnabled(AdaptationStatus? status) =>
-            status is not null && status.Screenplay.ReadyForShots;
+            status is not null && StudioStateMachine.IsScreenplayApproved(status.Screenplay);
 
         /// <summary>
         /// Compact progress + Cancel while adaptation jobs run (operators and admin).
@@ -167,6 +196,9 @@ public abstract partial class AdaptationPageBase
         /// <summary>
         /// Hide the "Next" banner when the current step already is the next action
         /// (avoids "Next: import…" on the Import page).
+        /// Presentation still keys off server <see cref="AdaptationStatus.NextStep"/> until PR4
+        /// aligns that string with <see cref="StudioStateMachine"/>; do not invent a second banner
+        /// vocabulary here.
         /// </summary>
         public static bool ShowNextStepBanner(AdaptationStatus? status, bool suppressGuidanceBanners, string step)
         {
