@@ -98,10 +98,10 @@ public sealed class FakeGrokVideoClient : IVideoClient
         onProgress?.Invoke("status=done (fake)");
         if (!_pending.TryGetValue(requestId, out var fixture))
         {
-            await _telemetry.LogOutcomeAsync(null, requestId, "provider_failed", 0, 1, ok: false, "unknown fake request_id", ct, fakes: true);
+            await _telemetry.LogOutcomeAsync(null, requestId, VideoJobOutcome.ProviderFailed, 0, 1, ok: false, "unknown fake request_id", ct, fakes: true);
             throw new InvalidOperationException($"Unknown fake request_id {requestId}");
         }
-        await _telemetry.LogOutcomeAsync(null, requestId, "ok", 0, 1, ok: true, null, ct, fakes: true);
+        await _telemetry.LogOutcomeAsync(null, requestId, VideoJobOutcome.Ok, 0, 1, ok: true, null, ct, fakes: true);
         // Simulate xAI's optional Files-API storage (real GrokVideoClient requests it on every
         // submit) so fakes-mode tests can exercise the video-edit file_id-reuse path without a
         // live account — a generous unexpired TTL, since exercising the "expired" branch is the

@@ -1314,7 +1314,7 @@ public sealed partial class ProjectStore
         string? title = null,
         CancellationToken ct = default,
         string? ownerUserId = null,
-        string? studioPath = null)
+        StudioPath studioPath = StudioPath.Full)
     {
         var raw = (idOrTitle ?? "").Trim();
         if (raw.Length == 0)
@@ -1376,7 +1376,7 @@ public sealed partial class ProjectStore
                 ? owner
                 : ownerUserId.Trim(),
             ["createdAt"] = DateTimeOffset.UtcNow.ToString("o"),
-            ["studioPath"] = ProjectStudioPaths.Normalize(studioPath),
+            ["studioPath"] = ProjectStudioPaths.ToSerializedString(studioPath),
             // Format version for export/import converters (ProjectMigrationService).
             ["schema_version"] = ProjectFormatVersions.ProjectSchemaVersion,
         };
@@ -1699,7 +1699,7 @@ public sealed partial class ProjectStore
     /// </summary>
     public async Task<ProjectInfo> SetProjectStudioPathAsync(
         string projectId,
-        string? studioPath,
+        StudioPath studioPath,
         CancellationToken ct = default)
     {
         var path = ProjectStudioPaths.Normalize(studioPath);
@@ -1707,7 +1707,7 @@ public sealed partial class ProjectStore
         var metaPath = Path.Combine(proj.Path, "project.json");
         var meta = await ReadMetaOrEmptyAsync(metaPath, ct).ConfigureAwait(false);
 
-        meta["studioPath"] = path;
+        meta["studioPath"] = ProjectStudioPaths.ToSerializedString(path);
         meta["id"] = proj.Id;
         if (!string.IsNullOrWhiteSpace(proj.Title)) meta["title"] = proj.Title;
         if (!string.IsNullOrWhiteSpace(proj.OwnerUserId)) meta["ownerUserId"] = proj.OwnerUserId;

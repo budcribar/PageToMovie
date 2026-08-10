@@ -45,12 +45,11 @@ public static class GenerationErrorLoggerExtensions
 /// </summary>
 public static class VideoJobTelemetry
 {
-    /// <summary>ok | ok_after_retry | provider_failed | expired | timed_out | poll_failed.</summary>
     public static async Task LogOutcomeAsync(
         this ProjectTelemetryService telemetry,
         string? model,
         string requestId,
-        string outcome,
+        VideoJobOutcome outcome,
         long durationMs,
         int polls,
         bool ok,
@@ -63,7 +62,7 @@ public static class VideoJobTelemetry
             await telemetry.LogApiCallAsync(new ApiCallTelemetry
             {
                 Kind = "video_job",
-                Mode = outcome,
+                Mode = FormatOutcome(outcome),
                 Model = model,
                 RequestId = requestId,
                 DurationMs = durationMs,
@@ -75,4 +74,16 @@ public static class VideoJobTelemetry
         }
         catch { /* telemetry is best-effort */ }
     }
+
+    public static string FormatOutcome(VideoJobOutcome outcome) => outcome switch
+    {
+        VideoJobOutcome.Ok => "ok",
+        VideoJobOutcome.OkAfterRetry => "ok_after_retry",
+        VideoJobOutcome.ProviderFailed => "provider_failed",
+        VideoJobOutcome.Expired => "expired",
+        VideoJobOutcome.TimedOut => "timed_out",
+        VideoJobOutcome.PollFailed => "poll_failed",
+        _ => outcome.ToString().ToLowerInvariant(),
+    };
 }
+

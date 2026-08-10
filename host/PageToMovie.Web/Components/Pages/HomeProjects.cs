@@ -398,7 +398,7 @@ public partial class Home
                 _projects = await S.Engine.GetProjectsAsync();
                 var a = _projects?.Active ?? _projects?.Projects.FirstOrDefault(p =>
                     string.Equals(p.Id, id, StringComparison.OrdinalIgnoreCase));
-                await S.ActiveProject.SelectAsync(S.Engine, id, a?.Label ?? a?.Title ?? id, a?.ParentProjectId, a?.StudioPath);
+                await S.ActiveProject.SelectAsync(S.Engine, id, a?.Label ?? a?.Title ?? id, a?.ParentProjectId, a?.StudioPath ?? StudioPath.Full);
                 await S.Costs.RefreshProjectCostAsync();
             }
             catch (Exception ex) { S._error = ex.Message; }

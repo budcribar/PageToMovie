@@ -248,7 +248,7 @@ public sealed class GeminiVideoClient : IVideoClient
                     Error = Trim(ex.Message, 400),
                     Ok = false,
                 });
-                await _telemetry.LogOutcomeAsync(null, requestId, "poll_failed", sw.ElapsedMilliseconds, polls, ok: false, ex.Message, ct);
+                await _telemetry.LogOutcomeAsync(null, requestId, VideoJobOutcome.PollFailed, sw.ElapsedMilliseconds, polls, ok: false, ex.Message, ct);
                 throw;
             }
 
@@ -272,7 +272,7 @@ public sealed class GeminiVideoClient : IVideoClient
                     Error = Trim(detail, 500),
                     Ok = false,
                 });
-                await _telemetry.LogOutcomeAsync(null, requestId, "provider_failed", sw.ElapsedMilliseconds, polls, ok: false, Trim(detail, 500), ct);
+                await _telemetry.LogOutcomeAsync(null, requestId, VideoJobOutcome.ProviderFailed, sw.ElapsedMilliseconds, polls, ok: false, Trim(detail, 500), ct);
                 throw new InvalidOperationException($"Gemini video operation failed: {Trim(detail, 400)}");
             }
 
@@ -281,7 +281,7 @@ public sealed class GeminiVideoClient : IVideoClient
                 var url = ExtractVideoUri(root);
                 if (url is null)
                 {
-                    await _telemetry.LogOutcomeAsync(null, requestId, "provider_failed", sw.ElapsedMilliseconds, polls, ok: false, "done with no video URI", ct);
+                    await _telemetry.LogOutcomeAsync(null, requestId, VideoJobOutcome.ProviderFailed, sw.ElapsedMilliseconds, polls, ok: false, "done with no video URI", ct);
                     throw new InvalidOperationException(
                         $"Gemini operation done but no video URI found in response " +
                         $"(schema may differ from expected — see class-level CONFIDENCE NOTE): " +
@@ -298,7 +298,7 @@ public sealed class GeminiVideoClient : IVideoClient
                     Mode = "done",
                     Ok = true,
                 });
-                await _telemetry.LogOutcomeAsync(null, requestId, retriedAnyPoll ? "ok_after_retry" : "ok", sw.ElapsedMilliseconds, polls, ok: true, null, ct);
+                await _telemetry.LogOutcomeAsync(null, requestId, retriedAnyPoll ? VideoJobOutcome.OkAfterRetry : VideoJobOutcome.Ok, sw.ElapsedMilliseconds, polls, ok: true, null, ct);
                 return url;
             }
 
@@ -306,7 +306,7 @@ public sealed class GeminiVideoClient : IVideoClient
             await Task.Delay(TimeSpan.FromSeconds(poll), ct).ConfigureAwait(false);
         }
 
-        await _telemetry.LogOutcomeAsync(null, requestId, "timed_out", sw.ElapsedMilliseconds, polls, ok: false, $"timed out after {_opts.GrokTimeoutSeconds}s", ct);
+        await _telemetry.LogOutcomeAsync(null, requestId, VideoJobOutcome.TimedOut, sw.ElapsedMilliseconds, polls, ok: false, $"timed out after {_opts.GrokTimeoutSeconds}s", ct);
         throw new TimeoutException($"Gemini video operation timed out after {_opts.GrokTimeoutSeconds}s");
     }
 

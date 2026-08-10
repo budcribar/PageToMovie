@@ -2544,7 +2544,7 @@ app.MapPost("/api/projects", async (
         catch { /* use JWT id */ }
 
         var p = await store.CreateProjectAsync(
-            name, title, ct, ownerUserId: ownerId, studioPath: body?.StudioPath);
+            name, title, ct, ownerUserId: ownerId, studioPath: body?.StudioPath ?? StudioPath.Full);
         await userDb.SetUserActiveProjectAsync(user.UserId, p.Id, ct);
         var all = await store.ListProjectsAsync(ct);
         var aliases = ProjectOwnership.CollectAliases(ownerId, user.UserId);
@@ -4558,7 +4558,7 @@ app.MapPost("/api/projects/{id}/studio-path", async (
     if (await RequireProjectOwnerOrAdmin(id, store, user, "Only the project owner or an admin can change studio path.", ct) is { } forbidden)
         return forbidden;
 
-    var proj = await store.SetProjectStudioPathAsync(id, body?.StudioPath, ct);
+    var proj = await store.SetProjectStudioPathAsync(id, body?.StudioPath ?? StudioPath.Full, ct);
     return Results.Ok(new { ok = true, projectId = proj.Id, studioPath = proj.StudioPath });
 });
 

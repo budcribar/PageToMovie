@@ -1440,7 +1440,7 @@ public sealed class EngineApiClient
     public async Task<ProjectsDto?> CreateProjectAsync(
         string name,
         string? title = null,
-        string? studioPath = null,
+        StudioPath? studioPath = null,
         CancellationToken ct = default)
     {
         SyncIdentityHeaders();
@@ -1453,7 +1453,7 @@ public sealed class EngineApiClient
 
     public async Task SetStudioPathAsync(
         string projectId,
-        string studioPath,
+        StudioPath studioPath,
         CancellationToken ct = default)
     {
         SyncIdentityHeaders();

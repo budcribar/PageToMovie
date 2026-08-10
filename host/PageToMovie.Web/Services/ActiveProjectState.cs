@@ -11,7 +11,7 @@ public sealed class ActiveProjectState
     public string? ProjectId { get; private set; }
     public string? Label { get; private set; }
     public string? ParentProjectId { get; private set; }
-    public string StudioPath { get; private set; } = ProjectStudioPaths.Full;
+    public StudioPath StudioPath { get; private set; } = StudioPath.Full;
     public PageToMovie.Core.Models.AdaptationStatus? Status { get; private set; }
 
     public bool HasProject => !string.IsNullOrWhiteSpace(ProjectId);
@@ -19,7 +19,7 @@ public sealed class ActiveProjectState
     public bool IsReady { get; private set; }
     public string? LoadError { get; private set; }
 
-    public bool IsSimpleVoice => ProjectStudioPaths.IsSimpleVoice(StudioPath);
+    public bool IsSimpleVoice => StudioPath == StudioPath.SimpleVoice;
 
     public bool CanCharacters { get; private set; }
     public bool CanScenes { get; private set; }
@@ -37,7 +37,7 @@ public sealed class ActiveProjectState
         string? projectId,
         string? label = null,
         string? parentProjectId = null,
-        string? studioPath = null)
+        StudioPath studioPath = StudioPath.Full)
     {
         var id = string.IsNullOrWhiteSpace(projectId) ? null : projectId.Trim();
         var lbl = string.IsNullOrWhiteSpace(label) ? id : label.Trim();
@@ -46,7 +46,7 @@ public sealed class ActiveProjectState
         if (string.Equals(ProjectId, id, StringComparison.Ordinal)
             && string.Equals(Label, lbl, StringComparison.Ordinal)
             && string.Equals(ParentProjectId, parentId, StringComparison.Ordinal)
-            && string.Equals(StudioPath, path, StringComparison.Ordinal))
+            && StudioPath == path)
             return;
 
         var projectChanged = !string.Equals(ProjectId, id, StringComparison.Ordinal);
@@ -119,7 +119,7 @@ public sealed class ActiveProjectState
         string projectId,
         string? label = null,
         string? parentProjectId = null,
-        string? studioPath = null,
+        StudioPath studioPath = StudioPath.Full,
         CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(projectId)) return;

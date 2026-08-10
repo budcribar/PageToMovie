@@ -205,7 +205,7 @@ public sealed class GrokVideoEditClient : IVideoEditClient
             }
             catch (Exception ex)
             {
-                await _telemetry.LogOutcomeAsync(null, requestId, "poll_failed", sw.ElapsedMilliseconds, polls, ok: false, ex.Message, ct);
+                await _telemetry.LogOutcomeAsync(null, requestId, VideoJobOutcome.PollFailed, sw.ElapsedMilliseconds, polls, ok: false, ex.Message, ct);
                 throw;
             }
 
@@ -219,10 +219,10 @@ public sealed class GrokVideoEditClient : IVideoEditClient
                     video.TryGetProperty("url", out var urlEl) &&
                     urlEl.GetString() is { Length: > 0 } url)
                 {
-                    await _telemetry.LogOutcomeAsync(null, requestId, "ok", sw.ElapsedMilliseconds, polls, ok: true, null, ct);
+                    await _telemetry.LogOutcomeAsync(null, requestId, VideoJobOutcome.Ok, sw.ElapsedMilliseconds, polls, ok: true, null, ct);
                     return url;
                 }
-                await _telemetry.LogOutcomeAsync(null, requestId, "provider_failed", sw.ElapsedMilliseconds, polls, ok: false, "done with no video.url", ct);
+                await _telemetry.LogOutcomeAsync(null, requestId, VideoJobOutcome.ProviderFailed, sw.ElapsedMilliseconds, polls, ok: false, "done with no video.url", ct);
                 throw new InvalidOperationException("Grok video edit done with no video.url");
             }
 
@@ -230,7 +230,7 @@ public sealed class GrokVideoEditClient : IVideoEditClient
                 string.Equals(status, "expired", StringComparison.OrdinalIgnoreCase))
             {
                 var detail = root.TryGetProperty("error", out var err) ? err.ToString() : body;
-                await _telemetry.LogOutcomeAsync(null, requestId, "provider_failed", sw.ElapsedMilliseconds, polls, ok: false, Trim(detail, 500), ct);
+                await _telemetry.LogOutcomeAsync(null, requestId, string.Equals(status, "expired", StringComparison.OrdinalIgnoreCase) ? VideoJobOutcome.Expired : VideoJobOutcome.ProviderFailed, sw.ElapsedMilliseconds, polls, ok: false, Trim(detail, 500), ct);
                 throw new InvalidOperationException($"Grok video edit job {status}: {Trim(detail, 400)}");
             }
 
@@ -239,7 +239,7 @@ public sealed class GrokVideoEditClient : IVideoEditClient
             await Task.Delay(TimeSpan.FromSeconds(poll), ct);
         }
 
-        await _telemetry.LogOutcomeAsync(null, requestId, "timed_out", sw.ElapsedMilliseconds, polls, ok: false, $"timed out after {_opts.GrokTimeoutSeconds}s", ct);
+        await _telemetry.LogOutcomeAsync(null, requestId, VideoJobOutcome.TimedOut, sw.ElapsedMilliseconds, polls, ok: false, $"timed out after {_opts.GrokTimeoutSeconds}s", ct);
         throw new TimeoutException($"Grok video edit timed out after {_opts.GrokTimeoutSeconds}s");
     }
 

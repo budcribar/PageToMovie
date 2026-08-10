@@ -53,25 +53,31 @@ public sealed class ProjectInfo
     /// </summary>
     public ProjectVisibility VisibilityMode { get; set; } = ProjectVisibility.Private;
     /// <summary>
-    /// Product path: "full" (cast/faces/estimate) or "simple-voice" (library book + narrator re-voice).
+    /// Product path: Full (cast/faces/estimate) or SimpleVoice (library book + narrator re-voice).
     /// Stored in project.json as studioPath.
     /// </summary>
-    public string StudioPath { get; set; } = ProjectStudioPaths.Full;
+    public StudioPath StudioPath { get; set; } = StudioPath.Full;
 }
 
-/// <summary>Known values for <see cref="ProjectInfo.StudioPath"/>.</summary>
+/// <summary>Known values and helpers for <see cref="ProjectInfo.StudioPath"/>.</summary>
 public static class ProjectStudioPaths
 {
-    public const string Full = "full";
-    public const string SimpleVoice = "simple-voice";
+    public const StudioPath Full = StudioPath.Full;
+    public const StudioPath SimpleVoice = StudioPath.SimpleVoice;
 
-    public static string Normalize(string? value) =>
-        string.Equals(value?.Trim(), SimpleVoice, StringComparison.OrdinalIgnoreCase)
-            ? SimpleVoice
-            : Full;
+    public static StudioPath Normalize(string? value) =>
+        string.Equals(value?.Trim(), "simple-voice", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(value?.Trim(), nameof(StudioPath.SimpleVoice), StringComparison.OrdinalIgnoreCase)
+            ? StudioPath.SimpleVoice
+            : StudioPath.Full;
 
-    public static bool IsSimpleVoice(string? value) =>
-        string.Equals(Normalize(value), SimpleVoice, StringComparison.OrdinalIgnoreCase);
+    public static StudioPath Normalize(StudioPath path) => path;
+
+    public static string ToSerializedString(StudioPath path) =>
+        path == StudioPath.SimpleVoice ? "simple-voice" : "full";
+
+    public static bool IsSimpleVoice(StudioPath path) => path == StudioPath.SimpleVoice;
+    public static bool IsSimpleVoice(string? value) => Normalize(value) == StudioPath.SimpleVoice;
 }
 
 public sealed class WorkspaceState
@@ -549,14 +555,14 @@ public sealed class CreateProjectRequest
     public string? Name { get; set; }
     public string? Id { get; set; }
     public string? Title { get; set; }
-    /// <summary>optional: full | simple-voice</summary>
-    public string? StudioPath { get; set; }
+    /// <summary>optional: Full | SimpleVoice</summary>
+    public StudioPath? StudioPath { get; set; }
 }
 
 public sealed class SetStudioPathRequest
 {
-    /// <summary>full | simple-voice</summary>
-    public string? StudioPath { get; set; }
+    /// <summary>Full | SimpleVoice</summary>
+    public StudioPath? StudioPath { get; set; }
 }
 
 public sealed class LockCharacterRequest
