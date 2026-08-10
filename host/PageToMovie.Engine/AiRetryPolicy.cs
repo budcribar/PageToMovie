@@ -5,6 +5,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Sockets;
+using PageToMovie.Core.Models;
 using PageToMovie.Engine.ModelExecution;
 using System.Threading;
 using System.Threading.Tasks;
@@ -218,14 +219,24 @@ public static class AiRetryPolicy
     }
 
     /// <summary>
+    /// Computes backoff duration given attempt, base ms, and <see cref="RetryBackoffKind"/>.
+    /// </summary>
+    public static TimeSpan ComputeBackoff(int attempt, int backoffBaseMs, RetryBackoffKind backoffKind = RetryBackoffKind.Quadratic)
+    {
+        var ms = backoffKind switch
+        {
+            RetryBackoffKind.Linear => (long)backoffBaseMs * attempt,
+            RetryBackoffKind.Exponential => (long)backoffBaseMs * (1L << Math.Min(attempt - 1, 30)),
+            RetryBackoffKind.Quadratic or _ => (long)backoffBaseMs * attempt * attempt
+        };
+        return TimeSpan.FromMilliseconds(Math.Min(DefaultTransientMaxBackoffMs, ms));
+    }
+
+    /// <summary>
     /// Retries <paramref name="attempt"/> up to <paramref name="maxAttempts"/> times while
     /// <paramref name="isTransient"/> returns true for the thrown exception. Backoff between
     /// attempts prefers a <see cref="ChatHttpStatusException.RetryAfter"/> value the provider gave
-    /// us; otherwise falls back to a quadratic curve capped at <see cref="DefaultTransientMaxBackoffMs"/>
-    /// (a separate, larger cap than <see cref="ClassifierJsonParser.BackoffAsync"/>'s 4s, which is
-    /// for the unrelated coverage-retry concern). The final attempt's exception always propagates
-    /// unmodified (never wrapped) if it also fails. <paramref name="onRetry"/> (if given) runs once
-    /// per failed-but-retried attempt, before the backoff delay — callers use it to log the attempt.
+    /// us; otherwise falls back to a curve determined by <paramref name="backoffKind"/> capped at <see cref="DefaultTransientMaxBackoffMs"/>.
     /// </summary>
     public static async Task<T> ExecuteWithTransientRetryAsync<T>(
         Func<int, Task<T>> attempt,
@@ -233,7 +244,8 @@ public static class AiRetryPolicy
         int maxAttempts,
         int backoffBaseMs = DefaultTransientBackoffMs,
         Func<int, Exception, Task>? onRetry = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        RetryBackoffKind backoffKind = RetryBackoffKind.Quadratic)
     {
         maxAttempts = Math.Max(1, maxAttempts);
         for (var i = 1; i <= maxAttempts; i++)
@@ -248,7 +260,7 @@ public static class AiRetryPolicy
                     await onRetry(i, ex).ConfigureAwait(false);
                 var delay = ex is ChatHttpStatusException { RetryAfter: { } ra }
                     ? ra
-                    : TimeSpan.FromMilliseconds(Math.Min(DefaultTransientMaxBackoffMs, (long)backoffBaseMs * i * i));
+                    : ComputeBackoff(i, backoffBaseMs, backoffKind);
                 if (delay > TimeSpan.Zero)
                     await Task.Delay(delay, ct).ConfigureAwait(false);
             }

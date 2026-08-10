@@ -312,7 +312,7 @@ public sealed class GrokVideoClient : IVideoClient
             ["model"] = model,
             ["prompt"] = prompt,
             ["duration"] = durationSeconds,
-            ["aspect_ratio"] = ResolveAspectRatio(model),
+            ["aspect_ratio"] = ResolveAspectRatio(model).ToApiString(),
             ["resolution"] = resolution,
             // Ask xAI to persist the result to the Files API so a later video-edit can reuse its
             // file_id — see StorageExpiresAfterSeconds. "filename" is required by the API (a 422
@@ -378,8 +378,8 @@ public sealed class GrokVideoClient : IVideoClient
     /// (Not used for video-extend — xAI docs say aspect_ratio isn't accepted there; the extension
     /// always inherits the source clip's ratio.)
     /// </summary>
-    private static string ResolveAspectRatio(string model) =>
-        SupportedModelCatalog.ResolveOrDefault(model, ModelCapability.Video).DefaultAspectRatio ?? "16:9";
+    private static AspectRatio ResolveAspectRatio(string model) =>
+        MediaEngineEnumExtensions.ParseAspectRatio(SupportedModelCatalog.ResolveOrDefault(model, ModelCapability.Video).DefaultAspectRatio ?? "16:9");
 
     private static Task<string> FileToDataUriAsync(string path, CancellationToken ct) =>
         MediaDataUri.FileToDataUriAsync(path, ct);

@@ -47,7 +47,7 @@ public sealed class GrokImageClient : IImageClient
     public async Task<IReadOnlyList<byte[]>> GenerateVariantsAsync(
         string prompt,
         int n = 3,
-        string aspectRatio = "1:1",
+        AspectRatio aspectRatio = AspectRatio.Ratio1x1,
         string? model = null,
         CancellationToken ct = default)
     {
@@ -60,7 +60,7 @@ public sealed class GrokImageClient : IImageClient
             ["model"] = modelName,
             ["prompt"] = prompt,
             ["n"] = n,
-            ["aspect_ratio"] = aspectRatio,
+            ["aspect_ratio"] = aspectRatio.ToApiString(),
             ["response_format"] = "b64_json",
         };
 
@@ -170,7 +170,7 @@ public sealed class GrokImageClient : IImageClient
         string prompt,
         IReadOnlyList<string> referenceImagePaths,
         int n = 3,
-        string aspectRatio = "1:1",
+        AspectRatio aspectRatio = AspectRatio.Ratio1x1,
         string? model = null,
         int maxRefs = 0,
         string? costumeRefPath = null,
@@ -373,7 +373,7 @@ public sealed class GrokImageClient : IImageClient
     private async Task<string?> PostImageEditAsync(
         string modelName,
         string variantPrompt,
-        string aspectRatio,
+        AspectRatio aspectRatio,
         IReadOnlyList<string> imageUris,
         Action<string>? onProgress,
         CancellationToken ct)
@@ -399,7 +399,7 @@ public sealed class GrokImageClient : IImageClient
             ["model"] = modelName,
             ["prompt"] = variantPrompt,
             ["response_format"] = "b64_json",
-            ["aspect_ratio"] = aspectRatio,
+            ["aspect_ratio"] = aspectRatio.ToApiString(),
         };
 
         if (imageUris.Count > 1)
@@ -591,4 +591,25 @@ public sealed class GrokImageClient : IImageClient
 
     private static string Trim(string s, int n) =>
         s.Length <= n ? s : s[..n];
+
+    Task<IReadOnlyList<byte[]>> IImageClient.GenerateVariantsAsync(
+        string prompt,
+        int n,
+        string aspectRatio,
+        string? model,
+        CancellationToken ct)
+        => GenerateVariantsAsync(prompt, n, MediaEngineEnumExtensions.ParseAspectRatio(aspectRatio), model, ct);
+
+    Task<IReadOnlyList<byte[]>> IImageClient.EditVariantsAsync(
+        string prompt,
+        IReadOnlyList<string> referenceImagePaths,
+        int n,
+        string aspectRatio,
+        string? model,
+        int maxRefs,
+        string? costumeRefPath,
+        bool illustratedMedium,
+        Action<string>? onProgress,
+        CancellationToken ct)
+        => EditVariantsAsync(prompt, referenceImagePaths, n, MediaEngineEnumExtensions.ParseAspectRatio(aspectRatio), model, maxRefs, costumeRefPath, illustratedMedium, onProgress, ct);
 }

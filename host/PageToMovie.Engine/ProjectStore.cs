@@ -2420,7 +2420,7 @@ public sealed partial class ProjectStore
                 DesignReferenceImages = bookRefs,
                 BookRefs = bookRefImages,
                 Variants = variants,
-                AgeBand = info.TryGetProperty("age_band", out var ab) ? ab.GetString() : null,
+                AgeBand = info.TryGetProperty("age_band", out var ab) && Enum.TryParse<VoiceAgeBand>(ab.GetString(), true, out var parsedAb) ? parsedAb : null,
                 VariantOf = info.TryGetProperty("variant_of", out var vo) ? vo.GetString() : null,
             });
         }
@@ -5651,7 +5651,7 @@ public sealed partial class ProjectStore
                 status.TextQuality = root.TryGetProperty("text_quality", out var tq) ? tq.GetString() : null;
                 if (root.TryGetProperty("book_kind", out var bk) && bk.ValueKind == JsonValueKind.String && Enum.TryParse<SourceDocumentType>(bk.GetString(), ignoreCase: true, out var parsedKind))
                     status.BookKind = parsedKind;
-                status.TextEngine = root.TryGetProperty("text_engine", out var te) ? te.GetString() : null;
+                status.TextEngine = root.TryGetProperty("text_engine", out var te) && Enum.TryParse<TextEngineKind>(te.GetString(), true, out var parsedTe) ? parsedTe : null;
                 if (root.TryGetProperty("text_words", out var tw) && tw.TryGetInt32(out var words))
                     status.TextWords = words;
                 if (root.TryGetProperty("suggested_total_minutes", out var sm) && sm.TryGetInt32(out var mins))
@@ -5664,8 +5664,8 @@ public sealed partial class ProjectStore
                     status.TargetRuntimeMinutes = smv;
                 if (status.NaturalRuntimeMinutes is null && status.SuggestedTotalMinutes is int smv2)
                     status.NaturalRuntimeMinutes = smv2;
-                if (root.TryGetProperty("runtime_mode", out var rmode) && rmode.ValueKind == JsonValueKind.String)
-                    status.RuntimeMode = rmode.GetString();
+                if (root.TryGetProperty("runtime_mode", out var rmode) && rmode.ValueKind == JsonValueKind.String && Enum.TryParse<RuntimeMode>(rmode.GetString(), true, out var parsedRm))
+                    status.RuntimeMode = parsedRm;
                 if (root.TryGetProperty("suggested_chunk_pages", out var sc) && sc.TryGetInt32(out var chunks))
                     status.SuggestedChunkPages = chunks;
                 if (root.TryGetProperty("ready_for_stage1", out var r) &&
@@ -5707,11 +5707,11 @@ public sealed partial class ProjectStore
             if (cfg.TryGetValue("natural_runtime_minutes", out var cnr) &&
                 cnr.ValueKind == JsonValueKind.Number && cnr.TryGetInt32(out var cnat) && cnat > 0)
                 status.NaturalRuntimeMinutes = FilmRuntime.ClampMinutes(cnat);
-            if (cfg.TryGetValue("runtime_mode", out var crm) && crm.ValueKind == JsonValueKind.String)
-                status.RuntimeMode = crm.GetString();
-            if (string.IsNullOrWhiteSpace(status.RuntimeMode) &&
+            if (cfg.TryGetValue("runtime_mode", out var crm) && crm.ValueKind == JsonValueKind.String && Enum.TryParse<RuntimeMode>(crm.GetString(), true, out var parsedRmCfg))
+                status.RuntimeMode = parsedRmCfg;
+            if (status.RuntimeMode is null &&
                 status.NaturalRuntimeMinutes is int n && status.TargetRuntimeMinutes is int tg)
-                status.RuntimeMode = tg == n ? "natural" : tg < n ? "reduced" : "custom";
+                status.RuntimeMode = tg == n ? RuntimeMode.Natural : tg < n ? RuntimeMode.Reduced : RuntimeMode.Custom;
         }
         catch { /* ignore */ }
 

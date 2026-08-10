@@ -19,4 +19,8 @@
     <ProjectReference Include="..\PageToMovie.Core\PageToMovie.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="..\PageToMovie.Engine\MediaEngineEnums.cs" Link="MediaEngineEnums.cs" />
+  </ItemGroup>
+
 </Project>

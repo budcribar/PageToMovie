@@ -286,6 +286,22 @@ public static class ClipDurationEstimator
         };
 
     /// <summary>
+    /// Adjusts duration based on strongly-typed <see cref="PacingMood"/>.
+    /// </summary>
+    public static int AdjustForPacingMood(int baseSeconds, PacingMood mood, int minSeconds = MinSeconds, int maxSeconds = MaxSeconds)
+    {
+        var adjusted = mood switch
+        {
+            PacingMood.Slow => (int)Math.Round(baseSeconds * 1.3, MidpointRounding.AwayFromZero),
+            PacingMood.Moderate => baseSeconds,
+            PacingMood.Fast => (int)Math.Round(baseSeconds * 0.8, MidpointRounding.AwayFromZero),
+            PacingMood.Frenetic => (int)Math.Round(baseSeconds * 0.6, MidpointRounding.AwayFromZero),
+            _ => baseSeconds
+        };
+        return Math.Clamp(adjusted, minSeconds, maxSeconds);
+    }
+
+    /// <summary>
     /// Extra non-speech time to add on top of dialogue for a spoken clip. When the beat's
     /// visual/action text names a recognizable camera move or physical action (via
     /// <see cref="ActionConcurrencyAnalyzer"/>), uses the calibrated camera/action overheads from

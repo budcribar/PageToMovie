@@ -13,7 +13,9 @@ public sealed record CameraDirective(
     ShotScale ShotScale,
     string LensSpec,
     string CameraMovement,
-    string FramingPrompt);
+    string FramingPrompt,
+    CameraLens Lens = CameraLens.Lens35mm,
+    CameraMovementKind MovementKind = CameraMovementKind.TripodHold);
 
 /// <summary>
 /// AI Classifier acting as a Virtuoso Film Director / Director of Photography.
@@ -121,13 +123,15 @@ public sealed class CameraDirectorClassifier : BeatChatClassifierBase<CameraDire
                 var id = item.GetStringProp("beat_id");
                 var scaleStr = item.GetStringProp("shot_scale", ShotScale.Medium.ToSnakeCase());
                 var scale = ShotScaleExtensions.ParseShotScale(scaleStr, ShotScale.Medium);
-                var lens = item.GetStringProp("lens_spec", "35mm lens");
-                var move = item.GetStringProp("camera_movement", "locked tripod");
+                var lensStr = item.GetStringProp("lens_spec", "35mm lens");
+                var moveStr = item.GetStringProp("camera_movement", "locked tripod");
                 var framing = item.GetStringProp("framing_prompt");
+                var lensEnum = MediaEngineEnumExtensions.ParseCameraLens(lensStr);
+                var moveEnum = MediaEngineEnumExtensions.ParseCameraMovementKind(moveStr);
 
                 if (!string.IsNullOrWhiteSpace(id))
                 {
-                    result[id] = new CameraDirective(scale, lens, move, framing);
+                    result[id] = new CameraDirective(scale, lensStr, moveStr, framing, lensEnum, moveEnum);
                 }
             }
 

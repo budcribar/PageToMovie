@@ -2,7 +2,7 @@
 
 @if (ChildContent is not null || !string.IsNullOrEmpty(Message))
 {
-    <div class="alert alert-@Variant @CssClass" @attributes="AdditionalAttributes">
+    <div class="alert alert-@EffectiveVariant @CssClass" @attributes="AdditionalAttributes">
         @if (ChildContent is not null)
         {
             @ChildContent

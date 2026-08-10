@@ -83,6 +83,12 @@ public sealed class SupportedModelEntry
     /// <summary>Env var names that must be set (e.g. <c>XAI_API_KEY</c>).</summary>
     public required IReadOnlyList<string> RequiredEnvKeys { get; init; }
 
+    /// <summary>Where API auth credentials are placed (Bearer, Header, Query).</summary>
+    public ApiAuthLocation AuthLocation { get; init; } = ApiAuthLocation.Bearer;
+
+    /// <summary>Retry backoff strategy (Linear, Exponential, Quadratic).</summary>
+    public RetryBackoffKind BackoffKind { get; init; } = RetryBackoffKind.Quadratic;
+
     /// <summary>When false, hidden from Configuration pickers.</summary>
     public bool Enabled { get; init; } = true;
 
@@ -1393,6 +1399,8 @@ public sealed class SupportedModelDto
     public string ApiBase { get; set; } = "";
     public string EndpointPath { get; set; } = "";
     public List<string> RequiredEnvKeys { get; set; } = new();
+    public ApiAuthLocation AuthLocation { get; set; } = ApiAuthLocation.Bearer;
+    public RetryBackoffKind BackoffKind { get; set; } = RetryBackoffKind.Quadratic;
     public bool Enabled { get; set; } = true;
     public bool Deprecated { get; set; }
     public int? MaxInputTokens { get; set; }
@@ -1470,6 +1478,7 @@ public sealed class CatalogProviderDto
     public string Id { get; set; } = "";
     public string Label { get; set; } = "";
     public List<string>? Aliases { get; set; }
+    public ApiAuthLocation AuthLocation { get; set; } = ApiAuthLocation.Bearer;
     public int Order { get; set; }
 }
 
@@ -1478,5 +1487,6 @@ public sealed class CatalogProviderDefinition
     public string Id { get; init; } = "";
     public string Label { get; init; } = "";
     public List<string> Aliases { get; init; } = new();
+    public ApiAuthLocation AuthLocation { get; init; } = ApiAuthLocation.Bearer;
     public int Order { get; init; }
 }

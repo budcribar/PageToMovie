@@ -147,7 +147,7 @@ public partial class Characters
         /// <summary>Readable label for an age_band value, e.g. "child_8_9" → "Child (8-9)". Falls back to the display name.</summary>
         internal static string AgeVariantLabel(CharacterSummary c)
         {
-            var band = c.AgeBand?.Trim();
+            var band = c.AgeBand.HasValue ? c.AgeBand.Value.ToString().Trim() : null;
             if (string.IsNullOrEmpty(band)) return c.DisplayName;
             var parts = band.Split('_', StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length == 0) return c.DisplayName;

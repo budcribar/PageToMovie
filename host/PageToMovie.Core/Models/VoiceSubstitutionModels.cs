@@ -161,6 +161,12 @@ public sealed class StartVoiceSubstitutionRequest
     /// <summary>Character seed that owns the clone whose voice is being substituted in.</summary>
     public string CharKey { get; set; } = "Character_Narrator";
 
+    /// <summary>Speech substitution mode (Narrator, Dialogue, All, None).</summary>
+    public SpeechSubstitutionMode SubstitutionMode { get; set; } = SpeechSubstitutionMode.Narrator;
+
+    /// <summary>Status of the voice clone used for substitution.</summary>
+    public VoiceCloneStatus Status { get; set; } = VoiceCloneStatus.Ready;
+
     /// <summary>
     /// When true (default), only replace lines spoken by <see cref="CharKey"/> (or narrator).
     /// When false, every dialogue line in the movie is re-voiced with <see cref="CharKey"/>'s clone.

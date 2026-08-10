@@ -309,6 +309,10 @@ public sealed class StartSpeakBatchRequest
     /// </summary>
     public List<SpeakBatchClip>? Clips { get; set; }
     /// <summary>
+    /// Speech substitution mode (Narrator, Dialogue, All, None). Default Narrator.
+    /// </summary>
+    public SpeechSubstitutionMode SubstitutionMode { get; set; } = SpeechSubstitutionMode.Narrator;
+    /// <summary>
     /// When <see cref="Clips"/> is empty: only clips whose speaker is the narrator (default true).
     /// When false, every clip with non-empty dialogue is spoken with <see cref="CharKey"/>'s voice.
     /// </summary>
@@ -388,7 +392,9 @@ public sealed class CharacterSummary
     public List<string> DesignReferenceImages { get; set; } = new();
     public List<CharacterImageRef> BookRefs { get; set; } = new();
     public List<CharacterImageRef> Variants { get; set; } = new();
-    public string? AgeBand { get; set; }
+    public VoiceAgeBand? AgeBand { get; set; }
+    public VoiceGender Gender { get; set; } = VoiceGender.Neutral;
+    public VoiceCloneStatus VoiceCloneStatus { get; set; } = VoiceCloneStatus.Ready;
     /// <summary>Base character's Key when this entry is an age-variant seed (child/teen/etc. of another character) — see cast_seeds.json's <c>variant_of</c>.</summary>
     public string? VariantOf { get; set; }
 }
@@ -1013,7 +1019,7 @@ public sealed class BookSourceStatus
     public string? TextQuality { get; set; }
     public double GarbageScore { get; set; }
     public SourceDocumentType BookKind { get; set; } = SourceDocumentType.None;
-    public string? TextEngine { get; set; }
+    public TextEngineKind? TextEngine { get; set; }
     public int? TextWords { get; set; }
     public int? SuggestedTotalMinutes { get; set; }
     /// <summary>Density-based natural film length (minutes).</summary>
@@ -1021,7 +1027,7 @@ public sealed class BookSourceStatus
     /// <summary>User or system target used for Stage 1 / cost (minutes).</summary>
     public int? TargetRuntimeMinutes { get; set; }
     /// <summary>natural | reduced | custom</summary>
-    public string? RuntimeMode { get; set; }
+    public RuntimeMode? RuntimeMode { get; set; }
     public int? SuggestedChunkPages { get; set; }
     public int PageImageCount { get; set; }
     public bool ReadyForStage1 { get; set; }
