@@ -120,6 +120,7 @@ public partial class AdaptationImport
             S.Busy = true;
             S.Error = null;
             S.Message = null; // clear stale “Book ready” / Next guidance during pipeline
+            S.Jobs.ResetClientCancel();
             _chosenFileName = name;
             _importPct = 8;
             _importStatus = $"Reading {name}…";
@@ -213,9 +214,24 @@ public partial class AdaptationImport
             // Long novels: multi-chunk adapt can run 30–60+ minutes
             for (var i = 0; i < 3600; i++)
             {
+                if (S.Jobs.ClientCancelRequested)
+                {
+                    S.Message = "Import cancelled. You can start again when ready.";
+                    S.Error = null;
+                    return false;
+                }
+
                 try
                 {
-                    var jobs = await S.Engine.GetJobAsync();
+                    using var pollCts = new CancellationTokenSource(TimeSpan.FromSeconds(4));
+                    var jobs = await S.Engine.GetJobAsync(pollCts.Token);
+                    if (S.Jobs.ClientCancelRequested)
+                    {
+                        S.Message = "Import cancelled. You can start again when ready.";
+                        S.Error = null;
+                        return false;
+                    }
+
                     var snap = jobs?.Job;
                     if (snap is not null)
                     {
@@ -246,6 +262,12 @@ public partial class AdaptationImport
 
                         if (st is "error" or "cancelled")
                         {
+                            if (st == "cancelled" || S.Jobs.ClientCancelRequested)
+                            {
+                                S.Message = "Import cancelled. You can start again when ready.";
+                                S.Error = null;
+                                return false;
+                            }
                             S.Error = FriendlyError(snap.Error ?? snap.Message ?? "Could not import the book");
                             return false;
                         }
@@ -256,7 +278,13 @@ public partial class AdaptationImport
                 }
                 catch
                 {
-                    // keep polling
+                    // 502 during deploy — keep waiting, but honor Cancel immediately.
+                    if (S.Jobs.ClientCancelRequested)
+                    {
+                        S.Message = "Import cancelled. You can start again when ready.";
+                        S.Error = null;
+                        return false;
+                    }
                 }
 
                 await Task.Delay(1000);

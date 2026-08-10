@@ -17,13 +17,17 @@ public abstract partial class AdaptationPageBase
         public int ProgressIndex;
         public int ProgressTotal;
         private CancellationTokenSource? _pollCts;
+        /// <summary>True after user hits Cancel — waiters should exit even if the API is dead.</summary>
+        public bool ClientCancelRequested { get; private set; }
 
         public bool JobRunning =>
-            string.Equals(Job?.Status, "running", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(Job?.Status, "queued", StringComparison.OrdinalIgnoreCase);
+            !ClientCancelRequested &&
+            (string.Equals(Job?.Status, "running", StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(Job?.Status, "queued", StringComparison.OrdinalIgnoreCase));
 
         public void OnJobUpdated(JobSnapshot snap)
         {
+            if (ClientCancelRequested) return;
             Job = snap;
             AbsorbProgressFromSnapshot(snap);
             AbsorbProgressFromLine(snap.Message);
@@ -178,6 +182,7 @@ public abstract partial class AdaptationPageBase
 
         public void StartJobPolling()
         {
+            if (ClientCancelRequested) return;
             _pollCts?.Cancel();
             _pollCts?.Dispose();
             _pollCts = new CancellationTokenSource();
@@ -186,29 +191,45 @@ public abstract partial class AdaptationPageBase
             {
                 try
                 {
-                    while (!ct.IsCancellationRequested)
+                    while (!ct.IsCancellationRequested && !ClientCancelRequested)
                     {
                         await Task.Delay(1500, ct);
-                        var jobs = await S.Engine.GetJobAsync(ct);
-                        var snap = jobs?.Job;
-                        if (snap is null) continue;
-                        await S.InvokeAsync(() =>
+                        if (ClientCancelRequested) break;
+                        try
                         {
-                            Job = snap;
-                            AbsorbProgressFromSnapshot(snap);
-                            AbsorbProgressFromLine(snap.Message);
-                            if (Job is not null && ProgressTotal > 0)
+                            using var pollCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                            pollCts.CancelAfter(TimeSpan.FromSeconds(4));
+                            var jobs = await S.Engine.GetJobAsync(pollCts.Token);
+                            var snap = jobs?.Job;
+                            if (snap is null) continue;
+                            if (ClientCancelRequested) break;
+                            await S.InvokeAsync(() =>
                             {
-                                Job.Index = Math.Max(Job.Index, ProgressIndex);
-                                Job.Total = Math.Max(Job.Total, ProgressTotal);
+                                if (ClientCancelRequested) return;
+                                Job = snap;
+                                AbsorbProgressFromSnapshot(snap);
+                                AbsorbProgressFromLine(snap.Message);
+                                if (Job is not null && ProgressTotal > 0)
+                                {
+                                    Job.Index = Math.Max(Job.Index, ProgressIndex);
+                                    Job.Total = Math.Max(Job.Total, ProgressTotal);
+                                }
+                                S.StateHasChanged();
+                            });
+                            if (snap.IsFinished)
+                            {
+                                if (snap.Status is "done" or "error" or "cancelled")
+                                    await S.InvokeAsync(async () => { await S.SoftLoadAsync(); S.StateHasChanged(); });
+                                break;
                             }
-                            S.StateHasChanged();
-                        });
-                        if (snap.IsFinished)
+                        }
+                        catch (OperationCanceledException) when (ct.IsCancellationRequested || ClientCancelRequested)
                         {
-                            if (snap.Status is "done" or "error" or "cancelled")
-                                await S.InvokeAsync(async () => { await S.SoftLoadAsync(); S.StateHasChanged(); });
                             break;
+                        }
+                        catch
+                        {
+                            // transient 502 during deploy — keep polling until user cancels
                         }
                     }
                 }
@@ -217,18 +238,55 @@ public abstract partial class AdaptationPageBase
             }, CancellationToken.None);
         }
 
+        /// <summary>
+        /// Always dismisses the local import/job UI. Best-effort server cancel;
+        /// if the API is down (deploy/restart), the user is not stuck.
+        /// </summary>
         public async Task CancelAsync()
         {
-            S.Busy = true;
+            ClientCancelRequested = true;
+            DisposePolling();
+
+            // Best-effort server cancel — short timeout so a dead host cannot pin Cancel.
             try
             {
-                await S.Engine.CancelJobAsync();
-                S.Message = "Cancel requested";
-                var jobs = await S.Engine.GetJobAsync();
-                Job = jobs?.Job;
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+                await S.Engine.CancelJobAsync(cts.Token);
             }
-            catch (Exception ex) { S.Error = ex.Message; }
-            finally { S.Busy = false; }
+            catch
+            {
+                /* 502 / timeout during deploy — local dismiss still proceeds */
+            }
+
+            Job = new JobSnapshot
+            {
+                Status = "cancelled",
+                Kind = Job?.Kind,
+                Message = "Cancelled",
+                ProjectId = Job?.ProjectId,
+                Log = Job?.Log ?? new List<string>(),
+                FinishedAt = DateTimeOffset.UtcNow,
+            };
+            ProgressIndex = 0;
+            ProgressTotal = 0;
+            S.Busy = false;
+            S.Error = null;
+            S.Message = "Import cancelled. You can start again when ready.";
+            // Import page locks drop zone with _importing — clear it when present.
+            if (S is AdaptationImport importPage)
+            {
+                importPage.Drop._importing = false;
+                importPage.Drop._importPct = null;
+                importPage.Drop._importStatus = "Cancelled";
+            }
+            S.StateHasChanged();
+            await Task.CompletedTask;
+        }
+
+        /// <summary>Call when starting a new import so a prior Cancel does not block.</summary>
+        public void ResetClientCancel()
+        {
+            ClientCancelRequested = false;
         }
 
         public Task EnsureHubAsync() => S.Hub.EnsureStartedAsync();
