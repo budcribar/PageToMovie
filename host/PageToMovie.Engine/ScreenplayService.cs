@@ -1107,6 +1107,10 @@ public static string NormalizeText(string text)
         WriteMeta(store, projectId, meta);
         store.TriggerAutoGitCommit(projectId, "Approve screenplay");
 
+        // Keep location_seed_tokens on cast_seeds in sync so GET /locations works without Stage 2.
+        try { store.MergeLocationSeedsIntoCastFile(projectId); }
+        catch { /* optional */ }
+
         var stage1 = ReadStage1Lite(store, projectId);
         var status = ReadStatus(store, projectId, stage1);
 

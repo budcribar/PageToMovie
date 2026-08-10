@@ -333,6 +333,7 @@ public static class FountainStage1Importer
                 });
             curScene["duration_target_seconds"] = (int)Math.Clamp(Math.Round(dur), 8, 180);
             curScene["story_beats"] = beats;
+            EnrichLocationSeedFromScene(locSeeds, curScene, beats);
             curScene["summary"] = Trunc(
                 string.Join(" ", beats.OfType<Dictionary<string, object?>>()
                     .Select(b => b.TryGetValue("visual_event", out var v) ? v?.ToString() : null)
@@ -677,13 +678,15 @@ public static class FountainStage1Importer
         var id = "Loc_" + SlugKey(locName);
         if (!seeds.ContainsKey(id))
         {
-            // Place identity only — do NOT freeze first-visit DAY/NIGHT into visual_lock.
-            // Stage 2 prefixes the current scene heading (correct time of day) at plan time.
+            // Place identity — prefer heading without time-of-day for description baseline.
+            var placeLine = string.IsNullOrWhiteSpace(locType)
+                ? locName
+                : $"{locType.TrimEnd('.')} {locName}".Trim();
             seeds[id] = new Dictionary<string, object?>
             {
                 ["display_name"] = locName,
-                ["description"] = locName,
-                ["visual_lock"] = locName,
+                ["description"] = placeLine,
+                ["visual_lock"] = placeLine,
                 ["location_type"] = locType,
                 ["reference_image_placeholder"] = id.ToLowerInvariant() + "_ref.png",
             };
@@ -691,6 +694,59 @@ public static class FountainStage1Importer
         // setting retained only for callers that still pass it; seed stays time-agnostic
         _ = setting;
         return id;
+    }
+
+    /// <summary>
+    /// Fold scene action prose into the location seed so ListLocations has usable description
+    /// without a separate AI location classifier.
+    /// </summary>
+    private static void EnrichLocationSeedFromScene(
+        Dictionary<string, object?> locSeeds,
+        Dictionary<string, object?> scene,
+        List<object?> beats)
+    {
+        var locId = scene.TryGetValue("primary_location_id", out var pl) ? pl?.ToString() : null;
+        if (string.IsNullOrWhiteSpace(locId) ||
+            !locSeeds.TryGetValue(locId, out var raw) ||
+            raw is not Dictionary<string, object?> seed)
+            return;
+
+        var snippets = new List<string>();
+        foreach (var b in beats.OfType<Dictionary<string, object?>>())
+        {
+            var dlg = b.TryGetValue("dialogue", out var d) ? d?.ToString() : null;
+            if (!string.IsNullOrWhiteSpace(dlg)) continue;
+            var ve = b.TryGetValue("visual_event", out var v) ? v?.ToString()?.Trim() : null;
+            if (string.IsNullOrWhiteSpace(ve)) continue;
+            if (ve.Length > 180) ve = ve[..177] + "…";
+            if (!snippets.Exists(s => s.Equals(ve, StringComparison.OrdinalIgnoreCase)))
+                snippets.Add(ve);
+            if (snippets.Count >= 4) break;
+        }
+        if (snippets.Count == 0) return;
+
+        var display = seed.TryGetValue("display_name", out var dn) ? dn?.ToString() ?? locId : locId;
+        var existing = seed.TryGetValue("description", out var ed) ? ed?.ToString()?.Trim() ?? "" : "";
+        // Replace name-only stubs; otherwise append new unique prose.
+        var baseDesc = string.IsNullOrWhiteSpace(existing)
+                       || existing.Equals(display, StringComparison.OrdinalIgnoreCase)
+                       || existing.Equals(locId, StringComparison.OrdinalIgnoreCase)
+            ? string.Join(" ", snippets)
+            : existing;
+        foreach (var s in snippets)
+        {
+            if (!baseDesc.Contains(s, StringComparison.OrdinalIgnoreCase))
+                baseDesc = $"{baseDesc} {s}".Trim();
+        }
+        if (baseDesc.Length > 600) baseDesc = baseDesc[..597] + "…";
+        seed["description"] = baseDesc;
+        if (seed.TryGetValue("visual_lock", out var vl) &&
+            (string.IsNullOrWhiteSpace(vl?.ToString())
+             || string.Equals(vl?.ToString(), display, StringComparison.OrdinalIgnoreCase)
+             || string.Equals(vl?.ToString(), locId, StringComparison.OrdinalIgnoreCase)))
+        {
+            seed["visual_lock"] = snippets[0];
+        }
     }
 
     private static string EnsureCharacter(

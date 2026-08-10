@@ -223,6 +223,18 @@ public sealed class CastFromScreenplayService
         var json = JsonSerializer.Serialize(normalized, JsonDefaults.Indented);
         await File.WriteAllTextAsync(outPath, json + "\n", ct).ConfigureAwait(false);
 
+        // Characters-only extract used to leave location_seed_tokens empty forever.
+        // Merge Fountain Stage‑1 places (setting + action prose) into the same cast file.
+        try
+        {
+            if (_projects.MergeLocationSeedsIntoCastFile(projectId))
+                onProgress?.Invoke("Merged location seeds from screenplay headings…");
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Location seed merge failed for {Project}", projectId);
+        }
+
         if (_plateService is not null)
         {
             try
