@@ -51,17 +51,21 @@
                     var index = i;
                     var scene = Scenes[index];
 
-                    <div class="d-flex align-items-center gap-1 w-100 rounded border p-1 @(scene.IsSelected ? "bg-primary text-white border-primary" : "bg-dark text-light border-secondary-subtle")"
+                    <div class="d-flex align-items-center gap-1 w-100 rounded border px-1 py-0 spe-outline-row @(scene.IsSelected ? "bg-primary text-white border-primary" : "bg-dark text-light border-secondary-subtle")"
                          draggable="true"
                          @ondragstart="() => HandleDragStart(index)"
                          @ondragover:preventDefault
                          @ondrop="() => HandleDrop(index)"
-                         title="Drag to reorder · use + between rows to insert">
-                        
-                        <input type="checkbox" class="form-check-input my-0 ms-1 me-1" @bind="scene.IsSelected" @bind:after="OnSelectionChanged" title="Select scene for display" />
+                         title="@scene.HeaderText — drag to reorder">
+
+                        <input type="checkbox"
+                               class="form-check-input my-0 flex-shrink-0 spe-outline-check"
+                               @bind="scene.IsSelected"
+                               @bind:after="OnSelectionChanged"
+                               title="Select scene" />
 
                         <button type="button"
-                                class="btn btn-sm text-start flex-grow-1 p-0 border-0 bg-transparent text-reset text-truncate"
+                                class="btn btn-sm text-start flex-grow-1 min-w-0 p-0 border-0 bg-transparent text-reset text-truncate spe-outline-label"
                                 @onclick="() => SelectScene(index)">
                             <span class="badge @(scene.IsSelected ? "text-bg-dark" : "text-bg-warning") me-1 fw-bold">@scene.SceneNumber</span>
                             @if (!IsCompact)
@@ -70,29 +74,24 @@
                             }
                         </button>
 
-                        <div class="d-flex align-items-center gap-1 ms-auto">
-                            <button class="btn btn-sm btn-link text-info p-0 me-1" type="button" title="Play / Preview Scene" @onclick="() => PreviewScene(index)">
-                                <i class="bi bi-play-circle"></i>
-                            </button>
-                            @if (!IsCompact)
-                            {
-                                <button class="btn btn-sm btn-link text-danger p-0 me-1" type="button" title="Delete Scene with Confirm" @onclick="() => RequestDelete(index)">
-                                    <i class="bi bi-trash"></i>
-                                </button>
-                            }
+                        <div class="d-flex align-items-center flex-shrink-0 spe-outline-actions">
+                            <button type="button"
+                                    class="btn btn-sm spe-outline-icon text-info"
+                                    title="Preview scene @scene.SceneNumber"
+                                    @onclick="() => PreviewScene(index)"
+                                    @onclick:stopPropagation="true">▶</button>
+                            <button type="button"
+                                    class="btn btn-sm spe-outline-icon text-success"
+                                    title="Insert scene after @scene.SceneNumber"
+                                    @onclick="() => InsertAfter(index)"
+                                    @onclick:stopPropagation="true">+</button>
+                            <button type="button"
+                                    class="btn btn-sm spe-outline-icon text-danger"
+                                    title="Delete scene @scene.SceneNumber"
+                                    @onclick="() => RequestDelete(index)"
+                                    @onclick:stopPropagation="true">🗑</button>
                         </div>
                     </div>
-
-                    @* Insert a new scene after this one (e.g. between 38 and 39) *@
-                    @if (!IsCompact)
-                    {
-                        <button type="button"
-                                class="btn btn-link btn-sm text-success text-decoration-none py-0 px-1 spe-insert-between"
-                                title="Insert new scene after Scene @scene.SceneNumber"
-                                @onclick="() => InsertAfter(index)">
-                            + insert
-                        </button>
-                    }
                 }
             }
 

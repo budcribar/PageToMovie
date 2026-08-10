@@ -1066,24 +1066,48 @@
   z-index: 1030;
 }
 
-/* Outline: compact + and mid-list insert */
+/* Outline row: checkbox + label + ▶ + + + 🗑 on one line */
+.fe-structured-editor .spe-outline-row {
+  min-height: 1.65rem;
+  max-height: 1.85rem;
+}
+.fe-structured-editor .spe-outline-check {
+  width: 0.85rem;
+  height: 0.85rem;
+  margin: 0 !important;
+  flex-shrink: 0;
+}
+.fe-structured-editor .spe-outline-label {
+  font-size: 0.78rem;
+  line-height: 1.2;
+  min-width: 0;
+}
+.fe-structured-editor .spe-outline-actions {
+  gap: 0;
+}
+.fe-structured-editor .spe-outline-icon {
+  width: 1.35rem;
+  height: 1.35rem;
+  padding: 0 !important;
+  line-height: 1.2;
+  font-size: 0.78rem;
+  border: 0;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.85;
+}
+.fe-structured-editor .spe-outline-icon:hover {
+  opacity: 1;
+  background: rgba(255,255,255,0.08);
+  border-radius: 0.25rem;
+}
 .fe-structured-editor .spe-outline-add {
-  min-width: 1.6rem;
-  height: 1.5rem;
+  min-width: 1.5rem;
+  height: 1.4rem;
   line-height: 1;
   font-weight: 700;
-  font-size: 0.95rem;
-  padding: 0 0.35rem !important;
-}
-.fe-structured-editor .spe-insert-between {
-  font-size: 0.68rem;
-  line-height: 1;
-  opacity: 0.45;
-  align-self: center;
-  width: 100%;
-  text-align: center;
-  margin: -0.1rem 0;
-}
-.fe-structured-editor .spe-insert-between:hover {
-  opacity: 1;
+  font-size: 0.9rem;
+  padding: 0 0.3rem !important;
 }
