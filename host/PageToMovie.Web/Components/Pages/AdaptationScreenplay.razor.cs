@@ -53,6 +53,12 @@ public partial class AdaptationScreenplay
         _structuredUi?.OpenExportModal();
     }
 
+    private void MenuOpenExportPdf()
+    {
+        CloseMenu();
+        _structuredUi?.OpenExportPdfModal();
+    }
+
     private async Task MenuCollapseAllAsync()
     {
         CloseMenu();

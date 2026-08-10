@@ -4985,8 +4985,10 @@ app.MapPost("/api/projects/{id}/characters/extract-cast", async (
 {
     try
     {
+        // Cast + optional book + location seeds + dual visual literalize often exceeds 1 min.
+        // Client HttpClient allows up to 5–120 min; keep a hard ceiling so hung chat cannot pin the request forever.
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeoutCts.CancelAfter(TimeSpan.FromSeconds(50));
+        timeoutCts.CancelAfter(TimeSpan.FromMinutes(4));
 
         body ??= new ExtractCastRequest();
         var cfg = await store.GetConfigAsync(id, timeoutCts.Token).ConfigureAwait(false);
@@ -5021,7 +5023,7 @@ app.MapPost("/api/projects/{id}/characters/extract-cast", async (
     }
     catch (OperationCanceledException) when (!ct.IsCancellationRequested)
     {
-        return Results.BadRequest(new { ok = false, error = "Cast extraction timed out (exceeded 50s). Please try again." });
+        return Results.BadRequest(new { ok = false, error = "Cast extraction timed out (exceeded 4 minutes). Please try again." });
     }
     catch (Exception ex)
     {
