@@ -68,33 +68,39 @@
                 <div class="dropdown">
                     <button class="btn btn-sm btn-outline-secondary dropdown-toggle"
                             type="button"
-                            data-bs-toggle="dropdown"
-                            aria-expanded="false"
                             data-testid="screenplay-menu"
-                            title="Editor menu">
+                            title="Editor menu"
+                            aria-expanded="@_menuOpen"
+                            @onclick="ToggleMenu"
+                            @onclick:stopPropagation="true">
                         Menu
                     </button>
-                    <ul class="dropdown-menu dropdown-menu-end dropdown-menu-dark shadow">
+                    @if (_menuOpen)
+                    {
+                        <div class="fe-menu-backdrop" @onclick="CloseMenu"></div>
+                    }
+                    <ul class="dropdown-menu dropdown-menu-end dropdown-menu-dark shadow @(_menuOpen ? "show" : "")"
+                        style="@(_menuOpen ? "display:block; position:absolute; right:0; left:auto;" : null)">
                         <li><h6 class="dropdown-header">Story Setup</h6></li>
                         <li>
-                            <button class="dropdown-item" type="button" disabled="@(_structuredUi is null)" @onclick="() => _structuredUi?.OpenCharacterModal()">
+                            <button class="dropdown-item" type="button" disabled="@(_structuredUi is null)" @onclick="MenuOpenCharacters">
                                 Edit Story Characters…
                             </button>
                         </li>
                         <li>
-                            <button class="dropdown-item" type="button" disabled="@(_structuredUi is null)" @onclick="() => _structuredUi?.OpenLocationModal()">
+                            <button class="dropdown-item" type="button" disabled="@(_structuredUi is null)" @onclick="MenuOpenLocations">
                                 Edit Story Locations…
                             </button>
                         </li>
                         <li><hr class="dropdown-divider"></li>
                         <li><h6 class="dropdown-header">Screenplay Exchange</h6></li>
                         <li>
-                            <button class="dropdown-item" type="button" disabled="@(_structuredUi is null)" @onclick="() => _structuredUi?.OpenImportModal()">
+                            <button class="dropdown-item" type="button" disabled="@(_structuredUi is null)" @onclick="MenuOpenImport">
                                 Import Fountain…
                             </button>
                         </li>
                         <li>
-                            <button class="dropdown-item" type="button" disabled="@(_structuredUi is null)" @onclick="() => _structuredUi?.OpenExportModal()">
+                            <button class="dropdown-item" type="button" disabled="@(_structuredUi is null)" @onclick="MenuOpenExport">
                                 Export Fountain…
                             </button>
                         </li>
@@ -112,7 +118,7 @@
                         </li>
                         <li><hr class="dropdown-divider"></li>
                         <li>
-                            <a class="dropdown-item" href="adaptation/import" data-testid="screenplay-reimport">Re-import source…</a>
+                            <a class="dropdown-item" href="adaptation/import" data-testid="screenplay-reimport" @onclick="CloseMenu">Re-import source…</a>
                         </li>
                     </ul>
                 </div>

@@ -1053,3 +1053,15 @@
 .fe-structured-editor .spe-focus-card {
   box-shadow: 0 0 0 1px color-mix(in oklab, var(--fs-accent-indigo, #6b8cae) 40%, transparent);
 }
+
+/* Blazor-driven Menu (no Bootstrap JS) */
+.fe-screenplay-card .dropdown { position: relative; }
+.fe-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1020;
+  background: transparent;
+}
+.fe-screenplay-card .dropdown-menu.show {
+  z-index: 1030;
+}
