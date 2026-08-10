@@ -1,11 +1,20 @@
 namespace PageToMovie.LoadSim;
 
+public enum LoadSimScenario
+{
+    Browse,
+    Play,
+    Gen,
+    Remux,
+    Mixed
+}
+
 public sealed class SimOptions
 {
     public string BaseUrl { get; set; } = "http://127.0.0.1:5088";
     public int Users { get; set; } = 20;
     public int DurationSec { get; set; } = 120;
-    public string Scenario { get; set; } = "mixed"; // browse | play | gen | remux | mixed
+    public LoadSimScenario Scenario { get; set; } = LoadSimScenario.Mixed;
     /// <summary>Project id used by VUs (default isolated sandbox, not real Buster).</summary>
     public string ProjectId { get; set; } = ProjectSandbox.DefaultSandboxId;
     /// <summary>Source project to copy when preparing sandbox (default Buster).</summary>
@@ -56,7 +65,11 @@ public sealed class SimOptions
                 case "--baseUrl": o.BaseUrl = Next().TrimEnd('/'); break;
                 case "--users": o.Users = int.Parse(Next()); break;
                 case "--duration": o.DurationSec = int.Parse(Next()); break;
-                case "--scenario": o.Scenario = Next(); break;
+                case "--scenario":
+                    var rawSc = Next();
+                    if (Enum.TryParse<LoadSimScenario>(rawSc, ignoreCase: true, out var parsedSc))
+                        o.Scenario = parsedSc;
+                    break;
                 case "--project":
                 case "--projectId": o.ProjectId = Next(); break;
                 case "--sourceProject": o.SourceProjectId = Next(); break;

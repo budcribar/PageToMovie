@@ -241,7 +241,7 @@ public partial class Review
                             isAiSynthetic: _demoIsAiSynthetic);
                         if (pub?.Ok == true)
                         {
-                            S.List._activeTab = "review";
+                            S.List._activeTab = ReviewTab.Review;
                             S._message = (pub.Message ?? $"“{pub.Demo?.Title ?? title}” sent to YouTube — it appears in the gallery when the upload finishes.") +
                                 (_lastExportMissingMusic ? " (No local media folder connected — background music not included.)" : "");
                             return;
@@ -263,7 +263,7 @@ public partial class Review
                 }
 
                 var msg = res.TryGetProperty("message", out var mEl) ? mEl.GetString() : null;
-                S.List._activeTab = "review";
+                S.List._activeTab = ReviewTab.Review;
                 S._message = (msg ?? $"“{publishedTitle}” sent to YouTube — it appears in the gallery when the upload finishes.") +
                     (_lastExportMissingMusic ? " (No local media folder connected — background music not included.)" : "");
             }
@@ -421,7 +421,7 @@ public partial class Review
                     });
                 }
 
-                S.List._activeTab = "review";
+                S.List._activeTab = ReviewTab.Review;
                 S._message = "Uploading to YouTube…" +
                     (_lastExportMissingMusic ? " (No local media folder connected — background music not included.)" : "");
                 var jobs = await S.Engine.GetJobAsync();

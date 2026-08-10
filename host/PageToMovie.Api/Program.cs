@@ -1520,7 +1520,7 @@ app.MapGet("/api/admin/ai-calls", async (IUserContext user, AiCallAnalyticsServi
         return Results.Json(new { ok = false, error = "admin role required" }, statusCode: StatusCodes.Status403Forbidden);
     try
     {
-        var data = await analytics.BuildAsync(Math.Clamp(maxRows ?? 4000, 100, 20000), ct);
+        var data = await analytics.BuildAsync(Math.Clamp(maxRows ?? 4000, 100, 20000), AnalyticsWindow.All, ct);
         return Results.Ok(new { ok = true, data });
     }
     catch (Exception ex)

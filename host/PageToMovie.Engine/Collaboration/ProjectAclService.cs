@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text.Json;
+using PageToMovie.Core.Models;
 
 namespace PageToMovie.Engine.Collaboration;
 
@@ -149,6 +150,15 @@ public sealed class ProjectAclService : IProjectAclService
 
     // ---- Pending email/username invite flow ----
 
+    public Task<InviteResult> InviteByUsernameAsync(
+        string projectId,
+        string usernameOrEmail,
+        UserRole role,
+        string callerUserId,
+        string? publicBaseUrl = null,
+        CancellationToken ct = default) =>
+        InviteByUsernameAsync(projectId, usernameOrEmail, role.ToString().ToLowerInvariant(), callerUserId, publicBaseUrl, ct);
+
     public async Task<InviteResult> InviteByUsernameAsync(
         string projectId,
         string usernameOrEmail,
@@ -163,7 +173,8 @@ public sealed class ProjectAclService : IProjectAclService
         if (string.IsNullOrEmpty(usernameOrEmail))
             return new InviteResult { Ok = false, Error = "Username or email required." };
 
-        role = string.Equals(role, "viewer", StringComparison.OrdinalIgnoreCase) ? "viewer" : "editor";
+        var userRole = Enum.TryParse<UserRole>(role, ignoreCase: true, out var parsedRole) ? parsedRole : UserRole.Editor;
+        role = userRole == UserRole.Viewer ? "viewer" : "editor";
 
         ProjectUserInfo? user = null;
         if (_users is not null)

@@ -68,22 +68,21 @@ public partial class ScreenplayEditor_OutlineSidebar : ComponentBase
     [Parameter]
     public EventCallback<string?> OnSelectLocation { get; set; }
 
-    public string OutlineTab { get; set; } = "scenes";
+    public OutlineSidebarTab OutlineTab { get; set; } = OutlineSidebarTab.Scenes;
     public int DeletingIndex { get; set; } = -1;
     public int PreviewingIndex { get; set; } = -1;
     public int ActiveDragIndex { get; set; } = -1;
 
     public bool IsAllSelected => Scenes.Count > 0 && Scenes.All(s => s.IsSelected);
 
-    public void SetTab(string tab) =>
-        OutlineTab = tab is "cast" or "locations" ? tab : "scenes";
+    public void SetTab(OutlineSidebarTab tab) => OutlineTab = tab;
 
     public void ToggleOutlineTab() =>
         OutlineTab = OutlineTab switch
         {
-            "scenes" => "cast",
-            "cast" => "locations",
-            _ => "scenes",
+            OutlineSidebarTab.Scenes => OutlineSidebarTab.Cast,
+            OutlineSidebarTab.Cast => OutlineSidebarTab.Locations,
+            _ => OutlineSidebarTab.Scenes,
         };
 
     public static string Initials(string name)

@@ -66,7 +66,7 @@ public sealed class MetricsCollector
             Users = opts.Users,
             DurationSec = opts.DurationSec,
             ElapsedSec = elapsed.TotalSeconds,
-            Scenario = opts.Scenario,
+            Scenario = opts.Scenario.ToString().ToLowerInvariant(),
             ProjectId = opts.ProjectId,
             BaseUrl = opts.BaseUrl,
             Actions = snap.ActionsByType,

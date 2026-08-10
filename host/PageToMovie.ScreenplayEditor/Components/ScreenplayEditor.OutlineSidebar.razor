@@ -5,14 +5,14 @@
             {
                 <div class="btn-group btn-group-sm" role="group" aria-label="Outline mode">
                     <button type="button"
-                            class="btn py-0 px-2 @(OutlineTab == "scenes" ? "btn-primary" : "btn-outline-secondary")"
-                            @onclick='() => SetTab("scenes")'>Scenes</button>
+                            class="btn py-0 px-2 @(OutlineTab == OutlineSidebarTab.Scenes ? "btn-primary" : "btn-outline-secondary")"
+                            @onclick='() => SetTab(OutlineSidebarTab.Scenes)'>Scenes</button>
                     <button type="button"
-                            class="btn py-0 px-2 @(OutlineTab == "cast" ? "btn-warning" : "btn-outline-secondary")"
-                            @onclick='() => SetTab("cast")'>Cast</button>
+                            class="btn py-0 px-2 @(OutlineTab == OutlineSidebarTab.Cast ? "btn-warning" : "btn-outline-secondary")"
+                            @onclick='() => SetTab(OutlineSidebarTab.Cast)'>Cast</button>
                     <button type="button"
-                            class="btn py-0 px-2 @(OutlineTab == "locations" ? "btn-info text-dark" : "btn-outline-secondary")"
-                            @onclick='() => SetTab("locations")'>Locs</button>
+                            class="btn py-0 px-2 @(OutlineTab == OutlineSidebarTab.Locations ? "btn-info text-dark" : "btn-outline-secondary")"
+                            @onclick='() => SetTab(OutlineSidebarTab.Locations)'>Locs</button>
                 </div>
             }
             else
@@ -20,12 +20,12 @@
                 <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1"
                         title="Cycle Scenes / Cast / Locations"
                         @onclick="ToggleOutlineTab">
-                    @(OutlineTab == "scenes" ? "S" : OutlineTab == "cast" ? "C" : "L")
+                    @(OutlineTab == OutlineSidebarTab.Scenes ? "S" : OutlineTab == OutlineSidebarTab.Cast ? "C" : "L")
                 </button>
             }
         </div>
         <div class="d-flex align-items-center gap-1">
-            @if (!IsCompact && OutlineTab == "scenes")
+            @if (!IsCompact && OutlineTab == OutlineSidebarTab.Scenes)
             {
                 <button type="button"
                         class="btn btn-sm btn-outline-success py-0 px-2 spe-outline-add"
@@ -41,7 +41,7 @@
     </div>
 
     <div class="card-body p-2 overflow-auto" style="max-height: calc(100vh - 180px);">
-        @if (OutlineTab == "cast")
+        @if (OutlineTab == OutlineSidebarTab.Cast)
         {
             <div class="d-flex flex-column gap-1">
                 @if (Characters.Count == 0)
@@ -78,7 +78,7 @@
                 }
             </div>
         }
-        else if (OutlineTab == "locations")
+        else if (OutlineTab == OutlineSidebarTab.Locations)
         {
             <div class="d-flex flex-column gap-1">
                 @if (Locations.Count == 0)

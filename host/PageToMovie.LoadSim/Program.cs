@@ -123,9 +123,9 @@ static async Task<int> RunAsync(SimOptions opts)
     }
 
     if (opts.RequireFakes && !useFakes && !opts.IKnowWhatImDoing &&
-        opts.Scenario is not ("browse" or "play"))
+        opts.Scenario is not (LoadSimScenario.Browse or LoadSimScenario.Play))
     {
-        var genWeight = opts.Scenario == "mixed" ? opts.GenWeight : opts.Scenario == "gen" ? 1.0 : 0;
+        var genWeight = opts.Scenario == LoadSimScenario.Mixed ? opts.GenWeight : opts.Scenario == LoadSimScenario.Gen ? 1.0 : 0;
         if (genWeight > 0)
         {
             Console.Error.WriteLine(
@@ -397,7 +397,7 @@ static async Task PostProgressAsync(
             Users = opts.Users,
             DurationSec = opts.DurationSec,
             ElapsedSec = elapsed.TotalSeconds,
-            Scenario = opts.Scenario,
+            Scenario = opts.Scenario.ToString().ToLowerInvariant(),
             ProjectId = opts.ProjectId,
             BaseUrl = opts.BaseUrl,
             ActionsTotal = snap.ActionsTotal,

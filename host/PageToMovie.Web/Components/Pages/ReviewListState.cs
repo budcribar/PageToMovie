@@ -10,6 +10,13 @@ using PageToMovie.Web.Services;
 
 namespace PageToMovie.Web.Components.Pages;
 
+public enum ReviewTab
+{
+    Review,
+    Play,
+    Share
+}
+
 public partial class Review
 {
     /// <summary>List domain for the Review page. Owns related UI state and behavior.</summary>
@@ -18,7 +25,7 @@ public partial class Review
         private readonly Review S;
         public ReviewListState(Review host) => S = host;
 
-        internal string? _activeTab = "review";
+        internal ReviewTab? _activeTab = ReviewTab.Review;
 
         internal readonly HashSet<string> _expandedSceneGroups = new(StringComparer.OrdinalIgnoreCase);
 
@@ -47,11 +54,11 @@ public partial class Review
         }
 
 
-        internal async Task ToggleTabAsync(string tab)
+        internal async Task ToggleTabAsync(ReviewTab tab)
         {
             if (_activeTab == tab)
             {
-                if (tab == "play")
+                if (tab == ReviewTab.Play)
                 {
                     await S.Playback.PlayWipAsync();
                     return;
@@ -61,11 +68,11 @@ public partial class Review
             else
             {
                 _activeTab = tab;
-                if (tab == "play")
+                if (tab == ReviewTab.Play)
                 {
                     await S.Playback.PlayWipAsync();
                 }
-                else if (tab == "share")
+                else if (tab == ReviewTab.Share)
                 {
                     S.Share.PrepopulateDemoFields();
                     await S.Share.RefreshYouTubeStatusAsync();
@@ -74,9 +81,9 @@ public partial class Review
         }
 
 
-        internal Task SetTabReview() => ToggleTabAsync("review");
+        internal Task SetTabReview() => ToggleTabAsync(ReviewTab.Review);
 
-        internal Task SetTabShare() => ToggleTabAsync("share");
+        internal Task SetTabShare() => ToggleTabAsync(ReviewTab.Share);
 
 
         internal bool IsSceneGroupExpanded(string rangeStr) => _expandedSceneGroups.Contains(rangeStr);

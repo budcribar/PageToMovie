@@ -264,7 +264,7 @@ public partial class Review
             S._busy = true;
             try
             {
-                S.List._activeTab = "play";
+                S.List._activeTab = ReviewTab.Play;
                 _showWipPlayer = true;
                 await RefreshWipMetaAsync();
 

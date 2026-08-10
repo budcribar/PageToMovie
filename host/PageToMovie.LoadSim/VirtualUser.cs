@@ -84,13 +84,12 @@ public sealed class VirtualUser
 
     private string PickAction()
     {
-        return _opts.Scenario.ToLowerInvariant() switch
+        return _opts.Scenario switch
         {
-            "browse" => "browse",
-            "play" => "play",
-            "gen" => "gen",
-            "remux" => "play", // remux retired — browser stitch only
-            "review" => "review",
+            LoadSimScenario.Browse => "browse",
+            LoadSimScenario.Play => "play",
+            LoadSimScenario.Gen => "gen",
+            LoadSimScenario.Remux => "play", // remux retired — browser stitch only
             _ => WeightedPick(),
         };
     }

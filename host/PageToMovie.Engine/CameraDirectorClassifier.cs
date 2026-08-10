@@ -15,7 +15,9 @@ public sealed record CameraDirective(
     string CameraMovement,
     string FramingPrompt,
     CameraLens Lens = CameraLens.Lens35mm,
-    CameraMovementKind MovementKind = CameraMovementKind.TripodHold);
+    CameraMovementKind MovementKind = CameraMovementKind.TripodHold,
+    CameraAngle Angle = CameraAngle.EyeLevel,
+    LightingCondition Lighting = LightingCondition.Daylight);
 
 /// <summary>
 /// AI Classifier acting as a Virtuoso Film Director / Director of Photography.
@@ -128,10 +130,14 @@ public sealed class CameraDirectorClassifier : BeatChatClassifierBase<CameraDire
                 var framing = item.GetStringProp("framing_prompt");
                 var lensEnum = MediaEngineEnumExtensions.ParseCameraLens(lensStr);
                 var moveEnum = MediaEngineEnumExtensions.ParseCameraMovementKind(moveStr);
+                var angleStr = item.GetStringProp("camera_angle", "eye_level");
+                var lightingStr = item.GetStringProp("lighting_condition", "daylight");
+                var angleEnum = ParseCameraAngle(angleStr);
+                var lightingEnum = ParseLightingCondition(lightingStr);
 
                 if (!string.IsNullOrWhiteSpace(id))
                 {
-                    result[id] = new CameraDirective(scale, lensStr, moveStr, framing, lensEnum, moveEnum);
+                    result[id] = new CameraDirective(scale, lensStr, moveStr, framing, lensEnum, moveEnum, angleEnum, lightingEnum);
                 }
             }
 
@@ -143,4 +149,20 @@ public sealed class CameraDirectorClassifier : BeatChatClassifierBase<CameraDire
             return null;
         }
     }
+
+    public static CameraAngle ParseCameraAngle(string? input) => input?.ToLowerInvariant() switch
+    {
+        "low" or "low_angle" or "lowangle" => CameraAngle.LowAngle,
+        "high" or "high_angle" or "highangle" => CameraAngle.HighAngle,
+        "bird" or "bird_eye" or "birdeye" or "birds_eye" => CameraAngle.BirdEye,
+        _ => CameraAngle.EyeLevel
+    };
+
+    public static LightingCondition ParseLightingCondition(string? input) => input?.ToLowerInvariant() switch
+    {
+        "night" or "night_interior" or "nightinterior" => LightingCondition.NightInterior,
+        "golden" or "golden_hour" or "goldenhour" => LightingCondition.GoldenHour,
+        "neon" or "neon_light" or "neonlight" => LightingCondition.NeonLight,
+        _ => LightingCondition.Daylight
+    };
 }

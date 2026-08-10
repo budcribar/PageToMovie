@@ -21,7 +21,7 @@ public sealed class AiCallAnalyticsService
     }
 
     /// <param name="maxRows">Recent-row cap across all users/projects, newest first (was per-project in the old JSONL scan).</param>
-    public async Task<AiCallAnalyticsDto> BuildAsync(int maxRows = 4000, CancellationToken ct = default)
+    public async Task<AiCallAnalyticsDto> BuildAsync(int maxRows = 4000, AnalyticsWindow window = AnalyticsWindow.All, CancellationToken ct = default)
     {
         var raw = await _userDb.GetAiCallRawDataAsync(maxRows, ct).ConfigureAwait(false);
 
@@ -56,7 +56,15 @@ public sealed class AiCallAnalyticsService
             }).ToList();
 
         dto.Learnings = BuildLearnings(dto);
-        dto.WindowNote = $"Last {maxRows:N0} calls across {dto.ProjectsScanned} project(s)"
+        var windowLabel = window switch
+        {
+            AnalyticsWindow.Hour => "Last hour",
+            AnalyticsWindow.Day => "Last 24 hours",
+            AnalyticsWindow.Week => "Last 7 days",
+            AnalyticsWindow.Month => "Last 30 days",
+            _ => $"Last {maxRows:N0} calls"
+        };
+        dto.WindowNote = $"{windowLabel} across {dto.ProjectsScanned} project(s)"
             + (dto.FakeCalls == dto.TotalCalls && dto.TotalCalls > 0 ? " — all fakes-mode calls" : "");
         return dto;
     }

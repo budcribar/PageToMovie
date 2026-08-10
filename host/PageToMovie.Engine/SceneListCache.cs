@@ -50,7 +50,7 @@ public sealed class SceneListCache
     }
 
     /// <summary>Drop list cache for a project (both light and full).</summary>
-    public void Invalidate(string? projectId)
+    public void Invalidate(string? projectId, CacheInvalidationReason reason = CacheInvalidationReason.UserEdit)
     {
         if (string.IsNullOrWhiteSpace(projectId)) return;
         _entries.TryRemove(MakeKey(projectId, probeDurations: true), out _);
