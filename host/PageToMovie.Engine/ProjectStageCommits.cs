@@ -23,7 +23,7 @@ public static class ProjectStageCommits
     {
         "book_prepare" => BookPrepared,
         "book_import" or "stage1" => ScreenplayCreated,
-        "cast" or "cast_extract" or "characters" or "character" => CastBuilt,
+        "cast" or "cast_extract" or "cast-extract" or "characters" or "character" => CastBuilt,
         "stage2" => Stage2Blueprint,
         "film" or "film_job" or "generate" or "video" or "clips" => FilmJobFinished,
         "music" => MusicJobFinished,

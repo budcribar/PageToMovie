@@ -183,7 +183,8 @@ public partial class Characters
 
 
         /// <summary>
-        /// Single user step: closed cast + book-aware looks (description / visual_lock) for portraits.
+        /// Start AI cast extract as a background job (cast + looks + locations).
+        /// Completion is handled in <see cref="CharactersJobs.OnJobUpdated"/>.
         /// </summary>
         internal async Task ExtractCastAsync()
         {
@@ -192,44 +193,33 @@ public partial class Characters
             _extractingCast = true;
             S._busy = true;
             S._error = null;
-            S._message = null; // progress card owns in-progress UI (not the green success alert)
-            // Drop selection so we don't re-open a character that may disappear after rebuild.
+            S._message = null;
             _selectedKey = null;
             _selected = null;
             S.StateHasChanged();
             try
             {
+                try { await S.Hub.StartAsync(); } catch (Exception hex) { S._error = $"SignalR: {hex.Message}"; }
                 var result = await S.Engine.ExtractCastFromScreenplayAsync(S._projectId, force: true);
                 if (result is null || result.Ok != true)
                 {
-                    S._error = result?.Error ?? "Could not build cast.";
-                    if (S.Session.IsAdmin && !string.IsNullOrWhiteSpace(result?.RawPath))
-                        S._error += $" (admin raw dump: {result.RawPath})";
-                    S._message = null;
-                    _lastCastExtractKeys = null;
+                    S._error = result?.Error ?? "Could not start cast extract.";
+                    _extractingCast = false;
+                    _rebuildCastHadExisting = false;
+                    S._busy = false;
+                    return;
                 }
-                else
-                {
-                    _lastCastExtractKeys = result.Characters?
-                        .Where(k => !string.IsNullOrWhiteSpace(k))
-                        .ToList();
-                    // Operators get a short outcome; full key dump lives in the admin panel only.
-                    var n = result.CharacterCount > 0
-                        ? result.CharacterCount
-                        : _lastCastExtractKeys?.Count ?? 0;
-                    S._message = !string.IsNullOrWhiteSpace(result.Message)
-                        ? Characters.StripTrailingKeyDump(result.Message!)
-                        : $"Cast ready · {n} character(s) — review looks, then lock portraits";
-                    await LoadAsync();
-                }
+
+                // Async job — keep _extractingCast until Jobs.OnJobUpdated finishes.
+                var jobs = await S.Engine.GetJobAsync();
+                S.Jobs._job = jobs?.Job;
+                S._busy = false;
+                S.StateHasChanged();
             }
             catch (Exception ex)
             {
                 S._error = ex.Message;
                 S._message = null;
-            }
-            finally
-            {
                 _extractingCast = false;
                 _rebuildCastHadExisting = false;
                 S._busy = false;
@@ -380,6 +370,9 @@ public partial class Characters
                 S.LookBook.ResetSeedSelection();
                 ApplyPanelsForSelected();
             }
+
+            // Cast list is a child component; parent Look/Voice panel must re-render after switch.
+            S.StateHasChanged();
         }
 
 

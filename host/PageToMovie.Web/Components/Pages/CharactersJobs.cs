@@ -29,7 +29,8 @@ public partial class Characters
 
 
         internal bool JobRunning =>
-            string.Equals(_job?.Status, "running", StringComparison.OrdinalIgnoreCase);
+            _job is not null &&
+            (_job.Status is "running" or "queued");
 
 
         internal bool PlateSortRunning =>
@@ -40,6 +41,10 @@ public partial class Characters
         internal static string FriendlyCharacterJobStatus(JobSnapshot job)
         {
             var kind = job.Kind ?? "";
+            if (string.Equals(kind, "cast-extract", StringComparison.OrdinalIgnoreCase))
+                return string.IsNullOrWhiteSpace(job.Message)
+                    ? "Building cast from screenplay…"
+                    : job.Message!;
             if (string.Equals(kind, "character-plates", StringComparison.OrdinalIgnoreCase))
                 return job.Total > 0
                     ? $"Matching book pictures… ({job.Index} of {job.Total})"
@@ -89,6 +94,40 @@ public partial class Characters
                     }
                     S.StateHasChanged();
                     await Task.CompletedTask;
+                });
+            }
+            else if ((snap.Status is "done" or "error" or "cancelled") &&
+                string.Equals(snap.Kind, "cast-extract", StringComparison.OrdinalIgnoreCase))
+            {
+                _ = S.InvokeAsync(async () =>
+                {
+                    S.List._extractingCast = false;
+                    S.List._rebuildCastHadExisting = false;
+                    S._busy = false;
+                    await S.List.LoadAsync();
+                    if (snap.Status == "done")
+                    {
+                        S._error = null;
+                        S._message = Characters.StripTrailingKeyDump(
+                            snap.Message ?? "Cast ready — review looks, then lock portraits");
+                        S.List._lastCastExtractKeys = S.List._chars?
+                            .Select(c => c.Key)
+                            .Where(k => !string.IsNullOrWhiteSpace(k))
+                            .ToList();
+                    }
+                    else if (snap.Status == "error")
+                    {
+                        S._message = null;
+                        S._error = S.Session.IsAdmin
+                            ? (snap.Error ?? snap.Message ?? "Cast extract failed.")
+                            : "Could not build cast. Try again.";
+                    }
+                    else
+                    {
+                        S._error = null;
+                        S._message = "Cast extract cancelled.";
+                    }
+                    S.StateHasChanged();
                 });
             }
             else if ((snap.Status is "done" or "error" or "cancelled") &&

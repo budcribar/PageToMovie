@@ -4976,60 +4976,51 @@ app.MapPost("/api/projects/{id}/characters/{charKey}/look", async (
 /// AI: Fountain (+ book) → source/cast_seeds.json.
 /// Closed cast for Characters UI — not dialogue-cue parse only.
 /// </summary>
+/// <summary>
+/// AI: Fountain (+ book) → source/cast_seeds.json (and location seeds).
+/// Starts a background job so long chat+literalize does not 502 on reverse proxies.
+/// Prefer polling job status / SignalR; the old synchronous body is no longer used for the main path.
+/// </summary>
 app.MapPost("/api/projects/{id}/characters/extract-cast", async (
     string id,
     ExtractCastRequest? body,
-    CastFromScreenplayService castService,
-    ProjectStore store,
-    CancellationToken ct) =>
+    FilmJobService jobService) =>
 {
     try
     {
-        // Cast + optional book + location seeds + dual visual literalize often exceeds 1 min.
-        // Client HttpClient allows up to 5–120 min; keep a hard ceiling so hung chat cannot pin the request forever.
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeoutCts.CancelAfter(TimeSpan.FromMinutes(4));
-
         body ??= new ExtractCastRequest();
-        var cfg = await store.GetConfigAsync(id, timeoutCts.Token).ConfigureAwait(false);
-        var castModel = string.IsNullOrWhiteSpace(body.Model)
-            ? ProjectModelSelection.RequirePlanning(cfg, "Cast extract")
-            : ProjectModelSelection.RequireExplicit(body.Model, ModelCapability.Chat, "Cast extract");
-        var result = await castService.ExtractAsync(
-            id,
-            model: castModel,
-            force: body.Force,
-            ct: timeoutCts.Token);
-        return result.Ok
-            ? Results.Ok(new
-            {
-                ok = true,
-                projectId = id,
-                path = result.OutPath,
-                characterCount = result.CharacterCount,
-                characters = result.CharacterKeys,
-                movieTitle = result.MovieTitle,
-                message =
-                    $"Cast ready · {result.CharacterCount} character(s) — looks filled from screenplay" +
-                    " + book when available; review then lock portraits",
-            })
-            : Results.BadRequest(new
-            {
-                ok = false,
-                projectId = id,
-                error = result.Error,
-                rawPath = result.RawPath,
-            });
-    }
-    catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-    {
-        return Results.BadRequest(new { ok = false, error = "Cast extraction timed out (exceeded 4 minutes). Please try again." });
+        var job = await jobService.StartExtractCastAsync(id, force: body.Force, model: body.Model);
+        return Results.Ok(new
+        {
+            ok = true,
+            projectId = id,
+            jobId = job.JobId,
+            status = job.Status,
+            kind = job.Kind,
+            message = job.Message ?? "Cast extract started…",
+            async = true,
+        });
     }
     catch (Exception ex)
     {
         return Results.BadRequest(new { ok = false, error = ex.Message });
     }
+});
 
+/// <summary>Same as extract-cast but under /api/jobs for consistency with other long AI ops.</summary>
+app.MapPost("/api/jobs/extract-cast", async (ExtractCastRequest? body, FilmJobService jobService, ProjectStore store) =>
+{
+    try
+    {
+        body ??= new ExtractCastRequest();
+        var id = string.IsNullOrWhiteSpace(body.ProjectId) ? store.ActiveProjectId : body.ProjectId!;
+        var job = await jobService.StartExtractCastAsync(id, force: body.Force, model: body.Model);
+        return Results.Ok(new { ok = true, job });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { ok = false, error = ex.Message });
+    }
 });
 
 /// <summary>

@@ -198,7 +198,7 @@ else if (List.IsCastComplete && !Jobs.JobRunning && !List._extractingCast)
     </div>
 }
 else if (Jobs._job is not null &&
-     (Jobs._job.Kind is "character" or "character-plates" or "voice-preview") &&
+     (Jobs._job.Kind is "character" or "character-plates" or "voice-preview" or "cast-extract") &&
      (Jobs._job.Status is "running" or "queued"))
 {
     var voiceDetail = !string.IsNullOrEmpty(Jobs._job.Message)

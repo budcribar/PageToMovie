@@ -3261,6 +3261,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         string model = "",
         CancellationToken ct = default)
     {
+        // Async job path (avoids reverse-proxy 502 on multi-minute AI cast extract).
         using var resp = await _http.PostAsJsonAsync(
             $"/api/projects/{Uri.EscapeDataString(projectId)}/characters/extract-cast",
             new { projectId, force, model },
@@ -4254,6 +4255,11 @@ public sealed class ExtractCastResultDto
     public string? Message { get; set; }
     public string? Error { get; set; }
     public string? RawPath { get; set; }
+    /// <summary>Background job id when extract runs async (preferred path).</summary>
+    public string? JobId { get; set; }
+    public string? Status { get; set; }
+    public string? Kind { get; set; }
+    public bool Async { get; set; }
 }
 
 public sealed class CharactersDto

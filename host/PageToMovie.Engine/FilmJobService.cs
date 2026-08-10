@@ -74,6 +74,7 @@ public sealed class FilmJobService
     private readonly PageToMovie.Core.Abstractions.IBookFileSessionFactory? _bookFileSessionFactory;
     private readonly VoiceAlignmentStore? _voiceAlignment;
     private readonly IVideoEditClient? _videoEdit;
+    private readonly CastFromScreenplayService? _castExtract;
 
     public FilmJobService(
         ProjectStore projects,
@@ -118,7 +119,8 @@ public sealed class FilmJobService
         BookTextRegistryService? bookRegistry = null,
         PageToMovie.Core.Abstractions.IBookFileSessionFactory? bookFileSessionFactory = null,
         VoiceAlignmentStore? voiceAlignment = null,
-        IVideoEditClient? videoEdit = null)
+        IVideoEditClient? videoEdit = null,
+        CastFromScreenplayService? castExtract = null)
     {
         _httpFactory = httpFactory;
         _projects = projects;
@@ -163,6 +165,7 @@ public sealed class FilmJobService
         _bookFileSessionFactory = bookFileSessionFactory;
         _voiceAlignment = voiceAlignment;
         _videoEdit = videoEdit;
+        _castExtract = castExtract;
     }
 
 
@@ -1732,6 +1735,97 @@ public sealed class FilmJobService
             },
             lockResources: new[] { LockKeys.Stage(projectId) },
             lockReason: "character plates");
+    }
+
+    /// <summary>
+    /// AI cast extract (Fountain + book → cast_seeds + locations). Background job so reverse proxies
+    /// do not 502 a multi-minute chat pass.
+    /// </summary>
+    public Task<JobSnapshot> StartExtractCastAsync(string projectId, bool force = true, string? model = null)
+    {
+        if (_castExtract is null)
+            throw new InvalidOperationException("Cast extract service is not configured.");
+        if (string.IsNullOrWhiteSpace(projectId))
+            projectId = _projects.ActiveProjectId;
+        return StartBackgroundJobAsync(
+            ct => RunExtractCastAsync(projectId, force, model, ct),
+            new JobEnqueueMeta
+            {
+                Kind = "cast-extract",
+                ProjectId = projectId,
+                Message = "Queued cast extract from screenplay…",
+            },
+            lockResources: new[] { LockKeys.Stage(projectId) },
+            lockReason: "cast extract");
+    }
+
+    private async Task RunExtractCastAsync(string projectId, bool force, string? model, CancellationToken ct)
+    {
+        await _projects.RequireProjectAsync(projectId, ct).ConfigureAwait(false);
+        if (_castExtract is null)
+            throw new InvalidOperationException("Cast extract service is not configured.");
+
+        Snapshot = new JobSnapshot
+        {
+            Status = "running",
+            Kind = "cast-extract",
+            ProjectId = projectId,
+            Message = "Building cast from screenplay (AI)…",
+            Index = 0,
+            Total = 3,
+            StartedAt = DateTimeOffset.UtcNow,
+            Log = new List<string>(),
+        };
+        RegisterActiveJob();
+        await PublishAsync().ConfigureAwait(false);
+
+        try
+        {
+            await AppendLogAsync("Cast extract: closed cast + looks + locations from Fountain (+ book)").ConfigureAwait(false);
+            var result = await _castExtract.ExtractAsync(
+                projectId,
+                model: model,
+                force: force,
+                onProgress: line =>
+                {
+                    _ = AppendLogAsync(line);
+                    _ = UpdateAsync(s =>
+                    {
+                        s.Message = line;
+                        if (line.Contains("Calling", StringComparison.OrdinalIgnoreCase))
+                            s.Index = 1;
+                        else if (line.Contains("Scrubbing", StringComparison.OrdinalIgnoreCase)
+                                 || line.Contains("location", StringComparison.OrdinalIgnoreCase))
+                            s.Index = 2;
+                        else if (line.Contains("Writing", StringComparison.OrdinalIgnoreCase)
+                                 || line.Contains("Cast ready", StringComparison.OrdinalIgnoreCase))
+                            s.Index = 3;
+                    });
+                },
+                ct: ct).ConfigureAwait(false);
+
+            if (!result.Ok)
+            {
+                await FinishAsync("error", result.Error ?? "Cast extract failed", result.Error).ConfigureAwait(false);
+                return;
+            }
+
+            var n = result.CharacterCount;
+            var msg = $"Cast ready · {n} character(s)"
+                      + (result.CharacterKeys is { Count: > 0 }
+                          ? " — " + string.Join(", ", result.CharacterKeys.Take(12))
+                          : "");
+            await FinishAsync("done", msg).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            await FinishAsync("cancelled", "Cast extract cancelled").ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Cast extract failed for {Project}", projectId);
+            await FinishAsync("error", ex.Message, ex.Message).ConfigureAwait(false);
+        }
     }
 
     private async Task RunSortCharacterPlatesAsync(AttachCharacterPlatesRequest req, string projectId, CancellationToken ct)
