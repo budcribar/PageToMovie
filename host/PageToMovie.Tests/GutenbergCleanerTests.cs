@@ -58,4 +58,39 @@ public class GutenbergCleanerTests
         Assert.True(GutenbergCleaner.HasGutenbergHeader(textWithHeader));
         Assert.False(GutenbergCleaner.HasGutenbergHeader(textWithoutHeader));
     }
+
+    [Fact]
+    public void StripHeaderAndFooter_HandlesOdysseyStyleStartMarker()
+    {
+        var raw = """
+            The Project Gutenberg eBook of The Odyssey
+
+            This eBook is for the use of anyone anywhere in the United States and
+            most other parts of the world at no cost and with almost no restrictions
+            whatsoever.
+
+            Title: The Odyssey
+            Author: Homer
+
+            *** START OF THE PROJECT GUTENBERG EBOOK THE ODYSSEY ***
+
+            The Odyssey
+
+            by Homer
+
+            BOOK I
+
+            Tell me, O Muse, of that ingenious hero
+
+            *** END OF THE PROJECT GUTENBERG EBOOK THE ODYSSEY ***
+            """;
+
+        var cleaned = GutenbergCleaner.StripHeaderAndFooter(raw);
+
+        Assert.Contains("BOOK I", cleaned);
+        Assert.Contains("Tell me, O Muse", cleaned);
+        Assert.DoesNotContain("Project Gutenberg eBook", cleaned);
+        Assert.DoesNotContain("START OF THE PROJECT GUTENBERG", cleaned);
+        Assert.DoesNotContain("END OF THE PROJECT GUTENBERG", cleaned);
+    }
 }

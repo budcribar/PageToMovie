@@ -167,6 +167,14 @@ public sealed class BookPrepareService
         {
             onProgress?.Invoke("Using existing book_full.txt…");
             var text = await File.ReadAllTextAsync(bookTxt, ct);
+            // TXT uploads and older projects may still hold a Gutenberg license block on disk.
+            if (GutenbergCleaner.HasGutenbergHeader(text))
+            {
+                onProgress?.Invoke("Stripping Project Gutenberg header/footer from book_full.txt…");
+                text = GutenbergCleaner.StripHeaderAndFooter(text);
+                text = text.Replace("\r\n", "\n").Replace('\r', '\n').Trim() + "\n";
+                await File.WriteAllTextAsync(bookTxt, text, ct).ConfigureAwait(false);
+            }
             analysis = BookTextAnalyzer.Analyze(text);
             analysis.TextEngine = "existing_book_full";
             result.TextEngine = analysis.TextEngine;

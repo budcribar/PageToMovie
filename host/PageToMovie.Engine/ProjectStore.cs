@@ -1,7 +1,9 @@
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using PageToMovie.Core.Models;
 using PageToMovie.Core.Options;
+using PageToMovie.Core.Utils;
 using PageToMovie.Engine.Abstractions;
 using PageToMovie.Fountain;
 using Microsoft.Extensions.Options;
@@ -5562,7 +5564,26 @@ public sealed partial class ProjectStore
         if (ext == ".txt")
         {
             var bookFull = Path.Combine(source, "book_full.txt");
-            await File.WriteAllBytesAsync(bookFull, bytes, ct);
+            // Plain-text uploads skip BookPrepare — strip Project Gutenberg legal preamble
+            // here so book_full.txt / xAI file_id never carry the license block.
+            string text;
+            try
+            {
+                text = Encoding.UTF8.GetString(bytes);
+            }
+            catch
+            {
+                text = Encoding.Latin1.GetString(bytes);
+            }
+            // Drop UTF-8 BOM if present
+            if (text.Length > 0 && text[0] == '\uFEFF')
+                text = text[1..];
+            if (GutenbergCleaner.HasGutenbergHeader(text))
+            {
+                text = GutenbergCleaner.StripHeaderAndFooter(text);
+            }
+            text = text.Replace("\r\n", "\n").Replace('\r', '\n').Trim() + "\n";
+            await File.WriteAllTextAsync(bookFull, text, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false), ct);
             return bookFull;
         }
 

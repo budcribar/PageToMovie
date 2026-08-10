@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using PageToMovie.Core.Models;
 using PageToMovie.Core.Options;
+using PageToMovie.Core.Utils;
 using PageToMovie.Adaptation;
 using PageToMovie.Fountain;
 using PageToMovie.Adaptation.Contracts;
@@ -763,6 +764,19 @@ public static string NormalizeText(string text)
         var book = await File.ReadAllTextAsync(bookPath, ct).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(book))
             return new SaveResult { Ok = false, Error = "Book text is empty" };
+
+        // Persist-clean Gutenberg if still on disk (older txt imports); adapt + xAI file_id use cleaned text.
+        if (GutenbergCleaner.HasGutenbergHeader(book))
+        {
+            book = GutenbergCleaner.StripHeaderAndFooter(book);
+            book = book.Replace("\r\n", "\n").Replace('\r', '\n').Trim() + "\n";
+            await File.WriteAllTextAsync(bookPath, book, ct).ConfigureAwait(false);
+            onProgress?.Invoke("Stripped Project Gutenberg preamble from book text.");
+        }
+        else
+        {
+            book = book.Replace("\r\n", "\n").Replace('\r', '\n').Trim() + "\n";
+        }
 
         Dictionary<string, JsonElement>? cfg = null;
         {
