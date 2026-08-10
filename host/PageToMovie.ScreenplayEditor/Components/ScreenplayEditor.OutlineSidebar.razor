@@ -147,112 +147,58 @@
                 }
                 else
                 {
-                    @foreach (var block in BuildOutlineBlocks())
+                    @for (var i = 0; i < Scenes.Count; i++)
                     {
-                        var gTitle = block.GroupTitle;
-                        var gScenes = block.Scenes;
-                        var collapsed = gScenes.Count > 0 && gScenes[0].IsGroupCollapsed;
-                        var allSelected = gScenes.Count > 0 && gScenes.All(s => s.IsSelected);
+                        var index = i;
+                        var scene = Scenes[index];
 
-                        <div class="d-flex align-items-center gap-1 w-100 rounded px-1 py-0 spe-group-header border border-secondary-subtle">
-                            <button type="button"
-                                    class="btn btn-sm spe-outline-icon text-secondary"
-                                    title="@(collapsed ? "Expand" : "Collapse") group"
-                                    @onclick="() => ToggleGroup(gTitle)">
-                                <i class="bi @(collapsed ? "bi-chevron-right" : "bi-chevron-down")" aria-hidden="true"></i>
-                            </button>
+                        <div class="d-flex align-items-center gap-1 w-100 rounded border px-1 py-0 spe-outline-row @(scene.IsSelected ? "bg-primary text-white border-primary" : "bg-dark text-light border-secondary-subtle")"
+                             draggable="true"
+                             @ondragstart="() => HandleDragStart(index)"
+                             @ondragover:preventDefault
+                             @ondrop="() => HandleDrop(index)"
+                             title="@scene.HeaderText — drag to reorder">
+
                             <input type="checkbox"
                                    class="form-check-input my-0 flex-shrink-0 spe-outline-check"
-                                   checked="@allSelected"
-                                   @onchange="e => ToggleGroupSelect(gScenes, e)"
-                                   title="Select all scenes in group" />
-                            @if (EditingGroupTitle == gTitle)
-                            {
-                                <input type="text"
-                                       class="form-control form-control-sm bg-dark text-light border-secondary py-0 px-1 flex-grow-1"
-                                       style="height: 1.4rem; font-size: 0.75rem;"
-                                       @bind="GroupRenameDraft"
-                                       @bind:event="oninput"
-                                       @onkeydown="e => OnGroupRenameKey(e, gTitle)"
-                                       @onblur="() => CommitGroupRename(gTitle)" />
-                            }
-                            else
-                            {
+                                   @bind="scene.IsSelected"
+                                   @bind:after="OnSelectionChanged"
+                                   title="Select scene" />
+
+                            <button type="button"
+                                    class="btn btn-sm text-start flex-grow-1 min-w-0 p-0 border-0 bg-transparent text-reset text-truncate spe-outline-label"
+                                    @onclick="() => SelectScene(index)">
+                                <span class="badge @(scene.IsSelected ? "text-bg-dark" : "text-bg-warning") me-1 fw-bold">@scene.SceneNumber</span>
+                                @if (!IsCompact)
+                                {
+                                    <span class="small font-monospace">@scene.HeaderText</span>
+                                }
+                            </button>
+
+                            <div class="d-flex align-items-center flex-shrink-0 spe-outline-actions">
                                 <button type="button"
-                                        class="btn btn-sm text-start flex-grow-1 min-w-0 p-0 border-0 bg-transparent text-info text-truncate small fw-semibold"
-                                        title="Click: select group · Double-click: rename"
-                                        @onclick="() => SelectGroupScenes(gScenes)"
-                                        @ondblclick="() => BeginGroupRename(gTitle)">
-                                    @if (!IsCompact)
-                                    {
-                                        <span>@gTitle</span>
-                                        <span class="text-secondary fw-normal ms-1">(@gScenes.Count)</span>
-                                    }
-                                    else
-                                    {
-                                        <span class="badge text-bg-info text-dark">@gScenes.Count</span>
-                                    }
+                                        class="btn btn-sm spe-outline-icon text-info"
+                                        title="Preview scene @scene.SceneNumber"
+                                        @onclick="() => PreviewScene(index)"
+                                        @onclick:stopPropagation="true">
+                                    <i class="bi bi-play-fill" aria-hidden="true"></i>
                                 </button>
-                            }
+                                <button type="button"
+                                        class="btn btn-sm spe-outline-icon text-success"
+                                        title="Insert scene after @scene.SceneNumber"
+                                        @onclick="() => InsertAfter(index)"
+                                        @onclick:stopPropagation="true">
+                                    <i class="bi bi-plus-lg" aria-hidden="true"></i>
+                                </button>
+                                <button type="button"
+                                        class="btn btn-sm spe-outline-icon text-danger"
+                                        title="Delete scene @scene.SceneNumber"
+                                        @onclick="() => RequestDelete(index)"
+                                        @onclick:stopPropagation="true">
+                                    <i class="bi bi-trash" aria-hidden="true"></i>
+                                </button>
+                            </div>
                         </div>
-
-                        @if (!collapsed)
-                        {
-                            @for (var si = 0; si < gScenes.Count; si++)
-                            {
-                                var scene = gScenes[si];
-                                var index = Scenes.IndexOf(scene);
-                                if (index < 0) continue;
-
-                                <div class="d-flex align-items-center gap-1 w-100 rounded border px-1 py-0 spe-outline-row @(scene.IsSelected ? "bg-primary text-white border-primary" : "bg-dark text-light border-secondary-subtle")"
-                                     draggable="true"
-                                     @ondragstart="() => HandleDragStart(index)"
-                                     @ondragover:preventDefault
-                                     @ondrop="() => HandleDrop(index)"
-                                     title="@scene.HeaderText — drag to reorder">
-
-                                    <input type="checkbox"
-                                           class="form-check-input my-0 flex-shrink-0 spe-outline-check"
-                                           @bind="scene.IsSelected"
-                                           @bind:after="OnSelectionChanged"
-                                           title="Select scene" />
-
-                                    <button type="button"
-                                            class="btn btn-sm text-start flex-grow-1 min-w-0 p-0 border-0 bg-transparent text-reset text-truncate spe-outline-label"
-                                            @onclick="() => SelectScene(index)">
-                                        <span class="badge @(scene.IsSelected ? "text-bg-dark" : "text-bg-warning") me-1 fw-bold">@scene.SceneNumber</span>
-                                        @if (!IsCompact)
-                                        {
-                                            <span class="small font-monospace">@scene.HeaderText</span>
-                                        }
-                                    </button>
-
-                                    <div class="d-flex align-items-center flex-shrink-0 spe-outline-actions">
-                                        <button type="button"
-                                                class="btn btn-sm spe-outline-icon text-info"
-                                                title="Preview scene @scene.SceneNumber"
-                                                @onclick="() => PreviewScene(index)"
-                                                @onclick:stopPropagation="true">
-                                            <i class="bi bi-play-fill" aria-hidden="true"></i>
-                                        </button>
-                                        <button type="button"
-                                                class="btn btn-sm spe-outline-icon text-success"
-                                                title="Insert scene after @scene.SceneNumber"
-                                                @onclick="() => InsertAfter(index)"
-                                                @onclick:stopPropagation="true">
-                                            <i class="bi bi-plus-lg" aria-hidden="true"></i>
-                                        </button>
-                                        <button type="button"
-                                                class="btn btn-sm spe-outline-icon text-danger"
-                                                title="Delete scene @scene.SceneNumber"
-                                                @onclick="() => RequestDelete(index)"
-                                                @onclick:stopPropagation="true">
-                                            <i class="bi bi-trash" aria-hidden="true"></i>
-                                        </button>
-                                    </div>
-                                </div>
-                            }
-                        }
                     }
                 }
 
