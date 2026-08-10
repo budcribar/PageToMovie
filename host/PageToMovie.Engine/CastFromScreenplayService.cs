@@ -7,6 +7,7 @@ using System.Text.RegularExpressions;
 using PageToMovie.Engine.Abstractions;
 using PageToMovie.Engine.ModelExecution;
 using PageToMovie.Engine.ModelBacked;
+using PageToMovie.Fountain;
 using Microsoft.Extensions.Logging;
 
 namespace PageToMovie.Engine;
@@ -141,9 +142,10 @@ public sealed class CastFromScreenplayService
         // Closed cast is model-decided only (no name-discovery / verb / kinship heuristic lists).
         onProgress?.Invoke("Loading cast prompt…");
         var system = await LoadSystemPromptAsync(_projects.WorkspaceRoot, ct).ConfigureAwait(false);
-        var user = BuildUserPrompt(fountain, book);
+        var locationHints = BuildLocationHintsFromFountain(fountain);
+        var user = BuildUserPrompt(fountain, book, locationHints);
 
-        onProgress?.Invoke("Calling Grok for closed cast (book-aware looks)…");
+        onProgress?.Invoke("Calling Grok for closed cast + locations (book-aware looks)…");
         var pipeline = new ValidatedModelOperation<CastModelInput, string, Dictionary<string, object?>>(
             new CastChatOperation(_chat, "cast_extraction", "1", ChatCallModes.CastFromScreenplay, 0.2),
             new CastJsonObjectParser(),
@@ -195,7 +197,37 @@ public sealed class CastFromScreenplayService
                 wlDict, model, onProgress, ct).ConfigureAwait(false);
         }
 
-        onProgress?.Invoke($"Writing {seedsObj.Count} character seed(s)…");
+        // Location AI pass: model filmable set locks; fallback to Stage‑1 heading+action seeds.
+        var locSeeds = GetLocationSeedsDict(normalized);
+        if (locSeeds.Count == 0)
+        {
+            onProgress?.Invoke("No AI location seeds — filling from screenplay headings…");
+            locSeeds = _projects.ExtractLocationSeedObjects(projectId)
+                       ?? new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        }
+        else
+        {
+            onProgress?.Invoke($"Scrubbing {locSeeds.Count} location seed(s)…");
+            locSeeds = await _literalize.LiteralizeSeedsAsync(
+                locSeeds, model, onProgress, ct).ConfigureAwait(false);
+            // Fill any heading places the model missed
+            var fountainLocs = _projects.ExtractLocationSeedObjects(projectId);
+            if (fountainLocs is not null)
+            {
+                foreach (var (k, v) in fountainLocs)
+                {
+                    if (!locSeeds.ContainsKey(k))
+                        locSeeds[k] = v;
+                }
+            }
+        }
+        if (locSeeds.Count > 0)
+            normalized["location_seed_tokens"] = locSeeds;
+
+        onProgress?.Invoke(
+            $"Writing {seedsObj.Count} character seed(s)" +
+            (locSeeds.Count > 0 ? $" · {locSeeds.Count} location(s)" : "") +
+            "…");
         Directory.CreateDirectory(Path.GetDirectoryName(outPath)!);
         if (File.Exists(outPath))
         {
@@ -223,11 +255,12 @@ public sealed class CastFromScreenplayService
         var json = JsonSerializer.Serialize(normalized, JsonDefaults.Indented);
         await File.WriteAllTextAsync(outPath, json + "\n", ct).ConfigureAwait(false);
 
-        // Characters-only extract used to leave location_seed_tokens empty forever.
-        // Merge Fountain Stage‑1 places (setting + action prose) into the same cast file.
+        // Ensure location_seed_tokens still present if write path stripped them (legacy merge).
         try
         {
-            if (_projects.MergeLocationSeedsIntoCastFile(projectId))
+            if (locSeeds.Count > 0)
+                _projects.MergeLocationSeedsIntoCastFile(projectId, locSeeds);
+            else if (_projects.MergeLocationSeedsIntoCastFile(projectId))
                 onProgress?.Invoke("Merged location seeds from screenplay headings…");
         }
         catch (Exception ex)
@@ -390,12 +423,12 @@ public sealed class CastFromScreenplayService
         return null;
     }
 
-    private static string BuildUserPrompt(string fountain, string? book)
+    private static string BuildUserPrompt(string fountain, string? book, string? locationHints = null)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("You are the closed-cast authority.");
+        sb.AppendLine("You are the closed-cast and location authority.");
         sb.AppendLine("SOURCE OF TRUTH: the FOUNTAIN screenplay. It must describe the story world,");
-        sb.AppendLine("including visual medium and on-screen cast. BOOK text is supporting detail only");
+        sb.AppendLine("including visual medium, on-screen cast, and places. BOOK text is supporting detail only");
         sb.AppendLine("when Fountain is thin — never override Fountain medium or cast with book-only invention.");
         sb.AppendLine("There is NO external name list and NO forced candidate list — membership is your judgment only.");
         sb.AppendLine("Include every person or animal who appears on screen or speaks (including silent leads");
@@ -414,7 +447,20 @@ public sealed class CastFromScreenplayService
         sb.AppendLine("REQUIRED: render_style_lock from the FOUNTAIN medium (title Notes / early Action /");
         sb.AppendLine("story register). The screenplay must carry the book's visual medium; do not choose");
         sb.AppendLine("cartoon vs photoreal from file type. One medium for all cast.");
-        sb.AppendLine("Return JSON only (schema_version cast_seeds.v1, character_seed_tokens).");
+        sb.AppendLine();
+        sb.AppendLine("LOCATIONS (REQUIRED): Also emit location_seed_tokens for every distinct place in");
+        sb.AppendLine("Fountain INT./EXT. headings. Same place day vs night = one Loc_* seed.");
+        sb.AppendLine("Each description + visual_lock must be filmable set design (architecture, materials,");
+        sb.AppendLine("era, signature props, light sources, palette) — not the place name alone.");
+        sb.AppendLine("Do not freeze a single scene's time-of-day into visual_lock.");
+        if (!string.IsNullOrWhiteSpace(locationHints))
+        {
+            sb.AppendLine();
+            sb.AppendLine("KNOWN PLACES FROM HEADINGS (cover each; you may unify synonyms into one Loc_*):");
+            sb.AppendLine(locationHints.TrimEnd());
+        }
+        sb.AppendLine();
+        sb.AppendLine("Return JSON only (schema_version cast_seeds.v1, character_seed_tokens, location_seed_tokens).");
         sb.AppendLine();
         sb.AppendLine("--- BEGIN FOUNTAIN ---");
         sb.AppendLine(SelectTextForPrompt(fountain, FountainPromptChars));
@@ -422,16 +468,59 @@ public sealed class CastFromScreenplayService
         if (!string.IsNullOrWhiteSpace(book))
         {
             sb.AppendLine();
-            sb.AppendLine("--- BEGIN BOOK (cast membership + looks — read fully; no external name list) ---");
+            sb.AppendLine("--- BEGIN BOOK (cast + location looks — read fully; no external name list) ---");
             sb.AppendLine(SelectBookTextForCastPrompt(book, BookPromptChars, nameHints: null));
             sb.AppendLine("--- END BOOK ---");
         }
         else
         {
             sb.AppendLine();
-            sb.AppendLine("(No book text attached — infer cast + looks only from Fountain.)");
+            sb.AppendLine("(No book text attached — infer cast + locations only from Fountain.)");
         }
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Closed list of place keys/names from Stage‑1 heading parse so the model covers every set.
+    /// </summary>
+    internal static string BuildLocationHintsFromFountain(string fountain)
+    {
+        try
+        {
+            var model = FountainStage1Importer.BuildStage1(FountainParser.Parse(fountain));
+            if (model.TryGetValue("global_production_variables", out var gpvObj)
+                && gpvObj is Dictionary<string, object?> gpv
+                && gpv.TryGetValue("location_seed_tokens", out var locObj)
+                && locObj is Dictionary<string, object?> locs
+                && locs.Count > 0)
+            {
+                var sb = new StringBuilder();
+                foreach (var (key, val) in locs.OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase))
+                {
+                    var display = key;
+                    if (val is Dictionary<string, object?> d
+                        && d.TryGetValue("display_name", out var dn)
+                        && !string.IsNullOrWhiteSpace(dn?.ToString()))
+                        display = dn!.ToString()!;
+                    sb.AppendLine($"- {key} ({display})");
+                }
+                return sb.ToString();
+            }
+        }
+        catch { /* optional hints */ }
+        return "";
+    }
+
+    internal static Dictionary<string, object?> GetLocationSeedsDict(Dictionary<string, object?> doc)
+    {
+        if (doc.TryGetValue("location_seed_tokens", out var s) && s is Dictionary<string, object?> d)
+            return d;
+        if (doc.TryGetValue("global_production_variables", out var g)
+            && g is Dictionary<string, object?> gpv
+            && gpv.TryGetValue("location_seed_tokens", out var s2)
+            && s2 is Dictionary<string, object?> d2)
+            return d2;
+        return new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -965,8 +1054,53 @@ public sealed class CastFromScreenplayService
                 outDoc["wardrobe_lock_tokens"] = wardrobeOut;
         }
 
+        var locIn = GetLocationSeedsDict(parsed);
+        if (locIn.Count > 0)
+        {
+            var locOut = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+            foreach (var (rawKey, rawVal) in locIn)
+            {
+                if (rawVal is not Dictionary<string, object?> entry) continue;
+                var k = NormalizeLocationKey(rawKey);
+                if (string.IsNullOrWhiteSpace(k) || k == "Loc_") continue;
+
+                var display = CoerceString(entry, "display_name")
+                              ?? CoerceString(entry, "canonical_given_name")
+                              ?? k.Replace("Loc_", "").Replace('_', ' ');
+                var desc = CoerceString(entry, "description") ?? "";
+                if (IsStubLook(desc) || desc.Equals(display, StringComparison.OrdinalIgnoreCase))
+                    desc = "";
+                var vlock = CoerceString(entry, "visual_lock") ?? "";
+                if (IsStubLook(vlock) || vlock.Equals(display, StringComparison.OrdinalIgnoreCase))
+                    vlock = "";
+
+                var clean = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["display_name"] = display,
+                    ["description"] = desc,
+                    ["visual_lock"] = string.IsNullOrWhiteSpace(vlock) ? desc : vlock,
+                    ["location_type"] = CoerceString(entry, "location_type") ?? "",
+                    ["reference_image_placeholder"] = CoerceString(entry, "reference_image_placeholder")
+                        ?? (k.ToLowerInvariant() + "_ref.png"),
+                };
+                // Skip empty AI stubs — Stage‑1 merge will fill later.
+                if (string.IsNullOrWhiteSpace(clean["description"]?.ToString())
+                    && string.IsNullOrWhiteSpace(clean["visual_lock"]?.ToString()))
+                    continue;
+                locOut[k] = clean;
+            }
+            if (locOut.Count > 0)
+                outDoc["location_seed_tokens"] = locOut;
+        }
+
         return outDoc;
     }
+
+    /// <summary>Foreign-key-safe location key, e.g. "kirk street" → "Loc_Kirk_Street".</summary>
+    private static string NormalizeLocationKey(string raw) =>
+        raw.StartsWith("Loc_", StringComparison.OrdinalIgnoreCase)
+            ? raw
+            : "Loc_" + NonAlphaNumericRegex.Replace(raw, "_").Trim('_');
 
     /// <summary>Foreign-key-safe wardrobe group key, e.g. "police officer" → "Wardrobe_Police_Officer".</summary>
     private static string NormalizeWardrobeKey(string raw) =>

@@ -40,8 +40,8 @@ PRESERVE
 OUTPUT (HARD) — JSON ONLY
 ================================================================
 Return the same structure you received, with only visual text fields cleaned. Keys are not
-always Character_*: you may also receive Wardrobe_* keys (a shared uniform/costume shared by
-several characters, not a character itself) — clean them the same way, by the same rules.
+always Character_*: you may also receive Wardrobe_* keys (shared uniform) or Loc_* keys
+(location / set design) — clean them the same way, by the same rules.
 
 {
   "character_seed_tokens": {
@@ -53,10 +53,14 @@ several characters, not a character itself) — clean them the same way, by the 
     "Wardrobe_Key": {
       "description": "… literal shared costume/uniform only …",
       "visual_lock": "… hard constraints for that costume …"
+    },
+    "Loc_Key": {
+      "description": "… literal filmable set design only …",
+      "visual_lock": "… hard place-identity constraints (no single-scene time-of-day freeze) …"
     }
   }
 }
 
-Include every key from the input (Character_* or Wardrobe_*) with cleaned fields — same rules,
-whichever prefix it has.
+Include every key from the input (Character_*, Wardrobe_*, or Loc_*) with cleaned fields —
+same rules, whichever prefix it has.
 No markdown fences. No commentary. No book-specific hardcoding.

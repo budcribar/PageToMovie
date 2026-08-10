@@ -120,6 +120,15 @@ Return ONLY a JSON object (no markdown fences, no commentary):
       "description": "one concrete, unambiguous shared costume — name exact garment/hat/badge silhouette, not a vague category",
       "visual_lock": "optional constants that must not drift"
     }
+  },
+  "location_seed_tokens": {
+    "Loc_Example_Place": {
+      "display_name": "EXAMPLE PLACE",
+      "description": "filmable set: architecture, materials, era, scale, signature furniture/props, ambient light sources, color palette",
+      "visual_lock": "1–3 sentences of place constants that must not drift between scenes (same room identity)",
+      "location_type": "INT | EXT | INT/EXT",
+      "reference_image_placeholder": "loc_example_place_ref.png"
+    }
   }
 }
 
@@ -165,9 +174,24 @@ FIELD RULES:
 - Include humans AND animals that appear on screen.
 - Do NOT invent characters not supported by screenplay or book.
 - Prefer names used in the Fountain (BUSTER, MOMMA, DADDY, NARRATOR).
+- location_seed_tokens (REQUIRED when Fountain has INT./EXT. headings): one Loc_* per
+  distinct place. description = filmable set design (not just the place name). visual_lock =
+  constants that keep the room/street identity stable (architecture, materials, key props,
+  default light quality) — never bake a single scene's time-of-day into the lock.
+- **FORBIDDEN in location description/visual_lock:** character names as primary content,
+  plot beats, "as described in the screenplay", empty or name-only stubs when the Fountain
+  or BOOK has set-dressing cues.
 
+11. **LOCATIONS / SETS (HARD):** Also emit `location_seed_tokens` for every distinct
+   place that appears in Fountain scene headings (INT./EXT. place names). Day vs night
+   of the same place is ONE location (do not freeze time-of-day into visual_lock).
+   Keys: `Loc_<PascalOrSnake>` from the place name (e.g. Loc_Kirk_Street_Apartment).
+   Each seed needs filmable set design — architecture, era, materials, light sources,
+   signature props, color palette — concrete enough to keep rooms consistent across clips.
+   Mine BOOK text for place description when present. Do NOT invent places that never
+   appear as headings. Do NOT put characters in location seeds.
 
-9. **GROUP / CHORUS CAST (HARD):** When several unnamed people act or speak as one body
+12. **GROUP / CHORUS CAST (HARD):** When several unnamed people act or speak as one body
    (e.g. "the eager children", "the crowd", "classmates", villagers, soldiers) and the
    story does **not** give them individual proper names to pin, emit **one** Character_*
    seed with `"cast_kind": "group"` (aliases: chorus, ensemble, crowd). Do **not** invent

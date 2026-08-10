@@ -2596,7 +2596,7 @@ public sealed partial class ProjectStore
         }
     }
 
-    private Dictionary<string, object?>? ExtractLocationSeedObjects(string projectId)
+    public Dictionary<string, object?>? ExtractLocationSeedObjects(string projectId)
     {
         try
         {
