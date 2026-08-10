@@ -35,9 +35,11 @@ public partial class Admin
             S._actionMsg = null;
             try
             {
-                await S.Api.AdminCancelJobAsync(jobId);
-                S._actionMsg = $"Cancel requested for {jobId}";
-                await S.State.RefreshAsync();
+                var ok = await S.Api.TryAdminCancelJobAsync(jobId);
+                S._actionMsg = ok
+                    ? $"Cancel requested for {jobId}"
+                    : $"Could not reach server to cancel {jobId} (may be restarting).";
+                try { await S.State.RefreshAsync(); } catch { /* offline */ }
             }
             catch (Exception ex) { S._actionMsg = ex.Message; }
             finally { S._busy = false; }

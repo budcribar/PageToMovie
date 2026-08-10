@@ -219,18 +219,27 @@ public partial class Characters
 
         internal async Task CancelAsync()
         {
-            S._busy = true;
-            try
+            // Always dismiss local UI; server cancel is best-effort (deploy/restart 502s).
+            _ = await S.Engine.TryCancelJobAsync();
+            var kind = _job?.Kind;
+            _job = new JobSnapshot
             {
-                await S.Engine.CancelJobAsync();
-                S._message = "Cancel requested";
-                var jobs = await S.Engine.GetJobAsync();
-                _job = jobs?.Job;
-                if (S.LookPipe._mode == Mode.WaitingGenerate)
-                    S.LookPipe._mode = Mode.PickSource;
-            }
-            catch (Exception ex) { S._error = ex.Message; }
-            finally { S._busy = false; }
+                Status = "cancelled",
+                Kind = kind,
+                Message = "Cancelled",
+                CharKey = _job?.CharKey,
+                ProjectId = _job?.ProjectId,
+                Log = _job?.Log ?? new List<string>(),
+                FinishedAt = DateTimeOffset.UtcNow,
+            };
+            if (S.LookPipe._mode == Mode.WaitingGenerate)
+                S.LookPipe._mode = Mode.PickSource;
+            S.List._extractingCast = false;
+            S.List._rebuildCastHadExisting = false;
+            S._busy = false;
+            S._error = null;
+            S._message = "Cancelled. You can try again when ready.";
+            S.StateHasChanged();
         }
 
 

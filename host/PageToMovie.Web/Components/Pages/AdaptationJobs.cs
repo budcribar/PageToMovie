@@ -248,15 +248,7 @@ public abstract partial class AdaptationPageBase
             DisposePolling();
 
             // Best-effort server cancel — short timeout so a dead host cannot pin Cancel.
-            try
-            {
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-                await S.Engine.CancelJobAsync(cts.Token);
-            }
-            catch
-            {
-                /* 502 / timeout during deploy — local dismiss still proceeds */
-            }
+            _ = await S.Engine.TryCancelJobAsync();
 
             Job = new JobSnapshot
             {

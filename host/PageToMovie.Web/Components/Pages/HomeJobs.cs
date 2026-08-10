@@ -171,14 +171,18 @@ public partial class Home
 
         internal async Task CancelAsync()
         {
-            S._busy = true;
-            try
+            // Always dismiss local UI; server cancel is best-effort (deploy/restart 502s).
+            _ = await S.Engine.TryCancelJobAsync();
+            if (_job is not null)
             {
-                await S.Engine.CancelJobAsync();
-                S._message = "Cancel requested";
+                _job.Status = "cancelled";
+                _job.Message = "Cancelled";
+                _job.FinishedAt = DateTimeOffset.UtcNow;
             }
-            catch (Exception ex) { S._error = ex.Message; }
-            finally { S._busy = false; }
+            S._busy = false;
+            S._error = null;
+            S._message = "Cancelled. You can try again when ready.";
+            S.StateHasChanged();
         }
 
 

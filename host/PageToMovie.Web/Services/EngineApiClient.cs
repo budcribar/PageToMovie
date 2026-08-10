@@ -1921,6 +1921,27 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         resp.EnsureSuccessStatusCode();
     }
 
+    /// <summary>
+    /// Best-effort cancel for UI dismiss paths. Never throws; returns false if the API is down
+    /// (deploy/restart) so callers can still clear local stuck job UI.
+    /// </summary>
+    public async Task<bool> TryCancelJobAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            if (!ct.CanBeCanceled)
+                linked.CancelAfter(TimeSpan.FromSeconds(3));
+            SyncIdentityHeaders();
+            using var resp = await _http.PostAsJsonAsync("/api/jobs/cancel", new { }, linked.Token);
+            return resp.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public async Task CancelJobByIdAsync(string jobId, CancellationToken ct = default)
     {
         SyncIdentityHeaders();
@@ -1929,6 +1950,23 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
             new { },
             ct);
         await EnsureOkAsync(resp, ct);
+    }
+
+    /// <summary>Best-effort admin cancel by id; never throws.</summary>
+    public async Task<bool> TryAdminCancelJobAsync(string jobId, CancellationToken ct = default)
+    {
+        try
+        {
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            if (!ct.CanBeCanceled)
+                linked.CancelAfter(TimeSpan.FromSeconds(3));
+            await AdminCancelJobAsync(jobId, linked.Token);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     public async Task<ScenesListDto?> GetScenesAsync(string projectId, CancellationToken ct = default)

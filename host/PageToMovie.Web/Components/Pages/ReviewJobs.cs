@@ -158,14 +158,17 @@ public partial class Review
 
         internal async Task CancelAsync()
         {
-            try
+            _ = await S.Engine.TryCancelJobAsync();
+            if (_job is not null)
             {
-                await S.Engine.CancelJobAsync();
-                S._message = "Cancel requested";
-                var jobs = await S.Engine.GetJobAsync();
-                _job = jobs?.Job;
+                _job.Status = "cancelled";
+                _job.Message = "Cancelled";
+                _job.FinishedAt = DateTimeOffset.UtcNow;
             }
-            catch (Exception ex) { S._error = ex.Message; }
+            S._busy = false;
+            S._error = null;
+            S._message = "Cancelled. You can try again when ready.";
+            S.StateHasChanged();
         }
 
 
