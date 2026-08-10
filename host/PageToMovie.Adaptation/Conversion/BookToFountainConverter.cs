@@ -311,9 +311,11 @@ public static class BookToFountainConverter
         // Continuous verse / V.O. narration split across a real blank line parses stanzas 2+
         // as silent Action (Fountain: a truly-empty line ends a dialogue block). Re-merge under
         // one cue with two-space stanza breaks so the narration is actually spoken.
+        onProgress?.Invoke("Checking narration continuity (split V.O. / verse)…");
         text = await RepairSplitNarrationAsync(
             system, text, chat, model, onProgress, ct, reasoningEffort,
             onStructuralGateFailure).ConfigureAwait(false);
+        onProgress?.Invoke("Narration continuity checked.");
 
         text = EnsureDraftDate(text);
         // Models invent wrong years (e.g. 3/25/2025) — stamp local today before save
@@ -375,13 +377,19 @@ public static class BookToFountainConverter
         var report = reportLate ?? reportEarly;
         if (vision is null)
         {
+            onProgress?.Invoke("Visual medium sidecar missing — asking model for VISION_META only (not re-writing the script)…");
             var repairedPackage = await RepairVisionMetaAsync(
-                system, fountainOnly, bookText, chat, model, reasoningEffort, ct).ConfigureAwait(false);
+                system, fountainOnly, bookText, chat, model, reasoningEffort, ct, onProgress).ConfigureAwait(false);
             var repairedSplit = SplitAdaptationTrailers(repairedPackage);
             fountainOnly = repairedSplit.Fountain;
             vision = repairedSplit.Vision;
             report ??= repairedSplit.Report;
+            onProgress?.Invoke(vision is not null
+                ? "Visual medium sidecar ready."
+                : "Visual medium still missing — draft will save without it.");
         }
+
+        onProgress?.Invoke("Finalizing screenplay package…");
         if (vision is not null)
         {
             vision.DecidedBy = "adaptation";
@@ -437,6 +445,11 @@ public static class BookToFountainConverter
         }
     }
 
+    /// <summary>
+    /// Ask only for the VISION_META JSON sidecar — never re-generate the full Fountain.
+    /// Previous implementation re-sent the entire screenplay and hung for 10–20+ minutes after
+    /// "Names checked" with no progress (especially on long drafts).
+    /// </summary>
     private static async Task<string> RepairVisionMetaAsync(
         string system,
         string fountain,
@@ -444,42 +457,153 @@ public static class BookToFountainConverter
         IChatClient chat,
         string model,
         string? reasoningEffort,
-        CancellationToken ct)
+        CancellationToken ct,
+        Action<string>? onProgress = null)
     {
-        var bookContext = bookText.Length <= 12_000 ? bookText : bookText[..12_000];
+        if (!chat.IsConfigured)
+            return fountain;
+
+        // Evidence only — not a full rewrite payload.
+        var bookContext = bookText.Length <= 6_000 ? bookText : bookText[..6_000];
+        var fountainSample = fountain.Length <= 4_000 ? fountain : fountain[..4_000];
         var user = $$"""
-            VISION_META REPAIR
-            Append exactly one valid production-medium sidecar to the complete Fountain below.
-            Preserve the Fountain body verbatim. Return Fountain followed by:
+            VISION_META ONLY (do not rewrite the screenplay)
+            Return ONLY the sidecar block below — no Fountain body, no markdown fences.
+
             ---VISION_META---
             {"visual_medium":"live_action|illustrated_picture_book|mixed","render_style_lock":"specific reusable style lock","notes":"brief evidence"}
             ---END_VISION_META---
 
-            Source-book context:
+            Allowed visual_medium values: live_action, illustrated_picture_book, mixed.
+            Pick one based on the book excerpt and screenplay sample.
+
+            Source-book excerpt:
             {{bookContext}}
 
-            Fountain:
-            {{fountain}}
+            Screenplay sample (title page + opening only):
+            {{fountainSample}}
             """;
-        var result = await ExecuteStage1OperationAsync(
-            chat, system, user, model, 0.1,
-            ChatCallModes.BookToFountainRetry,
-            "VISION_META repair", null, ct, reasoningEffort,
-            promptVersion: "stage1-vision-meta-repair-v1",
-            correctionInstruction: "Append valid VISION_META JSON with both delimiters and an allowed visual_medium value.",
-            validate: value =>
+
+        // Soft timeout — missing vision meta must not block draft save.
+        const int softSeconds = 90;
+        try
+        {
+            using var softCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            softCts.CancelAfter(TimeSpan.FromSeconds(softSeconds));
+            using var heartbeat = StartProgressHeartbeat(
+                onProgress,
+                "Still fetching visual medium…",
+                TimeSpan.FromSeconds(15));
+
+            var result = await ExecuteStage1OperationAsync(
+                chat, system, user, model, 0.1,
+                ChatCallModes.BookToFountainRetry,
+                "VISION_META repair", onProgress, softCts.Token, reasoningEffort,
+                promptVersion: "stage1-vision-meta-repair-v2",
+                correctionInstruction: "Return only ---VISION_META--- JSON ---END_VISION_META--- with an allowed visual_medium.",
+                validate: value =>
+                {
+                    var split = SplitVisionMetaTrailer(
+                        value.Contains("---VISION_META---", StringComparison.OrdinalIgnoreCase)
+                            ? value
+                            : "---VISION_META---\n" + value.Trim() + "\n---END_VISION_META---");
+                    var issues = new List<Stage1ValidationIssue>();
+                    if (split.Vision is null)
+                        issues.Add(new("missing_vision_meta", "A valid VISION_META sidecar is required.", "$.vision_meta"));
+                    return issues;
+                },
+                deterministicFallback: null,
+                operationName: "stage1_vision_meta_repair").ConfigureAwait(false);
+
+            if (string.IsNullOrWhiteSpace(result))
+                return fountain;
+
+            // Model may return sidecar only — attach to the original fountain.
+            var normalized = result.Contains("---VISION_META---", StringComparison.OrdinalIgnoreCase)
+                ? result
+                : "---VISION_META---\n" + result.Trim() + "\n---END_VISION_META---";
+            var splitResult = SplitVisionMetaTrailer(
+                normalized.Contains("---END_VISION_META---", StringComparison.OrdinalIgnoreCase)
+                    ? (normalized.Contains("Title:", StringComparison.OrdinalIgnoreCase)
+                        ? normalized
+                        : fountain.TrimEnd() + "\n\n" + normalized)
+                    : fountain.TrimEnd() + "\n\n" + normalized);
+
+            // Prefer: if model returned fountain+meta, use it only when fountain still looks good;
+            // otherwise append meta onto the original draft.
+            if (splitResult.Vision is not null && LooksLikeGoodFountain(splitResult.Fountain)
+                && CountSceneHeadings(splitResult.Fountain) >= Math.Max(1, CountSceneHeadings(fountain) / 2))
             {
-                var split = SplitVisionMetaTrailer(value);
-                var issues = new List<Stage1ValidationIssue>();
-                if (split.Vision is null)
-                    issues.Add(new("missing_vision_meta", "A valid VISION_META sidecar is required.", "$.vision_meta"));
-                if (!LooksLikeGoodFountain(split.Fountain))
-                    issues.Add(new("invalid_fountain", "The preserved Fountain body is invalid.", "$.fountain"));
-                return issues;
-            },
-            deterministicFallback: fountain,
-            operationName: "stage1_vision_meta_repair").ConfigureAwait(false);
-        return result ?? fountain;
+                return splitResult.Fountain.TrimEnd() + "\n\n---VISION_META---\n"
+                       + System.Text.Json.JsonSerializer.Serialize(new
+                       {
+                           visual_medium = splitResult.Vision.VisualMedium,
+                           render_style_lock = splitResult.Vision.RenderStyleLock,
+                           notes = splitResult.Vision.Notes,
+                       })
+                       + "\n---END_VISION_META---\n";
+            }
+
+            // Parse meta from sidecar-only response.
+            var metaOnly = SplitVisionMetaTrailer(
+                normalized.Contains("---VISION_META---", StringComparison.OrdinalIgnoreCase)
+                    ? normalized
+                    : "---VISION_META---\n" + normalized + "\n---END_VISION_META---");
+            if (metaOnly.Vision is null)
+            {
+                // Try treating whole result as JSON
+                var wrapped = "---VISION_META---\n" + result.Trim() + "\n---END_VISION_META---";
+                metaOnly = SplitVisionMetaTrailer(wrapped);
+            }
+            if (metaOnly.Vision is null)
+                return fountain;
+
+            return fountain.TrimEnd() + "\n\n---VISION_META---\n"
+                   + System.Text.Json.JsonSerializer.Serialize(new
+                   {
+                       visual_medium = metaOnly.Vision.VisualMedium,
+                       render_style_lock = metaOnly.Vision.RenderStyleLock,
+                       notes = metaOnly.Vision.Notes,
+                   })
+                   + "\n---END_VISION_META---\n";
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            onProgress?.Invoke($"Visual medium timed out after {softSeconds}s — saving draft without it.");
+            return fountain;
+        }
+        catch (Exception ex)
+        {
+            onProgress?.Invoke("Visual medium skipped: " + ex.Message);
+            return fountain;
+        }
+    }
+
+    /// <summary>Periodic progress while a long Stage‑1 model call is in flight.</summary>
+    private static IDisposable StartProgressHeartbeat(
+        Action<string>? onProgress,
+        string messagePrefix,
+        TimeSpan period)
+    {
+        if (onProgress is null) return EmptyDisposable.Instance;
+        var started = DateTimeOffset.UtcNow;
+        var timer = new Timer(_ =>
+        {
+            try
+            {
+                var elapsed = DateTimeOffset.UtcNow - started;
+                onProgress(
+                    $"{messagePrefix} ({(int)elapsed.TotalMinutes}m {elapsed.Seconds:D2}s)");
+            }
+            catch { /* ignore */ }
+        }, null, period, period);
+        return timer;
+    }
+
+    private sealed class EmptyDisposable : IDisposable
+    {
+        public static readonly EmptyDisposable Instance = new();
+        public void Dispose() { }
     }
 
     /// <summary>
@@ -1572,6 +1696,10 @@ public static class BookToFountainConverter
 
         try
         {
+            using var heartbeat = StartProgressHeartbeat(
+                onProgress,
+                "Still repairing split narration…",
+                TimeSpan.FromSeconds(20));
             var raw = await ExecuteStage1OperationAsync(
                     chat, system, user, model, temperature: 0.15,
                     mode: ChatCallModes.BookToFountainNarrationRetry,
