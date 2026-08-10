@@ -38,9 +38,9 @@
 
         <div class="card mb-4">
             <div class="card-body p-4">
-                @if (Drop._importing)
+                @if (Drop._importing || Jobs.JobRunning)
                 {
-                    @* Import in flight — hide drop zone so progress has the room. *@
+                    @* Import in flight (or reattached after browser exit) — hide drop zone so progress has the room. *@
                     <h5 class="card-title mb-1">Importing</h5>
                     @if (!string.IsNullOrWhiteSpace(Drop._chosenFileName))
                     {
@@ -50,14 +50,14 @@
                     }
                     else
                     {
-                        <p class="text-muted small mb-3">Hang tight — the pipeline is running.</p>
+                        <p class="text-muted small mb-3">Hang tight — the pipeline is running on the server (safe if you closed the browser).</p>
                     }
 
                     <JobProgressCard Status="@(Jobs.JobRunning ? (Jobs.Job?.Status ?? "running") : (Drop._importing ? "running" : "idle"))"
-                                     Message="@(Drop._importStatus.Length > 0 ? Drop._importStatus : "Working…")"
-                                     Index="@(Jobs.Job?.Index ?? 0)"
-                                     Total="@(Jobs.Job?.Total ?? 0)"
-                                     Percent="@(Drop._importPct ?? 40)"
+                                     Message="@(Drop._importStatus.Length > 0 ? Drop._importStatus : (Jobs.Job?.Message ?? "Working…"))"
+                                     Index="@(Jobs.Job?.Index ?? Jobs.ProgressIndex)"
+                                     Total="@(Jobs.Job?.Total ?? (Jobs.ProgressTotal > 0 ? Jobs.ProgressTotal : 10))"
+                                     Percent="@(Drop._importPct ?? AdaptationStepUi.ComputeProgressPercent(Jobs.ProgressIndex, Jobs.ProgressTotal > 0 ? Jobs.ProgressTotal : 10, waiting: true, jobRunning: true, startedAt: Jobs.Job?.StartedAt))"
                                      ShowCancel="true"
                                      CancelDisabled="false"
                                      OnCancel="Jobs.CancelAsync"
@@ -112,7 +112,7 @@
                 }
 
                 <div data-testid="import-status"
-                     data-importing="@(Drop._importing ? "true" : "false")"
+                     data-importing="@((Drop._importing || Jobs.JobRunning) ? "true" : "false")"
                      data-can-continue="@(Gate.CanContinueToScreenplay ? "true" : "false")"
                      class="visually-hidden"
                      aria-hidden="true">@Drop._importStatus</div>

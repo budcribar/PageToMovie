@@ -57,6 +57,7 @@ public abstract partial class AdaptationPageBase : ComponentBase, IAsyncDisposab
 
             var jobs = await Engine.GetJobAsync();
             Jobs.Job = jobs?.Job;
+            Jobs.TryReattachRunningJob();
 
             await LoadAsync();
         }
@@ -77,6 +78,7 @@ public abstract partial class AdaptationPageBase : ComponentBase, IAsyncDisposab
             ApplyDefaultsFromStatus();
             var jobs = await Engine.GetJobAsync();
             Jobs.Job = jobs?.Job;
+            Jobs.TryReattachRunningJob();
         }
         catch (Exception ex)
         {

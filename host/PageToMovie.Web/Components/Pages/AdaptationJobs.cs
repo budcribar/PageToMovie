@@ -214,12 +214,30 @@ public abstract partial class AdaptationPageBase
                                     Job.Index = Math.Max(Job.Index, ProgressIndex);
                                     Job.Total = Math.Max(Job.Total, ProgressTotal);
                                 }
+                                // Keep import chrome visible for the duration of a reattached job.
+                                if (S is AdaptationImport importPage && JobRunning)
+                                {
+                                    importPage.Drop._importing = true;
+                                    if (string.IsNullOrWhiteSpace(importPage.Drop._importStatus)
+                                        || importPage.Drop._importStatus == "Cancelled")
+                                        importPage.Drop._importStatus =
+                                            snap.Message ?? "Job still running on the server…";
+                                }
                                 S.StateHasChanged();
                             });
                             if (snap.IsFinished)
                             {
                                 if (snap.Status is "done" or "error" or "cancelled")
-                                    await S.InvokeAsync(async () => { await S.SoftLoadAsync(); S.StateHasChanged(); });
+                                    await S.InvokeAsync(async () =>
+                                    {
+                                        if (S is AdaptationImport importPage)
+                                        {
+                                            importPage.Drop._importing = false;
+                                            importPage.Drop._importPct = null;
+                                        }
+                                        await S.SoftLoadAsync();
+                                        S.StateHasChanged();
+                                    });
                                 break;
                             }
                         }
@@ -236,6 +254,29 @@ public abstract partial class AdaptationPageBase
                 catch (OperationCanceledException) { /* expected */ }
                 catch { /* ignore poll errors */ }
             }, CancellationToken.None);
+        }
+
+        /// <summary>
+        /// Browser exit does not cancel server jobs. On page load / re-login, reattach progress
+        /// UI and polling so a still-running import is visible and cancellable again.
+        /// </summary>
+        public void TryReattachRunningJob()
+        {
+            if (ClientCancelRequested || Job is null || !JobRunning)
+                return;
+            AbsorbProgressFromSnapshot(Job);
+            AbsorbProgressFromLine(Job.Message);
+            if (S is AdaptationImport importPage)
+            {
+                importPage.Drop._importing = true;
+                if (string.IsNullOrWhiteSpace(importPage.Drop._importStatus))
+                    importPage.Drop._importStatus =
+                        Job.Message ?? "Resumed — job still running on the server…";
+                if (string.IsNullOrWhiteSpace(importPage.Drop._chosenFileName)
+                    && !string.IsNullOrWhiteSpace(Job.Kind))
+                    importPage.Drop._chosenFileName = Job.Kind;
+            }
+            StartJobPolling();
         }
 
         /// <summary>
