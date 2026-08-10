@@ -1,14 +1,5 @@
 namespace PageToMovie.LoadSim;
 
-public enum LoadSimScenario
-{
-    Browse,
-    Play,
-    Gen,
-    Remux,
-    Mixed
-}
-
 public sealed class SimOptions
 {
     public string BaseUrl { get; set; } = "http://127.0.0.1:5088";

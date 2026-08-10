@@ -10,6 +10,8 @@ public sealed class ThemeState
 {
     public string Preference { get; private set; } = "dark";
 
+    public UiThemeMode Mode => WebLayerEnumExtensions.ParseUiThemeMode(Preference);
+
     public event Action? Changed;
 
     public void Set(string? preference)
@@ -20,6 +22,8 @@ public sealed class ThemeState
         Changed?.Invoke();
     }
 
+    public void Set(UiThemeMode mode) => Set(mode.ToCssTheme());
+
     public static string Normalize(string? v) =>
-        v is "light" or "system" ? v : "dark";
+        WebLayerEnumExtensions.ParseUiThemeMode(v).ToCssTheme();
 }

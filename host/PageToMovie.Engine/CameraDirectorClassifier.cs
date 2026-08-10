@@ -17,7 +17,25 @@ public sealed record CameraDirective(
     CameraLens Lens = CameraLens.Lens35mm,
     CameraMovementKind MovementKind = CameraMovementKind.TripodHold,
     CameraAngle Angle = CameraAngle.EyeLevel,
-    LightingCondition Lighting = LightingCondition.Daylight);
+    LightingCondition Lighting = LightingCondition.Daylight)
+{
+    public ShotAngleType ShotAngleType => Angle switch
+    {
+        CameraAngle.LowAngle => ShotAngleType.LowAngle,
+        CameraAngle.HighAngle => ShotAngleType.HighAngle,
+        CameraAngle.BirdEye => ShotAngleType.BirdsEye,
+        _ => ShotAngleType.EyeLevel
+    };
+    public CameraLensSpec LensSpecType => EngineLayerEnumExtensions.ParseCameraLensSpec(LensSpec);
+    public CameraMovementPattern MovementPattern => EngineLayerEnumExtensions.ParseCameraMovementPattern(CameraMovement);
+    public LightingStyleType LightingStyle => Lighting switch
+    {
+        LightingCondition.Daylight => LightingStyleType.Daylight,
+        LightingCondition.GoldenHour => LightingStyleType.GoldenHour,
+        LightingCondition.NeonLight => LightingStyleType.NeonCyberpunk,
+        _ => LightingStyleType.NaturalIndoor
+    };
+}
 
 /// <summary>
 /// AI Classifier acting as a Virtuoso Film Director / Director of Photography.
