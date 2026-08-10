@@ -235,7 +235,7 @@ public static class BookToFountainConverter
                 // Visibility only — no automatic retry here (re-running multi-chunk adapt is
                 // expensive, and we don't have real error-rate data yet to justify it). Hard
                 // failures (structure/excerpt_marker) still throw below same as before; soft
-                // failures (scene_count/missing_ending/suspiciously_short) previously shipped
+                // failures (scene_count/missing_ending/suspiciously_short/runtime_short) previously shipped
                 // silently with no log anywhere — now recorded for the admin panel.
                 if (onStructuralGateFailure is not null)
                 {
@@ -1900,6 +1900,18 @@ public static class BookToFountainConverter
             fountain.Length < Math.Min(8_000, Math.Max(500, bookText.Length / 40)))
             fails.Add("suspiciously_short");
 
+        // Soft: draft runtime estimate << book natural length (max-then-trim expects a long base).
+        // Fails single-shot so multi-chunk fallback can try; multi path still accepts structure-ok drafts.
+        var naturalMin = NaturalRuntime.EstimateNaturalMinutes(bookText);
+        if (naturalMin >= 45)
+        {
+            var draftMin = EstimateDraftRuntimeMinutes(fountain);
+            // Floor: at least 40% of natural, and not under 25 min when natural is feature-scale.
+            var floor = Math.Max(25, (int)Math.Round(naturalMin * 0.40));
+            if (draftMin > 0 && draftMin < floor)
+                fails.Add($"runtime_short:{draftMin:0}<{floor}(natural~{naturalMin})");
+        }
+
         var hard = fails.Contains("structure") || fails.Contains("excerpt_marker");
         var ok = path == AdaptPath.Multi
             ? !hard && LooksLikeGoodFountain(fountain)
@@ -1914,6 +1926,61 @@ public static class BookToFountainConverter
             Failures = fails,
             HasHardFailure = hard,
         };
+    }
+
+    /// <summary>
+    /// Rough finished-film minutes from draft body words (or adaptation_report est when present).
+    /// Used only as a soft quality floor — not a hard production duration.
+    /// </summary>
+    public static double EstimateDraftRuntimeMinutes(string? fountain)
+    {
+        if (string.IsNullOrWhiteSpace(fountain)) return 0;
+        // Prefer model-reported estimate when the trailer is present.
+        try
+        {
+            var split = SplitAdaptationTrailers(fountain);
+            if (split.Report?.Metrics?.EstRuntimeMin is > 0)
+                return split.Report.Metrics.EstRuntimeMin;
+            fountain = split.Fountain;
+        }
+        catch
+        {
+            /* trailer parse optional */
+        }
+
+        // Body words ≈ Action + dialogue: strip common non-body lines, then word-count.
+        var body = new StringBuilder(fountain.Length);
+        foreach (var raw in fountain.Replace("\r\n", "\n").Split('\n'))
+        {
+            var line = raw.TrimEnd();
+            var t = line.Trim();
+            if (t.Length == 0) continue;
+            if (t.StartsWith("Title:", StringComparison.OrdinalIgnoreCase)
+                || t.StartsWith("Credit:", StringComparison.OrdinalIgnoreCase)
+                || t.StartsWith("Author:", StringComparison.OrdinalIgnoreCase)
+                || t.StartsWith("Source:", StringComparison.OrdinalIgnoreCase)
+                || t.StartsWith("Draft date:", StringComparison.OrdinalIgnoreCase)
+                || t.StartsWith("Notes:", StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (Regex.IsMatch(t, @"^(INT\.|EXT\.|INT\./EXT\.|EST\.)", RegexOptions.IgnoreCase))
+                continue;
+            if (Regex.IsMatch(t, @"^(FADE (IN|OUT)|CUT TO|DISSOLVE TO|SMASH CUT|THE END)\b", RegexOptions.IgnoreCase))
+                continue;
+            if (t.StartsWith('(') && t.EndsWith(')'))
+                continue; // parentheticals / (SOUND:…)
+            // Character cues: short ALL-CAPS lines
+            if (t.Length <= 40
+                && Regex.IsMatch(t, @"^[A-Z0-9][A-Z0-9 \.'\-]{0,38}(\s*\([^)]+\))?$")
+                && !t.Contains('.') // avoid "Mr. Smith" edge — still ok as dialogue body later
+                && t == t.ToUpperInvariant())
+                continue;
+            body.Append(t).Append(' ');
+        }
+
+        var words = TextMetrics.CountWords(body.ToString());
+        if (words <= 0) return 0;
+        // Match BODY_WORDS_PER_MINUTE default (155).
+        return words / 155.0;
     }
 
     /// <summary>

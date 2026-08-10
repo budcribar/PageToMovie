@@ -239,7 +239,74 @@ public class BookToFountainPathTests
             thin, book, totalRuntimeMinutes: 40, AdaptationFountain.AdaptPath.Single);
         Assert.False(gate.Ok, "expected soft coverage fail");
         Assert.False(gate.HasHardFailure);
-        Assert.Contains(gate.Failures, f => f.StartsWith("scene_count") || f == "suspiciously_short");
+        Assert.Contains(gate.Failures, f =>
+            f.StartsWith("scene_count")
+            || f == "suspiciously_short"
+            || f.StartsWith("runtime_short"));
+    }
+
+    [Fact]
+    public void EvaluateQuality_runtime_short_when_draft_far_below_natural()
+    {
+        // Real multi-word prose so density natural estimate is feature-scale (≥45 min).
+        var book = BuildProseBook(chapters: 40, sentencesPerChapter: 80);
+        Assert.True(NaturalRuntime.EstimateNaturalMinutes(book) >= 45,
+            $"natural={NaturalRuntime.EstimateNaturalMinutes(book)} words={TextMetrics.CountWords(book)}");
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("Title: Thin Epic");
+        sb.AppendLine("Author: H");
+        sb.AppendLine();
+        for (var i = 1; i <= 12; i++)
+        {
+            sb.AppendLine($"INT. PLACE {i} - DAY");
+            sb.AppendLine();
+            sb.AppendLine("NARRATOR");
+            sb.AppendLine("A brief summary of what should have been a full episode.");
+            sb.AppendLine();
+        }
+        sb.AppendLine("FADE OUT.");
+        sb.AppendLine();
+        sb.AppendLine("THE END");
+
+        var gate = AdaptationFountain.EvaluateQuality(
+            sb.ToString(), book, totalRuntimeMinutes: null, AdaptationFountain.AdaptPath.Single);
+        Assert.False(gate.Ok, gate.Reason);
+        Assert.Contains(gate.Failures, f => f.StartsWith("runtime_short"));
+    }
+
+    [Fact]
+    public void EstimateDraftRuntimeMinutes_scales_with_body_words()
+    {
+        var shortDraft = """
+            Title: S
+            Author: A
+
+            INT. ROOM - DAY
+
+            HERO
+            Hello.
+
+            FADE OUT.
+
+            THE END
+            """;
+        var longBody = string.Join(' ', Enumerable.Repeat("action dialogue visual beat", 800));
+        var longDraft = $"""
+            Title: L
+            Author: A
+
+            INT. ROOM - DAY
+
+            {longBody}
+
+            FADE OUT.
+
+            THE END
+            """;
+        var shortMin = AdaptationFountain.EstimateDraftRuntimeMinutes(shortDraft);
+        var longMin = AdaptationFountain.EstimateDraftRuntimeMinutes(longDraft);
+        Assert.True(longMin > shortMin + 3, $"expected long {longMin} >> short {shortMin}");
     }
 
     [Fact]
@@ -473,6 +540,22 @@ public class BookToFountainPathTests
             sb.Append("CHAPTER ").Append(c).Append('\n');
             sb.Append(new string((char)('a' + (c % 26)), bodyChars));
             sb.Append(" chapter body ").Append(c).Append("\n\n");
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>Multi-word prose book for natural-runtime density (not a run of aaaa…).</summary>
+    private static string BuildProseBook(int chapters, int sentencesPerChapter)
+    {
+        var sb = new System.Text.StringBuilder();
+        for (var c = 1; c <= chapters; c++)
+        {
+            sb.Append("CHAPTER ").Append(c).Append('\n');
+            for (var s = 0; s < sentencesPerChapter; s++)
+            {
+                sb.Append("The traveler crossed the stone bridge and spoke with the merchant about ships and storms. ");
+            }
+            sb.Append("\n\n");
         }
         return sb.ToString();
     }

@@ -18,7 +18,11 @@ public sealed class AdaptationPromptTokens
     public string DraftDate { get; init; } = DateTime.UtcNow.ToString("M/d/yyyy");
 
     public int MaxDialogueWords { get; init; } = 35;
-    public int MaxSpeakingCast { get; init; } = 8;
+    /// <summary>
+    /// Default speaking-cast ceiling. 16 leaves room for epic/novel ensembles without
+    /// forcing every supporting role into Action/NARRATOR (old default of 8 collapsed Odyssey-scale casts).
+    /// </summary>
+    public int MaxSpeakingCast { get; init; } = 16;
     public int BodyWordsPerMinute { get; init; } = 155;
     public int MinAudioCuesPerScene { get; init; } = 1;
     public int MinAudioCuesAtPeak { get; init; } = 2;

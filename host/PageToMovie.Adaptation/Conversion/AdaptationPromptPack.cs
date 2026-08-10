@@ -23,11 +23,12 @@ public static class AdaptationPromptPack
 
     /// <summary>
     /// Injected when no artificial runtime target is set (product default).
+    /// Natural = stage fully (max base for later Fit length); no fake padding.
     /// </summary>
     public const string UnlimitedRuntimeDirective =
-        "unlimited — adapt at natural length; finish the whole story; " +
-        "do NOT invent incidents, reprises, or business to fill time; " +
-        "do NOT pad to any minute band";
+        "unlimited / natural length — stage the whole story as a full draft the operator can " +
+        "trim later; finish on the book's real ending; do NOT invent incidents or pad with " +
+        "filler; do NOT collapse a long book into a short montage by summarizing major episodes";
 
     private static readonly Assembly ThisAssembly = typeof(AdaptationPromptPack).Assembly;
     private static readonly Regex TokenPattern = new(@"\{\{([A-Z0-9_]+)\}\}", RegexOptions.Compiled);

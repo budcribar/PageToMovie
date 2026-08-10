@@ -116,9 +116,16 @@ The book arrives whole — first line to last, nothing elided. There are no gap 
 omitted middles, no excerpt stitching. Treat the text as one continuous story and adapt the
 COMPLETE arc: setup, escalation, crisis, resolution.
 
-Length is never a reason to stop early. A long book gets a tighter cut, not a partial one —
-compress the middle by merging beats and dropping digressions, never by ending at the point
-where the reading felt long. Reaching FADE OUT on the book's real ending is mandatory.
+Length is never a reason to stop early or to collapse a long book into a short montage.
+- Stage every major episode the book actually contains as filmable scenes with Action and
+  (when the book supports them) dialogue — not a one-line V.O. summary of an entire voyage,
+  battle, or recognition sequence.
+- Prefer a full natural-length draft the operator can later trim (Fit length). Do not
+  pre-trim to a short teleplay when the source is novel- or epic-length.
+- Merge only same place/time micro-beats that truly belong together. Do not drop whole
+  middle books or adventure spans just because the source is long.
+- Reaching FADE OUT on the book's real ending is still mandatory — finish the arc without
+  inventing material, and without discarding the middle to get there faster.
 
 Do not invent plot, characters, locations, or chapters beyond what the text contains.
 
@@ -526,6 +533,9 @@ Target ~{{TOTAL_RUNTIME_MINUTES}} minutes of finished film.
 BUDGET (compute before drafting)
 - Body words (Action + dialogue, excluding headings, cues, and parentheticals):
   target ≈ {{TOTAL_RUNTIME_MINUTES}} × {{BODY_WORDS_PER_MINUTE}}, within about ±10%.
+  When the host says unlimited / natural length, treat the density natural estimate as a
+  soft floor: stage major episodes fully so the draft is long enough to trim later. Falling
+  far below natural length by summarizing whole arcs is a defect for novel/epic sources.
 - Scene count: between {{SCENE_COUNT_MIN}} and {{SCENE_COUNT_MAX}} headings total.
   This band is already resolved by the host for this source's length — do not re-derive
   a different band by classifying the book yourself. Never one heading per chapter or
