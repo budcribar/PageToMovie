@@ -47,12 +47,6 @@ public partial class AdaptationScreenplay
         _structuredUi?.OpenLocationModal();
     }
 
-    private void MenuOpenImport()
-    {
-        CloseMenu();
-        _structuredUi?.OpenImportModal();
-    }
-
     private void MenuOpenExport()
     {
         CloseMenu();

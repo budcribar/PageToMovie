@@ -93,12 +93,6 @@
                             </button>
                         </li>
                         <li><hr class="dropdown-divider"></li>
-                        <li><h6 class="dropdown-header">Screenplay Exchange</h6></li>
-                        <li>
-                            <button class="dropdown-item" type="button" disabled="@(_structuredUi is null)" @onclick="MenuOpenImport">
-                                Import Fountain…
-                            </button>
-                        </li>
                         <li>
                             <button class="dropdown-item" type="button" disabled="@(_structuredUi is null)" @onclick="MenuOpenExport">
                                 Export Fountain…
@@ -115,10 +109,6 @@
                             <button class="dropdown-item" type="button" disabled="@(_structuredUi is null)" @onclick="MenuExpandAllAsync">
                                 Expand All Scenes
                             </button>
-                        </li>
-                        <li><hr class="dropdown-divider"></li>
-                        <li>
-                            <a class="dropdown-item" href="adaptation/import" data-testid="screenplay-reimport" @onclick="CloseMenu">Re-import source…</a>
                         </li>
                     </ul>
                 </div>
