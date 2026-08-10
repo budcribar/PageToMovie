@@ -169,10 +169,15 @@ public partial class ScreenplayEditor : ComponentBase
 
     public async Task AddScene()
     {
-        var locs = Model.GetAllLocations();
+        await InsertSceneAfter(Model.Scenes.Count - 1);
+    }
+
+    /// <summary>Insert a blank scene after <paramref name="afterIndex"/> (-1 = at start).</summary>
+    public async Task InsertSceneAfter(int afterIndex)
+    {
         var newScene = new ScreenplayScene
         {
-            SceneNumber = Model.Scenes.Count + 1,
+            SceneNumber = 0,
             Environment = "INT.",
             Location = "NEW LOCATION",
             TimeOfDay = "DAY",
@@ -181,10 +186,16 @@ public partial class ScreenplayEditor : ComponentBase
         newScene.Beats.Add(new ScreenplayBeat
         {
             BeatType = BeatType.Action,
-            ActionText = "Describe visual scene action here..."
+            ActionText = "Describe what we see…"
         });
-        Model.Scenes.Add(newScene);
-        SelectedSceneIndex = Model.Scenes.Count - 1;
+
+        foreach (var s in Model.Scenes)
+            s.IsSelected = false;
+
+        var insertAt = Math.Clamp(afterIndex + 1, 0, Model.Scenes.Count);
+        Model.Scenes.Insert(insertAt, newScene);
+        ReindexSceneNumbers();
+        SelectedSceneIndex = insertAt;
         ActiveViewMode = "scene";
         await OnChanged();
     }

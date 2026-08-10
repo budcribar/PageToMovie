@@ -1,16 +1,19 @@
 <div class="card bg-dark-subtle border-secondary-subtle h-100 shadow-sm">
-    <div class="card-header bg-dark text-light d-flex justify-content-between align-items-center py-2 px-3 border-bottom border-secondary-subtle">
+    <div class="card-header bg-dark text-light d-flex justify-content-between align-items-center py-1 px-2 border-bottom border-secondary-subtle">
         <div class="d-flex align-items-center gap-2 overflow-hidden">
             <input type="checkbox" class="form-check-input my-0" checked="@IsAllSelected" @onchange="ToggleSelectAll" title="Select / Deselect All Scenes" />
             @if (!IsCompact)
             {
-                <h6 class="mb-0 fw-bold text-light text-nowrap">Outline Navigator</h6>
+                <h6 class="mb-0 fw-bold text-light text-nowrap small">Outline</h6>
             }
         </div>
         <div class="d-flex align-items-center gap-1">
             @if (!IsCompact)
             {
-                <ScreenplayEditor_ActionButton Variant="@ComponentVariant.OutlineSuccess" Icon="bi-plus-lg" Text="Add" OnClick="OnAddScene" />
+                <button type="button"
+                        class="btn btn-sm btn-outline-success py-0 px-2 spe-outline-add"
+                        title="Add scene at the end"
+                        @onclick="OnAddScene">+</button>
             }
             <button class="btn btn-sm btn-outline-secondary py-0 px-2" type="button" @onclick="ToggleCompact" title="@(IsCompact ? "Expand Sidebar" : "Shrink Sidebar to Numbers Only")">
                 @(IsCompact ? "⟫" : "⟪")
@@ -19,16 +22,16 @@
     </div>
     
     <div class="card-body p-2 overflow-auto" style="max-height: calc(100vh - 180px);">
-        <div class="d-flex flex-column gap-2">
+        <div class="d-flex flex-column gap-1">
             <!-- Metadata & Title Page Navigation Item -->
             <button type="button"
-                    class="btn btn-sm text-start w-100 d-flex align-items-center gap-2 @(ActiveView == "metadata" ? "btn-primary fw-bold" : "btn-outline-secondary text-light")"
+                    class="btn btn-sm text-start w-100 d-flex align-items-center gap-2 py-1 @(ActiveView == "metadata" ? "btn-primary fw-bold" : "btn-outline-secondary text-light")"
                     @onclick="SelectMetadata"
                     title="Story Metadata & Title Page">
-                <span class="fs-6">📋</span>
+                <span class="small">📋</span>
                 @if (!IsCompact)
                 {
-                    <span class="text-truncate">Metadata & Title Page</span>
+                    <span class="text-truncate small">Metadata</span>
                 }
             </button>
 
@@ -38,7 +41,7 @@
             {
                 @if (!IsCompact)
                 {
-                    <p class="text-secondary small px-1 mb-0">No scenes added.</p>
+                    <p class="text-secondary small px-1 mb-0">No scenes. Use + to add one.</p>
                 }
             }
             else
@@ -53,7 +56,7 @@
                          @ondragstart="() => HandleDragStart(index)"
                          @ondragover:preventDefault
                          @ondrop="() => HandleDrop(index)"
-                         title="Drag & drop to reorder scene">
+                         title="Drag to reorder · use + between rows to insert">
                         
                         <input type="checkbox" class="form-check-input my-0 ms-1 me-1" @bind="scene.IsSelected" @bind:after="OnSelectionChanged" title="Select scene for display" />
 
@@ -79,6 +82,17 @@
                             }
                         </div>
                     </div>
+
+                    @* Insert a new scene after this one (e.g. between 38 and 39) *@
+                    @if (!IsCompact)
+                    {
+                        <button type="button"
+                                class="btn btn-link btn-sm text-success text-decoration-none py-0 px-1 spe-insert-between"
+                                title="Insert new scene after Scene @scene.SceneNumber"
+                                @onclick="() => InsertAfter(index)">
+                            + insert
+                        </button>
+                    }
                 }
             }
 
@@ -86,21 +100,19 @@
 
             <!-- Final Credits & Closing Copyright Item -->
             <button type="button"
-                    class="btn btn-sm text-start w-100 d-flex align-items-center gap-2 @(ActiveView == "credits" ? "btn-info fw-bold text-dark" : "btn-outline-secondary text-light")"
+                    class="btn btn-sm text-start w-100 d-flex align-items-center gap-2 py-1 @(ActiveView == "credits" ? "btn-info fw-bold text-dark" : "btn-outline-secondary text-light")"
                     @onclick="SelectCredits"
                     title="Final Credits & Closing Copyright">
-                <span class="fs-6">🎬</span>
+                <span class="small">🎬</span>
                 @if (!IsCompact)
                 {
-                    <span class="text-truncate">Final Credits & Copyright</span>
+                    <span class="text-truncate small">Credits</span>
                 }
             </button>
 
             @if (IsCompact)
             {
-                <button type="button" class="btn btn-sm btn-outline-success w-100 mt-2" @onclick="OnAddScene" title="Add Scene">
-                    <i class="bi bi-plus-lg"></i>
-                </button>
+                <button type="button" class="btn btn-sm btn-outline-success w-100 mt-2 py-0" @onclick="OnAddScene" title="Add Scene">+</button>
             }
         </div>
     </div>

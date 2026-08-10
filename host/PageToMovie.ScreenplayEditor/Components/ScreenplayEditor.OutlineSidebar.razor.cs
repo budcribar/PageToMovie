@@ -32,6 +32,10 @@ public partial class ScreenplayEditor_OutlineSidebar : ComponentBase
     [Parameter]
     public EventCallback OnAddScene { get; set; }
 
+    /// <summary>Insert a new scene after the given index (0-based). Used for mid-list inserts.</summary>
+    [Parameter]
+    public EventCallback<int> OnInsertSceneAfter { get; set; }
+
     [Parameter]
     public EventCallback<int> OnDeleteScene { get; set; }
 
@@ -141,6 +145,14 @@ public partial class ScreenplayEditor_OutlineSidebar : ComponentBase
     public void HandleDragStart(int index)
     {
         ActiveDragIndex = index;
+    }
+
+    public async Task InsertAfter(int index)
+    {
+        if (OnInsertSceneAfter.HasDelegate)
+            await OnInsertSceneAfter.InvokeAsync(index);
+        else if (OnAddScene.HasDelegate)
+            await OnAddScene.InvokeAsync();
     }
 
     public async Task HandleDrop(int targetIndex)

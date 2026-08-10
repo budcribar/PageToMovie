@@ -2424,6 +2424,37 @@ public sealed partial class ProjectStore
             .ToList();
     }
 
+    /// <summary>
+    /// Location seeds from Stage‑1 / fountain import (location_seed_tokens in cast_seeds, blueprint, or scenes).
+    /// </summary>
+    public IReadOnlyList<LocationSummary> ListLocations(string projectId)
+    {
+        var seeds = LoadLocationSeeds(projectId);
+        var rows = new List<LocationSummary>();
+        foreach (var (key, info) in seeds)
+        {
+            var display = info.TryGetProperty("display_name", out var dn) && dn.GetString() is { Length: > 0 } dname
+                ? dname
+                : key.Replace('_', ' ').Trim();
+            var desc = info.TryGetProperty("description", out var d) ? d.GetString() ?? "" : "";
+            var vlock = info.TryGetProperty("visual_lock", out var v) ? v.GetString() ?? "" : "";
+            if (string.IsNullOrWhiteSpace(desc) && !string.IsNullOrWhiteSpace(vlock))
+                desc = vlock;
+            if (string.IsNullOrWhiteSpace(vlock) && !string.IsNullOrWhiteSpace(desc))
+                vlock = desc;
+            rows.Add(new LocationSummary
+            {
+                Key = key,
+                DisplayName = display,
+                Description = desc,
+                VisualLock = vlock,
+            });
+        }
+        return rows
+            .OrderBy(r => r.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
     public string? ResolveCharacterRefPath(string projectId, string charKey, bool allowNormalizedFallback = true)
     {
         // Voice-only roles never have (or need) a portrait. The enumerate-and-match itself — exact
@@ -6368,6 +6399,98 @@ public sealed partial class ProjectStore
                 dict[p.Name] = p.Value.Clone();
             return dict;
         }
+        return new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// location_seed_tokens from cast_seeds / blueprint / scenes — same precedence as character seeds.
+    /// </summary>
+    private Dictionary<string, JsonElement> LoadLocationSeeds(string projectId)
+    {
+        try
+        {
+            foreach (var name in new[] { ScreenplayService.CastSeedsFileName })
+            {
+                var castPath = Path.Combine(GetProjectDir(projectId), "source", name);
+                if (!File.Exists(castPath)) continue;
+                using var doc = JsonDocument.Parse(File.ReadAllText(castPath));
+                var root = doc.RootElement;
+                JsonElement seedEl = default;
+                if (root.TryGetProperty("location_seed_tokens", out var s) && s.ValueKind == JsonValueKind.Object)
+                    seedEl = s;
+                else if (root.TryGetProperty("global_production_variables", out var g) &&
+                         g.TryGetProperty("location_seed_tokens", out var s2) &&
+                         s2.ValueKind == JsonValueKind.Object)
+                    seedEl = s2;
+                if (seedEl.ValueKind == JsonValueKind.Object)
+                {
+                    var dict = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var p in seedEl.EnumerateObject())
+                        dict[p.Name] = p.Value.Clone();
+                    if (dict.Count > 0)
+                        return dict;
+                }
+            }
+        }
+        catch { /* fall through */ }
+
+        try
+        {
+            using var bp = LoadBlueprintSync(projectId);
+            if (bp is not null &&
+                bp.RootElement.TryGetProperty("global_production_variables", out var gpv) &&
+                gpv.TryGetProperty("location_seed_tokens", out var seeds) &&
+                seeds.ValueKind == JsonValueKind.Object)
+            {
+                var dict = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
+                foreach (var p in seeds.EnumerateObject())
+                    dict[p.Name] = p.Value.Clone();
+                if (dict.Count > 0)
+                    return dict;
+            }
+        }
+        catch { /* fall through */ }
+
+        try
+        {
+            var model = ScreenplayService.TryBuildModelFromProject(this, projectId);
+            if (model is not null &&
+                model.TryGetValue("global_production_variables", out var gpvObj) &&
+                gpvObj is Dictionary<string, object?> gpv &&
+                gpv.TryGetValue("location_seed_tokens", out var locObj) &&
+                locObj is Dictionary<string, object?> locDict &&
+                locDict.Count > 0)
+            {
+                var json = JsonSerializer.Serialize(locDict);
+                using var doc = JsonDocument.Parse(json);
+                var dict = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
+                foreach (var p in doc.RootElement.EnumerateObject())
+                    dict[p.Name] = p.Value.Clone();
+                if (dict.Count > 0)
+                    return dict;
+            }
+        }
+        catch { /* fall through */ }
+
+        var scenesPath = GetScenesPath(projectId);
+        if (!File.Exists(scenesPath))
+            return new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
+
+        try
+        {
+            using var scenesDoc = JsonDocument.Parse(File.ReadAllText(scenesPath));
+            if (scenesDoc.RootElement.TryGetProperty("global_production_variables", out var g2) &&
+                g2.TryGetProperty("location_seed_tokens", out var s3) &&
+                s3.ValueKind == JsonValueKind.Object)
+            {
+                var dict = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
+                foreach (var p in s3.EnumerateObject())
+                    dict[p.Name] = p.Value.Clone();
+                return dict;
+            }
+        }
+        catch { /* ignore */ }
+
         return new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
     }
 

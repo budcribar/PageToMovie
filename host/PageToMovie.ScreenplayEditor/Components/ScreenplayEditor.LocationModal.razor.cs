@@ -75,9 +75,18 @@ public partial class ScreenplayEditor_LocationModal : ComponentBase
         return "spe-loc-" + safe.ToLowerInvariant();
     }
 
-    internal bool IsFocused(string name) =>
-        !string.IsNullOrWhiteSpace(FocusName)
-        && name.Equals(FocusName.Trim(), StringComparison.OrdinalIgnoreCase);
+    internal bool IsFocused(string name)
+    {
+        if (string.IsNullOrWhiteSpace(FocusName) || string.IsNullOrWhiteSpace(name))
+            return false;
+        var a = NormalizeLoc(FocusName);
+        var b = NormalizeLoc(name);
+        return a == b || a.Contains(b) || b.Contains(a);
+    }
+
+    private static string NormalizeLoc(string s) =>
+        new string((s ?? "").Where(c => char.IsLetterOrDigit(c)).ToArray()).ToUpperInvariant();
+
 
     public async Task Close()
     {

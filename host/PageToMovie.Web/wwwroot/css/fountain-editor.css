@@ -1065,3 +1065,25 @@
 .fe-screenplay-card .dropdown-menu.show {
   z-index: 1030;
 }
+
+/* Outline: compact + and mid-list insert */
+.fe-structured-editor .spe-outline-add {
+  min-width: 1.6rem;
+  height: 1.5rem;
+  line-height: 1;
+  font-weight: 700;
+  font-size: 0.95rem;
+  padding: 0 0.35rem !important;
+}
+.fe-structured-editor .spe-insert-between {
+  font-size: 0.68rem;
+  line-height: 1;
+  opacity: 0.45;
+  align-self: center;
+  width: 100%;
+  text-align: center;
+  margin: -0.1rem 0;
+}
+.fe-structured-editor .spe-insert-between:hover {
+  opacity: 1;
+}

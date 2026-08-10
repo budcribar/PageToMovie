@@ -3169,6 +3169,24 @@ app.MapGet("/api/projects/{id}/characters", (string id, ProjectStore store) =>
     }
 });
 
+app.MapGet("/api/projects/{id}/locations", (string id, ProjectStore store) =>
+{
+    try
+    {
+        var locs = store.ListLocations(id);
+        return Results.Ok(new
+        {
+            ok = true,
+            projectId = id,
+            locations = locs,
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { ok = false, error = ex.Message });
+    }
+});
+
 // immutable=true is only correct for files that can never change at the same URL (e.g. book
 // page images extracted once at import). Character ref/variant/book-ref images are overwritten
 // in place at the same path on regeneration — "public, max-age=31536000, immutable" would tell

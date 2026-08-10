@@ -3320,6 +3320,14 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         return dto;
     }
 
+    public async Task<LocationsDto?> GetLocationsAsync(string projectId, CancellationToken ct = default)
+    {
+        return await _http.GetFromJsonAsync<LocationsDto>(
+            $"/api/projects/{Uri.EscapeDataString(projectId)}/locations",
+            JsonOpts,
+            ct);
+    }
+
     /// <summary>Server-side HttpClient origin (often loopback). Do not use for browser &lt;img&gt; src.</summary>
     public string ApiBaseUrl =>
         (_http.BaseAddress?.ToString() ?? "").TrimEnd('/');
@@ -4257,6 +4265,13 @@ public sealed class CharactersDto
     public CharacterPlatesState? CharacterPlates { get; set; }
     /// <summary>Grok ≤ 3, Gemini ≤ 14 — from image_provider / image_model_name.</summary>
     public ImageSeedLimits? ImageSeedLimits { get; set; }
+}
+
+public sealed class LocationsDto
+{
+    public bool Ok { get; set; }
+    public string? ProjectId { get; set; }
+    public List<LocationSummary> Locations { get; set; } = new();
 }
 
 public sealed class EditLogDto

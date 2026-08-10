@@ -3,53 +3,71 @@
     <div class="modal fade show d-block" tabindex="-1" style="background: rgba(0,0,0,0.75);">
         <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
             <div class="modal-content bg-dark text-light border-info shadow-lg">
-                <div class="modal-header bg-dark-subtle border-secondary-subtle">
+                <div class="modal-header bg-dark-subtle border-secondary-subtle py-2">
                     <h5 class="modal-title fw-bold text-light">
                         ⚙ Story Locations
                         @if (!string.IsNullOrWhiteSpace(FocusName))
                         {
-                            <span class="text-info small fw-normal ms-2">· focusing @FocusName</span>
+                            <span class="text-info small fw-normal ms-2">· @FocusName</span>
                         }
                     </h5>
                     <button type="button" class="btn-close btn-close-white" @onclick="Close"></button>
                 </div>
-                <div class="modal-body p-4">
-                    <label class="form-label fw-semibold text-secondary small">Add New Location</label>
-                    <div class="input-group input-group-sm mb-4">
-                        <input type="text" class="form-control text-uppercase bg-dark text-light border-secondary" @bind="NewLocationName" placeholder="e.g. SUBURBAN BACKYARD" />
-                        <button class="btn btn-info fw-semibold px-3" type="button" @onclick="AddLocation" disabled="@string.IsNullOrWhiteSpace(NewLocationName)">+ Add Location</button>
+                <div class="modal-body p-3">
+                    <p class="small text-secondary mb-3">
+                        Descriptions come from the location classifier (Stage‑1 <code>location_seed_tokens</code>).
+                        The location on the current scene is highlighted at the top.
+                    </p>
+
+                    <label class="form-label fw-semibold text-secondary small mb-1">Add location</label>
+                    <div class="input-group input-group-sm mb-3">
+                        <input type="text" class="form-control text-uppercase bg-dark text-light border-secondary" @bind="NewLocationName" placeholder="e.g. KIRK STREET APARTMENT" />
+                        <button class="btn btn-info fw-semibold px-3" type="button" @onclick="AddLocation" disabled="@string.IsNullOrWhiteSpace(NewLocationName)">+ Add</button>
                     </div>
 
-                    <label class="form-label fw-semibold text-secondary small">Discovered & Master Locations (@OrderedLocationNames.Count)</label>
-                    <div class="d-flex flex-column gap-3 overflow-auto" style="max-height: 450px;">
+                    <label class="form-label fw-semibold text-secondary small">Locations (@OrderedLocationNames.Count)</label>
+                    <div class="d-flex flex-column gap-2 overflow-auto" style="max-height: 420px;">
                         @foreach (var locName in OrderedLocationNames)
                         {
                             var profile = Model.GetOrCreateLocationProfile(locName);
                             var isFocus = IsFocused(locName);
 
                             <div id="@CardDomId(locName)"
-                                 class="card bg-dark-subtle p-3 shadow-sm @(isFocus ? "border-info border-2 spe-focus-card" : "border-secondary-subtle")">
-                                <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom border-secondary-subtle">
+                                 class="card bg-dark-subtle p-2 shadow-sm @(isFocus ? "border-info border-2 spe-focus-card" : "border-secondary-subtle")">
+                                <div class="d-flex justify-content-between align-items-center mb-2 pb-1 border-bottom border-secondary-subtle">
                                     <div class="d-flex align-items-center gap-2">
-                                        <span class="fs-5">🏞️</span>
-                                        <h5 class="mb-0 fw-bold text-info text-uppercase font-monospace">@locName</h5>
+                                        <h6 class="mb-0 fw-bold text-info text-uppercase font-monospace">@locName</h6>
                                         @if (isFocus)
                                         {
                                             <span class="badge text-bg-info text-dark">This scene</span>
                                         }
                                     </div>
-                                    <button class="btn btn-sm btn-outline-danger py-0 px-2" type="button" @onclick="() => RemoveLocation(locName)" title="Delete Location">✕ Delete</button>
+                                    <button class="btn btn-sm btn-outline-danger py-0 px-2" type="button" @onclick="() => RemoveLocation(locName)" title="Delete Location">✕</button>
                                 </div>
 
-                                <div>
-                                    <label class="form-label fw-semibold text-secondary small mb-1">Environmental & Visual Description</label>
-                                    <textarea class="form-control form-control-sm bg-dark text-light border-secondary py-1 px-2" rows="2" @bind="profile.Description" @bind:after="OnChanged" placeholder="Describe visual atmosphere, lighting, mood, key objects…"></textarea>
+                                <div class="mb-2">
+                                    <label class="form-label text-secondary small mb-0">Description (classifier)</label>
+                                    <textarea class="form-control form-control-sm bg-dark text-light border-secondary py-1 px-2" rows="3"
+                                              @bind="profile.Description" @bind:after="OnChanged"
+                                              placeholder="Atmosphere, lighting, key objects — from location classifier…"></textarea>
                                 </div>
+                                <div>
+                                    <label class="form-label text-secondary small mb-0">Visual lock</label>
+                                    <textarea class="form-control form-control-sm bg-dark text-light border-secondary py-1 px-2" rows="2"
+                                              @bind="profile.VisualLock" @bind:after="OnChanged"
+                                              placeholder="Stable look for this place across shots…"></textarea>
+                                </div>
+                            </div>
+                        }
+                        @if (OrderedLocationNames.Count == 0)
+                        {
+                            <div class="text-secondary small border border-secondary-subtle rounded p-3">
+                                No location seeds yet. Import a source so Stage‑1 can classify places, or add a name above.
                             </div>
                         }
                     </div>
                 </div>
-                <div class="modal-footer bg-dark-subtle border-secondary-subtle">
+                <div class="modal-footer bg-dark-subtle border-secondary-subtle py-2">
                     <button type="button" class="btn btn-primary btn-sm px-4 fw-semibold" @onclick="Close">Done</button>
                 </div>
             </div>

@@ -349,6 +349,15 @@ public sealed class CharacterSummary
     public string? AgeBand { get; set; }
 }
 
+/// <summary>Location seed from Stage‑1 / classifier (location_seed_tokens).</summary>
+public sealed class LocationSummary
+{
+    public string Key { get; set; } = "";
+    public string DisplayName { get; set; } = "";
+    public string Description { get; set; } = "";
+    public string VisualLock { get; set; } = "";
+}
+
 /// <summary>
 /// Flexible seed policy for portrait generation.
 /// <list type="bullet">

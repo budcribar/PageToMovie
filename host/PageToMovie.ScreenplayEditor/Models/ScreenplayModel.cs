@@ -362,17 +362,23 @@ public class ScreenplayLocationProfile
 {
     public string Name { get; set; } = "";
     public string Description { get; set; } = "";
+    public string VisualLock { get; set; } = "";
 }
 
 public class ScreenplayCharacterProfile
 {
     public string Name { get; set; } = "";
-    public string VoiceProvider { get; set; } = "ElevenLabs";
+    public string Description { get; set; } = "";
+    public string VoiceProvider { get; set; } = "";
     public string VoiceId { get; set; } = "";
+    public string VoiceLabel { get; set; } = "";
+    public string VoiceProfile { get; set; } = "";
     public bool IsVoiceLocked { get; set; } = true;
     public string VisualLockPrompt { get; set; } = "";
     public string WardrobeAlways { get; set; } = "";
     public bool IsImageLocked { get; set; } = true;
+    public bool Speaks { get; set; }
+    public string? SpeciesKind { get; set; }
     public int ReferenceImageCount { get; set; } = 1;
 }
 
