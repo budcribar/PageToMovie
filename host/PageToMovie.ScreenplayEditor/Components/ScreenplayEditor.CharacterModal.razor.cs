@@ -32,20 +32,21 @@ public partial class ScreenplayEditor_CharacterModal : ComponentBase
     {
         get
         {
+            // Classifier cast only — never invent a profile from the dialogue cue.
             var all = Model.GetAllCharacters().ToList();
             if (string.IsNullOrWhiteSpace(FocusName)) return all;
             var focus = FocusName.Trim();
-            if (!all.Any(n => n.Equals(focus, StringComparison.OrdinalIgnoreCase)))
-            {
-                Model.GetOrCreateCharacterProfile(focus.ToUpperInvariant());
-                all = Model.GetAllCharacters().ToList();
-            }
             return all
                 .OrderByDescending(n => n.Equals(focus, StringComparison.OrdinalIgnoreCase))
                 .ThenBy(n => n, StringComparer.OrdinalIgnoreCase)
                 .ToList();
         }
     }
+
+    /// <summary>True when the focused dialogue speaker is not in the classifier cast.</summary>
+    public bool FocusMissingFromCast =>
+        !string.IsNullOrWhiteSpace(FocusName)
+        && !Model.GetAllCharacters().Any(n => n.Equals(FocusName.Trim(), StringComparison.OrdinalIgnoreCase));
 
     protected override void OnParametersSet()
     {

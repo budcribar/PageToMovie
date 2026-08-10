@@ -64,12 +64,18 @@
             </button>
 
             <select class="form-select form-select-sm fw-bold border-secondary bg-dark text-light spe-sel spe-sel-speaker"
-                    title="Character name — who is speaking this line"
+                    title="@(AvailableCharacters.Count == 0
+                        ? "No cast from classifier yet — load Stage‑1 cast seeds"
+                        : "Character name — who is speaking this line (cast classifier only)")"
                     @bind="Beat.Speaker"
                     @bind:after="OnChanged">
+                @if (AvailableCharacters.Count == 0 && string.IsNullOrWhiteSpace(Beat.Speaker))
+                {
+                    <option value="">— cast not loaded —</option>
+                }
                 @if (!AvailableCharacters.Contains(Beat.Speaker) && !string.IsNullOrWhiteSpace(Beat.Speaker))
                 {
-                    <option value="@Beat.Speaker">@Beat.Speaker (Current)</option>
+                    <option value="@Beat.Speaker">@Beat.Speaker (not in cast)</option>
                 }
                 @foreach (var chara in AvailableCharacters)
                 {

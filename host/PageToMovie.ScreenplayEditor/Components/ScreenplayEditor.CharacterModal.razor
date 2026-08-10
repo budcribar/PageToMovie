@@ -15,11 +15,19 @@
                 </div>
                 <div class="modal-body p-3">
                     <p class="small text-secondary mb-3">
-                        Descriptions and looks come from the cast classifier (Stage‑1 seeds).
-                        Voice clones and portraits are finished on the <strong>Characters</strong> step after you approve the screenplay.
+                        This list is the <strong>character classifier</strong> output (Stage‑1 cast seeds) — not names scraped from dialogue or action.
+                        Speakers on lines that aren’t in the cast stay as “(Current)” on the beat only.
                     </p>
 
-                    <label class="form-label fw-semibold text-secondary small mb-1">Add character</label>
+                    @if (FocusMissingFromCast)
+                    {
+                        <div class="alert alert-warning py-2 px-3 small mb-3" role="status">
+                            <strong>@FocusName</strong> is on a dialogue line but is <strong>not</strong> in the classifier cast.
+                            Fix the speaker name to a cast member, or re-run Stage‑1 / cast extract if the classifier missed them.
+                        </div>
+                    }
+
+                    <label class="form-label fw-semibold text-secondary small mb-1">Add character (manual override)</label>
                     <div class="input-group input-group-sm mb-3">
                         <input type="text" class="form-control text-uppercase bg-dark text-light border-secondary" @bind="NewCharacterName" placeholder="e.g. BUSTER" />
                         <button class="btn btn-warning fw-semibold px-3" type="button" @onclick="AddCharacter" disabled="@string.IsNullOrWhiteSpace(NewCharacterName)">+ Add</button>
@@ -41,6 +49,10 @@
                                         @if (isFocus)
                                         {
                                             <span class="badge text-bg-warning text-dark">This line</span>
+                                        }
+                                        @if (profile.FromClassifier)
+                                        {
+                                            <span class="badge text-bg-primary">Classifier</span>
                                         }
                                         @if (profile.Speaks)
                                         {

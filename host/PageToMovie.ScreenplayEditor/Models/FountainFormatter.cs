@@ -121,25 +121,7 @@ public static class FountainFormatter
 
                 case FountainParser.ElementType.Action:
                     activeDialogueBeat = null;
-                    {
-                        var actionText = element.Text ?? "";
-                        if (TryParseSoundAction(actionText, out var soundBody))
-                        {
-                            GetOrCreateCurrentScene().Beats.Add(new ScreenplayBeat
-                            {
-                                BeatType = BeatType.Sound,
-                                ActionText = soundBody
-                            });
-                        }
-                        else
-                        {
-                            GetOrCreateCurrentScene().Beats.Add(new ScreenplayBeat
-                            {
-                                BeatType = BeatType.Action,
-                                ActionText = actionText
-                            });
-                        }
-                    }
+                    AppendVisualAndSoundBeats(GetOrCreateCurrentScene().Beats, element.Text ?? "");
                     break;
 
                 case FountainParser.ElementType.Character:
@@ -422,6 +404,57 @@ public static class FountainFormatter
         }
 
         return sb.ToString().TrimEnd() + "\n";
+    }
+
+    /// <summary>
+    /// Split a fountain action element into separate Visual and Sound beats.
+    /// Pure sound lines become Sound only; mixed lines like
+    /// "BUSTER enters. (SOUND: door slam)" become Visual + Sound.
+    /// </summary>
+    public static void AppendVisualAndSoundBeats(List<ScreenplayBeat> beats, string? text)
+    {
+        if (beats is null) return;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            beats.Add(new ScreenplayBeat { BeatType = BeatType.Action, ActionText = "" });
+            return;
+        }
+
+        var raw = text.Trim();
+        if (TryParseSoundAction(raw, out var pureSound))
+        {
+            beats.Add(new ScreenplayBeat { BeatType = BeatType.Sound, ActionText = pureSound });
+            return;
+        }
+
+        // Embedded cues: (SOUND: …) / (SFX: …) anywhere in the line
+        var embedded = System.Text.RegularExpressions.Regex.Matches(
+            raw,
+            @"\(\s*(?:SOUND|SOUNDS|SFX)\s*:\s*([^)]+)\)",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        if (embedded.Count == 0)
+        {
+            beats.Add(new ScreenplayBeat { BeatType = BeatType.Action, ActionText = raw });
+            return;
+        }
+
+        var visual = raw;
+        var sounds = new List<string>();
+        foreach (System.Text.RegularExpressions.Match m in embedded)
+        {
+            var body = m.Groups[1].Value.Trim();
+            if (!string.IsNullOrWhiteSpace(body))
+                sounds.Add(body);
+            visual = visual.Replace(m.Value, " ");
+        }
+        visual = System.Text.RegularExpressions.Regex.Replace(visual, @"\s{2,}", " ").Trim();
+        visual = visual.TrimEnd(' ', ',', ';', '-');
+
+        if (!string.IsNullOrWhiteSpace(visual))
+            beats.Add(new ScreenplayBeat { BeatType = BeatType.Action, ActionText = visual });
+        foreach (var s in sounds)
+            beats.Add(new ScreenplayBeat { BeatType = BeatType.Sound, ActionText = s });
     }
 
     /// <summary>

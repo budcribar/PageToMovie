@@ -380,6 +380,8 @@ public class ScreenplayCharacterProfile
     public bool Speaks { get; set; }
     public string? SpeciesKind { get; set; }
     public int ReferenceImageCount { get; set; } = 1;
+    /// <summary>True when this row came from Stage‑1 cast classifier / characters API.</summary>
+    public bool FromClassifier { get; set; }
 }
 
 public class ScreenplayModel
@@ -407,24 +409,14 @@ public class ScreenplayModel
 
     public List<string> GetAllCharacters()
     {
-        // Characters come from dialogue speakers + explicit profiles (cast classifier / manual).
-        // Do NOT scrape ALL CAPS tokens from action — words like SOUND become false "characters".
-        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var chara in CharacterProfiles)
-        {
-            if (!string.IsNullOrWhiteSpace(chara.Name)) set.Add(chara.Name.Trim().ToUpperInvariant());
-        }
-        foreach (var scene in Scenes)
-        {
-            foreach (var beat in scene.Beats)
-            {
-                if (beat.BeatType == BeatType.Dialogue && !string.IsNullOrWhiteSpace(beat.Speaker))
-                {
-                    set.Add(beat.Speaker.Trim().ToUpperInvariant());
-                }
-            }
-        }
-        return set.OrderBy(x => x).ToList();
+        // Cast list = character classifier output (CharacterProfiles seeded from Stage‑1),
+        // plus rare manual adds. Never invent names from dialogue cues or ALL CAPS action.
+        return CharacterProfiles
+            .Where(c => !string.IsNullOrWhiteSpace(c.Name))
+            .Select(c => c.Name.Trim().ToUpperInvariant())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(x => x)
+            .ToList();
     }
 
     public ScreenplayLocationProfile GetOrCreateLocationProfile(string name)

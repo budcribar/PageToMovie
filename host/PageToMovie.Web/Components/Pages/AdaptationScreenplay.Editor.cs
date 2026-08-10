@@ -89,6 +89,12 @@ public partial class AdaptationScreenplay
                 var cast = await S.Engine.GetCharactersAsync(S.ProjectId);
                 if (cast?.Characters is { Count: > 0 })
                 {
+                    // Rebuild cast list from classifier only (preserve field edits for matching names).
+                    var prior = _model.CharacterProfiles
+                        .Where(p => !string.IsNullOrWhiteSpace(p.Name))
+                        .ToDictionary(p => p.Name.Trim().ToUpperInvariant(), p => p, StringComparer.OrdinalIgnoreCase);
+                    _model.CharacterProfiles.Clear();
+
                     foreach (var c in cast.Characters)
                     {
                         var name = !string.IsNullOrWhiteSpace(c.DisplayName) ? c.DisplayName : c.Key;
@@ -98,7 +104,12 @@ public partial class AdaptationScreenplay
                         if (name.StartsWith("Character ", StringComparison.OrdinalIgnoreCase)
                             && name.Skip("Character ".Length).All(ch => char.IsDigit(ch) || ch == ' '))
                             continue;
-                        var profile = _model.GetOrCreateCharacterProfile(name.ToUpperInvariant());
+
+                        var key = name.ToUpperInvariant();
+                        prior.TryGetValue(key, out var existing);
+                        var profile = existing ?? new ScreenplayCharacterProfile { Name = key };
+                        profile.Name = key;
+                        profile.FromClassifier = true;
                         if (string.IsNullOrWhiteSpace(profile.Description) && !string.IsNullOrWhiteSpace(c.Description))
                             profile.Description = c.Description!;
                         if (string.IsNullOrWhiteSpace(profile.VisualLockPrompt) && !string.IsNullOrWhiteSpace(c.VisualLock))
@@ -116,6 +127,7 @@ public partial class AdaptationScreenplay
                         profile.Speaks = c.Speaks;
                         profile.SpeciesKind = c.SpeciesKind;
                         profile.IsImageLocked = c.Locked || c.HasPreferred;
+                        _model.CharacterProfiles.Add(profile);
                     }
                 }
             }
@@ -184,6 +196,7 @@ public partial class AdaptationScreenplay
                     if (string.IsNullOrWhiteSpace(existing.VoiceProfile)) existing.VoiceProfile = p.VoiceProfile;
                     if (string.IsNullOrWhiteSpace(existing.VoiceLabel)) existing.VoiceLabel = p.VoiceLabel;
                     existing.Speaks = existing.Speaks || p.Speaks;
+                    existing.FromClassifier = existing.FromClassifier || p.FromClassifier;
                 }
             }
             foreach (var loc in priorLocations)
