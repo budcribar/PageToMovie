@@ -85,211 +85,221 @@
     else
     {
     <div class="card mb-3 border-secondary">
-        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center flex-wrap gap-2">
-            <span>📁 Project Storage &amp; Local Media Folder</span>
-            <span class="badge @(MediaFolder.IsConnected ? "bg-success" : "bg-warning text-dark")">
-                @(MediaFolder.IsConnected ? "Local Folder Connected" : "Local Folder Not Connected")
-            </span>
-        </div>
-        <div class="card-body py-3">
-            <div class="row align-items-stretch g-3">
-                <div class="col-md-7">
-                    <div class="fw-semibold mb-1">Local media folder</div>
-                    <p class="small text-muted mb-2">Project media files are written here</p>
-                    @if (MediaFolder.IsConnected)
-                    {
-                        <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
-                            <div class="font-monospace small bg-dark p-2 rounded border border-secondary text-info flex-grow-1 text-break" data-testid="config-media-folder-name">
-                                @(MediaFolder.FullPath ?? MediaFolder.FolderName ?? "Selected folder")
+        <details class="ptm-cfg-section">
+            <summary class="card-header bg-dark text-white d-flex justify-content-between align-items-center flex-wrap gap-2 ptm-cfg-summary">
+                <span>📁 Project Storage & Local Media Folder</span>
+                <span class="badge @(MediaFolder.IsConnected ? "bg-success" : "bg-warning text-dark")">
+                    @(MediaFolder.IsConnected ? "Local Folder Connected" : "Local Folder Not Connected")
+                </span>
+            </summary>
+            <div class="card-body py-3">
+                <div class="row align-items-stretch g-3">
+                    <div class="col-md-7">
+                        <div class="fw-semibold mb-1">Local media folder</div>
+                        <p class="small text-muted mb-2">Project media files are written here</p>
+                        @if (MediaFolder.IsConnected)
+                        {
+                            <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                                <div class="font-monospace small bg-dark p-2 rounded border border-secondary text-info flex-grow-1 text-break" data-testid="config-media-folder-name">
+                                    @(MediaFolder.FullPath ?? MediaFolder.FolderName ?? "Selected folder")
+                                </div>
+                                <button type="button"
+                                        class="btn btn-sm btn-outline-primary flex-shrink-0"
+                                        data-testid="config-select-media-folder"
+                                        disabled="@_busy"
+                                        @onclick="Media.ConnectMediaFolderAsync">
+                                    Change folder
+                                </button>
                             </div>
+                        }
+                        else if (MediaFolder.NeedsReconnect)
+                        {
+                            <div class="alert alert-warning py-2 small mb-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                                <span>Browser needs permission again for <strong>@(MediaFolder.PendingReconnectFolderName ?? "your folder")</strong>.</span>
+                                <div class="d-flex gap-2">
+                                    <button type="button" class="btn btn-sm btn-warning" data-testid="config-reconnect-media-folder" @onclick="Media.ReconnectMediaFolderAsync">
+                                        Reconnect
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="config-select-media-folder" @onclick="Media.ConnectMediaFolderAsync">
+                                        Choose different folder
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
                             <button type="button"
-                                    class="btn btn-sm btn-outline-primary flex-shrink-0"
+                                    class="btn btn-sm btn-primary"
                                     data-testid="config-select-media-folder"
                                     disabled="@_busy"
                                     @onclick="Media.ConnectMediaFolderAsync">
-                                Change folder
+                                Select folder
                             </button>
+                            <div class="form-text">Opens your system folder picker.</div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(MediaFolder.LastStatus))
+                        {
+                            <div class="small text-muted mt-2" data-testid="config-media-status">@MediaFolder.LastStatus</div>
+                        }
+                    </div>
+                    <div class="col-md-5 border-start border-secondary ps-md-4">
+                        <div class="fw-semibold small mb-1">Active Project</div>
+                        <div class="h5 mb-2 text-primary">@_projectId</div>
+                        <div class="small text-muted">
+                            Screenplays, shot plans, and project metadata for <strong>@_projectId</strong> are safely stored on the server.
                         </div>
-                    }
-                    else if (MediaFolder.NeedsReconnect)
-                    {
-                        <div class="alert alert-warning py-2 small mb-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
-                            <span>Browser needs permission again for <strong>@(MediaFolder.PendingReconnectFolderName ?? "your folder")</strong>.</span>
-                            <div class="d-flex gap-2">
-                                <button type="button" class="btn btn-sm btn-warning" data-testid="config-reconnect-media-folder" @onclick="Media.ReconnectMediaFolderAsync">
-                                    Reconnect
-                                </button>
-                                <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="config-select-media-folder" @onclick="Media.ConnectMediaFolderAsync">
-                                    Choose different folder
-                                </button>
-                            </div>
-                        </div>
-                    }
-                    else
-                    {
-                        <button type="button"
-                                class="btn btn-sm btn-primary"
-                                data-testid="config-select-media-folder"
-                                disabled="@_busy"
-                                @onclick="Media.ConnectMediaFolderAsync">
-                            Select folder
-                        </button>
-                        <div class="form-text">Opens your system folder picker.</div>
-                    }
-                    @if (!string.IsNullOrWhiteSpace(MediaFolder.LastStatus))
-                    {
-                        <div class="small text-muted mt-2" data-testid="config-media-status">@MediaFolder.LastStatus</div>
-                    }
-                </div>
-                <div class="col-md-5 border-start border-secondary ps-md-4">
-                    <div class="fw-semibold small mb-1">Active Project</div>
-                    <div class="h5 mb-2 text-primary">@_projectId</div>
-                    <div class="small text-muted">
-                        Screenplays, shot plans, and project metadata for <strong>@_projectId</strong> are safely stored on the server.
                     </div>
                 </div>
             </div>
-        </div>
+        </details>
     </div>
 
     <div class="card mb-3">
-        <div class="card-header">Appearance &amp; Workflow</div>
-        <div class="card-body row g-3">
-            <div class="col-md-4">
-                <label class="form-label">Theme</label>
-                <select class="form-select" data-testid="config-theme" @bind="Media._uiTheme" @bind:after="Media.OnThemeChangedAsync" disabled="@_busy">
-                    <option value="dark">Dark</option>
-                    <option value="light">Light</option>
-                    <option value="system">Use system</option>
-                </select>
-                <div class="form-text">
-                    Previews immediately and saves with this project.
+        <details class="ptm-cfg-section">
+            <summary class="card-header ptm-cfg-summary">Appearance & Workflow</summary>
+            <div class="card-body row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Theme</label>
+                    <select class="form-select" data-testid="config-theme" @bind="Media._uiTheme" @bind:after="Media.OnThemeChangedAsync" disabled="@_busy">
+                        <option value="dark">Dark</option>
+                        <option value="light">Light</option>
+                        <option value="system">Use system</option>
+                    </select>
+                    <div class="form-text">
+                        Previews immediately and saves with this project.
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Preferred External Video Editor</label>
+                    <input type="text" class="form-control" list="video-editor-suggestions" @bind="Form._preferredVideoEditor" @bind:after="Form.ScheduleAutoSaveAsync" placeholder="ClipChamp" disabled="@_busy" />
+                    <datalist id="video-editor-suggestions">
+                        <option value="ClipChamp" />
+                        <option value="DaVinci Resolve" />
+                        <option value="Adobe Premiere" />
+                        <option value="iMovie" />
+                    </datalist>
+                    <div class="form-text">
+                        Personalized external editor used for scene refinement instructions.
+                    </div>
                 </div>
             </div>
-            <div class="col-md-4">
-                <label class="form-label">Preferred External Video Editor</label>
-                <input type="text" class="form-control" list="video-editor-suggestions" @bind="Form._preferredVideoEditor" @bind:after="Form.ScheduleAutoSaveAsync" placeholder="ClipChamp" disabled="@_busy" />
-                <datalist id="video-editor-suggestions">
-                    <option value="ClipChamp" />
-                    <option value="DaVinci Resolve" />
-                    <option value="Adobe Premiere" />
-                    <option value="iMovie" />
-                </datalist>
-                <div class="form-text">
-                    Personalized external editor used for scene refinement instructions.
-                </div>
-            </div>
-        </div>
+        </details>
     </div>
 
     <div class="card mb-3" id="background-music-options">
-        <div class="card-header">Background music options</div>
-        <div class="card-body">
-            <div class="row align-items-center g-3">
-                <div class="col-md-6">
-                    <ToggleSwitch Value="Coverage._enableBackgroundMusic"
-                                  ValueChanged="@(async v => { Coverage._enableBackgroundMusic = v; await Form.ScheduleAutoSaveAsync(); })"
-                                  Id="enableBgMusicSwitch" Disabled="@_busy" LabelClass="form-check-label fw-semibold">
-                        <Label>Enable background music generation</Label>
-                    </ToggleSwitch>
-                    <div class="form-text text-muted">Score and remux music for completed scenes (provider/model above under Studio coverage).</div>
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label fw-semibold mb-1">Background music volume (@Coverage._backgroundMusicVolumePercent%)</label>
-                    <input type="range" class="form-range" min="5" max="100" step="5" @bind="Coverage._backgroundMusicVolumePercent" @bind:after="Form.ScheduleAutoSaveAsync" disabled="@(!Coverage._enableBackgroundMusic || _busy)" />
-                    <div class="form-text text-muted">Under dialogue (default 20%).</div>
+        <details class="ptm-cfg-section">
+            <summary class="card-header ptm-cfg-summary">Background music options</summary>
+            <div class="card-body">
+                <div class="row align-items-center g-3">
+                    <div class="col-md-6">
+                        <ToggleSwitch Value="Coverage._enableBackgroundMusic"
+                                      ValueChanged="@(async v => { Coverage._enableBackgroundMusic = v; await Form.ScheduleAutoSaveAsync(); })"
+                                      Id="enableBgMusicSwitch" Disabled="@_busy" LabelClass="form-check-label fw-semibold">
+                            <Label>Enable background music generation</Label>
+                        </ToggleSwitch>
+                        <div class="form-text text-muted">Score and remux music for completed scenes (provider/model above under Studio coverage).</div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold mb-1">Background music volume (@Coverage._backgroundMusicVolumePercent%)</label>
+                        <input type="range" class="form-range" min="5" max="100" step="5" @bind="Coverage._backgroundMusicVolumePercent" @bind:after="Form.ScheduleAutoSaveAsync" disabled="@(!Coverage._enableBackgroundMusic || _busy)" />
+                        <div class="form-text text-muted">Under dialogue (default 20%).</div>
+                    </div>
                 </div>
             </div>
-        </div>
+        </details>
     </div>
 
     <div class="card mb-3">
-        <div class="card-header">Format & Resolution</div>
-        <div class="card-body row g-2">
-            <div class="col-md-4">
-                <label class="form-label">Aspect ratio</label>
-                <select class="form-select" @bind="Form._aspect" @bind:after="Form.ScheduleAutoSaveAsync" disabled="@_busy">
-                    <option value="16:9">16:9</option>
-                    <option value="9:16">9:16</option>
-                    <option value="1:1">1:1</option>
-                </select>
+        <details class="ptm-cfg-section">
+            <summary class="card-header ptm-cfg-summary">Format & Resolution</summary>
+            <div class="card-body row g-2">
+                <div class="col-md-4">
+                    <label class="form-label">Aspect ratio</label>
+                    <select class="form-select" @bind="Form._aspect" @bind:after="Form.ScheduleAutoSaveAsync" disabled="@_busy">
+                        <option value="16:9">16:9</option>
+                        <option value="9:16">9:16</option>
+                        <option value="1:1">1:1</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Resolution</label>
+                    <select class="form-select" @bind="Form._resolution" @bind:after="Form.ScheduleAutoSaveAsync" disabled="@_busy">
+                        <option value="480p">480p</option>
+                        <option value="720p">720p</option>
+                        <option value="1080p">1080p</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Duration (seconds)</label>
+                    <input type="number" class="form-control" min="1" max="15" @bind="Form._durationSeconds" @bind:after="Form.ScheduleAutoSaveAsync" disabled="@_busy" />
+                </div>
             </div>
-            <div class="col-md-4">
-                <label class="form-label">Resolution</label>
-                <select class="form-select" @bind="Form._resolution" @bind:after="Form.ScheduleAutoSaveAsync" disabled="@_busy">
-                    <option value="480p">480p</option>
-                    <option value="720p">720p</option>
-                    <option value="1080p">1080p</option>
-                </select>
-            </div>
-            <div class="col-md-4">
-                <label class="form-label">Duration (seconds)</label>
-                <input type="number" class="form-control" min="1" max="15" @bind="Form._durationSeconds" @bind:after="Form.ScheduleAutoSaveAsync" disabled="@_busy" />
-            </div>
-        </div>
+        </details>
     </div>
 
     <div class="card mb-3">
-        <div class="card-header">Pipeline Behavior</div>
-        <div class="card-body row g-3">
-            <div class="col-md-6 form-check">
-                <input class="form-check-input" type="checkbox" id="smart" @bind="Form._smartContinuation" @bind:after="Form.ScheduleAutoSaveAsync" disabled="@_busy" />
-                <label class="form-check-label fw-semibold" for="smart">Smart Continuation</label>
-                <div class="form-text">Seamlessly extend visual prompts across consecutive clips in a scene.</div>
-            </div>
-            <div class="col-md-6 form-check">
-                <input class="form-check-input" type="checkbox" id="qaRetry" @bind="Form._qaRetry" @bind:after="Form.ScheduleAutoSaveAsync" disabled="@_busy" />
-                <label class="form-check-label fw-semibold" for="qaRetry">Quality Gate Retry</label>
-                <div class="form-text">
-                    When dialogue QA fails, auto-regenerate the clip (admin mode).
+        <details class="ptm-cfg-section">
+            <summary class="card-header ptm-cfg-summary">Pipeline Behavior</summary>
+            <div class="card-body row g-3">
+                <div class="col-md-6 form-check">
+                    <input class="form-check-input" type="checkbox" id="smart" @bind="Form._smartContinuation" @bind:after="Form.ScheduleAutoSaveAsync" disabled="@_busy" />
+                    <label class="form-check-label fw-semibold" for="smart">Smart Continuation</label>
+                    <div class="form-text">Seamlessly extend visual prompts across consecutive clips in a scene.</div>
+                </div>
+                <div class="col-md-6 form-check">
+                    <input class="form-check-input" type="checkbox" id="qaRetry" @bind="Form._qaRetry" @bind:after="Form.ScheduleAutoSaveAsync" disabled="@_busy" />
+                    <label class="form-check-label fw-semibold" for="qaRetry">Quality Gate Retry</label>
+                    <div class="form-text">
+                        When dialogue QA fails, auto-regenerate the clip (admin mode).
+                    </div>
+                </div>
+                <div class="col-md-6 form-check">
+                    <input class="form-check-input" type="checkbox" id="regenSilent" @bind="Form._regenSilent" @bind:after="Form.ScheduleAutoSaveAsync" disabled="@_busy" />
+                    <label class="form-check-label fw-semibold" for="regenSilent">Regenerate Silent Beats</label>
+                    <div class="form-text">Re-synthesize audio for silent action beats during scene updates.</div>
+                </div>
+                <div class="col-md-6 form-check">
+                    <input class="form-check-input" type="checkbox" id="useDur" @bind="Form._useDurationDefaults" @bind:after="Form.ScheduleAutoSaveAsync" disabled="@_busy" />
+                    <label class="form-check-label fw-semibold" for="useDur">Use Default Clip Durations</label>
+                    <div class="form-text">Fall back to standard duration budgeting when shot plan timing is unspecified.</div>
                 </div>
             </div>
-            <div class="col-md-6 form-check">
-                <input class="form-check-input" type="checkbox" id="regenSilent" @bind="Form._regenSilent" @bind:after="Form.ScheduleAutoSaveAsync" disabled="@_busy" />
-                <label class="form-check-label fw-semibold" for="regenSilent">Regenerate Silent Beats</label>
-                <div class="form-text">Re-synthesize audio for silent action beats during scene updates.</div>
-            </div>
-            <div class="col-md-6 form-check">
-                <input class="form-check-input" type="checkbox" id="useDur" @bind="Form._useDurationDefaults" @bind:after="Form.ScheduleAutoSaveAsync" disabled="@_busy" />
-                <label class="form-check-label fw-semibold" for="useDur">Use Default Clip Durations</label>
-                <div class="form-text">Fall back to standard duration budgeting when shot plan timing is unspecified.</div>
-            </div>
-        </div>
 
-        <div class="card-footer">
-            <details class="small">
-                <summary class="text-muted role-button py-1 fw-semibold" style="cursor: pointer;">⚙️ Advanced QA Tuning</summary>
-                <div class="row g-2 mt-2 pt-2 border-top">
-                    <div class="col-md-6 form-check">
-                        <input class="form-check-input" type="checkbox" id="merge" @bind="Form._mergeAfterClip" @bind:after="Form.ScheduleAutoSaveAsync" disabled="@_busy" />
-                        <label class="form-check-label" for="merge">Auto-merge scene after each clip</label>
+            <div class="card-footer">
+                <details class="small">
+                    <summary class="text-muted role-button py-1 fw-semibold" style="cursor: pointer;">⚙️ Advanced QA Tuning</summary>
+                    <div class="row g-2 mt-2 pt-2 border-top">
+                        <div class="col-md-6 form-check">
+                            <input class="form-check-input" type="checkbox" id="merge" @bind="Form._mergeAfterClip" @bind:after="Form.ScheduleAutoSaveAsync" disabled="@_busy" />
+                            <label class="form-check-label" for="merge">Auto-merge scene after each clip</label>
+                        </div>
+                        <div class="col-md-6 form-check">
+                            <input class="form-check-input" type="checkbox" id="rebuildWip" @bind="Form._rebuildWip" @bind:after="Form.ScheduleAutoSaveAsync" disabled="@_busy" />
+                            <label class="form-check-label" for="rebuildWip">Auto-rebuild WIP movie after scene</label>
+                        </div>
+                        <div class="col-md-4 mt-3">
+                            <label class="form-label">QA Max Retries</label>
+                            <input type="number" class="form-control form-control-sm" min="0" max="5" @bind="Form._qaMaxRetries" @bind:after="Form.ScheduleAutoSaveAsync" disabled="@_busy" />
+                        </div>
+                        <div class="col-md-4 mt-3">
+                            <label class="form-label">QA Sample Frames</label>
+                            <input type="number" class="form-control form-control-sm" min="1" max="8" @bind="Form._qaFrameCount" @bind:after="Form.ScheduleAutoSaveAsync" disabled="@_busy" />
+                        </div>
+                        <div class="col-md-4 mt-3">
+                            <label class="form-label">Composite Audio Gain (dB)</label>
+                            <input type="number" step="0.5" class="form-control form-control-sm" @bind="Form._audioGain" @bind:after="Form.ScheduleAutoSaveAsync" disabled="@_busy" />
+                        </div>
                     </div>
-                    <div class="col-md-6 form-check">
-                        <input class="form-check-input" type="checkbox" id="rebuildWip" @bind="Form._rebuildWip" @bind:after="Form.ScheduleAutoSaveAsync" disabled="@_busy" />
-                        <label class="form-check-label" for="rebuildWip">Auto-rebuild WIP movie after scene</label>
-                    </div>
-                    <div class="col-md-4 mt-3">
-                        <label class="form-label">QA Max Retries</label>
-                        <input type="number" class="form-control form-control-sm" min="0" max="5" @bind="Form._qaMaxRetries" @bind:after="Form.ScheduleAutoSaveAsync" disabled="@_busy" />
-                    </div>
-                    <div class="col-md-4 mt-3">
-                        <label class="form-label">QA Sample Frames</label>
-                        <input type="number" class="form-control form-control-sm" min="1" max="8" @bind="Form._qaFrameCount" @bind:after="Form.ScheduleAutoSaveAsync" disabled="@_busy" />
-                    </div>
-                    <div class="col-md-4 mt-3">
-                        <label class="form-label">Composite Audio Gain (dB)</label>
-                        <input type="number" step="0.5" class="form-control form-control-sm" @bind="Form._audioGain" @bind:after="Form.ScheduleAutoSaveAsync" disabled="@_busy" />
-                    </div>
-                </div>
-            </details>
-        </div>
+                </details>
+            </div>
+        </details>
     </div>
 
     <div class="card mb-3">
-        <div class="card-footer">
-            <details class="small">
-                <summary class="text-muted role-button py-1 fw-semibold" style="cursor: pointer;">⚙️ Advanced Adaptation Settings</summary>
-                <div class="row g-2 mt-2 pt-2 border-top">
+        <details class="ptm-cfg-section">
+            <summary class="card-header ptm-cfg-summary">⚙️ Advanced Adaptation Settings</summary>
+            <div class="card-body">
+                <div class="row g-2">
                     <div class="form-text mb-1">
                         Overrides the screenplay adaptation defaults for this project only. Leave blank
                         to use the server default.
@@ -315,8 +325,9 @@
                         <input type="number" class="form-control form-control-sm" min="1" max="500" @bind="Form._adaptSceneCountMax" @bind:after="Form.ScheduleAutoSaveAsync" disabled="@_busy" />
                     </div>
                 </div>
-            </details>
-        </div>
+            </div>
+        </details>
     </div>
+
 
 }

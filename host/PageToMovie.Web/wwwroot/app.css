@@ -1965,3 +1965,31 @@ h1:focus {
     max-width: 100%;
     height: 100%;
 }
+
+/* Project Settings (/configuration): sections start collapsed */
+.ptm-cfg-section {
+  margin: 0;
+}
+.ptm-cfg-section > .ptm-cfg-summary {
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  border-bottom: 0;
+}
+.ptm-cfg-section > .ptm-cfg-summary::-webkit-details-marker {
+  display: none;
+}
+.ptm-cfg-section > .ptm-cfg-summary::before {
+  content: "▸";
+  display: inline-block;
+  width: 1rem;
+  margin-right: 0.35rem;
+  opacity: 0.75;
+  transition: transform 0.12s ease;
+}
+.ptm-cfg-section[open] > .ptm-cfg-summary::before {
+  content: "▾";
+}
+.ptm-cfg-section[open] > .ptm-cfg-summary {
+  border-bottom: var(--bs-border-width) solid var(--bs-border-color);
+}
