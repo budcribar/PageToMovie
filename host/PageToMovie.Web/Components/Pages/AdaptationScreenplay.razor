@@ -207,26 +207,7 @@
         }
 
         <div class="card-body fe-screenplay-body pt-2">
-            @if (Book.NeedsDraftFromBook)
-            {
-                <div class="alert alert-primary border small mb-2 d-flex flex-wrap align-items-center justify-content-between gap-2"
-                     data-testid="screenplay-from-book-banner">
-                    <div>
-                        <strong>No usable screenplay yet.</strong>
-                        You already have book text for this project — generate a draft from it
-                        (or re-import on Book if you want a new source file).
-                    </div>
-                    <button class="btn btn-sm btn-primary"
-                            data-testid="screenplay-from-book"
-                            disabled="@(Busy || Jobs.JobRunning)"
-                            @onclick="Book.CreateFromBookAsync">
-                        @(string.IsNullOrWhiteSpace(Editor._text) || Editor._text.Length < 80
-                            ? "Create draft from book"
-                            : "Rewrite draft from book")
-                    </button>
-                </div>
-            }
-            else if (!string.IsNullOrWhiteSpace(ProjectId) && Status?.Book.BookTextExists != true && string.IsNullOrWhiteSpace(Editor._text))
+            @if (!string.IsNullOrWhiteSpace(ProjectId) && Status?.Book.BookTextExists != true && string.IsNullOrWhiteSpace(Editor._text))
             {
                 <div class="alert alert-light border small mb-3">
                     Import a book or fountain first.
@@ -234,22 +215,9 @@
                 </div>
             }
 
-            @if (!Editor._editorReady && string.IsNullOrEmpty(Editor._text) && Status?.Book.BookTextExists == true && !Book.NeedsDraftFromBook)
-            {
-                <div class="alert alert-light border small mb-2">
-                    You have book text ready.
-                    <button class="btn btn-sm btn-outline-primary ms-1"
-                            data-testid="screenplay-from-book"
-                            disabled="@(Busy || Jobs.JobRunning)"
-                            @onclick="Book.CreateFromBookAsync">
-                        Create draft from book
-                    </button>
-                </div>
-            }
-
             @if (SignOff._signOffWarnings.Count > 0 && !SignOff.IsApprovedClean)
             {
-                <div class="alert alert-warning py-2 small fe-warnings">
+                <div class="alert alert-warning py-2 small fe-warnings" data-testid="screenplay-empty-cta">
                     <strong>Before approving:</strong>
                     <ul class="mb-0 ps-3">
                         @foreach (var w in SignOff._signOffWarnings)
@@ -259,15 +227,31 @@
                     </ul>
                     @if (Book.NeedsDraftFromBook)
                     {
-                        <div class="mt-2">
-                            <button class="btn btn-sm btn-outline-primary"
-                                    data-testid="screenplay-from-book-warn"
+                        <div class="mt-2 d-flex flex-wrap align-items-center gap-2">
+                            <span class="text-body-secondary">Book text is ready — write a full draft:</span>
+                            <button class="btn btn-sm btn-primary"
+                                    data-testid="screenplay-from-book"
                                     disabled="@(Busy || Jobs.JobRunning)"
                                     @onclick="Book.CreateFromBookAsync">
-                                Rewrite draft from book
+                                @(string.IsNullOrWhiteSpace(Editor._text) || Editor._text.Length < 80
+                                    ? "Create draft from book"
+                                    : "Rewrite draft from book")
                             </button>
                         </div>
                     }
+                </div>
+            }
+            else if (Book.NeedsDraftFromBook && !Busy && !Jobs.JobRunning)
+            {
+                <div class="alert alert-warning py-2 small fe-warnings" data-testid="screenplay-from-book-banner">
+                    <strong>No usable screenplay yet.</strong>
+                    Book text is ready for this project.
+                    <button class="btn btn-sm btn-primary ms-2"
+                            data-testid="screenplay-from-book"
+                            disabled="@(Busy || Jobs.JobRunning)"
+                            @onclick="Book.CreateFromBookAsync">
+                        Create draft from book
+                    </button>
                 </div>
             }
 
@@ -341,14 +325,6 @@
                             @onclick="Tools.TrimAsync">
                         Fit screenplay to this length
                     </button>
-                </div>
-            }
-
-            @if (!string.IsNullOrWhiteSpace(ProjectId) && Status?.Book.BookTextExists != true && string.IsNullOrWhiteSpace(Editor._text) && !Book.NeedsDraftFromBook)
-            {
-                <div class="alert alert-light border small mb-3">
-                    Import a book or fountain first.
-                    <a class="ms-1" href="adaptation/import" data-testid="screenplay-go-import">Go to Import →</a>
                 </div>
             }
 

@@ -127,6 +127,13 @@ public partial class AdaptationScreenplay
                 try { await S.Save.SaveDraftAsync(manual: false); } catch { /* ignore */ }
             }
 
+            // Prior Cancel left ClientCancelRequested=true which blocked the poller entirely —
+            // UI froze at the last progress (often 6/10) with no updates.
+            S.Jobs.ResetClientCancel();
+            // Best-effort: free Stage lock if a previous Odyssey adapt is still "running".
+            if (S.Jobs.JobRunning)
+                _ = await S.Engine.TryCancelJobAsync();
+
             S.Busy = true;
             S.BusyMessage = "Writing screenplay…";
             S.Error = null;
@@ -137,24 +144,59 @@ public partial class AdaptationScreenplay
             try
             {
                 await S.Jobs.EnsureHubAsync();
-                await S.Engine.StartBookImportAsync(
+                var started = await S.Engine.StartBookImportAsync(
                     S.ProjectId,
                     skipPrepare: true,
                     forceExtract: false,
                     forceVision: false,
                     autoVision: false,
                     model: S.Pipeline.Model);
-                var jobs0 = await S.Engine.GetJobAsync();
-                S.Jobs.Job = jobs0?.Job;
-                S.Jobs.AbsorbProgressFromSnapshot(S.Jobs.Job ?? new PageToMovie.Core.Models.JobSnapshot());
-                // Shared poller re-renders soft progress while the long draft call is quiet.
-                S.Jobs.StartJobPolling();
-                // Wait until draft job finishes (poller keeps Job + bar live)
-                for (var i = 0; i < 3600; i++)
+                if (started is not null)
                 {
+                    S.Jobs.Job = started;
+                    S.Jobs.AbsorbProgressFromSnapshot(started);
+                }
+                else
+                {
+                    var jobs0 = await S.Engine.GetJobAsync();
+                    S.Jobs.Job = jobs0?.Job;
+                    if (S.Jobs.Job is not null)
+                        S.Jobs.AbsorbProgressFromSnapshot(S.Jobs.Job);
+                }
+
+                var trackId = S.Jobs.Job?.JobId;
+                S.Jobs.StartJobPolling();
+
+                var finishedOk = false;
+                // Long novels: multi-chunk / single-pass can run 30–90+ minutes
+                for (var i = 0; i < 5400; i++)
+                {
+                    if (S.Jobs.ClientCancelRequested)
+                    {
+                        S.Error = null;
+                        S.Message = "Cancelled. You can try Create draft from book again.";
+                        return;
+                    }
+
                     var snap = S.Jobs.Job;
+                    // Prefer the job we started (avoid latching onto a different zombie).
+                    if (!string.IsNullOrWhiteSpace(trackId)
+                        && snap is not null
+                        && !string.Equals(snap.JobId, trackId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        try
+                        {
+                            var detail = await S.Engine.GetJobByIdAsync(trackId);
+                            if (detail?.Job is not null)
+                                snap = detail.Job;
+                        }
+                        catch { /* keep poller snap */ }
+                    }
+
                     if (snap is not null)
                     {
+                        S.Jobs.Job = snap;
+                        S.Jobs.AbsorbProgressFromSnapshot(snap);
                         S.BusyMessage = AdaptationPageBase.AdaptationJobs.OperatorJobRunningMessage(snap);
                         await S.InvokeAsync(S.StateHasChanged);
                         var st = snap.Status ?? "";
@@ -166,9 +208,20 @@ public partial class AdaptationScreenplay
                         if (st == "done" &&
                             (string.IsNullOrEmpty(snap.Kind) ||
                              snap.Kind is "book_import" or "book_prepare" or "stage1"))
+                        {
+                            finishedOk = true;
                             break;
+                        }
                     }
                     await Task.Delay(1000);
+                }
+
+                if (!finishedOk)
+                {
+                    S.Error =
+                        "Still writing on the server, but this page lost progress updates (often a deploy or network 502). " +
+                        "Check Admin → Jobs, wait for the job to finish, then refresh this page — or Cancel and try again.";
+                    return;
                 }
 
                 S.Message = "Draft created from book";

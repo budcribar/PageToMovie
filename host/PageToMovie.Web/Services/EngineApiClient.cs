@@ -3852,7 +3852,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     }
 
     /// <summary>Background prepare + book→Fountain (or adapt-only when <paramref name="skipPrepare"/>).</summary>
-    public async Task StartBookImportAsync(
+    public async Task<JobSnapshot?> StartBookImportAsync(
         string projectId,
         bool skipPrepare = false,
         bool forceExtract = true,
@@ -3875,6 +3875,15 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
             JsonOpts,
             ct);
         await EnsureOkAsync(resp, ct);
+        try
+        {
+            var dto = await resp.Content.ReadFromJsonAsync<JobStartEnvelope>(JsonOpts, ct);
+            return dto?.Job;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     /// <param name="overrideStyle">When true, lock the portrait even if the style classifier says its
