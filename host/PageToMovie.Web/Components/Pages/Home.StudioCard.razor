@@ -349,39 +349,64 @@
 
         @if (Host.Projects._showNew)
         {
-            <div class="border border-secondary border-opacity-50 rounded p-3 mt-3 bg-dark bg-opacity-75 text-white shadow-sm">
-                <div class="fw-semibold small text-light mb-2">Create New Project</div>
-                @if (ActiveProject.Status is not null && !ActiveProject.Status.XaiConfigured)
-                {
-                    <div class="alert alert-warning py-1 px-2 small mb-2">
-                        No AI provider connected yet — finish <strong>Setup</strong> (step 0) first.
-                        <a href="configuration" class="alert-link">Open Setup →</a>
+            @* Modal next to the action — not buried under manage list / process strip. *@
+            <div class="modal-backdrop fade show" style="z-index: 1050;" @onclick="Host.Projects.ToggleNewProjectAsync"></div>
+            <div class="modal fade show d-block"
+                 tabindex="-1"
+                 role="dialog"
+                 aria-modal="true"
+                 aria-labelledby="home-new-project-title"
+                 style="z-index: 1055;"
+                 data-testid="home-new-project-modal">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content bg-dark text-white border-secondary shadow">
+                        <div class="modal-header border-secondary py-2">
+                            <h5 class="modal-title fs-6 mb-0" id="home-new-project-title">Create new project</h5>
+                            <button type="button"
+                                    class="btn-close btn-close-white"
+                                    disabled="@Host._busy"
+                                    aria-label="Cancel"
+                                    @onclick="Host.Projects.ToggleNewProjectAsync"></button>
+                        </div>
+                        <div class="modal-body">
+                            @if (ActiveProject.Status is not null && !ActiveProject.Status.XaiConfigured)
+                            {
+                                <div class="alert alert-warning py-1 px-2 small mb-2">
+                                    No AI provider connected yet — finish <strong>Setup</strong> (step 0) first.
+                                    <a href="configuration" class="alert-link">Open Setup →</a>
+                                </div>
+                            }
+                            <label class="form-label small text-muted mb-1" for="home-new-project-name">Project name</label>
+                            <input @ref="NameInputRef"
+                                   id="home-new-project-name"
+                                   class="form-control form-control-sm bg-white text-dark border-secondary fw-medium"
+                                   style="color: #111111 !important; background-color: #ffffff !important; caret-color: #000000 !important;"
+                                   data-testid="home-new-project-name"
+                                   value="@Host.Projects._newName"
+                                   @oninput="Host.Projects.OnNewNameInput"
+                                   @onkeydown="Host.Projects.OnNewNameKeyDown"
+                                   disabled="@Host._busy"
+                                   placeholder="Enter project name…"
+                                   maxlength="80"
+                                   autofocus
+                                   aria-label="New project name" />
+                        </div>
+                        <div class="modal-footer border-secondary py-2">
+                            <button type="button"
+                                    class="btn btn-outline-secondary btn-sm"
+                                    disabled="@Host._busy"
+                                    @onclick="Host.Projects.ToggleNewProjectAsync">
+                                Cancel
+                            </button>
+                            <button type="button"
+                                    class="btn btn-success btn-sm"
+                                    data-testid="home-create-project"
+                                    disabled="@(Host._busy || string.IsNullOrWhiteSpace(Host.Projects._newName))"
+                                    @onclick="Host.Projects.CreateProjectAsync">
+                                Create
+                            </button>
+                        </div>
                     </div>
-                }
-                <div class="d-flex flex-wrap align-items-center gap-2">
-                    <input @ref="NameInputRef"
-                           class="form-control form-control-sm flex-grow-1 bg-white text-dark border-secondary fw-medium"
-                           style="min-width: 10rem; color: #111111 !important; background-color: #ffffff !important; caret-color: #000000 !important;"
-                           data-testid="home-new-project-name"
-                           value="@Host.Projects._newName"
-                           @oninput="Host.Projects.OnNewNameInput"
-                           @onkeydown="Host.Projects.OnNewNameKeyDown"
-                           disabled="@Host._busy"
-                           placeholder="Enter project name..."
-                           maxlength="80"
-                           autofocus
-                           aria-label="New project name" />
-                    <button class="btn btn-success btn-sm flex-shrink-0 px-3"
-                            data-testid="home-create-project"
-                            disabled="@(Host._busy || string.IsNullOrWhiteSpace(Host.Projects._newName))"
-                            @onclick="Host.Projects.CreateProjectAsync">
-                        Create
-                    </button>
-                    <button class="btn btn-outline-secondary btn-sm flex-shrink-0 px-3 text-light border-secondary"
-                            disabled="@Host._busy"
-                            @onclick="Host.Projects.ToggleNewProjectAsync">
-                        Cancel
-                    </button>
                 </div>
             </div>
         }

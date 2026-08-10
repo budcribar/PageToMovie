@@ -138,12 +138,11 @@ public partial class Home
         }
 
 
-        /// <summary>"+ New" in the compact bar: opens Manage and the create-project form together.</summary>
+        /// <summary>"+ New" opens a centered create-project modal (not buried under Manage).</summary>
         internal async Task OpenNewProjectAsync()
         {
             _fullStudioHome = true;
             await PersistHomeModeAsync("full");
-            _manageExpanded = true;
             if (!_showNew)
                 await ToggleNewProjectAsync();
             else
