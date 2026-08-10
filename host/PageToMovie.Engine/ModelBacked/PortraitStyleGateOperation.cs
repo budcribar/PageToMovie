@@ -1,3 +1,4 @@
+using PageToMovie.Core.Models;
 using PageToMovie.Engine.Abstractions;
 using PageToMovie.Engine.ModelExecution;
 
@@ -45,16 +46,25 @@ internal sealed class PortraitStyleGateResponseParser : IModelResponseParser<str
     }
 }
 
-/// <summary>Rejects a medium the parser didn't recognize — nothing checked this before; a model
-/// hallucinating an unlisted medium value would previously sail through as a parsed result.</summary>
+/// <summary>Rejects a medium the parser didn't recognize — checks against recognized VisualMedium enum values and legacy/gate aliases.</summary>
 internal sealed class PortraitStyleGateValidator : IModelResultValidator<CharacterDesignService.PortraitStyleGateResult>
 {
-    private static readonly HashSet<string> KnownMedia =
-        new(StringComparer.OrdinalIgnoreCase) { "photoreal", "illustration", "sketch", "other" };
+    private static readonly HashSet<string> KnownMedia = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "photoreal", "illustration", "sketch", "other",
+        VisualMedium.LiveAction.ToString(),
+        VisualMedium.ThreeDAnimation.ToString(),
+        VisualMedium.Anime.ToString(),
+        VisualMedium.Claymation.ToString(),
+        VisualMedium.Cinematic.ToString(),
+        VisualMedium.Illustration.ToString(),
+        "3d-animation", "live-action", "anime", "claymation", "cinematic", "illustration"
+    };
 
     public IReadOnlyList<ModelValidationIssue> Validate(CharacterDesignService.PortraitStyleGateResult result) =>
-        KnownMedia.Contains(result.Medium)
+        KnownMedia.Contains(result.Medium) || Enum.TryParse<VisualMedium>(result.Medium, ignoreCase: true, out _)
             ? Array.Empty<ModelValidationIssue>()
             : [new ModelValidationIssue("invalid_medium",
-                $"medium '{result.Medium}' is not one of photoreal|illustration|sketch|other.", "$.medium")];
+                $"medium '{result.Medium}' is not a recognized VisualMedium or style medium.", "$.medium")];
 }
+

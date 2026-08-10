@@ -1261,7 +1261,7 @@ public sealed partial class ProjectStore
             Path = dir,
             OwnerUserId = string.IsNullOrWhiteSpace(ownerUserId) ? null : ownerUserId.Trim(),
             ParentProjectId = string.IsNullOrWhiteSpace(parentProjectId) ? null : parentProjectId.Trim(),
-            VisibilityMode = string.IsNullOrWhiteSpace(visibilityMode) ? "Private" : visibilityMode.Trim(),
+            VisibilityMode = ProjectVisibilityExtensions.ParseProjectVisibility(visibilityMode),
             StudioPath = ProjectStudioPaths.Normalize(studioPath),
         };
     }
@@ -1540,12 +1540,12 @@ public sealed partial class ProjectStore
         if (string.IsNullOrWhiteSpace(newOwnerUserId))
             throw new InvalidOperationException("newOwnerUserId required");
 
-        // Allow forking if project is Open (Public Forkable), unowned/legacy, requested via explicit invite, or if caller is owner/admin
+        // Allow forking if project is Public (or unowned/legacy), requested via explicit invite, or if caller is owner/admin
         var isOwnerOrLegacy = string.IsNullOrWhiteSpace(source.OwnerUserId) || string.Equals(source.OwnerUserId, newOwnerUserId, StringComparison.OrdinalIgnoreCase);
-        var isForkable = string.Equals(source.VisibilityMode, "Open", StringComparison.OrdinalIgnoreCase) || string.Equals(source.VisibilityMode, "PublicForkable", StringComparison.OrdinalIgnoreCase);
+        var isForkable = source.VisibilityMode == ProjectVisibility.Public;
         if (!isInvite && !isOwnerOrLegacy && !isForkable)
         {
-            throw new InvalidOperationException($"Forking disabled for this project (Visibility mode: {source.VisibilityMode}). Only 'Open' (Public Forkable) projects can be forked by community members.");
+            throw new InvalidOperationException($"Forking disabled for this project (Visibility mode: {source.VisibilityMode}). Only 'Public' projects can be forked by community members.");
         }
 
         // Idempotent per (source, user): if this owner already has a fork of this source, reopen it
@@ -1606,7 +1606,7 @@ public sealed partial class ProjectStore
         meta["parentProjectId"] = source.Id;
         // A fork is the user's private working copy — don't inherit the source's "Open" visibility,
         // or every fork would show up as its own pickable "story" in the forkable list.
-        meta["visibilityMode"] = "Private";
+        meta["visibilityMode"] = ProjectVisibility.Private.ToString();
         meta["createdAt"] = DateTimeOffset.UtcNow.ToString("o");
         await File.WriteAllTextAsync(
             metaPath, JsonSerializer.Serialize(meta, JsonOpts) + "\n", ct).ConfigureAwait(false);
@@ -1625,7 +1625,7 @@ public sealed partial class ProjectStore
     }
 
     /// <summary>
-    /// Update project visibility mode ("Private", "Public", or "Open") in project.json.
+    /// Update project visibility mode (Private, Public, or Unlisted) in project.json.
     /// </summary>
 
     /// <summary>
@@ -1651,7 +1651,7 @@ public sealed partial class ProjectStore
         meta["label"] = title;
         if (!string.IsNullOrWhiteSpace(proj.OwnerUserId)) meta["ownerUserId"] = proj.OwnerUserId;
         if (!string.IsNullOrWhiteSpace(proj.ParentProjectId)) meta["parentProjectId"] = proj.ParentProjectId;
-        if (!string.IsNullOrWhiteSpace(proj.VisibilityMode)) meta["visibilityMode"] = proj.VisibilityMode;
+        meta["visibilityMode"] = proj.VisibilityMode.ToString();
 
         await File.WriteAllTextAsync(metaPath, JsonSerializer.Serialize(meta, JsonOpts) + "\n", ct).ConfigureAwait(false);
         InvalidateReadCaches(null);
@@ -1665,17 +1665,15 @@ public sealed partial class ProjectStore
 
     public async Task<ProjectInfo> SetProjectVisibilityModeAsync(
         string projectId,
-        string visibilityMode,
+        ProjectVisibility visibilityMode,
         CancellationToken ct = default)
     {
         var proj = await RequireProjectAsync(projectId, ct).ConfigureAwait(false);
-        var validModes = new[] { "Private", "Public", "Open" };
-        var mode = validModes.FirstOrDefault(m => string.Equals(m, visibilityMode, StringComparison.OrdinalIgnoreCase)) ?? "Private";
 
         var metaPath = Path.Combine(proj.Path, "project.json");
         var meta = await ReadMetaOrEmptyAsync(metaPath, ct).ConfigureAwait(false);
 
-        meta["visibilityMode"] = mode;
+        meta["visibilityMode"] = visibilityMode.ToString();
         meta["id"] = proj.Id;
         if (!string.IsNullOrWhiteSpace(proj.Title)) meta["title"] = proj.Title;
         if (!string.IsNullOrWhiteSpace(proj.OwnerUserId)) meta["ownerUserId"] = proj.OwnerUserId;
@@ -1684,11 +1682,17 @@ public sealed partial class ProjectStore
         var updatedJson = JsonSerializer.Serialize(meta, JsonOpts) + "\n";
         await File.WriteAllTextAsync(metaPath, updatedJson, ct).ConfigureAwait(false);
 
-        proj.VisibilityMode = mode;
+        proj.VisibilityMode = visibilityMode;
         InvalidateReadCaches(null);
         TriggerAutoGitCommit(projectId, "Update project visibility");
         return proj;
     }
+
+    public Task<ProjectInfo> SetProjectVisibilityModeAsync(
+        string projectId,
+        string visibilityMode,
+        CancellationToken ct = default) =>
+        SetProjectVisibilityModeAsync(projectId, ProjectVisibilityExtensions.ParseProjectVisibility(visibilityMode), ct);
 
     /// <summary>
     /// Persist product path (full vs simple-voice) on project.json.
@@ -1708,7 +1712,7 @@ public sealed partial class ProjectStore
         if (!string.IsNullOrWhiteSpace(proj.Title)) meta["title"] = proj.Title;
         if (!string.IsNullOrWhiteSpace(proj.OwnerUserId)) meta["ownerUserId"] = proj.OwnerUserId;
         if (!string.IsNullOrWhiteSpace(proj.ParentProjectId)) meta["parentProjectId"] = proj.ParentProjectId;
-        if (!string.IsNullOrWhiteSpace(proj.VisibilityMode)) meta["visibilityMode"] = proj.VisibilityMode;
+        meta["visibilityMode"] = proj.VisibilityMode.ToString();
 
         await File.WriteAllTextAsync(metaPath, JsonSerializer.Serialize(meta, JsonOpts) + "\n", ct).ConfigureAwait(false);
         proj.StudioPath = path;
@@ -5645,7 +5649,8 @@ public sealed partial class ProjectStore
                 using var doc = JsonDocument.Parse(File.ReadAllText(metaPath));
                 var root = doc.RootElement;
                 status.TextQuality = root.TryGetProperty("text_quality", out var tq) ? tq.GetString() : null;
-                status.BookKind = root.TryGetProperty("book_kind", out var bk) ? bk.GetString() : null;
+                if (root.TryGetProperty("book_kind", out var bk) && bk.ValueKind == JsonValueKind.String && Enum.TryParse<SourceDocumentType>(bk.GetString(), ignoreCase: true, out var parsedKind))
+                    status.BookKind = parsedKind;
                 status.TextEngine = root.TryGetProperty("text_engine", out var te) ? te.GetString() : null;
                 if (root.TryGetProperty("text_words", out var tw) && tw.TryGetInt32(out var words))
                     status.TextWords = words;

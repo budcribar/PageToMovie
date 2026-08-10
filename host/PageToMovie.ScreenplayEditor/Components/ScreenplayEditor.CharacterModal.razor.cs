@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
+using PageToMovie.Core.Models;
 using PageToMovie.ScreenplayEditor.Models;
 
 namespace PageToMovie.ScreenplayEditor.Components;

@@ -1,4 +1,39 @@
+
+
+using System;
+using System.Text.Json.Serialization;
+
 namespace PageToMovie.Core.Models;
+
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum ProjectVisibility
+{
+    Private = 0,
+    Public = 1,
+    Unlisted = 2
+}
+
+public static class ProjectVisibilityExtensions
+{
+    public static ProjectVisibility ParseProjectVisibility(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return ProjectVisibility.Private;
+        return value.Trim().ToLowerInvariant() switch
+        {
+            "public" or "open" or "publicforkable" or "forkable" => ProjectVisibility.Public,
+            "unlisted" => ProjectVisibility.Unlisted,
+            "private" => ProjectVisibility.Private,
+            _ => Enum.TryParse<ProjectVisibility>(value, true, out var result) ? result : ProjectVisibility.Private
+        };
+    }
+
+    public static string ToClientString(this ProjectVisibility visibility) => visibility switch
+    {
+        ProjectVisibility.Public => "Public",
+        ProjectVisibility.Unlisted => "Unlisted",
+        _ => "Private"
+    };
+}
 
 public sealed class ProjectInfo
 {
@@ -14,9 +49,9 @@ public sealed class ProjectInfo
     /// <summary>Set when this project was created via Invite-to-Fork — the project it was forked from.</summary>
     public string? ParentProjectId { get; set; }
     /// <summary>
-    /// Git-aligned visibility mode: "Private" (owner/collaborators only), "Public" (Read-Only / listed on gallery), or "Open" (Public Forkable). Default: "Private".
+    /// Git-aligned visibility mode: Private (owner/collaborators only), Public (Read-Only / listed on gallery), or Unlisted. Default: Private.
     /// </summary>
-    public string VisibilityMode { get; set; } = "Private";
+    public ProjectVisibility VisibilityMode { get; set; } = ProjectVisibility.Private;
     /// <summary>
     /// Product path: "full" (cast/faces/estimate) or "simple-voice" (library book + narrator re-voice).
     /// Stored in project.json as studioPath.
@@ -312,6 +347,7 @@ public sealed class CharacterSummary
     public string DisplayName { get; set; } = "";
     public string Description { get; set; } = "";
     public string VisualLock { get; set; } = "";
+    public VisualMedium VisualMedium { get; set; } = VisualMedium.LiveAction;
     public string VoiceProfile { get; set; } = "";
     public string VoiceLabel { get; set; } = "";
     /// <summary>human | animal | creature | object … from the cast seed. Silent animals don't require a voice.</summary>
@@ -970,7 +1006,7 @@ public sealed class BookSourceStatus
     public long BookTextBytes { get; set; }
     public string? TextQuality { get; set; }
     public double GarbageScore { get; set; }
-    public string? BookKind { get; set; }
+    public SourceDocumentType BookKind { get; set; } = SourceDocumentType.None;
     public string? TextEngine { get; set; }
     public int? TextWords { get; set; }
     public int? SuggestedTotalMinutes { get; set; }

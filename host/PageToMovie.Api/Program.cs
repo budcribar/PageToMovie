@@ -4538,8 +4538,8 @@ app.MapPost("/api/projects/{id}/visibility", async (
         return forbidden;
 
     var proj = await store.SetProjectVisibilityModeAsync(id, req.VisibilityMode, ct);
-    await books.SetProjectVisibilityAsync(proj.OwnerUserId ?? user.UserId, id, proj.VisibilityMode, ct);
-    return Results.Ok(new { ok = true, projectId = proj.Id, visibilityMode = proj.VisibilityMode });
+    await books.SetProjectVisibilityAsync(proj.OwnerUserId ?? user.UserId, id, proj.VisibilityMode.ToString(), ct);
+    return Results.Ok(new { ok = true, projectId = proj.Id, visibilityMode = proj.VisibilityMode.ToString() });
 });
 
 
@@ -4741,8 +4741,7 @@ app.MapGet("/api/projects/forkable", async (
         return denied;
     var all = await store.ListProjectsAsync(ct);
     var forkable = all
-        .Where(p => (string.Equals(p.VisibilityMode, "Open", StringComparison.OrdinalIgnoreCase)
-                        || string.Equals(p.VisibilityMode, "PublicForkable", StringComparison.OrdinalIgnoreCase))
+        .Where(p => p.VisibilityMode == ProjectVisibility.Public
                     // Exclude forks themselves — only original forkable sources are pickable stories.
                     && string.IsNullOrWhiteSpace(p.ParentProjectId))
         .OrderBy(p => p.Label ?? p.Title ?? p.Id, StringComparer.OrdinalIgnoreCase)
@@ -5311,7 +5310,7 @@ app.MapPost("/api/projects/{id}/adaptation/upload", async (
             var text = await File.ReadAllTextAsync(path, req.HttpContext.RequestAborted);
             var project = await store.GetProjectAsync(id, req.HttpContext.RequestAborted);
             bookIdentity = await books.RegisterAsync(
-                text, user.UserId, id, project?.VisibilityMode ?? "Private",
+                text, user.UserId, id, project?.VisibilityMode ?? ProjectVisibility.Private,
                 req.HttpContext.RequestAborted);
         }
         var status = store.GetAdaptationStatus(id, user.UserId);
@@ -7274,7 +7273,7 @@ app.MapGet("/api/demos", async (
                 var proj = await store.GetProjectAsync(d.ProjectId, ct);
                 if (proj is not null)
                 {
-                    visibilityMap[d.Id] = proj.VisibilityMode;
+                    visibilityMap[d.Id] = proj.VisibilityMode.ToString();
                     forkableProjectIds.Add(d.ProjectId);
                 }
             }

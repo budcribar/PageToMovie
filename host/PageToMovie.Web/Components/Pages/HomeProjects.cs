@@ -159,18 +159,19 @@ public partial class Home
         }
 
 
+        internal static string VisibilityBadgeClass(ProjectVisibility visibility) => VisibilityBadgeClass(visibility.ToString());
+
         internal static string VisibilityBadgeClass(string? mode) => mode?.Trim().ToLowerInvariant() switch
         {
-            "open" => "bg-success",
-            "public" => "bg-info text-dark",
+            "open" or "public" => "bg-info text-dark",
             _ => "bg-dark border border-secondary text-muted",
         };
 
+        internal static string VisibilityBadgeText(ProjectVisibility visibility) => VisibilityBadgeText(visibility.ToString());
 
         internal static string VisibilityBadgeText(string? mode) => mode?.Trim().ToLowerInvariant() switch
         {
-            "open" => "🍴 Forkable",
-            "public" => "👁️ Public",
+            "open" or "public" => "👁️ Public",
             _ => "🔒 Private",
         };
 

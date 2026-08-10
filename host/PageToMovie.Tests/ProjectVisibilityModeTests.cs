@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Options;
+using PageToMovie.Core.Models;
 using PageToMovie.Core.Options;
 using PageToMovie.Engine;
 using Xunit;
@@ -41,22 +42,22 @@ public class ProjectVisibilityModeTests
         {
             var proj = await store.CreateProjectAsync("orig_proj", "Original Project", ownerUserId: "alice");
 
-            Assert.Equal("Private", proj.VisibilityMode);
+            Assert.Equal(ProjectVisibility.Private, proj.VisibilityMode);
             Assert.Equal("alice/orig_proj", proj.Id);
             Assert.Contains(Path.Combine("projects", "alice", "orig_proj"), proj.Path);
 
             // Change to Public Read-Only
             var updated = await store.SetProjectVisibilityModeAsync(proj.Id, "Public");
-            Assert.Equal("Public", updated.VisibilityMode);
+            Assert.Equal(ProjectVisibility.Public, updated.VisibilityMode);
 
             // Re-read project
             var reloaded = await store.GetProjectAsync(proj.Id);
             Assert.NotNull(reloaded);
-            Assert.Equal("Public", reloaded!.VisibilityMode);
+            Assert.Equal(ProjectVisibility.Public, reloaded!.VisibilityMode);
 
-            // Change to Open (Forkable)
-            var openProj = await store.SetProjectVisibilityModeAsync(proj.Id, "Open");
-            Assert.Equal("Open", openProj.VisibilityMode);
+            // Change to Public (Forkable)
+            var openProj = await store.SetProjectVisibilityModeAsync(proj.Id, "Public");
+            Assert.Equal(ProjectVisibility.Public, openProj.VisibilityMode);
         }
         finally
         {

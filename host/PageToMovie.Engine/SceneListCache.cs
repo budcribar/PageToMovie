@@ -97,6 +97,8 @@ public sealed class SceneListCache
         clone.LockOwnerUserId = null;
         clone.LockedByOther = false;
         clone.LockReason = null;
+        clone.CharactersOnScreen ??= new();
+        clone.LocationIds ??= new();
         return clone;
     }
 

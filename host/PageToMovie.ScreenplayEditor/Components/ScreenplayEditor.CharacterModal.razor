@@ -77,6 +77,16 @@
                                               @bind="profile.VisualLockPrompt" @bind:after="OnChanged"
                                               placeholder="Appearance that must stay consistent…"></textarea>
                                 </div>
+                                <div class="mb-2">
+                                    <label class="form-label text-secondary small mb-0">Visual medium</label>
+                                    <select class="form-select form-select-sm bg-dark text-light border-secondary"
+                                            @bind="profile.VisualMedium" @bind:after="OnChanged">
+                                        @foreach (var medium in Enum.GetValues<PageToMovie.Core.Models.VisualMedium>())
+                                        {
+                                            <option value="@medium">@medium</option>
+                                        }
+                                    </select>
+                                </div>
                                 <div class="mb-1">
                                     <label class="form-label text-secondary small mb-0">Wardrobe always</label>
                                     <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary"

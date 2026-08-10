@@ -22,6 +22,8 @@ public partial class Characters
 
         internal string _editVisualLock = "";
 
+        internal VisualMedium _editVisualMedium = VisualMedium.LiveAction;
+
         internal CancellationTokenSource? _lookSaveCts;
 
         internal string? _lookSaveHint;
@@ -32,6 +34,8 @@ public partial class Characters
         internal string _savedLookDescription = "";
 
         internal string _savedLookVisualLock = "";
+
+        internal VisualMedium _savedLookVisualMedium = VisualMedium.LiveAction;
 
         internal bool _savingLook;
 
@@ -115,11 +119,13 @@ public partial class Characters
             var charKey = S.List._selected.Key;
             var displayName = S.List._selected.DisplayName;
 
-            // No text change → no API
+            // No text or medium change → no API
             var desc = _editDescription ?? "";
             var vis = _editVisualLock ?? "";
+            var medium = _editVisualMedium;
             if (string.Equals(desc, _savedLookDescription, StringComparison.Ordinal) &&
-                string.Equals(vis, _savedLookVisualLock, StringComparison.Ordinal))
+                string.Equals(vis, _savedLookVisualLock, StringComparison.Ordinal) &&
+                medium == _savedLookVisualMedium)
             {
                 if (!silent)
                 {
@@ -179,6 +185,7 @@ public partial class Characters
 
                     _savedLookDescription = _editDescription ?? "";
                     _savedLookVisualLock = _editVisualLock ?? "";
+                    _savedLookVisualMedium = _editVisualMedium;
                 }
             }
             catch (Exception ex)

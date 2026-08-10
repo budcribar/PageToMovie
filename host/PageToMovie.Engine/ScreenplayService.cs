@@ -806,7 +806,7 @@ public static string NormalizeText(string text)
         {
             var project = await store.GetProjectAsync(projectId, ct).ConfigureAwait(false);
             bookIdentity = await bookRegistry.RegisterAsync(
-                book, cacheUserId, projectId, project?.VisibilityMode ?? "Private", ct).ConfigureAwait(false);
+                book, cacheUserId, projectId, (project?.VisibilityMode ?? ProjectVisibility.Private).ToString(), ct).ConfigureAwait(false);
             var prompt = await new AdaptationService()
                 .BuildSystemPromptAsync(minutes, ct).ConfigureAwait(false);
             promptHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(prompt))).ToLowerInvariant();

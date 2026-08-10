@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Options;
+using PageToMovie.Core.Models;
 using PageToMovie.Core.Options;
 
 namespace PageToMovie.Engine;
@@ -18,6 +19,11 @@ public sealed class BookTextRegistryService
         _connectionString = $"Data Source={Path.Combine(dir, "pagetomovie.db")};Cache=Shared;Pooling=True;";
         EnsureSchema();
     }
+
+    public Task<BookTextIdentity> RegisterAsync(
+        string text, string userId, string? projectId, ProjectVisibility visibility,
+        CancellationToken ct = default) =>
+        RegisterAsync(text, userId, projectId, visibility.ToString(), ct);
 
     public async Task<BookTextIdentity> RegisterAsync(
         string text, string userId, string? projectId = null, string visibility = "Private",

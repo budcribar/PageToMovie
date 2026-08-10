@@ -1,5 +1,7 @@
 using System.ComponentModel;
 
+using PageToMovie.Core.Models;
+
 namespace PageToMovie.ScreenplayEditor.Models;
 
 public enum BeatType
@@ -385,6 +387,7 @@ public class ScreenplayCharacterProfile
     public string VisualLockPrompt { get; set; } = "";
     public string WardrobeAlways { get; set; } = "";
     public bool IsImageLocked { get; set; } = true;
+    public VisualMedium VisualMedium { get; set; } = VisualMedium.LiveAction;
     public bool Speaks { get; set; }
     public string? SpeciesKind { get; set; }
     public int ReferenceImageCount { get; set; } = 1;

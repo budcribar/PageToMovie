@@ -64,13 +64,13 @@ public static class StudioStateMachine
         if (book is null && screenplay is null)
             return SourceDocumentType.None;
 
-        if (book?.BookKind?.Equals("fountain", StringComparison.OrdinalIgnoreCase) == true)
+        if (book is { BookKind: SourceDocumentType.Fountain })
             return SourceDocumentType.Fountain;
 
-        if (book?.PdfExists == true)
+        if (book is { BookKind: SourceDocumentType.Pdf } || book?.PdfExists == true)
             return SourceDocumentType.Pdf;
 
-        if (book?.BookTextExists == true)
+        if (book is { BookKind: SourceDocumentType.Text } || book?.BookTextExists == true)
             return SourceDocumentType.Text;
 
         if (screenplay?.DraftExists == true)
