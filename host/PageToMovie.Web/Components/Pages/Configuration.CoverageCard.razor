@@ -1,9 +1,9 @@
 @* Page-local to Configuration — studio API coverage card (starts collapsed) *@
 @using Microsoft.AspNetCore.Components
 
-<div class="card mb-4 border-primary border-opacity-50 shadow-sm" id="api-keys" data-testid="studio-coverage-card">
+<div class="card mb-3" id="api-keys" data-testid="studio-coverage-card">
     <details class="ptm-cfg-section">
-        <summary class="card-header bg-dark text-white d-flex flex-wrap justify-content-between align-items-center gap-2 ptm-cfg-summary">
+        <summary class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2 ptm-cfg-summary">
             <span>Studio coverage</span>
             @{
                 var cov = Coverage!.BuildCoverageRows();

@@ -94,6 +94,32 @@ public partial class AdaptationScreenplay
             _showBookModal = false;
         }
 
+        /// <summary>
+        /// Book text exists but draft is missing, empty, or a stub — surface Create/Rewrite CTA.
+        /// </summary>
+        internal bool NeedsDraftFromBook
+        {
+            get
+            {
+                if (S.Status?.Book.BookTextExists != true) return false;
+                if (string.IsNullOrWhiteSpace(S.Editor._text)) return true;
+                if (S.SignOff._signOffWarnings.Any(w =>
+                        w.Contains("empty", StringComparison.OrdinalIgnoreCase)
+                        || w.Contains("very short", StringComparison.OrdinalIgnoreCase)))
+                    return true;
+                // Structured stub: single generic LOCATION scene with placeholder beat.
+                if (S.Editor._sceneCount <= 1
+                    && S.Editor._text.Contains("What we see", StringComparison.OrdinalIgnoreCase)
+                    && S.Editor._text.Contains("LOCATION", StringComparison.OrdinalIgnoreCase)
+                    && S.Editor._text.Length < 800)
+                    return true;
+                if (S.SignOff._screenplayStatus?.DraftExists != true
+                    && S.Editor._text.Trim().Length < 200)
+                    return true;
+                return false;
+            }
+        }
+
         internal async Task CreateFromBookAsync()
         {
             if (S.Save._dirtyLocal && !string.IsNullOrWhiteSpace(S.Editor._text))

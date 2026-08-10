@@ -82,6 +82,17 @@
                     <ul class="dropdown-menu dropdown-menu-end dropdown-menu-dark shadow @(_menuOpen ? "show" : "")"
                         style="@(_menuOpen ? "display:block; position:absolute; right:0; left:auto;" : null)">
                         <li><h6 class="dropdown-header">Story Setup</h6></li>
+                        @if (Status?.Book.BookTextExists == true)
+                        {
+                            <li>
+                                <button class="dropdown-item" type="button"
+                                        data-testid="menu-rewrite-from-book"
+                                        disabled="@(Busy || Jobs.JobRunning)"
+                                        @onclick="async () => { CloseMenu(); await Book.CreateFromBookAsync(); }">
+                                    @(Book.NeedsDraftFromBook ? "Create draft from book…" : "Rewrite draft from book…")
+                                </button>
+                            </li>
+                        }
                         <li>
                             <button class="dropdown-item" type="button" disabled="@(_structuredUi is null)" @onclick="MenuOpenCharacters">
                                 Edit Story Characters…
@@ -196,7 +207,34 @@
         }
 
         <div class="card-body fe-screenplay-body pt-2">
-            @if (!Editor._editorReady && string.IsNullOrEmpty(Editor._text) && Status?.Book.BookTextExists == true)
+            @if (Book.NeedsDraftFromBook)
+            {
+                <div class="alert alert-primary border small mb-2 d-flex flex-wrap align-items-center justify-content-between gap-2"
+                     data-testid="screenplay-from-book-banner">
+                    <div>
+                        <strong>No usable screenplay yet.</strong>
+                        You already have book text for this project — generate a draft from it
+                        (or re-import on Book if you want a new source file).
+                    </div>
+                    <button class="btn btn-sm btn-primary"
+                            data-testid="screenplay-from-book"
+                            disabled="@(Busy || Jobs.JobRunning)"
+                            @onclick="Book.CreateFromBookAsync">
+                        @(string.IsNullOrWhiteSpace(Editor._text) || Editor._text.Length < 80
+                            ? "Create draft from book"
+                            : "Rewrite draft from book")
+                    </button>
+                </div>
+            }
+            else if (!string.IsNullOrWhiteSpace(ProjectId) && Status?.Book.BookTextExists != true && string.IsNullOrWhiteSpace(Editor._text))
+            {
+                <div class="alert alert-light border small mb-3">
+                    Import a book or fountain first.
+                    <a class="ms-1" href="adaptation/import" data-testid="screenplay-go-import">Go to Import →</a>
+                </div>
+            }
+
+            @if (!Editor._editorReady && string.IsNullOrEmpty(Editor._text) && Status?.Book.BookTextExists == true && !Book.NeedsDraftFromBook)
             {
                 <div class="alert alert-light border small mb-2">
                     You have book text ready.
@@ -219,6 +257,17 @@
                             <li>@w</li>
                         }
                     </ul>
+                    @if (Book.NeedsDraftFromBook)
+                    {
+                        <div class="mt-2">
+                            <button class="btn btn-sm btn-outline-primary"
+                                    data-testid="screenplay-from-book-warn"
+                                    disabled="@(Busy || Jobs.JobRunning)"
+                                    @onclick="Book.CreateFromBookAsync">
+                                Rewrite draft from book
+                            </button>
+                        </div>
+                    }
                 </div>
             }
 
@@ -295,7 +344,7 @@
                 </div>
             }
 
-            @if (!string.IsNullOrWhiteSpace(ProjectId) && Status?.Book.BookTextExists != true && string.IsNullOrWhiteSpace(Editor._text))
+            @if (!string.IsNullOrWhiteSpace(ProjectId) && Status?.Book.BookTextExists != true && string.IsNullOrWhiteSpace(Editor._text) && !Book.NeedsDraftFromBook)
             {
                 <div class="alert alert-light border small mb-3">
                     Import a book or fountain first.
