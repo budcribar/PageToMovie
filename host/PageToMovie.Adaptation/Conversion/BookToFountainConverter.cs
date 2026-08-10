@@ -170,15 +170,26 @@ public static class BookToFountainConverter
         var budget = budgetOverride ?? ResolvePromptBudget(model);
         // null/≤0 = unlimited (prompt + soft quality); positive = artificial target.
 
-        // Prefer xAI Files + Responses when the Engine opened a session for this book.
+        // Prefer xAI Files + Responses only when the book would NOT fit an inlined single-shot.
+        // Small books (Yellow Wallpaper, short stories) go through chat/completions — the
+        // Responses + file_id path was hanging for 10–20+ minutes with no progress, and
+        // file_id is meant to avoid re-billing huge novels, not short texts.
+        var bookFitsInline = FitsSingleShot(bookText, budget);
+        var useFileSession = bookSession is { IsAvailable: true } && !bookFitsInline;
+
         var prevSession = Stage1BookSessionScope.Current;
-        Stage1BookSessionScope.Current = bookSession is { IsAvailable: true } ? bookSession : null;
+        Stage1BookSessionScope.Current = useFileSession ? bookSession : null;
         try
         {
         if (Stage1BookSessionScope.Current is { } sess)
         {
             onProgress?.Invoke("Stage‑1 using xAI file_id session (book uploaded once; follow-ups chain).");
             await sess.EnsureUploadedAsync(ct).ConfigureAwait(false);
+        }
+        else if (bookSession is { IsAvailable: true } && bookFitsInline)
+        {
+            onProgress?.Invoke(
+                "Book fits single-shot context — using chat (skipping file_id upload for speed/reliability).");
         }
 
         string text;
@@ -196,7 +207,7 @@ public static class BookToFountainConverter
         {
             // With a file session the full book is attached by id — single-shot is preferred
             // even when the inlined-token budget would force multi-chunk.
-            var preferSingle = Stage1BookSessionScope.Current is not null || FitsSingleShot(bookText, budget);
+            var preferSingle = Stage1BookSessionScope.Current is not null || bookFitsInline;
             if (preferSingle)
             {
                 onProgress?.Invoke(
@@ -211,8 +222,11 @@ public static class BookToFountainConverter
                 {
                     text = single;
                 }
-                else if (ShouldChunkFallback(bookText, budget) || Stage1BookSessionScope.Current is not null)
+                else if (ShouldChunkFallback(bookText, budget) || Stage1BookSessionScope.Current is not null
+                         || bookFitsInline)
                 {
+                    // Always offer multi-chunk after single-shot fail/timeout for short books too
+                    // (previously only when ShouldChunkFallback, which skips very short texts).
                     onProgress?.Invoke("Falling back to multi-chunk adapt…");
                     text = await ConvertMultiChunkFromBudgetAsync().ConfigureAwait(false);
                 }
@@ -2242,15 +2256,42 @@ public static class BookToFountainConverter
         string? reasoningEffort = null,
         double temperature = 0.2)
     {
+        // Bound the primary call so a stuck provider (or proxy that never closes) cannot
+        // leave the job UI frozen at 6/10 for the full 20‑minute HttpClient timeout.
+        // On soft timeout we return null → multi-chunk fallback (or clear error).
+        const int singleShotSoftMinutes = 8;
         try
         {
+            using var softCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            softCts.CancelAfter(TimeSpan.FromMinutes(singleShotSoftMinutes));
+
+            // Heartbeat so operators see elapsed time while the model is still thinking.
+            var started = DateTimeOffset.UtcNow;
+            using var heartbeat = new Timer(_ =>
+            {
+                try
+                {
+                    var mins = (int)(DateTimeOffset.UtcNow - started).TotalMinutes;
+                    var secs = (int)(DateTimeOffset.UtcNow - started).TotalSeconds % 60;
+                    onProgress?.Invoke(
+                        $"Still writing screenplay… ({mins}m {secs:D2}s — single pass can take several minutes)");
+                }
+                catch { /* ignore */ }
+            }, null, TimeSpan.FromSeconds(20), TimeSpan.FromSeconds(20));
+
             var draft = await ConvertSingleShotAsync(
                 system, title, author, pageCount, totalMinutes, bookText,
-                chat, model, ct,
+                chat, model, softCts.Token,
                 bookMaxChars: budget.SingleShotBookMaxChars,
                 reasoningEffort: reasoningEffort, temperature: temperature).ConfigureAwait(false);
 
             return EvaluateQuality(draft, bookText, totalMinutes, AdaptPath.Single).Ok ? draft : null;
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            onProgress?.Invoke(
+                $"Single-pass timed out after {singleShotSoftMinutes} minutes — will try multi-chunk…");
+            return null;
         }
         catch (InvalidOperationException)
         {
