@@ -997,6 +997,9 @@ public static class SupportedModelCatalog
         ?? Find(modelId)?.ProviderId
         ?? "";
 
+    public static string? DefaultModelIdForCapability(ModelCapability capability) =>
+        DefaultModelIdForCapability(capability.ToString());
+
     /// <summary>
     /// Default model id for a capability from catalog <c>capabilities[].defaultModelId</c>,
     /// else first enabled model with that capability. Null if catalog has none.
