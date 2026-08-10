@@ -20,6 +20,9 @@ public partial class AdaptationScreenplay
     private ScreenplayTools? _toolsDomain;
     internal ScreenplayTools Tools => _toolsDomain ??= new ScreenplayTools(this);
 
+    /// <summary>Hosted structured editor instance (for Menu actions).</summary>
+    private global::PageToMovie.ScreenplayEditor.Components.ScreenplayEditor? _structuredUi;
+
     internal void EnsureDomains()
     {
         _ = Editor; _ = Save; _ = SignOff; _ = Book; _ = Tools;
@@ -75,6 +78,12 @@ public partial class AdaptationScreenplay
         }
         catch { /* ignore malformed query */ }
     }
+
+    private Task MenuCollapseAllAsync() =>
+        _structuredUi is null ? Task.CompletedTask : _structuredUi.CollapseAllScenes();
+
+    private Task MenuExpandAllAsync() =>
+        _structuredUi is null ? Task.CompletedTask : _structuredUi.ExpandAllScenes();
 
     // JS interop must target the component type (DotNetObjectReference).
     [JSInvokable]

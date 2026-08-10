@@ -904,3 +904,78 @@
 .fe-screenplay-card > .card-header .btn-success {
   font-weight: 600;
 }
+
+/* Compact screenplay: exactly two chrome rows, then the editor */
+.fe-screenplay-card--compact {
+  overflow: hidden;
+}
+
+.fe-sp-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  padding: 0.45rem 0.75rem;
+  min-height: 2.5rem;
+}
+
+.fe-sp-bar--primary {
+  justify-content: space-between;
+  background: color-mix(in oklab, var(--fs-bg-card) 92%, var(--fs-accent-indigo, #6b8cae));
+  border-bottom: 1px solid var(--fs-border-color);
+}
+
+.fe-sp-bar--tools {
+  gap: 0.35rem;
+  background: color-mix(in oklab, var(--fs-bg-card) 88%, var(--fs-bg-page, #0f1218));
+  border-bottom: 1px solid var(--fs-border-color);
+}
+
+.fe-sp-bar__left {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.65rem;
+  min-width: 0;
+}
+
+.fe-sp-bar__right {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin-left: auto;
+}
+
+.fe-sp-title {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 600;
+  font-size: 1.05rem;
+  letter-spacing: -0.02em;
+  color: var(--fs-text-primary);
+  line-height: 1.2;
+  max-width: min(28rem, 55vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fe-sp-bar--primary .btn-success {
+  font-weight: 600;
+}
+
+.fe-screenplay-body {
+  padding-top: 0.65rem !important;
+}
+
+.fe-wrap--compact {
+  min-height: calc(100vh - 10rem);
+  gap: 0.5rem;
+}
+
+.fe-screenplay-card--compact .fe-sp-tools__panel {
+  border: 1px solid var(--fs-border-color);
+  border-radius: 0.45rem;
+  background: var(--fs-bg-card);
+  padding: 0.65rem 0.75rem;
+}

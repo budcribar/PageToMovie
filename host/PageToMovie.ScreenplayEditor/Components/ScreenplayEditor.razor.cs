@@ -11,6 +11,10 @@ public partial class ScreenplayEditor : ComponentBase
     [Parameter]
     public EventCallback<ScreenplayModel> ModelChanged { get; set; }
 
+    /// <summary>Host owns the toolbar — hide the built-in top chrome.</summary>
+    [Parameter]
+    public bool HideChrome { get; set; }
+
     public bool ShowFountainModal { get; set; }
     public string FountainModalMode { get; set; } = "import";
     public string FountainModalText { get; set; } = "";
