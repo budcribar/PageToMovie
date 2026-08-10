@@ -1,39 +1,43 @@
 @if (IsOpen)
 {
     <div class="modal fade show d-block" tabindex="-1" style="background: rgba(0,0,0,0.75);">
-        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-dialog @(SingleCharacterMode ? "modal-md" : "modal-lg") modal-dialog-centered modal-dialog-scrollable">
             <div class="modal-content bg-dark text-light border-warning shadow-lg">
                 <div class="modal-header bg-dark-subtle border-secondary-subtle py-2">
                     <h5 class="modal-title fw-bold text-light">
-                        👥 Story Characters
-                        @if (!string.IsNullOrWhiteSpace(FocusName))
+                        @if (SingleCharacterMode)
                         {
-                            <span class="text-warning small fw-normal ms-2">· @FocusName</span>
+                            <span>@FocusName</span>
+                        }
+                        else
+                        {
+                            <span>Story characters</span>
                         }
                     </h5>
                     <button type="button" class="btn-close btn-close-white" @onclick="Close"></button>
                 </div>
                 <div class="modal-body p-3">
-                    <p class="small text-secondary mb-3">
-                        This list is the <strong>character classifier</strong> output (Stage‑1 cast seeds) — not names scraped from dialogue or action.
-                        Speakers on lines that aren’t in the cast stay as “(Current)” on the beat only.
-                    </p>
-
                     @if (FocusMissingFromCast)
                     {
                         <div class="alert alert-warning py-2 px-3 small mb-3" role="status">
-                            <strong>@FocusName</strong> is on a dialogue line but is <strong>not</strong> in the classifier cast.
-                            Fix the speaker name to a cast member, or re-run Stage‑1 / cast extract if the classifier missed them.
+                            <strong>@FocusName</strong> is speaking on a line but is not in the cast yet.
+                            Pick a cast member on that line, or add them below.
                         </div>
                     }
 
-                    <label class="form-label fw-semibold text-secondary small mb-1">Add character (manual override)</label>
-                    <div class="input-group input-group-sm mb-3">
-                        <input type="text" class="form-control text-uppercase bg-dark text-light border-secondary" @bind="NewCharacterName" placeholder="e.g. BUSTER" />
-                        <button class="btn btn-warning fw-semibold px-3" type="button" @onclick="AddCharacter" disabled="@string.IsNullOrWhiteSpace(NewCharacterName)">+ Add</button>
-                    </div>
+                    @if (!SingleCharacterMode)
+                    {
+                        <label class="form-label fw-semibold text-secondary small mb-1">Add character</label>
+                        <div class="input-group input-group-sm mb-3">
+                            <input type="text" class="form-control text-uppercase bg-dark text-light border-secondary" @bind="NewCharacterName" placeholder="e.g. BUSTER" />
+                            <button class="btn btn-warning fw-semibold px-3" type="button" @onclick="AddCharacter" disabled="@string.IsNullOrWhiteSpace(NewCharacterName)">+ Add</button>
+                        </div>
+                    }
 
-                    <label class="form-label fw-semibold text-secondary small">Cast (@OrderedCharacterNames.Count)</label>
+                    @if (!SingleCharacterMode)
+                    {
+                        <label class="form-label fw-semibold text-secondary small">Cast (@OrderedCharacterNames.Count)</label>
+                    }
                     <div class="d-flex flex-column gap-2 overflow-auto" style="max-height: 420px;">
                         @foreach (var charaName in OrderedCharacterNames)
                         {
@@ -46,14 +50,6 @@
                                 <div class="d-flex justify-content-between align-items-center mb-2 pb-1 border-bottom border-secondary-subtle">
                                     <div class="d-flex align-items-center gap-2 flex-wrap">
                                         <h6 class="mb-0 fw-bold text-warning text-uppercase">@charaName</h6>
-                                        @if (isFocus)
-                                        {
-                                            <span class="badge text-bg-warning text-dark">This line</span>
-                                        }
-                                        @if (profile.FromClassifier)
-                                        {
-                                            <span class="badge text-bg-primary">Classifier</span>
-                                        }
                                         @if (profile.Speaks)
                                         {
                                             <span class="badge text-bg-success">Speaks</span>
@@ -63,20 +59,23 @@
                                             <span class="badge text-bg-secondary">@profile.SpeciesKind</span>
                                         }
                                     </div>
-                                    <button class="btn btn-sm btn-outline-danger py-0 px-2" type="button" @onclick="() => RemoveCharacter(charaName)" title="Remove from editor list">✕</button>
+                                    @if (!SingleCharacterMode)
+                                    {
+                                        <button class="btn btn-sm btn-outline-danger py-0 px-2" type="button" @onclick="() => RemoveCharacter(charaName)" title="Remove from list">✕</button>
+                                    }
                                 </div>
 
                                 <div class="mb-2">
-                                    <label class="form-label text-secondary small mb-0">Description (classifier)</label>
+                                    <label class="form-label text-secondary small mb-0">Description</label>
                                     <textarea class="form-control form-control-sm bg-dark text-light border-secondary" rows="2"
                                               @bind="profile.Description" @bind:after="OnChanged"
-                                              placeholder="Who this character is — from cast classifier…"></textarea>
+                                              placeholder="Who they are and how they look…"></textarea>
                                 </div>
                                 <div class="mb-2">
                                     <label class="form-label text-secondary small mb-0">Visual lock</label>
                                     <textarea class="form-control form-control-sm bg-dark text-light border-secondary" rows="2"
                                               @bind="profile.VisualLockPrompt" @bind:after="OnChanged"
-                                              placeholder="Appearance lock for image generation…"></textarea>
+                                              placeholder="Appearance that must stay consistent…"></textarea>
                                 </div>
                                 <div class="mb-1">
                                     <label class="form-label text-secondary small mb-0">Wardrobe always</label>
@@ -103,13 +102,13 @@
                         @if (OrderedCharacterNames.Count == 0)
                         {
                             <div class="text-secondary small border border-secondary-subtle rounded p-3">
-                                No cast seeds yet. Import a book/screenplay so Stage‑1 can classify characters, or add a name above.
+                                No cast yet. Build cast on the Cast step, or add a name above.
                             </div>
                         }
                     </div>
                 </div>
                 <div class="modal-footer bg-dark-subtle border-secondary-subtle py-2">
-                    <a class="btn btn-outline-warning btn-sm me-auto" href="characters">Open Characters step →</a>
+                    <a class="btn btn-outline-warning btn-sm me-auto" href="characters">Open Cast step →</a>
                     <button type="button" class="btn btn-primary btn-sm px-4 fw-semibold" @onclick="Close">Done</button>
                 </div>
             </div>

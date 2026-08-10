@@ -110,10 +110,15 @@ public partial class AdaptationScreenplay
                         var profile = existing ?? new ScreenplayCharacterProfile { Name = key };
                         profile.Name = key;
                         profile.FromClassifier = true;
-                        if (string.IsNullOrWhiteSpace(profile.Description) && !string.IsNullOrWhiteSpace(c.Description))
-                            profile.Description = c.Description!;
-                        if (string.IsNullOrWhiteSpace(profile.VisualLockPrompt) && !string.IsNullOrWhiteSpace(c.VisualLock))
-                            profile.VisualLockPrompt = c.VisualLock!;
+                        // Prefer live cast API text; clear stub values that are just the Character_ key.
+                        if (!string.IsNullOrWhiteSpace(c.Description) && !LooksLikeSeedKey(c.Description, c.Key, name))
+                            profile.Description = c.Description!.Trim();
+                        else if (LooksLikeSeedKey(profile.Description, c.Key, name))
+                            profile.Description = "";
+                        if (!string.IsNullOrWhiteSpace(c.VisualLock) && !LooksLikeSeedKey(c.VisualLock, c.Key, name))
+                            profile.VisualLockPrompt = c.VisualLock!.Trim();
+                        else if (LooksLikeSeedKey(profile.VisualLockPrompt, c.Key, name))
+                            profile.VisualLockPrompt = "";
                         if (string.IsNullOrWhiteSpace(profile.WardrobeAlways) && c.WardrobeAlways is { Count: > 0 })
                             profile.WardrobeAlways = string.Join("; ", c.WardrobeAlways);
                         if (string.IsNullOrWhiteSpace(profile.VoiceId) && !string.IsNullOrWhiteSpace(c.VoiceProviderVoiceId))
@@ -318,6 +323,34 @@ public partial class AdaptationScreenplay
             _dotNetRef?.Dispose();
             _dotNetRef = null;
             return Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// True when text is just a Character_/Loc_ seed key (or bare display name), not filmable prose.
+        /// </summary>
+        private static bool LooksLikeSeedKey(string? text, string? key, string? displayName)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return true;
+            var t = text.Trim();
+            if (t.StartsWith("Character_", StringComparison.OrdinalIgnoreCase)
+                || t.StartsWith("Loc_", StringComparison.OrdinalIgnoreCase))
+                return true;
+            if (!string.IsNullOrWhiteSpace(key)
+                && t.Equals(key.Trim(), StringComparison.OrdinalIgnoreCase))
+                return true;
+            if (!string.IsNullOrWhiteSpace(displayName)
+                && t.Equals(displayName.Trim(), StringComparison.OrdinalIgnoreCase)
+                && t.Length < 40
+                && !t.Contains(' '))
+                return true;
+            // "Character Antinous" after underscore→space strip of the key
+            if (!string.IsNullOrWhiteSpace(key))
+            {
+                var keyAsWords = key.Replace('_', ' ').Trim();
+                if (t.Equals(keyAsWords, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            return false;
         }
     }
 }

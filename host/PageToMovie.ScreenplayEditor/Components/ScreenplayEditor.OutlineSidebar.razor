@@ -47,7 +47,7 @@
                 @if (Characters.Count == 0)
                 {
                     <p class="text-secondary small px-1 mb-0">
-                        No cast yet — character classifier seeds load from Stage‑1.
+                        No cast yet — open Cast to build characters.
                     </p>
                     <button type="button" class="btn btn-sm btn-outline-warning" @onclick="OpenCastEditor">
                         Open Characters…
@@ -55,7 +55,7 @@
                 }
                 else
                 {
-                    <div class="small text-secondary px-1 mb-1">@Characters.Count · classifier cast</div>
+                    <div class="small text-secondary px-1 mb-1">@Characters.Count</div>
                     @foreach (var name in Characters)
                     {
                         var isFocus = !string.IsNullOrWhiteSpace(FocusedCharacter)

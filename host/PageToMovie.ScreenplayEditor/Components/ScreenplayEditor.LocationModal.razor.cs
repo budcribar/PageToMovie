@@ -20,13 +20,27 @@ public partial class ScreenplayEditor_LocationModal : ComponentBase
     [Parameter]
     public EventCallback OnChangedCallback { get; set; }
 
-    /// <summary>Location name from the scene that opened this modal (scrolled into view).</summary>
+    /// <summary>Location from outline click or the scene gear that opened this modal.</summary>
     [Parameter]
     public string? FocusName { get; set; }
 
     public string NewLocationName { get; set; } = "";
 
-    private bool _scrollPending;
+    /// <summary>
+    /// Opened with a specific place (outline Locs / scene gear) — show only that card.
+    /// Menu “Edit locations” with no focus still lists everything.
+    /// </summary>
+    public bool SingleLocationMode
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(FocusName)) return false;
+            // Ensure the focused place is in the model so it can be edited alone.
+            var focus = FocusName.Trim().ToUpperInvariant();
+            Model.GetOrCreateLocationProfile(focus);
+            return true;
+        }
+    }
 
     public List<string> OrderedLocationNames
     {
@@ -34,39 +48,20 @@ public partial class ScreenplayEditor_LocationModal : ComponentBase
         {
             var all = Model.GetAllLocations().ToList();
             if (string.IsNullOrWhiteSpace(FocusName)) return all;
-            var focus = FocusName.Trim();
-            // Ensure focused location exists so it can be edited even if not yet in profiles.
-            if (!all.Any(n => n.Equals(focus, StringComparison.OrdinalIgnoreCase)))
-            {
-                Model.GetOrCreateLocationProfile(focus.ToUpperInvariant());
-                all = Model.GetAllLocations().ToList();
-            }
-            return all
-                .OrderByDescending(n => n.Equals(focus, StringComparison.OrdinalIgnoreCase))
-                .ThenBy(n => n, StringComparer.OrdinalIgnoreCase)
-                .ToList();
+
+            var focus = FocusName.Trim().ToUpperInvariant();
+            Model.GetOrCreateLocationProfile(focus);
+            // Outline / scene gear → only that location.
+            return new List<string> { focus };
         }
     }
 
     protected override void OnParametersSet()
     {
-        if (IsOpen && !string.IsNullOrWhiteSpace(FocusName))
-            _scrollPending = true;
+        // no scroll needed in single-location mode
     }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (!_scrollPending || !IsOpen || string.IsNullOrWhiteSpace(FocusName))
-            return;
-        _scrollPending = false;
-        var id = CardDomId(FocusName);
-        try
-        {
-            await Js.InvokeVoidAsync("eval",
-                $"document.getElementById('{id}')?.scrollIntoView({{block:'nearest',behavior:'smooth'}})");
-        }
-        catch { /* JS optional */ }
-    }
+    protected override Task OnAfterRenderAsync(bool firstRender) => Task.CompletedTask;
 
     internal static string CardDomId(string name)
     {
@@ -86,7 +81,6 @@ public partial class ScreenplayEditor_LocationModal : ComponentBase
 
     private static string NormalizeLoc(string s) =>
         new string((s ?? "").Where(c => char.IsLetterOrDigit(c)).ToArray()).ToUpperInvariant();
-
 
     public async Task Close()
     {

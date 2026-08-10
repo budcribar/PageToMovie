@@ -20,7 +20,7 @@ public partial class ScreenplayEditor_CharacterModal : ComponentBase
     [Parameter]
     public EventCallback OnChangedCallback { get; set; }
 
-    /// <summary>Speaker from the dialogue line that opened this modal.</summary>
+    /// <summary>Speaker / cast name that opened this modal (outline click or dialogue gear).</summary>
     [Parameter]
     public string? FocusName { get; set; }
 
@@ -28,29 +28,48 @@ public partial class ScreenplayEditor_CharacterModal : ComponentBase
 
     private bool _scrollPending;
 
+    /// <summary>
+    /// Opened from the cast outline (or a known speaker) — show only that character, not the full roster.
+    /// </summary>
+    public bool SingleCharacterMode
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(FocusName)) return false;
+            var focus = FocusName.Trim();
+            return Model.GetAllCharacters()
+                .Any(n => n.Equals(focus, StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
     public List<string> OrderedCharacterNames
     {
         get
         {
-            // Classifier cast only — never invent a profile from the dialogue cue.
             var all = Model.GetAllCharacters().ToList();
             if (string.IsNullOrWhiteSpace(FocusName)) return all;
+
             var focus = FocusName.Trim();
+            var match = all.FirstOrDefault(n => n.Equals(focus, StringComparison.OrdinalIgnoreCase));
+            // Cast outline / known speaker → only that card.
+            if (match is not null)
+                return new List<string> { match };
+
+            // Unknown speaker on a line — full list so they can pick/add.
             return all
-                .OrderByDescending(n => n.Equals(focus, StringComparison.OrdinalIgnoreCase))
-                .ThenBy(n => n, StringComparer.OrdinalIgnoreCase)
+                .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
                 .ToList();
         }
     }
 
-    /// <summary>True when the focused dialogue speaker is not in the classifier cast.</summary>
+    /// <summary>True when the focused dialogue speaker is not in the cast.</summary>
     public bool FocusMissingFromCast =>
         !string.IsNullOrWhiteSpace(FocusName)
         && !Model.GetAllCharacters().Any(n => n.Equals(FocusName.Trim(), StringComparison.OrdinalIgnoreCase));
 
     protected override void OnParametersSet()
     {
-        if (IsOpen && !string.IsNullOrWhiteSpace(FocusName))
+        if (IsOpen && !string.IsNullOrWhiteSpace(FocusName) && !SingleCharacterMode)
             _scrollPending = true;
     }
 

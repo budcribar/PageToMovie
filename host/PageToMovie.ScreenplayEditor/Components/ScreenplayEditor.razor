@@ -70,9 +70,9 @@
         <div class="@(IsSidebarCompact ? "col-auto" : "col-md-3")">
             <ScreenplayEditor_OutlineSidebar Scenes="Model.Scenes"
                                               Characters="Model.GetAllCharacters()"
-                                              FocusedCharacter="FocusCharacterName"
+                                              FocusedCharacter="@FocusCharacterName"
                                               Locations="Model.GetAllLocations()"
-                                              FocusedLocation="FocusLocationName"
+                                              FocusedLocation="@FocusLocationName"
                                               ActiveView="@ActiveViewMode"
                                               SelectedSceneIndex="SelectedSceneIndex"
                                               @bind-IsCompact="IsSidebarCompact"
@@ -150,11 +150,11 @@
 
     <ScreenplayEditor_LocationModal @bind-IsOpen="ShowLocationModal"
                                      Model="Model"
-                                     FocusName="FocusLocationName"
+                                     FocusName="@FocusLocationName"
                                      OnChangedCallback="OnChanged" />
 
     <ScreenplayEditor_CharacterModal @bind-IsOpen="ShowCharacterModal"
                                       Model="Model"
-                                      FocusName="FocusCharacterName"
+                                      FocusName="@FocusCharacterName"
                                       OnChangedCallback="OnChanged" />
 </div>
