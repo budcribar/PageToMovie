@@ -10,7 +10,7 @@
 <AdaptationShell Host="this" Step="screenplay">
     @* Visual style → "Look & medium" stage; film length → "Fit length" stage. This step is edit-only. *@
 
-    <div class="card mb-3">
+    <div class="card mb-3 fe-screenplay-card">
         <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
             <span>@L["Adaptation.Screenplay"]</span>
             <div class="fe-status-line d-flex flex-wrap gap-1 align-items-center">
@@ -134,7 +134,7 @@
                          aria-hidden="true"></div>
                 </div>
 
-                <div class="fe-structured-editor border rounded-3 overflow-hidden bg-body-tertiary" data-testid="screenplay-structured-editor">
+                <div class="fe-structured-editor overflow-hidden" data-testid="screenplay-structured-editor">
                     @if (Editor._editorReady)
                     {
                         <PageToMovie.ScreenplayEditor.Components.ScreenplayEditor Model="Editor._model"

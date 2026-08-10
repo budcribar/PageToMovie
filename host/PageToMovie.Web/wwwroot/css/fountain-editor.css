@@ -604,3 +604,224 @@
   background: var(--fs-bg-card-hover);
   transition: background 0.4s ease;
 }
+
+/* ── Structured ScreenplayEditor RCL — studio cohesion ─────────────────────
+   The RCL uses Bootstrap dark utilities (bg-dark, text-light, etc.) that do not
+   match PageToMovie studio tokens. Scope overrides so the workbench reads as
+   one surface inside AdaptationShell, not a nested light/dark foreign app. */
+
+.fe-structured-editor {
+  background: var(--fs-bg-card) !important;
+  border: 1px solid var(--fs-border-color) !important;
+  border-radius: 0.75rem !important;
+  box-shadow: var(--fs-shadow-card);
+  color: var(--fs-text-primary);
+  min-height: 28rem;
+}
+
+.fe-structured-editor > .container-fluid {
+  padding-top: 0.75rem !important;
+  padding-bottom: 0.75rem !important;
+}
+
+/* Kill the RCL's second "PageToMovie" product chrome — host shell already brands. */
+.fe-structured-editor .border-bottom.border-secondary-subtle.mb-3 {
+  border-color: var(--fs-border-color) !important;
+  margin-bottom: 0.75rem !important;
+  padding-bottom: 0.65rem !important;
+}
+
+.fe-structured-editor h5 {
+  font-size: 0.95rem;
+  letter-spacing: -0.01em;
+  color: var(--fs-text-primary) !important;
+}
+
+.fe-structured-editor .text-light {
+  color: var(--fs-text-primary) !important;
+}
+
+.fe-structured-editor .text-secondary,
+.fe-structured-editor .text-muted {
+  color: var(--fs-text-muted) !important;
+}
+
+.fe-structured-editor .bg-dark {
+  background-color: var(--fs-bg-input) !important;
+}
+
+.fe-structured-editor .bg-dark-subtle {
+  background-color: var(--fs-bg-card-hover) !important;
+}
+
+.fe-structured-editor .bg-body-tertiary {
+  background-color: var(--fs-bg-card) !important;
+}
+
+.fe-structured-editor .border-secondary,
+.fe-structured-editor .border-secondary-subtle {
+  border-color: var(--fs-border-color) !important;
+}
+
+.fe-structured-editor .card {
+  background: var(--fs-bg-card);
+  border-color: var(--fs-border-color) !important;
+  box-shadow: none;
+}
+
+.fe-structured-editor .card-header {
+  background: var(--fs-bg-input) !important;
+  border-color: var(--fs-border-color) !important;
+  color: var(--fs-text-primary) !important;
+}
+
+.fe-structured-editor .card-body {
+  background: transparent;
+  color: var(--fs-text-primary);
+}
+
+/* Scene header bar — one accent stripe, not a second product surface */
+.fe-structured-editor .card-header.bg-dark {
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--fs-bg-input) 88%, var(--fs-accent-indigo)),
+    var(--fs-bg-input)
+  ) !important;
+}
+
+.fe-structured-editor .badge.text-bg-warning {
+  background-color: var(--fs-accent-amber) !important;
+  color: #1a1408 !important;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.fe-structured-editor .badge.text-bg-dark {
+  background: var(--fs-overlay-mid) !important;
+  color: var(--fs-text-secondary) !important;
+  border: 1px solid var(--fs-border-color);
+}
+
+.fe-structured-editor .badge.text-bg-primary,
+.fe-structured-editor .btn-primary {
+  background-color: var(--fs-accent-indigo) !important;
+  border-color: var(--fs-accent-indigo) !important;
+  color: #fff !important;
+}
+
+.fe-structured-editor .btn-outline-secondary {
+  color: var(--fs-text-secondary);
+  border-color: var(--fs-border-color);
+  background: transparent;
+}
+
+.fe-structured-editor .btn-outline-secondary:hover {
+  background: var(--fs-bg-card-hover);
+  border-color: var(--fs-border-hover);
+  color: var(--fs-text-primary);
+}
+
+.fe-structured-editor .btn-outline-info,
+.fe-structured-editor .btn-outline-warning,
+.fe-structured-editor .btn-outline-danger {
+  border-color: var(--fs-border-color);
+  color: var(--fs-text-secondary);
+}
+
+.fe-structured-editor .btn-outline-info:hover {
+  background: var(--fs-alert-info-bg);
+  border-color: var(--fs-alert-info-border);
+  color: var(--fs-alert-info-text);
+}
+
+.fe-structured-editor .btn-outline-warning:hover {
+  background: var(--fs-alert-warning-bg);
+  border-color: var(--fs-alert-warning-border);
+  color: var(--fs-alert-warning-text);
+}
+
+.fe-structured-editor .btn-outline-danger:hover {
+  background: var(--fs-alert-danger-bg);
+  border-color: var(--fs-alert-danger-border);
+  color: var(--fs-alert-danger-text);
+}
+
+.fe-structured-editor .form-select,
+.fe-structured-editor .form-control {
+  background-color: var(--fs-bg-input) !important;
+  border-color: var(--fs-border-color) !important;
+  color: var(--fs-text-primary) !important;
+}
+
+.fe-structured-editor .form-select:focus,
+.fe-structured-editor .form-control:focus {
+  background-color: var(--fs-bg-input-focus) !important;
+  border-color: var(--fs-border-hover) !important;
+  box-shadow: 0 0 0 0.2rem rgba(107, 140, 174, 0.2);
+  color: var(--fs-text-primary) !important;
+}
+
+.fe-structured-editor .form-select option {
+  background: var(--fs-bg-card);
+  color: var(--fs-text-primary);
+}
+
+/* Outline scene rows */
+.fe-structured-editor .bg-primary {
+  background-color: color-mix(in oklab, var(--fs-accent-indigo) 88%, #000) !important;
+}
+
+.fe-structured-editor .btn-outline-secondary.text-light {
+  color: var(--fs-text-secondary) !important;
+}
+
+/* Beat rows — subtle raised chips, not hard black slabs */
+.fe-structured-editor .card-body > .border.border-secondary-subtle.rounded.bg-dark,
+.fe-structured-editor .card-body .border.bg-dark.shadow-sm {
+  background: var(--fs-bg-input) !important;
+  border-color: var(--fs-border-color) !important;
+  box-shadow: none !important;
+}
+
+.fe-structured-editor .card-body .border.bg-dark.shadow-sm:hover {
+  border-color: var(--fs-border-hover) !important;
+  background: var(--fs-bg-card-hover) !important;
+}
+
+/* Add-beat control */
+.fe-structured-editor .form-select.text-success,
+.fe-structured-editor .form-select.border-success {
+  color: var(--fs-alert-success-text) !important;
+  border-color: var(--fs-alert-success-border) !important;
+  background: var(--fs-alert-success-bg) !important;
+}
+
+/* Host toolbar: primary continue CTA already success; keep spacing tight */
+.fe-wrap > .fe-toolbar {
+  gap: 0.5rem;
+}
+
+.fe-wrap > .fe-toolbar .btn-success {
+  font-weight: 600;
+  box-shadow: 0 0 0 1px color-mix(in oklab, #22c55e 35%, transparent);
+}
+
+/* Dropdown menus inside RCL */
+.fe-structured-editor .dropdown-menu-dark {
+  background: var(--fs-bg-card);
+  border: 1px solid var(--fs-border-color);
+  color: var(--fs-text-primary);
+}
+
+.fe-structured-editor .dropdown-item {
+  color: var(--fs-text-secondary);
+}
+
+.fe-structured-editor .dropdown-item:hover {
+  background: var(--fs-bg-card-hover);
+  color: var(--fs-text-primary);
+}
+
+.fe-structured-editor .dropdown-header {
+  color: var(--fs-text-subtle);
+}
