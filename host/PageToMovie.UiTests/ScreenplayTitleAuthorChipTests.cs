@@ -100,9 +100,8 @@ public class ScreenplayTitleAuthorChipTests
             await PipelineFlow.SignOffScreenplayAsync(page);
             await page.WaitForURLAsync(new Regex("characters", RegexOptions.IgnoreCase), new() { Timeout = 90_000 });
 
-            // Not Ui.GotoAppAsync: its readiness marker (a[href='/scenes']) only renders as a real
-            // link once a shot plan (Stage2) exists — this test never builds one, so that nav item
-            // stays a disabled span and the helper would time out waiting for it.
+            // Deep-link reload after sign-off (session already established). ShellReady now
+            // tolerates gated Film nav, but we still avoid a full shell re-bootstrap here.
             await page.GotoAsync($"{_fx.BaseUrl}/adaptation/screenplay?admin=1");
             await WaitForEditorReadyAsync(page);
             var reloaded = await GetEditorValueAsync(page);

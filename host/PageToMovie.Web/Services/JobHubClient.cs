@@ -60,7 +60,12 @@ public sealed class JobHubClient : IAsyncDisposable
         _connection.On<string>(JobHubEvents.JobLog, line => JobLog?.Invoke(line));
         _connection.On<object>(JobHubEvents.AdminState, payload => AdminState?.Invoke(payload));
 
-        await _connection.StartAsync(ct);
+        // Bound connect so browse pages cannot stick on "Loading…" if WebSockets hang (headless CI,
+        // proxy, etc.). Callers that pass their own CT still get an upper bound via link.
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        if (!ct.CanBeCanceled)
+            linked.CancelAfter(TimeSpan.FromSeconds(12));
+        await _connection.StartAsync(linked.Token);
     }
 
     /// <summary>Best-effort connect — SignalR is optional for browse-only pages, so failures are swallowed.</summary>

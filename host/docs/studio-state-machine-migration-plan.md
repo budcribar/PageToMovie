@@ -184,7 +184,7 @@ dotnet test host/PageToMovie.Tests/PageToMovie.Tests.csproj --filter "FullyQuali
 
 - [x] **6.1** Full offline suite:  
   `dotnet test host/PageToMovie.Tests/PageToMovie.Tests.csproj --filter "FullyQualifiedName!~LiveApi"`
-- [ ] **6.2** Targeted UI tests for nav gates / screenplay sign-off if present under `PageToMovie.UiTests`.
+- [x] **6.2** Targeted UI tests for nav gates / screenplay sign-off if present under `PageToMovie.UiTests`.
 - [x] **6.3** Mark completed items in this doc; note any intentional behavior fixes (e.g. Stage1-only no longer unlocks Cast).
 - [x] **6.4** Short PR description: before/after diagram + list of deleted duplicate logic.
 - [ ] **6.5** Ship behind no flag if parity tests pass; otherwise feature-flag façade for one release (`UseStudioStateMachineGates`).

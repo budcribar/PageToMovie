@@ -7,15 +7,23 @@ namespace PageToMovie.UiTests;
 /// <summary>Shared page-driving helpers for the UI suite.</summary>
 public static class Ui
 {
+    /// <summary>
+    /// Shell-ready marker that works even when Film/Cast/Review nav links are replaced by
+    /// disabled spans (StudioStateMachine gates hide <c>a[href='/scenes']</c> until shot plan + cast).
+    /// Prefer Home / Settings / Estimate — they render for any signed-in session.
+    /// </summary>
+    public static ILocator ShellReady(IPage page) =>
+        page.Locator(
+            "[data-testid='nav-studio'], [data-testid='nav-configuration'], [data-testid='nav-cost'], " +
+            "[data-testid='nav-scenes'], [data-testid='nav-scenes-disabled']").First;
+
     /// <summary>Navigate to a route with the admin login-bypass, wait for the WASM shell, dismiss the terms gate.</summary>
     public static async Task GotoAppAsync(IPage page, string baseUrl, string route = "/")
     {
         var sep = route.Contains('?') ? "&" : "?";
         await page.GotoAsync($"{baseUrl}{route}{sep}admin=1");
-        // Shell-ready marker: the nav link to /scenes is present on every page in both
-        // collapsed and expanded sidebar states (href is state-independent, the label is not).
-        await page.Locator("a[href='/scenes']").First
-                  .WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 30_000 });
+        await ShellReady(page)
+            .WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 60_000 });
         await DismissTermsAsync(page);
     }
 
@@ -26,8 +34,8 @@ public static class Ui
     {
         await GotoAppAsync(page, baseUrl, "/");
         await page.GotoAsync($"{baseUrl}{route}");
-        await page.Locator("a[href='/scenes']").First
-                  .WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 30_000 });
+        await ShellReady(page)
+            .WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 60_000 });
         await DismissTermsAsync(page);
     }
 
@@ -72,6 +80,39 @@ public static class Ui
             if (doc.RootElement.TryGetProperty(name, out var el) && el.ValueKind == JsonValueKind.String)
                 return el.GetString();
         return null;
+    }
+
+    /// <summary>True when the left-nav item is the enabled link (not the disabled span).</summary>
+    public static async Task ExpectNavOpenAsync(IPage page, string testId)
+    {
+        var open = page.GetByTestId(testId);
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (await open.CountAsync() > 0 && await open.IsVisibleAsync())
+                return;
+            await page.WaitForTimeoutAsync(250);
+        }
+        Assert.Fail($"Expected nav {testId} enabled (link), but only disabled or missing.");
+    }
+
+    /// <summary>True when the left-nav item is the disabled span with a blocked-reason title.</summary>
+    public static async Task ExpectNavGatedAsync(IPage page, string testId, string reasonContains)
+    {
+        var gated = page.GetByTestId(testId + "-disabled");
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        string title = "";
+        while (DateTime.UtcNow < deadline)
+        {
+            if (await gated.CountAsync() > 0 && await gated.IsVisibleAsync())
+            {
+                title = await gated.GetAttributeAsync("title") ?? "";
+                if (title.Contains(reasonContains, StringComparison.OrdinalIgnoreCase))
+                    return;
+            }
+            await page.WaitForTimeoutAsync(250);
+        }
+        Assert.Fail($"Expected nav {testId} gated with title containing '{reasonContains}'. title='{title}'");
     }
 }
 

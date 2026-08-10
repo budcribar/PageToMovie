@@ -31,12 +31,16 @@ public class AppShellTests
         {
             await Ui.GotoAppAsync(page, _fx.BaseUrl, "/");
 
-            await page.Locator("a[href='/scenes']").First.ClickAsync();
-            await Assertions.Expect(page).ToHaveURLAsync(new Regex("/scenes"));
-            await Assertions.Expect(page.GetByRole(AriaRole.Heading, new() { Name = "Scenes & clips" })).ToBeVisibleAsync();
+            // Prefer always-available Estimate + Settings — Film/Cast may be StudioStateMachine-gated
+            // (disabled spans without href) when the shared demo project is not cast/shot ready.
+            await page.GetByTestId("nav-cost").ClickAsync();
+            await Assertions.Expect(page).ToHaveURLAsync(new Regex("/cost"));
 
-            await page.Locator("a[href='/characters']").First.ClickAsync();
-            await Assertions.Expect(page).ToHaveURLAsync(new Regex("/characters"));
+            await page.GetByTestId("nav-configuration").ClickAsync();
+            await Assertions.Expect(page).ToHaveURLAsync(new Regex("/configuration"));
+
+            await page.GetByTestId("nav-studio").ClickAsync();
+            await Assertions.Expect(page).ToHaveURLAsync(new Regex("/?$|/$"));
         }
         finally { await ctx.CloseAsync(); }
     }

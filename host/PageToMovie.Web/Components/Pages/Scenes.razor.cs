@@ -220,6 +220,15 @@ public partial class Scenes
             if (Session.IsAdmin)
                 await Gen.LoadVideoModelsAsync();
 
+            // Scene list first — SignalR is optional for browse. A hung WebSocket connect must not
+            // leave the page on "Loading scenes…" forever (Playwright / restricted networks).
+            var jobs = await Engine.GetJobAsync();
+            Gen._job = jobs?.Job;
+            if (Session.IsAdmin)
+                await Gen.RefreshMyJobsAsync();
+
+            await List.ReloadListAsync();
+
             try
             {
                 await Hub.StartAsync();
@@ -230,13 +239,6 @@ public partial class Scenes
                 MediaFolder.TriggerAutoSyncIfConnected();
             }
             catch { /* SignalR / media folder optional for browse */ }
-
-            var jobs = await Engine.GetJobAsync();
-            Gen._job = jobs?.Job;
-            if (Session.IsAdmin)
-                await Gen.RefreshMyJobsAsync();
-
-            await List.ReloadListAsync();
         }
         catch (Exception ex)
         {
