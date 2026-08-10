@@ -63,6 +63,7 @@ public partial class AdaptationScreenplay
                     S.Status = doc.Adaptation;
 
                 HydrateModelFromText();
+                await SeedCastProfilesAsync();
                 _editorReady = true;
                 _editorDataLoaded = true;
                 S.SignOff.UpdateWarningsFromText(_text);
@@ -76,9 +77,60 @@ public partial class AdaptationScreenplay
             }
         }
 
+        /// <summary>
+        /// Fill character dropdowns from the cast classifier / Characters API — not from ALL CAPS
+        /// action scraping (which invents fake characters like SOUND).
+        /// </summary>
+        internal async Task SeedCastProfilesAsync()
+        {
+            if (string.IsNullOrWhiteSpace(S.ProjectId)) return;
+            try
+            {
+                var cast = await S.Engine.GetCharactersAsync(S.ProjectId);
+                if (cast?.Characters is not { Count: > 0 }) return;
+                foreach (var c in cast.Characters)
+                {
+                    var name = !string.IsNullOrWhiteSpace(c.DisplayName) ? c.DisplayName : c.Key;
+                    if (string.IsNullOrWhiteSpace(name)) continue;
+                    name = name.Replace('_', ' ').Trim();
+                    if (name.Length < 1) continue;
+                    // Skip synthetic keys that aren't display names
+                    if (name.StartsWith("Character ", StringComparison.OrdinalIgnoreCase)
+                        && name.Skip("Character ".Length).All(ch => char.IsDigit(ch) || ch == ' '))
+                        continue;
+                    var profile = _model.GetOrCreateCharacterProfile(name.ToUpperInvariant());
+                    if (string.IsNullOrWhiteSpace(profile.VisualLockPrompt) && !string.IsNullOrWhiteSpace(c.VisualLock))
+                        profile.VisualLockPrompt = c.VisualLock!;
+                    if (string.IsNullOrWhiteSpace(profile.VoiceId) && !string.IsNullOrWhiteSpace(c.VoiceProviderVoiceId))
+                        profile.VoiceId = c.VoiceProviderVoiceId!;
+                    if (!string.IsNullOrWhiteSpace(c.VoiceProvider))
+                        profile.VoiceProvider = c.VoiceProvider!;
+                }
+            }
+            catch
+            {
+                /* cast optional until Characters step has run */
+            }
+        }
+
         internal void HydrateModelFromText()
         {
+            // Preserve profiles already seeded from cast while re-parsing fountain text.
+            var priorProfiles = _model.CharacterProfiles.ToList();
+            var priorLocations = _model.LocationProfiles.ToList();
             _model = FountainFormatter.Parse(_text ?? "");
+            foreach (var p in priorProfiles)
+            {
+                if (string.IsNullOrWhiteSpace(p.Name)) continue;
+                if (_model.CharacterProfiles.All(x => !x.Name.Equals(p.Name, StringComparison.OrdinalIgnoreCase)))
+                    _model.CharacterProfiles.Add(p);
+            }
+            foreach (var loc in priorLocations)
+            {
+                if (string.IsNullOrWhiteSpace(loc.Name)) continue;
+                if (_model.LocationProfiles.All(x => !x.Name.Equals(loc.Name, StringComparison.OrdinalIgnoreCase)))
+                    _model.LocationProfiles.Add(loc);
+            }
             if (_model.Scenes.Count == 0)
             {
                 _model.Scenes.Add(new ScreenplayScene

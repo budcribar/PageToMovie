@@ -16,10 +16,14 @@
 
             <div class="d-flex align-items-center gap-2">
                 <div class="dropdown">
-                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle px-3" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Studio Menu">
+                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle px-3" type="button"
+                            title="Studio Menu"
+                            aria-expanded="@_menuOpen"
+                            @onclick="ToggleMenu"
+                            @onclick:stopPropagation="true">
                         <i class="bi bi-list fs-5 align-middle"></i> Menu
                     </button>
-                    <ul class="dropdown-menu dropdown-menu-end dropdown-menu-dark shadow-lg">
+                    <ul class="dropdown-menu dropdown-menu-end dropdown-menu-dark shadow-lg @(_menuOpen ? "show" : "")">
                         <li><h6 class="dropdown-header">Story Setup</h6></li>
                         <li>
                             <button class="dropdown-item" type="button" @onclick="@(() => OpenCharacterModal())">

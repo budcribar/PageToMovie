@@ -9,7 +9,9 @@ public enum BeatType
     Parenthetical,
     Transition,
     Note,
-    Centered
+    Centered,
+    /// <summary>Audio-only cue written as (SOUND: …) in Fountain — not visual action.</summary>
+    Sound
 }
 
 public enum SceneEnvironment
@@ -194,13 +196,14 @@ public static class EnumExtensions
 
     public static string GetJargonHint(this BeatType type) => type switch
     {
-        BeatType.Action => "Action — Narrative description of what we see (not dialogue).",
+        BeatType.Action => "Action (visual) — what the audience sees on screen.",
+        BeatType.Sound => "Sound — what the audience hears (room tone, SFX, off-screen audio). Not a character.",
         BeatType.Dialogue => "Dialogue — A character speaks. Name above, optional (parenthetical), then the line.",
         BeatType.Parenthetical => "Parenthetical — Brief direction under a name, e.g. (whispering). Prefer the field on Dialogue.",
         BeatType.Transition => "Transition — How we cut or fade between scenes (CUT TO:, FADE OUT., …).",
         BeatType.Note => "Note — Script note / [[comment]]; usually not spoken or shown on screen.",
         BeatType.Centered => "Centered — Centered title or intertitle text on the page.",
-        _ => "Beat — one unit of the scene (action, dialogue, or transition)."
+        _ => "Beat — one unit of the scene (action, dialogue, sound, or transition)."
     };
 
     public static TransitionPreset ParseTransitionPreset(string text)
@@ -398,6 +401,8 @@ public class ScreenplayModel
 
     public List<string> GetAllCharacters()
     {
+        // Characters come from dialogue speakers + explicit profiles (cast classifier / manual).
+        // Do NOT scrape ALL CAPS tokens from action — words like SOUND become false "characters".
         var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var chara in CharacterProfiles)
         {
@@ -410,18 +415,6 @@ public class ScreenplayModel
                 if (beat.BeatType == BeatType.Dialogue && !string.IsNullOrWhiteSpace(beat.Speaker))
                 {
                     set.Add(beat.Speaker.Trim().ToUpperInvariant());
-                }
-                else if (beat.BeatType == BeatType.Action && !string.IsNullOrWhiteSpace(beat.ActionText))
-                {
-                    // Match ALL CAPS character words (e.g. BUSTER, MOMMA)
-                    var words = beat.ActionText.Split(new[] { ' ', '.', ',', '!', '?', ';', ':', '(', ')', '"' }, StringSplitOptions.RemoveEmptyEntries);
-                    foreach (var w in words)
-                    {
-                        if (w.Length >= 3 && w.All(char.IsUpper) && !w.Equals("INT") && !w.Equals("EXT") && !w.Equals("DAY") && !w.Equals("NIGHT") && !w.Equals("AND") && !w.Equals("THE"))
-                        {
-                            set.Add(w);
-                        }
-                    }
                 }
             }
         }

@@ -98,7 +98,8 @@
                                 value=""
                                 @onchange="OnInsertBeatSelected">
                             <option value="" disabled selected>➕ Add Beat…</option>
-                            <option value="Action" title="@BeatType.Action.GetJargonHint()">🎬 Action</option>
+                            <option value="Action" title="@BeatType.Action.GetJargonHint()">🎬 Visual</option>
+                            <option value="Sound" title="@BeatType.Sound.GetJargonHint()">🔊 Sound</option>
                             <option value="Dialogue" title="@BeatType.Dialogue.GetJargonHint()">🗣️ Dialogue</option>
                             <option value="Transition" title="@BeatType.Transition.GetJargonHint()">🎞️ Transition</option>
                         </select>

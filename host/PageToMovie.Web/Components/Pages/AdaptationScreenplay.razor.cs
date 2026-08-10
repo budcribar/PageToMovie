@@ -23,6 +23,56 @@ public partial class AdaptationScreenplay
     /// <summary>Hosted structured editor instance (for Menu actions).</summary>
     private global::PageToMovie.ScreenplayEditor.Components.ScreenplayEditor? _structuredUi;
 
+    private bool _menuOpen;
+
+    private void ToggleMenu() => _menuOpen = !_menuOpen;
+
+    private void CloseMenu() => _menuOpen = false;
+
+    private async Task MenuActionAsync(Func<Task> action)
+    {
+        CloseMenu();
+        await action();
+    }
+
+    private void MenuOpenCharacters()
+    {
+        CloseMenu();
+        _structuredUi?.OpenCharacterModal();
+    }
+
+    private void MenuOpenLocations()
+    {
+        CloseMenu();
+        _structuredUi?.OpenLocationModal();
+    }
+
+    private void MenuOpenImport()
+    {
+        CloseMenu();
+        _structuredUi?.OpenImportModal();
+    }
+
+    private void MenuOpenExport()
+    {
+        CloseMenu();
+        _structuredUi?.OpenExportModal();
+    }
+
+    private async Task MenuCollapseAllAsync()
+    {
+        CloseMenu();
+        if (_structuredUi is not null)
+            await _structuredUi.CollapseAllScenes();
+    }
+
+    private async Task MenuExpandAllAsync()
+    {
+        CloseMenu();
+        if (_structuredUi is not null)
+            await _structuredUi.ExpandAllScenes();
+    }
+
     internal void EnsureDomains()
     {
         _ = Editor; _ = Save; _ = SignOff; _ = Book; _ = Tools;
@@ -78,12 +128,6 @@ public partial class AdaptationScreenplay
         }
         catch { /* ignore malformed query */ }
     }
-
-    private Task MenuCollapseAllAsync() =>
-        _structuredUi is null ? Task.CompletedTask : _structuredUi.CollapseAllScenes();
-
-    private Task MenuExpandAllAsync() =>
-        _structuredUi is null ? Task.CompletedTask : _structuredUi.ExpandAllScenes();
 
     // JS interop must target the component type (DotNetObjectReference).
     [JSInvokable]

@@ -12,7 +12,8 @@
                 title="@Beat.BeatType.GetJargonHint()"
                 @bind="Beat.BeatType"
                 @bind:after="OnChanged">
-            <option value="@BeatType.Action" title="@BeatType.Action.GetJargonHint()">Action</option>
+            <option value="@BeatType.Action" title="@BeatType.Action.GetJargonHint()">Visual</option>
+            <option value="@BeatType.Sound" title="@BeatType.Sound.GetJargonHint()">Sound</option>
             <option value="@BeatType.Dialogue" title="@BeatType.Dialogue.GetJargonHint()">Dialogue</option>
             <option value="@BeatType.Transition" title="@BeatType.Transition.GetJargonHint()">Transition</option>
             @* Parenthetical is not offered as a top-level type — use the field under Dialogue. Keep option only if already set (imported). *@
@@ -37,8 +38,19 @@
                    style="height: 26px; font-size: 0.85rem;"
                    @bind="Beat.ActionText"
                    @bind:after="OnChanged"
-                   title="Action line — describe what the audience sees"
-                   placeholder="Visual action description…" />
+                   title="@(string.IsNullOrWhiteSpace(Beat.ActionText) ? "Visual action — what the audience sees" : Beat.ActionText)"
+                   placeholder="What we see…" />
+        }
+        else if (Beat.BeatType == BeatType.Sound)
+        {
+            <span class="badge text-bg-info text-dark flex-shrink-0" title="@BeatType.Sound.GetJargonHint()">SOUND</span>
+            <input type="text"
+                   class="form-control form-control-sm border-secondary bg-dark text-light py-0 px-2 flex-grow-1 spe-beat-input"
+                   style="height: 26px; font-size: 0.85rem;"
+                   @bind="Beat.ActionText"
+                   @bind:after="OnChanged"
+                   title="@(string.IsNullOrWhiteSpace(Beat.ActionText) ? "Sound cue — what the audience hears (not a character)" : Beat.ActionText)"
+                   placeholder="e.g. television game-show applause, distant street traffic" />
         }
         else if (Beat.BeatType == BeatType.Dialogue)
         {
@@ -80,14 +92,14 @@
                    style="width: 100px; height: 26px; font-size: 0.8rem;"
                    @bind="Beat.Parenthetical"
                    @bind:after="OnChanged"
-                   title="Parenthetical — short acting direction under the name, e.g. (whispering)"
+                   title="@(string.IsNullOrWhiteSpace(Beat.Parenthetical) ? "Parenthetical — short acting direction under the name, e.g. (whispering)" : Beat.Parenthetical)"
                    placeholder="(paren)" />
             <input type="text"
                    class="form-control form-control-sm border-secondary bg-dark text-light py-0 px-2 flex-grow-1 spe-beat-input"
                    style="height: 26px; font-size: 0.85rem;"
                    @bind="Beat.SpokenText"
                    @bind:after="OnChanged"
-                   title="Dialogue — the spoken line"
+                   title="@(string.IsNullOrWhiteSpace(Beat.SpokenText) ? "Spoken dialogue line" : Beat.SpokenText)"
                    placeholder="Spoken dialogue…" />
         }
         else if (Beat.BeatType == BeatType.Transition)

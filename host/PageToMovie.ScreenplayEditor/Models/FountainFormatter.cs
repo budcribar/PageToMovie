@@ -121,11 +121,25 @@ public static class FountainFormatter
 
                 case FountainParser.ElementType.Action:
                     activeDialogueBeat = null;
-                    GetOrCreateCurrentScene().Beats.Add(new ScreenplayBeat
                     {
-                        BeatType = BeatType.Action,
-                        ActionText = element.Text
-                    });
+                        var actionText = element.Text ?? "";
+                        if (TryParseSoundAction(actionText, out var soundBody))
+                        {
+                            GetOrCreateCurrentScene().Beats.Add(new ScreenplayBeat
+                            {
+                                BeatType = BeatType.Sound,
+                                ActionText = soundBody
+                            });
+                        }
+                        else
+                        {
+                            GetOrCreateCurrentScene().Beats.Add(new ScreenplayBeat
+                            {
+                                BeatType = BeatType.Action,
+                                ActionText = actionText
+                            });
+                        }
+                    }
                     break;
 
                 case FountainParser.ElementType.Character:
@@ -333,6 +347,18 @@ public static class FountainFormatter
                         }
                         break;
 
+                    case BeatType.Sound:
+                        if (!string.IsNullOrWhiteSpace(beat.ActionText))
+                        {
+                            // Canonical fountain form for audio-only cues (not a character cue).
+                            var body = beat.ActionText.Trim().TrimStart('(').TrimEnd(')');
+                            if (body.StartsWith("SOUND:", StringComparison.OrdinalIgnoreCase))
+                                body = body[6..].Trim();
+                            sb.AppendLine($"(SOUND: {body})");
+                            sb.AppendLine();
+                        }
+                        break;
+
                     case BeatType.Dialogue:
                         if (!string.IsNullOrWhiteSpace(beat.Speaker))
                         {
@@ -396,5 +422,36 @@ public static class FountainFormatter
         }
 
         return sb.ToString().TrimEnd() + "\n";
+    }
+
+    /// <summary>
+    /// True when the action line is an audio-only cue, e.g. "(SOUND: applause)" or "SOUND: rain".
+    /// Returns the sound description without the SOUND: prefix / wrapping parens.
+    /// </summary>
+    public static bool TryParseSoundAction(string? text, out string body)
+    {
+        body = "";
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        var t = text.Trim();
+        // Strip outer parens: (SOUND: …)
+        if (t.StartsWith('(') && t.EndsWith(')') && t.Length > 2)
+            t = t[1..^1].Trim();
+
+        if (t.StartsWith("SOUND:", StringComparison.OrdinalIgnoreCase))
+        {
+            body = t[6..].Trim();
+            return true;
+        }
+        if (t.StartsWith("SOUNDS:", StringComparison.OrdinalIgnoreCase))
+        {
+            body = t[7..].Trim();
+            return true;
+        }
+        if (t.StartsWith("SFX:", StringComparison.OrdinalIgnoreCase))
+        {
+            body = t[4..].Trim();
+            return true;
+        }
+        return false;
     }
 }

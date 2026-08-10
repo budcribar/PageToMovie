@@ -15,6 +15,11 @@ public partial class ScreenplayEditor : ComponentBase
     [Parameter]
     public bool HideChrome { get; set; }
 
+    private bool _menuOpen;
+    private void ToggleMenu() => _menuOpen = !_menuOpen;
+    private void CloseMenu() => _menuOpen = false;
+
+
     public bool ShowFountainModal { get; set; }
     public string FountainModalMode { get; set; } = "import";
     public string FountainModalText { get; set; } = "";
@@ -59,12 +64,14 @@ public partial class ScreenplayEditor : ComponentBase
 
     public void OpenLocationModal(string? focusName = null)
     {
+        CloseMenu();
         FocusLocationName = focusName;
         ShowLocationModal = true;
     }
 
     public void OpenCharacterModal(string? focusName = null)
     {
+        CloseMenu();
         FocusCharacterName = focusName;
         ShowCharacterModal = true;
     }
@@ -134,6 +141,7 @@ public partial class ScreenplayEditor : ComponentBase
 
     public async Task CollapseAllScenes()
     {
+        CloseMenu();
         foreach (var s in Model.Scenes)
         {
             s.IsCollapsed = true;
@@ -143,6 +151,7 @@ public partial class ScreenplayEditor : ComponentBase
 
     public async Task ExpandAllScenes()
     {
+        CloseMenu();
         foreach (var s in Model.Scenes)
         {
             s.IsCollapsed = false;
@@ -224,6 +233,7 @@ public partial class ScreenplayEditor : ComponentBase
 
     public void OpenImportModal()
     {
+        CloseMenu();
         FountainModalMode = "import";
         FountainModalText = "";
         ShowFountainModal = true;
@@ -231,6 +241,7 @@ public partial class ScreenplayEditor : ComponentBase
 
     public void OpenExportModal()
     {
+        CloseMenu();
         FountainModalMode = "export";
         FountainModalText = FountainFormatter.ToFountain(Model);
         ShowFountainModal = true;

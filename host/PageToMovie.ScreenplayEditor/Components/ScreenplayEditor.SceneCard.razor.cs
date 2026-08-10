@@ -100,7 +100,11 @@ public partial class ScreenplayEditor_SceneCard : ComponentBase
         var newBeat = new ScreenplayBeat { BeatType = type };
         if (type == BeatType.Action)
         {
-            newBeat.ActionText = "Describe visual scene action...";
+            newBeat.ActionText = "Describe what we see…";
+        }
+        else if (type == BeatType.Sound)
+        {
+            newBeat.ActionText = "Describe what we hear…";
         }
         else if (type == BeatType.Dialogue)
         {

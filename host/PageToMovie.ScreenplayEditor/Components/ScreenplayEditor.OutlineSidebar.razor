@@ -149,6 +149,10 @@
                         {
                             <p class="mb-3 text-light">@beat.ActionText</p>
                         }
+                        else if (beat.BeatType == BeatType.Sound)
+                        {
+                            <p class="mb-3 text-info fst-italic">(SOUND: @beat.ActionText)</p>
+                        }
                         else if (beat.BeatType == BeatType.Dialogue)
                         {
                             <div class="text-center my-2">
