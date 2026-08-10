@@ -88,7 +88,10 @@ public partial class Configuration
 
             // Deep-link ?focus=voice|music|… opens just-in-time key panel for that coverage row.
             if (Coverage.FocusActive)
+            {
+                Coverage.StudioCoverageOpen = true;
                 Keys.BeginAddKey(Coverage._focusCapability!);
+            }
         }
         catch (Exception ex)
         {

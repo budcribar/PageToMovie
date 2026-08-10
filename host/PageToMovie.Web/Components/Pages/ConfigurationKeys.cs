@@ -61,6 +61,7 @@ public partial class Configuration
         /// <summary>Replace key for one provider only (no multi-provider grid).</summary>
         internal void BeginReplaceKey(string coverageId, string providerId)
         {
+            S.Coverage.StudioCoverageOpen = true;
             S.Coverage._coverageEditId = coverageId;
             S.Coverage._coverageKeyProviderId = SupportedModelCatalog.NormalizeProviderId(providerId);
             S.Coverage._coverageKeyMode = "replace";
@@ -72,6 +73,7 @@ public partial class Configuration
         /// <summary>Add/paste key for the provider currently on this coverage row only.</summary>
         internal void BeginAddKeyForProvider(string coverageId, string providerId)
         {
+            S.Coverage.StudioCoverageOpen = true;
             S.Coverage._coverageEditId = coverageId;
             S.Coverage._coverageKeyProviderId = SupportedModelCatalog.NormalizeProviderId(providerId);
             S.Coverage._coverageKeyMode = "add-key";
@@ -83,6 +85,7 @@ public partial class Configuration
         /// <summary>Choose among all providers that can run this job.</summary>
         internal void BeginAddProvider(string coverageId)
         {
+            S.Coverage.StudioCoverageOpen = true;
             S.Coverage._coverageEditId = coverageId;
             S.Coverage._coverageKeyMode = "add-provider";
             _apiKeyFeedback = null;

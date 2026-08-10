@@ -104,13 +104,16 @@ public partial class Configuration
                 MakeCoverage("image", "Character portraits", "Image gen", _imageModel, "image", required: true),
                 MakeCoverage("planning", "Script & planning", "Screenplay, cast, shot plan", _planningModel, "chat", required: true),
                 MakeCoverage("vision", "Image vision / OCR", "Book pages & image understanding", _visionModel, "vision", required: true),
-                MakeCoverage("review", "Video review (QA)", "Dialogue check & auto-review", _qualityModel, "chat", required: true, preferVideoReview: true),
+                // QA only — missing key must not block book→screenplay or film generation.
+                MakeCoverage("review", "Video review (QA)", "Optional: dialogue check & auto-review", _qualityModel, "chat", required: false, preferVideoReview: true),
                 MakeCoverage("music", "Background music", "Optional scores", _audioModel, "audio", required: false),
                 MakeCoverage("voice", "Voice clone & speech", "Clones your voice and speaks the dialogue (text-to-speech)", _voiceModel, "voice", required: false),
             };
             return rows;
         }
 
+        /// <summary>Keep Studio coverage <details> open across re-renders (add key, save, etc.).</summary>
+        internal bool StudioCoverageOpen;
 
         internal CoverageRow MakeCoverage(
             string id,
@@ -533,6 +536,10 @@ public partial class Configuration
             else if (coverageId == "voice")
             {
                 _voiceModel = "none";
+            }
+            else if (coverageId == "review")
+            {
+                _qualityModel = "none";
             }
             S.Keys.CancelAddKey();
             if (!string.IsNullOrEmpty(S._projectId) && S._cfg is not null)
