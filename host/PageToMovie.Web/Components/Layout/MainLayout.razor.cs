@@ -291,6 +291,8 @@ public partial class MainLayout
             login.UserId ?? fallbackUser,
             login.Roles,
             login.ExpiresAt);
+        // Drop any previous account's active project before the next page loads it.
+        ActiveProject.Clear();
         var clean = uri.GetLeftPart(UriPartial.Path);
         if (!string.IsNullOrEmpty(uri.Fragment))
             clean += uri.Fragment;

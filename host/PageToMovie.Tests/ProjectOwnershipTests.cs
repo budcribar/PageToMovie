@@ -67,4 +67,36 @@ public class ProjectOwnershipTests
         var aliases = ProjectOwnership.CollectAliases("budcribar", "budcribar", "Bud", null);
         Assert.False(ProjectOwnership.IsOwnedBy(p, aliases));
     }
+
+    [Fact]
+    public void PickActiveInList_ignores_stale_id_not_in_list()
+    {
+        var list = new List<ProjectInfo>
+        {
+            new() { Id = "tester/Demo" },
+            new() { Id = "tester/Other" },
+        };
+        // Stale pointer to another account's Odyssey — must not win.
+        var active = ProjectOwnership.PickActiveInList(list, "budcribar/The_Odyssey2");
+        Assert.NotNull(active);
+        Assert.Equal("tester/Demo", active!.Id);
+    }
+
+    [Fact]
+    public void PickActiveInList_uses_user_active_when_present()
+    {
+        var list = new List<ProjectInfo>
+        {
+            new() { Id = "tester/Demo" },
+            new() { Id = "tester/Other" },
+        };
+        var active = ProjectOwnership.PickActiveInList(list, "tester/Other");
+        Assert.Equal("tester/Other", active!.Id);
+    }
+
+    [Fact]
+    public void PickActiveInList_empty_list_returns_null()
+    {
+        Assert.Null(ProjectOwnership.PickActiveInList(Array.Empty<ProjectInfo>(), "x"));
+    }
 }

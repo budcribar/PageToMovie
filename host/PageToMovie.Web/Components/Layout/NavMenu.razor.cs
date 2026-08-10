@@ -47,11 +47,14 @@ public partial class NavMenu
         }
         private string? _themedProjectId;
 
+        private string? _sessionUserId;
+
         protected override async Task OnAfterRenderAsync(bool firstRender)
         {
             if (!firstRender || _started) return;
             _started = true;
             await Session.EnsureHydratedAsync();
+            _sessionUserId = Session.UserId;
             Session.Changed += OnSessionChanged;
             ActiveProject.Changed += OnProjectChanged;
             await ActiveProject.RefreshFromServerAsync(Engine);
@@ -60,10 +63,22 @@ public partial class NavMenu
             StateHasChanged();
         }
 
-        private void OnSessionChanged() => InvokeAsync(() =>
+        private void OnSessionChanged() => InvokeAsync(async () =>
         {
             if (!Session.IsLoggedIn)
+            {
                 _userMenuOpen = false;
+                ActiveProject.Clear();
+                _sessionUserId = null;
+            }
+            else if (!string.Equals(_sessionUserId, Session.UserId, StringComparison.OrdinalIgnoreCase))
+            {
+                // Different account — drop previous user's active project (e.g. Odyssey).
+                _sessionUserId = Session.UserId;
+                ActiveProject.Clear();
+                try { await ActiveProject.RefreshFromServerAsync(Engine); }
+                catch { /* offline */ }
+            }
             StateHasChanged();
         });
 
@@ -119,6 +134,7 @@ public partial class NavMenu
             await Engine.LogoutAsync();
             // LogoutAsync already ClearAsync's the session; ensure storage is gone before forceLoad.
             await Session.ClearAsync();
+            ActiveProject.Clear();
             Nav.NavigateTo("/login", forceLoad: true);
         }
 

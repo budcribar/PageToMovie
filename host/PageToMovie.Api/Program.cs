@@ -2487,11 +2487,17 @@ app.MapGet("/api/projects", async (
     }
 
     var userActiveId = await userDb.GetUserActiveProjectAsync(user.UserId, ct);
-    var activeId = !string.IsNullOrWhiteSpace(userActiveId) ? userActiveId : store.ActiveProjectId;
-    if (string.IsNullOrWhiteSpace(activeId) && list.Count > 0)
-        activeId = list[0].Id;
-    var active = list.FirstOrDefault(p =>
-        string.Equals(p.Id, activeId, StringComparison.OrdinalIgnoreCase)) ?? (list.Count > 0 ? list[0] : null);
+    // Per-user active only — never fall back to process-wide store.ActiveProjectId
+    // (that is the last project any account activated and leaks across logins).
+    var active = ProjectOwnership.PickActiveInList(list, userActiveId);
+    if (!string.IsNullOrWhiteSpace(userActiveId)
+        && (active is null
+            || !string.Equals(active.Id, userActiveId, StringComparison.OrdinalIgnoreCase)))
+    {
+        // Stale pointer (deleted project or another account's id) — clear so next login is clean.
+        try { await userDb.SetUserActiveProjectAsync(user.UserId, active?.Id, ct); }
+        catch { /* non-fatal */ }
+    }
     return Results.Ok(new { ok = true, active, projects = list });
 });
 
@@ -2507,6 +2513,26 @@ app.MapPost("/api/projects/{id}/activate", async (
         return denied;
     try
     {
+        // Non-admins may only activate projects they own.
+        if (!user.IsAdmin)
+        {
+            UserEntity? me = null;
+            try
+            {
+                me = await userDb.GetUserByIdAsync(user.UserId, ct).ConfigureAwait(false)
+                     ?? await userDb.GetUserByUsernameAsync(user.UserId, ct).ConfigureAwait(false);
+            }
+            catch { /* offline */ }
+            var aliases = ProjectOwnership.CollectAliases(
+                user.UserId, canonicalUserId: me?.UserId, username: me?.Username, email: me?.Email);
+            var info = await store.GetProjectAsync(id, ct).ConfigureAwait(false);
+            if (info is null)
+                return Results.NotFound(new { ok = false, error = "Project not found" });
+            if (!ProjectOwnership.IsOwnedBy(info, aliases))
+                return Results.Json(new { ok = false, error = "Not your project" },
+                    statusCode: StatusCodes.Status403Forbidden);
+        }
+
         var p = await store.ActivateAsync(id, ct);
         await userDb.SetUserActiveProjectAsync(user.UserId, p.Id, ct);
         return Results.Ok(new { ok = true, active = p });
@@ -2604,9 +2630,14 @@ app.MapDelete("/api/projects/{id}", async (
         }
 
         var userActiveId = await userDb.GetUserActiveProjectAsync(user.UserId, ct);
-        var activeId = !string.IsNullOrWhiteSpace(userActiveId) ? userActiveId : store.ActiveProjectId;
-        var active = list.FirstOrDefault(p =>
-            string.Equals(p.Id, activeId, StringComparison.OrdinalIgnoreCase)) ?? (list.Count > 0 ? list[0] : null);
+        var active = ProjectOwnership.PickActiveInList(list, userActiveId);
+        if (!string.IsNullOrWhiteSpace(userActiveId)
+            && (active is null
+                || !string.Equals(active.Id, userActiveId, StringComparison.OrdinalIgnoreCase)))
+        {
+            try { await userDb.SetUserActiveProjectAsync(user.UserId, active?.Id, ct); }
+            catch { /* non-fatal */ }
+        }
         return Results.Ok(new
         {
             ok = true,
@@ -2966,7 +2997,32 @@ app.MapGet("/api/stage2-status", async (
     if (AuthGate.RequireLogin(user, opts) is { } denied)
         return denied;
     var userActiveId = await userDb.GetUserActiveProjectAsync(user.UserId, ct);
-    var id = !string.IsNullOrWhiteSpace(userActiveId) ? userActiveId : store.ActiveProjectId;
+    // Per-user only — store.ActiveProjectId is process-wide and must not be used here.
+    var id = userActiveId;
+    if (string.IsNullOrWhiteSpace(id))
+        return Results.Ok(new { ok = true, stage2_ready = false });
+    // Drop if this user cannot see the project (stale id from another account).
+    if (!user.IsAdmin)
+    {
+        try
+        {
+            var info = await store.GetProjectAsync(id, ct);
+            if (info is null)
+                return Results.Ok(new { ok = true, stage2_ready = false });
+            UserEntity? me = null;
+            try
+            {
+                me = await userDb.GetUserByIdAsync(user.UserId, ct).ConfigureAwait(false)
+                     ?? await userDb.GetUserByUsernameAsync(user.UserId, ct).ConfigureAwait(false);
+            }
+            catch { /* */ }
+            var aliases = ProjectOwnership.CollectAliases(
+                user.UserId, canonicalUserId: me?.UserId, username: me?.Username, email: me?.Email);
+            if (!ProjectOwnership.IsOwnedBy(info, aliases))
+                return Results.Ok(new { ok = true, stage2_ready = false });
+        }
+        catch { /* treat as no stage2 */ }
+    }
     if (string.IsNullOrEmpty(id))
         return Results.Ok(new { ok = true, stage2_ready = false });
     var bp = await store.FindBlueprintPathAsync(id, ct);

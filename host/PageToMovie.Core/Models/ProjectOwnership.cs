@@ -95,4 +95,25 @@ public static class ProjectOwnership
         string? username = null,
         string? email = null) =>
         IsOwnedBy(project, CollectAliases(requestUserId, canonicalUserId, username, email));
+
+    /// <summary>
+    /// Pick the active project from a list the caller already scoped to this user
+    /// (owned projects for non-admin, or full inventory for admin).
+    /// Uses the per-user <paramref name="userActiveProjectId"/> when it is still in the list;
+    /// never falls back to process-wide ProjectStore.ActiveProjectId (that leaks the last
+    /// activation from another account).
+    /// </summary>
+    public static ProjectInfo? PickActiveInList(
+        IReadOnlyList<ProjectInfo> list,
+        string? userActiveProjectId)
+    {
+        if (list is null || list.Count == 0) return null;
+        if (!string.IsNullOrWhiteSpace(userActiveProjectId))
+        {
+            var hit = list.FirstOrDefault(p =>
+                string.Equals(p.Id, userActiveProjectId.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (hit is not null) return hit;
+        }
+        return list[0];
+    }
 }
