@@ -16,6 +16,12 @@ public partial class ScreenplayEditor_OutlineSidebar : ComponentBase
     public string? FocusedCharacter { get; set; }
 
     [Parameter]
+    public List<string> Locations { get; set; } = new();
+
+    [Parameter]
+    public string? FocusedLocation { get; set; }
+
+    [Parameter]
     public string ActiveView { get; set; } = "metadata";
 
     [Parameter]
@@ -58,6 +64,10 @@ public partial class ScreenplayEditor_OutlineSidebar : ComponentBase
     [Parameter]
     public EventCallback<string?> OnSelectCharacter { get; set; }
 
+    /// <summary>Open location modal; arg is name or null for full list.</summary>
+    [Parameter]
+    public EventCallback<string?> OnSelectLocation { get; set; }
+
     public string OutlineTab { get; set; } = "scenes";
     public int DeletingIndex { get; set; } = -1;
     public int PreviewingIndex { get; set; } = -1;
@@ -95,10 +105,16 @@ public partial class ScreenplayEditor_OutlineSidebar : ComponentBase
         return blocks;
     }
 
-    public void SetTab(string tab) => OutlineTab = tab is "cast" ? "cast" : "scenes";
+    public void SetTab(string tab) =>
+        OutlineTab = tab is "cast" or "locations" ? tab : "scenes";
 
     public void ToggleOutlineTab() =>
-        OutlineTab = OutlineTab == "scenes" ? "cast" : "scenes";
+        OutlineTab = OutlineTab switch
+        {
+            "scenes" => "cast",
+            "cast" => "locations",
+            _ => "scenes",
+        };
 
     public static string Initials(string name)
     {
@@ -118,6 +134,18 @@ public partial class ScreenplayEditor_OutlineSidebar : ComponentBase
     {
         if (OnSelectCharacter.HasDelegate)
             await OnSelectCharacter.InvokeAsync(null);
+    }
+
+    public async Task SelectLocation(string name)
+    {
+        if (OnSelectLocation.HasDelegate)
+            await OnSelectLocation.InvokeAsync(name);
+    }
+
+    public async Task OpenLocationEditor()
+    {
+        if (OnSelectLocation.HasDelegate)
+            await OnSelectLocation.InvokeAsync(null);
     }
 
     public async Task ToggleGroup(string groupTitle)

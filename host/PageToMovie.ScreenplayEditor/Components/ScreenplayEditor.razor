@@ -72,6 +72,8 @@
             <ScreenplayEditor_OutlineSidebar Scenes="Model.Scenes"
                                               Characters="Model.GetAllCharacters()"
                                               FocusedCharacter="FocusCharacterName"
+                                              Locations="Model.GetAllLocations()"
+                                              FocusedLocation="FocusLocationName"
                                               ActiveView="@ActiveViewMode"
                                               SelectedSceneIndex="SelectedSceneIndex"
                                               @bind-IsCompact="IsSidebarCompact"
@@ -84,7 +86,8 @@
                                               OnSelectionChangedCallback="OnSelectionChanged"
                                               OnReorderScenes="ReorderScenes"
                                               OnGroupsChanged="OnChanged"
-                                              OnSelectCharacter="OpenCharacterFromOutline" />
+                                              OnSelectCharacter="OpenCharacterFromOutline"
+                                              OnSelectLocation="OpenLocationFromOutline" />
         </div>
 
         <!-- Column 2: Right Active View Inspector -->

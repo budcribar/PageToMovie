@@ -10,14 +10,17 @@
                     <button type="button"
                             class="btn py-0 px-2 @(OutlineTab == "cast" ? "btn-warning" : "btn-outline-secondary")"
                             @onclick='() => SetTab("cast")'>Cast</button>
+                    <button type="button"
+                            class="btn py-0 px-2 @(OutlineTab == "locations" ? "btn-info text-dark" : "btn-outline-secondary")"
+                            @onclick='() => SetTab("locations")'>Locs</button>
                 </div>
             }
             else
             {
                 <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1"
-                        title="@(OutlineTab == "scenes" ? "Switch to Cast" : "Switch to Scenes")"
+                        title="Cycle Scenes / Cast / Locations"
                         @onclick="ToggleOutlineTab">
-                    @(OutlineTab == "scenes" ? "S" : "C")
+                    @(OutlineTab == "scenes" ? "S" : OutlineTab == "cast" ? "C" : "L")
                 </button>
             }
         </div>
@@ -65,6 +68,50 @@
                             @if (!IsCompact)
                             {
                                 <span class="text-truncate font-monospace small">@name</span>
+                            }
+                            else
+                            {
+                                <span class="badge text-bg-secondary">@Initials(name)</span>
+                            }
+                        </button>
+                    }
+                }
+            </div>
+        }
+        else if (OutlineTab == "locations")
+        {
+            <div class="d-flex flex-column gap-1">
+                @if (Locations.Count == 0)
+                {
+                    <p class="text-secondary small px-1 mb-0">
+                        No locations yet — from scene headings and location seeds.
+                    </p>
+                    <button type="button" class="btn btn-sm btn-outline-info" @onclick="OpenLocationEditor">
+                        Open Locations…
+                    </button>
+                }
+                else
+                {
+                    <div class="small text-secondary px-1 mb-1">@Locations.Count · places</div>
+                    @foreach (var name in Locations)
+                    {
+                        var isFocus = !string.IsNullOrWhiteSpace(FocusedLocation)
+                            && name.Equals(FocusedLocation, StringComparison.OrdinalIgnoreCase);
+                        var sceneCount = Scenes.Count(s =>
+                            !string.IsNullOrWhiteSpace(s.Location)
+                            && s.Location.Equals(name, StringComparison.OrdinalIgnoreCase));
+                        <button type="button"
+                                class="btn btn-sm text-start w-100 d-flex align-items-center gap-2 py-1 @(isFocus ? "btn-info text-dark fw-bold" : "btn-outline-secondary text-light")"
+                                title="Edit @name"
+                                @onclick="() => SelectLocation(name)">
+                            <i class="bi bi-geo-alt-fill flex-shrink-0" aria-hidden="true"></i>
+                            @if (!IsCompact)
+                            {
+                                <span class="text-truncate font-monospace small flex-grow-1">@name</span>
+                                @if (sceneCount > 0)
+                                {
+                                    <span class="badge text-bg-secondary">@sceneCount</span>
+                                }
                             }
                             else
                             {

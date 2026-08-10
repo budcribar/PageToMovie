@@ -78,6 +78,8 @@ public partial class ScreenplayEditor : ComponentBase
 
     public void OpenCharacterFromOutline(string? name) => OpenCharacterModal(name);
 
+    public void OpenLocationFromOutline(string? name) => OpenLocationModal(name);
+
     /// <summary>Location name to highlight when the locations modal opens.</summary>
     public string? FocusLocationName { get; set; }
 
