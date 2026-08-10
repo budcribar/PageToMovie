@@ -150,23 +150,55 @@ public partial class AdaptationScreenplay
                     var name = !string.IsNullOrWhiteSpace(loc.DisplayName) ? loc.DisplayName : loc.Key;
                     if (string.IsNullOrWhiteSpace(name)) continue;
                     name = name.Replace('_', ' ').Trim().ToUpperInvariant();
+                    // Drop env junk the model put in display names ("AND INT. PALACE").
+                    name = System.Text.RegularExpressions.Regex.Replace(
+                        name, @"^(AND\s+)?(INT\.?|EXT\.?)\s+", "",
+                        System.Text.RegularExpressions.RegexOptions.IgnoreCase).Trim();
+                    if (string.IsNullOrWhiteSpace(name)) continue;
                     var profile = _model.GetOrCreateLocationProfile(name);
-                    if (string.IsNullOrWhiteSpace(profile.Description) && !string.IsNullOrWhiteSpace(loc.Description))
+                    // Prefer API text when profile is empty OR still a heading/name stub.
+                    var stubDesc = string.IsNullOrWhiteSpace(profile.Description)
+                        || profile.Description.Equals(profile.Name, StringComparison.OrdinalIgnoreCase)
+                        || profile.Description.StartsWith("ext ", StringComparison.OrdinalIgnoreCase)
+                        || profile.Description.StartsWith("int ", StringComparison.OrdinalIgnoreCase)
+                        || profile.Description.StartsWith("ext.", StringComparison.OrdinalIgnoreCase)
+                        || profile.Description.StartsWith("int.", StringComparison.OrdinalIgnoreCase);
+                    if (stubDesc && !string.IsNullOrWhiteSpace(loc.Description))
                         profile.Description = loc.Description!;
-                    if (string.IsNullOrWhiteSpace(profile.VisualLock) && !string.IsNullOrWhiteSpace(loc.VisualLock))
+                    var stubLock = string.IsNullOrWhiteSpace(profile.VisualLock)
+                        || profile.VisualLock.Equals(profile.Name, StringComparison.OrdinalIgnoreCase)
+                        || profile.VisualLock.StartsWith("ext ", StringComparison.OrdinalIgnoreCase)
+                        || profile.VisualLock.StartsWith("int ", StringComparison.OrdinalIgnoreCase);
+                    if (stubLock && !string.IsNullOrWhiteSpace(loc.VisualLock))
                         profile.VisualLock = loc.VisualLock!;
+                    else if (stubLock && !string.IsNullOrWhiteSpace(loc.Description))
+                        profile.VisualLock = loc.Description!;
                 }
 
                 // Also attach descriptions to scene headings that match a seed under a different key
                 foreach (var scene in _model.Scenes)
                 {
                     if (string.IsNullOrWhiteSpace(scene.Location)) continue;
+                    // Normalize broken scene location names in-memory for display/edit.
+                    var cleaned = System.Text.RegularExpressions.Regex.Replace(
+                        scene.Location, @"^(AND\s+)?(INT\.?|EXT\.?)\s+", "",
+                        System.Text.RegularExpressions.RegexOptions.IgnoreCase).Trim();
+                    if (!string.IsNullOrWhiteSpace(cleaned)
+                        && !cleaned.Equals(scene.Location, StringComparison.OrdinalIgnoreCase))
+                        scene.Location = cleaned.ToUpperInvariant();
+
                     var p = _model.GetOrCreateLocationProfile(scene.Location);
-                    if (!string.IsNullOrWhiteSpace(p.Description)) continue;
+                    if (!string.IsNullOrWhiteSpace(p.Description)
+                        && !p.Description.StartsWith("ext ", StringComparison.OrdinalIgnoreCase)
+                        && !p.Description.StartsWith("int ", StringComparison.OrdinalIgnoreCase)
+                        && !p.Description.StartsWith("ext.", StringComparison.OrdinalIgnoreCase))
+                        continue;
                     var match = locs.Locations.FirstOrDefault(l =>
                         string.Equals(l.DisplayName, scene.Location, StringComparison.OrdinalIgnoreCase)
                         || string.Equals(l.Key.Replace('_', ' '), scene.Location, StringComparison.OrdinalIgnoreCase)
-                        || string.Equals(l.Key, scene.Location.Replace(' ', '_'), StringComparison.OrdinalIgnoreCase));
+                        || string.Equals(l.Key, scene.Location.Replace(' ', '_'), StringComparison.OrdinalIgnoreCase)
+                        || (l.DisplayName is { Length: > 0 }
+                            && scene.Location.Contains(l.DisplayName, StringComparison.OrdinalIgnoreCase)));
                     if (match is null) continue;
                     if (!string.IsNullOrWhiteSpace(match.Description))
                         p.Description = match.Description!;

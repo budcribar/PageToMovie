@@ -546,7 +546,14 @@ public static class FountainStage1Importer
     }
 
     private static readonly Regex HeadingPrefixRe = new(
-        @"^(INT\.?/EXT|INT/EXT|I/E|INT\.?|EXT\.?|EST\.?)\s*",
+        // Longest-first: compound INT/EXT forms including the model-typo "EXT. AND INT."
+        @"^(INT\.?\s*/\s*EXT\.?|EXT\.?\s*/\s*INT\.?|INT\s*/\s*EXT|EXT\s*/\s*INT|I\s*/\s*E|"
+        + @"EXT\.?\s+AND\s+INT\.?|INT\.?\s+AND\s+EXT\.?|"
+        + @"INT\.?/EXT|INT/EXT|I/E|INT\.?|EXT\.?|EST\.?)\s*",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    /// <summary>Leftover after a partial strip (e.g. "AND INT. PALACE").</summary>
+    private static readonly Regex LeftoverCompoundEnvRe = new(
+        @"^(AND\s+)?(INT\.?|EXT\.?|EST\.?)\s+",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex DashSplitRe = new(@"\s+[-–]\s+", RegexOptions.Compiled);
     private static readonly Regex WhitespaceCollapseRe = new(@"\s+", RegexOptions.Compiled);
@@ -593,12 +600,19 @@ public static class FountainStage1Importer
         heading = (heading ?? "").Trim();
         var locType = "int";
         var u = heading.ToUpperInvariant();
-        if (u.StartsWith("EXT") || u.Contains("EXT."))
-            locType = "ext";
-        else if (u.Contains("INT./EXT") || u.Contains("INT/EXT") || u.StartsWith("I/E"))
+        // Compound env before plain EXT/INT so "EXT. AND INT. PALACE" is mixed, not ext.
+        if (u.Contains("INT./EXT") || u.Contains("INT/EXT") || u.Contains("EXT./INT") || u.Contains("EXT/INT")
+            || u.StartsWith("I/E")
+            || Regex.IsMatch(u, @"^(EXT\.?\s+AND\s+INT|INT\.?\s+AND\s+EXT)"))
             locType = "mixed";
+        else if (u.StartsWith("EXT") || (u.Contains("EXT.") && !u.StartsWith("INT")))
+            locType = "ext";
+        else if (u.StartsWith("EST"))
+            locType = "ext";
 
         var rest = HeadingPrefixRe.Replace(heading, "").Trim();
+        // Second pass: "AND INT. PALACE" after a partial first strip (or model junk).
+        rest = LeftoverCompoundEnvRe.Replace(rest, "").Trim();
         // strip time of day after last dash
         var locName = rest;
         var dash = rest.LastIndexOf(" - ", StringComparison.Ordinal);
@@ -606,6 +620,8 @@ public static class FountainStage1Importer
         if (dash > 0)
             locName = rest[..dash].Trim();
         locName = SanitizeLocationName(locName);
+        // Final safety: never keep env tokens in the place name.
+        locName = LeftoverCompoundEnvRe.Replace(locName, "").Trim();
         if (string.IsNullOrWhiteSpace(locName))
             locName = "Unspecified";
         return (locType, locName, heading);
@@ -678,15 +694,13 @@ public static class FountainStage1Importer
         var id = "Loc_" + SlugKey(locName);
         if (!seeds.ContainsKey(id))
         {
-            // Place identity — prefer heading without time-of-day for description baseline.
-            var placeLine = string.IsNullOrWhiteSpace(locType)
-                ? locName
-                : $"{locType.TrimEnd('.')} {locName}".Trim();
+            // Place identity only — filmable set text comes from cast-extract or action enrich.
+            // Do not seed description as "ext PALACE" (looked broken in the location modal).
             seeds[id] = new Dictionary<string, object?>
             {
                 ["display_name"] = locName,
-                ["description"] = placeLine,
-                ["visual_lock"] = placeLine,
+                ["description"] = "",
+                ["visual_lock"] = "",
                 ["location_type"] = locType,
                 ["reference_image_placeholder"] = id.ToLowerInvariant() + "_ref.png",
             };
@@ -698,7 +712,7 @@ public static class FountainStage1Importer
 
     /// <summary>
     /// Fold scene action prose into the location seed so ListLocations has usable description
-    /// without a separate AI location classifier.
+    /// without a separate AI location classifier. Strips heading echoes; keeps a short set sketch.
     /// </summary>
     private static void EnrichLocationSeedFromScene(
         Dictionary<string, object?> locSeeds,
@@ -711,6 +725,7 @@ public static class FountainStage1Importer
             raw is not Dictionary<string, object?> seed)
             return;
 
+        var display = seed.TryGetValue("display_name", out var dn) ? dn?.ToString() ?? locId : locId;
         var snippets = new List<string>();
         foreach (var b in beats.OfType<Dictionary<string, object?>>())
         {
@@ -718,35 +733,75 @@ public static class FountainStage1Importer
             if (!string.IsNullOrWhiteSpace(dlg)) continue;
             var ve = b.TryGetValue("visual_event", out var v) ? v?.ToString()?.Trim() : null;
             if (string.IsNullOrWhiteSpace(ve)) continue;
-            if (ve.Length > 180) ve = ve[..177] + "…";
+            ve = CleanActionSnippetForLocation(ve, display);
+            if (string.IsNullOrWhiteSpace(ve)) continue;
+            if (ve.Length > 160) ve = ve[..157] + "…";
             if (!snippets.Exists(s => s.Equals(ve, StringComparison.OrdinalIgnoreCase)))
                 snippets.Add(ve);
-            if (snippets.Count >= 4) break;
+            if (snippets.Count >= 3) break;
         }
         if (snippets.Count == 0) return;
 
-        var display = seed.TryGetValue("display_name", out var dn) ? dn?.ToString() ?? locId : locId;
         var existing = seed.TryGetValue("description", out var ed) ? ed?.ToString()?.Trim() ?? "" : "";
-        // Replace name-only stubs; otherwise append new unique prose.
-        var baseDesc = string.IsNullOrWhiteSpace(existing)
-                       || existing.Equals(display, StringComparison.OrdinalIgnoreCase)
-                       || existing.Equals(locId, StringComparison.OrdinalIgnoreCase)
-            ? string.Join(" ", snippets)
+        var isStub = string.IsNullOrWhiteSpace(existing)
+                     || existing.Equals(display, StringComparison.OrdinalIgnoreCase)
+                     || existing.Equals(locId, StringComparison.OrdinalIgnoreCase)
+                     || LooksLikeHeadingEcho(existing, display);
+
+        var sketch = isStub
+            ? $"{display}. {snippets[0]}"
             : existing;
-        foreach (var s in snippets)
+        if (!isStub)
         {
-            if (!baseDesc.Contains(s, StringComparison.OrdinalIgnoreCase))
-                baseDesc = $"{baseDesc} {s}".Trim();
+            foreach (var s in snippets)
+            {
+                if (!sketch.Contains(s, StringComparison.OrdinalIgnoreCase))
+                    sketch = $"{sketch} {s}".Trim();
+            }
         }
-        if (baseDesc.Length > 600) baseDesc = baseDesc[..597] + "…";
-        seed["description"] = baseDesc;
-        if (seed.TryGetValue("visual_lock", out var vl) &&
-            (string.IsNullOrWhiteSpace(vl?.ToString())
-             || string.Equals(vl?.ToString(), display, StringComparison.OrdinalIgnoreCase)
-             || string.Equals(vl?.ToString(), locId, StringComparison.OrdinalIgnoreCase)))
+        if (sketch.Length > 480) sketch = sketch[..477] + "…";
+        seed["description"] = sketch;
+
+        var vl = seed.TryGetValue("visual_lock", out var vlo) ? vlo?.ToString()?.Trim() ?? "" : "";
+        if (string.IsNullOrWhiteSpace(vl)
+            || vl.Equals(display, StringComparison.OrdinalIgnoreCase)
+            || vl.Equals(locId, StringComparison.OrdinalIgnoreCase)
+            || LooksLikeHeadingEcho(vl, display))
         {
-            seed["visual_lock"] = snippets[0];
+            seed["visual_lock"] = snippets[0].Length <= 120
+                ? $"{display}: {snippets[0]}"
+                : snippets[0];
         }
+    }
+
+    private static bool LooksLikeHeadingEcho(string text, string display)
+    {
+        var t = (text ?? "").Trim();
+        if (t.StartsWith("ext ", StringComparison.OrdinalIgnoreCase)
+            || t.StartsWith("int ", StringComparison.OrdinalIgnoreCase)
+            || t.StartsWith("ext.", StringComparison.OrdinalIgnoreCase)
+            || t.StartsWith("int.", StringComparison.OrdinalIgnoreCase)
+            || t.StartsWith("and int", StringComparison.OrdinalIgnoreCase)
+            || t.StartsWith("and ext", StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (!string.IsNullOrWhiteSpace(display)
+            && t.StartsWith(display, StringComparison.OrdinalIgnoreCase)
+            && t.Length < display.Length + 8)
+            return true;
+        return false;
+    }
+
+    private static string CleanActionSnippetForLocation(string ve, string? display)
+    {
+        ve = (ve ?? "").Trim();
+        ve = HeadingPrefixRe.Replace(ve, "").Trim();
+        ve = LeftoverCompoundEnvRe.Replace(ve, "").Trim();
+        if (!string.IsNullOrWhiteSpace(display)
+            && ve.StartsWith(display, StringComparison.OrdinalIgnoreCase))
+        {
+            ve = ve[display.Length..].TrimStart(' ', '.', '-', '–', ':');
+        }
+        return ve.Trim();
     }
 
     private static string EnsureCharacter(

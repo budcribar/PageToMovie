@@ -328,6 +328,10 @@ public class FountainParserTests
     [InlineData("INT. HALL AND STAIRS - NIGHT", "HALL AND STAIRS")]
     [InlineData("INT. LIVING ROOM - NIGHT", "LIVING ROOM")]
     [InlineData("EXT. CASTLE COURTYARD - DAY", "CASTLE COURTYARD")]
+    [InlineData("EXT. AND INT. PALACE - NIGHT", "PALACE")]
+    [InlineData("INT. AND EXT. COURTYARD - DAY", "COURTYARD")]
+    [InlineData("INT./EXT. CAR - DAY", "CAR")]
+    [InlineData("EXT./INT. THRESHOLD - DAWN", "THRESHOLD")]
     public void ParseHeading_strips_vague_location_placeholders(string heading, string expectedLoc)
     {
         var (_, locName, setting) = FountainStage1Importer.ParseHeading(heading);

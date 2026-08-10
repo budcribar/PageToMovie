@@ -208,16 +208,23 @@ public static class FountainFormatter
     private static void ParseSceneHeadingParts(string headingText, out string env, out string location, out string timeOfDay)
     {
         var normalized = FountainLexer.NormalizeTypographicPunctuation(headingText).Trim();
+        var u = normalized.ToUpperInvariant();
 
-        if (normalized.StartsWith("INT./EXT.", StringComparison.OrdinalIgnoreCase) ||
-            normalized.StartsWith("INT/EXT.", StringComparison.OrdinalIgnoreCase) ||
-            normalized.StartsWith("I/E.", StringComparison.OrdinalIgnoreCase) ||
-            normalized.StartsWith("INT/EXT", StringComparison.OrdinalIgnoreCase))
+        // Compound INT/EXT first (including model typo "EXT. AND INT.").
+        if (u.StartsWith("INT./EXT", StringComparison.Ordinal)
+            || u.StartsWith("INT/EXT", StringComparison.Ordinal)
+            || u.StartsWith("EXT./INT", StringComparison.Ordinal)
+            || u.StartsWith("EXT/INT", StringComparison.Ordinal)
+            || u.StartsWith("I/E", StringComparison.Ordinal)
+            || u.StartsWith("EXT. AND INT", StringComparison.Ordinal)
+            || u.StartsWith("EXT AND INT", StringComparison.Ordinal)
+            || u.StartsWith("INT. AND EXT", StringComparison.Ordinal)
+            || u.StartsWith("INT AND EXT", StringComparison.Ordinal))
         {
             env = "INT./EXT.";
         }
-        else if (normalized.StartsWith("EXT.", StringComparison.OrdinalIgnoreCase) ||
-                 normalized.StartsWith("EXT ", StringComparison.OrdinalIgnoreCase))
+        else if (u.StartsWith("EXT.", StringComparison.Ordinal) || u.StartsWith("EXT ", StringComparison.Ordinal)
+                 || u.StartsWith("EST.", StringComparison.Ordinal))
         {
             env = "EXT.";
         }
@@ -226,28 +233,88 @@ public static class FountainFormatter
             env = "INT.";
         }
 
+        // Strip known env prefixes (longest first) — do not use first-space only
+        // (that left "AND INT. PALACE" from "EXT. AND INT. PALACE").
         string rest = normalized;
-        int spaceIndex = normalized.IndexOf(' ');
-        if (spaceIndex > 0)
+        string[] prefixes =
         {
-            rest = normalized.Substring(spaceIndex).Trim();
+            "INT./EXT.", "INT./EXT", "EXT./INT.", "EXT./INT",
+            "INT/EXT.", "INT/EXT", "EXT/INT.", "EXT/INT",
+            "I/E.", "I/E",
+            "EXT. AND INT.", "EXT. AND INT", "EXT AND INT.", "EXT AND INT",
+            "INT. AND EXT.", "INT. AND EXT", "INT AND EXT.", "INT AND EXT",
+            "EXT.", "INT.", "EST.", "EXT ", "INT ", "EST ",
+        };
+        foreach (var p in prefixes)
+        {
+            if (rest.StartsWith(p, StringComparison.OrdinalIgnoreCase))
+            {
+                rest = rest[p.Length..].Trim();
+                break;
+            }
         }
-        else if (normalized.IndexOf('.') > 0)
+        // Second pass for leftover "AND INT." / "AND EXT."
+        if (rest.StartsWith("AND INT.", StringComparison.OrdinalIgnoreCase)
+            || rest.StartsWith("AND INT ", StringComparison.OrdinalIgnoreCase)
+            || rest.StartsWith("AND EXT.", StringComparison.OrdinalIgnoreCase)
+            || rest.StartsWith("AND EXT ", StringComparison.OrdinalIgnoreCase))
         {
-            rest = normalized.Substring(normalized.IndexOf('.') + 1).Trim();
+            var sp = rest.IndexOf(' ');
+            if (sp > 0)
+            {
+                // "AND INT. PALACE" → after second token
+                var next = rest.IndexOf(' ', sp + 1);
+                if (next > 0) rest = rest[(next + 1)..].Trim();
+                else rest = rest[(sp + 1)..].Trim();
+                // if still starts with INT./EXT. token
+                if (rest.StartsWith("INT.", StringComparison.OrdinalIgnoreCase)
+                    || rest.StartsWith("EXT.", StringComparison.OrdinalIgnoreCase))
+                {
+                    var d = rest.IndexOf(' ');
+                    rest = d > 0 ? rest[(d + 1)..].Trim() : "";
+                }
+            }
         }
 
-        int dashIdx = rest.LastIndexOf('-');
+        int dashIdx = rest.LastIndexOf(" - ", StringComparison.Ordinal);
+        if (dashIdx < 0) dashIdx = rest.LastIndexOf(" – ", StringComparison.Ordinal);
         if (dashIdx >= 0)
         {
-            location = rest.Substring(0, dashIdx).Trim();
-            timeOfDay = rest.Substring(dashIdx + 1).Trim();
+            location = rest[..dashIdx].Trim();
+            timeOfDay = rest[(dashIdx + 3)..].Trim();
         }
         else
         {
-            location = rest;
-            timeOfDay = "DAY";
+            var singleDash = rest.LastIndexOf('-');
+            if (singleDash > 0)
+            {
+                location = rest[..singleDash].Trim();
+                timeOfDay = rest[(singleDash + 1)..].Trim();
+            }
+            else
+            {
+                location = rest;
+                timeOfDay = "DAY";
+            }
         }
+
+        if (string.IsNullOrWhiteSpace(location))
+            location = "UNSPECIFIED";
+        // Never keep env tokens in the place name.
+        if (location.StartsWith("AND ", StringComparison.OrdinalIgnoreCase)
+            || location.StartsWith("INT.", StringComparison.OrdinalIgnoreCase)
+            || location.StartsWith("EXT.", StringComparison.OrdinalIgnoreCase))
+        {
+            location = System.Text.RegularExpressions.Regex.Replace(
+                location,
+                @"^(AND\s+)?(INT\.?|EXT\.?)\s+",
+                "",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase).Trim();
+            if (string.IsNullOrWhiteSpace(location))
+                location = "UNSPECIFIED";
+        }
+        if (string.IsNullOrWhiteSpace(timeOfDay))
+            timeOfDay = "DAY";
     }
 
     public static string ToFountain(this ScreenplayModel model)

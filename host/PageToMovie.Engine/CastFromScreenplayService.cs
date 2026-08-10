@@ -198,6 +198,8 @@ public sealed class CastFromScreenplayService
         }
 
         // Location AI pass: model filmable set locks; fallback to Stage‑1 heading+action seeds.
+        // Do NOT run CastVisualLiteralize on locations — that prompt is character-portrait
+        // only and was wiping/mangling set-design text.
         var locSeeds = GetLocationSeedsDict(normalized);
         if (locSeeds.Count == 0)
         {
@@ -207,9 +209,7 @@ public sealed class CastFromScreenplayService
         }
         else
         {
-            onProgress?.Invoke($"Scrubbing {locSeeds.Count} location seed(s)…");
-            locSeeds = await _literalize.LiteralizeSeedsAsync(
-                locSeeds, model, onProgress, ct).ConfigureAwait(false);
+            onProgress?.Invoke($"Keeping {locSeeds.Count} AI location seed(s) (set-design locks)…");
             // Fill any heading places the model missed
             var fountainLocs = _projects.ExtractLocationSeedObjects(projectId);
             if (fountainLocs is not null)
