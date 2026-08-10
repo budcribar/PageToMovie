@@ -88,6 +88,75 @@ public partial class Characters
         internal bool HasCast => _chars is { Count: > 0 };
 
 
+        /// <summary>
+        /// Other age-variant seeds of the same identity as <paramref name="c"/> — siblings share
+        /// a base character, found either via <c>c</c> itself being a variant (<see cref="CharacterSummary.VariantOf"/>
+        /// points at the base) or via <c>c</c> being the base that other variants point back at.
+        /// Most characters appear at one life stage and have no siblings.
+        /// </summary>
+        internal IReadOnlyList<CharacterSummary> VariantSiblingsOf(CharacterSummary? c)
+        {
+            if (c is null || _chars is null) return Array.Empty<CharacterSummary>();
+            var baseKey = string.IsNullOrWhiteSpace(c.VariantOf) ? c.Key : c.VariantOf;
+            return _chars
+                .Where(x => !string.Equals(x.Key, c.Key, StringComparison.OrdinalIgnoreCase))
+                .Where(x =>
+                    string.Equals(x.VariantOf, baseKey, StringComparison.OrdinalIgnoreCase) ||
+                    (string.IsNullOrWhiteSpace(x.VariantOf) && string.Equals(x.Key, baseKey, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+        }
+
+
+        /// <summary>Gate for the Characters.LookPanel "Age variants" card — progressive disclosure.</summary>
+        internal bool HasAgeVariants(CharacterSummary? c) => VariantSiblingsOf(c).Count > 0;
+
+
+        /// <summary>
+        /// <see cref="CharactersForUi"/> reordered so each age-variant seed sits directly after its
+        /// base character (indented in the roster) instead of scattered alphabetically. A variant
+        /// whose base isn't in the UI list (e.g. base seed missing) still appears, un-indented, so
+        /// nothing silently disappears from the roster.
+        /// </summary>
+        internal IEnumerable<CharacterSummary> CharactersForUiGrouped()
+        {
+            var all = CharactersForUi.ToList();
+            var byBase = all
+                .Where(c => !string.IsNullOrWhiteSpace(c.VariantOf))
+                .GroupBy(c => c.VariantOf!, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => (IReadOnlyList<CharacterSummary>)g.ToList(), StringComparer.OrdinalIgnoreCase);
+            var emitted = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var c in all)
+            {
+                if (emitted.Contains(c.Key)) continue;
+                if (!string.IsNullOrWhiteSpace(c.VariantOf) && all.Any(b => string.Equals(b.Key, c.VariantOf, StringComparison.OrdinalIgnoreCase)))
+                    continue; // emitted right after its base, below
+
+                emitted.Add(c.Key);
+                yield return c;
+                if (byBase.TryGetValue(c.Key, out var sibs))
+                    foreach (var s in sibs)
+                    {
+                        emitted.Add(s.Key);
+                        yield return s;
+                    }
+            }
+        }
+
+
+        /// <summary>Readable label for an age_band value, e.g. "child_8_9" → "Child (8-9)". Falls back to the display name.</summary>
+        internal static string AgeVariantLabel(CharacterSummary c)
+        {
+            var band = c.AgeBand?.Trim();
+            if (string.IsNullOrEmpty(band)) return c.DisplayName;
+            var parts = band.Split('_', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0) return c.DisplayName;
+            var stage = char.ToUpperInvariant(parts[0][0]) + parts[0][1..];
+            var numbers = parts.Skip(1).Where(p => p.Length > 0 && char.IsDigit(p[0])).ToList();
+            return numbers.Count > 0 ? $"{stage} ({string.Join("-", numbers)})" : stage;
+        }
+
+
         /// <summary>Operator-facing cast: hide group/chorus seeds (too abstract for average users).</summary>
         internal IEnumerable<CharacterSummary> CharactersForUi =>
             _chars?.Where(c => !c.IsGroup) ?? Enumerable.Empty<CharacterSummary>();

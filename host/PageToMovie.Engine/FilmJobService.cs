@@ -1143,6 +1143,7 @@ public sealed class FilmJobService
                 projectId,
                 _chat,
                 model: model,
+                adaptationDefaults: _opts.AdaptationDefaults,
                 onProgress: line =>
                 {
                     _ = AppendLogAsync(line);

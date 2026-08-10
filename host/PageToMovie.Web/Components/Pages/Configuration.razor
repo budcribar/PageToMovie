@@ -285,4 +285,38 @@
         </div>
     </div>
 
+    <div class="card mb-3">
+        <div class="card-footer">
+            <details class="small">
+                <summary class="text-muted role-button py-1 fw-semibold" style="cursor: pointer;">⚙️ Advanced Adaptation Settings</summary>
+                <div class="row g-2 mt-2 pt-2 border-top">
+                    <div class="form-text mb-1">
+                        Overrides the screenplay adaptation defaults for this project only. Leave blank
+                        to use the server default.
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Max speaking cast</label>
+                        <input type="number" class="form-control form-control-sm" min="1" max="40" @bind="Form._adaptMaxSpeakingCast" @bind:after="Form.ScheduleAutoSaveAsync" disabled="@_busy" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Max dialogue words</label>
+                        <input type="number" class="form-control form-control-sm" min="5" max="200" @bind="Form._adaptMaxDialogueWords" @bind:after="Form.ScheduleAutoSaveAsync" disabled="@_busy" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">VO max sentences</label>
+                        <input type="number" class="form-control form-control-sm" min="1" max="10" @bind="Form._adaptVoMaxSentences" @bind:after="Form.ScheduleAutoSaveAsync" disabled="@_busy" />
+                    </div>
+                    <div class="col-md-4 mt-3">
+                        <label class="form-label">Scene count min</label>
+                        <input type="number" class="form-control form-control-sm" min="1" max="500" @bind="Form._adaptSceneCountMin" @bind:after="Form.ScheduleAutoSaveAsync" disabled="@_busy" />
+                    </div>
+                    <div class="col-md-4 mt-3">
+                        <label class="form-label">Scene count max</label>
+                        <input type="number" class="form-control form-control-sm" min="1" max="500" @bind="Form._adaptSceneCountMax" @bind:after="Form.ScheduleAutoSaveAsync" disabled="@_busy" />
+                    </div>
+                </div>
+            </details>
+        </div>
+    </div>
+
 }

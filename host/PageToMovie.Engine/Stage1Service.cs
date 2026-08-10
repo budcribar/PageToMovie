@@ -23,6 +23,7 @@ public sealed class Stage1Service
     private readonly IChatClient _chat;
     private readonly BookPrepareService _books;
     private readonly CharacterBookPlateService _plates;
+    private readonly IOptions<PageToMovieOptions> _opts;
     private readonly ILogger<Stage1Service> _log;
     private readonly BookTextRegistryService? _bookRegistry;
     private readonly IUserContext? _user;
@@ -43,7 +44,7 @@ public sealed class Stage1Service
         _chat = chat;
         _books = books;
         _plates = plates;
-        _ = opts;
+        _opts = opts;
         _log = log;
         _bookRegistry = bookRegistry;
         _user = user;
@@ -124,7 +125,8 @@ public sealed class Stage1Service
             ct: ct,
             bookRegistry: _bookRegistry,
             cacheUserId: _user?.UserId,
-            bookFileSessionFactory: _bookFileSessionFactory).ConfigureAwait(false);
+            bookFileSessionFactory: _bookFileSessionFactory,
+            adaptationDefaults: _opts.Value.AdaptationDefaults).ConfigureAwait(false);
         if (!draft.Ok)
             throw new InvalidOperationException(draft.Error ?? "Could not create Fountain draft from book.");
 

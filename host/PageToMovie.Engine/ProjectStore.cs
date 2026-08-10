@@ -2415,6 +2415,7 @@ public sealed partial class ProjectStore
                 BookRefs = bookRefImages,
                 Variants = variants,
                 AgeBand = info.TryGetProperty("age_band", out var ab) ? ab.GetString() : null,
+                VariantOf = info.TryGetProperty("variant_of", out var vo) ? vo.GetString() : null,
             });
         }
 

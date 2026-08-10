@@ -455,6 +455,101 @@ public class ScreenplayServiceTests : IDisposable
     }
 
     [Fact]
+    public void FindLocationDriftCandidateGroups_clusters_shared_first_word()
+    {
+        var fountain = """
+            Title: T
+
+            INT. SIONNA'S HOUSE - NIGHT
+
+            NARRATOR
+            First visit.
+
+            EXT. SIONNA'S DUPLEX - DUSK
+
+            NARRATOR
+            Different wording, same place.
+
+            EXT. SIONNA'S OLD DUPLEX - DAY
+
+            NARRATOR
+            Years later.
+
+            INT. JOE'S BAR - NIGHT
+
+            NARRATOR
+            Unrelated place, only one heading — must not appear as a candidate.
+            """;
+        var groups = AdaptationFountain.FindLocationDriftCandidateGroups(fountain);
+        Assert.Single(groups);
+        Assert.Equal(3, groups[0].Count);
+        Assert.Contains(groups[0], h => h.Equals("SIONNA'S HOUSE", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(groups[0], h => h.Equals("SIONNA'S DUPLEX", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(groups[0], h => h.Equals("SIONNA'S OLD DUPLEX", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(groups[0], h => h.Contains("JOE'S", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void FindLocationDriftCandidateGroups_ignores_short_shared_words_and_singletons()
+    {
+        var fountain = """
+            Title: T
+
+            INT. THE OLD BARN - DAY
+
+            NARRATOR
+            One.
+
+            INT. THE NEW BARN - NIGHT
+
+            NARRATOR
+            Two — shares only the short word "THE", must not cluster on that alone.
+
+            INT. LIBRARY - DAY
+
+            NARRATOR
+            Only heading with this first word.
+            """;
+        var groups = AdaptationFountain.FindLocationDriftCandidateGroups(fountain);
+        Assert.Empty(groups);
+    }
+
+    [Fact]
+    public void FindNameDriftCandidateGroups_finds_cue_and_prose_spelling_drift()
+    {
+        var fountain = """
+            Title: T
+
+            INT. KIRK STREET APARTMENT - DAY
+
+            PETER (V.O.)
+            Mother: Olivia Anne Olsen. She kept the faith.
+
+            NICK
+            Mrs. Olivia Olson was a good woman.
+
+            SIONNA
+            Unrelated person, appears once, must not cluster.
+            """;
+        var groups = AdaptationFountain.FindNameDriftCandidateGroups(fountain);
+        Assert.Contains(groups, g =>
+            g.Any(n => n.Equals("Olsen", StringComparison.OrdinalIgnoreCase)) &&
+            g.Any(n => n.Equals("Olson", StringComparison.OrdinalIgnoreCase)));
+        Assert.DoesNotContain(groups, g => g.Any(n => n.Equals("Sionna", StringComparison.OrdinalIgnoreCase)));
+    }
+
+    [Theory]
+    [InlineData("Olsen", "Olson", true)]
+    [InlineData("Sionna", "Sienna", true)]
+    [InlineData("Nick", "Peter", false)]
+    [InlineData("Bob", "Rob", false)] // below the 4-char floor
+    [InlineData("Nick", "Nick", false)] // identical is not drift
+    public void IsNameSpellingDriftCandidate_detects_close_but_not_identical(string a, string b, bool expected)
+    {
+        Assert.Equal(expected, AdaptationFountain.IsNameSpellingDriftCandidate(a, b));
+    }
+
+    [Fact]
     public void NormalizeSceneHeadingWording_unifies_prefixed_hallway()
     {
         var fountain = """

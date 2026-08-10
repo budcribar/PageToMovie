@@ -360,3 +360,28 @@
                         </div>
                     }
                 </div>
+
+                @if (List!.HasAgeVariants(List!._selected))
+                {
+                    <div class="card mb-2" data-testid="char-age-variants">
+                        <div class="card-header py-1 px-2">
+                            <strong class="small">Age variants</strong>
+                        </div>
+                        <div class="card-body py-2">
+                            <p class="small text-muted mb-2">
+                                @List!._selected.DisplayName appears at more than one age in this story —
+                                each life stage gets its own look and voice.
+                            </p>
+                            <div class="d-flex flex-wrap gap-2">
+                                @foreach (var sib in List!.VariantSiblingsOf(List!._selected))
+                                {
+                                    <button type="button" class="btn btn-sm btn-outline-secondary"
+                                            disabled="@(Host._busy || Jobs!.JobRunning)"
+                                            @onclick="() => List!.SelectAsync(sib.Key)">
+                                        @Characters.CharactersListState.AgeVariantLabel(sib)
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }

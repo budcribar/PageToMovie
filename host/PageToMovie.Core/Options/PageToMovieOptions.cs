@@ -169,6 +169,7 @@ public sealed class PageToMovieOptions
 
     public CapacityOptions Capacity { get; set; } = new();
     public FakesOptions Fakes { get; set; } = new();
+    public AdaptationDefaultsOptions AdaptationDefaults { get; set; } = new();
     public AuthOptions Auth { get; set; } = new();
     public MailOptions Mail { get; set; } = new();
     public YouTubeOptions YouTube { get; set; } = new();
@@ -479,6 +480,24 @@ public sealed class FakesOptions
     /// deterministically, not something a real deployment would ever set.
     /// </summary>
     public bool RejectFileIdEdits { get; set; }
+}
+
+/// <summary>
+/// Admin-global overrides for Stage 1 adaptation tunables that otherwise default to a hardcoded
+/// value on <c>AdaptationPromptTokens</c>. Null = use the hardcoded default. Set/edited via
+/// <c>RuntimeConfigStore</c> (hot-applied, no restart) rather than appsettings — this class just
+/// holds the currently-effective values in memory.
+/// </summary>
+public sealed class AdaptationDefaultsOptions
+{
+    public int? MaxSpeakingCast { get; set; }
+    public int? MaxDialogueWords { get; set; }
+    public int? VoMaxSentences { get; set; }
+    public int? SceneCountMin { get; set; }
+    public int? SceneCountMax { get; set; }
+    public int? MinAudioCuesPerScene { get; set; }
+    public int? MinAudioCuesAtPeak { get; set; }
+    public int? BodyWordsPerMinute { get; set; }
 }
 
 /// <summary>Customer-facing charge settings (list-rate markup).</summary>

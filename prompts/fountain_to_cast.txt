@@ -24,6 +24,19 @@ GOALS
 5b. **BOOK / TITLE = CAST STATUS (HARD):** If the BOOK names a being (person or animal)
    as a story role in the title, cover, refrain, or body, they MUST get a Character_*
    seed. Dialogue is not required. Incomplete cast = missing that titled lead.
+5c. **AGE-VARIANT CUES → LINKED SEEDS (HARD):** A cue prefixed YOUNG/TEEN/OLD before a name
+   that also appears bare elsewhere (e.g. YOUNG NICK and NICK) is the SAME person at a
+   different life stage, not a second character. Give the prefixed cue its own
+   Character_* seed (its own description/visual_lock/voice — a child does not share an
+   adult's face or voice), set that seed's `variant_of` to the base character's key, and
+   set `age_band` on it (e.g. `child_8_9`, `teen_15_17`). The base adult/present-day seed
+   keeps `age_band` unset or `adult`. Never fold an age-variant cue's lines into the base
+   seed, and never invent an age-variant seed for a name that never has a prefixed cue.
+5d. **NAME-SPELLING UNIFICATION (HARD):** If the same person's name is spelled two ways
+   across the Fountain (a typo carried over from the source, e.g. dialogue text saying
+   "Olsen" in one place and "Olson" in another for the same family) — this is one
+   character, one seed, keyed on whichever spelling is more frequent. Do not create two
+   seeds for a spelling variant of one identity.
 6. **BOOK-FIRST LOOKS:** When BOOK text is provided, mine it for age, build, hair,
    eyes, face, clothing, era, and distinguishing traits. description + visual_lock
    must be concrete enough to drive portrait generation and prevent role swaps
@@ -97,7 +110,9 @@ Return ONLY a JSON object (no markdown fences, no commentary):
       "voice_profile": "1–3 sentences age/sex/pitch/pace/energy; same voice every scene",
       "performance_notes": "optional: how this role addresses camera or partners when speaking",
       "reference_image_placeholder": "character_example_ref.png",
-      "source_image_pages": [2, 4]
+      "source_image_pages": [2, 4],
+      "age_band": "optional: adult | child_8_9 | child_12 | teen_15_17 | etc — only when this seed is an age-variant of another seed, or the story otherwise needs an explicit age",
+      "variant_of": "optional: base character's Character_* key — set ONLY on an age-variant seed (see AGE-VARIANT CUES rule)"
     }
   },
   "wardrobe_lock_tokens": {
@@ -145,6 +160,8 @@ FIELD RULES:
 - reference_image_placeholder: bare filename only under assets/characters/ (no folder path).
 - source_image_pages: optional 1–3 page numbers from book --- PAGE N --- if book has plates
   and the character is clearly visible; else [].
+- age_band / variant_of: see AGE-VARIANT CUES rule above. Omit both on a character who only
+  appears at one life stage — most characters never need them.
 - Include humans AND animals that appear on screen.
 - Do NOT invent characters not supported by screenplay or book.
 - Prefer names used in the Fountain (BUSTER, MOMMA, DADDY, NARRATOR).

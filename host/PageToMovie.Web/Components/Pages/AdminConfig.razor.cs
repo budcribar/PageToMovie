@@ -27,6 +27,15 @@ public partial class AdminConfig
     private int _rateLimitEveryN;
     private double _chargeMultiplier = 1.0;
 
+    private int? _maxSpeakingCast;
+    private int? _maxDialogueWords;
+    private int? _voMaxSentences;
+    private int? _sceneCountMin;
+    private int? _sceneCountMax;
+    private int? _minAudioCuesPerScene;
+    private int? _minAudioCuesAtPeak;
+    private int? _bodyWordsPerMinute;
+
     private bool _started;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -80,6 +89,14 @@ public partial class AdminConfig
                 _failRate = _cfg.Fakes?.FailRate ?? 0;
                 _rateLimitEveryN = _cfg.Fakes?.RateLimitEveryN ?? 0;
                 _chargeMultiplier = _cfg.ChargeMultiplier > 0 ? _cfg.ChargeMultiplier : 1.0;
+                _maxSpeakingCast = _cfg.Adaptation?.MaxSpeakingCast;
+                _maxDialogueWords = _cfg.Adaptation?.MaxDialogueWords;
+                _voMaxSentences = _cfg.Adaptation?.VoMaxSentences;
+                _sceneCountMin = _cfg.Adaptation?.SceneCountMin;
+                _sceneCountMax = _cfg.Adaptation?.SceneCountMax;
+                _minAudioCuesPerScene = _cfg.Adaptation?.MinAudioCuesPerScene;
+                _minAudioCuesAtPeak = _cfg.Adaptation?.MinAudioCuesAtPeak;
+                _bodyWordsPerMinute = _cfg.Adaptation?.BodyWordsPerMinute;
             }
         }
         catch (Exception ex)
@@ -110,6 +127,17 @@ public partial class AdminConfig
                     VideoDelayMs = _videoDelayMs,
                     FailRate = _failRate,
                     RateLimitEveryN = _rateLimitEveryN,
+                },
+                Adaptation = new AdaptationRuntimeDto
+                {
+                    MaxSpeakingCast = _maxSpeakingCast,
+                    MaxDialogueWords = _maxDialogueWords,
+                    VoMaxSentences = _voMaxSentences,
+                    SceneCountMin = _sceneCountMin,
+                    SceneCountMax = _sceneCountMax,
+                    MinAudioCuesPerScene = _minAudioCuesPerScene,
+                    MinAudioCuesAtPeak = _minAudioCuesAtPeak,
+                    BodyWordsPerMinute = _bodyWordsPerMinute,
                 },
                 UseFakes = _useFakes,
                 ChargeMultiplier = _chargeMultiplier,

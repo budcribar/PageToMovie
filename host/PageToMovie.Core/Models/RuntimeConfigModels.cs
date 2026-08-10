@@ -5,6 +5,7 @@ public sealed class RuntimeConfigDto
 {
     public CapacityRuntimeDto Capacity { get; set; } = new();
     public FakesRuntimeDto Fakes { get; set; } = new();
+    public AdaptationRuntimeDto Adaptation { get; set; } = new();
     public bool UseFakes { get; set; }
     /// <summary>
     /// Customer charge multiplier on vendor list rates (estimates + actual charges).
@@ -33,10 +34,31 @@ public sealed class FakesRuntimeDto
     public int RateLimitEveryN { get; set; }
 }
 
+/// <summary>
+/// Admin-global defaults for Stage 1 adaptation tunables that otherwise default to a hardcoded
+/// value on <c>AdaptationPromptTokens</c> (book_to_fountain.txt). Null = use the hardcoded
+/// default. The five "shared" fields can be overridden further per-project on Configuration's
+/// "Advanced Adaptation Settings" panel (per-project wins over this admin default, which wins
+/// over the hardcoded default). MinAudioCuesPerScene/MinAudioCuesAtPeak/BodyWordsPerMinute are
+/// admin-only — quality floors/calibration constants, not a per-book creative choice.
+/// </summary>
+public sealed class AdaptationRuntimeDto
+{
+    public int? MaxSpeakingCast { get; set; }
+    public int? MaxDialogueWords { get; set; }
+    public int? VoMaxSentences { get; set; }
+    public int? SceneCountMin { get; set; }
+    public int? SceneCountMax { get; set; }
+    public int? MinAudioCuesPerScene { get; set; }
+    public int? MinAudioCuesAtPeak { get; set; }
+    public int? BodyWordsPerMinute { get; set; }
+}
+
 public sealed class RuntimeConfigUpdateRequest
 {
     public CapacityRuntimeDto? Capacity { get; set; }
     public FakesRuntimeDto? Fakes { get; set; }
+    public AdaptationRuntimeDto? Adaptation { get; set; }
     public bool? UseFakes { get; set; }
     /// <summary>Customer charge multiplier (list rate × this = charge). Null = leave unchanged.</summary>
     public double? ChargeMultiplier { get; set; }

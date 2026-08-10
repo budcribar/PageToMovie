@@ -141,11 +141,27 @@ public sealed class AdaptationService
         Action<string>? onProgress = progress is null ? null : s => progress.Report(s);
         var usedHeuristic = false;
 
+        var defaults = AdaptationPromptTokens.Default(promptMinutes, request.VisualMedium);
+        var tokens = new AdaptationPromptTokens
+        {
+            TotalRuntimeMinutes = defaults.TotalRuntimeMinutes,
+            VisualMedium = defaults.VisualMedium,
+            MaxSpeakingCast = request.MaxSpeakingCast ?? defaults.MaxSpeakingCast,
+            MaxDialogueWords = request.MaxDialogueWords ?? defaults.MaxDialogueWords,
+            VoMaxSentences = request.VoMaxSentences ?? defaults.VoMaxSentences,
+            SceneCountMin = request.SceneCountMin ?? defaults.SceneCountMin,
+            SceneCountMax = request.SceneCountMax ?? defaults.SceneCountMax,
+            MinAudioCuesPerScene = request.MinAudioCuesPerScene ?? defaults.MinAudioCuesPerScene,
+            MinAudioCuesAtPeak = request.MinAudioCuesAtPeak ?? defaults.MinAudioCuesAtPeak,
+            BodyWordsPerMinute = request.BodyWordsPerMinute ?? defaults.BodyWordsPerMinute,
+        };
+
         string promptSha;
         try
         {
             // Hash the same prompt the converter will load (null = unlimited directive).
-            var prompt = await BuildSystemPromptAsync(promptMinutes, ct, request.VisualMedium).ConfigureAwait(false);
+            var prompt = await BookToFountainConverter.BuildSystemPromptAsync(promptMinutes, ct, tokens)
+                .ConfigureAwait(false);
             promptSha = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(prompt))).ToLowerInvariant();
         }
         catch
@@ -168,7 +184,8 @@ public sealed class AdaptationService
             onStructuralGateFailure: onStructuralGateFailure,
             temperature: request.Temperature,
             bookSession: bookSession,
-            visualMedium: request.VisualMedium).ConfigureAwait(false);
+            visualMedium: request.VisualMedium,
+            promptTokens: tokens).ConfigureAwait(false);
 
         // Re-emit runtime with the clamped minutes actually used for generation.
         var runtimeUsed = new NaturalRuntimeEstimate

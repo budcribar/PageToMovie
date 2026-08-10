@@ -796,7 +796,7 @@ public sealed class CastFromScreenplayService
         return text.Trim();
     }
 
-    private static Dictionary<string, object?> NormalizeCastDoc(
+    internal static Dictionary<string, object?> NormalizeCastDoc(
         Dictionary<string, object?> parsed,
         string projectId,
         string? bookText = null)
@@ -897,7 +897,33 @@ public sealed class CastFromScreenplayService
             // cast_kind: prefer model output; else classify so pin gates skip group portraits.
             clean["cast_kind"] = ResolveCastKind(k, name, CoerceString(seed, "cast_kind"), desc);
 
+            // Age-variant linking (see AGE-VARIANT CUES rule, fountain_to_cast.txt) — most
+            // characters appear at one life stage and have neither field set.
+            var ageBand = CoerceString(seed, "age_band");
+            if (!string.IsNullOrWhiteSpace(ageBand))
+                clean["age_band"] = ageBand!.Trim();
+            var variantOfRaw = CoerceString(seed, "variant_of");
+            if (!string.IsNullOrWhiteSpace(variantOfRaw))
+            {
+                var variantOfKey = variantOfRaw!.StartsWith("Character_", StringComparison.OrdinalIgnoreCase)
+                    ? variantOfRaw
+                    : "Character_" + NonAlphaNumericRegex.Replace(variantOfRaw, "_").Trim('_');
+                if (!string.Equals(variantOfKey, k, StringComparison.OrdinalIgnoreCase))
+                    clean["variant_of"] = variantOfKey;
+            }
+
             seedsOut[k] = clean;
+        }
+
+        // Drop any variant_of that doesn't point at a real seed in this same cast (a
+        // hallucinated or since-renamed base key) — a dangling pointer is worse than none:
+        // the Characters UI would show a "sibling" that doesn't exist.
+        foreach (var entry in seedsOut.Values)
+        {
+            if (entry is not Dictionary<string, object?> clean) continue;
+            if (clean.TryGetValue("variant_of", out var vo) && vo is string voKey &&
+                !seedsOut.ContainsKey(voKey))
+                clean.Remove("variant_of");
         }
 
         outDoc["character_seed_tokens"] = seedsOut;

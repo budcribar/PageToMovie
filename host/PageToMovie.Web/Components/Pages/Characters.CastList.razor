@@ -12,18 +12,21 @@
 
         <div class="col-md-3">
             <div class="list-group">
-                @foreach (var c in List!.CharactersForUi)
+                @foreach (var c in List!.CharactersForUiGrouped())
                 {
                     var active = c.Key == List!._selectedKey;
                     var thumb = List!.ListThumbUrl(c);
                     var hasVoice = Characters.CharactersVoice.HasVoiceProfile(c);
+                    var isAgeVariant = !string.IsNullOrWhiteSpace(c.VariantOf);
                     <button type="button"
                             @key="c.Key"
                             data-testid="char-list-item"
                             data-char-key="@c.Key"
                             data-char-group="@(c.IsGroup ? "true" : "false")"
                             data-char-voice-only="@(c.VoiceOnly ? "true" : "false")"
-                            class="list-group-item list-group-item-action char-list-item @(active ? "active" : "")"
+                            data-char-age-variant="@(isAgeVariant ? "true" : "false")"
+                            class="list-group-item list-group-item-action char-list-item @(active ? "active" : "") @(isAgeVariant ? "char-list-item--variant" : "")"
+                            style="@(isAgeVariant ? "padding-left: 2rem;" : null)"
                             disabled="@List!.CastListLocked"
                             title="@(List!.CastListLocked ? "Wait until the current action finishes" : null)"
                             @onclick="() => List!.SelectAsync(c.Key)">
@@ -56,7 +59,13 @@
                                 <span class="char-list-thumb__icon">?</span>
                             </span>
                         }
-                        <span class="char-list-name text-truncate">@c.DisplayName</span>
+                        <span class="char-list-name text-truncate">
+                            @if (isAgeVariant)
+                            {
+                                <span class="text-muted" aria-hidden="true">↳ </span>
+                            }
+                            @c.DisplayName
+                        </span>
                         @if (c.Locked)
                         {
                             <span class="char-list-lock ms-auto text-muted" title="Locked" aria-label="Locked">🔒</span>

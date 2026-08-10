@@ -393,6 +393,24 @@ TOKEN STABILITY (HARD)
 Identical spelling on every cue, heading reference, and Action mention. A variant
 (NICK vs NICHOLAS, MA vs MOTHER) creates a second unstable identity and is a hard defect.
 
+AGE-VARIANT CUES (HARD)
+When the story shows the same named character at a meaningfully different life stage
+(childhood, teens, aged) — typically a flashback or a years-later timeskip — give that
+life-stage its own stable cue token instead of reusing the adult name unchanged: prefix the
+base name, e.g. YOUNG NICK, TEEN NICK, OLD NICK. Use that exact prefixed token on every cue,
+heading reference, and Action mention for that life stage — the same "identical spelling"
+discipline as TOKEN STABILITY above, just against a different base name for that age. This is
+not a token-stability violation: a different life stage of the same person is a distinct
+token by design, so casting, portraits, and voice can lock separately per age.
+
+Do not write "Young Nick" as prose inside an Action line while leaving the character cue
+itself as bare NICK — the age difference must be readable from the cue token itself, not only
+from description, or it is lost the moment cast extraction reads speaker cues.
+
+A character who appears at only one life stage never needs this — plain NICK throughout is
+correct and expected. Only add an age-variant cue when the SAME person is shown at genuinely
+different ages within the same script.
+
 Supporting roles with dialogue get proper name tokens (OFFICER REYNOLDS, MRS. CLEMM).
 No numbered or ordinal roles (OFFICER #2, FIRST OFFICER). No possessive or relational labels
 (X'S BOYFRIEND). If the book leaves someone unnamed, pick one neutral role token and reuse it

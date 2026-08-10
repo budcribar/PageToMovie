@@ -347,6 +347,8 @@ public sealed class CharacterSummary
     public List<CharacterImageRef> BookRefs { get; set; } = new();
     public List<CharacterImageRef> Variants { get; set; } = new();
     public string? AgeBand { get; set; }
+    /// <summary>Base character's Key when this entry is an age-variant seed (child/teen/etc. of another character) — see cast_seeds.json's <c>variant_of</c>.</summary>
+    public string? VariantOf { get; set; }
 }
 
 /// <summary>Location seed from Stage‑1 / classifier (location_seed_tokens).</summary>
