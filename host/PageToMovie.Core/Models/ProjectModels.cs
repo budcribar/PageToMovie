@@ -824,6 +824,15 @@ public sealed class ClipSummary
     public string? VideoUrl { get; set; }
     public string? FileName { get; set; }
     public ClipDialogueVerificationResult? DialogueVerification { get; set; }
+
+    /// <summary>Primary Stage‑1 / screenplay beat id this clip was planned from (stable <c>sb_…</c> when available).</summary>
+    public string? Stage1BeatId { get; set; }
+
+    /// <summary>
+    /// All source beat ids when clips merge/split dialogue (prelude fold, monologue coalesce, two-hander).
+    /// Empty when unknown; otherwise includes <see cref="Stage1BeatId"/> first.
+    /// </summary>
+    public List<string> Stage1BeatIds { get; set; } = new();
 }
 
 /// <summary>Create or fully edit a clip's shot-plan fields (Scenes clip editor).</summary>

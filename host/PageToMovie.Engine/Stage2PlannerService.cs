@@ -805,6 +805,9 @@ public sealed class Stage2PlannerService
             }
 
             var beatIdStr = CoerceString(beat.TryGetValue("beat_id", out var bi) ? bi : null) ?? $"b{i + 1}";
+            var sourceBeatIds = PageToMovie.Core.Utils.StableBeatId.CollectIds(beat);
+            if (sourceBeatIds.Count == 0 && !string.IsNullOrWhiteSpace(beatIdStr))
+                sourceBeatIds.Add(beatIdStr);
             string? cameraMoveToken = null;
             if (aiCamera is not null && aiCamera.TryGetValue(beatIdStr, out var camDir))
             {
@@ -861,6 +864,7 @@ public sealed class Stage2PlannerService
                 ["negative_prompt"] = neg,
                 ["audio_payload"] = audioPayload,
                 ["stage1_beat_id"] = beatIdStr,
+                ["stage1_beat_ids"] = sourceBeatIds.Cast<object?>().ToList(),
                 ["primary_subject"] = primaryVal,
                 // Propagate for gen-time duration (EstimateForClip) — silent big_action etc.
                 ["action_class"] = actionClassVal,
@@ -997,6 +1001,7 @@ public sealed class Stage2PlannerService
                 }
 
                 // Remove silent prelude b1 so b2 becomes clip 1 (frame-1 VO onset)
+                PageToMovie.Core.Utils.StableBeatId.MergeSourceIds(b2, b1);
                 var result = new List<Dictionary<string, object?>>(beats);
                 result.RemoveAt(0);
                 return result;
@@ -1114,6 +1119,7 @@ public sealed class Stage2PlannerService
                     cur["dialogue"] = d1;
 
                     MergeVisualEvent(cur, next);
+                    PageToMovie.Core.Utils.StableBeatId.MergeSourceIds(cur, next);
 
                     i++;
                 }
@@ -1229,6 +1235,7 @@ public sealed class Stage2PlannerService
                             ClipSpokenLines.FromBeat(cur), maxSeconds: effectiveMax);
 
                         MergeVisualEvent(cur, next);
+                        PageToMovie.Core.Utils.StableBeatId.MergeSourceIds(cur, next);
 
                         i++;
                     }

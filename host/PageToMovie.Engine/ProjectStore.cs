@@ -4871,7 +4871,19 @@ public sealed partial class ProjectStore
                         ? $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes/{sceneNumber}/clips/{cn}/video"
                         : null,
                     DialogueVerification = await LoadClipDialogueVerificationAsync(projectDir, sceneNumber, cn, ct).ConfigureAwait(false),
+                    Stage1BeatId = c.TryGetProperty("stage1_beat_id", out var s1b) ? s1b.GetString() : null,
+                    Stage1BeatIds = c.TryGetProperty("stage1_beat_ids", out var s1bs) &&
+                                    s1bs.ValueKind == JsonValueKind.Array
+                        ? s1bs.EnumerateArray()
+                            .Select(x => x.GetString())
+                            .Where(x => !string.IsNullOrWhiteSpace(x))
+                            .Select(x => x!)
+                            .ToList()
+                        : new List<string>(),
                 });
+                var last = clips[^1];
+                if (last.Stage1BeatIds.Count == 0 && !string.IsNullOrWhiteSpace(last.Stage1BeatId))
+                    last.Stage1BeatIds.Add(last.Stage1BeatId!);
             }
         }
 

@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using PageToMovie.Core.Utils;
 using PageToMovie.Fountain;
 
 namespace PageToMovie.Engine;
@@ -114,6 +115,29 @@ public static class FountainStage1Importer
         var dialogueBuf = new StringBuilder();
         var beatIndex = 0;
         var sceneNum = 0;
+        // Disambiguate identical content within a scene for stable ids (0-based).
+        var contentOccurrence = new Dictionary<string, int>(StringComparer.Ordinal);
+
+        string SceneKey()
+        {
+            if (curScene is not null && curScene.TryGetValue("setting", out var st) && st is string s && s.Length > 0)
+                return s;
+            if (curScene is not null && curScene.TryGetValue("scene_number", out var sn))
+                return $"scene:{sn}";
+            return sceneNum > 0 ? $"scene:{sceneNum}" : "scene:0";
+        }
+
+        string NextStableBeatId(string kind, string? speaker, string? body)
+        {
+            var key = string.Join(
+                '\u001f',
+                StableBeatId.Normalize(kind),
+                StableBeatId.Normalize(speaker),
+                StableBeatId.Normalize(body));
+            contentOccurrence.TryGetValue(key, out var n);
+            contentOccurrence[key] = n + 1;
+            return StableBeatId.ForContent(SceneKey(), kind, speaker, body, n);
+        }
 
         void FlushAction()
         {
@@ -129,9 +153,10 @@ public static class FountainStage1Importer
             var isFirstInScene = beats.Count == 0;
             var actionClass = InferActionClass(text, isFirstInScene);
             lastPictureVisual = text;
+            var kind = string.IsNullOrWhiteSpace(actionClass) ? "action" : actionClass;
             beats.Add(new Dictionary<string, object?>
             {
-                ["beat_id"] = $"b{beatIndex}",
+                ["beat_id"] = NextStableBeatId(kind, "", text),
                 ["intent"] = Trunc(text, 120),
                 ["visual_event"] = text,
                 ["shot_scale_hint"] = actionClass is "establishing" ? "wide" : "medium",
@@ -194,14 +219,19 @@ public static class FountainStage1Importer
                 ? FirstCharacterKey(pictureCast)
                 : charKey;
 
+            // One content root for the full line; multi-part monologues share root via #pNofM.
+            var kind = offScreen ? "voiceover" : "dialogue";
+            var monologueRoot = NextStableBeatId(kind, charKey, text);
+
             for (var p = 0; p < parts.Count; p++)
             {
                 var part = parts[p];
                 beatIndex++;
                 var isFirst = beatIndex == 1;
+                var beatId = StableBeatId.ForPart(monologueRoot, p, parts.Count);
                 beats.Add(new Dictionary<string, object?>
                 {
-                    ["beat_id"] = $"b{beatIndex}",
+                    ["beat_id"] = beatId,
                     ["intent"] = Trunc(
                         parts.Count > 1
                             ? (offScreen
@@ -264,13 +294,14 @@ public static class FountainStage1Importer
                     curScene = null;
                     beats = null;
                     beatIndex = 0;
+                    contentOccurrence.Clear();
                     return;
                 }
 
                 beatIndex++;
                 beats.Add(new Dictionary<string, object?>
                 {
-                    ["beat_id"] = $"b{beatIndex}",
+                    ["beat_id"] = NextStableBeatId("establishing", "", setting),
                     ["intent"] = "Establish scene",
                     ["visual_event"] = string.IsNullOrWhiteSpace(setting) ? "Scene" : setting,
                     ["shot_scale_hint"] = "wide",
@@ -311,6 +342,7 @@ public static class FountainStage1Importer
             curScene = null;
             beats = null;
             beatIndex = 0;
+            contentOccurrence.Clear();
         }
 
         void OpenScene(string heading)
