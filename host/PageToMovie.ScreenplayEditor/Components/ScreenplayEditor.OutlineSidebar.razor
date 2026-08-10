@@ -177,11 +177,18 @@
 
                             <div class="d-flex align-items-center flex-shrink-0 spe-outline-actions">
                                 <button type="button"
-                                        class="btn btn-sm spe-outline-icon text-info"
-                                        title="Preview scene @scene.SceneNumber"
-                                        @onclick="() => PreviewScene(index)"
+                                        class="btn btn-sm spe-outline-icon text-success"
+                                        title="Play scene video (Film)"
+                                        @onclick="() => PlayVideo(index)"
                                         @onclick:stopPropagation="true">
                                     <i class="bi bi-play-fill" aria-hidden="true"></i>
+                                </button>
+                                <button type="button"
+                                        class="btn btn-sm spe-outline-icon text-info"
+                                        title="Script preview — read this scene’s text"
+                                        @onclick="() => PreviewScene(index)"
+                                        @onclick:stopPropagation="true">
+                                    <i class="bi bi-file-text" aria-hidden="true"></i>
                                 </button>
                                 <button type="button"
                                         class="btn btn-sm spe-outline-icon text-success"
@@ -254,7 +261,7 @@
         <div class="modal-dialog modal-lg modal-dialog-scrollable">
             <div class="modal-content bg-dark text-light border-info shadow-lg">
                 <div class="modal-header bg-info text-dark py-2">
-                    <h5 class="modal-title fw-bold">Preview: Scene @previewScene.SceneNumber</h5>
+                    <h5 class="modal-title fw-bold">Script preview · Scene @previewScene.SceneNumber</h5>
                     <button type="button" class="btn-close" @onclick="ClosePreview"></button>
                 </div>
                 <div class="modal-body p-4 font-monospace">

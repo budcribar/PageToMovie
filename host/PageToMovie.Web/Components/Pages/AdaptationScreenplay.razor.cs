@@ -67,6 +67,15 @@ public partial class AdaptationScreenplay
             await _structuredUi.ExpandAllScenes();
     }
 
+    /// <summary>
+    /// Outline ▶ — play the generated scene video on Film (same stitch path as “Play scene”).
+    /// </summary>
+    private void PlaySceneOnFilmPage(int sceneNumber)
+    {
+        if (sceneNumber <= 0) return;
+        Nav.NavigateTo($"scenes?scene={sceneNumber}&play=1");
+    }
+
     internal void EnsureDomains()
     {
         _ = Editor; _ = Save; _ = SignOff; _ = Book; _ = Tools;

@@ -56,6 +56,10 @@ public partial class ScreenplayEditor_OutlineSidebar : ComponentBase
     [Parameter]
     public EventCallback<(int from, int to)> OnReorderScenes { get; set; }
 
+    /// <summary>Play generated scene video (host navigates to Film / stitches).</summary>
+    [Parameter]
+    public EventCallback<int> OnPlayScene { get; set; }
+
     /// <summary>Open character modal; arg is name or null for full list.</summary>
     [Parameter]
     public EventCallback<string?> OnSelectCharacter { get; set; }
@@ -176,6 +180,16 @@ public partial class ScreenplayEditor_OutlineSidebar : ComponentBase
     public void PreviewScene(int index) => PreviewingIndex = index;
 
     public void ClosePreview() => PreviewingIndex = -1;
+
+    public async Task PlayVideo(int index)
+    {
+        if (index < 0 || index >= Scenes.Count) return;
+        var sn = Scenes[index].SceneNumber;
+        if (OnPlayScene.HasDelegate)
+            await OnPlayScene.InvokeAsync(sn);
+        else
+            PreviewScene(index); // standalone: fall back to script preview
+    }
 
     public void HandleDragStart(int index) => ActiveDragIndex = index;
 

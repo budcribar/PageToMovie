@@ -237,6 +237,9 @@ public partial class Scenes
                 await Gen.RefreshMyJobsAsync();
 
             await List.ReloadListAsync();
+
+            // Deep-link from screenplay outline: /scenes?scene=12&play=1
+            await TryOpenSceneFromQueryAsync();
         }
         catch (Exception ex)
         {
@@ -245,7 +248,31 @@ public partial class Scenes
         }
     }
 
+    /// <summary>Open a scene (and optionally play video) from ?scene=&play= query.</summary>
+    internal async Task TryOpenSceneFromQueryAsync()
+    {
+        try
+        {
+            var uri = Nav.ToAbsoluteUri(Nav.Uri);
+            var q = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
+            if (!q.TryGetValue("scene", out var sceneVals)
+                || !int.TryParse(sceneVals.FirstOrDefault(), out var sn)
+                || sn <= 0)
+                return;
 
+            await List.OpenSceneAsync(sn);
+
+            var play = q.TryGetValue("play", out var playVals)
+                       && playVals.Any(v => string.Equals(v, "1", StringComparison.OrdinalIgnoreCase)
+                                            || string.Equals(v, "true", StringComparison.OrdinalIgnoreCase));
+            if (play)
+                await Playback.PlaySceneCompositeAsync(sn);
+        }
+        catch (Exception ex)
+        {
+            _error ??= ex.Message;
+        }
+    }
 
     internal void OnMediaFolderChanged() => _ = InvokeAsync(async () =>
     {

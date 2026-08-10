@@ -15,6 +15,10 @@ public partial class ScreenplayEditor : ComponentBase
     [Parameter]
     public bool HideChrome { get; set; }
 
+    /// <summary>Play generated video for a scene number (Film page stitches clips).</summary>
+    [Parameter]
+    public EventCallback<int> OnPlayScene { get; set; }
+
     private bool _menuOpen;
     private void ToggleMenu() => _menuOpen = !_menuOpen;
     private void CloseMenu() => _menuOpen = false;
@@ -103,6 +107,12 @@ public partial class ScreenplayEditor : ComponentBase
             SelectedSceneIndex = index;
             ActiveViewMode = "scene";
         }
+    }
+
+    public async Task PlaySceneVideo(int sceneNumber)
+    {
+        if (OnPlayScene.HasDelegate)
+            await OnPlayScene.InvokeAsync(sceneNumber);
     }
 
     public void SelectPreviousScene()
