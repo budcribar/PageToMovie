@@ -979,3 +979,77 @@
   background: var(--fs-bg-card);
   padding: 0.65rem 0.75rem;
 }
+
+/* Tighter beat/scene selects — more room for text, caret tucked right */
+.fe-structured-editor .spe-sel {
+  height: 26px !important;
+  min-height: 26px !important;
+  padding: 0 1.15rem 0 0.3rem !important;
+  font-size: 0.78rem !important;
+  line-height: 1.2 !important;
+  background-position: right 0.28rem center !important;
+  background-size: 10px 8px !important;
+}
+
+.fe-structured-editor .spe-sel-type {
+  width: 5.6rem !important;
+  max-width: 5.6rem !important;
+  flex: 0 0 5.6rem !important;
+}
+
+.fe-structured-editor .spe-sel-env {
+  width: 5.25rem !important;
+  max-width: 5.25rem !important;
+  flex: 0 0 5.25rem !important;
+}
+
+.fe-structured-editor .spe-sel-tod {
+  width: 7.25rem !important;
+  max-width: 7.5rem !important;
+  flex: 0 0 7.25rem !important;
+}
+
+.fe-structured-editor .spe-sel-ext {
+  width: 3.6rem !important;
+  max-width: 3.6rem !important;
+  flex: 0 0 3.6rem !important;
+  font-size: 0.72rem !important;
+}
+
+.fe-structured-editor .spe-sel-speaker {
+  width: auto !important;
+  min-width: 5rem !important;
+  max-width: 9rem !important;
+  flex: 0 1 8rem !important;
+}
+
+.fe-structured-editor .spe-sel-loc {
+  min-width: 6rem !important;
+}
+
+.fe-structured-editor .spe-sel-add {
+  width: 9.5rem !important;
+  height: 28px !important;
+  /* Keep caret when setting solid success background */
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%2322c55e' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 0.35rem center !important;
+  background-size: 10px 8px !important;
+}
+
+.fe-structured-editor .spe-gear-btn {
+  height: 26px !important;
+  font-size: 0.72rem !important;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.fe-structured-editor .spe-drag-handle {
+  font-size: 0.7rem;
+  letter-spacing: -0.08em;
+  opacity: 0.65;
+}
+
+.fe-structured-editor .spe-focus-card {
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--fs-accent-indigo, #6b8cae) 40%, transparent);
+}

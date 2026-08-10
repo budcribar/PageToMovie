@@ -125,6 +125,25 @@ public static class EnumExtensions
         return TimeOfDay.DAY;
     }
 
+    public static string GetJargonHint(this SceneEnvironment env) => env switch
+    {
+        SceneEnvironment.INT => "INT. — Interior. The scene is set inside (room, car, building).",
+        SceneEnvironment.EXT => "EXT. — Exterior. The scene is set outdoors.",
+        SceneEnvironment.INT_EXT => "INT./EXT. — Interior and exterior. The action crosses or straddles both.",
+        _ => "Scene environment (INT. / EXT.) — where the camera is for this scene."
+    };
+
+    public static string GetJargonHint(this TimeOfDay time) => time switch
+    {
+        TimeOfDay.DAY => "DAY — Scene plays in daytime lighting.",
+        TimeOfDay.NIGHT => "NIGHT — Scene plays at night.",
+        TimeOfDay.CONTINUOUS => "CONTINUOUS — Same continuous moment as the previous scene (no time jump).",
+        TimeOfDay.MOMENTS_LATER => "MOMENTS LATER — A short jump forward in time from the previous scene.",
+        TimeOfDay.DAWN => "DAWN — Early morning light, sunrise.",
+        TimeOfDay.DUSK => "DUSK — Evening light, sunset.",
+        _ => "Time of day on the scene heading (after the location)."
+    };
+
     public static string ToDisplayString(this SpeakerExtension ext) => ext switch
     {
         SpeakerExtension.VO => "V.O.",
@@ -135,10 +154,10 @@ public static class EnumExtensions
 
     public static string GetJargonHint(this SpeakerExtension ext) => ext switch
     {
-        SpeakerExtension.VO => "V.O. (Voice Over) - Character speaking off-camera or internal monologue",
-        SpeakerExtension.OS => "O.S. (Off Screen) - Character physically present in room but not in camera frame",
-        SpeakerExtension.CONTD => "CONT'D (Continued) - Character continuing dialogue after an action break",
-        _ => "Standard dialogue extension"
+        SpeakerExtension.VO => "V.O. (Voice Over) — Character is heard but not speaking on-camera (narration, phone, thoughts).",
+        SpeakerExtension.OS => "O.S. (Off Screen) — Character is in the scene space but not visible in the frame.",
+        SpeakerExtension.CONTD => "CONT'D (Continued) — Same character keeps talking after an action or interruption.",
+        _ => "No extension — standard on-screen dialogue."
     };
 
     public static SpeakerExtension ParseSpeakerExtension(string text)
@@ -160,6 +179,28 @@ public static class EnumExtensions
         TransitionPreset.SmashCutTo => "SMASH CUT TO:",
         TransitionPreset.Blackout => "BLACKOUT",
         _ => "CUT TO:"
+    };
+
+    public static string GetJargonHint(this TransitionPreset preset) => preset switch
+    {
+        TransitionPreset.CutTo => "CUT TO: — Hard cut to the next shot or scene.",
+        TransitionPreset.FadeIn => "FADE IN: — Image fades up from black (often the start of a sequence).",
+        TransitionPreset.FadeOut => "FADE OUT. — Image fades to black (often the end of a sequence).",
+        TransitionPreset.DissolveTo => "DISSOLVE TO: — One image melts into the next (soft time/place change).",
+        TransitionPreset.SmashCutTo => "SMASH CUT TO: — Abrupt, jarring cut for emphasis or shock.",
+        TransitionPreset.Blackout => "BLACKOUT — Screen goes black; a hard stop or blackout beat.",
+        _ => "Transition — how we leave this moment and enter the next."
+    };
+
+    public static string GetJargonHint(this BeatType type) => type switch
+    {
+        BeatType.Action => "Action — Narrative description of what we see (not dialogue).",
+        BeatType.Dialogue => "Dialogue — A character speaks. Name above, optional (parenthetical), then the line.",
+        BeatType.Parenthetical => "Parenthetical — Brief direction under a name, e.g. (whispering). Prefer the field on Dialogue.",
+        BeatType.Transition => "Transition — How we cut or fade between scenes (CUT TO:, FADE OUT., …).",
+        BeatType.Note => "Note — Script note / [[comment]]; usually not spoken or shown on screen.",
+        BeatType.Centered => "Centered — Centered title or intertitle text on the page.",
+        _ => "Beat — one unit of the scene (action, dialogue, or transition)."
     };
 
     public static TransitionPreset ParseTransitionPreset(string text)

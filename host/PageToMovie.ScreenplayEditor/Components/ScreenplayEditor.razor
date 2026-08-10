@@ -22,12 +22,12 @@
                     <ul class="dropdown-menu dropdown-menu-end dropdown-menu-dark shadow-lg">
                         <li><h6 class="dropdown-header">Story Setup</h6></li>
                         <li>
-                            <button class="dropdown-item" type="button" @onclick="OpenCharacterModal">
+                            <button class="dropdown-item" type="button" @onclick="@(() => OpenCharacterModal())">
                                 <i class="bi bi-people text-warning me-2"></i> Edit Story Characters...
                             </button>
                         </li>
                         <li>
-                            <button class="dropdown-item" type="button" @onclick="OpenLocationModal">
+                            <button class="dropdown-item" type="button" @onclick="@(() => OpenLocationModal())">
                                 <i class="bi bi-geo-alt text-info me-2"></i> Edit Story Locations...
                             </button>
                         </li>
@@ -138,9 +138,11 @@
 
     <ScreenplayEditor_LocationModal @bind-IsOpen="ShowLocationModal"
                                      Model="Model"
+                                     FocusName="FocusLocationName"
                                      OnChangedCallback="OnChanged" />
 
     <ScreenplayEditor_CharacterModal @bind-IsOpen="ShowCharacterModal"
                                       Model="Model"
+                                      FocusName="FocusCharacterName"
                                       OnChangedCallback="OnChanged" />
 </div>

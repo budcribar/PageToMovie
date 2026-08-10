@@ -23,8 +23,9 @@ public partial class ScreenplayEditor_BeatEditor : ComponentBase
     [Parameter]
     public EventCallback OnChangedCallback { get; set; }
 
+    /// <summary>Opens the characters modal focused on this beat's speaker when possible.</summary>
     [Parameter]
-    public EventCallback OnEditCharactersClick { get; set; }
+    public EventCallback<string?> OnEditCharactersClick { get; set; }
 
     [Parameter]
     public EventCallback OnMoveUpCallback { get; set; }
@@ -46,6 +47,12 @@ public partial class ScreenplayEditor_BeatEditor : ComponentBase
         {
             await OnChangedCallback.InvokeAsync();
         }
+    }
+
+    public async Task EditCharactersAsync()
+    {
+        if (OnEditCharactersClick.HasDelegate)
+            await OnEditCharactersClick.InvokeAsync(Beat.Speaker);
     }
 
     public async Task MoveUp()

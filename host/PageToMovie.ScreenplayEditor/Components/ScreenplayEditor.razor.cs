@@ -57,15 +57,23 @@ public partial class ScreenplayEditor : ComponentBase
         StateHasChanged();
     }
 
-    public void OpenLocationModal()
+    public void OpenLocationModal(string? focusName = null)
     {
+        FocusLocationName = focusName;
         ShowLocationModal = true;
     }
 
-    public void OpenCharacterModal()
+    public void OpenCharacterModal(string? focusName = null)
     {
+        FocusCharacterName = focusName;
         ShowCharacterModal = true;
     }
+
+    /// <summary>Location name to highlight when the locations modal opens.</summary>
+    public string? FocusLocationName { get; set; }
+
+    /// <summary>Character name to highlight when the characters modal opens.</summary>
+    public string? FocusCharacterName { get; set; }
 
     public void SelectMetadataView()
     {

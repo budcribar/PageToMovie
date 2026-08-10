@@ -4,7 +4,13 @@
         <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
             <div class="modal-content bg-dark text-light border-warning shadow-lg">
                 <div class="modal-header bg-dark-subtle border-secondary-subtle">
-                    <h5 class="modal-title fw-bold text-light">👥 Cast Packages, Voice Clones & Image Locks</h5>
+                    <h5 class="modal-title fw-bold text-light">
+                        👥 Story Characters
+                        @if (!string.IsNullOrWhiteSpace(FocusName))
+                        {
+                            <span class="text-warning small fw-normal ms-2">· focusing @FocusName</span>
+                        }
+                    </h5>
                     <button type="button" class="btn-close btn-close-white" @onclick="Close"></button>
                 </div>
                 <div class="modal-body p-4">
@@ -14,31 +20,35 @@
                         <button class="btn btn-warning fw-semibold px-3" type="button" @onclick="AddCharacter" disabled="@string.IsNullOrWhiteSpace(NewCharacterName)">+ Add Character</button>
                     </div>
 
-                    <label class="form-label fw-semibold text-secondary small">Discovered & Master Characters (@DiscoveredCharacterNames.Count)</label>
+                    <label class="form-label fw-semibold text-secondary small">Discovered & Master Characters (@OrderedCharacterNames.Count)</label>
                     <div class="d-flex flex-column gap-3 overflow-auto" style="max-height: 450px;">
-                        @for (var i = 0; i < DiscoveredCharacterNames.Count; i++)
+                        @foreach (var charaName in OrderedCharacterNames)
                         {
-                            var index = i;
-                            var charaName = DiscoveredCharacterNames[index];
                             var profile = Model.GetOrCreateCharacterProfile(charaName);
+                            var isFocus = IsFocused(charaName);
+                            var lockId = CardDomId(charaName);
 
-                            <div class="card bg-dark-subtle border-secondary-subtle p-3 shadow-sm">
+                            <div id="@lockId"
+                                 class="card bg-dark-subtle p-3 shadow-sm @(isFocus ? "border-warning border-2 spe-focus-card" : "border-secondary-subtle")">
                                 <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom border-secondary-subtle">
                                     <div class="d-flex align-items-center gap-2">
                                         <span class="fs-5">🎭</span>
                                         <h5 class="mb-0 fw-bold text-warning text-uppercase">@charaName</h5>
+                                        @if (isFocus)
+                                        {
+                                            <span class="badge text-bg-warning text-dark">This line</span>
+                                        }
                                     </div>
                                     <button class="btn btn-sm btn-outline-danger py-0 px-2" type="button" @onclick="() => RemoveCharacter(charaName)" title="Delete Character">✕ Delete</button>
                                 </div>
 
                                 <div class="row g-3">
-                                    <!-- Voice Clone Section -->
                                     <div class="col-md-6 border-end border-secondary-subtle">
                                         <div class="d-flex justify-content-between align-items-center mb-1">
                                             <label class="form-label fw-semibold text-light small mb-0">🗣️ Voice Clone & Audio Lock</label>
                                             <div class="form-check form-switch mb-0">
-                                                <input class="form-check-input" type="checkbox" role="switch" @bind="profile.IsVoiceLocked" @bind:after="OnChanged" id="vlock-@index">
-                                                <label class="form-check-label text-warning small fw-bold" for="vlock-@index">
+                                                <input class="form-check-input" type="checkbox" role="switch" @bind="profile.IsVoiceLocked" @bind:after="OnChanged" id="vlock-@lockId">
+                                                <label class="form-check-label text-warning small fw-bold" for="vlock-@lockId">
                                                     @(profile.IsVoiceLocked ? "🔒 Locked" : "🔓 Unlocked")
                                                 </label>
                                             </div>
@@ -59,13 +69,12 @@
                                         </div>
                                     </div>
 
-                                    <!-- Image Lock & Appearance Section -->
                                     <div class="col-md-6">
                                         <div class="d-flex justify-content-between align-items-center mb-1">
                                             <label class="form-label fw-semibold text-light small mb-0">🖼️ Visual & Wardrobe Lock</label>
                                             <div class="form-check form-switch mb-0">
-                                                <input class="form-check-input" type="checkbox" role="switch" @bind="profile.IsImageLocked" @bind:after="OnChanged" id="ilock-@index">
-                                                <label class="form-check-label text-info small fw-bold" for="ilock-@index">
+                                                <input class="form-check-input" type="checkbox" role="switch" @bind="profile.IsImageLocked" @bind:after="OnChanged" id="ilock-@lockId">
+                                                <label class="form-check-label text-info small fw-bold" for="ilock-@lockId">
                                                     @(profile.IsImageLocked ? "🔒 Locked" : "🔓 Unlocked")
                                                 </label>
                                             </div>
