@@ -31,9 +31,10 @@ builder.Services.AddSingleton<PageToMovie.Engine.Collaboration.IProjectInviteMai
 // took effect for the workspace the rest of the app was reading from.
 builder.Services.AddSingleton<ProjectAclService>(sp =>
 {
-    var root = Path.Combine(sp.GetRequiredService<ProjectStore>().WorkspaceRoot, "projects");
+    var store = sp.GetRequiredService<ProjectStore>();
+    var root = Path.Combine(store.WorkspaceRoot, "projects");
     var email = sp.GetService<PageToMovie.Engine.Collaboration.IProjectInviteMailer>();
-    return new ProjectAclService(root, null, email);
+    return new ProjectAclService(root, null, email, store);
 });
 
 var processStartedUtc = DateTimeOffset.UtcNow;
