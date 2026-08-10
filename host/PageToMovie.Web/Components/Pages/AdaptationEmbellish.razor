@@ -1,8 +1,3 @@
 @page "/adaptation/embellish"
-@inject NavigationManager Nav
 
-@* Enrich now lives on the screenplay card. *@
-@code {
-    protected override void OnInitialized()
-        => Nav.NavigateTo("adaptation/screenplay?tool=enrich", forceLoad: false, replace: true);
-}
+@* Enrich now lives on the screenplay card — redirect. *@
