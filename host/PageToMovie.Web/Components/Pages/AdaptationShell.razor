@@ -1,4 +1,4 @@
-@* Shared header + step strip + job log for Adaptation step pages *@
+@* Shared header + job log for Adaptation step pages *@
 @inject AdminSessionService Session
 @inject ActiveProjectState ActiveProject
 @inject IAppLocalizer L
@@ -8,84 +8,41 @@
     return;
 }
 
+@{
+    // One title: prefer the screenplay/film title, else the project name — never both.
+    var filmTitle = Host.Status?.Screenplay?.Title?.Trim();
+    var projectName = Host.ProjectLabel?.Trim();
+    var pageTitle = Step == "shots"
+        ? L["ScenesPage.RebuildShotPlan"]
+        : !string.IsNullOrEmpty(filmTitle) ? filmTitle!
+        : !string.IsNullOrEmpty(projectName) ? projectName!
+        : L["Adaptation.BookAndScreenplay"];
+}
 <div class="ptm-adapt-header d-flex flex-wrap align-items-baseline justify-content-between gap-2 mb-3">
     <div>
-        <span class="ptm-adapt-kicker">@(Step == "shots" ? "Studio · Film" : "Studio · Book pipeline")</span>
-        <h1 class="mb-0 ptm-adapt-title">@(Step == "shots" ? L["ScenesPage.RebuildShotPlan"] : L["Adaptation.BookAndScreenplay"])</h1>
-        <p class="ptm-adapt-lede mb-0">
-            @(Step == "shots"
-                ? L["Adaptation.ShotPlanLede"]
-                : L["Adaptation.BookLede"])
-        </p>
+        <span class="ptm-adapt-kicker">@(Step == "shots" ? "Studio · Film" : "Studio · Book")</span>
+        <h1 class="mb-0 ptm-adapt-title">@pageTitle</h1>
+        @if (Step == "shots")
+        {
+            <p class="ptm-adapt-lede mb-0">@L["Adaptation.ShotPlanLede"]</p>
+        }
+        else if (Step is "import" or "book")
+        {
+            <p class="ptm-adapt-lede mb-0">@L["Adaptation.BookLede"]</p>
+        }
     </div>
     <div class="d-flex align-items-center gap-2">
-        @if (!string.IsNullOrEmpty(Host.ProjectLabel))
-        {
-            <span class="badge text-bg-secondary px-2 py-1 fs-6">@Host.ProjectLabel</span>
-        }
         @if (!string.IsNullOrEmpty(ActiveProject.ParentProjectId))
         {
-            <span class="badge text-bg-info px-2 py-1 fs-6" title="Forked from @ActiveProject.ParentProjectId">🍴 Fork of @ActiveProject.ParentProjectId</span>
+            <span class="badge text-bg-info px-2 py-1 fs-6" title="Forked from @ActiveProject.ParentProjectId">Fork of @ActiveProject.ParentProjectId</span>
         }
     </div>
 </div>
 
-@* ---- Book sub-steps: a light drill-down of the top-level "Book" step. Cast & Film live on the
-     top-level strip, not here. Editing (Screenplay) is last so the automatic passes don't clobber it. ---- *@
-@{
-    var stepsLocked = Host.Jobs.JobRunning;
-    var importActive = Step == "import" || Step == "book";
-    var lookActive = Step == "look";
-    var embellishActive = Step == "embellish";
-    var trimActive = Step == "trim";
-    var screenplayActive = Step == "screenplay";
-    var subOff = !OutlineEnabled || stepsLocked;
-
-    // "Done" checks so you can tell at a glance which optional passes you've already run on the
-    // current screenplay. Look/Enrich/Fit length come from recorded markers; Screenplay = approved.
-    var subs = Host.Status?.BookSubsteps;
-    var importDone = OutlineEnabled;
-    var lookDone = subs?.LookDone == true;
-    var enrichDone = subs?.EnrichDone == true;
-    var trimDone = subs?.FitLengthDone == true;
-    var trimMins = subs?.FitLengthTargetMinutes;
-    var screenplayDone = Host.Status?.Screenplay is { Signed: true };
-}
-@* Shot plan belongs to the top-level "Film" step, not the Book drill-down — no Book sub-nav there. *@
-@if (Step is not "shots")
+@* Shot plan uses the top-level Film strip. Book steps no longer show a Look/Enrich/Fit/Screenplay
+   sub-nav — those tools live on the screenplay card. *@
+@if (Step is "shots")
 {
-<nav class="ptm-substrip" aria-label="Book sub-steps">
-    <span class="ptm-substrip__lead">@L["Home.Book"]</span>
-    <a class="ptm-substep @(importActive ? "is-active" : "") @(stepsLocked ? "is-disabled" : "")"
-       href="@(stepsLocked ? "javascript:void(0)" : "adaptation/import")"
-       @onclick:preventDefault="stepsLocked"
-       title="Import a book, PDF, or screenplay"
-       data-testid="adapt-step-import">@L["Adaptation.Import"] @if (importDone) { <span class="ptm-substep__done" title="Done" aria-label="done">✓</span> }</a>
-    <a class="ptm-substep @(lookActive ? "is-active" : "") @(subOff ? "is-disabled" : "")"
-       href="@(subOff ? "javascript:void(0)" : "adaptation/look")"
-       @onclick:preventDefault="subOff"
-       title="@(subOff ? "Import a source first" : lookDone ? "Choose the visual style (done — run again to change)" : "Choose the visual style")"
-       data-testid="adapt-step-look">@L["Adaptation.Look"] @if (lookDone) { <span class="ptm-substep__done" title="Done" aria-label="done">✓</span> }</a>
-    <a class="ptm-substep @(embellishActive ? "is-active" : "") @(subOff ? "is-disabled" : "")"
-       href="@(subOff ? "javascript:void(0)" : "adaptation/embellish")"
-       @onclick:preventDefault="subOff"
-       title="@(subOff ? "Import a source first" : enrichDone ? "Enrich the scene description (done — run again to add more)" : "Enrich the scene description")"
-       data-testid="adapt-step-embellish">@L["Adaptation.Enrich"] @if (enrichDone) { <span class="ptm-substep__done" title="Done" aria-label="done">✓</span> }</a>
-    <a class="ptm-substep @(trimActive ? "is-active" : "") @(subOff ? "is-disabled" : "")"
-       href="@(subOff ? "javascript:void(0)" : "adaptation/trim")"
-       @onclick:preventDefault="subOff"
-       title="@(subOff ? "Import a source first" : trimDone && trimMins is > 0 ? $"Fit the film to your length and budget (done — fit toward ~{Math.Round(trimMins.Value)} min)" : "Fit the film to your length and budget")"
-       data-testid="adapt-step-trim">@L["Adaptation.FitLength"] @if (trimDone) { <span class="ptm-substep__done" title="Done" aria-label="done">✓@(trimMins is > 0 ? $" ~{Math.Round(trimMins.Value)}m" : "")</span> }</a>
-    <a class="ptm-substep @(screenplayActive ? "is-active" : "") @(subOff ? "is-disabled" : "")"
-       href="@(subOff ? "javascript:void(0)" : "adaptation/screenplay")"
-       @onclick:preventDefault="subOff"
-       title="@(subOff ? "Import a source first" : screenplayDone ? "Edit and approve the final screenplay (approved)" : "Edit and approve the final screenplay")"
-       data-testid="adapt-step-screenplay">@L["Adaptation.Screenplay"] @if (screenplayDone) { <span class="ptm-substep__done" title="Approved" aria-label="approved">✓</span> }</a>
-</nav>
-}
-else
-{
-    @* Shot plan is part of the top-level "Film" step — show the studio strip, like Cast does. *@
     <StudioProcessStrip Active="film" FullStudio="true" />
 }
 

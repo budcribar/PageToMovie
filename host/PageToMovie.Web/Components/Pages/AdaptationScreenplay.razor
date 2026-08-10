@@ -5,14 +5,12 @@
 @inject AdminSessionService Session
 @inject IAppLocalizer L
 
-<PageTitle>Book · @L["Adaptation.Screenplay"]</PageTitle>
+<PageTitle>@(!string.IsNullOrWhiteSpace(SignOff.StatusTitle) ? SignOff.StatusTitle : L["Adaptation.Screenplay"])</PageTitle>
 
 <AdaptationShell Host="this" Step="screenplay">
-    @* Visual style → "Look & medium" stage; film length → "Fit length" stage. This step is edit-only. *@
-
     <div class="card mb-3 fe-screenplay-card">
+        @* Top bar: status + Approve (no separate title — shell already shows the film title). *@
         <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
-            <span>@L["Adaptation.Screenplay"]</span>
             <div class="fe-status-line d-flex flex-wrap gap-1 align-items-center">
                 @if (SignOff.IsApprovedClean)
                 {
@@ -31,10 +29,6 @@
                     <span class="badge text-bg-secondary">@L["ScreenplayPage.NoDraft"]</span>
                 }
 
-                @if (!string.IsNullOrWhiteSpace(SignOff.StatusTitle))
-                {
-                    <span class="small fw-semibold">@SignOff.StatusTitle</span>
-                }
                 @if (Editor._sceneCount > 0)
                 {
                     <span class="badge text-bg-light border">@Editor._sceneCount scenes</span>
@@ -48,7 +42,55 @@
                     <span class="small text-muted">· saved</span>
                 }
             </div>
+
+            <div class="d-flex flex-wrap align-items-center gap-2">
+                <button type="button"
+                        class="@(Save._dirtyLocal ? "btn btn-link btn-sm text-muted px-1" : "visually-hidden")"
+                        data-testid="screenplay-save"
+                        disabled="@(Busy || Jobs.JobRunning || !Save._dirtyLocal)"
+                        @onclick="() => Save.SaveDraftAsync(manual: true)"
+                        tabindex="@(Save._dirtyLocal ? 0 : -1)"
+                        aria-hidden="@(!Save._dirtyLocal)">
+                    Save now
+                </button>
+
+                @if (SignOff.IsApprovedClean)
+                {
+                    <a class="btn btn-success btn-sm" href="characters" data-testid="screenplay-signoff-done">
+                        @L["ScreenplayPage.ToCharacters"]
+                    </a>
+                }
+                else
+                {
+                    <button type="button"
+                            class="btn btn-success btn-sm"
+                            data-testid="screenplay-signoff"
+                            disabled="@(Busy || Jobs.JobRunning || string.IsNullOrWhiteSpace(Editor._text))"
+                            @onclick="SignOff.SignOffAsync">
+                        @if (Busy && !string.IsNullOrWhiteSpace(BusyMessage))
+                        {
+                            @BusyMessage
+                        }
+                        else if (SignOff.NeedsReapprove)
+                        {
+                            <text>@L["ScreenplayPage.ReapproveAndContinue"]</text>
+                        }
+                        else
+                        {
+                            <text>@L["ScreenplayPage.LooksGoodContinue"]</text>
+                        }
+                    </button>
+                }
+
+                <div data-testid="screenplay-status"
+                     data-signed="@(SignOff.IsApprovedClean ? "true" : "false")"
+                     data-draft="@(!string.IsNullOrWhiteSpace(Editor._text) ? "true" : "false")"
+                     data-scenes="@Editor._sceneCount"
+                     class="visually-hidden"
+                     aria-hidden="true"></div>
+            </div>
         </div>
+
         <div class="card-body">
             @if (!Editor._editorReady && string.IsNullOrEmpty(Editor._text) && Status?.Book.BookTextExists == true)
             {
@@ -76,64 +118,134 @@
                 </div>
             }
 
-            <div class="fe-wrap">
-                <div class="fe-toolbar">
-                    <button type="button"
-                            class="btn btn-outline-secondary btn-sm"
-                            data-testid="screenplay-copy"
-                            @onclick="Editor.CopyScreenplayAsync"
-                            title="Copy the whole screenplay to the clipboard">
-                        @(Editor._copied ? "Copied" : "Copy")
-                    </button>
-
-                    <span class="flex-grow-1"></span>
-
-                    <button type="button"
-                            class="@(Save._dirtyLocal ? "btn btn-link btn-sm text-muted px-1" : "visually-hidden")"
-                            data-testid="screenplay-save"
-                            disabled="@(Busy || Jobs.JobRunning || !Save._dirtyLocal)"
-                            @onclick="() => Save.SaveDraftAsync(manual: true)"
-                            tabindex="@(Save._dirtyLocal ? 0 : -1)"
-                            aria-hidden="@(!Save._dirtyLocal)">
-                        Save now
-                    </button>
-
-                    @if (SignOff.IsApprovedClean)
-                    {
-                        <a class="btn btn-success btn-sm" href="characters" data-testid="screenplay-signoff-done">
-                            @L["ScreenplayPage.ToCharacters"]
-                        </a>
-                    }
-                    else
-                    {
+            @* Look / Enrich / Fit length — tools that operate on this draft *@
+            @if (!string.IsNullOrWhiteSpace(ProjectId) && Tools.DraftExists)
+            {
+                <div class="fe-sp-tools mb-3" data-testid="screenplay-tools">
+                    <div class="fe-sp-tools__tabs" role="toolbar" aria-label="Screenplay tools">
                         <button type="button"
-                                class="btn btn-success btn-sm"
-                                data-testid="screenplay-signoff"
-                                disabled="@(Busy || Jobs.JobRunning || string.IsNullOrWhiteSpace(Editor._text))"
-                                @onclick="SignOff.SignOffAsync">
-                            @if (Busy && !string.IsNullOrWhiteSpace(BusyMessage))
+                                class="fe-sp-tools__tab @(Tools.OpenPanel == "look" ? "is-active" : "")"
+                                data-testid="screenplay-tool-look"
+                                disabled="@(Busy || Jobs.JobRunning)"
+                                @onclick='() => Tools.Toggle("look")'>
+                            @L["Adaptation.Look"]
+                            @if (Tools.LookDone)
                             {
-                                @BusyMessage
+                                <span class="fe-sp-tools__done" title="Done">✓</span>
                             }
-                            else if (SignOff.NeedsReapprove)
+                        </button>
+                        <button type="button"
+                                class="fe-sp-tools__tab @(Tools.OpenPanel == "enrich" ? "is-active" : "")"
+                                data-testid="screenplay-tool-enrich"
+                                disabled="@(Busy || Jobs.JobRunning)"
+                                @onclick='() => Tools.Toggle("enrich")'>
+                            @L["Adaptation.Enrich"]
+                            @if (Tools.EnrichDone)
                             {
-                                <text>@L["ScreenplayPage.ReapproveAndContinue"]</text>
+                                <span class="fe-sp-tools__done" title="Done">✓</span>
+                            }
+                        </button>
+                        <button type="button"
+                                class="fe-sp-tools__tab @(Tools.OpenPanel == "fit" ? "is-active" : "")"
+                                data-testid="screenplay-tool-fit"
+                                disabled="@(Busy || Jobs.JobRunning)"
+                                @onclick='() => Tools.Toggle("fit")'>
+                            @L["Adaptation.FitLength"]
+                            @if (Tools.FitDone)
+                            {
+                                <span class="fe-sp-tools__done" title="Done">✓@(Tools.FitMins is > 0 ? $" ~{Math.Round(Tools.FitMins.Value)}m" : "")</span>
+                            }
+                        </button>
+                        <a class="fe-sp-tools__link small text-body-secondary ms-auto"
+                           href="adaptation/import"
+                           data-testid="screenplay-reimport">
+                            Re-import…
+                        </a>
+                    </div>
+
+                    @if (Tools.OpenPanel == "look")
+                    {
+                        <div class="fe-sp-tools__panel" data-testid="screenplay-panel-look">
+                            <VisualMediumCard ProjectId="@ProjectId"
+                                              Embedded="true"
+                                              Disabled="@(Busy || Jobs.JobRunning)"
+                                              SaveLabel="Save & apply to screenplay"
+                                              OnChanged="Tools.OnLookChangedAsync" />
+                            <p class="small text-body-secondary mb-0 mt-2">
+                                Saving re-applies the look — dialogue, scenes, and story stay the same. Re-approve afterward.
+                            </p>
+                        </div>
+                    }
+                    else if (Tools.OpenPanel == "enrich")
+                    {
+                        <div class="fe-sp-tools__panel" data-testid="screenplay-panel-enrich">
+                            @if (!Tools.EnrichDone)
+                            {
+                                <p class="small text-body-secondary mb-2">
+                                    Add concrete visual detail — setting, lighting, small action — from the book’s language where it’s rich.
+                                    Dialogue, scenes, and story stay the same.
+                                </p>
+                                <button type="button"
+                                        class="btn btn-primary btn-sm"
+                                        data-testid="embellish-run"
+                                        disabled="@(Busy || Jobs.JobRunning)"
+                                        @onclick="Tools.EmbellishAsync">
+                                    Enrich the screenplay
+                                </button>
                             }
                             else
                             {
-                                <text>@L["ScreenplayPage.LooksGoodContinue"]</text>
+                                <p class="small text-body-secondary mb-2">
+                                    Visual detail added. Enrich again to add more, or re-approve when you’re happy.
+                                </p>
+                                <button type="button"
+                                        class="btn btn-outline-secondary btn-sm"
+                                        data-testid="embellish-run"
+                                        disabled="@(Busy || Jobs.JobRunning)"
+                                        @onclick="Tools.EmbellishAsync">
+                                    Enrich again
+                                </button>
                             }
-                        </button>
+                        </div>
                     }
-
-                    <div data-testid="screenplay-status"
-                         data-signed="@(SignOff.IsApprovedClean ? "true" : "false")"
-                         data-draft="@(!string.IsNullOrWhiteSpace(Editor._text) ? "true" : "false")"
-                         data-scenes="@Editor._sceneCount"
-                         class="visually-hidden"
-                         aria-hidden="true"></div>
+                    else if (Tools.OpenPanel == "fit")
+                    {
+                        <div class="fe-sp-tools__panel" data-testid="screenplay-panel-fit">
+                            <p class="small text-body-secondary mb-2">
+                                Set the film length. We trim the screenplay to fit — your full-length version is kept so you can re-fit anytime.
+                            </p>
+                            <FilmLengthCard ProjectId="@ProjectId"
+                                            Embedded="true"
+                                            Disabled="@(Busy || Jobs.JobRunning)"
+                                            OnChanged="Tools.OnLengthChangedAsync" />
+                            @if (Tools.EstimateUsd is double est)
+                            {
+                                <div class="border rounded p-2 my-2 small text-body-secondary" data-testid="trim-cost-preview">
+                                    Rough estimate at this length:
+                                    <strong class="text-body">@($"${est:0.00}")</strong>
+                                    — firms up after cast & voice.
+                                </div>
+                            }
+                            <button type="button"
+                                    class="btn btn-primary btn-sm mt-1"
+                                    data-testid="trim-run"
+                                    disabled="@(Busy || Jobs.JobRunning)"
+                                    @onclick="Tools.TrimAsync">
+                                Fit screenplay to this length
+                            </button>
+                        </div>
+                    }
                 </div>
+            }
+            else if (!string.IsNullOrWhiteSpace(ProjectId) && Status?.Book.BookTextExists != true && string.IsNullOrWhiteSpace(Editor._text))
+            {
+                <div class="alert alert-light border small mb-3">
+                    Import a book or fountain first.
+                    <a class="ms-1" href="adaptation/import" data-testid="screenplay-go-import">Go to Import →</a>
+                </div>
+            }
 
+            <div class="fe-wrap">
                 <div class="fe-structured-editor overflow-hidden" data-testid="screenplay-structured-editor">
                     @if (Editor._editorReady)
                     {
@@ -172,7 +284,7 @@
                                 disabled="@(Busy || Jobs.JobRunning)"
                                 @onclick="Pipeline.RunOutlineAsync"
                                 title="Draft screenplay from book and approve for shot planning (admin)">
-                            Draft &amp; approve from book
+                            Draft & approve from book
                         </button>
                     }
                 </div>

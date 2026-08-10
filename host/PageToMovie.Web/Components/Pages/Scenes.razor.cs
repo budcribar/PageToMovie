@@ -141,11 +141,11 @@ public partial class Scenes
 
 
 
-    internal Task AdjustFitLengthAsync() => ConfirmScreenplayAdjustAndNavigateAsync("adaptation/trim");
+    internal Task AdjustFitLengthAsync() => ConfirmScreenplayAdjustAndNavigateAsync("adaptation/screenplay?tool=fit");
 
 
 
-    internal Task AdjustEmbellishAsync() => ConfirmScreenplayAdjustAndNavigateAsync("adaptation/embellish");
+    internal Task AdjustEmbellishAsync() => ConfirmScreenplayAdjustAndNavigateAsync("adaptation/screenplay?tool=enrich");
 
 
 

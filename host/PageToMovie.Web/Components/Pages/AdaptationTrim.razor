@@ -1,65 +1,8 @@
 @page "/adaptation/trim"
-@inherits AdaptationPageBase
+@inject NavigationManager Nav
 
-<PageTitle>Book · Fit length &amp; budget</PageTitle>
-
-<AdaptationShell Host="this" Step="trim">
-    @if (!string.IsNullOrWhiteSpace(ProjectId))
-    {
-        <div class="card mb-3">
-            <div class="card-body">
-                <h2 class="h5 mb-2">Fit to your length &amp; budget</h2>
-                <p class="text-body-secondary mb-3">
-                    Set how long you want the film. We trim the screenplay to fit — condensing and, if needed,
-                    dropping the least essential scenes. Your full-length version is kept, so you can re-fit to a
-                    different length any time without starting over.
-                </p>
-
-                @if (!string.IsNullOrEmpty(ActiveProject.ParentProjectId))
-                {
-                    <InlineAlert Variant="info" CssClass="small" data-testid="trim-fork-note">
-                        This project was forked with a finished screenplay — just fit it to your own length and
-                        budget here. No need to re-import or rewrite.
-                    </InlineAlert>
-                }
-
-                @if (Status?.Screenplay.DraftExists != true)
-                {
-                    <InlineAlert Variant="light" CssClass="border small mb-0">
-                        Import a book first — the screenplay is written automatically, then you fit it to length.
-                        <a class="ms-1" href="adaptation/import">Go to Book →</a>
-                    </InlineAlert>
-                }
-                else
-                {
-                    <FilmLengthCard ProjectId="@ProjectId"
-                                    Disabled="@(Busy || Jobs.JobRunning)"
-                                    OnChanged="OnLengthChangedAsync" />
-
-                    @if (_estimateUsd is double est)
-                    {
-                        <div class="border rounded p-2 my-2 small text-body-secondary"
-                             data-testid="trim-cost-preview">
-                            Rough estimate at this length:
-                            <strong class="text-body">@($"${est:0.00}")</strong>
-                            — firms up after cast &amp; voice.
-                        </div>
-                    }
-
-                    <div class="d-flex flex-wrap gap-2 align-items-center mt-2">
-                        <button type="button"
-                                class="btn btn-primary btn-sm"
-                                data-testid="trim-run"
-                                disabled="@(Busy || Jobs.JobRunning)"
-                                @onclick="TrimAsync">
-                            Fit screenplay to this length
-                        </button>
-                        <a class="btn btn-outline-primary btn-sm" href="adaptation/screenplay" data-testid="trim-review">
-                            Continue to Screenplay →
-                        </a>
-                    </div>
-                }
-            </div>
-        </div>
-    }
-</AdaptationShell>
+@* Fit length now lives on the screenplay card. *@
+@code {
+    protected override void OnInitialized()
+        => Nav.NavigateTo("adaptation/screenplay?tool=fit", forceLoad: false, replace: true);
+}

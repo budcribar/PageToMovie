@@ -98,7 +98,7 @@
     "Step1": "Schritt 1: Drehbuch importieren",
     "Step2": "Schritt 2: Bearbeiten & Genehmigen",
     "Step3": "Schritt 3: Aufnahmeplan",
-    "ApproveScreenplay": "Sieht gut aus — weiter",
+    "ApproveScreenplay": "Genehmigen",
     "RebuildShotPlan": "Aufnahmeplan neu erstellen",
     "ImportFile": "Quelldatei importieren (PDF / TXT)",
     "ScreenplayApproved": "Drehbuch genehmigt",
@@ -112,7 +112,7 @@
     "SourceText": "Quelltext",
     "ScreenplayDraft": "Drehbuchentwurf",
     "BookAndScreenplay": "Buch & Drehbuch",
-    "BookLede": "Importieren → Stil → anreichern → Länge anpassen → Drehbuch bearbeiten. Dann Besetzung und Film.",
+    "BookLede": "Quelle importieren, dann Drehbuch formen und genehmigen. Danach Besetzung und Film.",
     "ShotPlanLede": "Planen Sie Aufnahmen für jede Szene, generieren Sie dann Clips.",
     "Import": "Importieren",
     "Look": "Stil",
@@ -337,8 +337,8 @@
     "Draft": "Entwurf",
     "NoDraft": "Kein Entwurf",
     "ToCharacters": "Charaktere →",
-    "ReapproveAndContinue": "Erneut genehmigen & weiter",
-    "LooksGoodContinue": "Sieht gut aus — weiter",
+    "ReapproveAndContinue": "Erneut genehmigen",
+    "LooksGoodContinue": "Genehmigen",
     "Preview": "Vorschau"
   },
   "DemoPage": {

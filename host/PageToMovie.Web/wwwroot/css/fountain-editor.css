@@ -825,3 +825,82 @@
 .fe-structured-editor .dropdown-header {
   color: var(--fs-text-subtle);
 }
+
+/* Screenplay card tools: Look / Enrich / Fit length */
+.fe-sp-tools {
+  border: 1px solid var(--fs-border-color);
+  border-radius: 0.5rem;
+  background: var(--fs-bg-card);
+  overflow: hidden;
+}
+
+.fe-sp-tools__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.65rem;
+  border-bottom: 1px solid var(--fs-border-color);
+  background: color-mix(in oklab, var(--fs-bg-card) 88%, var(--fs-bg-page, #0f1218));
+}
+
+.fe-sp-tools__tab {
+  appearance: none;
+  border: 1px solid var(--fs-border-color);
+  background: transparent;
+  color: var(--fs-text-secondary, var(--fs-text-muted));
+  font-size: 0.82rem;
+  font-weight: 500;
+  padding: 0.28rem 0.7rem;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.fe-sp-tools__tab:hover:not(:disabled) {
+  border-color: var(--fs-border-hover);
+  color: var(--fs-text-primary);
+}
+
+.fe-sp-tools__tab.is-active {
+  border-color: var(--fs-accent-indigo, #6b8cae);
+  background: color-mix(in oklab, var(--fs-accent-indigo, #6b8cae) 18%, transparent);
+  color: var(--fs-text-primary);
+  font-weight: 600;
+}
+
+.fe-sp-tools__tab:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.fe-sp-tools__done {
+  margin-left: 0.3rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--fs-accent-green, #22c55e);
+}
+
+.fe-sp-tools__link {
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.fe-sp-tools__link:hover {
+  text-decoration: underline;
+  color: var(--fs-text-primary) !important;
+}
+
+.fe-sp-tools__panel {
+  padding: 0.75rem 0.85rem 0.9rem;
+}
+
+/* Screenplay card header: Approve sits on the top bar */
+.fe-screenplay-card > .card-header {
+  background: color-mix(in oklab, var(--fs-bg-card) 92%, var(--fs-accent-indigo, #6b8cae));
+  border-bottom-color: var(--fs-border-color);
+}
+
+.fe-screenplay-card > .card-header .btn-success {
+  font-weight: 600;
+}

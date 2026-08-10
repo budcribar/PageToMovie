@@ -98,7 +98,7 @@
     "Step1": "Étape 1 : Importer le scénario",
     "Step2": "Étape 2 : Éditer et approuver",
     "Step3": "Étape 3 : Plan de prise",
-    "ApproveScreenplay": "C'est bon — continuer",
+    "ApproveScreenplay": "Approuver",
     "RebuildShotPlan": "Reconstruire le plan de prise",
     "ImportFile": "Importer le fichier source (PDF / TXT)",
     "ScreenplayApproved": "Scénario approuvé",
@@ -112,7 +112,7 @@
     "SourceText": "Texte source",
     "ScreenplayDraft": "Brouillon de scénario",
     "BookAndScreenplay": "Livre & scénario",
-    "BookLede": "Importer → style → enrichir → ajuster durée → éditer le scénario. Puis distribution et film.",
+    "BookLede": "Importez une source, puis façonnez et approuvez le scénario. Ensuite distribution et film.",
     "ShotPlanLede": "Planifiez les prises pour chaque scène, puis gérez les clips.",
     "Import": "Importer",
     "Look": "Style",
@@ -337,8 +337,8 @@
     "Draft": "Brouillon",
     "NoDraft": "Aucun brouillon",
     "ToCharacters": "Personnages →",
-    "ReapproveAndContinue": "Réapprouver & continuer",
-    "LooksGoodContinue": "C'est bon — continuer",
+    "ReapproveAndContinue": "Réapprouver",
+    "LooksGoodContinue": "Approuver",
     "Preview": "Aperçu"
   },
   "DemoPage": {
