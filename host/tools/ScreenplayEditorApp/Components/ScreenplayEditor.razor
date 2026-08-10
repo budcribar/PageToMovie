@@ -44,6 +44,11 @@
                             <i class="bi bi-box-arrow-up-right text-primary me-2"></i> Export Fountain...
                         </button>
                     </li>
+                    <li>
+                        <button class="dropdown-item" type="button" @onclick="OpenExportPdfModal">
+                            <i class="bi bi-file-earmark-pdf text-danger me-2"></i> Export PDF...
+                        </button>
+                    </li>
                     <li><hr class="dropdown-divider"></li>
                     <li><h6 class="dropdown-header">View Controls</h6></li>
                     <li>
@@ -134,6 +139,7 @@
     <ScreenplayEditor_FountainModal @bind-IsOpen="ShowFountainModal"
                                      Mode="@FountainModalMode"
                                      FountainText="@FountainModalText"
+                                     PdfBytes="@FountainModalPdfBytes"
                                      OnImportCallback="HandleFountainImport" />
 
     <ScreenplayEditor_LocationModal @bind-IsOpen="ShowLocationModal"

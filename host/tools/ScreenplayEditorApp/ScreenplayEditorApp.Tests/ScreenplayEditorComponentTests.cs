@@ -56,6 +56,13 @@ public class ScreenplayEditorComponentTests
         editor.OpenExportModal();
         Assert.Equal("export", editor.FountainModalMode);
 
+        // Open Export PDF Modal
+        editor.OpenExportPdfModal();
+        Assert.Equal("export-pdf", editor.FountainModalMode);
+        Assert.True(editor.ShowFountainModal);
+        Assert.NotNull(editor.FountainModalPdfBytes);
+        Assert.Equal("%PDF-", System.Text.Encoding.ASCII.GetString(editor.FountainModalPdfBytes!, 0, 5));
+
         // Handle Fountain Import (empty & valid)
         await editor.HandleFountainImport("");
         string sampleFountain = "Title: New Title\n\nINT. HALLWAY - NIGHT\n\nHero enters.";

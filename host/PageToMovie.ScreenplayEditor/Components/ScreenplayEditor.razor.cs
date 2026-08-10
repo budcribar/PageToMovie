@@ -27,6 +27,7 @@ public partial class ScreenplayEditor : ComponentBase
     public bool ShowFountainModal { get; set; }
     public string FountainModalMode { get; set; } = "import";
     public string FountainModalText { get; set; } = "";
+    public byte[]? FountainModalPdfBytes { get; set; }
 
     public bool ShowLocationModal { get; set; } = false;
     public bool ShowCharacterModal { get; set; } = false;
@@ -270,6 +271,14 @@ public partial class ScreenplayEditor : ComponentBase
         CloseMenu();
         FountainModalMode = "export";
         FountainModalText = FountainFormatter.ToFountain(Model);
+        ShowFountainModal = true;
+    }
+
+    public void OpenExportPdfModal()
+    {
+        CloseMenu();
+        FountainModalMode = "export-pdf";
+        FountainModalPdfBytes = PdfFormatter.ToPdfBytes(Model);
         ShowFountainModal = true;
     }
 

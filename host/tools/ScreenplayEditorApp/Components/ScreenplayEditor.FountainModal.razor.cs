@@ -19,6 +19,9 @@ public partial class ScreenplayEditor_FountainModal
     public string FountainText { get; set; } = "";
 
     [Parameter]
+    public byte[]? PdfBytes { get; set; }
+
+    [Parameter]
     public EventCallback<bool> IsOpenChanged { get; set; }
 
     [Parameter]
@@ -86,15 +89,28 @@ public partial class ScreenplayEditor_FountainModal
     {
         try
         {
-            string fileName = "screenplay.fountain";
-            byte[] bytes = System.Text.Encoding.UTF8.GetBytes(FountainText);
+            string fileName;
+            byte[] bytes;
+            string mime;
+            if (Mode == "export-pdf" && PdfBytes != null)
+            {
+                fileName = "screenplay.pdf";
+                bytes = PdfBytes;
+                mime = "application/pdf";
+            }
+            else
+            {
+                fileName = "screenplay.fountain";
+                bytes = System.Text.Encoding.UTF8.GetBytes(FountainText);
+                mime = "text/plain;charset=utf-8";
+            }
             string base64 = Convert.ToBase64String(bytes);
 
             string jsCode = $@"
                 (function() {{
                     var link = document.createElement('a');
                     link.download = '{fileName}';
-                    link.href = 'data:text/plain;charset=utf-8;base64,' + '{base64}';
+                    link.href = 'data:{mime};base64,' + '{base64}';
                     document.body.appendChild(link);
                     link.click();
                     document.body.removeChild(link);
