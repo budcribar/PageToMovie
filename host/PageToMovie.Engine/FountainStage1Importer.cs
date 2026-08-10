@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using PageToMovie.Core.Utils;
 using PageToMovie.Fountain;
 
 namespace PageToMovie.Engine;
@@ -114,6 +115,29 @@ public static class FountainStage1Importer
         var dialogueBuf = new StringBuilder();
         var beatIndex = 0;
         var sceneNum = 0;
+        // Disambiguate identical content within a scene for stable ids (0-based).
+        var contentOccurrence = new Dictionary<string, int>(StringComparer.Ordinal);
+
+        string SceneKey()
+        {
+            if (curScene is not null && curScene.TryGetValue("setting", out var st) && st is string s && s.Length > 0)
+                return s;
+            if (curScene is not null && curScene.TryGetValue("scene_number", out var sn))
+                return $"scene:{sn}";
+            return sceneNum > 0 ? $"scene:{sceneNum}" : "scene:0";
+        }
+
+        string NextStableBeatId(string kind, string? speaker, string? body)
+        {
+            var key = string.Join(
+                '\u001f',
+                StableBeatId.Normalize(kind),
+                StableBeatId.Normalize(speaker),
+                StableBeatId.Normalize(body));
+            contentOccurrence.TryGetValue(key, out var n);
+            contentOccurrence[key] = n + 1;
+            return StableBeatId.ForContent(SceneKey(), kind, speaker, body, n);
+        }
 
         void FlushAction()
         {
@@ -129,9 +153,10 @@ public static class FountainStage1Importer
             var isFirstInScene = beats.Count == 0;
             var actionClass = InferActionClass(text, isFirstInScene);
             lastPictureVisual = text;
+            var kind = string.IsNullOrWhiteSpace(actionClass) ? "action" : actionClass;
             beats.Add(new Dictionary<string, object?>
             {
-                ["beat_id"] = $"b{beatIndex}",
+                ["beat_id"] = NextStableBeatId(kind, "", text),
                 ["intent"] = Trunc(text, 120),
                 ["visual_event"] = text,
                 ["shot_scale_hint"] = actionClass is "establishing" ? "wide" : "medium",
@@ -194,14 +219,19 @@ public static class FountainStage1Importer
                 ? FirstCharacterKey(pictureCast)
                 : charKey;
 
+            // One content root for the full line; multi-part monologues share root via #pNofM.
+            var kind = offScreen ? "voiceover" : "dialogue";
+            var monologueRoot = NextStableBeatId(kind, charKey, text);
+
             for (var p = 0; p < parts.Count; p++)
             {
                 var part = parts[p];
                 beatIndex++;
                 var isFirst = beatIndex == 1;
+                var beatId = StableBeatId.ForPart(monologueRoot, p, parts.Count);
                 beats.Add(new Dictionary<string, object?>
                 {
-                    ["beat_id"] = $"b{beatIndex}",
+                    ["beat_id"] = beatId,
                     ["intent"] = Trunc(
                         parts.Count > 1
                             ? (offScreen
@@ -264,13 +294,14 @@ public static class FountainStage1Importer
                     curScene = null;
                     beats = null;
                     beatIndex = 0;
+                    contentOccurrence.Clear();
                     return;
                 }
 
                 beatIndex++;
                 beats.Add(new Dictionary<string, object?>
                 {
-                    ["beat_id"] = $"b{beatIndex}",
+                    ["beat_id"] = NextStableBeatId("establishing", "", setting),
                     ["intent"] = "Establish scene",
                     ["visual_event"] = string.IsNullOrWhiteSpace(setting) ? "Scene" : setting,
                     ["shot_scale_hint"] = "wide",
@@ -302,6 +333,7 @@ public static class FountainStage1Importer
                 });
             curScene["duration_target_seconds"] = (int)Math.Clamp(Math.Round(dur), 8, 180);
             curScene["story_beats"] = beats;
+            EnrichLocationSeedFromScene(locSeeds, curScene, beats);
             curScene["summary"] = Trunc(
                 string.Join(" ", beats.OfType<Dictionary<string, object?>>()
                     .Select(b => b.TryGetValue("visual_event", out var v) ? v?.ToString() : null)
@@ -311,6 +343,7 @@ public static class FountainStage1Importer
             curScene = null;
             beats = null;
             beatIndex = 0;
+            contentOccurrence.Clear();
         }
 
         void OpenScene(string heading)
@@ -645,13 +678,15 @@ public static class FountainStage1Importer
         var id = "Loc_" + SlugKey(locName);
         if (!seeds.ContainsKey(id))
         {
-            // Place identity only — do NOT freeze first-visit DAY/NIGHT into visual_lock.
-            // Stage 2 prefixes the current scene heading (correct time of day) at plan time.
+            // Place identity — prefer heading without time-of-day for description baseline.
+            var placeLine = string.IsNullOrWhiteSpace(locType)
+                ? locName
+                : $"{locType.TrimEnd('.')} {locName}".Trim();
             seeds[id] = new Dictionary<string, object?>
             {
                 ["display_name"] = locName,
-                ["description"] = locName,
-                ["visual_lock"] = locName,
+                ["description"] = placeLine,
+                ["visual_lock"] = placeLine,
                 ["location_type"] = locType,
                 ["reference_image_placeholder"] = id.ToLowerInvariant() + "_ref.png",
             };
@@ -659,6 +694,59 @@ public static class FountainStage1Importer
         // setting retained only for callers that still pass it; seed stays time-agnostic
         _ = setting;
         return id;
+    }
+
+    /// <summary>
+    /// Fold scene action prose into the location seed so ListLocations has usable description
+    /// without a separate AI location classifier.
+    /// </summary>
+    private static void EnrichLocationSeedFromScene(
+        Dictionary<string, object?> locSeeds,
+        Dictionary<string, object?> scene,
+        List<object?> beats)
+    {
+        var locId = scene.TryGetValue("primary_location_id", out var pl) ? pl?.ToString() : null;
+        if (string.IsNullOrWhiteSpace(locId) ||
+            !locSeeds.TryGetValue(locId, out var raw) ||
+            raw is not Dictionary<string, object?> seed)
+            return;
+
+        var snippets = new List<string>();
+        foreach (var b in beats.OfType<Dictionary<string, object?>>())
+        {
+            var dlg = b.TryGetValue("dialogue", out var d) ? d?.ToString() : null;
+            if (!string.IsNullOrWhiteSpace(dlg)) continue;
+            var ve = b.TryGetValue("visual_event", out var v) ? v?.ToString()?.Trim() : null;
+            if (string.IsNullOrWhiteSpace(ve)) continue;
+            if (ve.Length > 180) ve = ve[..177] + "…";
+            if (!snippets.Exists(s => s.Equals(ve, StringComparison.OrdinalIgnoreCase)))
+                snippets.Add(ve);
+            if (snippets.Count >= 4) break;
+        }
+        if (snippets.Count == 0) return;
+
+        var display = seed.TryGetValue("display_name", out var dn) ? dn?.ToString() ?? locId : locId;
+        var existing = seed.TryGetValue("description", out var ed) ? ed?.ToString()?.Trim() ?? "" : "";
+        // Replace name-only stubs; otherwise append new unique prose.
+        var baseDesc = string.IsNullOrWhiteSpace(existing)
+                       || existing.Equals(display, StringComparison.OrdinalIgnoreCase)
+                       || existing.Equals(locId, StringComparison.OrdinalIgnoreCase)
+            ? string.Join(" ", snippets)
+            : existing;
+        foreach (var s in snippets)
+        {
+            if (!baseDesc.Contains(s, StringComparison.OrdinalIgnoreCase))
+                baseDesc = $"{baseDesc} {s}".Trim();
+        }
+        if (baseDesc.Length > 600) baseDesc = baseDesc[..597] + "…";
+        seed["description"] = baseDesc;
+        if (seed.TryGetValue("visual_lock", out var vl) &&
+            (string.IsNullOrWhiteSpace(vl?.ToString())
+             || string.Equals(vl?.ToString(), display, StringComparison.OrdinalIgnoreCase)
+             || string.Equals(vl?.ToString(), locId, StringComparison.OrdinalIgnoreCase)))
+        {
+            seed["visual_lock"] = snippets[0];
+        }
     }
 
     private static string EnsureCharacter(

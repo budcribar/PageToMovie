@@ -31,9 +31,10 @@ builder.Services.AddSingleton<PageToMovie.Engine.Collaboration.IProjectInviteMai
 // took effect for the workspace the rest of the app was reading from.
 builder.Services.AddSingleton<ProjectAclService>(sp =>
 {
-    var root = Path.Combine(sp.GetRequiredService<ProjectStore>().WorkspaceRoot, "projects");
+    var store = sp.GetRequiredService<ProjectStore>();
+    var root = Path.Combine(store.WorkspaceRoot, "projects");
     var email = sp.GetService<PageToMovie.Engine.Collaboration.IProjectInviteMailer>();
-    return new ProjectAclService(root, null, email);
+    return new ProjectAclService(root, null, email, store);
 });
 
 var processStartedUtc = DateTimeOffset.UtcNow;
@@ -2569,6 +2570,7 @@ app.MapDelete("/api/projects/{id}", async (
     string id,
     ProjectStore store,
     IUserContext user,
+    UserDatabaseService userDb,
     IOptions<PageToMovieOptions> opts,
     CancellationToken ct) =>
 {
@@ -2577,10 +2579,34 @@ app.MapDelete("/api/projects/{id}", async (
     try
     {
         await store.DeleteProjectAsync(id, ct);
-        var list = await store.ListProjectsAsync(ct);
-        var activeId = store.ActiveProjectId;
+
+        // Same non-public-inventory + per-user active-project rules as GET /api/projects —
+        // this response used to leak every user's projects and whichever project any other
+        // user last activated process-wide.
+        var all = await store.ListProjectsAsync(ct);
+        IReadOnlyList<ProjectInfo> list;
+        if (user.IsAdmin)
+        {
+            list = all;
+        }
+        else
+        {
+            UserEntity? me = null;
+            try
+            {
+                me = await userDb.GetUserByIdAsync(user.UserId, ct).ConfigureAwait(false)
+                     ?? await userDb.GetUserByUsernameAsync(user.UserId, ct).ConfigureAwait(false);
+            }
+            catch { /* offline */ }
+            var aliases = ProjectOwnership.CollectAliases(
+                user.UserId, canonicalUserId: me?.UserId, username: me?.Username, email: me?.Email);
+            list = all.Where(p => ProjectOwnership.IsOwnedBy(p, aliases)).ToList();
+        }
+
+        var userActiveId = await userDb.GetUserActiveProjectAsync(user.UserId, ct);
+        var activeId = !string.IsNullOrWhiteSpace(userActiveId) ? userActiveId : store.ActiveProjectId;
         var active = list.FirstOrDefault(p =>
-            string.Equals(p.Id, activeId, StringComparison.OrdinalIgnoreCase));
+            string.Equals(p.Id, activeId, StringComparison.OrdinalIgnoreCase)) ?? (list.Count > 0 ? list[0] : null);
         return Results.Ok(new
         {
             ok = true,
@@ -2934,9 +2960,13 @@ app.MapPost("/api/jobs/cancel", async (
     });
 });
 
-app.MapGet("/api/stage2-status", async (ProjectStore store, CancellationToken ct) =>
+app.MapGet("/api/stage2-status", async (
+    ProjectStore store, IUserContext user, UserDatabaseService userDb, IOptions<PageToMovieOptions> opts, CancellationToken ct) =>
 {
-    var id = store.ActiveProjectId;
+    if (AuthGate.RequireLogin(user, opts) is { } denied)
+        return denied;
+    var userActiveId = await userDb.GetUserActiveProjectAsync(user.UserId, ct);
+    var id = !string.IsNullOrWhiteSpace(userActiveId) ? userActiveId : store.ActiveProjectId;
     if (string.IsNullOrEmpty(id))
         return Results.Ok(new { ok = true, stage2_ready = false });
     var bp = await store.FindBlueprintPathAsync(id, ct);
@@ -3132,6 +3162,24 @@ app.MapGet("/api/projects/{id}/characters", (string id, ProjectStore store) =>
             characters = chars,
             characterPlates = plates,
             imageSeedLimits = seedLimits,
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { ok = false, error = ex.Message });
+    }
+});
+
+app.MapGet("/api/projects/{id}/locations", (string id, ProjectStore store) =>
+{
+    try
+    {
+        var locs = store.ListLocations(id);
+        return Results.Ok(new
+        {
+            ok = true,
+            projectId = id,
+            locations = locs,
         });
     }
     catch (Exception ex)
@@ -4937,8 +4985,10 @@ app.MapPost("/api/projects/{id}/characters/extract-cast", async (
 {
     try
     {
+        // Cast + optional book + location seeds + dual visual literalize often exceeds 1 min.
+        // Client HttpClient allows up to 5–120 min; keep a hard ceiling so hung chat cannot pin the request forever.
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeoutCts.CancelAfter(TimeSpan.FromSeconds(50));
+        timeoutCts.CancelAfter(TimeSpan.FromMinutes(4));
 
         body ??= new ExtractCastRequest();
         var cfg = await store.GetConfigAsync(id, timeoutCts.Token).ConfigureAwait(false);
@@ -4973,7 +5023,7 @@ app.MapPost("/api/projects/{id}/characters/extract-cast", async (
     }
     catch (OperationCanceledException) when (!ct.IsCancellationRequested)
     {
-        return Results.BadRequest(new { ok = false, error = "Cast extraction timed out (exceeded 50s). Please try again." });
+        return Results.BadRequest(new { ok = false, error = "Cast extraction timed out (exceeded 4 minutes). Please try again." });
     }
     catch (Exception ex)
     {

@@ -23,11 +23,13 @@ public partial class ScreenplayEditor_SceneCard : ComponentBase
     [Parameter]
     public EventCallback OnChangedCallback { get; set; }
 
+    /// <summary>Opens the locations modal, preferably focused on this scene's place name.</summary>
     [Parameter]
-    public EventCallback OnEditLocationsClick { get; set; }
+    public EventCallback<string?> OnEditLocationsClick { get; set; }
 
+    /// <summary>Opens the characters modal, optionally focused on a speaker name.</summary>
     [Parameter]
-    public EventCallback OnEditCharactersClick { get; set; }
+    public EventCallback<string?> OnEditCharactersClick { get; set; }
 
     [Parameter]
     public EventCallback OnMoveUpCallback { get; set; }
@@ -50,6 +52,12 @@ public partial class ScreenplayEditor_SceneCard : ComponentBase
         {
             await OnChangedCallback.InvokeAsync();
         }
+    }
+
+    public async Task EditLocationsAsync()
+    {
+        if (OnEditLocationsClick.HasDelegate)
+            await OnEditLocationsClick.InvokeAsync(Scene.Location);
     }
 
     public async Task MoveUp()
@@ -92,7 +100,11 @@ public partial class ScreenplayEditor_SceneCard : ComponentBase
         var newBeat = new ScreenplayBeat { BeatType = type };
         if (type == BeatType.Action)
         {
-            newBeat.ActionText = "Describe visual scene action...";
+            newBeat.ActionText = "Describe what we see…";
+        }
+        else if (type == BeatType.Sound)
+        {
+            newBeat.ActionText = "Describe what we hear…";
         }
         else if (type == BeatType.Dialogue)
         {

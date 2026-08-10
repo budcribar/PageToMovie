@@ -1,112 +1,236 @@
 <div class="card bg-dark-subtle border-secondary-subtle h-100 shadow-sm">
-    <div class="card-header bg-dark text-light d-flex justify-content-between align-items-center py-2 px-3 border-bottom border-secondary-subtle">
-        <div class="d-flex align-items-center gap-2 overflow-hidden">
-            <input type="checkbox" class="form-check-input my-0" checked="@IsAllSelected" @onchange="ToggleSelectAll" title="Select / Deselect All Scenes" />
+    <div class="card-header bg-dark text-light d-flex justify-content-between align-items-center py-1 px-2 border-bottom border-secondary-subtle">
+        <div class="d-flex align-items-center gap-1 overflow-hidden">
             @if (!IsCompact)
             {
-                <h6 class="mb-0 fw-bold text-light text-nowrap">Outline Navigator</h6>
+                <div class="btn-group btn-group-sm" role="group" aria-label="Outline mode">
+                    <button type="button"
+                            class="btn py-0 px-2 @(OutlineTab == "scenes" ? "btn-primary" : "btn-outline-secondary")"
+                            @onclick='() => SetTab("scenes")'>Scenes</button>
+                    <button type="button"
+                            class="btn py-0 px-2 @(OutlineTab == "cast" ? "btn-warning" : "btn-outline-secondary")"
+                            @onclick='() => SetTab("cast")'>Cast</button>
+                    <button type="button"
+                            class="btn py-0 px-2 @(OutlineTab == "locations" ? "btn-info text-dark" : "btn-outline-secondary")"
+                            @onclick='() => SetTab("locations")'>Locs</button>
+                </div>
+            }
+            else
+            {
+                <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1"
+                        title="Cycle Scenes / Cast / Locations"
+                        @onclick="ToggleOutlineTab">
+                    @(OutlineTab == "scenes" ? "S" : OutlineTab == "cast" ? "C" : "L")
+                </button>
             }
         </div>
         <div class="d-flex align-items-center gap-1">
-            @if (!IsCompact)
+            @if (!IsCompact && OutlineTab == "scenes")
             {
-                <ScreenplayEditor_ActionButton Variant="@ComponentVariant.OutlineSuccess" Icon="bi-plus-lg" Text="Add" OnClick="OnAddScene" />
+                <button type="button"
+                        class="btn btn-sm btn-outline-success py-0 px-2 spe-outline-add"
+                        title="Add scene at the end"
+                        @onclick="OnAddScene">
+                    <i class="bi bi-plus-lg" aria-hidden="true"></i>
+                </button>
             }
-            <button class="btn btn-sm btn-outline-secondary py-0 px-2" type="button" @onclick="ToggleCompact" title="@(IsCompact ? "Expand Sidebar" : "Shrink Sidebar to Numbers Only")">
+            <button class="btn btn-sm btn-outline-secondary py-0 px-2" type="button" @onclick="ToggleCompact" title="@(IsCompact ? "Expand Sidebar" : "Shrink Sidebar")">
                 @(IsCompact ? "⟫" : "⟪")
             </button>
         </div>
     </div>
-    
+
     <div class="card-body p-2 overflow-auto" style="max-height: calc(100vh - 180px);">
-        <div class="d-flex flex-column gap-2">
-            <!-- Metadata & Title Page Navigation Item -->
-            <button type="button"
-                    class="btn btn-sm text-start w-100 d-flex align-items-center gap-2 @(ActiveView == "metadata" ? "btn-primary fw-bold" : "btn-outline-secondary text-light")"
-                    @onclick="SelectMetadata"
-                    title="Story Metadata & Title Page">
-                <span class="fs-6">📋</span>
-                @if (!IsCompact)
+        @if (OutlineTab == "cast")
+        {
+            <div class="d-flex flex-column gap-1">
+                @if (Characters.Count == 0)
                 {
-                    <span class="text-truncate">Metadata & Title Page</span>
+                    <p class="text-secondary small px-1 mb-0">
+                        No cast yet — character classifier seeds load from Stage‑1.
+                    </p>
+                    <button type="button" class="btn btn-sm btn-outline-warning" @onclick="OpenCastEditor">
+                        Open Characters…
+                    </button>
                 }
-            </button>
-
-            <hr class="my-1 border-secondary-subtle" />
-
-            @if (Scenes.Count == 0)
-            {
-                @if (!IsCompact)
+                else
                 {
-                    <p class="text-secondary small px-1 mb-0">No scenes added.</p>
-                }
-            }
-            else
-            {
-                @for (var i = 0; i < Scenes.Count; i++)
-                {
-                    var index = i;
-                    var scene = Scenes[index];
-
-                    <div class="d-flex align-items-center gap-1 w-100 rounded border p-1 @(scene.IsSelected ? "bg-primary text-white border-primary" : "bg-dark text-light border-secondary-subtle")"
-                         draggable="true"
-                         @ondragstart="() => HandleDragStart(index)"
-                         @ondragover:preventDefault
-                         @ondrop="() => HandleDrop(index)"
-                         title="Drag & drop to reorder scene">
-                        
-                        <input type="checkbox" class="form-check-input my-0 ms-1 me-1" @bind="scene.IsSelected" @bind:after="OnSelectionChanged" title="Select scene for display" />
-
+                    <div class="small text-secondary px-1 mb-1">@Characters.Count · classifier cast</div>
+                    @foreach (var name in Characters)
+                    {
+                        var isFocus = !string.IsNullOrWhiteSpace(FocusedCharacter)
+                            && name.Equals(FocusedCharacter, StringComparison.OrdinalIgnoreCase);
                         <button type="button"
-                                class="btn btn-sm text-start flex-grow-1 p-0 border-0 bg-transparent text-reset text-truncate"
-                                @onclick="() => SelectScene(index)">
-                            <span class="badge @(scene.IsSelected ? "text-bg-dark" : "text-bg-warning") me-1 fw-bold">@scene.SceneNumber</span>
+                                class="btn btn-sm text-start w-100 d-flex align-items-center gap-2 py-1 @(isFocus ? "btn-warning text-dark fw-bold" : "btn-outline-secondary text-light")"
+                                title="Edit @name"
+                                @onclick="() => SelectCharacter(name)">
+                            <i class="bi bi-person-fill flex-shrink-0" aria-hidden="true"></i>
                             @if (!IsCompact)
                             {
-                                <span class="small font-monospace">@scene.HeaderText</span>
+                                <span class="text-truncate font-monospace small">@name</span>
+                            }
+                            else
+                            {
+                                <span class="badge text-bg-secondary">@Initials(name)</span>
                             }
                         </button>
-
-                        <div class="d-flex align-items-center gap-1 ms-auto">
-                            <button class="btn btn-sm btn-link text-info p-0 me-1" type="button" title="Play / Preview Scene" @onclick="() => PreviewScene(index)">
-                                <i class="bi bi-play-circle"></i>
-                            </button>
+                    }
+                }
+            </div>
+        }
+        else if (OutlineTab == "locations")
+        {
+            <div class="d-flex flex-column gap-1">
+                @if (Locations.Count == 0)
+                {
+                    <p class="text-secondary small px-1 mb-0">
+                        No locations yet — from scene headings and location seeds.
+                    </p>
+                    <button type="button" class="btn btn-sm btn-outline-info" @onclick="OpenLocationEditor">
+                        Open Locations…
+                    </button>
+                }
+                else
+                {
+                    <div class="small text-secondary px-1 mb-1">@Locations.Count · places</div>
+                    @foreach (var name in Locations)
+                    {
+                        var isFocus = !string.IsNullOrWhiteSpace(FocusedLocation)
+                            && name.Equals(FocusedLocation, StringComparison.OrdinalIgnoreCase);
+                        var sceneCount = Scenes.Count(s =>
+                            !string.IsNullOrWhiteSpace(s.Location)
+                            && s.Location.Equals(name, StringComparison.OrdinalIgnoreCase));
+                        <button type="button"
+                                class="btn btn-sm text-start w-100 d-flex align-items-center gap-2 py-1 @(isFocus ? "btn-info text-dark fw-bold" : "btn-outline-secondary text-light")"
+                                title="Edit @name"
+                                @onclick="() => SelectLocation(name)">
+                            <i class="bi bi-geo-alt-fill flex-shrink-0" aria-hidden="true"></i>
                             @if (!IsCompact)
                             {
-                                <button class="btn btn-sm btn-link text-danger p-0 me-1" type="button" title="Delete Scene with Confirm" @onclick="() => RequestDelete(index)">
-                                    <i class="bi bi-trash"></i>
-                                </button>
+                                <span class="text-truncate font-monospace small flex-grow-1">@name</span>
+                                @if (sceneCount > 0)
+                                {
+                                    <span class="badge text-bg-secondary">@sceneCount</span>
+                                }
                             }
-                        </div>
-                    </div>
+                            else
+                            {
+                                <span class="badge text-bg-secondary">@Initials(name)</span>
+                            }
+                        </button>
+                    }
                 }
-            }
-
-            <hr class="my-1 border-secondary-subtle" />
-
-            <!-- Final Credits & Closing Copyright Item -->
-            <button type="button"
-                    class="btn btn-sm text-start w-100 d-flex align-items-center gap-2 @(ActiveView == "credits" ? "btn-info fw-bold text-dark" : "btn-outline-secondary text-light")"
-                    @onclick="SelectCredits"
-                    title="Final Credits & Closing Copyright">
-                <span class="fs-6">🎬</span>
-                @if (!IsCompact)
-                {
-                    <span class="text-truncate">Final Credits & Copyright</span>
-                }
-            </button>
-
-            @if (IsCompact)
-            {
-                <button type="button" class="btn btn-sm btn-outline-success w-100 mt-2" @onclick="OnAddScene" title="Add Scene">
-                    <i class="bi bi-plus-lg"></i>
+            </div>
+        }
+        else
+        {
+            <div class="d-flex flex-column gap-1">
+                <button type="button"
+                        class="btn btn-sm text-start w-100 d-flex align-items-center gap-2 py-1 @(ActiveView == "metadata" ? "btn-primary fw-bold" : "btn-outline-secondary text-light")"
+                        @onclick="SelectMetadata"
+                        title="Story Metadata & Title Page">
+                    <span class="small">📋</span>
+                    @if (!IsCompact)
+                    {
+                        <span class="text-truncate small">Metadata</span>
+                    }
                 </button>
-            }
-        </div>
+
+                <hr class="my-1 border-secondary-subtle" />
+
+                @if (Scenes.Count == 0)
+                {
+                    @if (!IsCompact)
+                    {
+                        <p class="text-secondary small px-1 mb-0">No scenes. Use + to add one.</p>
+                    }
+                }
+                else
+                {
+                    @for (var i = 0; i < Scenes.Count; i++)
+                    {
+                        var index = i;
+                        var scene = Scenes[index];
+
+                        <div class="d-flex align-items-center gap-1 w-100 rounded border px-1 py-0 spe-outline-row @(scene.IsSelected ? "bg-primary text-white border-primary" : "bg-dark text-light border-secondary-subtle")"
+                             draggable="true"
+                             @ondragstart="() => HandleDragStart(index)"
+                             @ondragover:preventDefault
+                             @ondrop="() => HandleDrop(index)"
+                             title="@scene.HeaderText — drag to reorder">
+
+                            <input type="checkbox"
+                                   class="form-check-input my-0 flex-shrink-0 spe-outline-check"
+                                   @bind="scene.IsSelected"
+                                   @bind:after="OnSelectionChanged"
+                                   title="Select scene" />
+
+                            <button type="button"
+                                    class="btn btn-sm text-start flex-grow-1 min-w-0 p-0 border-0 bg-transparent text-reset text-truncate spe-outline-label"
+                                    @onclick="() => SelectScene(index)">
+                                <span class="badge @(scene.IsSelected ? "text-bg-dark" : "text-bg-warning") me-1 fw-bold">@scene.SceneNumber</span>
+                                @if (!IsCompact)
+                                {
+                                    <span class="small font-monospace">@scene.HeaderText</span>
+                                }
+                            </button>
+
+                            <div class="d-flex align-items-center flex-shrink-0 spe-outline-actions">
+                                <button type="button"
+                                        class="btn btn-sm spe-outline-icon text-success"
+                                        title="Play scene video (Film)"
+                                        @onclick="() => PlayVideo(index)"
+                                        @onclick:stopPropagation="true">
+                                    <i class="bi bi-play-fill" aria-hidden="true"></i>
+                                </button>
+                                <button type="button"
+                                        class="btn btn-sm spe-outline-icon text-info"
+                                        title="Script preview — read this scene’s text"
+                                        @onclick="() => PreviewScene(index)"
+                                        @onclick:stopPropagation="true">
+                                    <i class="bi bi-file-text" aria-hidden="true"></i>
+                                </button>
+                                <button type="button"
+                                        class="btn btn-sm spe-outline-icon text-success"
+                                        title="Insert scene after @scene.SceneNumber"
+                                        @onclick="() => InsertAfter(index)"
+                                        @onclick:stopPropagation="true">
+                                    <i class="bi bi-plus-lg" aria-hidden="true"></i>
+                                </button>
+                                <button type="button"
+                                        class="btn btn-sm spe-outline-icon text-danger"
+                                        title="Delete scene @scene.SceneNumber"
+                                        @onclick="() => RequestDelete(index)"
+                                        @onclick:stopPropagation="true">
+                                    <i class="bi bi-trash" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                        </div>
+                    }
+                }
+
+                <hr class="my-1 border-secondary-subtle" />
+
+                <button type="button"
+                        class="btn btn-sm text-start w-100 d-flex align-items-center gap-2 py-1 @(ActiveView == "credits" ? "btn-info fw-bold text-dark" : "btn-outline-secondary text-light")"
+                        @onclick="SelectCredits"
+                        title="Final Credits & Closing Copyright">
+                    <span class="small">🎬</span>
+                    @if (!IsCompact)
+                    {
+                        <span class="text-truncate small">Credits</span>
+                    }
+                </button>
+
+                @if (IsCompact)
+                {
+                    <button type="button" class="btn btn-sm btn-outline-success w-100 mt-2 py-0" @onclick="OnAddScene" title="Add Scene">+</button>
+                }
+            </div>
+        }
     </div>
 </div>
 
-<!-- Delete Confirmation Modal -->
 @if (DeletingIndex >= 0 && DeletingIndex < Scenes.Count)
 {
     var deletingScene = Scenes[DeletingIndex];
@@ -118,11 +242,11 @@
                     <button type="button" class="btn-close btn-close-white" @onclick="CancelDelete"></button>
                 </div>
                 <div class="modal-body py-3">
-                    <p class="mb-1">Are you sure you want to delete <strong>Scene @deletingScene.SceneNumber: @deletingScene.HeaderText</strong>?</p>
-                    <p class="text-secondary small mb-0">This will remove all @deletingScene.Beats.Count beats in this scene from your screenplay.</p>
+                    <p class="mb-1">Delete <strong>Scene @deletingScene.SceneNumber: @deletingScene.HeaderText</strong>?</p>
+                    <p class="text-secondary small mb-0">Removes all @deletingScene.Beats.Count beats in this scene.</p>
                 </div>
                 <div class="modal-footer py-2 border-secondary-subtle">
-                    <button type="button" class="btn btn-danger btn-sm px-3" @onclick="ConfirmDelete">Yes, Delete Scene</button>
+                    <button type="button" class="btn btn-danger btn-sm px-3" @onclick="ConfirmDelete">Yes, Delete</button>
                     <button type="button" class="btn btn-secondary btn-sm px-3" @onclick="CancelDelete">Cancel</button>
                 </div>
             </div>
@@ -130,7 +254,6 @@
     </div>
 }
 
-<!-- Play / Preview Scene Modal -->
 @if (PreviewingIndex >= 0 && PreviewingIndex < Scenes.Count)
 {
     var previewScene = Scenes[PreviewingIndex];
@@ -138,7 +261,7 @@
         <div class="modal-dialog modal-lg modal-dialog-scrollable">
             <div class="modal-content bg-dark text-light border-info shadow-lg">
                 <div class="modal-header bg-info text-dark py-2">
-                    <h5 class="modal-title fw-bold">▶ Preview: Scene @previewScene.SceneNumber - @previewScene.HeaderText</h5>
+                    <h5 class="modal-title fw-bold">Script preview · Scene @previewScene.SceneNumber</h5>
                     <button type="button" class="btn-close" @onclick="ClosePreview"></button>
                 </div>
                 <div class="modal-body p-4 font-monospace">
@@ -148,6 +271,10 @@
                         if (beat.BeatType == BeatType.Action)
                         {
                             <p class="mb-3 text-light">@beat.ActionText</p>
+                        }
+                        else if (beat.BeatType == BeatType.Sound)
+                        {
+                            <p class="mb-3 text-info fst-italic">(SOUND: @beat.ActionText)</p>
                         }
                         else if (beat.BeatType == BeatType.Dialogue)
                         {

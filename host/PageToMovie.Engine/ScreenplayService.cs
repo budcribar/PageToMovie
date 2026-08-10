@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using PageToMovie.Core.Models;
+using PageToMovie.Core.Options;
 using PageToMovie.Adaptation;
 using PageToMovie.Fountain;
 using PageToMovie.Adaptation.Contracts;
@@ -725,6 +726,17 @@ public static string NormalizeText(string text)
     }
 
     /// <summary>
+    /// Per-project override if set, else the admin-global default, else null (hardcoded default
+    /// on <see cref="AdaptationPromptTokens"/> applies downstream).
+    /// </summary>
+    private static int? ResolveSharedAdaptationInt(
+        Dictionary<string, JsonElement>? cfg, string projectKey, int? adminValue) =>
+        cfg is not null && cfg.TryGetValue(projectKey, out var el) &&
+        el.ValueKind != JsonValueKind.Null && el.TryGetInt32(out var v)
+            ? v
+            : adminValue;
+
+    /// <summary>
     /// Build screenplay draft from book_full.txt via chat (locations, dialogue, page tags).
     /// Requires a configured chat client.
     /// </summary>
@@ -740,7 +752,8 @@ public static string NormalizeText(string text)
         BookTextRegistryService? bookRegistry = null,
         string? cacheUserId = null,
         int? totalRuntimeMinutes = null,
-        PageToMovie.Core.Abstractions.IBookFileSessionFactory? bookFileSessionFactory = null)
+        PageToMovie.Core.Abstractions.IBookFileSessionFactory? bookFileSessionFactory = null,
+        AdaptationDefaultsOptions? adaptationDefaults = null)
     {
         var projectDir = store.GetProjectDir(projectId);
         var bookPath = Path.Combine(projectDir, "source", "book_full.txt");
@@ -751,8 +764,9 @@ public static string NormalizeText(string text)
         if (string.IsNullOrWhiteSpace(book))
             return new SaveResult { Ok = false, Error = "Book text is empty" };
 
+        Dictionary<string, JsonElement>? cfg = null;
         {
-            var cfg = await store.GetConfigAsync(projectId, ct).ConfigureAwait(false);
+            cfg = await store.GetConfigAsync(projectId, ct).ConfigureAwait(false);
             model = string.IsNullOrWhiteSpace(model)
                 ? ProjectModelSelection.RequirePlanning(cfg, "Screenplay draft from book")
                 : ProjectModelSelection.RequireExplicit(model, ModelCapability.Chat, "Screenplay draft from book");
@@ -880,6 +894,14 @@ public static string NormalizeText(string text)
                     ModelId = model,
                     Temperature = generationTemperature,
                     VisualMedium = preferredMedium,
+                    MaxSpeakingCast = ResolveSharedAdaptationInt(cfg, "adaptation_max_speaking_cast", adaptationDefaults?.MaxSpeakingCast),
+                    MaxDialogueWords = ResolveSharedAdaptationInt(cfg, "adaptation_max_dialogue_words", adaptationDefaults?.MaxDialogueWords),
+                    VoMaxSentences = ResolveSharedAdaptationInt(cfg, "adaptation_vo_max_sentences", adaptationDefaults?.VoMaxSentences),
+                    SceneCountMin = ResolveSharedAdaptationInt(cfg, "adaptation_scene_count_min", adaptationDefaults?.SceneCountMin),
+                    SceneCountMax = ResolveSharedAdaptationInt(cfg, "adaptation_scene_count_max", adaptationDefaults?.SceneCountMax),
+                    MinAudioCuesPerScene = adaptationDefaults?.MinAudioCuesPerScene,
+                    MinAudioCuesAtPeak = adaptationDefaults?.MinAudioCuesAtPeak,
+                    BodyWordsPerMinute = adaptationDefaults?.BodyWordsPerMinute,
                 },
                 chat,
                 progressAdapter,
@@ -1084,6 +1106,10 @@ public static string NormalizeText(string text)
         meta.LastSavedAt = meta.SignedAt;
         WriteMeta(store, projectId, meta);
         store.TriggerAutoGitCommit(projectId, "Approve screenplay");
+
+        // Keep location_seed_tokens on cast_seeds in sync so GET /locations works without Stage 2.
+        try { store.MergeLocationSeedsIntoCastFile(projectId); }
+        catch { /* optional */ }
 
         var stage1 = ReadStage1Lite(store, projectId);
         var status = ReadStatus(store, projectId, stage1);

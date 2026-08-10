@@ -104,6 +104,54 @@
 
                 <div class="col-sm-6 col-lg-4 mb-4 ptm-masonry-item">
                     <div class="card">
+                        <div class="card-header">Adaptation defaults</div>
+                        <div class="card-body">
+                            <div class="form-text mb-2">
+                                Admin-global fallback for Stage 1 adaptation tunables. Blank = use the
+                                built-in default. The first five can be overridden further per-project on
+                                Configuration's Advanced Adaptation Settings; the last three are admin-only.
+                            </div>
+                            <div class="row g-2">
+                                <div class="col-6">
+                                    <label class="form-label">Max speaking cast</label>
+                                    <InputNumber class="form-control" @bind-Value="_maxSpeakingCast" />
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label">Max dialogue words</label>
+                                    <InputNumber class="form-control" @bind-Value="_maxDialogueWords" />
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label">VO max sentences</label>
+                                    <InputNumber class="form-control" @bind-Value="_voMaxSentences" />
+                                </div>
+                                <div class="col-6"></div>
+                                <div class="col-6">
+                                    <label class="form-label">Scene count min</label>
+                                    <InputNumber class="form-control" @bind-Value="_sceneCountMin" />
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label">Scene count max</label>
+                                    <InputNumber class="form-control" @bind-Value="_sceneCountMax" />
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label">Min audio cues / scene</label>
+                                    <InputNumber class="form-control" @bind-Value="_minAudioCuesPerScene" />
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label">Min audio cues at peak</label>
+                                    <InputNumber class="form-control" @bind-Value="_minAudioCuesAtPeak" />
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label">Body words / minute</label>
+                                    <InputNumber class="form-control" @bind-Value="_bodyWordsPerMinute" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-sm-6 col-lg-4 mb-4 ptm-masonry-item">
+                    <div class="card">
                         <div class="card-header">Status</div>
                         <div class="card-body small text-muted">
                             <div class="mb-2">

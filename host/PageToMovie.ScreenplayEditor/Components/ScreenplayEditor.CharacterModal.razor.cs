@@ -1,10 +1,13 @@
 using Microsoft.AspNetCore.Components;
+using Microsoft.JSInterop;
 using PageToMovie.ScreenplayEditor.Models;
 
 namespace PageToMovie.ScreenplayEditor.Components;
 
 public partial class ScreenplayEditor_CharacterModal : ComponentBase
 {
+    [Inject] private IJSRuntime Js { get; set; } = null!;
+
     [Parameter]
     public bool IsOpen { get; set; }
 
@@ -17,9 +20,64 @@ public partial class ScreenplayEditor_CharacterModal : ComponentBase
     [Parameter]
     public EventCallback OnChangedCallback { get; set; }
 
+    /// <summary>Speaker from the dialogue line that opened this modal.</summary>
+    [Parameter]
+    public string? FocusName { get; set; }
+
     public string NewCharacterName { get; set; } = "";
 
-    public List<string> DiscoveredCharacterNames => Model.GetAllCharacters();
+    private bool _scrollPending;
+
+    public List<string> OrderedCharacterNames
+    {
+        get
+        {
+            // Classifier cast only — never invent a profile from the dialogue cue.
+            var all = Model.GetAllCharacters().ToList();
+            if (string.IsNullOrWhiteSpace(FocusName)) return all;
+            var focus = FocusName.Trim();
+            return all
+                .OrderByDescending(n => n.Equals(focus, StringComparison.OrdinalIgnoreCase))
+                .ThenBy(n => n, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+    }
+
+    /// <summary>True when the focused dialogue speaker is not in the classifier cast.</summary>
+    public bool FocusMissingFromCast =>
+        !string.IsNullOrWhiteSpace(FocusName)
+        && !Model.GetAllCharacters().Any(n => n.Equals(FocusName.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    protected override void OnParametersSet()
+    {
+        if (IsOpen && !string.IsNullOrWhiteSpace(FocusName))
+            _scrollPending = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_scrollPending || !IsOpen || string.IsNullOrWhiteSpace(FocusName))
+            return;
+        _scrollPending = false;
+        var id = CardDomId(FocusName);
+        try
+        {
+            await Js.InvokeVoidAsync("eval",
+                $"document.getElementById('{id}')?.scrollIntoView({{block:'nearest',behavior:'smooth'}})");
+        }
+        catch { /* JS optional */ }
+    }
+
+    internal static string CardDomId(string name)
+    {
+        var safe = new string((name ?? "").Where(c => char.IsLetterOrDigit(c) || c is '-' or '_').ToArray());
+        if (string.IsNullOrEmpty(safe)) safe = "char";
+        return "spe-char-" + safe.ToLowerInvariant();
+    }
+
+    internal bool IsFocused(string name) =>
+        !string.IsNullOrWhiteSpace(FocusName)
+        && name.Equals(FocusName.Trim(), StringComparison.OrdinalIgnoreCase);
 
     public async Task Close()
     {

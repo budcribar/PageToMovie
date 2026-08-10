@@ -1,71 +1,78 @@
-<div class="container-fluid py-2 px-md-3">
-    <!-- Compact Studio Header (Max 2 Rows) -->
-    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3 pb-2 border-bottom border-secondary-subtle">
-        <div class="d-flex align-items-center gap-3">
-            <div class="d-flex align-items-center gap-2">
-                <ScreenplayEditor_BadgePill Variant="@ComponentVariant.Primary" Text="PageToMovie" />
-                <h5 class="mb-0 fw-bold text-light text-nowrap">Screenplay Editor</h5>
+<div class="container-fluid @(HideChrome ? "px-0 py-0" : "py-2 px-md-3") spe-root">
+    @if (!HideChrome)
+    {
+        <!-- Standalone editor chrome (host pages pass HideChrome and own the top bars). -->
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3 pb-2 border-bottom border-secondary-subtle">
+            <div class="d-flex align-items-center gap-3">
+                <span class="text-secondary small">
+                    Scenes: <strong class="text-light">@Model.Scenes.Count</strong> ·
+                    Beats: <strong class="text-light">@TotalBeats</strong>
+                    @if (!string.IsNullOrWhiteSpace(Model.Metadata.Author))
+                    {
+                        <text> · Author: <strong class="text-light">@Model.Metadata.Author</strong></text>
+                    }
+                </span>
             </div>
-            <span class="text-secondary small d-none d-md-inline">
-                Title: <strong class="text-light">@(!string.IsNullOrWhiteSpace(Model.Metadata.Title) ? Model.Metadata.Title : "Untitled")</strong> ·
-                Author: <strong class="text-light">@(!string.IsNullOrWhiteSpace(Model.Metadata.Author) ? Model.Metadata.Author : "Unknown")</strong> ·
-                Scenes: <strong class="text-light">@Model.Scenes.Count</strong> ·
-                Beats: <strong class="text-light">@TotalBeats</strong>
-            </span>
-        </div>
 
-        <!-- Right Side: Hamburger Menu -->
-        <div class="d-flex align-items-center gap-2">
-            <div class="dropdown">
-                <button class="btn btn-sm btn-outline-secondary dropdown-toggle px-3" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Studio Menu">
-                    <i class="bi bi-list fs-5 align-middle"></i> Menu
-                </button>
-                <ul class="dropdown-menu dropdown-menu-end dropdown-menu-dark shadow-lg">
-                    <li><h6 class="dropdown-header">Story Setup</h6></li>
-                    <li>
-                        <button class="dropdown-item" type="button" @onclick="OpenCharacterModal">
-                            <i class="bi bi-people text-warning me-2"></i> Edit Story Characters...
-                        </button>
-                    </li>
-                    <li>
-                        <button class="dropdown-item" type="button" @onclick="OpenLocationModal">
-                            <i class="bi bi-geo-alt text-info me-2"></i> Edit Story Locations...
-                        </button>
-                    </li>
-                    <li><hr class="dropdown-divider"></li>
-                    <li><h6 class="dropdown-header">Screenplay Exchange</h6></li>
-                    <li>
-                        <button class="dropdown-item" type="button" @onclick="OpenImportModal">
-                            <i class="bi bi-box-arrow-in-down text-info me-2"></i> Import Fountain...
-                        </button>
-                    </li>
-                    <li>
-                        <button class="dropdown-item" type="button" @onclick="OpenExportModal">
-                            <i class="bi bi-box-arrow-up-right text-primary me-2"></i> Export Fountain...
-                        </button>
-                    </li>
-                    <li><hr class="dropdown-divider"></li>
-                    <li><h6 class="dropdown-header">View Controls</h6></li>
-                    <li>
-                        <button class="dropdown-item" type="button" @onclick="CollapseAllScenes">
-                            <i class="bi bi-arrows-collapse me-2"></i> Collapse All Scenes
-                        </button>
-                    </li>
-                    <li>
-                        <button class="dropdown-item" type="button" @onclick="ExpandAllScenes">
-                            <i class="bi bi-arrows-expand me-2"></i> Expand All Scenes
-                        </button>
-                    </li>
-                </ul>
+            <div class="d-flex align-items-center gap-2">
+                <div class="dropdown">
+                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle px-3" type="button"
+                            title="Studio Menu"
+                            aria-expanded="@_menuOpen"
+                            @onclick="ToggleMenu"
+                            @onclick:stopPropagation="true">
+                        <i class="bi bi-list fs-5 align-middle"></i> Menu
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end dropdown-menu-dark shadow-lg @(_menuOpen ? "show" : "")">
+                        <li><h6 class="dropdown-header">Story Setup</h6></li>
+                        <li>
+                            <button class="dropdown-item" type="button" @onclick="@(() => OpenCharacterModal())">
+                                <i class="bi bi-people text-warning me-2"></i> Edit Story Characters...
+                            </button>
+                        </li>
+                        <li>
+                            <button class="dropdown-item" type="button" @onclick="@(() => OpenLocationModal())">
+                                <i class="bi bi-geo-alt text-info me-2"></i> Edit Story Locations...
+                            </button>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <button class="dropdown-item" type="button" @onclick="OpenExportModal">
+                                <i class="bi bi-box-arrow-up-right text-primary me-2"></i> Export Fountain...
+                            </button>
+                        </li>
+                        <li>
+                            <button class="dropdown-item" type="button" @onclick="OpenExportPdfModal">
+                                <i class="bi bi-file-earmark-pdf text-danger me-2"></i> Export PDF...
+                            </button>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><h6 class="dropdown-header">View Controls</h6></li>
+                        <li>
+                            <button class="dropdown-item" type="button" @onclick="CollapseAllScenes">
+                                <i class="bi bi-arrows-collapse me-2"></i> Collapse All Scenes
+                            </button>
+                        </li>
+                        <li>
+                            <button class="dropdown-item" type="button" @onclick="ExpandAllScenes">
+                                <i class="bi bi-arrows-expand me-2"></i> Expand All Scenes
+                            </button>
+                        </li>
+                    </ul>
+                </div>
             </div>
         </div>
-    </div>
+    }
 
     <!-- Two-Column Master-Detail Layout -->
     <div class="row g-3">
         <!-- Column 1: Left Outline Navigation Sidebar -->
         <div class="@(IsSidebarCompact ? "col-auto" : "col-md-3")">
             <ScreenplayEditor_OutlineSidebar Scenes="Model.Scenes"
+                                              Characters="Model.GetAllCharacters()"
+                                              FocusedCharacter="FocusCharacterName"
+                                              Locations="Model.GetAllLocations()"
+                                              FocusedLocation="FocusLocationName"
                                               ActiveView="@ActiveViewMode"
                                               SelectedSceneIndex="SelectedSceneIndex"
                                               @bind-IsCompact="IsSidebarCompact"
@@ -73,9 +80,13 @@
                                               OnSelectCredits="SelectCreditsView"
                                               OnSelectScene="SelectSceneView"
                                               OnAddScene="AddScene"
+                                              OnInsertSceneAfter="InsertSceneAfter"
                                               OnDeleteScene="DeleteScene"
                                               OnSelectionChangedCallback="OnSelectionChanged"
-                                              OnReorderScenes="ReorderScenes" />
+                                              OnReorderScenes="ReorderScenes"
+                                              OnPlayScene="PlaySceneVideo"
+                                              OnSelectCharacter="OpenCharacterFromOutline"
+                                              OnSelectLocation="OpenLocationFromOutline" />
         </div>
 
         <!-- Column 2: Right Active View Inspector -->
@@ -107,7 +118,7 @@
                             <div class="display-6 text-info mb-3">🎬</div>
                             <h5 class="fw-bold text-light">No scenes in screenplay</h5>
                             <p class="text-secondary mb-0">
-                                Click <strong class="text-success">+ Add</strong> in the Outline Navigator to create your first scene, or use <strong class="text-info">Import Fountain</strong> in the menu.
+                                Click <strong class="text-success">+</strong> in the Outline to create your first scene.
                             </p>
                         </div>
                     </div>
@@ -134,13 +145,16 @@
     <ScreenplayEditor_FountainModal @bind-IsOpen="ShowFountainModal"
                                      Mode="@FountainModalMode"
                                      FountainText="@FountainModalText"
+                                     PdfBytes="@FountainModalPdfBytes"
                                      OnImportCallback="HandleFountainImport" />
 
     <ScreenplayEditor_LocationModal @bind-IsOpen="ShowLocationModal"
                                      Model="Model"
+                                     FocusName="FocusLocationName"
                                      OnChangedCallback="OnChanged" />
 
     <ScreenplayEditor_CharacterModal @bind-IsOpen="ShowCharacterModal"
                                       Model="Model"
+                                      FocusName="FocusCharacterName"
                                       OnChangedCallback="OnChanged" />
 </div>

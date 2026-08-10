@@ -26,4 +26,19 @@ public sealed class AdaptationRequest
     /// Engine/UI may set photoreal, illustrated_picture_book, etc.
     /// </summary>
     public string? VisualMedium { get; init; }
+
+    /// <summary>
+    /// Already-resolved overrides for <see cref="PageToMovie.Adaptation.Conversion.AdaptationPromptTokens"/>
+    /// (per-project value, else
+    /// admin-global default, else the hardcoded default) — Engine resolves the tiers before
+    /// constructing this request; null here just means "use the hardcoded default" for that field.
+    /// </summary>
+    public int? MaxSpeakingCast { get; init; }
+    public int? MaxDialogueWords { get; init; }
+    public int? VoMaxSentences { get; init; }
+    public int? SceneCountMin { get; init; }
+    public int? SceneCountMax { get; init; }
+    public int? MinAudioCuesPerScene { get; init; }
+    public int? MinAudioCuesAtPeak { get; init; }
+    public int? BodyWordsPerMinute { get; init; }
 }

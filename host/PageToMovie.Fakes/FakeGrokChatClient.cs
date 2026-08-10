@@ -418,6 +418,15 @@ public sealed class FakeGrokChatClient : IChatClient
               "wardrobe_always": ["dark wool constable coat with brass buttons", "dark trousers"],
               "reference_image_placeholder": "character_officer_ref.png"
             }
+          },
+          "location_seed_tokens": {
+            "Loc_Old_Man_Chamber": {
+              "display_name": "OLD MAN'S CHAMBER",
+              "location_type": "INT",
+              "description": "Cramped 1840s bedchamber: low plaster ceiling, dark wood floorboards, narrow sash window with heavy drapes, iron bedstead, washstand with ewer, single tallow candle casting long shadows; walls close and airless.",
+              "visual_lock": "Always the same cramped candlelit chamber with iron bed, washstand, and heavy drapes; no modern fixtures.",
+              "reference_image_placeholder": "loc_old_man_chamber_ref.png"
+            }
           }
         }
         """;
@@ -437,6 +446,15 @@ public sealed class FakeGrokChatClient : IChatClient
               "voice_label": "Narrator",
               "wardrobe_always": [],
               "reference_image_placeholder": "character_narrator_ref.png"
+            }
+          },
+          "location_seed_tokens": {
+            "Loc_Quiet_Room": {
+              "display_name": "QUIET ROOM",
+              "location_type": "INT",
+              "description": "Simple interior room with soft ambient light, plain walls, and minimal furniture suitable for a test set lock.",
+              "visual_lock": "Same quiet room geometry and soft light every scene.",
+              "reference_image_placeholder": "loc_quiet_room_ref.png"
             }
           }
         }
@@ -585,6 +603,15 @@ public sealed class FakeGrokChatClient : IChatClient
             sb.AppendLine("      \"reference_image_placeholder\": \"" + key.ToLowerInvariant() + "_ref.png\"");
             sb.AppendLine("    }" + (idx < order.Count - 1 ? "," : ""));
         }
+        sb.AppendLine("  },");
+        sb.AppendLine("  \"location_seed_tokens\": {");
+        sb.AppendLine("    \"Loc_Test_Set\": {");
+        sb.AppendLine("      \"display_name\": \"TEST SET\",");
+        sb.AppendLine("      \"location_type\": \"INT\",");
+        sb.AppendLine("      \"description\": \"Neutral interior test set with soft key light and plain walls\",");
+        sb.AppendLine("      \"visual_lock\": \"Same neutral interior geometry every scene\",");
+        sb.AppendLine("      \"reference_image_placeholder\": \"loc_test_set_ref.png\"");
+        sb.AppendLine("    }");
         sb.AppendLine("  }");
         sb.AppendLine("}");
         return sb.ToString();

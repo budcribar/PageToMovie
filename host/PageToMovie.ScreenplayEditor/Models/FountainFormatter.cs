@@ -121,11 +121,7 @@ public static class FountainFormatter
 
                 case FountainParser.ElementType.Action:
                     activeDialogueBeat = null;
-                    GetOrCreateCurrentScene().Beats.Add(new ScreenplayBeat
-                    {
-                        BeatType = BeatType.Action,
-                        ActionText = element.Text
-                    });
+                    AppendVisualAndSoundBeats(GetOrCreateCurrentScene().Beats, element.Text ?? "");
                     break;
 
                 case FountainParser.ElementType.Character:
@@ -333,6 +329,18 @@ public static class FountainFormatter
                         }
                         break;
 
+                    case BeatType.Sound:
+                        if (!string.IsNullOrWhiteSpace(beat.ActionText))
+                        {
+                            // Canonical fountain form for audio-only cues (not a character cue).
+                            var body = beat.ActionText.Trim().TrimStart('(').TrimEnd(')');
+                            if (body.StartsWith("SOUND:", StringComparison.OrdinalIgnoreCase))
+                                body = body[6..].Trim();
+                            sb.AppendLine($"(SOUND: {body})");
+                            sb.AppendLine();
+                        }
+                        break;
+
                     case BeatType.Dialogue:
                         if (!string.IsNullOrWhiteSpace(beat.Speaker))
                         {
@@ -396,5 +404,87 @@ public static class FountainFormatter
         }
 
         return sb.ToString().TrimEnd() + "\n";
+    }
+
+    /// <summary>
+    /// Split a fountain action element into separate Visual and Sound beats.
+    /// Pure sound lines become Sound only; mixed lines like
+    /// "BUSTER enters. (SOUND: door slam)" become Visual + Sound.
+    /// </summary>
+    public static void AppendVisualAndSoundBeats(List<ScreenplayBeat> beats, string? text)
+    {
+        if (beats is null) return;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            beats.Add(new ScreenplayBeat { BeatType = BeatType.Action, ActionText = "" });
+            return;
+        }
+
+        var raw = text.Trim();
+        if (TryParseSoundAction(raw, out var pureSound))
+        {
+            beats.Add(new ScreenplayBeat { BeatType = BeatType.Sound, ActionText = pureSound });
+            return;
+        }
+
+        // Embedded cues: (SOUND: …) / (SFX: …) anywhere in the line
+        var embedded = System.Text.RegularExpressions.Regex.Matches(
+            raw,
+            @"\(\s*(?:SOUND|SOUNDS|SFX)\s*:\s*([^)]+)\)",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        if (embedded.Count == 0)
+        {
+            beats.Add(new ScreenplayBeat { BeatType = BeatType.Action, ActionText = raw });
+            return;
+        }
+
+        var visual = raw;
+        var sounds = new List<string>();
+        foreach (System.Text.RegularExpressions.Match m in embedded)
+        {
+            var body = m.Groups[1].Value.Trim();
+            if (!string.IsNullOrWhiteSpace(body))
+                sounds.Add(body);
+            visual = visual.Replace(m.Value, " ");
+        }
+        visual = System.Text.RegularExpressions.Regex.Replace(visual, @"\s{2,}", " ").Trim();
+        visual = visual.TrimEnd(' ', ',', ';', '-');
+
+        if (!string.IsNullOrWhiteSpace(visual))
+            beats.Add(new ScreenplayBeat { BeatType = BeatType.Action, ActionText = visual });
+        foreach (var s in sounds)
+            beats.Add(new ScreenplayBeat { BeatType = BeatType.Sound, ActionText = s });
+    }
+
+    /// <summary>
+    /// True when the action line is an audio-only cue, e.g. "(SOUND: applause)" or "SOUND: rain".
+    /// Returns the sound description without the SOUND: prefix / wrapping parens.
+    /// </summary>
+    public static bool TryParseSoundAction(string? text, out string body)
+    {
+        body = "";
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        var t = text.Trim();
+        // Strip outer parens: (SOUND: …)
+        if (t.StartsWith('(') && t.EndsWith(')') && t.Length > 2)
+            t = t[1..^1].Trim();
+
+        if (t.StartsWith("SOUND:", StringComparison.OrdinalIgnoreCase))
+        {
+            body = t[6..].Trim();
+            return true;
+        }
+        if (t.StartsWith("SOUNDS:", StringComparison.OrdinalIgnoreCase))
+        {
+            body = t[7..].Trim();
+            return true;
+        }
+        if (t.StartsWith("SFX:", StringComparison.OrdinalIgnoreCase))
+        {
+            body = t[4..].Trim();
+            return true;
+        }
+        return false;
     }
 }

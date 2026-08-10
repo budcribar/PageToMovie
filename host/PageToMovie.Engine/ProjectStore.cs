@@ -2415,6 +2415,7 @@ public sealed partial class ProjectStore
                 BookRefs = bookRefImages,
                 Variants = variants,
                 AgeBand = info.TryGetProperty("age_band", out var ab) ? ab.GetString() : null,
+                VariantOf = info.TryGetProperty("variant_of", out var vo) ? vo.GetString() : null,
             });
         }
 
@@ -2422,6 +2423,194 @@ public sealed partial class ProjectStore
             .OrderBy(r => r.Key.EndsWith("_Young") ? 1 : r.Key.EndsWith("_Teen") ? 2 : 0)
             .ThenBy(r => r.DisplayName, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    /// <summary>
+    /// Location seeds from Stage‑1 / fountain import (location_seed_tokens in cast_seeds, blueprint, or scenes).
+    /// When cast_seeds omits locations (common today), derive from the approved Fountain Stage‑1 model.
+    /// </summary>
+    public IReadOnlyList<LocationSummary> ListLocations(string projectId)
+    {
+        var seeds = LoadLocationSeeds(projectId);
+        if (seeds.Count == 0)
+            seeds = DeriveLocationSeedsFromFountain(projectId);
+
+        var rows = new List<LocationSummary>();
+        foreach (var (key, info) in seeds)
+        {
+            var display = info.TryGetProperty("display_name", out var dn) && dn.GetString() is { Length: > 0 } dname
+                ? dname
+                : key.Replace('_', ' ').Trim();
+            var desc = info.TryGetProperty("description", out var d) ? d.GetString() ?? "" : "";
+            var vlock = info.TryGetProperty("visual_lock", out var v) ? v.GetString() ?? "" : "";
+            if (string.IsNullOrWhiteSpace(desc) && !string.IsNullOrWhiteSpace(vlock))
+                desc = vlock;
+            if (string.IsNullOrWhiteSpace(vlock) && !string.IsNullOrWhiteSpace(desc))
+                vlock = desc;
+            rows.Add(new LocationSummary
+            {
+                Key = key,
+                DisplayName = display,
+                Description = desc,
+                VisualLock = vlock,
+            });
+        }
+
+        // If seeds were name-only stubs, re-derive from fountain prose and fill blanks.
+        if (rows.Count > 0 && rows.All(r =>
+                string.IsNullOrWhiteSpace(r.Description)
+                || r.Description.Equals(r.DisplayName, StringComparison.OrdinalIgnoreCase)
+                || r.Description.Equals(r.Key, StringComparison.OrdinalIgnoreCase)))
+        {
+            var derived = DeriveLocationSeedsFromFountain(projectId);
+            foreach (var row in rows)
+            {
+                if (!derived.TryGetValue(row.Key, out var el)
+                    && !derived.TryGetValue(row.Key.Replace(' ', '_'), out el))
+                {
+                    // match by display name
+                    var hit = derived.FirstOrDefault(kv =>
+                        kv.Value.TryGetProperty("display_name", out var dn)
+                        && string.Equals(dn.GetString(), row.DisplayName, StringComparison.OrdinalIgnoreCase));
+                    if (hit.Key is null) continue;
+                    el = hit.Value;
+                }
+                if (el.ValueKind != JsonValueKind.Object) continue;
+                if (el.TryGetProperty("description", out var d) && d.GetString() is { Length: > 0 } desc2)
+                    row.Description = desc2;
+                if (el.TryGetProperty("visual_lock", out var v) && v.GetString() is { Length: > 0 } vl2)
+                    row.VisualLock = vl2;
+            }
+        }
+
+        return rows
+            .OrderBy(r => r.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Build location_seed_tokens from the current Fountain Stage‑1 model (no extra AI call).
+    /// Enriched with action-line prose when available.
+    /// </summary>
+    public Dictionary<string, JsonElement> DeriveLocationSeedsFromFountain(string projectId)
+    {
+        try
+        {
+            var model = ScreenplayService.TryBuildModelFromProject(this, projectId);
+            if (model is null) return new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
+
+            if (model.TryGetValue("global_production_variables", out var gpvObj)
+                && gpvObj is Dictionary<string, object?> gpv
+                && gpv.TryGetValue("location_seed_tokens", out var locObj)
+                && locObj is Dictionary<string, object?> locDict
+                && locDict.Count > 0)
+            {
+                var json = JsonSerializer.Serialize(locDict);
+                using var doc = JsonDocument.Parse(json);
+                var dict = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
+                foreach (var p in doc.RootElement.EnumerateObject())
+                    dict[p.Name] = p.Value.Clone();
+                return dict;
+            }
+        }
+        catch { /* ignore */ }
+        return new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Persist Stage‑1 location seeds into <c>source/cast_seeds.json</c> so
+    /// <see cref="ListLocations"/> works after cast extract (characters only used to be written).
+    /// Merges without wiping character_seed_tokens.
+    /// </summary>
+    public bool MergeLocationSeedsIntoCastFile(string projectId, Dictionary<string, object?>? locationSeeds = null)
+    {
+        try
+        {
+            locationSeeds ??= ExtractLocationSeedObjects(projectId);
+            if (locationSeeds is null || locationSeeds.Count == 0) return false;
+
+            var castPath = Path.Combine(GetProjectDir(projectId), "source", ScreenplayService.CastSeedsFileName);
+            System.Text.Json.Nodes.JsonObject root;
+            if (File.Exists(castPath))
+            {
+                var text = File.ReadAllText(castPath);
+                root = System.Text.Json.Nodes.JsonNode.Parse(text) as System.Text.Json.Nodes.JsonObject
+                       ?? new System.Text.Json.Nodes.JsonObject();
+            }
+            else
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(castPath)!);
+                root = new System.Text.Json.Nodes.JsonObject
+                {
+                    ["schema_version"] = "cast_seeds.v1",
+                    ["generation"] = new System.Text.Json.Nodes.JsonObject
+                    {
+                        ["method"] = "MergeLocationSeedsIntoCastFile",
+                        ["ts"] = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss"),
+                    },
+                };
+            }
+
+            var existing = root["location_seed_tokens"] as System.Text.Json.Nodes.JsonObject
+                           ?? new System.Text.Json.Nodes.JsonObject();
+
+            foreach (var (key, val) in locationSeeds)
+            {
+                if (val is not Dictionary<string, object?> incoming) continue;
+                var incomingNode = System.Text.Json.Nodes.JsonNode.Parse(
+                    JsonSerializer.Serialize(incoming)) as System.Text.Json.Nodes.JsonObject;
+                if (incomingNode is null) continue;
+
+                if (existing[key] is not System.Text.Json.Nodes.JsonObject cur)
+                {
+                    existing[key] = incomingNode;
+                    continue;
+                }
+
+                var display = cur["display_name"]?.GetValue<string>()
+                              ?? incomingNode["display_name"]?.GetValue<string>()
+                              ?? key;
+                foreach (var field in new[] { "description", "visual_lock" })
+                {
+                    var curV = cur[field]?.GetValue<string>() ?? "";
+                    var inV = incomingNode[field]?.GetValue<string>() ?? "";
+                    var stub = string.IsNullOrWhiteSpace(curV)
+                               || curV.Equals(display, StringComparison.OrdinalIgnoreCase)
+                               || curV.Equals(key, StringComparison.OrdinalIgnoreCase);
+                    if (stub && !string.IsNullOrWhiteSpace(inV) && inV.Length > curV.Length)
+                        cur[field] = inV;
+                }
+                if (cur["display_name"] is null && incomingNode["display_name"] is not null)
+                    cur["display_name"] = incomingNode["display_name"]!.DeepClone();
+                if (cur["location_type"] is null && incomingNode["location_type"] is not null)
+                    cur["location_type"] = incomingNode["location_type"]!.DeepClone();
+            }
+
+            root["location_seed_tokens"] = existing;
+            File.WriteAllText(castPath, root.ToJsonString(JsonDefaults.Indented) + "\n");
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public Dictionary<string, object?>? ExtractLocationSeedObjects(string projectId)
+    {
+        try
+        {
+            var model = ScreenplayService.TryBuildModelFromProject(this, projectId);
+            if (model is null) return null;
+            if (model.TryGetValue("global_production_variables", out var gpvObj)
+                && gpvObj is Dictionary<string, object?> gpv
+                && gpv.TryGetValue("location_seed_tokens", out var locObj)
+                && locObj is Dictionary<string, object?> locDict
+                && locDict.Count > 0)
+                return locDict;
+        }
+        catch { /* ignore */ }
+        return null;
     }
 
     public string? ResolveCharacterRefPath(string projectId, string charKey, bool allowNormalizedFallback = true)
@@ -4839,7 +5028,19 @@ public sealed partial class ProjectStore
                         ? $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes/{sceneNumber}/clips/{cn}/video"
                         : null,
                     DialogueVerification = await LoadClipDialogueVerificationAsync(projectDir, sceneNumber, cn, ct).ConfigureAwait(false),
+                    Stage1BeatId = c.TryGetProperty("stage1_beat_id", out var s1b) ? s1b.GetString() : null,
+                    Stage1BeatIds = c.TryGetProperty("stage1_beat_ids", out var s1bs) &&
+                                    s1bs.ValueKind == JsonValueKind.Array
+                        ? s1bs.EnumerateArray()
+                            .Select(x => x.GetString())
+                            .Where(x => !string.IsNullOrWhiteSpace(x))
+                            .Select(x => x!)
+                            .ToList()
+                        : new List<string>(),
                 });
+                var last = clips[^1];
+                if (last.Stage1BeatIds.Count == 0 && !string.IsNullOrWhiteSpace(last.Stage1BeatId))
+                    last.Stage1BeatIds.Add(last.Stage1BeatId!);
             }
         }
 
@@ -5354,7 +5555,6 @@ public sealed partial class ProjectStore
         if (ext is not (".pdf" or ".txt"))
             throw new InvalidOperationException("Only .pdf or .txt uploads are supported");
 
-        // Buffer once so we can write book_full.txt + original name for .txt uploads
         using var ms = new MemoryStream();
         await content.CopyToAsync(ms, ct);
         var bytes = ms.ToArray();
@@ -5363,8 +5563,6 @@ public sealed partial class ProjectStore
         {
             var bookFull = Path.Combine(source, "book_full.txt");
             await File.WriteAllBytesAsync(bookFull, bytes, ct);
-            if (!safe.Equals("book_full.txt", StringComparison.OrdinalIgnoreCase))
-                await File.WriteAllBytesAsync(Path.Combine(source, safe), bytes, ct);
             return bookFull;
         }
 
@@ -6371,6 +6569,98 @@ public sealed partial class ProjectStore
                 dict[p.Name] = p.Value.Clone();
             return dict;
         }
+        return new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// location_seed_tokens from cast_seeds / blueprint / scenes — same precedence as character seeds.
+    /// </summary>
+    private Dictionary<string, JsonElement> LoadLocationSeeds(string projectId)
+    {
+        try
+        {
+            foreach (var name in new[] { ScreenplayService.CastSeedsFileName })
+            {
+                var castPath = Path.Combine(GetProjectDir(projectId), "source", name);
+                if (!File.Exists(castPath)) continue;
+                using var doc = JsonDocument.Parse(File.ReadAllText(castPath));
+                var root = doc.RootElement;
+                JsonElement seedEl = default;
+                if (root.TryGetProperty("location_seed_tokens", out var s) && s.ValueKind == JsonValueKind.Object)
+                    seedEl = s;
+                else if (root.TryGetProperty("global_production_variables", out var g) &&
+                         g.TryGetProperty("location_seed_tokens", out var s2) &&
+                         s2.ValueKind == JsonValueKind.Object)
+                    seedEl = s2;
+                if (seedEl.ValueKind == JsonValueKind.Object)
+                {
+                    var dict = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var p in seedEl.EnumerateObject())
+                        dict[p.Name] = p.Value.Clone();
+                    if (dict.Count > 0)
+                        return dict;
+                }
+            }
+        }
+        catch { /* fall through */ }
+
+        try
+        {
+            using var bp = LoadBlueprintSync(projectId);
+            if (bp is not null &&
+                bp.RootElement.TryGetProperty("global_production_variables", out var gpv) &&
+                gpv.TryGetProperty("location_seed_tokens", out var seeds) &&
+                seeds.ValueKind == JsonValueKind.Object)
+            {
+                var dict = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
+                foreach (var p in seeds.EnumerateObject())
+                    dict[p.Name] = p.Value.Clone();
+                if (dict.Count > 0)
+                    return dict;
+            }
+        }
+        catch { /* fall through */ }
+
+        try
+        {
+            var model = ScreenplayService.TryBuildModelFromProject(this, projectId);
+            if (model is not null &&
+                model.TryGetValue("global_production_variables", out var gpvObj) &&
+                gpvObj is Dictionary<string, object?> gpv &&
+                gpv.TryGetValue("location_seed_tokens", out var locObj) &&
+                locObj is Dictionary<string, object?> locDict &&
+                locDict.Count > 0)
+            {
+                var json = JsonSerializer.Serialize(locDict);
+                using var doc = JsonDocument.Parse(json);
+                var dict = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
+                foreach (var p in doc.RootElement.EnumerateObject())
+                    dict[p.Name] = p.Value.Clone();
+                if (dict.Count > 0)
+                    return dict;
+            }
+        }
+        catch { /* fall through */ }
+
+        var scenesPath = GetScenesPath(projectId);
+        if (!File.Exists(scenesPath))
+            return new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
+
+        try
+        {
+            using var scenesDoc = JsonDocument.Parse(File.ReadAllText(scenesPath));
+            if (scenesDoc.RootElement.TryGetProperty("global_production_variables", out var g2) &&
+                g2.TryGetProperty("location_seed_tokens", out var s3) &&
+                s3.ValueKind == JsonValueKind.Object)
+            {
+                var dict = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
+                foreach (var p in s3.EnumerateObject())
+                    dict[p.Name] = p.Value.Clone();
+                return dict;
+            }
+        }
+        catch { /* ignore */ }
+
         return new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
     }
 

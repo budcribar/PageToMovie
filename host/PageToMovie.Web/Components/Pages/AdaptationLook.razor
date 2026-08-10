@@ -1,37 +1,3 @@
 @page "/adaptation/look"
-@inherits AdaptationPageBase
-@inject IAppLocalizer L
 
-<PageTitle>Book · @L["Adaptation.Look"]</PageTitle>
-
-<AdaptationShell Host="this" Step="look">
-    @if (!string.IsNullOrWhiteSpace(ProjectId))
-    {
-        <div class="card mb-3">
-            <div class="card-body">
-                @{ var hasDraft = Status?.Screenplay.DraftExists == true; }
-                <VisualMediumCard ProjectId="@ProjectId"
-                                  Disabled="@(Busy || Jobs.JobRunning)"
-                                  SaveLabel="@(hasDraft ? "Save & apply to screenplay" : L["Common.Save"])"
-                                  OnChanged="OnLookChangedAsync" />
-
-                @* Saving re-applies to an existing draft (see OnLookChangedAsync) — a note, not a second button. *@
-                @if (hasDraft)
-                {
-                    <div class="small text-body-secondary mb-3" data-testid="look-reskin-note">
-                        Saving re-applies the look to your screenplay — dialogue, scenes, and story stay the same.
-                        You'll re-approve afterward.
-                    </div>
-                }
-
-                <div class="d-flex justify-content-end">
-                    <a class="btn btn-primary btn-sm"
-                       href="adaptation/embellish"
-                       data-testid="look-continue">
-                        @L["Adaptation.ContinueToEnrich"]
-                    </a>
-                </div>
-            </div>
-        </div>
-    }
-</AdaptationShell>
+@* Look & medium now lives on the screenplay card — redirect. *@

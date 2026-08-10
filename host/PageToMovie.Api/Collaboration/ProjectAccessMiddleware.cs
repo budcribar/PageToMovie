@@ -79,10 +79,14 @@ public sealed class ProjectAccessMiddleware
         var minimum = ProjectAccessLevel.Editor;
 
         // Owner-only ACL mutations are still Editor+ at middleware; handlers enforce owner.
-        // Ensure ACL exists for legacy path-owner projects
+        // Seed the ACL for projects that predate the ACL system. GetOrCreateAclAsync resolves the
+        // real owner from project.json itself when possible; userId here is only the last-resort
+        // fallback if that lookup fails — never a guess derived from the project path (path segments
+        // are a sanitized slug, e.g. a pre-migration email turned into "budcribargmail_com", which is
+        // NOT the account's real user id and must never be treated as though it were).
         try
         {
-            await acl.GetOrCreateAclAsync(projectId, InferOwner(projectId, userId));
+            await acl.GetOrCreateAclAsync(projectId, userId);
         }
         catch
         {
@@ -103,12 +107,5 @@ public sealed class ProjectAccessMiddleware
         }
 
         await _next(context);
-    }
-
-    static string InferOwner(string projectId, string fallbackUserId)
-    {
-        var slash = projectId.IndexOf('/');
-        if (slash > 0) return projectId[..slash];
-        return fallbackUserId;
     }
 }

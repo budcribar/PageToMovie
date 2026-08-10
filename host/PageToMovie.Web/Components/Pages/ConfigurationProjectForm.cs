@@ -22,6 +22,16 @@ public partial class Configuration
 
         internal double _audioGain = 6;
 
+        internal int? _adaptMaxSpeakingCast;
+
+        internal int? _adaptMaxDialogueWords;
+
+        internal int? _adaptVoMaxSentences;
+
+        internal int? _adaptSceneCountMin;
+
+        internal int? _adaptSceneCountMax;
+
         internal CancellationTokenSource? _autoSaveCts;
 
         internal int _autoSaveEpoch;
@@ -132,6 +142,11 @@ public partial class Configuration
                 _qaFrameCount = GetInt("qa_frame_count", _qaFrameCount);
                 _audioGain = GetDouble("composite_audio_gain_db", _audioGain);
                 _wipPath = GetStr("wip_movie_path", _wipPath);
+                _adaptMaxSpeakingCast = GetIntOrNull("adaptation_max_speaking_cast");
+                _adaptMaxDialogueWords = GetIntOrNull("adaptation_max_dialogue_words");
+                _adaptVoMaxSentences = GetIntOrNull("adaptation_vo_max_sentences");
+                _adaptSceneCountMin = GetIntOrNull("adaptation_scene_count_min");
+                _adaptSceneCountMax = GetIntOrNull("adaptation_scene_count_max");
             }
             catch (Exception ex)
             {
@@ -222,6 +237,11 @@ public partial class Configuration
                 ["qa_frame_count"] = _qaFrameCount,
                 ["composite_audio_gain_db"] = _audioGain,
                 ["wip_movie_path"] = _wipPath,
+                ["adaptation_max_speaking_cast"] = _adaptMaxSpeakingCast,
+                ["adaptation_max_dialogue_words"] = _adaptMaxDialogueWords,
+                ["adaptation_vo_max_sentences"] = _adaptVoMaxSentences,
+                ["adaptation_scene_count_min"] = _adaptSceneCountMin,
+                ["adaptation_scene_count_max"] = _adaptSceneCountMax,
                 // Snapshot vendor rates for transparency; runtime CostReportService always re-derives
                 // from model_name / image_model_name via SupportedModelCatalog.
                 ["cost_estimates"] = BuildVendorCostEstimatesSnapshot(),
@@ -292,6 +312,13 @@ public partial class Configuration
             S._cfg is not null && S._cfg.TryGetValue(key, out var el) && el.TryGetDouble(out var v)
                 ? v
                 : fallback;
+
+
+        internal int? GetIntOrNull(string key) =>
+            S._cfg is not null && S._cfg.TryGetValue(key, out var el) &&
+            el.ValueKind != JsonValueKind.Null && el.TryGetInt32(out var v)
+                ? v
+                : null;
 
 
         internal bool GetBool(string key, bool fallback) =>

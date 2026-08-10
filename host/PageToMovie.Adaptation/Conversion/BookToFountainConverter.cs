@@ -282,7 +282,17 @@ public static class BookToFountainConverter
         text = await RepairVagueLocationHeadingsAsync(
             system, text, chat, model, onProgress, ct, reasoningEffort).ConfigureAwait(false);
         text = NormalizeSceneHeadingWording(text);
+        // NormalizeSceneHeadingWording only collapses a redundant-prefix alias ("OLD HOUSE -
+        // HALL" -> "HALL"); it can't tell "SIONNA'S HOUSE" and "SIONNA'S DUPLEX" are the same
+        // place — that's a judgment call, not a string shape, so ask the model.
+        text = await RepairLocationDriftAsync(
+            system, text, chat, model, onProgress, ct, reasoningEffort).ConfigureAwait(false);
         text = await RepairGenericNumberedSpeakersAsync(
+            system, text, chat, model, onProgress, ct, reasoningEffort).ConfigureAwait(false);
+        // Speaker naming repair only replaces *unnamed* placeholders (FIRST OFFICER, MAN 2);
+        // it has no concept of an already-named person's spelling drifting across mentions
+        // (cues and prose) — separate problem, same "confirm then merge" shape as location drift.
+        text = await RepairNameDriftAsync(
             system, text, chat, model, onProgress, ct, reasoningEffort).ConfigureAwait(false);
         // Continuous verse / V.O. narration split across a real blank line parses stanzas 2+
         // as silent Action (Fountain: a truly-empty line ends a dialogue block). Re-merge under
@@ -704,6 +714,139 @@ public static class BookToFountainConverter
         }
     }
 
+    // ── location drift (same place, different wording — a judgment call, not a string shape;
+    // NormalizeSceneHeadingWording above only collapses a redundant-prefix alias) ────────────
+
+    /// <summary>
+    /// Groups unique scene-heading location names that share a distinguishing first word (4+
+    /// chars) — candidates the model might confirm are the same place ("SIONNA'S HOUSE" /
+    /// "SIONNA'S DUPLEX") or reject as genuinely different. Not a verdict, just a cheap filter
+    /// so the retry below only fires when there's something to check.
+    /// </summary>
+    public static IReadOnlyList<IReadOnlyList<string>> FindLocationDriftCandidateGroups(string? fountain)
+    {
+        if (string.IsNullOrWhiteSpace(fountain))
+            return Array.Empty<IReadOnlyList<string>>();
+
+        var locNames = EnumerateSceneHeadingLines(fountain)
+            .Select(h => SplitSceneHeadingParts(h).LocName)
+            .Where(l => l.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return locNames
+            .GroupBy(
+                l => l.Split(' ', StringSplitOptions.RemoveEmptyEntries) is { Length: > 0 } w ? w[0] : l,
+                StringComparer.OrdinalIgnoreCase)
+            .Where(g => g.Key.Length >= 4 && g.Count() >= 2)
+            .Select(g => (IReadOnlyList<string>)g.Distinct(StringComparer.OrdinalIgnoreCase).ToList())
+            .Where(g => g.Count >= 2)
+            // Members that differ ONLY by a trailing number ("ROOM 1" / "ROOM 3") are a
+            // deliberately-enumerated set of distinct locations, not spelling drift — skip the
+            // group entirely rather than asking the model to referee an intentional naming scheme.
+            .Where(g => g.Select(StripTrailingLocationNumber).Distinct(StringComparer.OrdinalIgnoreCase).Count() > 1)
+            .ToList();
+    }
+
+    private static readonly Regex TrailingLocationNumberRegex = new(
+        @"\s*#?\d+\s*$", RegexOptions.Compiled);
+
+    private static string StripTrailingLocationNumber(string locName) =>
+        TrailingLocationNumberRegex.Replace(locName, "").Trim();
+
+    /// <summary>
+    /// Chat pass: confirm which candidate location groups are truly the same place and unify
+    /// their wording; leave genuinely-different places untouched. Fires only when the cheap
+    /// pre-check above finds a candidate — most books never trigger this call.
+    /// </summary>
+    private static async Task<string> RepairLocationDriftAsync(
+        string system,
+        string fountain,
+        IChatClient chat,
+        string model,
+        Action<string>? onProgress,
+        CancellationToken ct,
+        string? reasoningEffort = null)
+    {
+        var groups = FindLocationDriftCandidateGroups(fountain);
+        if (groups.Count == 0 || !chat.IsConfigured)
+            return fountain;
+
+        onProgress?.Invoke($"Checking {groups.Count} possible duplicate location name(s)…");
+
+        var listed = string.Join("\n\n", groups.Select((g, i) =>
+            $"  Group {i + 1}:\n" + string.Join("\n", g.Select(h => "    - " + h))));
+        var user = $"""
+            LOCATION NORMALIZATION (CONFIRM, THEN FIX)
+            The Fountain draft below may describe the SAME physical place with different wording
+            across scenes. Each group below shares a location word and MIGHT be one place
+            described inconsistently — or might genuinely be different places. Decide each group
+            on its own.
+
+            {listed}
+
+            Rules:
+            - Return the COMPLETE Fountain screenplay again (not a patch list).
+            - For a group that IS the same place, rewrite every heading in it to one canonical
+              wording (keep each scene's own DAY/NIGHT/time-of-day suffix unchanged).
+            - For a group that is genuinely different places, leave every heading in it exactly
+              as written — do not merge unrelated locations just because they share a word.
+            - Do not change plot, cast tokens, dialogue wording, or any heading outside these
+              groups.
+            - No markdown fences. Fountain only.
+
+            --- BEGIN FOUNTAIN ---
+            {fountain}
+            --- END FOUNTAIN ---
+            """;
+
+        try
+        {
+            var raw = await ExecuteStage1OperationAsync(
+                    chat, system, user, model, temperature: 0.1,
+                    mode: ChatCallModes.BookToFountainLocationNormalizeRetry,
+                    retryLabel: "Location normalization", onProgress, ct, reasoningEffort,
+                    promptVersion: "stage1-location-normalize-v1",
+                    correctionInstruction: "Return the complete Fountain screenplay again — valid Fountain formatting throughout.",
+                    validate: ValidateNormalizationRepair,
+                    deterministicFallback: fountain,
+                    operationName: "stage1_location_normalize").ConfigureAwait(false);
+            if (raw is null)
+            {
+                onProgress?.Invoke("Location normalization failed twice — keeping prior draft.");
+                return fountain;
+            }
+
+            var repaired = StripBookPageTags(StripFences(raw));
+            if (!LooksLikeGoodFountain(repaired))
+            {
+                onProgress?.Invoke("Location normalization unusable — keeping prior draft.");
+                return fountain;
+            }
+
+            onProgress?.Invoke("Location names checked.");
+            return repaired;
+        }
+        catch (Exception)
+        {
+            onProgress?.Invoke("Location normalization failed — keeping prior draft.");
+            return fountain;
+        }
+    }
+
+    /// <summary>
+    /// Structural-only validation for the normalize passes below: unlike vague-heading/generic-
+    /// speaker repair, a "candidate" here isn't necessarily wrong — the model may correctly
+    /// decide two candidates are different and leave both alone, so re-running the same
+    /// candidate finder after repair can't be the pass/fail signal.
+    /// </summary>
+    private static IReadOnlyList<Stage1ValidationIssue> ValidateNormalizationRepair(string fountain)
+    {
+        if (!LooksLikeGoodFountain(fountain))
+            return [new Stage1ValidationIssue("invalid_fountain", "The response is not a usable Fountain screenplay.", "$.fountain")];
+        return Array.Empty<Stage1ValidationIssue>();
+    }
+
     /// <summary>
     /// Character cues that are ordinal/numbered role placeholders
     /// (FIRST OFFICER, SECOND MERCHANT, BUSINESSMAN 2) — unstable cast keys.
@@ -891,6 +1034,195 @@ public static class BookToFountainConverter
         foreach (var remaining in findRemaining(fountain))
             issues.Add(new(issueCode, $"Unresolved value: {remaining}", "$.fountain"));
         return issues;
+    }
+
+    // ── name drift (same person, spelling drifted across mentions — cues AND prose; distinct
+    // from RepairGenericNumberedSpeakersAsync above, which only names *unnamed* placeholders
+    // like "MAN 2" and has no concept of an already-named person's spelling drifting) ───────
+
+    private static readonly Regex ProperNounWordRegex = new(@"\b[A-Z][a-z]{2,}\b", RegexOptions.Compiled);
+
+    // Common capitalized sentence-openers/pronouns — excluded so the prose scan below isn't
+    // dominated by ordinary sentence-initial words that aren't anyone's name.
+    private static readonly HashSet<string> ProseNameStopWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "The", "This", "That", "These", "Those", "He", "She", "It", "They", "We", "You", "I",
+        "But", "And", "So", "Then", "When", "If", "There", "Here", "Her", "His", "Its", "Their",
+        "Mom", "Dad", "Ma", "Pa", "Mr", "Mrs", "Ms", "Dr", "Sir", "Madam", "Ok", "Okay", "Yes", "No",
+    };
+
+    /// <summary>
+    /// Distinct proper-noun-shaped words (Title-case, 3+ letters) appearing in Action/dialogue
+    /// prose — not scene headings or character cue lines. Cheap stand-in for named-entity
+    /// recognition: real names recur; a handful of false positives are fine since the model
+    /// confirms membership before merging anything.
+    /// </summary>
+    internal static IEnumerable<string> EnumerateProperNounsInProse(string fountain)
+    {
+        var headingSet = new HashSet<string>(EnumerateSceneHeadingLines(fountain), StringComparer.OrdinalIgnoreCase);
+        var cueSet = new HashSet<string>(EnumerateCharacterCueNames(fountain), StringComparer.OrdinalIgnoreCase);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var raw in (fountain ?? "").Replace("\r\n", "\n").Split('\n'))
+        {
+            var line = raw.Trim();
+            if (line.Length == 0) continue;
+            if (headingSet.Contains(line) || cueSet.Contains(line)) continue;
+            if (SceneHeadingLineRegex.IsMatch(line)) continue;
+
+            foreach (Match m in ProperNounWordRegex.Matches(line))
+            {
+                var word = m.Value;
+                if (ProseNameStopWords.Contains(word)) continue;
+                if (seen.Add(word))
+                    yield return word;
+            }
+        }
+    }
+
+    /// <summary>Two names are spelling-drift candidates when close but not identical.</summary>
+    public static bool IsNameSpellingDriftCandidate(string a, string b)
+    {
+        if (string.Equals(a, b, StringComparison.OrdinalIgnoreCase)) return false;
+        if (a.Length < 4 || b.Length < 4) return false;
+        if (Math.Abs(a.Length - b.Length) > 2) return false;
+        return NameLevenshteinDistance(a, b) <= 2;
+    }
+
+    private static int NameLevenshteinDistance(string s, string t)
+    {
+        if (string.IsNullOrEmpty(s)) return t?.Length ?? 0;
+        if (string.IsNullOrEmpty(t)) return s.Length;
+
+        var d = new int[s.Length + 1, t.Length + 1];
+        for (var i = 0; i <= s.Length; i++) d[i, 0] = i;
+        for (var j = 0; j <= t.Length; j++) d[0, j] = j;
+
+        for (var i = 1; i <= s.Length; i++)
+        {
+            for (var j = 1; j <= t.Length; j++)
+            {
+                var cost = char.ToUpperInvariant(s[i - 1]) == char.ToUpperInvariant(t[j - 1]) ? 0 : 1;
+                d[i, j] = Math.Min(Math.Min(d[i - 1, j] + 1, d[i, j - 1] + 1), d[i - 1, j - 1] + cost);
+            }
+        }
+        return d[s.Length, t.Length];
+    }
+
+    /// <summary>
+    /// Groups character-cue names and prose proper nouns that are near-duplicates of each other
+    /// (edit distance ≤2) — candidates the model might confirm are the same person spelled
+    /// inconsistently ("Olsen"/"Olson") or reject as genuinely different people.
+    /// </summary>
+    public static IReadOnlyList<IReadOnlyList<string>> FindNameDriftCandidateGroups(string? fountain)
+    {
+        if (string.IsNullOrWhiteSpace(fountain))
+            return Array.Empty<IReadOnlyList<string>>();
+
+        var names = EnumerateCharacterCueNames(fountain)
+            .Concat(EnumerateProperNounsInProse(fountain))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var groups = new List<IReadOnlyList<string>>();
+        var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < names.Count; i++)
+        {
+            if (used.Contains(names[i])) continue;
+            List<string>? cluster = null;
+            for (var j = i + 1; j < names.Count; j++)
+            {
+                if (used.Contains(names[j])) continue;
+                if (!IsNameSpellingDriftCandidate(names[i], names[j])) continue;
+                cluster ??= [names[i]];
+                cluster.Add(names[j]);
+            }
+            if (cluster is null) continue;
+            foreach (var n in cluster) used.Add(n);
+            groups.Add(cluster);
+        }
+        return groups;
+    }
+
+    /// <summary>
+    /// Chat pass: confirm which candidate name groups are the same person with drifted
+    /// spelling and unify to one canonical spelling everywhere (cues and prose); leave
+    /// genuinely-different people untouched. Fires only when the cheap pre-check finds a
+    /// candidate — most books never trigger this call.
+    /// </summary>
+    private static async Task<string> RepairNameDriftAsync(
+        string system,
+        string fountain,
+        IChatClient chat,
+        string model,
+        Action<string>? onProgress,
+        CancellationToken ct,
+        string? reasoningEffort = null)
+    {
+        var groups = FindNameDriftCandidateGroups(fountain);
+        if (groups.Count == 0 || !chat.IsConfigured)
+            return fountain;
+
+        onProgress?.Invoke($"Checking {groups.Count} possible name-spelling drift group(s)…");
+
+        var listed = string.Join("\n\n", groups.Select((g, i) =>
+            $"  Group {i + 1}:\n" + string.Join("\n", g.Select(n => "    - " + n))));
+        var user = $"""
+            NAME NORMALIZATION (CONFIRM, THEN FIX)
+            The Fountain draft below may spell the SAME person's name inconsistently across
+            mentions (character cues and prose/dialogue alike) — e.g. a typo carried over from
+            the source book. Each group below is a near-spelling-match and MIGHT be one person
+            — or might genuinely be different people. Decide each group on its own.
+
+            {listed}
+
+            Rules:
+            - Return the COMPLETE Fountain screenplay again (not a patch list).
+            - For a group that IS the same person, unify every occurrence (cues, action lines,
+              dialogue, parentheticals) to one canonical spelling — pick whichever spelling
+              appears more often, or the more standard spelling if it's a tie.
+            - For a group that is genuinely different people, leave every occurrence exactly as
+              written.
+            - Do not change plot, locations, or dialogue wording except the spelling itself.
+            - No markdown fences. Fountain only.
+
+            --- BEGIN FOUNTAIN ---
+            {fountain}
+            --- END FOUNTAIN ---
+            """;
+
+        try
+        {
+            var raw = await ExecuteStage1OperationAsync(
+                    chat, system, user, model, temperature: 0.1,
+                    mode: ChatCallModes.BookToFountainNameNormalizeRetry,
+                    retryLabel: "Name normalization", onProgress, ct, reasoningEffort,
+                    promptVersion: "stage1-name-normalize-v1",
+                    correctionInstruction: "Return the complete Fountain screenplay again — valid Fountain formatting throughout.",
+                    validate: ValidateNormalizationRepair,
+                    deterministicFallback: fountain,
+                    operationName: "stage1_name_normalize").ConfigureAwait(false);
+            if (raw is null)
+            {
+                onProgress?.Invoke("Name normalization failed twice — keeping prior draft.");
+                return fountain;
+            }
+
+            var repaired = StripBookPageTags(StripFences(raw));
+            if (!LooksLikeGoodFountain(repaired))
+            {
+                onProgress?.Invoke("Name normalization unusable — keeping prior draft.");
+                return fountain;
+            }
+
+            onProgress?.Invoke("Names checked.");
+            return repaired;
+        }
+        catch (Exception)
+        {
+            onProgress?.Invoke("Name normalization failed — keeping prior draft.");
+            return fountain;
+        }
     }
 
     // ── split narration (continuous V.O./verse broken by a real blank line) ───────────────

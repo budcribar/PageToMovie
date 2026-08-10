@@ -546,8 +546,8 @@ public static class ClipDurationEstimator
 
     /// <summary>
     /// Expand story beats: long monologue / dialogue becomes multiple beats that each fit
-    /// the video model max. Action beats and short lines pass through. Reassigns beat_id
-    /// to sequential b1, b2, … and keeps speaker/delivery/audio in sync.
+    /// the video model max. Action beats and short lines pass through. Preserves stable
+    /// <c>beat_id</c> roots and uses <c>#pNofM</c> for split parts (does not renumber to b1…).
     /// </summary>
     public static List<Dictionary<string, object?>> ExpandLongDialogueBeats(
         IReadOnlyList<Dictionary<string, object?>>? beats,
@@ -558,7 +558,6 @@ public static class ClipDurationEstimator
         if (beats is null || beats.Count == 0)
             return result;
 
-        var nextId = 1;
         foreach (var beat in beats)
         {
             if (beat is null)
@@ -576,17 +575,31 @@ public static class ClipDurationEstimator
             if (string.IsNullOrWhiteSpace(delivery))
                 delivery = "spoken_on_camera";
 
+            var sourceId = Coerce(beat, "beat_id");
+            if (string.IsNullOrWhiteSpace(sourceId))
+            {
+                sourceId = PageToMovie.Core.Utils.StableBeatId.ForContent(
+                    "",
+                    string.IsNullOrWhiteSpace(dialogue) ? "action" : "dialogue",
+                    Coerce(beat, "speaker"),
+                    string.IsNullOrWhiteSpace(dialogue) ? Coerce(beat, "visual_event") : dialogue);
+            }
+
             if (string.IsNullOrWhiteSpace(dialogue) ||
                 !DialogueExceedsModelMax(dialogue, delivery, modelMaxSeconds, paddingSeconds))
             {
-                result.Add(CloneBeatWithId(beat, $"b{nextId++}", dialogueOverride: null, partIndex: 0, partCount: 1));
+                result.Add(CloneBeatWithId(beat, sourceId, dialogueOverride: null, partIndex: 0, partCount: 1));
                 continue;
             }
 
             var parts = SplitDialogueToFitModelMax(dialogue, delivery, modelMaxSeconds, paddingSeconds);
+            var root = PageToMovie.Core.Utils.StableBeatId.Root(sourceId);
             for (var p = 0; p < parts.Count; p++)
             {
-                result.Add(CloneBeatWithId(beat, $"b{nextId++}", parts[p], p, parts.Count));
+                var partId = PageToMovie.Core.Utils.StableBeatId.ForPart(root, p, parts.Count);
+                var copy = CloneBeatWithId(beat, partId, parts[p], p, parts.Count);
+                copy["source_beat_ids"] = new List<object?> { root };
+                result.Add(copy);
             }
         }
 

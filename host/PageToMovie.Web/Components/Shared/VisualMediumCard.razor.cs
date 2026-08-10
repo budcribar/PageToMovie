@@ -1,13 +1,4 @@
-using System.Net.Http.Json;
-using System.Text.Json;
 using Microsoft.AspNetCore.Components;
-using Microsoft.AspNetCore.Components.Forms;
-using Microsoft.AspNetCore.Components.Routing;
-using Microsoft.AspNetCore.Components.Web;
-using Microsoft.JSInterop;
-using PageToMovie.Core.Models;
-using PageToMovie.Core.Localization;
-using PageToMovie.Core.Util;
 using PageToMovie.Web.Services;
 
 namespace PageToMovie.Web.Components;
@@ -19,6 +10,8 @@ public partial class VisualMediumCard
     [Parameter] public EventCallback OnChanged { get; set; }
     /// <summary>Save-button label. Callers that re-apply on save (e.g. Look) pass a fuller label.</summary>
     [Parameter] public string SaveLabel { get; set; } = "Save";
+    /// <summary>Flat layout (no card chrome) for embedding inside the screenplay card.</summary>
+    [Parameter] public bool Embedded { get; set; }
 
     private readonly string _selectId = "vm-" + Guid.NewGuid().ToString("N")[..8];
     private string _edit = "auto";

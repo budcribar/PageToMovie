@@ -98,7 +98,7 @@
     "Step1": "Step 1: Import Screenplay",
     "Step2": "Step 2: Edit & Sign-off",
     "Step3": "Step 3: Shot Plan",
-    "ApproveScreenplay": "Looks good — continue",
+    "ApproveScreenplay": "Approve",
     "RebuildShotPlan": "Rebuild shot plan",
     "ImportFile": "Import source file (PDF / TXT)",
     "ScreenplayApproved": "Screenplay approved",
@@ -112,7 +112,7 @@
     "SourceText": "Source Text",
     "ScreenplayDraft": "Screenplay Draft",
     "BookAndScreenplay": "Book & screenplay",
-    "BookLede": "Import → look → enrich → fit to length → edit the screenplay. Then cast and film.",
+    "BookLede": "Import a source, then shape and approve the screenplay. Then cast and film.",
     "ShotPlanLede": "Plan the shots for each scene, then generate clips on Scenes.",
     "Import": "Import",
     "Look": "Look",
@@ -337,8 +337,8 @@
     "Draft": "Draft",
     "NoDraft": "No draft",
     "ToCharacters": "Characters →",
-    "ReapproveAndContinue": "Re-approve & continue",
-    "LooksGoodContinue": "Looks good — continue",
+    "ReapproveAndContinue": "Re-approve",
+    "LooksGoodContinue": "Approve",
     "Preview": "Preview"
   },
   "DemoPage": {

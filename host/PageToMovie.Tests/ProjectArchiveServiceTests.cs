@@ -198,4 +198,44 @@ public class ProjectArchiveServiceTests
             try { Directory.Delete(tmp, true); } catch { /* ignore */ }
         }
     }
+
+    [Fact]
+    public async Task Rename_via_reimport_does_not_leave_stale_export_meta_on_disk()
+    {
+        var tmp = Path.Combine(Path.GetTempPath(), "ptm-archive-reslug-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tmp);
+        try
+        {
+            var opts = Options.Create(new PageToMovieOptions { WorkspaceRoot = tmp });
+            var store = new ProjectStore(opts);
+            var archives = new ProjectArchiveService(store, NullLogger<ProjectArchiveService>.Instance);
+
+            var created = await store.CreateProjectAsync("Buster1", ownerUserId: "budcribar");
+
+            var renamed = await archives.RenameViaReimportAsync(created.Id!, "NickAndMe", force: false);
+            Assert.True(renamed.Ok);
+            Assert.True(renamed.ReSlugged);
+
+            var newDir = store.GetProjectDir(renamed.NewId!);
+            Assert.False(
+                File.Exists(Path.Combine(newDir, "_export_meta.json")),
+                "the old project's export manifest must not persist as real content in the renamed project's folder");
+
+            // The bug this guards: re-exporting the renamed project used to re-zip that stale leftover
+            // file as a second, colliding "_export_meta.json" entry reporting the pre-rename id.
+            await using var exp = await archives.ExportAsync(renamed.NewId!);
+            using var zip = new ZipArchive(exp.Stream, ZipArchiveMode.Read, leaveOpen: true);
+            var metaEntries = zip.Entries.Where(e => e.FullName.EndsWith("_export_meta.json", StringComparison.OrdinalIgnoreCase)).ToList();
+            Assert.Single(metaEntries);
+
+            await using var metaStream = metaEntries[0].Open();
+            using var doc = await System.Text.Json.JsonDocument.ParseAsync(metaStream);
+            var reportedProjectId = doc.RootElement.GetProperty("projectId").GetString();
+            Assert.Equal(renamed.NewId, reportedProjectId, ignoreCase: true);
+        }
+        finally
+        {
+            try { Directory.Delete(tmp, true); } catch { /* ignore */ }
+        }
+    }
 }

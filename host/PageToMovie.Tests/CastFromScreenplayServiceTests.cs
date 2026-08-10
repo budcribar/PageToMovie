@@ -158,6 +158,71 @@ public class CastFromScreenplayServiceTests
     }
 
     [Fact]
+    public void NormalizeCastDoc_links_age_variant_to_base_via_variant_of()
+    {
+        var parsed = new Dictionary<string, object?>
+        {
+            ["movie_title"] = "Nick and Me",
+            ["character_seed_tokens"] = new Dictionary<string, object?>
+            {
+                ["Character_Nick"] = new Dictionary<string, object?>
+                {
+                    ["canonical_given_name"] = "Nick",
+                    ["description"] = "Adult man, mid-20s, reddish-brown messy hair, early scars on chin.",
+                    ["visual_lock"] = "Same scarred chin and reddish-brown hair every scene.",
+                    ["display_name_policy"] = "ok_anytime",
+                },
+                ["Character_Young_Nick"] = new Dictionary<string, object?>
+                {
+                    ["canonical_given_name"] = "Young Nick",
+                    ["description"] = "Boy, about 12, sturdy preteen build, same reddish-brown hair.",
+                    ["visual_lock"] = "Same reddish-brown hair, preteen build every scene.",
+                    ["display_name_policy"] = "ok_anytime",
+                    ["age_band"] = "child_8_9",
+                    ["variant_of"] = "Character_Nick",
+                },
+            },
+        };
+
+        var normalized = CastFromScreenplayService.NormalizeCastDoc(parsed, "budcribar/NickAndMe");
+        var seeds = (Dictionary<string, object?>)normalized["character_seed_tokens"]!;
+
+        Assert.True(seeds.ContainsKey("Character_Nick"));
+        Assert.True(seeds.ContainsKey("Character_Young_Nick"));
+
+        var baseSeed = (Dictionary<string, object?>)seeds["Character_Nick"]!;
+        Assert.False(baseSeed.ContainsKey("age_band"));
+        Assert.False(baseSeed.ContainsKey("variant_of"));
+
+        var variantSeed = (Dictionary<string, object?>)seeds["Character_Young_Nick"]!;
+        Assert.Equal("child_8_9", variantSeed["age_band"]);
+        Assert.Equal("Character_Nick", variantSeed["variant_of"]);
+    }
+
+    [Fact]
+    public void NormalizeCastDoc_drops_variant_of_pointing_at_a_nonexistent_seed()
+    {
+        var parsed = new Dictionary<string, object?>
+        {
+            ["character_seed_tokens"] = new Dictionary<string, object?>
+            {
+                ["Character_Young_Nick"] = new Dictionary<string, object?>
+                {
+                    ["canonical_given_name"] = "Young Nick",
+                    ["description"] = "Boy, about 12.",
+                    ["display_name_policy"] = "ok_anytime",
+                    ["variant_of"] = "Character_Nick", // base seed never emitted — dangling pointer
+                },
+            },
+        };
+
+        var normalized = CastFromScreenplayService.NormalizeCastDoc(parsed, "budcribar/NickAndMe");
+        var seeds = (Dictionary<string, object?>)normalized["character_seed_tokens"]!;
+        var variantSeed = (Dictionary<string, object?>)seeds["Character_Young_Nick"]!;
+        Assert.False(variantSeed.ContainsKey("variant_of"));
+    }
+
+    [Fact]
     public void NameToCharacterKey_pascalizes()
     {
         Assert.Equal("Character_Buster", CastFromScreenplayService.NameToCharacterKey("BUSTER"));

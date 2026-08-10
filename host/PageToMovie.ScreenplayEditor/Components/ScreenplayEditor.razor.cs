@@ -11,9 +11,23 @@ public partial class ScreenplayEditor : ComponentBase
     [Parameter]
     public EventCallback<ScreenplayModel> ModelChanged { get; set; }
 
+    /// <summary>Host owns the toolbar — hide the built-in top chrome.</summary>
+    [Parameter]
+    public bool HideChrome { get; set; }
+
+    /// <summary>Play generated video for a scene number (Film page stitches clips).</summary>
+    [Parameter]
+    public EventCallback<int> OnPlayScene { get; set; }
+
+    private bool _menuOpen;
+    private void ToggleMenu() => _menuOpen = !_menuOpen;
+    private void CloseMenu() => _menuOpen = false;
+
+
     public bool ShowFountainModal { get; set; }
     public string FountainModalMode { get; set; } = "import";
     public string FountainModalText { get; set; } = "";
+    public byte[]? FountainModalPdfBytes { get; set; }
 
     public bool ShowLocationModal { get; set; } = false;
     public bool ShowCharacterModal { get; set; } = false;
@@ -53,15 +67,29 @@ public partial class ScreenplayEditor : ComponentBase
         StateHasChanged();
     }
 
-    public void OpenLocationModal()
+    public void OpenLocationModal(string? focusName = null)
     {
+        CloseMenu();
+        FocusLocationName = focusName;
         ShowLocationModal = true;
     }
 
-    public void OpenCharacterModal()
+    public void OpenCharacterModal(string? focusName = null)
     {
+        CloseMenu();
+        FocusCharacterName = focusName;
         ShowCharacterModal = true;
     }
+
+    public void OpenCharacterFromOutline(string? name) => OpenCharacterModal(name);
+
+    public void OpenLocationFromOutline(string? name) => OpenLocationModal(name);
+
+    /// <summary>Location name to highlight when the locations modal opens.</summary>
+    public string? FocusLocationName { get; set; }
+
+    /// <summary>Character name to highlight when the characters modal opens.</summary>
+    public string? FocusCharacterName { get; set; }
 
     public void SelectMetadataView()
     {
@@ -80,6 +108,12 @@ public partial class ScreenplayEditor : ComponentBase
             SelectedSceneIndex = index;
             ActiveViewMode = "scene";
         }
+    }
+
+    public async Task PlaySceneVideo(int sceneNumber)
+    {
+        if (OnPlayScene.HasDelegate)
+            await OnPlayScene.InvokeAsync(sceneNumber);
     }
 
     public void SelectPreviousScene()
@@ -122,6 +156,7 @@ public partial class ScreenplayEditor : ComponentBase
 
     public async Task CollapseAllScenes()
     {
+        CloseMenu();
         foreach (var s in Model.Scenes)
         {
             s.IsCollapsed = true;
@@ -131,6 +166,7 @@ public partial class ScreenplayEditor : ComponentBase
 
     public async Task ExpandAllScenes()
     {
+        CloseMenu();
         foreach (var s in Model.Scenes)
         {
             s.IsCollapsed = false;
@@ -148,22 +184,34 @@ public partial class ScreenplayEditor : ComponentBase
 
     public async Task AddScene()
     {
-        var locs = Model.GetAllLocations();
+        await InsertSceneAfter(Model.Scenes.Count - 1);
+    }
+
+    /// <summary>Insert a blank scene after <paramref name="afterIndex"/> (-1 = at start).</summary>
+    public async Task InsertSceneAfter(int afterIndex)
+    {
+        var prev = afterIndex >= 0 && afterIndex < Model.Scenes.Count ? Model.Scenes[afterIndex] : null;
         var newScene = new ScreenplayScene
         {
-            SceneNumber = Model.Scenes.Count + 1,
-            Environment = "INT.",
-            Location = "NEW LOCATION",
-            TimeOfDay = "DAY",
+            SceneNumber = 0,
+            Environment = prev?.Environment ?? "INT.",
+            Location = prev?.Location ?? "NEW LOCATION",
+            TimeOfDay = prev?.TimeOfDay ?? "DAY",
             IsSelected = true
         };
         newScene.Beats.Add(new ScreenplayBeat
         {
             BeatType = BeatType.Action,
-            ActionText = "Describe visual scene action here..."
+            ActionText = "Describe what we see…"
         });
-        Model.Scenes.Add(newScene);
-        SelectedSceneIndex = Model.Scenes.Count - 1;
+
+        foreach (var s in Model.Scenes)
+            s.IsSelected = false;
+
+        var insertAt = Math.Clamp(afterIndex + 1, 0, Model.Scenes.Count);
+        Model.Scenes.Insert(insertAt, newScene);
+        ReindexSceneNumbers();
+        SelectedSceneIndex = insertAt;
         ActiveViewMode = "scene";
         await OnChanged();
     }
@@ -212,6 +260,7 @@ public partial class ScreenplayEditor : ComponentBase
 
     public void OpenImportModal()
     {
+        CloseMenu();
         FountainModalMode = "import";
         FountainModalText = "";
         ShowFountainModal = true;
@@ -219,8 +268,17 @@ public partial class ScreenplayEditor : ComponentBase
 
     public void OpenExportModal()
     {
+        CloseMenu();
         FountainModalMode = "export";
         FountainModalText = FountainFormatter.ToFountain(Model);
+        ShowFountainModal = true;
+    }
+
+    public void OpenExportPdfModal()
+    {
+        CloseMenu();
+        FountainModalMode = "export-pdf";
+        FountainModalPdfBytes = PdfFormatter.ToPdfBytes(Model);
         ShowFountainModal = true;
     }
 

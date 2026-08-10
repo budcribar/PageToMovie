@@ -194,6 +194,7 @@ Closed set only: return Character_* keys from cast_keys. Never invent keys outsi
 ## Disambiguation
 - Prefer the most specific matching key (longest / full name). Never also add a shorter key that is only a substring of another matched name (e.g. Kala Nag → Character_Kala_Nag only, not Character_Nag).
 - Nicknames and hyphen variants count (Rikki / Rikki-tikki → Character_Rikki_Tikki when that key exists).
+- Age-variant keys (e.g. Character_Young_Nick alongside base Character_Nick) follow the same rule: a beat showing the character's childhood/teen self picks ONLY the age-variant key, never the base adult key too — the age-variant is the more specific match for that beat.
 - Pronoun-only beats: if the subject is clearly a continuing named cast member from story context in the visual prose, include that key; if truly ambiguous, empty or only keys grounded in text.
 
 ## Heuristic

@@ -406,18 +406,22 @@ public class ClipDurationEstimatorTests
     }
 
     [Fact]
-    public void ExpandLongDialogueBeats_splits_and_renumbers()
+    public void ExpandLongDialogueBeats_splits_and_preserves_stable_root()
     {
         var monologue =
             "It is impossible to say how first the idea entered my brain; but once conceived, it haunted me day and night. " +
             "Object there was none. Passion there was none. I loved the old man. He had never wronged me. " +
             "He had never given me insult. For his gold I had no desire. I think it was his eye! yes, it was this!";
 
+        var root = PageToMovie.Core.Utils.StableBeatId.ForContent(
+            "INT. ROOM - NIGHT", "dialogue", "Character_Narrator", monologue);
+
         var beats = new List<Dictionary<string, object?>>
         {
             new()
             {
-                ["beat_id"] = "b1",
+                ["beat_id"] = PageToMovie.Core.Utils.StableBeatId.ForContent(
+                    "INT. ROOM - NIGHT", "action", "", "Chair faces us."),
                 ["action_class"] = "action",
                 ["dialogue"] = "",
                 ["delivery"] = "none",
@@ -425,7 +429,7 @@ public class ClipDurationEstimatorTests
             },
             new()
             {
-                ["beat_id"] = "b2",
+                ["beat_id"] = root,
                 ["action_class"] = "dialogue",
                 ["dialogue"] = monologue,
                 ["delivery"] = "spoken_on_camera",
@@ -442,7 +446,7 @@ public class ClipDurationEstimatorTests
 
         var expanded = ClipDurationEstimator.ExpandLongDialogueBeats(beats);
         Assert.True(expanded.Count > 2, $"expected monologue expansion, count={expanded.Count}");
-        Assert.Equal("b1", expanded[0]["beat_id"]?.ToString());
+        Assert.Equal(beats[0]["beat_id"]?.ToString(), expanded[0]["beat_id"]?.ToString());
         Assert.Equal("", expanded[0]["dialogue"]?.ToString() ?? "");
 
         var speech = expanded.Skip(1).ToList();
@@ -451,10 +455,11 @@ public class ClipDurationEstimatorTests
             Assert.Equal("Character_Narrator", b["speaker"]?.ToString());
             Assert.False(string.IsNullOrWhiteSpace(b["dialogue"]?.ToString()));
             Assert.False(ClipDurationEstimator.DialogueExceedsModelMax(b["dialogue"]?.ToString()));
+            var id = b["beat_id"]?.ToString() ?? "";
+            Assert.StartsWith(root + "#p", id, StringComparison.Ordinal);
+            Assert.Contains("of", id, StringComparison.Ordinal);
         });
-        // Sequential ids after expand
-        for (var i = 0; i < expanded.Count; i++)
-            Assert.Equal($"b{i + 1}", expanded[i]["beat_id"]?.ToString());
+        Assert.Equal(root + "#p1of" + speech.Count, speech[0]["beat_id"]?.ToString());
     }
 
     [Fact]

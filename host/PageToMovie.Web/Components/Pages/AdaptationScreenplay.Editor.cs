@@ -63,6 +63,7 @@ public partial class AdaptationScreenplay
                     S.Status = doc.Adaptation;
 
                 HydrateModelFromText();
+                await SeedCastProfilesAsync();
                 _editorReady = true;
                 _editorDataLoaded = true;
                 S.SignOff.UpdateWarningsFromText(_text);
@@ -76,9 +77,141 @@ public partial class AdaptationScreenplay
             }
         }
 
+        /// <summary>
+        /// Fill character/location profiles from Stage‑1 classifier seeds (cast + location_seed_tokens).
+        /// Not from ALL CAPS action scraping (which invents fake characters like SOUND).
+        /// </summary>
+        internal async Task SeedCastProfilesAsync()
+        {
+            if (string.IsNullOrWhiteSpace(S.ProjectId)) return;
+            try
+            {
+                var cast = await S.Engine.GetCharactersAsync(S.ProjectId);
+                if (cast?.Characters is { Count: > 0 })
+                {
+                    // Rebuild cast list from classifier only (preserve field edits for matching names).
+                    var prior = _model.CharacterProfiles
+                        .Where(p => !string.IsNullOrWhiteSpace(p.Name))
+                        .ToDictionary(p => p.Name.Trim().ToUpperInvariant(), p => p, StringComparer.OrdinalIgnoreCase);
+                    _model.CharacterProfiles.Clear();
+
+                    foreach (var c in cast.Characters)
+                    {
+                        var name = !string.IsNullOrWhiteSpace(c.DisplayName) ? c.DisplayName : c.Key;
+                        if (string.IsNullOrWhiteSpace(name)) continue;
+                        name = name.Replace('_', ' ').Trim();
+                        if (name.Length < 1) continue;
+                        if (name.StartsWith("Character ", StringComparison.OrdinalIgnoreCase)
+                            && name.Skip("Character ".Length).All(ch => char.IsDigit(ch) || ch == ' '))
+                            continue;
+
+                        var key = name.ToUpperInvariant();
+                        prior.TryGetValue(key, out var existing);
+                        var profile = existing ?? new ScreenplayCharacterProfile { Name = key };
+                        profile.Name = key;
+                        profile.FromClassifier = true;
+                        if (string.IsNullOrWhiteSpace(profile.Description) && !string.IsNullOrWhiteSpace(c.Description))
+                            profile.Description = c.Description!;
+                        if (string.IsNullOrWhiteSpace(profile.VisualLockPrompt) && !string.IsNullOrWhiteSpace(c.VisualLock))
+                            profile.VisualLockPrompt = c.VisualLock!;
+                        if (string.IsNullOrWhiteSpace(profile.WardrobeAlways) && c.WardrobeAlways is { Count: > 0 })
+                            profile.WardrobeAlways = string.Join("; ", c.WardrobeAlways);
+                        if (string.IsNullOrWhiteSpace(profile.VoiceId) && !string.IsNullOrWhiteSpace(c.VoiceProviderVoiceId))
+                            profile.VoiceId = c.VoiceProviderVoiceId!;
+                        if (string.IsNullOrWhiteSpace(profile.VoiceProvider) && !string.IsNullOrWhiteSpace(c.VoiceProvider))
+                            profile.VoiceProvider = c.VoiceProvider!;
+                        if (string.IsNullOrWhiteSpace(profile.VoiceLabel) && !string.IsNullOrWhiteSpace(c.VoiceLabel))
+                            profile.VoiceLabel = c.VoiceLabel!;
+                        if (string.IsNullOrWhiteSpace(profile.VoiceProfile) && !string.IsNullOrWhiteSpace(c.VoiceProfile))
+                            profile.VoiceProfile = c.VoiceProfile!;
+                        profile.Speaks = c.Speaks;
+                        profile.SpeciesKind = c.SpeciesKind;
+                        profile.IsImageLocked = c.Locked || c.HasPreferred;
+                        _model.CharacterProfiles.Add(profile);
+                    }
+                }
+            }
+            catch
+            {
+                /* cast optional until Characters step has run */
+            }
+
+            try
+            {
+                var locs = await S.Engine.GetLocationsAsync(S.ProjectId);
+                if (locs?.Locations is not { Count: > 0 }) return;
+                foreach (var loc in locs.Locations)
+                {
+                    var name = !string.IsNullOrWhiteSpace(loc.DisplayName) ? loc.DisplayName : loc.Key;
+                    if (string.IsNullOrWhiteSpace(name)) continue;
+                    name = name.Replace('_', ' ').Trim().ToUpperInvariant();
+                    var profile = _model.GetOrCreateLocationProfile(name);
+                    if (string.IsNullOrWhiteSpace(profile.Description) && !string.IsNullOrWhiteSpace(loc.Description))
+                        profile.Description = loc.Description!;
+                    if (string.IsNullOrWhiteSpace(profile.VisualLock) && !string.IsNullOrWhiteSpace(loc.VisualLock))
+                        profile.VisualLock = loc.VisualLock!;
+                }
+
+                // Also attach descriptions to scene headings that match a seed under a different key
+                foreach (var scene in _model.Scenes)
+                {
+                    if (string.IsNullOrWhiteSpace(scene.Location)) continue;
+                    var p = _model.GetOrCreateLocationProfile(scene.Location);
+                    if (!string.IsNullOrWhiteSpace(p.Description)) continue;
+                    var match = locs.Locations.FirstOrDefault(l =>
+                        string.Equals(l.DisplayName, scene.Location, StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(l.Key.Replace('_', ' '), scene.Location, StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(l.Key, scene.Location.Replace(' ', '_'), StringComparison.OrdinalIgnoreCase));
+                    if (match is null) continue;
+                    if (!string.IsNullOrWhiteSpace(match.Description))
+                        p.Description = match.Description!;
+                    if (!string.IsNullOrWhiteSpace(match.VisualLock))
+                        p.VisualLock = match.VisualLock!;
+                }
+            }
+            catch
+            {
+                /* locations optional until Stage‑1 seeds exist */
+            }
+        }
+
         internal void HydrateModelFromText()
         {
+            // Preserve profiles already seeded from cast/locations while re-parsing fountain text.
+            var priorProfiles = _model.CharacterProfiles.ToList();
+            var priorLocations = _model.LocationProfiles.ToList();
             _model = FountainFormatter.Parse(_text ?? "");
+            foreach (var p in priorProfiles)
+            {
+                if (string.IsNullOrWhiteSpace(p.Name)) continue;
+                var existing = _model.CharacterProfiles.FirstOrDefault(x =>
+                    x.Name.Equals(p.Name, StringComparison.OrdinalIgnoreCase));
+                if (existing is null)
+                    _model.CharacterProfiles.Add(p);
+                else
+                {
+                    if (string.IsNullOrWhiteSpace(existing.Description)) existing.Description = p.Description;
+                    if (string.IsNullOrWhiteSpace(existing.VisualLockPrompt)) existing.VisualLockPrompt = p.VisualLockPrompt;
+                    if (string.IsNullOrWhiteSpace(existing.WardrobeAlways)) existing.WardrobeAlways = p.WardrobeAlways;
+                    if (string.IsNullOrWhiteSpace(existing.VoiceProfile)) existing.VoiceProfile = p.VoiceProfile;
+                    if (string.IsNullOrWhiteSpace(existing.VoiceLabel)) existing.VoiceLabel = p.VoiceLabel;
+                    existing.Speaks = existing.Speaks || p.Speaks;
+                    existing.FromClassifier = existing.FromClassifier || p.FromClassifier;
+                }
+            }
+            foreach (var loc in priorLocations)
+            {
+                if (string.IsNullOrWhiteSpace(loc.Name)) continue;
+                var existing = _model.LocationProfiles.FirstOrDefault(x =>
+                    x.Name.Equals(loc.Name, StringComparison.OrdinalIgnoreCase));
+                if (existing is null)
+                    _model.LocationProfiles.Add(loc);
+                else
+                {
+                    if (string.IsNullOrWhiteSpace(existing.Description)) existing.Description = loc.Description;
+                    if (string.IsNullOrWhiteSpace(existing.VisualLock)) existing.VisualLock = loc.VisualLock;
+                }
+            }
             if (_model.Scenes.Count == 0)
             {
                 _model.Scenes.Add(new ScreenplayScene

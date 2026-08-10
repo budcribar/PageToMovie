@@ -98,7 +98,7 @@
     "Step1": "Paso 1: Importar guión",
     "Step2": "Paso 2: Editar y aprobar",
     "Step3": "Paso 3: Plan de tomas",
-    "ApproveScreenplay": "Se ve bien — continuar",
+    "ApproveScreenplay": "Aprobar",
     "RebuildShotPlan": "Reconstruir plan de tomas",
     "ImportFile": "Importar archivo fuente (PDF / TXT)",
     "ScreenplayApproved": "Guión aprobado",
@@ -112,7 +112,7 @@
     "SourceText": "Texto fuente",
     "ScreenplayDraft": "Borrador de guión",
     "BookAndScreenplay": "Libro y guión",
-    "BookLede": "Importar → estilo → enriquecer → ajustar duración → editar guión. Luego reparto y película.",
+    "BookLede": "Importa una fuente, luego da forma y aprueba el guión. Después reparto y película.",
     "ShotPlanLede": "Planifica las tomas de cada escena, luego genera clips en Escenas.",
     "Import": "Importar",
     "Look": "Estilo",
@@ -337,8 +337,8 @@
     "Draft": "Borrador",
     "NoDraft": "Sin borrador",
     "ToCharacters": "Personajes →",
-    "ReapproveAndContinue": "Reaprobar y continuar",
-    "LooksGoodContinue": "Se ve bien — continuar",
+    "ReapproveAndContinue": "Reaprobar",
+    "LooksGoodContinue": "Aprobar",
     "Preview": "Vista previa"
   },
   "DemoPage": {

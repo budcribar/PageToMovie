@@ -604,3 +604,521 @@
   background: var(--fs-bg-card-hover);
   transition: background 0.4s ease;
 }
+
+/* ── Structured ScreenplayEditor RCL — studio cohesion ─────────────────────
+   The RCL uses Bootstrap dark utilities (bg-dark, text-light, etc.) that do not
+   match PageToMovie studio tokens. Scope overrides so the workbench reads as
+   one surface inside AdaptationShell, not a nested light/dark foreign app. */
+
+.fe-structured-editor {
+  background: var(--fs-bg-card) !important;
+  border: 1px solid var(--fs-border-color) !important;
+  border-radius: 0.75rem !important;
+  box-shadow: var(--fs-shadow-card);
+  color: var(--fs-text-primary);
+  min-height: 28rem;
+}
+
+.fe-structured-editor > .container-fluid {
+  padding-top: 0.75rem !important;
+  padding-bottom: 0.75rem !important;
+}
+
+/* Kill the RCL's second "PageToMovie" product chrome — host shell already brands. */
+.fe-structured-editor .border-bottom.border-secondary-subtle.mb-3 {
+  border-color: var(--fs-border-color) !important;
+  margin-bottom: 0.75rem !important;
+  padding-bottom: 0.65rem !important;
+}
+
+.fe-structured-editor h5 {
+  font-size: 0.95rem;
+  letter-spacing: -0.01em;
+  color: var(--fs-text-primary) !important;
+}
+
+.fe-structured-editor .text-light {
+  color: var(--fs-text-primary) !important;
+}
+
+.fe-structured-editor .text-secondary,
+.fe-structured-editor .text-muted {
+  color: var(--fs-text-muted) !important;
+}
+
+.fe-structured-editor .bg-dark {
+  background-color: var(--fs-bg-input) !important;
+}
+
+.fe-structured-editor .bg-dark-subtle {
+  background-color: var(--fs-bg-card-hover) !important;
+}
+
+.fe-structured-editor .bg-body-tertiary {
+  background-color: var(--fs-bg-card) !important;
+}
+
+.fe-structured-editor .border-secondary,
+.fe-structured-editor .border-secondary-subtle {
+  border-color: var(--fs-border-color) !important;
+}
+
+.fe-structured-editor .card {
+  background: var(--fs-bg-card);
+  border-color: var(--fs-border-color) !important;
+  box-shadow: none;
+}
+
+.fe-structured-editor .card-header {
+  background: var(--fs-bg-input) !important;
+  border-color: var(--fs-border-color) !important;
+  color: var(--fs-text-primary) !important;
+}
+
+.fe-structured-editor .card-body {
+  background: transparent;
+  color: var(--fs-text-primary);
+}
+
+/* Scene header bar — one accent stripe, not a second product surface */
+.fe-structured-editor .card-header.bg-dark {
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--fs-bg-input) 88%, var(--fs-accent-indigo)),
+    var(--fs-bg-input)
+  ) !important;
+}
+
+.fe-structured-editor .badge.text-bg-warning {
+  background-color: var(--fs-accent-amber) !important;
+  color: #1a1408 !important;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.fe-structured-editor .badge.text-bg-dark {
+  background: var(--fs-overlay-mid) !important;
+  color: var(--fs-text-secondary) !important;
+  border: 1px solid var(--fs-border-color);
+}
+
+.fe-structured-editor .badge.text-bg-primary,
+.fe-structured-editor .btn-primary {
+  background-color: var(--fs-accent-indigo) !important;
+  border-color: var(--fs-accent-indigo) !important;
+  color: #fff !important;
+}
+
+.fe-structured-editor .btn-outline-secondary {
+  color: var(--fs-text-secondary);
+  border-color: var(--fs-border-color);
+  background: transparent;
+}
+
+.fe-structured-editor .btn-outline-secondary:hover {
+  background: var(--fs-bg-card-hover);
+  border-color: var(--fs-border-hover);
+  color: var(--fs-text-primary);
+}
+
+.fe-structured-editor .btn-outline-info,
+.fe-structured-editor .btn-outline-warning,
+.fe-structured-editor .btn-outline-danger {
+  border-color: var(--fs-border-color);
+  color: var(--fs-text-secondary);
+}
+
+.fe-structured-editor .btn-outline-info:hover {
+  background: var(--fs-alert-info-bg);
+  border-color: var(--fs-alert-info-border);
+  color: var(--fs-alert-info-text);
+}
+
+.fe-structured-editor .btn-outline-warning:hover {
+  background: var(--fs-alert-warning-bg);
+  border-color: var(--fs-alert-warning-border);
+  color: var(--fs-alert-warning-text);
+}
+
+.fe-structured-editor .btn-outline-danger:hover {
+  background: var(--fs-alert-danger-bg);
+  border-color: var(--fs-alert-danger-border);
+  color: var(--fs-alert-danger-text);
+}
+
+.fe-structured-editor .form-select,
+.fe-structured-editor .form-control {
+  background-color: var(--fs-bg-input) !important;
+  border-color: var(--fs-border-color) !important;
+  color: var(--fs-text-primary) !important;
+}
+
+.fe-structured-editor .form-select:focus,
+.fe-structured-editor .form-control:focus {
+  background-color: var(--fs-bg-input-focus) !important;
+  border-color: var(--fs-border-hover) !important;
+  box-shadow: 0 0 0 0.2rem rgba(107, 140, 174, 0.2);
+  color: var(--fs-text-primary) !important;
+}
+
+.fe-structured-editor .form-select option {
+  background: var(--fs-bg-card);
+  color: var(--fs-text-primary);
+}
+
+/* Outline scene rows */
+.fe-structured-editor .bg-primary {
+  background-color: color-mix(in oklab, var(--fs-accent-indigo) 88%, #000) !important;
+}
+
+.fe-structured-editor .btn-outline-secondary.text-light {
+  color: var(--fs-text-secondary) !important;
+}
+
+/* Beat rows — subtle raised chips, not hard black slabs */
+.fe-structured-editor .card-body > .border.border-secondary-subtle.rounded.bg-dark,
+.fe-structured-editor .card-body .border.bg-dark.shadow-sm {
+  background: var(--fs-bg-input) !important;
+  border-color: var(--fs-border-color) !important;
+  box-shadow: none !important;
+}
+
+.fe-structured-editor .card-body .border.bg-dark.shadow-sm:hover {
+  border-color: var(--fs-border-hover) !important;
+  background: var(--fs-bg-card-hover) !important;
+}
+
+/* Add-beat control */
+.fe-structured-editor .form-select.text-success,
+.fe-structured-editor .form-select.border-success {
+  color: var(--fs-alert-success-text) !important;
+  border-color: var(--fs-alert-success-border) !important;
+  background: var(--fs-alert-success-bg) !important;
+}
+
+/* Host toolbar: primary continue CTA already success; keep spacing tight */
+.fe-wrap > .fe-toolbar {
+  gap: 0.5rem;
+}
+
+.fe-wrap > .fe-toolbar .btn-success {
+  font-weight: 600;
+  box-shadow: 0 0 0 1px color-mix(in oklab, #22c55e 35%, transparent);
+}
+
+/* Dropdown menus inside RCL */
+.fe-structured-editor .dropdown-menu-dark {
+  background: var(--fs-bg-card);
+  border: 1px solid var(--fs-border-color);
+  color: var(--fs-text-primary);
+}
+
+.fe-structured-editor .dropdown-item {
+  color: var(--fs-text-secondary);
+}
+
+.fe-structured-editor .dropdown-item:hover {
+  background: var(--fs-bg-card-hover);
+  color: var(--fs-text-primary);
+}
+
+.fe-structured-editor .dropdown-header {
+  color: var(--fs-text-subtle);
+}
+
+/* Screenplay card tools: Look / Enrich / Fit length */
+.fe-sp-tools {
+  border: 1px solid var(--fs-border-color);
+  border-radius: 0.5rem;
+  background: var(--fs-bg-card);
+  overflow: hidden;
+}
+
+.fe-sp-tools__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.65rem;
+  border-bottom: 1px solid var(--fs-border-color);
+  background: color-mix(in oklab, var(--fs-bg-card) 88%, var(--fs-bg-page, #0f1218));
+}
+
+.fe-sp-tools__tab {
+  appearance: none;
+  border: 1px solid var(--fs-border-color);
+  background: transparent;
+  color: var(--fs-text-secondary, var(--fs-text-muted));
+  font-size: 0.82rem;
+  font-weight: 500;
+  padding: 0.28rem 0.7rem;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.fe-sp-tools__tab:hover:not(:disabled) {
+  border-color: var(--fs-border-hover);
+  color: var(--fs-text-primary);
+}
+
+.fe-sp-tools__tab.is-active {
+  border-color: var(--fs-accent-indigo, #6b8cae);
+  background: color-mix(in oklab, var(--fs-accent-indigo, #6b8cae) 18%, transparent);
+  color: var(--fs-text-primary);
+  font-weight: 600;
+}
+
+.fe-sp-tools__tab:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.fe-sp-tools__done {
+  margin-left: 0.3rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--fs-accent-green, #22c55e);
+}
+
+.fe-sp-tools__link {
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.fe-sp-tools__link:hover {
+  text-decoration: underline;
+  color: var(--fs-text-primary) !important;
+}
+
+.fe-sp-tools__panel {
+  padding: 0.75rem 0.85rem 0.9rem;
+}
+
+/* Screenplay card header: Approve sits on the top bar */
+.fe-screenplay-card > .card-header {
+  background: color-mix(in oklab, var(--fs-bg-card) 92%, var(--fs-accent-indigo, #6b8cae));
+  border-bottom-color: var(--fs-border-color);
+}
+
+.fe-screenplay-card > .card-header .btn-success {
+  font-weight: 600;
+}
+
+/* Compact screenplay: exactly two chrome rows, then the editor */
+.fe-screenplay-card--compact {
+  overflow: hidden;
+}
+
+.fe-sp-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  padding: 0.45rem 0.75rem;
+  min-height: 2.5rem;
+}
+
+.fe-sp-bar--primary {
+  justify-content: space-between;
+  background: color-mix(in oklab, var(--fs-bg-card) 92%, var(--fs-accent-indigo, #6b8cae));
+  border-bottom: 1px solid var(--fs-border-color);
+}
+
+.fe-sp-bar--tools {
+  gap: 0.35rem;
+  background: color-mix(in oklab, var(--fs-bg-card) 88%, var(--fs-bg-page, #0f1218));
+  border-bottom: 1px solid var(--fs-border-color);
+}
+
+.fe-sp-bar__left {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.65rem;
+  min-width: 0;
+}
+
+.fe-sp-bar__right {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin-left: auto;
+}
+
+.fe-sp-title {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 600;
+  font-size: 1.05rem;
+  letter-spacing: -0.02em;
+  color: var(--fs-text-primary);
+  line-height: 1.2;
+  max-width: min(28rem, 55vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fe-sp-bar--primary .btn-success {
+  font-weight: 600;
+}
+
+.fe-screenplay-body {
+  padding-top: 0.65rem !important;
+}
+
+.fe-wrap--compact {
+  min-height: calc(100vh - 10rem);
+  gap: 0.5rem;
+}
+
+.fe-screenplay-card--compact .fe-sp-tools__panel {
+  border: 1px solid var(--fs-border-color);
+  border-radius: 0.45rem;
+  background: var(--fs-bg-card);
+  padding: 0.65rem 0.75rem;
+}
+
+/* Tighter beat/scene selects — more room for text, caret tucked right */
+.fe-structured-editor .spe-sel {
+  height: 26px !important;
+  min-height: 26px !important;
+  padding: 0 1.15rem 0 0.3rem !important;
+  font-size: 0.78rem !important;
+  line-height: 1.2 !important;
+  background-position: right 0.28rem center !important;
+  background-size: 10px 8px !important;
+}
+
+.fe-structured-editor .spe-sel-type {
+  width: 5.6rem !important;
+  max-width: 5.6rem !important;
+  flex: 0 0 5.6rem !important;
+}
+
+.fe-structured-editor .spe-sel-env {
+  width: 5.25rem !important;
+  max-width: 5.25rem !important;
+  flex: 0 0 5.25rem !important;
+}
+
+.fe-structured-editor .spe-sel-tod {
+  width: 7.25rem !important;
+  max-width: 7.5rem !important;
+  flex: 0 0 7.25rem !important;
+}
+
+.fe-structured-editor .spe-sel-ext {
+  width: 3.6rem !important;
+  max-width: 3.6rem !important;
+  flex: 0 0 3.6rem !important;
+  font-size: 0.72rem !important;
+}
+
+.fe-structured-editor .spe-sel-speaker {
+  width: auto !important;
+  min-width: 5rem !important;
+  max-width: 9rem !important;
+  flex: 0 1 8rem !important;
+}
+
+.fe-structured-editor .spe-sel-loc {
+  min-width: 6rem !important;
+}
+
+.fe-structured-editor .spe-sel-add {
+  width: 9.5rem !important;
+  height: 28px !important;
+  /* Keep caret when setting solid success background */
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%2322c55e' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 0.35rem center !important;
+  background-size: 10px 8px !important;
+}
+
+.fe-structured-editor .spe-gear-btn {
+  height: 26px !important;
+  font-size: 0.72rem !important;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.fe-structured-editor .spe-drag-handle {
+  font-size: 0.7rem;
+  letter-spacing: -0.08em;
+  opacity: 0.65;
+}
+
+.fe-structured-editor .spe-focus-card {
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--fs-accent-indigo, #6b8cae) 40%, transparent);
+}
+
+/* Blazor-driven Menu (no Bootstrap JS) */
+.fe-screenplay-card .dropdown { position: relative; }
+.fe-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1020;
+  background: transparent;
+}
+.fe-screenplay-card .dropdown-menu.show {
+  z-index: 1030;
+}
+
+/* Outline row: checkbox + label + ▶ + + + 🗑 on one line */
+.fe-structured-editor .spe-outline-row {
+  min-height: 1.65rem;
+  max-height: 1.85rem;
+}
+.fe-structured-editor .spe-outline-check {
+  width: 0.85rem;
+  height: 0.85rem;
+  margin: 0 !important;
+  flex-shrink: 0;
+}
+.fe-structured-editor .spe-outline-label {
+  font-size: 0.78rem;
+  line-height: 1.2;
+  min-width: 0;
+}
+.fe-structured-editor .spe-outline-actions {
+  gap: 0;
+}
+.fe-structured-editor .spe-outline-icon {
+  width: 1.35rem;
+  height: 1.35rem;
+  padding: 0 !important;
+  line-height: 1.2;
+  font-size: 0.78rem;
+  border: 0;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.85;
+}
+.fe-structured-editor .spe-outline-icon:hover {
+  opacity: 1;
+  background: rgba(255,255,255,0.08);
+  border-radius: 0.25rem;
+}
+.fe-structured-editor .spe-outline-add {
+  min-width: 1.5rem;
+  height: 1.4rem;
+  line-height: 1;
+  font-weight: 700;
+  font-size: 0.9rem;
+  padding: 0 0.3rem !important;
+}
+
+/* Sequence group headers in outline */
+.fe-structured-editor .spe-group-header {
+  min-height: 1.5rem;
+  background: color-mix(in oklab, var(--bs-body-bg, #111) 70%, #1e3a5f);
+  margin-top: 0.25rem;
+}
+.fe-structured-editor .spe-group-header + .spe-outline-row {
+  margin-left: 0.35rem;
+  border-left: 2px solid color-mix(in oklab, #38bdf8 35%, transparent) !important;
+}

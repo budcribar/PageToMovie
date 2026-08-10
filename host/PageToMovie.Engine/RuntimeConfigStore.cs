@@ -61,6 +61,7 @@ public sealed class RuntimeConfigStore : IRuntimeConfigStore
         var o = _opts.Value;
         var cap = o.Capacity ?? new CapacityOptions();
         var f = o.Fakes ?? new FakesOptions();
+        var a = o.AdaptationDefaults ?? new AdaptationDefaultsOptions();
         o.Billing ??= new BillingOptions();
         return new RuntimeConfigDto
         {
@@ -76,6 +77,17 @@ public sealed class RuntimeConfigStore : IRuntimeConfigStore
                 VideoDelayMs = f.VideoDelayMs,
                 FailRate = f.FailRate,
                 RateLimitEveryN = f.RateLimitEveryN,
+            },
+            Adaptation = new AdaptationRuntimeDto
+            {
+                MaxSpeakingCast = a.MaxSpeakingCast,
+                MaxDialogueWords = a.MaxDialogueWords,
+                VoMaxSentences = a.VoMaxSentences,
+                SceneCountMin = a.SceneCountMin,
+                SceneCountMax = a.SceneCountMax,
+                MinAudioCuesPerScene = a.MinAudioCuesPerScene,
+                MinAudioCuesAtPeak = a.MinAudioCuesAtPeak,
+                BodyWordsPerMinute = a.BodyWordsPerMinute,
             },
             UseFakes = o.UseFakes,
             ChargeMultiplier = ChargePricing.ClampMultiplier(o.Billing.ChargeMultiplier),
@@ -98,6 +110,7 @@ public sealed class RuntimeConfigStore : IRuntimeConfigStore
             var o = _opts.Value;
             o.Capacity ??= new CapacityOptions();
             o.Fakes ??= new FakesOptions();
+            o.AdaptationDefaults ??= new AdaptationDefaultsOptions();
             o.Billing ??= new BillingOptions();
             var before = Get();
 
@@ -120,6 +133,18 @@ public sealed class RuntimeConfigStore : IRuntimeConfigStore
                 o.Fakes.RateLimitEveryN = Math.Max(0, f.RateLimitEveryN);
             }
 
+            if (req.Adaptation is { } a)
+            {
+                o.AdaptationDefaults.MaxSpeakingCast = ClampAdaptation(a.MaxSpeakingCast, 1, 40);
+                o.AdaptationDefaults.MaxDialogueWords = ClampAdaptation(a.MaxDialogueWords, 5, 200);
+                o.AdaptationDefaults.VoMaxSentences = ClampAdaptation(a.VoMaxSentences, 1, 10);
+                o.AdaptationDefaults.SceneCountMin = ClampAdaptation(a.SceneCountMin, 1, 500);
+                o.AdaptationDefaults.SceneCountMax = ClampAdaptation(a.SceneCountMax, 1, 500);
+                o.AdaptationDefaults.MinAudioCuesPerScene = ClampAdaptation(a.MinAudioCuesPerScene, 0, 10);
+                o.AdaptationDefaults.MinAudioCuesAtPeak = ClampAdaptation(a.MinAudioCuesAtPeak, 0, 10);
+                o.AdaptationDefaults.BodyWordsPerMinute = ClampAdaptation(a.BodyWordsPerMinute, 50, 400);
+            }
+
             if (req.UseFakes is bool uf)
                 o.UseFakes = uf;
 
@@ -139,6 +164,9 @@ public sealed class RuntimeConfigStore : IRuntimeConfigStore
         }
     }
 
+    private static int? ClampAdaptation(int? value, int min, int max) =>
+        value is int v ? Math.Clamp(v, min, max) : null;
+
     private void TryLoadAndApply()
     {
         try
@@ -150,6 +178,7 @@ public sealed class RuntimeConfigStore : IRuntimeConfigStore
             var o = _opts.Value;
             o.Capacity ??= new CapacityOptions();
             o.Fakes ??= new FakesOptions();
+            o.AdaptationDefaults ??= new AdaptationDefaultsOptions();
             o.Billing ??= new BillingOptions();
             if (dto.Capacity is { } c)
             {
@@ -165,6 +194,17 @@ public sealed class RuntimeConfigStore : IRuntimeConfigStore
                 var failRate = double.IsFinite(f.FailRate) ? f.FailRate : 0;
                 o.Fakes.FailRate = Math.Clamp(failRate, 0, 1);
                 o.Fakes.RateLimitEveryN = Math.Max(0, f.RateLimitEveryN);
+            }
+            if (dto.Adaptation is { } a)
+            {
+                o.AdaptationDefaults.MaxSpeakingCast = ClampAdaptation(a.MaxSpeakingCast, 1, 40);
+                o.AdaptationDefaults.MaxDialogueWords = ClampAdaptation(a.MaxDialogueWords, 5, 200);
+                o.AdaptationDefaults.VoMaxSentences = ClampAdaptation(a.VoMaxSentences, 1, 10);
+                o.AdaptationDefaults.SceneCountMin = ClampAdaptation(a.SceneCountMin, 1, 500);
+                o.AdaptationDefaults.SceneCountMax = ClampAdaptation(a.SceneCountMax, 1, 500);
+                o.AdaptationDefaults.MinAudioCuesPerScene = ClampAdaptation(a.MinAudioCuesPerScene, 0, 10);
+                o.AdaptationDefaults.MinAudioCuesAtPeak = ClampAdaptation(a.MinAudioCuesAtPeak, 0, 10);
+                o.AdaptationDefaults.BodyWordsPerMinute = ClampAdaptation(a.BodyWordsPerMinute, 50, 400);
             }
             if (dto.UseFakes is bool uf)
                 o.UseFakes = uf;
@@ -198,6 +238,17 @@ public sealed class RuntimeConfigStore : IRuntimeConfigStore
                 VideoDelayMs = o.Fakes?.VideoDelayMs ?? 200,
                 FailRate = o.Fakes?.FailRate ?? 0,
                 RateLimitEveryN = o.Fakes?.RateLimitEveryN ?? 0,
+            },
+            Adaptation = new AdaptationRuntimeDto
+            {
+                MaxSpeakingCast = o.AdaptationDefaults?.MaxSpeakingCast,
+                MaxDialogueWords = o.AdaptationDefaults?.MaxDialogueWords,
+                VoMaxSentences = o.AdaptationDefaults?.VoMaxSentences,
+                SceneCountMin = o.AdaptationDefaults?.SceneCountMin,
+                SceneCountMax = o.AdaptationDefaults?.SceneCountMax,
+                MinAudioCuesPerScene = o.AdaptationDefaults?.MinAudioCuesPerScene,
+                MinAudioCuesAtPeak = o.AdaptationDefaults?.MinAudioCuesAtPeak,
+                BodyWordsPerMinute = o.AdaptationDefaults?.BodyWordsPerMinute,
             },
             UseFakes = o.UseFakes,
             ChargeMultiplier = ChargePricing.ClampMultiplier(o.Billing.ChargeMultiplier),
@@ -238,6 +289,7 @@ public sealed class RuntimeConfigStore : IRuntimeConfigStore
     {
         public CapacityRuntimeDto? Capacity { get; set; }
         public FakesRuntimeDto? Fakes { get; set; }
+        public AdaptationRuntimeDto? Adaptation { get; set; }
         public bool? UseFakes { get; set; }
         public double? ChargeMultiplier { get; set; }
         public DateTimeOffset? UpdatedAt { get; set; }

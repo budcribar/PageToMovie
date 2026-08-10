@@ -1,24 +1,39 @@
 <div class="card mb-2 border-secondary-subtle bg-dark-subtle shadow-sm" id="scene-card-@Scene.SceneNumber">
     <!-- Single Clean Line Header Row -->
     <div class="card-header bg-dark text-light d-flex flex-nowrap align-items-center gap-1 py-1 px-2 border-bottom border-secondary-subtle overflow-hidden">
-        <button class="btn btn-sm btn-link text-light text-decoration-none p-0 me-1 flex-shrink-0" type="button" @onclick="ToggleCollapse" title="Toggle Scene Details">
+        <button class="btn btn-sm btn-link text-light text-decoration-none p-0 me-1 flex-shrink-0"
+                type="button"
+                @onclick="ToggleCollapse"
+                title="Collapse or expand this scene">
             @(Scene.IsCollapsed ? "▶" : "▼")
         </button>
 
-        <span class="badge text-bg-warning fw-bold flex-shrink-0">Scene @Scene.SceneNumber</span>
+        <span class="badge text-bg-warning fw-bold flex-shrink-0"
+              title="Scene number — order of this scene in the screenplay">Scene @Scene.SceneNumber</span>
 
-        <button class="btn btn-sm btn-outline-info py-0 px-1 text-nowrap flex-shrink-0" style="height: 26px; font-size: 0.75rem;" type="button" @onclick="OnEditLocationsClick" title="Manage / Edit Story Locations">
+        @* INT/EXT first, then Locations gear immediately before the place name *@
+        <select class="form-select form-select-sm fw-bold border-secondary bg-dark text-light spe-sel spe-sel-env"
+                title="@Scene.Env.GetJargonHint()"
+                @bind="Scene.Env"
+                @bind:after="OnChanged">
+            <option value="@SceneEnvironment.INT" title="@SceneEnvironment.INT.GetJargonHint()">INT.</option>
+            <option value="@SceneEnvironment.EXT" title="@SceneEnvironment.EXT.GetJargonHint()">EXT.</option>
+            <option value="@SceneEnvironment.INT_EXT" title="@SceneEnvironment.INT_EXT.GetJargonHint()">INT./EXT.</option>
+        </select>
+
+        <button class="btn btn-sm btn-outline-info py-0 px-1 text-nowrap flex-shrink-0 spe-gear-btn"
+                type="button"
+                @onclick="EditLocationsAsync"
+                title="@(string.IsNullOrWhiteSpace(Scene.Location)
+                    ? "Edit story locations"
+                    : $"Edit location “{Scene.Location}”")">
             ⚙ Locations
         </button>
 
-        <select class="form-select form-select-sm fw-bold border-secondary bg-dark text-light py-0 px-1 flex-shrink-0" style="width: 85px; height: 26px; font-size: 0.8rem;" @bind="Scene.Env" @bind:after="OnChanged">
-            <option value="@SceneEnvironment.INT">INT.</option>
-            <option value="@SceneEnvironment.EXT">EXT.</option>
-            <option value="@SceneEnvironment.INT_EXT">INT./EXT.</option>
-        </select>
-        
-        <!-- Location Dropdown (e.g. SUBURBAN BACKYARD) -->
-        <select class="form-select form-select-sm text-uppercase fw-bold border-secondary bg-dark text-light py-0 px-2 flex-grow-1 text-truncate" style="min-width: 120px; height: 26px; font-size: 0.8rem;" @bind="Scene.Location" @bind:after="OnChanged">
+        <select class="form-select form-select-sm text-uppercase fw-bold border-secondary bg-dark text-light spe-sel spe-sel-loc flex-grow-1 text-truncate"
+                title="Location — the place named on the scene heading (e.g. KITCHEN, CITY STREET)"
+                @bind="Scene.Location"
+                @bind:after="OnChanged">
             @if (!AvailableLocations.Contains(Scene.Location) && !string.IsNullOrWhiteSpace(Scene.Location))
             {
                 <option value="@Scene.Location">@Scene.Location (Current)</option>
@@ -29,13 +44,16 @@
             }
         </select>
 
-        <select class="form-select form-select-sm fw-bold border-secondary bg-dark text-light py-0 px-1 flex-shrink-0" style="width: 120px; height: 26px; font-size: 0.8rem;" @bind="Scene.TimeOfDayEnum" @bind:after="OnChanged">
-            <option value="@TimeOfDay.DAY">DAY</option>
-            <option value="@TimeOfDay.NIGHT">NIGHT</option>
-            <option value="@TimeOfDay.CONTINUOUS">CONTINUOUS</option>
-            <option value="@TimeOfDay.MOMENTS_LATER">MOMENTS LATER</option>
-            <option value="@TimeOfDay.DAWN">DAWN</option>
-            <option value="@TimeOfDay.DUSK">DUSK</option>
+        <select class="form-select form-select-sm fw-bold border-secondary bg-dark text-light spe-sel spe-sel-tod"
+                title="@Scene.TimeOfDayEnum.GetJargonHint()"
+                @bind="Scene.TimeOfDayEnum"
+                @bind:after="OnChanged">
+            <option value="@TimeOfDay.DAY" title="@TimeOfDay.DAY.GetJargonHint()">DAY</option>
+            <option value="@TimeOfDay.NIGHT" title="@TimeOfDay.NIGHT.GetJargonHint()">NIGHT</option>
+            <option value="@TimeOfDay.CONTINUOUS" title="@TimeOfDay.CONTINUOUS.GetJargonHint()">CONTINUOUS</option>
+            <option value="@TimeOfDay.MOMENTS_LATER" title="@TimeOfDay.MOMENTS_LATER.GetJargonHint()">MOMENTS LATER</option>
+            <option value="@TimeOfDay.DAWN" title="@TimeOfDay.DAWN.GetJargonHint()">DAWN</option>
+            <option value="@TimeOfDay.DUSK" title="@TimeOfDay.DUSK.GetJargonHint()">DUSK</option>
         </select>
     </div>
     
@@ -43,7 +61,7 @@
     {
         <div class="card-body py-1 px-2 bg-dark-subtle text-secondary small d-flex justify-content-between align-items-center">
             <span>Summary: <strong>@Scene.HeaderText</strong></span>
-            <span class="badge text-bg-dark border border-secondary-subtle">@Scene.Beats.Count Beats</span>
+            <span class="badge text-bg-dark border border-secondary-subtle" title="Beats — action lines, dialogue, and transitions in this scene">@Scene.Beats.Count Beats</span>
         </div>
     }
     else
@@ -75,14 +93,18 @@
                 <!-- Bottom Left Add Beat Type Selector Dropdown -->
                 <div class="d-flex justify-content-between align-items-center mt-2 pt-1 border-top border-secondary-subtle">
                     <div class="d-flex align-items-center gap-2">
-                        <select class="form-select form-select-sm bg-dark text-success border-success fw-bold py-0 px-2" style="width: 170px; height: 28px; font-size: 0.82rem;" value="" @onchange="OnInsertBeatSelected">
-                            <option value="" disabled selected>➕ Add Beat...</option>
-                            <option value="Action">🎬 Action</option>
-                            <option value="Dialogue">🗣️ Dialogue</option>
-                            <option value="Transition">🎞️ Transition</option>
+                        <select class="form-select form-select-sm bg-dark text-success border-success fw-bold spe-sel spe-sel-add"
+                                title="Add a beat — Action (what we see), Dialogue (speech), or Transition (how we cut away)"
+                                value=""
+                                @onchange="OnInsertBeatSelected">
+                            <option value="" disabled selected>➕ Add Beat…</option>
+                            <option value="Action" title="@BeatType.Action.GetJargonHint()">🎬 Visual</option>
+                            <option value="Sound" title="@BeatType.Sound.GetJargonHint()">🔊 Sound</option>
+                            <option value="Dialogue" title="@BeatType.Dialogue.GetJargonHint()">🗣️ Dialogue</option>
+                            <option value="Transition" title="@BeatType.Transition.GetJargonHint()">🎞️ Transition</option>
                         </select>
                     </div>
-                    <span class="text-secondary small font-monospace">@Scene.Beats.Count Beats Total</span>
+                    <span class="text-secondary small font-monospace" title="Total beats in this scene">@Scene.Beats.Count Beats Total</span>
                 </div>
             </div>
         </div>

@@ -9,7 +9,9 @@ public enum BeatType
     Parenthetical,
     Transition,
     Note,
-    Centered
+    Centered,
+    /// <summary>Audio-only cue written as (SOUND: …) in Fountain — not visual action.</summary>
+    Sound
 }
 
 public enum SceneEnvironment
@@ -125,6 +127,25 @@ public static class EnumExtensions
         return TimeOfDay.DAY;
     }
 
+    public static string GetJargonHint(this SceneEnvironment env) => env switch
+    {
+        SceneEnvironment.INT => "INT. — Interior. The scene is set inside (room, car, building).",
+        SceneEnvironment.EXT => "EXT. — Exterior. The scene is set outdoors.",
+        SceneEnvironment.INT_EXT => "INT./EXT. — Interior and exterior. The action crosses or straddles both.",
+        _ => "Scene environment (INT. / EXT.) — where the camera is for this scene."
+    };
+
+    public static string GetJargonHint(this TimeOfDay time) => time switch
+    {
+        TimeOfDay.DAY => "DAY — Scene plays in daytime lighting.",
+        TimeOfDay.NIGHT => "NIGHT — Scene plays at night.",
+        TimeOfDay.CONTINUOUS => "CONTINUOUS — Same continuous moment as the previous scene (no time jump).",
+        TimeOfDay.MOMENTS_LATER => "MOMENTS LATER — A short jump forward in time from the previous scene.",
+        TimeOfDay.DAWN => "DAWN — Early morning light, sunrise.",
+        TimeOfDay.DUSK => "DUSK — Evening light, sunset.",
+        _ => "Time of day on the scene heading (after the location)."
+    };
+
     public static string ToDisplayString(this SpeakerExtension ext) => ext switch
     {
         SpeakerExtension.VO => "V.O.",
@@ -135,10 +156,10 @@ public static class EnumExtensions
 
     public static string GetJargonHint(this SpeakerExtension ext) => ext switch
     {
-        SpeakerExtension.VO => "V.O. (Voice Over) - Character speaking off-camera or internal monologue",
-        SpeakerExtension.OS => "O.S. (Off Screen) - Character physically present in room but not in camera frame",
-        SpeakerExtension.CONTD => "CONT'D (Continued) - Character continuing dialogue after an action break",
-        _ => "Standard dialogue extension"
+        SpeakerExtension.VO => "V.O. (Voice Over) — Character is heard but not speaking on-camera (narration, phone, thoughts).",
+        SpeakerExtension.OS => "O.S. (Off Screen) — Character is in the scene space but not visible in the frame.",
+        SpeakerExtension.CONTD => "CONT'D (Continued) — Same character keeps talking after an action or interruption.",
+        _ => "No extension — standard on-screen dialogue."
     };
 
     public static SpeakerExtension ParseSpeakerExtension(string text)
@@ -160,6 +181,29 @@ public static class EnumExtensions
         TransitionPreset.SmashCutTo => "SMASH CUT TO:",
         TransitionPreset.Blackout => "BLACKOUT",
         _ => "CUT TO:"
+    };
+
+    public static string GetJargonHint(this TransitionPreset preset) => preset switch
+    {
+        TransitionPreset.CutTo => "CUT TO: — Hard cut to the next shot or scene.",
+        TransitionPreset.FadeIn => "FADE IN: — Image fades up from black (often the start of a sequence).",
+        TransitionPreset.FadeOut => "FADE OUT. — Image fades to black (often the end of a sequence).",
+        TransitionPreset.DissolveTo => "DISSOLVE TO: — One image melts into the next (soft time/place change).",
+        TransitionPreset.SmashCutTo => "SMASH CUT TO: — Abrupt, jarring cut for emphasis or shock.",
+        TransitionPreset.Blackout => "BLACKOUT — Screen goes black; a hard stop or blackout beat.",
+        _ => "Transition — how we leave this moment and enter the next."
+    };
+
+    public static string GetJargonHint(this BeatType type) => type switch
+    {
+        BeatType.Action => "Action (visual) — what the audience sees on screen.",
+        BeatType.Sound => "Sound — what the audience hears (room tone, SFX, off-screen audio). Not a character.",
+        BeatType.Dialogue => "Dialogue — A character speaks. Name above, optional (parenthetical), then the line.",
+        BeatType.Parenthetical => "Parenthetical — Brief direction under a name, e.g. (whispering). Prefer the field on Dialogue.",
+        BeatType.Transition => "Transition — How we cut or fade between scenes (CUT TO:, FADE OUT., …).",
+        BeatType.Note => "Note — Script note / [[comment]]; usually not spoken or shown on screen.",
+        BeatType.Centered => "Centered — Centered title or intertitle text on the page.",
+        _ => "Beat — one unit of the scene (action, dialogue, sound, or transition)."
     };
 
     public static TransitionPreset ParseTransitionPreset(string text)
@@ -285,6 +329,12 @@ public class ScreenplayScene
         set => TimeOfDay = value.ToDisplayString();
     }
     public string SceneTitle { get; set; } = "";
+    /// <summary>
+    /// Collapsible sequence label in the outline (e.g. location run or user rename).
+    /// Consecutive scenes with the same GroupTitle form one group.
+    /// </summary>
+    public string GroupTitle { get; set; } = "";
+    public bool IsGroupCollapsed { get; set; } = false;
     public bool IsCollapsed { get; set; } = false;
     public bool IsSelected { get; set; } = false;
 
@@ -303,6 +353,8 @@ public class ScreenplayScene
             Location = Location,
             TimeOfDay = TimeOfDay,
             SceneTitle = SceneTitle,
+            GroupTitle = GroupTitle,
+            IsGroupCollapsed = IsGroupCollapsed,
             IsCollapsed = IsCollapsed,
             IsSelected = IsSelected
         };
@@ -318,18 +370,26 @@ public class ScreenplayLocationProfile
 {
     public string Name { get; set; } = "";
     public string Description { get; set; } = "";
+    public string VisualLock { get; set; } = "";
 }
 
 public class ScreenplayCharacterProfile
 {
     public string Name { get; set; } = "";
-    public string VoiceProvider { get; set; } = "ElevenLabs";
+    public string Description { get; set; } = "";
+    public string VoiceProvider { get; set; } = "";
     public string VoiceId { get; set; } = "";
+    public string VoiceLabel { get; set; } = "";
+    public string VoiceProfile { get; set; } = "";
     public bool IsVoiceLocked { get; set; } = true;
     public string VisualLockPrompt { get; set; } = "";
     public string WardrobeAlways { get; set; } = "";
     public bool IsImageLocked { get; set; } = true;
+    public bool Speaks { get; set; }
+    public string? SpeciesKind { get; set; }
     public int ReferenceImageCount { get; set; } = 1;
+    /// <summary>True when this row came from Stage‑1 cast classifier / characters API.</summary>
+    public bool FromClassifier { get; set; }
 }
 
 public class ScreenplayModel
@@ -357,34 +417,14 @@ public class ScreenplayModel
 
     public List<string> GetAllCharacters()
     {
-        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var chara in CharacterProfiles)
-        {
-            if (!string.IsNullOrWhiteSpace(chara.Name)) set.Add(chara.Name.Trim().ToUpperInvariant());
-        }
-        foreach (var scene in Scenes)
-        {
-            foreach (var beat in scene.Beats)
-            {
-                if (beat.BeatType == BeatType.Dialogue && !string.IsNullOrWhiteSpace(beat.Speaker))
-                {
-                    set.Add(beat.Speaker.Trim().ToUpperInvariant());
-                }
-                else if (beat.BeatType == BeatType.Action && !string.IsNullOrWhiteSpace(beat.ActionText))
-                {
-                    // Match ALL CAPS character words (e.g. BUSTER, MOMMA)
-                    var words = beat.ActionText.Split(new[] { ' ', '.', ',', '!', '?', ';', ':', '(', ')', '"' }, StringSplitOptions.RemoveEmptyEntries);
-                    foreach (var w in words)
-                    {
-                        if (w.Length >= 3 && w.All(char.IsUpper) && !w.Equals("INT") && !w.Equals("EXT") && !w.Equals("DAY") && !w.Equals("NIGHT") && !w.Equals("AND") && !w.Equals("THE"))
-                        {
-                            set.Add(w);
-                        }
-                    }
-                }
-            }
-        }
-        return set.OrderBy(x => x).ToList();
+        // Cast list = character classifier output (CharacterProfiles seeded from Stage‑1),
+        // plus rare manual adds. Never invent names from dialogue cues or ALL CAPS action.
+        return CharacterProfiles
+            .Where(c => !string.IsNullOrWhiteSpace(c.Name))
+            .Select(c => c.Name.Trim().ToUpperInvariant())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(x => x)
+            .ToList();
     }
 
     public ScreenplayLocationProfile GetOrCreateLocationProfile(string name)
@@ -409,5 +449,69 @@ public class ScreenplayModel
             CharacterProfiles.Add(existing);
         }
         return existing;
+    }
+
+    /// <summary>
+    /// Auto-group consecutive scenes that share the same location (no extra classifier).
+    /// Preserves user renames when the location run is unchanged. Call after parse/import.
+    /// </summary>
+    public void AutoGroupScenesByLocation(bool force = false)
+    {
+        if (Scenes.Count == 0) return;
+        string? prevLoc = null;
+        string? prevGroup = null;
+        var seq = 0;
+        foreach (var scene in Scenes)
+        {
+            var loc = (scene.Location ?? "").Trim();
+            var locKey = loc.ToUpperInvariant();
+            var sameRun = prevLoc is not null && locKey == prevLoc;
+            if (!sameRun)
+            {
+                seq++;
+                prevLoc = locKey;
+                // Default title = location; fall back to Sequence N
+                var defaultTitle = string.IsNullOrWhiteSpace(loc) ? $"Sequence {seq}" : loc;
+                if (force || string.IsNullOrWhiteSpace(scene.GroupTitle))
+                    scene.GroupTitle = defaultTitle;
+                prevGroup = scene.GroupTitle;
+            }
+            else
+            {
+                // Continue previous group title (prefer prior scene's title so renames stick)
+                if (force || string.IsNullOrWhiteSpace(scene.GroupTitle))
+                    scene.GroupTitle = prevGroup ?? (string.IsNullOrWhiteSpace(loc) ? $"Sequence {seq}" : loc);
+                else if (!string.IsNullOrWhiteSpace(prevGroup)
+                         && !scene.GroupTitle.Equals(prevGroup, StringComparison.OrdinalIgnoreCase)
+                         && !force)
+                {
+                    // Keep user's per-scene title if they split manually; still track
+                    prevGroup = scene.GroupTitle;
+                }
+                else
+                    prevGroup = scene.GroupTitle;
+            }
+        }
+    }
+
+    /// <summary>Rename a whole consecutive group (matched by old title + adjacency).</summary>
+    public void RenameSceneGroup(string oldTitle, string newTitle)
+    {
+        if (string.IsNullOrWhiteSpace(oldTitle) || string.IsNullOrWhiteSpace(newTitle)) return;
+        var nt = newTitle.Trim();
+        foreach (var s in Scenes)
+        {
+            if (s.GroupTitle.Equals(oldTitle, StringComparison.OrdinalIgnoreCase))
+                s.GroupTitle = nt;
+        }
+    }
+
+    public void SetGroupCollapsed(string groupTitle, bool collapsed)
+    {
+        foreach (var s in Scenes)
+        {
+            if (s.GroupTitle.Equals(groupTitle, StringComparison.OrdinalIgnoreCase))
+                s.IsGroupCollapsed = collapsed;
+        }
     }
 }

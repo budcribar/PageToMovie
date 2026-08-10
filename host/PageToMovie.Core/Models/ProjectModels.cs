@@ -347,6 +347,17 @@ public sealed class CharacterSummary
     public List<CharacterImageRef> BookRefs { get; set; } = new();
     public List<CharacterImageRef> Variants { get; set; } = new();
     public string? AgeBand { get; set; }
+    /// <summary>Base character's Key when this entry is an age-variant seed (child/teen/etc. of another character) — see cast_seeds.json's <c>variant_of</c>.</summary>
+    public string? VariantOf { get; set; }
+}
+
+/// <summary>Location seed from Stage‑1 / classifier (location_seed_tokens).</summary>
+public sealed class LocationSummary
+{
+    public string Key { get; set; } = "";
+    public string DisplayName { get; set; } = "";
+    public string Description { get; set; } = "";
+    public string VisualLock { get; set; } = "";
 }
 
 /// <summary>
@@ -813,6 +824,15 @@ public sealed class ClipSummary
     public string? VideoUrl { get; set; }
     public string? FileName { get; set; }
     public ClipDialogueVerificationResult? DialogueVerification { get; set; }
+
+    /// <summary>Primary Stage‑1 / screenplay beat id this clip was planned from (stable <c>sb_…</c> when available).</summary>
+    public string? Stage1BeatId { get; set; }
+
+    /// <summary>
+    /// All source beat ids when clips merge/split dialogue (prelude fold, monologue coalesce, two-hander).
+    /// Empty when unknown; otherwise includes <see cref="Stage1BeatId"/> first.
+    /// </summary>
+    public List<string> Stage1BeatIds { get; set; } = new();
 }
 
 /// <summary>Create or fully edit a clip's shot-plan fields (Scenes clip editor).</summary>

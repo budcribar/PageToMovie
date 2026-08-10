@@ -19,19 +19,47 @@ public sealed class ProjectAclService : IProjectAclService
     private readonly string _projectsRoot;
     private readonly IProjectUserDirectory? _users;
     private readonly IProjectInviteMailer? _email;
+    private readonly ProjectStore? _projects;
 
-    public ProjectAclService(string projectsRoot, IProjectUserDirectory? users = null, IProjectInviteMailer? email = null)
+    public ProjectAclService(
+        string projectsRoot,
+        IProjectUserDirectory? users = null,
+        IProjectInviteMailer? email = null,
+        ProjectStore? projects = null)
     {
         _projectsRoot = projectsRoot ?? throw new ArgumentNullException(nameof(projectsRoot));
         _users = users;
         _email = email;
+        _projects = projects;
+    }
+
+    /// <summary>
+    /// The project's real owner, from <c>project.json</c>'s <c>ownerUserId</c> field — the account id
+    /// recorded at creation time, never derived from the project path (path segments are a sanitized
+    /// slug, e.g. an old email-based id turned into "budcribargmail_com"; the real id, e.g.
+    /// "budcribar@gmail.com", only lives in project.json, and the two can legitimately differ once a
+    /// project outlives an identity migration).
+    /// </summary>
+    private async Task<string?> ResolveRealOwnerAsync(string projectId, CancellationToken ct)
+    {
+        if (_projects is null) return null;
+        try
+        {
+            var proj = await _projects.GetProjectAsync(projectId, ct).ConfigureAwait(false);
+            return string.IsNullOrWhiteSpace(proj?.OwnerUserId) ? null : proj!.OwnerUserId;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     public async Task<ProjectAclDocument> GetOrCreateAclAsync(string projectId, string ownerUserId, CancellationToken ct = default)
     {
         var existing = await LoadAsync(projectId, ct);
         if (existing is not null) return existing;
-        var doc = new ProjectAclDocument { OwnerUserId = Norm(ownerUserId), Rev = 1 };
+        var realOwner = await ResolveRealOwnerAsync(projectId, ct);
+        var doc = new ProjectAclDocument { OwnerUserId = Norm(realOwner ?? ownerUserId), Rev = 1 };
         await SaveAclAsync(projectId, doc, ct);
         return doc;
     }
@@ -58,8 +86,11 @@ public sealed class ProjectAclService : IProjectAclService
         if (string.IsNullOrEmpty(userId)) return ProjectAccessLevel.None;
         var acl = await LoadAsync(projectId, ct);
         if (acl is null)
-            return string.Equals(InferOwner(projectId), userId, StringComparison.OrdinalIgnoreCase)
+        {
+            var realOwner = await ResolveRealOwnerAsync(projectId, ct);
+            return string.Equals(realOwner, userId, StringComparison.OrdinalIgnoreCase)
                 ? ProjectAccessLevel.Owner : ProjectAccessLevel.None;
+        }
         if (string.Equals(acl.OwnerUserId, userId, StringComparison.OrdinalIgnoreCase)) return ProjectAccessLevel.Owner;
         if (acl.Editors.Contains(userId, StringComparer.OrdinalIgnoreCase)) return ProjectAccessLevel.Editor;
         if (acl.Viewers.Contains(userId, StringComparer.OrdinalIgnoreCase)) return ProjectAccessLevel.Viewer;
@@ -318,12 +349,6 @@ public sealed class ProjectAclService : IProjectAclService
     // middleware (which decodes manually) always agree on the same on-disk path.
     private string AclPath(string projectId) =>
         Path.Combine(_projectsRoot, ProjectStore.NormalizeProjectId(projectId), "project-acl.json");
-    private static string InferOwner(string projectId)
-    {
-        var normalized = ProjectStore.NormalizeProjectId(projectId);
-        var parts = normalized.Split('/', 2, StringSplitOptions.RemoveEmptyEntries);
-        return parts.Length > 0 ? parts[0] : normalized;
-    }
     private static void EnsureOwner(ProjectAclDocument acl, string callerUserId)
     {
         if (!string.Equals(acl.OwnerUserId, Norm(callerUserId), StringComparison.OrdinalIgnoreCase))
