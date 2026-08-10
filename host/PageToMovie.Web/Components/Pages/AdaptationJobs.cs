@@ -187,6 +187,8 @@ public abstract partial class AdaptationPageBase
             _pollCts?.Dispose();
             _pollCts = new CancellationTokenSource();
             var ct = _pollCts.Token;
+            var trackedId = Job?.JobId;
+            var emptyOrGoneHits = 0;
             _ = Task.Run(async () =>
             {
                 try
@@ -199,10 +201,51 @@ public abstract partial class AdaptationPageBase
                         {
                             using var pollCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                             pollCts.CancelAfter(TimeSpan.FromSeconds(4));
-                            var jobs = await S.Engine.GetJobAsync(pollCts.Token);
-                            var snap = jobs?.Job;
-                            if (snap is null) continue;
+
+                            JobSnapshot? snap = null;
+                            // Prefer the job we started so we don't stick to a ghost "running" row
+                            // after the server process died (Admin shows no active jobs).
+                            if (!string.IsNullOrWhiteSpace(trackedId))
+                            {
+                                try
+                                {
+                                    snap = await S.Engine.TryGetJobAsync(trackedId, pollCts.Token);
+                                }
+                                catch { /* fall through to list */ }
+                            }
+                            if (snap is null)
+                            {
+                                var jobs = await S.Engine.GetJobAsync(pollCts.Token);
+                                snap = jobs?.Job;
+                            }
+
                             if (ClientCancelRequested) break;
+
+                            // Server has nothing running for us — drop zombie progress UI.
+                            if (snap is null
+                                || (JobRunning
+                                    && snap.IsFinished
+                                    && !string.IsNullOrWhiteSpace(trackedId)
+                                    && !string.Equals(snap.JobId, trackedId, StringComparison.OrdinalIgnoreCase)))
+                            {
+                                emptyOrGoneHits++;
+                                if (JobRunning && emptyOrGoneHits >= 3)
+                                {
+                                    await S.InvokeAsync(() =>
+                                    {
+                                        MarkJobLostOnServer(
+                                            "The write job is no longer on the server (likely a restart during the long AI call). "
+                                            + "Nothing is running in Admin → Jobs — try Create draft from book again.");
+                                    });
+                                    break;
+                                }
+                                continue;
+                            }
+
+                            emptyOrGoneHits = 0;
+                            if (string.IsNullOrWhiteSpace(trackedId) && !string.IsNullOrWhiteSpace(snap.JobId))
+                                trackedId = snap.JobId;
+
                             await S.InvokeAsync(() =>
                             {
                                 if (ClientCancelRequested) return;
@@ -214,7 +257,6 @@ public abstract partial class AdaptationPageBase
                                     Job.Index = Math.Max(Job.Index, ProgressIndex);
                                     Job.Total = Math.Max(Job.Total, ProgressTotal);
                                 }
-                                // Keep import chrome visible for the duration of a reattached job.
                                 if (S is AdaptationImport importPage && JobRunning)
                                 {
                                     importPage.Drop._importing = true;
@@ -227,13 +269,24 @@ public abstract partial class AdaptationPageBase
                             });
                             if (snap.IsFinished)
                             {
-                                if (snap.Status is "done" or "error" or "cancelled")
+                                if (snap.Status is "done" or "error" or "cancelled" or "partial")
                                     await S.InvokeAsync(async () =>
                                     {
                                         if (S is AdaptationImport importPage)
                                         {
                                             importPage.Drop._importing = false;
                                             importPage.Drop._importPct = null;
+                                        }
+                                        // Unstick Create-from-book waiters that key off Busy.
+                                        if (S.Busy && snap.Status is "error" or "cancelled")
+                                        {
+                                            S.Busy = false;
+                                            S.BusyMessage = null;
+                                            S.Error = snap.Error ?? snap.Message;
+                                        }
+                                        else if (S.Busy && snap.Status is "done" or "partial")
+                                        {
+                                            // CreateFromBookAsync loop will SoftLoad; still drop Busy if orphaned.
                                         }
                                         await S.SoftLoadAsync();
                                         S.StateHasChanged();
@@ -257,26 +310,113 @@ public abstract partial class AdaptationPageBase
         }
 
         /// <summary>
+        /// Drop local running UI when Admin has no active job (process restart / lost job).
+        /// </summary>
+        public void MarkJobLostOnServer(string message)
+        {
+            DisposePolling();
+            Job = new JobSnapshot
+            {
+                JobId = Job?.JobId,
+                Status = "error",
+                Kind = Job?.Kind,
+                Message = message,
+                Error = message,
+                ProjectId = Job?.ProjectId ?? S.ProjectId,
+                Index = Job?.Index ?? ProgressIndex,
+                Total = Job?.Total > 0 ? Job.Total : ProgressTotal,
+                Log = Job?.Log ?? new List<string>(),
+                FinishedAt = DateTimeOffset.UtcNow,
+            };
+            ProgressIndex = 0;
+            ProgressTotal = 0;
+            S.Busy = false;
+            S.BusyMessage = null;
+            S.Error = message;
+            if (S is AdaptationImport importPage)
+            {
+                importPage.Drop._importing = false;
+                importPage.Drop._importPct = null;
+                importPage.Drop._importStatus = "Failed";
+            }
+            S.StateHasChanged();
+        }
+
+        /// <summary>
         /// Browser exit does not cancel server jobs. On page load / re-login, reattach progress
         /// UI and polling so a still-running import is visible and cancellable again.
+        /// Only reattach when the server still reports the job as running/queued.
         /// </summary>
         public void TryReattachRunningJob()
         {
             if (ClientCancelRequested || Job is null || !JobRunning)
                 return;
-            AbsorbProgressFromSnapshot(Job);
-            AbsorbProgressFromLine(Job.Message);
-            if (S is AdaptationImport importPage)
+            // Don't reattach a ghost — verify asynchronously then either poll or clear.
+            var id = Job.JobId;
+            _ = Task.Run(async () =>
             {
-                importPage.Drop._importing = true;
-                if (string.IsNullOrWhiteSpace(importPage.Drop._importStatus))
-                    importPage.Drop._importStatus =
-                        Job.Message ?? "Resumed — job still running on the server…";
-                if (string.IsNullOrWhiteSpace(importPage.Drop._chosenFileName)
-                    && !string.IsNullOrWhiteSpace(Job.Kind))
-                    importPage.Drop._chosenFileName = Job.Kind;
-            }
-            StartJobPolling();
+                try
+                {
+                    JobSnapshot? live = null;
+                    if (!string.IsNullOrWhiteSpace(id))
+                    {
+                        try
+                        {
+                            live = await S.Engine.TryGetJobAsync(id);
+                        }
+                        catch { /* list fallback */ }
+                    }
+                    if (live is null)
+                    {
+                        var list = await S.Engine.GetJobAsync();
+                        live = list?.Job;
+                    }
+
+                    await S.InvokeAsync(() =>
+                    {
+                        if (live is null || live.IsFinished
+                            || (live.Status is not ("running" or "queued")))
+                        {
+                            // Stale client snapshot after server restart — do not show Writing 6/10.
+                            if (JobRunning)
+                            {
+                                Job = live is { IsFinished: true } ? live : null;
+                                ProgressIndex = 0;
+                                ProgressTotal = 0;
+                                S.Busy = false;
+                                S.BusyMessage = null;
+                                if (S is AdaptationImport importPage)
+                                {
+                                    importPage.Drop._importing = false;
+                                    importPage.Drop._importPct = null;
+                                }
+                            }
+                            S.StateHasChanged();
+                            return;
+                        }
+
+                        Job = live;
+                        AbsorbProgressFromSnapshot(live);
+                        AbsorbProgressFromLine(live.Message);
+                        if (S is AdaptationImport importPage2)
+                        {
+                            importPage2.Drop._importing = true;
+                            if (string.IsNullOrWhiteSpace(importPage2.Drop._importStatus))
+                                importPage2.Drop._importStatus =
+                                    live.Message ?? "Resumed — job still running on the server…";
+                            if (string.IsNullOrWhiteSpace(importPage2.Drop._chosenFileName)
+                                && !string.IsNullOrWhiteSpace(live.Kind))
+                                importPage2.Drop._chosenFileName = live.Kind;
+                        }
+                        StartJobPolling();
+                        S.StateHasChanged();
+                    });
+                }
+                catch
+                {
+                    // Leave UI alone if we can't reach the API yet.
+                }
+            });
         }
 
         /// <summary>

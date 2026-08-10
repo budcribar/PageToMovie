@@ -1556,6 +1556,26 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
             JsonOpts,
             ct);
 
+    /// <summary>Like <see cref="GetJobByIdAsync"/> but returns null on 404 (job gone after restart).</summary>
+    public async Task<JobSnapshot?> TryGetJobAsync(string jobId, CancellationToken ct = default)
+    {
+        try
+        {
+            using var resp = await _http.GetAsync(
+                $"/api/jobs/{Uri.EscapeDataString(jobId)}", ct);
+            if (resp.StatusCode == System.Net.HttpStatusCode.NotFound)
+                return null;
+            if (!resp.IsSuccessStatusCode)
+                return null;
+            var dto = await resp.Content.ReadFromJsonAsync<JobDetailDto>(JsonOpts, ct);
+            return dto?.Job;
+        }
+        catch
+        {
+            return null; // network / 502 — caller distinguishes via separate list poll
+        }
+    }
+
     public async Task<CapacityDto?> GetCapacityAsync(CancellationToken ct = default) =>
         await _http.GetFromJsonAsync<CapacityDto>("/api/capacity", JsonOpts, ct);
 

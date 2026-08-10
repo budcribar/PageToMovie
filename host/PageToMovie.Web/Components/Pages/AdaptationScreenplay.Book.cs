@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
+using PageToMovie.Core.Models;
 using PageToMovie.Web.Services;
 
 namespace PageToMovie.Web.Components.Pages;
@@ -168,6 +169,7 @@ public partial class AdaptationScreenplay
                 S.Jobs.StartJobPolling();
 
                 var finishedOk = false;
+                var goneHits = 0;
                 // Long novels: multi-chunk / single-pass can run 30–90+ minutes
                 for (var i = 0; i < 5400; i++)
                 {
@@ -178,19 +180,56 @@ public partial class AdaptationScreenplay
                         return;
                     }
 
-                    var snap = S.Jobs.Job;
-                    // Prefer the job we started (avoid latching onto a different zombie).
-                    if (!string.IsNullOrWhiteSpace(trackId)
-                        && snap is not null
-                        && !string.Equals(snap.JobId, trackId, StringComparison.OrdinalIgnoreCase))
+                    JobSnapshot? snap = S.Jobs.Job;
+
+                    // Always re-check the tracked job on the server (don't trust a frozen local 6/10).
+                    if (!string.IsNullOrWhiteSpace(trackId))
                     {
                         try
                         {
-                            var detail = await S.Engine.GetJobByIdAsync(trackId);
-                            if (detail?.Job is not null)
-                                snap = detail.Job;
+                            using var idCts = new CancellationTokenSource(TimeSpan.FromSeconds(4));
+                            var live = await S.Engine.TryGetJobAsync(trackId, idCts.Token);
+                            if (live is not null)
+                            {
+                                snap = live;
+                                goneHits = 0;
+                            }
+                            else
+                            {
+                                // 404 or empty — job not in store (restart wiped in-memory jobs).
+                                // Confirm via list: if nothing running for us, count as gone.
+                                try
+                                {
+                                    using var listCts = new CancellationTokenSource(TimeSpan.FromSeconds(4));
+                                    var list = await S.Engine.GetJobAsync(listCts.Token);
+                                    var primary = list?.Job;
+                                    if (primary is null || primary.IsFinished
+                                        || !string.Equals(primary.JobId, trackId, StringComparison.OrdinalIgnoreCase))
+                                        goneHits++;
+                                    else
+                                    {
+                                        snap = primary;
+                                        goneHits = 0;
+                                    }
+                                }
+                                catch
+                                {
+                                    // API 502 — do not count as gone
+                                }
+                            }
                         }
-                        catch { /* keep poller snap */ }
+                        catch
+                        {
+                            // network
+                        }
+                    }
+
+                    if (goneHits >= 3)
+                    {
+                        S.Jobs.MarkJobLostOnServer(
+                            "The write job is no longer on the server (Admin shows no active jobs — often a restart mid-call). "
+                            + "Try Create draft from book again when the host is stable.");
+                        return;
                     }
 
                     if (snap is not null)
@@ -205,7 +244,7 @@ public partial class AdaptationScreenplay
                             S.Error = snap.Error ?? snap.Message ?? "Could not create draft. Try again.";
                             return;
                         }
-                        if (st == "done" &&
+                        if ((st == "done" || st == "partial") &&
                             (string.IsNullOrEmpty(snap.Kind) ||
                              snap.Kind is "book_import" or "book_prepare" or "stage1"))
                         {
@@ -219,8 +258,8 @@ public partial class AdaptationScreenplay
                 if (!finishedOk)
                 {
                     S.Error =
-                        "Still writing on the server, but this page lost progress updates (often a deploy or network 502). " +
-                        "Check Admin → Jobs, wait for the job to finish, then refresh this page — or Cancel and try again.";
+                        "Still no finished draft after a long wait. Check Admin → Jobs. "
+                        + "If nothing is running, Cancel here and try Create draft from book again.";
                     return;
                 }
 
