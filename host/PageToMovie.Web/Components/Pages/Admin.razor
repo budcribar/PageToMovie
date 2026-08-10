@@ -20,7 +20,7 @@
             }
             else
             {
-                <span class="badge text-bg-secondary ms-1">poll 5s</span>
+                <span class="badge text-bg-secondary ms-1">poll 3s</span>
             }
         </Subtitle>
         <Actions>
@@ -104,22 +104,7 @@
             </div>
         </div>
 
-        @if (State._state.Http is { } http && http.NonAdminLast5Sec <= 2)
-        {
-            <div class="alert alert-warning py-2 small mb-3">
-                <strong>HTTP Traffic Note:</strong> LoadSim does not appear to be hitting this API (only admin poll).
-                Check LoadSim console: “running…”, baseUrl <code>http://127.0.0.1:5088</code>, project <code>LoadSimBuster</code>.
-                @if (http.ByPrefixLast5Sec is { Count: > 0 } pref)
-                {
-                    <div class="mt-1 font-monospace" style="font-size:0.75rem;">
-                        @foreach (var kv in pref.OrderByDescending(k => k.Value).Take(8))
-                        {
-                            <span class="me-2">@kv.Key=@(kv.Value)</span>
-                        }
-                    </div>
-                }
-            </div>
-        }
+        @* HTTP Traffic Note lives on the LoadSim card (collapsed by default). *@
 
         <CascadingValue Value="this" IsFixed="true">
         <CascadingValue Value="Jobs" IsFixed="true">

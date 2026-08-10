@@ -2,8 +2,7 @@
 
 <Admin_CollapsibleCard Title="⏱️ Action & Camera Timing Telemetry"
                                Expanded="Ui!._showTimingTelemetry"
-                               ExpandedChanged="@(v =>
- Ui!._showTimingTelemetry = v)">
+                               ExpandedChanged="@(async v => { Ui!._showTimingTelemetry = v; await Host!.NotifyChangedAsync(); })">
 <div class="d-flex justify-content-end mb-3">
                         <button class="btn btn-sm btn-outline-success border border-success" @onclick="Telemetry!.SeedTimingDatabaseAsync" disabled="@Telemetry!._seedingTiming">
                             🌱 Seed Database with Benchmarks

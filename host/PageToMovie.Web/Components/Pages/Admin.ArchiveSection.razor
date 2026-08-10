@@ -3,8 +3,7 @@
 
 <Admin_CollapsibleCard Title="📦 Project Export, Import & Music Synthesis"
                                Expanded="Ui!._showProjectArchiving"
-                               ExpandedChanged="@(v =>
- Ui!._showProjectArchiving = v)">
+                               ExpandedChanged="@(async v => { Ui!._showProjectArchiving = v; await Host!.NotifyChangedAsync(); })">
 <div class="row g-3">
                         <div class="col-md-6">
                             <div class="fw-semibold small mb-2">Export (download zip)</div>

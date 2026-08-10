@@ -12,5 +12,14 @@ public partial class Admin_CollapsibleCard
     [Parameter] public string? CssClass { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
-    private async Task Toggle() => await ExpandedChanged.InvokeAsync(!Expanded);
+    /// <summary>Local mirror so Expand All / Collapse All (parent param updates) and toggle both paint.</summary>
+    private bool _expanded;
+
+    protected override void OnParametersSet() => _expanded = Expanded;
+
+    private async Task Toggle()
+    {
+        _expanded = !_expanded;
+        await ExpandedChanged.InvokeAsync(_expanded);
+    }
 }

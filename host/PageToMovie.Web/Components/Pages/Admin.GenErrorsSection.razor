@@ -2,8 +2,7 @@
 
 <Admin_CollapsibleCard Title="⚠️ Generation Errors"
                                Expanded="Ui!._showGenErrors"
-                               ExpandedChanged="@(v =>
- Ui!._showGenErrors = v)">
+                               ExpandedChanged="@(async v => { Ui!._showGenErrors = v; await Host!.NotifyChangedAsync(); })">
 <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
                         <select class="form-select form-select-sm" style="max-width: 14rem;" @bind="Telemetry!._genErrorTypeFilter" @bind:after="Telemetry!.RefreshGenerationErrorsAsync">
                             <option value="">All error types</option>

@@ -86,12 +86,11 @@ public partial class Admin
                 {
                     try
                     {
-                        // Only poll over HTTP when SignalR is disconnected
-                        if (!S.Jobs._hubLive)
-                        {
-                            await RefreshAsync();
-                            await S.InvokeAsync(S.StateHasChanged);
-                        }
+                        // Always refresh so Jobs (running/queued) stay current even when
+                        // SignalR reports "live" but admin:ops is quiet or hubs are 502.
+                        // Full refresh is intentional; admin state is the ops source of truth.
+                        await RefreshAsync();
+                        await S.InvokeAsync(S.StateHasChanged);
                     }
                     catch { /* keep polling */ }
                 }

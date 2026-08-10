@@ -28,6 +28,9 @@ public partial class Admin
         _ = Jobs; _ = Archive; _ = Telemetry; _ = State; _ = Ui;
     }
 
+    /// <summary>Child sections cannot call protected StateHasChanged on Admin — use this.</summary>
+    public Task NotifyChangedAsync() => InvokeAsync(StateHasChanged);
+
     // Shell-owned shared status
     internal string? _error;
     internal string? _actionMsg;

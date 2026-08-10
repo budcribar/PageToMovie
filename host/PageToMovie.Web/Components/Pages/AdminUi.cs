@@ -24,6 +24,8 @@ public partial class Admin
         internal bool _showTimingTelemetry = false;
         internal bool _showGenErrors = false;
         internal bool _showStorageAndCapacity = false;
+        /// <summary>Nested under Storage — daily volume history (default collapsed).</summary>
+        internal bool _showDiskHistory = false;
         internal bool _started;
 
         internal void OpenTestEmailModal() => _showTestEmailModal = true;
@@ -36,6 +38,7 @@ public partial class Admin
         internal void ToggleTimingTelemetry() => _showTimingTelemetry = !_showTimingTelemetry;
         internal void ToggleGenErrors() => _showGenErrors = !_showGenErrors;
         internal void ToggleStorageAndCapacity() => _showStorageAndCapacity = !_showStorageAndCapacity;
+        internal void ToggleDiskHistory() => _showDiskHistory = !_showDiskHistory;
 
         internal void ExpandAllCards()
         {
@@ -45,6 +48,9 @@ public partial class Admin
             _showTimingTelemetry = true;
             _showGenErrors = true;
             _showStorageAndCapacity = true;
+            _showDiskHistory = true;
+            // Nested class methods used as @onclick targets need an explicit re-render.
+            _ = S.InvokeAsync(S.StateHasChanged);
         }
 
         internal void CollapseAllCards()
@@ -55,6 +61,8 @@ public partial class Admin
             _showTimingTelemetry = false;
             _showGenErrors = false;
             _showStorageAndCapacity = false;
+            _showDiskHistory = false;
+            _ = S.InvokeAsync(S.StateHasChanged);
         }
 
         internal void OnMediaFolderChanged() => S.InvokeAsync(S.StateHasChanged);
@@ -92,7 +100,8 @@ public partial class Admin
             S.StateHasChanged();
 
             S.State._pollCts = new CancellationTokenSource();
-            S.State._timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
+            // 3s so running/queued jobs update without manual Refresh.
+            S.State._timer = new PeriodicTimer(TimeSpan.FromSeconds(3));
             _ = S.State.PollLoopAsync(S.State._pollCts.Token);
         }
     }

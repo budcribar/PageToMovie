@@ -10,10 +10,10 @@
             }
         </div>
         <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="Toggle">
-            @(Expanded ? "▲ Collapse" : "▼ Expand")
+            @(_expanded ? "▲ Collapse" : "▼ Expand")
         </button>
     </div>
-    @if (Expanded)
+    @if (_expanded)
     {
         <div class="card-body p-3">
             @ChildContent

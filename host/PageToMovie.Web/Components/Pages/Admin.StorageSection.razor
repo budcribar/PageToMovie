@@ -2,8 +2,7 @@
 
 <Admin_CollapsibleCard Title="💾 Storage, Memory & System Metrics"
                                Expanded="Ui!._showStorageAndCapacity"
-                               ExpandedChanged="@(v =>
- Ui!._showStorageAndCapacity = v)">
+                               ExpandedChanged="@(async v => { Ui!._showStorageAndCapacity = v; await Host!.NotifyChangedAsync(); })">
 <div class="row g-3 mb-3">
                         <div class="col-md-6 col-lg-3">
                             <div class="card h-100 border">
@@ -72,11 +71,19 @@
 
                     @if (State!._state.DiskHistory is { Count: > 0 })
                     {
-                        <div class="card border">
+                        <div class="card border mt-2">
                             <div class="card-header d-flex justify-content-between align-items-center py-2">
-                                <span>Daily Storage Usage History (Railway Volume <code>@(State!._state.Disk?.VolumePath ?? "/data")</code>)</span>
-                                <span class="badge bg-secondary">@State!._state.DiskHistory.Count day(s) tracked</span>
+                                <span class="small">Daily Storage Usage History (Railway Volume <code>@(State!._state.Disk?.VolumePath ?? "/data")</code>)</span>
+                                <div class="d-flex align-items-center gap-2">
+                                    <span class="badge bg-secondary">@State!._state.DiskHistory.Count day(s)</span>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary"
+                                            @onclick="() => { Ui!._showDiskHistory = !Ui!._showDiskHistory; _ = Host!.NotifyChangedAsync(); }">
+                                        @(Ui!._showDiskHistory ? "▲ Collapse" : "▼ Expand")
+                                    </button>
+                                </div>
                             </div>
+                            @if (Ui!._showDiskHistory)
+                            {
                             <div class="card-body p-0">
                                 <div class="table-responsive">
                                     <table class="table table-sm table-hover mb-0 small">
@@ -130,6 +137,7 @@
                                     </table>
                                 </div>
                             </div>
+                            }
                         </div>
                     }
         
