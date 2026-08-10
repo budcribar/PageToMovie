@@ -184,11 +184,22 @@ public static class FountainFormatter
 
                 case FountainParser.ElementType.Note:
                     activeDialogueBeat = null;
-                    GetOrCreateCurrentScene().Beats.Add(new ScreenplayBeat
                     {
-                        BeatType = BeatType.Note,
-                        ActionText = element.Text
-                    });
+                        var noteText = element.Text ?? "";
+                        if (TryParseSequenceNote(noteText, out var seqTitle))
+                        {
+                            // Apply to current scene (note appears after heading); don't keep as beat.
+                            GetOrCreateCurrentScene().GroupTitle = seqTitle;
+                        }
+                        else
+                        {
+                            GetOrCreateCurrentScene().Beats.Add(new ScreenplayBeat
+                            {
+                                BeatType = BeatType.Note,
+                                ActionText = noteText
+                            });
+                        }
+                    }
                     break;
 
                 case FountainParser.ElementType.Centered:
@@ -202,6 +213,8 @@ public static class FountainFormatter
             }
         }
 
+        // Fill missing sequence groups from consecutive locations (no extra classifier).
+        model.AutoGroupScenesByLocation(force: false);
         return model;
     }
 
@@ -285,6 +298,7 @@ public static class FountainFormatter
             sb.AppendLine();
 
         // 2. Scenes
+        string? lastGroupWritten = null;
         foreach (var scene in model.Scenes)
         {
             if (!string.IsNullOrWhiteSpace(scene.SceneTitle) || !string.IsNullOrWhiteSpace(scene.Environment) || !string.IsNullOrWhiteSpace(scene.Location))
@@ -315,6 +329,15 @@ public static class FountainFormatter
 
                 sb.AppendLine(heading);
                 sb.AppendLine();
+            }
+
+            // Persist outline groups without a second classifier — first scene of each group.
+            if (!string.IsNullOrWhiteSpace(scene.GroupTitle)
+                && !scene.GroupTitle.Equals(lastGroupWritten, StringComparison.OrdinalIgnoreCase))
+            {
+                sb.AppendLine($"[[SEQUENCE: {scene.GroupTitle.Trim()}]]");
+                sb.AppendLine();
+                lastGroupWritten = scene.GroupTitle;
             }
 
             foreach (var beat in scene.Beats)
@@ -484,6 +507,25 @@ public static class FountainFormatter
         {
             body = t[4..].Trim();
             return true;
+        }
+        return false;
+    }
+
+    /// <summary>Outline sequence marker: [[SEQUENCE: Title]] or [[GROUP: Title]].</summary>
+    public static bool TryParseSequenceNote(string? text, out string title)
+    {
+        title = "";
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        var t = text.Trim().TrimStart('[').TrimEnd(']').Trim();
+        if (t.StartsWith("SEQUENCE:", StringComparison.OrdinalIgnoreCase))
+        {
+            title = t[9..].Trim();
+            return title.Length > 0;
+        }
+        if (t.StartsWith("GROUP:", StringComparison.OrdinalIgnoreCase))
+        {
+            title = t[6..].Trim();
+            return title.Length > 0;
         }
         return false;
     }

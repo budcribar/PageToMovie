@@ -43,14 +43,13 @@
         }
         else if (Beat.BeatType == BeatType.Sound)
         {
-            <span class="badge text-bg-info text-dark flex-shrink-0" title="@BeatType.Sound.GetJargonHint()">SOUND</span>
             <input type="text"
                    class="form-control form-control-sm border-secondary bg-dark text-light py-0 px-2 flex-grow-1 spe-beat-input"
                    style="height: 26px; font-size: 0.85rem;"
                    @bind="Beat.ActionText"
                    @bind:after="OnChanged"
-                   title="@(string.IsNullOrWhiteSpace(Beat.ActionText) ? "Sound cue — what the audience hears (not a character)" : Beat.ActionText)"
-                   placeholder="e.g. television game-show applause, distant street traffic" />
+                   title="@(string.IsNullOrWhiteSpace(Beat.ActionText) ? BeatType.Sound.GetJargonHint() : Beat.ActionText)"
+                   placeholder="What we hear…" />
         }
         else if (Beat.BeatType == BeatType.Dialogue)
         {

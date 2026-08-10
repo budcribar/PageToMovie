@@ -1111,3 +1111,14 @@
   font-size: 0.9rem;
   padding: 0 0.3rem !important;
 }
+
+/* Sequence group headers in outline */
+.fe-structured-editor .spe-group-header {
+  min-height: 1.5rem;
+  background: color-mix(in oklab, var(--bs-body-bg, #111) 70%, #1e3a5f);
+  margin-top: 0.25rem;
+}
+.fe-structured-editor .spe-group-header + .spe-outline-row {
+  margin-left: 0.35rem;
+  border-left: 2px solid color-mix(in oklab, #38bdf8 35%, transparent) !important;
+}

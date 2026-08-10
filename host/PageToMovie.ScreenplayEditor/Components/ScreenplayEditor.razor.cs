@@ -76,6 +76,8 @@ public partial class ScreenplayEditor : ComponentBase
         ShowCharacterModal = true;
     }
 
+    public void OpenCharacterFromOutline(string? name) => OpenCharacterModal(name);
+
     /// <summary>Location name to highlight when the locations modal opens.</summary>
     public string? FocusLocationName { get; set; }
 
@@ -175,12 +177,14 @@ public partial class ScreenplayEditor : ComponentBase
     /// <summary>Insert a blank scene after <paramref name="afterIndex"/> (-1 = at start).</summary>
     public async Task InsertSceneAfter(int afterIndex)
     {
+        var prev = afterIndex >= 0 && afterIndex < Model.Scenes.Count ? Model.Scenes[afterIndex] : null;
         var newScene = new ScreenplayScene
         {
             SceneNumber = 0,
-            Environment = "INT.",
-            Location = "NEW LOCATION",
-            TimeOfDay = "DAY",
+            Environment = prev?.Environment ?? "INT.",
+            Location = prev?.Location ?? "NEW LOCATION",
+            TimeOfDay = prev?.TimeOfDay ?? "DAY",
+            GroupTitle = prev?.GroupTitle ?? "",
             IsSelected = true
         };
         newScene.Beats.Add(new ScreenplayBeat
@@ -194,6 +198,8 @@ public partial class ScreenplayEditor : ComponentBase
 
         var insertAt = Math.Clamp(afterIndex + 1, 0, Model.Scenes.Count);
         Model.Scenes.Insert(insertAt, newScene);
+        if (string.IsNullOrWhiteSpace(newScene.GroupTitle))
+            Model.AutoGroupScenesByLocation(force: false);
         ReindexSceneNumbers();
         SelectedSceneIndex = insertAt;
         ActiveViewMode = "scene";

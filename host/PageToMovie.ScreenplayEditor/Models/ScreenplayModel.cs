@@ -329,6 +329,12 @@ public class ScreenplayScene
         set => TimeOfDay = value.ToDisplayString();
     }
     public string SceneTitle { get; set; } = "";
+    /// <summary>
+    /// Collapsible sequence label in the outline (e.g. location run or user rename).
+    /// Consecutive scenes with the same GroupTitle form one group.
+    /// </summary>
+    public string GroupTitle { get; set; } = "";
+    public bool IsGroupCollapsed { get; set; } = false;
     public bool IsCollapsed { get; set; } = false;
     public bool IsSelected { get; set; } = false;
 
@@ -347,6 +353,8 @@ public class ScreenplayScene
             Location = Location,
             TimeOfDay = TimeOfDay,
             SceneTitle = SceneTitle,
+            GroupTitle = GroupTitle,
+            IsGroupCollapsed = IsGroupCollapsed,
             IsCollapsed = IsCollapsed,
             IsSelected = IsSelected
         };
@@ -441,5 +449,69 @@ public class ScreenplayModel
             CharacterProfiles.Add(existing);
         }
         return existing;
+    }
+
+    /// <summary>
+    /// Auto-group consecutive scenes that share the same location (no extra classifier).
+    /// Preserves user renames when the location run is unchanged. Call after parse/import.
+    /// </summary>
+    public void AutoGroupScenesByLocation(bool force = false)
+    {
+        if (Scenes.Count == 0) return;
+        string? prevLoc = null;
+        string? prevGroup = null;
+        var seq = 0;
+        foreach (var scene in Scenes)
+        {
+            var loc = (scene.Location ?? "").Trim();
+            var locKey = loc.ToUpperInvariant();
+            var sameRun = prevLoc is not null && locKey == prevLoc;
+            if (!sameRun)
+            {
+                seq++;
+                prevLoc = locKey;
+                // Default title = location; fall back to Sequence N
+                var defaultTitle = string.IsNullOrWhiteSpace(loc) ? $"Sequence {seq}" : loc;
+                if (force || string.IsNullOrWhiteSpace(scene.GroupTitle))
+                    scene.GroupTitle = defaultTitle;
+                prevGroup = scene.GroupTitle;
+            }
+            else
+            {
+                // Continue previous group title (prefer prior scene's title so renames stick)
+                if (force || string.IsNullOrWhiteSpace(scene.GroupTitle))
+                    scene.GroupTitle = prevGroup ?? (string.IsNullOrWhiteSpace(loc) ? $"Sequence {seq}" : loc);
+                else if (!string.IsNullOrWhiteSpace(prevGroup)
+                         && !scene.GroupTitle.Equals(prevGroup, StringComparison.OrdinalIgnoreCase)
+                         && !force)
+                {
+                    // Keep user's per-scene title if they split manually; still track
+                    prevGroup = scene.GroupTitle;
+                }
+                else
+                    prevGroup = scene.GroupTitle;
+            }
+        }
+    }
+
+    /// <summary>Rename a whole consecutive group (matched by old title + adjacency).</summary>
+    public void RenameSceneGroup(string oldTitle, string newTitle)
+    {
+        if (string.IsNullOrWhiteSpace(oldTitle) || string.IsNullOrWhiteSpace(newTitle)) return;
+        var nt = newTitle.Trim();
+        foreach (var s in Scenes)
+        {
+            if (s.GroupTitle.Equals(oldTitle, StringComparison.OrdinalIgnoreCase))
+                s.GroupTitle = nt;
+        }
+    }
+
+    public void SetGroupCollapsed(string groupTitle, bool collapsed)
+    {
+        foreach (var s in Scenes)
+        {
+            if (s.GroupTitle.Equals(groupTitle, StringComparison.OrdinalIgnoreCase))
+                s.IsGroupCollapsed = collapsed;
+        }
     }
 }

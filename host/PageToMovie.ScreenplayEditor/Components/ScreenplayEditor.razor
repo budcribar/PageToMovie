@@ -70,6 +70,8 @@
         <!-- Column 1: Left Outline Navigation Sidebar -->
         <div class="@(IsSidebarCompact ? "col-auto" : "col-md-3")">
             <ScreenplayEditor_OutlineSidebar Scenes="Model.Scenes"
+                                              Characters="Model.GetAllCharacters()"
+                                              FocusedCharacter="FocusCharacterName"
                                               ActiveView="@ActiveViewMode"
                                               SelectedSceneIndex="SelectedSceneIndex"
                                               @bind-IsCompact="IsSidebarCompact"
@@ -80,7 +82,9 @@
                                               OnInsertSceneAfter="InsertSceneAfter"
                                               OnDeleteScene="DeleteScene"
                                               OnSelectionChangedCallback="OnSelectionChanged"
-                                              OnReorderScenes="ReorderScenes" />
+                                              OnReorderScenes="ReorderScenes"
+                                              OnGroupsChanged="OnChanged"
+                                              OnSelectCharacter="OpenCharacterFromOutline" />
         </div>
 
         <!-- Column 2: Right Active View Inspector -->
