@@ -159,7 +159,7 @@ public static class FountainStage1Importer
                 ["beat_id"] = NextStableBeatId(kind, "", text),
                 ["intent"] = Trunc(text, 120),
                 ["visual_event"] = text,
-                ["shot_scale_hint"] = actionClass is "establishing" ? "wide" : "medium",
+                ["shot_scale_hint"] = actionClass is "establishing" ? ShotScale.Wide.ToSnakeCase() : ShotScale.Medium.ToSnakeCase(),
                 ["action_class"] = actionClass,
                 ["continuity"] = beatIndex == 1 ? "new_setup" : "continuous_from_previous_beat",
                 ["time_weight"] = Math.Clamp(text.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length / 12.0, 0.5, 3.0),
@@ -240,7 +240,7 @@ public static class FountainStage1Importer
                             : (offScreen ? $"V.O.: {displayName}" : $"Dialogue: {displayName}"),
                         120),
                     ["visual_event"] = visual,
-                    ["shot_scale_hint"] = offScreen ? "medium" : "medium close",
+                    ["shot_scale_hint"] = offScreen ? ShotScale.Medium.ToSnakeCase() : "medium close",
                     ["action_class"] = offScreen ? "hold" : "dialogue",
                     ["continuity"] = isFirst
                         ? "new_setup"
@@ -304,7 +304,7 @@ public static class FountainStage1Importer
                     ["beat_id"] = NextStableBeatId("establishing", "", setting),
                     ["intent"] = "Establish scene",
                     ["visual_event"] = string.IsNullOrWhiteSpace(setting) ? "Scene" : setting,
-                    ["shot_scale_hint"] = "wide",
+                    ["shot_scale_hint"] = ShotScale.Wide.ToSnakeCase(),
                     ["action_class"] = "establishing",
                     ["continuity"] = "new_setup",
                     ["time_weight"] = 1.0,

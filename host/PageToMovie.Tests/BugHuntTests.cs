@@ -1071,7 +1071,7 @@ public class BugHuntTests
         Assert.True(analysis.AvgCharsPerPage < analysis.TextChars);
         // Enough words + multi-paragraph density → short story, not picture_book.
         Assert.True(analysis.TextWords >= 800, $"words={analysis.TextWords}");
-        Assert.NotEqual("picture_book", analysis.BookKind);
+        Assert.NotEqual(BookKind.PictureBook, analysis.BookKind);
     }
 
     [Fact]

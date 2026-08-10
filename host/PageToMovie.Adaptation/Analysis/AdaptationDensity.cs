@@ -68,7 +68,7 @@ public static class AdaptationDensity
     {
         public int SourceWords { get; init; }
         public int SourceSyllables { get; init; }
-        public string BookKind { get; init; } = "";
+        public BookKind BookKind { get; init; } = BookKind.Short;
         /// <summary>Fraction of characters inside quote marks (0–1), rough spoken-dialogue prior.</summary>
         public double QuotedDialogueFraction { get; init; }
         /// <summary>All source words at <see cref="AudiobookWordsPerMinute"/>.</summary>
@@ -89,14 +89,14 @@ public static class AdaptationDensity
     /// Does not call <see cref="BookTextAnalyzer.Analyze"/> when <paramref name="bookKind"/> is set
     /// (avoids recursion from Analyze → density).
     /// </summary>
-    public static Estimate EstimateNatural(string? bookText, string? bookKind = null)
+    public static Estimate EstimateNatural(string? bookText, BookKind? bookKind = null)
     {
         var text = bookText ?? "";
-        string kind;
+        BookKind kind;
         int words;
-        if (!string.IsNullOrWhiteSpace(bookKind))
+        if (bookKind.HasValue)
         {
-            kind = bookKind.Trim();
+            kind = bookKind.Value;
             // Prefer analyzer word count when available without re-entering suggested-runtime.
             words = TextMetrics.CountWords(BookToFountainConverter.NormalizeBookText(text));
             if (words <= 0)
@@ -114,16 +114,19 @@ public static class AdaptationDensity
         return EstimateFromStats(kind, words, syllables, quoteFrac);
     }
 
+    public static Estimate EstimateNatural(string? bookText, string? bookKindStr) =>
+        EstimateNatural(bookText, string.IsNullOrWhiteSpace(bookKindStr) ? null : AdaptationEnumExtensions.ParseBookKind(bookKindStr));
+
     /// <summary>
     /// Core estimator from precomputed stats (used by <see cref="BookTextAnalyzer"/> and benchmarks).
     /// </summary>
     public static Estimate EstimateFromStats(
-        string bookKind,
+        BookKind bookKind,
         int words,
         int syllables,
         double quotedDialogueFraction)
     {
-        var kind = string.IsNullOrWhiteSpace(bookKind) ? "short" : bookKind.Trim();
+        var kind = bookKind;
         words = Math.Max(0, words);
         syllables = Math.Max(0, syllables);
         var quoteFrac = Math.Clamp(quotedDialogueFraction, 0, 1);
@@ -149,7 +152,7 @@ public static class AdaptationDensity
                 $"Slow read-aloud speech × {VerseStagingMultiplier:F2} staging; " +
                 "film ≈ performance length (no novel compression).";
         }
-        else if (kind is "short" or "picture_book")
+        else if (kind is BookKind.Short or BookKind.PictureBook)
         {
             // Short literary / picture-book prose: most words become VO or on-camera speech.
             // Calibrated on PageToMovie Tell-Tale Heart (YouTube 16:49 ≈ 17 min for ~2.2k words):
@@ -159,7 +162,7 @@ public static class AdaptationDensity
                 words / TextMetrics.DialogueWordsPerSecond,
                 syllables / 4.2);
             var filmMin = speechSec * ShortLiteraryStagingMultiplier / 60.0;
-            natural = kind == "picture_book"
+            natural = kind == BookKind.PictureBook
                 ? Math.Clamp((int)Math.Round(filmMin), 1, 40)
                 : Math.Clamp((int)Math.Round(filmMin), 2, 45);
             delta = words > 0 ? natural / (words / 1000.0) : DeltaPictureBookPages;
@@ -199,6 +202,13 @@ public static class AdaptationDensity
             Notes = notes,
         };
     }
+
+    public static Estimate EstimateFromStats(
+        string bookKind,
+        int words,
+        int syllables,
+        double quotedDialogueFraction) =>
+        EstimateFromStats(AdaptationEnumExtensions.ParseBookKind(bookKind), words, syllables, quotedDialogueFraction);
 
     /// <summary>
     /// Suggested reduced budget for dual benchmarks: half of natural, floored for longform.

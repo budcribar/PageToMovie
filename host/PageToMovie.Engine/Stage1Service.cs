@@ -105,7 +105,7 @@ public sealed class Stage1Service
 
         var book = await File.ReadAllTextAsync(bookPath, ct).ConfigureAwait(false);
         var analysis = BookTextAnalyzer.Analyze(book);
-        if (analysis.TextQuality is "poor" or "empty" || analysis.GarbageScore >= 0.45)
+        if (analysis.TextQuality is TextQuality.Poor or TextQuality.Empty || analysis.GarbageScore >= 0.45)
             throw new InvalidOperationException(
                 "book_full.txt is still garbled OCR. Prepare the book with vision first.");
 
@@ -216,11 +216,11 @@ public sealed class Stage1Service
                 "clip gen will lean on narration. Prefer on-camera frame cutbacks where possible.");
         }
 
-        var softMaxScenes = AdaptationFountain.SoftMaxSceneHeadings(analysis.BookKind);
+        var softMaxScenes = AdaptationFountain.SoftMaxSceneHeadings(analysis.BookKind.ToString());
         if (result.SceneCount > softMaxScenes)
         {
             onProgress?.Invoke(
-                $"Note: {result.SceneCount} scenes (soft target ≤{softMaxScenes} for {analysis.BookKind}) — " +
+                $"Note: {result.SceneCount} scenes (soft target ≤{softMaxScenes} for {analysis.BookKind.ToApiString()}) — " +
                 "shot plan / clip count may be high.");
         }
 

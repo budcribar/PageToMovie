@@ -1175,7 +1175,7 @@ Uncle Nick turned, offering a small, reassuring nod. ""She always holds when the
         if (overrideMinutes is > 0)
             return $"(CLI override --target-runtime-minutes={overrideMinutes.Value})";
         var a = BookTextAnalyzer.Analyze(bookText ?? "");
-        return $"(BookTextAnalyzer · kind={a.BookKind} · words={a.TextWords} · pages={a.Pages} · same as production)";
+        return $"(BookTextAnalyzer · kind={a.BookKind.ToApiString()} · words={a.TextWords} · pages={a.Pages} · same as production)";
     }
 
     private static string SanitizeFileName(string name) =>

@@ -29,7 +29,7 @@ public sealed class AdaptationDensityTests
 
         var e = AdaptationDensity.EstimateNatural(File.ReadAllText(path));
         // Published PageToMovie TTH on YouTube is 16:49; density should land near that, not ~10.
-        Assert.Equal("short", e.BookKind);
+        Assert.Equal(BookKind.Short, e.BookKind);
         Assert.Equal("short_literary_speech_x_staging", e.Method);
         Assert.InRange(e.NaturalFilmMinutes, 14, 20);
         Assert.InRange(e.MinutesPerThousandWords, 6.0, 10.0);
@@ -43,14 +43,14 @@ public sealed class AdaptationDensityTests
         if (!File.Exists(path))
         {
             var synth = string.Join(' ', Enumerable.Repeat("Nick walked home and thought about the day.", 6000));
-            var eSynth = AdaptationDensity.EstimateNatural(synth, bookKind: "novel");
+            var eSynth = AdaptationDensity.EstimateNatural(synth, bookKind: BookKind.Novel);
             Assert.InRange(eSynth.NaturalFilmMinutes, 40, 180);
             Assert.True(eSynth.TemporalCompressionRatio < 0.6);
             return;
         }
 
         var e = AdaptationDensity.EstimateNatural(File.ReadAllText(path));
-        Assert.Equal("novel", e.BookKind);
+        Assert.Equal(BookKind.Novel, e.BookKind);
         Assert.InRange(e.NaturalFilmMinutes, 80, 180);
         Assert.True(e.AudiobookMinutes > 300, "Nick should be multi-hour as audiobook");
         Assert.True(e.TemporalCompressionRatio < 0.5, $"τ={e.TemporalCompressionRatio}");
@@ -67,7 +67,7 @@ public sealed class AdaptationDensityTests
     {
         var e = AdaptationDensity.EstimateNatural(
             string.Join(' ', Enumerable.Repeat("The quick brown fox jumps over the lazy dog.", 200)),
-            bookKind: "short");
+            bookKind: BookKind.Short);
         var expected = e.NaturalFilmMinutes / (e.SourceWords / 1000.0);
         Assert.Equal(Math.Round(expected, 2), e.MinutesPerThousandWords);
     }

@@ -74,9 +74,9 @@ public sealed class CameraDirectorClassifierTests
         var directives = await classifier.ClassifySceneCameraAsync(scene, beats);
 
         Assert.NotNull(directives);
-        Assert.Equal("wide", directives!["b1"].ShotScale);
+        Assert.Equal(ShotScale.Wide, directives!["b1"].ShotScale);
         Assert.Equal("24mm anamorphic lens", directives["b1"].LensSpec);
-        Assert.Equal("close_up", directives["b2"].ShotScale);
+        Assert.Equal(ShotScale.CloseUp, directives["b2"].ShotScale);
         Assert.Equal("slow 10% dolly push-in", directives["b2"].CameraMovement);
     }
 

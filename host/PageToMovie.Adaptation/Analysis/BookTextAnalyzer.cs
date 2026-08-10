@@ -92,22 +92,22 @@ public static class BookTextAnalyzer
 
         garbage = Math.Clamp(garbage, 0, 1.5);
 
-        string quality;
+        TextQuality quality;
         if (words < 8 && contentBodies.Count == 0)
-            quality = "empty";
+            quality = TextQuality.Empty;
         else if (garbage >= 0.45 || letterRatio < 0.4)
-            quality = "poor";
+            quality = TextQuality.Poor;
         else if (words < 40 && sparseRatio > 0.6)
-            quality = "good"; // picture book clean short text
+            quality = TextQuality.Good; // picture book clean short text
         else if (letterRatio >= 0.55 && garbage < 0.35)
-            quality = "good";
+            quality = TextQuality.Good;
         else
-            quality = "poor";
+            quality = TextQuality.Poor;
 
-        var textDensity = sparseRatio > 0.45 || avgChars < 200 ? "sparse" : "normal";
-        var bookKind = pages <= 40 && (textDensity == "sparse" || words < 800)
-            ? "picture_book"
-            : words < 15000 ? "short" : "novel";
+        var textDensity = sparseRatio > 0.45 || avgChars < 200 ? TextDensity.Sparse : TextDensity.Normal;
+        var bookKind = pages <= 40 && (textDensity == TextDensity.Sparse || words < 800)
+            ? BookKind.PictureBook
+            : words < 15000 ? BookKind.Short : BookKind.Novel;
 
         // Natural film length from adaptation density (speech×staging for short literary;
         // market δ for novels). Calibrated on TTH ~17 min published film.
@@ -115,18 +115,18 @@ public static class BookTextAnalyzer
         var quoteFrac = AdaptationDensity.EstimateQuotedDialogueFraction(plain);
         var runtimeEstimate = AdaptationDensity.EstimateFromStats(bookKind, words, syllables, quoteFrac);
         var suggestedMinutes = runtimeEstimate.NaturalFilmMinutes;
-        var suggestedChunks = bookKind == "picture_book"
+        var suggestedChunks = bookKind == BookKind.PictureBook
             ? Math.Clamp(pages, 5, 20)
             : 10;
 
         var notes = new List<string>();
-        if (textDensity == "sparse")
+        if (textDensity == TextDensity.Sparse)
             notes.Add("Layout is illustration-heavy (normal for picture books) but wording may still be usable.");
-        if (bookKind == "picture_book")
+        if (bookKind == BookKind.PictureBook)
             notes.Add($"Treated as picture book (~{pages} pages). Suggested Stage 1 runtime {suggestedMinutes} min.");
-        if (quality == "poor")
+        if (quality == TextQuality.Poor)
             notes.Add("Text looks garbled (OCR noise). Prefer Grok vision on page images.");
-        if (quality == "empty")
+        if (quality == TextQuality.Empty)
             notes.Add("Almost no readable text. Use Grok vision or paste a transcript.");
 
         return new BookTextAnalysis
@@ -142,7 +142,7 @@ public static class BookTextAnalyzer
             TextQuality = quality,
             TextDensity = textDensity,
             BookKind = bookKind,
-            ReadyForStage1 = quality == "good" && garbage < 0.45,
+            ReadyForStage1 = quality == TextQuality.Good && garbage < 0.45,
             SuggestedTotalMinutes = suggestedMinutes,
             SuggestedChunkPages = suggestedChunks,
             Notes = notes,
@@ -166,13 +166,16 @@ public static class BookTextAnalyzer
     /// Stats-only helper for tests; prefer <see cref="ResolveStage1RuntimeMinutes"/> /
     /// <see cref="AdaptationDensity.EstimateFromStats"/>.
     /// </summary>
-    public static int SuggestStage1RuntimeMinutes(string bookKind, int words, int pages)
+    public static int SuggestStage1RuntimeMinutes(BookKind bookKind, int words, int pages)
     {
         words = Math.Max(0, words);
         // Without real text, approximate syllables ≈ words (tests only).
         return AdaptationDensity.EstimateFromStats(bookKind, words, syllables: words, quotedDialogueFraction: 0.2)
             .NaturalFilmMinutes;
     }
+
+    public static int SuggestStage1RuntimeMinutes(string bookKind, int words, int pages) =>
+        SuggestStage1RuntimeMinutes(AdaptationEnumExtensions.ParseBookKind(bookKind), words, pages);
 
     /// <summary>
     /// Page bodies for density/quality heuristics. Same split rules as Engine
@@ -228,9 +231,9 @@ public sealed class BookTextAnalysis
     public double SparsePageRatio { get; set; }
     public double AvgCharsPerPage { get; set; }
     public double GarbageScore { get; set; }
-    public string TextQuality { get; set; } = "unknown";
-    public string TextDensity { get; set; } = "normal";
-    public string BookKind { get; set; } = "unknown";
+    public TextQuality TextQuality { get; set; } = TextQuality.Empty;
+    public TextDensity TextDensity { get; set; } = TextDensity.Normal;
+    public BookKind BookKind { get; set; } = BookKind.Short;
     public bool ReadyForStage1 { get; set; }
     public int SuggestedTotalMinutes { get; set; }
     public int SuggestedChunkPages { get; set; }

@@ -16,7 +16,7 @@ public sealed class NaturalRuntimeEstimate
     public string Method { get; init; } = "";
     public int SourceWords { get; init; }
     public int SourceSyllables { get; init; }
-    public string BookKind { get; init; } = "";
+    public BookKind BookKind { get; init; } = BookKind.Short;
 
     /// <summary>δ — finished film minutes per 1,000 source words.</summary>
     public double MinutesPerThousandWords { get; init; }

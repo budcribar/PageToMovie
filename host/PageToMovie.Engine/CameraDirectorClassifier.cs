@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using PageToMovie.Core.Options;
 using PageToMovie.Core.Utils;
+using PageToMovie.Engine;
 using PageToMovie.Engine.Abstractions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -9,7 +10,7 @@ using Microsoft.Extensions.Options;
 namespace PageToMovie.Engine.ModelBacked;
 
 public sealed record CameraDirective(
-    string ShotScale,
+    ShotScale ShotScale,
     string LensSpec,
     string CameraMovement,
     string FramingPrompt);
@@ -118,7 +119,8 @@ public sealed class CameraDirectorClassifier : BeatChatClassifierBase<CameraDire
             foreach (var item in dirArray.EnumerateArray())
             {
                 var id = item.GetStringProp("beat_id");
-                var scale = item.GetStringProp("shot_scale", "medium");
+                var scaleStr = item.GetStringProp("shot_scale", ShotScale.Medium.ToSnakeCase());
+                var scale = ShotScaleExtensions.ParseShotScale(scaleStr, ShotScale.Medium);
                 var lens = item.GetStringProp("lens_spec", "35mm lens");
                 var move = item.GetStringProp("camera_movement", "locked tripod");
                 var framing = item.GetStringProp("framing_prompt");

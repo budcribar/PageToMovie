@@ -134,7 +134,7 @@ public sealed class BookPrepareService
             }
 
             // Picture books without plates cannot OCR — fail loudly instead of a vague later error.
-            var looksPicture = analysis.BookKind == "picture_book" || analysis.TextDensity == "sparse";
+            var looksPicture = analysis.BookKind == BookKind.PictureBook || analysis.TextDensity == TextDensity.Sparse;
             if (looksPicture && imageRows.Count == 0)
             {
                 throw new InvalidOperationException(
@@ -205,8 +205,8 @@ public sealed class BookPrepareService
             {
                 Action = "vision_skipped",
                 Reason = "Auto vision disabled; keeping extract text (may be garbled).",
-                ReadyForStage1 = analysis.TextQuality == "good",
-                NeedsUser = analysis.TextQuality != "good",
+                ReadyForStage1 = analysis.TextQuality == TextQuality.Good,
+                NeedsUser = analysis.TextQuality != TextQuality.Good,
             };
         }
 
@@ -280,10 +280,10 @@ public sealed class BookPrepareService
         if (naturalMinutes > 0)
             analysis.SuggestedTotalMinutes = naturalMinutes;
 
-        result.TextQuality = analysis.TextQuality;
+        result.TextQuality = analysis.TextQuality.ToApiString();
         result.GarbageScore = analysis.GarbageScore;
         result.TextWords = analysis.TextWords;
-        result.BookKind = analysis.BookKind;
+        result.BookKind = analysis.BookKind.ToApiString();
         result.SuggestedTotalMinutes = analysis.SuggestedTotalMinutes;
         result.SuggestedChunkPages = analysis.SuggestedChunkPages;
         result.Notes = analysis.Notes.ToList();
@@ -328,8 +328,8 @@ public sealed class BookPrepareService
         var words = analysis.TextWords;
         var garbage = analysis.GarbageScore;
 
-        var picture = kind == "picture_book" || density == "sparse";
-        var textClearlyClean = quality == "good" && garbage < 0.2 && words >= 80 && density != "sparse";
+        var picture = kind == BookKind.PictureBook || density == TextDensity.Sparse;
+        var textClearlyClean = quality == TextQuality.Good && garbage < 0.2 && words >= 80 && density != TextDensity.Sparse;
 
         if (picture && hasImages && hasXai && !textClearlyClean)
         {
@@ -356,7 +356,7 @@ public sealed class BookPrepareService
             };
         }
 
-        if (quality == "good" && garbage < 0.25)
+        if (quality == TextQuality.Good && garbage < 0.25)
         {
             return new BookStrategy
             {
@@ -366,13 +366,13 @@ public sealed class BookPrepareService
             };
         }
 
-        var needsBetter = quality is "poor" or "empty" or "sparse" || garbage >= 0.25;
+        var needsBetter = quality is TextQuality.Poor or TextQuality.Empty || garbage >= 0.25;
         if (!needsBetter)
         {
             return new BookStrategy
             {
                 Action = "use_embedded_text",
-                Reason = $"Text quality '{quality}' is acceptable for Stage 1.",
+                Reason = $"Text quality '{quality.ToApiString()}' is acceptable for Stage 1.",
                 ReadyForStage1 = true,
             };
         }
@@ -609,7 +609,7 @@ public sealed class BookPrepareService
         try
         {
             // Sparse picture books: render all pages; denser books: cover + sparse
-            var renderAll = analysis.BookKind == "picture_book" || pageCount <= 40;
+            var renderAll = analysis.BookKind == BookKind.PictureBook || pageCount <= 40;
             var pdfBytes = File.ReadAllBytes(pdfPath);
             using var ms = new MemoryStream(pdfBytes);
             var options = new PDFtoImage.RenderOptions(Dpi: 150);
@@ -854,13 +854,13 @@ public sealed class BookPrepareService
             ["pages"] = result.Pages,
             ["text_chars"] = analysis.TextChars,
             ["text_words"] = analysis.TextWords,
-            ["text_quality"] = analysis.TextQuality,
-            ["book_kind"] = analysis.BookKind,
+            ["text_quality"] = analysis.TextQuality.ToApiString(),
+            ["book_kind"] = analysis.BookKind.ToApiString(),
             // Initial film medium from import analysis (refined at screenplay adaptation).
-            ["visual_medium"] = analysis.BookKind == "picture_book"
+            ["visual_medium"] = analysis.BookKind == BookKind.PictureBook
                 ? "illustrated_picture_book"
                 : "photoreal_live_action",
-            ["render_style_lock"] = analysis.BookKind == "picture_book"
+            ["render_style_lock"] = analysis.BookKind == BookKind.PictureBook
                 ? "STYLE LOCK: stylized animated children's picture-book look for ALL on-screen cast (animals and humans share the same medium) -- not photoreal, not live-action"
                 : "STYLE LOCK: photoreal live-action continuity portrait — naturalistic face and wardrobe. NOT cartoon, NOT illustration, NOT anime",
             ["medium_source"] = "import_extract_meta",
@@ -887,9 +887,9 @@ public sealed class BookPrepareService
                 ["empty_page_ratio"] = analysis.EmptyPageRatio,
                 ["sparse_page_ratio"] = analysis.SparsePageRatio,
                 ["garbage_score"] = analysis.GarbageScore,
-                ["text_quality"] = analysis.TextQuality,
-                ["text_density"] = analysis.TextDensity,
-                ["book_kind"] = analysis.BookKind,
+                ["text_quality"] = analysis.TextQuality.ToApiString(),
+                ["text_density"] = analysis.TextDensity.ToApiString(),
+                ["book_kind"] = analysis.BookKind.ToApiString(),
                 ["ready_for_stage1"] = analysis.ReadyForStage1,
                 ["suggested_total_minutes"] = analysis.SuggestedTotalMinutes,
                 ["suggested_chunk_pages"] = analysis.SuggestedChunkPages,

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using PageToMovie.Core.Options;
+using PageToMovie.Engine;
 using PageToMovie.Engine.Abstractions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -161,11 +162,11 @@ public sealed class SilentBeatActionClassifier
                 t.Beat["action_class"] = cls;
                 // Establishing often wants a wider scale hint when AI reclassifies
                 if (string.Equals(cls, "establishing", StringComparison.OrdinalIgnoreCase))
-                    t.Beat["shot_scale_hint"] = "wide";
+                    t.Beat["shot_scale_hint"] = ShotScale.Wide.ToSnakeCase();
                 else if (t.Beat.TryGetValue("shot_scale_hint", out var sh) &&
-                         string.Equals(sh?.ToString(), "wide", StringComparison.OrdinalIgnoreCase) &&
+                         string.Equals(sh?.ToString(), ShotScale.Wide.ToSnakeCase(), StringComparison.OrdinalIgnoreCase) &&
                          string.Equals(t.Heuristic, "establishing", StringComparison.OrdinalIgnoreCase))
-                    t.Beat["shot_scale_hint"] = "medium";
+                    t.Beat["shot_scale_hint"] = ShotScale.Medium.ToSnakeCase();
                 aiCount++;
             }
             else

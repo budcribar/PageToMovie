@@ -342,7 +342,7 @@ public static class BookToFountainConverter
         // Soft scene-count budget — warn only (Stage 2 clip cost), never block
         var analysis = BookTextAnalyzer.Analyze(bookText);
         var sceneCount = CountSceneHeadings(text);
-        var softMax = SoftMaxSceneHeadings(analysis.BookKind);
+        var softMax = SoftMaxSceneHeadings(analysis.BookKind.ToString());
         if (sceneCount > softMax)
         {
             onProgress?.Invoke(

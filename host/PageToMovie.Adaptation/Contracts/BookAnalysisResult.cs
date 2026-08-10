@@ -13,9 +13,9 @@ public sealed class BookAnalysisResult
     public double SparsePageRatio { get; init; }
     public double AvgCharsPerPage { get; init; }
     public double GarbageScore { get; init; }
-    public string TextQuality { get; init; } = "unknown";
-    public string TextDensity { get; init; } = "normal";
-    public string BookKind { get; init; } = "unknown";
+    public TextQuality TextQuality { get; init; } = TextQuality.Empty;
+    public TextDensity TextDensity { get; init; } = TextDensity.Normal;
+    public BookKind BookKind { get; init; } = BookKind.Short;
     public bool ReadyForStage1 { get; init; }
     public int SuggestedTotalMinutes { get; init; }
     public int SuggestedChunkPages { get; init; }
