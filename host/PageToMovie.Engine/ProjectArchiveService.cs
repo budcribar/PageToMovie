@@ -125,9 +125,13 @@ public sealed class ProjectArchiveService
                         var rel = Path.GetRelativePath(projectDir, file);
                         if (string.IsNullOrEmpty(rel) || rel.StartsWith("..", StringComparison.Ordinal))
                             continue;
-                        // Skip OS junk
+                        // Skip OS junk. Also skip a stray on-disk "_export_meta.json" — it's an
+                        // export-generated manifest (written fresh, above, for THIS export), never
+                        // real project content; a leftover copy (e.g. from an older re-slug rename,
+                        // before ImportAsync started deleting it) would otherwise re-enter the zip as
+                        // a second, colliding entry with a stale projectId that wins on extraction.
                         var name = Path.GetFileName(file);
-                        if (name is "Thumbs.db" or ".DS_Store")
+                        if (name is "Thumbs.db" or ".DS_Store" or "_export_meta.json")
                             continue;
 
                         var entryName = $"{id}/{rel.Replace('\\', '/')}";
@@ -249,6 +253,14 @@ public sealed class ProjectArchiveService
             var schemaBefore = ProjectFormatVersions.TryReadProjectSchemaVersion(dest)
                                ?? exportMeta?.ProjectSchemaVersion
                                ?? "v0";
+
+            // _export_meta.json is a manifest ABOUT an export, generated fresh by ExportAsync every
+            // time — never real project content. Leaving the copy from this zip on disk would freeze
+            // this project's next export with the *previous* project's id forever (re-slug rename's
+            // export → import → delete-old goes through here, and re-exporting later would re-zip
+            // this stale file as a second, colliding "_export_meta.json" entry that wins over the
+            // freshly-generated correct one on extraction).
+            try { File.Delete(Path.Combine(dest, "_export_meta.json")); } catch { /* best effort */ }
 
             // Ensure project.json id and optional ownerUserId match
             await EnsureProjectJsonIdAsync(dest, id, targetUserId, ct).ConfigureAwait(false);

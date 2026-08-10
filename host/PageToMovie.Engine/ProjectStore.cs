@@ -5354,7 +5354,6 @@ public sealed partial class ProjectStore
         if (ext is not (".pdf" or ".txt"))
             throw new InvalidOperationException("Only .pdf or .txt uploads are supported");
 
-        // Buffer once so we can write book_full.txt + original name for .txt uploads
         using var ms = new MemoryStream();
         await content.CopyToAsync(ms, ct);
         var bytes = ms.ToArray();
@@ -5363,8 +5362,6 @@ public sealed partial class ProjectStore
         {
             var bookFull = Path.Combine(source, "book_full.txt");
             await File.WriteAllBytesAsync(bookFull, bytes, ct);
-            if (!safe.Equals("book_full.txt", StringComparison.OrdinalIgnoreCase))
-                await File.WriteAllBytesAsync(Path.Combine(source, safe), bytes, ct);
             return bookFull;
         }
 
