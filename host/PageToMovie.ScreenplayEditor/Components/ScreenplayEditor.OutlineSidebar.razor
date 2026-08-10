@@ -79,17 +79,23 @@
                                     class="btn btn-sm spe-outline-icon text-info"
                                     title="Preview scene @scene.SceneNumber"
                                     @onclick="() => PreviewScene(index)"
-                                    @onclick:stopPropagation="true">▶</button>
+                                    @onclick:stopPropagation="true">
+                                <i class="bi bi-play-fill" aria-hidden="true"></i>
+                            </button>
                             <button type="button"
                                     class="btn btn-sm spe-outline-icon text-success"
                                     title="Insert scene after @scene.SceneNumber"
                                     @onclick="() => InsertAfter(index)"
-                                    @onclick:stopPropagation="true">+</button>
+                                    @onclick:stopPropagation="true">
+                                <i class="bi bi-plus-lg" aria-hidden="true"></i>
+                            </button>
                             <button type="button"
                                     class="btn btn-sm spe-outline-icon text-danger"
                                     title="Delete scene @scene.SceneNumber"
                                     @onclick="() => RequestDelete(index)"
-                                    @onclick:stopPropagation="true">🗑</button>
+                                    @onclick:stopPropagation="true">
+                                <i class="bi bi-trash" aria-hidden="true"></i>
+                            </button>
                         </div>
                     </div>
                 }
