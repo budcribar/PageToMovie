@@ -59,7 +59,7 @@ public sealed class BookPrepareService
                 : ProjectModelSelection.RequireExplicit(visionModel, ModelCapability.Vision, "Book prepare");
         }
 
-        var projectDir = _projects.GetProjectDir(projectId);
+        var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         var source = Path.Combine(projectDir, "source");
         Directory.CreateDirectory(source);
         var bookTxt = Path.Combine(source, "book_full.txt");

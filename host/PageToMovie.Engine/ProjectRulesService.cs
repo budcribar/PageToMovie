@@ -33,8 +33,29 @@ public sealed class ProjectRulesService
         _log = log;
     }
 
+    public async Task<string> RulesPathAsync(string projectId, CancellationToken ct = default) =>
+        Path.Combine(await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false), "project_rules.json");
+
     public string RulesPath(string projectId) =>
         Path.Combine(_projects.GetProjectDir(projectId), "project_rules.json");
+
+    public async Task<ProjectRulesDocument> LoadAsync(string projectId, CancellationToken ct = default)
+    {
+        var path = await RulesPathAsync(projectId, ct).ConfigureAwait(false);
+        if (!File.Exists(path))
+            return new ProjectRulesDocument();
+        try
+        {
+            var text = await File.ReadAllTextAsync(path, ct).ConfigureAwait(false);
+            return JsonSerializer.Deserialize<ProjectRulesDocument>(text, JsonOpts)
+                   ?? new ProjectRulesDocument();
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Failed loading project rules for {Project}", projectId);
+            return new ProjectRulesDocument();
+        }
+    }
 
     public ProjectRulesDocument Load(string projectId)
     {
@@ -51,6 +72,13 @@ public sealed class ProjectRulesService
             _log.LogWarning(ex, "Failed loading project rules for {Project}", projectId);
             return new ProjectRulesDocument();
         }
+    }
+
+    public async Task SaveAsync(string projectId, ProjectRulesDocument doc, CancellationToken ct = default)
+    {
+        var path = await RulesPathAsync(projectId, ct).ConfigureAwait(false);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        await File.WriteAllTextAsync(path, JsonSerializer.Serialize(doc, JsonOpts) + "\n", ct).ConfigureAwait(false);
     }
 
     public void Save(string projectId, ProjectRulesDocument doc)

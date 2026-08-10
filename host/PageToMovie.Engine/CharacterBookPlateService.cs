@@ -52,7 +52,7 @@ public sealed class CharacterBookPlateService
                 : ProjectModelSelection.RequireExplicit(visionModel, ModelCapability.Vision, "Character book plates");
         }
 
-        var projectDir = _projects.GetProjectDir(projectId);
+        var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         var castSeedsPath = ScreenplayService.GetCastSeedsPath(_projects, projectId);
         var result = new PageToMovie.Core.Models.AttachCharacterPlatesResult();
         var platesState = _projects.GetCharacterPlatesState(projectId);
@@ -949,7 +949,7 @@ public sealed class CharacterBookPlateService
         // 1) cast_seeds.json (canonical cast)
         var castPath = File.Exists(castSeedsPath)
             ? castSeedsPath
-            : Path.Combine(_projects.GetProjectDir(projectId), "source", ScreenplayService.CastSeedsFileName);
+            : Path.Combine(await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false), "source", ScreenplayService.CastSeedsFileName);
         if (File.Exists(castPath))
         {
             try
@@ -1361,7 +1361,7 @@ public sealed class CharacterBookPlateService
         string charKey,
         CancellationToken ct = default)
     {
-        var projectDir = _projects.GetProjectDir(projectId);
+        var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         var inventoryAll = await LoadBookImageInventoryAsync(projectDir).ConfigureAwait(false);
         var inventory = inventoryAll.Where(r => !IsLikelyTextLayout(r)).ToList();
         if (inventory.Count == 0)

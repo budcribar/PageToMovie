@@ -37,8 +37,14 @@ public sealed class ProjectArtifactIndexService
         _log = log;
     }
 
+    public async Task<string> IndexJsonPathAsync(string projectId, CancellationToken ct = default) =>
+        Path.Combine(await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false), "artifact_index.json");
+
     public string IndexJsonPath(string projectId) =>
         Path.Combine(_projects.GetProjectDir(projectId), "artifact_index.json");
+
+    public async Task<string> ArtifactsMdPathAsync(string projectId, CancellationToken ct = default) =>
+        Path.Combine(await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false), "ARTIFACTS.md");
 
     public string ArtifactsMdPath(string projectId) =>
         Path.Combine(_projects.GetProjectDir(projectId), "ARTIFACTS.md");
@@ -51,7 +57,7 @@ public sealed class ProjectArtifactIndexService
         string projectId,
         CancellationToken ct = default)
     {
-        var dir = _projects.GetProjectDir(projectId);
+        var dir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         if (!Directory.Exists(dir))
             throw new InvalidOperationException($"Project directory not found: {projectId}");
 
@@ -164,14 +170,14 @@ public sealed class ProjectArtifactIndexService
 
         await EnsureFinalReviewTemplateAsync(dir, ct).ConfigureAwait(false);
 
-        var indexPath = IndexJsonPath(projectId);
+        var indexPath = await IndexJsonPathAsync(projectId, ct).ConfigureAwait(false);
         await File.WriteAllTextAsync(
             indexPath,
             JsonSerializer.Serialize(doc, JsonOpts) + "\n",
             ct).ConfigureAwait(false);
 
         var md = BuildMarkdown(doc);
-        await File.WriteAllTextAsync(ArtifactsMdPath(projectId), md, ct).ConfigureAwait(false);
+        await File.WriteAllTextAsync(await ArtifactsMdPathAsync(projectId, ct).ConfigureAwait(false), md, ct).ConfigureAwait(false);
 
         _log.LogInformation(
             "Artifact index rebuilt for {ProjectId}: {Present}/{Total} paths, ready={Ready}",

@@ -34,8 +34,14 @@ public sealed class ReviewIndexService
         _log = log;
     }
 
+    public async Task<string> IndexPathAsync(string projectId, CancellationToken ct = default) =>
+        Path.Combine(await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false), "assets", "review", "index.json");
+
     public string IndexPath(string projectId) =>
         Path.Combine(_projects.GetProjectDir(projectId), "assets", "review", "index.json");
+
+    public async Task<string> FramesDirAsync(string projectId, CancellationToken ct = default) =>
+        Path.Combine(await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false), "assets", "review", "frames");
 
     public string FramesDir(string projectId) =>
         Path.Combine(_projects.GetProjectDir(projectId), "assets", "review", "frames");
@@ -48,7 +54,7 @@ public sealed class ReviewIndexService
 
     public async Task<ReviewIndexDocument?> LoadAsync(string projectId, CancellationToken ct = default)
     {
-        var path = IndexPath(projectId);
+        var path = await IndexPathAsync(projectId, ct).ConfigureAwait(false);
         if (!File.Exists(path)) return null;
         try
         {
@@ -66,7 +72,7 @@ public sealed class ReviewIndexService
     {
         if (string.IsNullOrWhiteSpace(doc.ProjectId))
             throw new ArgumentException("projectId required", nameof(doc));
-        var path = IndexPath(doc.ProjectId);
+        var path = await IndexPathAsync(doc.ProjectId, ct).ConfigureAwait(false);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         doc.BuiltAtUtc = DateTimeOffset.UtcNow;
         var json = JsonSerializer.Serialize(doc, JsonOpts) + "\n";
@@ -77,7 +83,7 @@ public sealed class ReviewIndexService
     public async Task<ReviewIndexDocument> RebuildAsync(
         string projectId, int? sceneFilter = null, CancellationToken ct = default)
     {
-        var projectDir = _projects.GetProjectDir(projectId);
+        var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         var clips = ListOnDiskClips(projectDir, sceneFilter);
         var doc = new ReviewIndexDocument
         {
@@ -104,7 +110,7 @@ public sealed class ReviewIndexService
         ClipAutoReviewDraft? draft = null,
         CancellationToken ct = default)
     {
-        var projectDir = _projects.GetProjectDir(projectId);
+        var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         var doc = await LoadAsync(projectId, ct).ConfigureAwait(false) ?? new ReviewIndexDocument
         {
             ProjectId = projectId,
@@ -144,14 +150,14 @@ public sealed class ReviewIndexService
                 await SaveAsync(doc, ct).ConfigureAwait(false);
         }
 
-        var draftAbs = Path.Combine(_projects.GetProjectDir(projectId),
+        var draftAbs = Path.Combine(await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false),
             DraftRelPath(scene, clip).Replace('/', Path.DirectorySeparatorChar));
         if (File.Exists(draftAbs))
         {
             try { File.Delete(draftAbs); } catch { /* best effort */ }
         }
 
-        var framesDir = FramesDir(projectId);
+        var framesDir = await FramesDirAsync(projectId, ct).ConfigureAwait(false);
         if (Directory.Exists(framesDir))
         {
             var prefix = $"{key}_";
@@ -185,17 +191,18 @@ public sealed class ReviewIndexService
     /// Copy current-clip sample frames into durable <c>assets/review/frames/</c>.
     /// Returns project-relative paths (forward slashes).
     /// </summary>
-    public IReadOnlyList<string> PersistDurableFrames(
+    public async Task<IReadOnlyList<string>> PersistDurableFramesAsync(
         string projectId,
         int scene,
         int clip,
         IReadOnlyList<string> sourceFramePaths,
-        int maxFrames = 4)
+        int maxFrames = 4,
+        CancellationToken ct = default)
     {
         if (sourceFramePaths is null || sourceFramePaths.Count == 0)
             return Array.Empty<string>();
 
-        var framesDir = FramesDir(projectId);
+        var framesDir = await FramesDirAsync(projectId, ct).ConfigureAwait(false);
         Directory.CreateDirectory(framesDir);
 
         // Clear prior durable frames for this clip
@@ -216,7 +223,7 @@ public sealed class ReviewIndexService
             if (string.IsNullOrWhiteSpace(src) || !File.Exists(src)) continue;
             n++;
             var relPath = FrameRelPath(scene, clip, n);
-            var dest = Path.Combine(_projects.GetProjectDir(projectId),
+            var dest = Path.Combine(await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false),
                 relPath.Replace('/', Path.DirectorySeparatorChar));
             Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
             File.Copy(src, dest, overwrite: true);
@@ -225,6 +232,14 @@ public sealed class ReviewIndexService
 
         return rel;
     }
+
+    public IReadOnlyList<string> PersistDurableFrames(
+        string projectId,
+        int scene,
+        int clip,
+        IReadOnlyList<string> sourceFramePaths,
+        int maxFrames = 4) =>
+        PersistDurableFramesAsync(projectId, scene, clip, sourceFramePaths, maxFrames).GetAwaiter().GetResult();
 
     public IReadOnlyList<string> ListExistingFrameRelPaths(string projectId, int scene, int clip)
     {

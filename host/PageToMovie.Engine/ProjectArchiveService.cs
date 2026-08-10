@@ -68,7 +68,7 @@ public sealed class ProjectArchiveService
         if (string.IsNullOrEmpty(id))
             throw new InvalidOperationException("Project id required");
 
-        var projectDir = _projects.GetProjectDir(id);
+        var projectDir = await _projects.GetProjectDirAsync(id, ct).ConfigureAwait(false);
         var stamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
         // Filesystem-safe download filename — id may contain a real "/" (owner/slug), which
         // can't appear in an actual filename, so it's replaced here only; the zip's internal
@@ -368,7 +368,7 @@ public sealed class ProjectArchiveService
         // Clips whose bytes live only in the browser (offloaded) don't travel in the export. Once
         // sidecars carry a provider source_url + just-in-time download exists they re-fetch on access,
         // but until then surface the count so the caller can decide.
-        var offloaded = CountOffloadedMedia(_projects.GetProjectDir(old));
+        var offloaded = CountOffloadedMedia(await _projects.GetProjectDirAsync(old, ct).ConfigureAwait(false));
 
         // export → import(new id, forced owner) → title → delete old → activate new.
         await using var exp = await ExportAsync(old, ct).ConfigureAwait(false);

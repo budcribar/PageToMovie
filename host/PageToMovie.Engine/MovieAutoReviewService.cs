@@ -60,19 +60,22 @@ public sealed class MovieAutoReviewService
         }
     }
 
-    public void SaveReport(MovieAutoReviewReport report)
+    public async Task SaveReportAsync(MovieAutoReviewReport report, CancellationToken ct = default)
     {
-        var path = ReportPath(report.ProjectId);
+        var projectDir = await _projects.GetProjectDirAsync(report.ProjectId, ct).ConfigureAwait(false);
+        var path = Path.Combine(projectDir, "assets", "review", "movie_review.json");
         var issues = StructuredOperationArtifacts.RequireJsonProperties(report, "projectId");
         if (issues.Any(i => i.Severity == ModelValidationSeverity.Error))
             throw new InvalidOperationException(string.Join(" ", issues.Select(i => i.Message)));
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, JsonSerializer.Serialize(report, JsonOpts) + "\n");
-        StructuredOperationArtifacts.Write(
-            _projects.GetProjectDir(report.ProjectId), "movie_multimodal_review", null,
-            new { report.ProjectId }, report, issues);
+        await File.WriteAllTextAsync(path, JsonSerializer.Serialize(report, JsonOpts) + "\n", ct).ConfigureAwait(false);
+        await StructuredOperationArtifacts.WriteAsync(
+            projectDir, "movie_multimodal_review", null,
+            new { report.ProjectId }, report, issues, ct).ConfigureAwait(false);
         _projects.TriggerAutoGitCommit(report.ProjectId, $"Update full movie AI review report (Score: {report.OverallScore}/10)");
     }
+
+    public void SaveReport(MovieAutoReviewReport report) => SaveReportAsync(report).GetAwaiter().GetResult();
 
     /// <summary>
     /// Evaluates the full movie using scene-chunked vision requests + master synthesis.
@@ -87,7 +90,7 @@ public sealed class MovieAutoReviewService
             throw new InvalidOperationException("AI service key required for full movie review.");
 
         using var _telScope = _telemetry.UseProject(projectId);
-        var projectDir = _projects.GetProjectDir(projectId);
+        var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
 
         onProgress?.Invoke(10, "Organizing scene keyframes for full movie review…");
 
@@ -185,7 +188,7 @@ public sealed class MovieAutoReviewService
         // Master AI Executive Director Synthesis Pass
         report.ExecutiveSummary = await SynthesizeExecutiveSummaryAsync(report, groupFeedbacks, reviewModel, ct).ConfigureAwait(false);
 
-        SaveReport(report);
+        await SaveReportAsync(report, ct).ConfigureAwait(false);
         onProgress?.Invoke(100, "Full movie review ready!");
         return report;
     }
@@ -216,7 +219,7 @@ public sealed class MovieAutoReviewService
             AudioNotes = "Background music transitions smoothly and fades cleanly without abrupt cuts.",
         };
 
-        var tempWorkDir = Path.Combine(_projects.GetProjectDir(projectId), "assets", "review", $"_chunk_{rangeStr.Replace(' ', '_')}");
+        var tempWorkDir = Path.Combine(await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false), "assets", "review", $"_chunk_{rangeStr.Replace(' ', '_')}");
         try
         {
             Directory.CreateDirectory(tempWorkDir);
@@ -277,7 +280,7 @@ Return valid JSON with non-generic, specific observations:
                 if (!execution.Success || execution.Value is null)
                     throw new InvalidOperationException(execution.Error ?? string.Join(" ", execution.ValidationIssues.Select(i => i.Message)));
                 feedback = execution.Value;
-                SaveExecutionManifest(_projects.GetProjectDir(projectId), $"movie_scene_group_review_{sceneNumbers.Min():D2}_{sceneNumbers.Max():D2}", execution);
+                SaveExecutionManifest(await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false), $"movie_scene_group_review_{sceneNumbers.Min():D2}_{sceneNumbers.Max():D2}", execution);
             }
             else
             {
@@ -338,7 +341,7 @@ Return valid JSON with non-generic, specific observations:
             new MultimodalReviewObservation("Full movie synthesis", Array.Empty<string>(), fullPrompt), ct).ConfigureAwait(false);
         if (execution.Success && execution.Value is not null)
         {
-            SaveExecutionManifest(_projects.GetProjectDir(report.ProjectId), "movie_review_synthesis", execution);
+            SaveExecutionManifest(await _projects.GetProjectDirAsync(report.ProjectId, ct).ConfigureAwait(false), "movie_review_synthesis", execution);
             return execution.Value.Text;
         }
 

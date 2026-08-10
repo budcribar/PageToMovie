@@ -1530,12 +1530,12 @@ app.MapGet("/api/admin/ai-calls", async (IUserContext user, AiCallAnalyticsServi
 });
 
 /// <summary>Open a local folder on disk in Windows File Explorer (or OS file manager).</summary>
-app.MapPost("/api/system/open-folder", (OpenFolderRequest body, ProjectStore store) =>
+app.MapPost("/api/system/open-folder", async (OpenFolderRequest body, ProjectStore store, CancellationToken ct) =>
 {
     var path = body?.Path;
     if (string.IsNullOrWhiteSpace(path) && !string.IsNullOrWhiteSpace(body?.ProjectId))
     {
-        path = store.GetProjectDir(body.ProjectId);
+        path = await store.GetProjectDirAsync(body.ProjectId, ct);
     }
     if (string.IsNullOrWhiteSpace(path))
     {
@@ -1590,12 +1590,12 @@ app.MapPost("/api/system/open-folder", (OpenFolderRequest body, ProjectStore sto
 });
 
 /// <summary>Open a scene composite or full cut in the user's preferred external video editor.</summary>
-app.MapPost("/api/system/open-editor", (OpenEditorRequest body, ProjectStore store) =>
+app.MapPost("/api/system/open-editor", async (OpenEditorRequest body, ProjectStore store, CancellationToken ct) =>
 {
     if (string.IsNullOrWhiteSpace(body?.ProjectId))
         return Results.BadRequest(new { ok = false, error = "ProjectId is required." });
 
-    var projectDir = store.GetProjectDir(body.ProjectId);
+    var projectDir = await store.GetProjectDirAsync(body.ProjectId, ct);
     var editorName = string.IsNullOrWhiteSpace(body.EditorName) ? "ClipChamp" : body.EditorName.Trim();
 
     string? videoPath = null;
@@ -3149,7 +3149,7 @@ app.MapGet("/api/projects/{id}/config", async (string id, ProjectStore store, Ca
     try
     {
         var cfg = await store.GetConfigAsync(id, ct);
-        var projectDir = store.GetProjectDir(id);
+        var projectDir = await store.GetProjectDirAsync(id, ct);
         return Results.Ok(new { ok = true, projectId = id, projectDir, config = cfg });
     }
     catch (Exception ex)
@@ -3295,9 +3295,10 @@ app.MapGet("/api/projects/{projectId}/characters/{charKey}/bookrefs/{index:int}"
 });
 
 app.MapGet("/api/projects/{projectId}/book-images/{fileName}",
-    (HttpContext ctx, string projectId, string fileName, ProjectStore store) =>
+    async (HttpContext ctx, string projectId, string fileName, ProjectStore store, CancellationToken ct) =>
 {
-    var dir = Path.Combine(store.GetProjectDir(projectId), "source", "book_images");
+    var projectDir = await store.GetProjectDirAsync(projectId, ct);
+    var dir = Path.Combine(projectDir, "source", "book_images");
     var file = Path.GetFileName(fileName);
     var path = Path.Combine(dir, file);
     return ServeCachedFile(ctx, path, immutable: true);
@@ -3998,7 +3999,7 @@ app.MapPost("/api/projects/{id}/commit", async (
             return forbidden;
 
         var info = await git.CommitProjectStateAsync(
-            store.GetProjectDir(id), user.UserId ?? "PageToMovie", body?.Message ?? "Project update");
+            await store.GetProjectDirAsync(id, ct), user.UserId ?? "PageToMovie", body?.Message ?? "Project update");
         return Results.Ok(new { ok = true, commit = info });
     }
     catch (Exception ex)
@@ -4205,7 +4206,7 @@ app.MapGet("/api/projects/{id}/scenes/{scene:int}/clips/{clip:int}/media-status"
     try
     {
         await store.RequireProjectAsync(id, ct);
-        var status = await locator.GetClipStatusAsync(id, store.GetProjectDir(id), scene, clip, ct);
+        var status = await locator.GetClipStatusAsync(id, await store.GetProjectDirAsync(id, ct), scene, clip, ct);
         return Results.Ok(new
         {
             ok = true,
@@ -4408,7 +4409,7 @@ app.MapPost("/api/projects/{id}/push", async (
                 statusCode: StatusCodes.Status403Forbidden);
         }
 
-        var dir = store.GetProjectDir(id);
+        var dir = await store.GetProjectDirAsync(id, ct);
         GitCommitInfo? commit = null;
         if (body?.CommitFirst == true)
         {
@@ -4474,18 +4475,20 @@ app.MapPost("/api/projects/{id}/sync-origin", async (
                 statusCode: StatusCodes.Status403Forbidden);
         }
 
+        var targetDir = await store.GetProjectDirAsync(id, ct);
+        var originDir = await store.GetProjectDirAsync(body.ParentProjectId, ct);
         PageToMovie.Engine.GitMergeResult res;
         if (!string.IsNullOrWhiteSpace(body.AutoResolveStrategy)
             && Enum.TryParse<PageToMovie.Engine.Collaboration.AutoTextMerger.Strategy>(
                 body.AutoResolveStrategy, ignoreCase: true, out var strategy))
         {
             res = await git.SyncForkFromOriginWithAutoResolveAsync(
-                store.GetProjectDir(id), store.GetProjectDir(body.ParentProjectId), strategy);
+                targetDir, originDir, strategy);
         }
         else
         {
             res = await git.SyncForkFromOriginAsync(
-                store.GetProjectDir(id), store.GetProjectDir(body.ParentProjectId));
+                targetDir, originDir);
         }
         return Results.Ok(new
         {
@@ -4530,8 +4533,8 @@ app.MapGet("/api/projects/{id}/contribution-diff", async (
 
     try
     {
-        var targetDir = store.GetProjectDir(id);
-        var originDir = store.GetProjectDir(parentId);
+        var targetDir = await store.GetProjectDirAsync(id, ct);
+        var originDir = await store.GetProjectDirAsync(parentId, ct);
         var diff = await contribService.ComputeDiffAsync(id, parentId, targetDir, originDir, ct);
         return Results.Ok(diff);
     }
@@ -4566,8 +4569,8 @@ app.MapPost("/api/projects/{id}/contribution-sync-media", async (
 
     try
     {
-        var targetDir = store.GetProjectDir(id);
-        var originDir = store.GetProjectDir(parentId);
+        var targetDir = await store.GetProjectDirAsync(id, ct);
+        var originDir = await store.GetProjectDirAsync(parentId, ct);
         var result = await contribService.SyncContributionMediaAsync(
             targetDir, originDir, httpFactory.CreateClient("media-proxy"), ct);
         return Results.Ok(result);
@@ -5687,7 +5690,7 @@ app.MapGet("/api/projects/{id}/visual-medium", async (
     try
     {
         await store.RequireProjectAsync(id, ct);
-        var dir = store.GetProjectDir(id);
+        var dir = await store.GetProjectDirAsync(id, ct);
         var medium = ProjectVisionMeta.GetAdaptationMediumPreference(dir);
         return Results.Ok(new
         {
@@ -5734,7 +5737,7 @@ app.MapPut("/api/projects/{id}/visual-medium", async (
         if (string.IsNullOrWhiteSpace(medium))
             return Results.BadRequest(new { ok = false, error = "visualMedium required" });
 
-        var written = ProjectVisionMeta.SetAdaptationMediumPreference(store.GetProjectDir(id), medium);
+        var written = ProjectVisionMeta.SetAdaptationMediumPreference(await store.GetProjectDirAsync(id, ct), medium);
         store.TriggerAutoGitCommit(id, $"ptm:stage=visual_medium_preference medium={written.VisualMedium}");
         return Results.Ok(new
         {
@@ -5772,7 +5775,7 @@ app.MapPost("/api/projects/{id}/adaptation/reskin", async (
     try
     {
         await store.RequireProjectAsync(id, ct);
-        var dir = store.GetProjectDir(id);
+        var dir = await store.GetProjectDirAsync(id, ct);
 
         string? medium = null;
         if (req.ContentLength is > 0)
@@ -5818,7 +5821,7 @@ app.MapPost("/api/projects/{id}/adaptation/embellish", async (
     try
     {
         await store.RequireProjectAsync(id, ct);
-        var medium = ProjectVisionMeta.GetAdaptationMediumPreference(store.GetProjectDir(id));
+        var medium = ProjectVisionMeta.GetAdaptationMediumPreference(await store.GetProjectDirAsync(id, ct));
 
         var result = await ScreenplayService.EmbellishDraftAsync(store, id, medium, chat, ct: ct);
         return DraftEditResponse(result, id, "ptm:stage=embellish", store, user);
@@ -6150,7 +6153,7 @@ app.MapPost("/api/jobs/youtube-upload", async (
 
         if (file is not null && file.Length > 0)
         {
-            var pDir = store.GetProjectDir(projectId);
+            var pDir = await store.GetProjectDirAsync(projectId, ct);
             var videoDir = Path.Combine(pDir, "assets", "video");
             Directory.CreateDirectory(videoDir);
             var savePath = Path.Combine(videoDir, "wip_movie.mp4");
@@ -6541,7 +6544,7 @@ app.MapPost("/api/projects/{id}/scenes/{scene:int}/clips/{clip:int}/upload", asy
     if (file is null || file.Length < 1024)
         return Results.BadRequest(new { ok = false, error = "Valid MP4 file expected." });
 
-    var projectDir = store.GetProjectDir(id);
+    var projectDir = await store.GetProjectDirAsync(id, ct);
     var destDir = Path.Combine(projectDir, "assets", "video");
     Directory.CreateDirectory(destDir);
     // "extend-source": the client's tail-trimmed continuation input for video-extend (see
@@ -6942,13 +6945,13 @@ app.MapGet("/api/projects/{id}/credits-content",
 
 /// <summary>Archived prompt (+ paired video, if the client's media folder still has it) versions for one clip.</summary>
 app.MapGet("/api/projects/{id}/scenes/{sceneNumber:int}/clips/{clipNumber:int}/prompt-history",
-    (string id, int sceneNumber, int clipNumber, ProjectStore store, IUserContext user, IOptions<PageToMovieOptions> opts) =>
+    async (string id, int sceneNumber, int clipNumber, ProjectStore store, IUserContext user, IOptions<PageToMovieOptions> opts, CancellationToken ct) =>
 {
     if (AuthGate.RequireLogin(user, opts) is { } denied)
         return denied;
     try
     {
-        var projectDir = store.GetProjectDir(id);
+        var projectDir = await store.GetProjectDirAsync(id, ct);
         string? currentPrompt = null;
         var currentMetaPath = Path.Combine(
             projectDir, "assets", "video", "prompts", $"S{sceneNumber:D2}C{clipNumber:D2}.meta.json");
@@ -7005,7 +7008,7 @@ app.MapGet("/api/projects/{id}/scenes/{sceneNumber:int}/composite",
 });
 
 /// <summary>Stream or download the WIP full movie for client external editor / playback.</summary>
-app.MapGet("/api/projects/{id}/movie", (string id, ProjectStore store, IUserContext user, IOptions<PageToMovieOptions> opts) =>
+app.MapGet("/api/projects/{id}/movie", async (string id, ProjectStore store, IUserContext user, IOptions<PageToMovieOptions> opts, CancellationToken ct) =>
 {
     if (AuthGate.RequireLogin(user, opts) is { } denied)
         return denied;
@@ -7014,7 +7017,7 @@ app.MapGet("/api/projects/{id}/movie", (string id, ProjectStore store, IUserCont
         var path = store.ResolveWipMoviePath(id);
         if (path is null || !File.Exists(path))
         {
-            var pDir = store.GetProjectDir(id);
+            var pDir = await store.GetProjectDirAsync(id, ct);
             var altWip = Path.Combine(pDir, "assets", "video", "wip_movie.mp4");
             if (File.Exists(altWip)) path = altWip;
         }
@@ -7092,7 +7095,7 @@ app.MapGet("/api/projects/{id}/media/sync", async (
     try
     {
         await store.RequireProjectAsync(id, ct);
-        var projectDir = store.GetProjectDir(id);
+        var projectDir = await store.GetProjectDirAsync(id, ct);
         // Media that may have arrived via full project import (video, music, audio, history).
         var list = new List<object>();
         var assetsRoot = Path.Combine(projectDir, "assets");
@@ -7182,7 +7185,7 @@ app.MapGet("/api/projects/{id}/media/file", async (
         if (string.IsNullOrWhiteSpace(path))
             return Results.BadRequest(new { ok = false, error = "path parameter required" });
 
-        var projectDir = store.GetProjectDir(id);
+        var projectDir = await store.GetProjectDirAsync(id, ct);
         var cleanRelPath = path.TrimStart('/', '\\').Replace('\\', '/');
 
         var fullPath = Path.GetFullPath(Path.Combine(projectDir, cleanRelPath.Replace('/', Path.DirectorySeparatorChar)));
@@ -7739,7 +7742,7 @@ app.MapPost("/api/projects/{id}/media/register", async (
         // Sidecar so scene lists treat clip as present without server MP4.
         try
         {
-            var dir = store.GetProjectDir(id);
+            var dir = await store.GetProjectDirAsync(id, ct);
             var rel = dto.RelativePath.Replace('/', Path.DirectorySeparatorChar);
             var full = Path.Combine(dir, rel);
             Directory.CreateDirectory(Path.GetDirectoryName(full)!);
@@ -7912,7 +7915,7 @@ app.MapGet("/api/projects/{id}/voice-capture/phrases", async (
 {
     if (AuthGate.RequireLogin(user, opts) is { } denied)
         return denied;
-    var path = Path.Combine(store.GetProjectDir(id), "assets", "voice_capture", "phrases.json");
+    var path = Path.Combine(await store.GetProjectDirAsync(id, ct), "assets", "voice_capture", "phrases.json");
     if (!File.Exists(path))
         return Results.Ok(new { ok = true, phrases = (VoiceCapturePhrases?)null });
     try
@@ -7935,7 +7938,7 @@ app.MapPost("/api/projects/{id}/voice-capture/phrases", async (
         return denied;
     if (body is null)
         return Results.BadRequest(new { ok = false, error = "phrases body required" });
-    var dir = Path.Combine(store.GetProjectDir(id), "assets", "voice_capture");
+    var dir = Path.Combine(await store.GetProjectDirAsync(id, ct), "assets", "voice_capture");
     Directory.CreateDirectory(dir);
     body.ProjectId = id;
     body.GeneratedAtUtc = DateTime.UtcNow;
@@ -7980,7 +7983,7 @@ app.MapGet("/api/projects/{id}/dialogue/timing", async (
 {
     if (AuthGate.RequireLogin(user, opts) is { } denied)
         return denied;
-    var path = Path.Combine(store.GetProjectDir(id), "assets", "alignment", "dialogue_timing.json");
+    var path = Path.Combine(await store.GetProjectDirAsync(id, ct), "assets", "alignment", "dialogue_timing.json");
     if (!File.Exists(path))
         return Results.Ok(new { ok = true, timing = (DialogueTimingDoc?)null });
     try
@@ -8005,7 +8008,7 @@ app.MapPost("/api/projects/{id}/dialogue/timing/scene", async (
     if (body is null || body.Scene <= 0)
         return Results.BadRequest(new { ok = false, error = "scene body with a scene number required" });
 
-    var dir = Path.Combine(store.GetProjectDir(id), "assets", "alignment");
+    var dir = Path.Combine(await store.GetProjectDirAsync(id, ct), "assets", "alignment");
     Directory.CreateDirectory(dir);
     var path = Path.Combine(dir, "dialogue_timing.json");
     var webOpts = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);
@@ -8110,7 +8113,8 @@ app.MapPost("/api/demos", async (
     ProjectStore store,
     MediaRegistryService media,
     UserDatabaseService userDb,
-    DemoYouTubePublisherService youTubePublisher) =>
+    DemoYouTubePublisherService youTubePublisher,
+    CancellationToken ct) =>
 {
     if (await AuthGate.RequireTermsAcceptedAsync(user, userDb, opts) is { } denied)
         return denied;
@@ -8268,7 +8272,7 @@ app.MapPost("/api/demos", async (
                 // Always overwrite assets/movie_wip.mp4 on server disk so WIP movie matches the fresh cut!
                 try
                 {
-                    var wipPath = Path.Combine(store.GetProjectDir(projectId!), "assets", "movie_wip.mp4");
+                    var wipPath = Path.Combine(await store.GetProjectDirAsync(projectId!, ct), "assets", "movie_wip.mp4");
                     Directory.CreateDirectory(Path.GetDirectoryName(wipPath)!);
                     await File.WriteAllBytesAsync(wipPath, bytes);
                     try
@@ -8315,7 +8319,7 @@ app.MapPost("/api/demos", async (
                 // Always overwrite assets/movie_wip.mp4 on server disk so WIP movie matches the fresh cut!
                 try
                 {
-                    var wipPath = Path.Combine(store.GetProjectDir(projectId!), "assets", "movie_wip.mp4");
+                    var wipPath = Path.Combine(await store.GetProjectDirAsync(projectId!, ct), "assets", "movie_wip.mp4");
                     Directory.CreateDirectory(Path.GetDirectoryName(wipPath)!);
                     await File.WriteAllBytesAsync(wipPath, bytes);
                     try
@@ -8596,7 +8600,7 @@ app.MapPost("/api/projects/{id}/film-build", async (
         if (!string.IsNullOrWhiteSpace(body.StudioPath))
             doc.Studio.Path = body.StudioPath!;
 
-        FilmBuildService.Write(store.GetProjectDir(id), doc);
+        FilmBuildService.Write(await store.GetProjectDirAsync(id, ct), doc);
 
         return Results.Ok(new
         {
@@ -8624,7 +8628,7 @@ app.MapGet("/api/projects/{id}/film-build", async (
     try
     {
         await store.RequireProjectAsync(id, ct);
-        var doc = FilmBuildService.TryRead(store.GetProjectDir(id));
+        var doc = FilmBuildService.TryRead(await store.GetProjectDirAsync(id, ct));
         if (doc is null)
             return Results.Ok(new { ok = true, exists = false, path = FilmBuildService.RelativePath });
         return Results.Ok(new { ok = true, exists = true, path = FilmBuildService.RelativePath, filmBuild = doc });
@@ -8693,7 +8697,7 @@ app.MapGet("/api/projects/{id}/learning-packages", async (
     try
     {
         await store.RequireProjectAsync(id, ct);
-        var root = LearningPackageService.PackagesRoot(store.GetProjectDir(id));
+        var root = LearningPackageService.PackagesRoot(await store.GetProjectDirAsync(id, ct));
         var list = new List<object>();
         if (Directory.Exists(root))
         {

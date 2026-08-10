@@ -243,7 +243,7 @@ public sealed class CastFromScreenplayService
         var castIssues = StructuredOperationArtifacts.RequireJsonProperties(
             normalized, "schema_version", "character_seed_tokens");
         await StructuredOperationArtifacts.WriteAsync(
-            _projects.GetProjectDir(projectId), "cast_extraction", model,
+            await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false), "cast_extraction", model,
             new { projectId, fountain, book }, normalized, castIssues, ct).ConfigureAwait(false);
         if (castIssues.Any(i => i.Severity == ModelValidationSeverity.Error))
             return new ExtractResult
@@ -292,7 +292,7 @@ public sealed class CastFromScreenplayService
             // Persist structured medium for portraits (prefer adaptation vision_meta if already set).
             var rslText = normalized.TryGetValue("render_style_lock", out var rslV) ? rslV?.ToString() : null;
             var perfText = normalized.TryGetValue("performance_lock", out var plV) ? plV?.ToString() : null;
-            ProjectVisionMeta.UpsertFromCast(_projects.GetProjectDir(projectId), rslText, perfText);
+            ProjectVisionMeta.UpsertFromCast(await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false), rslText, perfText);
 
             if (normalized.TryGetValue("performance_lock", out var perfObj) &&
                 perfObj?.ToString() is { Length: > 0 } perf &&
@@ -317,7 +317,7 @@ public sealed class CastFromScreenplayService
             membershipOk = report.SpeakersMissingFromCast.Count == 0;
             missingFromCast = report.SpeakersMissingFromCast.ToList();
             membershipScore = report.MembershipScore;
-            var checkDir = Path.Combine(_projects.GetProjectDir(projectId), "artifacts", "model_operations");
+            var checkDir = Path.Combine(await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false), "artifacts", "model_operations");
             Directory.CreateDirectory(checkDir);
             packageCheckPath = Path.Combine(checkDir, "cast_package_membership.json");
             var checkPayload = new
@@ -402,7 +402,7 @@ public sealed class CastFromScreenplayService
         ValidatedModelResult<TResult> result,
         CancellationToken ct) where TResult : class
     {
-        var dir = Path.Combine(_projects.GetProjectDir(projectId), "artifacts", "model_operations");
+        var dir = Path.Combine(await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false), "artifacts", "model_operations");
         Directory.CreateDirectory(dir);
         await File.WriteAllTextAsync(
             Path.Combine(dir, operation + ".lifecycle.json"),
@@ -411,7 +411,7 @@ public sealed class CastFromScreenplayService
 
     private async Task<string?> LoadBookTextAsync(string projectId, CancellationToken ct)
     {
-        var source = Path.Combine(_projects.GetProjectDir(projectId), "source");
+        var source = Path.Combine(await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false), "source");
         foreach (var name in new[] { "book_full.txt", "book.txt", "source.txt" })
         {
             var path = Path.Combine(source, name);

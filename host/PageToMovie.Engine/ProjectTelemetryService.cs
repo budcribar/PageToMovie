@@ -65,13 +65,22 @@ public sealed class ProjectTelemetryService
                 ? null
                 : _projects.ActiveProjectId;
 
+    public async Task<string> TelemetryDirAsync(string projectId, CancellationToken ct = default) =>
+        Path.Combine(await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false), "telemetry");
+
     public string TelemetryDir(string projectId) =>
         Path.Combine(_projects.GetProjectDir(projectId), "telemetry");
+
+    public async Task<string> ApiCallsPathAsync(string projectId, CancellationToken ct = default) =>
+        Path.Combine(await TelemetryDirAsync(projectId, ct).ConfigureAwait(false), "api_calls.jsonl");
 
     public string ApiCallsPath(string projectId) =>
         Path.Combine(TelemetryDir(projectId), "api_calls.jsonl");
 
     /// <summary>Preferred path for local media-op telemetry (replaces ffmpeg.jsonl).</summary>
+    public async Task<string> MediaOpsPathAsync(string projectId, CancellationToken ct = default) =>
+        Path.Combine(await TelemetryDirAsync(projectId, ct).ConfigureAwait(false), "media_ops.jsonl");
+
     public string MediaOpsPath(string projectId) =>
         Path.Combine(TelemetryDir(projectId), "media_ops.jsonl");
 
@@ -110,7 +119,7 @@ public sealed class ProjectTelemetryService
             rec.ProjectId = projectId;
             try
             {
-                await AppendJsonlAsync(ApiCallsPath(projectId), rec, ct).ConfigureAwait(false);
+                await AppendJsonlAsync(await ApiCallsPathAsync(projectId, ct).ConfigureAwait(false), rec, ct).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -317,7 +326,7 @@ public sealed class ProjectTelemetryService
 
         try
         {
-            await AppendJsonlAsync(MediaOpsPath(projectId), rec, ct).ConfigureAwait(false);
+            await AppendJsonlAsync(await MediaOpsPathAsync(projectId, ct).ConfigureAwait(false), rec, ct).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

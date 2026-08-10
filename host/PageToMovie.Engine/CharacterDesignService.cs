@@ -60,7 +60,7 @@ public sealed class CharacterDesignService
         if (!_images.IsConfigured)
             throw new InvalidOperationException("XAI_API_KEY is not set (required for portrait generation).");
 
-        var projectDir = _projects.GetProjectDir(projectId);
+        var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         var seeds = _projects.GetCharacterSeed(projectId, charKey)
             ?? throw new InvalidOperationException($"Unknown character seed: {charKey}");
         if (IsVoiceOnly(charKey, seeds))
@@ -507,7 +507,7 @@ public sealed class CharacterDesignService
         };
     }
 
-    public Task<string> LockVariantAsync(
+    public async Task<string> LockVariantAsync(
         string projectId,
         string charKey,
         int variantIndex,
@@ -516,12 +516,12 @@ public sealed class CharacterDesignService
     {
         if (variantIndex is < 1 or > 3)
             throw new ArgumentOutOfRangeException(nameof(variantIndex), "variant index must be 1..3");
-        var projectDir = _projects.GetProjectDir(projectId);
+        var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         var fileName = $"{charKey.ToLowerInvariant()}_variant_0{variantIndex}.png";
         var variantPath = Path.Combine(projectDir, "assets", "characters", fileName);
         if (!File.Exists(variantPath))
             throw new InvalidOperationException($"Variant not found: {fileName}");
-        return LockFromPathAsync(projectId, charKey, variantPath, allowStyleOverride, ct);
+        return await LockFromPathAsync(projectId, charKey, variantPath, allowStyleOverride, ct).ConfigureAwait(false);
     }
 
     public Task<string> LockBookRefAsync(
@@ -553,7 +553,7 @@ public sealed class CharacterDesignService
 
         await EnsurePortraitStyleAllowedAsync(projectId, charKey, sourcePath, allowStyleOverride, ct).ConfigureAwait(false);
 
-        var projectDir = _projects.GetProjectDir(projectId);
+        var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         var refName = ProjectStore.CharacterRefFileName(charKey);
         var dest = Path.Combine(projectDir, "assets", "characters", refName);
         Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
@@ -585,7 +585,7 @@ public sealed class CharacterDesignService
         if (content is null || !content.CanRead)
             throw new InvalidOperationException("Empty upload stream");
 
-        var projectDir = _projects.GetProjectDir(projectId);
+        var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         var charDir = _projects.GetCharactersDir(projectId);
         Directory.CreateDirectory(charDir);
         var staging = Path.Combine(charDir, $"{charKey.ToLowerInvariant()}_upload_staging_{Guid.NewGuid():N}.bin");
@@ -646,7 +646,7 @@ public sealed class CharacterDesignService
             return;
         }
 
-        var projectDir = _projects.GetProjectDir(projectId);
+        var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         var styleLock = ReadProjectRenderStyleLock(projectDir);
         // No project medium → nothing to enforce (ambiguous mixed projects)
         if (string.IsNullOrWhiteSpace(styleLock))
@@ -1121,7 +1121,7 @@ public sealed class CharacterDesignService
         if (existing is not null)
             return existing;
 
-        var projectDir = _projects.GetProjectDir(projectId);
+        var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         var charDir = _projects.GetCharactersDir(projectId);
         Directory.CreateDirectory(charDir);
 

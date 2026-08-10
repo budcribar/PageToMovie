@@ -96,19 +96,26 @@ public sealed class ClipAutoReviewService
         }
     }
 
-    public void SaveDraft(ClipAutoReviewDraft draft)
+    public async Task SaveDraftAsync(ClipAutoReviewDraft draft, CancellationToken ct = default)
     {
-        var path = DraftPath(draft.ProjectId, draft.Scene, draft.Clip);
+        var projectDir = await _projects.GetProjectDirAsync(draft.ProjectId, ct).ConfigureAwait(false);
+        var path = Path.Combine(
+            projectDir,
+            "assets",
+            "review",
+            $"S{draft.Scene:D2}C{draft.Clip:D2}.auto_review.json");
         var issues = StructuredOperationArtifacts.RequireJsonProperties(
             draft, "projectId", "suggestion", "confidence");
         if (issues.Any(i => i.Severity == ModelValidationSeverity.Error))
             throw new InvalidOperationException(string.Join(" ", issues.Select(i => i.Message)));
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, JsonSerializer.Serialize(draft, JsonOpts) + "\n");
-        StructuredOperationArtifacts.Write(
-            _projects.GetProjectDir(draft.ProjectId), "clip_multimodal_review", null,
-            new { draft.ProjectId, draft.Scene, draft.Clip }, draft, issues);
+        await File.WriteAllTextAsync(path, JsonSerializer.Serialize(draft, JsonOpts) + "\n", ct).ConfigureAwait(false);
+        await StructuredOperationArtifacts.WriteAsync(
+            projectDir, "clip_multimodal_review", null,
+            new { draft.ProjectId, draft.Scene, draft.Clip }, draft, issues, ct).ConfigureAwait(false);
     }
+
+    public void SaveDraft(ClipAutoReviewDraft draft) => SaveDraftAsync(draft).GetAwaiter().GetResult();
 
     public async Task<ClipAutoReviewDraft> ReviewAsync(
         string projectId,
@@ -122,7 +129,7 @@ public sealed class ClipAutoReviewService
             throw new InvalidOperationException("Connect service (XAI_API_KEY) for clip review.");
 
         using var _telScope = _telemetry.UseProject(projectId);
-        var projectDir = _projects.GetProjectDir(projectId);
+        var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
 
         onProgress?.Invoke(5, 100, "Loading clip plan…");
         var plan = await LoadClipPlanAsync(projectId, scene, clip).ConfigureAwait(false);
@@ -161,8 +168,8 @@ public sealed class ClipAutoReviewService
             IReadOnlyList<string> durableFrames = Array.Empty<string>();
             try
             {
-                durableFrames = _reviewIndex.PersistDurableFrames(
-                    projectId, scene, clip, curFramePaths, maxFrames: 4);
+                durableFrames = await _reviewIndex.PersistDurableFramesAsync(
+                    projectId, scene, clip, curFramePaths, maxFrames: 4, ct: ct).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -207,7 +214,7 @@ public sealed class ClipAutoReviewService
                 throw new InvalidOperationException(execution.Error ?? string.Join(" ", execution.ValidationIssues.Select(i => i.Message)));
             var draft = execution.Value;
             draft.GeneratedAt = DateTimeOffset.UtcNow;
-            SaveDraft(draft);
+            await SaveDraftAsync(draft, ct).ConfigureAwait(false);
             SaveExecutionManifest(projectDir, "clip_multimodal_review", execution);
 
             await TryLogAsync(projectId, scene, clip, draft, ct);
@@ -310,7 +317,7 @@ public sealed class ClipAutoReviewService
         if (draft is not null)
         {
             draft.RawSummary = (draft.RawSummary ?? "") + "\n[applied " + DateTimeOffset.UtcNow.ToString("O") + "]";
-            SaveDraft(draft);
+            await SaveDraftAsync(draft, ct).ConfigureAwait(false);
         }
 
         try

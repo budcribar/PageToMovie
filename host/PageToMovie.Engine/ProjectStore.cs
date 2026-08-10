@@ -145,7 +145,7 @@ public sealed partial class ProjectStore
     public async Task<GitCommitInfo?> UndoLastProjectChangeAsync(string projectId, string? author = null, ProjectGitRepositoryService? gitRepo = null)
     {
         if (string.IsNullOrWhiteSpace(projectId)) return null;
-        var dir = GetProjectDir(projectId);
+        var dir = await GetProjectDirAsync(projectId).ConfigureAwait(false);
         if (!Directory.Exists(dir)) return null;
 
         var git = gitRepo ?? new ProjectGitRepositoryService(Microsoft.Extensions.Logging.Abstractions.NullLogger<ProjectGitRepositoryService>.Instance);
@@ -162,7 +162,7 @@ public sealed partial class ProjectStore
     public async Task<GitCommitInfo?> RevertProjectToCommitAsync(string projectId, string commitHash, string? author = null, ProjectGitRepositoryService? gitRepo = null)
     {
         if (string.IsNullOrWhiteSpace(projectId) || string.IsNullOrWhiteSpace(commitHash)) return null;
-        var dir = GetProjectDir(projectId);
+        var dir = await GetProjectDirAsync(projectId).ConfigureAwait(false);
         if (!Directory.Exists(dir)) return null;
 
         var git = gitRepo ?? new ProjectGitRepositoryService(Microsoft.Extensions.Logging.Abstractions.NullLogger<ProjectGitRepositoryService>.Instance);
@@ -187,7 +187,7 @@ public sealed partial class ProjectStore
     public async Task<IReadOnlyList<GitCommitInfo>> GetProjectGitHistoryAsync(string projectId, int limit = 20, ProjectGitRepositoryService? gitRepo = null)
     {
         if (string.IsNullOrWhiteSpace(projectId)) return Array.Empty<GitCommitInfo>();
-        var dir = GetProjectDir(projectId);
+        var dir = await GetProjectDirAsync(projectId).ConfigureAwait(false);
         if (!Directory.Exists(dir)) return Array.Empty<GitCommitInfo>();
 
         var git = gitRepo ?? new ProjectGitRepositoryService(Microsoft.Extensions.Logging.Abstractions.NullLogger<ProjectGitRepositoryService>.Instance);
@@ -204,7 +204,7 @@ public sealed partial class ProjectStore
         ProjectGitRepositoryService? gitRepo = null)
     {
         if (string.IsNullOrWhiteSpace(projectId)) return Array.Empty<SceneCommitHistoryItem>();
-        var dir = GetProjectDir(projectId);
+        var dir = await GetProjectDirAsync(projectId).ConfigureAwait(false);
         if (!Directory.Exists(dir)) return Array.Empty<SceneCommitHistoryItem>();
 
         var git = gitRepo ?? new ProjectGitRepositoryService(Microsoft.Extensions.Logging.Abstractions.NullLogger<ProjectGitRepositoryService>.Instance);
@@ -254,7 +254,7 @@ public sealed partial class ProjectStore
         ProjectGitRepositoryService? gitRepo = null)
     {
         if (string.IsNullOrWhiteSpace(projectId) || string.IsNullOrWhiteSpace(commitHash)) return false;
-        var dir = GetProjectDir(projectId);
+        var dir = await GetProjectDirAsync(projectId).ConfigureAwait(false);
         if (!Directory.Exists(dir)) return false;
 
         var bpPath = FindBlueprintPathSync(projectId);
@@ -323,11 +323,11 @@ public sealed partial class ProjectStore
     /// <summary>
     /// Package Git status: HEAD tip + uncommitted scene/clip summary for Home "Last saved".
     /// </summary>
-    public Task<UncommittedStatusDto> GetProjectUncommittedStatusAsync(string projectId, ProjectGitRepositoryService? gitRepo = null)
+    public async Task<UncommittedStatusDto> GetProjectUncommittedStatusAsync(string projectId, ProjectGitRepositoryService? gitRepo = null)
     {
-        if (string.IsNullOrWhiteSpace(projectId)) return Task.FromResult(new UncommittedStatusDto());
-        var dir = GetProjectDir(projectId);
-        if (!Directory.Exists(dir)) return Task.FromResult(new UncommittedStatusDto());
+        if (string.IsNullOrWhiteSpace(projectId)) return new UncommittedStatusDto();
+        var dir = await GetProjectDirAsync(projectId).ConfigureAwait(false);
+        if (!Directory.Exists(dir)) return new UncommittedStatusDto();
 
         var git = gitRepo ?? new ProjectGitRepositoryService(Microsoft.Extensions.Logging.Abstractions.NullLogger<ProjectGitRepositoryService>.Instance);
         var head = git.GetStatus(dir, projectId);
@@ -350,7 +350,7 @@ public sealed partial class ProjectStore
                 dto.Summary = "Package up to date with last save.";
             else if (!head.Available)
                 dto.Summary = head.SkipReason ?? "Package history not available.";
-            return Task.FromResult(dto);
+            return dto;
         }
 
         var (_, files) = git.GetUncommittedStatus(dir);
@@ -384,7 +384,7 @@ public sealed partial class ProjectStore
         dto.Summary = dto.ModifiedScenes.Count > 0
             ? $"{dto.ModifiedScenes.Count} scene(s) modified since last save."
             : "Package has uncommitted changes.";
-        return Task.FromResult(dto);
+        return dto;
     }
 
     /// <summary>
@@ -395,7 +395,7 @@ public sealed partial class ProjectStore
         bool forceCommit = false)
     {
         if (string.IsNullOrWhiteSpace(projectId)) return null;
-        var dir = GetProjectDir(projectId);
+        var dir = await GetProjectDirAsync(projectId).ConfigureAwait(false);
         if (!Directory.Exists(dir)) return null;
 
         var git = gitRepo ?? new ProjectGitRepositoryService(Microsoft.Extensions.Logging.Abstractions.NullLogger<ProjectGitRepositoryService>.Instance);
@@ -412,7 +412,7 @@ public sealed partial class ProjectStore
     public async Task<IReadOnlyList<ClipVersionItem>> GetClipVersionsAsync(string projectId, int scene, int clip)
     {
         if (string.IsNullOrWhiteSpace(projectId)) return Array.Empty<ClipVersionItem>();
-        var dir = GetProjectDir(projectId);
+        var dir = await GetProjectDirAsync(projectId).ConfigureAwait(false);
         if (!Directory.Exists(dir)) return Array.Empty<ClipVersionItem>();
 
         var videoDir = Path.Combine(dir, "assets", "video");
@@ -499,7 +499,7 @@ public sealed partial class ProjectStore
     public async Task<bool> PromoteClipVersionAsync(string projectId, int scene, int clip, string versionId, string? author = null)
     {
         if (string.IsNullOrWhiteSpace(projectId) || string.IsNullOrWhiteSpace(versionId)) return false;
-        var dir = GetProjectDir(projectId);
+        var dir = await GetProjectDirAsync(projectId).ConfigureAwait(false);
         if (!Directory.Exists(dir)) return false;
 
         var versions = await GetClipVersionsAsync(projectId, scene, clip).ConfigureAwait(false);
@@ -614,7 +614,7 @@ public sealed partial class ProjectStore
     public async Task<bool> SoftDeleteClipVersionAsync(string projectId, int scene, int clip, string versionId)
     {
         if (string.IsNullOrWhiteSpace(projectId) || string.IsNullOrWhiteSpace(versionId)) return false;
-        var dir = GetProjectDir(projectId);
+        var dir = await GetProjectDirAsync(projectId).ConfigureAwait(false);
         if (!Directory.Exists(dir)) return false;
 
         var videoDir = Path.Combine(dir, "assets", "video");
@@ -659,7 +659,7 @@ public sealed partial class ProjectStore
     public async Task<IReadOnlyList<ClipVersionItem>> GetTrashClipVersionsAsync(string projectId, int scene, int clip)
     {
         if (string.IsNullOrWhiteSpace(projectId)) return Array.Empty<ClipVersionItem>();
-        var dir = GetProjectDir(projectId);
+        var dir = await GetProjectDirAsync(projectId).ConfigureAwait(false);
         if (!Directory.Exists(dir)) return Array.Empty<ClipVersionItem>();
 
         var trashDir = Path.Combine(dir, "assets", "video", ".trash");
@@ -677,7 +677,7 @@ public sealed partial class ProjectStore
             result.Add(item);
         }
 
-        return await Task.FromResult(result.OrderByDescending(x => x.CreatedAtUtc).ToList()).ConfigureAwait(false);
+        return result.OrderByDescending(x => x.CreatedAtUtc).ToList();
     }
 
     /// <summary>
@@ -686,7 +686,7 @@ public sealed partial class ProjectStore
     public async Task<bool> RestoreSoftDeletedClipVersionAsync(string projectId, int scene, int clip, string versionId)
     {
         if (string.IsNullOrWhiteSpace(projectId) || string.IsNullOrWhiteSpace(versionId)) return false;
-        var dir = GetProjectDir(projectId);
+        var dir = await GetProjectDirAsync(projectId).ConfigureAwait(false);
         if (!Directory.Exists(dir)) return false;
 
         var videoDir = Path.Combine(dir, "assets", "video");
@@ -717,7 +717,7 @@ public sealed partial class ProjectStore
     public async Task<int> EmptyClipTrashAsync(string projectId, int scene, int clip)
     {
         if (string.IsNullOrWhiteSpace(projectId)) return 0;
-        var dir = GetProjectDir(projectId);
+        var dir = await GetProjectDirAsync(projectId).ConfigureAwait(false);
         if (!Directory.Exists(dir)) return 0;
 
         var trashDir = Path.Combine(dir, "assets", "video", ".trash");
@@ -738,7 +738,7 @@ public sealed partial class ProjectStore
         }
 
         InvalidateSceneListCache(projectId);
-        return await Task.FromResult(purgedCount).ConfigureAwait(false);
+        return purgedCount;
     }
 
     /// <summary>
@@ -752,7 +752,7 @@ public sealed partial class ProjectStore
     public async Task<IReadOnlyList<MusicVersionItem>> GetMusicVersionsAsync(string projectId, int scene)
     {
         if (string.IsNullOrWhiteSpace(projectId)) return Array.Empty<MusicVersionItem>();
-        var dir = GetProjectDir(projectId);
+        var dir = await GetProjectDirAsync(projectId).ConfigureAwait(false);
         if (!Directory.Exists(dir)) return Array.Empty<MusicVersionItem>();
 
         var musicDir = Path.Combine(dir, "assets", "music");
@@ -878,7 +878,7 @@ public sealed partial class ProjectStore
     private async Task<(string Dir, MusicVersionItem Target)?> TryResolveMusicTakeAsync(string projectId, int scene, string takeId)
     {
         if (string.IsNullOrWhiteSpace(projectId) || string.IsNullOrWhiteSpace(takeId)) return null;
-        var dir = GetProjectDir(projectId);
+        var dir = await GetProjectDirAsync(projectId).ConfigureAwait(false);
         if (!Directory.Exists(dir)) return null;
 
         var versions = await GetMusicVersionsAsync(projectId, scene).ConfigureAwait(false);
@@ -943,12 +943,12 @@ public sealed partial class ProjectStore
     }
 
     /// <summary>Soft-deleted audio takes for one scene — mirrors <see cref="GetTrashClipVersionsAsync"/>.</summary>
-    public Task<IReadOnlyList<MusicVersionItem>> GetTrashMusicVersionsAsync(string projectId, int scene)
+    public async Task<IReadOnlyList<MusicVersionItem>> GetTrashMusicVersionsAsync(string projectId, int scene)
     {
-        if (string.IsNullOrWhiteSpace(projectId)) return Task.FromResult<IReadOnlyList<MusicVersionItem>>(Array.Empty<MusicVersionItem>());
-        var dir = GetProjectDir(projectId);
+        if (string.IsNullOrWhiteSpace(projectId)) return Array.Empty<MusicVersionItem>();
+        var dir = await GetProjectDirAsync(projectId).ConfigureAwait(false);
         var trashDir = Path.Combine(dir, "assets", "music", ".trash");
-        if (!Directory.Exists(trashDir)) return Task.FromResult<IReadOnlyList<MusicVersionItem>>(Array.Empty<MusicVersionItem>());
+        if (!Directory.Exists(trashDir)) return Array.Empty<MusicVersionItem>();
 
         var result = new List<MusicVersionItem>();
         foreach (var sidecar in Directory.EnumerateFiles(trashDir, $"scene_{scene:D2}_take_*.meta.json"))
@@ -956,18 +956,18 @@ public sealed partial class ProjectStore
             var item = ParseMusicSidecar(sidecar, scene, isCurrent: false);
             if (item is not null) result.Add(item);
         }
-        return Task.FromResult<IReadOnlyList<MusicVersionItem>>(result.OrderByDescending(x => x.CreatedAtUtc).ToList());
+        return result.OrderByDescending(x => x.CreatedAtUtc).ToList();
     }
 
     /// <summary>Restores a soft-deleted audio take's sidecar back to assets/music/history/ — mirrors
     /// <see cref="RestoreSoftDeletedClipVersionAsync"/>.</summary>
-    public Task<bool> RestoreSoftDeletedMusicVersionAsync(string projectId, int scene, string takeId)
+    public async Task<bool> RestoreSoftDeletedMusicVersionAsync(string projectId, int scene, string takeId)
     {
-        if (string.IsNullOrWhiteSpace(projectId) || string.IsNullOrWhiteSpace(takeId)) return Task.FromResult(false);
-        var dir = GetProjectDir(projectId);
+        if (string.IsNullOrWhiteSpace(projectId) || string.IsNullOrWhiteSpace(takeId)) return false;
+        var dir = await GetProjectDirAsync(projectId).ConfigureAwait(false);
         var musicDir = Path.Combine(dir, "assets", "music");
         var trashSidecar = Path.Combine(musicDir, ".trash", $"scene_{scene:D2}_take_{takeId}.meta.json");
-        if (!File.Exists(trashSidecar)) return Task.FromResult(false);
+        if (!File.Exists(trashSidecar)) return false;
 
         var historyDir = Path.Combine(musicDir, "history");
         Directory.CreateDirectory(historyDir);
@@ -975,7 +975,7 @@ public sealed partial class ProjectStore
         File.Move(trashSidecar, restoredSidecar, overwrite: true);
 
         InvalidateSceneListCache(projectId);
-        return Task.FromResult(true);
+        return true;
     }
 
     private static List<string> CompareSceneInBlueprints(string currentBpJson, string? parentBpJson, int sceneNumber)
@@ -1489,7 +1489,7 @@ public sealed partial class ProjectStore
     {
         if (string.IsNullOrWhiteSpace(projectId) || string.IsNullOrWhiteSpace(ownerUserId))
             return;
-        var dir = GetProjectDir(projectId);
+        var dir = await GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         var metaPath = Path.Combine(dir, "project.json");
         if (!File.Exists(metaPath))
             return;
@@ -2017,7 +2017,7 @@ public sealed partial class ProjectStore
 
     private async Task<string?> FindBlueprintPathCoreAsync(string projectId, CancellationToken ct)
     {
-        var dir = GetProjectDir(projectId);
+        var dir = await GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         var configPath = Path.Combine(dir, "pipeline_config.json");
         var name = "blueprint.clips.grok.json";
         if (File.Exists(configPath))
@@ -5231,7 +5231,7 @@ public sealed partial class ProjectStore
     /// <summary>Last successful YouTube upload for a project, or null if never uploaded.</summary>
     public async Task<YouTubeUploadInfo?> GetYouTubeUploadInfoAsync(string projectId, CancellationToken ct = default)
     {
-        var path = Path.Combine(GetProjectDir(projectId), "assets", "youtube_upload.json");
+        var path = Path.Combine(await GetProjectDirAsync(projectId, ct).ConfigureAwait(false), "assets", "youtube_upload.json");
         if (!File.Exists(path))
             return null;
         try
@@ -5248,7 +5248,7 @@ public sealed partial class ProjectStore
 
     public async Task SaveYouTubeUploadInfoAsync(string projectId, YouTubeUploadInfo info, CancellationToken ct = default)
     {
-        var dir = Path.Combine(GetProjectDir(projectId), "assets");
+        var dir = Path.Combine(await GetProjectDirAsync(projectId, ct).ConfigureAwait(false), "assets");
         Directory.CreateDirectory(dir);
         await File.WriteAllTextAsync(
             Path.Combine(dir, "youtube_upload.json"),

@@ -1299,7 +1299,7 @@ public sealed class FilmJobService
                 return;
             }
 
-            var pDir = _projects.GetProjectDir(projectId);
+            var pDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
             var cfg = await _projects.GetConfigAsync(projectId, ct).ConfigureAwait(false);
             EnsureLabModelsAllowed(cfg);
 
@@ -1946,7 +1946,7 @@ public sealed class FilmJobService
                 await _characters.LockFromPathAsync(
                     projectId,
                     charKey,
-                    ResolveLockImagePath(projectId, imagePath!),
+                    await ResolveLockImagePathAsync(projectId, imagePath!, ct).ConfigureAwait(false),
                     allowStyleOverride,
                     ct).ConfigureAwait(false),
             "lock-bookref" =>
@@ -1960,11 +1960,11 @@ public sealed class FilmJobService
         };
     }
 
-    private string ResolveLockImagePath(string projectId, string imagePath)
+    private async Task<string> ResolveLockImagePathAsync(string projectId, string imagePath, CancellationToken ct = default)
     {
         if (File.Exists(imagePath))
             return Path.GetFullPath(imagePath);
-        var projectDir = _projects.GetProjectDir(projectId);
+        var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         var cand = Path.Combine(projectDir, imagePath.Replace('/', Path.DirectorySeparatorChar));
         if (File.Exists(cand))
             return Path.GetFullPath(cand);
@@ -2003,7 +2003,7 @@ public sealed class FilmJobService
             if (!_videoEdit.IsConfigured)
                 throw new InvalidOperationException("Video edit: connect xAI (XAI_API_KEY) in Configuration.");
 
-            var projectDir = _projects.GetProjectDir(projectId);
+            var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
             var videoDir = Path.Combine(projectDir, "assets", "video");
             var activeMp4Path = Path.Combine(videoDir, $"scene_{req.Scene:D2}_clip_{req.Clip:D2}.mp4");
             if (!File.Exists(activeMp4Path))
@@ -2386,7 +2386,7 @@ public sealed class FilmJobService
             var path = _projects.ResolveWipMoviePath(projectId);
             if (path is null || !File.Exists(path))
             {
-                var pDir = _projects.GetProjectDir(projectId);
+                var pDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
                 var altWip = Path.Combine(pDir, "assets", "video", "wip_movie.mp4");
                 if (File.Exists(altWip)) path = altWip;
             }
@@ -2653,7 +2653,7 @@ public sealed class FilmJobService
                     }
 
                     var relPath = MediaRegistryService.RevoiceAudioRelativePath(item.Scene, item.Clip, ext);
-                    var projectDir = _projects.GetProjectDir(projectId);
+                    var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
                     var absPath = Path.Combine(
                         projectDir,
                         relPath.Replace('/', Path.DirectorySeparatorChar));
@@ -2743,7 +2743,7 @@ public sealed class FilmJobService
         CancellationToken ct)
     {
         var list = new List<SpeakWorkItem>();
-        var projectDir = _projects.GetProjectDir(projectId);
+        var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
 
         // Explicit clips: text override or pull from blueprint
         if (req.Clips is { Count: > 0 })
@@ -3125,7 +3125,7 @@ public sealed class FilmJobService
             };
 
             var maxLen = ctx.MaxLen;
-            var projectDir = _projects.GetProjectDir(projectId);
+            var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
             var totalScenes = sceneGroups.Count;
             var totalLines = clipLines.Sum(c => c.Lines.Count);
 
@@ -3305,7 +3305,7 @@ public sealed class FilmJobService
                     EnsureSceneCharactersLocked(projectId, sn);
             }
 
-            var projectDir = _projects.GetProjectDir(projectId);
+            var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
             Directory.CreateDirectory(Path.Combine(projectDir, "assets", "video"));
 
             // Pre-count work units
@@ -3532,7 +3532,7 @@ public sealed class FilmJobService
             }
 
             var clips = clipsEl.EnumerateArray().ToList();
-            var projectDir = _projects.GetProjectDir(projectId);
+            var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
             var videoDir = Path.Combine(projectDir, "assets", "video");
             Directory.CreateDirectory(videoDir);
 
@@ -4239,7 +4239,7 @@ public sealed class FilmJobService
             {
                 try
                 {
-                    var projDir = _projects.GetProjectDir(Snapshot.ProjectId ?? projectId ?? _projects.ActiveProjectId);
+                    var projDir = await _projects.GetProjectDirAsync(Snapshot.ProjectId ?? projectId ?? _projects.ActiveProjectId, ct).ConfigureAwait(false);
                     // xAI Files API reference for this exact clip, when generation requested
                     // storage and it succeeded (see GrokVideoClient's storage_options) — lets a
                     // later "AI Edit" reuse the file instead of re-uploading. Absent for
