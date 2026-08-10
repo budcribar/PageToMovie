@@ -73,7 +73,8 @@
                      TestId="busy-progress" />
 }
 
-@* Jobs.Job panel: progress + Cancel only while running. Admin can expand Details. *@
+@* Jobs.Job panel: live progress + Cancel while running.
+   Admin: keep a quiet completion card with log (no animated full bar). *@
 @if (ShowJobPanel)
 {
     var (jobIdx, jobTot, waiting, displayIdx) = AdaptationPageBase.AdaptationStepUi.ComputeJobProgress(
@@ -95,7 +96,8 @@
                      CancelDisabled="false"
                      OnCancel="Host.Jobs.CancelAsync"
                      Kind="@Host.Jobs.Job.Kind"
-                     ShowLog="@(Session.IsAdmin && !Host.Jobs.JobRunning)"
+                     ShowLog="@(Session.IsAdmin && Host.Jobs.Job?.Log is { Count: > 0 })"
+                     OpenLogByDefault="@(Session.IsAdmin && !Host.Jobs.JobRunning)"
                      LogLines="Host.Jobs.Job.Log"
                      LogMaxLines="40"
                      TestId="job-panel"

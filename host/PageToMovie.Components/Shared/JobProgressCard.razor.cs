@@ -25,6 +25,8 @@ public partial class JobProgressCard
     [Parameter] public bool ShowLog { get; set; }
     [Parameter] public string LogSummary { get; set; } = "Details (admin)";
     [Parameter] public int LogMaxLines { get; set; } = 24;
+    /// <summary>When true, admin log details start expanded (finished jobs).</summary>
+    [Parameter] public bool OpenLogByDefault { get; set; }
     [Parameter] public string? Kind { get; set; }
     [Parameter] public string TestId { get; set; } = "job-panel";
     /// <summary>Override for status span testid (e.g. "job-status" for existing Playwright).</summary>
@@ -33,14 +35,44 @@ public partial class JobProgressCard
     [Parameter] public string? CancelTestId { get; set; }
     [Parameter] public string? CssClass { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>
+    /// When false, skip the progress bar entirely (message + optional log only).
+    /// Default: show bar while active/indeterminate; hide for successful done (bar looked “stuck”).
+    /// </summary>
+    [Parameter] public bool? ForceShowProgressBar { get; set; }
 
     bool IsActive =>
         string.Equals(Status, "running", StringComparison.OrdinalIgnoreCase)
         || string.Equals(Status, "queued", StringComparison.OrdinalIgnoreCase);
 
+    bool IsDone => string.Equals(Status, "done", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(Status, "partial", StringComparison.OrdinalIgnoreCase);
+
+    bool IsError => string.Equals(Status, "error", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Active jobs always get a bar. Successful done: hide by default (message is enough).
+    /// Error keeps a static red bar. ForceShowProgressBar overrides.
+    /// </summary>
+    bool ShowProgressBar
+    {
+        get
+        {
+            if (ForceShowProgressBar is bool forced)
+                return forced;
+            if (Indeterminate || IsActive)
+                return true;
+            if (IsError)
+                return true;
+            // done / cancelled / idle — no perpetual full bar
+            return false;
+        }
+    }
+
     string BorderClass =>
-        string.Equals(Status, "error", StringComparison.OrdinalIgnoreCase) ? "border-danger"
+        IsError ? "border-danger"
         : IsActive ? "border-primary"
+        : IsDone ? "border-success"
         : "border-secondary";
 
     int EffectivePercent()
@@ -48,6 +80,8 @@ public partial class JobProgressCard
         if (Indeterminate) return 45;
         if (Percent is int p) return Math.Clamp(p, 0, 100);
         var st = Status?.Trim().ToLowerInvariant() ?? "";
+        if (st is "done" or "partial") return 100;
+        if (st == "error") return 100;
         if (st == "queued" || Total <= 0) return 8;
         if (st == "running" && Index <= 0) return 0;
         return (int)Math.Round(100.0 * Math.Clamp(Index, 0, Total) / Math.Max(1, Total));

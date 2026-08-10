@@ -20,7 +20,7 @@
                     {
                         <span>Working…</span>
                     }
-                    @if (!Indeterminate && Total > 0 && string.Equals(Status, "running", StringComparison.OrdinalIgnoreCase))
+                    @if (!Indeterminate && Total > 0 && IsActive)
                     {
                         <span class="text-muted ms-1">@Index / @Total</span>
                     }
@@ -36,25 +36,33 @@
                     </button>
                 }
             </div>
-            @{
+            @if (ShowProgressBar)
+            {
                 var pct = EffectivePercent();
-                var barHeight = Indeterminate ? "0.85rem" : "0.5rem";
+                var barHeight = Indeterminate || IsActive ? "0.85rem" : "0.5rem";
+                var barClasses = IsActive || Indeterminate
+                    ? "progress-bar progress-bar-striped progress-bar-animated bg-primary"
+                    : string.Equals(Status, "error", StringComparison.OrdinalIgnoreCase)
+                        ? "progress-bar bg-danger"
+                        : string.Equals(Status, "done", StringComparison.OrdinalIgnoreCase)
+                            ? "progress-bar bg-success"
+                            : "progress-bar bg-secondary";
+                <div class="progress mt-2" style="height: @barHeight;">
+                    <div class="@barClasses"
+                         role="progressbar"
+                         style="width: @(pct)%"
+                         aria-valuenow="@pct"
+                         aria-valuemin="0"
+                         aria-valuemax="100"></div>
+                </div>
             }
-            <div class="progress mt-2" style="height: @barHeight;">
-                <div class="progress-bar progress-bar-striped progress-bar-animated @(Indeterminate ? "bg-primary" : null)"
-                     role="progressbar"
-                     style="width: @(pct)%"
-                     aria-valuenow="@pct"
-                     aria-valuemin="0"
-                     aria-valuemax="100"></div>
-            </div>
             @if (!string.IsNullOrEmpty(DetailMessage))
             {
                 <div class="form-text mt-1">@DetailMessage</div>
             }
             @if (ShowLog && LogLines is { Count: > 0 })
             {
-                <details class="mt-2">
+                <details class="mt-2" open="@OpenLogByDefault">
                     <summary class="small text-muted" style="cursor:pointer">@LogSummary</summary>
                     <pre class="small mb-0 mt-1" style="max-height: 160px; overflow: auto;">@string.Join("\n", LogLines.TakeLast(LogMaxLines))</pre>
                 </details>
