@@ -31,8 +31,11 @@ public partial class CopyToClipboardButton
             /* clipboard may be blocked — non-fatal */
         }
 
-        _resetCts?.Cancel();
-        _resetCts?.Dispose();
+        if (_resetCts is { } oldCts)
+        {
+            await oldCts.CancelAsync();
+            oldCts.Dispose();
+        }
         _resetCts = new CancellationTokenSource();
         var ct = _resetCts.Token;
         _copied = true;
@@ -49,8 +52,11 @@ public partial class CopyToClipboardButton
 
     public async ValueTask DisposeAsync()
     {
-        _resetCts?.Cancel();
-        _resetCts?.Dispose();
+        if (_resetCts is { } oldDisposeCts)
+        {
+            await oldDisposeCts.CancelAsync();
+            oldDisposeCts.Dispose();
+        }
         _resetCts = null;
         await ValueTask.CompletedTask;
     }

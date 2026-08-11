@@ -310,7 +310,7 @@ public sealed class EditLogService
     {
         try
         {
-            var dir = _projects.GetProjectDir(projectId);
+            var dir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
             var statePath = Path.Combine(dir, PipelineStateFile);
             var state = await LoadStateAsync(statePath, ct).ConfigureAwait(false);
             var key = $"S{scene:D2}C{clip:D2}";
@@ -358,8 +358,9 @@ public sealed class EditLogService
     {
         try
         {
+            var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
             var path = Path.Combine(
-                _projects.GetProjectDir(projectId),
+                projectDir,
                 "assets", "review",
                 $"S{scene:D2}C{clip:D2}.auto_review.json");
             if (!File.Exists(path)) return ("", "", "");
@@ -386,7 +387,8 @@ public sealed class EditLogService
         var list = new List<AssemblyBlockedClip>();
         try
         {
-            var videoDir = Path.Combine(_projects.GetProjectDir(projectId), "assets", "video");
+            var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
+            var videoDir = Path.Combine(projectDir, "assets", "video");
             if (!Directory.Exists(videoDir)) return list;
             foreach (var fi in new DirectoryInfo(videoDir).EnumerateFiles("scene_*_clip_*.mp4"))
             {

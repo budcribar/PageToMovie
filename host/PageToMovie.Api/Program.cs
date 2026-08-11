@@ -7278,7 +7278,7 @@ app.MapGet("/api/projects/{id}/media/sync", async (
                     if (fi.Length <= 64L * 1024 * 1024)
                     {
                         using var fs = File.OpenRead(file);
-                        var hashBytes = System.Security.Cryptography.SHA256.HashData(fs);
+                        var hashBytes = await System.Security.Cryptography.SHA256.HashDataAsync(fs, ct).ConfigureAwait(false);
                         sha256 = Convert.ToHexString(hashBytes).ToLowerInvariant();
                     }
                 }

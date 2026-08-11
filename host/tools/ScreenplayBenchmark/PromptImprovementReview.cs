@@ -21,7 +21,7 @@ internal static class PromptImprovementReview
     {
         if (!chat.IsConfigured)
         {
-            Console.Error.WriteLine("No configured chat provider is available for prompt review.");
+            await Console.Error.WriteLineAsync("No configured chat provider is available for prompt review.");
             return 1;
         }
 

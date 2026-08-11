@@ -323,7 +323,7 @@ public sealed class FakeGrokVideoClient : IVideoClient
             var list = Path.Combine(Path.GetTempPath(), "ptm-fake-concat-" + Guid.NewGuid().ToString("N")[..8] + ".txt");
             var prevEsc = Path.GetFullPath(prev).Replace("'", "'\\''");
             var nextEsc = Path.GetFullPath(next).Replace("'", "'\\''");
-            File.WriteAllText(list, $"file '{prevEsc}'\nfile '{nextEsc}'\n");
+            await File.WriteAllTextAsync(list, $"file '{prevEsc}'\nfile '{nextEsc}'\n", ct).ConfigureAwait(false);
             var psi = new ProcessStartInfo
             {
                 FileName = "ffmpeg",

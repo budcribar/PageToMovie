@@ -45,7 +45,7 @@ public static class FilmRuntime
         int? overrideTargetMinutes = null,
         CancellationToken ct = default)
     {
-        var dir = store.GetProjectDir(projectId);
+        var dir = await store.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         var metaPath = Path.Combine(dir, "source", "extract_meta.json");
         var bookPath = Path.Combine(dir, "source", "book_full.txt");
 
@@ -184,7 +184,8 @@ public static class FilmRuntime
         }));
         await store.SaveConfigAsync(projectId, updateDoc.RootElement.Clone(), ct).ConfigureAwait(false);
 
-        var metaPath = Path.Combine(store.GetProjectDir(projectId), "source", "extract_meta.json");
+        var projectDir = await store.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
+        var metaPath = Path.Combine(projectDir, "source", "extract_meta.json");
         if (File.Exists(metaPath))
         {
             try

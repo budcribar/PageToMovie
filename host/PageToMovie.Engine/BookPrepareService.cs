@@ -448,7 +448,8 @@ public sealed class BookPrepareService
         var imageRows = new List<Dictionary<string, object?>>();
         int pageIndex = 0;
 
-        using var archive = System.IO.Compression.ZipFile.OpenRead(epubPath);
+        using var fs = new FileStream(epubPath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, useAsync: true);
+        using var archive = new System.IO.Compression.ZipArchive(fs, System.IO.Compression.ZipArchiveMode.Read);
 
         // 1. Extract image files
         var imageEntries = archive.Entries
@@ -498,7 +499,7 @@ public sealed class BookPrepareService
             ct.ThrowIfCancellationRequested();
             try
             {
-                using var reader = new StreamReader(entry.Open(), Encoding.UTF8);
+                using var reader = new StreamReader(entry.Open(), Encoding.UTF8, true);
                 var html = await reader.ReadToEndAsync(ct).ConfigureAwait(false);
                 var rawText = HtmlTagsRegex.Replace(html, " ");
                 var clean = System.Net.WebUtility.HtmlDecode(rawText);

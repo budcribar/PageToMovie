@@ -336,8 +336,11 @@ public partial class Configuration
 
             _dirty = true;
             var epoch = ++_autoSaveEpoch;
-            _autoSaveCts?.Cancel();
-            _autoSaveCts?.Dispose();
+            if (_autoSaveCts is { } oldCts)
+            {
+                await oldCts.CancelAsync();
+                oldCts.Dispose();
+            }
             _autoSaveCts = new CancellationTokenSource();
             var token = _autoSaveCts.Token;
 

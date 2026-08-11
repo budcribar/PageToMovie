@@ -24,7 +24,7 @@ public static class LearningPackageService
         IReadOnlyList<string>? failureTags = null,
         CancellationToken ct = default)
     {
-        var projectDir = store.GetProjectDir(projectId);
+        var projectDir = await store.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         var film = await FilmBuildService.TryReadAsync(projectDir, ct).ConfigureAwait(false);
         var stage1 = await ProjectStage1ConvertManifest.TryReadAsync(projectDir, ct).ConfigureAwait(false);
         var report = await ProjectAdaptationReport.TryReadAsync(projectDir, ct).ConfigureAwait(false);

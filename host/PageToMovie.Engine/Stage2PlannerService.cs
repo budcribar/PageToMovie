@@ -343,10 +343,10 @@ public sealed class Stage2PlannerService
             .ToArray();
         var classifierProvenance = Stage2AggregateValidator.BuildClassifierProvenance(enrichMeta);
         await StructuredOperationArtifacts.WriteAsync(
-            _projects.GetProjectDir(projectId), "stage2_shot_plan", videoModelId,
+            projectDir, "stage2_shot_plan", videoModelId,
             new { projectId, sourceLabel, resolution, scenes }, plan, planIssues, ct).ConfigureAwait(false);
         await Stage2AggregateValidator.WriteManifestAsync(
-            _projects.GetProjectDir(projectId), classifierProvenance, operationTrace.Snapshot(), planIssues, ct).ConfigureAwait(false);
+            projectDir, classifierProvenance, operationTrace.Snapshot(), planIssues, ct).ConfigureAwait(false);
         if (planIssues.Any(i => i.Severity == ModelValidationSeverity.Error))
             throw new InvalidOperationException(string.Join(" ", planIssues.Select(i => i.Message)));
 

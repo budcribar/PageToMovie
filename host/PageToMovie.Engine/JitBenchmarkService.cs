@@ -184,7 +184,7 @@ public sealed class JitBenchmarkService
                     if (File.Exists(tempMp4Path))
                     {
                         // 1. Probe total MP4 clip duration using ISO-BMFF reader
-                        var probedTotalSec = Mp4DurationReader.TryReadSeconds(tempMp4Path);
+                        var probedTotalSec = await Mp4DurationReader.TryReadSecondsAsync(tempMp4Path, ct).ConfigureAwait(false);
                         if (probedTotalSec is > 0)
                         {
                             measuredTotalClipSec = Math.Round(probedTotalSec.Value, 2);

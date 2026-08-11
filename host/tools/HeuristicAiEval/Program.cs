@@ -36,14 +36,14 @@ var fountain = Directory.GetFiles(Path.Combine(repo, ProjectsFolder), "screenpla
                          !p.Contains($"{Path.DirectorySeparatorChar}_", StringComparison.Ordinal));
 if (fountain is null)
 {
-    Console.Error.WriteLine($"No fountain for {holdoutId}");
+    await Console.Error.WriteLineAsync($"No fountain for {holdoutId}");
     return 1;
 }
 
 var key = Environment.GetEnvironmentVariable("XAI_API_KEY");
 if (string.IsNullOrWhiteSpace(key))
 {
-    Console.Error.WriteLine("XAI_API_KEY required for holdout AI scoring");
+    await Console.Error.WriteLineAsync("XAI_API_KEY required for holdout AI scoring");
     return 1;
 }
 

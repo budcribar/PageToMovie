@@ -77,7 +77,7 @@ public sealed class VirtualUser
             catch (Exception ex)
             {
                 _metrics.Record(action, -1, 0);
-                Console.Error.WriteLine($"[{_userId}] {action}: {ex.Message}");
+                await Console.Error.WriteLineAsync($"[{_userId}] {action}: {ex.Message}");
             }
         }
     }

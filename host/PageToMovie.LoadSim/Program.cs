@@ -14,7 +14,7 @@ try
 }
 catch (Exception ex)
 {
-    Console.Error.WriteLine($"FATAL: {ex}");
+    await Console.Error.WriteLineAsync($"FATAL: {ex}");
     exitCode = 2;
 }
 
@@ -25,16 +25,16 @@ return exitCode;
 
 static async Task<int> RunAsync(SimOptions opts)
 {
-    Console.WriteLine($"PageToMovie.LoadSim → {opts.BaseUrl}");
-    Console.WriteLine($"  users={opts.Users} duration={opts.DurationSec}s scenario={opts.Scenario} project={opts.ProjectId}");
-    Console.WriteLine($"  cwd={Directory.GetCurrentDirectory()}");
-    Console.WriteLine($"  waitForApi={opts.WaitForApiSec}s");
+    await Console.Out.WriteLineAsync($"PageToMovie.LoadSim → {opts.BaseUrl}");
+    await Console.Out.WriteLineAsync($"  users={opts.Users} duration={opts.DurationSec}s scenario={opts.Scenario} project={opts.ProjectId}");
+    await Console.Out.WriteLineAsync($"  cwd={Directory.GetCurrentDirectory()}");
+    await Console.Out.WriteLineAsync($"  waitForApi={opts.WaitForApiSec}s");
 
     if (!opts.AllowRealProject &&
         (string.Equals(opts.ProjectId, "Buster", StringComparison.OrdinalIgnoreCase) ||
          string.Equals(opts.ProjectId, "NickAndMe", StringComparison.OrdinalIgnoreCase)))
     {
-        Console.Error.WriteLine(
+        await Console.Error.WriteLineAsync(
             $"Setup: refusing real project '{opts.ProjectId}'. " +
             $"Use '{ProjectSandbox.DefaultSandboxId}' (default) or pass --allowRealProject.");
         return 2;
@@ -281,7 +281,7 @@ static async Task<int> RunAsync(SimOptions opts)
                 Console.Error.WriteLine($"  … +{readyErrors.Count - 10} more");
             // Cancel stress for anyone who might still run
             stressCts = new CancellationTokenSource();
-            stressCts.Cancel();
+            await stressCts.CancelAsync();
             try { await Task.WhenAll(tasks); } catch { /* ignore */ }
             return 2;
         }
@@ -306,7 +306,7 @@ static async Task<int> RunAsync(SimOptions opts)
         Console.Error.WriteLine($"Run error: {ex.Message}");
     }
 
-    reportCts.Cancel();
+    await reportCts.CancelAsync();
     try { await reportTask; } catch { /* ignore */ }
     stressCts?.Dispose();
 

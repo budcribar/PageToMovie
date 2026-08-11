@@ -47,17 +47,17 @@ public static class VideoTimingBenchmarkRunner
 
         if (verbose)
         {
-            Console.Error.WriteLine($"[STDERR LOG] Verbose logging enabled (--verbose / --log).");
-            Console.Error.WriteLine($"[STDERR LOG] Model requested: '{model}'");
-            Console.Error.WriteLine($"[STDERR LOG] Working directory: '{paths.RepoRoot}'");
-            Console.Error.WriteLine($"[STDERR LOG] FAL_API_KEY status: {(hasLiveKey ? "ACTIVE (Live API Generation Enabled)" : "MISSING (Using Empirical Overhead Ledger)")}");
+            await Console.Error.WriteLineAsync($"[STDERR LOG] Verbose logging enabled (--verbose / --log).");
+            await Console.Error.WriteLineAsync($"[STDERR LOG] Model requested: '{model}'");
+            await Console.Error.WriteLineAsync($"[STDERR LOG] Working directory: '{paths.RepoRoot}'");
+            await Console.Error.WriteLineAsync($"[STDERR LOG] FAL_API_KEY status: {(hasLiveKey ? "ACTIVE (Live API Generation Enabled)" : "MISSING (Using Empirical Overhead Ledger)")}");
         }
 
         var timingRoot = Path.Combine(paths.RepoRoot, "host", "evals", "video_timing_benchmarks");
         var jsonPath = Path.Combine(timingRoot, "timing_prompts.json");
         if (!File.Exists(jsonPath))
         {
-            Console.Error.WriteLine($"[STDERR LOG] ERROR: Timing prompts file not found at: {jsonPath}");
+            await Console.Error.WriteLineAsync($"[STDERR LOG] ERROR: Timing prompts file not found at: {jsonPath}");
             return 1;
         }
 
@@ -82,7 +82,7 @@ public static class VideoTimingBenchmarkRunner
         {
             if (verbose)
             {
-                Console.Error.WriteLine($"[STDERR LOG] Executing benchmark entry [{p.Id}] category='{p.Category}' mode='{p.ConcurrencyMode ?? "serial"}' gamma={p.ConcurrencyFactor:F2}");
+                await Console.Error.WriteLineAsync($"[STDERR LOG] Executing benchmark entry [{p.Id}] category='{p.Category}' mode='{p.ConcurrencyMode ?? "serial"}' gamma={p.ConcurrencyFactor:F2}");
             }
 
             Console.Write($"Running benchmark [{p.Id}] ({p.Category})... ");
@@ -161,7 +161,7 @@ public static class VideoTimingBenchmarkRunner
             var queueUrl = $"https://queue.fal.run/{modelId.Trim('/')}";
             if (verbose)
             {
-                Console.Error.WriteLine($"[STDERR LOG] Submitting live video generation to Fal queue: {queueUrl}");
+                await Console.Error.WriteLineAsync($"[STDERR LOG] Submitting live video generation to Fal queue: {queueUrl}");
             }
 
             var postResp = await http.PostAsJsonAsync(queueUrl, payload).ConfigureAwait(false);
@@ -170,7 +170,7 @@ public static class VideoTimingBenchmarkRunner
                 var errStr = await postResp.Content.ReadAsStringAsync().ConfigureAwait(false);
                 if (verbose)
                 {
-                    Console.Error.WriteLine($"[STDERR LOG] Fal queue HTTP {(int)postResp.StatusCode}: {errStr}");
+                    await Console.Error.WriteLineAsync($"[STDERR LOG] Fal queue HTTP {(int)postResp.StatusCode}: {errStr}");
                 }
                 return (entry.EstimatedDurationSec, $"Fal HTTP {(int)postResp.StatusCode}");
             }
@@ -195,7 +195,7 @@ public static class VideoTimingBenchmarkRunner
                 var status = pollDoc.RootElement.TryGetProperty("status", out var sProp) ? sProp.GetString() : null;
                 if (verbose)
                 {
-                    Console.Error.WriteLine($"[STDERR LOG] Polling Fal job status: {status} ({sw.Elapsed.TotalSeconds:F1}s elapsed)");
+                    await Console.Error.WriteLineAsync($"[STDERR LOG] Polling Fal job status: {status} ({sw.Elapsed.TotalSeconds:F1}s elapsed)");
                 }
 
                 if (status == "COMPLETED")
@@ -208,7 +208,7 @@ public static class VideoTimingBenchmarkRunner
                         var videoUrl = urlProp.GetString();
                         if (verbose)
                         {
-                            Console.Error.WriteLine($"[STDERR LOG] Live video generation complete! MP4 URL: {videoUrl}");
+                            await Console.Error.WriteLineAsync($"[STDERR LOG] Live video generation complete! MP4 URL: {videoUrl}");
                         }
 
                         if (!string.IsNullOrWhiteSpace(videoUrl))
@@ -223,7 +223,7 @@ public static class VideoTimingBenchmarkRunner
                                     var probedSec = Math.Round(probedDuration.Value, 2);
                                     if (verbose)
                                     {
-                                        Console.Error.WriteLine($"[STDERR LOG] Probed MP4 stream duration: {probedSec:F2}s ({mp4Bytes.Length} bytes)");
+                                        await Console.Error.WriteLineAsync($"[STDERR LOG] Probed MP4 stream duration: {probedSec:F2}s ({mp4Bytes.Length} bytes)");
                                     }
                                     return (probedSec, $"Live Fal.ai Hunyuan API (Probed {probedSec:F2}s)");
                                 }
@@ -232,7 +232,7 @@ public static class VideoTimingBenchmarkRunner
                             {
                                 if (verbose)
                                 {
-                                    Console.Error.WriteLine($"[STDERR LOG] Failed to probe MP4 stream duration: {ex.Message}");
+                                    await Console.Error.WriteLineAsync($"[STDERR LOG] Failed to probe MP4 stream duration: {ex.Message}");
                                 }
                             }
                         }
@@ -248,7 +248,7 @@ public static class VideoTimingBenchmarkRunner
         {
             if (verbose)
             {
-                Console.Error.WriteLine($"[STDERR LOG] Live Fal API Exception: {ex.Message}");
+                await Console.Error.WriteLineAsync($"[STDERR LOG] Live Fal API Exception: {ex.Message}");
             }
             return (entry.EstimatedDurationSec, "Empirical Overhead Ledger (API Error)");
         }

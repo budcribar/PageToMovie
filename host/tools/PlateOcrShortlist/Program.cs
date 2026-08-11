@@ -15,7 +15,7 @@ var castPath = Path.Combine(projectDir, "source", "cast_seeds.json");
 
 if (!File.Exists(bookTxt))
 {
-    Console.Error.WriteLine($"Missing {bookTxt}");
+    await Console.Error.WriteLineAsync($"Missing {bookTxt}");
     return 1;
 }
 

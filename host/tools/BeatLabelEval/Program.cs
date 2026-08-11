@@ -64,7 +64,7 @@ var fountainPaths = Directory.GetFiles(Path.Combine(repo, ProjectsFolder), "scre
 
 if (fountainPaths.Count < 1)
 {
-    Console.Error.WriteLine("Need screenplay.fountain under projects/.");
+    await Console.Error.WriteLineAsync("Need screenplay.fountain under projects/.");
     return 1;
 }
 
@@ -194,7 +194,7 @@ if (labelAi)
 {
     if (string.IsNullOrWhiteSpace(key))
     {
-        Console.Error.WriteLine("XAI_API_KEY not set — cannot call chat.");
+        await Console.Error.WriteLineAsync("XAI_API_KEY not set — cannot call chat.");
         return 1;
     }
 

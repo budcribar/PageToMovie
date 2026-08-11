@@ -106,7 +106,8 @@ public static class BookContextService
         string? sceneBody = null,
         CancellationToken ct = default)
     {
-        var bookPath = Path.Combine(store.GetProjectDir(projectId), "source", "book_full.txt");
+        var projectDir = await store.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
+        var bookPath = Path.Combine(projectDir, "source", "book_full.txt");
         if (!File.Exists(bookPath))
         {
             return new BookContextResult

@@ -5605,7 +5605,7 @@ public sealed partial class ProjectStore
 
     public async Task<AdaptationStatus> GetAdaptationStatusAsync(string projectId, string? userId = null, CancellationToken ct = default)
     {
-        var dir = GetProjectDir(projectId);
+        var dir = await GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         var book = ReadBookSourceStatus(projectId, dir);
         var stage1 = ReadStage1Status(projectId, dir);
         var screenplay = ScreenplayService.ReadStatus(this, projectId, stage1);
@@ -5813,7 +5813,7 @@ public sealed partial class ProjectStore
         Stream content,
         CancellationToken ct = default)
     {
-        var dir = GetProjectDir(projectId);
+        var dir = await GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         var source = Path.Combine(dir, "source");
         Directory.CreateDirectory(source);
 

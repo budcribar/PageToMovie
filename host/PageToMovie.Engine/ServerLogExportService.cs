@@ -51,7 +51,7 @@ public sealed class ServerLogExportService
             {
                 try
                 {
-                    var projDir = _projects.GetProjectDir(p.Id);
+                    var projDir = await _projects.GetProjectDirAsync(p.Id, ct).ConfigureAwait(false);
 
                     // edit_log.json
                     var editLogPath = Path.Combine(projDir, "edit_log.json");

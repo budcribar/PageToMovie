@@ -35,7 +35,8 @@ public sealed class VoicePreviewStore
         }
         var dest = Path.Combine(dir, "voice_preview_tts" + ext);
         await File.WriteAllBytesAsync(dest, audioBytes, ct).ConfigureAwait(false);
-        var rel = Path.GetRelativePath(_projects.GetProjectDir(projectId), dest).Replace('\\', '/');
+        var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
+        var rel = Path.GetRelativePath(projectDir, dest).Replace('\\', '/');
         var url =
             $"/api/projects/{Uri.EscapeDataString(projectId)}/characters/{Uri.EscapeDataString(charKey)}/voice/tts-preview";
         return (rel, url);

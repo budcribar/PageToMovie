@@ -98,7 +98,7 @@ var body = new Dictionary<string, object?> {
 };
 var resp = await http.PostAsync("chat/completions", new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json"));
 var text = await resp.Content.ReadAsStringAsync();
-if (!resp.IsSuccessStatusCode) { Console.Error.WriteLine(text[..Math.Min(600,text.Length)]); return 1; }
+if (!resp.IsSuccessStatusCode) { await Console.Error.WriteLineAsync(text[..Math.Min(600,text.Length)]); return 1; }
 using var rdoc = JsonDocument.Parse(text);
 var content = rdoc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? "";
 var ai = OnScreenCastClassifier.ParseLabels(content, castKeys);

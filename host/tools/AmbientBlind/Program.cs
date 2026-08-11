@@ -22,10 +22,10 @@ for (var i = 0; i < args.Length; i++)
 var fountain = Directory.GetFiles(Path.Combine(repo, "projects"), "screenplay.fountain", SearchOption.AllDirectories)
     .FirstOrDefault(p => p.Contains(holdout, StringComparison.OrdinalIgnoreCase)
                          && !p.Contains($"{Path.DirectorySeparatorChar}_"));
-if (fountain is null) { Console.Error.WriteLine("no fountain"); return 1; }
+if (fountain is null) { await Console.Error.WriteLineAsync("no fountain"); return 1; }
 
 var key = Environment.GetEnvironmentVariable("XAI_API_KEY");
-if (string.IsNullOrWhiteSpace(key)) { Console.Error.WriteLine("XAI_API_KEY required"); return 1; }
+if (string.IsNullOrWhiteSpace(key)) { await Console.Error.WriteLineAsync("XAI_API_KEY required"); return 1; }
 
 var stage1 = FountainStage1Importer.BuildStage1(FountainParser.Parse(await File.ReadAllTextAsync(fountain)));
 var beats = Collect(stage1);
@@ -80,7 +80,7 @@ var resp = await http.PostAsync("chat/completions",
 var respText = await resp.Content.ReadAsStringAsync();
 if (!resp.IsSuccessStatusCode)
 {
-    Console.Error.WriteLine(respText[..Math.Min(800, respText.Length)]);
+    await Console.Error.WriteLineAsync(respText[..Math.Min(800, respText.Length)]);
     return 1;
 }
 using var doc = JsonDocument.Parse(respText);

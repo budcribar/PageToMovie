@@ -276,7 +276,7 @@ public static class FilmBuildService
         string assemblyWhere = "client",
         CancellationToken ct = default)
     {
-        var projectDir = store.GetProjectDir(projectId);
+        var projectDir = await store.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         var doc = Create(projectId, studioSha256, durationSeconds, segments, byteLength, assemblyWhere);
         AttachStage1Provenance(projectDir, doc);
         await WriteAsync(projectDir, doc, ct).ConfigureAwait(false);
@@ -298,7 +298,7 @@ public static class FilmBuildService
         string? wipRelativePath = null,
         CancellationToken ct = default)
     {
-        var projectDir = store.GetProjectDir(projectId);
+        var projectDir = await store.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         var rel = string.IsNullOrWhiteSpace(wipRelativePath) ? "assets/movie_wip.mp4" : wipRelativePath!;
         var full = Path.Combine(projectDir, rel.Replace('/', Path.DirectorySeparatorChar));
         if (!File.Exists(full)) return null;
@@ -329,7 +329,7 @@ public static class FilmBuildService
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(uploadBytes);
-        var projectDir = store.GetProjectDir(projectId);
+        var projectDir = await store.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         var uploadSha = HashBytes(uploadBytes);
         var doc = await TryReadAsync(projectDir, ct).ConfigureAwait(false);
         if (doc is null)

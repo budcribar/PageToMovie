@@ -42,7 +42,7 @@ try
 }
 catch (Exception ex)
 {
-    Console.Error.WriteLine(ex.Message);
+    await Console.Error.WriteLineAsync(ex.Message);
     return 1;
 }
 
@@ -233,7 +233,7 @@ static async Task<int> CmdRunAsync(BenchPaths paths, string[] args)
                     }
                     catch (Exception ex)
                     {
-                        Console.Error.WriteLine($"     ERROR: {ex.Message}");
+                        await Console.Error.WriteLineAsync($"     ERROR: {ex.Message}");
                         run.Results.Add(new TaskResult
                         {
                             Task = task,

@@ -117,7 +117,7 @@ public sealed class ProjectArchiveService
                     var metaEntry = zip.CreateEntry($"{id}/_export_meta.json", CompressionLevel.Fastest);
                     using (var w = new StreamWriter(metaEntry.Open(), Encoding.UTF8))
                     {
-                        w.Write(JsonSerializer.Serialize(
+                        await w.WriteAsync(JsonSerializer.Serialize(
                             ProjectFormatVersions.BuildExportMeta(id, projectSchema),
                             JsonOpts));
                     }

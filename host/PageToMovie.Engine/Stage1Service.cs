@@ -79,7 +79,7 @@ public sealed class Stage1Service
                 : ProjectModelSelection.RequireExplicit(model, ModelCapability.Chat, "Screenplay draft");
         }
 
-        var projectDir = _projects.GetProjectDir(projectId);
+        var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         var bookPath = Path.Combine(projectDir, "source", "book_full.txt");
         var draftPath = ScreenplayService.GetDraftPath(_projects, projectId);
 

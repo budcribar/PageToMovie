@@ -350,8 +350,11 @@ public partial class Characters
                 S.LookEdit._savedLookDescription = S.LookEdit._editDescription;
                 S.LookEdit._savedLookVisualLock = S.LookEdit._editVisualLock;
                 S.LookEdit._lookSaveHint = null;
-                S.LookEdit._lookSaveCts?.Cancel();
-                S.LookEdit._lookSaveCts?.Dispose();
+                if (S.LookEdit._lookSaveCts is { } oldSaveCts)
+                {
+                    await oldSaveCts.CancelAsync();
+                    oldSaveCts.Dispose();
+                }
                 S.LookEdit._lookSaveCts = null;
                 S.Voice._editVoiceLabel = _selected.VoiceLabel ?? "";
                 S.Voice._editVoiceProfile = _selected.VoiceProfile ?? "";

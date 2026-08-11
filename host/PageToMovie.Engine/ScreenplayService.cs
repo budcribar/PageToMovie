@@ -494,7 +494,8 @@ public static string NormalizeText(string text)
             return new DraftEditResult { Ok = false, Error = "No screenplay draft to enrich yet." };
 
         string? bookText = null;
-        var bookPath = Path.Combine(store.GetProjectDir(projectId), "source", "book_full.txt");
+        var projectDir = await store.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
+        var bookPath = Path.Combine(projectDir, "source", "book_full.txt");
         if (File.Exists(bookPath))
         {
             try { bookText = await File.ReadAllTextAsync(bookPath, ct).ConfigureAwait(false); }
@@ -735,7 +736,7 @@ public static string NormalizeText(string text)
         PageToMovie.Core.Abstractions.IBookFileSessionFactory? bookFileSessionFactory = null,
         AdaptationDefaultsOptions? adaptationDefaults = null)
     {
-        var projectDir = store.GetProjectDir(projectId);
+        var projectDir = await store.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         var bookPath = Path.Combine(projectDir, "source", "book_full.txt");
         if (!File.Exists(bookPath))
             return new SaveResult { Ok = false, Error = "No prepared book text yet" };

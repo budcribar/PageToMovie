@@ -208,12 +208,13 @@ public sealed class ClipDialogueVerificationService
         var charGuides = new List<string>();
         int mediaIndex = 1; // Index 1 is the MP4 video clip
 
+        var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         foreach (var cName in sceneChars)
         {
             var charObj = charSummaryList.FirstOrDefault(c => string.Equals(c.Key, cName, StringComparison.OrdinalIgnoreCase) || string.Equals(c.DisplayName, cName, StringComparison.OrdinalIgnoreCase));
             if (charObj?.PreferredUrl is { Length: > 0 } url)
             {
-                var localRef = Path.Combine(_projects.GetProjectDir(projectId), url.TrimStart('/'));
+                var localRef = Path.Combine(projectDir, url.TrimStart('/'));
                 if (File.Exists(localRef))
                 {
                     mediaToPass.Add(localRef);

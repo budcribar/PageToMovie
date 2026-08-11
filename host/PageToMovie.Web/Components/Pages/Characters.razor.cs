@@ -191,11 +191,17 @@ public partial class Characters : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        Voice._voiceSaveCts?.Cancel();
-        Voice._voiceSaveCts?.Dispose();
+        if (Voice._voiceSaveCts is { } vCts)
+        {
+            await vCts.CancelAsync();
+            vCts.Dispose();
+        }
         Voice._voiceSaveCts = null;
-        LookEdit._lookSaveCts?.Cancel();
-        LookEdit._lookSaveCts?.Dispose();
+        if (LookEdit._lookSaveCts is { } lCts)
+        {
+            await lCts.CancelAsync();
+            lCts.Dispose();
+        }
         LookEdit._lookSaveCts = null;
         await Jobs.DisposeAsyncCore();
     }

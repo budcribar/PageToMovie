@@ -237,8 +237,8 @@ public static class Program
             var (pilotSurfaceOk, pilotPromptRevision, pilotPromptError) = await TryGetCommittedStage1SurfaceAsync(workspaceRoot, allowDirty: false).ConfigureAwait(false);
             if (!pilotSurfaceOk)
             {
-                Console.Error.WriteLine($"❌ Adaptation session pilot not started: {pilotPromptError}");
-                Console.Error.WriteLine("   Commit Stage‑1 prompts and host/PageToMovie.Adaptation/, then run again.");
+                await Console.Error.WriteLineAsync($"❌ Adaptation session pilot not started: {pilotPromptError}");
+                await Console.Error.WriteLineAsync("   Commit Stage‑1 prompts and host/PageToMovie.Adaptation/, then run again.");
                 return 1;
             }
             var pilotBookText = await File.ReadAllTextAsync(bookPath);
@@ -317,9 +317,9 @@ public static class Program
         var (surfaceOk, promptRevision, promptError) = await TryGetCommittedStage1SurfaceAsync(workspaceRoot, allowDirty).ConfigureAwait(false);
         if (!surfaceOk)
         {
-            Console.Error.WriteLine($"❌ Benchmark not started: {promptError}");
-            Console.Error.WriteLine("   Commit Stage‑1 prompts and host/PageToMovie.Adaptation/, then run again.");
-            Console.Error.WriteLine("   (Local experiments only: pass --allow-dirty to skip this gate.)");
+            await Console.Error.WriteLineAsync($"❌ Benchmark not started: {promptError}");
+            await Console.Error.WriteLineAsync("   Commit Stage‑1 prompts and host/PageToMovie.Adaptation/, then run again.");
+            await Console.Error.WriteLineAsync("   (Local experiments only: pass --allow-dirty to skip this gate.)");
             return 1;
         }
 

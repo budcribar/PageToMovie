@@ -4258,7 +4258,7 @@ public sealed class FilmJobService
                     // Probe the real rendered duration once — used both to carry a same-scene
                     // continuation-chain padding nudge into the next clip (below) and, if timing
                     // calibration is configured, for telemetry.
-                    var probedSec = Mp4DurationReader.TryReadSeconds(mp4Path) ?? (double)duration;
+                    var probedSec = await Mp4DurationReader.TryReadSecondsAsync(mp4Path, ct).ConfigureAwait(false) ?? (double)duration;
                     overrunSec = ComputeCarryoverOverrunSec(supportsContinue, probedSec, duration);
 
                     // Record dynamic cut timing telemetry into SQLite database for continuous server learning
@@ -4302,7 +4302,7 @@ public sealed class FilmJobService
                         string actCat = "act_generic_action";
                         if (_timingClassifier is not null)
                         {
-                            var estimation = _timingClassifier.ClassifyNovelAction(promptToAnalyze, null);
+                            var estimation = await _timingClassifier.ClassifyNovelActionAsync(promptToAnalyze, null, ct).ConfigureAwait(false);
                             if (!string.IsNullOrWhiteSpace(estimation.MatchCategoryId))
                                 actCat = estimation.MatchCategoryId;
                         }
@@ -4600,7 +4600,7 @@ public sealed class FilmJobService
             return null;
         try
         {
-            var sec = Mp4DurationReader.TryReadSeconds(videoPath);
+            var sec = await Mp4DurationReader.TryReadSecondsAsync(videoPath, ct).ConfigureAwait(false);
             if (sec is > 0)
             {
                 await MediaDurationProbe.WriteDurationSidecarAsync(videoPath, sec.Value, ct)
