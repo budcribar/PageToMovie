@@ -34,11 +34,15 @@ public partial class Cost : IAsyncDisposable
     private double _retries = 0.5;
 
     private DecisionPhase _phase = DecisionPhase.Card;
-    /// <summary>cost | duration | both | craft — last edit focus (session + localStorage).</summary>
+    /// <summary>cost | duration | both | craft — last edit focus (session + per-user prefs).</summary>
     private string? _editFocus;
     /// <summary>generate | edit — preferred DecisionCard emphasis.</summary>
     private string _preferPath = "generate";
     private bool _prefsLoaded;
+    /// <summary>G2 — skip EditFocus when true and a remembered focus exists.</summary>
+    private bool _skipEditFocus;
+    /// <summary>G4 — project production_mode draft|full.</summary>
+    private string _productionMode = ProductionModes.Full;
     private string? _shapeMessage;
     private string? _shapeError;
     private int? _maxSpeakingCast;
@@ -57,6 +61,7 @@ public partial class Cost : IAsyncDisposable
 
     [Inject] private IJSRuntime Js { get; set; } = null!;
     [Inject] private ProjectCollabHubClient CollabHub { get; set; } = null!;
+    [Inject] private StudioUserPrefsService UserPrefs { get; set; } = null!;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -182,15 +187,10 @@ public partial class Cost : IAsyncDisposable
         _prefsLoaded = true;
         try
         {
-            var path = await Js.InvokeAsync<string?>("localStorage.getItem", PrefKey("preferPath"));
-            if (string.Equals(path, "edit", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(path, "generate", StringComparison.OrdinalIgnoreCase))
-                _preferPath = path.ToLowerInvariant();
-
-            var focus = await Js.InvokeAsync<string?>("localStorage.getItem", PrefKey("editFocus"));
-            if (focus is "cost" or "duration" or "both" or "craft")
-                _editFocus = focus;
-
+            await UserPrefs.LoadAsync();
+            _preferPath = UserPrefs.PreferPath;
+            _editFocus = UserPrefs.EditFocus;
+            _skipEditFocus = UserPrefs.SkipEditFocus;
             StateHasChanged();
         }
         catch
@@ -199,17 +199,29 @@ public partial class Cost : IAsyncDisposable
         }
     }
 
-    private string PrefKey(string name) =>
-        $"ptm.decision.{(string.IsNullOrEmpty(_projectId) ? "global" : _projectId)}.{name}";
-
     private async Task PersistPrefAsync(string name, string? value)
     {
         try
         {
-            if (string.IsNullOrEmpty(value))
-                await Js.InvokeVoidAsync("localStorage.removeItem", PrefKey(name));
-            else
-                await Js.InvokeVoidAsync("localStorage.setItem", PrefKey(name), value);
+            switch (name)
+            {
+                case "preferPath":
+                    await UserPrefs.SetPreferPathAsync(value ?? "generate");
+                    _preferPath = UserPrefs.PreferPath;
+                    break;
+                case "editFocus":
+                    await UserPrefs.SetEditFocusAsync(value);
+                    _editFocus = UserPrefs.EditFocus;
+                    break;
+                case "skipEditFocus":
+                    await UserPrefs.SetSkipEditFocusAsync(string.Equals(value, "1", StringComparison.Ordinal));
+                    _skipEditFocus = UserPrefs.SkipEditFocus;
+                    break;
+                case "lastRuntimeTargetMin":
+                    if (int.TryParse(value, out var mins))
+                        await UserPrefs.SetLastRuntimeTargetMinAsync(mins);
+                    break;
+            }
         }
         catch { /* ignore */ }
     }
@@ -265,6 +277,14 @@ public partial class Cost : IAsyncDisposable
         if (string.IsNullOrWhiteSpace(_projectId)) return;
         var dto = await Engine.GetConfigAsync(_projectId);
         if (dto?.Config is null) return;
+        if (dto.Config.TryGetValue(ProductionModes.ConfigKey, out var modeEl)
+            && modeEl.ValueKind == System.Text.Json.JsonValueKind.String)
+            _productionMode = ProductionModes.Normalize(modeEl.GetString());
+        else if (!string.IsNullOrWhiteSpace(_report?.ProductionMode))
+            _productionMode = ProductionModes.Normalize(_report.ProductionMode);
+        else
+            _productionMode = ProductionModes.Full;
+
         if (dto.Config.TryGetValue("adaptation_max_speaking_cast", out var el))
         {
             if (el.ValueKind == System.Text.Json.JsonValueKind.Number && el.TryGetInt32(out var n))
@@ -284,6 +304,29 @@ public partial class Cost : IAsyncDisposable
         _maxSpeakingCast = null;
         if (string.IsNullOrEmpty(_castCapInput))
             _castCapInput = "";
+    }
+
+    private async Task SetProductionModeAsync(string mode)
+    {
+        if (string.IsNullOrWhiteSpace(_projectId)) return;
+        var normalized = ProductionModes.Normalize(mode);
+        if (string.Equals(_productionMode, normalized, StringComparison.Ordinal)) return;
+        _busy = true;
+        _error = null;
+        try
+        {
+            await Engine.SaveConfigAsync(_projectId, new Dictionary<string, object?>
+            {
+                [ProductionModes.ConfigKey] = normalized,
+            });
+            _productionMode = normalized;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally { _busy = false; }
     }
 
     // —— DecisionCard helpers ——
@@ -335,6 +378,18 @@ public partial class Cost : IAsyncDisposable
             return HasShotPlan
                 ? _report.Summary.FullFilmAllDraftUsd
                 : ProjectedEstimateUsd(DisplayTargetMinutes);
+        }
+    }
+
+    /// <summary>A5 — remaining $ to finish (missing clips + unfinished non-video), not est−spent.</summary>
+    private double DisplayRemainingUsd
+    {
+        get
+        {
+            if (_report is null) return 0;
+            if (_report.Summary.RemainingFirstPassUsd > 0 || _report.Summary.ClipsOnDisk > 0)
+                return Math.Max(0, _report.Summary.RemainingFirstPassUsd);
+            return Math.Max(0, DisplayEstimateUsd - _report.Summary.ActualUsd);
         }
     }
 
@@ -484,8 +539,23 @@ public partial class Cost : IAsyncDisposable
         }
         _preferPath = "edit";
         _ = PersistPrefAsync("preferPath", "edit");
-        _phase = DecisionPhase.EditFocus;
         _collabNote = null;
+        // G2: skip focus question when user opted out and we have a remembered focus
+        if (_skipEditFocus && _editFocus is "cost" or "duration" or "both" or "craft")
+        {
+            _phase = DecisionPhase.Shaping;
+            return;
+        }
+        _phase = DecisionPhase.EditFocus;
+    }
+
+    private async Task ToggleSkipEditFocusAsync(ChangeEventArgs e)
+    {
+        var on = e.Value is bool b && b
+            || string.Equals(e.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(e.Value?.ToString(), "on", StringComparison.OrdinalIgnoreCase);
+        _skipEditFocus = on;
+        await PersistPrefAsync("skipEditFocus", on ? "1" : null);
     }
 
     private void BackToCard()

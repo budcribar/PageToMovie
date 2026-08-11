@@ -15,6 +15,7 @@ builder.Services.AddScoped<AdminSessionService>();
 builder.Services.AddScoped<ActiveProjectState>();
 builder.Services.AddScoped<StudioCapabilityState>();
 builder.Services.AddScoped<ThemeState>();
+builder.Services.AddScoped<StudioUserPrefsService>();
 builder.Services.AddScoped<ClientVideoStitchService>();
 builder.Services.AddScoped<ClientMediaFolderService>();
 builder.Services.AddScoped<ClientVoiceSubstitutionService>();

@@ -3401,6 +3401,9 @@ public sealed class FilmJobService
     {
         await _projects.RequireProjectAsync(projectId, ct);
         ApplyVideoTakeContext(req.OnlyMissing, req.TakeTrigger, forceRegen: req.Clips is { Count: > 0 });
+        // G3/G4: draft production mode softens first-watch cast plate lock (plates optional).
+        if (req.RequireLockedCharacters && _projects.IsDraftProductionMode(projectId))
+            req.RequireLockedCharacters = false;
 
         var hasClips = req.Clips is { Count: > 0 };
         var scenes = (hasClips ? req.Clips!.Select(c => c.Scene) : req.Scenes)
@@ -3628,6 +3631,9 @@ public sealed class FilmJobService
     {
         await _projects.RequireProjectAsync(projectId, ct);
         ApplyVideoTakeContext(req.OnlyMissing, req.TakeTrigger, forceRegen: req.Clip is > 0 && !req.OnlyMissing);
+        // G3/G4: draft production mode softens first-watch cast plate lock (plates optional).
+        if (req.RequireLockedCharacters && _projects.IsDraftProductionMode(projectId))
+            req.RequireLockedCharacters = false;
 
         Snapshot = new JobSnapshot
         {

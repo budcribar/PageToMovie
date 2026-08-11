@@ -71,8 +71,17 @@ else
                 </div>
                 <div class="col-md-3 col-6">
                     <div class="text-muted small text-uppercase mb-1">@L["CostPage.Remaining"]</div>
-                    <div class="fs-3 fw-semibold cost-hero-num" data-testid="cost-remaining">@Usd(Math.Max(0, estimate - s.ActualUsd))</div>
-                    <div class="small text-muted">est − spent</div>
+                    <div class="fs-3 fw-semibold cost-hero-num" data-testid="cost-remaining">@Usd(DisplayRemainingUsd)</div>
+                    <div class="small text-muted" data-testid="cost-remaining-label">
+                        @if (!string.IsNullOrWhiteSpace(_report.RemainingLabel))
+                        {
+                            <span>@_report.RemainingLabel</span>
+                        }
+                        else
+                        {
+                            <span>est − spent</span>
+                        }
+                    </div>
                 </div>
             </div>
 
@@ -91,7 +100,7 @@ else
             <hr class="my-3" />
 
             <div class="row g-3 align-items-start">
-                <div class="col-md-6">
+                <div class="col-md-4">
                     <label class="form-label small mb-1">@L["CostPage.VideoResolution"]</label>
                     <div class="btn-group d-flex" role="group" aria-label="Video resolution">
                         @foreach (var res in new[] { "480p", "720p", "1080p" })
@@ -106,7 +115,33 @@ else
                         }
                     </div>
                 </div>
-                <div class="col-md-6">
+                <div class="col-md-4">
+                    <label class="form-label small mb-1">Production mode</label>
+                    <div class="btn-group d-flex" role="group" aria-label="Production mode" data-testid="cost-production-mode">
+                        <button type="button"
+                                class="btn btn-sm @(ProductionModes.IsDraft(_productionMode) ? "btn-warning" : "btn-outline-secondary")"
+                                data-testid="cost-mode-draft"
+                                disabled="@_busy"
+                                title="Faster first watch — cast plates optional"
+                                @onclick='() => SetProductionModeAsync(ProductionModes.Draft)'>
+                            Draft
+                        </button>
+                        <button type="button"
+                                class="btn btn-sm @(ProductionModes.IsFull(_productionMode) ? "btn-primary" : "btn-outline-secondary")"
+                                data-testid="cost-mode-full"
+                                disabled="@_busy"
+                                title="Identity-locked plates required before video spend"
+                                @onclick='() => SetProductionModeAsync(ProductionModes.Full)'>
+                            Full
+                        </button>
+                    </div>
+                    <div class="small text-muted mt-1" data-testid="cost-mode-hint">
+                        @(ProductionModes.IsDraft(_productionMode)
+                            ? "Draft: gen without locking every portrait (identity may drift)."
+                            : "Full: locked cast plates required before video gen.")
+                    </div>
+                </div>
+                <div class="col-md-4">
                     @if (!string.IsNullOrWhiteSpace(_projectId))
                     {
                         <FilmLengthCard Embedded="true" ProjectId="@_projectId" Disabled="@_busy" OnChanged="LoadAsync" />
@@ -246,6 +281,14 @@ else
                             <strong>Cast, locations, or script</strong>
                             <div class="small text-muted">@EditFocusHint("craft")</div>
                         </button>
+                    </div>
+                    <div class="form-check mt-3" data-testid="decision-skip-focus">
+                        <input class="form-check-input" type="checkbox" id="skipEditFocus"
+                               checked="@_skipEditFocus"
+                               @onchange="ToggleSkipEditFocusAsync" />
+                        <label class="form-check-label small" for="skipEditFocus">
+                            Don’t ask again — remember my focus next time
+                        </label>
                     </div>
                 </div>
             </div>

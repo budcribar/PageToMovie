@@ -2761,6 +2761,10 @@ public sealed partial class ProjectStore
         }
 
         var unlocked = new List<string>();
+        // G3 draft: scene plate lock not required
+        if (IsDraftProductionMode(projectId))
+            return unlocked;
+
         foreach (var key in cast.OrderBy(k => k, StringComparer.OrdinalIgnoreCase))
         {
             var seed = GetCharacterSeed(projectId, key);
@@ -5676,6 +5680,7 @@ public sealed partial class ProjectStore
     /// a <em>locked</em> ref image — not merely a variant draft (<see cref="CharacterSummary.HasPreferred"/>).
     /// <see cref="CharacterSummary.VoiceOnly"/> skips the locked-image requirement.
     /// <see cref="CharacterSummary.IsGroup"/> is ignored for readiness (hidden on Characters UI).
+    /// G3: when project <c>production_mode=draft</c>, locked plates are optional (first-watch soft gate).
     /// Empty cast (no seeds yet) is not ready. Used for next-step gating and video-gen spend protection.
     /// </summary>
     public CastStatus ReadCastStatus(string projectId)
@@ -5688,6 +5693,7 @@ public sealed partial class ProjectStore
             if (rows.Count == 0)
                 return status;
 
+            var platesOptional = IsDraftProductionMode(projectId);
             var ready = 0;
             var missing = new List<string>();
             foreach (var c in rows)
@@ -5717,7 +5723,8 @@ public sealed partial class ProjectStore
                     && !sk.Trim().Equals("human", StringComparison.OrdinalIgnoreCase);
                 if (isNonHuman && !c.Speaks && !hasVoice)
                 {
-                    if (c.Locked)
+                    // G3 draft: plates optional even for silent non-humans
+                    if (c.Locked || platesOptional)
                         ready++;
                     else
                         missing.Add(c.Key);
@@ -5725,7 +5732,15 @@ public sealed partial class ProjectStore
                 }
 
                 // Locked only — HasPreferred can be unlocked variant_01 and is not enough to spend on video.
-                if (c.Locked && hasVoice)
+                // G3 draft: require voice (when speaking) but plates optional.
+                if (platesOptional)
+                {
+                    if (hasVoice)
+                        ready++;
+                    else
+                        missing.Add(c.Key);
+                }
+                else if (c.Locked && hasVoice)
                     ready++;
                 else
                     missing.Add(c.Key);
@@ -5743,6 +5758,19 @@ public sealed partial class ProjectStore
         return status;
     }
 
+    /// <summary>G3/G4 — true when project production_mode is draft (plates optional).</summary>
+    public bool IsDraftProductionMode(string projectId)
+    {
+        try
+        {
+            return ProductionModes.IsDraftConfig(GetConfigSync(projectId));
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     /// <summary>
     /// Project-wide cast gate before any video spend: every <em>speaking</em> seed needs a voice profile;
     /// every single on-screen face needs a locked ref image (not just a variant draft).
@@ -5750,6 +5778,7 @@ public sealed partial class ProjectStore
     /// <see cref="CharacterSummary.IsGroup"/> never blocks (not shown for operator pin).
     /// A non-speaking seed (no voice profile, no voice label, no clone sample — e.g. an animal like the
     /// Lamb) does NOT require a voice; it still needs a locked image if it appears on screen.
+    /// G3: when <c>production_mode=draft</c>, locked plates are optional (voice still required for speakers).
     /// Empty cast is not ready. Returns human-readable missing items (empty when ready).
     /// </summary>
     public IReadOnlyList<string> GetCastNotReadyForVideo(string projectId)
@@ -5771,6 +5800,8 @@ public sealed partial class ProjectStore
             return missing;
         }
 
+        var platesOptional = IsDraftProductionMode(projectId);
+
         foreach (var c in rows)
         {
             var hasVoice = !string.IsNullOrWhiteSpace(c.VoiceProfile);
@@ -5791,8 +5822,15 @@ public sealed partial class ProjectStore
                 && !sk.Trim().Equals("human", StringComparison.OrdinalIgnoreCase);
             if (isNonHuman && !c.Speaks && !hasVoice)
             {
-                if (!c.Locked)
+                if (!c.Locked && !platesOptional)
                     missing.Add($"{c.Key}: locked image");
+                continue;
+            }
+
+            if (platesOptional)
+            {
+                if (!hasVoice)
+                    missing.Add($"{c.Key}: voice profile");
                 continue;
             }
 

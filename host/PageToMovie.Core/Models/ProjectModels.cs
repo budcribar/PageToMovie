@@ -1442,6 +1442,14 @@ public sealed class CostReport
     public string DurationLabel { get; set; } = "";
     /// <summary>A3 — human cost line for DecisionCard (e.g. "~$42" or "~$32–$58").</summary>
     public string CostLabel { get; set; } = "";
+    /// <summary>
+    /// A5 — operational remaining strip: spent + missing $ while gen runs
+    /// (e.g. "Spent $12 · remaining $28 · finish ~$40 · 14 clips missing").
+    /// Empty when no media on disk yet.
+    /// </summary>
+    public string RemainingLabel { get; set; } = "";
+    /// <summary>G4 — <c>draft</c> | <c>full</c> production mode for this project.</summary>
+    public string ProductionMode { get; set; } = ProductionModes.Full;
     /// <summary>H5–H8 learned takes / calibration for DecisionCard.</summary>
     public CostTakesLearning TakesLearning { get; set; } = new();
     /// <summary>True when optional personal voice is included in the estimate.</summary>

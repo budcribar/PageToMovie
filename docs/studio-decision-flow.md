@@ -592,7 +592,7 @@ Use this as the build/acceptance tracker. Check items off in PRs; leave dates/no
 | [x] | **A2** Screenplay-tier estimate always available when fountain exists | Book **or** fountain import → `EstimateBasis=screenplay` |
 | [x] | **A3** Decision-facing payload: duration label + cost label + basis + confidence | Cost DecisionCard + API fields |
 | [x] | **A4** Re-estimate after fit/trim, resolution, cast cap on Decision shaping | Cost in-page toolkit |
-| | **A5** Remaining estimate while gen runs (spent + missing) | basis upgrades to `remaining` when media on disk; Film remaining strip later |
+| [x] | **A5** Remaining estimate while gen runs (spent + missing) | basis `remaining` + `RemainingLabel`; Film remaining strip + Cost remaining uses RemainingFirstPassUsd |
 | [x] | **A6** UI copy: “forecast on current plan,” not final invoice | Cost page header |
 
 ### Phase B — Decision card (pre-gen hub)
@@ -654,10 +654,10 @@ Use this as the build/acceptance tracker. Check items off in PRs; leave dates/no
 
 | Done | Item | Notes |
 |:----:|------|-------|
-| | **G1** User prefs store for path/focus/runtime | **Not** project-global |
-| | **G2** Optional “don’t ask focus again” | |
-| | **G3** Soften first-watch cast lock for draft mode (plates optional) | cost mode later |
-| | **G4** Budget/draft vs full as **mode**, not separate app | when economics need it |
+| [x] | **G1** User prefs store for path/focus/runtime | **Not** project-global — `StudioUserPrefsService` per userId localStorage |
+| [x] | **G2** Optional “don’t ask focus again” | `skipEditFocus` checkbox on EditFocus; skips to Shaping |
+| [x] | **G3** Soften first-watch cast lock for draft mode (plates optional) | `production_mode=draft` → ReadCastStatus / gen gates skip plates |
+| [x] | **G4** Budget/draft vs full as **mode**, not separate app | Draft/Full toggle on Estimate; same Film hub |
 
 ### Phase H — Regen feedback → better estimates
 
@@ -751,5 +751,5 @@ Use this as the build/acceptance tracker. Check items off in PRs; leave dates/no
 
 ---
 
-*Last updated: 2026-08-11 — Phase H complete (H1–H9): take events, reasons, takes aggregates, expected_takes blend, DecisionCard ranges, admin dashboard, calibration, privacy fail-open.*
+*Last updated: 2026-08-11 — A5 Film remaining strip + Phase G G1–G4 (user prefs, skip focus, draft/full production mode, soft cast plates).*
 

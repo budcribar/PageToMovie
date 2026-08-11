@@ -125,8 +125,11 @@ public partial class Scenes
 
     internal string CastBlockedTitle =>
         _castMissing.Count > 0
-            ? $"Approve voice + locked image first: {string.Join(", ", _castMissing.Take(4))}{(_castMissing.Count > 4 ? "…" : "")}"
-            : "Approve voice + locked image for every character before generating video";
+            ? $"Approve voice first: {string.Join(", ", _castMissing.Take(4))}{(_castMissing.Count > 4 ? "…" : "")}"
+                + (ProductionModes.IsDraft(_costReport?.ProductionMode) ? " (draft: plates optional)" : " (+ locked image)")
+            : ProductionModes.IsDraft(_costReport?.ProductionMode)
+                ? "Approve voice for speaking cast before generating (draft: plates optional)"
+                : "Approve voice + locked image for every character before generating video";
 
 
 

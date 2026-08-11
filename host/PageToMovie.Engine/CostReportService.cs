@@ -407,6 +407,28 @@ public sealed class CostReportService
                 ? $"~${costLow:0.##}–${costHigh:0.##}"
                 : $"~${costPoint:0.##}";
 
+        // A5 — remaining strip when any media exists (spent + missing operational).
+        var remainingUsd = Math.Round(remainingDraft, 2);
+        var spentUsd = Math.Round(actual.ActualUsd, 2);
+        var finishUsd = Math.Round(spentUsd + remainingUsd, 2);
+        string remainingLabel = "";
+        if (clipsOnDisk > 0 || spentUsd > 0.005)
+        {
+            var parts = new List<string>
+            {
+                $"Spent ${spentUsd:0.##}",
+                $"remaining ${remainingUsd:0.##}",
+                $"finish ~${finishUsd:0.##}",
+            };
+            if (clipsMissing > 0)
+                parts.Add($"{clipsMissing} clip{(clipsMissing == 1 ? "" : "s")} missing");
+            else if (clipsOnDisk > 0 && clipsMissing == 0)
+                parts.Add("all clips on disk");
+            remainingLabel = string.Join(" · ", parts);
+        }
+
+        var productionMode = ProductionModes.FromConfig(cfg);
+
         return new CostReport
         {
             ProjectId = projectId,
@@ -427,6 +449,8 @@ public sealed class CostReportService
             DurationMinutes = durationMinutes,
             DurationLabel = durationLabel,
             CostLabel = costLabel,
+            RemainingLabel = remainingLabel,
+            ProductionMode = productionMode,
             TakesLearning = takesLearning,
             VoiceIncludedInEstimate = voicePlan.Included,
             ChargeMultiplier = mult,
