@@ -42,7 +42,6 @@ else
 
     <div class="card cost-hub mb-2" data-testid="decision-forecast-card">
         <div class="card-body py-2 px-3">
-            @* Metrics: Duration · Movie cost · Spent · To finish (only when gen underway) *@
             <div class="row g-2 text-center cost-hub-metrics">
                 <div class="@(ShowToFinish ? "col-6 col-md-3" : "col-4")">
                     <div class="text-muted cost-hub-label">Duration</div>
@@ -66,7 +65,7 @@ else
                 @if (ShowToFinish)
                 {
                     <div class="col-6 col-md-3">
-                        <div class="text-muted cost-hub-label" title="Cost of clips still missing (not the full-movie forecast)">To finish</div>
+                        <div class="text-muted cost-hub-label" title="Cost of clips still missing">To finish</div>
                         <div class="cost-hero-num cost-hub-value" data-testid="cost-remaining">@Usd(DisplayRemainingUsd)</div>
                         @if (!string.IsNullOrWhiteSpace(_report.RemainingLabel))
                         {
@@ -75,11 +74,6 @@ else
                     </div>
                 }
             </div>
-
-            @if (!string.IsNullOrWhiteSpace(_report.TakesLearning?.HistoryLabel))
-            {
-                <div class="cost-hub-meta text-center mt-1" data-testid="cost-takes-history">@_report.TakesLearning.HistoryLabel</div>
-            }
 
             @if (!string.IsNullOrWhiteSpace(_shapeMessage))
             {
@@ -94,9 +88,9 @@ else
                 <div class="alert alert-warning py-1 px-2 small mt-2 mb-0" data-testid="decision-collab-note">@_collabNote</div>
             }
 
-            @* Plan levers on one row — no Edit-focus maze *@
+            @* Settings that move the forecast *@
             <div class="row g-2 align-items-end mt-2 cost-hub-controls">
-                <div class="col-sm-6 col-lg-3">
+                <div class="col-sm-6 col-md-4">
                     <label class="form-label cost-hub-label mb-1">@L["CostPage.VideoResolution"]</label>
                     <div class="btn-group d-flex" role="group" aria-label="Video resolution">
                         @foreach (var res in new[] { "480p", "720p", "1080p" })
@@ -111,7 +105,7 @@ else
                         }
                     </div>
                 </div>
-                <div class="col-sm-6 col-lg-3">
+                <div class="col-sm-6 col-md-4">
                     <label class="form-label cost-hub-label mb-1">Production</label>
                     <div class="btn-group d-flex" role="group" aria-label="Production mode" data-testid="cost-production-mode">
                         <button type="button"
@@ -135,7 +129,7 @@ else
                         @(ProductionModes.IsDraft(_productionMode) ? "Draft" : "Full")
                     </div>
                 </div>
-                <div class="col-sm-6 col-lg-3">
+                <div class="col-md-4">
                     @if (!string.IsNullOrWhiteSpace(_projectId))
                     {
                         <FilmLengthCard Embedded="true" ProjectId="@_projectId" Disabled="@_busy" OnChanged="OnFilmLengthChangedAsync" />
@@ -145,38 +139,55 @@ else
                                     class="btn btn-sm btn-outline-warning mt-1"
                                     data-testid="cost-fit-target"
                                     disabled="@_busy"
-                                    title="Rewrite screenplay + refresh plan density for the new length"
+                                    title="Rewrite screenplay density for the new length"
                                     @onclick="RunFitTrimAsync">
                                 Fit screenplay to target
                             </button>
                         }
                     }
                 </div>
-                <div class="col-sm-6 col-lg-3">
-                    <label class="form-label cost-hub-label mb-1">Max speaking cast</label>
-                    <div class="input-group input-group-sm">
-                        <input type="number" class="form-control" min="1" max="40" placeholder="default"
-                               @bind="_castCapInput" disabled="@_busy" data-testid="shaping-cast-cap" />
-                        <button type="button" class="btn btn-outline-primary" disabled="@_busy"
-                                @onclick="SaveCastCapAsync" data-testid="shaping-cast-cap-save">
-                            Save
+            </div>
+
+            @if (_phase == DecisionPhase.ConfirmGenerate)
+            {
+                <div class="cost-hub-decision border-top border-secondary border-opacity-25 mt-2 pt-2"
+                     data-testid="decision-confirm-generate">
+                    <div class="fw-semibold mb-1">Start generating?</div>
+                    <p class="small mb-2 mb-md-2">
+                        About <strong>@DurationLabel</strong> · <strong>@CostLabel</strong>
+                        (@_report.DraftResolution@(EstimateIsScaledForTarget ? ", scaled to target" : "")).
+                        @if (_confirmEstimateSnapshot is double snap && Math.Abs(snap - estimate) > 0.5)
+                        {
+                            <span class="text-warning"> Updated from @Usd(snap).</span>
+                        }
+                    </p>
+                    @if (PlanBusy)
+                    {
+                        <div class="alert alert-warning py-1 px-2 small mb-2" data-testid="decision-plan-busy">
+                            <code>@_scriptLeaseHolder</code> is editing the plan — full generate blocked.
+                        </div>
+                    }
+                    @if (GeneratingBusy)
+                    {
+                        <div class="alert alert-info py-1 px-2 small mb-2" data-testid="decision-generating-busy-confirm">
+                            A job is already running — open Film to watch it.
+                        </div>
+                    }
+                    <div class="d-flex flex-wrap gap-2">
+                        <button type="button"
+                                class="btn btn-success fw-semibold"
+                                data-testid="decision-confirm-go"
+                                disabled="@(_busy || !ActiveProject.CanEstimate || PlanBusy || GeneratingBusy || !IsOwner)"
+                                @onclick="ConfirmGenerateAsync">
+                            Accept · start generating
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" data-testid="decision-confirm-back" @onclick="BackToCard">
+                            Cancel
                         </button>
                     </div>
                 </div>
-            </div>
-
-            @* Craft links — not a separate step *@
-            @if (ActiveProject.CanCharacters || ActiveProject.CanEstimate)
-            {
-                <div class="d-flex flex-wrap gap-2 mt-2 small" data-testid="shaping-craft">
-                    <span class="text-muted align-self-center">Craft:</span>
-                    <a class="btn btn-outline-secondary btn-sm py-0" href="characters" data-testid="shaping-to-cast">Cast & voice</a>
-                    <a class="btn btn-outline-secondary btn-sm py-0" href="locations" data-testid="shaping-to-locs">Locations</a>
-                    <a class="btn btn-outline-secondary btn-sm py-0" href="adaptation/screenplay" data-testid="shaping-to-script">Script</a>
-                </div>
             }
-
-            @if (!string.IsNullOrWhiteSpace(_projectId) && ActiveProject.HasProject && ActiveProject.CanEstimate && !IsViewerOnly)
+            else if (!string.IsNullOrWhiteSpace(_projectId) && ActiveProject.HasProject && ActiveProject.CanEstimate && !IsViewerOnly)
             {
                 <div class="cost-hub-decision border-top border-secondary border-opacity-25 mt-2 pt-2" data-testid="decision-card">
                     <div class="d-flex flex-wrap align-items-center gap-2">
@@ -186,33 +197,27 @@ else
                                     class="btn btn-primary fw-semibold"
                                     data-testid="decision-generate"
                                     disabled="@(_busy || GeneratingBusy || PlanBusy)"
-                                    @onclick="ConfirmGenerateAsync">
-                                @(ActiveProject.CanScenes ? "Generate missing clips" : "Generate movie")
-                            </button>
-                        }
-                        else
-                        {
-                            <button type="button"
-                                    class="btn btn-outline-primary fw-semibold"
-                                    data-testid="decision-generate-scenes"
-                                    disabled="@_busy"
                                     @onclick="ChooseGenerate">
-                                Open Film for scenes →
+                                Generate movie
                             </button>
                         }
+                        <a class="btn btn-outline-secondary"
+                           href="@(ActiveProject.CanScenes ? "scenes" : "javascript:void(0)")"
+                           data-testid="decision-go-film"
+                           title="@(ActiveProject.CanScenes ? "Open Film without starting a job" : "Film unlocks after you generate (shot plan)")"
+                           @onclick:preventDefault="@(!ActiveProject.CanScenes)">
+                            Go to Film
+                        </a>
                         @if (GeneratingBusy)
                         {
                             <span class="small text-info" data-testid="decision-generating-busy">
-                                Job running (<code>@_blockingJobKind</code>) — watch on Film.
-                            </span>
-                        }
-                        else if (PlanBusy && IsOwner)
-                        {
-                            <span class="small text-warning" data-testid="decision-plan-busy-hint">
-                                <code>@_scriptLeaseHolder</code> holds the plan lease.
+                                Job running — watch on Film.
                             </span>
                         }
                     </div>
+                    <p class="cost-hub-meta mt-1 mb-0">
+                        Generate shows the cost, then starts the movie. Fill missing clips anytime on Film.
+                    </p>
                 </div>
             }
             else if (IsViewerOnly)

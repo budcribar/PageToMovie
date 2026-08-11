@@ -563,15 +563,29 @@ public partial class Cost : IAsyncDisposable
             // I1: Editors generate scenes on Film, not whole movie from DecisionCard
             _preferPath = "generate";
             await PersistPrefAsync("preferPath", "generate");
-            _collabNote = "Editors generate individual scenes on Film — only the Owner starts a full-movie pass from Estimate.";
             Nav.NavigateTo(ActiveProject.CanScenes
                 ? (ActiveProject.IsSimpleVoice ? "scenes?simple=1" : "scenes")
-                : "adaptation/shots?from=decision");
+                : "scenes");
             return;
         }
 
-        // One-click: start gen (or B6 auto-chain) — no intermediate confirm card.
-        await ConfirmGenerateAsync();
+        // Show cost confirm, then Accept starts generating (fill-holes / B6 live in ConfirmGenerateAsync).
+        _preferPath = "generate";
+        await PersistPrefAsync("preferPath", "generate");
+        _busy = true;
+        try
+        {
+            await LoadAsync();
+            if (_report is null)
+            {
+                _error ??= "Could not refresh the estimate.";
+                return;
+            }
+            _confirmEstimateSnapshot = DisplayEstimateUsd;
+            _collabNote = null;
+            _phase = DecisionPhase.ConfirmGenerate;
+        }
+        finally { _busy = false; }
     }
 
     private void ChooseEdit()
