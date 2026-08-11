@@ -2805,9 +2805,13 @@ public sealed partial class ProjectStore
         return $"{k}_ref.png";
     }
 
-    public static string LocationVariantFileName(string locKey, int index) =>
-        $"{Path.GetFileNameWithoutExtension(LocationRefFileName(locKey)).Replace("_ref", "", StringComparison.OrdinalIgnoreCase)}_variant_{index:D2}.png"
-            .ToLowerInvariant();
+    public static string LocationVariantFileName(string locKey, int index)
+    {
+        var stem = Path.GetFileNameWithoutExtension(LocationRefFileName(locKey));
+        if (stem.EndsWith("_ref", StringComparison.OrdinalIgnoreCase))
+            stem = stem[..^"_ref".Length];
+        return $"{stem}_variant_{Math.Clamp(index, 1, 9):D2}.png".ToLowerInvariant();
+    }
 
     /// <summary>Absolute path to locked location plate if present and non-empty.</summary>
     public string? ResolveLocationRefPath(string projectId, string locKey)
@@ -2833,11 +2837,31 @@ public sealed partial class ProjectStore
     private void FillLocationPlateStatus(string projectId, LocationSummary row)
     {
         var path = ResolveLocationRefPath(projectId, row.Key);
-        if (path is null) return;
-        row.Locked = true;
-        row.HasPreferred = true;
-        row.PreferredRelativePath = Path.Combine(LocationAssetsRelativeDir, Path.GetFileName(path)).Replace('\\', '/');
-        row.PreferredUrl = $"/api/projects/{Uri.EscapeDataString(projectId)}/locations/{Uri.EscapeDataString(row.Key)}/ref";
+        if (path is not null)
+        {
+            row.Locked = true;
+            row.HasPreferred = true;
+            row.PreferredRelativePath = Path.Combine(LocationAssetsRelativeDir, Path.GetFileName(path)).Replace('\\', '/');
+            row.PreferredUrl = $"/api/projects/{Uri.EscapeDataString(projectId)}/locations/{Uri.EscapeDataString(row.Key)}/ref";
+        }
+
+        var dir = Path.Combine(GetProjectDir(projectId), LocationAssetsRelativeDir);
+        if (!Directory.Exists(dir)) return;
+        for (var i = 1; i <= 6; i++)
+        {
+            var name = LocationVariantFileName(row.Key, i);
+            var full = Path.Combine(dir, name);
+            var exists = File.Exists(full) && new FileInfo(full).Length >= 64;
+            if (!exists) continue;
+            row.Variants.Add(new CharacterImageRef
+            {
+                FileName = name,
+                RelativePath = Path.Combine(LocationAssetsRelativeDir, name).Replace('\\', '/'),
+                Index = i,
+                Exists = true,
+                Url = $"/api/projects/{Uri.EscapeDataString(projectId)}/locations/{Uri.EscapeDataString(row.Key)}/variants/{i}",
+            });
+        }
     }
 
     /// <summary>Write description + visual_lock into location_seed_tokens (cast_seeds / blueprint).</summary>

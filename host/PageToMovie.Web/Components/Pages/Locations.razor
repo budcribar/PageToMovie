@@ -13,7 +13,7 @@
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <div>
             <h1 class="h4 mb-0">Locations</h1>
-            <p class="small text-muted mb-0">Set design locks — describe by text or voice; lock a plate for video refs (next: generate).</p>
+            <p class="small text-muted mb-0">Set plates — text or voice, generate 3 looks, lock one for video refs.</p>
         </div>
         <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@_busy" @onclick="LoadAsync">Refresh</button>
     </div>
@@ -25,6 +25,19 @@
     @if (!string.IsNullOrWhiteSpace(_message))
     {
         <div class="alert alert-success py-2">@_message</div>
+    }
+
+    @if (_job is { } j && (j.Status is "running" or "queued"))
+    {
+        <JobProgressCard Status="@j.Status"
+                         Message="@(j.Message ?? "")"
+                         Index="@j.Index"
+                         Total="@j.Total"
+                         Kind="@j.Kind"
+                         LogLines="@j.Log"
+                         ShowLog="true"
+                         CssClass="mb-3"
+                         TestId="loc-job-panel" />
     }
 
     @if (string.IsNullOrWhiteSpace(_projectId))
@@ -49,7 +62,7 @@
                                 @onclick="() => SelectAsync(key)">
                             <div class="fw-semibold text-uppercase small">@loc.DisplayName</div>
                             <div class="small opacity-75">
-                                @(loc.Locked ? "Locked plate" : "No plate yet")
+                                @(loc.Locked ? "Locked plate" : loc.Variants.Any(v => v.Exists) ? "Has variants" : "No plate yet")
                             </div>
                         </button>
                     }
@@ -77,10 +90,35 @@
                             @if (_selected.HasPreferred && !string.IsNullOrWhiteSpace(_plateUrl))
                             {
                                 <div class="mb-3">
+                                    <div class="small text-muted mb-1">Locked plate</div>
                                     <img src="@_plateUrl" alt="Location plate" class="img-fluid rounded border border-secondary"
                                          style="max-height: 220px; object-fit: contain;" />
                                 </div>
                             }
+
+                            @if (_selected.Variants.Any(v => v.Exists))
+                            {
+                                <div class="mb-3">
+                                    <div class="small text-muted mb-1">Pick a variant to lock</div>
+                                    <div class="d-flex flex-wrap gap-2">
+                                        @foreach (var v in _selected.Variants.Where(x => x.Exists).OrderBy(x => x.Index))
+                                        {
+                                            var vi = v.Index ?? 1;
+                                            var src = KeyFormatting.CacheBust(Engine.LocationVariantUrl(_projectId, _selected.Key, vi));
+                                            <div class="border border-secondary rounded p-1 text-center" style="width: 140px;">
+                                                <img src="@src" alt="Variant @vi" class="img-fluid rounded mb-1" style="height: 80px; object-fit: cover; width: 100%;" />
+                                                <button type="button" class="btn btn-sm btn-primary w-100"
+                                                        disabled="@_busy"
+                                                        data-testid="@($"loc-lock-v{vi}")"
+                                                        @onclick="() => LockVariantAsync(vi)">
+                                                    Lock #@vi
+                                                </button>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            }
+
                             <LocationLookPanel Description="@_editDescription"
                                                DescriptionChanged="OnDescriptionChanged"
                                                VisualLock="@_editVisualLock"
@@ -92,11 +130,18 @@
                                                Hint="@(_saveHint ?? "Text saves automatically · use Voice to dictate")"
                                                TestId="loc-look-panel">
                                 <Actions>
+                                    <button type="button" class="btn btn-sm btn-primary"
+                                            disabled="@(_busy || string.IsNullOrWhiteSpace(_editDescription) && string.IsNullOrWhiteSpace(_editVisualLock))"
+                                            data-testid="loc-generate-looks"
+                                            @onclick="StartGenerateAsync">
+                                        @(string.IsNullOrWhiteSpace(_imageEditInstruction)
+                                            ? "Generate 3 looks"
+                                            : "Apply edit → 3 looks")
+                                    </button>
                                     <label class="btn btn-sm btn-outline-primary mb-0">
                                         Upload & lock plate
                                         <InputFile OnChange="OnUploadAsync" accept="image/*" class="d-none" disabled="@_busy" />
                                     </label>
-                                    <span class="small text-muted">Generate-from-text ships next; storage + lock is live.</span>
                                 </Actions>
                             </LocationLookPanel>
                         </div>

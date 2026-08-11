@@ -414,6 +414,8 @@ public sealed class LocationSummary
     public string? PreferredUrl { get; set; }
     /// <summary>Relative path under the project for the locked ref image.</summary>
     public string? PreferredRelativePath { get; set; }
+    /// <summary>Generated set plate options (variant_01..).</summary>
+    public List<CharacterImageRef> Variants { get; set; } = new();
 }
 
 /// <summary>Save location description / visual_lock (Locations look panel).</summary>
@@ -421,6 +423,20 @@ public sealed class UpdateLocationLookRequest
 {
     public string? Description { get; set; }
     public string? VisualLock { get; set; }
+}
+
+/// <summary>Background job: generate location set plate variants (Grok image).</summary>
+public sealed class StartLocationVariantsRequest
+{
+    public string ProjectId { get; set; } = "";
+    public string LocKey { get; set; } = "";
+    /// <summary>Variant count (default 3).</summary>
+    public int Count { get; set; } = 3;
+    public string? DescriptionOverride { get; set; }
+    public string? VisualLockOverride { get; set; }
+    /// <summary>When set with an existing lock, runs image edit from the locked plate.</summary>
+    public string? ImageEditInstruction { get; set; }
+    public bool PersistDescription { get; set; } = true;
 }
 
 /// <summary>

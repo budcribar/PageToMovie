@@ -21,6 +21,8 @@ public partial class Locations : IDisposable
     private bool _busy;
     private bool _loading = true;
     private CancellationTokenSource? _saveCts;
+    private JobSnapshot? _job;
+    private CancellationTokenSource? _pollCts;
 
     protected override async Task OnInitializedAsync()
     {
@@ -146,6 +148,117 @@ public partial class Locations : IDisposable
         }
     }
 
+    private async Task StartGenerateAsync()
+    {
+        if (_selected is null) return;
+        if (string.IsNullOrWhiteSpace(_editDescription) && string.IsNullOrWhiteSpace(_editVisualLock))
+        {
+            _error = "Add a description or visual lock first.";
+            return;
+        }
+
+        _busy = true;
+        _error = null;
+        _message = null;
+        var hasEdit = !string.IsNullOrWhiteSpace(_imageEditInstruction) && _selected.HasPreferred;
+        try
+        {
+            await Engine.StartLocationVariantsAsync(new StartLocationVariantsRequest
+            {
+                ProjectId = _projectId,
+                LocKey = _selected.Key,
+                Count = 3,
+                DescriptionOverride = _editDescription,
+                VisualLockOverride = _editVisualLock,
+                ImageEditInstruction = hasEdit ? _imageEditInstruction : null,
+                PersistDescription = !hasEdit,
+            });
+            if (hasEdit)
+                _imageEditInstruction = "";
+            _message = "Generating set plates…";
+            StartJobPoll();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void StartJobPoll()
+    {
+        _pollCts?.Cancel();
+        _pollCts?.Dispose();
+        _pollCts = new CancellationTokenSource();
+        var token = _pollCts.Token;
+        _ = PollJobAsync(token);
+    }
+
+    private async Task PollJobAsync(CancellationToken token)
+    {
+        try
+        {
+            for (var i = 0; i < 120 && !token.IsCancellationRequested; i++)
+            {
+                var jobs = await Engine.GetJobAsync(token);
+                var j = jobs?.Job;
+                if (j is not null &&
+                    string.Equals(j.Kind, "location_variants", StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(j.ProjectId, _projectId, StringComparison.OrdinalIgnoreCase))
+                {
+                    _job = j;
+                    await InvokeAsync(StateHasChanged);
+                    if (j.IsFinished)
+                    {
+                        if (j.IsSuccess)
+                        {
+                            _message = j.Message ?? "Set plates ready.";
+                            await LoadAsync();
+                            if (!string.IsNullOrWhiteSpace(_selectedKey))
+                                await SelectAsync(_selectedKey);
+                        }
+                        else if (!string.IsNullOrWhiteSpace(j.Error))
+                            _error = j.Error;
+                        return;
+                    }
+                }
+                await Task.Delay(1500, token);
+            }
+        }
+        catch (TaskCanceledException) { }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task LockVariantAsync(int index)
+    {
+        if (_selected is null) return;
+        _busy = true;
+        _error = null;
+        _message = null;
+        try
+        {
+            await Engine.LockLocationVariantAsync(_projectId, _selected.Key, index);
+            _message = $"Locked variant {index}.";
+            await LoadAsync();
+            await SelectAsync(_selected.Key);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
     private async Task OnUploadAsync(InputFileChangeEventArgs e)
     {
         if (_selected is null) return;
@@ -177,5 +290,7 @@ public partial class Locations : IDisposable
         ActiveProject.Changed -= OnProjectChanged;
         _saveCts?.Cancel();
         _saveCts?.Dispose();
+        _pollCts?.Cancel();
+        _pollCts?.Dispose();
     }
 }

@@ -30,6 +30,7 @@ public sealed class FilmJobService
     private readonly ProjectStore _projects;
     private readonly IVideoClient _grok;
     private readonly CharacterDesignService _characters;
+    private readonly LocationDesignService _locations;
     private readonly CharacterBookPlateService _plates;
     private readonly BookPrepareService _books;
     private readonly IChatClient _chat;
@@ -80,6 +81,7 @@ public sealed class FilmJobService
         ProjectStore projects,
         IVideoClient grok,
         CharacterDesignService characters,
+        LocationDesignService locations,
         CharacterBookPlateService plates,
         BookPrepareService books,
         IChatClient chat,
@@ -126,6 +128,7 @@ public sealed class FilmJobService
         _projects = projects;
         _grok = grok;
         _characters = characters;
+        _locations = locations;
         _plates = plates;
         _books = books;
         _chat = chat;
@@ -1258,6 +1261,27 @@ public sealed class FilmJobService
             lockReason: $"char variants {req.CharKey}");
     }
 
+    /// <summary>Generate location set plate variants via Grok image API.</summary>
+    public Task<JobSnapshot> StartLocationVariantsAsync(StartLocationVariantsRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.LocKey))
+            throw new InvalidOperationException("locKey required");
+        var projectId = string.IsNullOrWhiteSpace(req.ProjectId)
+            ? _projects.ActiveProjectId
+            : req.ProjectId;
+        return StartBackgroundJobAsync(
+            ct => RunLocationVariantsAsync(req, projectId, ct),
+            new JobEnqueueMeta
+            {
+                Kind = "location_variants",
+                ProjectId = projectId,
+                CharKey = req.LocKey,
+                Message = $"Queued set plate gen for {req.LocKey}…",
+            },
+            lockResources: new[] { LockKeys.Location(projectId, req.LocKey) },
+            lockReason: $"loc variants {req.LocKey}");
+    }
+
     /// <summary>Background music (or singing) for one scene via audio API (client saves the
     /// segment(s)). <paramref name="model"/> overrides the project's configured audio_model_name for
     /// this run only; <paramref name="isVocal"/> requests sung vocals (Suno-family models only).</summary>
@@ -2099,6 +2123,78 @@ public sealed class FilmJobService
         catch (Exception ex)
         {
             _log.LogError(ex, "Video edit failed");
+            await FinishAsync("error", ex.Message, ex.Message);
+        }
+    }
+
+    private async Task RunLocationVariantsAsync(StartLocationVariantsRequest req, string projectId, CancellationToken ct)
+    {
+        await _projects.RequireProjectAsync(projectId, ct);
+
+        Snapshot = new JobSnapshot
+        {
+            Status = "running",
+            Kind = "location_variants",
+            ProjectId = projectId,
+            CharKey = req.LocKey,
+            Message = $"Generating set plates for {req.LocKey}…",
+            Index = 0,
+            Total = req.Count > 0 ? req.Count : 3,
+            StartedAt = DateTimeOffset.UtcNow,
+            Log = new List<string>(),
+        };
+        RegisterActiveJob();
+        await PublishAsync();
+
+        try
+        {
+            await AppendLogAsync($"Location design (Grok image) for {req.LocKey}");
+            await UpdateAsync(s => s.Message = "Building set prompt…");
+
+            var result = await _locations.GenerateVariantsAsync(
+                projectId,
+                req.LocKey,
+                n: req.Count,
+                descriptionOverride: req.DescriptionOverride,
+                visualLockOverride: req.VisualLockOverride,
+                imageEditInstruction: req.ImageEditInstruction,
+                persistDescription: req.PersistDescription,
+                onProgress: line =>
+                {
+                    _ = AppendLogAsync(line);
+                    var m = System.Text.RegularExpressions.Regex.Match(line, @"saved variant (\d+)/(\d+)");
+                    if (m.Success && int.TryParse(m.Groups[1].Value, out var idx))
+                        _ = UpdateAsync(s => { s.Index = idx; s.Message = line; });
+                    else if (line.Contains("generating", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var g = System.Text.RegularExpressions.Regex.Match(line, @"generating\s+(\d+)");
+                        if (g.Success && int.TryParse(g.Groups[1].Value, out var total) && total > 0)
+                            _ = UpdateAsync(s => { s.Total = total; s.Message = line; });
+                        else
+                            _ = UpdateAsync(s => s.Message = line);
+                    }
+                    else
+                        _ = UpdateAsync(s => s.Message = line);
+                },
+                ct: ct);
+
+            await UpdateAsync(s =>
+            {
+                s.Index = result.Paths.Count;
+                s.Total = Math.Max(s.Total, result.Paths.Count);
+            });
+            await AppendLogAsync($"mode={result.Mode} · {result.Paths.Count} file(s)");
+            await FinishAsync(
+                "done",
+                $"Set plates ready for {req.LocKey} ({result.Mode}, {result.Paths.Count} image(s))");
+        }
+        catch (OperationCanceledException)
+        {
+            await FinishAsync("cancelled", "Cancelled by user");
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Location variants failed");
             await FinishAsync("error", ex.Message, ex.Message);
         }
     }

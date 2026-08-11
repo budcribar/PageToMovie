@@ -40,6 +40,14 @@ public static class LockKeys
         return $"project:{projectId.Trim()}:char:{charKey.Trim()}";
     }
 
+    public static string Location(string projectId, string locKey)
+    {
+        RequireProjectId(projectId);
+        if (string.IsNullOrWhiteSpace(locKey))
+            throw new ArgumentException("locKey required", nameof(locKey));
+        return $"project:{projectId.Trim()}:loc:{locKey.Trim()}";
+    }
+
     public static string YouTube(string projectId)
     {
         RequireProjectId(projectId);

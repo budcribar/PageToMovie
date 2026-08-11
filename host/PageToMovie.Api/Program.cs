@@ -146,6 +146,7 @@ builder.Services.AddHttpClient("catalog-probe", c =>
     c.DefaultRequestHeaders.UserAgent.ParseAdd("PageToMovie-CatalogProbe/1.0");
 });
 builder.Services.AddSingleton<CharacterDesignService>();
+builder.Services.AddSingleton<LocationDesignService>();
 builder.Services.AddSingleton<CharacterBookPlateService>();
 builder.Services.AddSingleton<CastVisualLiteralizeService>();
 builder.Services.AddSingleton<CastFromScreenplayService>();
@@ -3319,6 +3320,44 @@ app.MapPost("/api/projects/{id}/locations/{locKey}/upload-ref", async (
     }
 });
 
+app.MapGet("/api/projects/{projectId}/locations/{locKey}/variants/{index:int}",
+    (HttpContext ctx, string projectId, string locKey, int index, ProjectStore store) =>
+{
+    locKey = Uri.UnescapeDataString(locKey ?? "");
+    var dir = store.GetLocationAssetsDir(projectId);
+    var name = ProjectStore.LocationVariantFileName(locKey, index);
+    var path = Path.Combine(dir, name);
+    if (!File.Exists(path))
+        return Results.NotFound(new { ok = false, error = "Variant not found" });
+    return ServeCachedFile(ctx, path, "image/png", immutable: false);
+});
+
+app.MapPost("/api/projects/{id}/locations/{locKey}/lock-variant", async (
+    string id,
+    string locKey,
+    int? index,
+    LocationDesignService locations) =>
+{
+    try
+    {
+        locKey = Uri.UnescapeDataString(locKey ?? "");
+        var vi = index is > 0 ? index.Value : 1;
+        var path = await locations.LockVariantAsync(id, locKey, vi);
+        return Results.Ok(new
+        {
+            ok = true,
+            message = $"Locked location plate from variant {vi}",
+            path,
+            url = $"/api/projects/{Uri.EscapeDataString(id)}/locations/{Uri.EscapeDataString(locKey)}/ref",
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { ok = false, error = ex.Message });
+    }
+});
+
+
 // immutable=true is only correct for files that can never change at the same URL (e.g. book
 // page images extracted once at import). Character ref/variant/book-ref images are overwritten
 // in place at the same path on regeneration — "public, max-age=31536000, immutable" would tell
@@ -3458,6 +3497,32 @@ app.MapPost("/api/jobs/character-variants", async (StartCharacterVariantsRequest
         return JobStartError(ex, jobService);
     }
 });
+
+app.MapPost("/api/jobs/location-variants", async (StartLocationVariantsRequest body, FilmJobService jobService) =>
+{
+    try
+    {
+        if (string.IsNullOrWhiteSpace(body.LocKey))
+            return Results.BadRequest(new { ok = false, error = "locKey required" });
+        var job = await jobService.StartLocationVariantsAsync(body);
+        return Results.Ok(new
+        {
+            ok = true,
+            jobId = job.JobId,
+            message = $"Queued set plate generation for {body.LocKey}",
+            job,
+        });
+    }
+    catch (LockConflictException ex)
+    {
+        return Results.Conflict(new { ok = false, error = ex.Message, resource = ex.Resource, owner = ex.OwnerUserId });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { ok = false, error = ex.Message });
+    }
+});
+
 
 /// <summary>Save voice_label / voice_profile into cast_seeds (+ blueprint) character seeds.</summary>
 app.MapPost("/api/projects/{id}/characters/{charKey}/voice",

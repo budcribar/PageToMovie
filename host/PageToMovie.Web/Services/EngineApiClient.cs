@@ -3829,6 +3829,38 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         await EnsureOkAsync(resp, ct);
     }
 
+    public async Task StartLocationVariantsAsync(
+        StartLocationVariantsRequest req,
+        CancellationToken ct = default)
+    {
+        using var resp = await _http.PostAsJsonAsync(
+            "/api/jobs/location-variants",
+            req,
+            JsonOpts,
+            ct);
+        await EnsureOkAsync(resp, ct);
+    }
+
+    public async Task LockLocationVariantAsync(
+        string projectId,
+        string locKey,
+        int variantIndex,
+        CancellationToken ct = default)
+    {
+        using var resp = await _http.PostAsJsonAsync(
+            $"/api/projects/{Uri.EscapeDataString(projectId)}/locations/{Uri.EscapeDataString(locKey)}/lock-variant?index={variantIndex}",
+            new { },
+            JsonOpts,
+            ct);
+        await EnsureOkAsync(resp, ct);
+    }
+
+    public string LocationVariantUrl(string projectId, string locKey, int index) =>
+        AbsolutizeMediaUrl(
+            $"/api/projects/{Uri.EscapeDataString(projectId)}/locations/{Uri.EscapeDataString(locKey)}/variants/{index}")
+        ?? $"/api/projects/{Uri.EscapeDataString(projectId)}/locations/{Uri.EscapeDataString(locKey)}/variants/{index}";
+
+
     public async Task<bool> AugmentProjectMusicAsync(string projectId, string? model = null, CancellationToken ct = default)
     {
         var url = $"/api/projects/{Uri.EscapeDataString(projectId)}/augment-music";
