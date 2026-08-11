@@ -19,8 +19,10 @@ public sealed class AdminSessionService
 
     public AdminSessionService(IJSRuntime? js = null) => _js = js;
 
+    private const string LocalMode = "local";
+
     public string? Token { get; private set; }
-    public string UserId { get; private set; } = "local";
+    public string UserId { get; private set; } = LocalMode;
     public IReadOnlyList<string> Roles { get; private set; } = Array.Empty<string>();
     public DateTimeOffset? ExpiresAt { get; private set; }
 
@@ -61,7 +63,7 @@ public sealed class AdminSessionService
         get
         {
             var id = (UserId ?? "").Trim();
-            if (id.Length == 0 || string.Equals(id, "local", StringComparison.OrdinalIgnoreCase))
+            if (id.Length == 0 || string.Equals(id, LocalMode, StringComparison.OrdinalIgnoreCase))
                 return "@local";
             if (id.Contains('@', StringComparison.Ordinal))
             {
@@ -76,7 +78,7 @@ public sealed class AdminSessionService
 
     public void SetUserId(string? userId)
     {
-        UserId = string.IsNullOrWhiteSpace(userId) ? "local" : userId.Trim();
+        UserId = string.IsNullOrWhiteSpace(userId) ? LocalMode : userId.Trim();
         Changed?.Invoke();
         _ = PersistAsync();
     }
@@ -106,7 +108,7 @@ public sealed class AdminSessionService
         DateTimeOffset? expiresAt)
     {
         Token = token;
-        UserId = string.IsNullOrWhiteSpace(userId) ? "local" : userId.Trim();
+        UserId = string.IsNullOrWhiteSpace(userId) ? LocalMode : userId.Trim();
         Roles = roles?.Where(r => !string.IsNullOrWhiteSpace(r)).Distinct(StringComparer.OrdinalIgnoreCase).ToList()
                 ?? new List<string>();
         ExpiresAt = expiresAt;
@@ -131,7 +133,7 @@ public sealed class AdminSessionService
     private void ApplyClear()
     {
         Token = null;
-        UserId = "local";
+        UserId = LocalMode;
         Roles = Array.Empty<string>();
         ExpiresAt = null;
         _hydrated = true;

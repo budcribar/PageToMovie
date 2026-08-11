@@ -22,7 +22,16 @@ for (var i = 0; i < args.Length - 1; i++)
     if (args[i] == "--holdout") holdoutId = args[i + 1];
 holdoutId ??= "TellTaleHeartV4";
 
-var fountain = Directory.GetFiles(Path.Combine(repo, "projects"), "screenplay.fountain", SearchOption.AllDirectories)
+const string ProjectsFolder = "projects";
+const string CharacterPrefix = "Character_";
+const string CharacterSeedTokensKey = "character_seed_tokens";
+const string GlobalProductionVariablesKey = "global_production_variables";
+const string HardCutType = "hard_cut";
+const string ExtendType = "extend";
+const string HumanType = "human";
+const string LabelsKey = "labels";
+
+var fountain = Directory.GetFiles(Path.Combine(repo, ProjectsFolder), "screenplay.fountain", SearchOption.AllDirectories)
     .FirstOrDefault(p => p.Contains(holdoutId, StringComparison.OrdinalIgnoreCase) &&
                          !p.Contains($"{Path.DirectorySeparatorChar}_", StringComparison.Ordinal));
 if (fountain is null)
@@ -49,10 +58,10 @@ if (File.Exists(castPath))
     try
     {
         using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(castPath));
-        if (doc.RootElement.TryGetProperty("character_seed_tokens", out var seedsEl) &&
+        if (doc.RootElement.TryGetProperty(CharacterSeedTokensKey, out var seedsEl) &&
             seedsEl.ValueKind == JsonValueKind.Object)
         {
-            var gpv = stage1["global_production_variables"] as Dictionary<string, object?> ?? new();
+            var gpv = stage1[GlobalProductionVariablesKey] as Dictionary<string, object?> ?? new();
             var dict = new Dictionary<string, object?>();
             foreach (var p in seedsEl.EnumerateObject())
             {
@@ -136,7 +145,7 @@ if (writeDraft || !File.Exists(castGoldPath))
     var draft = castSamples.Select(b =>
     {
         var profiles = castKeys.ToDictionary(k => k,
-            k => new ClipVideoPromptBuilder.CharacterProfile { DisplayName = k.Replace("Character_", "").Replace('_', ' ') });
+            k => new ClipVideoPromptBuilder.CharacterProfile { DisplayName = k.Replace(CharacterPrefix, "").Replace('_', ' ') });
         var h = ClipVideoPromptBuilder.InferKeysFromProse(b.Visual, profiles);
         return new { b.Id, visual = Trunc(b.Visual, 180), heuristic_keys = h, gold_keys = h };
     }).ToList();
@@ -161,7 +170,7 @@ foreach (var g in castGold)
 {
     nCast++;
     var profiles = castKeys.ToDictionary(k => k,
-        k => new ClipVideoPromptBuilder.CharacterProfile { DisplayName = k.Replace("Character_", "").Replace('_', ' ') });
+        k => new ClipVideoPromptBuilder.CharacterProfile { DisplayName = k.Replace(CharacterPrefix, "").Replace('_', ' ') });
     var vis = castSamples.FirstOrDefault(x => x.Id == g.Id)?.Visual ?? "";
     var h = ClipVideoPromptBuilder.InferKeysFromProse(vis, profiles);
     castBase += OnScreenCastClassifier.SetF1(h, g.Keys);
@@ -183,8 +192,8 @@ if (writeDraft || !File.Exists(extGoldPath))
             b.Id,
             visual = Trunc(b.Visual, 160),
             prev = Trunc(b.PrevVisual, 100),
-            heuristic = hard ? "hard_cut" : "extend",
-            gold = hard ? "hard_cut" : "extend",
+            heuristic = hard ? HardCutType : ExtendType,
+            gold = hard ? HardCutType : ExtendType,
         };
     }).ToList();
     await File.WriteAllTextAsync(extGoldPath, JsonSerializer.Serialize(new { labels = draft }, Pretty()));
@@ -234,11 +243,11 @@ if (holdoutId.Contains("TellTale", StringComparison.OrdinalIgnoreCase))
     {
         labels = new object[]
         {
-            new { key = "Character_Narrator", gold = "human", note = "adult man confessor" },
-            new { key = "Character_Old_Man", gold = "human", note = "elderly man" },
-            new { key = "Character_Officer", gold = "human", note = "officer" },
-            new { key = "Character_Officer_Clemm", gold = "human" },
-            new { key = "Character_Officer_Hayes", gold = "human" },
+            new { key = "Character_Narrator", gold = HumanType, note = "adult man confessor" },
+            new { key = "Character_Old_Man", gold = HumanType, note = "elderly man" },
+            new { key = "Character_Officer", gold = HumanType, note = "officer" },
+            new { key = "Character_Officer_Clemm", gold = HumanType },
+            new { key = "Character_Officer_Hayes", gold = HumanType },
             new { key = "Character_Officer_Reynolds", gold = "human" },
         }
     }, Pretty()));
@@ -265,8 +274,8 @@ foreach (var g in spGold)
 }
 
 // ── 5 Plate rank (assets/characters basenames; mock plates OK for eval) ──
-var plateDir = Path.Combine(repo, "projects", holdoutId, "assets", "characters");
-var bookImgDir = Path.Combine(repo, "projects", holdoutId, "source", "book_images");
+var plateDir = Path.Combine(repo, ProjectsFolder, holdoutId, "assets", "characters");
+var bookImgDir = Path.Combine(repo, ProjectsFolder, holdoutId, "source", "book_images");
 var plateNames = new List<string>();
 if (Directory.Exists(plateDir))
     plateNames.AddRange(Directory.GetFiles(plateDir).Select(Path.GetFileName!).Where(n => n.EndsWith(".png", StringComparison.OrdinalIgnoreCase)));
@@ -283,9 +292,9 @@ var plateGoldPath = Path.Combine(goldDir, "plate_rank.json");
 var plateTargets = new List<(string Key, string Desc, string Token)>();
 foreach (var row in speciesRows.Take(12))
 {
-    var token = row.Key.Replace("Character_", "", StringComparison.OrdinalIgnoreCase).Replace("_", "").ToLowerInvariant();
+    var token = row.Key.Replace(CharacterPrefix, "", StringComparison.OrdinalIgnoreCase).Replace("_", "").ToLowerInvariant();
     // filename slug uses underscores: character_shere_khan_ref.png
-    var slug = row.Key.Replace("Character_", "", StringComparison.OrdinalIgnoreCase)
+    var slug = row.Key.Replace(CharacterPrefix, "", StringComparison.OrdinalIgnoreCase)
         .Replace(" ", "_").ToLowerInvariant();
     plateTargets.Add((row.Key, row.Desc, slug));
 }
@@ -450,7 +459,7 @@ static string FindRepoRoot()
     var dir = new DirectoryInfo(Directory.GetCurrentDirectory());
     while (dir is not null)
     {
-        if (Directory.Exists(Path.Combine(dir.FullName, "projects")) &&
+        if (Directory.Exists(Path.Combine(dir.FullName, ProjectsFolder)) &&
             Directory.Exists(Path.Combine(dir.FullName, "host")))
             return dir.FullName;
         dir = dir.Parent;
@@ -566,7 +575,7 @@ static List<(string Id, string Ambient, string Sfx)> LoadAmbientGold(string path
     var list = new List<(string, string, string)>();
     if (!File.Exists(path)) return list;
     using var doc = JsonDocument.Parse(File.ReadAllText(path));
-    if (!doc.RootElement.TryGetProperty("labels", out var labels)) return list;
+    if (!doc.RootElement.TryGetProperty(LabelsKey, out var labels)) return list;
     foreach (var el in labels.EnumerateArray())
     {
         var id = PropStr(el, "id") ?? PropStr(el, "Id");

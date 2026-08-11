@@ -6,6 +6,7 @@ namespace ClassifierBenchmarks;
 
 public static class ReportWriter
 {
+    private const string LatestMdFile = "LATEST.md";
     public static async Task WriteRunArtifactsAsync(BenchPaths paths, BenchmarkRun run)
     {
         var dir = Path.Combine(paths.Runs, run.RunId);
@@ -65,7 +66,7 @@ public static class ReportWriter
         HistoryIndex index;
         if (!File.Exists(paths.HistoryIndex))
         {
-            await File.WriteAllTextAsync(Path.Combine(paths.Reports, "LATEST.md"),
+            await File.WriteAllTextAsync(Path.Combine(paths.Reports, LatestMdFile),
                 "# Classifier benchmarks\n\nNo runs yet. `dotnet run --project host/tools/ClassifierBenchmarks -- run`\n");
             return;
         }
@@ -75,10 +76,10 @@ public static class ReportWriter
 
         var md = BuildHistoryMarkdown(index);
         var html = BuildHistoryHtml(index);
-        await File.WriteAllTextAsync(Path.Combine(paths.Reports, "LATEST.md"), md);
+        await File.WriteAllTextAsync(Path.Combine(paths.Reports, LatestMdFile), md);
         await File.WriteAllTextAsync(Path.Combine(paths.Reports, "history.html"), html);
-        await File.WriteAllTextAsync(Path.Combine(paths.Root, "LATEST.md"), md);
-        Console.WriteLine($"Reports → {Path.Combine(paths.Reports, "LATEST.md")}");
+        await File.WriteAllTextAsync(Path.Combine(paths.Root, LatestMdFile), md);
+        Console.WriteLine($"Reports → {Path.Combine(paths.Reports, LatestMdFile)}");
         Console.WriteLine($"Graphs  → {Path.Combine(paths.Reports, "history.html")}");
     }
 

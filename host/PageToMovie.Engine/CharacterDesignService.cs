@@ -22,6 +22,7 @@ public sealed class CharacterDesignService
     private readonly CastVisualLiteralizeService _literalize;
     private readonly PageToMovieOptions _opts;
     private readonly ILogger<CharacterDesignService> _log;
+    private const string DescriptionKey = "description";
     private readonly IUserContext? _user;
 
     public CharacterDesignService(
@@ -163,7 +164,7 @@ public sealed class CharacterDesignService
         // no special-case regex lists for pajamas / nicknames / etc.
         var descForGen = opts.DescriptionOverride;
         var visForGen = opts.VisualLockOverride;
-        if (descForGen is null && seeds.TryGetProperty("description", out var d0))
+        if (descForGen is null && seeds.TryGetProperty(DescriptionKey, out var d0))
             descForGen = d0.GetString();
         if (visForGen is null && seeds.TryGetProperty("visual_lock", out var v0))
             visForGen = v0.GetString();
@@ -216,7 +217,7 @@ public sealed class CharacterDesignService
 
         var hasImageHints = editRefs.Count > 0 || costumeRefPath is not null;
         var projectStyle = ReadProjectRenderStyleLock(projectDir);
-        var wardrobeDescription = wardrobeLock is { } wl && wl.TryGetProperty("description", out var wd)
+        var wardrobeDescription = wardrobeLock is { } wl && wl.TryGetProperty(DescriptionKey, out var wd)
             ? wd.GetString()
             : null;
         var (prompt, illustratedMedium) = BuildDesignPrompt(
@@ -1125,7 +1126,7 @@ public sealed class CharacterDesignService
         var charDir = _projects.GetCharactersDir(projectId);
         Directory.CreateDirectory(charDir);
 
-        var description = wardrobeSeed.TryGetProperty("description", out var d) ? d.GetString() ?? "" : "";
+        var description = wardrobeSeed.TryGetProperty(DescriptionKey, out var d) ? d.GetString() ?? "" : "";
         var descSafe = CharacterVisualTextScrubber.ScrubVisualProse(description).Trim().TrimEnd('.');
         var projectStyle = ReadProjectRenderStyleLock(projectDir);
         var styleClause = !string.IsNullOrWhiteSpace(projectStyle)
@@ -1261,7 +1262,7 @@ public sealed class CharacterDesignService
     {
         var description = !string.IsNullOrWhiteSpace(descriptionOverride)
             ? descriptionOverride!
-            : seedInfo.TryGetProperty("description", out var d) ? d.GetString() ?? "" : "";
+            : seedInfo.TryGetProperty(DescriptionKey, out var d) ? d.GetString() ?? "" : "";
         var visualLock = !string.IsNullOrWhiteSpace(visualLockOverride)
             ? visualLockOverride!
             : seedInfo.TryGetProperty("visual_lock", out var vlck) ? vlck.GetString() ?? "" : "";

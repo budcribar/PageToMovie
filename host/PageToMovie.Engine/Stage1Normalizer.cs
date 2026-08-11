@@ -7,14 +7,26 @@ namespace PageToMovie.Engine;
 /// <summary>Coerce Stage 1 JSON after LLM generation (schema cleanup).</summary>
 public static class Stage1Normalizer
 {
+    private const string VisualEventKey = "visual_event";
+    private const string CharacterSeedTokensKey = "character_seed_tokens";
+    private const string LocationSeedTokensKey = "location_seed_tokens";
+    private const string DescriptionKey = "description";
+    private const string VisualLockKey = "visual_lock";
+    private const string WardrobeAlwaysKey = "wardrobe_always";
+    private const string MixedMode = "mixed";
+    private const string MontageMode = "montage";
+    private const string DreamMode = "dream";
+    private const string DurationTargetSecondsKey = "duration_target_seconds";
+    private const string SettingKey = "setting";
+
     private static readonly Dictionary<string, string> LocTypeMap = new(StringComparer.OrdinalIgnoreCase)
     {
         ["interior"] = "int", ["int"] = "int", ["interior_only"] = "int",
         ["exterior"] = "ext", ["ext"] = "ext", ["exterior_only"] = "ext",
-        ["mixed"] = "mixed", ["interior_exterior_mix"] = "mixed",
-        ["interior/exterior"] = "mixed", ["int/ext"] = "mixed",
-        ["montage_mix"] = "montage", ["montage"] = "montage",
-        ["flashback"] = "flashback", ["dream"] = "dream", ["dreamscape"] = "dream",
+        ["mixed"] = MixedMode, ["interior_exterior_mix"] = MixedMode,
+        ["interior/exterior"] = MixedMode, ["int/ext"] = MixedMode,
+        ["montage_mix"] = MontageMode, ["montage"] = MontageMode,
+        ["flashback"] = "flashback", ["dream"] = DreamMode, ["dreamscape"] = DreamMode,
     };
 
     public static Dictionary<string, object?> Normalize(Dictionary<string, object?> data)
@@ -45,10 +57,10 @@ public static class Stage1Normalizer
             gpv["total_runtime_target_seconds"] = sceneSum > 0 ? sceneSum : 900;
         }
 
-        if (!gpv.TryGetValue("character_seed_tokens", out var charSeeds) || charSeeds is null)
-            gpv["character_seed_tokens"] = new Dictionary<string, object?>();
-        if (!gpv.TryGetValue("location_seed_tokens", out var locSeeds) || locSeeds is null)
-            gpv["location_seed_tokens"] = new Dictionary<string, object?>();
+        if (!gpv.TryGetValue(CharacterSeedTokensKey, out var charSeeds) || charSeeds is null)
+            gpv[CharacterSeedTokensKey] = new Dictionary<string, object?>();
+        if (!gpv.TryGetValue(LocationSeedTokensKey, out var locSeeds) || locSeeds is null)
+            gpv[LocationSeedTokensKey] = new Dictionary<string, object?>();
 
         var treat = CoerceString(gpv.TryGetValue("directorial_treatment", out var dt) ? dt : "") ?? "";
         var rsl = CoerceString(
@@ -89,10 +101,10 @@ public static class Stage1Normalizer
             if (val is not Dictionary<string, object?> seed) continue;
 
             // Filmable identity only — strip nicknames + cross-species style bleed (any book)
-            var rawDesc = CoerceString(seed.TryGetValue("description", out var d) ? d : null) ?? key;
-            seed["description"] = CharacterVisualTextScrubber.ScrubVisualProse(rawDesc);
-            if (string.IsNullOrWhiteSpace(CoerceString(seed["description"])))
-                seed["description"] = key;
+            var rawDesc = CoerceString(seed.TryGetValue(DescriptionKey, out var d) ? d : null) ?? key;
+            seed[DescriptionKey] = CharacterVisualTextScrubber.ScrubVisualProse(rawDesc);
+            if (string.IsNullOrWhiteSpace(CoerceString(seed[DescriptionKey])))
+                seed[DescriptionKey] = key;
 
             seed["reference_image_placeholder"] =
                 CoerceString(seed.TryGetValue("reference_image_placeholder", out var ph) ? ph : null)
@@ -111,26 +123,26 @@ public static class Stage1Normalizer
             var isVoiceOnly = CastKindClassifier.IsVoiceOnlyPolicy(pol);
             if (isVoiceOnly)
             {
-                seed.Remove("visual_lock");
-                seed.Remove("wardrobe_always");
+                seed.Remove(VisualLockKey);
+                seed.Remove(WardrobeAlwaysKey);
             }
             else
             {
-                var vlck = CoerceString(seed.TryGetValue("visual_lock", out var v) ? v : null);
+                var vlck = CoerceString(seed.TryGetValue(VisualLockKey, out var v) ? v : null);
                 if (string.IsNullOrWhiteSpace(vlck))
                 {
-                    var desc = CoerceString(seed["description"]) ?? key;
-                    seed["visual_lock"] = desc.Length > 220 ? desc[..220] + "…" : desc;
+                    var desc = CoerceString(seed[DescriptionKey]) ?? key;
+                    seed[VisualLockKey] = desc.Length > 220 ? desc[..220] + "…" : desc;
                 }
                 else
                 {
-                    seed["visual_lock"] = CharacterVisualTextScrubber.ScrubVisualProse(vlck);
+                    seed[VisualLockKey] = CharacterVisualTextScrubber.ScrubVisualProse(vlck);
                 }
 
                 var always = CharacterVisualTextScrubber.ScrubWardrobeList(
-                    CoerceStringList(seed.TryGetValue("wardrobe_always", out var wa) ? wa : null));
+                    CoerceStringList(seed.TryGetValue(WardrobeAlwaysKey, out var wa) ? wa : null));
                 if (always.Count > 0)
-                    seed["wardrobe_always"] = always;
+                    seed[WardrobeAlwaysKey] = always;
                 else
                     seed.Remove("wardrobe_always");
             }
@@ -164,16 +176,16 @@ public static class Stage1Normalizer
         s["scene_filename"] =
             CoerceString(s.TryGetValue("scene_filename", out var sf) ? sf : null)
             ?? $"Scene_{sn:D2}";
-        s["setting"] = CoerceString(s.TryGetValue("setting", out var set) ? set : null) ?? "";
+        s[SettingKey] = CoerceString(s.TryGetValue(SettingKey, out var set) ? set : null) ?? "";
         s["story_day"] = NormStoryDay(s.TryGetValue("story_day", out var sd) ? sd : null);
         s["location_type"] = NormLocationType(s.TryGetValue("location_type", out var lt) ? lt : null);
-        var dur = ToInt(s.TryGetValue("duration_target_seconds", out var d) ? d : 24);
-        s["duration_target_seconds"] = Math.Clamp(dur <= 0 ? 24 : dur, 8, 134);
+        var dur = ToInt(s.TryGetValue(DurationTargetSecondsKey, out var d) ? d : 24);
+        s[DurationTargetSecondsKey] = Math.Clamp(dur <= 0 ? 24 : dur, 8, 134);
         s["dramatic_function"] =
             CoerceString(s.TryGetValue("dramatic_function", out var df) ? df : null) ?? "";
         s["summary"] =
             CoerceString(s.TryGetValue("summary", out var sum) ? sum : null)
-            ?? (string.IsNullOrEmpty(s["setting"] as string) ? $"Scene {sn}" : (string)s["setting"]!);
+            ?? (string.IsNullOrEmpty(s[SettingKey] as string) ? $"Scene {sn}" : (string)s[SettingKey]!);
         s["transition_type"] =
             CoerceString(s.TryGetValue("transition_type", out var tt) ? tt : null) ?? "cut";
         s["lighting_continuity_token"] =
@@ -212,13 +224,13 @@ public static class Stage1Normalizer
         {
             b["beat_id"] = CoerceString(b.TryGetValue("beat_id", out var bi) ? bi : null) ?? "b1";
             b["intent"] = CoerceString(b.TryGetValue("intent", out var intent) ? intent : null) ?? "";
-            b["visual_event"] =
-                CoerceString(b.TryGetValue("visual_event", out var ve) ? ve : null)
+            b[VisualEventKey] =
+                CoerceString(b.TryGetValue(VisualEventKey, out var ve) ? ve : null)
                 ?? (string)b["intent"]!;
             // visual_event may mention nicknames from the book VO — only scrub clear food-hat junk
-            if (b["visual_event"] is string veStr &&
+            if (b[VisualEventKey] is string veStr &&
                 CharacterVisualTextScrubber.LooksLikeNicknameVisualJunk(veStr))
-                b["visual_event"] = CharacterVisualTextScrubber.ScrubVisualProse(veStr);
+                b[VisualEventKey] = CharacterVisualTextScrubber.ScrubVisualProse(veStr);
             b["shot_scale_hint"] =
                 CoerceString(b.TryGetValue("shot_scale_hint", out var ssh) ? ssh : null) ?? "ms";
             b["continuity"] =
@@ -268,7 +280,7 @@ public static class Stage1Normalizer
         // LLM Stage1 may leave ambient/sfx blank).
         if (string.IsNullOrWhiteSpace(ambient) && string.IsNullOrWhiteSpace(sfx))
         {
-            var ve = CoerceString(beat.TryGetValue("visual_event", out var vev) ? vev : null) ?? "";
+            var ve = CoerceString(beat.TryGetValue(VisualEventKey, out var vev) ? vev : null) ?? "";
             var inferred = FountainStage1Importer.InferAmbientAndSfx(ve);
             ambient = inferred.Ambient;
             sfx = inferred.Sfx;

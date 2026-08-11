@@ -16,6 +16,10 @@ public sealed class CastVisualLiteralizeService
 {
     public const string PromptRelativePath = "prompts/cast_visual_literalize.txt";
 
+    private const string VisualLockKey = "visual_lock";
+    private const string WardrobeAlwaysKey = "wardrobe_always";
+    private const string DescriptionKey = "description";
+
     private readonly ProjectStore _projects;
     private readonly IChatClient _chat;
     private readonly ILogger<CastVisualLiteralizeService> _log;
@@ -110,15 +114,15 @@ public sealed class CastVisualLiteralizeService
 
         var seed = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
         {
-            ["description"] = descIn,
-            ["visual_lock"] = visIn,
+            [DescriptionKey] = descIn,
+            [VisualLockKey] = visIn,
         };
         if (!string.IsNullOrWhiteSpace(wardrobeAlwaysJson))
         {
             try
             {
                 var wa = JsonSerializer.Deserialize<List<object?>>(wardrobeAlwaysJson);
-                if (wa is not null) seed["wardrobe_always"] = wa;
+                if (wa is not null) seed[WardrobeAlwaysKey] = wa;
             }
             catch { /* optional */ }
         }
@@ -131,8 +135,8 @@ public sealed class CastVisualLiteralizeService
         var cleaned = await LiteralizeSeedsAsync(bag, model, onProgress, ct).ConfigureAwait(false);
         if (cleaned.TryGetValue(charKey, out var cval) && cval is Dictionary<string, object?> cseed)
         {
-            var d = cseed.TryGetValue("description", out var dv) ? dv?.ToString() ?? descIn : descIn;
-            var v = cseed.TryGetValue("visual_lock", out var vv) ? vv?.ToString() ?? visIn : visIn;
+            var d = cseed.TryGetValue(DescriptionKey, out var dv) ? dv?.ToString() ?? descIn : descIn;
+            var v = cseed.TryGetValue(VisualLockKey, out var vv) ? vv?.ToString() ?? visIn : visIn;
             return (d.Trim(), v.Trim(), true);
         }
         return (descIn, visIn, false);
@@ -148,9 +152,9 @@ public sealed class CastVisualLiteralizeService
         {
             if (val is not Dictionary<string, object?> seed) continue;
             var slim = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-            if (seed.TryGetValue("description", out var d)) slim["description"] = d;
-            if (seed.TryGetValue("visual_lock", out var v)) slim["visual_lock"] = v;
-            if (seed.TryGetValue("wardrobe_always", out var w)) slim["wardrobe_always"] = w;
+            if (seed.TryGetValue(DescriptionKey, out var d)) slim[DescriptionKey] = d;
+            if (seed.TryGetValue(VisualLockKey, out var v)) slim[VisualLockKey] = v;
+            if (seed.TryGetValue(WardrobeAlwaysKey, out var w)) slim[WardrobeAlwaysKey] = w;
             if (seed.TryGetValue("display_name_policy", out var p)) slim["display_name_policy"] = p;
             if (seed.TryGetValue("canonical_given_name", out var n)) slim["canonical_given_name"] = n;
             outSeeds[key] = slim;
@@ -186,12 +190,12 @@ public sealed class CastVisualLiteralizeService
             var copy = new Dictionary<string, object?>(seed, StringComparer.OrdinalIgnoreCase);
             if (cleanedSeeds.TryGetValue(key, out var cval) && cval is Dictionary<string, object?> clean)
             {
-                if (clean.TryGetValue("description", out var desc) && desc is not null)
-                    copy["description"] = desc.ToString()?.Trim();
-                if (clean.TryGetValue("visual_lock", out var vl) && vl is not null)
-                    copy["visual_lock"] = vl.ToString()?.Trim();
-                if (clean.TryGetValue("wardrobe_always", out var wa) && wa is List<object?> list)
-                    copy["wardrobe_always"] = list;
+                if (clean.TryGetValue(DescriptionKey, out var desc) && desc is not null)
+                    copy[DescriptionKey] = desc.ToString()?.Trim();
+                if (clean.TryGetValue(VisualLockKey, out var vl) && vl is not null)
+                    copy[VisualLockKey] = vl.ToString()?.Trim();
+                if (clean.TryGetValue(WardrobeAlwaysKey, out var wa) && wa is List<object?> list)
+                    copy[WardrobeAlwaysKey] = list;
             }
             result[key] = copy;
         }

@@ -53,7 +53,12 @@ if (needChat && string.IsNullOrWhiteSpace(key) && !exportAnnotate)
     // score-gt can still run heuristic-only if AI cache missing
 }
 
-var fountainPaths = Directory.GetFiles(Path.Combine(repo, "projects"), "screenplay.fountain", SearchOption.AllDirectories)
+const string ProjectsFolder = "projects";
+const string ClassKey = "class";
+const string EstablishingClass = "establishing";
+const string ActionClass = "action";
+
+var fountainPaths = Directory.GetFiles(Path.Combine(repo, ProjectsFolder), "screenplay.fountain", SearchOption.AllDirectories)
     .Where(p => !p.Contains($"{Path.DirectorySeparatorChar}_", StringComparison.Ordinal))
     .ToList();
 
@@ -629,11 +634,11 @@ static Dictionary<string, GoldLabel> LoadGroundTruth(string path)
         var id = el.TryGetProperty("id", out var idEl) ? idEl.GetString()
             : el.TryGetProperty("Id", out var id2) ? id2.GetString() : null;
         string? cls = null;
-        if (el.TryGetProperty("class", out var c)) cls = c.GetString();
+        if (el.TryGetProperty(ClassKey, out var c)) cls = c.GetString();
         else if (el.TryGetProperty("gold", out var g))
         {
             if (g.ValueKind == JsonValueKind.String) cls = g.GetString();
-            else if (g.ValueKind == JsonValueKind.Object && g.TryGetProperty("class", out var gc))
+            else if (g.ValueKind == JsonValueKind.Object && g.TryGetProperty(ClassKey, out var gc))
                 cls = gc.GetString();
         }
         var note = el.TryGetProperty("note", out var n) ? n.GetString() ?? "" : "";
@@ -696,7 +701,7 @@ static string BaselineInferActionClass(string actionText, bool isFirstBeatInScen
 {
     var t = (actionText ?? "").Trim();
     if (t.Length == 0)
-        return isFirstBeatInScene ? "establishing" : "hold";
+        return isFirstBeatInScene ? EstablishingClass : "hold";
 
     var lower = t.ToLowerInvariant();
     var words = ClipDurationEstimator.CountWords(t);
@@ -706,7 +711,7 @@ static string BaselineInferActionClass(string actionText, bool isFirstBeatInScen
         return "big_action";
 
     if (isFirstBeatInScene)
-        return "establishing";
+        return EstablishingClass;
 
     if (words <= 24 &&
         Regex.IsMatch(lower,
@@ -716,13 +721,13 @@ static string BaselineInferActionClass(string actionText, bool isFirstBeatInScen
     if (words <= 8)
         return "hold";
 
-    return "action";
+    return ActionClass;
 }
 
 static int SecondsForClass(string cls) => NormalizeClass(cls) switch
 {
     "hold" => ClipDurationEstimator.ActionOnlyMinSeconds,
-    "establishing" => ClipDurationEstimator.EstablishingMaxSeconds,
+    EstablishingClass => ClipDurationEstimator.EstablishingMaxSeconds,
     "big_action" => 8,
     _ => ClipDurationEstimator.SilentActionMaxSeconds,
 };
@@ -732,9 +737,9 @@ static string NormalizeClass(string c)
     c = (c ?? "").Trim().ToLowerInvariant();
     return c switch
     {
-        "establishing" or "hold" or "action" or "big_action" => c,
-        "dialogue" => "action",
-        _ => "action",
+        EstablishingClass or "hold" or ActionClass or "big_action" => c,
+        "dialogue" => ActionClass,
+        _ => ActionClass,
     };
 }
 
@@ -837,11 +842,11 @@ static string FindRepoRoot()
     while (dir is not null)
     {
         if (File.Exists(Path.Combine(dir.FullName, "PageToMovie.sln")) ||
-            Directory.Exists(Path.Combine(dir.FullName, "projects")))
+            Directory.Exists(Path.Combine(dir.FullName, ProjectsFolder)))
             return dir.FullName;
         // tools/BeatLabelEval → repo via host/
         if (Directory.Exists(Path.Combine(dir.FullName, "host")) &&
-            Directory.Exists(Path.Combine(dir.FullName, "projects")))
+            Directory.Exists(Path.Combine(dir.FullName, ProjectsFolder)))
             return dir.FullName;
         dir = dir.Parent;
     }
@@ -849,7 +854,7 @@ static string FindRepoRoot()
     dir = new DirectoryInfo(Directory.GetCurrentDirectory());
     while (dir is not null)
     {
-        if (Directory.Exists(Path.Combine(dir.FullName, "projects")) &&
+        if (Directory.Exists(Path.Combine(dir.FullName, ProjectsFolder)) &&
             Directory.Exists(Path.Combine(dir.FullName, "host")))
             return dir.FullName;
         dir = dir.Parent;

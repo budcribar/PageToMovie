@@ -25,6 +25,7 @@ public sealed class GeminiVideoClient : IVideoClient
 {
     public const string ApiBase = SupportedModelCatalog.GoogleApiBase;
 
+    private const string VideoKind = "video";
     private readonly HttpClient _http;
     private readonly PageToMovieOptions _opts;
     private readonly ProjectTelemetryService _telemetry;
@@ -124,7 +125,7 @@ public sealed class GeminiVideoClient : IVideoClient
                     {
                         await _telemetry.LogApiCallAsync(new ApiCallTelemetry
                         {
-                            Kind = "video",
+                            Kind = VideoKind,
                             Mode = mode,
                             Endpoint = endpoint,
                             Model = model,
@@ -151,7 +152,7 @@ public sealed class GeminiVideoClient : IVideoClient
 
                     await _telemetry.LogApiCallAsync(new ApiCallTelemetry
                     {
-                        Kind = "video",
+                        Kind = VideoKind,
                         Mode = mode,
                         Endpoint = endpoint,
                         Model = model,
@@ -176,7 +177,7 @@ public sealed class GeminiVideoClient : IVideoClient
         {
             await _telemetry.LogApiCallAsync(new ApiCallTelemetry
             {
-                Kind = "video",
+                Kind = VideoKind,
                 Mode = mode,
                 Endpoint = endpoint,
                 Model = model,
@@ -329,7 +330,7 @@ public sealed class GeminiVideoClient : IVideoClient
             samples.GetArrayLength() > 0)
         {
             var s0 = samples[0];
-            if (s0.TryGetProperty("video", out var v0) &&
+            if (s0.TryGetProperty(VideoKind, out var v0) &&
                 v0.TryGetProperty("uri", out var u0) &&
                 u0.GetString() is { Length: > 0 } uri0)
                 return uri0;
@@ -346,7 +347,7 @@ public sealed class GeminiVideoClient : IVideoClient
         }
 
         // Path C: response.video.uri (single-sample shape)
-        if (response.TryGetProperty("video", out var v1) &&
+        if (response.TryGetProperty(VideoKind, out var v1) &&
             v1.TryGetProperty("uri", out var u1) &&
             u1.GetString() is { Length: > 0 } uri1)
             return uri1;

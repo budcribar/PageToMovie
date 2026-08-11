@@ -7,6 +7,19 @@ namespace ClassifierBenchmarks;
 
 public static class TaskRunners
 {
+    private const string LabelsKey = "labels";
+    private const string DescriptionKey = "description";
+    private const string PlateRankTask = "plate_rank";
+    private const string AmbientSfxTask = "ambient_sfx";
+    private const string VisualKey = "visual";
+    private const string SpeciesKindTask = "species_kind";
+    private const string OnscreenCastTask = "onscreen_cast";
+    private const string AllBooksName = "_all_books";
+    private const string SilentBeatActionTask = "silent_beat_action";
+    private const string ExtendCutTask = "extend_cut";
+    private const string JungleBookName = "The_Jungle_Book";
+    private const string CuratedCategory = "curated";
+    private const string HardCutType = "hard_cut";
     public static async Task<TaskResult> RunAmbientAsync(
         BenchPaths paths,
         string projectId,
@@ -16,20 +29,20 @@ public static class TaskRunners
         ChatRunner chat,
         CancellationToken ct = default)
     {
-        var goldPath = paths.GoldFile(projectId, "ambient_sfx");
+        var goldPath = paths.GoldFile(projectId, AmbientSfxTask);
         if (!File.Exists(goldPath))
             throw new FileNotFoundException($"Missing gold: {goldPath}");
 
         using var goldDoc = JsonDocument.Parse(await File.ReadAllTextAsync(goldPath, ct));
         var root = goldDoc.RootElement;
-        var curated = root.TryGetProperty("curated", out var cEl) && cEl.GetBoolean();
-        var labels = root.GetProperty("labels");
+        var curated = root.TryGetProperty(CuratedCategory, out var cEl) && cEl.GetBoolean();
+        var labels = root.GetProperty(LabelsKey);
         var samples = new List<(string Id, string Visual, string Ga, string Gs)>();
         foreach (var el in labels.EnumerateArray())
         {
             var id = el.TryGetProperty("id", out var idEl) ? idEl.GetString() ?? "" : "";
             if (id.Length == 0) continue;
-            var visual = el.TryGetProperty("visual", out var vEl) ? vEl.GetString() ?? "" : "";
+            var visual = el.TryGetProperty(VisualKey, out var vEl) ? vEl.GetString() ?? "" : "";
             var ga = el.TryGetProperty("gold_ambient", out var aEl) ? aEl.GetString() ?? "" : "";
             var gs = el.TryGetProperty("gold_sfx", out var sEl) ? sEl.GetString() ?? "" : "";
             samples.Add((id, visual, ga, gs));
@@ -91,7 +104,7 @@ public static class TaskRunners
         var aiMean = n == 0 ? 0 : aiSum / n;
         return new TaskResult
         {
-            Task = "ambient_sfx",
+            Task = AmbientSfxTask,
             ProjectId = projectId,
             Model = model,
             PromptId = prompt.Id,
@@ -120,19 +133,19 @@ public static class TaskRunners
         ChatRunner chat,
         CancellationToken ct = default)
     {
-        var goldPath = paths.GoldFile(projectId, "species_kind");
+        var goldPath = paths.GoldFile(projectId, SpeciesKindTask);
         if (!File.Exists(goldPath))
             throw new FileNotFoundException($"Missing gold: {goldPath}");
 
         using var goldDoc = JsonDocument.Parse(await File.ReadAllTextAsync(goldPath, ct));
         var root = goldDoc.RootElement;
-        var labelsEl = root.TryGetProperty("labels", out var l) ? l : root;
+        var labelsEl = root.TryGetProperty(LabelsKey, out var l) ? l : root;
         var samples = new List<(string Key, string Desc, string Gold)>();
         foreach (var el in labelsEl.EnumerateArray())
         {
             var key = el.TryGetProperty("key", out var k) ? k.GetString() ?? "" : "";
             if (key.Length == 0) continue;
-            var desc = el.TryGetProperty("description", out var d) ? d.GetString() ?? "" : "";
+            var desc = el.TryGetProperty(DescriptionKey, out var d) ? d.GetString() ?? "" : "";
             var gold = el.TryGetProperty("gold", out var g) ? g.GetString() ?? "" : "";
             samples.Add((key, desc, gold));
         }
@@ -182,7 +195,7 @@ public static class TaskRunners
         var aiMean = n == 0 ? 0 : (double)aiOk / n;
         return new TaskResult
         {
-            Task = "species_kind",
+            Task = SpeciesKindTask,
             ProjectId = projectId,
             Model = model,
             PromptId = prompt.Id,
@@ -211,20 +224,20 @@ public static class TaskRunners
         ChatRunner chat,
         CancellationToken ct = default)
     {
-        var goldPath = paths.GoldFile(projectId, "onscreen_cast");
+        var goldPath = paths.GoldFile(projectId, OnscreenCastTask);
         if (!File.Exists(goldPath))
             throw new FileNotFoundException($"Missing gold: {goldPath}");
 
         using var goldDoc = JsonDocument.Parse(await File.ReadAllTextAsync(goldPath, ct));
         var root = goldDoc.RootElement;
-        var curated = root.TryGetProperty("curated", out var cEl) && cEl.GetBoolean();
+        var curated = root.TryGetProperty(CuratedCategory, out var cEl) && cEl.GetBoolean();
 
         var samples = new List<(string Id, string Visual, string Dialogue, string Speaker, bool Vo, List<string> Gold)>();
-        foreach (var el in root.GetProperty("labels").EnumerateArray())
+        foreach (var el in root.GetProperty(LabelsKey).EnumerateArray())
         {
             var id = el.TryGetProperty("id", out var idEl) ? idEl.GetString() ?? "" : "";
             if (id.Length == 0) continue;
-            var visual = el.TryGetProperty("visual", out var vEl) ? vEl.GetString() ?? "" : "";
+            var visual = el.TryGetProperty(VisualKey, out var vEl) ? vEl.GetString() ?? "" : "";
             var dialogue = el.TryGetProperty("dialogue", out var dEl) ? dEl.GetString() ?? "" : "";
             var speaker = el.TryGetProperty("speaker", out var sEl) ? sEl.GetString() ?? "" : "";
             var vo = el.TryGetProperty("is_voiceover", out var voEl) && voEl.ValueKind == JsonValueKind.True;
@@ -300,7 +313,7 @@ public static class TaskRunners
         var aiMean = n == 0 ? 0 : aiSum / n;
         return new TaskResult
         {
-            Task = "onscreen_cast",
+            Task = OnscreenCastTask,
             ProjectId = projectId,
             Model = model,
             PromptId = prompt.Id,
@@ -382,20 +395,20 @@ public static class TaskRunners
         CancellationToken ct = default)
     {
         // Multi-book gold lives under gold/_all_books (ignore --project for path; keep for metadata).
-        var goldPath = paths.GoldFile("_all_books", "silent_beat_action");
+        var goldPath = paths.GoldFile(AllBooksName, SilentBeatActionTask);
         if (!File.Exists(goldPath))
             throw new FileNotFoundException($"Missing gold: {goldPath}");
 
         using var goldDoc = JsonDocument.Parse(await File.ReadAllTextAsync(goldPath, ct));
         var root = goldDoc.RootElement;
-        var curated = root.TryGetProperty("curated", out var cEl) && cEl.GetBoolean();
+        var curated = root.TryGetProperty(CuratedCategory, out var cEl) && cEl.GetBoolean();
         var samples = new List<(string Key, string Project, string Id, string Visual, bool IsFirst, string Setting, string BookContext, string Gold)>();
-        foreach (var el in root.GetProperty("labels").EnumerateArray())
+        foreach (var el in root.GetProperty(LabelsKey).EnumerateArray())
         {
             var book = el.TryGetProperty("projectId", out var pEl) ? pEl.GetString() ?? "" : "";
             var id = el.TryGetProperty("id", out var idEl) ? idEl.GetString() ?? "" : "";
             var gold = el.TryGetProperty("gold", out var gEl) ? gEl.GetString() ?? "" : "";
-            var visual = el.TryGetProperty("visual", out var vEl) ? vEl.GetString() ?? "" : "";
+            var visual = el.TryGetProperty(VisualKey, out var vEl) ? vEl.GetString() ?? "" : "";
             var setting = el.TryGetProperty("setting", out var sEl) ? sEl.GetString() ?? "" : "";
             var note = el.TryGetProperty("note", out var nEl) ? nEl.GetString() ?? "" : "";
             var isFirst = el.TryGetProperty("is_first_silent_in_scene", out var fEl) &&
@@ -470,8 +483,8 @@ public static class TaskRunners
         var aiMean = n == 0 ? 0 : (double)aiOk / n;
         return new TaskResult
         {
-            Task = "silent_beat_action",
-            ProjectId = projectId is "_all_books" or "" ? "_all_books" : projectId,
+            Task = SilentBeatActionTask,
+            ProjectId = projectId is AllBooksName or "" ? AllBooksName : projectId,
             Model = model,
             PromptId = prompt.Id,
             PromptLabel = prompt.Label,
@@ -530,19 +543,19 @@ public static class TaskRunners
         ChatRunner chat,
         CancellationToken ct = default)
     {
-        var goldPath = paths.GoldFile(projectId, "extend_cut");
+        var goldPath = paths.GoldFile(projectId, ExtendCutTask);
         if (!File.Exists(goldPath))
             throw new FileNotFoundException($"Missing gold: {goldPath}");
 
         using var goldDoc = JsonDocument.Parse(await File.ReadAllTextAsync(goldPath, ct));
         var root = goldDoc.RootElement;
-        var curated = root.TryGetProperty("curated", out var cEl) && cEl.GetBoolean();
+        var curated = root.TryGetProperty(CuratedCategory, out var cEl) && cEl.GetBoolean();
         var samples = new List<(string Id, string Visual, string Prev, string ActionClass, bool SameLoc, bool IsFirst, string Gold)>();
-        foreach (var el in root.GetProperty("labels").EnumerateArray())
+        foreach (var el in root.GetProperty(LabelsKey).EnumerateArray())
         {
             var id = el.TryGetProperty("id", out var idEl) ? idEl.GetString() ?? "" : "";
             if (id.Length == 0) continue;
-            var visual = el.TryGetProperty("visual", out var vEl) ? vEl.GetString() ?? "" : "";
+            var visual = el.TryGetProperty(VisualKey, out var vEl) ? vEl.GetString() ?? "" : "";
             var prev = el.TryGetProperty("prev", out var pEl) ? pEl.GetString() ?? "" : "";
             var ac = el.TryGetProperty("action_class", out var aEl) ? aEl.GetString() ?? "" : "";
             var same = el.TryGetProperty("same_location", out var sEl) &&
@@ -553,15 +566,15 @@ public static class TaskRunners
                          (fEl.ValueKind == JsonValueKind.String && bool.TryParse(fEl.GetString(), out var fb) && fb));
             var gold = el.TryGetProperty("gold", out var gEl) ? gEl.GetString() ?? "" : "";
             gold = gold.Trim().ToLowerInvariant().Replace(' ', '_');
-            if (gold is "hardcut" or "cut") gold = "hard_cut";
-            if (gold is not ("hard_cut" or "extend")) continue;
+            if (gold is "hardcut" or "cut") gold = HardCutType;
+            if (gold is not (HardCutType or "extend")) continue;
             samples.Add((id, visual, prev, ac, same, first, gold));
         }
 
         var payload = samples.Select(s =>
         {
             var h = ExtendCutClassifier.BaselineHardCut(s.Visual, s.ActionClass, s.SameLoc, s.IsFirst)
-                ? "hard_cut" : "extend";
+                ? HardCutType : "extend";
             return new Dictionary<string, object?>
             {
                 ["id"] = s.Id,
@@ -587,7 +600,7 @@ public static class TaskRunners
         foreach (var s in samples)
         {
             var h = ExtendCutClassifier.BaselineHardCut(s.Visual, s.ActionClass, s.SameLoc, s.IsFirst)
-                ? "hard_cut" : "extend";
+                ? HardCutType : "extend";
             aiMap.TryGetValue(s.Id, out var ac);
             if (aiMap.ContainsKey(s.Id)) hits++;
             ac ??= "";
@@ -612,7 +625,7 @@ public static class TaskRunners
         var aiMean = n == 0 ? 0 : (double)aiOk / n;
         return new TaskResult
         {
-            Task = "extend_cut",
+            Task = ExtendCutTask,
             ProjectId = projectId,
             Model = model,
             PromptId = prompt.Id,
@@ -641,13 +654,13 @@ public static class TaskRunners
         ChatRunner chat,
         CancellationToken ct = default)
     {
-        var goldPath = paths.GoldFile(projectId, "plate_rank");
+        var goldPath = paths.GoldFile(projectId, PlateRankTask);
         if (!File.Exists(goldPath))
             throw new FileNotFoundException($"Missing gold: {goldPath}");
 
         using var goldDoc = JsonDocument.Parse(await File.ReadAllTextAsync(goldPath, ct));
         var root = goldDoc.RootElement;
-        var curated = root.TryGetProperty("curated", out var cEl) && cEl.GetBoolean();
+        var curated = root.TryGetProperty(CuratedCategory, out var cEl) && cEl.GetBoolean();
 
         var candidates = new List<string>();
         if (root.TryGetProperty("candidates", out var candEl) && candEl.ValueKind == JsonValueKind.Array)
@@ -669,7 +682,7 @@ public static class TaskRunners
             throw new InvalidOperationException($"No plate candidates for {projectId}");
 
         var samples = new List<(string Key, string Desc, List<string> Gold)>();
-        foreach (var el in root.GetProperty("labels").EnumerateArray())
+        foreach (var el in root.GetProperty(LabelsKey).EnumerateArray())
         {
             var key = el.TryGetProperty("character_key", out var kEl) ? kEl.GetString() ?? "" : "";
             if (key.Length == 0) continue;
@@ -740,7 +753,7 @@ public static class TaskRunners
         var aiMean = n == 0 ? 0 : aiSum / n;
         return new TaskResult
         {
-            Task = "plate_rank",
+            Task = PlateRankTask,
             ProjectId = projectId,
             Model = model,
             PromptId = prompt.Id,
@@ -797,12 +810,12 @@ public static class TaskRunners
 
     public static string DefaultPromptId(string task) => task switch
     {
-        "ambient_sfx" => "v2_grounded",
-        "onscreen_cast" => "v2_grounded",
-        "extend_cut" => "v2_grounded",
-        "silent_beat_action" => "v2_product",
-        "species_kind" => "v1_product",
-        "plate_rank" => "v2_picture_book",
+        AmbientSfxTask => "v2_grounded",
+        OnscreenCastTask => "v2_grounded",
+        ExtendCutTask => "v2_grounded",
+        SilentBeatActionTask => "v2_product",
+        SpeciesKindTask => "v1_product",
+        PlateRankTask => "v2_picture_book",
         _ => "v1_product",
     };
 
@@ -825,11 +838,11 @@ public static class TaskRunners
         var sw = Stopwatch.StartNew();
 
         int processed = 0;
-        if (task == "ambient_sfx")
+        if (task == AmbientSfxTask)
         {
-            var goldPath = paths.GoldFile("The_Jungle_Book", "ambient_sfx");
+            var goldPath = paths.GoldFile(JungleBookName, AmbientSfxTask);
             using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(goldPath, ct));
-            var samples = doc.RootElement.GetProperty("labels").EnumerateArray().Take(targetCount).ToList();
+            var samples = doc.RootElement.GetProperty(LabelsKey).EnumerateArray().Take(targetCount).ToList();
             var payload = samples.Select(s => new
             {
                 id = s.GetProperty("id").GetString(),
@@ -838,11 +851,11 @@ public static class TaskRunners
             await chat.CompleteAsync(model, 0.2, prompt.Text, JsonSerializer.Serialize(new { beats = payload }), ct);
             processed = payload.Count;
         }
-        else if (task == "onscreen_cast")
+        else if (task == OnscreenCastTask)
         {
-            var goldPath = paths.GoldFile("The_Jungle_Book", "onscreen_cast");
+            var goldPath = paths.GoldFile(JungleBookName, OnscreenCastTask);
             using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(goldPath, ct));
-            var samples = doc.RootElement.GetProperty("labels").EnumerateArray().Take(targetCount).ToList();
+            var samples = doc.RootElement.GetProperty(LabelsKey).EnumerateArray().Take(targetCount).ToList();
             var payload = samples.Select(s => new
             {
                 id = s.GetProperty("id").GetString(),
@@ -852,11 +865,11 @@ public static class TaskRunners
             await chat.CompleteAsync(model, 0.0, prompt.Text, JsonSerializer.Serialize(new { beats = payload }), ct);
             processed = payload.Count;
         }
-        else if (task == "silent_beat_action")
+        else if (task == SilentBeatActionTask)
         {
-            var goldPath = paths.GoldFile("_all_books", "silent_beat_action");
+            var goldPath = paths.GoldFile(AllBooksName, SilentBeatActionTask);
             using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(goldPath, ct));
-            var samples = doc.RootElement.GetProperty("labels").EnumerateArray().Take(targetCount).ToList();
+            var samples = doc.RootElement.GetProperty(LabelsKey).EnumerateArray().Take(targetCount).ToList();
             var payload = samples.Select(s => new
             {
                 id = s.GetProperty("id").GetString(),
@@ -866,11 +879,11 @@ public static class TaskRunners
             await chat.CompleteAsync(model, 0.0, prompt.Text, JsonSerializer.Serialize(new { beats = payload }), ct);
             processed = payload.Count;
         }
-        else if (task == "extend_cut")
+        else if (task == ExtendCutTask)
         {
-            var goldPath = paths.GoldFile("The_Jungle_Book", "extend_cut");
+            var goldPath = paths.GoldFile(JungleBookName, ExtendCutTask);
             using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(goldPath, ct));
-            var samples = doc.RootElement.GetProperty("labels").EnumerateArray().Take(targetCount).ToList();
+            var samples = doc.RootElement.GetProperty(LabelsKey).EnumerateArray().Take(targetCount).ToList();
             var payload = samples.Select(s => new
             {
                 id = s.GetProperty("id").GetString(),
@@ -879,11 +892,11 @@ public static class TaskRunners
             await chat.CompleteAsync(model, 0.0, prompt.Text, JsonSerializer.Serialize(new { beats = payload }), ct);
             processed = payload.Count;
         }
-        else if (task == "species_kind")
+        else if (task == SpeciesKindTask)
         {
-            var goldPath = paths.GoldFile("The_Jungle_Book", "species_kind");
+            var goldPath = paths.GoldFile(JungleBookName, SpeciesKindTask);
             using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(goldPath, ct));
-            var samples = doc.RootElement.GetProperty("labels").EnumerateArray().Take(targetCount).ToList();
+            var samples = doc.RootElement.GetProperty(LabelsKey).EnumerateArray().Take(targetCount).ToList();
             var payload = samples.Select(s => new
             {
                 id = s.GetProperty("key").GetString(),
@@ -892,13 +905,13 @@ public static class TaskRunners
             await chat.CompleteAsync(model, 0.0, prompt.Text, JsonSerializer.Serialize(new { characters = payload }), ct);
             processed = payload.Count;
         }
-        else if (task == "plate_rank")
+        else if (task == PlateRankTask)
         {
             // Only Buster2 has a plate_rank gold file today (The_Jungle_Book's was never
             // populated) — point at it directly instead of probing for a file that doesn't exist.
-            var goldPath = paths.GoldFile("Buster2", "plate_rank");
+            var goldPath = paths.GoldFile("Buster2", PlateRankTask);
             using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(goldPath, ct));
-            var labels = doc.RootElement.GetProperty("labels").EnumerateArray().Take(targetCount).ToList();
+            var labels = doc.RootElement.GetProperty(LabelsKey).EnumerateArray().Take(targetCount).ToList();
             var payload = labels.Select(s => new
             {
                 character_key = s.GetProperty("character_key").GetString(),

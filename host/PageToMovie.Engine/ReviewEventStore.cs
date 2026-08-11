@@ -18,6 +18,8 @@ public sealed class ReviewEventStore
         DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
     };
 
+    private const string ClipFailType = "clip_fail";
+
     private readonly ProjectStore _projects;
     private readonly ILogger<ReviewEventStore> _log;
 
@@ -153,13 +155,13 @@ public sealed class ReviewEventStore
             if (!string.IsNullOrWhiteSpace(e.Category))
                 Bump(dto.ByCategory, e.Category!);
 
-            if (string.Equals(e.Type, "clip_fail", StringComparison.OrdinalIgnoreCase) ||
+            if (string.Equals(e.Type, ClipFailType, StringComparison.OrdinalIgnoreCase) ||
                 (string.Equals(e.Type, "auto_review", StringComparison.OrdinalIgnoreCase) &&
                  string.Equals(e.Suggestion, "fail", StringComparison.OrdinalIgnoreCase)))
             {
-                dto.HumanFail += string.Equals(e.Type, "clip_fail", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+                dto.HumanFail += string.Equals(e.Type, ClipFailType, StringComparison.OrdinalIgnoreCase) ? 1 : 0;
                 var cat = string.IsNullOrWhiteSpace(e.Category) ? "other" : e.Category!;
-                if (string.Equals(e.Type, "clip_fail", StringComparison.OrdinalIgnoreCase) ||
+                if (string.Equals(e.Type, ClipFailType, StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(e.Suggestion, "fail", StringComparison.OrdinalIgnoreCase))
                     Bump(dto.FailByCategory, cat);
             }
@@ -176,7 +178,7 @@ public sealed class ReviewEventStore
 
         // auto_review fails counted above only when suggestion=fail; ensure human fail tally correct
         dto.HumanFail = events.Count(e =>
-            string.Equals(e.Type, "clip_fail", StringComparison.OrdinalIgnoreCase));
+            string.Equals(e.Type, ClipFailType, StringComparison.OrdinalIgnoreCase));
 
         return dto;
     }
@@ -268,7 +270,7 @@ public sealed class ReviewEventStore
         foreach (var g in groups)
         {
             var humanEv = g.FirstOrDefault(e => string.Equals(e.Type, "clip_pass", StringComparison.OrdinalIgnoreCase) ||
-                                                 string.Equals(e.Type, "clip_fail", StringComparison.OrdinalIgnoreCase) ||
+                                                 string.Equals(e.Type, ClipFailType, StringComparison.OrdinalIgnoreCase) ||
                                                  string.Equals(e.Type, "scene_approve", StringComparison.OrdinalIgnoreCase));
             var aiEv = g.FirstOrDefault(e => string.Equals(e.Type, "auto_review", StringComparison.OrdinalIgnoreCase) ||
                                              string.Equals(e.Type, "auto_review_apply", StringComparison.OrdinalIgnoreCase));

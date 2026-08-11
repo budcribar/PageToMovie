@@ -57,6 +57,7 @@ public interface IAdminAuthService
 
 public sealed class AdminAuthService : IAdminAuthService
 {
+    private const string DefaultAdminUser = "admin";
     private readonly AuthOptions _auth;
     private readonly MailOptions _mail;
     private readonly bool _useFakes;
@@ -288,12 +289,12 @@ public sealed class AdminAuthService : IAdminAuthService
                 return Fail("This account has been disabled. Contact an administrator.");
 
             var isDevAdmin = _env.IsDevelopment() &&
-                             (string.Equals(username, "admin", StringComparison.OrdinalIgnoreCase) ||
+                             (string.Equals(username, DefaultAdminUser, StringComparison.OrdinalIgnoreCase) ||
                               string.Equals(username, _auth.AdminUsername, StringComparison.OrdinalIgnoreCase) ||
                               string.Equals(username, OperatorUserId, StringComparison.OrdinalIgnoreCase));
 
             var hash = UserDatabaseService.HashPassword(password);
-            var passwordValid = dbUser.PasswordHash == hash || (isDevAdmin && (password == "admin" || password == ""));
+            var passwordValid = dbUser.PasswordHash == hash || (isDevAdmin && (password == DefaultAdminUser || password == ""));
 
             if (passwordValid)
             {
@@ -379,7 +380,7 @@ public sealed class AdminAuthService : IAdminAuthService
     }
 
     public string OperatorUserId =>
-        string.IsNullOrWhiteSpace(_auth.OperatorUserId) ? "admin" : _auth.OperatorUserId.Trim();
+        string.IsNullOrWhiteSpace(_auth.OperatorUserId) ? DefaultAdminUser : _auth.OperatorUserId.Trim();
 
     private string? ResolveOperatorOverrideSecret()
     {
@@ -408,7 +409,7 @@ public sealed class AdminAuthService : IAdminAuthService
             ? OperatorUserId
             : preferredUserId.Trim();
         if (string.IsNullOrWhiteSpace(uid))
-            uid = "admin";
+            uid = DefaultAdminUser;
 
         var hours = Math.Clamp(_auth.JwtHours, 1, 168);
         var expires = DateTimeOffset.UtcNow.AddHours(hours);
@@ -521,8 +522,8 @@ public sealed class AdminAuthService : IAdminAuthService
         if (!string.IsNullOrEmpty(_auth.AdminPassword))
             return password == _auth.AdminPassword;
 
-        // No password configured: allow in Development with empty or default "admin" password
-        return _env.IsDevelopment() && (password.Length == 0 || password == "admin");
+        // No password configured: allow in Development with empty or default DefaultAdminUser password
+        return _env.IsDevelopment() && (password.Length == 0 || password == DefaultAdminUser);
     }
 
     private string IssueJwt(

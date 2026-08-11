@@ -20,6 +20,7 @@ public sealed class ProjectArtifactIndexService
         PropertyNameCaseInsensitive = true,
     };
 
+    private const string AssetsFolder = "assets";
     private readonly ProjectStore _projects;
     private readonly CostReportService _costs;
     private readonly PageToMovieOptions _opts;
@@ -136,7 +137,7 @@ public sealed class ProjectArtifactIndexService
         Add("artifact_index.json", "Machine-readable artifact presence map");
 
         // Scene sources (assembly gate)
-        var videoDir = Path.Combine(dir, "assets", "video");
+        var videoDir = Path.Combine(dir, AssetsFolder, "video");
         if (Directory.Exists(videoDir))
         {
             foreach (var src in Directory.EnumerateFiles(videoDir, "scene_*.mp4.sources.json")
@@ -277,7 +278,7 @@ public sealed class ProjectArtifactIndexService
     private static Dictionary<string, object?> CollectStats(string dir)
     {
         var stats = new Dictionary<string, object?>();
-        var video = Path.Combine(dir, "assets", "video");
+        var video = Path.Combine(dir, AssetsFolder, "video");
         if (Directory.Exists(video))
         {
             var clips = Directory.GetFiles(video, "scene_*_clip_*.mp4")
@@ -294,7 +295,7 @@ public sealed class ProjectArtifactIndexService
             }
         }
 
-        var review = Path.Combine(dir, "assets", "review");
+        var review = Path.Combine(dir, AssetsFolder, "review");
         if (Directory.Exists(review))
         {
             stats["autoReviewDraftCount"] = Directory.GetFiles(review, "S*.auto_review.json").Length;
@@ -305,7 +306,7 @@ public sealed class ProjectArtifactIndexService
                 : 0;
         }
 
-        stats["hasWip"] = File.Exists(Path.Combine(dir, "assets", "movie_wip.mp4"));
+        stats["hasWip"] = File.Exists(Path.Combine(dir, AssetsFolder, "movie_wip.mp4"));
         return stats;
     }
 
@@ -382,7 +383,7 @@ public sealed class ProjectArtifactIndexService
 
     private static async Task EnsureFinalReviewTemplateAsync(string projectDir, CancellationToken ct)
     {
-        var reviewDir = Path.Combine(projectDir, "assets", "review");
+        var reviewDir = Path.Combine(projectDir, AssetsFolder, "review");
         Directory.CreateDirectory(reviewDir);
         var path = Path.Combine(reviewDir, "FINAL_REVIEW_TEMPLATE.json");
         if (File.Exists(path)) return;

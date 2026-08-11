@@ -23,6 +23,9 @@ public sealed class ProjectArchiveService
     /// <summary>Max size of any single extracted entry.</summary>
     public const long MaxSingleEntryUncompressedBytes = 512L * 1024 * 1024;
 
+    private const string ProjectJsonFile = "project.json";
+    private const string TitleKey = "title";
+
     private readonly ProjectStore _projects;
     private readonly ClipSidecarService? _sidecars;
     private readonly ProjectMigrationService? _migrations;
@@ -527,7 +530,7 @@ public sealed class ProjectArchiveService
 
     private static string? FindProjectContentRoot(string extractRoot)
     {
-        var direct = Path.Combine(extractRoot, "project.json");
+        var direct = Path.Combine(extractRoot, ProjectJsonFile);
         if (File.Exists(direct))
             return extractRoot;
 
@@ -535,12 +538,12 @@ public sealed class ProjectArchiveService
         var dirs = Directory.GetDirectories(extractRoot);
         foreach (var d in dirs)
         {
-            if (File.Exists(Path.Combine(d, "project.json")))
+            if (File.Exists(Path.Combine(d, ProjectJsonFile)))
                 return d;
         }
 
         // Nested: projects/MyId/project.json
-        var nested = Directory.GetFiles(extractRoot, "project.json", SearchOption.AllDirectories)
+        var nested = Directory.GetFiles(extractRoot, ProjectJsonFile, SearchOption.AllDirectories)
             .OrderBy(p => p.Length)
             .FirstOrDefault();
         if (nested is not null)
@@ -551,7 +554,7 @@ public sealed class ProjectArchiveService
 
     private static async Task<string?> TryReadProjectIdAsync(string contentRoot, CancellationToken ct)
     {
-        var path = Path.Combine(contentRoot, "project.json");
+        var path = Path.Combine(contentRoot, ProjectJsonFile);
         if (!File.Exists(path)) return null;
         try
         {
@@ -565,7 +568,7 @@ public sealed class ProjectArchiveService
 
     private static async Task EnsureProjectJsonIdAsync(string dest, string id, string? targetUserId, CancellationToken ct)
     {
-        var path = Path.Combine(dest, "project.json");
+        var path = Path.Combine(dest, ProjectJsonFile);
         Dictionary<string, object?> meta;
         if (File.Exists(path))
         {
@@ -584,7 +587,7 @@ public sealed class ProjectArchiveService
         {
             meta = new Dictionary<string, object?>
             {
-                ["title"] = id,
+                [TitleKey] = id,
                 ["blueprint_file"] = "blueprint.clips.grok.json",
                 ["scenes_file"] = "scenes.json",
                 ["config_file"] = "pipeline_config.json",
@@ -593,8 +596,8 @@ public sealed class ProjectArchiveService
         }
 
         meta["id"] = id;
-        if (!meta.ContainsKey("title") || meta["title"] is null || string.IsNullOrWhiteSpace(meta["title"]?.ToString()))
-            meta["title"] = id;
+        if (!meta.ContainsKey(TitleKey) || meta[TitleKey] is null || string.IsNullOrWhiteSpace(meta[TitleKey]?.ToString()))
+            meta[TitleKey] = id;
 
         if (!string.IsNullOrWhiteSpace(targetUserId))
         {

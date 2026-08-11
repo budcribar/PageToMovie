@@ -20,6 +20,7 @@ public sealed class SilentBeatActionClassifier
     /// Eval / ship prompt id. <c>v2_pp</c> = duration-linked v2 chat prompt + deterministic
     /// multi-step / busy-not-spectacle post-process (gold ~88.4% vs v2/v3 ~85.7%).
     /// </summary>
+    private const string ActionClass = "action";
     public const string PromptVersion = "v2_pp";
 
     public const string DefaultModel = "";
@@ -545,7 +546,7 @@ Use only the four class strings above.
         c = (c ?? "").Trim().ToLowerInvariant().Replace(' ', '_');
         return c switch
         {
-            "establishing" or "hold" or "action" or "big_action" => c,
+            "establishing" or "hold" or ActionClass or "big_action" => c,
             "bigaction" => "big_action",
             _ => null,
         };
@@ -557,16 +558,16 @@ Use only the four class strings above.
     /// </summary>
     public static string PostProcessActionClass(string? aiClass, string? visualEvent)
     {
-        var cls = NormalizeClass(aiClass ?? "") ?? "action";
+        var cls = NormalizeClass(aiClass ?? "") ?? ActionClass;
         var ve = visualEvent ?? "";
 
         // Multi-step physical business should not be budgeted as a 3s hold
         if (cls == "hold" && LooksMultiStepBusiness(ve))
-            return "action";
+            return ActionClass;
 
         // Busy multi-place search/shopping is action, not chase spectacle
         if (cls == "big_action" && LooksBusyNotSpectacle(ve))
-            return "action";
+            return ActionClass;
 
         return cls;
     }

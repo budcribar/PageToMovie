@@ -19,6 +19,13 @@ namespace PageToMovie.Engine;
 /// </summary>
 public sealed class BookPrepareService
 {
+    private const string BookImagesFolder = "book_images";
+    private const string EmbeddedKind = "embedded";
+    private const string RelevanceKey = "relevance";
+    private const string GrokVisionTranscribeAction = "grok_vision_transcribe";
+    private const string GrokVisionEngine = "grok_vision";
+    private const string RenderedPageRelevance = "rendered_page";
+
     private readonly ProjectStore _projects;
     private readonly IVisionClient _vision;
     private readonly PageToMovieOptions _opts;
@@ -63,7 +70,7 @@ public sealed class BookPrepareService
         var source = Path.Combine(projectDir, "source");
         Directory.CreateDirectory(source);
         var bookTxt = Path.Combine(source, "book_full.txt");
-        var imgDir = Path.Combine(source, "book_images");
+        var imgDir = Path.Combine(source, BookImagesFolder);
         Directory.CreateDirectory(imgDir);
 
         var result = new BookPrepareResult { ProjectId = projectId, Ok = false };
@@ -193,13 +200,13 @@ public sealed class BookPrepareService
         {
             strategy = new BookStrategy
             {
-                Action = "grok_vision_transcribe",
+                Action = GrokVisionTranscribeAction,
                 Reason = "Forced Grok vision transcription.",
                 ReadyForStage1 = false,
                 NeedsUser = false,
             };
         }
-        if (!autoVision && strategy.Action == "grok_vision_transcribe")
+        if (!autoVision && strategy.Action == GrokVisionTranscribeAction)
         {
             strategy = new BookStrategy
             {
@@ -214,7 +221,7 @@ public sealed class BookPrepareService
         result.StrategyReason = strategy.Reason;
         onProgress?.Invoke($"Strategy: {strategy.Action} — {strategy.Reason}");
 
-        if (strategy.Action == "grok_vision_transcribe")
+        if (strategy.Action == GrokVisionTranscribeAction)
         {
             if (!hasXai)
                 throw new InvalidOperationException("XAI_API_KEY required for Grok vision OCR.");
@@ -259,8 +266,8 @@ public sealed class BookPrepareService
 
             await File.WriteAllTextAsync(bookTxt, sb.ToString(), ct);
             analysis = BookTextAnalyzer.Analyze(sb.ToString(), pageImages.Count);
-            analysis.TextEngine = "grok_vision";
-            result.TextEngine = "grok_vision";
+            analysis.TextEngine = GrokVisionEngine;
+            result.TextEngine = GrokVisionEngine;
             result.VisionPages = pageImages.Count;
             result.VisionFailedPages = failed;
             onProgress?.Invoke(
@@ -290,7 +297,7 @@ public sealed class BookPrepareService
 
         // Vision success is stage-1-ready; strategies that need user/key are not;
         // clean embedded text uses analyzer flags.
-        if (result.TextEngine == "grok_vision")
+        if (result.TextEngine == GrokVisionEngine)
         {
             var failed = result.VisionFailedPages;
             var total = Math.Max(result.VisionPages, 1);
@@ -335,7 +342,7 @@ public sealed class BookPrepareService
         {
             return new BookStrategy
             {
-                Action = "grok_vision_transcribe",
+                Action = GrokVisionTranscribeAction,
                 Reason =
                     $"Picture book / sparse text (quality={quality}, garbage={garbage:0.00}). " +
                     "Rebuilding book_full.txt with Grok vision from page images.",
@@ -381,7 +388,7 @@ public sealed class BookPrepareService
         {
             return new BookStrategy
             {
-                Action = "grok_vision_transcribe",
+                Action = GrokVisionTranscribeAction,
                 Reason = $"Text quality is '{quality}'. Rebuilding with Grok vision.",
                 ReadyForStage1 = false,
             };
@@ -469,10 +476,10 @@ public sealed class BookPrepareService
                 var rel = Path.GetRelativePath(sourceDir, fullPath).Replace('\\', '/');
                 imageRows.Add(new Dictionary<string, object?>
                 {
-                    ["kind"] = "embedded",
+                    ["kind"] = EmbeddedKind,
                     ["page"] = imgIndex,
-                    ["path"] = rel.StartsWith("book_images") ? rel : $"book_images/{name}",
-                    ["relevance"] = imgIndex == 1 ? "cover" : "embedded_figure",
+                    ["path"] = rel.StartsWith(BookImagesFolder) ? rel : $"book_images/{name}",
+                    [RelevanceKey] = imgIndex == 1 ? "cover" : "embedded_figure",
                 });
             }
             catch { /* ignore bad images */ }
@@ -567,12 +574,12 @@ public sealed class BookPrepareService
                         var rel = Path.GetRelativePath(sourceDir, full).Replace('\\', '/');
                         rows.Add(new Dictionary<string, object?>
                         {
-                            ["kind"] = "embedded",
+                            ["kind"] = EmbeddedKind,
                             ["page"] = pageIndex,
-                            ["path"] = rel.StartsWith("book_images") ? rel : $"book_images/{name}",
+                            ["path"] = rel.StartsWith(BookImagesFolder) ? rel : $"book_images/{name}",
                             ["width"] = w,
                             ["height"] = h,
-                            ["relevance"] = "embedded_figure",
+                            [RelevanceKey] = "embedded_figure",
                         });
                     }
                     catch
@@ -638,10 +645,10 @@ public sealed class BookPrepareService
 
                     rows.Add(new Dictionary<string, object?>
                     {
-                        ["kind"] = "rendered_page",
+                        ["kind"] = RenderedPageRelevance,
                         ["page"] = index,
                         ["path"] = $"book_images/{name}",
-                        ["relevance"] = index == 1 ? "cover" : "rendered_page",
+                        [RelevanceKey] = index == 1 ? "cover" : RenderedPageRelevance,
                     });
                 }
                 catch (Exception pageEx)
@@ -733,7 +740,7 @@ public sealed class BookPrepareService
             var name = fi.Name;
             var f = fi.FullName;
             var m = EmbeddedPageNumRegex.Match(name);
-            var kind = "embedded";
+            var kind = EmbeddedKind;
             int page = 0;
             if (m.Success)
                 int.TryParse(m.Groups[1].Value, out page);
@@ -742,7 +749,7 @@ public sealed class BookPrepareService
                 m = RenderedPageNumRegex.Match(name);
                 if (m.Success)
                 {
-                    kind = "rendered_page";
+                    kind = RenderedPageRelevance;
                     int.TryParse(m.Groups[1].Value, out page);
                 }
             }
@@ -752,7 +759,7 @@ public sealed class BookPrepareService
                 ["kind"] = kind,
                 ["page"] = page,
                 ["path"] = $"book_images/{name}",
-                ["relevance"] = kind == "embedded" ? "embedded_figure" : "rendered_page",
+                [RelevanceKey] = kind == EmbeddedKind ? "embedded_figure" : RenderedPageRelevance,
             });
         }
         if (rows.Count == 0) return;
@@ -768,7 +775,7 @@ public sealed class BookPrepareService
         string sourceDir,
         CancellationToken ct = default)
     {
-        var imgDir = Path.Combine(sourceDir, "book_images");
+        var imgDir = Path.Combine(sourceDir, BookImagesFolder);
         var byPage = new Dictionary<int, (string? Emb, string? Ren)>();
         var manPath = Path.Combine(imgDir, "manifest.json");
         if (File.Exists(manPath))
@@ -794,7 +801,7 @@ public sealed class BookPrepareService
                         if (!File.Exists(full)) continue;
                         var kind = row.TryGetProperty("kind", out var k) ? k.GetString() ?? "" : "";
                         byPage.TryGetValue(page, out var slot);
-                        if (kind == "embedded")
+                        if (kind == EmbeddedKind)
                             slot.Emb = full;
                         else
                             slot.Ren ??= full;
@@ -896,7 +903,7 @@ public sealed class BookPrepareService
                 ["notes"] = analysis.Notes,
                 ["text_source"] = analysis.TextEngine,
             },
-            ["vision"] = result.TextEngine == "grok_vision"
+            ["vision"] = result.TextEngine == GrokVisionEngine
                 ? new Dictionary<string, object?>
                 {
                     ["ran"] = true,

@@ -18,6 +18,11 @@ public sealed class EditLogService
     private readonly ReviewEventStore _learning;
     private readonly ILogger<EditLogService> _log;
 
+    private const string PipelineStateFile = "pipeline_state.json";
+    private const string ClipReviewKey = "clip_review";
+    private const string ClipAutoReviewKey = "clip_auto_review";
+    private const string TimestampFormat = "yyyy-MM-ddTHH:mm:ss";
+
     public EditLogService(
         ProjectStore projects,
         ReviewEventStore learning,
@@ -91,7 +96,7 @@ public sealed class EditLogService
         var entry = new EditLogEntry
         {
             Id = Guid.NewGuid().ToString("N")[..8],
-            Ts = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss"),
+            Ts = DateTime.Now.ToString(TimestampFormat),
             Type = entryType,
             LearningLayer = learningLayer,
             Scene = scene,
@@ -178,7 +183,7 @@ public sealed class EditLogService
             throw new InvalidOperationException("status must be pass|fail|pending");
 
         var dir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
-        var statePath = Path.Combine(dir, "pipeline_state.json");
+        var statePath = Path.Combine(dir, PipelineStateFile);
         var state = await LoadStateAsync(statePath, ct).ConfigureAwait(false);
         var key = $"S{scene:D2}C{clip:D2}";
         note ??= "";
@@ -201,16 +206,16 @@ public sealed class EditLogService
             overrodeAutoFail = true;
         }
 
-        if (!state.TryGetValue("clip_review", out var cr) || cr is not Dictionary<string, object?> reviews)
+        if (!state.TryGetValue(ClipReviewKey, out var cr) || cr is not Dictionary<string, object?> reviews)
         {
             reviews = new Dictionary<string, object?>();
-            state["clip_review"] = reviews;
+            state[ClipReviewKey] = reviews;
         }
         reviews[key] = new Dictionary<string, object?>
         {
             ["status"] = status,
             ["note"] = note,
-            ["ts"] = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss"),
+            ["ts"] = DateTime.Now.ToString(TimestampFormat),
             ["overrode_auto_fail"] = overrodeAutoFail,
             ["auto_suggestion"] = auto.Suggestion ?? "",
             ["auto_category"] = auto.Category ?? "",
@@ -219,7 +224,7 @@ public sealed class EditLogService
 
         await AddAsync(
             projectId,
-            status == "pass" ? "clip_pass" : status == "fail" ? "clip_fail" : "clip_review",
+            status == "pass" ? "clip_pass" : status == "fail" ? "clip_fail" : ClipReviewKey,
             note is { Length: > 0 } ? note : status,
             scene: scene,
             clip: clip,
@@ -241,14 +246,14 @@ public sealed class EditLogService
         CancellationToken ct = default)
     {
         var dir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
-        var statePath = Path.Combine(dir, "pipeline_state.json");
+        var statePath = Path.Combine(dir, PipelineStateFile);
         var state = await LoadStateAsync(statePath, ct).ConfigureAwait(false);
         var key = $"S{scene:D2}C{clip:D2}";
         var changed = false;
 
-        if (state.TryGetValue("clip_review", out var cr) && cr is Dictionary<string, object?> reviews)
+        if (state.TryGetValue(ClipReviewKey, out var cr) && cr is Dictionary<string, object?> reviews)
             changed |= reviews.Remove(key);
-        if (state.TryGetValue("clip_auto_review", out var car) && car is Dictionary<string, object?> autos)
+        if (state.TryGetValue(ClipAutoReviewKey, out var car) && car is Dictionary<string, object?> autos)
             changed |= autos.Remove(key);
 
         if (changed)
@@ -275,20 +280,20 @@ public sealed class EditLogService
         CancellationToken ct = default)
     {
         var dir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
-        var statePath = Path.Combine(dir, "pipeline_state.json");
+        var statePath = Path.Combine(dir, PipelineStateFile);
         var state = await LoadStateAsync(statePath, ct).ConfigureAwait(false);
         var key = $"S{scene:D2}C{clip:D2}";
-        if (!state.TryGetValue("clip_auto_review", out var car) || car is not Dictionary<string, object?> autos)
+        if (!state.TryGetValue(ClipAutoReviewKey, out var car) || car is not Dictionary<string, object?> autos)
         {
             autos = new Dictionary<string, object?>();
-            state["clip_auto_review"] = autos;
+            state[ClipAutoReviewKey] = autos;
         }
         autos[key] = new Dictionary<string, object?>
         {
             ["suggestion"] = (suggestion ?? "").Trim().ToLowerInvariant(),
             ["category"] = category ?? "",
             ["note"] = note ?? "",
-            ["ts"] = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss"),
+            ["ts"] = DateTime.Now.ToString(TimestampFormat),
         };
         await SaveStateAsync(statePath, state, ct).ConfigureAwait(false);
     }
@@ -306,7 +311,7 @@ public sealed class EditLogService
         try
         {
             var dir = _projects.GetProjectDir(projectId);
-            var statePath = Path.Combine(dir, "pipeline_state.json");
+            var statePath = Path.Combine(dir, PipelineStateFile);
             var state = await LoadStateAsync(statePath, ct).ConfigureAwait(false);
             var key = $"S{scene:D2}C{clip:D2}";
             var human = ReadHumanReviewRow(state, key);
@@ -425,7 +430,7 @@ public sealed class EditLogService
     private static (string Status, string Note, bool OverrodeAutoFail) ReadHumanReviewRow(
         Dictionary<string, object?> state, string key)
     {
-        if (!state.TryGetValue("clip_review", out var cr) || cr is not Dictionary<string, object?> reviews)
+        if (!state.TryGetValue(ClipReviewKey, out var cr) || cr is not Dictionary<string, object?> reviews)
             return ("", "", false);
         if (!reviews.TryGetValue(key, out var row) || row is not Dictionary<string, object?> d)
             return ("", "", false);
@@ -445,7 +450,7 @@ public sealed class EditLogService
         Dictionary<string, object?> state, string key)
     {
         // Prefer pipeline_state clip_auto_review; fall back to draft file is caller's job
-        if (state.TryGetValue("clip_auto_review", out var car) &&
+        if (state.TryGetValue(ClipAutoReviewKey, out var car) &&
             car is Dictionary<string, object?> autos &&
             autos.TryGetValue(key, out var row) &&
             row is Dictionary<string, object?> d)
@@ -468,7 +473,7 @@ public sealed class EditLogService
         CancellationToken ct = default)
     {
         var dir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
-        var statePath = Path.Combine(dir, "pipeline_state.json");
+        var statePath = Path.Combine(dir, PipelineStateFile);
         var state = await LoadStateAsync(statePath, ct).ConfigureAwait(false);
         if (!state.TryGetValue("scene_review", out var sr) || sr is not Dictionary<string, object?> scenes)
         {
@@ -479,7 +484,7 @@ public sealed class EditLogService
         {
             ["status"] = "approved",
             ["note"] = note ?? "",
-            ["ts"] = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss"),
+            ["ts"] = DateTime.Now.ToString(TimestampFormat),
         };
         await SaveStateAsync(statePath, state, ct).ConfigureAwait(false);
         await AddAsync(
@@ -499,7 +504,7 @@ public sealed class EditLogService
         CancellationToken ct = default)
     {
         var dir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
-        var statePath = Path.Combine(dir, "pipeline_state.json");
+        var statePath = Path.Combine(dir, PipelineStateFile);
         var state = await LoadStateAsync(statePath, ct).ConfigureAwait(false);
         if (!state.TryGetValue("dirty_scenes", out var ds) || ds is not Dictionary<string, object?> dirty)
         {
@@ -510,7 +515,7 @@ public sealed class EditLogService
         {
             ["reason"] = reason,
             ["layer"] = layer,
-            ["ts"] = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss"),
+            ["ts"] = DateTime.Now.ToString(TimestampFormat),
         };
         await SaveStateAsync(statePath, state, ct).ConfigureAwait(false);
         await AddAsync(
@@ -528,10 +533,10 @@ public sealed class EditLogService
         CancellationToken ct = default)
     {
         var dir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
-        var statePath = Path.Combine(dir, "pipeline_state.json");
+        var statePath = Path.Combine(dir, PipelineStateFile);
         var state = await LoadStateAsync(statePath, ct).ConfigureAwait(false);
         var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        if (state.TryGetValue("clip_review", out var cr) && cr is Dictionary<string, object?> reviews)
+        if (state.TryGetValue(ClipReviewKey, out var cr) && cr is Dictionary<string, object?> reviews)
         {
             foreach (var (k, v) in reviews)
             {

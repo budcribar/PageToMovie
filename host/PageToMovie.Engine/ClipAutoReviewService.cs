@@ -22,6 +22,10 @@ public sealed class ClipAutoReviewService
         WriteIndented = true,
     };
 
+    private const string VoiceProfileKey = "voice_profile";
+    private const string CharacterLayer = "character";
+    private const string VisualPromptKey = "visual_prompt";
+
     private readonly ProjectStore _projects;
     private readonly IVisionClient _vision;
     private readonly EditLogService _logs;
@@ -258,19 +262,19 @@ public sealed class ClipAutoReviewService
             var value = item.Value ?? "";
             var before = "";
 
-            if (layer == "character" && !string.IsNullOrWhiteSpace(item.CharKey))
+            if (layer == CharacterLayer && !string.IsNullOrWhiteSpace(item.CharKey))
             {
                 profiles.TryGetValue(item.CharKey, out var p);
                 before = field switch
                 {
                     "description" => p?.Description ?? "",
                     "visual_lock" => p?.VisualLock ?? "",
-                    "voice_profile" => p?.VoiceProfile ?? "",
+                    VoiceProfileKey => p?.VoiceProfile ?? "",
                     _ => "",
                 };
                 switch (field)
                 {
-                    case "voice_profile":
+                    case VoiceProfileKey:
                         _projects.UpdateCharacterSeedText(projectId, item.CharKey, voiceProfile: value);
                         break;
                     case "description":
@@ -286,7 +290,7 @@ public sealed class ClipAutoReviewService
                 beforeParts.Add($"{item.CharKey}.{field}: {Trim(before, 400)}");
                 afterParts.Add($"{item.CharKey}.{field}: {Trim(value, 400)}");
             }
-            else if (layer == "clip" && field is "visual_prompt" or "prompt")
+            else if (layer == "clip" && field is VisualPromptKey or "prompt")
             {
                 before = plan.VisualPrompt;
                 _projects.UpdateClipVisualPrompt(projectId, scene, clip, value);
@@ -389,7 +393,7 @@ public sealed class ClipAutoReviewService
                 {
                     if (!c.TryGetProperty("clip_number", out var cn) || !cn.TryGetInt32(out var cnum) || cnum != clip)
                         continue;
-                    plan.VisualPrompt = c.TryGetProperty("visual_prompt", out var vp) ? vp.GetString() ?? "" : "";
+                    plan.VisualPrompt = c.TryGetProperty(VisualPromptKey, out var vp) ? vp.GetString() ?? "" : "";
                     if (c.TryGetProperty("audio_payload", out var ap) && ap.ValueKind == JsonValueKind.Object)
                     {
                         plan.Dialogue = ap.TryGetProperty("dialogue", out var d) ? d.GetString() ?? "" : "";
@@ -565,7 +569,7 @@ public sealed class ClipAutoReviewService
                     var layer = GetStr(item, "layer", "clip").ToLowerInvariant();
                     var field = GetStr(item, "field", "");
                     if (string.IsNullOrWhiteSpace(field) && item.TryGetProperty("suggested_value", out _))
-                        field = layer == "character" ? "voice_profile" : "visual_prompt";
+                        field = layer == CharacterLayer ? VoiceProfileKey : VisualPromptKey;
                     var charKey = GetStr(item, "char_key", "") is { Length: > 0 } ck ? ck : null;
                     if (charKey is null && item.TryGetProperty("charKey", out var ck2))
                         charKey = ck2.GetString();
@@ -576,16 +580,16 @@ public sealed class ClipAutoReviewService
                     if (string.IsNullOrWhiteSpace(suggested)) continue;
 
                     var current = "";
-                    if (layer == "clip" && field is "visual_prompt" or "prompt")
+                    if (layer == "clip" && field is VisualPromptKey or "prompt")
                         current = plan.VisualPrompt;
-                    else if (layer == "character" && charKey is not null &&
+                    else if (layer == CharacterLayer && charKey is not null &&
                              profiles.TryGetValue(charKey, out var p))
                     {
                         current = field switch
                         {
                             "description" => p.Description,
                             "visual_lock" => p.VisualLock,
-                            "voice_profile" => p.VoiceProfile,
+                            VoiceProfileKey => p.VoiceProfile,
                             _ => "",
                         };
                     }
@@ -600,7 +604,7 @@ public sealed class ClipAutoReviewService
 
                     draft.Suggestions.Add(new ClipAutoReviewSuggestion
                     {
-                        Layer = layer is "character" or "scene" ? layer : "clip",
+                        Layer = layer is CharacterLayer or "scene" ? layer : "clip",
                         Field = field,
                         CharKey = charKey,
                         Label = GetStr(item, "label", field),

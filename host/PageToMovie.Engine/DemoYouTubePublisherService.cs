@@ -17,6 +17,7 @@ public sealed class DemoYouTubePublisherService
 {
     private readonly DemoCatalogService _demos;
     private readonly YouTubeAuthService _youTube;
+    private const string FailedStatus = "failed";
     private readonly ILogger<DemoYouTubePublisherService> _log;
 
     public DemoYouTubePublisherService(
@@ -66,14 +67,14 @@ public sealed class DemoYouTubePublisherService
         catch (Exception ex)
         {
             _log.LogWarning(ex, "YouTube auth failed publishing demo {Id}", demoId);
-            await _demos.SetYouTubeUploadStatusAsync(demoId, "failed", error: ex.Message, ct: ct).ConfigureAwait(false);
+            await _demos.SetYouTubeUploadStatusAsync(demoId, FailedStatus, error: ex.Message, ct: ct).ConfigureAwait(false);
             return;
         }
 
         if (youtube is null)
         {
             await _demos.SetYouTubeUploadStatusAsync(
-                demoId, "failed",
+                demoId, FailedStatus,
                 error: "YouTube channel not connected (admin: connect it from Review).", ct: ct).ConfigureAwait(false);
             return;
         }
@@ -115,7 +116,7 @@ public sealed class DemoYouTubePublisherService
                 var err = result.Exception?.Message ?? $"Upload status: {result.Status}";
                 _log.LogWarning("YouTube upload incomplete for demo {Id}: {Error}", demoId, err);
                 // Keep previous YoutubeId on V2 failure so gallery still embeds the old video.
-                await _demos.SetYouTubeUploadStatusAsync(demoId, "failed", error: err, ct: ct).ConfigureAwait(false);
+                await _demos.SetYouTubeUploadStatusAsync(demoId, FailedStatus, error: err, ct: ct).ConfigureAwait(false);
                 return;
             }
 
@@ -149,7 +150,7 @@ public sealed class DemoYouTubePublisherService
         catch (Exception ex)
         {
             _log.LogWarning(ex, "YouTube upload failed for demo {Id}", demoId);
-            await _demos.SetYouTubeUploadStatusAsync(demoId, "failed", error: ex.Message, ct: ct).ConfigureAwait(false);
+            await _demos.SetYouTubeUploadStatusAsync(demoId, FailedStatus, error: ex.Message, ct: ct).ConfigureAwait(false);
         }
     }
 

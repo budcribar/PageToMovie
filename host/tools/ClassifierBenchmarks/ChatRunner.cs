@@ -10,6 +10,7 @@ public sealed class ChatRunner : IDisposable
     private readonly HttpClient _http;
     private readonly string? _xaiApiKey;
     private readonly string? _claudeApiKey;
+    private const string ContentKey = "content";
     private readonly string? _geminiApiKey;
 
     public ChatRunner(string? xaiApiKey, string? claudeApiKey, string? geminiApiKey = null)
@@ -53,8 +54,8 @@ public sealed class ChatRunner : IDisposable
             ["temperature"] = temperature,
             ["messages"] = new object[]
             {
-                new Dictionary<string, object?> { ["role"] = "system", ["content"] = system },
-                new Dictionary<string, object?> { ["role"] = "user", ["content"] = user },
+                new Dictionary<string, object?> { ["role"] = "system", [ContentKey] = system },
+                new Dictionary<string, object?> { ["role"] = "user", [ContentKey] = user },
             },
         };
         using var req = new HttpRequestMessage(HttpMethod.Post, targetUrl)
@@ -68,7 +69,7 @@ public sealed class ChatRunner : IDisposable
         if (!resp.IsSuccessStatusCode)
             throw new InvalidOperationException($"chat {(int)resp.StatusCode}: {Trim(text, 400)}");
         using var doc = JsonDocument.Parse(text);
-        return doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? "";
+        return doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty(ContentKey).GetString() ?? "";
     }
 
     private async Task<string> CompleteClaudeAsync(string model, double temperature, string system, string user, CancellationToken ct)
@@ -84,7 +85,7 @@ public sealed class ChatRunner : IDisposable
             ["system"] = system,
             ["messages"] = new object[]
             {
-                new Dictionary<string, object?> { ["role"] = "user", ["content"] = user },
+                new Dictionary<string, object?> { ["role"] = "user", [ContentKey] = user },
             },
         };
         // Newer Claude models (e.g. claude-sonnet-5) reject an explicit `temperature` field
@@ -104,7 +105,7 @@ public sealed class ChatRunner : IDisposable
             throw new InvalidOperationException($"claude chat {(int)resp.StatusCode}: {Trim(text, 400)}");
         using var doc = JsonDocument.Parse(text);
         var sb = new StringBuilder();
-        foreach (var block in doc.RootElement.GetProperty("content").EnumerateArray())
+        foreach (var block in doc.RootElement.GetProperty(ContentKey).EnumerateArray())
         {
             if (block.TryGetProperty("type", out var t) && t.GetString() == "text" &&
                 block.TryGetProperty("text", out var txt))
@@ -149,7 +150,7 @@ public sealed class ChatRunner : IDisposable
 
         using var doc = JsonDocument.Parse(text);
         if (!doc.RootElement.TryGetProperty("candidates", out var candidates) || candidates.GetArrayLength() == 0) return "";
-        var content = candidates[0].GetProperty("content");
+        var content = candidates[0].GetProperty(ContentKey);
         if (!content.TryGetProperty("parts", out var parts) || parts.GetArrayLength() == 0) return "";
         return parts[0].GetProperty("text").GetString() ?? "";
     }

@@ -11,6 +11,7 @@ public static class ProjectSandbox
 {
     public const string DefaultSourceId = "Buster";
     public const string DefaultSandboxId = "LoadSimBuster";
+    private const string ProjectsFolder = "projects";
 
     private static readonly string[] SkipDirectoryNames =
     {
@@ -38,12 +39,12 @@ public static class ProjectSandbox
         if (string.IsNullOrWhiteSpace(workspaceRoot) || !Directory.Exists(workspaceRoot))
             throw new InvalidOperationException($"Workspace root not found: {workspaceRoot}");
 
-        var sourceDir = Path.Combine(workspaceRoot, "projects", sourceProjectId);
+        var sourceDir = Path.Combine(workspaceRoot, ProjectsFolder, sourceProjectId);
         if (!Directory.Exists(sourceDir))
             throw new InvalidOperationException(
                 $"Source project not found: {sourceDir}. Expected projects/{sourceProjectId} under workspace.");
 
-        var destDir = Path.Combine(workspaceRoot, "projects", sandboxProjectId);
+        var destDir = Path.Combine(workspaceRoot, ProjectsFolder, sandboxProjectId);
         var marker = Path.Combine(destDir, ".loadsim-sandbox");
 
         if (Directory.Exists(destDir) && !refresh)
@@ -94,13 +95,13 @@ public static class ProjectSandbox
             var dir = new DirectoryInfo(start);
             while (dir is not null)
             {
-                var projects = Path.Combine(dir.FullName, "projects");
+                var projects = Path.Combine(dir.FullName, ProjectsFolder);
                 if (Directory.Exists(projects) &&
                     Directory.Exists(Path.Combine(projects, DefaultSourceId)))
                     return dir.FullName;
                 // host/PageToMovie.LoadSim → walk up to repo root
                 if (Directory.Exists(Path.Combine(dir.FullName, "host")) &&
-                    Directory.Exists(Path.Combine(dir.FullName, "projects", DefaultSourceId)))
+                    Directory.Exists(Path.Combine(dir.FullName, ProjectsFolder, DefaultSourceId)))
                     return dir.FullName;
                 dir = dir.Parent;
             }

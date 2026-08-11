@@ -24,6 +24,9 @@ public sealed class ProposalChecklistService
     /// <summary>Jaccard token overlap threshold for soft text match (same theme wording drift).</summary>
     public const double ThemeMatchMinScore = 0.32;
 
+    private const string PendingStatus = "pending";
+    private const string ReviewedStatus = "reviewed";
+
     private readonly ProjectStore _projects;
     private readonly ILogger<ProposalChecklistService> _log;
     private readonly object _gate = new();
@@ -116,7 +119,7 @@ public sealed class ProposalChecklistService
                         Id = ShortId(b),
                         Text = b,
                         Reviewed = false,
-                        Status = "pending",
+                        Status = PendingStatus,
                     });
                 }
             }
@@ -171,7 +174,7 @@ public sealed class ProposalChecklistService
                 if (match is null) continue;
                 used.Add(match.Id);
                 match.Reviewed = true;
-                match.Status = "reviewed";
+                match.Status = ReviewedStatus;
                 match.Disposition = string.IsNullOrWhiteSpace(disposition) ? "accepted" : disposition.Trim();
                 match.Note = string.IsNullOrWhiteSpace(note)
                     ? "Synced from approved project rule"
@@ -220,7 +223,7 @@ public sealed class ProposalChecklistService
                 ?? throw new InvalidOperationException($"Unknown checklist item: {req.Id}");
 
             item.Reviewed = req.Reviewed;
-            item.Status = req.Reviewed ? "reviewed" : "pending";
+            item.Status = req.Reviewed ? ReviewedStatus : PendingStatus;
             if (req.Disposition is not null)
                 item.Disposition = string.IsNullOrWhiteSpace(req.Disposition) ? null : req.Disposition.Trim();
             if (req.Note is not null)
@@ -274,7 +277,7 @@ public sealed class ProposalChecklistService
                 Id = ShortId(t),
                 Text = t,
                 Reviewed = false,
-                Status = "pending",
+                Status = PendingStatus,
             }).ToList(),
             UpdatedAt = DateTimeOffset.UtcNow,
         };
@@ -390,16 +393,16 @@ public sealed class ProposalChecklistService
     private static bool IsDoneOrReviewed(ProposalChecklistItem i) =>
         i.Reviewed
         || !string.IsNullOrWhiteSpace(i.Disposition)
-        || string.Equals(i.Status, "reviewed", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(i.Status, ReviewedStatus, StringComparison.OrdinalIgnoreCase)
         || string.Equals(i.Status, "deferred", StringComparison.OrdinalIgnoreCase);
 
     private static string ResolveStatus(ProposalChecklistItem match)
     {
         if (!string.IsNullOrWhiteSpace(match.Disposition))
-            return match.Status is "pending" or "" ? "reviewed" : match.Status;
+            return match.Status is PendingStatus or "" ? ReviewedStatus : match.Status;
         if (match.Reviewed)
-            return match.Status is "pending" or "" ? "reviewed" : match.Status;
-        return "pending";
+            return match.Status is PendingStatus or "" ? ReviewedStatus : match.Status;
+        return PendingStatus;
     }
 
     private static ProposalChecklistItem CloneWith(

@@ -17,6 +17,17 @@ namespace PageToMovie.Engine;
 /// </summary>
 public sealed class CharacterBookPlateService
 {
+    private const string DesignReferenceImagesKey = "design_reference_images";
+    private const string BookReferenceImagesKey = "book_reference_images";
+    private const string CanonicalGivenNameKey = "canonical_given_name";
+    private const string CharacterPrefix = "Character_";
+    private const string DescriptionKey = "description";
+    private const string CoverCategory = "cover";
+    private const string SparseCategory = "sparse";
+    private const string SourceImagePagesKey = "source_image_pages";
+    private const string CharacterSeedTokensKey = "character_seed_tokens";
+    private const string GlobalProductionVariablesKey = "global_production_variables";
+
     private readonly ProjectStore _projects;
     private readonly IVisionClient _vision;
     private readonly PlateRankClassifier? _plateRank;
@@ -145,7 +156,7 @@ public sealed class CharacterBookPlateService
         }
 
         var methodParts = new List<string>();
-        if (fromPages > 0) methodParts.Add("source_image_pages");
+        if (fromPages > 0) methodParts.Add(SourceImagePagesKey);
         if (fromOcr > 0) methodParts.Add("ocr_neighbor");
         var method = methodParts.Count > 0 ? string.Join("+", methodParts) : "heuristic";
         var wantGrok = useGrok && _vision.IsConfigured && string.IsNullOrWhiteSpace(onlyCharKey);
@@ -267,8 +278,8 @@ public sealed class CharacterBookPlateService
 
             if (IsVoiceOnly(key, seed))
             {
-                seed.Remove("design_reference_images");
-                seed.Remove("book_reference_images");
+                seed.Remove(DesignReferenceImagesKey);
+                seed.Remove(BookReferenceImagesKey);
                 CleanupStaleBookrefs(charsDir, key, keepCount: 0);
                 result.CharactersSkipped++;
                 result.AttachedByCharacter[key] = new List<string> { "(voice_only)" };
@@ -277,7 +288,7 @@ public sealed class CharacterBookPlateService
             }
 
             if (!force &&
-                seed["design_reference_images"] is JsonArray existing &&
+                seed[DesignReferenceImagesKey] is JsonArray existing &&
                 existing.Count > 0 &&
                 existing.Any(x =>
                 {
@@ -301,25 +312,25 @@ public sealed class CharacterBookPlateService
             var priorPages = PagesForSeed(seed);
             var usedPages = picks.Where(p => p.Page > 0).Select(p => p.Page).Distinct().ToList();
             if (usedPages.Count > 0)
-                seed["source_image_pages"] = new JsonArray(usedPages.Select(p => (JsonNode)p).ToArray());
+                seed[SourceImagePagesKey] = new JsonArray(usedPages.Select(p => (JsonNode)p).ToArray());
             else if (priorPages.Count > 0)
-                seed["source_image_pages"] = new JsonArray(priorPages.Select(p => (JsonNode)p).ToArray());
+                seed[SourceImagePagesKey] = new JsonArray(priorPages.Select(p => (JsonNode)p).ToArray());
 
             var relPaths = await CopyPlatesAsync(projectDir, charsDir, key, picks, copyIntoAssets, ct).ConfigureAwait(false);
             CleanupStaleBookrefs(charsDir, key, keepCount: relPaths.Count);
 
             if (relPaths.Count == 0)
             {
-                seed.Remove("design_reference_images");
-                seed.Remove("book_reference_images");
+                seed.Remove(DesignReferenceImagesKey);
+                seed.Remove(BookReferenceImagesKey);
                 result.CharactersSkipped++;
                 result.AttachedByCharacter[key] = new List<string> { $"(none via {method})" };
             }
             else
             {
-                seed["design_reference_images"] = new JsonArray(
+                seed[DesignReferenceImagesKey] = new JsonArray(
                     relPaths.Select(r => (JsonNode)r).ToArray());
-                seed["book_reference_images"] = new JsonArray(
+                seed[BookReferenceImagesKey] = new JsonArray(
                     relPaths.Select(r => (JsonNode)r).ToArray());
                 result.CharactersUpdated++;
                 result.AttachedByCharacter[key] = relPaths;
@@ -337,7 +348,7 @@ public sealed class CharacterBookPlateService
         var castRoot = new JsonObject
         {
             ["schema_version"] = "cast_seeds.v1",
-            ["character_seed_tokens"] = seeds,
+            [CharacterSeedTokensKey] = seeds,
         };
         try
         {
@@ -522,10 +533,10 @@ public sealed class CharacterBookPlateService
                 continue;
             if (node is not JsonObject seed) continue;
             if (IsVoiceOnly(key, seed)) continue;
-            var display = seed["canonical_given_name"]?.GetValue<string>()
+            var display = seed[CanonicalGivenNameKey]?.GetValue<string>()
                           ?? seed["voice_label"]?.GetValue<string>()
-                          ?? key.Replace("Character_", "").Replace('_', ' ');
-            var desc = seed["description"]?.GetValue<string>()
+                          ?? key.Replace(CharacterPrefix, "").Replace('_', ' ');
+            var desc = seed[DescriptionKey]?.GetValue<string>()
                        ?? seed["visual_lock"]?.GetValue<string>()
                        ?? "";
             cast.Add(new CharacterClassifyHint
@@ -572,7 +583,7 @@ public sealed class CharacterBookPlateService
                 continue;
             }
 
-            var desc = (seed["description"]?.GetValue<string>() ?? "").ToLowerInvariant();
+            var desc = (seed[DescriptionKey]?.GetValue<string>() ?? "").ToLowerInvariant();
             // Hero = first cast or primary animal species — not humans whose text mentions the animal medium
             var isHero = index == 0 ||
                          CharacterVisualTextScrubber.IsPrimarilyAnimalCharacter(
@@ -718,10 +729,10 @@ public sealed class CharacterBookPlateService
         {
             if (node is not JsonObject seed || IsVoiceOnly(key, seed)) continue;
             var toks = new List<string>();
-            var suffix = key.Replace("Character_", "", StringComparison.OrdinalIgnoreCase);
+            var suffix = key.Replace(CharacterPrefix, "", StringComparison.OrdinalIgnoreCase);
             if (suffix.Length >= 3 && !IsGenericRoleToken(suffix))
                 toks.Add(suffix);
-            var given = seed["canonical_given_name"]?.GetValue<string>() ?? "";
+            var given = seed[CanonicalGivenNameKey]?.GetValue<string>() ?? "";
             if (given.Length >= 3 && !IsGenericRoleToken(given))
                 toks.Add(given);
             tokensByKey[key] = toks;
@@ -771,7 +782,7 @@ public sealed class CharacterBookPlateService
         foreach (var (key, node) in seeds)
         {
             if (node is not JsonObject seed || IsVoiceOnly(key, seed)) continue;
-            var desc = seed["description"]?.GetValue<string>() ?? "";
+            var desc = seed[DescriptionKey]?.GetValue<string>() ?? "";
             var vlock = seed["visual_lock"]?.GetValue<string>() ?? "";
             if (IsAnimalSeed(key, desc, vlock))
                 animalKeys.Add(key);
@@ -786,11 +797,11 @@ public sealed class CharacterBookPlateService
         var animalNameHits = new List<string>();
         foreach (var ak in animalKeys)
         {
-            var suffix = ak.Replace("Character_", "", StringComparison.OrdinalIgnoreCase);
+            var suffix = ak.Replace(CharacterPrefix, "", StringComparison.OrdinalIgnoreCase);
             if (suffix.Length >= 3) animalNameHits.Add(suffix);
             if (seeds[ak] is JsonObject seed)
             {
-                var given = seed["canonical_given_name"]?.GetValue<string>() ?? "";
+                var given = seed[CanonicalGivenNameKey]?.GetValue<string>() ?? "";
                 if (given.Length >= 3) animalNameHits.Add(given);
             }
         }
@@ -956,8 +967,8 @@ public sealed class CharacterBookPlateService
             {
                 var existing = JsonNode.Parse(await File.ReadAllTextAsync(castPath, ct).ConfigureAwait(false))
                                as JsonObject;
-                var existingSeeds = existing?["character_seed_tokens"] as JsonObject
-                    ?? existing?["global_production_variables"]?["character_seed_tokens"] as JsonObject;
+                var existingSeeds = existing?[CharacterSeedTokensKey] as JsonObject
+                    ?? existing?[GlobalProductionVariablesKey]?[CharacterSeedTokensKey] as JsonObject;
                 if (existingSeeds is not null && existingSeeds.Count > 0)
                     seeds = existingSeeds.DeepClone().AsObject();
             }
@@ -967,9 +978,9 @@ public sealed class CharacterBookPlateService
         // 2) Fountain-derived cast (dialogue cues) — merge only missing keys
         var model = ScreenplayService.TryBuildModelFromProject(_projects, projectId);
         if (model is not null &&
-            model.TryGetValue("global_production_variables", out var gpvObj) &&
+            model.TryGetValue(GlobalProductionVariablesKey, out var gpvObj) &&
             gpvObj is Dictionary<string, object?> gpv &&
-            gpv.TryGetValue("character_seed_tokens", out var charObj) &&
+            gpv.TryGetValue(CharacterSeedTokensKey, out var charObj) &&
             charObj is Dictionary<string, object?> charDict &&
             charDict.Count > 0)
         {
@@ -1015,18 +1026,18 @@ public sealed class CharacterBookPlateService
                     bpSeeds[key] = src.DeepClone();
                     continue;
                 }
-                if (src["design_reference_images"] is JsonArray arr)
+                if (src[DesignReferenceImagesKey] is JsonArray arr)
                 {
-                    dest["design_reference_images"] = arr.DeepClone();
-                    dest["book_reference_images"] = arr.DeepClone();
+                    dest[DesignReferenceImagesKey] = arr.DeepClone();
+                    dest[BookReferenceImagesKey] = arr.DeepClone();
                 }
                 else
                 {
-                    dest.Remove("design_reference_images");
-                    dest.Remove("book_reference_images");
+                    dest.Remove(DesignReferenceImagesKey);
+                    dest.Remove(BookReferenceImagesKey);
                 }
-                if (src["source_image_pages"] is JsonArray pages)
-                    dest["source_image_pages"] = pages.DeepClone();
+                if (src[SourceImagePagesKey] is JsonArray pages)
+                    dest[SourceImagePagesKey] = pages.DeepClone();
             }
 
             await File.WriteAllTextAsync(bp, root.ToJsonString(JsonDefaults.Indented) + "\n");
@@ -1052,7 +1063,7 @@ public sealed class CharacterBookPlateService
     private static List<int> PagesForSeed(JsonObject seed)
     {
         var outList = new List<int>();
-        var raw = seed["source_image_pages"] ?? seed["image_pages"];
+        var raw = seed[SourceImagePagesKey] ?? seed["image_pages"];
         if (raw is JsonValue jv)
         {
             if (jv.TryGetValue<int>(out var one))
@@ -1101,14 +1112,14 @@ public sealed class CharacterBookPlateService
         var ranked = RankIllustrationFirst(inventory.Where(r => !IsLikelyTextLayout(r)));
         var early = ranked.Where(r =>
                 r.Page is > 0 and <= 8 ||
-                r.Name.Contains("cover", StringComparison.OrdinalIgnoreCase) ||
-                r.Name.Contains("sparse", StringComparison.OrdinalIgnoreCase))
+                r.Name.Contains(CoverCategory, StringComparison.OrdinalIgnoreCase) ||
+                r.Name.Contains(SparseCategory, StringComparison.OrdinalIgnoreCase))
             .ToList();
         if (early.Count == 0)
             early = ranked.Take(6).ToList();
 
-        var token = key.Replace("Character_", "", StringComparison.OrdinalIgnoreCase).ToLowerInvariant();
-        var given = (seed["canonical_given_name"]?.GetValue<string>() ?? "").ToLowerInvariant();
+        var token = key.Replace(CharacterPrefix, "", StringComparison.OrdinalIgnoreCase).ToLowerInvariant();
+        var given = (seed[CanonicalGivenNameKey]?.GetValue<string>() ?? "").ToLowerInvariant();
         // "mom"/"dad" tokens are useless for filename matching and caused false plate attaches
         var genericRoleToken = token is "mom" or "dad" or "daddy" or "mum" or "mother" or "father" or "parent";
         var nameHits = RankIllustrationFirst(inventory.Where(r =>
@@ -1123,7 +1134,7 @@ public sealed class CharacterBookPlateService
             return false;
         }).ToList());
 
-        var desc = seed["description"]?.GetValue<string>() ?? "";
+        var desc = seed[DescriptionKey]?.GetValue<string>() ?? "";
         var isHero = index == 0 ||
                      CharacterVisualTextScrubber.IsPrimarilyAnimalCharacter(
                          key, "", desc, "", "dog") ||
@@ -1153,7 +1164,7 @@ public sealed class CharacterBookPlateService
         if (_plateRank is null || !_plateRank.IsEnabled || baseline.Count <= 1)
             return baseline;
         var names = baseline.Select(r => r.Name).ToList();
-        var desc = seed["description"]?.GetValue<string>() ?? "";
+        var desc = seed[DescriptionKey]?.GetValue<string>() ?? "";
         var (ranked, usedAi) = await _plateRank.RankAsync(key, desc, names, ct).ConfigureAwait(false);
         if (!usedAi || ranked.Count == 0) return baseline.Take(3).ToList();
         var byName = baseline.ToDictionary(r => r.Name, StringComparer.OrdinalIgnoreCase);
@@ -1377,10 +1388,10 @@ public sealed class CharacterBookPlateService
 
         var charSeed = seedObj ?? new JsonObject();
         var displayName = charSeed["display_name"]?.GetValue<string>()
-            ?? charSeed["canonical_given_name"]?.GetValue<string>()
-            ?? charKey.Replace("Character_", "").Replace('_', ' ');
+            ?? charSeed[CanonicalGivenNameKey]?.GetValue<string>()
+            ?? charKey.Replace(CharacterPrefix, "").Replace('_', ' ');
 
-        var desc = charSeed["description"]?.GetValue<string>() ?? "";
+        var desc = charSeed[DescriptionKey]?.GetValue<string>() ?? "";
         var aliases = BookOcrPlateShortlist.AliasesForSeed(charKey, charSeed);
         var ocrPages = await BookOcrPlateShortlist.TryLoadAsync(projectDir, ct).ConfigureAwait(false);
         var textHits = BookOcrPlateShortlist.FindTextHitPages(ocrPages, aliases);
@@ -1397,7 +1408,7 @@ public sealed class CharacterBookPlateService
         var currentRefs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (el.ValueKind != JsonValueKind.Undefined)
         {
-            foreach (var prop in new[] { "design_reference_images", "book_reference_images" })
+            foreach (var prop in new[] { DesignReferenceImagesKey, BookReferenceImagesKey })
             {
                 if (el.TryGetProperty(prop, out var arr) && arr.ValueKind == JsonValueKind.Array)
                 {

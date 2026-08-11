@@ -20,6 +20,7 @@ public sealed class GeminiChatClient : IChatClient, IVisionClient, IGeminiVideoA
 {
     public const string ApiBase = SupportedModelCatalog.GoogleApiBase;
 
+    private const string PartsKey = "parts";
     private readonly HttpClient _http;
     private readonly ProjectTelemetryService _telemetry;
     private readonly ILogger<GeminiChatClient> _log;
@@ -83,14 +84,14 @@ public sealed class GeminiChatClient : IChatClient, IVisionClient, IGeminiVideoA
         {
             ["system_instruction"] = new Dictionary<string, object?>
             {
-                ["parts"] = new object[] { new Dictionary<string, object?> { ["text"] = systemPrompt } },
+                [PartsKey] = new object[] { new Dictionary<string, object?> { ["text"] = systemPrompt } },
             },
             ["contents"] = new object[]
             {
                 new Dictionary<string, object?>
                 {
                     ["role"] = "user",
-                    ["parts"] = new object[] { new Dictionary<string, object?> { ["text"] = userPrompt } },
+                    [PartsKey] = new object[] { new Dictionary<string, object?> { ["text"] = userPrompt } },
                 },
             },
             ["generationConfig"] = generationConfig,
@@ -127,7 +128,7 @@ public sealed class GeminiChatClient : IChatClient, IVisionClient, IGeminiVideoA
         {
             ["contents"] = new object[]
             {
-                new Dictionary<string, object?> { ["role"] = "user", ["parts"] = parts },
+                new Dictionary<string, object?> { ["role"] = "user", [PartsKey] = parts },
             },
         };
         return await SendWithTransientRetryAsync(
@@ -302,7 +303,7 @@ public sealed class GeminiChatClient : IChatClient, IVisionClient, IGeminiVideoA
             var c0 = candidates[0];
             if (c0.ValueKind == JsonValueKind.Object &&
                 c0.TryGetProperty("content", out var content) &&
-                content.TryGetProperty("parts", out var parts) &&
+                content.TryGetProperty(PartsKey, out var parts) &&
                 parts.ValueKind == JsonValueKind.Array)
             {
                 var texts = new List<string>();
