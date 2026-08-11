@@ -8,7 +8,7 @@ using PageToMovie.Web.Services;
 
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class ProjectCollaboratorsModal
+public partial class ProjectCollaboratorsModal : IDisposable
 {
 
     [Parameter] public bool IsOpen { get; set; }
@@ -113,6 +113,8 @@ public partial class ProjectCollaboratorsModal
             return;
         }
 
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
         var cts = new CancellationTokenSource();
         _searchCts = cts;
         var seq = ++_searchSeq;
@@ -200,5 +202,12 @@ public partial class ProjectCollaboratorsModal
         {
             isSending = false;
         }
+    }
+
+    public void Dispose()
+    {
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+        _searchCts = null;
     }
 }

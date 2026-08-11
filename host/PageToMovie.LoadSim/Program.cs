@@ -308,7 +308,7 @@ static async Task<int> RunAsync(SimOptions opts)
 
     reportCts.Cancel();
     try { await reportTask; } catch { /* ignore */ }
-    stressCts.Dispose();
+    stressCts?.Dispose();
 
     var elapsed = DateTimeOffset.UtcNow - started;
     var results = metrics.Build(opts, elapsed);

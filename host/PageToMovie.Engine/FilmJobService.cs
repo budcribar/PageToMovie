@@ -659,7 +659,8 @@ public sealed class FilmJobService
 
                     if (!string.IsNullOrWhiteSpace(run.ActiveJobId))
                     {
-                        _jobCts.TryRemove(run.ActiveJobId, out _);
+                        if (_jobCts.TryRemove(run.ActiveJobId, out var finishedCts))
+                            finishedCts.Dispose();
                         _locks.ReleaseAllForJob(run.ActiveJobId);
                     }
 

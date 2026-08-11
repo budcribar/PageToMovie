@@ -98,7 +98,7 @@ internal static class Program
         var composer = provider.GetRequiredService<SceneMusicCompositionService>();
 
         Console.WriteLine("🚀 Launching AI scene music composition pass...");
-        var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+        using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
         var success = await composer.AugmentProjectMusicAsync(projectDir, model, cts.Token);
 
         if (success)
