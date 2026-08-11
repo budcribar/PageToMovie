@@ -155,6 +155,32 @@ public partial class Scenes
         return ("○", "text-muted", $"0 of {s.ClipCount} clips generated");
     }
 
+    /// <summary>D6 — movie-level readiness for the Film hub strip.</summary>
+    internal MovieReadinessSnapshot MovieReadiness
+    {
+        get
+        {
+            if (_scenes is null || _scenes.Count == 0)
+                return default;
+            var scenes = _scenes.Count;
+            var planned = _scenes.Sum(s => s.ClipCount);
+            var onDisk = _scenes.Sum(s => s.ClipsOnDisk);
+            var missing = Math.Max(0, planned - onDisk);
+            var completeScenes = _scenes.Count(s => s.ClipCount > 0 && s.ClipsComplete);
+            // Until E5 true stale detection: "partial" = some media, not full plan
+            var partialScenes = _scenes.Count(s => s.ClipsOnDisk > 0 && s.ClipCount > s.ClipsOnDisk);
+            return new MovieReadinessSnapshot(scenes, planned, onDisk, missing, completeScenes, partialScenes);
+        }
+    }
+
+    internal readonly record struct MovieReadinessSnapshot(
+        int Scenes,
+        int ClipsPlanned,
+        int ClipsOnDisk,
+        int ClipsMissing,
+        int ScenesComplete,
+        int ScenesPartial);
+
 
 
     internal bool HasActiveFilters =>

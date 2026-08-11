@@ -196,19 +196,19 @@
             @* Watch → edit hub: fix this scene without hunting nav *@
             <div class="d-flex flex-wrap gap-2 mb-3" data-testid="scene-edit-hub">
                 <a class="btn btn-sm btn-outline-secondary"
-                   href="@($"adaptation/screenplay?scene={ListState!._detail.SceneNumber}")"
+                   href="@StudioDeepLinks.Screenplay(ListState!._detail.SceneNumber, returnScene: ListState!._detail.SceneNumber)"
                    title="Edit dialogue and action for this scene">Edit script</a>
                 @if (ListState!._detail.CharactersOnScreen.Count > 0)
                 {
                     var firstChar = ListState!._detail.CharactersOnScreen[0];
                     <a class="btn btn-sm btn-outline-warning"
-                       href="@($"characters?char={Uri.EscapeDataString(firstChar)}")"
+                       href="@StudioDeepLinks.Characters(firstChar, returnScene: ListState!._detail.SceneNumber)"
                        title="Looks, voice, locked plates for cast in this scene">Fix cast</a>
                 }
                 @if (!string.IsNullOrEmpty(ListState!._detail.PrimaryLocationId))
                 {
                     <a class="btn btn-sm btn-outline-info"
-                       href="@($"locations?loc={Uri.EscapeDataString(ListState!._detail.PrimaryLocationId)}")"
+                       href="@StudioDeepLinks.Locations(ListState!._detail.PrimaryLocationId, returnScene: ListState!._detail.SceneNumber)"
                        title="Set plate / description for this place">Fix location</a>
                 }
             </div>

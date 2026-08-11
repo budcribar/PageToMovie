@@ -27,6 +27,15 @@
     }
 </StudioPageHeader>
 
+@if (StudioDeepLinks.FilmReturnHref(Nav) is { } filmReturn)
+{
+    <div class="alert alert-info py-2 small mb-3 d-flex flex-wrap align-items-center justify-content-between gap-2" data-testid="cast-return-film">
+        <span>Editing from Film — return when you are done (regen the clip/scene if video should update).</span>
+        <a class="btn btn-sm btn-primary" href="@filmReturn" data-testid="cast-return-film-go">← Back to Film</a>
+    </div>
+}
+
+
 @if (List._simpleMode)
 {
     <div class="alert alert-primary border-primary border-opacity-50 py-2 small mb-3" data-testid="simple-voice-banner">

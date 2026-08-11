@@ -15,6 +15,15 @@
 <PageTitle>@pageTitle</PageTitle>
 
 <AdaptationShell Host="this" Step="screenplay">
+
+    @if (StudioDeepLinks.FilmReturnHref(Nav) is { } filmReturn)
+    {
+        <div class="alert alert-info py-2 small mb-3 d-flex flex-wrap align-items-center justify-content-between gap-2" data-testid="screenplay-return-film">
+            <span>Editing script from Film — save, then return to the scene (regen clips if dialogue changed).</span>
+            <a class="btn btn-sm btn-primary" href="@filmReturn" data-testid="screenplay-return-film-go">← Back to Film</a>
+        </div>
+    }
+
     @* Exactly two chrome rows, then the editor. *@
     <div class="card mb-3 fe-screenplay-card fe-screenplay-card--compact">
         @* Row 1 — title, status, menu, Approve *@

@@ -120,6 +120,46 @@
                     }
                 </div>
                 <div class="col-md-7">
+                    @* D4: clip-level watch → edit *@
+                    <div class="d-flex flex-wrap gap-1 mb-3" data-testid="clip-edit-hub">
+                        <button type="button" class="btn btn-sm btn-outline-secondary"
+                                data-testid="clip-edit-line"
+                                disabled="@(Host._busy || Gen!.JobRunning)"
+                                title="Edit spoken line, speaker, and delivery"
+                                @onclick="() => ClipForm!.OpenClipEditor(ClipForm!._clip)">
+                            Edit line
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-warning"
+                                data-testid="clip-fix-speaker"
+                                disabled="@(Host._busy || Gen!.JobRunning)"
+                                title="Change who speaks this line"
+                                @onclick="() => ClipForm!.OpenClipEditor(ClipForm!._clip)">
+                            Fix speaker
+                        </button>
+                        @{
+                            var hubNeedsPrev = ClipSel!.PreviousClipMissing(ClipForm!._clip.ClipNumber);
+                        }
+                        <button type="button" class="btn btn-sm btn-outline-danger"
+                                data-testid="clip-hub-regen"
+                                disabled="@(Host._busy || Gen!.JobRunning || !ListState!.CastReady || hubNeedsPrev)"
+                                title="Re-generate this clip video"
+                                @onclick="() => ClipRegen!.RegenClipAsync(ListState!._detail.SceneNumber, ClipForm!._clip.ClipNumber)">
+                            Regen clip
+                        </button>
+                        @if (!string.IsNullOrWhiteSpace(ClipForm!._clip.Speaker))
+                        {
+                            <a class="btn btn-sm btn-outline-warning"
+                               data-testid="clip-fix-cast"
+                               href="@StudioDeepLinks.Characters(ClipForm!._clip.Speaker, returnScene: ListState!._detail.SceneNumber, returnClip: ClipForm!._clip.ClipNumber)">
+                                Fix cast look
+                            </a>
+                        }
+                        <a class="btn btn-sm btn-outline-secondary"
+                           data-testid="clip-edit-script"
+                           href="@StudioDeepLinks.Screenplay(ListState!._detail.SceneNumber, returnScene: ListState!._detail.SceneNumber, returnClip: ClipForm!._clip.ClipNumber)">
+                            Scene script
+                        </a>
+                    </div>
                     <h6>Visual prompt</h6>
                     <pre class="small bg-light border rounded p-2" style="max-height:200px; overflow:auto; white-space:pre-wrap;">@(ClipForm!._clip.VisualPrompt is { Length: > 0 } vp ? vp : "—")</pre>
 
@@ -127,7 +167,6 @@
                             @onclick="() => ClipVer!.OpenClipCompareAsync(ListState!._detail.SceneNumber, ClipForm!._clip.ClipNumber)">
                         🎬 Takes (@(ClipVer!._clipVersions?.Count ?? 1))
                     </button>
-                    }
                     <h6 class="mt-2">Negative</h6>
                     @if (!string.IsNullOrWhiteSpace(ClipForm!._clip.NegativePrompt))
                     {

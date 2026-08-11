@@ -1,5 +1,6 @@
 @page "/locations"
 @using PageToMovie.Core.Models
+@using PageToMovie.Web.Services
 @using Microsoft.AspNetCore.Components.Forms
 @inject EngineApiClient Engine
 @inject ActiveProjectState ActiveProject
@@ -25,6 +26,14 @@
     @if (!string.IsNullOrWhiteSpace(_message))
     {
         <div class="alert alert-success py-2">@_message</div>
+    }
+
+    @if (StudioDeepLinks.FilmReturnHref(Nav) is { } filmReturn)
+    {
+        <div class="alert alert-info py-2 small mb-3 d-flex flex-wrap align-items-center justify-content-between gap-2" data-testid="locs-return-film">
+            <span>Editing from Film — return when you are done (regen the scene if the set plate changed).</span>
+            <a class="btn btn-sm btn-primary" href="@filmReturn" data-testid="locs-return-film-go">← Back to Film</a>
+        </div>
     }
 
     @if (_job is { } j && (j.Status is "running" or "queued"))

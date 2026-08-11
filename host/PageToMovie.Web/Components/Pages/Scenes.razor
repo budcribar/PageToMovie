@@ -29,6 +29,52 @@
 
 <StudioProcessStrip Active="film" SimpleMode="@IsSimpleFilm" FullStudio="@(!IsSimpleFilm)" />
 
+@* D6: movie readiness strip *@
+@if (List._scenes is { Count: > 0 })
+{
+    var r = List.MovieReadiness;
+    <div class="card mb-3 border-0 bg-body-secondary bg-opacity-50" data-testid="movie-readiness-strip">
+        <div class="card-body py-2 px-3">
+            <div class="d-flex flex-wrap align-items-center gap-3 small">
+                <strong class="text-uppercase text-muted" style="letter-spacing:.04em;">Movie</strong>
+                <span data-testid="readiness-scenes"><strong>@r.Scenes</strong> scenes</span>
+                <span class="text-muted">·</span>
+                <span data-testid="readiness-clips"><strong>@r.ClipsOnDisk</strong> / @r.ClipsPlanned clips on disk</span>
+                @if (r.ClipsMissing > 0)
+                {
+                    <span class="text-muted">·</span>
+                    <span class="text-warning" data-testid="readiness-missing"><strong>@r.ClipsMissing</strong> missing</span>
+                }
+                else if (r.ClipsPlanned > 0)
+                {
+                    <span class="text-muted">·</span>
+                    <span class="text-success" data-testid="readiness-complete">all clips on disk</span>
+                }
+                <span class="text-muted">·</span>
+                <span data-testid="readiness-scene-complete"><strong>@r.ScenesComplete</strong> scenes complete</span>
+                @if (r.ScenesPartial > 0)
+                {
+                    <span class="text-muted">·</span>
+                    <span class="text-warning" data-testid="readiness-partial" title="Some clips generated; plan not full — re-gen remaining or mark after E5 stale">
+                        <strong>@r.ScenesPartial</strong> partial
+                    </span>
+                }
+                @if (r.ClipsMissing > 0 && ActiveProject.CanScenes)
+                {
+                    <span class="ms-auto">
+                        <button type="button" class="btn btn-sm btn-outline-primary"
+                                data-testid="readiness-select-missing"
+                                disabled="@_busy"
+                                @onclick="() => List.SelectMissingScenes()">
+                            Select incomplete
+                        </button>
+                    </span>
+                }
+            </div>
+        </div>
+    </div>
+}
+
 @if (IsSimpleFilm)
 {
     <div class="alert alert-primary border-primary border-opacity-50 py-2 small mb-3" data-testid="simple-film-banner">

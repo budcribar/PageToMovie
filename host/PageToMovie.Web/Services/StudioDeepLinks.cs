@@ -9,16 +9,24 @@ namespace PageToMovie.Web.Services;
 /// </summary>
 public static class StudioDeepLinks
 {
-    public static string Characters(string? charKeyOrName = null)
+    public static string Characters(string? charKeyOrName = null, int? returnScene = null, int? returnClip = null)
     {
-        if (string.IsNullOrWhiteSpace(charKeyOrName)) return "characters";
-        return "characters?char=" + Uri.EscapeDataString(charKeyOrName.Trim());
+        var path = "characters";
+        var q = new List<string>();
+        if (!string.IsNullOrWhiteSpace(charKeyOrName))
+            q.Add("char=" + Uri.EscapeDataString(charKeyOrName.Trim()));
+        AppendReturn(q, returnScene, returnClip);
+        return q.Count == 0 ? path : path + "?" + string.Join("&", q);
     }
 
-    public static string Locations(string? locKeyOrName = null)
+    public static string Locations(string? locKeyOrName = null, int? returnScene = null, int? returnClip = null)
     {
-        if (string.IsNullOrWhiteSpace(locKeyOrName)) return "locations";
-        return "locations?loc=" + Uri.EscapeDataString(locKeyOrName.Trim());
+        var path = "locations";
+        var q = new List<string>();
+        if (!string.IsNullOrWhiteSpace(locKeyOrName))
+            q.Add("loc=" + Uri.EscapeDataString(locKeyOrName.Trim()));
+        AppendReturn(q, returnScene, returnClip);
+        return q.Count == 0 ? path : path + "?" + string.Join("&", q);
     }
 
     public static string Scenes(int? sceneNumber = null, bool play = false, int? clip = null)
@@ -30,10 +38,35 @@ public static class StudioDeepLinks
         return "scenes?" + q;
     }
 
-    public static string Screenplay(int? sceneNumber = null)
+    public static string Screenplay(int? sceneNumber = null, int? returnScene = null, int? returnClip = null)
     {
-        if (sceneNumber is null or <= 0) return "adaptation/screenplay";
-        return $"adaptation/screenplay?scene={sceneNumber.Value}";
+        var path = "adaptation/screenplay";
+        var q = new List<string>();
+        if (sceneNumber is > 0)
+            q.Add($"scene={sceneNumber.Value}");
+        // returnScene defaults to scene when editing from film
+        var ret = returnScene ?? sceneNumber;
+        AppendReturn(q, ret, returnClip);
+        return q.Count == 0 ? path : path + "?" + string.Join("&", q);
+    }
+
+    /// <summary>Estimate DecisionCard (optional phase/focus).</summary>
+    public static string Estimate(string? phase = null, string? focus = null)
+    {
+        var q = new List<string>();
+        if (!string.IsNullOrWhiteSpace(phase))
+            q.Add("phase=" + Uri.EscapeDataString(phase.Trim()));
+        if (!string.IsNullOrWhiteSpace(focus))
+            q.Add("focus=" + Uri.EscapeDataString(focus.Trim()));
+        return q.Count == 0 ? "cost" : "cost?" + string.Join("&", q);
+    }
+
+    private static void AppendReturn(List<string> q, int? returnScene, int? returnClip)
+    {
+        if (returnScene is > 0)
+            q.Add($"returnScene={returnScene.Value}");
+        if (returnClip is > 0)
+            q.Add($"returnClip={returnClip.Value}");
     }
 
     public static string? QueryValue(NavigationManager nav, string key)
@@ -56,6 +89,15 @@ public static class StudioDeepLinks
     {
         var s = QueryValue(nav, key);
         return int.TryParse(s, out var n) && n > 0 ? n : null;
+    }
+
+    /// <summary>Film return target from ?returnScene=&returnClip=.</summary>
+    public static string? FilmReturnHref(NavigationManager nav)
+    {
+        var scene = QueryInt(nav, "returnScene");
+        if (scene is null) return null;
+        var clip = QueryInt(nav, "returnClip");
+        return Scenes(scene, play: false, clip: clip);
     }
 
     /// <summary>Match Cast list entry from ?char= key, DisplayName, or bare name.</summary>

@@ -605,7 +605,7 @@ Use this as the build/acceptance tracker. Check items off in PRs; leave dates/no
 | [x] | **B4** ConfirmGenerate: one confirm with current $ + min | decision-confirm-generate |
 | [x] | **B5** Blocked state when estimate not ready; confirm disabled | decision-blocked |
 | [x] | **B6** If shot plan missing on Generate: open shot plan (`?from=decision`) then Film | not auto-job yet |
-| | **B7** Fountain import CTA on import surfaces → same DecisionCard | Shortcut path |
+| [x] | **B7** Fountain import CTA on import surfaces → same DecisionCard | import-go-estimate |
 
 ### Phase C — Edit focus + toolkits
 
@@ -625,9 +625,9 @@ Use this as the build/acceptance tracker. Check items off in PRs; leave dates/no
 | [x] | **D1** Film scene: Edit script · Fix cast · Fix location deep links | `556e8ee0` StudioDeepLinks |
 | [x] | **D2** `?char=` / `?loc=` / screenplay `?scene=` selection | same |
 | [x] | **D3** Character/Location modals → full Cast/Locs with focus | same |
-| | **D4** Clip-level: edit line · fix speaker · regen clip | |
-| | **D5** Return to same scene after craft edit (optional regen prompt) | |
-| | **D6** Movie readiness strip: total / on disk / missing / stale | |
+| [x] | **D4** Clip-level: edit line · fix speaker · regen clip | clip-edit-hub |
+| [x] | **D5** Return to same scene after craft edit (optional regen prompt) | returnScene/returnClip banners |
+| [x] | **D6** Movie readiness strip: total / on disk / missing / partial | movie-readiness-strip; true stale=E5 |
 
 ### Phase E — Surgical regen & identity
 
