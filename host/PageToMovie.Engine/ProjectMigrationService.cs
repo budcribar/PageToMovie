@@ -81,7 +81,7 @@ public sealed class ProjectMigrationService
         // regex can no longer mistake a label for prose that happens to contain the same words).
         if (currentVersion == "v1")
         {
-            MigrateVisualPromptLabelsToTags(projectDir);
+            await MigrateVisualPromptLabelsToTagsAsync(projectDir, ct).ConfigureAwait(false);
             currentVersion = "v2";
         }
 
@@ -110,7 +110,7 @@ public sealed class ProjectMigrationService
     /// blueprint.clips*.json files. Best-effort per file — a parse/write failure on one file
     /// doesn't block the rest of the project's migration.
     /// </summary>
-    private void MigrateVisualPromptLabelsToTags(string projectDir)
+    private async Task MigrateVisualPromptLabelsToTagsAsync(string projectDir, CancellationToken ct)
     {
         IEnumerable<string> files;
         try
@@ -128,11 +128,11 @@ public sealed class ProjectMigrationService
             if (file.Contains(".bak", StringComparison.OrdinalIgnoreCase)) continue;
             try
             {
-                var node = JsonNode.Parse(File.ReadAllText(file));
+                var node = JsonNode.Parse(await File.ReadAllTextAsync(file, ct).ConfigureAwait(false));
                 if (node is null) continue;
                 if (MigrateVisualPromptNode(node))
                 {
-                    File.WriteAllText(file, node.ToJsonString(JsonDefaults.IndentedCaseInsensitive));
+                    await File.WriteAllTextAsync(file, node.ToJsonString(JsonDefaults.IndentedCaseInsensitive), ct).ConfigureAwait(false);
                     _log.LogInformation("Migrated visual_prompt labels to tags in {File}", file);
                 }
             }

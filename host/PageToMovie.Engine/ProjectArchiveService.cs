@@ -203,7 +203,7 @@ public sealed class ProjectArchiveService
                 ?? throw new InvalidOperationException(
                     "Zip does not look like a PageToMovie project (no project.json found).");
 
-            var idFromMeta = TryReadProjectId(contentRoot);
+            var idFromMeta = await TryReadProjectIdAsync(contentRoot, ct).ConfigureAwait(false);
             var idFromFolder = Path.GetFileName(contentRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
             var rawId = !string.IsNullOrWhiteSpace(preferredId)
                 ? preferredId.Trim()
@@ -549,13 +549,13 @@ public sealed class ProjectArchiveService
         return null;
     }
 
-    private static string? TryReadProjectId(string contentRoot)
+    private static async Task<string?> TryReadProjectIdAsync(string contentRoot, CancellationToken ct)
     {
         var path = Path.Combine(contentRoot, "project.json");
         if (!File.Exists(path)) return null;
         try
         {
-            using var doc = JsonDocument.Parse(File.ReadAllText(path));
+            using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(path, ct).ConfigureAwait(false));
             if (doc.RootElement.TryGetProperty("id", out var idEl))
                 return idEl.GetString();
         }

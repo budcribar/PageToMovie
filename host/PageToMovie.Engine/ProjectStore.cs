@@ -268,7 +268,7 @@ public sealed partial class ProjectStore
 
         try
         {
-            var currentRoot = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(bpPath)) as System.Text.Json.Nodes.JsonObject;
+            var currentRoot = System.Text.Json.Nodes.JsonNode.Parse(await File.ReadAllTextAsync(bpPath).ConfigureAwait(false)) as System.Text.Json.Nodes.JsonObject;
             var historicalRoot = System.Text.Json.Nodes.JsonNode.Parse(historicalBpStr) as System.Text.Json.Nodes.JsonObject;
             if (currentRoot is null || historicalRoot is null) return false;
 
@@ -307,7 +307,7 @@ public sealed partial class ProjectStore
                 currentScenes.Add(targetHistSceneNode);
             }
 
-            File.WriteAllText(bpPath, currentRoot.ToJsonString(JsonOpts));
+            await File.WriteAllTextAsync(bpPath, currentRoot.ToJsonString(JsonOpts)).ConfigureAwait(false);
             InvalidateSceneListCache(projectId);
 
             var who = string.IsNullOrWhiteSpace(author) ? "Operator" : author;

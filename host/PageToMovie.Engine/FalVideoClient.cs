@@ -238,10 +238,10 @@ public sealed class FalVideoClient : IVideoClient
     {
         try
         {
-            var bytes = await Task.Run(() =>
+            var bytes = await Task.Run<byte[]?>(() =>
             {
                 using var original = SkiaSharp.SKBitmap.Decode(imagePath);
-                if (original is null) return File.ReadAllBytes(imagePath);
+                if (original is null) return null;
 
                 int width = original.Width;
                 int height = original.Height;
@@ -265,6 +265,8 @@ public sealed class FalVideoClient : IVideoClient
                 using var enc = img.Encode(SkiaSharp.SKEncodedImageFormat.Jpeg, 85);
                 return enc.ToArray();
             }, ct).ConfigureAwait(false);
+
+            bytes ??= await File.ReadAllBytesAsync(imagePath, ct).ConfigureAwait(false);
 
             return $"data:image/jpeg;base64,{Convert.ToBase64String(bytes)}";
         }

@@ -404,7 +404,7 @@ public static string NormalizeText(string text)
         text = AdaptationFountain.NormalizeSceneHeadingWording(text);
         // Do NOT FixDraftDate on every save — stamping "today" changed the file after
         // approval and falsely set Dirty / "Edited since approval". Date is set at
-        // draft creation / import only (CreateDraftFromBook, ImportAsDraft).
+        // draft creation / import only (CreateDraftFromBookAsync, ImportAsDraft).
         var sourceDir = Path.Combine(store.GetProjectDir(projectId), "source");
         Directory.CreateDirectory(sourceDir);
         var draftPath = GetDraftPath(store, projectId);
@@ -703,28 +703,7 @@ public static string NormalizeText(string text)
         return result;
     }
 
-    /// <summary>
-    /// Offline/test helper only — minimal stub. Production path is <see cref="CreateDraftFromBookAsync"/>.
-    /// </summary>
-    public static SaveResult CreateDraftFromBook(ProjectStore store, string projectId)
-    {
-        var projectDir = store.GetProjectDir(projectId);
-        var bookPath = Path.Combine(projectDir, "source", "book_full.txt");
-        if (!File.Exists(bookPath))
-            return new SaveResult { Ok = false, Error = "No prepared book text yet" };
 
-        var book = File.ReadAllText(bookPath);
-        if (string.IsNullOrWhiteSpace(book))
-            return new SaveResult { Ok = false, Error = "Book text is empty" };
-
-        var (title, author) = ReadProjectTitleAuthor(projectDir, projectId);
-        var adaptation = new AdaptationService();
-        var fountain = adaptation.FixDraftDate(adaptation.ConvertHeuristic(title, book, author));
-        var save = SaveDraft(store, projectId, fountain);
-        if (!save.Ok) return save;
-        save.Message = "Screenplay draft ready — review and approve";
-        return save;
-    }
 
     /// <summary>
     /// Per-project override if set, else the admin-global default, else null (hardcoded default
@@ -779,6 +758,7 @@ public static string NormalizeText(string text)
         }
 
         Dictionary<string, JsonElement>? cfg = null;
+        if (chat is not null)
         {
             cfg = await store.GetConfigAsync(projectId, ct).ConfigureAwait(false);
             model = string.IsNullOrWhiteSpace(model)
@@ -870,7 +850,14 @@ public static string NormalizeText(string text)
                 : new Progress<string>(onProgress);
 
             if (chat is null || !chat.IsConfigured)
-                return new SaveResult { Ok = false, Error = "Connect service to build a screenplay draft from the book." };
+            {
+                var hAdaptation = new AdaptationService();
+                var hFountain = hAdaptation.FixDraftDate(hAdaptation.ConvertHeuristic(title, book, author));
+                var hSave = SaveDraft(store, projectId, hFountain);
+                if (!hSave.Ok) return hSave;
+                hSave.Message = "Screenplay draft ready — review and approve";
+                return hSave;
+            }
 
             PageToMovie.Core.Abstractions.IBookFileSession? bookSession = null;
             if (bookFileSessionFactory is not null && bookIdentity is not null)
@@ -1006,10 +993,11 @@ public static string NormalizeText(string text)
             {
                 if (result.ConvertManifest is not null)
                 {
-                    ProjectStage1ConvertManifest.Write(
+                    await ProjectStage1ConvertManifest.WriteAsync(
                         projectDir,
                         result.ConvertManifest,
-                        bookId: bookIdentity?.BookId);
+                        bookId: bookIdentity?.BookId,
+                        ct: ct).ConfigureAwait(false);
                     onProgress?.Invoke(
                         $"Saved Stage‑1 convert manifest (adaptation={result.ConvertManifest.AdaptationVersion}, " +
                         $"mode={result.ConvertManifest.RuntimeMode}, model={result.ConvertManifest.ModelId})");

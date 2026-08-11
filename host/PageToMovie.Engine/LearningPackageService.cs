@@ -26,7 +26,7 @@ public static class LearningPackageService
     {
         var projectDir = store.GetProjectDir(projectId);
         var film = await FilmBuildService.TryReadAsync(projectDir, ct).ConfigureAwait(false);
-        var stage1 = ProjectStage1ConvertManifest.TryRead(projectDir);
+        var stage1 = await ProjectStage1ConvertManifest.TryReadAsync(projectDir, ct).ConfigureAwait(false);
         var report = await ProjectAdaptationReport.TryReadAsync(projectDir, ct).ConfigureAwait(false);
         var yt = await TryReadYoutubeAsync(projectDir, ct).ConfigureAwait(false);
 

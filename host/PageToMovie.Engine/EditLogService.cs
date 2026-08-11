@@ -313,7 +313,7 @@ public sealed class EditLogService
             var auto = ReadAutoReviewRow(state, key);
             // Also check on-disk auto_review draft when pipeline_state has no row
             if (string.IsNullOrWhiteSpace(auto.Suggestion))
-                auto = TryReadAutoReviewDraft(projectId, scene, clip);
+                auto = await TryReadAutoReviewDraftAsync(projectId, scene, clip, ct).ConfigureAwait(false);
 
             if (string.Equals(human.Status, "fail", StringComparison.OrdinalIgnoreCase))
             {
@@ -348,8 +348,8 @@ public sealed class EditLogService
         }
     }
 
-    private (string Suggestion, string Category, string Note) TryReadAutoReviewDraft(
-        string projectId, int scene, int clip)
+    private async Task<(string Suggestion, string Category, string Note)> TryReadAutoReviewDraftAsync(
+        string projectId, int scene, int clip, CancellationToken ct = default)
     {
         try
         {
@@ -358,7 +358,7 @@ public sealed class EditLogService
                 "assets", "review",
                 $"S{scene:D2}C{clip:D2}.auto_review.json");
             if (!File.Exists(path)) return ("", "", "");
-            using var doc = JsonDocument.Parse(File.ReadAllText(path));
+            using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(path, ct).ConfigureAwait(false));
             var root = doc.RootElement;
             var suggestion = root.TryGetProperty("suggestion", out var s) ? s.GetString() ?? ""
                 : root.TryGetProperty("Suggestion", out var s2) ? s2.GetString() ?? "" : "";

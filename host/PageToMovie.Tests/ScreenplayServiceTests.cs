@@ -112,9 +112,9 @@ public class ScreenplayServiceTests : IDisposable
     }
 
     [Fact]
-    public void Offline_stub_draft_from_book_has_no_page_tags()
+    public async Task Offline_stub_draft_from_book_has_no_page_tags()
     {
-        // CreateDraftFromBook (sync) is the offline stub — production uses chat.
+        // CreateDraftFromBookAsync (heuristics when no chat client) — production path.
         const string projectId = "Demo";
         var source = Path.Combine(_store.GetProjectDir(projectId), "source");
         Directory.CreateDirectory(source);
@@ -122,7 +122,7 @@ public class ScreenplayServiceTests : IDisposable
             "--- PAGE 1 ---\nOnce upon a time there was a dog who loved naps.\n\n" +
             "--- PAGE 2 ---\nHe slept by the fire.\n");
 
-        var r = ScreenplayService.CreateDraftFromBook(_store, projectId);
+        var r = await ScreenplayService.CreateDraftFromBookAsync(_store, projectId);
         Assert.True(r.Ok, r.Error);
         var text = ScreenplayService.Get(_store, projectId).Text;
         Assert.Contains("Title:", text);
@@ -254,7 +254,7 @@ public class ScreenplayServiceTests : IDisposable
     public async Task Adaptation_status_next_step_sign_screenplay_when_draft_dirty()
     {
         const string projectId = "Demo";
-        await ScreenplayService.SaveDraftAsync(_store, projectId, "INT. A - DAY\n\nX.\n");
+        ScreenplayService.SaveDraft(_store, projectId, "INT. A - DAY\n\nX.\n");
         var status = await _store.GetAdaptationStatusAsync(projectId);
         Assert.Equal("sign_screenplay", status.NextStep);
         Assert.True(status.Screenplay.DraftExists);

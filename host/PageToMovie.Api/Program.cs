@@ -643,7 +643,7 @@ try
                 try
                 {
                     var meta = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(
-                        File.ReadAllText(srcMeta));
+                        await File.ReadAllTextAsync(srcMeta));
                     if (meta.TryGetProperty("projectId", out var pidEl) &&
                         pidEl.GetString() is { Length: > 0 } pid)
                     {
@@ -7109,14 +7109,14 @@ app.MapGet("/api/projects/{id}/scenes/{sceneNumber:int}/clips/{clipNumber:int}/p
         {
             try
             {
-                using var doc = JsonDocument.Parse(File.ReadAllText(currentMetaPath));
+                using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(currentMetaPath, ct));
                 if (doc.RootElement.TryGetProperty("prompt", out var p))
                     currentPrompt = p.GetString();
             }
             catch { /* ignore unreadable current meta */ }
         }
 
-        var history = FilmJobService.ListClipPromptHistory(projectDir, sceneNumber, clipNumber);
+        var history = await FilmJobService.ListClipPromptHistoryAsync(projectDir, sceneNumber, clipNumber, ct);
         return Results.Ok(new
         {
             ok = true,

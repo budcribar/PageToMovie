@@ -28,11 +28,12 @@ public static class FountainStage1Importer
     /// Save canonical Fountain draft only (no scenes.json). Prefer
     /// <see cref="ScreenplayService.ImportAsDraft"/> / <see cref="ScreenplayService.SignOff"/>.
     /// </summary>
-    public static ImportResult ImportToProject(
+    public static async Task<ImportResult> ImportToProjectAsync(
         ProjectStore projects,
         string projectId,
         string fountainText,
-        string? originalFileName = null)
+        string? originalFileName = null,
+        CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(fountainText))
             return new ImportResult { Ok = false, Error = "Empty Fountain text" };
@@ -47,7 +48,7 @@ public static class FountainStage1Importer
         var normalized = fountainText.Replace("\r\n", "\n").Replace('\r', '\n');
         if (!normalized.EndsWith('\n')) normalized += "\n";
         var fountainPath = Path.Combine(sourceDir, ScreenplayService.CanonicalFileName);
-        File.WriteAllText(fountainPath, normalized);
+        await File.WriteAllTextAsync(fountainPath, normalized, ct).ConfigureAwait(false);
 
         if (!string.IsNullOrWhiteSpace(originalFileName))
         {
@@ -58,7 +59,7 @@ public static class FountainStage1Importer
                 if (!safeName.EndsWith(".fountain", StringComparison.OrdinalIgnoreCase) &&
                     !safeName.EndsWith(".spmd", StringComparison.OrdinalIgnoreCase))
                     safeName = Path.GetFileNameWithoutExtension(safeName) + ".fountain";
-                try { File.WriteAllText(Path.Combine(sourceDir, safeName), normalized); } catch { /* ignore */ }
+                try { await File.WriteAllTextAsync(Path.Combine(sourceDir, safeName), normalized, ct).ConfigureAwait(false); } catch { /* ignore */ }
             }
         }
 
@@ -81,6 +82,17 @@ public static class FountainStage1Importer
             Title = doc.TryGetValue("movie_title", out var t) ? t?.ToString() : null,
         };
     }
+
+    /// <summary>
+    /// Save canonical Fountain draft only (no scenes.json). Prefer
+    /// <see cref="ScreenplayService.ImportAsDraft"/> / <see cref="ScreenplayService.SignOff"/>.
+    /// </summary>
+    public static ImportResult ImportToProject(
+        ProjectStore projects,
+        string projectId,
+        string fountainText,
+        string? originalFileName = null)
+        => ImportToProjectAsync(projects, projectId, fountainText, originalFileName).GetAwaiter().GetResult();
 
     /// <summary>
     /// Optional bounds (typically from <see cref="ClipDurationEstimator.ResolveBoundsForModel"/>) clamp

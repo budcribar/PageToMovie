@@ -4538,7 +4538,8 @@ public sealed class FilmJobService
     }
 
     /// <summary>Archived prompt versions for one clip (newest first), for ClipPromptCompareViewer.</summary>
-    public static List<ClipPromptHistoryEntry> ListClipPromptHistory(string projectDir, int scene, int clip)
+    public static async Task<List<ClipPromptHistoryEntry>> ListClipPromptHistoryAsync(
+        string projectDir, int scene, int clip, CancellationToken ct = default)
     {
         var result = new List<ClipPromptHistoryEntry>();
         var historyDir = Path.Combine(projectDir, "assets", "video", "history");
@@ -4553,7 +4554,7 @@ public sealed class FilmJobService
                 var stamp = name[prefix.Length..^".meta.json".Length];
                 if (!long.TryParse(stamp, out var ms)) continue;
 
-                using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(file));
+                using var doc = System.Text.Json.JsonDocument.Parse(await File.ReadAllTextAsync(file, ct).ConfigureAwait(false));
                 var root = doc.RootElement;
                 string? prompt = root.TryGetProperty("prompt", out var p) ? p.GetString() : null;
                 result.Add(new ClipPromptHistoryEntry
@@ -4572,6 +4573,10 @@ public sealed class FilmJobService
         result.Sort((a, b) => b.TimestampUtc.CompareTo(a.TimestampUtc));
         return result;
     }
+
+    /// <summary>Archived prompt versions for one clip (newest first), for ClipPromptCompareViewer.</summary>
+    public static List<ClipPromptHistoryEntry> ListClipPromptHistory(string projectDir, int scene, int clip)
+        => ListClipPromptHistoryAsync(projectDir, scene, clip).GetAwaiter().GetResult();
 
     public sealed class ClipPromptHistoryEntry
     {

@@ -13,7 +13,11 @@ public static class ProjectStage1ConvertManifest
     public static string GetPath(string projectDir) =>
         Path.Combine(projectDir, "source", "stage1_convert_manifest.json");
 
-    public static void Write(string projectDir, AdaptationConvertManifest manifest, string? bookId = null)
+    public static async Task WriteAsync(
+        string projectDir,
+        AdaptationConvertManifest manifest,
+        string? bookId = null,
+        CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(manifest);
         var path = GetPath(projectDir);
@@ -41,16 +45,19 @@ public static class ProjectStage1ConvertManifest
             fountain_chars = manifest.FountainChars,
             scene_count_approx = manifest.SceneCountApprox,
         };
-        File.WriteAllText(path, JsonSerializer.Serialize(payload, JsonDefaults.Indented) + "\n");
+        await File.WriteAllTextAsync(path, JsonSerializer.Serialize(payload, JsonDefaults.Indented) + "\n", ct).ConfigureAwait(false);
     }
 
-    public static AdaptationConvertManifest? TryRead(string projectDir)
+    public static void Write(string projectDir, AdaptationConvertManifest manifest, string? bookId = null) =>
+        WriteAsync(projectDir, manifest, bookId).GetAwaiter().GetResult();
+
+    public static async Task<AdaptationConvertManifest?> TryReadAsync(string projectDir, CancellationToken ct = default)
     {
         var path = GetPath(projectDir);
         if (!File.Exists(path)) return null;
         try
         {
-            using var doc = JsonDocument.Parse(File.ReadAllText(path));
+            using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(path, ct).ConfigureAwait(false));
             var r = doc.RootElement;
             return new AdaptationConvertManifest
             {
@@ -79,6 +86,9 @@ public static class ProjectStage1ConvertManifest
             return null;
         }
     }
+
+    public static AdaptationConvertManifest? TryRead(string projectDir) =>
+        TryReadAsync(projectDir).GetAwaiter().GetResult();
 
     private static string Str(JsonElement r, string name) =>
         r.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() ?? "" : "";
