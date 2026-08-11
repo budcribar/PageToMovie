@@ -113,6 +113,10 @@ else
             {
                 <div class="alert alert-success py-2 small mb-3" data-testid="decision-shape-done">@_shapeMessage</div>
             }
+            @if (!string.IsNullOrWhiteSpace(_collabNote))
+            {
+                <div class="alert alert-warning py-2 small mb-3" data-testid="decision-collab-note">@_collabNote</div>
+            }
             <div class="card mb-4 border-primary border-opacity-50" data-testid="decision-card">
                 <div class="card-body">
                     <div class="d-flex flex-wrap align-items-start justify-content-between gap-3">
@@ -121,28 +125,75 @@ else
                             <p class="small text-muted mb-0">
                                 <strong>@DurationLabel</strong>
                                 · <strong>@Usd(estimate)</strong> full pass (@EstimateBasisLabel)
+                                @if (_collabRole != CollabRole.Unknown)
+                                {
+                                    <span class="ms-1">· you: <strong data-testid="decision-role">@_collabRole</strong></span>
+                                }
                             </p>
                         </div>
                     </div>
-                    <div class="d-flex flex-wrap gap-2 mt-3">
-                        <button type="button"
-                                class="btn @(_preferPath == "generate" ? "btn-primary" : "btn-outline-primary") fw-semibold px-4"
-                                data-testid="decision-generate"
-                                disabled="@_busy"
-                                @onclick="ChooseGenerate">
-                            Generate movie
-                        </button>
-                        <button type="button"
-                                class="btn @(_preferPath == "edit" ? "btn-primary" : "btn-outline-secondary") fw-semibold px-4"
-                                data-testid="decision-edit"
-                                disabled="@_busy"
-                                @onclick="ChooseEdit">
-                            Edit plan first
-                        </button>
-                    </div>
-                    <p class="small text-muted mt-2 mb-0">
-                        Generate builds from the current plan (shot plan first if needed). Edit trims cost or runtime — tools stay on this page so the forecast updates live.
-                    </p>
+                    @if (IsViewerOnly)
+                    {
+                        <p class="small text-muted mt-3 mb-0" data-testid="decision-viewer-readonly">
+                            Viewer access — forecast is read-only. Ask the Owner for Editor access to edit or generate.
+                        </p>
+                    }
+                    else
+                    {
+                        <div class="d-flex flex-wrap gap-2 mt-3">
+                            @if (IsOwner)
+                            {
+                                <button type="button"
+                                        class="btn @(_preferPath == "generate" ? "btn-primary" : "btn-outline-primary") fw-semibold px-4"
+                                        data-testid="decision-generate"
+                                        disabled="@(_busy || GeneratingBusy)"
+                                        @onclick="ChooseGenerate">
+                                    Generate movie
+                                </button>
+                            }
+                            else
+                            {
+                                <button type="button"
+                                        class="btn btn-outline-primary fw-semibold px-4"
+                                        data-testid="decision-generate-scenes"
+                                        disabled="@_busy"
+                                        @onclick="ChooseGenerate">
+                                    Generate scenes on Film →
+                                </button>
+                            }
+                            <button type="button"
+                                    class="btn @(_preferPath == "edit" ? "btn-primary" : "btn-outline-secondary") fw-semibold px-4"
+                                    data-testid="decision-edit"
+                                    disabled="@_busy"
+                                    @onclick="ChooseEdit">
+                                Edit plan first
+                            </button>
+                        </div>
+                        @if (GeneratingBusy)
+                        {
+                            <div class="alert alert-info py-2 small mt-3 mb-0" data-testid="decision-generating-busy">
+                                <strong>GeneratingBusy:</strong> a <code>@_blockingJobKind</code> job is already running on this project.
+                                Monitor it instead of starting another full-movie pass.
+                            </div>
+                        }
+                        else if (PlanBusy && IsOwner)
+                        {
+                            <div class="alert alert-warning py-2 small mt-3 mb-0" data-testid="decision-plan-busy-hint">
+                                <strong>PlanBusy:</strong> <code>@_scriptLeaseHolder</code> holds the script/plan lease.
+                                Full-movie generate will wait until they release it; scene gen on Film is still OK for unlocked scenes.
+                            </div>
+                        }
+                        <p class="small text-muted mt-2 mb-0">
+                            @if (IsOwner)
+                            {
+                                <text>Owner: full-movie from Estimate. Editors use Film for per-scene generate. Edit trims cost/runtime here.</text>
+                            }
+                            else
+                            {
+                                <text>Editor: shape the plan here; generate clips/scenes on Film (not full-movie from Estimate).</text>
+                            }
+                        </p>
+                    }
                 </div>
             </div>
         }
@@ -285,7 +336,33 @@ else
                     <p class="mb-2">
                         About <strong>@DurationLabel</strong> · <strong>@Usd(estimate)</strong>
                         (@_report.DraftResolution, @EstimateBasisLabel).
+                        @if (_confirmEstimateSnapshot is double snap && Math.Abs(snap - estimate) > 0.009)
+                        {
+                            <span class="text-warning small"> (updated from @Usd(snap) after refresh)</span>
+                        }
                     </p>
+                    @if (!string.IsNullOrWhiteSpace(_collabNote))
+                    {
+                        <div class="alert alert-warning py-2 small mb-3" data-testid="decision-confirm-collab">@_collabNote</div>
+                    }
+                    @if (PlanBusy)
+                    {
+                        <div class="alert alert-warning py-2 small mb-3" data-testid="decision-plan-busy">
+                            <strong>PlanBusy:</strong> <code>@_scriptLeaseHolder</code> is editing the plan/script.
+                            Full-movie generate is blocked. Scene gen on unlocked scenes is still allowed on Film.
+                        </div>
+                    }
+                    @if (GeneratingBusy)
+                    {
+                        <div class="alert alert-info py-2 small mb-3" data-testid="decision-generating-busy-confirm">
+                            <strong>GeneratingBusy:</strong> job <code>@_blockingJobKind</code>
+                            @if (!string.IsNullOrEmpty(_blockingJobId))
+                            {
+                                <text> (@_blockingJobId)</text>
+                            }
+                            is already active. Do not start a second full pass.
+                        </div>
+                    }
                     @if (!ActiveProject.CanEstimate)
                     {
                         <div class="alert alert-warning py-2 small mb-3" data-testid="decision-blocked">
@@ -310,7 +387,7 @@ else
                         <button type="button"
                                 class="btn btn-success fw-semibold px-4"
                                 data-testid="decision-confirm-go"
-                                disabled="@(_busy || !ActiveProject.CanEstimate)"
+                                disabled="@(_busy || !ActiveProject.CanEstimate || PlanBusy || GeneratingBusy || !IsOwner)"
                                 @onclick="ConfirmGenerateAsync">
                             @if (ActiveProject.CanScenes)
                             {

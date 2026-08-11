@@ -680,10 +680,10 @@ Use this as the build/acceptance tracker. Check items off in PRs; leave dates/no
 | [x] | **I0** ACL Owner/Editor/Viewer + invites | `ProjectAclService` exists |
 | [x] | **I0b** Leases `script` / `scene:N` + Film `LockedByOther` | `IProjectLeaseService` exists |
 | [x] | **I0c** Policy P1–P6 adopted in §3b + diagram | job service, keys, Owner full-film, no steal if online, cast+loc locks, delete rules |
-| | **I1** DecisionCard: Owner full-movie CTA; Editor scene-gen path only (P3) | |
-| | **I2** Full-film + scene jobs via **job service** mutex / attach (P1) | GeneratingBusy |
-| | **I3** ConfirmGenerate full-film → PlanBusy if script/plan held | scene gen still allowed on unlocked scenes |
-| | **I4** ConfirmGenerate always re-fetches estimate | |
+| [x] | **I1** DecisionCard: Owner full-movie CTA; Editor scene-gen path only (P3) | Cost role-aware CTAs |
+| [x] | **I2** Full-film jobs via **job service** mutex / attach (P1) | GeneratingBusy on DecisionCard |
+| [x] | **I3** ConfirmGenerate full-film → PlanBusy if script lease held | decision-plan-busy |
+| [x] | **I4** ConfirmGenerate always re-fetches estimate | LoadAsync before navigate |
 | | **I5** `keyMode = shared \| personal` + wire gen to correct keys (P2) | |
 | | **I6** Edit script / reorder: `script` lease; **ScriptLocked** if holder online (P4) | |
 | | **I7** Scene edit/regen: `scene:N`; no steal while presence live; **logout releases** (P4) | |

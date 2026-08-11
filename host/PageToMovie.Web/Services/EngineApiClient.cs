@@ -1531,6 +1531,37 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     }
 
     /// <summary>Multi-job list. Requires mine, projectId, or userId (Phase F).</summary>
+
+    // —— Collaboration (ACL / leases) for DecisionCard multi-user guards ——
+
+    public async Task<ProjectAclClientDto?> GetProjectAclAsync(string projectId, CancellationToken ct = default)
+    {
+        SyncIdentityHeaders();
+        try
+        {
+            using var resp = await _http.GetAsync(
+                $"/api/projects/{Uri.EscapeDataString(projectId)}/acl", ct);
+            if (!resp.IsSuccessStatusCode) return null;
+            return await resp.Content.ReadFromJsonAsync<ProjectAclClientDto>(JsonOpts, ct);
+        }
+        catch { return null; }
+    }
+
+    public async Task<ProjectLeaseClientDto?> GetProjectLeaseAsync(
+        string projectId, string resourceKey, CancellationToken ct = default)
+    {
+        SyncIdentityHeaders();
+        try
+        {
+            using var resp = await _http.GetAsync(
+                $"/api/projects/{Uri.EscapeDataString(projectId)}/leases/{Uri.EscapeDataString(resourceKey)}", ct);
+            if (resp.StatusCode == System.Net.HttpStatusCode.NoContent) return null;
+            if (!resp.IsSuccessStatusCode) return null;
+            return await resp.Content.ReadFromJsonAsync<ProjectLeaseClientDto>(JsonOpts, ct);
+        }
+        catch { return null; }
+    }
+
     public async Task<JobsListDto?> GetJobsAsync(
         bool mine = false,
         string? projectId = null,
@@ -4185,6 +4216,23 @@ public sealed class VoiceCatalogItemDto
     public string? Category { get; set; }
     public string? PreviewUrl { get; set; }
     public bool IsCloned { get; set; }
+}
+
+
+public sealed class ProjectAclClientDto
+{
+    public string OwnerUserId { get; set; } = "";
+    public List<string> Editors { get; set; } = new();
+    public List<string> Viewers { get; set; } = new();
+    public long Rev { get; set; }
+}
+
+public sealed class ProjectLeaseClientDto
+{
+    public string ResourceKey { get; set; } = "";
+    public string HolderUserId { get; set; } = "";
+    public DateTimeOffset ExpiresAt { get; set; }
+    public DateTimeOffset AcquiredAt { get; set; }
 }
 
 public sealed class JobsListDto

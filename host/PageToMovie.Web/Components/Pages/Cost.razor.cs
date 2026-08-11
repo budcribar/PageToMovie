@@ -44,6 +44,15 @@ public partial class Cost : IAsyncDisposable
     private int? _maxSpeakingCast;
     private string _castCapInput = "";
 
+    // I1–I4 multi-user / job guards
+    private enum CollabRole { Unknown, Viewer, Editor, Owner }
+    private CollabRole _collabRole = CollabRole.Unknown;
+    private string? _scriptLeaseHolder;
+    private string? _blockingJobKind;
+    private string? _blockingJobId;
+    private string? _collabNote;
+    private double? _confirmEstimateSnapshot;
+
     [Inject] private IJSRuntime Js { get; set; } = null!;
 
     protected override async Task OnParametersSetAsync()
@@ -195,6 +204,7 @@ public partial class Cost : IAsyncDisposable
         finally { _busy = false; }
 
         try { await LoadCastCapAsync(); } catch { /* optional */ }
+        try { await LoadCollabGuardsAsync(); } catch { /* optional */ }
     }
 
     private async Task LoadCastCapAsync()
@@ -273,38 +283,160 @@ public partial class Cost : IAsyncDisposable
         }
     }
 
-    private void ChooseGenerate()
+    private bool IsOwner => _collabRole is CollabRole.Owner or CollabRole.Unknown;
+    private bool IsEditorOrAbove => _collabRole is CollabRole.Owner or CollabRole.Editor or CollabRole.Unknown;
+    private bool IsViewerOnly => _collabRole == CollabRole.Viewer;
+    private bool PlanBusy =>
+        !string.IsNullOrWhiteSpace(_scriptLeaseHolder)
+        && !string.Equals(_scriptLeaseHolder, Session.UserId, StringComparison.OrdinalIgnoreCase);
+    private bool GeneratingBusy => !string.IsNullOrWhiteSpace(_blockingJobKind);
+    private bool CanStartFullMovie =>
+        IsOwner && ActiveProject.CanEstimate && !PlanBusy && !GeneratingBusy && !IsViewerOnly;
+
+    private async Task LoadCollabGuardsAsync()
     {
+        _scriptLeaseHolder = null;
+        _blockingJobKind = null;
+        _blockingJobId = null;
+        _collabNote = null;
+        _collabRole = CollabRole.Unknown;
+        if (string.IsNullOrWhiteSpace(_projectId)) return;
+
+        var uid = (Session.UserId ?? "").Trim();
+        if (string.IsNullOrEmpty(uid)) uid = "local";
+
+        var acl = await Engine.GetProjectAclAsync(_projectId);
+        if (acl is not null)
+        {
+            if (string.Equals(acl.OwnerUserId, uid, StringComparison.OrdinalIgnoreCase)
+                || string.IsNullOrWhiteSpace(acl.OwnerUserId))
+                _collabRole = CollabRole.Owner;
+            else if (acl.Editors.Any(e => string.Equals(e, uid, StringComparison.OrdinalIgnoreCase)))
+                _collabRole = CollabRole.Editor;
+            else if (acl.Viewers.Any(v => string.Equals(v, uid, StringComparison.OrdinalIgnoreCase)))
+                _collabRole = CollabRole.Viewer;
+            else
+                // Shared list membership may lag; treat as viewer-safe default if not listed
+                _collabRole = string.IsNullOrWhiteSpace(acl.OwnerUserId) ? CollabRole.Owner : CollabRole.Viewer;
+        }
+        else
+        {
+            // Solo / ACL unavailable — full Owner powers (I1 soft fail-open)
+            _collabRole = CollabRole.Owner;
+        }
+
+        // I3: script / plan lease
+        var scriptLease = await Engine.GetProjectLeaseAsync(_projectId, "script");
+        if (scriptLease is not null
+            && scriptLease.ExpiresAt > DateTimeOffset.UtcNow
+            && !string.IsNullOrWhiteSpace(scriptLease.HolderUserId))
+        {
+            _scriptLeaseHolder = scriptLease.HolderUserId;
+        }
+
+        // I2: job service — any active full-film-ish job on this project
+        var jobs = await Engine.GetJobsAsync(mine: false, projectId: _projectId);
+        var active = jobs?.Jobs?
+            .Where(j =>
+            {
+                var st = (j.Status ?? "").Trim().ToLowerInvariant();
+                if (st is not ("running" or "queued")) return false;
+                var k = (j.Kind ?? "").Trim().ToLowerInvariant();
+                // Full-movie / pipeline blockers (not single-scene edits)
+                return k is "batch" or "stage2" or "stage1" or "book_import" or "book_prepare"
+                    or "cast-extract" or "speak-batch";
+            })
+            .OrderByDescending(j => j.StartedAt ?? DateTimeOffset.MinValue)
+            .FirstOrDefault();
+        if (active is not null)
+        {
+            _blockingJobKind = active.Kind ?? "job";
+            _blockingJobId = active.JobId;
+        }
+    }
+
+    private async Task ChooseGenerate()
+    {
+        if (IsViewerOnly)
+        {
+            _collabNote = "Viewers can watch estimates but cannot generate. Ask the project owner for Editor access.";
+            return;
+        }
+        if (!IsOwner)
+        {
+            // I1: Editors generate scenes on Film, not whole movie from DecisionCard
+            _preferPath = "generate";
+            await PersistPrefAsync("preferPath", "generate");
+            _collabNote = "Editors generate individual scenes on Film — only the Owner starts a full-movie pass from Estimate.";
+            Nav.NavigateTo(ActiveProject.CanScenes
+                ? (ActiveProject.IsSimpleVoice ? "scenes?simple=1" : "scenes")
+                : "adaptation/shots?from=decision");
+            return;
+        }
+
         _preferPath = "generate";
-        _ = PersistPrefAsync("preferPath", "generate");
-        _phase = DecisionPhase.ConfirmGenerate;
+        await PersistPrefAsync("preferPath", "generate");
+        _busy = true;
+        try
+        {
+            await LoadAsync(); // I4 re-fetch estimate + collab
+            _confirmEstimateSnapshot = DisplayEstimateUsd;
+            _phase = DecisionPhase.ConfirmGenerate;
+        }
+        finally { _busy = false; }
     }
 
     private void ChooseEdit()
     {
+        if (IsViewerOnly)
+        {
+            _collabNote = "Viewers cannot edit the plan.";
+            return;
+        }
         _preferPath = "edit";
         _ = PersistPrefAsync("preferPath", "edit");
         _phase = DecisionPhase.EditFocus;
+        _collabNote = null;
     }
 
     private void BackToCard()
     {
         _phase = DecisionPhase.Card;
         _shapeError = null;
+        _collabNote = null;
     }
 
     private async Task ConfirmGenerateAsync()
     {
         if (string.IsNullOrWhiteSpace(_projectId)) return;
+        if (!IsOwner)
+        {
+            _collabNote = "Only the project Owner can start a full-movie generate from Estimate.";
+            return;
+        }
         _busy = true;
         try
         {
             try { await ActiveProject.RefreshReadinessAsync(Engine); } catch { /* */ }
-            // Fresh estimate before leaving
+            // I4: always re-fetch estimate before navigating
             await LoadAsync();
             if (_report is null)
             {
                 _error ??= "Could not refresh the estimate. Check your connection and try again.";
+                return;
+            }
+            _confirmEstimateSnapshot = DisplayEstimateUsd;
+
+            // I3 PlanBusy
+            if (PlanBusy)
+            {
+                _collabNote = $"PlanBusy: {_scriptLeaseHolder} is editing the screenplay/plan. Wait until they finish, then try again. You can still generate unlocked scenes on Film.";
+                return;
+            }
+            // I2 GeneratingBusy
+            if (GeneratingBusy)
+            {
+                _collabNote = $"GeneratingBusy: a {_blockingJobKind} job is already running on this project. Monitor it instead of starting another full pass.";
                 return;
             }
 
