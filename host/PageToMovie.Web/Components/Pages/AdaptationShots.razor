@@ -22,10 +22,21 @@
                 }
             </div>
             <div class="card-body">
-                @if (FromDecisionCard)
+                @if (FromDecisionCard || AutoGen)
                 {
                     <InlineAlert Variant="info" CssClass="py-2 small mb-3" data-testid="shots-from-decision">
-                        From Estimate → Generate: build the shot plan here, then open Film to generate clips.
+                        @if (AutoGen)
+                        {
+                            <span data-testid="shots-autogen">
+                                From Estimate → Generate: building the shot plan, then starting fill-holes on Film.
+                            </span>
+                        }
+                        else
+                        {
+                            <span>
+                                From Estimate → Generate: build the shot plan here, then open Film to generate clips.
+                            </span>
+                        }
                         <a class="alert-link ms-1" href="cost">Back to Estimate</a>
                     </InlineAlert>
                 }

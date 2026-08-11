@@ -627,6 +627,31 @@ public partial class Cost : IAsyncDisposable
                 }
             }
 
+            // B6: no shot plan yet — start Stage‑2 then chain fill-holes on the shots page
+            if (!ActiveProject.CanScenes && ActiveProject.CanEstimate && !GeneratingBusy)
+            {
+                try
+                {
+                    await Engine.StartStage2Async(new StartStage2Request
+                    {
+                        ProjectId = _projectId,
+                        Scenes = "all",
+                        Resolution = _draftRes,
+                    });
+                    var resQ = string.IsNullOrWhiteSpace(_draftRes)
+                        ? ""
+                        : $"&res={Uri.EscapeDataString(_draftRes)}";
+                    Nav.NavigateTo($"adaptation/shots?from=decision&autoGen=1{resQ}");
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    _collabNote = "Could not start shot plan: " + ex.Message + " — open Shot plan to build it, then Film.";
+                    Nav.NavigateTo(ResolveGenerateHref());
+                    return;
+                }
+            }
+
             Nav.NavigateTo(ResolveGenerateHref());
         }
         finally
@@ -636,15 +661,15 @@ public partial class Cost : IAsyncDisposable
     }
 
     /// <summary>
-    /// Generate path: Film when shot plan ready; else shot plan (may run as next step); never dead-end.
+    /// Generate path when auto-start is unavailable: Film when shot plan ready; else shot plan.
+    /// B6 auto-chain prefers StartStage2 + autoGen over bare navigation.
     /// </summary>
     private string ResolveGenerateHref()
     {
-        // B6: if shot plan missing, open shot plan as first step toward gen (not cast maze).
         if (ActiveProject.CanScenes)
             return ActiveProject.IsSimpleVoice ? "scenes?simple=1" : "scenes";
         if (ActiveProject.CanEstimate)
-            return "adaptation/shots?from=decision";
+            return "adaptation/shots?from=decision&autoGen=1";
         return "adaptation/screenplay";
     }
 

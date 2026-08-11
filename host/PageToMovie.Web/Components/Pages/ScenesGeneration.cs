@@ -270,6 +270,8 @@ public partial class Scenes
                 _lastListRefreshScene = null;
                 _lastListRefreshMessage = null;
                 await SoftReloadAsync();
+                // A5: final remaining numbers after job ends
+                try { await S.List.RefreshCostEstimateAsync(); } catch { /* soft */ }
                 if (snap.Status == "done" &&
                     string.Equals(snap.Kind, "remux", StringComparison.OrdinalIgnoreCase))
                 {
@@ -403,9 +405,24 @@ public partial class Scenes
                 if (S.ClipForm._selectedClip is int cn && S.List._detail is not null)
                     S.ClipForm._clip = S.List._detail.Clips.FirstOrDefault(c => c.ClipNumber == cn);
             }
+            // A5 polish: keep Film remaining strip in sync while gen runs (throttled).
+            await MaybeRefreshCostWhileRunningAsync();
         }
         catch { /* ignore mid-job refresh errors */ }
         finally { _listRefreshInFlight = false; }
+    }
+
+    private DateTimeOffset _lastCostRefreshAt = DateTimeOffset.MinValue;
+
+    /// <summary>Refresh cost report at most every ~3s while batch/scene gen is live.</summary>
+    internal async Task MaybeRefreshCostWhileRunningAsync()
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (now - _lastCostRefreshAt < TimeSpan.FromSeconds(3))
+            return;
+        _lastCostRefreshAt = now;
+        try { await S.List.RefreshCostEstimateAsync(); }
+        catch { /* soft */ }
     }
 
 

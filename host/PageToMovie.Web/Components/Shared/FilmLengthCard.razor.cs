@@ -19,6 +19,8 @@ public partial class FilmLengthCard : IDisposable
     /// <summary>Render the control flat (no card wrapper) so a host page can group it in one card.</summary>
     [Parameter] public bool Embedded { get; set; }
 
+    [Inject] private StudioUserPrefsService UserPrefs { get; set; } = null!;
+
     internal readonly string _inputId = "film-target-" + Guid.NewGuid().ToString("N")[..8];
     internal string? _loadedFor;
 
@@ -30,6 +32,7 @@ public partial class FilmLengthCard : IDisposable
     internal string? _error;
     internal CancellationTokenSource? _saveCts;
     internal bool _saving; // a save loop is in flight (coalesces rapid bumps)
+    private bool _appliedUserRuntimePref;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -59,7 +62,16 @@ public partial class FilmLengthCard : IDisposable
                 return;
             }
             _natural = Math.Clamp(dto.NaturalMinutes, 1, 180);
-            _target = Math.Clamp(dto.TargetMinutes > 0 ? dto.TargetMinutes : _natural, 1, 180);
+            // Project target wins when set; otherwise G1 lastRuntimeTargetMin prefill, then natural.
+            if (dto.TargetMinutes > 0)
+            {
+                _target = Math.Clamp(dto.TargetMinutes, 1, 180);
+            }
+            else
+            {
+                _target = _natural;
+                await TryApplyUserRuntimePrefAsync();
+            }
             _edit = _target;
             _visible = true;
         }
@@ -68,6 +80,48 @@ public partial class FilmLengthCard : IDisposable
             _loadedFor = ProjectId;
             _visible = false;
             _error = ex.Message;
+        }
+    }
+
+    /// <summary>
+    /// C6/G1: when the project has no saved runtime target, seed from the user's last choice.
+    /// Applies once per project load; persists so estimate uses the same minutes.
+    /// </summary>
+    private async Task TryApplyUserRuntimePrefAsync()
+    {
+        if (_appliedUserRuntimePref) return;
+        _appliedUserRuntimePref = true;
+        try
+        {
+            if (!UserPrefs.Loaded)
+                await UserPrefs.LoadAsync();
+            var pref = UserPrefs.LastRuntimeTargetMin;
+            if (pref is not int mins || mins < 1 || mins > 180)
+                return;
+            if (mins == _natural)
+            {
+                _target = mins;
+                _edit = mins;
+                return;
+            }
+            _edit = mins;
+            _target = mins;
+            // Persist as project target so CostReport and other surfaces agree
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+            var saved = await Engine.SetFilmRuntimeAsync(ProjectId, mins, cts.Token);
+            if (saved is { Ok: true } && saved.TargetMinutes > 0)
+                _target = Math.Clamp(saved.TargetMinutes, 1, 180);
+            _edit = _target;
+            if (OnChanged.HasDelegate)
+            {
+                try { await OnChanged.InvokeAsync(); } catch { /* host owns errors */ }
+            }
+        }
+        catch
+        {
+            // Pref is optional — leave natural
+            _target = _natural;
+            _edit = _natural;
         }
     }
 
@@ -114,6 +168,7 @@ public partial class FilmLengthCard : IDisposable
                         throw new InvalidOperationException("Save failed.");
                     _natural = dto.NaturalMinutes > 0 ? dto.NaturalMinutes : _natural;
                     _target = dto.TargetMinutes > 0 ? dto.TargetMinutes : minutes;
+                    try { await UserPrefs.SetLastRuntimeTargetMinAsync(_target); } catch { /* soft */ }
                 }
                 catch (OperationCanceledException)
                 {

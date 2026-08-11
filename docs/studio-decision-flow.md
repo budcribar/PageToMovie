@@ -604,7 +604,7 @@ Use this as the build/acceptance tracker. Check items off in PRs; leave dates/no
 | [x] | **B3** Load **per-user** prefs for emphasis only; always show card | localStorage preferPath/editFocus |
 | [x] | **B4** ConfirmGenerate: one confirm with current $ + min | decision-confirm-generate |
 | [x] | **B5** Blocked state when estimate not ready; confirm disabled | decision-blocked |
-| [x] | **B6** If shot plan missing on Generate: open shot plan (`?from=decision`) then Film | not auto-job yet |
+| [x] | **B6** If shot plan missing on Generate: open shot plan (`?from=decision`) then Film | auto-chain: StartStage2 → `autoGen=1` → fill-holes batch → Film |
 | [x] | **B7** Fountain import CTA on import surfaces → same DecisionCard | import-go-estimate |
 
 ### Phase C — Edit focus + toolkits
@@ -616,7 +616,7 @@ Use this as the build/acceptance tracker. Check items off in PRs; leave dates/no
 | [x] | **C3** Duration toolkit entry + back to DecisionCard | → screenplay?tool=fit |
 | [x] | **C4** Both = duration-lead then optional cost | same fit entry; user returns to /cost |
 | [x] | **C5** Craft hub → script / cast / locs; PlanDirty when needed | links on edit-focus card |
-| [x] | **C6** Persist `preferPath`, `editFocus` **per user** (runtime target still FilmLengthCard) | localStorage; lastRuntime later |
+| [x] | **C6** Persist `preferPath`, `editFocus` **per user** (runtime target still FilmLengthCard) | `StudioUserPrefsService` + lastRuntimeTargetMin prefill on FilmLengthCard |
 
 ### Phase D — Watch → edit (post-gen hub)
 
@@ -751,5 +751,5 @@ Use this as the build/acceptance tracker. Check items off in PRs; leave dates/no
 
 ---
 
-*Last updated: 2026-08-11 — A5 Film remaining strip + Phase G G1–G4 (user prefs, skip focus, draft/full production mode, soft cast plates).*
+*Last updated: 2026-08-11 — polish: B6 auto-chain (stage2→fill-holes), lastRuntime prefill, live Film remaining strip.*
 

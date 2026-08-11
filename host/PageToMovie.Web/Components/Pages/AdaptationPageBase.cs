@@ -38,6 +38,9 @@ public abstract partial class AdaptationPageBase : ComponentBase, IAsyncDisposab
     /// <summary>import | screenplay | shots</summary>
     public abstract string StepKey { get; }
 
+    /// <summary>Called after SoftLoad when an adaptation job finishes (stage1/stage2/…).</summary>
+    public virtual Task OnAdaptationJobTerminalAsync(JobSnapshot snap) => Task.CompletedTask;
+
     protected override async Task OnInitializedAsync()
     {
         Hub.JobUpdated += Jobs.OnJobUpdated;

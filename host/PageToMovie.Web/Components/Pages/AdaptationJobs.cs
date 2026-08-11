@@ -48,6 +48,8 @@ public abstract partial class AdaptationPageBase
                         // continues into draft generation (Busy stays true).
                         if (!S.Busy)
                             S.Message = AdaptationStepUi.OperatorJobDoneMessage(snap);
+                        try { await S.OnAdaptationJobTerminalAsync(snap); }
+                        catch (Exception ex) { S.Error ??= ex.Message; }
                     }
                     else if (snap.Status == "error")
                         S.Error = snap.Error ?? snap.Message ?? "Job failed";
