@@ -12,7 +12,7 @@ using PageToMovie.Web.Services;
 
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class SimpleRevoice
+public partial class SimpleRevoice : IAsyncDisposable
 {
     internal string? _projectId;
     internal string _narratorKey = "Character_Narrator";

@@ -9,7 +9,7 @@ using PageToMovie.Web.Services;
 
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class Admin
+public partial class Admin : IAsyncDisposable
 {
     // ── Domain modules (lazy; own their state) ─────────────────────────────
     private AdminJobs? _jobs;

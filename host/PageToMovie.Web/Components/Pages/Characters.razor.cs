@@ -10,7 +10,7 @@ using PageToMovie.Web.Services;
 
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class Characters
+public partial class Characters : IAsyncDisposable
 {
     // ── Domain modules (lazy; own their state) ─────────────────────────────
     private CharactersListState? _list;

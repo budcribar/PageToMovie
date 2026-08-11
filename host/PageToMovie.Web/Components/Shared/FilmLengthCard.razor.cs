@@ -11,7 +11,7 @@ using PageToMovie.Web.Services;
 
 namespace PageToMovie.Web.Components;
 
-public partial class FilmLengthCard
+public partial class FilmLengthCard : IDisposable
 {
     [Parameter] public string ProjectId { get; set; } = "";
     [Parameter] public bool Disabled { get; set; }

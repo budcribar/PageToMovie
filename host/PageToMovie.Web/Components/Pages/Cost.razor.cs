@@ -10,7 +10,7 @@ using static PageToMovie.Web.Components.CostFormatting;
 
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class Cost
+public partial class Cost : IAsyncDisposable
 {
 
     private bool _disposed;

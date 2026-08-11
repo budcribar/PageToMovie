@@ -10,7 +10,7 @@ using PageToMovie.Web.Services;
 
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class Home
+public partial class Home : IAsyncDisposable
 {
     // ── Domain modules (lazy; own their state) ─────────────────────────────
     private HomeJobs? _jobs;

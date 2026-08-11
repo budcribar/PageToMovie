@@ -10,7 +10,7 @@ using PageToMovie.Web.Services;
 
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class Review
+public partial class Review : IAsyncDisposable
 {
     // ── Domain modules (lazy; own their state) ─────────────────────────────
     private ReviewJobs? _jobs;

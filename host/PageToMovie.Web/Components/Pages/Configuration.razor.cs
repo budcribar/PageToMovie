@@ -10,7 +10,7 @@ using PageToMovie.Web.Services;
 
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class Configuration
+public partial class Configuration : IDisposable, IAsyncDisposable
 {
     // ── Domain modules (lazy; own their state) ─────────────────────────────
     private ConfigurationCatalog? _catalog;
@@ -116,9 +116,7 @@ public partial class Configuration
 
     public async ValueTask DisposeAsync()
     {
-        MediaFolder.Changed -= Media.OnMediaFolderChanged;
-        try { Form._autoSaveCts?.Cancel(); } catch { /* ignore */ }
-        Form._autoSaveCts?.Dispose();
+        Dispose();
         // Flush any pending edits when leaving the page.
         if (Form._dirty && !string.IsNullOrWhiteSpace(_projectId) && _cfg is not null)
         {

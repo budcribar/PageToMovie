@@ -10,7 +10,7 @@ using PageToMovie.Web.Services;
 
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class Scenes
+public partial class Scenes : IAsyncDisposable
 {
     // ── Domain modules (lazy; own their state) ─────────────────────────────
     private ScenesHistory? _history;
