@@ -89,10 +89,10 @@ public class BookSubstepsTests : IDisposable
     }
 
     [Fact]
-    public void AdaptationStatus_surfaces_substep_markers()
+    public async Task AdaptationStatus_surfaces_substep_markers()
     {
         _store.MarkBookSubstepDone(ProjectId, ProjectStore.BookSubstepKeys.Enrich);
-        var status = _store.GetAdaptationStatus(ProjectId);
+        var status = await _store.GetAdaptationStatusAsync(ProjectId);
         Assert.True(status.BookSubsteps.EnrichDone);
         Assert.False(status.BookSubsteps.LookDone);
     }

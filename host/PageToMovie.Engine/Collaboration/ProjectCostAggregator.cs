@@ -107,12 +107,6 @@ public static class ProjectCostAggregator
         return summary;
     }
 
-    public static CostSummaryDto BuildSummary(
-        string projectId,
-        string projectsRoot,
-        CostLedgerService? ledger = null) =>
-        BuildSummaryAsync(projectId, projectsRoot, ledger).GetAwaiter().GetResult();
-
     private static bool HasMedia(JsonElement clip, params string[] props)
     {
         foreach (var p in props)

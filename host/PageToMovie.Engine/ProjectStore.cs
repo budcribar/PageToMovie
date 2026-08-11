@@ -5555,12 +5555,6 @@ public sealed partial class ProjectStore
         return false;
     }
 
-    public bool IsAnyStudioKeyConfigured(string? userId = null) =>
-        IsAnyStudioKeyConfiguredAsync(userId).GetAwaiter().GetResult();
-
-    public AdaptationStatus GetAdaptationStatus(string projectId, string? userId = null) =>
-        GetAdaptationStatusAsync(projectId, userId).GetAwaiter().GetResult();
-
     public async Task<AdaptationStatus> GetAdaptationStatusAsync(string projectId, string? userId = null, CancellationToken ct = default)
     {
         var dir = GetProjectDir(projectId);

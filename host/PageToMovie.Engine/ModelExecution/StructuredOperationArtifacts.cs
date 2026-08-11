@@ -61,12 +61,6 @@ public static class StructuredOperationArtifacts
         return path;
     }
 
-    public static string Write(
-        string projectDir, string operationName, string? model, object inputIdentity,
-        object result, IReadOnlyList<ModelValidationIssue> issues) =>
-        WriteAsync(projectDir, operationName, model, inputIdentity, result, issues)
-            .GetAwaiter().GetResult();
-
     private static bool IsEmpty(JsonElement value) => value.ValueKind switch
     {
         JsonValueKind.Null or JsonValueKind.Undefined => true,

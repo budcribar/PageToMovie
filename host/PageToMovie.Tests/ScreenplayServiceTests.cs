@@ -251,11 +251,11 @@ public class ScreenplayServiceTests : IDisposable
     }
 
     [Fact]
-    public void Adaptation_status_next_step_sign_screenplay_when_draft_dirty()
+    public async Task Adaptation_status_next_step_sign_screenplay_when_draft_dirty()
     {
         const string projectId = "Demo";
-        ScreenplayService.SaveDraft(_store, projectId, "INT. A - DAY\n\nX.\n");
-        var status = _store.GetAdaptationStatus(projectId);
+        await ScreenplayService.SaveDraftAsync(_store, projectId, "INT. A - DAY\n\nX.\n");
+        var status = await _store.GetAdaptationStatusAsync(projectId);
         Assert.Equal("sign_screenplay", status.NextStep);
         Assert.True(status.Screenplay.DraftExists);
         Assert.False(status.Screenplay.Dirty); // unsigned draft, not post-approval edit
