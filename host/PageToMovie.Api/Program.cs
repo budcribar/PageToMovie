@@ -2395,13 +2395,22 @@ app.MapPost("/api/youtube/disconnect", async (IUserContext user, YouTubeAuthServ
     return Results.Ok(new { ok = true });
 });
 
-app.MapPost("/api/jobs/{jobId}/cancel", async (string jobId, FilmJobService jobService, IUserContext user) =>
+app.MapPost("/api/jobs/{jobId}/cancel", async (
+    string jobId, FilmJobService jobService, IUserContext user,
+    PageToMovie.Engine.Collaboration.IProjectAclService acl, CancellationToken ct) =>
 {
     var job = jobService.GetJob(jobId);
     if (job is null)
         return Results.NotFound(new { ok = false, error = "job not found" });
-    if (!user.IsAdmin &&
-        !string.Equals(job.UserId, user.UserId, StringComparison.OrdinalIgnoreCase))
+    var isStarter = string.Equals(job.UserId, user.UserId, StringComparison.OrdinalIgnoreCase);
+    var isOwner = false;
+    if (!user.IsAdmin && !isStarter && !string.IsNullOrWhiteSpace(job.ProjectId))
+    {
+        // I10: project Owner may cancel any job on their project
+        isOwner = await acl.CanAccessAsync(job.ProjectId!, user.UserId ?? "",
+            PageToMovie.Engine.Collaboration.ProjectAccessLevel.Owner, ct);
+    }
+    if (!user.IsAdmin && !isStarter && !isOwner)
         return Results.Json(new { ok = false, error = "not your job" },
             statusCode: StatusCodes.Status403Forbidden);
     await jobService.CancelAsync(jobId);
@@ -2801,7 +2810,9 @@ app.MapPost("/api/jobs/gen-scene", async (
     FilmJobService jobService,
     IUserContext user,
     IOptions<PageToMovieOptions> opts,
-    UserDatabaseService userDb) =>
+    UserDatabaseService userDb,
+    PageToMovie.Engine.Collaboration.IProjectLeaseService leases,
+    CancellationToken ct) =>
 {
     if (await AuthGate.RequireTermsAcceptedAsync(user, userDb, opts) is { } denied)
         return denied;
@@ -2809,6 +2820,20 @@ app.MapPost("/api/jobs/gen-scene", async (
     {
         if (body.Scene <= 0)
             return Results.BadRequest(new { ok = false, error = "scene required" });
+        // I7: project lease scene:N — block if another editor holds it
+        if (!string.IsNullOrWhiteSpace(body.ProjectId) && !string.IsNullOrWhiteSpace(user.UserId))
+        {
+            var (ok, lease) = await leases.TryAcquireAsync(
+                body.ProjectId, PageToMovie.Engine.Collaboration.ProjectLeaseKeys.Scene(body.Scene),
+                user.UserId, PageToMovie.Api.Collaboration.CollaborationEndpoints.DefaultLeaseTtl, ct);
+            if (!ok)
+                return Results.Json(new {
+                    ok = false,
+                    error = "scene_locked",
+                    message = $"Scene {body.Scene:D2} is locked by {lease.HolderUserId}.",
+                    holderUserId = lease.HolderUserId,
+                }, statusCode: StatusCodes.Status423Locked);
+        }
         var job = await jobService.StartSceneGenAsync(body);
         return Results.Accepted($"/api/jobs/{job.JobId}", new
         {
@@ -3264,18 +3289,35 @@ app.MapGet("/api/projects/{projectId}/locations/{locKey}/ref", (HttpContext ctx,
     return ServeCachedFile(ctx, path, "image/png", immutable: false);
 });
 
-/// <summary>Save location description / visual_lock into location_seed_tokens.</summary>
+/// <summary>Save location description / visual_lock into location_seed_tokens. I8: loc lease.</summary>
 app.MapPost("/api/projects/{id}/locations/{locKey}/look", async (
     string id,
     string locKey,
     UpdateLocationLookRequest body,
-    ProjectStore store) =>
+    ProjectStore store,
+    PageToMovie.Engine.Collaboration.IProjectLeaseService leases,
+    IUserContext user,
+    CancellationToken ct) =>
 {
     try
     {
         locKey = Uri.UnescapeDataString(locKey ?? "");
         if (string.IsNullOrWhiteSpace(locKey))
             return Results.BadRequest(new { ok = false, error = "locKey required" });
+        var uid = user.UserId ?? "";
+        if (!string.IsNullOrWhiteSpace(uid))
+        {
+            var (okLease, lease) = await leases.TryAcquireAsync(
+                id, PageToMovie.Engine.Collaboration.ProjectLeaseKeys.Loc(locKey), uid,
+                PageToMovie.Api.Collaboration.CollaborationEndpoints.DefaultLeaseTtl, ct);
+            if (!okLease)
+                return Results.Json(new {
+                    ok = false,
+                    error = "loc_locked",
+                    message = $"Location is locked by {lease.HolderUserId}.",
+                    holderUserId = lease.HolderUserId,
+                }, statusCode: StatusCodes.Status423Locked);
+        }
         var ok = store.UpdateLocationLook(id, locKey, body.Description, body.VisualLock);
         if (!ok)
             return Results.BadRequest(new { ok = false, error = "Could not update location look" });
@@ -3346,11 +3388,28 @@ app.MapPost("/api/projects/{id}/locations/{locKey}/lock-variant", async (
     string id,
     string locKey,
     int? index,
-    LocationDesignService locations) =>
+    LocationDesignService locations,
+    PageToMovie.Engine.Collaboration.IProjectLeaseService leases,
+    IUserContext user,
+    CancellationToken ct) =>
 {
     try
     {
         locKey = Uri.UnescapeDataString(locKey ?? "");
+        var uid = user.UserId ?? "";
+        if (!string.IsNullOrWhiteSpace(uid) && !string.IsNullOrWhiteSpace(locKey))
+        {
+            var (ok, lease) = await leases.TryAcquireAsync(
+                id, PageToMovie.Engine.Collaboration.ProjectLeaseKeys.Loc(locKey), uid,
+                PageToMovie.Api.Collaboration.CollaborationEndpoints.DefaultLeaseTtl, ct);
+            if (!ok)
+                return Results.Json(new {
+                    ok = false,
+                    error = "loc_locked",
+                    message = $"Location is locked by {lease.HolderUserId}.",
+                    holderUserId = lease.HolderUserId,
+                }, statusCode: StatusCodes.Status423Locked);
+        }
         var vi = index is > 0 ? index.Value : 1;
         var path = await locations.LockVariantAsync(id, locKey, vi);
         return Results.Ok(new
@@ -5081,6 +5140,8 @@ app.MapPost("/api/projects/{id}/characters/{charKey}/look", async (
     UpdateCharacterLookRequest? body,
     ProjectStore store,
     CastVisualLiteralizeService literalize,
+    PageToMovie.Engine.Collaboration.IProjectLeaseService leases,
+    IUserContext user,
     CancellationToken ct) =>
 {
     try
@@ -5088,6 +5149,20 @@ app.MapPost("/api/projects/{id}/characters/{charKey}/look", async (
         body ??= new UpdateCharacterLookRequest();
         if (string.IsNullOrWhiteSpace(charKey))
             return Results.BadRequest(new { ok = false, error = "charKey required" });
+        var uidLook = user.UserId ?? "";
+        if (!string.IsNullOrWhiteSpace(uidLook))
+        {
+            var (okLease, lease) = await leases.TryAcquireAsync(
+                id, PageToMovie.Engine.Collaboration.ProjectLeaseKeys.Cast(charKey), uidLook,
+                PageToMovie.Api.Collaboration.CollaborationEndpoints.DefaultLeaseTtl, ct);
+            if (!okLease)
+                return Results.Json(new {
+                    ok = false,
+                    error = "cast_locked",
+                    message = $"Cast is locked by {lease.HolderUserId}.",
+                    holderUserId = lease.HolderUserId,
+                }, statusCode: StatusCodes.Status423Locked);
+        }
 
         var desc = body.Description;
         var vis = body.VisualLock;
@@ -5290,10 +5365,26 @@ app.MapPost("/api/jobs/sort-character-plates", async (
 
 app.MapPost("/api/projects/{id}/characters/{charKey}/lock-variant",
     async (string id, string charKey, HttpRequest req, FilmJobService jobService,
-           ProjectTelemetryService telemetry, IOptions<PageToMovieOptions> opts) =>
+           ProjectTelemetryService telemetry, IOptions<PageToMovieOptions> opts,
+           PageToMovie.Engine.Collaboration.IProjectLeaseService leases,
+           IUserContext user, CancellationToken ct) =>
 {
     try
     {
+        var uid = user.UserId ?? "";
+        if (!string.IsNullOrWhiteSpace(uid) && !string.IsNullOrWhiteSpace(charKey))
+        {
+            var (okLease, lease) = await leases.TryAcquireAsync(
+                id, PageToMovie.Engine.Collaboration.ProjectLeaseKeys.Cast(charKey), uid,
+                PageToMovie.Api.Collaboration.CollaborationEndpoints.DefaultLeaseTtl, ct);
+            if (!okLease)
+                return Results.Json(new {
+                    ok = false,
+                    error = "cast_locked",
+                    message = $"Cast is locked by {lease.HolderUserId}.",
+                    holderUserId = lease.HolderUserId,
+                }, statusCode: StatusCodes.Status423Locked);
+        }
         var (index, overrideStyle, overrideReason, overrideNote) =
             await ParseCharacterLockBodyAsync(req, defaultIndex: 1, acceptVariantIndexAlias: true);
         var result = await jobService.RunCharacterDesignActionAsync(id, "lock-variant", charKey, index, allowStyleOverride: overrideStyle);
@@ -5375,10 +5466,26 @@ app.MapPost("/api/projects/{id}/characters/{charKey}/upload-ref", async (
 });
 
 app.MapPost("/api/projects/{id}/characters/{charKey}/unlock",
-    async (string id, string charKey, FilmJobService jobService) =>
+    async (string id, string charKey, FilmJobService jobService,
+           PageToMovie.Engine.Collaboration.IProjectLeaseService leases,
+           IUserContext user, CancellationToken ct) =>
 {
     try
     {
+        var uid = user.UserId ?? "";
+        if (!string.IsNullOrWhiteSpace(uid) && !string.IsNullOrWhiteSpace(charKey))
+        {
+            var (okLease, lease) = await leases.TryAcquireAsync(
+                id, PageToMovie.Engine.Collaboration.ProjectLeaseKeys.Cast(charKey), uid,
+                PageToMovie.Api.Collaboration.CollaborationEndpoints.DefaultLeaseTtl, ct);
+            if (!okLease)
+                return Results.Json(new {
+                    ok = false,
+                    error = "cast_locked",
+                    message = $"Cast is locked by {lease.HolderUserId}.",
+                    holderUserId = lease.HolderUserId,
+                }, statusCode: StatusCodes.Status423Locked);
+        }
         var result = await jobService.RunCharacterDesignActionAsync(id, "unlock", charKey);
         return Results.Ok(new { ok = true, message = result, projectId = id, charKey });
     }
@@ -5681,11 +5788,33 @@ app.MapGet("/api/projects/{id}/screenplay", async (string id, ProjectStore store
     }
 });
 
-/// <summary>Save Fountain draft (no Stage 1 write).</summary>
-app.MapPut("/api/projects/{id}/screenplay", async (string id, HttpRequest req, ProjectStore store, IUserContext user) =>
+/// <summary>Save Fountain draft (no Stage 1 write). I6: requires script lease when collab.</summary>
+app.MapPut("/api/projects/{id}/screenplay", async (
+    string id, HttpRequest req, ProjectStore store, IUserContext user,
+    PageToMovie.Engine.Collaboration.IProjectLeaseService leases,
+    PageToMovie.Engine.Collaboration.IProjectAclService acl,
+    IHubContext<PageToMovie.Api.Collaboration.ProjectHub>? hub,
+    CancellationToken ct) =>
 {
     try
     {
+        var uid = user.UserId ?? "";
+        if (!string.IsNullOrWhiteSpace(uid)
+            && await acl.CanAccessAsync(id, uid, PageToMovie.Engine.Collaboration.ProjectAccessLevel.Editor, ct))
+        {
+            var (acquired, lease) = await leases.TryAcquireAsync(
+                id, PageToMovie.Engine.Collaboration.ProjectLeaseKeys.Script, uid,
+                PageToMovie.Api.Collaboration.CollaborationEndpoints.DefaultLeaseTtl, ct);
+            if (!acquired)
+            {
+                return Results.Json(new {
+                    ok = false,
+                    error = "script_locked",
+                    message = $"Script is being edited by {lease.HolderUserId}.",
+                    holderUserId = lease.HolderUserId,
+                }, statusCode: StatusCodes.Status423Locked);
+            }
+        }
         string text;
         if (req.HasFormContentType)
         {
@@ -5720,6 +5849,18 @@ app.MapPut("/api/projects/{id}/screenplay", async (string id, HttpRequest req, P
         var result = ScreenplayService.SaveDraft(store, id, text);
         if (!result.Ok)
             return Results.BadRequest(new { ok = false, error = result.Error });
+
+        // I12: PlanDirty — collaborators re-fetch estimate
+        try
+        {
+            var doc = await acl.GetOrCreateAclAsync(id, uid, ct);
+            doc.Rev++;
+            await acl.SaveAclAsync(id, doc, ct);
+            if (hub is not null)
+                await hub.Clients.Group(PageToMovie.Api.Collaboration.ProjectHub.GroupName(id))
+                    .SendAsync("PlanDirty", id, doc.Rev, uid, ct);
+        }
+        catch { /* soft */ }
 
         return Results.Ok(new
         {
@@ -6424,12 +6565,32 @@ app.MapDelete("/api/projects/{id}/scenes/{scene:int}/clips/{clip:int}", async (
 /// <summary>Delete a whole scene from the shot plan (persisted — removes it from the blueprint and
 /// deletes the scene's on-disk media). Owner/admin only.</summary>
 app.MapDelete("/api/projects/{id}/scenes/{scene:int}", async (
-    string id, int scene, ProjectStore store, IUserContext user, IOptions<PageToMovieOptions> opts, CancellationToken ct) =>
+    string id, int scene, ProjectStore store, IUserContext user, IOptions<PageToMovieOptions> opts,
+    ILockService locks, PageToMovie.Engine.Collaboration.IProjectLeaseService leases,
+    CancellationToken ct) =>
 {
     if (AuthGate.RequireLogin(user, opts) is { } denied)
         return denied;
     if (await RequireProjectOwnerOrAdmin(id, store, user, "Only the project owner or an admin can edit the shot plan.", ct) is { } forbidden)
         return forbidden;
+    // I9 / P6: cannot delete while scene:N lease or job lock is held
+    var leaseKey = PageToMovie.Engine.Collaboration.ProjectLeaseKeys.Scene(scene);
+    var sceneLease = await leases.GetAsync(id, leaseKey, ct);
+    if (sceneLease is not null)
+        return Results.Json(new {
+            ok = false,
+            error = "scene_locked",
+            message = $"Scene {scene:D2} is locked by {sceneLease.HolderUserId}. Release the lease before deleting.",
+            holderUserId = sceneLease.HolderUserId,
+        }, statusCode: StatusCodes.Status423Locked);
+    var jobLock = locks.Get(LockKeys.Scene(id, scene));
+    if (jobLock is not null)
+        return Results.Json(new {
+            ok = false,
+            error = "scene_locked",
+            message = $"Scene {scene:D2} has an active job lock held by {jobLock.UserId}.",
+            holderUserId = jobLock.UserId,
+        }, statusCode: StatusCodes.Status423Locked);
     try
     {
         var removed = store.DeleteScene(id, scene);
@@ -6991,6 +7152,7 @@ app.MapGet("/api/projects/{id}/scenes", async (
     ProjectStore store,
     ILockService locks,
     IUserContext user,
+    PageToMovie.Engine.Collaboration.IProjectLeaseService projectLeases,
     string? light,
     CancellationToken ct) =>
 {
@@ -7000,15 +7162,28 @@ app.MapGet("/api/projects/{id}/scenes", async (
                     !string.Equals(light, "true", StringComparison.OrdinalIgnoreCase);
         var scenes = (await store.ListScenesAsync(id, probeDurations: probe, ct)).ToList();
         var active = locks.ListActive();
+        IReadOnlyList<PageToMovie.Engine.Collaboration.ProjectLease> leaseList;
+        try { leaseList = await projectLeases.ListAsync(id, ct); }
+        catch { leaseList = Array.Empty<PageToMovie.Engine.Collaboration.ProjectLease>(); }
         foreach (var s in scenes)
         {
             var key = LockKeys.Scene(id, s.SceneNumber);
             var held = active.FirstOrDefault(l =>
                 string.Equals(l.Resource, key, StringComparison.OrdinalIgnoreCase));
-            if (held is null) continue;
-            s.LockOwnerUserId = held.UserId;
-            s.LockReason = held.Reason;
-            s.LockedByOther = !string.Equals(held.UserId, user.UserId, StringComparison.OrdinalIgnoreCase);
+            if (held is not null)
+            {
+                s.LockOwnerUserId = held.UserId;
+                s.LockReason = held.Reason;
+                s.LockedByOther = !string.Equals(held.UserId, user.UserId, StringComparison.OrdinalIgnoreCase);
+                continue;
+            }
+            var leaseKey = PageToMovie.Engine.Collaboration.ProjectLeaseKeys.Scene(s.SceneNumber);
+            var lease = leaseList.FirstOrDefault(l =>
+                string.Equals(l.ResourceKey, leaseKey, StringComparison.OrdinalIgnoreCase));
+            if (lease is null) continue;
+            s.LockOwnerUserId = lease.HolderUserId;
+            s.LockReason = "lease";
+            s.LockedByOther = !string.Equals(lease.HolderUserId, user.UserId, StringComparison.OrdinalIgnoreCase);
         }
         return Results.Ok(new
         {

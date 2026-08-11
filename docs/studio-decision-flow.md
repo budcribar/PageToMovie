@@ -684,16 +684,16 @@ Use this as the build/acceptance tracker. Check items off in PRs; leave dates/no
 | [x] | **I2** Full-film jobs via **job service** mutex / attach (P1) | GeneratingBusy on DecisionCard |
 | [x] | **I3** ConfirmGenerate full-film → PlanBusy if script lease held | decision-plan-busy |
 | [x] | **I4** ConfirmGenerate always re-fetches estimate | LoadAsync before navigate |
-| | **I5** `keyMode = shared \| personal` + wire gen to correct keys (P2) | |
-| | **I6** Edit script / reorder: `script` lease; **ScriptLocked** if holder online (P4) | |
-| | **I7** Scene edit/regen: `scene:N`; no steal while presence live; **logout releases** (P4) | |
-| | **I8** **cast:{key}** + **loc:{key}** leases on plate edit/lock (P5) | |
-| | **I9** Delete scene blocked if `scene:N` locked; reorder OK with script lease (P6) | |
-| | **I10** Cancel job: starter or Owner | |
-| | **I11** Presence strip; lease release on logout/presence expiry | |
-| | **I12** Shared estimate refresh when collaborator PlanDirties | |
-| | **I13** Take events + key scope + user_id under concurrent editors | H1 |
-| | **I14** QA matrix: two Editors + Owner full-film + logout handoff + delete locked scene | |
+| [x] | **I5** `keyMode = shared \| personal` + wire gen to correct keys (P2) | ACL keyMode + FilmJobService keyUserId + Share panel |
+| [x] | **I6** Edit script / reorder: `script` lease; **ScriptLocked** if holder online (P4) | PUT screenplay acquires script lease; 423 script_locked |
+| [x] | **I7** Scene edit/regen: `scene:N`; no steal while presence live; **logout releases** (P4) | gen-scene lease; release-all on leave/logout/disconnect |
+| [x] | **I8** **cast:{key}** + **loc:{key}** leases on plate edit/lock (P5) | look + lock-variant + unlock gated |
+| [x] | **I9** Delete scene blocked if `scene:N` locked; reorder OK with script lease (P6) | DELETE scenes/{n} checks lease + job lock |
+| [x] | **I10** Cancel job: starter or Owner | jobs/{id}/cancel ACL Owner |
+| [x] | **I11** Presence strip; lease release on logout/presence expiry | MainLayout strip; leave + hub disconnect handoff |
+| [x] | **I12** Shared estimate refresh when collaborator PlanDirties | PlanDirty SignalR + Cost re-LoadAsync |
+| [x] | **I13** Take events + key scope + user_id under concurrent editors | H1 key_mode + take_kind on cost events |
+| [x] | **I14** QA matrix: two Editors + Owner full-film + logout handoff + delete locked scene | PhaseICollabTests + MultiUserLeaseUiTests I14 |
 
 
 
@@ -751,5 +751,5 @@ Use this as the build/acceptance tracker. Check items off in PRs; leave dates/no
 
 ---
 
-*Last updated: 2026-08-11 — P1–P6 adopted (job service, shared\|personal keys, Owner full-film / Editor scene gen, no steal if online, cast+loc leases, reorder vs delete rules).*
+*Last updated: 2026-08-11 — Phase I complete (I0–I14): keyMode, script/scene/cast/loc leases, logout handoff, presence strip, PlanDirty estimate refresh, take telemetry, collab QA matrix.*
 

@@ -2,9 +2,11 @@
 @using PageToMovie.Web.Services
 @inject HttpClient Http
 @inject ActiveProjectState ActiveProject
+@inject EngineApiClient Engine
+@inject AdminSessionService Session
 @inject ILogger<ProjectSharePanel> Logger
 
-<div class="share-panel">
+<div class="share-panel" data-testid="project-share-panel">
     <h3 class="share-panel__title">Project sharing</h3>
 
     @if (string.IsNullOrWhiteSpace(ActiveProject.ProjectId))
@@ -45,6 +47,27 @@
             }
         </section>
 
+        <section class="share-panel__section" data-testid="key-mode-section">
+            <h4>API keys (I5)</h4>
+            <p class="share-panel__muted small mb-2">
+                <strong>shared</strong> — gen uses Owner's keys · <strong>personal</strong> — each Editor uses their own.
+            </p>
+            <div class="share-panel__row">
+                <select class="form-input" @bind="_keyMode" disabled="@(_busy || !_isOwner)">
+                    <option value="personal">personal</option>
+                    <option value="shared">shared</option>
+                </select>
+                <button class="btn btn-primary" disabled="@(_busy || !_isOwner)" @onclick="SaveKeyModeAsync"
+                        data-testid="key-mode-save">
+                    Save key mode
+                </button>
+            </div>
+            @if (!_isOwner)
+            {
+                <p class="share-panel__muted small">Only the Owner can change key mode.</p>
+            }
+        </section>
+
         <section class="share-panel__section">
             <h4>Invite</h4>
             <div class="share-panel__row">
@@ -71,7 +94,7 @@
             }
         </section>
 
-        <section class="share-panel__section">
+        <section class="share-panel__section" data-testid="presence-section">
             <h4>Presence</h4>
             <button class="btn btn-secondary" disabled="@_busy" @onclick="LoadPresenceAsync">Refresh</button>
             @if (_presence is { Count: > 0 })

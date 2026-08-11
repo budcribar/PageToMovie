@@ -59,6 +59,7 @@ public sealed class FilmJobService
     private IJobProgressSink? _sink;
     private readonly IUserContext _user;
     private readonly IUserApiKeyProvider _keys;
+    private readonly PageToMovie.Engine.Collaboration.IProjectAclService? _acl;
     private readonly ClipSidecarService? _sidecars;
     private readonly ClipDialogueVerificationService? _dialogueVerification;
     private readonly GlobalTimingCalibrationService? _timingCalibration;
@@ -122,7 +123,8 @@ public sealed class FilmJobService
         PageToMovie.Core.Abstractions.IBookFileSessionFactory? bookFileSessionFactory = null,
         VoiceAlignmentStore? voiceAlignment = null,
         IVideoEditClient? videoEdit = null,
-        CastFromScreenplayService? castExtract = null)
+        CastFromScreenplayService? castExtract = null,
+        PageToMovie.Engine.Collaboration.IProjectAclService? acl = null)
     {
         _httpFactory = httpFactory;
         _projects = projects;
@@ -153,6 +155,7 @@ public sealed class FilmJobService
         _log = log;
         _user = user;
         _keys = keys;
+        _acl = acl;
         _audio = audio;
         _musicScoring = musicScoring;
         _voiceClient = voiceClient;
@@ -516,15 +519,30 @@ public sealed class FilmJobService
             }
         }
 
+        // I5 / P2: shared → Owner's keys; personal → actor's keys
+        var keyUserId = userId;
+        var keyMode = PageToMovie.Engine.Collaboration.ProjectKeyModes.Personal;
+        if (!string.IsNullOrWhiteSpace(meta.ProjectId) && _acl is not null)
+        {
+            try
+            {
+                var aclDoc = await _acl.GetOrCreateAclAsync(meta.ProjectId!, userId).ConfigureAwait(false);
+                keyMode = PageToMovie.Engine.Collaboration.ProjectKeyModes.Normalize(aclDoc.KeyMode);
+                if (PageToMovie.Engine.Collaboration.ProjectKeyModes.IsShared(keyMode)
+                    && !string.IsNullOrWhiteSpace(aclDoc.OwnerUserId))
+                    keyUserId = aclDoc.OwnerUserId.Trim();
+            }
+            catch { /* fail-open personal */ }
+        }
         var apiKey = !string.IsNullOrWhiteSpace(_user.RequestApiKey)
             ? _user.RequestApiKey
-            : await _keys.GetKeyAsync(userId, "grok").ConfigureAwait(false);
-        var geminiKey = await _keys.GetKeyAsync(userId, "gemini").ConfigureAwait(false);
-        var anthropicKey = await _keys.GetKeyAsync(userId, "anthropic").ConfigureAwait(false);
-        var falKey = await _keys.GetKeyAsync(userId, "fal").ConfigureAwait(false);
-        var sunoKey = await _keys.GetKeyAsync(userId, "suno").ConfigureAwait(false);
-        var aiMusicApiKey = await _keys.GetKeyAsync(userId, "aimusicapi").ConfigureAwait(false);
-        var elevenLabsKey = await _keys.GetKeyAsync(userId, "elevenlabs").ConfigureAwait(false);
+            : await _keys.GetKeyAsync(keyUserId, "grok").ConfigureAwait(false);
+        var geminiKey = await _keys.GetKeyAsync(keyUserId, "gemini").ConfigureAwait(false);
+        var anthropicKey = await _keys.GetKeyAsync(keyUserId, "anthropic").ConfigureAwait(false);
+        var falKey = await _keys.GetKeyAsync(keyUserId, "fal").ConfigureAwait(false);
+        var sunoKey = await _keys.GetKeyAsync(keyUserId, "suno").ConfigureAwait(false);
+        var aiMusicApiKey = await _keys.GetKeyAsync(keyUserId, "aimusicapi").ConfigureAwait(false);
+        var elevenLabsKey = await _keys.GetKeyAsync(keyUserId, "elevenlabs").ConfigureAwait(false);
 
         var queuedAt = DateTimeOffset.UtcNow;
         var cts = new CancellationTokenSource();
@@ -547,6 +565,8 @@ public sealed class FilmJobService
         {
             UserId = userId,
             ApiKey = apiKey,
+            KeyMode = keyMode,
+            KeyUserId = keyUserId,
             GeminiApiKey = geminiKey,
             AnthropicApiKey = anthropicKey,
             FalApiKey = falKey,
@@ -952,6 +972,8 @@ public sealed class FilmJobService
         public CancellationTokenSource Cts { get; set; } = new();
         public string UserId { get; set; } = "local";
         public string? ApiKey { get; set; }
+        public string? KeyMode { get; set; }
+        public string? KeyUserId { get; set; }
         public string? GeminiApiKey { get; set; }
         public string? AnthropicApiKey { get; set; }
         public string? FalApiKey { get; set; }
@@ -4420,6 +4442,8 @@ public sealed class FilmJobService
                     requestId: requestId,
                     requestedDurationSec: duration,
                     userId: Snapshot.UserId ?? _user.UserId,
+                    keyMode: CurrentRun.Value?.KeyMode,
+                    takeKind: prevVideoPath is not null ? "user_regen" : "initial",
                     ct: ct);
                 await AppendLogAsync(
                     $"  [Cost] tracked list-rate for S{scene:D2}C{clip} ({costDurationSec:F2}s)");

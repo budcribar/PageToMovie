@@ -23,6 +23,9 @@ public partial class MainLayout
     private bool _locationHooked;
     private bool _showTermsModal;
     private string _currentUserId = "";
+    private List<string> _presenceOthers = new();
+    private System.Threading.Timer? _presenceTimer;
+    private string? _presenceProjectId;
 
     protected override void OnInitialized()
     {
@@ -41,7 +44,54 @@ public partial class MainLayout
 
     private void OnActiveProjectChanged()
     {
-        _ = InvokeAsync(StateHasChanged);
+        _ = InvokeAsync(async () =>
+        {
+            await RefreshPresenceAsync();
+            StateHasChanged();
+        });
+    }
+
+    private async Task RefreshPresenceAsync()
+    {
+        var pid = ActiveProject.ProjectId;
+        if (string.IsNullOrWhiteSpace(pid) || !Session.IsLoggedIn)
+        {
+            _presenceOthers = new();
+            _presenceProjectId = null;
+            return;
+        }
+        try
+        {
+            await Engine.PresenceHeartbeatAsync(pid);
+            var list = await Engine.ListPresenceAsync(pid);
+            var me = (Session.UserId ?? "").Trim();
+            _presenceOthers = list
+                .Select(p => p.UserId)
+                .Where(u => !string.IsNullOrWhiteSpace(u)
+                    && !string.Equals(u, me, StringComparison.OrdinalIgnoreCase))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(u => u)
+                .ToList();
+            _presenceProjectId = pid;
+            EnsurePresenceTimer();
+        }
+        catch
+        {
+            /* soft */
+        }
+    }
+
+    private void EnsurePresenceTimer()
+    {
+        if (_presenceTimer is not null) return;
+        _presenceTimer = new System.Threading.Timer(_ =>
+        {
+            _ = InvokeAsync(async () =>
+            {
+                await RefreshPresenceAsync();
+                StateHasChanged();
+            });
+        }, null, TimeSpan.FromSeconds(20), TimeSpan.FromSeconds(20));
     }
 
     private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
@@ -320,6 +370,8 @@ public partial class MainLayout
     public void Dispose()
     {
         MediaFolder.Changed -= OnMediaFolderChanged;
+        _presenceTimer?.Dispose();
+        _presenceTimer = null;
         ActiveProject.Changed -= OnActiveProjectChanged;
         if (_locationHooked)
         {

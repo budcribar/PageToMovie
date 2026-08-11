@@ -131,6 +131,17 @@ public partial class NavMenu
         private async Task LogoutAsync()
         {
             _userMenuOpen = false;
+            // I7/I11: release leases + presence before clearing session
+            var pid = ActiveProject.ProjectId;
+            if (!string.IsNullOrWhiteSpace(pid))
+            {
+                try
+                {
+                    await Engine.PresenceLeaveAsync(pid); // also releases leases server-side
+                    await Engine.ReleaseAllProjectLeasesAsync(pid);
+                }
+                catch { /* soft */ }
+            }
             await Engine.LogoutAsync();
             // LogoutAsync already ClearAsync's the session; ensure storage is gone before forceLoad.
             await Session.ClearAsync();

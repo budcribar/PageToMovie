@@ -33,9 +33,8 @@ public class ProjectLeaseServiceTests : IDisposable
     {
         var r = await _sut.TryAcquireAsync("proj1", "scene:1", "alice", TimeSpan.FromMinutes(5));
         Assert.True(r.Acquired);
-        Assert.Null(r.Conflict);
         Assert.NotNull(r.Lease);
-        Assert.Equal("alice", r.Lease!.HolderUserId);
+        Assert.Equal("alice", r.Lease.HolderUserId);
         Assert.Equal("scene:1", r.Lease.ResourceKey);
     }
 
@@ -46,7 +45,7 @@ public class ProjectLeaseServiceTests : IDisposable
         var second = await _sut.TryAcquireAsync("proj1", "scene:1", "alice", TimeSpan.FromMinutes(10));
         Assert.True(first.Acquired);
         Assert.True(second.Acquired);
-        Assert.True(second.Lease!.ExpiresUtc >= first.Lease!.ExpiresUtc);
+        Assert.True(second.Lease.ExpiresAt >= first.Lease.ExpiresAt);
     }
 
     [Fact]
@@ -55,9 +54,8 @@ public class ProjectLeaseServiceTests : IDisposable
         await _sut.TryAcquireAsync("proj1", "scene:1", "alice", TimeSpan.FromMinutes(5));
         var r = await _sut.TryAcquireAsync("proj1", "scene:1", "bob", TimeSpan.FromMinutes(5));
         Assert.False(r.Acquired);
-        Assert.NotNull(r.Conflict);
-        Assert.Equal("alice", r.Conflict!.HolderUserId);
-        Assert.Equal("scene:1", r.Conflict.ResourceKey);
+        Assert.Equal("alice", r.Lease.HolderUserId);
+        Assert.Equal("scene:1", r.Lease.ResourceKey);
     }
 
     [Fact]
@@ -67,7 +65,7 @@ public class ProjectLeaseServiceTests : IDisposable
         await Task.Delay(80);
         var r = await _sut.TryAcquireAsync("proj1", "scene:1", "bob", TimeSpan.FromMinutes(5));
         Assert.True(r.Acquired);
-        Assert.Equal("bob", r.Lease!.HolderUserId);
+        Assert.Equal("bob", r.Lease.HolderUserId);
     }
 
     [Fact]
@@ -78,7 +76,7 @@ public class ProjectLeaseServiceTests : IDisposable
         Assert.True(released);
         var r = await _sut.TryAcquireAsync("proj1", "scene:1", "bob", TimeSpan.FromMinutes(5));
         Assert.True(r.Acquired);
-        Assert.Equal("bob", r.Lease!.HolderUserId);
+        Assert.Equal("bob", r.Lease.HolderUserId);
     }
 
     [Fact]
@@ -89,7 +87,7 @@ public class ProjectLeaseServiceTests : IDisposable
         Assert.False(released);
         var still = await _sut.TryAcquireAsync("proj1", "scene:1", "bob", TimeSpan.FromMinutes(5));
         Assert.False(still.Acquired);
-        Assert.Equal("alice", still.Conflict!.HolderUserId);
+        Assert.Equal("alice", still.Lease.HolderUserId);
     }
 
     [Fact]
@@ -102,34 +100,28 @@ public class ProjectLeaseServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task Independent_projects_do_not_conflict()
-    {
-        var a = await _sut.TryAcquireAsync("projA", "scene:1", "alice", TimeSpan.FromMinutes(5));
-        var b = await _sut.TryAcquireAsync("projB", "scene:1", "bob", TimeSpan.FromMinutes(5));
-        Assert.True(a.Acquired);
-        Assert.True(b.Acquired);
-    }
-
-    [Fact]
-    public async Task ListActive_returns_only_unexpired()
+    public async Task List_returns_only_unexpired()
     {
         await _sut.TryAcquireAsync("proj1", "scene:1", "alice", TimeSpan.FromMinutes(5));
         await _sut.TryAcquireAsync("proj1", "scene:2", "bob", TimeSpan.FromMilliseconds(20));
         await Task.Delay(60);
-        var active = await _sut.ListActiveAsync("proj1");
+        var active = await _sut.ListAsync("proj1");
         Assert.Single(active);
         Assert.Equal("scene:1", active[0].ResourceKey);
         Assert.Equal("alice", active[0].HolderUserId);
     }
 
     [Fact]
-    public async Task ForceRelease_removes_any_holder()
+    public async Task ReleaseAllForUser_clears_holder_only()
     {
         await _sut.TryAcquireAsync("proj1", "scene:1", "alice", TimeSpan.FromMinutes(5));
-        await _sut.ForceReleaseAsync("proj1", "scene:1");
-        var r = await _sut.TryAcquireAsync("proj1", "scene:1", "bob", TimeSpan.FromMinutes(5));
-        Assert.True(r.Acquired);
-        Assert.Equal("bob", r.Lease!.HolderUserId);
+        await _sut.TryAcquireAsync("proj1", "script", "alice", TimeSpan.FromMinutes(5));
+        await _sut.TryAcquireAsync("proj1", "scene:2", "bob", TimeSpan.FromMinutes(5));
+        var n = await _sut.ReleaseAllForUserAsync("proj1", "alice");
+        Assert.Equal(2, n);
+        var active = await _sut.ListAsync("proj1");
+        Assert.Single(active);
+        Assert.Equal("bob", active[0].HolderUserId);
     }
 
     [Fact]
@@ -141,8 +133,8 @@ public class ProjectLeaseServiceTests : IDisposable
         var results = await Task.WhenAll(tasks);
         var winners = results.Where(r => r.Acquired).ToList();
         Assert.Single(winners);
-        var holder = winners[0].Lease!.HolderUserId;
+        var holder = winners[0].Lease.HolderUserId;
         foreach (var r in results.Where(x => !x.Acquired))
-            Assert.Equal(holder, r.Conflict!.HolderUserId);
+            Assert.Equal(holder, r.Lease.HolderUserId);
     }
 }

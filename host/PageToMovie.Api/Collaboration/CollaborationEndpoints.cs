@@ -21,12 +21,15 @@ public static class CollaborationEndpoints
         g.MapDelete("/acl/editors/{editorUserId}", RemoveEditorAsync);
         g.MapPost("/acl/viewers", InviteViewerAsync);
         g.MapDelete("/acl/viewers/{viewerUserId}", RemoveViewerAsync);
+        g.MapPut("/acl/key-mode", SetKeyModeAsync);
 
         g.MapPost("/leases/{resourceKey}/acquire", AcquireLeaseAsync);
         g.MapPost("/leases/{resourceKey}/release", ReleaseLeaseAsync);
         g.MapPost("/leases/{resourceKey}/renew", RenewLeaseAsync);
         g.MapPost("/leases/{resourceKey}/transfer", TransferLeaseAsync);
         g.MapGet("/leases/{resourceKey}", GetLeaseAsync);
+        g.MapGet("/leases", ListLeasesAsync);
+        g.MapPost("/leases/release-all", ReleaseAllLeasesAsync);
 
         g.MapGet("/presence", ListPresenceAsync);
         g.MapPost("/presence/heartbeat", PresenceHeartbeatAsync);
@@ -51,7 +54,24 @@ public static class CollaborationEndpoints
         if (!await acl.CanAccessAsync(projectId, uid, ProjectAccessLevel.Viewer, ct))
             return Results.Json(new { error = "project_access_denied" }, statusCode: StatusCodes.Status403Forbidden);
         var doc = await acl.GetOrCreateAclAsync(projectId, uid, ct);
+        doc.KeyMode = ProjectKeyModes.Normalize(doc.KeyMode);
         return Results.Json(doc);
+    }
+
+    /// <summary>I5: Owner sets keyMode = shared | personal.</summary>
+    static async Task<IResult> SetKeyModeAsync(
+        string projectId, KeyModeBody body, IProjectAclService acl, IUserContext user, HttpContext http, CancellationToken ct)
+    {
+        var uid = UserId(http, user);
+        if (string.IsNullOrWhiteSpace(uid)) return Results.Unauthorized();
+        if (!await acl.CanAccessAsync(projectId, uid, ProjectAccessLevel.Owner, ct))
+            return Results.Json(new { error = "owner_required" }, statusCode: StatusCodes.Status403Forbidden);
+        var mode = ProjectKeyModes.Normalize(body.KeyMode);
+        var doc = await acl.GetOrCreateAclAsync(projectId, uid, ct);
+        doc.KeyMode = mode;
+        doc.Rev++;
+        await acl.SaveAclAsync(projectId, doc, ct);
+        return Results.Ok(new { ok = true, keyMode = doc.KeyMode, rev = doc.Rev });
     }
 
     static async Task<IResult> InviteEditorAsync(
@@ -198,6 +218,33 @@ public static class CollaborationEndpoints
         return lease is null ? Results.NoContent() : Results.Ok(lease);
     }
 
+    static async Task<IResult> ListLeasesAsync(
+        string projectId, IProjectLeaseService leases, IProjectAclService acl,
+        IUserContext user, HttpContext http, CancellationToken ct)
+    {
+        var uid = UserId(http, user);
+        if (string.IsNullOrWhiteSpace(uid)) return Results.Unauthorized();
+        if (!await acl.CanAccessAsync(projectId, uid, ProjectAccessLevel.Viewer, ct))
+            return Results.Json(new { error = "project_access_denied" }, statusCode: StatusCodes.Status403Forbidden);
+        return Results.Ok(await leases.ListAsync(projectId, ct));
+    }
+
+    /// <summary>I7/I11: release every lease held by the caller (logout handoff).</summary>
+    static async Task<IResult> ReleaseAllLeasesAsync(
+        string projectId, IProjectLeaseService leases, IProjectAclService acl,
+        IUserContext user, HttpContext http, IHubContext<ProjectHub>? hub, CancellationToken ct)
+    {
+        var uid = UserId(http, user);
+        if (string.IsNullOrWhiteSpace(uid)) return Results.Unauthorized();
+        if (!await acl.CanAccessAsync(projectId, uid, ProjectAccessLevel.Viewer, ct))
+            return Results.Json(new { error = "project_access_denied" }, statusCode: StatusCodes.Status403Forbidden);
+        var n = await leases.ReleaseAllForUserAsync(projectId, uid, ct);
+        if (hub is not null)
+            await hub.Clients.Group(ProjectHub.GroupName(projectId))
+                .SendAsync("LeaseChanged", projectId, "*", null, ct);
+        return Results.Ok(new { ok = true, released = n });
+    }
+
     static async Task<IResult> ListPresenceAsync(
         string projectId, IProjectPresenceService presence, IProjectAclService acl,
         IUserContext user, HttpContext http, CancellationToken ct)
@@ -221,13 +268,24 @@ public static class CollaborationEndpoints
         return Results.Ok();
     }
 
+    /// <summary>I11: leave presence and release all of this user's leases (logout handoff).</summary>
     static async Task<IResult> PresenceLeaveAsync(
-        string projectId, IProjectPresenceService presence, IUserContext user, HttpContext http, CancellationToken ct)
+        string projectId, IProjectPresenceService presence, IProjectLeaseService leases,
+        IUserContext user, HttpContext http, IHubContext<ProjectHub>? hub, CancellationToken ct)
     {
         var uid = UserId(http, user);
         if (string.IsNullOrWhiteSpace(uid)) return Results.Unauthorized();
         await presence.LeaveAsync(projectId, uid, ct);
-        return Results.Ok();
+        var released = await leases.ReleaseAllForUserAsync(projectId, uid, ct);
+        if (hub is not null)
+        {
+            await hub.Clients.Group(ProjectHub.GroupName(projectId))
+                .SendAsync("PresenceChanged", projectId, ct);
+            if (released > 0)
+                await hub.Clients.Group(ProjectHub.GroupName(projectId))
+                    .SendAsync("LeaseChanged", projectId, "*", null, ct);
+        }
+        return Results.Ok(new { ok = true, released });
     }
 
     static async Task<IResult> GetRevAsync(
@@ -238,11 +296,13 @@ public static class CollaborationEndpoints
         if (!await acl.CanAccessAsync(projectId, uid, ProjectAccessLevel.Viewer, ct))
             return Results.Json(new { error = "project_access_denied" }, statusCode: StatusCodes.Status403Forbidden);
         var doc = await acl.GetOrCreateAclAsync(projectId, uid, ct);
-        return Results.Ok(new { rev = doc.Rev });
+        return Results.Ok(new { rev = doc.Rev, keyMode = ProjectKeyModes.Normalize(doc.KeyMode) });
     }
 
+    /// <summary>I12: PlanDirty — bump rev and notify collaborators to refresh estimate.</summary>
     static async Task<IResult> BumpRevAsync(
-        string projectId, IProjectAclService acl, IUserContext user, HttpContext http, CancellationToken ct)
+        string projectId, IProjectAclService acl, IUserContext user, HttpContext http,
+        IHubContext<ProjectHub>? hub, CancellationToken ct)
     {
         var uid = UserId(http, user);
         if (string.IsNullOrWhiteSpace(uid)) return Results.Unauthorized();
@@ -251,9 +311,13 @@ public static class CollaborationEndpoints
         var doc = await acl.GetOrCreateAclAsync(projectId, uid, ct);
         doc.Rev++;
         await acl.SaveAclAsync(projectId, doc, ct);
+        if (hub is not null)
+            await hub.Clients.Group(ProjectHub.GroupName(projectId))
+                .SendAsync("PlanDirty", projectId, doc.Rev, uid, ct);
         return Results.Ok(new { rev = doc.Rev });
     }
 
     public sealed record InviteBody(string UserId);
     public sealed record TransferBody(string ToUserId);
+    public sealed record KeyModeBody(string? KeyMode);
 }

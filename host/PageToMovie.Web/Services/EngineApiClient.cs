@@ -1562,6 +1562,116 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         catch { return null; }
     }
 
+    public async Task<(bool Ok, string? Error)> SetProjectKeyModeAsync(
+        string projectId, string keyMode, CancellationToken ct = default)
+    {
+        SyncIdentityHeaders();
+        using var resp = await _http.PutAsJsonAsync(
+            $"/api/projects/{Uri.EscapeDataString(projectId)}/acl/key-mode",
+            new { keyMode }, JsonOpts, ct);
+        if (resp.IsSuccessStatusCode) return (true, null);
+        return (false, await resp.Content.ReadAsStringAsync(ct));
+    }
+
+    public async Task<bool> AcquireProjectLeaseAsync(
+        string projectId, string resourceKey, CancellationToken ct = default)
+    {
+        SyncIdentityHeaders();
+        using var resp = await _http.PostAsync(
+            $"/api/projects/{Uri.EscapeDataString(projectId)}/leases/{Uri.EscapeDataString(resourceKey)}/acquire",
+            null, ct);
+        return resp.IsSuccessStatusCode;
+    }
+
+    public async Task ReleaseProjectLeaseAsync(
+        string projectId, string resourceKey, CancellationToken ct = default)
+    {
+        SyncIdentityHeaders();
+        try
+        {
+            await _http.PostAsync(
+                $"/api/projects/{Uri.EscapeDataString(projectId)}/leases/{Uri.EscapeDataString(resourceKey)}/release",
+                null, ct);
+        }
+        catch { /* soft */ }
+    }
+
+    /// <summary>I7/I11: release all leases held by current user on the project.</summary>
+    public async Task ReleaseAllProjectLeasesAsync(string projectId, CancellationToken ct = default)
+    {
+        SyncIdentityHeaders();
+        try
+        {
+            await _http.PostAsync(
+                $"/api/projects/{Uri.EscapeDataString(projectId)}/leases/release-all", null, ct);
+        }
+        catch { /* soft */ }
+    }
+
+    public async Task PresenceLeaveAsync(string projectId, CancellationToken ct = default)
+    {
+        SyncIdentityHeaders();
+        try
+        {
+            await _http.PostAsync(
+                $"/api/projects/{Uri.EscapeDataString(projectId)}/presence/leave", null, ct);
+        }
+        catch { /* soft */ }
+    }
+
+    public async Task PresenceHeartbeatAsync(string projectId, CancellationToken ct = default)
+    {
+        SyncIdentityHeaders();
+        try
+        {
+            await _http.PostAsync(
+                $"/api/projects/{Uri.EscapeDataString(projectId)}/presence/heartbeat", null, ct);
+        }
+        catch { /* soft */ }
+    }
+
+    public async Task<List<ProjectPresenceClientDto>> ListPresenceAsync(
+        string projectId, CancellationToken ct = default)
+    {
+        SyncIdentityHeaders();
+        try
+        {
+            return await _http.GetFromJsonAsync<List<ProjectPresenceClientDto>>(
+                $"/api/projects/{Uri.EscapeDataString(projectId)}/presence", JsonOpts, ct)
+                ?? new();
+        }
+        catch { return new(); }
+    }
+
+    public async Task<long?> GetProjectRevAsync(string projectId, CancellationToken ct = default)
+    {
+        SyncIdentityHeaders();
+        try
+        {
+            using var resp = await _http.GetAsync(
+                $"/api/projects/{Uri.EscapeDataString(projectId)}/rev", ct);
+            if (!resp.IsSuccessStatusCode) return null;
+            await using var stream = await resp.Content.ReadAsStreamAsync(ct);
+            using var doc = await System.Text.Json.JsonDocument.ParseAsync(stream, cancellationToken: ct);
+            if (doc.RootElement.TryGetProperty("rev", out var r) && r.TryGetInt64(out var rev))
+                return rev;
+            return null;
+        }
+        catch { return null; }
+    }
+
+    public async Task BumpProjectRevAsync(string projectId, CancellationToken ct = default)
+    {
+        SyncIdentityHeaders();
+        try
+        {
+            await _http.PostAsync(
+                $"/api/projects/{Uri.EscapeDataString(projectId)}/rev/bump", null, ct);
+        }
+        catch { /* soft */ }
+    }
+
+
     public async Task<JobsListDto?> GetJobsAsync(
         bool mine = false,
         string? projectId = null,
@@ -4225,6 +4335,14 @@ public sealed class ProjectAclClientDto
     public List<string> Editors { get; set; } = new();
     public List<string> Viewers { get; set; } = new();
     public long Rev { get; set; }
+    /// <summary>shared | personal (I5).</summary>
+    public string KeyMode { get; set; } = "personal";
+}
+
+public sealed class ProjectPresenceClientDto
+{
+    public string UserId { get; set; } = "";
+    public DateTimeOffset LastSeenUtc { get; set; }
 }
 
 public sealed class ProjectLeaseClientDto

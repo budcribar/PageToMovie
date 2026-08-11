@@ -54,4 +54,11 @@ builder.Services.AddScoped(sp =>
     return new JobHubClient(opts, sp.GetRequiredService<AdminSessionService>(), nav);
 });
 
+builder.Services.AddScoped(sp =>
+{
+    var opts = sp.GetRequiredService<IOptions<EngineApiOptions>>();
+    var nav = sp.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
+    return new ProjectCollabHubClient(opts, sp.GetRequiredService<AdminSessionService>(), nav);
+});
+
 await builder.Build().RunAsync();

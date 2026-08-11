@@ -1,21 +1,13 @@
 using System.Net.Http.Json;
-using System.Text.Json;
 using Microsoft.AspNetCore.Components;
-using Microsoft.AspNetCore.Components.Forms;
-using Microsoft.AspNetCore.Components.Routing;
-using Microsoft.AspNetCore.Components.Web;
-using Microsoft.JSInterop;
-using PageToMovie.Core.Models;
-using PageToMovie.Core.Localization;
-using PageToMovie.Core.Util;
 using PageToMovie.Web.Services;
 
 namespace PageToMovie.Web.Components.Shared;
 
 public partial class ProjectSharePanel
 {
-    AclDto? _acl;
-    List<PresenceDto>? _presence;
+    ProjectAclClientDto? _acl;
+    List<ProjectPresenceClientDto>? _presence;
     string _inviteUserId = "";
     string _inviteRole = "editor";
     int _sceneNumber = 1;
@@ -23,6 +15,8 @@ public partial class ProjectSharePanel
     string? _error;
     string? _info;
     bool _busy;
+    string _keyMode = "personal";
+    bool _isOwner;
 
     string EncodedId => Uri.EscapeDataString(ActiveProject.ProjectId ?? "");
 
@@ -36,8 +30,30 @@ public partial class ProjectSharePanel
     {
         await Run(async () =>
         {
-            _acl = await Http.GetFromJsonAsync<AclDto>($"api/projects/{EncodedId}/acl");
-            _info = "ACL loaded.";
+            _acl = await Engine.GetProjectAclAsync(ActiveProject.ProjectId!);
+            if (_acl is not null)
+            {
+                _keyMode = string.IsNullOrWhiteSpace(_acl.KeyMode) ? "personal" : _acl.KeyMode.Trim().ToLowerInvariant();
+                var uid = (Session.UserId ?? "").Trim();
+                _isOwner = string.IsNullOrWhiteSpace(_acl.OwnerUserId)
+                    || string.Equals(_acl.OwnerUserId, uid, StringComparison.OrdinalIgnoreCase);
+                _info = "ACL loaded.";
+            }
+        });
+    }
+
+    async Task SaveKeyModeAsync()
+    {
+        await Run(async () =>
+        {
+            var (ok, err) = await Engine.SetProjectKeyModeAsync(ActiveProject.ProjectId!, _keyMode);
+            if (!ok)
+            {
+                _error = err ?? "Failed to save key mode.";
+                return;
+            }
+            _info = $"Key mode set to {_keyMode}.";
+            await LoadAclAsync();
         });
     }
 
@@ -47,14 +63,14 @@ public partial class ProjectSharePanel
         {
             var path = _inviteRole == "viewer"
                 ? $"api/projects/{EncodedId}/acl/viewers"
-                : $"api/projects/{EncodedId}/acl/invite";
-            var res = await Http.PostAsJsonAsync(path, new { username = _inviteUserId.Trim(), role = "editor" });
+                : $"api/projects/{EncodedId}/acl/editors";
+            var res = await Http.PostAsJsonAsync(path, new { userId = _inviteUserId.Trim() });
             if (!res.IsSuccessStatusCode)
             {
                 _error = await res.Content.ReadAsStringAsync();
                 return;
             }
-            _acl = await res.Content.ReadFromJsonAsync<AclDto>();
+            _acl = await res.Content.ReadFromJsonAsync<ProjectAclClientDto>();
             _info = $"Invited {_inviteUserId} as {_inviteRole}.";
             _inviteUserId = "";
         });
@@ -103,8 +119,7 @@ public partial class ProjectSharePanel
     {
         await Run(async () =>
         {
-            _presence = await Http.GetFromJsonAsync<List<PresenceDto>>($"api/projects/{EncodedId}/presence")
-                        ?? new();
+            _presence = await Engine.ListPresenceAsync(ActiveProject.ProjectId!);
         });
     }
 
@@ -123,19 +138,5 @@ public partial class ProjectSharePanel
         {
             _busy = false;
         }
-    }
-
-    sealed class AclDto
-    {
-        public string OwnerUserId { get; set; } = "";
-        public List<string> Editors { get; set; } = new();
-        public List<string> Viewers { get; set; } = new();
-        public long Rev { get; set; }
-    }
-
-    sealed class PresenceDto
-    {
-        public string UserId { get; set; } = "";
-        public DateTimeOffset LastSeenUtc { get; set; }
     }
 }

@@ -52,8 +52,11 @@ public partial class Cost : IAsyncDisposable
     private string? _blockingJobId;
     private string? _collabNote;
     private double? _confirmEstimateSnapshot;
+    private long? _lastPlanRev;
+    private bool _collabHubHooked;
 
     [Inject] private IJSRuntime Js { get; set; } = null!;
+    [Inject] private ProjectCollabHubClient CollabHub { get; set; } = null!;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -82,11 +85,61 @@ public partial class Cost : IAsyncDisposable
             try { await ActiveProject.RefreshReadinessAsync(Engine); } catch { /* optional */ }
             await LoadAsync();
             ApplyPhaseQuery();
+            await EnsureCollabHubAsync();
         }
         catch (Exception ex)
         {
             _error = ex.Message;
         }
+    }
+
+    /// <summary>I12: join project hub and re-load estimate when a collaborator PlanDirties.</summary>
+    private async Task EnsureCollabHubAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_projectId) || _disposed) return;
+        try
+        {
+            if (!_collabHubHooked)
+            {
+                CollabHub.PlanDirty += OnPlanDirty;
+                CollabHub.LeaseChanged += OnLeaseChanged;
+                _collabHubHooked = true;
+            }
+            await CollabHub.EnsureJoinedAsync(_projectId, _pageCts.Token);
+            _lastPlanRev = await Engine.GetProjectRevAsync(_projectId, _pageCts.Token);
+        }
+        catch { /* soft */ }
+    }
+
+    private void OnPlanDirty(string projectId, long rev, string? byUser)
+    {
+        if (_disposed) return;
+        if (!string.Equals(projectId, _projectId, StringComparison.OrdinalIgnoreCase)) return;
+        if (_lastPlanRev is long prev && rev <= prev) return;
+        _lastPlanRev = rev;
+        _ = InvokeAsync(async () =>
+        {
+            if (_disposed) return;
+            var who = string.IsNullOrWhiteSpace(byUser) ? "a collaborator" : byUser;
+            _collabNote = $"Plan updated by {who} — refreshing estimate…";
+            try { await LoadAsync(); }
+            catch { /* */ }
+            StateHasChanged();
+        });
+    }
+
+    private void OnLeaseChanged(string projectId, string resource, string? holder)
+    {
+        if (_disposed) return;
+        if (!string.Equals(projectId, _projectId, StringComparison.OrdinalIgnoreCase)) return;
+        if (!string.Equals(resource, "script", StringComparison.OrdinalIgnoreCase)
+            && resource != "*") return;
+        _ = InvokeAsync(async () =>
+        {
+            if (_disposed) return;
+            try { await LoadCollabGuardsAsync(); } catch { /* */ }
+            StateHasChanged();
+        });
     }
 
     /// <summary>Deep links: /cost?phase=edit|confirm|shape&focus=cost|duration|both|craft</summary>
@@ -627,11 +680,17 @@ public partial class Cost : IAsyncDisposable
         return ProjectionBaseUsd + videoUsd;
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         _disposed = true;
+        if (_collabHubHooked)
+        {
+            try { CollabHub.PlanDirty -= OnPlanDirty; } catch { /* */ }
+            try { CollabHub.LeaseChanged -= OnLeaseChanged; } catch { /* */ }
+            _collabHubHooked = false;
+        }
+        try { await CollabHub.LeaveAsync(); } catch { /* */ }
         try { _pageCts.Cancel(); } catch { /* */ }
         try { _pageCts.Dispose(); } catch { /* */ }
-        return ValueTask.CompletedTask;
     }
 }

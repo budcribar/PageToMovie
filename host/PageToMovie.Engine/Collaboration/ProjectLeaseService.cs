@@ -11,20 +11,47 @@ public sealed class ProjectLeaseService : IProjectLeaseService
         PropertyNameCaseInsensitive = true,
     };
 
-    private readonly ProjectStore _store;
+    private readonly Func<string, string> _projectDir;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
-    public ProjectLeaseService(ProjectStore store) => _store = store;
+    public ProjectLeaseService(ProjectStore store)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        _projectDir = id => store.GetProjectDir(id);
+    }
+
+    /// <summary>
+    /// Test / isolated-root constructor: leases live under
+    /// <c>{workspaceRoot}/projects/{projectId}/leases/</c> and project dirs are created on demand.
+    /// </summary>
+    public ProjectLeaseService(string workspaceRoot)
+    {
+        if (string.IsNullOrWhiteSpace(workspaceRoot))
+            throw new ArgumentException("workspaceRoot required", nameof(workspaceRoot));
+        var root = workspaceRoot.Trim();
+        _projectDir = id =>
+        {
+            var safe = (id ?? "").Trim().Replace('\\', '/').Trim('/');
+            var dir = Path.Combine(root, "projects", safe.Replace('/', Path.DirectorySeparatorChar));
+            Directory.CreateDirectory(dir);
+            return dir;
+        };
+    }
+
+    private string LeaseDir(string projectId) =>
+        Path.Combine(_projectDir(projectId), "leases");
 
     private string LeasePath(string projectId, string resourceKey)
     {
         var safe = PageToMovie.Core.Utils.FileNameSanitizer.SanitizeFileName(resourceKey);
-        return Path.Combine(_store.GetProjectDir(projectId), "leases", safe + ".json");
+        return Path.Combine(LeaseDir(projectId), safe + ".json");
     }
 
     public async Task<ProjectLease?> GetAsync(string projectId, string resourceKey, CancellationToken ct = default)
     {
-        var path = LeasePath(projectId, resourceKey);
+        string path;
+        try { path = LeasePath(projectId, resourceKey); }
+        catch { return null; }
         if (!File.Exists(path)) return null;
         var json = await File.ReadAllTextAsync(path, ct).ConfigureAwait(false);
         var lease = JsonSerializer.Deserialize<ProjectLease>(json, JsonOpts);
@@ -123,6 +150,73 @@ public sealed class ProjectLeaseService : IProjectLeaseService
             existing.ExpiresAt = DateTimeOffset.UtcNow.Add(ttl);
             await WriteLeaseAsync(path, existing, ct).ConfigureAwait(false);
             return (true, existing);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task<IReadOnlyList<ProjectLease>> ListAsync(string projectId, CancellationToken ct = default)
+    {
+        string dir;
+        try { dir = LeaseDir(projectId); }
+        catch { return Array.Empty<ProjectLease>(); }
+        if (!Directory.Exists(dir))
+            return Array.Empty<ProjectLease>();
+
+        var list = new List<ProjectLease>();
+        foreach (var path in Directory.EnumerateFiles(dir, "*.json"))
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                var json = await File.ReadAllTextAsync(path, ct).ConfigureAwait(false);
+                var lease = JsonSerializer.Deserialize<ProjectLease>(json, JsonOpts);
+                if (lease is null) continue;
+                if (lease.ExpiresAt <= DateTimeOffset.UtcNow)
+                {
+                    try { File.Delete(path); } catch { /* ignore */ }
+                    continue;
+                }
+                list.Add(lease);
+            }
+            catch { /* skip bad file */ }
+        }
+        return list;
+    }
+
+    public async Task<int> ReleaseAllForUserAsync(string projectId, string userId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(userId)) return 0;
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            string dir;
+            try { dir = LeaseDir(projectId); }
+            catch { return 0; }
+            if (!Directory.Exists(dir)) return 0;
+            var n = 0;
+            foreach (var path in Directory.EnumerateFiles(dir, "*.json"))
+            {
+                ct.ThrowIfCancellationRequested();
+                try
+                {
+                    var json = await File.ReadAllTextAsync(path, ct).ConfigureAwait(false);
+                    var lease = JsonSerializer.Deserialize<ProjectLease>(json, JsonOpts);
+                    if (lease is null) continue;
+                    if (lease.ExpiresAt <= DateTimeOffset.UtcNow)
+                    {
+                        try { File.Delete(path); } catch { /* ignore */ }
+                        continue;
+                    }
+                    if (!string.Equals(lease.HolderUserId, userId, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    try { File.Delete(path); n++; } catch { /* ignore */ }
+                }
+                catch { /* skip */ }
+            }
+            return n;
         }
         finally
         {

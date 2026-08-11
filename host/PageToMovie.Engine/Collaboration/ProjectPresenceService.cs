@@ -35,4 +35,21 @@ public sealed class ProjectPresenceService : IProjectPresenceService
         var list = map.Values.Where(e => e.LastSeenUtc >= cutoff).OrderBy(e => e.UserId).ToList();
         return Task.FromResult<IReadOnlyList<ProjectPresenceEntry>>(list);
     }
+
+    public Task<(string ProjectId, string UserId)?> FindByConnectionIdAsync(string connectionId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(connectionId))
+            return Task.FromResult<(string, string)?>(null);
+        var cutoff = DateTimeOffset.UtcNow - StaleAfter;
+        foreach (var (projectId, map) in _byProject)
+        {
+            foreach (var e in map.Values)
+            {
+                if (e.LastSeenUtc < cutoff) continue;
+                if (string.Equals(e.ConnectionId, connectionId, StringComparison.Ordinal))
+                    return Task.FromResult<(string, string)?>((projectId, e.UserId));
+            }
+        }
+        return Task.FromResult<(string, string)?>(null);
+    }
 }

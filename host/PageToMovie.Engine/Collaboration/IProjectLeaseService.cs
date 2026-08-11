@@ -12,4 +12,10 @@ public interface IProjectLeaseService
     Task<(bool Transferred, ProjectLease? Lease)> TryTransferAsync(
         string projectId, string resourceKey, string fromUserId, string toUserId, TimeSpan ttl, CancellationToken ct = default);
     Task<ProjectLease?> GetAsync(string projectId, string resourceKey, CancellationToken ct = default);
+
+    /// <summary>I7/I11: release every non-expired lease held by this user on the project (logout / leave).</summary>
+    Task<int> ReleaseAllForUserAsync(string projectId, string userId, CancellationToken ct = default);
+
+    /// <summary>List active (non-expired) leases for a project.</summary>
+    Task<IReadOnlyList<ProjectLease>> ListAsync(string projectId, CancellationToken ct = default);
 }

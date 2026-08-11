@@ -494,6 +494,8 @@ public sealed class CostReportService
         string? requestId = null,
         double? requestedDurationSec = null,
         string? userId = null,
+        string? keyMode = null,
+        string? takeKind = null,
         CancellationToken ct = default)
     {
         var cfg = await LoadConfigMapAsync(projectId, ct).ConfigureAwait(false);
@@ -532,6 +534,11 @@ public sealed class CostReportService
             ["usd"] = listUsd,
             ["currency"] = "USD",
             ["user_id"] = userId ?? "",
+            // I13: multi-user take telemetry
+            ["key_mode"] = string.IsNullOrWhiteSpace(keyMode) ? "personal" : keyMode.Trim().ToLowerInvariant(),
+            ["take_kind"] = string.IsNullOrWhiteSpace(takeKind)
+                ? (isExtend ? "user_regen" : "initial")
+                : takeKind.Trim().ToLowerInvariant(),
         };
         if (requestedDurationSec is > 0 &&
             Math.Abs(requestedDurationSec.Value - priced.DurationSec) >= 0.05)

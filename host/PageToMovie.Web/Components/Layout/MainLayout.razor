@@ -60,6 +60,17 @@
                 </div>
             </div>
         }
+        @if (_presenceOthers.Count > 0)
+        {
+            <div class="mx-4 mt-2 mb-0 py-1 px-3 small rounded-2 border border-info-subtle bg-info-subtle text-info-emphasis"
+                 data-testid="presence-strip" role="status">
+                Also online:
+                @foreach (var u in _presenceOthers)
+                {
+                    <code class="ms-1">@u</code>
+                }
+            </div>
+        }
         <article class="content px-4">
             @Body
         </article>
