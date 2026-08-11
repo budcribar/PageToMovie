@@ -850,6 +850,10 @@ public sealed class SceneSummary
     public int ClipCount { get; set; }
     public int ClipsOnDisk { get; set; }
     public bool ClipsComplete { get; set; }
+    /// <summary>E5/E6: count of on-disk clips that look stale vs plan/QA.</summary>
+    public int StaleClipCount { get; set; }
+    /// <summary>True when any clip is stale or composite dirty.</summary>
+    public bool HasStaleClips { get; set; }
     /// <summary>Stage 2 plan total (sum of planned clip targets). Not measured media.</summary>
     public double? PlannedDurationSeconds { get; set; }
     /// <summary>Measured from composite, or sum of on-disk clips. Null if no media.</summary>
@@ -914,6 +918,12 @@ public sealed class ClipSummary
     /// Empty when unknown; otherwise includes <see cref="Stage1BeatId"/> first.
     /// </summary>
     public List<string> Stage1BeatIds { get; set; } = new();
+
+    /// <summary>E5: on-disk video may not match current plan / QA (regen recommended).</summary>
+    public bool IsStale { get; set; }
+
+    /// <summary>Short reason for <see cref="IsStale"/> (plan_newer, dialogue_qa, missing_beat).</summary>
+    public string? StaleReason { get; set; }
 }
 
 /// <summary>Create or fully edit a clip's shot-plan fields (Scenes clip editor).</summary>

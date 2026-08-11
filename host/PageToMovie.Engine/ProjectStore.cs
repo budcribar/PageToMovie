@@ -3903,6 +3903,14 @@ public sealed partial class ProjectStore
 
         clipObj["visual_prompt"] = fields.VisualPrompt;
         clipObj["negative_prompt"] = fields.NegativePrompt;
+        // E3: keep or derive stable beat id so regen maps back to screenplay beat
+        if (string.IsNullOrWhiteSpace(clipObj["stage1_beat_id"]?.ToString()))
+        {
+            var kind = string.IsNullOrWhiteSpace(fields.Dialogue) ? "action" : "dialogue";
+            var body = string.IsNullOrWhiteSpace(fields.Dialogue) ? fields.VisualPrompt : fields.Dialogue;
+            clipObj["stage1_beat_id"] = PageToMovie.Core.Utils.StableBeatId.ForContent(
+                $"S{fields.Scene:D2}", kind, fields.Speaker, body);
+        }
         clipObj["primary_subject"] = fields.PrimarySubject;
         clipObj["duration_seconds"] = fields.DurationSeconds;
         clipObj["characters_on_screen"] = new System.Text.Json.Nodes.JsonArray(
@@ -5035,6 +5043,28 @@ public sealed partial class ProjectStore
             var headingText = s.TryGetProperty("scene_heading", out var shd) ? shd.GetString() ?? "" : "";
             var isCredits = IsCreditsScene(s);
 
+            var staleClipCount = 0;
+            try
+            {
+                var bpPathForStale = FindBlueprintPathSync(projectId);
+                if (onDisk > 0 && bpPathForStale is not null && File.Exists(bpPathForStale)
+                    && s.TryGetProperty("clips", out var clipsElStale) && clipsElStale.ValueKind == JsonValueKind.Array)
+                {
+                    var bpM = File.GetLastWriteTimeUtc(bpPathForStale);
+                    foreach (var cEl in clipsElStale.EnumerateArray())
+                    {
+                        if (!cEl.TryGetProperty("clip_number", out var cnEl) || !cnEl.TryGetInt32(out var cn2))
+                            continue;
+                        if (!ClipOnDisk(videoIndex, sn, cn2)) continue;
+                        var path = ResolveClipVideoPath(projectId, sn, cn2);
+                        if (path is null || !File.Exists(path)) continue;
+                        if (bpM > File.GetLastWriteTimeUtc(path).AddSeconds(2))
+                            staleClipCount++;
+                    }
+                }
+            }
+            catch { /* soft */ }
+
             rows.Add(new SceneSummary
             {
                 SceneNumber = sn,
@@ -5046,6 +5076,8 @@ public sealed partial class ProjectStore
                 ClipCount = nClips,
                 ClipsOnDisk = onDisk,
                 ClipsComplete = complete,
+                StaleClipCount = staleClipCount,
+                HasStaleClips = staleClipCount > 0,
                 PlannedDurationSeconds = planned,
                 ActualDurationSeconds = actual,
                 DurationSeconds = actual ?? planned,
@@ -5206,6 +5238,30 @@ public sealed partial class ProjectStore
                 var visualPrompt = c.TryGetProperty("visual_prompt", out var vp) ? vp.GetString() ?? "" : "";
                 visualPrompt = ClipVideoPromptBuilder.SanitizeSpokenQuotesInVisual(visualPrompt);
 
+                var stage1BeatId = c.TryGetProperty("stage1_beat_id", out var s1b) ? s1b.GetString() : null;
+                var stage1BeatIds = c.TryGetProperty("stage1_beat_ids", out var s1bs) &&
+                                    s1bs.ValueKind == JsonValueKind.Array
+                    ? s1bs.EnumerateArray()
+                        .Select(x => x.GetString())
+                        .Where(x => !string.IsNullOrWhiteSpace(x))
+                        .Select(x => x!)
+                        .ToList()
+                    : new List<string>();
+                // E3 write-through: fill stable beat id from content when blueprint lacks it
+                if (string.IsNullOrWhiteSpace(stage1BeatId) &&
+                    (!string.IsNullOrWhiteSpace(dialogue) || !string.IsNullOrWhiteSpace(visualPrompt)))
+                {
+                    var kind = string.IsNullOrWhiteSpace(dialogue) ? "action" : "dialogue";
+                    stage1BeatId = PageToMovie.Core.Utils.StableBeatId.ForContent(
+                        $"S{sceneNumber:D2}", kind, speaker, string.IsNullOrWhiteSpace(dialogue) ? visualPrompt : dialogue);
+                }
+                if (stage1BeatIds.Count == 0 && !string.IsNullOrWhiteSpace(stage1BeatId))
+                    stage1BeatIds.Add(stage1BeatId!);
+
+                var dialogueVer = await LoadClipDialogueVerificationAsync(projectDir, sceneNumber, cn, ct).ConfigureAwait(false);
+                var (isStale, staleReason) = EvaluateClipStale(
+                    onDisk, clipPath, dialogueVer, FindBlueprintPathSync(projectId));
+
                 clips.Add(new ClipSummary
                 {
                     ClipNumber = cn,
@@ -5244,20 +5300,12 @@ public sealed partial class ProjectStore
                     VideoUrl = onDisk
                         ? $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes/{sceneNumber}/clips/{cn}/video"
                         : null,
-                    DialogueVerification = await LoadClipDialogueVerificationAsync(projectDir, sceneNumber, cn, ct).ConfigureAwait(false),
-                    Stage1BeatId = c.TryGetProperty("stage1_beat_id", out var s1b) ? s1b.GetString() : null,
-                    Stage1BeatIds = c.TryGetProperty("stage1_beat_ids", out var s1bs) &&
-                                    s1bs.ValueKind == JsonValueKind.Array
-                        ? s1bs.EnumerateArray()
-                            .Select(x => x.GetString())
-                            .Where(x => !string.IsNullOrWhiteSpace(x))
-                            .Select(x => x!)
-                            .ToList()
-                        : new List<string>(),
+                    DialogueVerification = dialogueVer,
+                    Stage1BeatId = stage1BeatId,
+                    Stage1BeatIds = stage1BeatIds,
+                    IsStale = isStale,
+                    StaleReason = staleReason,
                 });
-                var last = clips[^1];
-                if (last.Stage1BeatIds.Count == 0 && !string.IsNullOrWhiteSpace(last.Stage1BeatId))
-                    last.Stage1BeatIds.Add(last.Stage1BeatId!);
             }
         }
 
@@ -6700,6 +6748,37 @@ public sealed partial class ProjectStore
         }
         catch { /* skip */ }
         return map;
+    }
+
+    /// <summary>E5: clip video likely out of date vs plan or dialogue QA.</summary>
+    private static (bool IsStale, string? Reason) EvaluateClipStale(
+        bool onDisk,
+        string? clipPath,
+        ClipDialogueVerificationResult? ver,
+        string? blueprintPath)
+    {
+        if (!onDisk) return (false, null);
+        if (ver is not null)
+        {
+            var st = (ver.Status ?? "").Trim().ToLowerInvariant();
+            if (st is "mismatch" or "speaker_swap")
+                return (true, "dialogue_qa");
+            if (st == "no_speech" && !string.IsNullOrWhiteSpace(ver.ExpectedDialogue))
+                return (true, "dialogue_qa_no_speech");
+        }
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(clipPath) && File.Exists(clipPath)
+                && !string.IsNullOrWhiteSpace(blueprintPath) && File.Exists(blueprintPath))
+            {
+                var clipM = File.GetLastWriteTimeUtc(clipPath);
+                var bpM = File.GetLastWriteTimeUtc(blueprintPath);
+                if (bpM > clipM.AddSeconds(2))
+                    return (true, "plan_newer");
+            }
+        }
+        catch { /* ignore */ }
+        return (false, null);
     }
 
     /// <summary>

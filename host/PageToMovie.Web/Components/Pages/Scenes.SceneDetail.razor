@@ -213,6 +213,32 @@
                 }
             </div>
 
+            @* E4: regen scopes *@
+            <div class="d-flex flex-wrap gap-1 mb-3" data-testid="regen-scopes">
+                <span class="small text-muted align-self-center me-1">Regen:</span>
+                <button type="button" class="btn btn-sm btn-outline-primary"
+                        data-testid="regen-scope-missing"
+                        disabled="@(Host._busy || Gen!.JobRunning || !ListState!.CastReady)"
+                        title="Generate only missing clips in this scene"
+                        @onclick="() => Gen!.GenerateMissingInSceneAsync(ListState!._detail.SceneNumber)">
+                    Missing
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-warning"
+                        data-testid="regen-scope-stale"
+                        disabled="@(Host._busy || Gen!.JobRunning || !ListState!.CastReady || !(ListState!._detail.Clips?.Any(c => c.IsStale) ?? false))"
+                        title="Force re-generate stale clips in this scene"
+                        @onclick="() => Gen!.RegenStaleInSceneAsync(ListState!._detail.SceneNumber)">
+                    Stale
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-danger"
+                        data-testid="regen-scope-scene"
+                        disabled="@(Host._busy || Gen!.JobRunning || !ListState!.CastReady)"
+                        title="Force re-generate entire scene"
+                        @onclick="() => Gen!.ForceRegenSceneAsync(ListState!._detail.SceneNumber)">
+                    Full scene
+                </button>
+            </div>
+
             @* Full scene composite — hide while clip selected, remux/gen busy, or full player open *@
             @if (Gen!.IsSceneGenBusy(ListState!._detail.SceneNumber))
             {

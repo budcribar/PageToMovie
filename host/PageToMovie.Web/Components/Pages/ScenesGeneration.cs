@@ -467,6 +467,68 @@ public partial class Scenes
 
 
 
+
+    internal Task GenerateMissingInSceneAsync(int sn) => GenOneSceneAsync(sn);
+
+    /// <summary>E4/E6: force-regenerate entire scene (all clips).</summary>
+    internal async Task ForceRegenSceneAsync(int sn)
+    {
+        if (IsCreditsSceneNum(sn)) { await GenerateCreditsEntryAsync(sn); return; }
+        if (!S.List.CastReady) { S._error = S.List.CastBlockedTitle; return; }
+        if (JobRunning && IsScenesWorkflowJob(_job?.Kind))
+        {
+            S._message = "A generate job is already running — watch progress.";
+            return;
+        }
+        S._busy = true;
+        S._error = null;
+        _pendingRegenScene = sn;
+        try
+        {
+            await EnsureHubAsync();
+            await S.ClipRegen.EnsurePredecessorsUploadedAsync(await S.ClipRegen.MissingClipTargetsAsync(sn));
+            await S.Engine.StartSceneGenAsync(S._projectId, sn, onlyMissing: false, resolution: _genResolution);
+            _job = (await S.Engine.GetJobAsync())?.Job;
+        }
+        catch (Exception ex) { S._error = ex.Message; }
+        finally { S._busy = false; _pendingRegenScene = null; }
+    }
+
+    /// <summary>E4/E6: force-regen only stale clips in the open scene.</summary>
+    internal async Task RegenStaleInSceneAsync(int sn)
+    {
+        if (S.List._detail is null || S.List._detail.SceneNumber != sn)
+        {
+            await S.List.OpenSceneAsync(sn);
+        }
+        var stale = S.List._detail?.Clips?.Where(c => c.IsStale).Select(c => c.ClipNumber).ToList() ?? new();
+        if (stale.Count == 0)
+        {
+            S._message = "No stale clips in this scene.";
+            return;
+        }
+        if (!S.List.CastReady) { S._error = S.List.CastBlockedTitle; return; }
+        if (JobRunning && IsScenesWorkflowJob(_job?.Kind))
+        {
+            S._message = "A generate job is already running — watch progress.";
+            return;
+        }
+        S._busy = true;
+        S._error = null;
+        try
+        {
+            await EnsureHubAsync();
+            var targets = stale.Select(cn => (sn, cn)).ToList();
+            // force via clip batch
+            _job = await S.Engine.StartClipBatchGenAsync(S._projectId, targets, resolution: _genResolution);
+            if (_job is null)
+                _job = (await S.Engine.GetJobAsync())?.Job;
+            S._message = $"Regenerating {stale.Count} stale clip(s) in S{sn:D2}…";
+        }
+        catch (Exception ex) { S._error = ex.Message; }
+        finally { S._busy = false; }
+    }
+
     internal async Task GenOneSceneAsync(int sn)
     {
         // Credits are rendered deterministically client-side — never sent to the video model.
@@ -508,6 +570,12 @@ public partial class Scenes
         if (!S.List.CastReady)
         {
             S._error = S.List.CastBlockedTitle;
+            return;
+        }
+        // F5: single full-film/batch job — second caller monitors
+        if (JobRunning && IsScenesWorkflowJob(_job?.Kind))
+        {
+            S._message = "GeneratingBusy: a video job is already running. Watch the progress card.";
             return;
         }
 
@@ -666,6 +734,68 @@ public partial class Scenes
     internal void CloseGenerateConfirm() => _showGenerateConfirm = false;
 
 
+
+
+    /// <summary>F4: full-film fill holes — all non-credits scenes, onlyMissing=true.</summary>
+    internal async Task StartFillHolesMovieAsync()
+    {
+        if (!S.List.CastReady) { S._error = S.List.CastBlockedTitle; return; }
+        if (S.List._scenes is null || S.List._scenes.Count == 0) { S._error = "No scenes loaded."; return; }
+        // F5: don't double-start
+        if (JobRunning && IsScenesWorkflowJob(_job?.Kind))
+        {
+            S._message = "A generate job is already running — watch progress instead of starting another.";
+            return;
+        }
+        S.List._selected.Clear();
+        foreach (var s in S.List._scenes.Where(x => !x.IsCredits))
+            S.List._selected.Add(s.SceneNumber);
+        await StartBatchAsync();
+    }
+
+    /// <summary>E4/E6: force regen selected (or all stale) scenes — onlyMissing=false for force full scene.</summary>
+    internal async Task StartRegenStaleSelectedAsync()
+    {
+        if (S.List._selected.Count == 0)
+            S.List.SelectStaleScenes();
+        if (S.List._selected.Count == 0)
+        {
+            S._message = "No stale scenes to regenerate.";
+            return;
+        }
+        await StartBatchForceSelectedAsync();
+    }
+
+    /// <summary>E4 full scope: re-generate every selected clip (force).</summary>
+    internal async Task StartBatchForceSelectedAsync()
+    {
+        if (S.List._selected.Count == 0) return;
+        if (!S.List.CastReady) { S._error = S.List.CastBlockedTitle; return; }
+        if (JobRunning && IsScenesWorkflowJob(_job?.Kind))
+        {
+            S._message = "A generate job is already running — watch progress instead of starting another.";
+            return;
+        }
+        S._busy = true;
+        S._error = null;
+        S._message = null;
+        _showAdminJobLog = false;
+        try
+        {
+            var list = S.List._selected.OrderBy(x => x).Where(sn => !IsCreditsSceneNum(sn)).ToList();
+            await EnsureHubAsync();
+            foreach (var sn in list)
+                await S.ClipRegen.EnsurePredecessorsUploadedAsync(await S.ClipRegen.MissingClipTargetsAsync(sn));
+            if (list.Count > 0)
+            {
+                await S.Engine.StartBatchGenAsync(S._projectId, list, onlyMissing: false, resolution: _genResolution);
+                var jobs = await S.Engine.GetJobAsync();
+                _job = jobs?.Job;
+            }
+        }
+        catch (Exception ex) { S._error = ex.Message; }
+        finally { S._busy = false; }
+    }
 
     internal async Task ConfirmGenerateAsync()
     {

@@ -27,6 +27,8 @@
                                 Dur @(ClipSel!._clipSortByDuration ? (ClipSel!._clipSortAscending ? "▲" : "▼") : "⇅")
                             </th>
                             <th>Dialogue</th>
+                            <th style="width:7rem;">Beat</th>
+                            <th style="width:4rem;">Status</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -67,6 +69,11 @@
                                     {
                                         <span class="badge bg-secondary text-light px-2 py-1 rounded-pill font-monospace me-1" style="font-size:0.8rem;"
                                               title="Not on disk yet">C@(cn.ToString("D2"))</span>
+                                    }
+                                    @if (c.IsStale)
+                                    {
+                                        <span class="badge bg-warning text-dark me-1" data-testid="@($"clip-stale-{cn}")"
+                                              title="@(c.StaleReason ?? "stale") — re-generate recommended">stale</span>
                                     }
                                     @if (c.DialogueVerification is { } ver)
                                     {
@@ -136,6 +143,24 @@
                                     else
                                     {
                                         <span class="clip-dialogue-link">@Scenes.Trunc(c.Dialogue, 90)</span>
+                                    }
+                                </td>
+                            
+                                <td class="small font-monospace text-muted" data-testid="@($"clip-beat-{cn}")" title="Stable beat id">
+                                    @(string.IsNullOrWhiteSpace(c.Stage1BeatId) ? "—" : (c.Stage1BeatId!.Length > 14 ? c.Stage1BeatId[..12] + "…" : c.Stage1BeatId))
+                                </td>
+                                <td>
+                                    @if (!c.OnDisk)
+                                    {
+                                        <span class="badge bg-secondary">missing</span>
+                                    }
+                                    else if (c.IsStale)
+                                    {
+                                        <span class="badge bg-warning text-dark">stale</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-success">ok</span>
                                     }
                                 </td>
                             </tr>

@@ -442,6 +442,32 @@ public partial class Cost : IAsyncDisposable
 
             _preferPath = "generate";
             await PersistPrefAsync("preferPath", "generate");
+
+            // F1/F4: when shot plan ready, start resumable fill-holes batch then open Film (F2 watch)
+            if (ActiveProject.CanScenes && !GeneratingBusy)
+            {
+                try
+                {
+                    var scenesDto = await Engine.GetScenesAsync(_projectId);
+                    var nums = scenesDto?.Scenes?
+                        .Where(s => !s.IsCredits && s.ClipCount > 0)
+                        .Select(s => s.SceneNumber)
+                        .OrderBy(n => n)
+                        .ToList() ?? new List<int>();
+                    if (nums.Count > 0)
+                    {
+                        await Engine.StartBatchGenAsync(_projectId, nums, onlyMissing: true, resolution: _draftRes);
+                        Nav.NavigateTo(ActiveProject.IsSimpleVoice ? "scenes?simple=1&watch=1" : "scenes?watch=1");
+                        return;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Fall through to navigate without auto-start
+                    _collabNote = "Could not auto-start generate: " + ex.Message + " — open Film to generate.";
+                }
+            }
+
             Nav.NavigateTo(ResolveGenerateHref());
         }
         finally

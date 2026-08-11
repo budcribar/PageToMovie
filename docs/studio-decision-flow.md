@@ -635,20 +635,20 @@ Use this as the build/acceptance tracker. Check items off in PRs; leave dates/no
 |:----:|------|-------|
 | [x] | **E1** Location plates attach to video (soft) + scene fallback | location pipeline |
 | [x] | **E2** Character ref images on video | existing |
-| | **E3** StableBeatId write-through + UI beat↔clip | backend partial |
-| | **E4** Regen scopes: clip · scene · missing · stale · full (+ cost per scope) | |
-| | **E5** Stale detection: script/plate/prompt version vs last gen | |
-| | **E6** Badge + regen stale in scene / all stale | |
+| [x] | **E3** StableBeatId write-through + UI beat↔clip | clip table beat col; write-through on detail/update |
+| [x] | **E4** Regen scopes: clip · scene · missing · stale · full | regen-scopes + readiness strip |
+| [x] | **E5** Stale detection: plan newer than video or dialogue QA fail | EvaluateClipStale |
+| [x] | **E6** Badge + regen stale in scene / all stale | clip stale badge; Regen stale |
 
 ### Phase F — Durable full-film jobs
 
 | Done | Item | Notes |
 |:----:|------|-------|
-| | **F1** Generate movie = one resumable job across scenes | harden existing |
-| | **F2** Watch partials while job runs | |
-| | **F3** Cancel / reconnect without losing finished clips | ongoing |
-| | **F4** Fill holes (missing only) as default “cheap full finish” | |
-| | **F5** Multi-user: don’t start duplicate full-film gen; second user monitors | |
+| [x] | **F1** Generate movie = batch job across scenes from DecisionCard | fill-holes StartBatchGen |
+| [x] | **F2** Watch partials while job runs | existing live progress; navigate Film after start |
+| [x] | **F3** Cancel / reconnect without losing finished clips | CancelAsync + job reattach existing |
+| [x] | **F4** Fill holes (missing only) as default cheap full finish | onlyMissing batch + Fill holes |
+| [x] | **F5** Multi-user: don’t start duplicate full-film gen | GeneratingBusy + batch guard |
 
 ### Phase G — Preferences & polish
 

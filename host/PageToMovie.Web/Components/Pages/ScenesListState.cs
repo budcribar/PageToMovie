@@ -167,9 +167,10 @@ public partial class Scenes
             var onDisk = _scenes.Sum(s => s.ClipsOnDisk);
             var missing = Math.Max(0, planned - onDisk);
             var completeScenes = _scenes.Count(s => s.ClipCount > 0 && s.ClipsComplete);
-            // Until E5 true stale detection: "partial" = some media, not full plan
             var partialScenes = _scenes.Count(s => s.ClipsOnDisk > 0 && s.ClipCount > s.ClipsOnDisk);
-            return new MovieReadinessSnapshot(scenes, planned, onDisk, missing, completeScenes, partialScenes);
+            var staleClips = _scenes.Sum(s => s.StaleClipCount);
+            var staleScenes = _scenes.Count(s => s.HasStaleClips || s.StaleClipCount > 0);
+            return new MovieReadinessSnapshot(scenes, planned, onDisk, missing, completeScenes, partialScenes, staleClips, staleScenes);
         }
     }
 
@@ -179,7 +180,18 @@ public partial class Scenes
         int ClipsOnDisk,
         int ClipsMissing,
         int ScenesComplete,
-        int ScenesPartial);
+        int ScenesPartial,
+        int StaleClips,
+        int StaleScenes);
+
+    internal void SelectStaleScenes()
+    {
+        _selected.Clear();
+        if (_scenes is null) return;
+        foreach (var s in _scenes.Where(s => s.HasStaleClips || s.StaleClipCount > 0))
+            _selected.Add(s.SceneNumber);
+        _selectionMode = _selected.Count > 0 ? "stale" : "";
+    }
 
 
 
