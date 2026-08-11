@@ -200,65 +200,73 @@ After fountain import, cast/loc seeds and shot plan may still be missing — sam
 | **Scene lock UI** | `SceneSummary.LockOwnerUserId`, `LockedByOther` on Film list/detail |
 | **Shared cost** | Project ledger / `ProjectCostAggregator` — one spend story per project |
 
-### Roles × Decision flow
+### Policy recommendations (who decides what)
 
-| Action | Owner | Editor | Viewer |
-|--------|:-----:|:------:|:------:|
-| See DecisionCard ($ + duration) | ✓ | ✓ | ✓ (read-only) |
-| Choose **Edit plan** / toolkits | ✓ | ✓ | — |
-| Confirm **Generate** / start gen job | ✓ | ✓ | — |
-| Edit script (needs `script` lease) | ✓ | ✓ | — |
-| Edit scene / regen clips (needs `scene:N` lease if enforced) | ✓ | ✓ | — |
-| Invite / change ACL | ✓ | — | — |
-| Watch composites / review | ✓ | ✓ | ✓ |
+**No votes.** First successful lease + last committed artifact wins. Collab = **split by scene**, not two writers on one scene.
 
-Viewers never spend. Editors share the same forecast and clips; **who clicked Generate** is recorded on the job / take event (`user_id`) for telemetry and billing attribution if needed — **budget is project-level**.
+#### Roles
 
-### Concurrency model (scenes & clips)
+| Role | Decides / may do | May not |
+|------|------------------|---------|
+| **Owner** | Everything an Editor can; ACL invites/roles; **billing / API-key policy** for the project; **break-glass** force-release lease; **cancel any gen job** | — |
+| **Editor** | DecisionCard **Generate** or **Edit**; plan/craft/regen when lease acquired; cancel **jobs they started** | Change ACL; steal lease (unless Owner) |
+| **Viewer** | Watch, read $ forecast, review | Spend, edit plan, acquire leases, Generate |
 
-```text
-Project (shared fountain, cast, locs, blueprint, assets/, cost_ledger)
-  ├─ lease:script          → one writer on screenplay at a time
-  ├─ lease:scene:N         → one editor/regen owner per scene
-  ├─ lease:project?        → optional exclusive full-film gen
-  └─ assets/video/*        → last successful take wins; take_index++ on regen
-```
+**P1 — Generate authority:** any **Editor** (not Owner-only). Social “who is director” is outside the app.
 
-| Situation | Behavior |
-|-----------|----------|
-| A holds `scene:12`, B opens 12 | B sees **LockedByOther** — watch OK, edit/regen disabled until lease free/transfer |
-| A and B both Generate full film | Second job queues or rejects; don’t double-bill same missing clips without coordination |
-| A trims plan, B has DecisionCard open | Next estimate refresh / presence poll shows new $ — **plan is shared**, not per-user |
-| A regens clip, B watching | New take on disk; presence or soft refresh |
-| Preferences (path/focus) | **Per user** — A prefers Generate, B prefers Edit; card still shared numbers |
+**P2 — Billing:** project-level pool / owner policy (document in project settings). Take events still log `user_id` for attribution. *Exact key vs credits model is a settings decision; flow assumes one project wallet.*
 
-### DecisionCard under multi-user
+#### Resource locks
 
-- **One project forecast** (basis, clips, spent, remaining).  
-- **Per-user chrome:** primary button from *their* `preferPath`; optional “Also online: …” from presence.  
-- **Confirm Generate:** show who will be charged / project balance; if another gen job is running, join/monitor don’t start a duplicate.  
-- **Edit:** acquire lease for the resource before mutating; release on leave/timeout.
+| Resource | Lease key | Rule |
+|----------|-----------|------|
+| Screenplay / structure (reorder, delete scene) | `script` | One writer; others read-only |
+| Scene edit + clip regen | `scene:N` | One Editor per scene; others watch |
+| Full-film / fill-holes job | `project:gen` (or job mutex) | **One active movie-level gen** per project |
+| Cast plate lock (optional v1.1) | `cast:{key}` | Short TTL during save/lock; else last lock wins |
+| Loc plate lock (optional v1.1) | `loc:{key}` | Same |
 
-### Regen telemetry (multi-user)
+#### Conflict → resolution
 
-Take events already include `user_id` — aggregates can be:
+| Conflict | Resolution |
+|----------|------------|
+| A holds `scene:12`, B opens 12 | B: **SceneLocked** — watch OK; edit/regen disabled until release/timeout; Owner may force-release |
+| A and B both **Generate movie** | First acquires `project:gen` → **Generating**; second → **GeneratingBusy** (monitor only), no second bill |
+| A editing plan (`script` or toolkit dirty), B **ConfirmGenerate** | **PlanBusy** — block gen with “X is editing the plan”; B retries after release + fresh estimate |
+| B’s DecisionCard open while A trims | ConfirmGenerate **always re-fetches estimate**; soft banner if plan rev changed |
+| A regens clip, B watching | Last successful take wins on disk; `take_index++`; B soft-refreshes |
+| A and B different scenes | **Allowed** — parallel `scene:N` leases |
+| Cancel job | Starter or **Owner**; others see progress only |
+| Force-steal lease | **Owner only**, with confirm (or wait for TTL) |
+| Cast/loc plate two locks | v1: last write wins; v1.1: short per-key lease |
+| Prefers Generate vs Edit | **Not a conflict** — per-user chrome; shared $ |
 
-- **Project:** takes/clip for *this* movie (calibration for collaborators)  
-- **Global:** anonymized studio averages (Phase H)  
-- Don’t attribute another user’s private prefs into your defaults  
+#### DecisionCard under multi-user
 
-### Fit into the state machine
+- **One project forecast** (basis, clips, spent, remaining, rev).  
+- **Per-user chrome:** primary button from *their* `preferPath`; optional presence (“Also online: …”).  
+- **Confirm Generate:** re-estimate; ACL ≥ Editor; not Viewer; not `project:gen` busy; not plan/script busy.  
+- **Edit:** ACL ≥ Editor; acquire lease before mutate; release on leave/timeout.
 
-Multi-user does **not** add a parallel product path. It adds **guards** on transitions:
+#### Regen telemetry (multi-user)
 
-| Transition | Guard |
-|------------|--------|
-| → EditScreenplay / PlanDirty (script) | ACL ≥ Editor + `script` lease |
-| → Cost/Duration toolkits | ACL ≥ Editor |
-| → ConfirmGenerate / Generating | ACL ≥ Editor + no conflicting full-film job (or explicit queue) |
-| → RegenScope for scene N | ACL ≥ Editor + `scene:N` lease (if not held by other) |
+- Take events include `user_id`.  
+- **Project** calibration shared by collaborators; **global** averages anonymized (Phase H).  
+- Prefs never cross users.
+
+#### Fit into the state machine (guards)
+
+| Transition | Guard (policy) |
+|------------|----------------|
+| DecisionCard Generate/Edit enabled | ACL ≥ Editor (Viewer: read-only card) |
+| → EditScreenplay / structure PlanDirty | ACL ≥ Editor + acquire `script` |
+| → Cost/Duration toolkits | ACL ≥ Editor (+ soft plan lock / `script` if mutating structure) |
+| → ConfirmGenerate | ACL ≥ Editor + **fresh estimate** + not PlanBusy + not GeneratingBusy |
+| → Generating (full film) | acquire `project:gen` |
+| → RegenScope scene N | ACL ≥ Editor + acquire `scene:N` |
 | → Watching | ACL ≥ Viewer |
-| DecisionCard | ACL ≥ Viewer (Generate/Edit disabled for Viewer) |
+| Cancel Generating | job starter or Owner |
+| Force release lease | Owner only |
 
 ---
 
@@ -269,12 +277,12 @@ Multi-user does **not** add a parallel product path. It adds **guards** on trans
 ```text
 Import book → WritingScreenplay ─┐
 Import fountain (shortcut) ──────┴► ScreenplayReady → Estimating → DecisionCard
-    ├─ Generate → ConfirmGenerate → Generating → Watchable ⇄ Tweak/Regen
+    ├─ Generate → ConfirmGenerate → [guards] → Generating → Watchable ⇄ Tweak/Regen
     └─ Edit → EditFocus → toolkit → PlanDirty → Estimating → DecisionCard
-         (leases + ACL on edit/gen transitions when project is shared)
+         Guards: ACL · script/scene/project:gen leases · one full-film job · fresh $
 ```
 
-### Full state diagram
+### Full state diagram (with multi-user policy)
 
 ```mermaid
 stateDiagram-v2
@@ -287,35 +295,41 @@ stateDiagram-v2
 
   ImportingBook --> WritingScreenplay: book text ready
   WritingScreenplay --> ScreenplayReady: fountain OK
-
   ImportingFountain --> ScreenplayReady: fountain stored
 
   ScreenplayReady --> Estimating: compute cost and duration
-  Estimating --> DecisionCard: show cost and minutes
+  Estimating --> DecisionCard: show shared cost and minutes
 
-  DecisionCard --> ConfirmGenerate: choose Generate movie
-  DecisionCard --> EditFocus: choose Edit plan first
+  DecisionCard --> ConfirmGenerate: Editor chooses Generate movie
+  DecisionCard --> EditFocus: Editor chooses Edit plan first
   DecisionCard --> DecisionCard: load per-user preferences
+  note right of DecisionCard
+    Viewer: read-only card
+    Prefs per user - plan dollars shared
+  end note
 
-  ConfirmGenerate --> Blocked: missing credits key pipeline or ACL
-  ConfirmGenerate --> GeneratingBusy: another gen job running
-  GeneratingBusy --> DecisionCard: monitor or wait
+  ConfirmGenerate --> Blocked: Viewer or no credits key or pipeline
+  ConfirmGenerate --> GeneratingBusy: project gen job already running
+  ConfirmGenerate --> PlanBusy: script or plan lease held by other
+  ConfirmGenerate --> Generating: Editor plus fresh estimate plus acquire project gen
+
+  GeneratingBusy --> DecisionCard: monitor wait no second job
+  PlanBusy --> DecisionCard: wait for editor or Owner force release
   Blocked --> DecisionCard: fix blockers
-  ConfirmGenerate --> Generating: confirm spend Editor+
 
   Generating --> Watchable: job done or partial
-  Generating --> DecisionCard: cancel or fail
+  Generating --> DecisionCard: cancel by starter or Owner
 
   EditFocus --> FocusCost: Lower cost
   EditFocus --> FocusDuration: Runtime
   EditFocus --> FocusBoth: Both
   EditFocus --> FocusCraft: Cast locations or script
 
-  FocusCost --> CostToolkit: open cost tools
+  FocusCost --> CostToolkit: Editor plan tools
   CostToolkit --> PlanDirty: plan changed
   CostToolkit --> DecisionCard: back or done
 
-  FocusDuration --> DurationToolkit: open runtime tools
+  FocusDuration --> DurationToolkit: Editor runtime tools
   DurationToolkit --> PlanDirty: plan changed
   DurationToolkit --> DecisionCard: back or done
 
@@ -326,35 +340,61 @@ stateDiagram-v2
   BothShowCost --> PlanDirty
 
   FocusCraft --> CraftHub: pick craft surface
-  CraftHub --> EditScreenplay: script lease
-  CraftHub --> EditCast: looks voice plates
-  CraftHub --> EditLocs: set plates
+  CraftHub --> EditScreenplay: acquire script lease
+  CraftHub --> EditCast: plate save last write or cast lease
+  CraftHub --> EditLocs: plate save last write or loc lease
+  EditScreenplay --> ScriptLocked: lease held by other
+  ScriptLocked --> CraftHub: read-only script
   EditScreenplay --> PlanDirty
   EditCast --> PlanDirty
   EditLocs --> PlanDirty
   CraftHub --> DecisionCard: back
 
-  PlanDirty --> Estimating: refresh cost and duration
+  PlanDirty --> Estimating: refresh shared forecast
 
-  Watchable --> Watching: play movie or scene
+  Watchable --> Watching: ACL Viewer or above
   Watching --> Watchable: next scene
-  Watching --> TweakChoice: fix this
+  Watching --> TweakChoice: Editor fix this
 
-  TweakChoice --> EditScreenplay: edit line or scene
+  TweakChoice --> EditScreenplay: edit line needs script lease
   TweakChoice --> EditCast: fix face or voice
   TweakChoice --> EditLocs: fix set
-  TweakChoice --> RegenScope: scoped regen scene lease
+  TweakChoice --> RegenScope: scoped regen
 
   EditScreenplay --> MarkStale: inputs changed
   EditCast --> MarkStale
   EditLocs --> MarkStale
-  MarkStale --> Watchable: show stale badges
+  MarkStale --> Watchable: shared stale badges
 
-  RegenScope --> SceneLocked: lease held by other
-  SceneLocked --> Watching: view only
-  RegenScope --> Generating
+  RegenScope --> SceneLocked: scene N lease held by other
+  SceneLocked --> Watching: view only until free
+  RegenScope --> Generating: acquire scene N then gen takes
 
   Watchable --> [*]: export or done
+```
+
+### Guard detail (same diagram, tabular)
+
+```text
+ConfirmGenerate
+  ├─ ACL < Editor                    → Blocked
+  ├─ project:gen held / job running  → GeneratingBusy
+  ├─ script lease held by other
+  │    OR unsaved plan dirty by other → PlanBusy
+  ├─ re-fetch estimate fails / $0 unknown → Blocked or wait Estimating
+  └─ else acquire project:gen        → Generating
+
+RegenScope(scene N)
+  ├─ ACL < Editor          → Blocked (or hide)
+  ├─ scene:N held by other → SceneLocked → Watching
+  └─ else acquire scene:N  → Generating (clip/scene scope)
+
+EditScreenplay
+  ├─ acquire script OK → edit → PlanDirty
+  └─ held by other     → ScriptLocked (read-only)
+
+Parallel OK: user A scene:3 + user B scene:7
+Not OK: two full-film gens; two writers on script; two regens same scene
 ```
 
 ### Edit focus (cost / duration / both / craft)
@@ -488,14 +528,22 @@ Use this as the build/acceptance tracker. Check items off in PRs; leave dates/no
 |:----:|------|-------|
 | [x] | **I0** ACL Owner/Editor/Viewer + invites | `ProjectAclService` exists |
 | [x] | **I0b** Leases `script` / `scene:N` + Film `LockedByOther` | `IProjectLeaseService` exists |
+| [x] | **I0c** Policy doc: any Editor gens; one `project:gen`; PlanBusy; Owner break-glass | §3b recommendations |
 | | **I1** DecisionCard respects ACL (Viewer read-only) | |
-| | **I2** ConfirmGenerate blocked if full-film job already running (show progress) | F5 |
-| | **I3** Edit script acquires/releases `script` lease; UI if held by other | |
-| | **I4** Scene edit/regen acquires `scene:N`; deep links honor lock | |
-| | **I5** Presence strip on DecisionCard / Film (“also online”) | optional polish |
-| | **I6** Shared estimate refresh when collaborator PlanDirties | SignalR or poll |
-| | **I7** Take events + ledger attribution under concurrent editors | H1 multi-user |
-| | **I8** Docs/QA: two-user matrix (watch / edit / gen / lock) | |
+| | **I2** ConfirmGenerate → **GeneratingBusy** if full-film job running | no double bill |
+| | **I3** ConfirmGenerate → **PlanBusy** if `script`/plan held by other | block gen until free |
+| | **I4** ConfirmGenerate always **re-fetches estimate** | stale $ banner if rev changed |
+| | **I5** Edit script acquires/releases `script`; **ScriptLocked** UI | |
+| | **I6** Scene edit/regen acquires `scene:N`; deep links honor lock | |
+| | **I7** Cancel job: starter or Owner only | |
+| | **I8** Owner force-release lease (confirm) | |
+| | **I9** Presence strip on DecisionCard / Film | optional polish |
+| | **I10** Shared estimate refresh when collaborator PlanDirties | SignalR or poll |
+| | **I11** Take events + ledger attribution under concurrent editors | H1 multi-user |
+| | **I12** Docs/QA: two-user matrix (watch / edit / gen / lock / PlanBusy) | |
+| | **I13** Optional `cast:{key}` / `loc:{key}` short leases on plate lock | v1.1; else last-write |
+| | **I14** Project billing/key policy surface (Owner) | P2 settings |
+
 
 ---
 
@@ -504,13 +552,13 @@ Use this as the build/acceptance tracker. Check items off in PRs; leave dates/no
 ```text
 1. A3 + B1–B4 + B7   DecisionCard + fountain shortcut landing
 2. C1–C6             Edit focus + per-user prefs + re-estimate loop
-3. I1–I4             ACL + leases on Decision/Generate/Edit (use existing services)
+3. I1–I8             ACL + PlanBusy + GeneratingBusy + leases (policy in §3b)
 4. D4–D6             Clip fix + movie strip
 5. H1–H2             Take events early (so data accrues; include user_id)
 6. E3–E6             Beat map + scopes + stale
 7. H4–H6             Aggregates → expected_takes → ranges
 8. F* + I2           Full-film job polish + no double gen
-9. H3, H7–H9, I5–I8  Reasons, admin, presence, collab QA
+9. H3, H7–H9, I9–I14 Reasons, admin, presence, billing policy, collab QA
 10. G*               Draft/full modes as needed
 ```
 
@@ -527,7 +575,7 @@ Use this as the build/acceptance tracker. Check items off in PRs; leave dates/no
 5. Fix line / face / set from the scene you watched.  
 6. See **stale** when inputs change; **regen clip/scene** without full re-run.  
 7. Estimates use **learned takes/clip** (range shrinks as studio volume grows).  
-8. **Two users** on one project: Viewer watches; Editor regenerates a scene under lease; other sees lock / new take; one shared $ forecast.  
+8. **Two users** on one project: Viewer watches; Editor regenerates under `scene:N`; other sees SceneLocked; second Generate → GeneratingBusy; plan edit blocks gen via PlanBusy; one shared $ forecast.  
 9. When gen is cheap, default scope slides to full film; UI spine unchanged.
 
 ---
@@ -551,4 +599,5 @@ Use this as the build/acceptance tracker. Check items off in PRs; leave dates/no
 
 ---
 
-*Last updated: 2026-08-11 — fountain shortcut entry, multi-user collab fit (Phase I), progressive costing, regen feedback (Phase H).*
+*Last updated: 2026-08-11 — multi-user policy recommendations in diagram (PlanBusy, GeneratingBusy, ScriptLocked, project:gen); fountain shortcut; regen feedback Phase H.*
+
