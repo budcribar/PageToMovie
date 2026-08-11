@@ -1,3 +1,4 @@
+using System;
 using System.Globalization;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -12,7 +13,7 @@ using PageToMovie.Web.Services;
 
 namespace PageToMovie.Web.Components.Layout;
 
-public partial class NavMenu
+public partial class NavMenu : IDisposable
 {
         [Parameter] public bool Collapsed { get; set; }
     private bool _started;

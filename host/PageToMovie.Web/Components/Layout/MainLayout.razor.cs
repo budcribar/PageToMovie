@@ -1,3 +1,4 @@
+using System;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Components;
@@ -16,7 +17,7 @@ using PageToMovie.Core.Options;
 
 namespace PageToMovie.Web.Components.Layout;
 
-public partial class MainLayout
+public partial class MainLayout : IDisposable
 {
     private bool _sidebarCollapsed;
     private bool _hydrated;

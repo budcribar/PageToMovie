@@ -77,10 +77,12 @@ public class DemoYouTubePublisherServiceTests
     [Fact]
     public async Task PublishAsync_is_a_noop_for_a_demo_that_does_not_exist()
     {
-        var (_, publisher, root) = MakeHarness();
+        var (demos, publisher, root) = MakeHarness();
         try
         {
-            await publisher.PublishAsync("does_not_exist_12345"); // must not throw
+            var ex = await Record.ExceptionAsync(() => publisher.PublishAsync("does_not_exist_12345"));
+            Assert.Null(ex);
+            Assert.Null(await demos.TryGetAsync("does_not_exist_12345"));
         }
         finally
         {

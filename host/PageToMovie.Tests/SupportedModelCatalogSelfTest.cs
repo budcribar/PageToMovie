@@ -29,7 +29,9 @@ public class SupportedModelCatalogSelfTest
     [Fact]
     public void EnsureEnabledModelsComplete_does_not_throw_on_real_catalog()
     {
-        SupportedModelCatalog.EnsureEnabledModelsComplete();
+        var ex = Record.Exception(SupportedModelCatalog.EnsureEnabledModelsComplete);
+        Assert.Null(ex);
+        Assert.True(SupportedModelCatalog.Entries.Count > 0);
     }
 
     [Fact]

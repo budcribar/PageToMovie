@@ -1425,9 +1425,14 @@ public class BugHuntTests
     public void Bug96_SceneListCache_invalidate_empty_noop()
     {
         var cache = new SceneListCache();
-        cache.Invalidate(null);
-        cache.Invalidate("  ");
-        cache.InvalidateAll(); // must not throw
+        var ex = Record.Exception(() =>
+        {
+            cache.Invalidate(null);
+            cache.Invalidate("  ");
+            cache.InvalidateAll();
+        });
+        Assert.Null(ex);
+        Assert.NotNull(cache);
     }
 
     [Fact]
