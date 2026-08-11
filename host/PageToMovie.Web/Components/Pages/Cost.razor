@@ -11,9 +11,7 @@
 
 <PageTitle>@L["Nav.Estimate"]</PageTitle>
 
-<StudioPageHeader Kicker="Studio · Estimate" Title="@L["Nav.Estimate"]">
-    Forecast for the current plan — not a final invoice. Generate the movie or edit the plan first.
-</StudioPageHeader>
+<div class="cost-page" data-testid="cost-page">
 
 @if (ActiveProject.HasProject)
 {
@@ -25,8 +23,8 @@
 @* Soft gate — still show what you've spent when the screenplay is not ready yet. *@
 @if (ActiveProject.HasProject && !ActiveProject.CanEstimate)
 {
-    <div class="alert alert-warning d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
-        <div>
+    <div class="alert alert-warning d-flex flex-wrap align-items-center justify-content-between gap-2 py-2 mb-2">
+        <div class="small">
             <strong>@L["CostPage.FullQuoteNeedsScreenplay"]</strong>
             @ActiveProject.EstimateBlockedReason
         </div>
@@ -44,64 +42,60 @@ else
     var estimate = DisplayEstimateUsd;
     var targetMin = DisplayTargetMinutes;
 
-    @* —— Forecast card: $ · duration · basis · resolution · length —— *@
-    <div class="card mb-4" data-testid="decision-forecast-card">
-        <div class="card-body">
-            <div class="row g-3 text-center">
-                <div class="col-md-3 col-6">
-                    <div class="text-muted small text-uppercase mb-1">Duration</div>
-                    <div class="fs-3 fw-semibold cost-hero-num" data-testid="cost-duration">@DurationLabel</div>
-                    <div class="small text-muted">current plan</div>
+    @* Single hub: metrics + controls + decision CTAs (no separate page header / second Estimate title) *@
+    <div class="card cost-hub mb-2" data-testid="decision-forecast-card">
+        <div class="card-body py-2 px-3">
+            <div class="row g-2 text-center cost-hub-metrics">
+                <div class="col-6 col-md-3">
+                    <div class="text-muted cost-hub-label">Duration</div>
+                    <div class="cost-hero-num cost-hub-value" data-testid="cost-duration">@DurationLabel</div>
                 </div>
-                <div class="col-md-3 col-6">
-                    <div class="text-muted small text-uppercase mb-1">@L["Nav.Estimate"]</div>
-                    <div class="fs-3 fw-semibold cost-hero-num" data-testid="cost-estimate">@CostLabel</div>
-                    <div class="small text-muted">
-                        @_report.DraftResolution · basis: <span data-testid="cost-basis">@EstimateBasisLabel</span>
+                <div class="col-6 col-md-3">
+                    <div class="text-muted cost-hub-label">@L["Nav.Estimate"]</div>
+                    <div class="cost-hero-num cost-hub-value" data-testid="cost-estimate">@CostLabel</div>
+                    <div class="cost-hub-meta">
+                        @_report.DraftResolution · <span data-testid="cost-basis">@EstimateBasisLabel</span>
                         @if (!string.IsNullOrEmpty(EstimateConfidenceLabel))
                         {
-                            <span> · conf: <span data-testid="cost-confidence">@EstimateConfidenceLabel</span></span>
+                            <span> · <span data-testid="cost-confidence">@EstimateConfidenceLabel</span></span>
                         }
                     </div>
                 </div>
-                <div class="col-md-3 col-6">
-                    <div class="text-muted small text-uppercase mb-1">@L["CostPage.Spent"]</div>
-                    <div class="fs-3 fw-semibold cost-hero-num" data-testid="cost-spent">@Usd(s.ActualUsd)</div>
-                    <div class="small text-muted">@L["CostPage.SoFar"]</div>
+                <div class="col-6 col-md-3">
+                    <div class="text-muted cost-hub-label">@L["CostPage.Spent"]</div>
+                    <div class="cost-hero-num cost-hub-value" data-testid="cost-spent">@Usd(s.ActualUsd)</div>
                 </div>
-                <div class="col-md-3 col-6">
-                    <div class="text-muted small text-uppercase mb-1">@L["CostPage.Remaining"]</div>
-                    <div class="fs-3 fw-semibold cost-hero-num" data-testid="cost-remaining">@Usd(DisplayRemainingUsd)</div>
-                    <div class="small text-muted" data-testid="cost-remaining-label">
-                        @if (!string.IsNullOrWhiteSpace(_report.RemainingLabel))
-                        {
-                            <span>@_report.RemainingLabel</span>
-                        }
-                        else
-                        {
-                            <span>est − spent</span>
-                        }
-                    </div>
+                <div class="col-6 col-md-3">
+                    <div class="text-muted cost-hub-label">@L["CostPage.Remaining"]</div>
+                    <div class="cost-hero-num cost-hub-value" data-testid="cost-remaining">@Usd(DisplayRemainingUsd)</div>
+                    @if (!string.IsNullOrWhiteSpace(_report.RemainingLabel))
+                    {
+                        <div class="cost-hub-meta" data-testid="cost-remaining-label">@_report.RemainingLabel</div>
+                    }
+                    else
+                    {
+                        <div class="cost-hub-meta" data-testid="cost-remaining-label">est − spent</div>
+                    }
                 </div>
             </div>
 
-            <p class="small text-muted mb-0 mt-2 text-center">
-                Forecast on the current plan. Trim, runtime, cast, or resolution will change this number — refresh after edits.
-                @if (!string.IsNullOrWhiteSpace(_report.TakesLearning?.HistoryLabel))
-                {
-                    <span data-testid="cost-takes-history"> · @_report.TakesLearning.HistoryLabel</span>
-                }
-                @if (!string.IsNullOrWhiteSpace(_report.TakesLearning?.CalibrationLabel))
-                {
-                    <br /><span data-testid="cost-takes-calibration">@_report.TakesLearning.CalibrationLabel</span>
-                }
-            </p>
+            @if (!string.IsNullOrWhiteSpace(_report.TakesLearning?.HistoryLabel) || !string.IsNullOrWhiteSpace(_report.TakesLearning?.CalibrationLabel))
+            {
+                <div class="cost-hub-meta text-center mt-1">
+                    @if (!string.IsNullOrWhiteSpace(_report.TakesLearning?.HistoryLabel))
+                    {
+                        <span data-testid="cost-takes-history">@_report.TakesLearning.HistoryLabel</span>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(_report.TakesLearning?.CalibrationLabel))
+                    {
+                        <span data-testid="cost-takes-calibration"> · @_report.TakesLearning.CalibrationLabel</span>
+                    }
+                </div>
+            }
 
-            <hr class="my-3" />
-
-            <div class="row g-3 align-items-start">
+            <div class="row g-2 align-items-end mt-2 cost-hub-controls">
                 <div class="col-md-4">
-                    <label class="form-label small mb-1">@L["CostPage.VideoResolution"]</label>
+                    <label class="form-label cost-hub-label mb-1">@L["CostPage.VideoResolution"]</label>
                     <div class="btn-group d-flex" role="group" aria-label="Video resolution">
                         @foreach (var res in new[] { "480p", "720p", "1080p" })
                         {
@@ -116,7 +110,7 @@ else
                     </div>
                 </div>
                 <div class="col-md-4">
-                    <label class="form-label small mb-1">Production mode</label>
+                    <label class="form-label cost-hub-label mb-1">Production</label>
                     <div class="btn-group d-flex" role="group" aria-label="Production mode" data-testid="cost-production-mode">
                         <button type="button"
                                 class="btn btn-sm @(ProductionModes.IsDraft(_productionMode) ? "btn-warning" : "btn-outline-secondary")"
@@ -135,7 +129,7 @@ else
                             Full
                         </button>
                     </div>
-                    <div class="small text-muted mt-1" data-testid="cost-mode-hint">
+                    <div class="visually-hidden" data-testid="cost-mode-hint">
                         @(ProductionModes.IsDraft(_productionMode)
                             ? "Draft: gen without locking every portrait (identity may drift)."
                             : "Full: locked cast plates required before video gen.")
@@ -148,50 +142,31 @@ else
                     }
                 </div>
             </div>
-        </div>
-    </div>
 
-    @if (!string.IsNullOrWhiteSpace(_projectId) && ActiveProject.HasProject && ActiveProject.CanEstimate)
-    {
-        @* —— DecisionCard: Generate | Edit —— *@
-        @if (_phase == DecisionPhase.Card)
-        {
-            @if (!string.IsNullOrWhiteSpace(_shapeMessage))
+            @if (!string.IsNullOrWhiteSpace(_projectId) && ActiveProject.HasProject && ActiveProject.CanEstimate && _phase == DecisionPhase.Card)
             {
-                <div class="alert alert-success py-2 small mb-3" data-testid="decision-shape-done">@_shapeMessage</div>
-            }
-            @if (!string.IsNullOrWhiteSpace(_collabNote))
-            {
-                <div class="alert alert-warning py-2 small mb-3" data-testid="decision-collab-note">@_collabNote</div>
-            }
-            <div class="card mb-4 border-primary border-opacity-50" data-testid="decision-card">
-                <div class="card-body">
-                    <div class="d-flex flex-wrap align-items-start justify-content-between gap-3">
-                        <div>
-                            <h2 class="h5 mb-1">What do you want to do?</h2>
-                            <p class="small text-muted mb-0">
-                                <strong>@DurationLabel</strong>
-                                · <strong data-testid="decision-cost-label">@CostLabel</strong> full pass (@EstimateBasisLabel@(string.IsNullOrEmpty(EstimateConfidenceLabel) ? "" : $", {EstimateConfidenceLabel}"))
-                                @if (_collabRole != CollabRole.Unknown)
-                                {
-                                    <span class="ms-1">· you: <strong data-testid="decision-role">@_collabRole</strong></span>
-                                }
-                            </p>
-                        </div>
-                    </div>
+                <div class="cost-hub-decision border-top border-secondary border-opacity-25 mt-2 pt-2" data-testid="decision-card">
+                    @if (!string.IsNullOrWhiteSpace(_shapeMessage))
+                    {
+                        <div class="alert alert-success py-1 px-2 small mb-2" data-testid="decision-shape-done">@_shapeMessage</div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(_collabNote))
+                    {
+                        <div class="alert alert-warning py-1 px-2 small mb-2" data-testid="decision-collab-note">@_collabNote</div>
+                    }
                     @if (IsViewerOnly)
                     {
-                        <p class="small text-muted mt-3 mb-0" data-testid="decision-viewer-readonly">
+                        <p class="small text-muted mb-0" data-testid="decision-viewer-readonly">
                             Viewer access — forecast is read-only. Ask the Owner for Editor access to edit or generate.
                         </p>
                     }
                     else
                     {
-                        <div class="d-flex flex-wrap gap-2 mt-3">
+                        <div class="d-flex flex-wrap align-items-center gap-2">
                             @if (IsOwner)
                             {
                                 <button type="button"
-                                        class="btn @(_preferPath == "generate" ? "btn-primary" : "btn-outline-primary") fw-semibold px-4"
+                                        class="btn @(_preferPath == "generate" ? "btn-primary" : "btn-outline-primary") fw-semibold"
                                         data-testid="decision-generate"
                                         disabled="@(_busy || GeneratingBusy)"
                                         @onclick="ChooseGenerate">
@@ -201,7 +176,7 @@ else
                             else
                             {
                                 <button type="button"
-                                        class="btn btn-outline-primary fw-semibold px-4"
+                                        class="btn btn-outline-primary fw-semibold"
                                         data-testid="decision-generate-scenes"
                                         disabled="@_busy"
                                         @onclick="ChooseGenerate">
@@ -209,80 +184,79 @@ else
                                 </button>
                             }
                             <button type="button"
-                                    class="btn @(_preferPath == "edit" ? "btn-primary" : "btn-outline-secondary") fw-semibold px-4"
+                                    class="btn @(_preferPath == "edit" ? "btn-primary" : "btn-outline-secondary") fw-semibold"
                                     data-testid="decision-edit"
                                     disabled="@_busy"
                                     @onclick="ChooseEdit">
                                 Edit plan first
                             </button>
+                            <span class="small text-muted ms-md-1" data-testid="decision-cost-label">
+                                @DurationLabel · @CostLabel
+                                @if (_collabRole != CollabRole.Unknown)
+                                {
+                                    <span> · <span data-testid="decision-role">@_collabRole</span></span>
+                                }
+                            </span>
                         </div>
                         @if (GeneratingBusy)
                         {
-                            <div class="alert alert-info py-2 small mt-3 mb-0" data-testid="decision-generating-busy">
-                                <strong>GeneratingBusy:</strong> a <code>@_blockingJobKind</code> job is already running on this project.
-                                Monitor it instead of starting another full-movie pass.
+                            <div class="alert alert-info py-1 px-2 small mt-2 mb-0" data-testid="decision-generating-busy">
+                                A <code>@_blockingJobKind</code> job is already running — monitor it instead of starting another full pass.
                             </div>
                         }
                         else if (PlanBusy && IsOwner)
                         {
-                            <div class="alert alert-warning py-2 small mt-3 mb-0" data-testid="decision-plan-busy-hint">
-                                <strong>PlanBusy:</strong> <code>@_scriptLeaseHolder</code> holds the script/plan lease.
-                                Full-movie generate will wait until they release it; scene gen on Film is still OK for unlocked scenes.
+                            <div class="alert alert-warning py-1 px-2 small mt-2 mb-0" data-testid="decision-plan-busy-hint">
+                                <code>@_scriptLeaseHolder</code> holds the script/plan lease — full-movie generate waits; scene gen on Film still OK.
                             </div>
                         }
-                        <p class="small text-muted mt-2 mb-0">
-                            @if (IsOwner)
-                            {
-                                <text>Owner: full-movie from Estimate. Editors use Film for per-scene generate. Edit trims cost/runtime here.</text>
-                            }
-                            else
-                            {
-                                <text>Editor: shape the plan here; generate clips/scenes on Film (not full-movie from Estimate).</text>
-                            }
-                        </p>
                     }
                 </div>
-            </div>
-        }
-        else if (_phase == DecisionPhase.EditFocus)
+            }
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(_projectId) && ActiveProject.HasProject && ActiveProject.CanEstimate)
+    {
+        @if (_phase == DecisionPhase.EditFocus)
         {
-            <div class="card mb-4" data-testid="decision-edit-focus">
-                <div class="card-body">
+            <div class="card mb-2" data-testid="decision-edit-focus">
+                <div class="card-body py-2 px-3">
                     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
-                        <h2 class="h5 mb-0">What do you want to improve?</h2>
-                        <button type="button" class="btn btn-sm btn-link" data-testid="decision-edit-back" @onclick="BackToCard">← Back</button>
+                        <span class="fw-semibold">What do you want to improve?</span>
+                        <button type="button" class="btn btn-sm btn-link py-0" data-testid="decision-edit-back" @onclick="BackToCard">← Back</button>
                     </div>
-                    <div class="list-group">
-                        <button type="button" class="list-group-item list-group-item-action"
+                    <div class="list-group list-group-flush cost-edit-focus-list">
+                        <button type="button" class="list-group-item list-group-item-action py-2"
                                 data-testid="edit-focus-cost"
                                 disabled="@_busy"
                                 @onclick='() => SelectEditFocusAsync("cost")'>
                             <strong>Lower cost</strong>
-                            <div class="small text-muted">@EditFocusHint("cost")</div>
+                            <span class="small text-muted d-block">@EditFocusHint("cost")</span>
                         </button>
-                        <button type="button" class="list-group-item list-group-item-action"
+                        <button type="button" class="list-group-item list-group-item-action py-2"
                                 data-testid="edit-focus-duration"
                                 disabled="@_busy"
                                 @onclick='() => SelectEditFocusAsync("duration")'>
-                            <strong>Runtime</strong> (shorter / longer)
-                            <div class="small text-muted">@EditFocusHint("duration")</div>
+                            <strong>Runtime</strong>
+                            <span class="small text-muted d-block">@EditFocusHint("duration")</span>
                         </button>
-                        <button type="button" class="list-group-item list-group-item-action"
+                        <button type="button" class="list-group-item list-group-item-action py-2"
                                 data-testid="edit-focus-both"
                                 disabled="@_busy"
                                 @onclick='() => SelectEditFocusAsync("both")'>
                             <strong>Both</strong>
-                            <div class="small text-muted">@EditFocusHint("both")</div>
+                            <span class="small text-muted d-block">@EditFocusHint("both")</span>
                         </button>
-                        <button type="button" class="list-group-item list-group-item-action"
+                        <button type="button" class="list-group-item list-group-item-action py-2"
                                 data-testid="edit-focus-craft"
                                 disabled="@_busy"
                                 @onclick='() => SelectEditFocusAsync("craft")'>
                             <strong>Cast, locations, or script</strong>
-                            <div class="small text-muted">@EditFocusHint("craft")</div>
+                            <span class="small text-muted d-block">@EditFocusHint("craft")</span>
                         </button>
                     </div>
-                    <div class="form-check mt-3" data-testid="decision-skip-focus">
+                    <div class="form-check mt-2 mb-0" data-testid="decision-skip-focus">
                         <input class="form-check-input" type="checkbox" id="skipEditFocus"
                                checked="@_skipEditFocus"
                                @onchange="ToggleSkipEditFocusAsync" />
@@ -295,35 +269,32 @@ else
         }
         else if (_phase == DecisionPhase.Shaping)
         {
-            <div class="card mb-4 border-warning border-opacity-50" data-testid="decision-shaping">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-                        <h2 class="h5 mb-0">@ShapingTitle</h2>
+            <div class="card mb-2 border-warning border-opacity-50" data-testid="decision-shaping">
+                <div class="card-body py-2 px-3">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                        <span class="fw-semibold">@ShapingTitle</span>
                         <div class="d-flex gap-2">
                             <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="shaping-back-focus" @onclick="ChooseEdit">Change focus</button>
-                            <button type="button" class="btn btn-sm btn-primary" data-testid="shaping-done" disabled="@_busy" @onclick="DoneShapingAsync">Done · refresh forecast</button>
+                            <button type="button" class="btn btn-sm btn-primary" data-testid="shaping-done" disabled="@_busy" @onclick="DoneShapingAsync">Done · refresh</button>
                         </div>
                     </div>
 
                     @if (!string.IsNullOrWhiteSpace(_shapeError))
                     {
-                        <div class="alert alert-danger py-2 small" data-testid="shaping-error">@_shapeError</div>
+                        <div class="alert alert-danger py-1 px-2 small mb-2" data-testid="shaping-error">@_shapeError</div>
                     }
                     @if (!string.IsNullOrWhiteSpace(_shapeMessage))
                     {
-                        <div class="alert alert-success py-2 small" data-testid="shaping-message">@_shapeMessage</div>
+                        <div class="alert alert-success py-1 px-2 small mb-2" data-testid="shaping-message">@_shapeMessage</div>
                     }
 
-                    <p class="small text-muted mb-3">
-                        Live forecast: <strong>@DurationLabel</strong> · <strong>@Usd(estimate)</strong> (@EstimateBasisLabel).
-                        Change tools below — numbers update when you fit or save.
+                    <p class="small text-muted mb-2">
+                        Live: <strong>@DurationLabel</strong> · <strong>@Usd(estimate)</strong> (@EstimateBasisLabel).
                     </p>
 
                     @if (ShowDurationToolkit || ShowCostToolkit)
                     {
-                        <div class="mb-4" data-testid="shaping-duration">
-                            <h3 class="h6 text-uppercase text-muted">@(ShowCostToolkit && !ShowDurationToolkit ? "Runtime (affects $)" : "Runtime")</h3>
-                            <p class="small text-muted">Use the length control in the forecast card above, then fit the screenplay to that target.</p>
+                        <div class="mb-2" data-testid="shaping-duration">
                             <button type="button"
                                     class="btn btn-warning btn-sm fw-semibold"
                                     data-testid="shaping-run-fit"
@@ -331,18 +302,14 @@ else
                                     @onclick="RunFitTrimAsync">
                                 Fit screenplay to target length
                             </button>
-                            <a class="btn btn-sm btn-link" href="adaptation/screenplay?tool=fit">Open full fit panel →</a>
+                            <a class="btn btn-sm btn-link" href="adaptation/screenplay?tool=fit">Full fit panel →</a>
                         </div>
                     }
 
                     @if (ShowCostToolkit)
                     {
-                        <div class="mb-4" data-testid="shaping-cost">
-                            <h3 class="h6 text-uppercase text-muted">Cost levers</h3>
-                            <p class="small text-muted mb-2">
-                                Resolution is on the forecast card (480p / 720p / 1080p). Lower res and shorter runtime reduce video spend.
-                            </p>
-                            <label class="form-label small mb-1">Max speaking cast (adaptation)</label>
+                        <div class="mb-2" data-testid="shaping-cost">
+                            <label class="form-label small mb-1">Max speaking cast</label>
                             <div class="input-group input-group-sm" style="max-width: 280px;">
                                 <input type="number" class="form-control" min="1" max="40" placeholder="default"
                                        @bind="_castCapInput" disabled="@_busy" data-testid="shaping-cast-cap" />
@@ -350,24 +317,12 @@ else
                                     Save cap
                                 </button>
                             </div>
-                            <div class="small text-muted mt-1">
-                                @if (_maxSpeakingCast is int cap)
-                                {
-                                    <span>Current: @cap. Rebuild cast after changing for a full effect.</span>
-                                }
-                                else
-                                {
-                                    <span>Using project/server default. Empty + Save clears override.</span>
-                                }
-                            </div>
                         </div>
                     }
 
                     @if (ShowCraftToolkit)
                     {
-                        <div class="mb-3" data-testid="shaping-craft">
-                            <h3 class="h6 text-uppercase text-muted">Craft surfaces</h3>
-                            <p class="small text-muted">Edit looks and story, then come back — Done refreshes the forecast.</p>
+                        <div class="mb-2" data-testid="shaping-craft">
                             <div class="d-flex flex-wrap gap-2">
                                 <a class="btn btn-outline-warning btn-sm" href="characters" data-testid="shaping-to-cast">Cast & voice</a>
                                 <a class="btn btn-outline-info btn-sm" href="locations" data-testid="shaping-to-locs">Locations</a>
@@ -376,8 +331,8 @@ else
                         </div>
                     }
 
-                    <div class="d-flex flex-wrap gap-2 mt-2">
-                        <button type="button" class="btn btn-outline-secondary btn-sm" disabled="@_busy" @onclick="LoadAsync">Refresh estimate now</button>
+                    <div class="d-flex flex-wrap gap-2">
+                        <button type="button" class="btn btn-outline-secondary btn-sm" disabled="@_busy" @onclick="LoadAsync">Refresh</button>
                         <button type="button" class="btn btn-success btn-sm" disabled="@_busy" @onclick="ChooseGenerate">Generate movie…</button>
                     </div>
                 </div>
@@ -385,62 +340,49 @@ else
         }
         else if (_phase == DecisionPhase.ConfirmGenerate)
         {
-            <div class="card mb-4 border-success border-opacity-50" data-testid="decision-confirm-generate">
-                <div class="card-body">
-                    <h2 class="h5 mb-2">Generate movie?</h2>
-                    <p class="mb-2">
+            <div class="card mb-2 border-success border-opacity-50" data-testid="decision-confirm-generate">
+                <div class="card-body py-2 px-3">
+                    <div class="fw-semibold mb-1">Generate movie?</div>
+                    <p class="small mb-2">
                         About <strong>@DurationLabel</strong> · <strong>@Usd(estimate)</strong>
                         (@_report.DraftResolution, @EstimateBasisLabel).
                         @if (_confirmEstimateSnapshot is double snap && Math.Abs(snap - estimate) > 0.009)
                         {
-                            <span class="text-warning small"> (updated from @Usd(snap) after refresh)</span>
+                            <span class="text-warning"> (was @Usd(snap))</span>
                         }
                     </p>
                     @if (!string.IsNullOrWhiteSpace(_collabNote))
                     {
-                        <div class="alert alert-warning py-2 small mb-3" data-testid="decision-confirm-collab">@_collabNote</div>
+                        <div class="alert alert-warning py-1 px-2 small mb-2" data-testid="decision-confirm-collab">@_collabNote</div>
                     }
                     @if (PlanBusy)
                     {
-                        <div class="alert alert-warning py-2 small mb-3" data-testid="decision-plan-busy">
-                            <strong>PlanBusy:</strong> <code>@_scriptLeaseHolder</code> is editing the plan/script.
-                            Full-movie generate is blocked. Scene gen on unlocked scenes is still allowed on Film.
+                        <div class="alert alert-warning py-1 px-2 small mb-2" data-testid="decision-plan-busy">
+                            <code>@_scriptLeaseHolder</code> is editing the plan — full-movie blocked.
                         </div>
                     }
                     @if (GeneratingBusy)
                     {
-                        <div class="alert alert-info py-2 small mb-3" data-testid="decision-generating-busy-confirm">
-                            <strong>GeneratingBusy:</strong> job <code>@_blockingJobKind</code>
-                            @if (!string.IsNullOrEmpty(_blockingJobId))
-                            {
-                                <text> (@_blockingJobId)</text>
-                            }
-                            is already active. Do not start a second full pass.
+                        <div class="alert alert-info py-1 px-2 small mb-2" data-testid="decision-generating-busy-confirm">
+                            Job <code>@_blockingJobKind</code> already active.
                         </div>
                     }
                     @if (!ActiveProject.CanEstimate)
                     {
-                        <div class="alert alert-warning py-2 small mb-3" data-testid="decision-blocked">
+                        <div class="alert alert-warning py-1 px-2 small mb-2" data-testid="decision-blocked">
                             @(ActiveProject.EstimateBlockedReason ?? "Screenplay not ready.")
                             <a class="alert-link ms-1" href="adaptation">Go to Book →</a>
                         </div>
                     }
                     else if (!ActiveProject.CanScenes)
                     {
-                        <div class="alert alert-info py-2 small mb-3" data-testid="decision-generate-hint">
+                        <div class="alert alert-info py-1 px-2 small mb-2" data-testid="decision-generate-hint">
                             @GenerateBlockedReason
-                            Next: build or open the <strong>shot plan</strong>, then Film to generate clips.
                         </div>
-                    }
-                    else
-                    {
-                        <p class="small text-muted mb-3">
-                            Shot plan is ready — continue opens Film to generate clips for this plan.
-                        </p>
                     }
                     <div class="d-flex flex-wrap gap-2">
                         <button type="button"
-                                class="btn btn-success fw-semibold px-4"
+                                class="btn btn-success fw-semibold"
                                 data-testid="decision-confirm-go"
                                 disabled="@(_busy || !ActiveProject.CanEstimate || PlanBusy || GeneratingBusy || !IsOwner)"
                                 @onclick="ConfirmGenerateAsync">
@@ -450,14 +392,14 @@ else
                             }
                             else
                             {
-                                <text>Continue to shot plan →</text>
+                                <text>Continue →</text>
                             }
                         </button>
                         <button type="button" class="btn btn-outline-secondary" data-testid="decision-confirm-back" @onclick="BackToCard">
                             Cancel
                         </button>
-                        <button type="button" class="btn btn-outline-secondary" disabled="@_busy" @onclick="LoadAsync">
-                            Refresh estimate
+                        <button type="button" class="btn btn-outline-secondary btn-sm" disabled="@_busy" @onclick="LoadAsync">
+                            Refresh
                         </button>
                     </div>
                 </div>
@@ -465,12 +407,15 @@ else
         }
     }
 
-    <div class="d-flex flex-wrap justify-content-end gap-2 mb-3">
-        <a class="btn btn-sm btn-outline-secondary" href="cost/breakdown" data-testid="cost-breakdown-link">
+    <div class="d-flex flex-wrap justify-content-end gap-2 cost-hub-footer">
+        <a class="small text-muted" href="cost/breakdown" data-testid="cost-breakdown-link">
             @L["CostPage.ProjectCostBreakdown"]
         </a>
-        <a class="btn btn-sm btn-outline-secondary" href="account/costs" data-testid="cost-account-link">
+        <span class="text-muted small">·</span>
+        <a class="small text-muted" href="account/costs" data-testid="cost-account-link">
             @L["CostPage.SeeAllProjectsBilling"]
         </a>
     </div>
 }
+
+</div>
