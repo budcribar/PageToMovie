@@ -74,7 +74,7 @@ public partial class AccountCosts
         return ToSlices(rows.Select(x => (x.Label, x.Usd)));
     }
 
-    private List<Slice> ToSlices(IEnumerable<(string Label, double Usd)> rows)
+    private static List<Slice> ToSlices(IEnumerable<(string Label, double Usd)> rows)
     {
         const int maxSlices = 8;
         var list = rows.ToList();

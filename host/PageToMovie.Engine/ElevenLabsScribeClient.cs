@@ -37,7 +37,7 @@ public sealed class ElevenLabsScribeClient
             _http.BaseAddress = new Uri(SupportedModelCatalog.ElevenLabsApiBase.TrimEnd('/') + "/");
     }
 
-    public bool IsConfigured => !string.IsNullOrWhiteSpace(ResolveApiKey());
+    public static bool IsConfigured => !string.IsNullOrWhiteSpace(ResolveApiKey());
 
     private static string? ResolveApiKey() => ProviderApiKey.ResolveElevenLabs();
 

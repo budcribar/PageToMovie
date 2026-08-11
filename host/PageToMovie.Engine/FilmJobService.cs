@@ -352,7 +352,7 @@ public sealed class FilmJobService
         }
     }
 
-    private JobSnapshot Snapshot
+    private static JobSnapshot Snapshot
     {
         get => CurrentRun.Value?.Snapshot
                ?? throw new InvalidOperationException("No active job run context.");
@@ -381,7 +381,7 @@ public sealed class FilmJobService
         await PublishAsync();
     }
 
-    private string? ActiveJobId
+    private static string? ActiveJobId
     {
         get => CurrentRun.Value?.ActiveJobId;
         set

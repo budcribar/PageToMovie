@@ -61,7 +61,7 @@ public sealed class FakeGrokChatClient : IChatClient
         return result;
     }
 
-    private string Respond(string sys, string user, string blob, string model, string? mode)
+    private static string Respond(string sys, string user, string blob, string model, string? mode)
     {
 
         // ── Cast from screenplay → cast_seeds-shaped JSON ──────────────────

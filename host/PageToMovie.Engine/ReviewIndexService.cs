@@ -46,10 +46,10 @@ public sealed class ReviewIndexService
     public string FramesDir(string projectId) =>
         Path.Combine(_projects.GetProjectDir(projectId), "assets", "review", "frames");
 
-    public string DraftRelPath(int scene, int clip) =>
+    public static string DraftRelPath(int scene, int clip) =>
         $"assets/review/S{scene:D2}C{clip:D2}.auto_review.json";
 
-    public string FrameRelPath(int scene, int clip, int frameIndex) =>
+    public static string FrameRelPath(int scene, int clip, int frameIndex) =>
         $"assets/review/frames/S{scene:D2}C{clip:D2}_{frameIndex:D2}.jpg";
 
     public async Task<ReviewIndexDocument?> LoadAsync(string projectId, CancellationToken ct = default)

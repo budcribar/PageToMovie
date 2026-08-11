@@ -4110,7 +4110,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     /// <summary>Standard mutation failure handling: if the response is not success, read the error
     /// body and throw an <see cref="InvalidOperationException"/> with a best-effort message (falling
     /// back to the reason phrase). Shared by the void-returning mutation endpoints.</summary>
-    private async Task EnsureOkAsync(HttpResponseMessage resp, CancellationToken ct)
+    private static async Task EnsureOkAsync(HttpResponseMessage resp, CancellationToken ct)
     {
         if (resp.IsSuccessStatusCode) return;
         var err = await resp.Content.ReadAsStringAsync(ct);
