@@ -388,3 +388,7 @@ data/keys/
 # constantly-regenerated usage data (character images, voice clones, video clips), not a
 # fixed eval/demo fixture like Buster2/TellTaleHeartV7. Keep it out of git entirely.
 /projects/budcribar/
+
+# local sqlite runtime
+data/pagetomovie.db*
+
