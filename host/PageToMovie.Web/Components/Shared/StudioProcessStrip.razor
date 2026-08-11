@@ -1,6 +1,6 @@
 <style>.ptm-process-strip-loading { cursor: wait; opacity: 0.9; }</style>
 @namespace PageToMovie.Web.Components
-@* Shared product path: Setup (0, temporary) → Book → Cast & voice → Estimate → Film → Review
+@* Full studio: Setup (0) → Book → Estimate → Film → Review; Cast is optional craft (Edit path).
    SimpleMode: Book → Your voice → Film (bait path for library + narrator clone) *@
 @inject ActiveProjectState ActiveProject
 @inject NavigationManager Nav
@@ -58,6 +58,7 @@
     }
     else
     {
+        @* Primary spine: Book → Estimate → Film → Review *@
         <a class="ptm-step @(Active == "book" ? "is-active" : "") @(BookLocked ? "is-disabled" : "")"
            href="@(BookLocked ? "javascript:void(0)" : "adaptation")"
            title="@(BookLocked ? "Connect API keys in Setup first" : "Import book and write screenplay")"
@@ -68,7 +69,7 @@
                 <span class="ptm-step__label">@L["ProcessStrip.Book"]</span>
                 <span class="ptm-step__hint">@L["ProcessStrip.ImportScreenplay"]</span>
             </span>
-            @* Advanced/BYOK only: AI model selection status. Click → Settings. Removed at release. *@
+            @* Advanced/BYOK only: AI model selection status. Click → Settings. *@
             @if (ActiveProject.HasProject)
             {
                 <span class="ptm-step__badge ms-auto align-self-center"
@@ -90,34 +91,35 @@
                 </span>
             }
         </a>
-        <a class="ptm-step @(Active == "cast" ? "is-active" : "") @(!ActiveProject.CanCharacters && Active != "cast" ? "is-disabled" : "")"
-           href="@(ActiveProject.CanCharacters || Active == "cast" ? "characters" : "javascript:void(0)")"
-           title="@(ActiveProject.CanCharacters ? "Cast looks and optional voice clone" : ActiveProject.CharactersBlockedReason)"
-           data-testid="studio-step-cast"
-           @onclick:preventDefault="@(!ActiveProject.CanCharacters && Active != "cast")">
-            <span class="ptm-step__num">2</span>
-            <span class="ptm-step__body">
-                <span class="ptm-step__label">@L["ProcessStrip.CastAndVoice"]</span>
-                <span class="ptm-step__hint">@L["ProcessStrip.PhotosCloneSample"]</span>
-            </span>
-        </a>
         <a class="ptm-step @(Active == "estimate" ? "is-active" : "") @(!ActiveProject.CanEstimate && Active != "estimate" ? "is-disabled" : "")"
            href="@(ActiveProject.CanEstimate || Active == "estimate" ? "cost" : "javascript:void(0)")"
-           title="@(ActiveProject.CanEstimate ? "Quote before generate" : ActiveProject.EstimateBlockedReason)"
+           title="@(ActiveProject.CanEstimate ? "Forecast · Generate movie or Edit plan" : ActiveProject.EstimateBlockedReason)"
            data-testid="studio-step-estimate"
            @onclick:preventDefault="@(!ActiveProject.CanEstimate && Active != "estimate")">
-            <span class="ptm-step__num">3</span>
+            <span class="ptm-step__num">2</span>
             <span class="ptm-step__body">
                 <span class="ptm-step__label">@L["ProcessStrip.Estimate"]</span>
                 <span class="ptm-step__hint">@L["ProcessStrip.QuoteConfirm"]</span>
             </span>
         </a>
-        <a class="ptm-step @(Active == "film" ? "is-active" : "") @(!ActiveProject.CanScenes && Active != "film" ? "is-disabled" : "")"
-           href="@(ActiveProject.CanScenes || Active == "film" ? "scenes" : "javascript:void(0)")"
-           title="@(ActiveProject.CanScenes ? "Generate clips" : ActiveProject.ScenesBlockedReason)"
+        @* Optional craft — not a pre-estimate gate; Edit path from DecisionCard also lands here *@
+        <a class="ptm-step ptm-step--optional @(Active == "cast" ? "is-active" : "") @(!ActiveProject.CanCharacters && Active != "cast" ? "is-disabled" : "")"
+           href="@(ActiveProject.CanCharacters || Active == "cast" ? "characters" : "javascript:void(0)")"
+           title="@(ActiveProject.CanCharacters ? "Optional: cast looks and voice before or after estimate" : ActiveProject.CharactersBlockedReason)"
+           data-testid="studio-step-cast"
+           @onclick:preventDefault="@(!ActiveProject.CanCharacters && Active != "cast")">
+            <span class="ptm-step__num ptm-step__num--opt" aria-hidden="true">·</span>
+            <span class="ptm-step__body">
+                <span class="ptm-step__label">@L["ProcessStrip.CastAndVoice"]</span>
+                <span class="ptm-step__hint">@L["ProcessStrip.CastOptional"]</span>
+            </span>
+        </a>
+        <a class="ptm-step @(Active == "film" ? "is-active" : "") @(FilmDisabled ? "is-disabled" : "")"
+           href="@FilmHref"
+           title="@FilmTitle"
            data-testid="studio-step-film"
-           @onclick:preventDefault="@(!ActiveProject.CanScenes && Active != "film")">
-            <span class="ptm-step__num">4</span>
+           @onclick:preventDefault="@FilmDisabled">
+            <span class="ptm-step__num">3</span>
             <span class="ptm-step__body">
                 <span class="ptm-step__label">@L["ProcessStrip.Film"]</span>
                 <span class="ptm-step__hint">@L["ProcessStrip.ClipsStitch"]</span>
@@ -128,7 +130,7 @@
            title="@(ActiveProject.CanReview ? "Approve and publish" : ActiveProject.ReviewBlockedReason)"
            data-testid="studio-step-review"
            @onclick:preventDefault="@(!ActiveProject.CanReview && Active != "review")">
-            <span class="ptm-step__num">5</span>
+            <span class="ptm-step__num">4</span>
             <span class="ptm-step__body">
                 <span class="ptm-step__label">@L["ProcessStrip.Review"]</span>
                 <span class="ptm-step__hint">@L["ProcessStrip.EditAfterward"]</span>

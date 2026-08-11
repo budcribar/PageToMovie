@@ -34,8 +34,22 @@ public partial class Home
                 new(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>Home defaults to a one-row project picker; full project management
-            /// (visibility, collaborate, delete, fork/sync) is opt-in via "Manage".</summary>
+            /// (visibility, collaborate, delete, package backup, checkpoints) is opt-in via "Manage".</summary>
             internal bool _manageExpanded;
+
+        /// <summary>Open/close Manage and load package backup + checkpoints when opening.</summary>
+        internal async Task ToggleManageAsync()
+        {
+            _manageExpanded = !_manageExpanded;
+            if (!_manageExpanded) return;
+            _showRename = false;
+            S.Import._showImport = false;
+            // Always show checkpoints inside Manage (no second click).
+            S.Checkpoints._showCheckpoints = true;
+            try { await S.Jobs.RefreshPackageStatusAsync(); } catch { /* soft */ }
+            try { await S.Checkpoints.LoadCheckpointsAsync(); } catch { /* soft */ }
+            S.StateHasChanged();
+        }
 
         internal ElementReference _nameInputRef;
 

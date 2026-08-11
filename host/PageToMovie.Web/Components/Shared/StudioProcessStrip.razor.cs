@@ -24,7 +24,7 @@ public partial class StudioProcessStrip
     [Parameter] public bool SimpleMode { get; set; }
 
     /// <summary>
-    /// Force the full Book → Cast → Estimate → Film → Review strip even when the
+    /// Force the full Book → Estimate → Film strip (Cast optional) even when the
     /// project’s stored path is simple-voice (used on Full studio home and cost).
     /// </summary>
     [Parameter] public bool FullStudio { get; set; }
@@ -51,4 +51,16 @@ public partial class StudioProcessStrip
     }
 
     private void GoToModelSettings() => Nav.NavigateTo("configuration?focus=planning");
+
+    private bool FilmReady => ActiveProject.CanScenes || Active == "film";
+    private bool FilmViaEstimate => !FilmReady && ActiveProject.CanEstimate;
+    private string FilmHref =>
+        FilmReady ? "scenes" : FilmViaEstimate ? "cost" : "javascript:void(0)";
+    private string FilmTitle =>
+        FilmReady
+            ? "Watch and generate clips"
+            : FilmViaEstimate
+                ? "Generate from Estimate first"
+                : ActiveProject.ScenesBlockedReason;
+    private bool FilmDisabled => !FilmReady && !FilmViaEstimate;
 }

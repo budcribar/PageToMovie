@@ -1056,6 +1056,41 @@ hr {
 .ptm-step__badge:hover {
     filter: brightness(1.12);
 }
+/* Optional craft step (cast) — not part of the numbered pre-gen spine */
+.ptm-step--optional {
+    min-height: 3.5rem;
+    opacity: 0.92;
+    border-style: dashed;
+}
+.ptm-step--optional.is-active {
+    opacity: 1;
+    border-style: solid;
+}
+.ptm-step__num--opt {
+    background: transparent;
+    border-style: dashed;
+    color: var(--fs-text-muted);
+    font-size: 1rem;
+    line-height: 1;
+}
+.home-manage-section {
+    border-top: 1px solid rgba(148, 163, 184, 0.2);
+    padding-top: 0.65rem;
+    margin-top: 0.65rem;
+}
+.home-manage-section:first-of-type {
+    border-top: 0;
+    padding-top: 0;
+    margin-top: 0;
+}
+.home-manage-section__title {
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--fs-text-muted);
+    margin-bottom: 0.35rem;
+}
 
 /* Book sub-steps — a light pill drill-down under the top-level "Book" step. */
 .ptm-substrip {

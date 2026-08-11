@@ -271,7 +271,7 @@
     "CastAndVoice": "Besetzung & Stimme",
     "PhotosCloneSample": "Fotos · Klonprobe",
     "Estimate": "Schätzung",
-    "QuoteConfirm": "Angebot · bestätigen",
+    "QuoteConfirm": "Generieren oder bearbeiten",
     "Film": "Film",
     "ClipsStitch": "Clips · zusammenfügen",
     "Review": "Prüfung",
@@ -281,7 +281,8 @@
     "YourVoice": "Ihre Stimme",
     "RecordDone": "Aufnehmen · fertig",
     "Movie": "Film",
-    "GenerateAll": "Alles generieren"
+    "GenerateAll": "Alles generieren",
+    "CastOptional": "Optional · Bearbeiten"
   },
   "FilmLength": {
     "Title": "Filmlänge",

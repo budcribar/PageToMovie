@@ -1,4 +1,4 @@
-@* Page-local to Home — full-studio project card (picker, cost, manage, empty list) *@
+@* Page-local to Home — full-studio project card (picker, manage, process strip) *@
 @inject ActiveProjectState ActiveProject
 @inject AdminSessionService Session
 @inject IAppLocalizer L
@@ -57,7 +57,7 @@
                         class="btn btn-outline-secondary btn-sm flex-shrink-0"
                         data-testid="home-manage-projects"
                         aria-expanded="@(Host.Projects._manageExpanded ? "true" : "false")"
-                        @onclick="() => Host.Projects._manageExpanded = !Host.Projects._manageExpanded">
+                        @onclick="Host.Projects.ToggleManageAsync">
                     Manage @(Host.Projects._manageExpanded ? "▴" : "▾")
                 </button>
                 @if (Host.Projects.NeedsApiSetup)
@@ -71,101 +71,10 @@
                 }
             </div>
 
-            <div class="home-project-cost d-flex flex-wrap align-items-center gap-2 gap-md-3 mb-2"
-                 data-testid="home-project-cost">
-                @if (Host.Costs._costLoading && Host.Costs._costEstimateUsd is null && Host.Costs._costActualUsd is null)
-                {
-                    <span class="small text-muted">Loading cost…</span>
-                }
-                else if (Host.Costs._costNeedsModels)
-                {
-                    <span class="small text-muted" data-testid="home-cost-needs-setup">
-                        Estimate available after <a href="/configuration">setup</a>.
-                    </span>
-                }
-                else
-                {
-                    <span class="small">
-                        <span class="text-muted">Estimate</span>
-                        <strong class="ms-1" data-testid="home-cost-estimate">@Home.HomeCosts.FormatUsd(Host.Costs._costEstimateUsd)</strong>
-                        @if (!string.IsNullOrWhiteSpace(Host.Costs._costResolution))
-                        {
-                            <span class="text-muted ms-1">(@Host.Costs._costResolution</span>
-                            @if (Host.Costs._costVideoRate is > 0)
-                            {
-                                <span class="text-muted"> · @Home.HomeCosts.FormatUsd(Host.Costs._costVideoRate)/s</span>
-                            }
-                            <span class="text-muted">)</span>
-                        }
-                    </span>
-                    <span class="text-muted small d-none d-sm-inline">·</span>
-                    <span class="small">
-                        <span class="text-muted">Spent</span>
-                        <strong class="ms-1" data-testid="home-cost-spent">@Home.HomeCosts.FormatUsd(Host.Costs._costActualUsd)</strong>
-                    </span>
-                    <a href="/cost" class="small ms-sm-1" data-testid="home-cost-details">Details</a>
-                }
-            </div>
-
-            @* Package history: auto-commits on save; never auto-reverts. *@
-            <div class="d-flex flex-wrap align-items-center gap-2 gap-md-3 mb-2 small"
-                 data-testid="home-package-history">
-                @if (Host.Jobs._packageStatusLoading && Host.Jobs._packageStatus is null)
-                {
-                    <span class="text-muted">Checking package history…</span>
-                }
-                else if (Host.Jobs._packageStatus is { GitAvailable: true })
-                {
-                    <span>
-                        <span class="text-muted">Last saved</span>
-                        @if (!string.IsNullOrWhiteSpace(Host.Jobs._packageStatus.LastCommitHash))
-                        {
-                            <strong class="ms-1 font-monospace" data-testid="home-last-saved-hash">@Home.ShortHash(Host.Jobs._packageStatus.LastCommitHash)</strong>
-                        }
-                        else
-                        {
-                            <span class="ms-1 text-muted">—</span>
-                        }
-                        @if (Host.Jobs._packageStatus.LastCommitAtUtc is DateTime when)
-                        {
-                            <span class="text-muted ms-1" title="@when.ToString("u")">@Home.FormatRelativeUtc(when)</span>
-                        }
-                    </span>
-                    @if (Host.Jobs._packageStatus.HasUncommittedChanges)
-                    {
-                        <span class="badge text-bg-warning text-dark fw-normal" data-testid="home-package-dirty">
-                            Unsaved package changes
-                        </span>
-                    }
-                    @if (!string.IsNullOrWhiteSpace(Host.Jobs.PackageHistoryUrl))
-                    {
-                        <button type="button" class="btn btn-link btn-sm p-0 align-baseline"
-                                data-testid="home-package-history-link"
-                                disabled="@Host._busy"
-                                @onclick="() => Host.Projects.OpenHistoryAsync(Host.Jobs.PackageHistoryUrl!)">
-                            History
-                        </button>
-                    }
-                    @if (Host.Jobs.CanSavePackageRevision)
-                    {
-                        <button type="button" class="btn btn-link btn-sm p-0 align-baseline"
-                                data-testid="home-package-save-revision"
-                                disabled="@Host._busy"
-                                title="Commit text package and push to backup when configured"
-                                @onclick="() => Host.Projects.SaveRevisionAsync(Host.Jobs.ActivePackageProjectId)">
-                            Save revision
-                        </button>
-                    }
-                }
-                else if (Host.Jobs._packageStatus is not null && !string.IsNullOrWhiteSpace(Host.Jobs._packageStatus.SkipReason))
-                {
-                    <span class="text-muted" title="@Host.Jobs._packageStatus.SkipReason">Package history off on this host</span>
-                }
-            </div>
-
             @if (Host.Projects._manageExpanded && hasActive)
             {
-                <div class="home-manage-panel mb-3 p-2 rounded border border-secondary border-opacity-25">
+                <div class="home-manage-panel mb-3 p-2 rounded border border-secondary border-opacity-25"
+                     data-testid="home-manage-panel">
                     @{
                         var id = Host.Projects._projects.Active?.Id ?? ActiveProject.ProjectId ?? "";
                         var p = activeMeta ?? Host.Projects._projects.Projects.FirstOrDefault(x =>
@@ -174,63 +83,128 @@
                     }
                     @if (p is not null)
                     {
-                        <div class="d-flex align-items-center gap-2 flex-wrap">
-                            @if (!string.IsNullOrWhiteSpace(p.ParentProjectId) && canManage)
-                            {
-                                <a class="btn btn-sm btn-outline-warning"
-                                   href="projects/@id/review-contribution?originProjectId=@p.ParentProjectId">
-                                    Diff
-                                </a>
-                                <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@Host._busy"
-                                        @onclick="() => Host.Projects.SyncOriginAsync(id, p.ParentProjectId!)">
-                                    Sync origin
-                                </button>
-                            }
-                            @if (canManage)
-                            {
-                                <select class="form-select form-select-sm w-auto"
-                                        value="@p.VisibilityMode"
-                                        disabled="@Host._busy"
-                                        @onchange="(e) => Host.Projects.ChangeVisibilityAsync(id, e.Value?.ToString())">
-                                    <option value="Private">Private</option>
-                                    <option value="Public">Public (Read-Only)</option>
-                                    <option value="Open">Public (Forkable)</option>
-                                </select>
-                                <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@Host._busy"
-                                        @onclick="Host.Projects.BeginRenameAsync">
-                                    Rename
-                                </button>
-                                <button type="button" class="btn btn-sm btn-outline-secondary"
-                                        disabled="@(Host._busy || Host.Import._backingUp)"
-                                        data-testid="home-backup-project"
-                                        title="Download a full backup zip (project files + all media)"
-                                        @onclick="Host.Import.BackupProjectAsync">
-                                    @(Host.Import._backingUp ? "Backing up…" : "Back up")
-                                </button>
-                                <button type="button" class="btn btn-sm btn-outline-secondary"
-                                        disabled="@Host._busy"
-                                        data-testid="home-checkpoints"
-                                        title="Save named checkpoints of this project and roll back to one (your clips are kept)"
-                                        @onclick="Host.Checkpoints.ToggleCheckpointsAsync">
-                                    Checkpoints
-                                </button>
-                                <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@Host._busy"
-                                        @onclick="() => Host.Projects.OpenCollaboratorsModal(id)">
-                                    Collaborate
-                                </button>
-                                @if (Host.Projects._historyUrls.TryGetValue(id, out var historyUrl) && !string.IsNullOrWhiteSpace(historyUrl))
+                        <div class="home-manage-section">
+                            <div class="home-manage-section__title">Project</div>
+                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                                @if (!string.IsNullOrWhiteSpace(p.ParentProjectId) && canManage)
                                 {
+                                    <a class="btn btn-sm btn-outline-warning"
+                                       href="projects/@id/review-contribution?originProjectId=@p.ParentProjectId">
+                                        Diff
+                                    </a>
                                     <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@Host._busy"
-                                            @onclick="() => Host.Projects.OpenHistoryAsync(historyUrl)">
-                                        GitHub
+                                            @onclick="() => Host.Projects.SyncOriginAsync(id, p.ParentProjectId!)">
+                                        Sync origin
                                     </button>
                                 }
-                            }
-                            <button type="button" class="btn btn-sm btn-outline-danger ms-auto" disabled="@Host._busy"
-                                    @onclick="() => Host.Projects.BeginDeleteAsync(id, p.Label ?? p.Title ?? id)">
-                                Delete
-                            </button>
+                                @if (canManage)
+                                {
+                                    <select class="form-select form-select-sm w-auto"
+                                            value="@p.VisibilityMode"
+                                            disabled="@Host._busy"
+                                            @onchange="(e) => Host.Projects.ChangeVisibilityAsync(id, e.Value?.ToString())">
+                                        <option value="Private">Private</option>
+                                        <option value="Public">Public (Read-Only)</option>
+                                        <option value="Open">Public (Forkable)</option>
+                                    </select>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@Host._busy"
+                                            @onclick="Host.Projects.BeginRenameAsync">
+                                        Rename
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary"
+                                            disabled="@(Host._busy || Host.Import._backingUp)"
+                                            data-testid="home-backup-project"
+                                            title="Download a full backup zip (project files + all media)"
+                                            @onclick="Host.Import.BackupProjectAsync">
+                                        @(Host.Import._backingUp ? "Backing up…" : "Download backup")
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@Host._busy"
+                                            @onclick="() => Host.Projects.OpenCollaboratorsModal(id)">
+                                        Collaborate
+                                    </button>
+                                }
+                                <button type="button" class="btn btn-sm btn-outline-danger ms-auto" disabled="@Host._busy"
+                                        @onclick="() => Host.Projects.BeginDeleteAsync(id, p.Label ?? p.Title ?? id)">
+                                    Delete
+                                </button>
+                            </div>
                         </div>
+
+                        @if (canManage)
+                        {
+                            <div class="home-manage-section" data-testid="home-package-history">
+                                <div class="home-manage-section__title">Package backup</div>
+                                <p class="small text-muted mb-2 mb-md-1">
+                                    Git snapshot of the project package (script, plan, config). Not the same as clip versions on Film.
+                                </p>
+                                <div class="d-flex flex-wrap align-items-center gap-2 small">
+                                    @if (Host.Jobs._packageStatusLoading && Host.Jobs._packageStatus is null)
+                                    {
+                                        <span class="text-muted">Checking package status…</span>
+                                    }
+                                    else if (Host.Jobs._packageStatus is { GitAvailable: true })
+                                    {
+                                        <span>
+                                            <span class="text-muted">Last package save</span>
+                                            @if (!string.IsNullOrWhiteSpace(Host.Jobs._packageStatus.LastCommitHash))
+                                            {
+                                                <strong class="ms-1 font-monospace" data-testid="home-last-saved-hash">@Home.ShortHash(Host.Jobs._packageStatus.LastCommitHash)</strong>
+                                            }
+                                            else
+                                            {
+                                                <span class="ms-1 text-muted">—</span>
+                                            }
+                                            @if (Host.Jobs._packageStatus.LastCommitAtUtc is DateTime when)
+                                            {
+                                                <span class="text-muted ms-1" title="@when.ToString("u")">@Home.FormatRelativeUtc(when)</span>
+                                            }
+                                        </span>
+                                        @if (Host.Jobs._packageStatus.HasUncommittedChanges)
+                                        {
+                                            <span class="badge text-bg-warning text-dark fw-normal" data-testid="home-package-dirty">
+                                                Unsaved package changes
+                                            </span>
+                                        }
+                                        @if (Host.Jobs.CanSavePackageRevision)
+                                        {
+                                            <button type="button" class="btn btn-sm btn-outline-primary"
+                                                    data-testid="home-package-save-revision"
+                                                    disabled="@Host._busy"
+                                                    title="Commit the text package and push to remote backup when configured"
+                                                    @onclick="() => Host.Projects.SaveRevisionAsync(Host.Jobs.ActivePackageProjectId)">
+                                                Save package revision
+                                            </button>
+                                        }
+                                        @if (!string.IsNullOrWhiteSpace(Host.Jobs.PackageHistoryUrl)
+                                             || (Host.Projects._historyUrls.TryGetValue(id, out var histUrl) && !string.IsNullOrWhiteSpace(histUrl)))
+                                        {
+                                            var openUrl = !string.IsNullOrWhiteSpace(Host.Jobs.PackageHistoryUrl)
+                                                ? Host.Jobs.PackageHistoryUrl!
+                                                : Host.Projects._historyUrls[id];
+                                            <button type="button" class="btn btn-sm btn-outline-secondary"
+                                                    data-testid="home-package-history-link"
+                                                    disabled="@Host._busy"
+                                                    @onclick="() => Host.Projects.OpenHistoryAsync(openUrl)">
+                                                Open remote history
+                                            </button>
+                                        }
+                                    }
+                                    else if (Host.Jobs._packageStatus is not null && !string.IsNullOrWhiteSpace(Host.Jobs._packageStatus.SkipReason))
+                                    {
+                                        <span class="text-muted" title="@Host.Jobs._packageStatus.SkipReason">Package backup off on this host</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">Package backup unavailable.</span>
+                                    }
+                                </div>
+                            </div>
+
+                            <div class="home-manage-section" data-testid="home-checkpoints-section">
+                                <div class="home-manage-section__title">Named checkpoints</div>
+                                <Home_CheckpointsPanel />
+                            </div>
+                        }
                     }
                     else
                     {
@@ -269,11 +243,6 @@
                 </div>
             }
 
-            @if (Host.Checkpoints._showCheckpoints && hasActive)
-            {
-                <Home_CheckpointsPanel />
-            }
-
             @if (Host.Projects._deleteId is not null)
             {
                 <div class="border border-danger border-opacity-50 rounded p-3 mt-2 bg-dark bg-opacity-75 text-white shadow-sm">
@@ -298,7 +267,7 @@
                     <div class="min-w-0">
                         <div class="small text-muted">Full studio</div>
                         <h1 class="home-top__title mb-0">Choose a film</h1>
-                        <div class="home-top__sub">Import a book, cast, estimate, film</div>
+                        <div class="home-top__sub">Import a book, estimate, film</div>
                     </div>
                 </div>
                 <div class="d-flex align-items-center gap-2">
@@ -324,7 +293,7 @@
 
             @if (Host.Projects._projects.Projects.Count == 0 && !Host.Projects._showNew)
             {
-                <p class="small text-muted mb-0">No projects yet — create one to start Book → Cast → Film.</p>
+                <p class="small text-muted mb-0">No projects yet — create one to start Book → Estimate → Film.</p>
             }
             else if (Host.Projects._projects.Projects.Count > 0)
             {

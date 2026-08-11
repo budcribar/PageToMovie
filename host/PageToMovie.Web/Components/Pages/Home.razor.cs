@@ -30,7 +30,7 @@ public partial class Home : IAsyncDisposable
     }
 
 
-    /// <summary>Only the real current step is highlighted. Setup (0) until keys exist, then pipeline.</summary>
+    /// <summary>Highlight next step on the plan spine: Book → Estimate → Film.</summary>
     internal string HomeActiveStep
     {
         get
@@ -38,8 +38,9 @@ public partial class Home : IAsyncDisposable
             if (ActiveProject.Status is { XaiConfigured: false })
                 return "setup";
             if (!ActiveProject.HasProject) return "book";
-            if (!ActiveProject.CanCharacters) return "book";
-            if (!ActiveProject.CanEstimate) return "cast";
+            // Need screenplay before estimate (CanEstimate)
+            if (!ActiveProject.CanEstimate) return "book";
+            // Shot plan / gen not started — Decision card is next
             if (!ActiveProject.CanScenes) return "estimate";
             return "film";
         }

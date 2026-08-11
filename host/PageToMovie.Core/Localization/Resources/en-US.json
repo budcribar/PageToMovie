@@ -271,7 +271,7 @@
     "CastAndVoice": "Cast & voice",
     "PhotosCloneSample": "Photos · clone sample",
     "Estimate": "Estimate",
-    "QuoteConfirm": "Quote · confirm",
+    "QuoteConfirm": "Generate or Edit",
     "Film": "Film",
     "ClipsStitch": "Clips · stitch",
     "Review": "Review",
@@ -281,7 +281,8 @@
     "YourVoice": "Your voice",
     "RecordDone": "Record · done",
     "Movie": "Movie",
-    "GenerateAll": "Generate all"
+    "GenerateAll": "Generate all",
+    "CastOptional": "Optional · Edit path"
   },
   "FilmLength": {
     "Title": "Film length",

@@ -751,5 +751,5 @@ Use this as the build/acceptance tracker. Check items off in PRs; leave dates/no
 
 ---
 
-*Last updated: 2026-08-11 — polish: B6 auto-chain (stage2→fill-holes), lastRuntime prefill, live Film remaining strip.*
+*Last updated: 2026-08-11 — Home: Book→Estimate→Film strip (cast optional); Manage holds package backup + checkpoints; cost strip off Home.*
 
