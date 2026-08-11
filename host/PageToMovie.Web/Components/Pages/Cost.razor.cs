@@ -64,12 +64,30 @@ public partial class Cost : IAsyncDisposable
 
             (_draftRes, _retries) = await CostFormatting.ReadResolutionAndRetriesAsync(Engine, _projectId, _draftRes, _retries);
 
+            try { await ActiveProject.RefreshReadinessAsync(Engine); } catch { /* optional */ }
             await LoadAsync();
+            ApplyPhaseQuery();
         }
         catch (Exception ex)
         {
             _error = ex.Message;
         }
+    }
+
+    /// <summary>Deep links: /cost?phase=edit|confirm</summary>
+    private void ApplyPhaseQuery()
+    {
+        try
+        {
+            var phase = StudioDeepLinks.QueryValue(Nav, "phase");
+            if (string.IsNullOrWhiteSpace(phase)) return;
+            if (phase.Equals("edit", StringComparison.OrdinalIgnoreCase))
+                _phase = DecisionPhase.EditFocus;
+            else if (phase.Equals("confirm", StringComparison.OrdinalIgnoreCase)
+                     || phase.Equals("generate", StringComparison.OrdinalIgnoreCase))
+                _phase = DecisionPhase.ConfirmGenerate;
+        }
+        catch { /* ignore */ }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -225,13 +243,26 @@ public partial class Cost : IAsyncDisposable
     private async Task ConfirmGenerateAsync()
     {
         if (string.IsNullOrWhiteSpace(_projectId)) return;
-        // Fresh estimate before leaving
-        await LoadAsync();
-        if (!string.IsNullOrEmpty(_error) && _report is null) return;
+        _busy = true;
+        try
+        {
+            try { await ActiveProject.RefreshReadinessAsync(Engine); } catch { /* */ }
+            // Fresh estimate before leaving
+            await LoadAsync();
+            if (_report is null)
+            {
+                _error ??= "Could not refresh the estimate. Check your connection and try again.";
+                return;
+            }
 
-        _preferPath = "generate";
-        await PersistPrefAsync("preferPath", "generate");
-        Nav.NavigateTo(ResolveGenerateHref());
+            _preferPath = "generate";
+            await PersistPrefAsync("preferPath", "generate");
+            Nav.NavigateTo(ResolveGenerateHref());
+        }
+        finally
+        {
+            _busy = false;
+        }
     }
 
     /// <summary>
@@ -239,13 +270,11 @@ public partial class Cost : IAsyncDisposable
     /// </summary>
     private string ResolveGenerateHref()
     {
+        // B6: if shot plan missing, open shot plan as first step toward gen (not cast maze).
         if (ActiveProject.CanScenes)
             return ActiveProject.IsSimpleVoice ? "scenes?simple=1" : "scenes";
-        if (ActiveProject.CanCharacters)
-            return "adaptation/shots";
-        // Screenplay exists but cast not open — still allow shot plan attempt or cast
         if (ActiveProject.CanEstimate)
-            return "adaptation/shots";
+            return "adaptation/shots?from=decision";
         return "adaptation/screenplay";
     }
 

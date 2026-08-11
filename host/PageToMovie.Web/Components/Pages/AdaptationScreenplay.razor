@@ -131,8 +131,8 @@
 
                 @if (SignOff.IsApprovedClean)
                 {
-                    <a class="btn btn-success btn-sm" href="characters" data-testid="screenplay-signoff-done">
-                        @L["ScreenplayPage.ToCharacters"]
+                    <a class="btn btn-success btn-sm" href="cost" data-testid="screenplay-signoff-done">
+                        Estimate →
                     </a>
                 }
                 else
@@ -318,13 +318,18 @@
                             — firms up after cast & voice.
                         </div>
                     }
-                    <button type="button"
-                            class="btn btn-primary btn-sm mt-1"
-                            data-testid="trim-run"
-                            disabled="@(Busy || Jobs.JobRunning)"
-                            @onclick="Tools.TrimAsync">
-                        Fit screenplay to this length
-                    </button>
+                    <div class="d-flex flex-wrap gap-2 align-items-center mt-1">
+                        <button type="button"
+                                class="btn btn-primary btn-sm"
+                                data-testid="trim-run"
+                                disabled="@(Busy || Jobs.JobRunning)"
+                                @onclick="Tools.TrimAsync">
+                            Fit screenplay to this length
+                        </button>
+                        <a class="btn btn-outline-primary btn-sm" href="cost" data-testid="fit-back-to-estimate">
+                            Back to Estimate →
+                        </a>
+                    </div>
                 </div>
             }
 

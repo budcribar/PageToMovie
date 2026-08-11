@@ -198,22 +198,46 @@ else
                         About <strong>@DurationLabel</strong> · <strong>@Usd(estimate)</strong>
                         (@_report.DraftResolution, @EstimateBasisLabel).
                     </p>
-                    @if (!string.IsNullOrWhiteSpace(GenerateBlockedReason) && !ActiveProject.CanScenes)
+                    @if (!ActiveProject.CanEstimate)
+                    {
+                        <div class="alert alert-warning py-2 small mb-3" data-testid="decision-blocked">
+                            @(ActiveProject.EstimateBlockedReason ?? "Screenplay not ready.")
+                            <a class="alert-link ms-1" href="adaptation">Go to Book →</a>
+                        </div>
+                    }
+                    else if (!ActiveProject.CanScenes)
                     {
                         <div class="alert alert-info py-2 small mb-3" data-testid="decision-generate-hint">
                             @GenerateBlockedReason
+                            Next: build or open the <strong>shot plan</strong>, then Film to generate clips.
                         </div>
+                    }
+                    else
+                    {
+                        <p class="small text-muted mb-3">
+                            Shot plan is ready — continue opens Film to generate clips for this plan.
+                        </p>
                     }
                     <div class="d-flex flex-wrap gap-2">
                         <button type="button"
                                 class="btn btn-success fw-semibold px-4"
                                 data-testid="decision-confirm-go"
-                                disabled="@_busy"
+                                disabled="@(_busy || !ActiveProject.CanEstimate)"
                                 @onclick="ConfirmGenerateAsync">
-                            @(ActiveProject.CanScenes ? "Go to Film →" : "Continue to plan / Film →")
+                            @if (ActiveProject.CanScenes)
+                            {
+                                <text>Go to Film →</text>
+                            }
+                            else
+                            {
+                                <text>Continue to shot plan →</text>
+                            }
                         </button>
                         <button type="button" class="btn btn-outline-secondary" data-testid="decision-confirm-back" @onclick="BackToCard">
                             Cancel
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" disabled="@_busy" @onclick="LoadAsync">
+                            Refresh estimate
                         </button>
                     </div>
                 </div>

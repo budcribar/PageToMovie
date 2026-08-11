@@ -136,9 +136,10 @@ public partial class AdaptationScreenplay
                 S.Message = result?.Message ?? "Screenplay approved";
                 if (result?.Ok == true)
                 {
-                    S.BusyMessage = "Opening cast…";
+                    S.BusyMessage = "Opening estimate…";
                     await S.InvokeAsync(S.StateHasChanged);
-                    S.Nav.NavigateTo("characters");
+                    // DecisionCard: cost + duration → Generate | Edit (not cast-first maze)
+                    S.Nav.NavigateTo("cost");
                 }
             }
             catch (Exception ex)

@@ -603,8 +603,8 @@ Use this as the build/acceptance tracker. Check items off in PRs; leave dates/no
 | [x] | **B2** Actions: **Generate movie** \| **Edit plan first** | Replaces Agree & Continue maze |
 | [x] | **B3** Load **per-user** prefs for emphasis only; always show card | localStorage preferPath/editFocus |
 | [x] | **B4** ConfirmGenerate: one confirm with current $ + min | decision-confirm-generate |
-| | **B5** Blocked state: credits / keys / pipeline / ACL with return to card | |
-| | **B6** If shot plan missing on Generate: run plan as first job step or estimate-only then plan | Product choice — document in PR |
+| [x] | **B5** Blocked state when estimate not ready; confirm disabled | decision-blocked |
+| [x] | **B6** If shot plan missing on Generate: open shot plan (`?from=decision`) then Film | not auto-job yet |
 | | **B7** Fountain import CTA on import surfaces → same DecisionCard | Shortcut path |
 
 ### Phase C — Edit focus + toolkits
