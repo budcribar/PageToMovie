@@ -96,8 +96,11 @@ public sealed class CostReportService
         var refinement = await BuildHistoryRefinementAsync(
             projectId, priorVideoMultiplier, qaRetryOnFail, qaMaxRetries, actual, ct)
             .ConfigureAwait(false);
-        var qaVideoMultiplier = qaRetryOnFail ? refinement.AppliedVideoMultiplier : 1.0;
-        var qaExpectedExtraGens = qaRetryOnFail ? Math.Max(0, qaVideoMultiplier - 1.0) : 0.0;
+        // H5: scale video estimate with blended expected takes (QA mult and/or learned p50).
+        var qaVideoMultiplier = Math.Max(
+            qaRetryOnFail ? refinement.AppliedVideoMultiplier : 1.0,
+            refinement.ExpectedTakes > 0 ? refinement.ExpectedTakes : 1.0);
+        var qaExpectedExtraGens = Math.Max(0, qaVideoMultiplier - 1.0);
         if (qaExpectedExtraGens > retries)
             retries = qaExpectedExtraGens;
 
@@ -316,12 +319,75 @@ public sealed class CostReportService
             estimateList.GetValueOrDefault(CostCategories.Review) +
             estimateList.GetValueOrDefault(CostCategories.Other));
 
-        // A1/A3 decision-facing $ band and duration labels (cold-start prior from QA mult).
+        // A1/A3/H5/H6 decision-facing $ band and duration labels.
+        // Prefer learned expected takes (p50 blend); fall back to QA video multiplier.
+        var expectedTakes = Math.Max(1.0, refinement.ExpectedTakes > 0
+            ? refinement.ExpectedTakes
+            : qaVideoMultiplier);
+        refinement.ExpectedTakes = expectedTakes;
+
+        // H4/H6 — optional p25/p75 from global/project takes telemetry (fail-open).
+        double takesP25 = 1.0;
+        double takesP75 = Math.Max(expectedTakes, 1.5);
+        var takesLearning = new CostTakesLearning
+        {
+            PriorTakes = Math.Max(1.0, refinement.PriorVideoMultiplier),
+            ExpectedTakes = expectedTakes,
+            BlendWeight = refinement.HistoryWeight,
+            UsedLearnedTakes = refinement.LearnedTakesP50 is > 0,
+        };
+        try
+        {
+            if (_userDb is not null)
+            {
+                var g = await _userDb.GetTakesTelemetryStatsAsync(projectId: null, ct).ConfigureAwait(false);
+                var p = await _userDb.GetTakesTelemetryStatsAsync(projectId, ct).ConfigureAwait(false);
+                takesLearning.GlobalClipSamples = g.ClipSampleCount;
+                takesLearning.ProjectClipSamples = p.ClipSampleCount;
+                if (g.ClipSampleCount > 0)
+                {
+                    takesLearning.GlobalP25 = g.P25TakesPerClip;
+                    takesLearning.GlobalP50 = g.P50TakesPerClip;
+                    takesLearning.GlobalP75 = g.P75TakesPerClip;
+                }
+                if (p.ClipSampleCount > 0)
+                {
+                    takesLearning.ProjectMeanTakes = p.MeanTakesPerClip;
+                    takesLearning.ProjectRegenRate = p.RegenRate;
+                }
+                var rangeSrc = p.SufficientForBlend ? p : g.SufficientForBlend ? g : null;
+                if (rangeSrc is not null)
+                {
+                    takesP25 = Math.Max(1.0, rangeSrc.P25TakesPerClip);
+                    takesP75 = Math.Max(takesP25, rangeSrc.P75TakesPerClip);
+                    takesLearning.SufficientForRange = true;
+                    takesLearning.HistoryLabel =
+                        $"typical ~{rangeSrc.P50TakesPerClip:0.##} takes/clip from studio history (n={rangeSrc.ClipSampleCount})";
+                }
+                else if (g.ClipSampleCount > 0 || p.ClipSampleCount > 0)
+                {
+                    takesLearning.HistoryLabel =
+                        $"learning takes/clip (n={Math.Max(g.ClipSampleCount, p.ClipSampleCount)}; need {UserDatabaseService.MinTakesClipSamples})";
+                }
+                if (p.ClipSampleCount > 0 && expectedTakes > 0)
+                {
+                    var delta = p.MeanTakesPerClip - expectedTakes;
+                    takesLearning.CalibrationLabel =
+                        $"This project ~{p.MeanTakesPerClip:0.##} takes/clip actual vs ~{expectedTakes:0.##} in estimate" +
+                        (Math.Abs(delta) < 0.05 ? " (on track)." : delta > 0 ? " (running hotter)." : " (running cooler).");
+                }
+            }
+        }
+        catch
+        {
+            // H9 fail-open
+        }
+
+        // first-pass unit cost ≈ point / expectedTakes (point already includes expected takes via retries)
         var costPoint = Math.Round(fullDraft, 2);
-        var expectedTakes = Math.Max(1.0, qaVideoMultiplier);
-        var costLow = Math.Round(costPoint / expectedTakes * 1.0, 2);
-        var highTakes = Math.Max(expectedTakes, 1.5);
-        var costHigh = Math.Round(costPoint / expectedTakes * highTakes, 2);
+        var firstPassUnit = expectedTakes > 0.01 ? costPoint / expectedTakes : costPoint;
+        var costLow = Math.Round(firstPassUnit * takesP25, 2);
+        var costHigh = Math.Round(firstPassUnit * takesP75, 2);
         if (costLow > costPoint) costLow = costPoint;
         if (costHigh < costPoint) costHigh = costPoint;
 
@@ -332,9 +398,12 @@ public sealed class CostReportService
         var durationLabel = durationMinutes is > 0
             ? $"~{durationMinutes:0.#} min"
             : "duration TBD";
+        var showRange = estimateBasis != "none" && costPoint > 0 &&
+            (takesLearning.SufficientForRange || estimateConfidence is "rough" or "very_low") &&
+            Math.Abs(costHigh - costLow) >= 0.5;
         var costLabel = estimateBasis == "none" || costPoint <= 0
             ? "—"
-            : (estimateConfidence is "rough" or "very_low") && Math.Abs(costHigh - costLow) >= 0.5
+            : showRange
                 ? $"~${costLow:0.##}–${costHigh:0.##}"
                 : $"~${costPoint:0.##}";
 
@@ -358,6 +427,7 @@ public sealed class CostReportService
             DurationMinutes = durationMinutes,
             DurationLabel = durationLabel,
             CostLabel = costLabel,
+            TakesLearning = takesLearning,
             VoiceIncludedInEstimate = voicePlan.Included,
             ChargeMultiplier = mult,
             OutputRateDraft = OutputRate(draftRes, draftRates),
@@ -624,6 +694,42 @@ public sealed class CostReportService
 
         await AppendCostEventAsync(projectId, evt, save: true, ct).ConfigureAwait(false);
 
+        // H1/H9 — dual-write take to studio SQLite for aggregates (fail-open).
+        if (_userDb is not null)
+        {
+            var contribute = true;
+            try
+            {
+                // Project opt-out: cost_estimates.contribute_to_studio_averages = false
+                if (cfg.TryGetValue("cost_estimates", out var ceOpt) &&
+                    ceOpt.ValueKind == JsonValueKind.Object &&
+                    ceOpt.TryGetProperty("contribute_to_studio_averages", out var cta) &&
+                    cta.ValueKind is JsonValueKind.False)
+                    contribute = false;
+            }
+            catch { /* fail-open contribute */ }
+
+            await _userDb.TryInsertVideoTakeEventAsync(new VideoTakeEventRecord
+            {
+                ProjectId = projectId,
+                UserId = userId,
+                Scene = scene,
+                Clip = clip,
+                TakeIndex = takeIndex,
+                TakeKind = resolvedKind,
+                Model = model,
+                Resolution = resolution,
+                ListUsd = listUsd,
+                DurationSec = priced.DurationSec,
+                KeyMode = string.IsNullOrWhiteSpace(keyMode) ? "personal" : keyMode.Trim().ToLowerInvariant(),
+                StableBeatId = stableBeatId,
+                HadCharRefs = hadCharRefs ?? hasRefImage,
+                HadLocRef = hadLocRef ?? false,
+                MinutesSincePrevTake = minutesSincePrev,
+                ContributeToStudioAverages = contribute,
+            }, ct).ConfigureAwait(false);
+        }
+
         if (_credits is not null && chargeUsd > 0)
         {
             await _credits.TryDebitUsageAsync(
@@ -634,6 +740,76 @@ public sealed class CostReportService
                 note: $"S{scene:D2}C{clip} {model} {priced.DurationSec:F1}s ×{mult:0.##}",
                 ct: ct).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>
+    /// H3 — optional one-click reason after user regen. Updates ledger + studio take table (fail-open).
+    /// </summary>
+    public async Task<bool> SetTakeReasonAsync(
+        string projectId,
+        int scene,
+        int clip,
+        string reason,
+        int? takeIndex = null,
+        CancellationToken ct = default)
+    {
+        var r = VideoTakeReasons.NormalizeOptional(reason);
+        if (r is null || string.IsNullOrWhiteSpace(projectId)) return false;
+
+        var dbOk = false;
+        if (_userDb is not null)
+            dbOk = await _userDb.TrySetVideoTakeReasonAsync(projectId, scene, clip, r, takeIndex, ct)
+                .ConfigureAwait(false);
+
+        // Also stamp project cost_ledger last matching video event.
+        var ledgerOk = false;
+        try
+        {
+            var path = await StatePathAsync(projectId, ct).ConfigureAwait(false);
+            if (File.Exists(path))
+            {
+                await using var stream = File.OpenRead(path);
+                using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct)
+                    .ConfigureAwait(false);
+                var root = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+                foreach (var p in doc.RootElement.EnumerateObject())
+                    root[p.Name] = p.Value.Deserialize<object>();
+
+                if (doc.RootElement.TryGetProperty("cost_ledger", out var ledger) &&
+                    ledger.ValueKind == JsonValueKind.Array)
+                {
+                    var list = ledger.EnumerateArray().Select(x => x.Clone()).ToList();
+                    for (var i = list.Count - 1; i >= 0; i--)
+                    {
+                        var e = list[i];
+                        if (!string.Equals(GetRawKind(e), "video", StringComparison.OrdinalIgnoreCase))
+                            continue;
+                        if (!TryGetInt(e, "scene", out var sn) || sn != scene) continue;
+                        if (!TryGetInt(e, "clip", out var cn) || cn != clip) continue;
+                        if (takeIndex is > 0 && TryGetInt(e, "take_index", out var ti) && ti != takeIndex)
+                            continue;
+                        var dict = e.Deserialize<Dictionary<string, object?>>()
+                                   ?? new Dictionary<string, object?>();
+                        dict["reason"] = r;
+                        list[i] = JsonSerializer.SerializeToElement(dict);
+                        ledgerOk = true;
+                        break;
+                    }
+                    if (ledgerOk)
+                    {
+                        root["cost_ledger"] = list.Select(x => x.Deserialize<object>()).ToList();
+                        var json = JsonSerializer.Serialize(root, JsonDefaults.Indented);
+                        await File.WriteAllTextAsync(path, json + "\n", ct).ConfigureAwait(false);
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // H9 fail-open
+        }
+
+        return dbOk || ledgerOk;
     }
 
     /// <summary>H1 — next take_index and minutes since last take for scene+clip.</summary>
@@ -991,6 +1167,7 @@ public sealed class CostReportService
                 ? hlr.GetBoolean()
                 : null,
             MinutesSincePrevTake = TryGetDouble(e, "minutes_since_prev_take", out var msp) ? msp : null,
+            Reason = e.TryGetProperty("reason", out var rr) ? rr.GetString() : null,
         };
     }
 
@@ -2063,6 +2240,45 @@ public sealed class CostReportService
             bits.Add($"{refn.ReviewApiSamples} review API samples");
         if (projectActual.EventCount > 0)
             bits.Add($"{projectActual.EventCount} project ledger events");
+
+        // H4/H5 — blend learned takes-per-clip (p50) into expected video multiplier.
+        refn.ExpectedTakes = Math.Max(1.0, refn.AppliedVideoMultiplier);
+        try
+        {
+            if (_userDb is not null)
+            {
+                var globalTakes = await _userDb.GetTakesTelemetryStatsAsync(projectId: null, ct)
+                    .ConfigureAwait(false);
+                var projectTakes = await _userDb.GetTakesTelemetryStatsAsync(projectId, ct)
+                    .ConfigureAwait(false);
+                // Prefer project when it has enough samples; else global contribute=1 pool.
+                var takesSrc = projectTakes.SufficientForBlend ? projectTakes
+                    : globalTakes.SufficientForBlend ? globalTakes
+                    : null;
+                if (takesSrc is not null && takesSrc.P50TakesPerClip >= 1.0)
+                {
+                    refn.TakesClipSamples = takesSrc.ClipSampleCount;
+                    refn.LearnedTakesP50 = takesSrc.P50TakesPerClip;
+                    var tw = Math.Min(1.0, takesSrc.ClipSampleCount / 30.0);
+                    var priorTakes = Math.Max(1.0, refn.AppliedVideoMultiplier);
+                    var learned = Math.Clamp(takesSrc.P50TakesPerClip, 1.0, 4.0);
+                    refn.ExpectedTakes = Math.Round(priorTakes * (1 - tw) + learned * tw, 3);
+                    refn.HistoryWeight = Math.Max(refn.HistoryWeight, tw);
+                    refn.UsedHistory = true;
+                    // Keep AppliedVideoMultiplier in sync so video estimates scale with expected takes.
+                    if (qaRetryOnFail || takesSrc.SufficientForBlend)
+                        refn.AppliedVideoMultiplier = Math.Max(refn.AppliedVideoMultiplier, refn.ExpectedTakes);
+                    bits.Add(
+                        $"takes p50={takesSrc.P50TakesPerClip:0.##} (n={takesSrc.ClipSampleCount}, {takesSrc.Scope}) " +
+                        $"→ expected {refn.ExpectedTakes:0.##}");
+                }
+            }
+        }
+        catch
+        {
+            // H9 fail-open — keep prior expected takes
+        }
+
         if (bits.Count == 0)
             bits.Add("no history yet — using catalog priors");
         else if (w > 0 && qaRetryOnFail)

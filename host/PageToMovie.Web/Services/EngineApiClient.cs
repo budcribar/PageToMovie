@@ -3258,6 +3258,40 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
             ct);
     }
 
+    /// <summary>H3 — optional one-click reason after user regen.</summary>
+    public async Task SetTakeReasonAsync(
+        string projectId,
+        int scene,
+        int clip,
+        string reason,
+        int? takeIndex = null,
+        CancellationToken ct = default)
+    {
+        SyncIdentityHeaders();
+        using var resp = await _http.PostAsJsonAsync(
+            $"/api/projects/{Uri.EscapeDataString(projectId)}/cost/take-reason",
+            new { scene, clip, reason, takeIndex },
+            JsonOpts,
+            ct);
+        // Fail-open: ignore non-success (reason is optional UX)
+        _ = resp;
+    }
+
+    /// <summary>H7 admin takes-per-clip dashboard (aggregates only).</summary>
+    public async Task<TakesTelemetryAdminDto?> GetAdminTakesTelemetryAsync(
+        string? projectId = null,
+        CancellationToken ct = default)
+    {
+        SyncIdentityHeaders();
+        var qs = string.IsNullOrWhiteSpace(projectId)
+            ? ""
+            : $"?projectId={Uri.EscapeDataString(projectId.Trim())}";
+        return await _http.GetFromJsonAsync<TakesTelemetryAdminDto>(
+            $"/api/admin/takes-telemetry{qs}",
+            JsonOpts,
+            ct);
+    }
+
     /// <summary>
     /// Spend by provider for a project (default: signed-in user only).
     /// Pass <paramref name="allUsers"/> true only as admin for full project totals.
@@ -4754,6 +4788,13 @@ public sealed class CostDto
     public bool Ok { get; set; }
     public string? ProjectId { get; set; }
     public CostReport? Cost { get; set; }
+}
+
+public sealed class TakesTelemetryAdminDto
+{
+    public bool Ok { get; set; }
+    public TakesTelemetryStats? Global { get; set; }
+    public TakesTelemetryStats? Project { get; set; }
 }
 
 public sealed class VisualMediumDto

@@ -420,6 +420,41 @@ public class UserDatabaseService
                     cmd.ExecuteNonQuery();
                 }
 
+                // H1–H9: durable video take events for takes-per-clip learning (fail-open dual-write).
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = @"
+                        CREATE TABLE IF NOT EXISTS video_take_events (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            ts TEXT NOT NULL,
+                            project_id TEXT NOT NULL,
+                            user_id TEXT,
+                            scene INTEGER NOT NULL,
+                            clip INTEGER NOT NULL,
+                            take_index INTEGER NOT NULL DEFAULT 1,
+                            take_kind TEXT NOT NULL,
+                            reason TEXT,
+                            model TEXT,
+                            resolution TEXT,
+                            list_usd REAL,
+                            duration_sec REAL,
+                            key_mode TEXT,
+                            stable_beat_id TEXT,
+                            had_char_refs INTEGER NOT NULL DEFAULT 0,
+                            had_loc_ref INTEGER NOT NULL DEFAULT 0,
+                            minutes_since_prev REAL,
+                            contribute INTEGER NOT NULL DEFAULT 1
+                        );
+                        CREATE INDEX IF NOT EXISTS idx_video_take_events_project
+                            ON video_take_events(project_id, scene, clip);
+                        CREATE INDEX IF NOT EXISTS idx_video_take_events_ts
+                            ON video_take_events(ts);
+                        CREATE INDEX IF NOT EXISTS idx_video_take_events_kind
+                            ON video_take_events(take_kind);
+                    ";
+                    cmd.ExecuteNonQuery();
+                }
+
                 // v5: attribute orphaned cost rows (no user / no project) to Bud Cribar + development.
                 // Also backfill charge_usd. Detects old DBs via PRAGMA user_version < 5 (Railway).
                 using (var vCmd5 = conn.CreateCommand())
@@ -464,6 +499,20 @@ public class UserDatabaseService
                             string.IsNullOrWhiteSpace(_billing.CanonicalAccountEmail)
                                 ? "budcribar@msn.com"
                                 : _billing.CanonicalAccountEmail.Trim());
+                    }
+                }
+
+                // v7: video_take_events (CREATE IF NOT EXISTS above is idempotent).
+                using (var vCmd7 = conn.CreateCommand())
+                {
+                    vCmd7.CommandText = "PRAGMA user_version;";
+                    var ver7 = Convert.ToInt32(vCmd7.ExecuteScalar() ?? 0);
+                    if (ver7 < 7)
+                    {
+                        using var setVer7 = conn.CreateCommand();
+                        setVer7.CommandText = "PRAGMA user_version = 7;";
+                        setVer7.ExecuteNonQuery();
+                        _logger.LogInformation("Migrated SQLite schema to user_version 7 (video_take_events)");
                     }
                 }
 
@@ -953,7 +1002,7 @@ public class UserDatabaseService
                 continue;
             var oldPrefix = oldSeg + "/";
             var newPrefix = newSeg + "/";
-            foreach (var table in new[] { "user_api_calls", "generation_errors", "credit_ledger" })
+            foreach (var table in new[] { "user_api_calls", "generation_errors", "credit_ledger", "video_take_events" })
             {
                 using var up = conn.CreateCommand();
                 up.CommandText = $@"
@@ -1439,6 +1488,283 @@ public class UserDatabaseService
         return list;
     }
 
+
+    /// <summary>
+    /// H1/H9 — dual-write a video take for studio aggregates. Never throws (fail-open).
+    /// </summary>
+    public async Task TryInsertVideoTakeEventAsync(VideoTakeEventRecord rec, CancellationToken ct = default)
+    {
+        try
+        {
+            if (rec is null || string.IsNullOrWhiteSpace(rec.ProjectId)) return;
+            EnsureDatabaseInitialized();
+            using var conn = new SqliteConnection(ConnectionString);
+            await conn.OpenAsync(ct).ConfigureAwait(false);
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO video_take_events (
+                    ts, project_id, user_id, scene, clip, take_index, take_kind, reason,
+                    model, resolution, list_usd, duration_sec, key_mode, stable_beat_id,
+                    had_char_refs, had_loc_ref, minutes_since_prev, contribute)
+                VALUES (
+                    @ts, @projectId, @userId, @scene, @clip, @takeIndex, @takeKind, @reason,
+                    @model, @resolution, @listUsd, @durationSec, @keyMode, @stableBeatId,
+                    @hadChar, @hadLoc, @minutesPrev, @contribute)
+                """;
+            var ts = string.IsNullOrWhiteSpace(rec.Ts)
+                ? DateTimeOffset.UtcNow.ToString("o")
+                : rec.Ts!;
+            cmd.Parameters.AddWithValue("@ts", ts);
+            cmd.Parameters.AddWithValue("@projectId", rec.ProjectId.Trim());
+            cmd.Parameters.AddWithValue("@userId", (object?)rec.UserId ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@scene", rec.Scene);
+            cmd.Parameters.AddWithValue("@clip", rec.Clip);
+            cmd.Parameters.AddWithValue("@takeIndex", Math.Max(1, rec.TakeIndex));
+            cmd.Parameters.AddWithValue("@takeKind",
+                VideoTakeKinds.Normalize(rec.TakeKind, VideoTakeKinds.Initial));
+            cmd.Parameters.AddWithValue("@reason",
+                (object?)VideoTakeReasons.NormalizeOptional(rec.Reason) ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@model", (object?)rec.Model ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@resolution", (object?)rec.Resolution ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@listUsd", rec.ListUsd is double lu ? lu : DBNull.Value);
+            cmd.Parameters.AddWithValue("@durationSec", rec.DurationSec is double ds ? ds : DBNull.Value);
+            cmd.Parameters.AddWithValue("@keyMode", (object?)rec.KeyMode ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@stableBeatId", (object?)rec.StableBeatId ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@hadChar", rec.HadCharRefs ? 1 : 0);
+            cmd.Parameters.AddWithValue("@hadLoc", rec.HadLocRef ? 1 : 0);
+            cmd.Parameters.AddWithValue("@minutesPrev",
+                rec.MinutesSincePrevTake is double m ? m : DBNull.Value);
+            cmd.Parameters.AddWithValue("@contribute", rec.ContributeToStudioAverages ? 1 : 0);
+            await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            // H9 fail-open
+            _logger.LogDebug(ex, "TryInsertVideoTakeEventAsync failed (ignored)");
+        }
+    }
+
+    /// <summary>
+    /// H3 — set reason on the latest matching take event (optional take_index). Fail-open returns false.
+    /// </summary>
+    public async Task<bool> TrySetVideoTakeReasonAsync(
+        string projectId,
+        int scene,
+        int clip,
+        string reason,
+        int? takeIndex = null,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var r = VideoTakeReasons.NormalizeOptional(reason);
+            if (r is null || string.IsNullOrWhiteSpace(projectId)) return false;
+            EnsureDatabaseInitialized();
+            using var conn = new SqliteConnection(ConnectionString);
+            await conn.OpenAsync(ct).ConfigureAwait(false);
+            using var cmd = conn.CreateCommand();
+            if (takeIndex is > 0)
+            {
+                cmd.CommandText = """
+                    UPDATE video_take_events
+                    SET reason = @reason
+                    WHERE id = (
+                        SELECT id FROM video_take_events
+                        WHERE project_id = @projectId AND scene = @scene AND clip = @clip
+                          AND take_index = @takeIndex
+                        ORDER BY id DESC LIMIT 1)
+                    """;
+                cmd.Parameters.AddWithValue("@takeIndex", takeIndex.Value);
+            }
+            else
+            {
+                cmd.CommandText = """
+                    UPDATE video_take_events
+                    SET reason = @reason
+                    WHERE id = (
+                        SELECT id FROM video_take_events
+                        WHERE project_id = @projectId AND scene = @scene AND clip = @clip
+                        ORDER BY id DESC LIMIT 1)
+                    """;
+            }
+            cmd.Parameters.AddWithValue("@reason", r);
+            cmd.Parameters.AddWithValue("@projectId", projectId.Trim());
+            cmd.Parameters.AddWithValue("@scene", scene);
+            cmd.Parameters.AddWithValue("@clip", clip);
+            var n = await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+            return n > 0;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "TrySetVideoTakeReasonAsync failed");
+            return false;
+        }
+    }
+
+    public const int MinTakesClipSamples = 12;
+
+    /// <summary>
+    /// H4/H7/H9 — aggregate takes-per-clip. Global scope only includes contribute=1 rows.
+    /// Never throws — empty stats on failure.
+    /// </summary>
+    public async Task<TakesTelemetryStats> GetTakesTelemetryStatsAsync(
+        string? projectId = null,
+        CancellationToken ct = default)
+    {
+        var stats = new TakesTelemetryStats
+        {
+            Scope = string.IsNullOrWhiteSpace(projectId) ? "global" : "project",
+        };
+        try
+        {
+            EnsureDatabaseInitialized();
+            using var conn = new SqliteConnection(ConnectionString);
+            await conn.OpenAsync(ct).ConfigureAwait(false);
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = """
+                    SELECT project_id, scene, clip, MAX(take_index) AS takes
+                    FROM video_take_events
+                    WHERE (@projectId = '' OR project_id = @projectId)
+                      AND (@projectId != '' OR contribute = 1)
+                    GROUP BY project_id, scene, clip
+                    """;
+                cmd.Parameters.AddWithValue("@projectId",
+                    string.IsNullOrWhiteSpace(projectId) ? "" : projectId.Trim());
+                var takes = new List<int>();
+                using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+                while (await r.ReadAsync(ct).ConfigureAwait(false))
+                    takes.Add(Math.Max(1, r.GetInt32(3)));
+                stats.ClipSampleCount = takes.Count;
+                if (takes.Count > 0)
+                {
+                    takes.Sort();
+                    stats.MeanTakesPerClip = Math.Round(takes.Average(), 3);
+                    stats.P25TakesPerClip = PercentileSorted(takes, 0.25);
+                    stats.P50TakesPerClip = PercentileSorted(takes, 0.50);
+                    stats.P75TakesPerClip = PercentileSorted(takes, 0.75);
+                    stats.RegenRate = Math.Round(takes.Count(t => t >= 2) / (double)takes.Count, 4);
+                }
+            }
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = """
+                    SELECT take_kind, COUNT(*)
+                    FROM video_take_events
+                    WHERE (@projectId = '' OR project_id = @projectId)
+                      AND (@projectId != '' OR contribute = 1)
+                    GROUP BY take_kind
+                    """;
+                cmd.Parameters.AddWithValue("@projectId",
+                    string.IsNullOrWhiteSpace(projectId) ? "" : projectId.Trim());
+                using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+                var byKind = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                while (await r.ReadAsync(ct).ConfigureAwait(false))
+                {
+                    var k = r.IsDBNull(0) ? "unknown" : r.GetString(0);
+                    var c = r.GetInt32(1);
+                    byKind[k] = c;
+                    stats.EventCount += c;
+                }
+                if (stats.EventCount > 0)
+                {
+                    double Share(string kind) =>
+                        byKind.TryGetValue(kind, out var n) ? Math.Round(n / (double)stats.EventCount, 4) : 0;
+                    stats.InitialShare = Share(VideoTakeKinds.Initial);
+                    stats.UserRegenShare = Share(VideoTakeKinds.UserRegen);
+                    stats.QaAutoShare = Share(VideoTakeKinds.QaAuto);
+                    stats.FillHolesShare = Share(VideoTakeKinds.FillHoles);
+                    stats.StaleRegenShare = Share(VideoTakeKinds.StaleRegen);
+                }
+            }
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = """
+                    SELECT reason, COUNT(*)
+                    FROM video_take_events
+                    WHERE reason IS NOT NULL AND TRIM(reason) != ''
+                      AND (@projectId = '' OR project_id = @projectId)
+                      AND (@projectId != '' OR contribute = 1)
+                    GROUP BY reason
+                    """;
+                cmd.Parameters.AddWithValue("@projectId",
+                    string.IsNullOrWhiteSpace(projectId) ? "" : projectId.Trim());
+                using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+                while (await r.ReadAsync(ct).ConfigureAwait(false))
+                    stats.Reasons[r.GetString(0)] = r.GetInt32(1);
+            }
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = """
+                    SELECT substr(ts, 1, 10) AS day, project_id, scene, clip, MAX(take_index)
+                    FROM video_take_events
+                    WHERE (@projectId = '' OR project_id = @projectId)
+                      AND (@projectId != '' OR contribute = 1)
+                      AND ts >= @since
+                    GROUP BY day, project_id, scene, clip
+                    """;
+                cmd.Parameters.AddWithValue("@projectId",
+                    string.IsNullOrWhiteSpace(projectId) ? "" : projectId.Trim());
+                cmd.Parameters.AddWithValue("@since",
+                    DateTime.UtcNow.AddDays(-84).ToString("yyyy-MM-dd"));
+                var byWeek = new Dictionary<string, List<int>>(StringComparer.Ordinal);
+                using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+                while (await r.ReadAsync(ct).ConfigureAwait(false))
+                {
+                    var day = r.IsDBNull(0) ? "" : r.GetString(0);
+                    if (!DateTime.TryParse(day, out var d)) continue;
+                    var weekStart = d.Date.AddDays(-(int)d.DayOfWeek).ToString("yyyy-MM-dd");
+                    if (!byWeek.TryGetValue(weekStart, out var list))
+                    {
+                        list = new List<int>();
+                        byWeek[weekStart] = list;
+                    }
+                    list.Add(Math.Max(1, r.GetInt32(4)));
+                }
+                foreach (var kv in byWeek.OrderBy(k => k.Key))
+                {
+                    var list = kv.Value;
+                    if (list.Count == 0) continue;
+                    stats.Weekly.Add(new TakesTelemetryWeekBucket
+                    {
+                        WeekStart = kv.Key,
+                        ClipSampleCount = list.Count,
+                        MeanTakesPerClip = Math.Round(list.Average(), 3),
+                        RegenRate = Math.Round(list.Count(t => t >= 2) / (double)list.Count, 4),
+                    });
+                }
+            }
+
+            stats.SufficientForBlend = stats.ClipSampleCount >= MinTakesClipSamples;
+            stats.Notes = stats.ClipSampleCount == 0
+                ? "No take events yet."
+                : stats.SufficientForBlend
+                    ? $"n={stats.ClipSampleCount} clips; p50={stats.P50TakesPerClip:0.##} takes/clip."
+                    : $"n={stats.ClipSampleCount} clips (need {MinTakesClipSamples} for blend); p50={stats.P50TakesPerClip:0.##}.";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "GetTakesTelemetryStatsAsync failed");
+            stats.Notes = "Take telemetry unavailable (fail-open).";
+        }
+        return stats;
+    }
+
+    private static double PercentileSorted(List<int> sortedAsc, double p)
+    {
+        if (sortedAsc.Count == 0) return 0;
+        if (sortedAsc.Count == 1) return sortedAsc[0];
+        var idx = (sortedAsc.Count - 1) * p;
+        var lo = (int)Math.Floor(idx);
+        var hi = (int)Math.Ceiling(idx);
+        if (lo == hi) return sortedAsc[lo];
+        var w = idx - lo;
+        return Math.Round(sortedAsc[lo] * (1 - w) + sortedAsc[hi] * w, 3);
+    }
 
     /// <summary>
     /// Aggregate list-rate spend from user_api_calls for estimate refinement.

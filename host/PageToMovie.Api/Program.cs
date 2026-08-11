@@ -7053,6 +7053,76 @@ app.MapGet("/api/projects/{id}/cost", async (
     }
 });
 
+/// <summary>
+/// H3 — optional one-click reason after user regen (dialogue / look / motion / audio / other).
+/// Never blocks gen if this fails.
+/// </summary>
+app.MapPost("/api/projects/{id}/cost/take-reason", async (
+    string id,
+    TakeReasonBody body,
+    ProjectStore store,
+    CostReportService costs,
+    CancellationToken ct) =>
+{
+    try
+    {
+        _ = await store.GetProjectAsync(id, ct)
+            ?? throw new InvalidOperationException($"Unknown project: {id}");
+        if (body.Scene <= 0 || body.Clip <= 0)
+            return Results.BadRequest(new { ok = false, error = "scene and clip required" });
+        var ok = await costs.SetTakeReasonAsync(id, body.Scene, body.Clip, body.Reason ?? "", body.TakeIndex, ct);
+        return Results.Ok(new { ok, projectId = id, scene = body.Scene, clip = body.Clip, reason = body.Reason });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { ok = false, error = ex.Message });
+    }
+});
+
+/// <summary>H4/H7/H8 — takes-per-clip telemetry (global aggregates never include other users' project ids).</summary>
+app.MapGet("/api/admin/takes-telemetry", async (
+    IUserContext user,
+    UserDatabaseService userDb,
+    string? projectId,
+    CancellationToken ct) =>
+{
+    if (!user.IsAdmin)
+        return Results.Json(new { ok = false, error = "Admin required" }, statusCode: 403);
+    try
+    {
+        var global = await userDb.GetTakesTelemetryStatsAsync(projectId: null, ct);
+        TakesTelemetryStats? project = null;
+        if (!string.IsNullOrWhiteSpace(projectId))
+            project = await userDb.GetTakesTelemetryStatsAsync(projectId.Trim(), ct);
+        return Results.Ok(new { ok = true, global, project });
+    }
+    catch (Exception ex)
+    {
+        // H9 fail-open
+        return Results.Ok(new { ok = true, global = new TakesTelemetryStats { Notes = "unavailable: " + ex.Message }, project = (TakesTelemetryStats?)null });
+    }
+});
+
+/// <summary>H8 — project-scoped takes stats for Cost page (editors; aggregates only for this project).</summary>
+app.MapGet("/api/projects/{id}/takes-telemetry", async (
+    string id,
+    ProjectStore store,
+    UserDatabaseService userDb,
+    CancellationToken ct) =>
+{
+    try
+    {
+        _ = await store.GetProjectAsync(id, ct)
+            ?? throw new InvalidOperationException($"Unknown project: {id}");
+        var project = await userDb.GetTakesTelemetryStatsAsync(id, ct);
+        return Results.Ok(new { ok = true, project });
+    }
+    catch (Exception ex)
+    {
+        return Results.Ok(new { ok = true, project = new TakesTelemetryStats { Notes = "unavailable: " + ex.Message } });
+    }
+});
+
 /// <summary>Resolution already used by this project's on-disk clips, if consistent — null once no clips exist yet.</summary>
 app.MapGet("/api/projects/{id}/resolution-lock", async (
     string id, FilmJobService jobs, CancellationToken ct) =>
@@ -9308,6 +9378,8 @@ namespace PageToMovie.Api
 }
 
 
+
+file sealed record TakeReasonBody(int Scene, int Clip, string? Reason, int? TakeIndex);
 
 file sealed class FilmBuildRegisterRequest
 {

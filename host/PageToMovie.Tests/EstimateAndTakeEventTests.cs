@@ -261,4 +261,108 @@ public sealed class EstimateAndTakeEventTests
             try { Directory.Delete(root, recursive: true); } catch { /* best effort */ }
         }
     }
+
+    [Fact]
+    public async Task H3_H4_H5_SetReason_and_aggregate_blend()
+    {
+        var store = TestProjects.CreateStore("take_h3_", out var root);
+        try
+        {
+            const string projectId = "Demo";
+            await store.SaveConfigAsync(projectId, System.Text.Json.JsonSerializer.SerializeToElement(new Dictionary<string, object?>
+            {
+                ["model_name"] = "grok-imagine-video",
+                ["image_model_name"] = "grok-imagine-image-quality",
+                ["planning_model_name"] = "grok-4",
+                ["resolution"] = "480p",
+            }));
+
+            // User DB in test workspace
+            var opts = Microsoft.Extensions.Options.Options.Create(new PageToMovie.Core.Options.PageToMovieOptions
+            {
+                WorkspaceRoot = root,
+            });
+            var userDb = new UserDatabaseService(opts);
+
+            // Seed enough clips for blend (MinTakesClipSamples = 12)
+            for (var i = 1; i <= 14; i++)
+            {
+                await userDb.TryInsertVideoTakeEventAsync(new VideoTakeEventRecord
+                {
+                    ProjectId = projectId,
+                    UserId = "u1",
+                    Scene = 1,
+                    Clip = i,
+                    TakeIndex = 1,
+                    TakeKind = VideoTakeKinds.Initial,
+                    ContributeToStudioAverages = true,
+                });
+                // Half get a second take (user regen)
+                if (i % 2 == 0)
+                {
+                    await userDb.TryInsertVideoTakeEventAsync(new VideoTakeEventRecord
+                    {
+                        ProjectId = projectId,
+                        UserId = "u1",
+                        Scene = 1,
+                        Clip = i,
+                        TakeIndex = 2,
+                        TakeKind = VideoTakeKinds.UserRegen,
+                        ContributeToStudioAverages = true,
+                    });
+                }
+            }
+
+            var ok = await userDb.TrySetVideoTakeReasonAsync(projectId, 1, 2, VideoTakeReasons.Dialogue);
+            Assert.True(ok);
+
+            var global = await userDb.GetTakesTelemetryStatsAsync();
+            Assert.True(global.ClipSampleCount >= 12);
+            Assert.True(global.SufficientForBlend);
+            Assert.True(global.P50TakesPerClip >= 1.0);
+            Assert.True(global.Reasons.ContainsKey(VideoTakeReasons.Dialogue));
+            Assert.True(global.RegenRate > 0);
+
+            // Privacy: contribute=false excluded from global
+            await userDb.TryInsertVideoTakeEventAsync(new VideoTakeEventRecord
+            {
+                ProjectId = "secret",
+                Scene = 9,
+                Clip = 9,
+                TakeIndex = 5,
+                TakeKind = VideoTakeKinds.UserRegen,
+                ContributeToStudioAverages = false,
+            });
+            var g2 = await userDb.GetTakesTelemetryStatsAsync();
+            Assert.Equal(global.ClipSampleCount, g2.ClipSampleCount); // secret not counted
+
+            var costs = new CostReportService(store, userDb: userDb);
+            // Need fountain or blueprint for non-none estimate — seed short fountain
+            ScreenplayService.SaveDraft(store, projectId, """
+                Title: Takes Blend
+                INT. ROOM - DAY
+                Hello.
+                """);
+            ScreenplayService.SignOff(store, projectId);
+
+            var report = await costs.GetReportAsync(projectId);
+            Assert.NotNull(report.TakesLearning);
+            Assert.True(report.TakesLearning.GlobalClipSamples >= 12 || report.TakesLearning.ProjectClipSamples >= 12);
+            Assert.True(report.TakesLearning.ExpectedTakes >= 1.0);
+            Assert.False(string.IsNullOrWhiteSpace(report.CostLabel));
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); } catch { /* best effort */ }
+        }
+    }
+
+    [Theory]
+    [InlineData("dialogue", VideoTakeReasons.Dialogue)]
+    [InlineData("LOOK", VideoTakeReasons.Look)]
+    [InlineData("nope", null)]
+    public void H3_VideoTakeReasons_Normalize(string input, string? expected)
+    {
+        Assert.Equal(expected, VideoTakeReasons.NormalizeOptional(input));
+    }
 }

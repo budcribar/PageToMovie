@@ -146,6 +146,30 @@
                                 @onclick="() => ClipRegen!.RegenClipAsync(ListState!._detail.SceneNumber, ClipForm!._clip.ClipNumber)">
                             Regen clip
                         </button>
+                        @if (Gen!._pendingTakeReasonScene == ListState!._detail.SceneNumber
+                             && Gen!._pendingTakeReasonClip == ClipForm!._clip.ClipNumber)
+                        {
+                            <div class="w-100 mt-2" data-testid="take-reason-strip">
+                                <span class="small text-muted me-1">Why regen?</span>
+                                @foreach (var reason in VideoTakeReasons.All)
+                                {
+                                    <button type="button"
+                                            class="btn btn-sm btn-outline-secondary me-1 mb-1"
+                                            data-testid="@($"take-reason-{reason}")"
+                                            disabled="@Host._busy"
+                                            @onclick="() => SubmitTakeReasonAsync(reason)">
+                                        @VideoTakeReasons.Display(reason)
+                                    </button>
+                                }
+                                <button type="button" class="btn btn-sm btn-link text-muted mb-1"
+                                        data-testid="take-reason-skip"
+                                        @onclick="DismissTakeReason">Skip</button>
+                                @if (!string.IsNullOrWhiteSpace(Gen!._takeReasonSaved))
+                                {
+                                    <span class="small text-success ms-1">@Gen!._takeReasonSaved</span>
+                                }
+                            </div>
+                        }
                         @if (!string.IsNullOrWhiteSpace(ClipForm!._clip.Speaker))
                         {
                             <a class="btn btn-sm btn-outline-warning"

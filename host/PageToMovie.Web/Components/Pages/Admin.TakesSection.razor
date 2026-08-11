@@ -1,0 +1,105 @@
+@* H7 — regen / takes-per-clip dashboard (aggregates only; no project content) *@
+@using PageToMovie.Core.Models
+
+<Admin_CollapsibleCard Title="Takes / regen cost learning"
+                       Badge="@(_global is null ? null : $"n={_global.ClipSampleCount}")"
+                       Expanded="_expanded"
+                       ExpandedChanged="OnExpandedChanged"
+                       CssClass="border-secondary">
+    <div class="small text-muted mb-2">
+        Tracks how often clips are regenerated so DecisionCard cost ranges improve over time.
+        Global averages exclude opt-out projects; no script content is stored.
+    </div>
+
+    @if (_error is not null)
+    {
+        <div class="alert alert-warning py-2 small">@_error</div>
+    }
+    else if (_busy && _global is null)
+    {
+        <p class="text-muted small mb-0">Loading takes telemetry…</p>
+    }
+    else if (_global is not null)
+    {
+        <div class="row g-2 mb-3 text-center" data-testid="admin-takes-telemetry">
+            <div class="col-6 col-md-2">
+                <div class="card card-body py-2 bg-dark border-secondary text-light">
+                    <div class="text-muted" style="font-size:0.7rem;">CLIPS (n)</div>
+                    <div class="fw-bold">@_global.ClipSampleCount</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-2">
+                <div class="card card-body py-2 bg-dark border-secondary text-light">
+                    <div class="text-muted" style="font-size:0.7rem;">TAKES p50</div>
+                    <div class="fw-bold">@_global.P50TakesPerClip.ToString("0.##")</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-2">
+                <div class="card card-body py-2 bg-dark border-secondary text-light">
+                    <div class="text-muted" style="font-size:0.7rem;">p25–p75</div>
+                    <div class="fw-bold">@_global.P25TakesPerClip.ToString("0.##")–@_global.P75TakesPerClip.ToString("0.##")</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-2">
+                <div class="card card-body py-2 bg-dark border-secondary text-light">
+                    <div class="text-muted" style="font-size:0.7rem;">REGEN RATE</div>
+                    <div class="fw-bold">@((_global.RegenRate * 100).ToString("0.#"))%</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-2">
+                <div class="card card-body py-2 bg-dark border-secondary text-light">
+                    <div class="text-muted" style="font-size:0.7rem;">USER REGEN</div>
+                    <div class="fw-bold">@((_global.UserRegenShare * 100).ToString("0.#"))%</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-2">
+                <div class="card card-body py-2 bg-dark border-secondary text-light">
+                    <div class="text-muted" style="font-size:0.7rem;">QA AUTO</div>
+                    <div class="fw-bold">@((_global.QaAutoShare * 100).ToString("0.#"))%</div>
+                </div>
+            </div>
+        </div>
+
+        <p class="small text-muted" data-testid="admin-takes-notes">@_global.Notes</p>
+
+        @if (_global.Reasons.Count > 0)
+        {
+            <div class="mb-3">
+                <div class="text-muted small mb-1">Regen reasons (optional)</div>
+                @foreach (var kv in _global.Reasons.OrderByDescending(x => x.Value))
+                {
+                    <span class="badge text-bg-secondary me-1 mb-1">@VideoTakeReasons.Display(kv.Key) · @kv.Value</span>
+                }
+            </div>
+        }
+
+        @if (_global.Weekly.Count > 0)
+        {
+            <div class="table-responsive">
+                <table class="table table-sm table-dark table-striped mb-0">
+                    <thead>
+                        <tr>
+                            <th>Week</th>
+                            <th class="text-end">Clips</th>
+                            <th class="text-end">Mean takes</th>
+                            <th class="text-end">Regen %</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var w in _global.Weekly.OrderByDescending(x => x.WeekStart).Take(12))
+                        {
+                            <tr>
+                                <td>@w.WeekStart</td>
+                                <td class="text-end">@w.ClipSampleCount</td>
+                                <td class="text-end">@w.MeanTakesPerClip.ToString("0.##")</td>
+                                <td class="text-end">@((w.RegenRate * 100).ToString("0.#"))%</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        <button type="button" class="btn btn-sm btn-outline-secondary mt-2" disabled="@_busy" @onclick="LoadAsync">Refresh</button>
+    }
+</Admin_CollapsibleCard>

@@ -222,8 +222,10 @@ public partial class Scenes
             {
                 await S.Gen.EnsureHubAsync();
                 await EnsurePredecessorsUploadedAsync(new List<(int Scene, int Clip)> { (sn, cn) });
-                await S.Engine.StartSceneGenAsync(S._projectId, sn, onlyMissing: false, clip: cn, resolution: S.Gen._genResolution);
+                await S.Engine.StartSceneGenAsync(S._projectId, sn, onlyMissing: false, clip: cn, resolution: S.Gen._genResolution, takeTrigger: VideoTakeKinds.UserRegen);
                 S._message = $"Regenerating S{sn:D2}C{cn:D2} @ {S.Gen._genResolution}…";
+                S.Gen._pendingTakeReasonScene = sn;
+                S.Gen._pendingTakeReasonClip = cn;
                 var jobs = await S.Engine.GetJobAsync();
                 S.Gen._job = jobs?.Job;
             }

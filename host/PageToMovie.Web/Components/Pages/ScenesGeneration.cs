@@ -61,6 +61,11 @@ public partial class Scenes
     /// </summary>
     internal int? _pendingRegenScene;
 
+    /// <summary>H3 — after user_regen, offer optional one-click reason chips for this clip.</summary>
+    internal int? _pendingTakeReasonScene;
+    internal int? _pendingTakeReasonClip;
+    internal string? _takeReasonSaved;
+
 
 
     // Batch-generate confirm modal: resolution + cost decided at the moment of spend.

@@ -33,4 +33,32 @@ public partial class Scenes_ClipInspector
     [CascadingParameter] public Scenes.ScenesClipSelection? ClipSel { get; set; }
 
     [CascadingParameter] public Scenes.ScenesClipRegen? ClipRegen { get; set; }
+
+    private void DismissTakeReason()
+    {
+        if (Gen is null) return;
+        Gen._pendingTakeReasonScene = null;
+        Gen._pendingTakeReasonClip = null;
+        Gen._takeReasonSaved = null;
+    }
+
+    private async Task SubmitTakeReasonAsync(string reason)
+    {
+        if (Gen is null || ListState?._detail is null || ClipForm?._clip is null) return;
+        var sn = Gen._pendingTakeReasonScene ?? ListState._detail.SceneNumber;
+        var cn = Gen._pendingTakeReasonClip ?? ClipForm._clip.ClipNumber;
+        try
+        {
+            await Engine.SetTakeReasonAsync(Host._projectId, sn, cn, reason);
+            Gen._takeReasonSaved = $"Thanks — noted as {VideoTakeReasons.Display(reason)}.";
+            // Keep chips a moment then clear
+            await Task.Delay(900);
+            DismissTakeReason();
+        }
+        catch
+        {
+            // H9 fail-open
+            DismissTakeReason();
+        }
+    }
 }

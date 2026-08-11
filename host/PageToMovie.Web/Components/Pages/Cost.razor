@@ -78,6 +78,14 @@ else
 
             <p class="small text-muted mb-0 mt-2 text-center">
                 Forecast on the current plan. Trim, runtime, cast, or resolution will change this number — refresh after edits.
+                @if (!string.IsNullOrWhiteSpace(_report.TakesLearning?.HistoryLabel))
+                {
+                    <span data-testid="cost-takes-history"> · @_report.TakesLearning.HistoryLabel</span>
+                }
+                @if (!string.IsNullOrWhiteSpace(_report.TakesLearning?.CalibrationLabel))
+                {
+                    <br /><span data-testid="cost-takes-calibration">@_report.TakesLearning.CalibrationLabel</span>
+                }
             </p>
 
             <hr class="my-3" />

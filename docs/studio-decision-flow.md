@@ -663,15 +663,15 @@ Use this as the build/acceptance tracker. Check items off in PRs; leave dates/no
 
 | Done | Item | Notes |
 |:----:|------|-------|
-| [x] | **H1** Emit **take event** on every billed clip gen (initial + regen) | take_index, stable_beat_id, had_char/loc refs, user_id, key_mode, minutes_since_prev |
+| [x] | **H1** Emit **take event** on every billed clip gen (initial + regen) | take_index, stable_beat_id, had_char/loc refs, user_id, key_mode, minutes_since_prev + SQLite dual-write |
 | [x] | **H2** Distinguish `user_regen` vs `qa_auto` vs `stale_regen` vs `fill_holes` | `VideoTakeKinds` + job TakeTrigger + QA override |
-| | **H3** Optional one-click **reason** after user regen (dialogue / look / motion / audio / other) | no modal wall |
-| | **H4** Aggregate: takes/clip mean + p25/p50/p75 (global; min sample size) | |
-| | **H5** Blend learned `expected_takes` into CostReport (with existing QA history mult as prior) | `BuildHistoryRefinementAsync` |
-| | **H6** DecisionCard / Cost UI: show **range** driven by p25–p75 takes when N sufficient | cold-start range already on CostLabel for rough basis |
-| | **H7** Admin: regen rate dashboard (takes/clip over time, by trigger) | |
-| | **H8** Per-project: actual takes so far vs estimate (calibration feedback) | shared by collaborators |
-| | **H9** Privacy: aggregates only for studio-wide learning; fail-open if telemetry down | |
+| [x] | **H3** Optional one-click **reason** after user regen (dialogue / look / motion / audio / other) | Clip inspector strip + `POST …/cost/take-reason` |
+| [x] | **H4** Aggregate: takes/clip mean + p25/p50/p75 (global; min sample size) | `video_take_events` + `GetTakesTelemetryStatsAsync` (min 12) |
+| [x] | **H5** Blend learned `expected_takes` into CostReport (with existing QA history mult as prior) | `BuildHistoryRefinementAsync` + ExpectedTakes |
+| [x] | **H6** DecisionCard / Cost UI: show **range** driven by p25–p75 takes when N sufficient | CostLabel range + HistoryLabel |
+| [x] | **H7** Admin: regen rate dashboard (takes/clip over time, by trigger) | Admin Takes section + `/api/admin/takes-telemetry` |
+| [x] | **H8** Per-project: actual takes so far vs estimate (calibration feedback) | TakesLearning.CalibrationLabel on Cost |
+| [x] | **H9** Privacy: aggregates only for studio-wide learning; fail-open if telemetry down | contribute flag; fail-open insert/aggregate |
 
 ### Phase I — Multi-user collab (fit into flow)
 
@@ -751,5 +751,5 @@ Use this as the build/acceptance tracker. Check items off in PRs; leave dates/no
 
 ---
 
-*Last updated: 2026-08-11 — A1–A3 estimate API fields + H1–H2 take events (`VideoTakeKinds`, take_index, fill_holes/stale/qa_auto).*
+*Last updated: 2026-08-11 — Phase H complete (H1–H9): take events, reasons, takes aggregates, expected_takes blend, DecisionCard ranges, admin dashboard, calibration, privacy fail-open.*
 

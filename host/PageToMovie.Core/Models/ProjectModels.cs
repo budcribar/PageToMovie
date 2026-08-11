@@ -1297,6 +1297,8 @@ public sealed class CostEvent
     public bool? HadLocRef { get; set; }
     /// <summary>Minutes since previous take for the same scene+clip (null if first).</summary>
     public double? MinutesSincePrevTake { get; set; }
+    /// <summary>H3 optional regen reason: dialogue | look | motion | audio | other.</summary>
+    public string? Reason { get; set; }
 }
 
 public sealed class CostLedgerSummary
@@ -1393,6 +1395,12 @@ public sealed class CostEstimateRefinement
     public double? LearnedFailRate { get; set; }
     public double HistoryWeight { get; set; }
     public string Notes { get; set; } = "";
+    /// <summary>H4/H5 — clip samples used for learned takes (global or project).</summary>
+    public int TakesClipSamples { get; set; }
+    /// <summary>H5 — p50 takes/clip from telemetry when sufficient.</summary>
+    public double? LearnedTakesP50 { get; set; }
+    /// <summary>H5 — blended expected takes (prior × QA mult blended with learned p50).</summary>
+    public double ExpectedTakes { get; set; } = 1.0;
 }
 
 public sealed class CostReport
@@ -1434,6 +1442,8 @@ public sealed class CostReport
     public string DurationLabel { get; set; } = "";
     /// <summary>A3 — human cost line for DecisionCard (e.g. "~$42" or "~$32–$58").</summary>
     public string CostLabel { get; set; } = "";
+    /// <summary>H5–H8 learned takes / calibration for DecisionCard.</summary>
+    public CostTakesLearning TakesLearning { get; set; } = new();
     /// <summary>True when optional personal voice is included in the estimate.</summary>
     public bool VoiceIncludedInEstimate { get; set; }
     /// <summary>
