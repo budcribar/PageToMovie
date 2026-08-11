@@ -19,6 +19,7 @@ Cost is never a hard dollar gate. Preferences bias defaults; the user always cho
 | 5 | **Edit focus** (cost / duration / both / craft) chooses tool order, not different physics. Cost and duration are correlated. |
 | 6 | **Remember choices** (path, focus, runtime target); still show $ + minutes every time. |
 | 7 | **Surgical regen + stale markers** are how the product ages when full gen is cheap. |
+| 8 | **Regen feedback loop** — measure real takes-per-clip and reasons so estimates (and ranges) improve with usage. |
 
 ---
 
@@ -51,6 +52,7 @@ Implementation note (current engine): `CostReportService` already sets `Estimate
 | Resolution (480/720/1080) | No | Yes | No |
 | Shot plan refine | Yes (exact) | Yes (exact) | — |
 | Gen some clips | Actual media | Spent ↑ remaining ↓ | — |
+| **User regen (N takes)** | No | **× takes factor** | — |
 
 ### DecisionCard always shows
 
@@ -60,6 +62,105 @@ Implementation note (current engine): `CostReportService` already sets `Estimate
 ```
 
 Optional: low–high band when basis is `screenplay`.
+
+### Cost formula (point + range)
+
+```text
+point_$ ≈ clips × $/clip × expected_takes
+low_$   ≈ clips × $/clip × takes_p25   (or 1.0 if cold start)
+high_$  ≈ clips × $/clip × takes_p75   (or default_prior if cold start)
+```
+
+| Term | Source |
+|------|--------|
+| `clips` | Tier: synthetic or shot plan |
+| `$/clip` | Model catalog rates × resolution |
+| `expected_takes` | **Learned** from regen telemetry (global → segment → project), else prior (e.g. QA mult ~1.3) |
+| Range | Percentiles of takes/clip, not a guessy ±% only |
+
+**Cold start prior** (until enough samples): use existing QA/history path (`qa_retry_video_multiplier` / `BuildHistoryRefinementAsync` in `CostReportService`) as `expected_takes`. Replace/blend as regen events accumulate.
+
+---
+
+## 2b. Regen feedback loop (learn real cost)
+
+### Why
+
+First-pass estimate undercounts if people typically regen scenes 2–3×.  
+Tracking **how often and why** people regenerate turns “we think 1.0×” into “p50 is 1.4×, dialogue scenes 1.8×” and tightens DecisionCard ranges over time.
+
+Related but different:
+
+| System | Learns | Feeds |
+|--------|--------|--------|
+| [learning_loop.md](./learning_loop.md) | *What* was wrong (prompts, stage1/2) | Better next plan/render quality |
+| **Regen cost loop (here)** | *How many takes* and cost impact | Better $ forecasts / ranges |
+| QA auto-retry (existing) | Fail rates → video multiplier | Automatic quality regens |
+
+### Events to log (every video take)
+
+Write one durable row per successful (or billed) clip generation:
+
+| Field | Example |
+|-------|---------|
+| `project_id`, `user_id` (hash ok) | |
+| `scene`, `clip`, `stable_beat_id?` | |
+| `take_index` | 1 = first gen, 2+ = regen |
+| `trigger` | `initial` \| `user_regen` \| `stale_regen` \| `qa_auto` \| `fill_holes` |
+| `reason` | optional: `dialogue` \| `look` \| `motion` \| `audio` \| `other` \| null |
+| `model`, `resolution` | |
+| `list_usd`, `duration_sec` | from ledger |
+| `had_char_refs`, `had_loc_ref` | bools |
+| `minutes_since_prev_take` | |
+| `ts` | |
+
+Aggregate offline or on a schedule (not every request if heavy):
+
+| Metric | Grain |
+|--------|--------|
+| `takes_per_clip` mean / p25 / p50 / p75 | global |
+| same | by `trigger`, model, resolution |
+| same | by scene type heuristic later (dialogue-heavy vs action) |
+| `regen_rate` = share of clips with take_index ≥ 2 | global / weekly |
+| `user_regen_rate` vs `qa_auto_rate` | separate — user taste vs gate |
+
+### How estimates consume it
+
+```text
+CostReportService / DecisionCard:
+  prior_takes = history QA mult (existing)
+  learned_takes = telemetry.p50_takes (min N samples)
+  expected_takes = blend(prior, learned, weight=f(N))
+  point = clips × rate × expected_takes
+  range = clips × rate × [p25, p75]  (floor low at 1.0× first-pass)
+```
+
+Show on DecisionCard when range is wide:
+
+```text
+~$32–$58  ·  typical ~1.5 takes/clip from studio history  ·  basis: shot_plan
+```
+
+Admin later: chart takes/clip over time, top regen reasons (if collected).
+
+### Privacy / product rules
+
+- Prefer **aggregated** learning (global + optional per-user private mult); don’t leak other users’ projects.  
+- Reason codes optional (one-click after regen, not a form wall).  
+- Never block gen if telemetry write fails.  
+- Opt-out of “contribute to studio averages” possible later; project still gets its own remaining estimate from ledger.
+
+### Feedback loop diagram
+
+```mermaid
+flowchart LR
+  Gen[Clip gen / regen] --> Ledger[Cost ledger + take event]
+  Ledger --> Agg[Aggregate takes per clip]
+  Agg --> Mult[expected_takes + p25/p75]
+  Mult --> Est[CostReport / DecisionCard]
+  Est --> User[User sees range]
+  User -->|regen again| Gen
+```
 
 ---
 
@@ -252,6 +353,20 @@ Use this as the build/acceptance tracker. Check items off in PRs; leave dates/no
 | | **G3** Soften first-watch cast lock for draft mode (plates optional) | cost mode later |
 | | **G4** Budget/draft vs full as **mode**, not separate app | when economics need it |
 
+### Phase H — Regen feedback → better estimates
+
+| Done | Item | Notes |
+|:----:|------|-------|
+| | **H1** Emit **take event** on every billed clip gen (initial + regen) | scene, clip, take_index, trigger, model, res, $ |
+| | **H2** Distinguish `user_regen` vs `qa_auto` vs `stale_regen` vs `fill_holes` | |
+| | **H3** Optional one-click **reason** after user regen (dialogue / look / motion / audio / other) | no modal wall |
+| | **H4** Aggregate: takes/clip mean + p25/p50/p75 (global; min sample size) | |
+| | **H5** Blend learned `expected_takes` into CostReport (with existing QA history mult as prior) | `BuildHistoryRefinementAsync` |
+| | **H6** DecisionCard / Cost UI: show **range** driven by p25–p75 takes when N sufficient | |
+| | **H7** Admin: regen rate dashboard (takes/clip over time, by trigger) | |
+| | **H8** Per-project: actual takes so far vs estimate (calibration feedback) | “you’re at 1.2× on 40 clips” |
+| | **H9** Privacy: aggregates only for studio-wide learning; fail-open if telemetry down | |
+
 ---
 
 ## 5. Suggested build order
@@ -260,10 +375,15 @@ Use this as the build/acceptance tracker. Check items off in PRs; leave dates/no
 1. A3 + B1–B4   DecisionCard with honest tiered estimate
 2. C1–C6        Edit focus + prefs + re-estimate loop
 3. D4–D6        Clip fix + movie strip
-4. E3–E6        Beat map + scopes + stale
-5. F*           Full-film job polish
-6. G*           Draft/full modes as needed
+4. H1–H2        Take events early (so data accrues while building rest)
+5. E3–E6        Beat map + scopes + stale
+6. H4–H6        Aggregates → expected_takes → ranges on DecisionCard
+7. F*           Full-film job polish
+8. H3, H7–H9   Reasons, admin, calibration UX
+9. G*           Draft/full modes as needed
 ```
+
+**Why H early:** telemetry only helps after volume. Log takes as soon as gen path is stable; wire into $ later.
 
 ---
 
@@ -275,7 +395,8 @@ Use this as the build/acceptance tracker. Check items off in PRs; leave dates/no
 4. Watch the cut on Film.  
 5. Fix line / face / set from the scene you watched.  
 6. See **stale** when inputs change; **regen clip/scene** without full re-run.  
-7. When gen is cheap, default scope slides to full film; UI spine unchanged.
+7. Estimates use **learned takes/clip** (range shrinks as studio volume grows).  
+8. When gen is cheap, default scope slides to full film; UI spine unchanged.
 
 ---
 
@@ -284,12 +405,14 @@ Use this as the build/acceptance tracker. Check items off in PRs; leave dates/no
 | Area | Location |
 |------|----------|
 | Cost basis / screenplay fallback | `host/PageToMovie.Engine/CostReportService.cs` |
+| QA / history video multiplier | `CostReportService.BuildHistoryRefinementAsync` |
 | Cost page / agree continue | `host/PageToMovie.Web/Components/Pages/Cost.razor` |
 | Deep links watch→edit | `host/PageToMovie.Web/Services/StudioDeepLinks.cs` |
 | Film scene edit hub | `host/PageToMovie.Web/Components/Pages/Scenes.SceneDetail.razor` |
 | Readiness gates | `host/PageToMovie.Web/Services/ActiveProjectState.cs` |
-| Studio strip | `StudioProcessStrip` (shared component) |
+| Quality / prompt learning (separate) | [docs/learning_loop.md](./learning_loop.md) |
+| API cost history stats | `UserDatabaseService.GetApiCostHistoryStatsAsync` |
 
 ---
 
-*Last updated: 2026-08-11 — progressive costing + DecisionCard plan checked in.*
+*Last updated: 2026-08-11 — progressive costing, DecisionCard plan, regen feedback loop (Phase H).*
