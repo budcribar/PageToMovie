@@ -126,3 +126,11 @@
 .cost-page ::deep .form-label {
     margin-bottom: 0.2rem;
 }
+.cost-page ::deep .fw-semibold.mb-2 {
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--fs-text-muted, #94a3b8);
+    margin-bottom: 0.15rem !important;
+}
