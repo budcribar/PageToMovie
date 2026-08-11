@@ -2525,8 +2525,9 @@ public sealed partial class ProjectStore
 
     /// <summary>
     /// Persist Stage‑1 location seeds into <c>source/cast_seeds.json</c> so
-    /// <see cref="ListLocations"/> works after cast extract (characters only used to be written).
-    /// Merges without wiping character_seed_tokens.
+    /// <see cref="ListLocations"/> works after cast extract.
+    /// Never drops <c>character_seed_tokens</c> (or other top-level cast keys). Prefer filmable
+    /// AI set text over Stage‑1 action dumps ("ext OLYMPUS …").
     /// </summary>
     public bool MergeLocationSeedsIntoCastFile(string projectId, Dictionary<string, object?>? locationSeeds = null)
     {
@@ -2537,11 +2538,29 @@ public sealed partial class ProjectStore
 
             var castPath = Path.Combine(GetProjectDir(projectId), "source", ScreenplayService.CastSeedsFileName);
             System.Text.Json.Nodes.JsonObject root;
+            System.Text.Json.Nodes.JsonNode? preservedCharacters = null;
+            System.Text.Json.Nodes.JsonNode? preservedWardrobe = null;
+            System.Text.Json.Nodes.JsonNode? preservedMovieTitle = null;
+            System.Text.Json.Nodes.JsonNode? preservedRender = null;
+            System.Text.Json.Nodes.JsonNode? preservedPerf = null;
+            System.Text.Json.Nodes.JsonNode? preservedSchema = null;
+            var hadCharacters = false;
+
             if (File.Exists(castPath))
             {
                 var text = File.ReadAllText(castPath);
                 root = System.Text.Json.Nodes.JsonNode.Parse(text) as System.Text.Json.Nodes.JsonObject
                        ?? new System.Text.Json.Nodes.JsonObject();
+                // Explicitly clone cast fields before mutation — Odyssey2 export lost 45 characters
+                // when a merge rewrote locations-only JSON after a successful cast extract.
+                preservedCharacters = root["character_seed_tokens"]?.DeepClone();
+                preservedWardrobe = root["wardrobe_lock_tokens"]?.DeepClone();
+                preservedMovieTitle = root["movie_title"]?.DeepClone();
+                preservedRender = root["render_style_lock"]?.DeepClone();
+                preservedPerf = root["performance_lock"]?.DeepClone();
+                preservedSchema = root["schema_version"]?.DeepClone();
+                if (preservedCharacters is System.Text.Json.Nodes.JsonObject co && co.Count > 0)
+                    hadCharacters = true;
             }
             else
             {
@@ -2580,11 +2599,18 @@ public sealed partial class ProjectStore
                 {
                     var curV = cur[field]?.GetValue<string>() ?? "";
                     var inV = incomingNode[field]?.GetValue<string>() ?? "";
-                    var stub = string.IsNullOrWhiteSpace(curV)
-                               || curV.Equals(display, StringComparison.OrdinalIgnoreCase)
-                               || curV.Equals(key, StringComparison.OrdinalIgnoreCase);
-                    if (stub && !string.IsNullOrWhiteSpace(inV) && inV.Length > curV.Length)
+                    if (string.IsNullOrWhiteSpace(inV)) continue;
+
+                    var curStub = IsWeakLocationField(curV, display, key);
+                    var inStub = IsWeakLocationField(inV, display, key);
+
+                    // Prefer strong filmable text; never replace strong with Stage‑1 action dump.
+                    if (curStub && !inStub)
                         cur[field] = inV;
+                    else if (curStub && inStub && inV.Length > curV.Length)
+                        cur[field] = inV;
+                    else if (!curStub && !inStub && inV.Length > curV.Length + 40)
+                        cur[field] = inV; // longer AI set design wins
                 }
                 if (cur["display_name"] is null && incomingNode["display_name"] is not null)
                     cur["display_name"] = incomingNode["display_name"]!.DeepClone();
@@ -2593,6 +2619,31 @@ public sealed partial class ProjectStore
             }
 
             root["location_seed_tokens"] = existing;
+
+            // Re-apply preserved cast fields so a merge can never produce locations-only JSON.
+            if (preservedCharacters is not null)
+                root["character_seed_tokens"] = preservedCharacters;
+            if (preservedWardrobe is not null)
+                root["wardrobe_lock_tokens"] = preservedWardrobe;
+            if (preservedMovieTitle is not null)
+                root["movie_title"] = preservedMovieTitle;
+            if (preservedRender is not null)
+                root["render_style_lock"] = preservedRender;
+            if (preservedPerf is not null)
+                root["performance_lock"] = preservedPerf;
+            if (preservedSchema is not null)
+                root["schema_version"] = preservedSchema;
+            else if (root["schema_version"] is null)
+                root["schema_version"] = "cast_seeds.v1";
+
+            // If we had characters going in, refuse to write a file without them.
+            if (hadCharacters)
+            {
+                if (root["character_seed_tokens"] is not System.Text.Json.Nodes.JsonObject checkChars
+                    || checkChars.Count == 0)
+                    return false;
+            }
+
             File.WriteAllText(castPath, root.ToJsonString(JsonDefaults.Indented) + "\n");
             return true;
         }
@@ -2600,6 +2651,23 @@ public sealed partial class ProjectStore
         {
             return false;
         }
+    }
+
+    /// <summary>True when location description/lock is empty, name-only, or Stage‑1 heading echo.</summary>
+    private static bool IsWeakLocationField(string value, string display, string key)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return true;
+        var v = value.Trim();
+        if (v.Equals(display, StringComparison.OrdinalIgnoreCase)) return true;
+        if (v.Equals(key, StringComparison.OrdinalIgnoreCase)) return true;
+        if (v.StartsWith("ext ", StringComparison.OrdinalIgnoreCase)
+            || v.StartsWith("int ", StringComparison.OrdinalIgnoreCase)
+            || v.StartsWith("ext.", StringComparison.OrdinalIgnoreCase)
+            || v.StartsWith("int.", StringComparison.OrdinalIgnoreCase)
+            || v.StartsWith("and int", StringComparison.OrdinalIgnoreCase)
+            || v.StartsWith("and ext", StringComparison.OrdinalIgnoreCase))
+            return true;
+        return false;
     }
 
     public Dictionary<string, object?>? ExtractLocationSeedObjects(string projectId)

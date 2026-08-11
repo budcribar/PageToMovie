@@ -255,13 +255,16 @@ public sealed class CastFromScreenplayService
         var json = JsonSerializer.Serialize(normalized, JsonDefaults.Indented);
         await File.WriteAllTextAsync(outPath, json + "\n", ct).ConfigureAwait(false);
 
-        // Ensure location_seed_tokens still present if write path stripped them (legacy merge).
+        // Locations are already in the write above. Only merge when the model returned none
+        // and we need Stage‑1 heading seeds — never re-merge over a full cast write (that path
+        // previously produced locations-only cast_seeds.json and dropped 45 characters).
         try
         {
-            if (locSeeds.Count > 0)
-                _projects.MergeLocationSeedsIntoCastFile(projectId, locSeeds);
-            else if (_projects.MergeLocationSeedsIntoCastFile(projectId))
-                onProgress?.Invoke("Merged location seeds from screenplay headings…");
+            if (GetLocationSeedsDict(normalized).Count == 0)
+            {
+                if (_projects.MergeLocationSeedsIntoCastFile(projectId))
+                    onProgress?.Invoke("Merged location seeds from screenplay headings…");
+            }
         }
         catch (Exception ex)
         {
