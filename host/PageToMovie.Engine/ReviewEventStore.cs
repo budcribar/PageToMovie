@@ -258,34 +258,8 @@ public sealed class ReviewEventStore
         return FilterOrderTake(all, projectId, type, category, from, to, take);
     }
 
-    public IReadOnlyList<ReviewLearningEvent> ReadAll()
-    {
-        var path = EventsPath;
-        if (!File.Exists(path))
-            return Array.Empty<ReviewLearningEvent>();
-
-        var list = new List<ReviewLearningEvent>();
-        try
-        {
-            string[] lines;
-            _writeGate.Wait();
-            try
-            {
-                lines = File.ReadAllLines(path);
-            }
-            finally
-            {
-                _writeGate.Release();
-            }
-            ParseEventLines(lines, list);
-        }
-        catch (Exception ex)
-        {
-            _log.LogWarning(ex, "Failed reading learning events");
-        }
-
-        return list;
-    }
+    public IReadOnlyList<ReviewLearningEvent> ReadAll() =>
+        ReadAllAsync().ConfigureAwait(false).GetAwaiter().GetResult();
 
     private static void Bump(Dictionary<string, int> map, string key)
     {

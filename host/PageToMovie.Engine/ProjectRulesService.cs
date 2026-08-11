@@ -57,22 +57,7 @@ public sealed class ProjectRulesService
         }
     }
 
-    public ProjectRulesDocument Load(string projectId)
-    {
-        var path = RulesPath(projectId);
-        if (!File.Exists(path))
-            return new ProjectRulesDocument();
-        try
-        {
-            return JsonSerializer.Deserialize<ProjectRulesDocument>(File.ReadAllText(path), JsonOpts)
-                   ?? new ProjectRulesDocument();
-        }
-        catch (Exception ex)
-        {
-            _log.LogWarning(ex, "Failed loading project rules for {Project}", projectId);
-            return new ProjectRulesDocument();
-        }
-    }
+    public ProjectRulesDocument Load(string projectId) => LoadAsync(projectId).GetAwaiter().GetResult();
 
     public async Task SaveAsync(string projectId, ProjectRulesDocument doc, CancellationToken ct = default)
     {
@@ -81,12 +66,7 @@ public sealed class ProjectRulesService
         await File.WriteAllTextAsync(path, JsonSerializer.Serialize(doc, JsonOpts) + "\n", ct).ConfigureAwait(false);
     }
 
-    public void Save(string projectId, ProjectRulesDocument doc)
-    {
-        var path = RulesPath(projectId);
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, JsonSerializer.Serialize(doc, JsonOpts) + "\n");
-    }
+    public void Save(string projectId, ProjectRulesDocument doc) => SaveAsync(projectId, doc).GetAwaiter().GetResult();
 
     /// <summary>Stable id for auto style rule written from cast extract / render_style_lock.</summary>
     public const string StyleRuleId = "style_from_cast";
@@ -94,9 +74,9 @@ public sealed class ProjectRulesService
     public const string PerformanceRuleId = "performance_from_cast";
 
     /// <summary>Active rules as text block for prompt injection.</summary>
-    public string GetActiveRulesBlock(string projectId)
+    public async Task<string> GetActiveRulesBlockAsync(string projectId, CancellationToken ct = default)
     {
-        var doc = Load(projectId);
+        var doc = await LoadAsync(projectId, ct).ConfigureAwait(false);
         var lines = doc.Active
             .Where(r => !string.IsNullOrWhiteSpace(r.Text))
             .Select(r => $"- [{(string.IsNullOrWhiteSpace(r.Category) ? "other" : r.Category!.Trim())}] {r.Text!.Trim()}")
@@ -107,7 +87,7 @@ public sealed class ProjectRulesService
                 string.Equals(r.Category, "style", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(r.Id, StyleRuleId, StringComparison.OrdinalIgnoreCase)))
         {
-            var fromCast = TryReadCastField(projectId, "render_style_lock");
+            var fromCast = await TryReadCastFieldAsync(projectId, "render_style_lock", ct).ConfigureAwait(false);
             if (!string.IsNullOrWhiteSpace(fromCast))
                 lines.Add($"- [style] {NormalizeStyleRuleText(fromCast)}");
         }
@@ -116,7 +96,7 @@ public sealed class ProjectRulesService
                 string.Equals(r.Category, "performance", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(r.Id, PerformanceRuleId, StringComparison.OrdinalIgnoreCase)))
         {
-            var perf = TryReadCastField(projectId, "performance_lock");
+            var perf = await TryReadCastFieldAsync(projectId, "performance_lock", ct).ConfigureAwait(false);
             if (!string.IsNullOrWhiteSpace(perf))
                 lines.Add($"- [performance] {NormalizePerformanceRuleText(perf)}");
         }
@@ -124,6 +104,8 @@ public sealed class ProjectRulesService
         if (lines.Count == 0) return "";
         return "PROJECT HOUSE RULES (approved):\n" + string.Join("\n", lines);
     }
+
+    public string GetActiveRulesBlock(string projectId) => GetActiveRulesBlockAsync(projectId).GetAwaiter().GetResult();
 
     /// <summary>
     /// Upsert style rule from cast extract <c>render_style_lock</c> (derived from Fountain SoT).
@@ -273,13 +255,14 @@ public sealed class ProjectRulesService
         return PromptTokenizer.TruncateToTokens(t, 175);
     }
 
-    private string? TryReadCastField(string projectId, string propertyName)
+    private async Task<string?> TryReadCastFieldAsync(string projectId, string propertyName, CancellationToken ct = default)
     {
         try
         {
             var path = ScreenplayService.GetCastSeedsPath(_projects, projectId);
             if (!File.Exists(path)) return null;
-            using var doc = JsonDocument.Parse(File.ReadAllText(path));
+            var text = await File.ReadAllTextAsync(path, ct).ConfigureAwait(false);
+            using var doc = JsonDocument.Parse(text);
             if (doc.RootElement.TryGetProperty(propertyName, out var el) &&
                 el.ValueKind == JsonValueKind.String)
                 return el.GetString();
@@ -290,6 +273,8 @@ public sealed class ProjectRulesService
         }
         return null;
     }
+
+    private string? TryReadCastField(string projectId, string propertyName) => TryReadCastFieldAsync(projectId, propertyName).GetAwaiter().GetResult();
 
     /// <summary>
     /// Scan host learning events for this project; add pending suggestions for hot fail categories.

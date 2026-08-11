@@ -66,20 +66,7 @@ public sealed class ClipAutoReviewService
             "review",
             $"S{scene:D2}C{clip:D2}.auto_review.json");
 
-    public ClipAutoReviewDraft? LoadDraft(string projectId, int scene, int clip)
-    {
-        var path = DraftPath(projectId, scene, clip);
-        if (!File.Exists(path)) return null;
-        try
-        {
-            var json = File.ReadAllText(path);
-            return JsonSerializer.Deserialize<ClipAutoReviewDraft>(json, JsonOpts);
-        }
-        catch
-        {
-            return null;
-        }
-    }
+    public ClipAutoReviewDraft? LoadDraft(string projectId, int scene, int clip) => LoadDraftAsync(projectId, scene, clip).GetAwaiter().GetResult();
 
     public async Task<ClipAutoReviewDraft?> LoadDraftAsync(string projectId, int scene, int clip, CancellationToken ct = default)
     {
@@ -151,7 +138,7 @@ public sealed class ClipAutoReviewService
             if (clientFrames is { Count: > 0 })
             {
                 onProgress?.Invoke(20, 100, "Receiving browser sample frames…");
-                images = MaterializeClientFrames(workDir, clientFrames, out curFramePaths, out hasPrev);
+                (images, curFramePaths, hasPrev) = await MaterializeClientFramesAsync(workDir, clientFrames, ct).ConfigureAwait(false);
             }
             else
             {
@@ -215,7 +202,7 @@ public sealed class ClipAutoReviewService
             var draft = execution.Value;
             draft.GeneratedAt = DateTimeOffset.UtcNow;
             await SaveDraftAsync(draft, ct).ConfigureAwait(false);
-            SaveExecutionManifest(projectDir, "clip_multimodal_review", execution);
+            await SaveExecutionManifestAsync(projectDir, "clip_multimodal_review", execution, ct).ConfigureAwait(false);
 
             await TryLogAsync(projectId, scene, clip, draft, ct);
             try
@@ -313,7 +300,7 @@ public sealed class ClipAutoReviewService
             }
         }
 
-        var draft = LoadDraft(projectId, scene, clip);
+        var draft = await LoadDraftAsync(projectId, scene, clip, ct).ConfigureAwait(false);
         if (draft is not null)
         {
             draft.RawSummary = (draft.RawSummary ?? "") + "\n[applied " + DateTimeOffset.UtcNow.ToString("O") + "]";
@@ -650,29 +637,28 @@ public sealed class ClipAutoReviewService
         return issues;
     }
 
-    private static void SaveExecutionManifest<TResult>(
-        string projectDir, string operationName, ValidatedModelResult<TResult> execution)
+    private static async Task SaveExecutionManifestAsync<TResult>(
+        string projectDir, string operationName, ValidatedModelResult<TResult> execution, CancellationToken ct = default)
         where TResult : class
     {
         var dir = Path.Combine(projectDir, "artifacts", "model_operations");
         Directory.CreateDirectory(dir);
-        File.WriteAllText(Path.Combine(dir, operationName + ".lifecycle.json"),
-            ModelExecutionManifest.Serialize(execution));
+        await File.WriteAllTextAsync(Path.Combine(dir, operationName + ".lifecycle.json"),
+            ModelExecutionManifest.Serialize(execution), ct).ConfigureAwait(false);
     }
 
     /// <summary>
     /// Write browser-uploaded base64 frames to workDir. Max 8 images, ~2.5MB each decoded.
     /// </summary>
-    private static List<(string Path, string Label)> MaterializeClientFrames(
+    private static async Task<(List<(string Path, string Label)> Images, List<string> CurrentClipPaths, bool HasPrev)> MaterializeClientFramesAsync(
         string workDir,
         IReadOnlyList<ClipAutoReviewClientFrame> clientFrames,
-        out List<string> currentClipPaths,
-        out bool hasPrev)
+        CancellationToken ct = default)
     {
         const int maxFrames = 8;
         const int maxBytesEach = 2_500_000;
-        currentClipPaths = new List<string>();
-        hasPrev = false;
+        var currentClipPaths = new List<string>();
+        var hasPrev = false;
         var images = new List<(string Path, string Label)>();
         var i = 0;
         foreach (var frame in clientFrames.Take(maxFrames))
@@ -708,7 +694,7 @@ public sealed class ClipAutoReviewService
 
             i++;
             var path = Path.Combine(workDir, $"f{i:D2}_{label.ToLowerInvariant()}.{ext}");
-            File.WriteAllBytes(path, bytes);
+            await File.WriteAllBytesAsync(path, bytes, ct).ConfigureAwait(false);
             images.Add((path, label));
             if (label == "PREVIOUS_CLIP_TAIL")
                 hasPrev = true;
@@ -716,7 +702,7 @@ public sealed class ClipAutoReviewService
                 currentClipPaths.Add(path);
         }
 
-        return images;
+        return (images, currentClipPaths, hasPrev);
     }
 
     private static string GetStr(JsonElement el, string name, string fallback)

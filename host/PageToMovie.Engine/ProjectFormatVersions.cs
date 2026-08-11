@@ -59,13 +59,14 @@ public static class ProjectFormatVersions
     };
 
     /// <summary>Read project.json schema_version if present.</summary>
-    public static string? TryReadProjectSchemaVersion(string projectDir)
+    public static async Task<string?> TryReadProjectSchemaVersionAsync(string projectDir, CancellationToken ct = default)
     {
         try
         {
             var path = Path.Combine(projectDir, "project.json");
             if (!File.Exists(path)) return null;
-            using var doc = JsonDocument.Parse(File.ReadAllText(path));
+            var json = await File.ReadAllTextAsync(path, ct).ConfigureAwait(false);
+            using var doc = JsonDocument.Parse(json);
             if (doc.RootElement.TryGetProperty("schema_version", out var v) &&
                 v.ValueKind == JsonValueKind.String)
                 return v.GetString();
@@ -78,15 +79,19 @@ public static class ProjectFormatVersions
         return null;
     }
 
+    public static string? TryReadProjectSchemaVersion(string projectDir) =>
+        TryReadProjectSchemaVersionAsync(projectDir).GetAwaiter().GetResult();
+
     /// <summary>Parse _export_meta.json from an extracted project root (optional).</summary>
-    public static ExportPackageMeta? TryReadExportMeta(string contentRoot)
+    public static async Task<ExportPackageMeta?> TryReadExportMetaAsync(string contentRoot, CancellationToken ct = default)
     {
         try
         {
             var path = Path.Combine(contentRoot, "_export_meta.json");
             if (!File.Exists(path)) return null;
+            var json = await File.ReadAllTextAsync(path, ct).ConfigureAwait(false);
             return JsonSerializer.Deserialize<ExportPackageMeta>(
-                File.ReadAllText(path),
+                json,
                 JsonDefaults.IndentedCaseInsensitive);
         }
         catch
@@ -94,6 +99,9 @@ public static class ProjectFormatVersions
             return null;
         }
     }
+
+    public static ExportPackageMeta? TryReadExportMeta(string contentRoot) =>
+        TryReadExportMetaAsync(contentRoot).GetAwaiter().GetResult();
 }
 
 /// <summary>DTO for _export_meta.json inside project zips.</summary>

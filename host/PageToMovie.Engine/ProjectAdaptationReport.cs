@@ -14,7 +14,7 @@ public static class ProjectAdaptationReport
     public static string GetPath(string projectDir) =>
         Path.Combine(projectDir, "source", "adaptation_report.json");
 
-    public static void Write(string projectDir, AdaptationReport report)
+    public static async Task WriteAsync(string projectDir, AdaptationReport report, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(report);
         var path = GetPath(projectDir);
@@ -42,22 +42,26 @@ public static class ProjectAdaptationReport
             raw_json = report.RawJson,
         };
         var json = JsonSerializer.Serialize(payload, JsonDefaults.Indented);
-        File.WriteAllText(path, json + "\n");
+        await File.WriteAllTextAsync(path, json + "\n", ct).ConfigureAwait(false);
     }
 
-    public static AdaptationReport? TryRead(string projectDir)
+    public static void Write(string projectDir, AdaptationReport report) => WriteAsync(projectDir, report).GetAwaiter().GetResult();
+
+    public static async Task<AdaptationReport?> TryReadAsync(string projectDir, CancellationToken ct = default)
     {
         var path = GetPath(projectDir);
         if (!File.Exists(path)) return null;
         try
         {
             // File is schema_version-wrapped but same fields as the model sidecar.
-            return PageToMovie.Adaptation.Conversion.AdaptationReportParser.ParseModelJson(
-                File.ReadAllText(path));
+            var text = await File.ReadAllTextAsync(path, ct).ConfigureAwait(false);
+            return PageToMovie.Adaptation.Conversion.AdaptationReportParser.ParseModelJson(text);
         }
         catch
         {
             return null;
         }
     }
+
+    public static AdaptationReport? TryRead(string projectDir) => TryReadAsync(projectDir).GetAwaiter().GetResult();
 }

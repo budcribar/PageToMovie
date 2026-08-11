@@ -23,10 +23,19 @@ public interface IUserApiKeyProvider
     /// </summary>
     string? GetKey(string? userId, string providerId);
 
+    Task<string?> GetKeyAsync(string? userId, CancellationToken ct = default) => GetKeyAsync(userId, "grok", ct);
+
+    Task<string?> GetKeyAsync(string? userId, string providerId, CancellationToken ct = default);
+
     /// <summary>Whether a non-empty xAI key is available (including process default).</summary>
     bool HasKey(string? userId);
 
     bool HasKey(string? userId, string providerId);
+
+    Task<bool> HasKeyAsync(string? userId, CancellationToken ct = default) => HasKeyAsync(userId, "grok", ct);
+
+    async Task<bool> HasKeyAsync(string? userId, string providerId, CancellationToken ct = default) =>
+        !string.IsNullOrWhiteSpace(await GetKeyAsync(userId, providerId, ct).ConfigureAwait(false));
 }
 
 /// <summary>

@@ -12,7 +12,7 @@ public sealed class ProjectLeaseService : IProjectLeaseService
     };
 
     private readonly ProjectStore _store;
-    private readonly object _gate = new();
+    private readonly SemaphoreSlim _gate = new(1, 1);
 
     public ProjectLeaseService(ProjectStore store) => _store = store;
 
@@ -22,28 +22,29 @@ public sealed class ProjectLeaseService : IProjectLeaseService
         return Path.Combine(_store.GetProjectDir(projectId), "leases", safe + ".json");
     }
 
-    public Task<ProjectLease?> GetAsync(string projectId, string resourceKey, CancellationToken ct = default)
+    public async Task<ProjectLease?> GetAsync(string projectId, string resourceKey, CancellationToken ct = default)
     {
         var path = LeasePath(projectId, resourceKey);
-        if (!File.Exists(path)) return Task.FromResult<ProjectLease?>(null);
-        var json = File.ReadAllText(path);
+        if (!File.Exists(path)) return null;
+        var json = await File.ReadAllTextAsync(path, ct).ConfigureAwait(false);
         var lease = JsonSerializer.Deserialize<ProjectLease>(json, JsonOpts);
         if (lease is not null && lease.ExpiresAt <= DateTimeOffset.UtcNow)
         {
             try { File.Delete(path); } catch { /* ignore */ }
-            return Task.FromResult<ProjectLease?>(null);
+            return null;
         }
-        return Task.FromResult(lease);
+        return lease;
     }
 
     public async Task<(bool Acquired, ProjectLease Lease)> TryAcquireAsync(
         string projectId, string resourceKey, string userId, TimeSpan ttl, CancellationToken ct = default)
     {
-        lock (_gate)
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        try
         {
             var path = LeasePath(projectId, resourceKey);
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            var existing = GetAsync(projectId, resourceKey, ct).GetAwaiter().GetResult();
+            var existing = await GetAsync(projectId, resourceKey, ct).ConfigureAwait(false);
             if (existing is not null
                 && !string.Equals(existing.HolderUserId, userId, StringComparison.OrdinalIgnoreCase))
             {
@@ -57,63 +58,82 @@ public sealed class ProjectLeaseService : IProjectLeaseService
                 AcquiredAt = existing?.AcquiredAt ?? DateTimeOffset.UtcNow,
                 ExpiresAt = DateTimeOffset.UtcNow.Add(ttl),
             };
-            WriteLease(path, lease);
+            await WriteLeaseAsync(path, lease, ct).ConfigureAwait(false);
             return (true, lease);
         }
-    }
-
-    public Task<bool> ReleaseAsync(string projectId, string resourceKey, string userId, CancellationToken ct = default)
-    {
-        lock (_gate)
+        finally
         {
-            var path = LeasePath(projectId, resourceKey);
-            var existing = GetAsync(projectId, resourceKey, ct).GetAwaiter().GetResult();
-            if (existing is null) return Task.FromResult(true);
-            if (!string.Equals(existing.HolderUserId, userId, StringComparison.OrdinalIgnoreCase))
-                return Task.FromResult(false);
-            try { File.Delete(path); } catch { /* ignore */ }
-            return Task.FromResult(true);
+            _gate.Release();
         }
     }
 
-    public Task<(bool Renewed, ProjectLease? Lease)> TryRenewAsync(
+    public async Task<bool> ReleaseAsync(string projectId, string resourceKey, string userId, CancellationToken ct = default)
+    {
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var path = LeasePath(projectId, resourceKey);
+            var existing = await GetAsync(projectId, resourceKey, ct).ConfigureAwait(false);
+            if (existing is null) return true;
+            if (!string.Equals(existing.HolderUserId, userId, StringComparison.OrdinalIgnoreCase))
+                return false;
+            try { File.Delete(path); } catch { /* ignore */ }
+            return true;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task<(bool Renewed, ProjectLease? Lease)> TryRenewAsync(
         string projectId, string resourceKey, string userId, TimeSpan ttl, CancellationToken ct = default)
     {
-        lock (_gate)
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        try
         {
             var path = LeasePath(projectId, resourceKey);
-            var existing = GetAsync(projectId, resourceKey, ct).GetAwaiter().GetResult();
+            var existing = await GetAsync(projectId, resourceKey, ct).ConfigureAwait(false);
             if (existing is null
                 || !string.Equals(existing.HolderUserId, userId, StringComparison.OrdinalIgnoreCase))
-                return Task.FromResult<(bool, ProjectLease?)>((false, existing));
+                return (false, existing);
             existing.ExpiresAt = DateTimeOffset.UtcNow.Add(ttl);
-            WriteLease(path, existing);
-            return Task.FromResult<(bool, ProjectLease?)>((true, existing));
+            await WriteLeaseAsync(path, existing, ct).ConfigureAwait(false);
+            return (true, existing);
+        }
+        finally
+        {
+            _gate.Release();
         }
     }
 
-    public Task<(bool Transferred, ProjectLease? Lease)> TryTransferAsync(
+    public async Task<(bool Transferred, ProjectLease? Lease)> TryTransferAsync(
         string projectId, string resourceKey, string fromUserId, string toUserId, TimeSpan ttl, CancellationToken ct = default)
     {
-        lock (_gate)
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        try
         {
             var path = LeasePath(projectId, resourceKey);
-            var existing = GetAsync(projectId, resourceKey, ct).GetAwaiter().GetResult();
+            var existing = await GetAsync(projectId, resourceKey, ct).ConfigureAwait(false);
             if (existing is null
                 || !string.Equals(existing.HolderUserId, fromUserId, StringComparison.OrdinalIgnoreCase))
-                return Task.FromResult<(bool, ProjectLease?)>((false, existing));
+                return (false, existing);
             existing.HolderUserId = toUserId;
             existing.AcquiredAt = DateTimeOffset.UtcNow;
             existing.ExpiresAt = DateTimeOffset.UtcNow.Add(ttl);
-            WriteLease(path, existing);
-            return Task.FromResult<(bool, ProjectLease?)>((true, existing));
+            await WriteLeaseAsync(path, existing, ct).ConfigureAwait(false);
+            return (true, existing);
+        }
+        finally
+        {
+            _gate.Release();
         }
     }
 
-    private static void WriteLease(string path, ProjectLease lease)
+    private static async Task WriteLeaseAsync(string path, ProjectLease lease, CancellationToken ct = default)
     {
         var tmp = path + ".tmp";
-        File.WriteAllText(tmp, JsonSerializer.Serialize(lease, JsonOpts));
+        await File.WriteAllTextAsync(tmp, JsonSerializer.Serialize(lease, JsonOpts), ct).ConfigureAwait(false);
         File.Move(tmp, path, overwrite: true);
     }
 }

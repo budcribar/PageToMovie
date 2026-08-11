@@ -22,6 +22,7 @@ public sealed class MediaShareService
     private readonly ProjectStore _projects;
     private readonly ILogger<MediaShareService> _log;
     private readonly object _lock = new();
+    private readonly SemaphoreSlim _semaphore = new(1, 1);
 
     public MediaShareService(ProjectStore projects, ILogger<MediaShareService> log)
     {
@@ -46,7 +47,7 @@ public sealed class MediaShareService
     /// <summary>
     /// Create or return an existing non-expired WIP share for the project.
     /// </summary>
-    public ShareRecord EnsureWipShare(string projectId, string? createdBy, TimeSpan? lifetime = null)
+    public async Task<ShareRecord> EnsureWipShareAsync(string projectId, string? createdBy, TimeSpan? lifetime = null, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(projectId))
             throw new ArgumentException("projectId required", nameof(projectId));
@@ -56,7 +57,8 @@ public sealed class MediaShareService
         if (path is null || !File.Exists(path))
             throw new InvalidOperationException("WIP movie not found — Play first so the cut is built.");
 
-        lock (_lock)
+        await _semaphore.WaitAsync(ct).ConfigureAwait(false);
+        try
         {
             Directory.CreateDirectory(SharesDir);
             // Reuse active share for this project if present
@@ -64,7 +66,8 @@ public sealed class MediaShareService
             {
                 try
                 {
-                    var rec = JsonSerializer.Deserialize<ShareRecord>(File.ReadAllText(file), JsonOpts);
+                    var text = await File.ReadAllTextAsync(file, ct).ConfigureAwait(false);
+                    var rec = JsonSerializer.Deserialize<ShareRecord>(text, JsonOpts);
                     if (rec is null || rec.Revoked) continue;
                     if (!string.Equals(rec.ProjectId, projectId, StringComparison.OrdinalIgnoreCase)) continue;
                     if (!string.Equals(rec.Kind, "wip", StringComparison.OrdinalIgnoreCase)) continue;
@@ -88,13 +91,20 @@ public sealed class MediaShareService
                 ExpiresAt = lifetime is { } life ? DateTimeOffset.UtcNow.Add(life) : DateTimeOffset.UtcNow.AddDays(30),
             };
             var outPath = Path.Combine(SharesDir, token + ".json");
-            File.WriteAllText(outPath, JsonSerializer.Serialize(record, JsonOpts) + "\n");
+            await File.WriteAllTextAsync(outPath, JsonSerializer.Serialize(record, JsonOpts) + "\n", ct).ConfigureAwait(false);
             _log.LogInformation("Created WIP share token for project {Project} by {User}", projectId, createdBy);
             return record;
         }
+        finally
+        {
+            _semaphore.Release();
+        }
     }
 
-    public ShareRecord? TryGet(string token)
+    public ShareRecord EnsureWipShare(string projectId, string? createdBy, TimeSpan? lifetime = null) =>
+        EnsureWipShareAsync(projectId, createdBy, lifetime).GetAwaiter().GetResult();
+
+    public async Task<ShareRecord?> TryGetAsync(string token, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(token)) return null;
         // Token is filename-safe base64url
@@ -105,7 +115,8 @@ public sealed class MediaShareService
         if (!File.Exists(path)) return null;
         try
         {
-            var rec = JsonSerializer.Deserialize<ShareRecord>(File.ReadAllText(path), JsonOpts);
+            var text = await File.ReadAllTextAsync(path, ct).ConfigureAwait(false);
+            var rec = JsonSerializer.Deserialize<ShareRecord>(text, JsonOpts);
             if (rec is null || rec.Revoked) return null;
             if (rec.ExpiresAt is { } exp && exp < DateTimeOffset.UtcNow) return null;
             if (!string.Equals(rec.Token, token.Trim(), StringComparison.Ordinal)) return null;
@@ -117,15 +128,17 @@ public sealed class MediaShareService
         }
     }
 
-    public bool Revoke(string token)
+    public ShareRecord? TryGet(string token) => TryGetAsync(token).GetAwaiter().GetResult();
+
+    public async Task<bool> RevokeAsync(string token, CancellationToken ct = default)
     {
-        var rec = TryGet(token);
+        var rec = await TryGetAsync(token, ct).ConfigureAwait(false);
         if (rec is null) return false;
         rec.Revoked = true;
         var path = Path.Combine(SharesDir, rec.Token + ".json");
         try
         {
-            File.WriteAllText(path, JsonSerializer.Serialize(rec, JsonOpts) + "\n");
+            await File.WriteAllTextAsync(path, JsonSerializer.Serialize(rec, JsonOpts) + "\n", ct).ConfigureAwait(false);
             return true;
         }
         catch
@@ -133,6 +146,8 @@ public sealed class MediaShareService
             return false;
         }
     }
+
+    public bool Revoke(string token) => RevokeAsync(token).GetAwaiter().GetResult();
 
     private static string GenerateToken()
     {

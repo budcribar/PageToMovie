@@ -47,14 +47,13 @@ public static class AdaptationPromptPack
         string body;
         try
         {
-            body = ReadBookToFountainBody();
+            body = await ReadBookToFountainBodyAsync(ct).ConfigureAwait(false);
         }
         catch (InvalidOperationException) when (!string.IsNullOrWhiteSpace(fallbackBody))
         {
             body = fallbackBody!;
         }
 
-        await Task.CompletedTask.ConfigureAwait(false);
         tokens ??= AdaptationPromptTokens.Default(totalRuntimeMinutes);
         if (tokens.TotalRuntimeMinutes is null && totalRuntimeMinutes is not null)
             tokens = CloneWithRuntime(tokens, totalRuntimeMinutes);
@@ -169,16 +168,19 @@ public static class AdaptationPromptPack
         return body;
     }
 
+    public static async Task<string> ReadBookToFountainBodyAsync(CancellationToken ct = default) =>
+        await ReadPromptBodyAsync(BookToFountainRelativePath, EmbeddedLogicalName, ct).ConfigureAwait(false);
+
     public static string ReadBookToFountainBody() =>
-        ReadPromptBody(BookToFountainRelativePath, EmbeddedLogicalName);
+        ReadBookToFountainBodyAsync().GetAwaiter().GetResult();
 
     /// <summary>
     /// Fountain → Fountain "re-skin" system prompt with the target medium resolved.
     /// Descriptive layer only; dialogue / cues / scene count preserved.
     /// </summary>
-    public static string BuildReskinSystemPrompt(string? visualMedium)
+    public static async Task<string> BuildReskinSystemPromptAsync(string? visualMedium, CancellationToken ct = default)
     {
-        var body = ReadPromptBody(ReskinRelativePath, ReskinEmbeddedLogicalName);
+        var body = await ReadPromptBodyAsync(ReskinRelativePath, ReskinEmbeddedLogicalName, ct).ConfigureAwait(false);
         var medium = string.IsNullOrWhiteSpace(visualMedium) ? "auto" : visualMedium.Trim();
         var directive = string.Equals(medium, "auto", StringComparison.OrdinalIgnoreCase)
             ? "auto — keep the medium the source already implies; do not switch styles"
@@ -196,13 +198,16 @@ public static class AdaptationPromptPack
         return body;
     }
 
+    public static string BuildReskinSystemPrompt(string? visualMedium) =>
+        BuildReskinSystemPromptAsync(visualMedium).GetAwaiter().GetResult();
+
     /// <summary>
     /// Fountain → Fountain "embellish" system prompt with the target medium resolved.
     /// Enriches the descriptive layer only; dialogue / cues / scene count preserved.
     /// </summary>
-    public static string BuildEmbellishSystemPrompt(string? visualMedium)
+    public static async Task<string> BuildEmbellishSystemPromptAsync(string? visualMedium, CancellationToken ct = default)
     {
-        var body = ReadPromptBody(EmbellishRelativePath, EmbellishEmbeddedLogicalName);
+        var body = await ReadPromptBodyAsync(EmbellishRelativePath, EmbellishEmbeddedLogicalName, ct).ConfigureAwait(false);
         var medium = string.IsNullOrWhiteSpace(visualMedium) ? "auto" : visualMedium.Trim();
         var directive = string.Equals(medium, "auto", StringComparison.OrdinalIgnoreCase)
             ? "auto — enrich in the medium the source already implies; do not switch styles"
@@ -220,13 +225,16 @@ public static class AdaptationPromptPack
         return body;
     }
 
+    public static string BuildEmbellishSystemPrompt(string? visualMedium) =>
+        BuildEmbellishSystemPromptAsync(visualMedium).GetAwaiter().GetResult();
+
     /// <summary>
     /// Fountain → Fountain "trim" system prompt with the runtime targets resolved. Structure may shrink
     /// (condense/merge/cut) toward the target; never expands.
     /// </summary>
-    public static string BuildTrimSystemPrompt(int targetMinutes, int naturalMinutes)
+    public static async Task<string> BuildTrimSystemPromptAsync(int targetMinutes, int naturalMinutes, CancellationToken ct = default)
     {
-        var body = ReadPromptBody(TrimRelativePath, TrimEmbeddedLogicalName);
+        var body = await ReadPromptBodyAsync(TrimRelativePath, TrimEmbeddedLogicalName, ct).ConfigureAwait(false);
         body = body.Replace("{{TARGET_MINUTES}}", Math.Max(1, targetMinutes).ToString(), StringComparison.Ordinal);
         body = body.Replace("{{NATURAL_MINUTES}}", Math.Max(1, naturalMinutes).ToString(), StringComparison.Ordinal);
 
@@ -241,9 +249,12 @@ public static class AdaptationPromptPack
         return body;
     }
 
-    private static string ReadPromptBody(string relativePath, string logicalName)
+    public static string BuildTrimSystemPrompt(int targetMinutes, int naturalMinutes) =>
+        BuildTrimSystemPromptAsync(targetMinutes, naturalMinutes).GetAwaiter().GetResult();
+
+    private static async Task<string> ReadPromptBodyAsync(string relativePath, string logicalName, CancellationToken ct = default)
     {
-        var fromOverride = TryReadOverrideFile(relativePath);
+        var fromOverride = await TryReadOverrideFileAsync(relativePath, ct).ConfigureAwait(false);
         if (!string.IsNullOrEmpty(fromOverride))
             return fromOverride;
 
@@ -251,7 +262,7 @@ public static class AdaptationPromptPack
         if (stream is not null)
         {
             using var reader = new StreamReader(stream);
-            return reader.ReadToEnd();
+            return await reader.ReadToEndAsync(ct).ConfigureAwait(false);
         }
 
         var available = string.Join(", ", ThisAssembly.GetManifestResourceNames()
@@ -261,6 +272,9 @@ public static class AdaptationPromptPack
             $"Available: {(string.IsNullOrEmpty(available) ? "(none — rebuild Adaptation with prompts/)" : available)}. " +
             "Or set PAGETOMOVIE_PROMPTS_DIR to a folder with the .txt file.");
     }
+
+    private static string ReadPromptBody(string relativePath, string logicalName) =>
+        ReadPromptBodyAsync(relativePath, logicalName).GetAwaiter().GetResult();
 
     private static AdaptationPromptTokens CloneWithRuntime(AdaptationPromptTokens t, int? minutes) =>
         new()
@@ -278,12 +292,15 @@ public static class AdaptationPromptPack
             SceneCountMax = t.SceneCountMax,
         };
 
-    private static string? TryReadOverrideFile(string relativePath)
+    private static async Task<string?> TryReadOverrideFileAsync(string relativePath, CancellationToken ct = default)
     {
         var dir = PromptsDirOverride
                   ?? Environment.GetEnvironmentVariable("PAGETOMOVIE_PROMPTS_DIR");
         if (string.IsNullOrWhiteSpace(dir)) return null;
         var full = Path.Combine(dir, Path.GetFileName(relativePath));
-        return File.Exists(full) ? File.ReadAllText(full) : null;
+        return File.Exists(full) ? await File.ReadAllTextAsync(full, ct).ConfigureAwait(false) : null;
     }
+
+    private static string? TryReadOverrideFile(string relativePath) =>
+        TryReadOverrideFileAsync(relativePath).GetAwaiter().GetResult();
 }

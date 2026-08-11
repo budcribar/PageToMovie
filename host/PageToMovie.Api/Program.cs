@@ -7776,7 +7776,7 @@ app.MapGet("/api/projects/{id}/review/movie", async (
     try
     {
         await store.RequireProjectAsync(id, ct);
-        var report = movieReview.LoadReport(id);
+        var report = await movieReview.LoadReportAsync(id, ct);
         return Results.Ok(new { ok = true, projectId = id, report });
     }
     catch (Exception ex)
@@ -8985,10 +8985,11 @@ app.MapMergeEndpoints();
 app.MapHub<ProjectHub>("/hubs/project");
 
 // ---- Project cost summary (adaptation vs video split) ----
-app.MapGet("/api/projects/{id}/costs/summary", (
+app.MapGet("/api/projects/{id}/costs/summary", async (
     string id,
     CostLedgerService ledger,
-    ProjectStore store) =>
+    ProjectStore store,
+    CancellationToken ct) =>
 {
     try
     {
@@ -8996,7 +8997,7 @@ app.MapGet("/api/projects/{id}/costs/summary", (
         // would point at the wrong directory whenever PageToMovie__WorkspaceRoot differs from the
         // app's own content root (fakes-mode tests, /data mount in production).
         var root = Path.Combine(store.WorkspaceRoot, "projects");
-        var summary = ProjectCostAggregator.BuildSummary(id, root, ledger);
+        var summary = await ProjectCostAggregator.BuildSummaryAsync(id, root, ledger, ct);
         return Results.Ok(summary);
     }
     catch (Exception ex)

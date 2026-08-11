@@ -32,6 +32,7 @@ public sealed class DemoCatalogService
     private readonly ProjectStore _projects;
     private readonly ILogger<DemoCatalogService> _log;
     private readonly object _lock = new();
+    private readonly SemaphoreSlim _semaphore = new(1, 1);
 
     public DemoCatalogService(ProjectStore projects, ILogger<DemoCatalogService> log)
     {
@@ -447,7 +448,7 @@ public sealed class DemoCatalogService
         }
     }
 
-    public DemoEntry PublishFromFile(
+    public async Task<DemoEntry> PublishFromFileAsync(
         string sourceMp4Path,
         string title,
         string? description,
@@ -457,7 +458,8 @@ public sealed class DemoCatalogService
         bool madeForKids = false,
         bool isAiSyntheticContent = true,
         string privacyStatus = "public",
-        List<string>? tags = null)
+        List<string>? tags = null,
+        CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(sourceMp4Path) || !File.Exists(sourceMp4Path))
             throw new InvalidOperationException("Source movie not found");
@@ -480,9 +482,10 @@ public sealed class DemoCatalogService
             var entry = NewPendingEntry(
                 id, title, description, projectId, createdBy, fi.Length, acceptedGuidelines,
                 madeForKids, isAiSyntheticContent, privacyStatus, tags);
-            File.WriteAllText(
+            await File.WriteAllTextAsync(
                 Path.Combine(dir, "meta.json"),
-                JsonSerializer.Serialize(entry, JsonOpts) + "\n");
+                JsonSerializer.Serialize(entry, JsonOpts) + "\n",
+                ct).ConfigureAwait(false);
 
             _log.LogInformation(
                 "Demo {Id} published from file (awaiting YouTube) ({Bytes} bytes) project={Project} by={User}",
@@ -500,6 +503,19 @@ public sealed class DemoCatalogService
             throw;
         }
     }
+
+    public DemoEntry PublishFromFile(
+        string sourceMp4Path,
+        string title,
+        string? description,
+        string? projectId,
+        string? createdBy,
+        bool acceptedGuidelines,
+        bool madeForKids = false,
+        bool isAiSyntheticContent = true,
+        string privacyStatus = "public",
+        List<string>? tags = null) =>
+        PublishFromFileAsync(sourceMp4Path, title, description, projectId, createdBy, acceptedGuidelines, madeForKids, isAiSyntheticContent, privacyStatus, tags).GetAwaiter().GetResult();
 
     public DemoEntry? Report(string id, string? note, string? reporterUserId)
     {
@@ -917,10 +933,11 @@ public sealed class DemoCatalogService
     /// skipped. Returns the number of records rewritten. Generic on purpose — any user's stale email
     /// record is healed, nothing story- or account-specific is hardcoded.
     /// </summary>
-    public int MigrateEmailCreatedBy(Func<string, string?> resolveCanonicalIdByEmail)
+    public async Task<int> MigrateEmailCreatedByAsync(Func<string, string?> resolveCanonicalIdByEmail, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(resolveCanonicalIdByEmail);
-        lock (_lock)
+        await _semaphore.WaitAsync(ct).ConfigureAwait(false);
+        try
         {
             if (!Directory.Exists(DemosDir)) return 0;
             var fixedCount = 0;
@@ -930,7 +947,8 @@ public sealed class DemoCatalogService
                 if (!File.Exists(metaPath)) continue;
                 try
                 {
-                    var entry = JsonSerializer.Deserialize<DemoEntry>(File.ReadAllText(metaPath), JsonOpts);
+                    var json = await File.ReadAllTextAsync(metaPath, ct).ConfigureAwait(false);
+                    var entry = JsonSerializer.Deserialize<DemoEntry>(json, JsonOpts);
                     var oldBy = entry?.CreatedBy?.Trim();
                     if (entry is null || string.IsNullOrEmpty(oldBy) || !oldBy.Contains('@'))
                         continue;
@@ -942,7 +960,7 @@ public sealed class DemoCatalogService
                         continue; // unresolved, still an email, or unchanged — leave as-is
 
                     entry.CreatedBy = canonical;
-                    File.WriteAllText(metaPath, JsonSerializer.Serialize(entry, JsonOpts) + "\n");
+                    await File.WriteAllTextAsync(metaPath, JsonSerializer.Serialize(entry, JsonOpts) + "\n", ct).ConfigureAwait(false);
                     fixedCount++;
                     _log.LogInformation(
                         "Demo {Id}: migrated CreatedBy from an email to canonical id {New}",
@@ -955,7 +973,14 @@ public sealed class DemoCatalogService
             }
             return fixedCount;
         }
+        finally
+        {
+            _semaphore.Release();
+        }
     }
+
+    public int MigrateEmailCreatedBy(Func<string, string?> resolveCanonicalIdByEmail) =>
+        MigrateEmailCreatedByAsync(resolveCanonicalIdByEmail).GetAwaiter().GetResult();
 
     private List<DemoEntry> LoadAllUnlocked()
     {
@@ -980,7 +1005,7 @@ public sealed class DemoCatalogService
         return list;
     }
 
-    private DemoEntry? ReadUnlocked(string id)
+    private async Task<DemoEntry?> ReadUnlockedAsync(string id, CancellationToken ct = default)
     {
         if (!IsValidId(id)) return null;
         var metaPath = Path.Combine(DemosDir, id, "meta.json");
@@ -989,7 +1014,8 @@ public sealed class DemoCatalogService
             return null;
         try
         {
-            var entry = JsonSerializer.Deserialize<DemoEntry>(File.ReadAllText(metaPath), JsonOpts);
+            var json = await File.ReadAllTextAsync(metaPath, ct).ConfigureAwait(false);
+            var entry = JsonSerializer.Deserialize<DemoEntry>(json, JsonOpts);
             if (entry is null || string.IsNullOrWhiteSpace(entry.Id))
                 return null;
             entry.Status = DemoStatuses.Normalize(
@@ -1013,14 +1039,21 @@ public sealed class DemoCatalogService
         }
     }
 
-    private void SaveUnlocked(DemoEntry entry)
+    private DemoEntry? ReadUnlocked(string id) =>
+        ReadUnlockedAsync(id).GetAwaiter().GetResult();
+
+    private async Task SaveUnlockedAsync(DemoEntry entry, CancellationToken ct = default)
     {
         var dir = Path.Combine(DemosDir, entry.Id);
         Directory.CreateDirectory(dir);
-        File.WriteAllText(
+        await File.WriteAllTextAsync(
             Path.Combine(dir, "meta.json"),
-            JsonSerializer.Serialize(entry, JsonOpts) + "\n");
+            JsonSerializer.Serialize(entry, JsonOpts) + "\n",
+            ct).ConfigureAwait(false);
     }
+
+    private void SaveUnlocked(DemoEntry entry) =>
+        SaveUnlockedAsync(entry).GetAwaiter().GetResult();
 
     private static async Task WriteMetaAsync(string dir, DemoEntry entry, CancellationToken ct) =>
         await File.WriteAllTextAsync(

@@ -264,16 +264,16 @@ public sealed class AdaptationService
     /// Dialogue, character cues, scene headings, and scene count/order are preserved; if the model
     /// changes the scene count the original is kept and the result is flagged not-preserved.
     /// </summary>
-    public Task<FountainEditResult> ReskinAsync(
+    public async Task<FountainEditResult> ReskinAsync(
         string fountain,
         string? visualMedium,
         IChatClient chat,
         string? model = null,
         IProgress<string>? progress = null,
         CancellationToken ct = default) =>
-        ApplyDescriptiveEditAsync(
+        await ApplyDescriptiveEditAsync(
             fountain,
-            AdaptationPromptPack.BuildReskinSystemPrompt(visualMedium),
+            await AdaptationPromptPack.BuildReskinSystemPromptAsync(visualMedium, ct).ConfigureAwait(false),
             userContent: null,
             operation: "re-skin",
             mode: "fountain_reskin",
@@ -281,14 +281,14 @@ public sealed class AdaptationService
             model: model,
             progress: progress,
             progressMessage: "Applying look to the screenplay…",
-            ct: ct);
+            ct: ct).ConfigureAwait(false);
 
     /// <summary>
     /// Enrich an existing Fountain screenplay's descriptive layer for the target medium — incorporating
     /// the best of the book's own language where <paramref name="bookText"/> is supplied. Dialogue, cues,
     /// scene headings, and scene count/order are preserved; on drift the original is kept.
     /// </summary>
-    public Task<FountainEditResult> EmbellishAsync(
+    public async Task<FountainEditResult> EmbellishAsync(
         string fountain,
         string? visualMedium,
         IChatClient chat,
@@ -308,9 +308,9 @@ public sealed class AdaptationService
                 book + "\n\n---\n\nSCREENPLAY TO ENRICH:\n";
         }
 
-        return ApplyDescriptiveEditAsync(
+        return await ApplyDescriptiveEditAsync(
             fountain,
-            AdaptationPromptPack.BuildEmbellishSystemPrompt(visualMedium),
+            await AdaptationPromptPack.BuildEmbellishSystemPromptAsync(visualMedium, ct).ConfigureAwait(false),
             userContent: userContent,
             operation: "enrichment",
             mode: "fountain_embellish",
@@ -318,7 +318,7 @@ public sealed class AdaptationService
             model: model,
             progress: progress,
             progressMessage: "Enriching the screenplay…",
-            ct: ct);
+            ct: ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -401,7 +401,7 @@ public sealed class AdaptationService
             return new FountainEditResult(false, fountain, before, before, true, "AI service not configured.");
 
         progress?.Report($"Trimming the screenplay toward ~{Math.Max(1, targetMinutes)} min…");
-        var system = AdaptationPromptPack.BuildTrimSystemPrompt(targetMinutes, naturalMinutes);
+        var system = await AdaptationPromptPack.BuildTrimSystemPromptAsync(targetMinutes, naturalMinutes, ct).ConfigureAwait(false);
 
         var raw = await chat.CompleteAsync(
             system, fountain, model ?? "", mode: "fountain_trim", ct: ct).ConfigureAwait(false);

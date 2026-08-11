@@ -16,18 +16,19 @@ public static class LearningPackageService
     public static string PackagesRoot(string projectDir) =>
         Path.Combine(projectDir, "artifacts", "learning_packages");
 
-    public static LearningPackageResult CreateFromProject(
+    public static async Task<LearningPackageResult> CreateFromProjectAsync(
         ProjectStore store,
         string projectId,
         string? workspaceRoot = null,
         string? outcome = null,
-        IReadOnlyList<string>? failureTags = null)
+        IReadOnlyList<string>? failureTags = null,
+        CancellationToken ct = default)
     {
         var projectDir = store.GetProjectDir(projectId);
-        var film = FilmBuildService.TryRead(projectDir);
+        var film = await FilmBuildService.TryReadAsync(projectDir, ct).ConfigureAwait(false);
         var stage1 = ProjectStage1ConvertManifest.TryRead(projectDir);
-        var report = ProjectAdaptationReport.TryRead(projectDir);
-        var yt = TryReadYoutube(projectDir);
+        var report = await ProjectAdaptationReport.TryReadAsync(projectDir, ct).ConfigureAwait(false);
+        var yt = await TryReadYoutubeAsync(projectDir, ct).ConfigureAwait(false);
 
         var packageId = "lp_" + DateTime.UtcNow.ToString("yyyyMMddHHmmss") + "_" +
                         Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(3))
@@ -88,7 +89,7 @@ public static class LearningPackageService
         var dir = Path.Combine(PackagesRoot(projectDir), packageId);
         Directory.CreateDirectory(dir);
         var packagePath = Path.Combine(dir, "package.json");
-        File.WriteAllText(packagePath, JsonSerializer.Serialize(package, JsonDefaults.Indented) + "\n");
+        await File.WriteAllTextAsync(packagePath, JsonSerializer.Serialize(package, JsonDefaults.Indented) + "\n", ct).ConfigureAwait(false);
 
         // Trajectory: lightweight stage markers we can infer from artifacts on disk
         var trajectoryPath = Path.Combine(dir, "trajectory.jsonl");
@@ -141,14 +142,23 @@ public static class LearningPackageService
         };
     }
 
-    private static YouTubeUploadInfo? TryReadYoutube(string projectDir)
+    public static LearningPackageResult CreateFromProject(
+        ProjectStore store,
+        string projectId,
+        string? workspaceRoot = null,
+        string? outcome = null,
+        IReadOnlyList<string>? failureTags = null) =>
+        CreateFromProjectAsync(store, projectId, workspaceRoot, outcome, failureTags).GetAwaiter().GetResult();
+
+    private static async Task<YouTubeUploadInfo?> TryReadYoutubeAsync(string projectDir, CancellationToken ct = default)
     {
         var path = Path.Combine(projectDir, "assets", "youtube_upload.json");
         if (!File.Exists(path)) return null;
         try
         {
+            var text = await File.ReadAllTextAsync(path, ct).ConfigureAwait(false);
             return JsonSerializer.Deserialize<YouTubeUploadInfo>(
-                File.ReadAllText(path),
+                text,
                 JsonDefaults.IndentedCaseInsensitive);
         }
         catch
@@ -156,6 +166,8 @@ public static class LearningPackageService
             return null;
         }
     }
+
+    private static YouTubeUploadInfo? TryReadYoutube(string projectDir) => TryReadYoutubeAsync(projectDir).GetAwaiter().GetResult();
 }
 
 public sealed class LearningPackageResult

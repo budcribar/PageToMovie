@@ -45,13 +45,13 @@ public sealed class MovieAutoReviewService
     public string ReportPath(string projectId) =>
         Path.Combine(_projects.GetProjectDir(projectId), "assets", "review", "movie_review.json");
 
-    public MovieAutoReviewReport? LoadReport(string projectId)
+    public async Task<MovieAutoReviewReport?> LoadReportAsync(string projectId, CancellationToken ct = default)
     {
         var path = ReportPath(projectId);
         if (!File.Exists(path)) return null;
         try
         {
-            var json = File.ReadAllText(path);
+            var json = await File.ReadAllTextAsync(path, ct).ConfigureAwait(false);
             return JsonSerializer.Deserialize<MovieAutoReviewReport>(json, JsonOpts);
         }
         catch
@@ -59,6 +59,8 @@ public sealed class MovieAutoReviewService
             return null;
         }
     }
+
+    public MovieAutoReviewReport? LoadReport(string projectId) => LoadReportAsync(projectId).GetAwaiter().GetResult();
 
     public async Task SaveReportAsync(MovieAutoReviewReport report, CancellationToken ct = default)
     {
@@ -240,7 +242,7 @@ public sealed class MovieAutoReviewService
                 idx++;
                 var ext = f.Mime.Contains("png", StringComparison.OrdinalIgnoreCase) ? "png" : "jpg";
                 var p = Path.Combine(tempWorkDir, $"f{idx:D2}_S{f.SceneNumber:D2}.{ext}");
-                File.WriteAllBytes(p, bytes);
+                await File.WriteAllBytesAsync(p, bytes, ct).ConfigureAwait(false);
                 imageFiles.Add((p, $"SCENE_{f.SceneNumber:D2}"));
             }
 
@@ -280,7 +282,7 @@ Return valid JSON with non-generic, specific observations:
                 if (!execution.Success || execution.Value is null)
                     throw new InvalidOperationException(execution.Error ?? string.Join(" ", execution.ValidationIssues.Select(i => i.Message)));
                 feedback = execution.Value;
-                SaveExecutionManifest(await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false), $"movie_scene_group_review_{sceneNumbers.Min():D2}_{sceneNumbers.Max():D2}", execution);
+                await SaveExecutionManifestAsync(await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false), $"movie_scene_group_review_{sceneNumbers.Min():D2}_{sceneNumbers.Max():D2}", execution, ct).ConfigureAwait(false);
             }
             else
             {
@@ -341,7 +343,7 @@ Return valid JSON with non-generic, specific observations:
             new MultimodalReviewObservation("Full movie synthesis", Array.Empty<string>(), fullPrompt), ct).ConfigureAwait(false);
         if (execution.Success && execution.Value is not null)
         {
-            SaveExecutionManifest(await _projects.GetProjectDirAsync(report.ProjectId, ct).ConfigureAwait(false), "movie_review_synthesis", execution);
+            await SaveExecutionManifestAsync(await _projects.GetProjectDirAsync(report.ProjectId, ct).ConfigureAwait(false), "movie_review_synthesis", execution, ct).ConfigureAwait(false);
             return execution.Value.Text;
         }
 
@@ -425,14 +427,14 @@ Return valid JSON with non-generic, specific observations:
         return issues;
     }
 
-    private static void SaveExecutionManifest<TResult>(
-        string projectDir, string operationName, ValidatedModelResult<TResult> execution)
+    private static async Task SaveExecutionManifestAsync<TResult>(
+        string projectDir, string operationName, ValidatedModelResult<TResult> execution, CancellationToken ct = default)
         where TResult : class
     {
         var dir = Path.Combine(projectDir, "artifacts", "model_operations");
         Directory.CreateDirectory(dir);
-        File.WriteAllText(Path.Combine(dir, operationName + ".lifecycle.json"),
-            ModelExecutionManifest.Serialize(execution));
+        await File.WriteAllTextAsync(Path.Combine(dir, operationName + ".lifecycle.json"),
+            ModelExecutionManifest.Serialize(execution), ct).ConfigureAwait(false);
     }
 
     private static string BuildFallbackExecutiveSummary(

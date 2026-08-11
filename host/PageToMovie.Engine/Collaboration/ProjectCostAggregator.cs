@@ -13,10 +13,11 @@ public static class ProjectCostAggregator
     private const double VideoUsdPerClip = 0.40;
     private const double AudioUsdPerClip = 0.05;
 
-    public static CostSummaryDto BuildSummary(
+    public static async Task<CostSummaryDto> BuildSummaryAsync(
         string projectId,
         string projectsRoot,
-        CostLedgerService? ledger = null)
+        CostLedgerService? ledger = null,
+        CancellationToken ct = default)
     {
         var summary = new CostSummaryDto { ProjectId = projectId };
 
@@ -32,7 +33,8 @@ public static class ProjectCostAggregator
         {
             try
             {
-                using var doc = JsonDocument.Parse(File.ReadAllText(projectJsonPath));
+                var json = await File.ReadAllTextAsync(projectJsonPath, ct).ConfigureAwait(false);
+                using var doc = JsonDocument.Parse(json);
                 var root = doc.RootElement;
                 if (root.TryGetProperty("scenes", out var scenes) && scenes.ValueKind == JsonValueKind.Array)
                 {
@@ -104,6 +106,12 @@ public static class ProjectCostAggregator
 
         return summary;
     }
+
+    public static CostSummaryDto BuildSummary(
+        string projectId,
+        string projectsRoot,
+        CostLedgerService? ledger = null) =>
+        BuildSummaryAsync(projectId, projectsRoot, ledger).GetAwaiter().GetResult();
 
     private static bool HasMedia(JsonElement clip, params string[] props)
     {

@@ -24,7 +24,7 @@ public sealed class ProjectContributionService
         _mediaRegistry = mediaRegistry;
     }
 
-    public Task<ContributionDiffDto> ComputeDiffAsync(
+    public async Task<ContributionDiffDto> ComputeDiffAsync(
         string projectId,
         string parentProjectId,
         string targetDir,
@@ -40,7 +40,7 @@ public sealed class ProjectContributionService
         if (!Directory.Exists(targetDir) || !Directory.Exists(originDir))
         {
             _logger.LogWarning("Cannot compute diff: target or origin directory missing. Target: {Target}, Origin: {Origin}", targetDir, originDir);
-            return Task.FromResult(result);
+            return result;
         }
 
         var filesToCompare = new List<(string RelPath, string Category)>
@@ -77,8 +77,8 @@ public sealed class ProjectContributionService
 
             if (!oursExists && !theirsExists) continue;
 
-            var oursContent = oursExists ? File.ReadAllText(oursFile) : "";
-            var theirsContent = theirsExists ? File.ReadAllText(theirsFile) : "";
+            var oursContent = oursExists ? await File.ReadAllTextAsync(oursFile, ct).ConfigureAwait(false) : "";
+            var theirsContent = theirsExists ? await File.ReadAllTextAsync(theirsFile, ct).ConfigureAwait(false) : "";
 
             string status;
             if (!oursExists) status = "deleted";
@@ -103,9 +103,9 @@ public sealed class ProjectContributionService
         result.HasConflicts = overallHasConflicts;
 
         // Compute media clip status across target vs origin
-        result.MediaClips = ComputeMediaClips(targetDir, originDir);
+        result.MediaClips = await ComputeMediaClipsAsync(targetDir, originDir, ct).ConfigureAwait(false);
 
-        return Task.FromResult(result);
+        return result;
     }
 
     public async Task<MediaSyncResultDto> SyncContributionMediaAsync(
@@ -122,7 +122,7 @@ public sealed class ProjectContributionService
         }
 
         var targetBlueprint = Path.Combine(targetDir, "blueprint.clips.grok.json");
-        var targetClips = ExtractClipsFromBlueprint(targetBlueprint, targetDir);
+        var targetClips = await ExtractClipsFromBlueprintAsync(targetBlueprint, targetDir, ct).ConfigureAwait(false);
 
         using var clientOwned = httpClient is null ? new HttpClient() : null;
         var http = httpClient ?? clientOwned!;
@@ -254,10 +254,10 @@ public sealed class ProjectContributionService
         return result;
     }
 
-    private static List<MediaClipContributionDto> ComputeMediaClips(string targetDir, string originDir)
+    private static async Task<List<MediaClipContributionDto>> ComputeMediaClipsAsync(string targetDir, string originDir, CancellationToken ct = default)
     {
         var targetBlueprint = Path.Combine(targetDir, "blueprint.clips.grok.json");
-        var clips = ExtractClipsFromBlueprint(targetBlueprint, targetDir);
+        var clips = await ExtractClipsFromBlueprintAsync(targetBlueprint, targetDir, ct).ConfigureAwait(false);
 
         foreach (var clip in clips)
         {
@@ -289,14 +289,18 @@ public sealed class ProjectContributionService
         return clips;
     }
 
-    private static List<MediaClipContributionDto> ExtractClipsFromBlueprint(string blueprintPath, string projectDir)
+    private static List<MediaClipContributionDto> ComputeMediaClips(string targetDir, string originDir) =>
+        ComputeMediaClipsAsync(targetDir, originDir).GetAwaiter().GetResult();
+
+    private static async Task<List<MediaClipContributionDto>> ExtractClipsFromBlueprintAsync(string blueprintPath, string projectDir, CancellationToken ct = default)
     {
         var clips = new List<MediaClipContributionDto>();
         if (!File.Exists(blueprintPath)) return clips;
 
         try
         {
-            using var doc = JsonDocument.Parse(File.ReadAllText(blueprintPath));
+            var json = await File.ReadAllTextAsync(blueprintPath, ct).ConfigureAwait(false);
+            using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
             if (root.TryGetProperty("scenes", out var scenes) && scenes.ValueKind == JsonValueKind.Array)
@@ -332,6 +336,9 @@ public sealed class ProjectContributionService
 
         return clips;
     }
+
+    private static List<MediaClipContributionDto> ExtractClipsFromBlueprint(string blueprintPath, string projectDir) =>
+        ExtractClipsFromBlueprintAsync(blueprintPath, projectDir).GetAwaiter().GetResult();
 
     private static MediaClipContributionDto? ParseClipElement(JsonElement clip, int defaultScene, int defaultClip, string projectDir)
     {

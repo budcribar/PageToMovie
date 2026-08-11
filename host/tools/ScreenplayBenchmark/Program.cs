@@ -234,7 +234,8 @@ public static class Program
                 Console.WriteLine("❌ Error: --adaptation-session-pilot requires --book <path/to/book.txt>.");
                 return 1;
             }
-            if (!TryGetCommittedStage1Surface(workspaceRoot, out var pilotPromptRevision, out var pilotPromptError, allowDirty: false))
+            var (pilotSurfaceOk, pilotPromptRevision, pilotPromptError) = await TryGetCommittedStage1SurfaceAsync(workspaceRoot, allowDirty: false).ConfigureAwait(false);
+            if (!pilotSurfaceOk)
             {
                 Console.Error.WriteLine($"❌ Adaptation session pilot not started: {pilotPromptError}");
                 Console.Error.WriteLine("   Commit Stage‑1 prompts and host/PageToMovie.Adaptation/, then run again.");
@@ -253,7 +254,7 @@ public static class Program
 
         var historyFilePath = Path.Combine(workspaceRoot, "evals", "benchmark_history.json");
         var historyStore = BenchmarkHistoryStore.LoadHistory(historyFilePath);
-        if (BackfillLegacyPromptRevisions(historyStore, workspaceRoot))
+        if (await BackfillLegacyPromptRevisionsAsync(historyStore, workspaceRoot).ConfigureAwait(false))
             BenchmarkHistoryStore.SaveHistory(historyStore, historyFilePath);
 
         if (reviewPrompt)
@@ -296,7 +297,8 @@ public static class Program
 
         if (refreshDashboard)
         {
-            var currentPromptCommit = TryGetCommittedPromptRevision(workspaceRoot, out var revision, out _)
+            var (revOk, revision, _) = await TryGetCommittedPromptRevisionAsync(workspaceRoot).ConfigureAwait(false);
+            var currentPromptCommit = revOk
                 ? revision
                 : null;
             var dashboardHtml = HtmlDashboardGenerator.GenerateHtmlDashboard(historyStore, null, currentPromptCommit);
@@ -312,7 +314,8 @@ public static class Program
             return 0;
         }
 
-        if (!TryGetCommittedStage1Surface(workspaceRoot, out var promptRevision, out var promptError, allowDirty))
+        var (surfaceOk, promptRevision, promptError) = await TryGetCommittedStage1SurfaceAsync(workspaceRoot, allowDirty).ConfigureAwait(false);
+        if (!surfaceOk)
         {
             Console.Error.WriteLine($"❌ Benchmark not started: {promptError}");
             Console.Error.WriteLine("   Commit Stage‑1 prompts and host/PageToMovie.Adaptation/, then run again.");
@@ -1047,18 +1050,18 @@ Uncle Nick turned, offering a small, reassuring nod. ""She always holds when the
     /// Stage‑1 surface must be clean: <c>prompts/book_to_fountain.txt</c>, related Stage‑1 prompts,
     /// and <c>host/PageToMovie.Adaptation/</c> sources. Returns the committed prompt short hash as
     /// <paramref name="revision"/>. Pass <paramref name="allowDirty"/> only for local experiments.
+    /// <summary>
+    /// Screenplay generation benchmark surface gate. Verifies that prompts and Adaptation module sources
+    /// are clean and committed before starting a benchmark.
     /// </summary>
-    private static bool TryGetCommittedStage1Surface(
+    private static async Task<(bool Success, string Revision, string Error)> TryGetCommittedStage1SurfaceAsync(
         string workspaceRoot,
-        out string revision,
-        out string error,
-        bool allowDirty = false)
+        bool allowDirty = false,
+        CancellationToken ct = default)
     {
-        revision = "";
-        error = "";
         try
         {
-            static string RunGit(string workingDirectory, string arguments)
+            static async Task<string> RunGitAsync(string workingDirectory, string arguments, CancellationToken ct = default)
             {
                 var psi = new System.Diagnostics.ProcessStartInfo
                 {
@@ -1071,9 +1074,11 @@ Uncle Nick turned, offering a small, reassuring nod. ""She always holds when the
                 };
                 using var process = System.Diagnostics.Process.Start(psi);
                 if (process is null) throw new InvalidOperationException("Could not start git.");
-                var output = process.StandardOutput.ReadToEnd();
-                var standardError = process.StandardError.ReadToEnd();
-                process.WaitForExit(15_000);
+                var outputTask = process.StandardOutput.ReadToEndAsync(ct);
+                var errorTask = process.StandardError.ReadToEndAsync(ct);
+                await process.WaitForExitAsync(ct).ConfigureAwait(false);
+                var output = await outputTask.ConfigureAwait(false);
+                var standardError = await errorTask.ConfigureAwait(false);
                 if (process.ExitCode != 0) throw new InvalidOperationException(standardError.Trim());
                 return output.Trim();
             }
@@ -1092,15 +1097,14 @@ Uncle Nick turned, offering a small, reassuring nod. ""She always holds when the
                 var dirty = new List<string>();
                 foreach (var path in watched)
                 {
-                    var porcelain = RunGit(workspaceRoot, $"status --porcelain -- {path}");
+                    var porcelain = await RunGitAsync(workspaceRoot, $"status --porcelain -- {path}", ct).ConfigureAwait(false);
                     if (!string.IsNullOrWhiteSpace(porcelain))
                         dirty.Add(path);
                 }
 
                 if (dirty.Count > 0)
                 {
-                    error = "uncommitted Stage‑1 surface: " + string.Join(", ", dirty);
-                    return false;
+                    return (false, "", "uncommitted Stage‑1 surface: " + string.Join(", ", dirty));
                 }
             }
             else
@@ -1109,32 +1113,31 @@ Uncle Nick turned, offering a small, reassuring nod. ""She always holds when the
             }
 
             const string promptPath = "prompts/book_to_fountain.txt";
-            var commit = RunGit(workspaceRoot, $"log -1 --format=%H -- {promptPath}");
+            var commit = await RunGitAsync(workspaceRoot, $"log -1 --format=%H -- {promptPath}", ct).ConfigureAwait(false);
             if (commit.Length < 10)
             {
-                error = "prompts/book_to_fountain.txt has no committed revision.";
-                return false;
+                return (false, "", "prompts/book_to_fountain.txt has no committed revision.");
             }
-            revision = commit[..10];
-            return true;
+            return (true, commit[..10], "");
         }
         catch (Exception ex)
         {
-            error = $"could not verify the committed Stage‑1 surface ({ex.Message})";
-            return false;
+            return (false, "", $"could not verify the committed Stage‑1 surface ({ex.Message})");
         }
     }
 
     /// <summary>Backward-compatible alias used by dashboard backfill helpers.</summary>
-    private static bool TryGetCommittedPromptRevision(string workspaceRoot, out string revision, out string error) =>
-        TryGetCommittedStage1Surface(workspaceRoot, out revision, out error, allowDirty: false);
+    private static Task<(bool Success, string Revision, string Error)> TryGetCommittedPromptRevisionAsync(
+        string workspaceRoot,
+        CancellationToken ct = default) =>
+        TryGetCommittedStage1SurfaceAsync(workspaceRoot, allowDirty: false, ct);
 
     /// <summary>
     /// Legacy runs predate prompt revision tracking. Their timestamp can still identify the most
     /// recent prompt commit that existed when the run was made, so preserve that provenance rather
     /// than leaving the dashboard's revision column unknown.
     /// </summary>
-    private static bool BackfillLegacyPromptRevisions(HistoricalStoreContainer history, string workspaceRoot)
+    private static async Task<bool> BackfillLegacyPromptRevisionsAsync(HistoricalStoreContainer history, string workspaceRoot, CancellationToken ct = default)
     {
         var changed = false;
         foreach (var run in history.Runs.Where(r => string.IsNullOrWhiteSpace(r.PromptVersion)))
@@ -1154,8 +1157,9 @@ Uncle Nick turned, offering a small, reassuring nod. ""She always holds when the
                 };
                 using var process = System.Diagnostics.Process.Start(psi);
                 if (process is null) continue;
-                var commit = process.StandardOutput.ReadToEnd().Trim();
-                process.WaitForExit(5000);
+                var outputTask = process.StandardOutput.ReadToEndAsync(ct);
+                await process.WaitForExitAsync(ct).ConfigureAwait(false);
+                var commit = (await outputTask.ConfigureAwait(false)).Trim();
                 if (process.ExitCode != 0 || commit.Length < 10) continue;
                 run.PromptVersion = commit[..10];
                 run.PromptVersionInferred = true;
@@ -1604,7 +1608,8 @@ FADE OUT.";
 
         BenchmarkHistoryStore.SaveHistory(historyStore, historyFilePath);
 
-        var currentPromptCommit = TryGetCommittedPromptRevision(workspaceRoot, out var revision, out _)
+        var (currentRevOk, revision, _) = await TryGetCommittedPromptRevisionAsync(workspaceRoot).ConfigureAwait(false);
+        var currentPromptCommit = currentRevOk
             ? revision
             : null;
         var dashboardHtml = HtmlDashboardGenerator.GenerateHtmlDashboard(historyStore, null, currentPromptCommit);

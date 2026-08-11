@@ -149,16 +149,16 @@ public sealed class FakeGrokVideoClient : IVideoClient
         Directory.CreateDirectory(Path.GetDirectoryName(destPath)!);
 
         double seconds;
-        if (!string.IsNullOrWhiteSpace(prevPath) && File.Exists(prevPath) && TryConcat(prevPath, fixture, destPath))
+        if (!string.IsNullOrWhiteSpace(prevPath) && File.Exists(prevPath) && await TryConcatAsync(prevPath, fixture, destPath, ct).ConfigureAwait(false))
         {
-            seconds = ProbeDurationSeconds(destPath)
-                      ?? (ProbeDurationSeconds(prevPath) ?? 0) + (ProbeDurationSeconds(fixture) ?? 0);
+            seconds = await ProbeDurationSecondsAsync(destPath, ct).ConfigureAwait(false)
+                      ?? (await ProbeDurationSecondsAsync(prevPath, ct).ConfigureAwait(false) ?? 0) + (await ProbeDurationSecondsAsync(fixture, ct).ConfigureAwait(false) ?? 0);
             _log.LogInformation("Fake extend concat {Prev} + {Fixture} → {Path}", Path.GetFileName(prevPath), Path.GetFileName(fixture), destPath);
         }
         else
         {
             File.Copy(fixture, destPath, overwrite: true);
-            seconds = ProbeDurationSeconds(destPath) ?? GuessDurationFromName(fixture);
+            seconds = await ProbeDurationSecondsAsync(destPath, ct).ConfigureAwait(false) ?? GuessDurationFromName(fixture);
         }
 
         try
@@ -291,7 +291,7 @@ public sealed class FakeGrokVideoClient : IVideoClient
         return 5;
     }
 
-    static double? ProbeDurationSeconds(string path)
+    static async Task<double?> ProbeDurationSecondsAsync(string path, CancellationToken ct)
     {
         try
         {
@@ -305,8 +305,9 @@ public sealed class FakeGrokVideoClient : IVideoClient
             };
             using var p = Process.Start(psi);
             if (p is null) return null;
-            var output = p.StandardOutput.ReadToEnd();
-            p.WaitForExit(5000);
+            var outputTask = p.StandardOutput.ReadToEndAsync(ct);
+            await p.WaitForExitAsync(ct).ConfigureAwait(false);
+            var output = await outputTask.ConfigureAwait(false);
             if (p.ExitCode == 0 && double.TryParse(output.Trim(), System.Globalization.NumberStyles.Float,
                     System.Globalization.CultureInfo.InvariantCulture, out var sec))
                 return sec;
@@ -315,7 +316,7 @@ public sealed class FakeGrokVideoClient : IVideoClient
         return null;
     }
 
-    static bool TryConcat(string prev, string next, string dest)
+    static async Task<bool> TryConcatAsync(string prev, string next, string dest, CancellationToken ct)
     {
         try
         {
@@ -333,7 +334,7 @@ public sealed class FakeGrokVideoClient : IVideoClient
             };
             using var p = Process.Start(psi);
             if (p is null) return false;
-            p.WaitForExit(30000);
+            await p.WaitForExitAsync(ct).ConfigureAwait(false);
             try { File.Delete(list); } catch { /* ignore */ }
             return p.ExitCode == 0 && File.Exists(dest) && new FileInfo(dest).Length > 0;
         }

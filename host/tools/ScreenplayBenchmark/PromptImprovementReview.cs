@@ -32,7 +32,7 @@ internal static class PromptImprovementReview
         var prompt = await File.ReadAllTextAsync(promptPath, cancellationToken);
         var historyPath = Path.Combine(workspaceRoot, "evals", "benchmark_history.json");
         var history = BenchmarkHistoryStore.LoadHistory(historyPath);
-        var revision = GetHeadPromptRevision(workspaceRoot);
+        var revision = await GetHeadPromptRevisionAsync(workspaceRoot, cancellationToken).ConfigureAwait(false);
         var outputDir = Path.Combine(workspaceRoot, "evals", "prompt_reviews", $"prompt_review_{DateTime.UtcNow:yyyyMMdd_HHmmss}");
         Directory.CreateDirectory(outputDir);
 
@@ -129,7 +129,7 @@ internal static class PromptImprovementReview
         return builder.ToString();
     }
 
-    private static string GetHeadPromptRevision(string workspaceRoot)
+    private static async Task<string> GetHeadPromptRevisionAsync(string workspaceRoot, CancellationToken ct = default)
     {
         using var process = Process.Start(new ProcessStartInfo
         {
@@ -143,8 +143,9 @@ internal static class PromptImprovementReview
         if (process is null)
             throw new InvalidOperationException("Could not start Git to determine the prompt revision.");
 
-        var output = process.StandardOutput.ReadToEnd();
-        process.WaitForExit();
+        var outputTask = process.StandardOutput.ReadToEndAsync(ct);
+        await process.WaitForExitAsync(ct).ConfigureAwait(false);
+        var output = await outputTask.ConfigureAwait(false);
         if (process.ExitCode != 0 || string.IsNullOrWhiteSpace(output))
             throw new InvalidOperationException("Could not determine the committed prompt revision.");
         return output.Trim();
