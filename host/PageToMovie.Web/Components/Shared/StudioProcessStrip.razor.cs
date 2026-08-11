@@ -51,16 +51,4 @@ public partial class StudioProcessStrip
     }
 
     private void GoToModelSettings() => Nav.NavigateTo("configuration?focus=planning");
-
-    private bool FilmReady => ActiveProject.CanScenes || Active == "film";
-    private bool FilmViaEstimate => !FilmReady && ActiveProject.CanEstimate;
-    private string FilmHref =>
-        FilmReady ? "scenes" : FilmViaEstimate ? "cost" : "javascript:void(0)";
-    private string FilmTitle =>
-        FilmReady
-            ? "Watch and generate clips"
-            : FilmViaEstimate
-                ? "Generate from Estimate first"
-                : ActiveProject.ScenesBlockedReason;
-    private bool FilmDisabled => !FilmReady && !FilmViaEstimate;
 }

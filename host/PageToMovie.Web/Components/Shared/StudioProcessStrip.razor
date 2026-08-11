@@ -93,7 +93,7 @@
         </a>
         <a class="ptm-step @(Active == "estimate" ? "is-active" : "") @(!ActiveProject.CanEstimate && Active != "estimate" ? "is-disabled" : "")"
            href="@(ActiveProject.CanEstimate || Active == "estimate" ? "cost" : "javascript:void(0)")"
-           title="@(ActiveProject.CanEstimate ? "Forecast · Generate movie or Edit plan" : ActiveProject.EstimateBlockedReason)"
+           title="@(ActiveProject.CanEstimate ? "Forecast · Generate movie or Edit plan (cast lives under Edit)" : ActiveProject.EstimateBlockedReason)"
            data-testid="studio-step-estimate"
            @onclick:preventDefault="@(!ActiveProject.CanEstimate && Active != "estimate")">
             <span class="ptm-step__num">2</span>
@@ -102,39 +102,30 @@
                 <span class="ptm-step__hint">@L["ProcessStrip.QuoteConfirm"]</span>
             </span>
         </a>
-        @* Optional craft — not a pre-estimate gate; Edit path from DecisionCard also lands here *@
-        <a class="ptm-step ptm-step--optional @(Active == "cast" ? "is-active" : "") @(!ActiveProject.CanCharacters && Active != "cast" ? "is-disabled" : "")"
-           href="@(ActiveProject.CanCharacters || Active == "cast" ? "characters" : "javascript:void(0)")"
-           title="@(ActiveProject.CanCharacters ? "Optional: cast looks and voice before or after estimate" : ActiveProject.CharactersBlockedReason)"
-           data-testid="studio-step-cast"
-           @onclick:preventDefault="@(!ActiveProject.CanCharacters && Active != "cast")">
-            <span class="ptm-step__num ptm-step__num--opt" aria-hidden="true">·</span>
-            <span class="ptm-step__body">
-                <span class="ptm-step__label">@L["ProcessStrip.CastAndVoice"]</span>
-                <span class="ptm-step__hint">@L["ProcessStrip.CastOptional"]</span>
-            </span>
-        </a>
-        <a class="ptm-step @(Active == "film" ? "is-active" : "") @(FilmDisabled ? "is-disabled" : "")"
-           href="@FilmHref"
-           title="@FilmTitle"
+        @* Cast is NOT on this strip — open via Estimate → Edit plan → craft *@
+        <a class="ptm-step @(Active == "film" ? "is-active" : "") @(!ActiveProject.CanScenes && Active != "film" ? "is-disabled" : "")"
+           href="@(ActiveProject.CanScenes || Active == "film" ? "scenes" : "javascript:void(0)")"
+           title="@(ActiveProject.CanScenes ? "Watch and generate clips" : (ActiveProject.CanEstimate ? "Use Estimate → Generate movie first" : ActiveProject.ScenesBlockedReason))"
            data-testid="studio-step-film"
-           @onclick:preventDefault="@FilmDisabled">
+           @onclick:preventDefault="@(!ActiveProject.CanScenes && Active != "film")">
             <span class="ptm-step__num">3</span>
             <span class="ptm-step__body">
                 <span class="ptm-step__label">@L["ProcessStrip.Film"]</span>
                 <span class="ptm-step__hint">@L["ProcessStrip.ClipsStitch"]</span>
             </span>
         </a>
-        <a class="ptm-step @(Active == "review" ? "is-active" : "") @(!ActiveProject.CanReview && Active != "review" ? "is-disabled" : "")"
-           href="@(ActiveProject.CanReview || Active == "review" ? "review" : "javascript:void(0)")"
-           title="@(ActiveProject.CanReview ? "Approve and publish" : ActiveProject.ReviewBlockedReason)"
-           data-testid="studio-step-review"
-           @onclick:preventDefault="@(!ActiveProject.CanReview && Active != "review")">
-            <span class="ptm-step__num">4</span>
-            <span class="ptm-step__body">
-                <span class="ptm-step__label">@L["ProcessStrip.Review"]</span>
-                <span class="ptm-step__hint">@L["ProcessStrip.EditAfterward"]</span>
-            </span>
-        </a>
+        @if (ActiveProject.CanReview || Active == "review")
+        {
+            <a class="ptm-step @(Active == "review" ? "is-active" : "")"
+               href="review"
+               title="Approve and publish"
+               data-testid="studio-step-review">
+                <span class="ptm-step__num">4</span>
+                <span class="ptm-step__body">
+                    <span class="ptm-step__label">@L["ProcessStrip.Review"]</span>
+                    <span class="ptm-step__hint">@L["ProcessStrip.EditAfterward"]</span>
+                </span>
+            </a>
+        }
     }
 </nav>

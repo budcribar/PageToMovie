@@ -49,7 +49,8 @@
     </div>
 }
 
-<StudioProcessStrip Active="cast" SimpleMode="@List._simpleMode" FullStudio="@(!List._simpleMode)" />
+@* Full studio: cast is craft under Edit — highlight Estimate; simple path still uses cast step *@
+<StudioProcessStrip Active="@(List._simpleMode ? "cast" : "estimate")" SimpleMode="@List._simpleMode" FullStudio="@(!List._simpleMode)" />
 
 @if (_gateChecked && !ActiveProject.CanCharacters)
 {
