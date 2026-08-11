@@ -105,7 +105,7 @@ public sealed class CostReportService
         var estimateBasis = blueprintClips.Any(s => s.Clips.Count > 0) ? "shot_plan" : "none";
         if (estimateBasis == "none")
         {
-            // Post-import (before shot plan): derive clip count from screenplay scene durations.
+            // A2: post-import / fountain shortcut (before shot plan) — always estimate from screenplay.
             blueprintClips = await LoadScreenplayDerivedClipsAsync(projectId, cfg, ct).ConfigureAwait(false);
             if (blueprintClips.Any(s => s.Clips.Count > 0))
                 estimateBasis = "screenplay";
@@ -203,6 +203,10 @@ public sealed class CostReportService
 
         rows.Sort((a, b) => a.Scene.CompareTo(b.Scene));
 
+        // A1: when any media is on disk, upgrade basis to remaining (spent + missing operational).
+        if ((estimateBasis is "shot_plan" or "screenplay") && clipsOnDisk > 0)
+            estimateBasis = "remaining";
+
         var scenarios = BuildScenarios(blueprintClips, onDisk, cfg, rates, retries, draftRes, heroRes);
 
         // Non-video scope (model-dependent): cast portraits, optional voice, music, planning.
@@ -256,7 +260,24 @@ public sealed class CostReportService
         {
             "shot_plan" => "Clip count from the shot plan.",
             "screenplay" => "Clip count estimated from screenplay scene lengths (before shot plan).",
-            _ => "Import a book to unlock a film estimate.",
+            "remaining" => "Operational estimate: spent ledger + remaining planned clips.",
+            _ => "Import a book or fountain screenplay to unlock a film estimate.",
+        };
+
+        // A1 clip source + confidence for DecisionCard / API consumers.
+        var clipSource = estimateBasis switch
+        {
+            "shot_plan" => "blueprint",
+            "screenplay" => "synthetic_screenplay",
+            "remaining" => "remaining",
+            _ => "none",
+        };
+        var estimateConfidence = estimateBasis switch
+        {
+            "remaining" => "best",
+            "shot_plan" => "good",
+            "screenplay" => "rough",
+            _ => "very_low",
         };
 
         var mult = multEarly;
@@ -295,6 +316,28 @@ public sealed class CostReportService
             estimateList.GetValueOrDefault(CostCategories.Review) +
             estimateList.GetValueOrDefault(CostCategories.Other));
 
+        // A1/A3 decision-facing $ band and duration labels (cold-start prior from QA mult).
+        var costPoint = Math.Round(fullDraft, 2);
+        var expectedTakes = Math.Max(1.0, qaVideoMultiplier);
+        var costLow = Math.Round(costPoint / expectedTakes * 1.0, 2);
+        var highTakes = Math.Max(expectedTakes, 1.5);
+        var costHigh = Math.Round(costPoint / expectedTakes * highTakes, 2);
+        if (costLow > costPoint) costLow = costPoint;
+        if (costHigh < costPoint) costHigh = costPoint;
+
+        var durationSec = secOnDisk + secMissing;
+        double? durationMinutes = durationSec > 0.5
+            ? Math.Round(durationSec / 60.0, 1)
+            : null;
+        var durationLabel = durationMinutes is > 0
+            ? $"~{durationMinutes:0.#} min"
+            : "duration TBD";
+        var costLabel = estimateBasis == "none" || costPoint <= 0
+            ? "—"
+            : (estimateConfidence is "rough" or "very_low") && Math.Abs(costHigh - costLow) >= 0.5
+                ? $"~${costLow:0.##}–${costHigh:0.##}"
+                : $"~${costPoint:0.##}";
+
         return new CostReport
         {
             ProjectId = projectId,
@@ -307,6 +350,14 @@ public sealed class CostReportService
             PlanningModelName = planningModel,
             VoiceModelName = voicePlan.Included ? voiceModel : null,
             EstimateBasis = estimateBasis,
+            ClipSource = clipSource,
+            EstimateConfidence = estimateConfidence,
+            CostLowUsd = estimateBasis == "none" ? null : costLow,
+            CostPointUsd = estimateBasis == "none" ? null : costPoint,
+            CostHighUsd = estimateBasis == "none" ? null : costHigh,
+            DurationMinutes = durationMinutes,
+            DurationLabel = durationLabel,
+            CostLabel = costLabel,
             VoiceIncludedInEstimate = voicePlan.Included,
             ChargeMultiplier = mult,
             OutputRateDraft = OutputRate(draftRes, draftRates),
@@ -482,6 +533,9 @@ public sealed class CostReportService
     /// <param name="requestedDurationSec">
     /// Optional API-requested duration when <paramref name="durationSec"/> is measured (for audit).
     /// </param>
+    /// <param name="takeKind">
+    /// H1/H2 trigger: <c>initial</c> | <c>user_regen</c> | <c>stale_regen</c> | <c>qa_auto</c> | <c>fill_holes</c>.
+    /// </param>
     public async Task RecordVideoGenerationAsync(
         string projectId,
         int scene,
@@ -496,6 +550,9 @@ public sealed class CostReportService
         string? userId = null,
         string? keyMode = null,
         string? takeKind = null,
+        string? stableBeatId = null,
+        bool? hadCharRefs = null,
+        bool? hadLocRef = null,
         CancellationToken ct = default)
     {
         var cfg = await LoadConfigMapAsync(projectId, ct).ConfigureAwait(false);
@@ -508,6 +565,14 @@ public sealed class CostReportService
         var listUsd = priced.Usd;
         var mult = GetChargeMultiplier(); // display / credit only — not stored on the event
         var chargeUsd = ChargePricing.ToCharge(listUsd, mult);
+
+        // H1: take_index + minutes_since_prev from prior video events for this scene+clip.
+        var (takeIndex, minutesSincePrev) = await ComputeTakeIndexAsync(projectId, scene, clip, ct)
+            .ConfigureAwait(false);
+        var resolvedKind = VideoTakeKinds.Normalize(
+            takeKind,
+            fallback: isExtend ? VideoTakeKinds.UserRegen : VideoTakeKinds.Initial);
+
         var evt = new Dictionary<string, object?>
         {
             ["kind"] = "video",
@@ -534,12 +599,18 @@ public sealed class CostReportService
             ["usd"] = listUsd,
             ["currency"] = "USD",
             ["user_id"] = userId ?? "",
-            // I13: multi-user take telemetry
+            // I13 / H1 multi-user take telemetry
             ["key_mode"] = string.IsNullOrWhiteSpace(keyMode) ? "personal" : keyMode.Trim().ToLowerInvariant(),
-            ["take_kind"] = string.IsNullOrWhiteSpace(takeKind)
-                ? (isExtend ? "user_regen" : "initial")
-                : takeKind.Trim().ToLowerInvariant(),
+            ["take_kind"] = resolvedKind,
+            ["trigger"] = resolvedKind, // alias for plan / offline aggregators
+            ["take_index"] = takeIndex,
+            ["had_char_refs"] = hadCharRefs ?? hasRefImage,
+            ["had_loc_ref"] = hadLocRef ?? false,
         };
+        if (!string.IsNullOrWhiteSpace(stableBeatId))
+            evt["stable_beat_id"] = stableBeatId.Trim();
+        if (minutesSincePrev is not null)
+            evt["minutes_since_prev_take"] = Math.Round(minutesSincePrev.Value, 2);
         if (requestedDurationSec is > 0 &&
             Math.Abs(requestedDurationSec.Value - priced.DurationSec) >= 0.05)
         {
@@ -563,6 +634,37 @@ public sealed class CostReportService
                 note: $"S{scene:D2}C{clip} {model} {priced.DurationSec:F1}s ×{mult:0.##}",
                 ct: ct).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>H1 — next take_index and minutes since last take for scene+clip.</summary>
+    private async Task<(int TakeIndex, double? MinutesSincePrev)> ComputeTakeIndexAsync(
+        string projectId,
+        int scene,
+        int clip,
+        CancellationToken ct)
+    {
+        var raw = await GetCostLedgerRawAsync(projectId, ct).ConfigureAwait(false);
+        var prior = 0;
+        DateTimeOffset? lastTs = null;
+        foreach (var e in raw)
+        {
+            if (!string.Equals(GetRawKind(e), "video", StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (!TryGetInt(e, "scene", out var sn) || sn != scene) continue;
+            if (!TryGetInt(e, "clip", out var cn) || cn != clip) continue;
+            prior++;
+            if (e.TryGetProperty("ts", out var tsEl) &&
+                tsEl.ValueKind == JsonValueKind.String &&
+                DateTimeOffset.TryParse(tsEl.GetString(), out var parsed))
+            {
+                if (lastTs is null || parsed > lastTs) lastTs = parsed;
+            }
+        }
+
+        double? minutes = null;
+        if (lastTs is not null)
+            minutes = Math.Max(0, (DateTimeOffset.Now - lastTs.Value).TotalMinutes);
+        return (prior + 1, minutes);
     }
 
     public async Task<IReadOnlyList<CostEvent>> GetCostLedgerAsync(
@@ -873,6 +975,22 @@ public sealed class CostReportService
                        (ie.ValueKind is JsonValueKind.True or JsonValueKind.False)
                 ? ie.GetBoolean()
                 : null,
+            UserId = e.TryGetProperty("user_id", out var uid) ? uid.GetString() : null,
+            KeyMode = e.TryGetProperty("key_mode", out var km) ? km.GetString() : null,
+            TakeKind = e.TryGetProperty("take_kind", out var tk)
+                ? tk.GetString()
+                : e.TryGetProperty("trigger", out var tr) ? tr.GetString() : null,
+            TakeIndex = TryGetInt(e, "take_index", out var ti) ? ti : null,
+            StableBeatId = e.TryGetProperty("stable_beat_id", out var sb) ? sb.GetString() : null,
+            HadCharRefs = e.TryGetProperty("had_char_refs", out var hcr) &&
+                          (hcr.ValueKind is JsonValueKind.True or JsonValueKind.False)
+                ? hcr.GetBoolean()
+                : null,
+            HadLocRef = e.TryGetProperty("had_loc_ref", out var hlr) &&
+                        (hlr.ValueKind is JsonValueKind.True or JsonValueKind.False)
+                ? hlr.GetBoolean()
+                : null,
+            MinutesSincePrevTake = TryGetDouble(e, "minutes_since_prev_take", out var msp) ? msp : null,
         };
     }
 

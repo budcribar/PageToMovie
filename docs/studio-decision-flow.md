@@ -588,11 +588,11 @@ Use this as the build/acceptance tracker. Check items off in PRs; leave dates/no
 
 | Done | Item | Notes |
 |:----:|------|-------|
-| | **A1** Document estimate tiers in API (`basis`, duration, cost low/point/high, clipSource) | Align with `CostReportService` basis |
-| | **A2** Screenplay-tier estimate always available when fountain exists | Book **or** fountain import |
-| [x] | **A3** Decision-facing payload: duration label + cost label + basis + confidence | Cost DecisionCard 2026-08-11 |
+| [x] | **A1** Document estimate tiers in API (`basis`, duration, cost low/point/high, clipSource) | CostReport: ClipSource, EstimateConfidence, CostLow/Point/HighUsd, DurationLabel, CostLabel |
+| [x] | **A2** Screenplay-tier estimate always available when fountain exists | Book **or** fountain import → `EstimateBasis=screenplay` |
+| [x] | **A3** Decision-facing payload: duration label + cost label + basis + confidence | Cost DecisionCard + API fields |
 | [x] | **A4** Re-estimate after fit/trim, resolution, cast cap on Decision shaping | Cost in-page toolkit |
-| | **A5** Remaining estimate while gen runs (spent + missing) | Ledger path exists; wire to Film |
+| | **A5** Remaining estimate while gen runs (spent + missing) | basis upgrades to `remaining` when media on disk; Film remaining strip later |
 | [x] | **A6** UI copy: “forecast on current plan,” not final invoice | Cost page header |
 
 ### Phase B — Decision card (pre-gen hub)
@@ -663,12 +663,12 @@ Use this as the build/acceptance tracker. Check items off in PRs; leave dates/no
 
 | Done | Item | Notes |
 |:----:|------|-------|
-| | **H1** Emit **take event** on every billed clip gen (initial + regen) | include `user_id` for multi-user |
-| | **H2** Distinguish `user_regen` vs `qa_auto` vs `stale_regen` vs `fill_holes` | |
+| [x] | **H1** Emit **take event** on every billed clip gen (initial + regen) | take_index, stable_beat_id, had_char/loc refs, user_id, key_mode, minutes_since_prev |
+| [x] | **H2** Distinguish `user_regen` vs `qa_auto` vs `stale_regen` vs `fill_holes` | `VideoTakeKinds` + job TakeTrigger + QA override |
 | | **H3** Optional one-click **reason** after user regen (dialogue / look / motion / audio / other) | no modal wall |
 | | **H4** Aggregate: takes/clip mean + p25/p50/p75 (global; min sample size) | |
 | | **H5** Blend learned `expected_takes` into CostReport (with existing QA history mult as prior) | `BuildHistoryRefinementAsync` |
-| | **H6** DecisionCard / Cost UI: show **range** driven by p25–p75 takes when N sufficient | |
+| | **H6** DecisionCard / Cost UI: show **range** driven by p25–p75 takes when N sufficient | cold-start range already on CostLabel for rough basis |
 | | **H7** Admin: regen rate dashboard (takes/clip over time, by trigger) | |
 | | **H8** Per-project: actual takes so far vs estimate (calibration feedback) | shared by collaborators |
 | | **H9** Privacy: aggregates only for studio-wide learning; fail-open if telemetry down | |
@@ -751,5 +751,5 @@ Use this as the build/acceptance tracker. Check items off in PRs; leave dates/no
 
 ---
 
-*Last updated: 2026-08-11 — Phase I complete (I0–I14): keyMode, script/scene/cast/loc leases, logout handoff, presence strip, PlanDirty estimate refresh, take telemetry, collab QA matrix.*
+*Last updated: 2026-08-11 — A1–A3 estimate API fields + H1–H2 take events (`VideoTakeKinds`, take_index, fill_holes/stale/qa_auto).*
 

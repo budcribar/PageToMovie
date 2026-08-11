@@ -55,9 +55,13 @@ else
                 </div>
                 <div class="col-md-3 col-6">
                     <div class="text-muted small text-uppercase mb-1">@L["Nav.Estimate"]</div>
-                    <div class="fs-3 fw-semibold cost-hero-num" data-testid="cost-estimate">@Usd(estimate)</div>
+                    <div class="fs-3 fw-semibold cost-hero-num" data-testid="cost-estimate">@CostLabel</div>
                     <div class="small text-muted">
                         @_report.DraftResolution · basis: <span data-testid="cost-basis">@EstimateBasisLabel</span>
+                        @if (!string.IsNullOrEmpty(EstimateConfidenceLabel))
+                        {
+                            <span> · conf: <span data-testid="cost-confidence">@EstimateConfidenceLabel</span></span>
+                        }
                     </div>
                 </div>
                 <div class="col-md-3 col-6">
@@ -124,7 +128,7 @@ else
                             <h2 class="h5 mb-1">What do you want to do?</h2>
                             <p class="small text-muted mb-0">
                                 <strong>@DurationLabel</strong>
-                                · <strong>@Usd(estimate)</strong> full pass (@EstimateBasisLabel)
+                                · <strong data-testid="decision-cost-label">@CostLabel</strong> full pass (@EstimateBasisLabel@(string.IsNullOrEmpty(EstimateConfidenceLabel) ? "" : $", {EstimateConfidenceLabel}"))
                                 @if (_collabRole != CollabRole.Unknown)
                                 {
                                     <span class="ms-1">· you: <strong data-testid="decision-role">@_collabRole</strong></span>

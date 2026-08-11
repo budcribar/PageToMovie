@@ -1726,6 +1726,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         bool onlyMissing = true,
         int? clip = null,
         string? resolution = null,
+        string? takeTrigger = null,
         CancellationToken ct = default)
     {
         SyncIdentityHeaders();
@@ -1738,6 +1739,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
                 Clip = clip,
                 OnlyMissing = onlyMissing,
                 Resolution = resolution,
+                TakeTrigger = takeTrigger,
             },
             JsonOpts,
             ct);
@@ -1787,6 +1789,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         bool onlyMissing = true,
         string? resolution = null,
         string? videoModel = null,
+        string? takeTrigger = null,
         CancellationToken ct = default)
     {
         SyncIdentityHeaders();
@@ -1799,6 +1802,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
                 VideoModel = videoModel,
                 Scenes = scenes.ToList(),
                 OnlyMissing = onlyMissing,
+                TakeTrigger = takeTrigger,
             },
             JsonOpts,
             ct);
@@ -1822,6 +1826,8 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
                 ProjectId = projectId,
                 Resolution = resolution,
                 Clips = clips.Select(c => new ClipTarget { Scene = c.Scene, Clip = c.Clip }).ToList(),
+                OnlyMissing = false,
+                TakeTrigger = VideoTakeKinds.UserRegen,
             },
             ct);
 

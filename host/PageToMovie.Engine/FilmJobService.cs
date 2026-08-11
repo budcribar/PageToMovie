@@ -974,6 +974,9 @@ public sealed class FilmJobService
         public string? ApiKey { get; set; }
         public string? KeyMode { get; set; }
         public string? KeyUserId { get; set; }
+        /// <summary>H2 — optional take trigger for video cost events on this run.</summary>
+        public string? TakeTrigger { get; set; }
+        public bool OnlyMissing { get; set; } = true;
         public string? GeminiApiKey { get; set; }
         public string? AnthropicApiKey { get; set; }
         public string? FalApiKey { get; set; }
@@ -3376,9 +3379,28 @@ public sealed class FilmJobService
         }
     }
 
+    /// <summary>
+    /// H2 — stamp job-level take trigger for cost ledger events (fill_holes / stale_regen / user_regen / …).
+    /// </summary>
+    private void ApplyVideoTakeContext(bool onlyMissing, string? takeTrigger, bool forceRegen)
+    {
+        var run = CurrentRun.Value;
+        if (run is null) return;
+        run.OnlyMissing = onlyMissing;
+        var explicitKind = VideoTakeKinds.NormalizeOptional(takeTrigger);
+        if (explicitKind is not null)
+            run.TakeTrigger = explicitKind;
+        else if (forceRegen || !onlyMissing)
+            run.TakeTrigger = VideoTakeKinds.UserRegen;
+        else
+            // onlyMissing with no explicit trigger → per-clip Resolve → initial (first) or user_regen
+            run.TakeTrigger = null;
+    }
+
     private async Task RunBatchGenAsync(StartBatchGenRequest req, string projectId, CancellationToken ct)
     {
         await _projects.RequireProjectAsync(projectId, ct);
+        ApplyVideoTakeContext(req.OnlyMissing, req.TakeTrigger, forceRegen: req.Clips is { Count: > 0 });
 
         var hasClips = req.Clips is { Count: > 0 };
         var scenes = (hasClips ? req.Clips!.Select(c => c.Scene) : req.Scenes)
@@ -3605,6 +3627,7 @@ public sealed class FilmJobService
     private async Task RunSceneGenAsync(StartSceneGenRequest req, string projectId, CancellationToken ct)
     {
         await _projects.RequireProjectAsync(projectId, ct);
+        ApplyVideoTakeContext(req.OnlyMissing, req.TakeTrigger, forceRegen: req.Clip is > 0 && !req.OnlyMissing);
 
         Snapshot = new JobSnapshot
         {
@@ -3810,7 +3833,8 @@ public sealed class FilmJobService
                                 projectId, projectDir, req.Scene, cn, clip, resolution, ct,
                                 previousClipEl: prevClipEl,
                                 blueprintRoot: bp.RootElement,
-                                incomingDurationPaddingSec: incomingPadding);
+                                incomingDurationPaddingSec: incomingPadding,
+                                takeKindOverride: VideoTakeKinds.QaAuto);
                         }
                     }
 
@@ -3969,11 +3993,16 @@ public sealed class FilmJobService
         JsonElement? previousClipEl = null,
         JsonElement? blueprintRoot = null,
         double incomingDurationPaddingSec = 0.0,
-        string? modelOverride = null)
+        string? modelOverride = null,
+        string? takeKindOverride = null)
     {
         var profiles = _projects.LoadCharacterPromptProfiles(projectId);
         var videoDir = Path.Combine(projectDir, "assets", "video");
         var overrunSec = 0.0;
+
+        // H1/H2: whether this scene+clip already has media (regen vs first take).
+        var existingClipPath = Path.Combine(videoDir, $"scene_{scene:D2}_clip_{clip:D2}.mp4");
+        var hadVideoBefore = ClipPresentOnServerOrClient(existingClipPath);
 
         // Previous clip in this scene — Imagine /videos/extensions continues from that video.
         // Cast-set changes reseed fresh+refs (PR2).
@@ -4430,6 +4459,26 @@ public sealed class FilmJobService
             try
             {
                 var costProjectId = Snapshot.ProjectId ?? projectId ?? _projects.ActiveProjectId;
+                string? stableBeatId = null;
+                if (clipEl.TryGetProperty("stable_beat_id", out var sbe) &&
+                    sbe.ValueKind == JsonValueKind.String &&
+                    sbe.GetString() is { Length: > 0 } sbid)
+                    stableBeatId = sbid;
+                else if (clipEl.TryGetProperty("beat_id", out var be) &&
+                         be.ValueKind == JsonValueKind.String &&
+                         be.GetString() is { Length: > 0 } bid)
+                    stableBeatId = bid;
+
+                // Character refs: any attached path beyond an optional location plate.
+                var hadCharRefs = built.RefsAttachedToApi &&
+                    (built.ReferenceImagePaths.Count > (built.LocationRefAttached ? 1 : 0));
+
+                var takeKind = takeKindOverride
+                    ?? VideoTakeKinds.Resolve(
+                        CurrentRun.Value?.TakeTrigger,
+                        clipHadVideoBefore: hadVideoBefore,
+                        isQaRetry: false);
+
                 await _costs.RecordVideoGenerationAsync(
                     costProjectId,
                     scene,
@@ -4443,10 +4492,13 @@ public sealed class FilmJobService
                     requestedDurationSec: duration,
                     userId: Snapshot.UserId ?? _user.UserId,
                     keyMode: CurrentRun.Value?.KeyMode,
-                    takeKind: prevVideoPath is not null ? "user_regen" : "initial",
+                    takeKind: takeKind,
+                    stableBeatId: stableBeatId,
+                    hadCharRefs: hadCharRefs,
+                    hadLocRef: built.LocationRefAttached,
                     ct: ct);
                 await AppendLogAsync(
-                    $"  [Cost] tracked list-rate for S{scene:D2}C{clip} ({costDurationSec:F2}s)");
+                    $"  [Cost] tracked list-rate for S{scene:D2}C{clip} ({costDurationSec:F2}s, take={takeKind})");
             }
             catch (Exception ex)
             {

@@ -246,6 +246,11 @@ public sealed class StartSceneGenRequest
     /// Default false: accept as queued and wait for the lock (Phase 2).
     /// </summary>
     public bool FailIfLocked { get; set; }
+    /// <summary>
+    /// H2 take trigger for cost ledger: <c>initial</c> | <c>user_regen</c> | <c>stale_regen</c> |
+    /// <c>qa_auto</c> | <c>fill_holes</c>. Empty → inferred from onlyMissing / on-disk state.
+    /// </summary>
+    public string? TakeTrigger { get; set; }
 }
 
 public sealed class StartBatchGenRequest
@@ -275,6 +280,11 @@ public sealed class StartBatchGenRequest
     public bool RequireLockedCharacters { get; set; } = true;
     /// <summary>When true, 409 if any scene lock is held by another user (default wait).</summary>
     public bool FailIfLocked { get; set; }
+    /// <summary>
+    /// H2 take trigger for cost ledger: <c>initial</c> | <c>user_regen</c> | <c>stale_regen</c> |
+    /// <c>qa_auto</c> | <c>fill_holes</c>. Empty → inferred from onlyMissing / on-disk state.
+    /// </summary>
+    public string? TakeTrigger { get; set; }
 }
 
 /// <summary>
@@ -1270,6 +1280,23 @@ public sealed class CostEvent
     public double? OutputRatePerSec { get; set; }
     public bool? HasRefImage { get; set; }
     public bool? IsExtend { get; set; }
+    /// <summary>H1 — actor who started the gen (multi-user).</summary>
+    public string? UserId { get; set; }
+    /// <summary>H1/I13 — <c>shared</c> | <c>personal</c> key scope used for this take.</summary>
+    public string? KeyMode { get; set; }
+    /// <summary>
+    /// H1/H2 take trigger: <c>initial</c> | <c>user_regen</c> | <c>stale_regen</c> |
+    /// <c>qa_auto</c> | <c>fill_holes</c>.
+    /// </summary>
+    public string? TakeKind { get; set; }
+    /// <summary>1 = first billed take for this scene+clip; 2+ = subsequent regens.</summary>
+    public int? TakeIndex { get; set; }
+    /// <summary>Stable beat id when the clip is beat-mapped.</summary>
+    public string? StableBeatId { get; set; }
+    public bool? HadCharRefs { get; set; }
+    public bool? HadLocRef { get; set; }
+    /// <summary>Minutes since previous take for the same scene+clip (null if first).</summary>
+    public double? MinutesSincePrevTake { get; set; }
 }
 
 public sealed class CostLedgerSummary
@@ -1383,9 +1410,30 @@ public sealed class CostReport
     public string? VoiceModelName { get; set; }
     /// <summary>
     /// What drove clip counts: <c>shot_plan</c> (blueprint), <c>screenplay</c> (post-import durations),
-    /// or <c>none</c> (no book yet).
+    /// <c>remaining</c> (partial media + missing), or <c>none</c> (no usable screenplay yet).
     /// </summary>
     public string EstimateBasis { get; set; } = "none";
+    /// <summary>
+    /// A1 — clip count source for the DecisionCard:
+    /// <c>none</c> | <c>synthetic_screenplay</c> | <c>blueprint</c> | <c>remaining</c>.
+    /// </summary>
+    public string ClipSource { get; set; } = "none";
+    /// <summary>
+    /// A1 — confidence label: <c>very_low</c> | <c>rough</c> | <c>good</c> | <c>best</c>.
+    /// </summary>
+    public string EstimateConfidence { get; set; } = "very_low";
+    /// <summary>A1/A3 — low end of full-pass $ band (first-pass takes, cold-start prior).</summary>
+    public double? CostLowUsd { get; set; }
+    /// <summary>A1/A3 — point full-pass $ (current plan × expected takes).</summary>
+    public double? CostPointUsd { get; set; }
+    /// <summary>A1/A3 — high end of full-pass $ band (elevated takes prior).</summary>
+    public double? CostHighUsd { get; set; }
+    /// <summary>A1/A3 — planned duration in minutes (from clip seconds or screenplay target).</summary>
+    public double? DurationMinutes { get; set; }
+    /// <summary>A3 — human duration line for DecisionCard (e.g. "~94 min").</summary>
+    public string DurationLabel { get; set; } = "";
+    /// <summary>A3 — human cost line for DecisionCard (e.g. "~$42" or "~$32–$58").</summary>
+    public string CostLabel { get; set; } = "";
     /// <summary>True when optional personal voice is included in the estimate.</summary>
     public bool VoiceIncludedInEstimate { get; set; }
     /// <summary>

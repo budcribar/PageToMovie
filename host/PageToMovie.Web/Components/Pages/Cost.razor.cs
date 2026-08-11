@@ -290,14 +290,28 @@ public partial class Cost : IAsyncDisposable
 
     private bool HasShotPlan =>
         _report is not null
-        && string.Equals(_report.EstimateBasis, "shot_plan", StringComparison.OrdinalIgnoreCase);
+        && (string.Equals(_report.EstimateBasis, "shot_plan", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(_report.EstimateBasis, "remaining", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(_report.ClipSource, "blueprint", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(_report.ClipSource, "remaining", StringComparison.OrdinalIgnoreCase));
 
     private string EstimateBasisLabel =>
         _report is null ? "—"
-        : HasShotPlan ? "shot plan"
+        : string.Equals(_report.EstimateBasis, "remaining", StringComparison.OrdinalIgnoreCase) ? "remaining (on disk + missing)"
+        : HasShotPlan && string.Equals(_report.EstimateBasis, "shot_plan", StringComparison.OrdinalIgnoreCase) ? "shot plan"
         : string.Equals(_report.EstimateBasis, "screenplay", StringComparison.OrdinalIgnoreCase) ? "screenplay (projected)"
         : string.IsNullOrWhiteSpace(_report.EstimateBasis) ? "projected"
         : _report.EstimateBasis;
+
+    private string EstimateConfidenceLabel =>
+        _report?.EstimateConfidence switch
+        {
+            "best" => "best",
+            "good" => "good",
+            "rough" => "rough",
+            "very_low" => "very low",
+            _ => "",
+        };
 
     private int DisplayTargetMinutes
     {
@@ -305,6 +319,8 @@ public partial class Cost : IAsyncDisposable
         {
             if ((_filmRuntime?.TargetMinutes ?? 0) > 0)
                 return _filmRuntime!.TargetMinutes;
+            if (_report?.DurationMinutes is > 0)
+                return (int)Math.Round(_report.DurationMinutes.Value);
             return Math.Max(1, _filmRuntime?.NaturalMinutes ?? 1);
         }
     }
@@ -314,6 +330,8 @@ public partial class Cost : IAsyncDisposable
         get
         {
             if (_report is null) return 0;
+            if (_report.CostPointUsd is > 0)
+                return _report.CostPointUsd.Value;
             return HasShotPlan
                 ? _report.Summary.FullFilmAllDraftUsd
                 : ProjectedEstimateUsd(DisplayTargetMinutes);
@@ -324,15 +342,33 @@ public partial class Cost : IAsyncDisposable
     {
         get
         {
+            if (!string.IsNullOrWhiteSpace(_report?.DurationLabel)
+                && _report!.DurationLabel != "duration TBD"
+                && (_filmRuntime?.TargetMinutes ?? 0) <= 0)
+                return _report.DurationLabel;
+
             var natural = _filmRuntime?.NaturalMinutes;
             var target = _filmRuntime?.TargetMinutes ?? 0;
             if (target > 0 && natural is > 0 && target != natural)
                 return $"~{target} min target (natural ~{natural})";
             if (target > 0)
                 return $"~{target} min";
+            if (!string.IsNullOrWhiteSpace(_report?.DurationLabel))
+                return _report!.DurationLabel;
             if (natural is > 0)
                 return $"~{natural} min";
             return "duration TBD";
+        }
+    }
+
+    private string CostLabel
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(_report?.CostLabel) && _report!.CostLabel != "—")
+                return _report.CostLabel;
+            var est = DisplayEstimateUsd;
+            return est > 0 ? Usd(est) : "—";
         }
     }
 
@@ -509,7 +545,7 @@ public partial class Cost : IAsyncDisposable
                         .ToList() ?? new List<int>();
                     if (nums.Count > 0)
                     {
-                        await Engine.StartBatchGenAsync(_projectId, nums, onlyMissing: true, resolution: _draftRes);
+                        await Engine.StartBatchGenAsync(_projectId, nums, onlyMissing: true, resolution: _draftRes, takeTrigger: VideoTakeKinds.FillHoles);
                         Nav.NavigateTo(ActiveProject.IsSimpleVoice ? "scenes?simple=1&watch=1" : "scenes?watch=1");
                         return;
                     }

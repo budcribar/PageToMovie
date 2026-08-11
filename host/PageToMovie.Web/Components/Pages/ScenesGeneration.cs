@@ -607,7 +607,7 @@ public partial class Scenes
                 var videoModelOverride = S.Session.IsAdmin && !string.IsNullOrWhiteSpace(_selectedVideoModel)
                     ? _selectedVideoModel
                     : null;
-                await S.Engine.StartBatchGenAsync(S._projectId, videoScenes, onlyMissing: true, resolution: _genResolution, videoModel: videoModelOverride);
+                await S.Engine.StartBatchGenAsync(S._projectId, videoScenes, onlyMissing: true, resolution: _genResolution, videoModel: videoModelOverride, takeTrigger: VideoTakeKinds.FillHoles);
                 // Live progress card only — no duplicate "started" banner.
                 var jobs = await S.Engine.GetJobAsync();
                 _job = jobs?.Job;
@@ -788,7 +788,7 @@ public partial class Scenes
                 await S.ClipRegen.EnsurePredecessorsUploadedAsync(await S.ClipRegen.MissingClipTargetsAsync(sn));
             if (list.Count > 0)
             {
-                await S.Engine.StartBatchGenAsync(S._projectId, list, onlyMissing: false, resolution: _genResolution);
+                await S.Engine.StartBatchGenAsync(S._projectId, list, onlyMissing: false, resolution: _genResolution, takeTrigger: VideoTakeKinds.StaleRegen);
                 var jobs = await S.Engine.GetJobAsync();
                 _job = jobs?.Job;
             }
