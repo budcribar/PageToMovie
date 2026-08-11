@@ -590,19 +590,19 @@ Use this as the build/acceptance tracker. Check items off in PRs; leave dates/no
 |:----:|------|-------|
 | | **A1** Document estimate tiers in API (`basis`, duration, cost low/point/high, clipSource) | Align with `CostReportService` basis |
 | | **A2** Screenplay-tier estimate always available when fountain exists | Book **or** fountain import |
-| | **A3** Decision-facing payload: duration label + cost label + basis + confidence | |
+| [x] | **A3** Decision-facing payload: duration label + cost label + basis + confidence | Cost DecisionCard 2026-08-11 |
 | | **A4** Re-estimate endpoint/hook after trim, runtime target, cast cap, resolution | |
 | | **A5** Remaining estimate while gen runs (spent + missing) | Ledger path exists; wire to Film |
-| | **A6** UI copy: “forecast on current plan,” not final invoice | |
+| [x] | **A6** UI copy: “forecast on current plan,” not final invoice | Cost page header |
 
 ### Phase B — Decision card (pre-gen hub)
 
 | Done | Item | Notes |
 |:----:|------|-------|
-| | **B1** Post-import / post-estimate **DecisionCard**: ~min · ~$ · basis | After book write **or** fountain shortcut |
-| | **B2** Actions: **Generate movie** \| **Edit plan first** | No third maze |
-| | **B3** Load **per-user** prefs for emphasis only; always show card | Shared $ is project-level |
-| | **B4** ConfirmGenerate: one confirm with current $ + min | |
+| [x] | **B1** Post-import / post-estimate **DecisionCard**: ~min · ~$ · basis | `/cost` decision-card |
+| [x] | **B2** Actions: **Generate movie** \| **Edit plan first** | Replaces Agree & Continue maze |
+| [x] | **B3** Load **per-user** prefs for emphasis only; always show card | localStorage preferPath/editFocus |
+| [x] | **B4** ConfirmGenerate: one confirm with current $ + min | decision-confirm-generate |
 | | **B5** Blocked state: credits / keys / pipeline / ACL with return to card | |
 | | **B6** If shot plan missing on Generate: run plan as first job step or estimate-only then plan | Product choice — document in PR |
 | | **B7** Fountain import CTA on import surfaces → same DecisionCard | Shortcut path |
@@ -611,12 +611,12 @@ Use this as the build/acceptance tracker. Check items off in PRs; leave dates/no
 
 | Done | Item | Notes |
 |:----:|------|-------|
-| | **C1** EditFocus question: cost / duration / both / craft | |
-| | **C2** Cost toolkit entry + back to DecisionCard | |
-| | **C3** Duration toolkit entry + back to DecisionCard | |
-| | **C4** Both = duration-lead then optional cost | |
-| | **C5** Craft hub → script / cast / locs; PlanDirty when needed | |
-| | **C6** Persist `preferPath`, `editFocus`, `lastRuntimeTargetMin` **per user** | |
+| [x] | **C1** EditFocus question: cost / duration / both / craft | decision-edit-focus |
+| [x] | **C2** Cost toolkit entry + back to DecisionCard | → screenplay?tool=fit |
+| [x] | **C3** Duration toolkit entry + back to DecisionCard | → screenplay?tool=fit |
+| [x] | **C4** Both = duration-lead then optional cost | same fit entry; user returns to /cost |
+| [x] | **C5** Craft hub → script / cast / locs; PlanDirty when needed | links on edit-focus card |
+| [x] | **C6** Persist `preferPath`, `editFocus` **per user** (runtime target still FilmLengthCard) | localStorage; lastRuntime later |
 
 ### Phase D — Watch → edit (post-gen hub)
 

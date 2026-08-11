@@ -12,6 +12,13 @@ namespace PageToMovie.Web.Components.Pages;
 
 public partial class Cost : IAsyncDisposable
 {
+    /// <summary>Pre-gen hub: DecisionCard → optional EditFocus → ConfirmGenerate.</summary>
+    private enum DecisionPhase
+    {
+        Card,
+        EditFocus,
+        ConfirmGenerate,
+    }
 
     private bool _disposed;
     private CancellationTokenSource _pageCts = new();
@@ -24,7 +31,15 @@ public partial class Cost : IAsyncDisposable
     private string _heroRes = "720p";
     private double _retries = 0.5;
 
-    
+    private DecisionPhase _phase = DecisionPhase.Card;
+    /// <summary>cost | duration | both | craft — last edit focus (session + localStorage).</summary>
+    private string? _editFocus;
+    /// <summary>generate | edit — preferred DecisionCard emphasis.</summary>
+    private string _preferPath = "generate";
+    private bool _prefsLoaded;
+
+    [Inject] private IJSRuntime Js { get; set; } = null!;
+
     protected override async Task OnParametersSetAsync()
     {
         if (_disposed) return;
@@ -55,6 +70,44 @@ public partial class Cost : IAsyncDisposable
         {
             _error = ex.Message;
         }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _prefsLoaded || _disposed) return;
+        _prefsLoaded = true;
+        try
+        {
+            var path = await Js.InvokeAsync<string?>("localStorage.getItem", PrefKey("preferPath"));
+            if (string.Equals(path, "edit", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(path, "generate", StringComparison.OrdinalIgnoreCase))
+                _preferPath = path.ToLowerInvariant();
+
+            var focus = await Js.InvokeAsync<string?>("localStorage.getItem", PrefKey("editFocus"));
+            if (focus is "cost" or "duration" or "both" or "craft")
+                _editFocus = focus;
+
+            StateHasChanged();
+        }
+        catch
+        {
+            /* localStorage optional (SSR / privacy) */
+        }
+    }
+
+    private string PrefKey(string name) =>
+        $"ptm.decision.{(string.IsNullOrEmpty(_projectId) ? "global" : _projectId)}.{name}";
+
+    private async Task PersistPrefAsync(string name, string? value)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(value))
+                await Js.InvokeVoidAsync("localStorage.removeItem", PrefKey(name));
+            else
+                await Js.InvokeVoidAsync("localStorage.setItem", PrefKey(name), value);
+        }
+        catch { /* ignore */ }
     }
 
     private async Task SetDraftResolutionAsync(string res)
@@ -100,68 +153,144 @@ public partial class Cost : IAsyncDisposable
         finally { _busy = false; }
     }
 
-    /// <summary>
-    /// Confirm the estimate and go to the next incomplete stage.
-    /// Only navigates to Scenes/Film when <see cref="ActiveProjectState.CanScenes"/> is true
-    /// (shot plan present); otherwise Cast or shot plan — never a gated empty Scenes page.
-    /// </summary>
-    private void AgreeAndContinueAsync()
-    {
-        if (string.IsNullOrWhiteSpace(_projectId)) return;
-        Nav.NavigateTo(ResolveAgreeNextHref());
-    }
+    // —— DecisionCard helpers ——
 
-    private string AgreeButtonLabel => ActiveProject.CanScenes
-        ? "Agree & Continue to Film →"
-        : ActiveProject.CanCharacters
-            ? "Agree & Continue to shot plan →"
-            : "Agree & Continue to cast →";
+    private bool HasShotPlan =>
+        _report is not null
+        && string.Equals(_report.EstimateBasis, "shot_plan", StringComparison.OrdinalIgnoreCase);
 
-    private string AgreeNextStageHint
+    private string EstimateBasisLabel =>
+        _report is null ? "—"
+        : HasShotPlan ? "shot plan"
+        : string.Equals(_report.EstimateBasis, "screenplay", StringComparison.OrdinalIgnoreCase) ? "screenplay (projected)"
+        : string.IsNullOrWhiteSpace(_report.EstimateBasis) ? "projected"
+        : _report.EstimateBasis;
+
+    private int DisplayTargetMinutes
     {
         get
         {
-            if (ActiveProject.CanScenes)
-                return "Shot plan is ready — open Film to generate clips.";
-            if (ActiveProject.CanCharacters)
-                return string.IsNullOrWhiteSpace(ActiveProject.ScenesBlockedReason)
-                    ? "Next: build the shot plan, then generate clips."
-                    : ActiveProject.ScenesBlockedReason;
-            return string.IsNullOrWhiteSpace(ActiveProject.CharactersBlockedReason)
-                ? "Next: finish cast (voices + locked looks), then the shot plan."
-                : ActiveProject.CharactersBlockedReason;
+            if ((_filmRuntime?.TargetMinutes ?? 0) > 0)
+                return _filmRuntime!.TargetMinutes;
+            return Math.Max(1, _filmRuntime?.NaturalMinutes ?? 1);
         }
     }
 
-    private string ResolveAgreeNextHref()
+    private double DisplayEstimateUsd
     {
-        // Film only when shot plan exists (CanScenes).
+        get
+        {
+            if (_report is null) return 0;
+            return HasShotPlan
+                ? _report.Summary.FullFilmAllDraftUsd
+                : ProjectedEstimateUsd(DisplayTargetMinutes);
+        }
+    }
+
+    private string DurationLabel
+    {
+        get
+        {
+            var natural = _filmRuntime?.NaturalMinutes;
+            var target = _filmRuntime?.TargetMinutes ?? 0;
+            if (target > 0 && natural is > 0 && target != natural)
+                return $"~{target} min target (natural ~{natural})";
+            if (target > 0)
+                return $"~{target} min";
+            if (natural is > 0)
+                return $"~{natural} min";
+            return "duration TBD";
+        }
+    }
+
+    private void ChooseGenerate()
+    {
+        _preferPath = "generate";
+        _ = PersistPrefAsync("preferPath", "generate");
+        _phase = DecisionPhase.ConfirmGenerate;
+    }
+
+    private void ChooseEdit()
+    {
+        _preferPath = "edit";
+        _ = PersistPrefAsync("preferPath", "edit");
+        _phase = DecisionPhase.EditFocus;
+    }
+
+    private void BackToCard()
+    {
+        _phase = DecisionPhase.Card;
+    }
+
+    private async Task ConfirmGenerateAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_projectId)) return;
+        // Fresh estimate before leaving
+        await LoadAsync();
+        if (!string.IsNullOrEmpty(_error) && _report is null) return;
+
+        _preferPath = "generate";
+        await PersistPrefAsync("preferPath", "generate");
+        Nav.NavigateTo(ResolveGenerateHref());
+    }
+
+    /// <summary>
+    /// Generate path: Film when shot plan ready; else shot plan (may run as next step); never dead-end.
+    /// </summary>
+    private string ResolveGenerateHref()
+    {
         if (ActiveProject.CanScenes)
             return ActiveProject.IsSimpleVoice ? "scenes?simple=1" : "scenes";
-        // Screenplay ready → characters/cast is the usual next setup step; shot plan after cast tooling.
-        // Prefer shot plan when cast is already considered ready enough for browsing plans.
         if (ActiveProject.CanCharacters)
-        {
-            // If scenes are blocked specifically on shot plan, go there; if on cast details, characters.
-            var reason = ActiveProject.ScenesBlockedReason ?? "";
-            if (reason.Contains("shot plan", StringComparison.OrdinalIgnoreCase)
-                || reason.Contains("Update the shot", StringComparison.OrdinalIgnoreCase))
-                return "adaptation/shots";
-            if (reason.Contains("character", StringComparison.OrdinalIgnoreCase)
-                || reason.Contains("voice", StringComparison.OrdinalIgnoreCase)
-                || reason.Contains("cast", StringComparison.OrdinalIgnoreCase))
-                return "characters";
             return "adaptation/shots";
-        }
+        // Screenplay exists but cast not open — still allow shot plan attempt or cast
+        if (ActiveProject.CanEstimate)
+            return "adaptation/shots";
         return "adaptation/screenplay";
     }
 
+    private string GenerateBlockedReason
+    {
+        get
+        {
+            if (!ActiveProject.CanEstimate)
+                return ActiveProject.EstimateBlockedReason ?? "Finish the screenplay first.";
+            if (ActiveProject.CanScenes)
+                return "";
+            if (!string.IsNullOrWhiteSpace(ActiveProject.ScenesBlockedReason))
+                return ActiveProject.ScenesBlockedReason + " Generate will open the next setup step.";
+            return "Shot plan not ready yet — continue will open planning, then Film.";
+        }
+    }
+
+    private async Task SelectEditFocusAsync(string focus)
+    {
+        _editFocus = focus;
+        await PersistPrefAsync("editFocus", focus);
+        Nav.NavigateTo(ResolveEditFocusHref(focus));
+    }
+
+    private static string ResolveEditFocusHref(string focus) => focus switch
+    {
+        "cost" => "adaptation/screenplay?tool=fit",
+        "duration" => "adaptation/screenplay?tool=fit",
+        "both" => "adaptation/screenplay?tool=fit",
+        "craft" => "characters",
+        _ => "adaptation/screenplay?tool=fit",
+    };
+
+    private string EditFocusHint(string focus) => focus switch
+    {
+        "cost" => "Trim length and resolution — shorter usually costs less. Then return here to refresh the estimate.",
+        "duration" => "Set target runtime and fit/trim the screenplay. Estimate updates when you come back.",
+        "both" => "Start with runtime (fit length); cost usually follows. Return here for a new quote.",
+        "craft" => "Cast looks, voices, and locations. Then come back to Estimate for an updated forecast.",
+        _ => "",
+    };
+
     // ——— Minutes-based estimate projection (pre-shot-plan) ———
-    // Video scales with the selected resolution's list rate ($/sec) × target length; plus a small base
-    // for cast + planning. Deliberately simple so the number responds to the length + resolution the
-    // user picks. Tune these as we learn from real runs / user selections.
     private const double ProjectionBaseUsd = 0.80;
-    private const double ProjectionPerMinFallbackUsd = 1.40; // used only if no live video rate yet
+    private const double ProjectionPerMinFallbackUsd = 1.40;
 
     private double ProjectedEstimateUsd(int targetMinutes)
     {

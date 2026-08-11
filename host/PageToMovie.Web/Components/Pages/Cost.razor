@@ -12,7 +12,7 @@
 <PageTitle>@L["Nav.Estimate"]</PageTitle>
 
 <StudioPageHeader Kicker="Studio · Estimate" Title="@L["Nav.Estimate"]">
-    @L["CostPage.Subtitle"]
+    Forecast for the current plan — not a final invoice. Generate the movie or edit the plan first.
 </StudioPageHeader>
 
 @if (ActiveProject.HasProject)
@@ -34,114 +34,199 @@
     </div>
 }
 
-    @if (_report is null)
-    {
-        <EmptyState Message="@L["Common.Loading"]" CssClass="text-muted" />
-    }
-    else
-    {
-        var s = _report.Summary;
-        // Before a shot plan exists the film isn't sized yet, so the top-line responds to the length +
-        // resolution you pick (minutes-based projection). Once the shot plan exists, use the real
-        // clip-based estimate (which changes when you trim to fewer scenes).
-        var hasShotPlan = string.Equals(_report.EstimateBasis, "shot_plan", StringComparison.OrdinalIgnoreCase);
-        var targetMin = (_filmRuntime?.TargetMinutes ?? 0) > 0
-            ? _filmRuntime!.TargetMinutes
-            : Math.Max(1, _filmRuntime?.NaturalMinutes ?? 1);
-        var estimate = hasShotPlan ? s.FullFilmAllDraftUsd : ProjectedEstimateUsd(targetMin);
+@if (_report is null)
+{
+    <EmptyState Message="@L["Common.Loading"]" CssClass="text-muted" />
+}
+else
+{
+    var s = _report.Summary;
+    var estimate = DisplayEstimateUsd;
+    var targetMin = DisplayTargetMinutes;
 
-        @* —— One card: estimate/spent/remaining · resolution · film length —— *@
-        <div class="card mb-4">
-            <div class="card-body">
-                @* Headline numbers on top *@
-                <div class="row g-3 text-center">
-                    <div class="col-4">
-                        <div class="text-muted small text-uppercase mb-1">@L["Nav.Estimate"]</div>
-                        <div class="fs-3 fw-semibold cost-hero-num" data-testid="cost-estimate">@Usd(estimate)</div>
-                        <div class="small text-muted">
-                            @if (hasShotPlan)
-                            {
-                                <span>@_report.DraftResolution · from shot plan</span>
-                            }
-                            else
-                            {
-                                <span>~@targetMin min · @_report.DraftResolution · projected</span>
-                            }
-                        </div>
-                    </div>
-                    <div class="col-4">
-                        <div class="text-muted small text-uppercase mb-1">@L["CostPage.Spent"]</div>
-                        <div class="fs-3 fw-semibold cost-hero-num" data-testid="cost-spent">@Usd(s.ActualUsd)</div>
-                        <div class="small text-muted">@L["CostPage.SoFar"]</div>
-                    </div>
-                    <div class="col-4">
-                        <div class="text-muted small text-uppercase mb-1">@L["CostPage.Remaining"]</div>
-                        <div class="fs-3 fw-semibold cost-hero-num" data-testid="cost-remaining">@Usd(Math.Max(0, estimate - s.ActualUsd))</div>
-                        <div class="small text-muted">est − spent</div>
+    @* —— Forecast card: $ · duration · basis · resolution · length —— *@
+    <div class="card mb-4" data-testid="decision-forecast-card">
+        <div class="card-body">
+            <div class="row g-3 text-center">
+                <div class="col-md-3 col-6">
+                    <div class="text-muted small text-uppercase mb-1">Duration</div>
+                    <div class="fs-3 fw-semibold cost-hero-num" data-testid="cost-duration">@DurationLabel</div>
+                    <div class="small text-muted">current plan</div>
+                </div>
+                <div class="col-md-3 col-6">
+                    <div class="text-muted small text-uppercase mb-1">@L["Nav.Estimate"]</div>
+                    <div class="fs-3 fw-semibold cost-hero-num" data-testid="cost-estimate">@Usd(estimate)</div>
+                    <div class="small text-muted">
+                        @_report.DraftResolution · basis: <span data-testid="cost-basis">@EstimateBasisLabel</span>
                     </div>
                 </div>
+                <div class="col-md-3 col-6">
+                    <div class="text-muted small text-uppercase mb-1">@L["CostPage.Spent"]</div>
+                    <div class="fs-3 fw-semibold cost-hero-num" data-testid="cost-spent">@Usd(s.ActualUsd)</div>
+                    <div class="small text-muted">@L["CostPage.SoFar"]</div>
+                </div>
+                <div class="col-md-3 col-6">
+                    <div class="text-muted small text-uppercase mb-1">@L["CostPage.Remaining"]</div>
+                    <div class="fs-3 fw-semibold cost-hero-num" data-testid="cost-remaining">@Usd(Math.Max(0, estimate - s.ActualUsd))</div>
+                    <div class="small text-muted">est − spent</div>
+                </div>
+            </div>
 
-                <hr class="my-3" />
+            <p class="small text-muted mb-0 mt-2 text-center">
+                Forecast on the current plan. Trim, runtime, cast, or resolution will change this number — refresh after edits.
+            </p>
 
-                @* Two balanced columns that stay centered on resize *@
-                <div class="row g-3 align-items-start">
-                    <div class="col-md-6">
-                        <label class="form-label small mb-1">@L["CostPage.VideoResolution"]</label>
-                        <div class="btn-group d-flex" role="group" aria-label="Video resolution">
-                            @foreach (var res in new[] { "480p", "720p", "1080p" })
-                            {
-                                <button type="button"
-                                        class="btn btn-sm @(_draftRes == res ? "btn-primary" : "btn-outline-secondary")"
-                                        data-testid="@($"cost-res-{res}")"
-                                        disabled="@_busy"
-                                        @onclick="() => SetDraftResolutionAsync(res)">
-                                    @res
-                                </button>
-                            }
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        @if (!string.IsNullOrWhiteSpace(_projectId))
+            <hr class="my-3" />
+
+            <div class="row g-3 align-items-start">
+                <div class="col-md-6">
+                    <label class="form-label small mb-1">@L["CostPage.VideoResolution"]</label>
+                    <div class="btn-group d-flex" role="group" aria-label="Video resolution">
+                        @foreach (var res in new[] { "480p", "720p", "1080p" })
                         {
-                            <FilmLengthCard Embedded="true" ProjectId="@_projectId" Disabled="@_busy" OnChanged="LoadAsync" />
+                            <button type="button"
+                                    class="btn btn-sm @(_draftRes == res ? "btn-primary" : "btn-outline-secondary")"
+                                    data-testid="@($"cost-res-{res}")"
+                                    disabled="@_busy"
+                                    @onclick="() => SetDraftResolutionAsync(res)">
+                                @res
+                            </button>
                         }
                     </div>
                 </div>
-            </div>
-        </div>
-
-        @* Primary action: confirm estimate and advance to the next incomplete stage (not always Film). *@
-        @if (!string.IsNullOrWhiteSpace(_projectId) && ActiveProject.HasProject && ActiveProject.CanEstimate)
-        {
-            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-4 p-3 rounded border border-primary border-opacity-25 bg-primary bg-opacity-10">
-                <div class="small">
-                    <strong>@(ActiveProject.CanScenes ? L["CostPage.ReadyToGenerate"] : "Estimate confirmed — next step")</strong>
-                    @if (ActiveProject.CanScenes)
+                <div class="col-md-6">
+                    @if (!string.IsNullOrWhiteSpace(_projectId))
                     {
-                        <span> @L["CostPage.ContinueToFilm"]</span>
-                    }
-                    else
-                    {
-                        <span> @AgreeNextStageHint</span>
+                        <FilmLengthCard Embedded="true" ProjectId="@_projectId" Disabled="@_busy" OnChanged="LoadAsync" />
                     }
                 </div>
-                <button type="button"
-                        class="btn btn-primary fw-semibold px-4"
-                        data-testid="cost-agree-continue"
-                        disabled="@_busy"
-                        @onclick="AgreeAndContinueAsync">
-                    @L["CostPage.AgreeAndContinue"]
-                </button>
+            </div>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(_projectId) && ActiveProject.HasProject && ActiveProject.CanEstimate)
+    {
+        @* —— DecisionCard: Generate | Edit —— *@
+        @if (_phase == DecisionPhase.Card)
+        {
+            <div class="card mb-4 border-primary border-opacity-50" data-testid="decision-card">
+                <div class="card-body">
+                    <div class="d-flex flex-wrap align-items-start justify-content-between gap-3">
+                        <div>
+                            <h2 class="h5 mb-1">What do you want to do?</h2>
+                            <p class="small text-muted mb-0">
+                                <strong>@DurationLabel</strong>
+                                · <strong>@Usd(estimate)</strong> full pass (@EstimateBasisLabel)
+                            </p>
+                        </div>
+                    </div>
+                    <div class="d-flex flex-wrap gap-2 mt-3">
+                        <button type="button"
+                                class="btn @(_preferPath == "generate" ? "btn-primary" : "btn-outline-primary") fw-semibold px-4"
+                                data-testid="decision-generate"
+                                disabled="@_busy"
+                                @onclick="ChooseGenerate">
+                            Generate movie
+                        </button>
+                        <button type="button"
+                                class="btn @(_preferPath == "edit" ? "btn-primary" : "btn-outline-secondary") fw-semibold px-4"
+                                data-testid="decision-edit"
+                                disabled="@_busy"
+                                @onclick="ChooseEdit">
+                            Edit plan first
+                        </button>
+                    </div>
+                    <p class="small text-muted mt-2 mb-0">
+                        Generate builds from the current plan (shot plan first if needed). Edit trims cost or runtime, then come back for a new forecast.
+                    </p>
+                </div>
             </div>
         }
-
-        @* Full breakdown and account-wide spend each live on their own page. *@
-        <div class="d-flex flex-wrap justify-content-end gap-2 mb-3">
-            <a class="btn btn-sm btn-outline-secondary" href="cost/breakdown" data-testid="cost-breakdown-link">
-                @L["CostPage.ProjectCostBreakdown"]
-            </a>
-            <a class="btn btn-sm btn-outline-secondary" href="account/costs" data-testid="cost-account-link">
-                @L["CostPage.SeeAllProjectsBilling"]
-            </a>
-        </div>
+        else if (_phase == DecisionPhase.EditFocus)
+        {
+            <div class="card mb-4" data-testid="decision-edit-focus">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                        <h2 class="h5 mb-0">What do you want to improve?</h2>
+                        <button type="button" class="btn btn-sm btn-link" data-testid="decision-edit-back" @onclick="BackToCard">← Back</button>
+                    </div>
+                    <div class="list-group">
+                        <button type="button" class="list-group-item list-group-item-action"
+                                data-testid="edit-focus-cost"
+                                disabled="@_busy"
+                                @onclick='() => SelectEditFocusAsync("cost")'>
+                            <strong>Lower cost</strong>
+                            <div class="small text-muted">@EditFocusHint("cost")</div>
+                        </button>
+                        <button type="button" class="list-group-item list-group-item-action"
+                                data-testid="edit-focus-duration"
+                                disabled="@_busy"
+                                @onclick='() => SelectEditFocusAsync("duration")'>
+                            <strong>Runtime</strong> (shorter / longer)
+                            <div class="small text-muted">@EditFocusHint("duration")</div>
+                        </button>
+                        <button type="button" class="list-group-item list-group-item-action"
+                                data-testid="edit-focus-both"
+                                disabled="@_busy"
+                                @onclick='() => SelectEditFocusAsync("both")'>
+                            <strong>Both</strong>
+                            <div class="small text-muted">@EditFocusHint("both")</div>
+                        </button>
+                        <button type="button" class="list-group-item list-group-item-action"
+                                data-testid="edit-focus-craft"
+                                disabled="@_busy"
+                                @onclick='() => SelectEditFocusAsync("craft")'>
+                            <strong>Cast, locations, or script</strong>
+                            <div class="small text-muted">@EditFocusHint("craft")</div>
+                        </button>
+                    </div>
+                    <div class="d-flex flex-wrap gap-2 mt-3">
+                        <a class="btn btn-sm btn-outline-secondary" href="characters">Cast</a>
+                        <a class="btn btn-sm btn-outline-secondary" href="locations">Locations</a>
+                        <a class="btn btn-sm btn-outline-secondary" href="adaptation/screenplay">Script</a>
+                        <a class="btn btn-sm btn-outline-secondary" href="adaptation/screenplay?tool=fit">Fit length</a>
+                    </div>
+                </div>
+            </div>
+        }
+        else if (_phase == DecisionPhase.ConfirmGenerate)
+        {
+            <div class="card mb-4 border-success border-opacity-50" data-testid="decision-confirm-generate">
+                <div class="card-body">
+                    <h2 class="h5 mb-2">Generate movie?</h2>
+                    <p class="mb-2">
+                        About <strong>@DurationLabel</strong> · <strong>@Usd(estimate)</strong>
+                        (@_report.DraftResolution, @EstimateBasisLabel).
+                    </p>
+                    @if (!string.IsNullOrWhiteSpace(GenerateBlockedReason) && !ActiveProject.CanScenes)
+                    {
+                        <div class="alert alert-info py-2 small mb-3" data-testid="decision-generate-hint">
+                            @GenerateBlockedReason
+                        </div>
+                    }
+                    <div class="d-flex flex-wrap gap-2">
+                        <button type="button"
+                                class="btn btn-success fw-semibold px-4"
+                                data-testid="decision-confirm-go"
+                                disabled="@_busy"
+                                @onclick="ConfirmGenerateAsync">
+                            @(ActiveProject.CanScenes ? "Go to Film →" : "Continue to plan / Film →")
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" data-testid="decision-confirm-back" @onclick="BackToCard">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            </div>
+        }
     }
+
+    <div class="d-flex flex-wrap justify-content-end gap-2 mb-3">
+        <a class="btn btn-sm btn-outline-secondary" href="cost/breakdown" data-testid="cost-breakdown-link">
+            @L["CostPage.ProjectCostBreakdown"]
+        </a>
+        <a class="btn btn-sm btn-outline-secondary" href="account/costs" data-testid="cost-account-link">
+            @L["CostPage.SeeAllProjectsBilling"]
+        </a>
+    </div>
+}
