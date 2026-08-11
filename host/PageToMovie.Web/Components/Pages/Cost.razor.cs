@@ -373,15 +373,58 @@ public partial class Cost : IAsyncDisposable
         get
         {
             if (_report is null) return 0;
+            double baseEst;
             if (_report.CostPointUsd is > 0)
-                return _report.CostPointUsd.Value;
-            return HasShotPlan
-                ? _report.Summary.FullFilmAllDraftUsd
-                : ProjectedEstimateUsd(DisplayTargetMinutes);
+                baseEst = _report.CostPointUsd.Value;
+            else if (HasShotPlan)
+                baseEst = _report.Summary.FullFilmAllDraftUsd;
+            else
+                baseEst = ProjectedEstimateUsd(DisplayTargetMinutes);
+
+            // Target length changed vs plan duration: scale $ so the hub reacts immediately.
+            // Exact clip count needs Fit (+ shot replan); until then show scaled forecast.
+            if (EstimateScaleFactor is double f && f > 0 && Math.Abs(f - 1.0) > 0.02)
+                return Math.Max(0, baseEst * f);
+            return baseEst;
         }
     }
 
-    /// <summary>A5 — remaining $ to finish (missing clips + unfinished non-video), not est−spent.</summary>
+    /// <summary>True when we scale $ for a target length different from the plan duration.</summary>
+    private bool EstimateIsScaledForTarget =>
+        EstimateScaleFactor is double f && Math.Abs(f - 1.0) > 0.02;
+
+    private double? EstimateScaleFactor
+    {
+        get
+        {
+            var target = DisplayTargetMinutes;
+            if (target <= 0) return null;
+            double planMin = 0;
+            if (_report?.DurationMinutes is > 0)
+                planMin = _report.DurationMinutes.Value;
+            else if ((_filmRuntime?.NaturalMinutes ?? 0) > 0)
+                planMin = _filmRuntime!.NaturalMinutes;
+            if (planMin <= 0) return null;
+            return target / planMin;
+        }
+    }
+
+    /// <summary>Show Fit when target minutes differ from natural/plan and a shot plan (or screenplay) exists.</summary>
+    private bool NeedsFitForTarget
+    {
+        get
+        {
+            var target = _filmRuntime?.TargetMinutes ?? 0;
+            if (target <= 0) return false;
+            var natural = _filmRuntime?.NaturalMinutes ?? 0;
+            var planMin = _report?.DurationMinutes ?? 0;
+            if (planMin > 0 && Math.Abs(target - planMin) >= 1) return true;
+            if (natural > 0 && Math.Abs(target - natural) >= 1) return true;
+            return false;
+        }
+    }
+
+    /// <summary>A5 — remaining $ to finish missing clips (only meaningful once gen has started).</summary>
     private double DisplayRemainingUsd
     {
         get
@@ -393,23 +436,26 @@ public partial class Cost : IAsyncDisposable
         }
     }
 
+    /// <summary>Hide "To finish" until there is real progress — avoids Estimate vs Remaining confusion pre-gen.</summary>
+    private bool ShowToFinish =>
+        _report is not null
+        && (_report.Summary.ClipsOnDisk > 0
+            || _report.Summary.ActualUsd > 0.009
+            || string.Equals(_report.EstimateBasis, "remaining", StringComparison.OrdinalIgnoreCase));
+
     private string DurationLabel
     {
         get
         {
-            if (!string.IsNullOrWhiteSpace(_report?.DurationLabel)
-                && _report!.DurationLabel != "duration TBD"
-                && (_filmRuntime?.TargetMinutes ?? 0) <= 0)
-                return _report.DurationLabel;
-
             var natural = _filmRuntime?.NaturalMinutes;
             var target = _filmRuntime?.TargetMinutes ?? 0;
             if (target > 0 && natural is > 0 && target != natural)
-                return $"~{target} min target (natural ~{natural})";
+                return $"~{target} min";
             if (target > 0)
                 return $"~{target} min";
-            if (!string.IsNullOrWhiteSpace(_report?.DurationLabel))
-                return _report!.DurationLabel;
+            if (!string.IsNullOrWhiteSpace(_report?.DurationLabel)
+                && _report!.DurationLabel != "duration TBD")
+                return _report.DurationLabel;
             if (natural is > 0)
                 return $"~{natural} min";
             return "duration TBD";
@@ -420,10 +466,16 @@ public partial class Cost : IAsyncDisposable
     {
         get
         {
+            // Prefer live scaled display over server CostLabel when target moved.
+            if (EstimateIsScaledForTarget)
+            {
+                var est = DisplayEstimateUsd;
+                return est > 0 ? Usd(est) : "—";
+            }
             if (!string.IsNullOrWhiteSpace(_report?.CostLabel) && _report!.CostLabel != "—")
                 return _report.CostLabel;
-            var est = DisplayEstimateUsd;
-            return est > 0 ? Usd(est) : "—";
+            var point = DisplayEstimateUsd;
+            return point > 0 ? Usd(point) : "—";
         }
     }
 
@@ -518,20 +570,13 @@ public partial class Cost : IAsyncDisposable
             return;
         }
 
-        _preferPath = "generate";
-        await PersistPrefAsync("preferPath", "generate");
-        _busy = true;
-        try
-        {
-            await LoadAsync(); // I4 re-fetch estimate + collab
-            _confirmEstimateSnapshot = DisplayEstimateUsd;
-            _phase = DecisionPhase.ConfirmGenerate;
-        }
-        finally { _busy = false; }
+        // One-click: start gen (or B6 auto-chain) — no intermediate confirm card.
+        await ConfirmGenerateAsync();
     }
 
     private void ChooseEdit()
     {
+        // Edit tools live on the hub (length, cast cap, craft links). Keep phase on Card.
         if (IsViewerOnly)
         {
             _collabNote = "Viewers cannot edit the plan.";
@@ -539,14 +584,18 @@ public partial class Cost : IAsyncDisposable
         }
         _preferPath = "edit";
         _ = PersistPrefAsync("preferPath", "edit");
+        _phase = DecisionPhase.Card;
         _collabNote = null;
-        // G2: skip focus question when user opted out and we have a remembered focus
-        if (_skipEditFocus && _editFocus is "cost" or "duration" or "both" or "craft")
-        {
-            _phase = DecisionPhase.Shaping;
-            return;
-        }
-        _phase = DecisionPhase.EditFocus;
+    }
+
+    private async Task OnFilmLengthChangedAsync()
+    {
+        // FilmLengthCard already persisted target; reload runtime + cost and re-render scaled $.
+        await LoadAsync();
+        if (NeedsFitForTarget)
+            _shapeMessage = "Target length updated — Movie cost is scaled. Fit screenplay for an exact plan.";
+        else
+            _shapeMessage = null;
     }
 
     private async Task ToggleSkipEditFocusAsync(ChangeEventArgs e)
@@ -726,6 +775,7 @@ public partial class Cost : IAsyncDisposable
             if ((_filmRuntime?.TargetMinutes ?? 0) > 0)
                 await PersistPrefAsync("lastRuntimeTargetMin", _filmRuntime!.TargetMinutes.ToString());
             await LoadAsync();
+            try { await ActiveProject.RefreshReadinessAsync(Engine); } catch { /* */ }
         }
         catch (Exception ex)
         {
