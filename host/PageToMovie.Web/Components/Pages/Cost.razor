@@ -109,6 +109,10 @@ else
         @* —— DecisionCard: Generate | Edit —— *@
         @if (_phase == DecisionPhase.Card)
         {
+            @if (!string.IsNullOrWhiteSpace(_shapeMessage))
+            {
+                <div class="alert alert-success py-2 small mb-3" data-testid="decision-shape-done">@_shapeMessage</div>
+            }
             <div class="card mb-4 border-primary border-opacity-50" data-testid="decision-card">
                 <div class="card-body">
                     <div class="d-flex flex-wrap align-items-start justify-content-between gap-3">
@@ -137,7 +141,7 @@ else
                         </button>
                     </div>
                     <p class="small text-muted mt-2 mb-0">
-                        Generate builds from the current plan (shot plan first if needed). Edit trims cost or runtime, then come back for a new forecast.
+                        Generate builds from the current plan (shot plan first if needed). Edit trims cost or runtime — tools stay on this page so the forecast updates live.
                     </p>
                 </div>
             </div>
@@ -180,11 +184,95 @@ else
                             <div class="small text-muted">@EditFocusHint("craft")</div>
                         </button>
                     </div>
-                    <div class="d-flex flex-wrap gap-2 mt-3">
-                        <a class="btn btn-sm btn-outline-secondary" href="characters">Cast</a>
-                        <a class="btn btn-sm btn-outline-secondary" href="locations">Locations</a>
-                        <a class="btn btn-sm btn-outline-secondary" href="adaptation/screenplay">Script</a>
-                        <a class="btn btn-sm btn-outline-secondary" href="adaptation/screenplay?tool=fit">Fit length</a>
+                </div>
+            </div>
+        }
+        else if (_phase == DecisionPhase.Shaping)
+        {
+            <div class="card mb-4 border-warning border-opacity-50" data-testid="decision-shaping">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                        <h2 class="h5 mb-0">@ShapingTitle</h2>
+                        <div class="d-flex gap-2">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" data-testid="shaping-back-focus" @onclick="ChooseEdit">Change focus</button>
+                            <button type="button" class="btn btn-sm btn-primary" data-testid="shaping-done" disabled="@_busy" @onclick="DoneShapingAsync">Done · refresh forecast</button>
+                        </div>
+                    </div>
+
+                    @if (!string.IsNullOrWhiteSpace(_shapeError))
+                    {
+                        <div class="alert alert-danger py-2 small" data-testid="shaping-error">@_shapeError</div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(_shapeMessage))
+                    {
+                        <div class="alert alert-success py-2 small" data-testid="shaping-message">@_shapeMessage</div>
+                    }
+
+                    <p class="small text-muted mb-3">
+                        Live forecast: <strong>@DurationLabel</strong> · <strong>@Usd(estimate)</strong> (@EstimateBasisLabel).
+                        Change tools below — numbers update when you fit or save.
+                    </p>
+
+                    @if (ShowDurationToolkit || ShowCostToolkit)
+                    {
+                        <div class="mb-4" data-testid="shaping-duration">
+                            <h3 class="h6 text-uppercase text-muted">@(ShowCostToolkit && !ShowDurationToolkit ? "Runtime (affects $)" : "Runtime")</h3>
+                            <p class="small text-muted">Use the length control in the forecast card above, then fit the screenplay to that target.</p>
+                            <button type="button"
+                                    class="btn btn-warning btn-sm fw-semibold"
+                                    data-testid="shaping-run-fit"
+                                    disabled="@_busy"
+                                    @onclick="RunFitTrimAsync">
+                                Fit screenplay to target length
+                            </button>
+                            <a class="btn btn-sm btn-link" href="adaptation/screenplay?tool=fit">Open full fit panel →</a>
+                        </div>
+                    }
+
+                    @if (ShowCostToolkit)
+                    {
+                        <div class="mb-4" data-testid="shaping-cost">
+                            <h3 class="h6 text-uppercase text-muted">Cost levers</h3>
+                            <p class="small text-muted mb-2">
+                                Resolution is on the forecast card (480p / 720p / 1080p). Lower res and shorter runtime reduce video spend.
+                            </p>
+                            <label class="form-label small mb-1">Max speaking cast (adaptation)</label>
+                            <div class="input-group input-group-sm" style="max-width: 280px;">
+                                <input type="number" class="form-control" min="1" max="40" placeholder="default"
+                                       @bind="_castCapInput" disabled="@_busy" data-testid="shaping-cast-cap" />
+                                <button type="button" class="btn btn-outline-primary" disabled="@_busy" @onclick="SaveCastCapAsync" data-testid="shaping-cast-cap-save">
+                                    Save cap
+                                </button>
+                            </div>
+                            <div class="small text-muted mt-1">
+                                @if (_maxSpeakingCast is int cap)
+                                {
+                                    <span>Current: @cap. Rebuild cast after changing for a full effect.</span>
+                                }
+                                else
+                                {
+                                    <span>Using project/server default. Empty + Save clears override.</span>
+                                }
+                            </div>
+                        </div>
+                    }
+
+                    @if (ShowCraftToolkit)
+                    {
+                        <div class="mb-3" data-testid="shaping-craft">
+                            <h3 class="h6 text-uppercase text-muted">Craft surfaces</h3>
+                            <p class="small text-muted">Edit looks and story, then come back — Done refreshes the forecast.</p>
+                            <div class="d-flex flex-wrap gap-2">
+                                <a class="btn btn-outline-warning btn-sm" href="characters" data-testid="shaping-to-cast">Cast & voice</a>
+                                <a class="btn btn-outline-info btn-sm" href="locations" data-testid="shaping-to-locs">Locations</a>
+                                <a class="btn btn-outline-secondary btn-sm" href="adaptation/screenplay" data-testid="shaping-to-script">Script</a>
+                            </div>
+                        </div>
+                    }
+
+                    <div class="d-flex flex-wrap gap-2 mt-2">
+                        <button type="button" class="btn btn-outline-secondary btn-sm" disabled="@_busy" @onclick="LoadAsync">Refresh estimate now</button>
+                        <button type="button" class="btn btn-success btn-sm" disabled="@_busy" @onclick="ChooseGenerate">Generate movie…</button>
                     </div>
                 </div>
             </div>

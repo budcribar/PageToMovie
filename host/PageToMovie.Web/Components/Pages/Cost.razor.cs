@@ -17,6 +17,8 @@ public partial class Cost : IAsyncDisposable
     {
         Card,
         EditFocus,
+        /// <summary>In-page cost/duration toolkit; re-estimates without leaving Estimate.</summary>
+        Shaping,
         ConfirmGenerate,
     }
 
@@ -37,6 +39,10 @@ public partial class Cost : IAsyncDisposable
     /// <summary>generate | edit — preferred DecisionCard emphasis.</summary>
     private string _preferPath = "generate";
     private bool _prefsLoaded;
+    private string? _shapeMessage;
+    private string? _shapeError;
+    private int? _maxSpeakingCast;
+    private string _castCapInput = "";
 
     [Inject] private IJSRuntime Js { get; set; } = null!;
 
@@ -74,18 +80,36 @@ public partial class Cost : IAsyncDisposable
         }
     }
 
-    /// <summary>Deep links: /cost?phase=edit|confirm</summary>
+    /// <summary>Deep links: /cost?phase=edit|confirm|shape&focus=cost|duration|both|craft</summary>
     private void ApplyPhaseQuery()
     {
         try
         {
+            var focus = StudioDeepLinks.QueryValue(Nav, "focus");
+            if (focus is "cost" or "duration" or "both" or "craft")
+                _editFocus = focus;
+
             var phase = StudioDeepLinks.QueryValue(Nav, "phase");
-            if (string.IsNullOrWhiteSpace(phase)) return;
+            if (string.IsNullOrWhiteSpace(phase))
+            {
+                // ?focus= alone opens shaping / craft
+                if (_editFocus is "cost" or "duration" or "both")
+                    _phase = DecisionPhase.Shaping;
+                else if (_editFocus == "craft")
+                    _phase = DecisionPhase.EditFocus;
+                return;
+            }
             if (phase.Equals("edit", StringComparison.OrdinalIgnoreCase))
                 _phase = DecisionPhase.EditFocus;
+            else if (phase.Equals("shape", StringComparison.OrdinalIgnoreCase)
+                     || phase.Equals("shaping", StringComparison.OrdinalIgnoreCase))
+                _phase = DecisionPhase.Shaping;
             else if (phase.Equals("confirm", StringComparison.OrdinalIgnoreCase)
                      || phase.Equals("generate", StringComparison.OrdinalIgnoreCase))
                 _phase = DecisionPhase.ConfirmGenerate;
+
+            if (_phase == DecisionPhase.Shaping && _editFocus is null or "craft")
+                _editFocus = "both";
         }
         catch { /* ignore */ }
     }
@@ -169,6 +193,34 @@ public partial class Cost : IAsyncDisposable
             _filmRuntime = null;
         }
         finally { _busy = false; }
+
+        try { await LoadCastCapAsync(); } catch { /* optional */ }
+    }
+
+    private async Task LoadCastCapAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_projectId)) return;
+        var dto = await Engine.GetConfigAsync(_projectId);
+        if (dto?.Config is null) return;
+        if (dto.Config.TryGetValue("adaptation_max_speaking_cast", out var el))
+        {
+            if (el.ValueKind == System.Text.Json.JsonValueKind.Number && el.TryGetInt32(out var n))
+            {
+                _maxSpeakingCast = n;
+                _castCapInput = n.ToString();
+                return;
+            }
+            if (el.ValueKind == System.Text.Json.JsonValueKind.String
+                && int.TryParse(el.GetString(), out var ns))
+            {
+                _maxSpeakingCast = ns;
+                _castCapInput = ns.ToString();
+                return;
+            }
+        }
+        _maxSpeakingCast = null;
+        if (string.IsNullOrEmpty(_castCapInput))
+            _castCapInput = "";
     }
 
     // —— DecisionCard helpers ——
@@ -238,6 +290,7 @@ public partial class Cost : IAsyncDisposable
     private void BackToCard()
     {
         _phase = DecisionPhase.Card;
+        _shapeError = null;
     }
 
     private async Task ConfirmGenerateAsync()
@@ -295,26 +348,111 @@ public partial class Cost : IAsyncDisposable
     private async Task SelectEditFocusAsync(string focus)
     {
         _editFocus = focus;
+        _shapeMessage = null;
+        _shapeError = null;
         await PersistPrefAsync("editFocus", focus);
-        Nav.NavigateTo(ResolveEditFocusHref(focus));
+        if (focus == "craft")
+        {
+            // Craft stays a hub of links on EditFocus (or jump to cast)
+            _phase = DecisionPhase.EditFocus;
+            // stay — craft links shown when focus is craft via expanded UI
+            // Actually open craft as shaping-like panel: use Shaping with craft tools
+            _phase = DecisionPhase.Shaping;
+            return;
+        }
+        _phase = DecisionPhase.Shaping;
     }
 
-    private static string ResolveEditFocusHref(string focus) => focus switch
+    private async Task DoneShapingAsync()
     {
-        "cost" => "adaptation/screenplay?tool=fit",
-        "duration" => "adaptation/screenplay?tool=fit",
-        "both" => "adaptation/screenplay?tool=fit",
-        "craft" => "characters",
-        _ => "adaptation/screenplay?tool=fit",
-    };
+        await LoadAsync();
+        try { await ActiveProject.RefreshReadinessAsync(Engine); } catch { /* */ }
+        _phase = DecisionPhase.Card;
+        _shapeMessage = "Forecast refreshed for the current plan.";
+    }
+
+    private async Task RunFitTrimAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_projectId)) return;
+        _busy = true;
+        _shapeError = null;
+        _shapeMessage = null;
+        try
+        {
+            var result = await Engine.TrimScreenplayAsync(_projectId);
+            _shapeMessage = result?.Message ?? "Screenplay fitted to target length.";
+            if ((_filmRuntime?.TargetMinutes ?? 0) > 0)
+                await PersistPrefAsync("lastRuntimeTargetMin", _filmRuntime!.TargetMinutes.ToString());
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _shapeError = ex.Message;
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task SaveCastCapAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_projectId)) return;
+        _busy = true;
+        _shapeError = null;
+        _shapeMessage = null;
+        try
+        {
+            int? value = null;
+            if (!string.IsNullOrWhiteSpace(_castCapInput))
+            {
+                if (!int.TryParse(_castCapInput.Trim(), out var n) || n < 1 || n > 40)
+                {
+                    _shapeError = "Speaking cast cap must be 1–40 (or empty for default).";
+                    return;
+                }
+                value = n;
+            }
+            var updates = new Dictionary<string, object?>
+            {
+                ["adaptation_max_speaking_cast"] = value,
+            };
+            await Engine.SaveConfigAsync(_projectId, updates);
+            _maxSpeakingCast = value;
+            _shapeMessage = value is null
+                ? "Speaking cast cap cleared (project default)."
+                : $"Speaking cast cap set to {value}. Rebuild cast / re-adapt for it to fully apply.";
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _shapeError = ex.Message;
+        }
+        finally { _busy = false; }
+    }
+
+    private bool ShowDurationToolkit =>
+        _editFocus is "cost" or "duration" or "both" or null;
+
+    private bool ShowCostToolkit =>
+        _editFocus is "cost" or "both";
+
+    private bool ShowCraftToolkit =>
+        _editFocus == "craft";
 
     private string EditFocusHint(string focus) => focus switch
     {
-        "cost" => "Trim length and resolution — shorter usually costs less. Then return here to refresh the estimate.",
-        "duration" => "Set target runtime and fit/trim the screenplay. Estimate updates when you come back.",
-        "both" => "Start with runtime (fit length); cost usually follows. Return here for a new quote.",
-        "craft" => "Cast looks, voices, and locations. Then come back to Estimate for an updated forecast.",
+        "cost" => "Resolution, runtime trim, and speaking-cast cap — shorter / fewer speakers usually costs less. Forecast updates here.",
+        "duration" => "Set target minutes and fit the screenplay. Estimate refreshes on this page.",
+        "both" => "Set runtime first, then cost levers (resolution, cast cap). One plan, two intents.",
+        "craft" => "Cast looks, voices, locations, and script — then return for an updated forecast.",
         _ => "",
+    };
+
+    private string ShapingTitle => _editFocus switch
+    {
+        "cost" => "Shape plan · lower cost",
+        "duration" => "Shape plan · runtime",
+        "both" => "Shape plan · runtime & cost",
+        "craft" => "Craft · cast, locations, script",
+        _ => "Shape plan",
     };
 
     // ——— Minutes-based estimate projection (pre-shot-plan) ———

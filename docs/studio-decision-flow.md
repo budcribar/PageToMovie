@@ -591,7 +591,7 @@ Use this as the build/acceptance tracker. Check items off in PRs; leave dates/no
 | | **A1** Document estimate tiers in API (`basis`, duration, cost low/point/high, clipSource) | Align with `CostReportService` basis |
 | | **A2** Screenplay-tier estimate always available when fountain exists | Book **or** fountain import |
 | [x] | **A3** Decision-facing payload: duration label + cost label + basis + confidence | Cost DecisionCard 2026-08-11 |
-| | **A4** Re-estimate endpoint/hook after trim, runtime target, cast cap, resolution | |
+| [x] | **A4** Re-estimate after fit/trim, resolution, cast cap on Decision shaping | Cost in-page toolkit |
 | | **A5** Remaining estimate while gen runs (spent + missing) | Ledger path exists; wire to Film |
 | [x] | **A6** UI copy: “forecast on current plan,” not final invoice | Cost page header |
 
