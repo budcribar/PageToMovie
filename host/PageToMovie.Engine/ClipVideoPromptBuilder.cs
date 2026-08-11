@@ -65,6 +65,12 @@ public static class ClipVideoPromptBuilder
         /// <summary>Whether locked refs were attached to the API payload for this build.</summary>
         public bool RefsAttachedToApi { get; init; }
         public string PromptLogSummary { get; init; } = "";
+        /// <summary>Scene/clip location key when a set plate was considered.</summary>
+        public string? LocationKey { get; init; }
+        /// <summary>True when a locked location plate was attached as a reference image.</summary>
+        public bool LocationRefAttached { get; init; }
+        /// <summary><IMAGE_n> tag for the location plate when attached.</summary>
+        public string? LocationImageTag { get; init; }
 
         public PromptBuildResult WithPrompt(string prompt, string? summarySuffix = null) => new()
         {
@@ -82,6 +88,9 @@ public static class ClipVideoPromptBuilder
             ActionText = ActionText,
             CastCountLine = CastCountLine,
             RefsAttachedToApi = RefsAttachedToApi,
+            LocationKey = LocationKey,
+            LocationRefAttached = LocationRefAttached,
+            LocationImageTag = LocationImageTag,
             PromptLogSummary = string.IsNullOrWhiteSpace(summarySuffix)
                 ? PromptLogSummary
                 : PromptLogSummary + summarySuffix,
@@ -142,12 +151,20 @@ public static class ClipVideoPromptBuilder
         var actionText = SanitizeActionText(rawVisual, onScreenKeys);
 
         var refPaths = FindCharacterRefPathsForKeys(onScreenKeys, projectDir, maxRefs);
+        // Fresh gen attaches locked plates when available. Location-only establishing shots
+        // (no on-screen cast) still get a set plate if locked — don't require character refs first.
+        var locationKeyForGate = ResolveClipLocationKey(clipEl);
+        var hasLocationPlate = !string.IsNullOrWhiteSpace(locationKeyForGate) &&
+                               ResolveLocationRefPath(projectDir, locationKeyForGate!) is not null;
         var useReferenceImages =
             string.IsNullOrWhiteSpace(startFrameImagePath) &&
             !hasPrevVideo &&
-            refPaths.Count > 0;
+            (refPaths.Count > 0 || hasLocationPlate);
 
         var imageTagByKey = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        string? locationKey = null;
+        string? locationImageTag = null;
+        var locationRefAttached = false;
         if (useReferenceImages)
         {
             var orderedPaths = new List<string>();
@@ -162,7 +179,25 @@ public static class ClipVideoPromptBuilder
                 orderedPaths.Add(path);
                 imageTagByKey[key] = $"<IMAGE_{n}>";
             }
+
+            // Soft: one location set plate after faces, only if a ref slot remains.
+            locationKey = ResolveClipLocationKey(clipEl);
+            if (!string.IsNullOrWhiteSpace(locationKey) && orderedPaths.Count < maxRefs)
+            {
+                var locPath = ResolveLocationRefPath(projectDir, locationKey!);
+                if (locPath is not null)
+                {
+                    n++;
+                    orderedPaths.Add(locPath);
+                    locationImageTag = $"<IMAGE_{n}>";
+                    locationRefAttached = true;
+                }
+            }
             refPaths = orderedPaths;
+        }
+        else
+        {
+            locationKey = ResolveClipLocationKey(clipEl);
         }
 
         var style = (styleHead ?? ExtractStyleHead(rawVisual) ?? "").Trim();
@@ -243,6 +278,17 @@ public static class ClipVideoPromptBuilder
             sb.AppendLine();
         }
 
+        if (locationRefAttached && !string.IsNullOrWhiteSpace(locationImageTag) &&
+            !string.IsNullOrWhiteSpace(locationKey))
+        {
+            sb.AppendLine(PromptTags.Wrap("SetReference",
+                $"{locationImageTag} is the locked LOCATION / SET plate for {locationKey}. " +
+                "Match architecture, materials, props, depth, and lighting of that plate. " +
+                "Do not invent a different building or landscape. Characters from CHARACTER VARIABLES " +
+                "perform in this set — faces come from character plates, place from this set plate."));
+            sb.AppendLine();
+        }
+
         if (!string.IsNullOrWhiteSpace(castCountLine))
         {
             sb.AppendLine(castCountLine);
@@ -314,7 +360,8 @@ public static class ClipVideoPromptBuilder
 
         var summary =
             $"mode={mode} chars={allKeys.Count} onScreen={onScreenKeys.Count} " +
-            $"refs={attached.Count} startFrame={(startFrameImagePath is null ? "no" : "yes")} " +
+            $"refs={attached.Count} loc={(locationRefAttached ? locationKey : locationKey is null ? "none" : "unlocked")} " +
+            $"startFrame={(startFrameImagePath is null ? "no" : "yes")} " +
             $"promptLen={prompt.Length}" +
             (previousClipVideoPath is { Length: > 0 }
                 ? $" prevVideo={Path.GetFileName(previousClipVideoPath)}"
@@ -336,6 +383,9 @@ public static class ClipVideoPromptBuilder
             ActionText = actionTagged,
             CastCountLine = castCountLine,
             RefsAttachedToApi = useReferenceImages && attached.Count > 0,
+            LocationKey = locationKey,
+            LocationRefAttached = locationRefAttached,
+            LocationImageTag = locationImageTag,
             PromptLogSummary = summary,
         };
     }
@@ -872,6 +922,69 @@ public static class ClipVideoPromptBuilder
                 paths.Add(full);
         }
         return paths;
+    }
+
+
+    /// <summary>Clip <c>location_id</c>, else scene-level fields if present on the clip element.</summary>
+    public static string? ResolveClipLocationKey(JsonElement clipEl)
+    {
+        foreach (var prop in new[] { "location_id", "primary_location_id", "location_key" })
+        {
+            if (clipEl.TryGetProperty(prop, out var el) &&
+                el.ValueKind == JsonValueKind.String &&
+                el.GetString() is { Length: > 0 } s)
+                return s.Trim();
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Locked set plate under <c>assets/locations/{key}_ref.png</c> (and Loc_ bare aliases).
+    /// Soft — returns null when missing; never required for video gen.
+    /// </summary>
+    public static string? ResolveLocationRefPath(string projectDir, string locKey)
+    {
+        if (string.IsNullOrWhiteSpace(projectDir) || string.IsNullOrWhiteSpace(locKey))
+            return null;
+        var dir = Path.Combine(projectDir, ProjectStore.LocationAssetsRelativeDir);
+        if (!Directory.Exists(dir)) return null;
+
+        foreach (var name in LocationRefFileCandidates(locKey))
+        {
+            var full = Path.Combine(dir, name);
+            if (File.Exists(full) && new FileInfo(full).Length >= 64)
+                return full;
+        }
+        return null;
+    }
+
+    public static IEnumerable<string> LocationRefFileCandidates(string locKey)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var list = new List<string>();
+        void Add(string? name)
+        {
+            if (string.IsNullOrWhiteSpace(name)) return;
+            name = Path.GetFileName(name.Trim().Replace(' ', '_')).ToLowerInvariant();
+            if (!name.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+                name = name.EndsWith("_ref", StringComparison.OrdinalIgnoreCase) ? name + ".png" : name + "_ref.png";
+            if (seen.Add(name))
+                list.Add(name);
+        }
+
+        Add(ProjectStore.LocationRefFileName(locKey));
+        var raw = (locKey ?? "").Trim();
+        if (raw.StartsWith("Loc_", StringComparison.OrdinalIgnoreCase))
+        {
+            var bare = raw["Loc_".Length..];
+            Add(ProjectStore.LocationRefFileName(bare));
+            Add(bare + "_ref.png");
+        }
+        else
+        {
+            Add(ProjectStore.LocationRefFileName("Loc_" + raw));
+        }
+        return list;
     }
 
     public static List<string> ClipCharacterKeys(JsonElement clipEl)

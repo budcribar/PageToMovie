@@ -4133,9 +4133,16 @@ public sealed class FilmJobService
             if (built.ReferenceImagePaths.Count > 0)
                 await AppendLogAsync(
                     $"  [Refs] attached={built.RefsAttachedToApi} count={built.ReferenceImagePaths.Count}: " +
-                    string.Join(", ", built.ReferenceImagePaths.Select(Path.GetFileName)));
+                    string.Join(", ", built.ReferenceImagePaths.Select(Path.GetFileName)) +
+                    (built.LocationRefAttached
+                        ? $" · set={built.LocationKey} {built.LocationImageTag}"
+                        : built.LocationKey is { Length: > 0 }
+                            ? $" · set={built.LocationKey} (no locked plate)"
+                            : ""));
             else if (prevVideoPath is not null)
                 await AppendLogAsync("  [Refs] video-extend — locked plates not attached to API (IDENTITY text only)");
+            else if (built.LocationKey is { Length: > 0 })
+                await AppendLogAsync($"  [Refs] no plates attached · set={built.LocationKey} (no locked plate or no slots)");
 
             // Only continuation-chain models get carried-forward padding: clip N+1 already can't
             // start before clip N is on disk for these, so reconciling against N's real measurement
