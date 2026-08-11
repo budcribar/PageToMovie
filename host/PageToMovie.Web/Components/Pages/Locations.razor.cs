@@ -7,6 +7,7 @@ namespace PageToMovie.Web.Components.Pages;
 
 public partial class Locations : IDisposable
 {
+
     private string _projectId = "";
     private List<LocationSummary> _locations = new();
     private string? _selectedKey;
@@ -50,7 +51,11 @@ public partial class Locations : IDisposable
         {
             var dto = await Engine.GetLocationsAsync(_projectId);
             _locations = dto?.Locations ?? new List<LocationSummary>();
-            if (!string.IsNullOrWhiteSpace(_selectedKey))
+            if (TrySelectFromQuery())
+            {
+                // focused from Film/Script deep link
+            }
+            else if (!string.IsNullOrWhiteSpace(_selectedKey))
             {
                 _selected = _locations.FirstOrDefault(l =>
                     string.Equals(l.Key, _selectedKey, StringComparison.OrdinalIgnoreCase));
@@ -71,6 +76,19 @@ public partial class Locations : IDisposable
         {
             _loading = false;
         }
+    }
+
+    private bool TrySelectFromQuery()
+    {
+        var q = StudioDeepLinks.QueryValue(Nav, "loc");
+        if (string.IsNullOrWhiteSpace(q)) return false;
+        var match = StudioDeepLinks.MatchLocation(_locations, q);
+        if (match is null) return false;
+        _selectedKey = match.Key;
+        _selected = match;
+        ApplySelected(match);
+        _imageEditInstruction = "";
+        return true;
     }
 
     private async Task SelectAsync(string key)

@@ -23,6 +23,10 @@ public partial class AdaptationScreenplay
     /// <summary>Hosted structured editor instance (for Menu actions).</summary>
     private global::PageToMovie.ScreenplayEditor.Components.ScreenplayEditor? _structuredUi;
 
+    /// <summary>Deep link from Film: /adaptation/screenplay?scene=N</summary>
+    private int? _pendingSceneFromQuery;
+    private bool _appliedSceneQuery;
+
     private bool _menuOpen;
 
     private void ToggleMenu() => _menuOpen = !_menuOpen;
@@ -91,6 +95,7 @@ public partial class AdaptationScreenplay
     {
         EnsureDomains();
         ApplyToolQuery();
+        _pendingSceneFromQuery = StudioDeepLinks.QueryInt(Nav, "scene");
         await base.OnInitializedAsync();
         await Editor.LoadEditorDataAsync();
         await Tools.RefreshEstimateAsync();
@@ -100,6 +105,15 @@ public partial class AdaptationScreenplay
     {
         await Book.AfterRenderDragBindAsync();
         await Editor.TryInitEditorAsync();
+        if (!_appliedSceneQuery
+            && _pendingSceneFromQuery is int sn
+            && Editor._editorReady
+            && _structuredUi is not null)
+        {
+            _appliedSceneQuery = true;
+            if (_structuredUi.SelectSceneByNumber(sn))
+                StateHasChanged();
+        }
     }
 
     public override async Task LoadAsync()

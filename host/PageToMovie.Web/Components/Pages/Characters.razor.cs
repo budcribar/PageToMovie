@@ -117,6 +117,7 @@ public partial class Characters
             Jobs._job = jobs?.Job;
 
             await List.LoadAsync();
+            await List.TrySelectFromQueryAsync();
         }
         catch (Exception ex)
         {

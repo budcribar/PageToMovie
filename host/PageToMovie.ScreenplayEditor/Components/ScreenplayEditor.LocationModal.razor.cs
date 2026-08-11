@@ -56,6 +56,17 @@ public partial class ScreenplayEditor_LocationModal : ComponentBase
         }
     }
 
+    /// <summary>Deep-link into the full Locations page (set plates).</summary>
+    public string FullLocsHref
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(FocusName))
+                return "locations";
+            return "locations?loc=" + Uri.EscapeDataString(FocusName.Trim());
+        }
+    }
+
     protected override void OnParametersSet()
     {
         // no scroll needed in single-location mode

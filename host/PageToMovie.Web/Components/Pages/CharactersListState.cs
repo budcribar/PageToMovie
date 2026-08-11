@@ -299,6 +299,17 @@ public partial class Characters
 
         internal Task SelectAsync(string key) => SelectCoreAsync(key, resetMode: true, flushPending: true);
 
+        /// <summary>Deep link from Film/Script: /characters?char=KeyOrName</summary>
+        internal async Task TrySelectFromQueryAsync()
+        {
+            var q = StudioDeepLinks.QueryValue(S.Nav, "char");
+            if (string.IsNullOrWhiteSpace(q)) return;
+            var match = StudioDeepLinks.MatchCharacter(CharactersForUi, q)
+                        ?? StudioDeepLinks.MatchCharacter(_chars, q);
+            if (match is null) return;
+            await SelectCoreAsync(match.Key, resetMode: true, flushPending: false);
+        }
+
 
         /// <summary>
         /// Switch cast member. When the operator leaves a character with a pending chosen look

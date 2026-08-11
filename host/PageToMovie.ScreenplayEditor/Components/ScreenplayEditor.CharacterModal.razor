@@ -118,7 +118,12 @@
                     </div>
                 </div>
                 <div class="modal-footer bg-dark-subtle border-secondary-subtle py-2">
-                    <a class="btn btn-outline-warning btn-sm me-auto" href="characters">Open Cast step →</a>
+                    <a class="btn btn-outline-warning btn-sm me-auto"
+                       href="@FullCastHref"
+                       data-testid="char-modal-open-cast"
+                       title="Looks, voice, and locked plates live on Cast">
+                        @(string.IsNullOrWhiteSpace(FocusName) ? "Open Cast editor →" : $"Open Cast · {FocusName} →")
+                    </a>
                     <button type="button" class="btn btn-primary btn-sm px-4 fw-semibold" @onclick="Close">Done</button>
                 </div>
             </div>

@@ -67,6 +67,12 @@
                     </div>
                 </div>
                 <div class="modal-footer bg-dark-subtle border-secondary-subtle py-2">
+                    <a class="btn btn-outline-info btn-sm me-auto"
+                       href="@FullLocsHref"
+                       data-testid="loc-modal-open-locs"
+                       title="Set plates and locked looks live on Locations">
+                        @(string.IsNullOrWhiteSpace(FocusName) ? "Open Locations editor →" : $"Open Locs · {FocusName} →")
+                    </a>
                     <button type="button" class="btn btn-primary btn-sm px-4 fw-semibold" @onclick="Close">Done</button>
                 </div>
             </div>

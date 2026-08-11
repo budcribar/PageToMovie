@@ -68,6 +68,17 @@ public partial class ScreenplayEditor_CharacterModal : ComponentBase
         !string.IsNullOrWhiteSpace(FocusName)
         && !Model.GetAllCharacters().Any(n => n.Equals(FocusName.Trim(), StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>Deep-link into the full Cast page (looks / voice / plates).</summary>
+    public string FullCastHref
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(FocusName))
+                return "characters";
+            return "characters?char=" + Uri.EscapeDataString(FocusName.Trim());
+        }
+    }
+
     protected override void OnParametersSet()
     {
         if (IsOpen && !string.IsNullOrWhiteSpace(FocusName) && !SingleCharacterMode)

@@ -110,6 +110,16 @@ public partial class ScreenplayEditor : ComponentBase
         }
     }
 
+    /// <summary>Deep link helper: select by fountain scene number (1-based), not list index.</summary>
+    public bool SelectSceneByNumber(int sceneNumber)
+    {
+        if (sceneNumber <= 0 || Model.Scenes.Count == 0) return false;
+        var idx = Model.Scenes.FindIndex(s => s.SceneNumber == sceneNumber);
+        if (idx < 0) return false;
+        SelectSceneView(idx);
+        return true;
+    }
+
     public async Task PlaySceneVideo(int sceneNumber)
     {
         if (OnPlayScene.HasDelegate)

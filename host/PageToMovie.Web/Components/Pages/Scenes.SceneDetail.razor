@@ -171,12 +171,14 @@
                     <span>· loc: <code>@Scenes.ShortLoc(ListState!._detail.PrimaryLocationId)</code>
                         @if (ListState!._detail.PrimaryLocationLocked)
                         {
-                            <span class="badge text-bg-success ms-1" title="Locked set plate will attach on fresh video gen">set plate</span>
+                            <a class="badge text-bg-success text-decoration-none ms-1"
+                               href="@($"/locations?loc={Uri.EscapeDataString(ListState!._detail.PrimaryLocationId)}")"
+                               title="Locked set plate — open Locations to edit">set plate</a>
                         }
                         else
                         {
                             <a class="badge text-bg-secondary text-decoration-none ms-1"
-                               href="/locations"
+                               href="@($"/locations?loc={Uri.EscapeDataString(ListState!._detail.PrimaryLocationId)}")"
                                title="Lock a set plate on Locations so Grok video can match this place">lock set</a>
                         }
                     </span>
@@ -190,6 +192,26 @@
                     <span>· <span class="text-success fw-semibold" title="Clips with dialogue verified via native video/audio QA">✓ @verifiedCount/@totalWithDialogue dialogue verified</span></span>
                 }
             </p>
+
+            @* Watch → edit hub: fix this scene without hunting nav *@
+            <div class="d-flex flex-wrap gap-2 mb-3" data-testid="scene-edit-hub">
+                <a class="btn btn-sm btn-outline-secondary"
+                   href="@($"adaptation/screenplay?scene={ListState!._detail.SceneNumber}")"
+                   title="Edit dialogue and action for this scene">Edit script</a>
+                @if (ListState!._detail.CharactersOnScreen.Count > 0)
+                {
+                    var firstChar = ListState!._detail.CharactersOnScreen[0];
+                    <a class="btn btn-sm btn-outline-warning"
+                       href="@($"characters?char={Uri.EscapeDataString(firstChar)}")"
+                       title="Looks, voice, locked plates for cast in this scene">Fix cast</a>
+                }
+                @if (!string.IsNullOrEmpty(ListState!._detail.PrimaryLocationId))
+                {
+                    <a class="btn btn-sm btn-outline-info"
+                       href="@($"locations?loc={Uri.EscapeDataString(ListState!._detail.PrimaryLocationId)}")"
+                       title="Set plate / description for this place">Fix location</a>
+                }
+            </div>
 
             @* Full scene composite — hide while clip selected, remux/gen busy, or full player open *@
             @if (Gen!.IsSceneGenBusy(ListState!._detail.SceneNumber))
