@@ -4068,6 +4068,32 @@ public sealed class FilmJobService
             }
             catch { /* non-fatal */ }
 
+            string? sceneLocationKey = null;
+            if (blueprintRoot is { } sceneRoot)
+            {
+                var sceneEl = FindScene(sceneRoot, scene);
+                if (sceneEl is { } se)
+                {
+                    if (se.TryGetProperty("primary_location_id", out var pl) &&
+                        pl.ValueKind == JsonValueKind.String &&
+                        pl.GetString() is { Length: > 0 } pls)
+                        sceneLocationKey = pls;
+                    else if (se.TryGetProperty("location_ids", out var lids) &&
+                             lids.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var x in lids.EnumerateArray())
+                        {
+                            if (x.ValueKind == JsonValueKind.String &&
+                                x.GetString() is { Length: > 0 } first)
+                            {
+                                sceneLocationKey = first;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
             var built = ClipVideoPromptBuilder.Build(
                 clipEl,
                 projectDir,
@@ -4079,7 +4105,8 @@ public sealed class FilmJobService
                     ?? throw new InvalidOperationException(
                         $"Video model '{modelEntry.Id}' has no maxReferenceImages in models_catalog.json."),
                 styleHead: styleHead,
-                videoModel: model);
+                videoModel: model,
+                fallbackLocationKey: sceneLocationKey);
 
             if (string.IsNullOrWhiteSpace(built.Prompt))
                 throw new InvalidOperationException("clip missing visual_prompt");

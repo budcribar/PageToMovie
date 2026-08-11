@@ -1086,6 +1086,42 @@ public class ClipVideoPromptBuilderTests
     [Fact]
     public void Build_SkipsLocationPlate_WhenNoSlot()
     {
+        // maxRefs=1: no reserved set slot; one character fills the only IMAGE.
+        var dir = Path.Combine(Path.GetTempPath(), "ptm-loc-ref-" + Guid.NewGuid().ToString("N"));
+        var locDir = Path.Combine(dir, "assets", "locations");
+        var charDir = Path.Combine(dir, "assets", "characters");
+        Directory.CreateDirectory(locDir);
+        Directory.CreateDirectory(charDir);
+        File.WriteAllBytes(Path.Combine(locDir, "loc_hall_ref.png"), Enumerable.Repeat((byte)1, 128).ToArray());
+        File.WriteAllBytes(Path.Combine(charDir, "character_a_ref.png"), Enumerable.Repeat((byte)2, 128).ToArray());
+
+        var clip = JsonDocument.Parse("""
+            {
+              "clip_number": 1,
+              "visual_prompt": "A stands in the hall.",
+              "characters_on_screen": ["Character_A"],
+              "location_id": "Loc_Hall",
+              "audio_payload": { "dialogue": "" }
+            }
+            """).RootElement;
+
+        var profiles = new Dictionary<string, ClipVideoPromptBuilder.CharacterProfile>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Character_A"] = new() { Key = "Character_A", DisplayName = "A" },
+        };
+
+        var built = ClipVideoPromptBuilder.Build(clip, dir, profiles, maxRefs: 1);
+        Assert.Single(built.ReferenceImagePaths);
+        Assert.False(built.LocationRefAttached);
+        Assert.Equal("Loc_Hall", built.LocationKey);
+
+        try { Directory.Delete(dir, true); } catch { }
+    }
+
+    [Fact]
+    public void Build_ReservesSlot_ForLocationPlate_WhenLocked()
+    {
+        // maxRefs=2 with 2 characters + locked set: char budget 1, then location → both attached.
         var dir = Path.Combine(Path.GetTempPath(), "ptm-loc-ref-" + Guid.NewGuid().ToString("N"));
         var locDir = Path.Combine(dir, "assets", "locations");
         var charDir = Path.Combine(dir, "assets", "characters");
@@ -1113,8 +1149,36 @@ public class ClipVideoPromptBuilderTests
 
         var built = ClipVideoPromptBuilder.Build(clip, dir, profiles, maxRefs: 2);
         Assert.Equal(2, built.ReferenceImagePaths.Count);
-        Assert.False(built.LocationRefAttached);
+        Assert.True(built.LocationRefAttached);
         Assert.Equal("Loc_Hall", built.LocationKey);
+        Assert.Contains("loc_hall_ref.png", built.ReferenceImagePaths.Select(Path.GetFileName), StringComparer.OrdinalIgnoreCase);
+
+        try { Directory.Delete(dir, true); } catch { }
+    }
+
+    [Fact]
+    public void Build_UsesFallbackLocationKey_FromScene()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "ptm-loc-ref-" + Guid.NewGuid().ToString("N"));
+        var locDir = Path.Combine(dir, "assets", "locations");
+        Directory.CreateDirectory(locDir);
+        File.WriteAllBytes(Path.Combine(locDir, "loc_ithaca_ref.png"), Enumerable.Repeat((byte)9, 128).ToArray());
+
+        var clip = JsonDocument.Parse("""
+            {
+              "clip_number": 1,
+              "visual_prompt": "Empty courtyard.",
+              "characters_on_screen": [],
+              "audio_payload": { "dialogue": "" }
+            }
+            """).RootElement;
+
+        var built = ClipVideoPromptBuilder.Build(
+            clip, dir, new Dictionary<string, ClipVideoPromptBuilder.CharacterProfile>(),
+            maxRefs: 3, fallbackLocationKey: "Loc_Ithaca");
+
+        Assert.True(built.LocationRefAttached);
+        Assert.Equal("Loc_Ithaca", built.LocationKey);
 
         try { Directory.Delete(dir, true); } catch { }
     }

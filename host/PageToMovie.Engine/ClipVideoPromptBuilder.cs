@@ -106,7 +106,8 @@ public static class ClipVideoPromptBuilder
         string? startFrameImagePath = null,
         int maxRefs = 5,
         string? styleHead = null,
-        string? videoModel = null)
+        string? videoModel = null,
+        string? fallbackLocationKey = null)
     {
         characters ??= new Dictionary<string, CharacterProfile>(StringComparer.OrdinalIgnoreCase);
         // Model-aware, not a hardcoded constant: a future model with a larger (or smaller) prompt
@@ -150,19 +151,23 @@ public static class ClipVideoPromptBuilder
             : "";
         var actionText = SanitizeActionText(rawVisual, onScreenKeys);
 
-        var refPaths = FindCharacterRefPathsForKeys(onScreenKeys, projectDir, maxRefs);
+        // Clip location_id, else scene primary_location_id from caller (many clips omit location_id).
+        var locationKeyResolved = ResolveClipLocationKey(clipEl) ?? NormalizeLocationKey(fallbackLocationKey);
+        var hasLocationPlate = !string.IsNullOrWhiteSpace(locationKeyResolved) &&
+                               ResolveLocationRefPath(projectDir, locationKeyResolved!) is not null;
+        // Reserve one IMAGE slot for a locked set plate so multi-cast scenes still keep place identity.
+        var charRefBudget = hasLocationPlate && maxRefs > 1 ? maxRefs - 1 : maxRefs;
+
+        var refPaths = FindCharacterRefPathsForKeys(onScreenKeys, projectDir, charRefBudget);
         // Fresh gen attaches locked plates when available. Location-only establishing shots
         // (no on-screen cast) still get a set plate if locked — don't require character refs first.
-        var locationKeyForGate = ResolveClipLocationKey(clipEl);
-        var hasLocationPlate = !string.IsNullOrWhiteSpace(locationKeyForGate) &&
-                               ResolveLocationRefPath(projectDir, locationKeyForGate!) is not null;
         var useReferenceImages =
             string.IsNullOrWhiteSpace(startFrameImagePath) &&
             !hasPrevVideo &&
             (refPaths.Count > 0 || hasLocationPlate);
 
         var imageTagByKey = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        string? locationKey = null;
+        string? locationKey = locationKeyResolved;
         string? locationImageTag = null;
         var locationRefAttached = false;
         if (useReferenceImages)
@@ -172,7 +177,7 @@ public static class ClipVideoPromptBuilder
             foreach (var key in onScreenKeys.OrderBy(CharacterRefPriority)
                          .ThenBy(k => k, StringComparer.OrdinalIgnoreCase))
             {
-                if (orderedPaths.Count >= maxRefs) break;
+                if (orderedPaths.Count >= charRefBudget) break;
                 var path = ResolveCharacterRefPath(projectDir, key);
                 if (path is null) continue;
                 n++;
@@ -180,8 +185,7 @@ public static class ClipVideoPromptBuilder
                 imageTagByKey[key] = $"<IMAGE_{n}>";
             }
 
-            // Soft: one location set plate after faces, only if a ref slot remains.
-            locationKey = ResolveClipLocationKey(clipEl);
+            // Soft: one location set plate after faces (reserved slot when plate exists).
             if (!string.IsNullOrWhiteSpace(locationKey) && orderedPaths.Count < maxRefs)
             {
                 var locPath = ResolveLocationRefPath(projectDir, locationKey!);
@@ -194,10 +198,6 @@ public static class ClipVideoPromptBuilder
                 }
             }
             refPaths = orderedPaths;
-        }
-        else
-        {
-            locationKey = ResolveClipLocationKey(clipEl);
         }
 
         var style = (styleHead ?? ExtractStyleHead(rawVisual) ?? "").Trim();
@@ -924,6 +924,9 @@ public static class ClipVideoPromptBuilder
         return paths;
     }
 
+
+    public static string? NormalizeLocationKey(string? key) =>
+        string.IsNullOrWhiteSpace(key) ? null : key.Trim();
 
     /// <summary>Clip <c>location_id</c>, else scene-level fields if present on the clip element.</summary>
     public static string? ResolveClipLocationKey(JsonElement clipEl)

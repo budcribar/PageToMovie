@@ -861,6 +861,8 @@ public sealed class SceneSummary
     public List<string> CharactersOnScreen { get; set; } = new();
     public List<string> LocationIds { get; set; } = new();
     public string? PrimaryLocationId { get; set; }
+    /// <summary>True when <see cref="PrimaryLocationId"/> has a locked set plate on disk (soft video continuity).</summary>
+    public bool PrimaryLocationLocked { get; set; }
     public string Status { get; set; } = "empty"; // empty | partial | complete
     public bool IsApproved { get; set; }
     /// <summary>True when a background-music take is registered for this scene (drives the
@@ -953,6 +955,8 @@ public sealed class SceneDetail
     public List<string> CharactersOnScreen { get; set; } = new();
     public List<string> LocationIds { get; set; } = new();
     public string? PrimaryLocationId { get; set; }
+    /// <summary>True when <see cref="PrimaryLocationId"/> has a locked set plate on disk.</summary>
+    public bool PrimaryLocationLocked { get; set; }
     public List<ClipSummary> Clips { get; set; } = new();
 
     /// <summary>Clip numbers that appeared more than once in this scene's shot plan (malformed data).

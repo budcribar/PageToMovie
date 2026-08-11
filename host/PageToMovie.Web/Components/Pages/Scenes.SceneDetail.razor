@@ -168,7 +168,18 @@
                 }
                 @if (!string.IsNullOrEmpty(ListState!._detail.PrimaryLocationId))
                 {
-                    <span>· loc: <code>@Scenes.ShortLoc(ListState!._detail.PrimaryLocationId)</code></span>
+                    <span>· loc: <code>@Scenes.ShortLoc(ListState!._detail.PrimaryLocationId)</code>
+                        @if (ListState!._detail.PrimaryLocationLocked)
+                        {
+                            <span class="badge text-bg-success ms-1" title="Locked set plate will attach on fresh video gen">set plate</span>
+                        }
+                        else
+                        {
+                            <a class="badge text-bg-secondary text-decoration-none ms-1"
+                               href="/locations"
+                               title="Lock a set plate on Locations so Grok video can match this place">lock set</a>
+                        }
+                    </span>
                 }
                 @{
                     var verifiedCount = ListState!._detail.Clips.Count(c => c.DialogueVerification is { } v && (string.Equals(v.Status, "verified", StringComparison.OrdinalIgnoreCase) || string.Equals(v.Status, "no_speech", StringComparison.OrdinalIgnoreCase)));

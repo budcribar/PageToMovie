@@ -5053,6 +5053,8 @@ public sealed partial class ProjectStore
                 CharactersOnScreen = chars,
                 LocationIds = locs,
                 PrimaryLocationId = primaryLoc,
+                PrimaryLocationLocked = !string.IsNullOrWhiteSpace(primaryLoc) &&
+                    ResolveLocationRefPath(projectId, primaryLoc!) is not null,
                 Status = status,
                 IsApproved = isApproved,
                 HasBackgroundMusic = musicScenes.Contains(sn),
@@ -5329,7 +5331,7 @@ public sealed partial class ProjectStore
             };
         }
 
-        return new SceneDetail
+        var detail = new SceneDetail
         {
             SceneNumber = sceneNumber,
             Setting = sEl.TryGetProperty("setting", out var set) ? set.GetString() ?? "" : "",
@@ -5349,9 +5351,14 @@ public sealed partial class ProjectStore
             PrimaryLocationId = sEl.TryGetProperty("primary_location_id", out var pl)
                 ? pl.GetString()
                 : null,
+            PrimaryLocationLocked = false,
             Clips = clips,
             DuplicateClipNumbers = duplicateClipNumbers,
         };
+        if (!string.IsNullOrWhiteSpace(detail.PrimaryLocationId))
+            detail.PrimaryLocationLocked =
+                ResolveLocationRefPath(projectId, detail.PrimaryLocationId!) is not null;
+        return detail;
         }
         finally
         {
