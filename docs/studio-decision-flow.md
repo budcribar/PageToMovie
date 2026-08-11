@@ -22,7 +22,8 @@ Cost is never a hard dollar gate. Preferences bias defaults; the user always cho
 | 7 | **Surgical regen + stale markers** are how the product ages when full gen is cheap. |
 | 8 | **Regen feedback loop** — measure real takes-per-clip and reasons so estimates (and ranges) improve with usage. |
 | 9 | **Two import paths:** book→screenplay *or* **import fountain** (skip write) — both land on the same DecisionCard. |
-| 10 | **Shared projects:** Owner / Editor / Viewer + leases on `script` / `scene:N` / gen jobs; one movie, concurrent people. |
+| 10 | **Shared projects:** Owner full-film / Editor scene gen; job service; `keyMode` shared\|personal; leases on script, scene, cast, loc; no steal while online. |
+
 
 ---
 
