@@ -288,7 +288,7 @@ public partial class Locations : IDisposable
         try
         {
             await using var stream = file.OpenReadStream(maxAllowedSize: 12 * 1024 * 1024, cancellationToken: _saveCts?.Token ?? CancellationToken.None);
-            await Engine.UploadLocationRefAsync(_projectId, _selected.Key, stream, file.Name);
+            await Engine.UploadLocationRefAsync(_projectId, _selected.Key, stream, file.Name, _saveCts?.Token ?? CancellationToken.None);
             _message = "Location plate locked.";
             await LoadAsync();
             await SelectAsync(_selected.Key);

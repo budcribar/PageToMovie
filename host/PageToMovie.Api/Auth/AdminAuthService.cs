@@ -30,8 +30,8 @@ public interface IAdminAuthService
     Task<LoginResponse> LoginAsync(string username, string password, CancellationToken ct = default);
     Task<LoginResponse> SignupAsync(string username, string password, string? email = null, CancellationToken ct = default);
     LoginResponse LoginWithOperatorOverride(string secret);
-    Task SendEmailConfirmAsync(UserEntity user);
-    Task SendPasswordResetEmailAsync(UserEntity user);
+    Task SendEmailConfirmAsync(UserEntity user, CancellationToken ct = default);
+    Task SendPasswordResetEmailAsync(UserEntity user, CancellationToken ct = default);
     string BuildAppLink(string pathAndQuery);
 
     /// <summary>
@@ -139,7 +139,7 @@ public sealed class AdminAuthService : IAdminAuthService
         string? emailError = null;
         try
         {
-            await SendEmailConfirmAsync(user).ConfigureAwait(false);
+            await SendEmailConfirmAsync(user, ct).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -160,11 +160,11 @@ public sealed class AdminAuthService : IAdminAuthService
         };
     }
 
-    public async Task SendEmailConfirmAsync(UserEntity user)
+    public async Task SendEmailConfirmAsync(UserEntity user, CancellationToken ct = default)
     {
         if (user is null || string.IsNullOrWhiteSpace(user.Email)) return;
         var raw = await _userDb.CreateAuthTokenAsync(
-            user.UserId, UserDatabaseService.AuthPurposeEmailConfirm, TimeSpan.FromDays(2));
+            user.UserId, UserDatabaseService.AuthPurposeEmailConfirm, TimeSpan.FromDays(2), ct).ConfigureAwait(false);
         var link = BuildAppLink($"/login?confirmEmail={Uri.EscapeDataString(raw)}");
         _logger?.LogInformation("EMAIL CONFIRMATION LINK generated to={Email} userId={UserId}: {Link}", user.Email, user.UserId, link);
 
@@ -192,11 +192,11 @@ public sealed class AdminAuthService : IAdminAuthService
         }
     }
 
-    public async Task SendPasswordResetEmailAsync(UserEntity user)
+    public async Task SendPasswordResetEmailAsync(UserEntity user, CancellationToken ct = default)
     {
         if (user is null || string.IsNullOrWhiteSpace(user.Email)) return;
         var raw = await _userDb.CreateAuthTokenAsync(
-            user.UserId, UserDatabaseService.AuthPurposePasswordReset, TimeSpan.FromHours(1));
+            user.UserId, UserDatabaseService.AuthPurposePasswordReset, TimeSpan.FromHours(1), ct).ConfigureAwait(false);
         var link = BuildAppLink($"/login?resetToken={Uri.EscapeDataString(raw)}");
         _logger?.LogInformation("PASSWORD RESET LINK generated to={Email} userId={UserId}: {Link}", user.Email, user.UserId, link);
 

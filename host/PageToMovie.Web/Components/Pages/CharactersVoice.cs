@@ -553,7 +553,7 @@ public partial class Characters
             await using var ms = new MemoryStream(bytes);
             if (string.IsNullOrWhiteSpace(S.List._selectedKey))
                 throw new InvalidOperationException("No character selected for voice sample.");
-            await S.Engine.UploadVoiceCloneSampleAsync(S._projectId, S.List._selectedKey!, ms, "voice_clone_sample" + ext);
+            await S.Engine.UploadVoiceCloneSampleAsync(S._projectId, S.List._selectedKey!, ms, "voice_clone_sample" + ext, _voiceSaveCts?.Token ?? CancellationToken.None);
             await S.List.SoftReloadAsync();
             RefreshVoiceClonePlayUrl();
             _voiceCloneBust = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -589,7 +589,7 @@ public partial class Characters
             _voiceCloneBusy = true;
             try
             {
-                await S.Engine.DeleteVoiceCloneSampleAsync(S._projectId, S.List._selectedKey);
+                await S.Engine.DeleteVoiceCloneSampleAsync(S._projectId, S.List._selectedKey, _voiceSaveCts?.Token ?? CancellationToken.None);
                 _voiceCloneHint = "Sample removed.";
                 _voiceClonePlayUrl = null;
                 await S.List.ReloadSelectedCharacterAsync();
