@@ -573,9 +573,9 @@ public partial class Characters
             try
             {
                 const long max = 15 * 1024 * 1024;
-                await using var stream = file.OpenReadStream(max);
+                await using var stream = file.OpenReadStream(max, cancellationToken: _voiceSaveCts?.Token ?? CancellationToken.None);
                 using var ms = new MemoryStream();
-                await stream.CopyToAsync(ms);
+                await stream.CopyToAsync(ms, _voiceSaveCts?.Token ?? CancellationToken.None);
                 await PersistVoiceCloneSampleAsync(ms.ToArray(), file.Name);
             }
             catch (Exception ex) { _voiceCloneError = ex.Message; }

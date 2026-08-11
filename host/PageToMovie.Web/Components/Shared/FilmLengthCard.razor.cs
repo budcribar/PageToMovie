@@ -50,7 +50,7 @@ public partial class FilmLengthCard : IDisposable
         _error = null;
         try
         {
-            var dto = await Engine.GetFilmRuntimeAsync(ProjectId);
+            var dto = await Engine.GetFilmRuntimeAsync(ProjectId, _saveCts?.Token ?? CancellationToken.None);
             _loadedFor = ProjectId;
             // Length is only meaningful after the book is imported / prepared.
             if (dto is null || !dto.Ok || !dto.HasBookText || dto.NaturalMinutes <= 0)
@@ -86,7 +86,7 @@ public partial class FilmLengthCard : IDisposable
             }
             catch (OperationCanceledException) { return; /* superseded by a newer edit */ }
             await InvokeAsync(SaveAsync);
-        });
+        }, ct);
     }
 
     private async Task SaveAsync()

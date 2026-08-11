@@ -133,7 +133,7 @@ public sealed class AdminAuthService : IAdminAuthService
 
         // Signup grant (list-rate credits). Failures are non-fatal.
         if (_credits is not null)
-            await _credits.GrantSignupCreditsAsync(user.UserId).ConfigureAwait(false);
+            await _credits.GrantSignupCreditsAsync(user.UserId, ct).ConfigureAwait(false);
 
         string? emailError = null;
         try

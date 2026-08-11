@@ -136,7 +136,7 @@ public sealed class GeminiVideoClient : IVideoClient
                             DurationSec = durationSeconds,
                             Error = Trim(body, 400),
                             Ok = false,
-                        });
+                        }, ct);
                         throw ChatHttpStatusException.FromResponse(resp,
                             $"Gemini {endpoint} HTTP {(int)resp.StatusCode}: {Trim(body, 400)}");
                     }
@@ -163,7 +163,7 @@ public sealed class GeminiVideoClient : IVideoClient
                         Resolution = resolution,
                         DurationSec = durationSeconds,
                         Ok = true,
-                    });
+                    }, ct);
                     return opName;
                 },
                 isTransient: AiRetryPolicy.IsTransientChatFailure,
@@ -184,7 +184,7 @@ public sealed class GeminiVideoClient : IVideoClient
                 Prompt = prompt,
                 Error = ex.Message,
                 Ok = false,
-            });
+            }, ct);
             throw;
         }
     }
@@ -247,7 +247,7 @@ public sealed class GeminiVideoClient : IVideoClient
                     Attempt = polls,
                     Error = Trim(ex.Message, 400),
                     Ok = false,
-                });
+                }, ct);
                 await _telemetry.LogOutcomeAsync(null, requestId, VideoJobOutcome.PollFailed, sw.ElapsedMilliseconds, polls, ok: false, ex.Message, ct);
                 throw;
             }
@@ -271,7 +271,7 @@ public sealed class GeminiVideoClient : IVideoClient
                     Mode = "failed",
                     Error = Trim(detail, 500),
                     Ok = false,
-                });
+                }, ct);
                 await _telemetry.LogOutcomeAsync(null, requestId, VideoJobOutcome.ProviderFailed, sw.ElapsedMilliseconds, polls, ok: false, Trim(detail, 500), ct);
                 throw new InvalidOperationException($"Gemini video operation failed: {Trim(detail, 400)}");
             }
@@ -297,7 +297,7 @@ public sealed class GeminiVideoClient : IVideoClient
                     Attempt = polls,
                     Mode = "done",
                     Ok = true,
-                });
+                }, ct);
                 await _telemetry.LogOutcomeAsync(null, requestId, retriedAnyPoll ? VideoJobOutcome.OkAfterRetry : VideoJobOutcome.Ok, sw.ElapsedMilliseconds, polls, ok: true, null, ct);
                 return url;
             }

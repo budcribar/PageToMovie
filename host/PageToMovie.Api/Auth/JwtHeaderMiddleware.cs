@@ -52,7 +52,7 @@ public sealed class JwtHeaderMiddleware
                           ?? principal.FindFirstValue("sub")
                           ?? principal.Identity?.Name;
                 if (!string.IsNullOrWhiteSpace(uid) &&
-                    await userDb.IsUserDisabledAsync(uid).ConfigureAwait(false))
+                    await userDb.IsUserDisabledAsync(uid, ctx.RequestAborted).ConfigureAwait(false))
                 {
                     ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
                     ctx.Response.ContentType = "application/json";
@@ -61,7 +61,7 @@ public sealed class JwtHeaderMiddleware
                         ok = false,
                         error = "This account has been disabled.",
                         code = "account_disabled",
-                    }).ConfigureAwait(false);
+                    }, cancellationToken: ctx.RequestAborted).ConfigureAwait(false);
                     return;
                 }
 

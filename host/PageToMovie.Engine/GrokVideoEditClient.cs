@@ -148,7 +148,7 @@ public sealed class GrokVideoEditClient : IVideoEditClient
                 Prompt = prompt,
                 PromptChars = prompt.Length,
                 Ok = true,
-            });
+            }, ct);
             return requestId;
         }
         catch (Exception ex)
@@ -164,7 +164,7 @@ public sealed class GrokVideoEditClient : IVideoEditClient
                 PromptChars = prompt.Length,
                 Error = ex.Message,
                 Ok = false,
-            });
+            }, ct);
             throw;
         }
     }

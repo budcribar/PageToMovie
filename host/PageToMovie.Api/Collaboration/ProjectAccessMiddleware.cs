@@ -66,7 +66,7 @@ public sealed class ProjectAccessMiddleware
         if (string.IsNullOrWhiteSpace(userId))
         {
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-            await context.Response.WriteAsJsonAsync(new { error = "authentication_required" });
+            await context.Response.WriteAsJsonAsync(new { error = "authentication_required" }, cancellationToken: context.RequestAborted);
             return;
         }
 
@@ -86,14 +86,14 @@ public sealed class ProjectAccessMiddleware
         // NOT the account's real user id and must never be treated as though it were).
         try
         {
-            await acl.GetOrCreateAclAsync(projectId, userId);
+            await acl.GetOrCreateAclAsync(projectId, userId, context.RequestAborted);
         }
         catch
         {
             // project dir may not exist yet — still evaluate access
         }
 
-        var allowed = await acl.CanAccessAsync(projectId, userId, minimum);
+        var allowed = await acl.CanAccessAsync(projectId, userId, minimum, context.RequestAborted);
         if (!allowed)
         {
             context.Response.StatusCode = StatusCodes.Status403Forbidden;
@@ -102,7 +102,7 @@ public sealed class ProjectAccessMiddleware
                 error = "project_access_denied",
                 projectId,
                 minimum = minimum.ToString(),
-            });
+            }, cancellationToken: context.RequestAborted);
             return;
         }
 

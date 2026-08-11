@@ -102,7 +102,7 @@ public sealed class GrokVisionClient : IVisionClient
                 DurationMs = sw.ElapsedMilliseconds,
                 Error = ex.Message,
                 Ok = false,
-            });
+            }, ct);
             throw;
         }
 
@@ -129,7 +129,7 @@ public sealed class GrokVisionClient : IVisionClient
                     Attempt = attemptNum,
                     Error = Trim(body, 500),
                     Ok = false,
-                });
+                }, ct);
                 throw ChatHttpStatusException.FromResponse(resp,
                     $"Grok vision HTTP {(int)resp.StatusCode}: {Trim(body, 500)}");
             }
@@ -149,7 +149,7 @@ public sealed class GrokVisionClient : IVisionClient
                 Attempt = attemptNum,
                 ResponseChars = t.Length,
                 Ok = true,
-            });
+            }, ct);
             return t;
         }
     }
@@ -243,7 +243,7 @@ public sealed class GrokVisionClient : IVisionClient
                 DurationMs = sw.ElapsedMilliseconds,
                 Error = ex.Message,
                 Ok = false,
-            });
+            }, ct);
             throw;
         }
 
@@ -271,7 +271,7 @@ public sealed class GrokVisionClient : IVisionClient
                     Attempt = attemptNum,
                     Error = Trim(body, 500),
                     Ok = false,
-                });
+                }, ct);
                 throw ChatHttpStatusException.FromResponse(resp,
                     $"Grok vision classify HTTP {(int)resp.StatusCode}: {Trim(body, 500)}");
             }
@@ -291,7 +291,7 @@ public sealed class GrokVisionClient : IVisionClient
                 Attempt = attemptNum,
                 ResponseChars = t.Length,
                 Ok = true,
-            });
+            }, ct);
             return t;
         }
     }
@@ -550,7 +550,7 @@ public sealed class GrokVisionClient : IVisionClient
                 ReferenceImagePaths = imageNames,
                 Error = ex.Message,
                 Ok = false,
-            });
+            }, ct);
             throw;
         }
 
@@ -574,7 +574,7 @@ public sealed class GrokVisionClient : IVisionClient
                     Attempt = attemptNum,
                     Error = Trim(body, 500),
                     Ok = false,
-                });
+                }, ct);
                 throw ChatHttpStatusException.FromResponse(resp,
                     $"Grok vision multi-image HTTP {(int)resp.StatusCode}: {Trim(body, 500)}");
             }
@@ -598,7 +598,7 @@ public sealed class GrokVisionClient : IVisionClient
                 ResponsePreview = text.Length > 2000 ? text[..2000] : text,
                 ResponseChars = text.Length,
                 Ok = true,
-            });
+            }, ct);
             return text;
         }
 

@@ -90,7 +90,7 @@ public sealed class GrokImageClient : IImageClient
                 Prompt = prompt,
                 Error = ex.Message,
                 Ok = false,
-            });
+            }, ct);
             throw;
         }
 
@@ -113,7 +113,7 @@ public sealed class GrokImageClient : IImageClient
                     Attempt = attemptNum,
                     Error = Trim(body, 400),
                     Ok = false,
-                });
+                }, ct);
                 throw ChatHttpStatusException.FromResponse(resp,
                     $"Grok image generations HTTP {(int)resp.StatusCode}: {Trim(body, 400)}");
             }
@@ -134,7 +134,7 @@ public sealed class GrokImageClient : IImageClient
                     Attempt = attemptNum,
                     Error = $"returned {images.Count}/{n} images",
                     Ok = false,
-                });
+                }, ct);
                 // Not retried: a content shortfall, not a transport failure.
                 throw new InvalidOperationException(
                     $"Grok image API returned {images.Count}/{n} usable images");
@@ -152,7 +152,7 @@ public sealed class GrokImageClient : IImageClient
                 ImageCount = images.Count,
                 Attempt = attemptNum,
                 Ok = true,
-            });
+            }, ct);
             return images;
         }
     }
@@ -309,7 +309,7 @@ public sealed class GrokImageClient : IImageClient
                             Attempt = retryAttempt,
                             Error = "empty response",
                             Ok = false,
-                        });
+                        }, ct);
                         throw new InvalidOperationException(
                             $"Image edit failed (variant {i + 1}): empty response");
                     }
@@ -328,7 +328,7 @@ public sealed class GrokImageClient : IImageClient
                         ImageCount = batch.Count,
                         Attempt = retryAttempt,
                         Ok = true,
-                    });
+                    }, ct);
                     return batch.FirstOrDefault() ?? Array.Empty<byte>();
                 }
                 // ChatHttpStatusException IS an InvalidOperationException, but unlike other
@@ -348,7 +348,7 @@ public sealed class GrokImageClient : IImageClient
                         Attempt = retryAttempt,
                         Error = ex.Message,
                         Ok = false,
-                    });
+                    }, ct);
                     throw;
                 }
             }

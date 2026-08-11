@@ -3780,7 +3780,7 @@ public sealed class FilmJobService
                                     Outcome = $"attempt_{qaAttempt}",
                                     JobId = Snapshot.JobId,
                                     ActionTaken = "admin_dialogue_qa_regen",
-                                }).ConfigureAwait(false);
+                                }, ct).ConfigureAwait(false);
                             }
                             catch { /* non-fatal */ }
 
@@ -3847,7 +3847,7 @@ public sealed class FilmJobService
                         Outcome = status,
                         JobId = Snapshot.JobId,
                         ActionTaken = $"gen clip force only_missing={req.OnlyMissing}",
-                    }).ConfigureAwait(false);
+                    }, ct).ConfigureAwait(false);
                 }
                 catch { /* non-fatal */ }
             }
@@ -4252,7 +4252,7 @@ public sealed class FilmJobService
                                 _log.LogWarning(ex, "Background dialogue verification failed for S{Scene:D2}C{Clip:D2}", scene, clip);
                                 return null;
                             }
-                        });
+                        }, ct);
                     }
 
                     // Probe the real rendered duration once — used both to carry a same-scene
@@ -4344,7 +4344,7 @@ public sealed class FilmJobService
                             {
                                 _log.LogWarning(ex, "Background timing telemetry logging failed for S{Scene:D2}C{Clip:D2}", scene, clip);
                             }
-                        });
+                        }, ct);
                     }
                 }
             }

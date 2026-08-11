@@ -41,7 +41,7 @@ public abstract partial class AdaptationPageBase
                 _ = S.InvokeAsync(async () =>
                 {
                     await S.SoftLoadAsync();
-                    try { await S.ActiveProject.RefreshReadinessAsync(S.Engine); } catch { /* nav gates */ }
+                    try { await S.ActiveProject.RefreshReadinessAsync(S.Engine, _pollCts?.Token ?? CancellationToken.None); } catch { /* nav gates */ }
                     if (snap.Status == "done")
                     {
                         // Avoid flashing technical “Book ready · quality=good…” while Import
@@ -362,13 +362,13 @@ public abstract partial class AdaptationPageBase
                     {
                         try
                         {
-                            live = await S.Engine.TryGetJobAsync(id);
+                            live = await S.Engine.TryGetJobAsync(id, _pollCts?.Token ?? CancellationToken.None);
                         }
                         catch { /* list fallback */ }
                     }
                     if (live is null)
                     {
-                        var list = await S.Engine.GetJobAsync();
+                        var list = await S.Engine.GetJobAsync(_pollCts?.Token ?? CancellationToken.None);
                         live = list?.Job;
                     }
 
@@ -429,7 +429,7 @@ public abstract partial class AdaptationPageBase
             DisposePolling();
 
             // Best-effort server cancel — short timeout so a dead host cannot pin Cancel.
-            _ = await S.Engine.TryCancelJobAsync();
+            _ = await S.Engine.TryCancelJobAsync(CancellationToken.None);
 
             Job = new JobSnapshot
             {

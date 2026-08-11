@@ -206,7 +206,7 @@ public sealed class GeminiImageClient : IImageClient
                     RefsAttached = refNames.Count > 0,
                     Error = Trim(body, 400),
                     Ok = false,
-                });
+                }, ct);
                 throw new InvalidOperationException(
                     $"Gemini {endpoint} HTTP {(int)resp.StatusCode}: {Trim(body, 400)}");
             }
@@ -226,7 +226,7 @@ public sealed class GeminiImageClient : IImageClient
                 ImageCount = image is null ? 0 : 1,
                 Ok = image is not null,
                 Error = image is null ? "no inline image data in response" : null,
-            });
+            }, ct);
             return image;
         }
         catch (Exception ex) when (ex is not InvalidOperationException)
@@ -240,7 +240,7 @@ public sealed class GeminiImageClient : IImageClient
                 Prompt = prompt,
                 Error = ex.Message,
                 Ok = false,
-            });
+            }, ct);
             throw;
         }
     }

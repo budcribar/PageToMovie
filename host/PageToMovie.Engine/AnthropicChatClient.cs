@@ -261,7 +261,7 @@ public sealed class AnthropicChatClient : IChatClient, IVisionClient
                     Attempt = attemptNum,
                     Error = Trim(body, 800),
                     Ok = false,
-                });
+                }, ct);
                 throw ChatHttpStatusException.FromResponse(resp,
                     $"Anthropic {endpoint} HTTP {(int)resp.StatusCode}: {Trim(body, 800)}");
             }
@@ -283,7 +283,7 @@ public sealed class AnthropicChatClient : IChatClient, IVisionClient
                 ResponsePreview = text.Length > 2000 ? text[..2000] : text,
                 ResponseChars = text.Length,
                 Ok = true,
-            });
+            }, ct);
             return text;
         }
         catch (Exception ex) when (ex is not InvalidOperationException)
@@ -300,7 +300,7 @@ public sealed class AnthropicChatClient : IChatClient, IVisionClient
                 Attempt = attemptNum,
                 Error = ex.Message,
                 Ok = false,
-            });
+            }, ct);
             throw;
         }
     }

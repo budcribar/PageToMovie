@@ -125,7 +125,7 @@ public sealed class GrokChatClient : IChatClient
                 UserPrompt = userPrompt,
                 Error = ex.Message,
                 Ok = false,
-            });
+            }, ct);
             throw;
         }
 
@@ -206,7 +206,7 @@ public sealed class GrokChatClient : IChatClient
                     Attempt = attemptNum,
                     Error = Trim(body, 800),
                     Ok = false,
-                });
+                }, ct);
                 throw ChatHttpStatusException.FromResponse(resp,
                     $"Chat HTTP {(int)resp.StatusCode}: {Trim(body, 800)}");
             }
@@ -228,7 +228,7 @@ public sealed class GrokChatClient : IChatClient
                 ResponsePreview = text.Length > 2000 ? text[..2000] : text,
                 ResponseChars = text.Length,
                 Ok = true,
-            });
+            }, ct);
             return text;
         }
     }

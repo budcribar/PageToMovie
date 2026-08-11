@@ -160,7 +160,7 @@ public sealed class GrokVideoClient : IVideoClient
                 Attempt = attempt,
                 Error = ex.Message,
                 Ok = false,
-            });
+            }, ct);
 
         for (var attempt = 0; attempt <= MaxPromptLengthRetries; attempt++)
         {
@@ -209,9 +209,9 @@ public sealed class GrokVideoClient : IVideoClient
                     RefsAttached = refs.Count > 0 && !hasContinue,
                     Resolution = resolution,
                     DurationSec = durationSeconds,
-                    Attempt = attempt,
+                    Attempt = attempt + 1,
                     Ok = true,
-                });
+                }, ct);
                 return requestId;
             }
             catch (Exception ex) when (
@@ -438,7 +438,7 @@ public sealed class GrokVideoClient : IVideoClient
                     Attempt = polls,
                     Error = Trim(ex.Message, 400),
                     Ok = false,
-                });
+                }, ct);
                 await _telemetry.LogOutcomeAsync(null, requestId, VideoJobOutcome.PollFailed, sw.ElapsedMilliseconds, polls, ok: false, ex.Message, ct);
                 throw;
             }
@@ -477,7 +477,7 @@ public sealed class GrokVideoClient : IVideoClient
                         Attempt = polls,
                         Mode = "done",
                         Ok = true,
-                    });
+                    }, ct);
                     await _telemetry.LogOutcomeAsync(null, requestId, retriedAnyPoll ? VideoJobOutcome.OkAfterRetry : VideoJobOutcome.Ok, sw.ElapsedMilliseconds, polls, ok: true, null, ct);
                     return url;
                 }
@@ -500,7 +500,7 @@ public sealed class GrokVideoClient : IVideoClient
                     Mode = status,
                     Error = Trim(detail, 500),
                     Ok = false,
-                });
+                }, ct);
                 await _telemetry.LogOutcomeAsync(null, requestId, string.Equals(status, "expired", StringComparison.OrdinalIgnoreCase) ? VideoJobOutcome.Expired : VideoJobOutcome.ProviderFailed, sw.ElapsedMilliseconds, polls, ok: false, Trim(detail, 500), ct);
                 throw new InvalidOperationException($"Grok job {status}: {Trim(detail, 400)}");
             }

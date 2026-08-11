@@ -237,7 +237,7 @@ public sealed class GeminiChatClient : IChatClient, IVisionClient, IGeminiVideoA
                     Attempt = attemptNum,
                     Error = Trim(body, 800),
                     Ok = false,
-                });
+                }, ct);
                 throw ChatHttpStatusException.FromResponse(resp,
                     $"Gemini {endpoint} HTTP {(int)resp.StatusCode}: {Trim(body, 800)}");
             }
@@ -259,7 +259,7 @@ public sealed class GeminiChatClient : IChatClient, IVisionClient, IGeminiVideoA
                 ResponsePreview = text.Length > 2000 ? text[..2000] : text,
                 ResponseChars = text.Length,
                 Ok = true,
-            });
+            }, ct);
             _lastResolvedModel.Value = targetModel;
             return text;
         }
@@ -277,7 +277,7 @@ public sealed class GeminiChatClient : IChatClient, IVisionClient, IGeminiVideoA
                 Attempt = attemptNum,
                 Error = ex.Message,
                 Ok = false,
-            });
+            }, ct);
             throw;
         }
     }

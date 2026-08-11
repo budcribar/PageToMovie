@@ -378,7 +378,7 @@ public partial class Configuration
         {
             try
             {
-                await Task.Delay(2000);
+                await Task.Delay(2000, _autoSaveCts?.Token ?? CancellationToken.None);
                 if (epoch == _autoSaveEpoch && _saveStatus == "Saved")
                 {
                     _saveStatus = null;

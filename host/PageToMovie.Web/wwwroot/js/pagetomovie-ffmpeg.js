@@ -345,7 +345,7 @@ window.PageToMovieFfmpeg = {
             const tg = tile.getContext("2d");
             const img = tg.createImageData(128, 128);
             for (let i = 0; i < img.data.length; i += 4) {
-                const v = (Math.random() * 255) | 0;
+                const v = Math.trunc(Math.random() * 255);
                 img.data[i] = img.data[i + 1] = img.data[i + 2] = v; img.data[i + 3] = 255;
             }
             tg.putImageData(img, 0, 0);
@@ -949,7 +949,7 @@ window.PageToMovieFfmpeg = {
                 for (let i = 0; i + 1 < wordBoundaries.length; i += 2)
                     boundaryPairs.push([wordBoundaries[i], wordBoundaries[i + 1]]);
             } else {
-                const rc = Math.max(1, Math.min(frames, (wordBoundaries | 0) || 8));
+                const rc = Math.max(1, Math.min(frames, Math.trunc(wordBoundaries) || 8));
                 boundaryPairs = [];
                 for (let r = 0; r < rc; r++) boundaryPairs.push([r / rc, (r + 1) / rc]);
             }
