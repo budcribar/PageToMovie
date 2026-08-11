@@ -110,7 +110,7 @@ public class PerfHotPathTests
                 $"Append {n} events too slow: {sw.ElapsedMilliseconds}ms");
 
             var sw2 = Stopwatch.StartNew();
-            var insights = events.BuildInsights("P");
+            var insights = await events.BuildInsightsAsync("P");
             sw2.Stop();
             Assert.Equal(n, insights.EventCount);
             Assert.True(sw2.ElapsedMilliseconds < 2500,

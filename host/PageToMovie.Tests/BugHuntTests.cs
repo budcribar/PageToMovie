@@ -99,10 +99,10 @@ public class BugHuntTests
                 });
             }
 
-            var doc = rules.SuggestFromFails("Demo", minFails: 3);
+            var doc = await rules.SuggestFromFailsAsync("Demo", minFails: 3);
             Assert.Single(doc.Pending);
             var id = doc.Pending[0].Id;
-            doc = rules.Approve("Demo", id, null, "admin");
+            doc = await rules.ApproveAsync("Demo", id, null, "admin");
             Assert.Single(doc.Active);
 
             // More fails same category — must NOT add another pending for continuity
@@ -119,7 +119,7 @@ public class BugHuntTests
                 });
             }
 
-            doc = rules.SuggestFromFails("Demo", minFails: 3);
+            doc = await rules.SuggestFromFailsAsync("Demo", minFails: 3);
             Assert.DoesNotContain(doc.Pending, p => p.Category == "continuity");
         }
         finally
@@ -621,7 +621,7 @@ public class BugHuntTests
             for (var i = 0; i < 3; i++)
                 await events.AppendAsync(new ReviewLearningEvent { ProjectId = "P", Type = "clip_pass", Note = "n" + i });
 
-            var insights = events.BuildInsights("P", recentTake: 1);
+            var insights = await events.BuildInsightsAsync("P", recentTake: 1);
             Assert.Single(insights.Recent);
         }
         finally
@@ -719,7 +719,7 @@ public class BugHuntTests
                 });
             }
 
-            var doc = rules.SuggestFromFails("Demo", minFails: 3);
+            var doc = await rules.SuggestFromFailsAsync("Demo", minFails: 3);
             Assert.Contains(doc.Pending, p => p.Category == "silent");
         }
         finally
@@ -729,7 +729,7 @@ public class BugHuntTests
     }
 
     [Fact]
-    public void Bug37_GetActiveRulesBlock_skips_empty_text()
+    public async Task Bug37_GetActiveRulesBlock_skips_empty_text()
     {
         var (projects, events) = TestProjects.CreateStoreWithEvents("fs_bug37_", out var root);
         try
@@ -744,8 +744,8 @@ public class BugHuntTests
                     new ProjectRule { Id = "b", Text = "Keep wardrobe consistent.", Category = "continuity" },
                 },
             };
-            rules.Save("Demo", doc);
-            var block = rules.GetActiveRulesBlock("Demo");
+            await rules.SaveAsync("Demo", doc);
+            var block = await rules.GetActiveRulesBlockAsync("Demo");
             Assert.Contains("Keep wardrobe consistent", block);
             Assert.DoesNotContain("[other] \n", block);
             Assert.Contains("continuity", block);
@@ -949,7 +949,7 @@ public class BugHuntTests
     }
 
     [Fact]
-    public void Bug55_ProjectRules_Approve_empty_id_throws()
+    public async Task Bug55_ProjectRules_Approve_empty_id_throws()
     {
         var root = Path.Combine(Path.GetTempPath(), "fs_bug55_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(Path.Combine(root, "projects", "Demo"));
@@ -961,8 +961,8 @@ public class BugHuntTests
                 new ProjectStore(opts),
                 new ReviewEventStore(new ProjectStore(opts), NullLogger<ReviewEventStore>.Instance),
                 NullLogger<ProjectRulesService>.Instance);
-            Assert.ThrowsAny<ArgumentException>(() => rules.Approve("Demo", "  ", null, "a"));
-            Assert.ThrowsAny<ArgumentException>(() => rules.Reject("Demo", null!));
+            await Assert.ThrowsAnyAsync<ArgumentException>(() => rules.ApproveAsync("Demo", "  ", null, "a"));
+            await Assert.ThrowsAnyAsync<ArgumentException>(() => rules.RejectAsync("Demo", null!));
         }
         finally
         {
@@ -1270,7 +1270,7 @@ public class BugHuntTests
             for (var i = 0; i < 5; i++)
                 await events.AppendAsync(new ReviewLearningEvent { ProjectId = "P", Type = "clip_pass" });
             // take=0 must not throw; clamp to at least 1
-            var q = events.Query(take: 0);
+            var q = await events.QueryAsync(take: 0);
             Assert.NotNull(q);
             Assert.True(q.Count <= 5);
         }
@@ -1290,7 +1290,7 @@ public class BugHuntTests
             var opts = Options.Create(new PageToMovieOptions { WorkspaceRoot = root, EnableReadCaches = false });
             var events = new ReviewEventStore(new ProjectStore(opts), NullLogger<ReviewEventStore>.Instance);
             await events.AppendAsync(new ReviewLearningEvent { ProjectId = "P", Type = null! });
-            var insights = events.BuildInsights("P");
+            var insights = await events.BuildInsightsAsync("P");
             Assert.True(insights.EventCount >= 1);
         }
         finally

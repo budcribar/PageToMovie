@@ -53,7 +53,7 @@ public sealed class GrokVisionClient : IVisionClient
             _http.BaseAddress = new Uri(ApiBase + "/");
     }
 
-    public bool IsConfigured => !string.IsNullOrWhiteSpace(ResolveApiKey());
+    public bool IsConfigured => !string.IsNullOrWhiteSpace(ApiKeyScope.Current ?? Environment.GetEnvironmentVariable("XAI_API_KEY"));
 
     public async Task<string> TranscribePageAsync(
         string imagePath,
@@ -621,9 +621,9 @@ public sealed class GrokVisionClient : IVisionClient
         return $"data:{mime};base64,{Convert.ToBase64String(bytes)}";
     }
 
-    private string? ResolveApiKey() =>
+    private async Task<string?> ResolveApiKeyAsync(CancellationToken ct = default) =>
         ApiKeyScope.Current
-        ?? _keyProvider?.GetKey(null, "grok")
+        ?? (_keyProvider is not null ? await _keyProvider.GetKeyAsync(null, "grok", ct).ConfigureAwait(false) : null)
         ?? Environment.GetEnvironmentVariable("XAI_API_KEY");
 
     private async Task<HttpResponseMessage> SendJsonAsync(
@@ -634,7 +634,8 @@ public sealed class GrokVisionClient : IVisionClient
         {
             Content = JsonContent.Create(payload),
         };
-        var key = ResolveApiKey();
+
+        var key = await ResolveApiKeyAsync(ct).ConfigureAwait(false);
         if (!string.IsNullOrWhiteSpace(key))
             req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key.Trim());
         return await _http.SendAsync(req, ct).ConfigureAwait(false);

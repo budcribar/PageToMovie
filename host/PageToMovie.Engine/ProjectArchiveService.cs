@@ -102,14 +102,14 @@ public sealed class ProjectArchiveService
 
         try
         {
-            await Task.Run(() =>
+            await Task.Run(async () =>
             {
                 ct.ThrowIfCancellationRequested();
                 using var fs = new FileStream(tempPath, FileMode.Create, FileAccess.ReadWrite, FileShare.None);
                 using (var zip = new ZipArchive(fs, ZipArchiveMode.Create, leaveOpen: true))
                 {
                     // Manifest for importers. Export must not modify a project's working files.
-                    var projectSchema = ProjectFormatVersions.TryReadProjectSchemaVersion(projectDir)
+                    var projectSchema = await ProjectFormatVersions.TryReadProjectSchemaVersionAsync(projectDir, ct).ConfigureAwait(false)
                                         ?? ProjectFormatVersions.ProjectSchemaVersion;
                     var metaEntry = zip.CreateEntry($"{id}/_export_meta.json", CompressionLevel.Fastest);
                     using (var w = new StreamWriter(metaEntry.Open(), Encoding.UTF8))
@@ -248,9 +248,9 @@ public sealed class ProjectArchiveService
             // Copy extracted content into projects/{id}
             CopyDirectory(contentRoot, dest);
 
-            var exportMeta = ProjectFormatVersions.TryReadExportMeta(contentRoot)
-                             ?? ProjectFormatVersions.TryReadExportMeta(dest);
-            var schemaBefore = ProjectFormatVersions.TryReadProjectSchemaVersion(dest)
+            var exportMeta = await ProjectFormatVersions.TryReadExportMetaAsync(contentRoot, ct).ConfigureAwait(false)
+                             ?? await ProjectFormatVersions.TryReadExportMetaAsync(dest, ct).ConfigureAwait(false);
+            var schemaBefore = await ProjectFormatVersions.TryReadProjectSchemaVersionAsync(dest, ct).ConfigureAwait(false)
                                ?? exportMeta?.ProjectSchemaVersion
                                ?? "v0";
 
@@ -278,7 +278,7 @@ public sealed class ProjectArchiveService
                 }
             }
 
-            var schemaAfter = ProjectFormatVersions.TryReadProjectSchemaVersion(dest)
+            var schemaAfter = await ProjectFormatVersions.TryReadProjectSchemaVersionAsync(dest, ct).ConfigureAwait(false)
                               ?? ProjectFormatVersions.ProjectSchemaVersion;
 
             _projects.InvalidateReadCaches(null);

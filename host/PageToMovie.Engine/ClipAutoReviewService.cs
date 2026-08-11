@@ -66,8 +66,6 @@ public sealed class ClipAutoReviewService
             "review",
             $"S{scene:D2}C{clip:D2}.auto_review.json");
 
-    public ClipAutoReviewDraft? LoadDraft(string projectId, int scene, int clip) => LoadDraftAsync(projectId, scene, clip).GetAwaiter().GetResult();
-
     public async Task<ClipAutoReviewDraft?> LoadDraftAsync(string projectId, int scene, int clip, CancellationToken ct = default)
     {
         var path = DraftPath(projectId, scene, clip);
@@ -101,8 +99,6 @@ public sealed class ClipAutoReviewService
             projectDir, "clip_multimodal_review", null,
             new { draft.ProjectId, draft.Scene, draft.Clip }, draft, issues, ct).ConfigureAwait(false);
     }
-
-    public void SaveDraft(ClipAutoReviewDraft draft) => SaveDraftAsync(draft).GetAwaiter().GetResult();
 
     public async Task<ClipAutoReviewDraft> ReviewAsync(
         string projectId,
@@ -168,7 +164,7 @@ public sealed class ClipAutoReviewService
             // Project-scoped rules only (checklist lives in embedded clip_auto_review.txt).
             try
             {
-                var rules = _projectRules.GetActiveRulesBlock(projectId);
+                var rules = await _projectRules.GetActiveRulesBlockAsync(projectId, ct).ConfigureAwait(false);
                 if (!string.IsNullOrWhiteSpace(rules))
                     prompt += "\n\n" + rules.Trim();
             }

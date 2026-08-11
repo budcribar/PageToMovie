@@ -15,22 +15,9 @@ public interface IUserContext
 /// <summary>Resolve provider API keys for a user (personal DB key, then process env).</summary>
 public interface IUserApiKeyProvider
 {
-    /// <summary>xAI / Grok key (back-compat). Prefer <see cref="GetKey(string?, string)"/>.</summary>
-    string? GetKey(string? userId);
-
-    /// <summary>
-    /// Key for a provider id (<c>grok</c>/<c>xai</c>, <c>gemini</c>/<c>google</c>, <c>anthropic</c>/<c>claude</c>).
-    /// </summary>
-    string? GetKey(string? userId, string providerId);
-
     Task<string?> GetKeyAsync(string? userId, CancellationToken ct = default) => GetKeyAsync(userId, "grok", ct);
 
     Task<string?> GetKeyAsync(string? userId, string providerId, CancellationToken ct = default);
-
-    /// <summary>Whether a non-empty xAI key is available (including process default).</summary>
-    bool HasKey(string? userId);
-
-    bool HasKey(string? userId, string providerId);
 
     Task<bool> HasKeyAsync(string? userId, CancellationToken ct = default) => HasKeyAsync(userId, "grok", ct);
 

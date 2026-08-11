@@ -79,9 +79,6 @@ public static class ProjectFormatVersions
         return null;
     }
 
-    public static string? TryReadProjectSchemaVersion(string projectDir) =>
-        TryReadProjectSchemaVersionAsync(projectDir).GetAwaiter().GetResult();
-
     /// <summary>Parse _export_meta.json from an extracted project root (optional).</summary>
     public static async Task<ExportPackageMeta?> TryReadExportMetaAsync(string contentRoot, CancellationToken ct = default)
     {
@@ -99,9 +96,6 @@ public static class ProjectFormatVersions
             return null;
         }
     }
-
-    public static ExportPackageMeta? TryReadExportMeta(string contentRoot) =>
-        TryReadExportMetaAsync(contentRoot).GetAwaiter().GetResult();
 }
 
 /// <summary>DTO for _export_meta.json inside project zips.</summary>

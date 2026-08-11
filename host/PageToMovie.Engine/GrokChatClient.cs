@@ -38,7 +38,7 @@ public sealed class GrokChatClient : IChatClient
         _errorLogger = errorLogger;
     }
 
-    public bool IsConfigured => !string.IsNullOrWhiteSpace(ResolveApiKey());
+    public bool IsConfigured => !string.IsNullOrWhiteSpace(ApiKeyScope.Current ?? Environment.GetEnvironmentVariable("XAI_API_KEY"));
 
     /// <summary>Maps the provider-neutral <c>reasoningEffort</c> scale to OpenAI/xAI's
     /// <c>reasoning_effort</c> values (confirmed live: OpenAI accepts none/low/medium/high/xhigh;
@@ -62,7 +62,7 @@ public sealed class GrokChatClient : IChatClient
         string? mode = null,
         string? reasoningEffort = null)
     {
-        var key = ResolveApiKey(model);
+        var key = await ResolveApiKeyAsync(model, ct).ConfigureAwait(false);
         var modeTag = string.IsNullOrWhiteSpace(mode) ? null : mode.Trim();
 
         var entry = PageToMovie.Core.Models.SupportedModelCatalog.Find(model);
@@ -329,7 +329,7 @@ public sealed class GrokChatClient : IChatClient
     private static bool IsOpenAiReasoningModel(string model) =>
         !string.IsNullOrWhiteSpace(model) && OpenAiReasoningModelRegex.IsMatch(model.Trim());
 
-    private string? ResolveApiKey(string? model = null)
+    private async Task<string?> ResolveApiKeyAsync(string? model = null, CancellationToken ct = default)
     {
         var envKey = "XAI_API_KEY";
         if (!string.IsNullOrWhiteSpace(model))
@@ -342,7 +342,7 @@ public sealed class GrokChatClient : IChatClient
         }
 
         return ApiKeyScope.Current ??
-            _keyProvider?.GetKey(envKey) ??
+            (_keyProvider is not null ? await _keyProvider.GetKeyAsync(UserApiCallScope.UserId, "grok", ct).ConfigureAwait(false) : null) ??
             Environment.GetEnvironmentVariable(envKey);
     }
 

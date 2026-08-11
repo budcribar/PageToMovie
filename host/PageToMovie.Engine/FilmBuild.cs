@@ -246,8 +246,6 @@ public static class FilmBuildService
         await File.WriteAllTextAsync(path, json + "\n", ct).ConfigureAwait(false);
     }
 
-    public static void Write(string projectDir, FilmBuildDocument doc) => WriteAsync(projectDir, doc).GetAwaiter().GetResult();
-
     public static async Task<FilmBuildDocument?> TryReadAsync(string projectDir, CancellationToken ct = default)
     {
         var path = GetPath(projectDir);
@@ -264,8 +262,6 @@ public static class FilmBuildService
             return null;
         }
     }
-
-    public static FilmBuildDocument? TryRead(string projectDir) => TryReadAsync(projectDir).GetAwaiter().GetResult();
 
     /// <summary>
     /// Register a studio cut: write film build, auto-commit trajectory.
@@ -295,16 +291,6 @@ public static class FilmBuildService
         return doc;
     }
 
-    public static FilmBuildDocument Register(
-        ProjectStore store,
-        string projectId,
-        string studioSha256,
-        double durationSeconds,
-        IReadOnlyList<FilmBuildSegment>? segments = null,
-        long? byteLength = null,
-        string assemblyWhere = "client") =>
-        RegisterAsync(store, projectId, studioSha256, durationSeconds, segments, byteLength, assemblyWhere).GetAwaiter().GetResult();
-
     /// <summary>Hash on-disk WIP bytes and register a minimal film build (no timeline).</summary>
     public static async Task<FilmBuildDocument?> RegisterFromWipFileAsync(
         ProjectStore store,
@@ -328,12 +314,6 @@ public static class FilmBuildService
             assemblyWhere: "server",
             ct: ct).ConfigureAwait(false);
     }
-
-    public static FilmBuildDocument? RegisterFromWipFile(
-        ProjectStore store,
-        string projectId,
-        string? wipRelativePath = null) =>
-        RegisterFromWipFileAsync(store, projectId, wipRelativePath).GetAwaiter().GetResult();
 
     /// <summary>
     /// Hash-gate the exact bytes about to upload vs <see cref="FilmBuildStudio.Sha256"/>.
@@ -401,15 +381,6 @@ public static class FilmBuildService
 
         return publish;
     }
-
-    public static FilmBuildPublish ApplyUploadHashGate(
-        ProjectStore store,
-        string projectId,
-        byte[] uploadBytes,
-        double? uploadDurationSeconds = null,
-        string? youtubeVideoId = null,
-        string? youtubeUrl = null) =>
-        ApplyUploadHashGateAsync(store, projectId, uploadBytes, uploadDurationSeconds, youtubeVideoId, youtubeUrl).GetAwaiter().GetResult();
 
     public static string ClassifyPublishPath(
         string? studioSha256,

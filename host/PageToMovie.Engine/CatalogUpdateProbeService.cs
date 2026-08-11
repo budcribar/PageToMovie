@@ -23,11 +23,11 @@ public sealed class CatalogUpdateProbeService
         _keyProvider = keyProvider;
     }
 
-    private string? ResolveKey(string? userId, string providerId)
+    private async Task<string?> ResolveKeyAsync(string? userId, string providerId, CancellationToken ct = default)
     {
         if (_keyProvider is not null)
         {
-            var k = _keyProvider.GetKey(userId, providerId);
+            var k = await _keyProvider.GetKeyAsync(userId, providerId, ct).ConfigureAwait(false);
             if (!string.IsNullOrWhiteSpace(k)) return k.Trim();
         }
         var envKeyName = providerId.ToLowerInvariant() switch
@@ -207,7 +207,7 @@ public sealed class CatalogUpdateProbeService
     /// </summary>
     private async Task ProbeFalPricingAsync(SupportedModelEntry entry, CatalogModelProbeResult row, string? userId, CancellationToken ct)
     {
-        var key = ResolveKey(userId, "fal");
+        var key = await ResolveKeyAsync(userId, "fal", ct).ConfigureAwait(false);
         var endpointId = ResolveFalEndpointId(entry);
         const string sourceBase = "https://api.fal.ai/v1/models/pricing";
 
@@ -539,7 +539,7 @@ public sealed class CatalogUpdateProbeService
 
     private async Task ProbeOpenAiModelExistsAsync(SupportedModelEntry entry, CatalogModelProbeResult row, string? userId, CancellationToken ct)
     {
-        var key = ResolveKey(userId, "openai");
+        var key = await ResolveKeyAsync(userId, "openai", ct).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(key))
         {
             row.Fields.Add(Field("model_id", entry.Id, null, "not_found",
@@ -574,7 +574,7 @@ public sealed class CatalogUpdateProbeService
 
     private async Task ProbeXaiChatExistsAsync(SupportedModelEntry entry, CatalogModelProbeResult row, string? userId, CancellationToken ct)
     {
-        var key = ResolveKey(userId, "xai");
+        var key = await ResolveKeyAsync(userId, "xai", ct).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(key))
         {
             row.Fields.Add(Field("model_id", entry.Id, null, "not_found",
@@ -669,7 +669,7 @@ public sealed class CatalogUpdateProbeService
 
     private async Task DiscoverFromOpenAiAsync(CatalogUpdateScanResult result, HashSet<string> known, string? userId, CancellationToken ct)
     {
-        var key = ResolveKey(userId, "openai");
+        var key = await ResolveKeyAsync(userId, "openai", ct).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(key))
         {
             result.DiscoveryNotes.Add("OpenAI: skipped (no OPENAI_API_KEY configured).");
@@ -711,7 +711,7 @@ public sealed class CatalogUpdateProbeService
 
     private async Task DiscoverFromXaiAsync(CatalogUpdateScanResult result, HashSet<string> known, string? userId, CancellationToken ct)
     {
-        var key = ResolveKey(userId, "xai");
+        var key = await ResolveKeyAsync(userId, "xai", ct).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(key))
         {
             result.DiscoveryNotes.Add("xAI: skipped (no XAI_API_KEY configured).");
@@ -747,7 +747,7 @@ public sealed class CatalogUpdateProbeService
     /// <summary>P1-A: Anthropic GET /v1/models — existence + optional max token fields.</summary>
     private async Task ProbeAnthropicModelAsync(SupportedModelEntry entry, CatalogModelProbeResult row, string? userId, CancellationToken ct)
     {
-        var key = ResolveKey(userId, "anthropic");
+        var key = await ResolveKeyAsync(userId, "anthropic", ct).ConfigureAwait(false);
         const string url = "https://api.anthropic.com/v1/models";
         if (string.IsNullOrWhiteSpace(key))
         {
@@ -805,7 +805,7 @@ public sealed class CatalogUpdateProbeService
     /// <summary>P1-B: Gemini GET /v1beta/models — existence + input/output token limits.</summary>
     private async Task ProbeGeminiModelAsync(SupportedModelEntry entry, CatalogModelProbeResult row, string? userId, CancellationToken ct)
     {
-        var key = ResolveKey(userId, "gemini");
+        var key = await ResolveKeyAsync(userId, "gemini", ct).ConfigureAwait(false);
         const string baseUrl = "https://generativelanguage.googleapis.com/v1beta/models";
         if (string.IsNullOrWhiteSpace(key))
         {
@@ -872,7 +872,7 @@ public sealed class CatalogUpdateProbeService
 
     private async Task DiscoverFromAnthropicAsync(CatalogUpdateScanResult result, HashSet<string> known, string? userId, CancellationToken ct)
     {
-        var key = ResolveKey(userId, "anthropic");
+        var key = await ResolveKeyAsync(userId, "anthropic", ct).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(key))
         {
             result.DiscoveryNotes.Add("Anthropic: skipped (no ANTHROPIC_API_KEY configured).");
@@ -911,7 +911,7 @@ public sealed class CatalogUpdateProbeService
 
     private async Task DiscoverFromGeminiAsync(CatalogUpdateScanResult result, HashSet<string> known, string? userId, CancellationToken ct)
     {
-        var key = ResolveKey(userId, "gemini");
+        var key = await ResolveKeyAsync(userId, "gemini", ct).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(key))
         {
             result.DiscoveryNotes.Add("Gemini: skipped (no GEMINI_API_KEY / GOOGLE_API_KEY configured).");
@@ -971,7 +971,7 @@ public sealed class CatalogUpdateProbeService
     /// <summary>P1-C: fal GET /v1/models — discover endpoint_ids not in catalog.</summary>
     private async Task DiscoverFromFalAsync(CatalogUpdateScanResult result, HashSet<string> known, string? userId, CancellationToken ct)
     {
-        var key = ResolveKey(userId, "fal");
+        var key = await ResolveKeyAsync(userId, "fal", ct).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(key))
         {
             result.DiscoveryNotes.Add("fal: skipped (no FAL_KEY / FAL_API_KEY configured).");

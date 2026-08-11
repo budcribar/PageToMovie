@@ -16,7 +16,7 @@ public sealed class FilmBuildAndStageCommitTests
     }
 
     [Fact]
-    public void FilmBuild_create_and_roundtrip()
+    public async Task FilmBuild_create_and_roundtrip()
     {
         var root = Path.Combine(Path.GetTempPath(), "ptm_film_build_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
@@ -31,10 +31,10 @@ public sealed class FilmBuildAndStageCommitTests
             Assert.StartsWith("film_", doc.FilmId);
             Assert.Equal(2, doc.Timeline.Segments.Count);
             Assert.Equal(8.0, doc.Timeline.TotalSeconds);
-            FilmBuildService.Write(root, doc);
+            await FilmBuildService.WriteAsync(root, doc);
             var path = FilmBuildService.GetPath(root);
             Assert.True(File.Exists(path));
-            var loaded = FilmBuildService.TryRead(root);
+            var loaded = await FilmBuildService.TryReadAsync(root);
             Assert.NotNull(loaded);
             Assert.Equal(doc.FilmId, loaded!.FilmId);
             Assert.Equal(doc.Studio.Sha256, loaded.Studio.Sha256);

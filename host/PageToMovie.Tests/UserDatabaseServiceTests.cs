@@ -114,10 +114,10 @@ public class UserDatabaseServiceTests
         });
 
         var provider = new DbUserApiKeyProvider(userDb, opts);
-        Assert.Equal("xai-beta-api-key-1234567890", provider.GetKey(testUserId));
-        Assert.Equal("xai-beta-api-key-1234567890", provider.GetKey(testUserId, "grok"));
-        Assert.Equal("gemini-beta-key-zzzz", provider.GetKey(testUserId, "gemini"));
-        Assert.True(provider.HasKey(testUserId, "gemini"));
+        Assert.Equal("xai-beta-api-key-1234567890", await provider.GetKeyAsync(testUserId));
+        Assert.Equal("xai-beta-api-key-1234567890", await provider.GetKeyAsync(testUserId, "grok"));
+        Assert.Equal("gemini-beta-key-zzzz", await provider.GetKeyAsync(testUserId, "gemini"));
+        Assert.True(await provider.HasKeyAsync(testUserId, "gemini"));
         // Anthropic has no personal key for this user; HasKey may still be true if server env is set.
         Assert.Null(await userDb.GetDecryptedProviderApiKeyAsync(testUserId, "anthropic"));
 

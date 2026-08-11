@@ -41,7 +41,7 @@ public sealed class CreatorProfileService
         string username = user?.Username ?? cleanHandle;
 
         // 1. Movies published (public demos created by this user)
-        var allPublicDemos = _demos.ListPublic(take: 200);
+        var allPublicDemos = await _demos.ListPublicAsync(take: 200, ct: ct).ConfigureAwait(false);
         var userDemos = allPublicDemos
             .Where(d => string.Equals(d.CreatedBy, userId, StringComparison.OrdinalIgnoreCase) ||
                         string.Equals(d.CreatedBy, username, StringComparison.OrdinalIgnoreCase))

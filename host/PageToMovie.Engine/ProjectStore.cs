@@ -5508,7 +5508,7 @@ public sealed partial class ProjectStore
     /// True when this user has a personal studio key (BYOK). Server env keys do not count
     /// unless <see cref="PageToMovieOptions.AllowServerApiKeyFallback"/> is on.
     /// </summary>
-    public bool IsAnyStudioKeyConfigured(string? userId = null)
+    public async Task<bool> IsAnyStudioKeyConfiguredAsync(string? userId = null, CancellationToken ct = default)
     {
         // Fakes mode uses key-free fake providers, so a key is effectively always "configured".
         // Mirrors the /health endpoint (xaiConfigured = ... || useFakes) so the fully-faked
@@ -5520,7 +5520,7 @@ public sealed partial class ProjectStore
         {
             foreach (var provider in new[] { "grok", "gemini", "anthropic", "openai", "fal" })
             {
-                if (_keyProvider.HasKey(userId, provider))
+                if (await _keyProvider.HasKeyAsync(userId, provider, ct).ConfigureAwait(false))
                     return true;
             }
         }
@@ -5546,7 +5546,7 @@ public sealed partial class ProjectStore
             {
                 foreach (var provider in new[] { "grok", "gemini", "anthropic", "fal", "openai" })
                 {
-                    if (_keyProvider.HasKey(null, provider))
+                    if (await _keyProvider.HasKeyAsync(null, provider, ct).ConfigureAwait(false))
                         return true;
                 }
             }
@@ -5555,7 +5555,13 @@ public sealed partial class ProjectStore
         return false;
     }
 
-    public AdaptationStatus GetAdaptationStatus(string projectId, string? userId = null)
+    public bool IsAnyStudioKeyConfigured(string? userId = null) =>
+        IsAnyStudioKeyConfiguredAsync(userId).GetAwaiter().GetResult();
+
+    public AdaptationStatus GetAdaptationStatus(string projectId, string? userId = null) =>
+        GetAdaptationStatusAsync(projectId, userId).GetAwaiter().GetResult();
+
+    public async Task<AdaptationStatus> GetAdaptationStatusAsync(string projectId, string? userId = null, CancellationToken ct = default)
     {
         var dir = GetProjectDir(projectId);
         var book = ReadBookSourceStatus(projectId, dir);
@@ -5568,7 +5574,7 @@ public sealed partial class ProjectStore
         // Any planning/gen key is enough for import→screenplay. Prefer ambient scope
         // (request middleware already loaded this user's personal keys), then provider
         // lookup for the real userId — never HasKey("grok") as a *user id* (old bug).
-        var xai = IsAnyStudioKeyConfigured(userId);
+        var xai = await IsAnyStudioKeyConfiguredAsync(userId, ct).ConfigureAwait(false);
 
         var cfg = GetConfigSync(projectId);
         var planningModel = cfg.TryGetValue("planning_model_name", out var pmEl) &&

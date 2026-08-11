@@ -57,16 +57,12 @@ public sealed class ProjectRulesService
         }
     }
 
-    public ProjectRulesDocument Load(string projectId) => LoadAsync(projectId).GetAwaiter().GetResult();
-
     public async Task SaveAsync(string projectId, ProjectRulesDocument doc, CancellationToken ct = default)
     {
         var path = await RulesPathAsync(projectId, ct).ConfigureAwait(false);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         await File.WriteAllTextAsync(path, JsonSerializer.Serialize(doc, JsonOpts) + "\n", ct).ConfigureAwait(false);
     }
-
-    public void Save(string projectId, ProjectRulesDocument doc) => SaveAsync(projectId, doc).GetAwaiter().GetResult();
 
     /// <summary>Stable id for auto style rule written from cast extract / render_style_lock.</summary>
     public const string StyleRuleId = "style_from_cast";
@@ -105,22 +101,21 @@ public sealed class ProjectRulesService
         return "PROJECT HOUSE RULES (approved):\n" + string.Join("\n", lines);
     }
 
-    public string GetActiveRulesBlock(string projectId) => GetActiveRulesBlockAsync(projectId).GetAwaiter().GetResult();
-
     /// <summary>
     /// Upsert style rule from cast extract <c>render_style_lock</c> (derived from Fountain SoT).
     /// Does not overwrite a user-approved style rule (different id / non-system approver).
     /// </summary>
-    public bool EnsureStyleRuleFromRenderLock(
+    public async Task<bool> EnsureStyleRuleFromRenderLockAsync(
         string projectId,
         string? renderStyleLock,
-        string approvedBy = "cast_extract")
+        string approvedBy = "cast_extract",
+        CancellationToken ct = default)
     {
         var text = NormalizeStyleRuleText(renderStyleLock);
         if (string.IsNullOrWhiteSpace(text))
             return false;
 
-        var doc = Load(projectId);
+        var doc = await LoadAsync(projectId, ct).ConfigureAwait(false);
         var systemOwned = doc.Active.FirstOrDefault(r =>
             string.Equals(r.Id, StyleRuleId, StringComparison.OrdinalIgnoreCase));
         if (systemOwned is not null)
@@ -131,7 +126,7 @@ public sealed class ProjectRulesService
             systemOwned.Category = "style";
             systemOwned.ApprovedAt = DateTimeOffset.UtcNow;
             systemOwned.ApprovedBy = approvedBy;
-            Save(projectId, doc);
+            await SaveAsync(projectId, doc, ct).ConfigureAwait(false);
             return true;
         }
 
@@ -159,7 +154,7 @@ public sealed class ProjectRulesService
             ApprovedBy = approvedBy,
             SourceFailCount = 0,
         });
-        Save(projectId, doc);
+        await SaveAsync(projectId, doc, ct).ConfigureAwait(false);
         return true;
     }
 
@@ -186,16 +181,17 @@ public sealed class ProjectRulesService
     /// <summary>
     /// Upsert performance/address convention from cast extract (book-inferred, not a fixed eye recipe).
     /// </summary>
-    public bool EnsurePerformanceRuleFromLock(
+    public async Task<bool> EnsurePerformanceRuleFromLockAsync(
         string projectId,
         string? performanceLock,
-        string approvedBy = "cast_extract")
+        string approvedBy = "cast_extract",
+        CancellationToken ct = default)
     {
         var text = NormalizePerformanceRuleText(performanceLock);
         if (string.IsNullOrWhiteSpace(text))
             return false;
 
-        var doc = Load(projectId);
+        var doc = await LoadAsync(projectId, ct).ConfigureAwait(false);
         var systemOwned = doc.Active.FirstOrDefault(r =>
             string.Equals(r.Id, PerformanceRuleId, StringComparison.OrdinalIgnoreCase));
         if (systemOwned is not null)
@@ -206,7 +202,7 @@ public sealed class ProjectRulesService
             systemOwned.Category = "performance";
             systemOwned.ApprovedAt = DateTimeOffset.UtcNow;
             systemOwned.ApprovedBy = approvedBy;
-            Save(projectId, doc);
+            await SaveAsync(projectId, doc, ct).ConfigureAwait(false);
             return true;
         }
 
@@ -232,7 +228,7 @@ public sealed class ProjectRulesService
             ApprovedBy = approvedBy,
             SourceFailCount = 0,
         });
-        Save(projectId, doc);
+        await SaveAsync(projectId, doc, ct).ConfigureAwait(false);
         return true;
     }
 
@@ -274,19 +270,19 @@ public sealed class ProjectRulesService
         return null;
     }
 
-    private string? TryReadCastField(string projectId, string propertyName) => TryReadCastFieldAsync(projectId, propertyName).GetAwaiter().GetResult();
-
     /// <summary>
     /// Scan host learning events for this project; add pending suggestions for hot fail categories.
     /// Does not auto-activate.
     /// </summary>
-    public ProjectRulesDocument SuggestFromFails(
+    public async Task<ProjectRulesDocument> SuggestFromFailsAsync(
         string projectId,
-        int minFails = DefaultMinFailsForSuggest)
+        int minFails = DefaultMinFailsForSuggest,
+        CancellationToken ct = default)
     {
         minFails = Math.Max(2, minFails);
-        var doc = Load(projectId);
-        var fails = _learning.Query(projectId: projectId, take: 2000)
+        var doc = await LoadAsync(projectId, ct).ConfigureAwait(false);
+        var events = await _learning.QueryAsync(projectId: projectId, take: 2000, ct: ct).ConfigureAwait(false);
+        var fails = events
             .Where(e =>
                 string.Equals(e.Type, "clip_fail", StringComparison.OrdinalIgnoreCase) ||
                 (string.Equals(e.Type, "auto_review", StringComparison.OrdinalIgnoreCase) &&
@@ -339,19 +335,20 @@ public sealed class ProjectRulesService
             pendingTexts.Add(text);
         }
 
-        Save(projectId, doc);
+        await SaveAsync(projectId, doc, ct).ConfigureAwait(false);
         return doc;
     }
 
-    public ProjectRulesDocument Approve(
+    public async Task<ProjectRulesDocument> ApproveAsync(
         string projectId,
         string suggestionId,
         string? textOverride,
-        string? approvedBy)
+        string? approvedBy,
+        CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(suggestionId))
             throw new ArgumentException("suggestionId required", nameof(suggestionId));
-        var doc = Load(projectId);
+        var doc = await LoadAsync(projectId, ct).ConfigureAwait(false);
         var sug = doc.Pending.FirstOrDefault(p =>
             string.Equals(p.Id, suggestionId, StringComparison.OrdinalIgnoreCase))
             ?? throw new InvalidOperationException($"Unknown suggestion: {suggestionId}");
@@ -371,17 +368,17 @@ public sealed class ProjectRulesService
             ApprovedBy = approvedBy,
             SourceFailCount = sug.FailCount,
         });
-        Save(projectId, doc);
+        await SaveAsync(projectId, doc, ct).ConfigureAwait(false);
         return doc;
     }
 
-    public ProjectRulesDocument Reject(string projectId, string suggestionId)
+    public async Task<ProjectRulesDocument> RejectAsync(string projectId, string suggestionId, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(suggestionId))
             throw new ArgumentException("suggestionId required", nameof(suggestionId));
-        var doc = Load(projectId);
+        var doc = await LoadAsync(projectId, ct).ConfigureAwait(false);
         doc.Pending.RemoveAll(p => string.Equals(p.Id, suggestionId, StringComparison.OrdinalIgnoreCase));
-        Save(projectId, doc);
+        await SaveAsync(projectId, doc, ct).ConfigureAwait(false);
         return doc;
     }
 

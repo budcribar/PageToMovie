@@ -113,8 +113,6 @@ public sealed class DbUserApiKeyProvider : IUserApiKeyProvider
         _auth = opts.Value.Auth ?? new AuthOptions();
     }
 
-    public string? GetKey(string? userId) => GetKey(userId, "grok");
-
     public Task<string?> GetKeyAsync(string? userId, CancellationToken ct = default) =>
         GetKeyAsync(userId, "grok", ct);
 
@@ -179,11 +177,9 @@ public sealed class DbUserApiKeyProvider : IUserApiKeyProvider
         return PageToMovie.Engine.ProviderApiKey.Clean(process);
     }
 
-    public string? GetKey(string? userId, string providerId) =>
-        GetKeyAsync(userId, providerId).ConfigureAwait(false).GetAwaiter().GetResult();
+    public Task<bool> HasKeyAsync(string? userId, CancellationToken ct = default) =>
+        HasKeyAsync(userId, "grok", ct);
 
-    public bool HasKey(string? userId) => !string.IsNullOrWhiteSpace(GetKey(userId));
-
-    public bool HasKey(string? userId, string providerId) =>
-        !string.IsNullOrWhiteSpace(GetKey(userId, providerId));
+    public async Task<bool> HasKeyAsync(string? userId, string providerId, CancellationToken ct = default) =>
+        !string.IsNullOrWhiteSpace(await GetKeyAsync(userId, providerId, ct).ConfigureAwait(false));
 }

@@ -29,7 +29,8 @@ public sealed class LearningProposalService
         ArgumentNullException.ThrowIfNull(req);
         var n = Math.Clamp(req.LastNFails <= 0 ? 50 : req.LastNFails, 5, 200);
         // Scan full log then filter fails — Query(take:N) of mixed events can bury fails under passes
-        var fails = _learning.ReadAll()
+        var allEvents = await _learning.ReadAllAsync(ct).ConfigureAwait(false);
+        var fails = allEvents
             .Where(e =>
                 string.IsNullOrWhiteSpace(req.ProjectId) ||
                 string.Equals(e.ProjectId, req.ProjectId, StringComparison.OrdinalIgnoreCase))
@@ -122,11 +123,11 @@ public sealed class LearningProposalService
         }
     }
 
-    public Task<ReviewComparisonInsightsDto> SynthesizePromptImprovementsAsync(
+    public async Task<ReviewComparisonInsightsDto> SynthesizePromptImprovementsAsync(
         string? projectId = null,
         CancellationToken ct = default)
     {
-        var insights = _learning.GetReviewComparison(projectId);
+        var insights = await _learning.GetReviewComparisonAsync(projectId, ct).ConfigureAwait(false);
         var gaps = insights.Discrepancies
             .Where(d => d.DiscrepancyType != "AGREEMENT")
             .Take(30)
@@ -135,7 +136,7 @@ public sealed class LearningProposalService
         if (gaps.Count == 0)
         {
             insights.PromptImprovementProposal = "No discrepancies found between Human and AI reviews yet. As operators review clips, differences will be tracked here.";
-            return Task.FromResult(insights);
+            return insights;
         }
 
         // Admin path without an explicit project model — offline template only (no invented Grok id).
@@ -144,7 +145,7 @@ public sealed class LearningProposalService
             "- [AI Too Strict]: Allow subtle lighting shifts between angles if primary subject remains clear.\n" +
             "- [General]: Update auto-review prompt to weight action continuity higher than minor background rendering quirks.\n" +
             "- (Live AI synthesis requires an explicit Script & planning model from Settings.)";
-        return Task.FromResult(insights);
+        return insights;
     }
 
     // Token-accurate now (was raw character count) — see PromptTokenizer.

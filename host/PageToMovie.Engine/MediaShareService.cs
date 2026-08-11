@@ -101,9 +101,6 @@ public sealed class MediaShareService
         }
     }
 
-    public ShareRecord EnsureWipShare(string projectId, string? createdBy, TimeSpan? lifetime = null) =>
-        EnsureWipShareAsync(projectId, createdBy, lifetime).GetAwaiter().GetResult();
-
     public async Task<ShareRecord?> TryGetAsync(string token, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(token)) return null;
@@ -128,8 +125,6 @@ public sealed class MediaShareService
         }
     }
 
-    public ShareRecord? TryGet(string token) => TryGetAsync(token).GetAwaiter().GetResult();
-
     public async Task<bool> RevokeAsync(string token, CancellationToken ct = default)
     {
         var rec = await TryGetAsync(token, ct).ConfigureAwait(false);
@@ -146,8 +141,6 @@ public sealed class MediaShareService
             return false;
         }
     }
-
-    public bool Revoke(string token) => RevokeAsync(token).GetAwaiter().GetResult();
 
     private static string GenerateToken()
     {

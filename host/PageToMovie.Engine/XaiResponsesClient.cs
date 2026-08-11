@@ -31,7 +31,7 @@ public sealed class XaiResponsesClient
         _keyProvider = keyProvider;
     }
 
-    public bool IsConfigured => !string.IsNullOrWhiteSpace(ResolveApiKey());
+    public bool IsConfigured => !string.IsNullOrWhiteSpace(ApiKeyScope.Current ?? Environment.GetEnvironmentVariable("XAI_API_KEY"));
 
     public sealed record UploadResult(string FileId, string Filename, long Bytes, long? ExpiresAtUnixSeconds);
 
@@ -80,7 +80,7 @@ public sealed class XaiResponsesClient
         int expiresAfterSeconds,
         CancellationToken ct)
     {
-        var key = RequireApiKey();
+        var key = await RequireApiKeyAsync(ct).ConfigureAwait(false);
         using var form = new MultipartFormDataContent();
         form.Add(new StringContent(expiresAfterSeconds.ToString()), "expires_after");
         var fileContent = new ByteArrayContent(fileBytes);
@@ -222,7 +222,7 @@ public sealed class XaiResponsesClient
         Dictionary<string, object?> payload,
         CancellationToken ct)
     {
-        var key = RequireApiKey();
+        var key = await RequireApiKeyAsync(ct).ConfigureAwait(false);
         using var req = new HttpRequestMessage(HttpMethod.Post, $"{ApiBase}/responses")
         {
             Content = JsonContent.Create(payload),
@@ -281,13 +281,13 @@ public sealed class XaiResponsesClient
         return raw.Length <= 2000 ? raw : raw[..2000];
     }
 
-    private string? ResolveApiKey() =>
+    private async Task<string?> ResolveApiKeyAsync(CancellationToken ct = default) =>
         ApiKeyScope.Current
-        ?? _keyProvider?.GetKey("XAI_API_KEY")
+        ?? (_keyProvider is not null ? await _keyProvider.GetKeyAsync(null, "grok", ct).ConfigureAwait(false) : null)
         ?? Environment.GetEnvironmentVariable("XAI_API_KEY");
 
-    private string RequireApiKey() =>
-        ResolveApiKey() ?? throw new InvalidOperationException(
+    private async Task<string> RequireApiKeyAsync(CancellationToken ct = default) =>
+        (await ResolveApiKeyAsync(ct).ConfigureAwait(false)) ?? throw new InvalidOperationException(
             "No xAI API key available for Files/Responses (save XAI key in Settings or set XAI_API_KEY).");
 
     private static string Trim(string s, int n) => s.Length <= n ? s : s[..n];

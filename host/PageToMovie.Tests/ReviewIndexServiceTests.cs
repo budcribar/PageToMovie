@@ -82,7 +82,7 @@ public class ReviewIndexServiceTests : IDisposable
         File.WriteAllBytes(f1, new byte[64]);
         File.WriteAllBytes(f2, new byte[64]);
 
-        var rel = _index.PersistDurableFrames("P3", 1, 1, new[] { f1, f2 }, maxFrames: 4);
+        var rel = await _index.PersistDurableFramesAsync("P3", 1, 1, new[] { f1, f2 }, maxFrames: 4);
         Assert.Equal(2, rel.Count);
         Assert.All(rel, p => Assert.StartsWith("assets/review/frames/", p));
         Assert.True(File.Exists(Path.Combine(dir, rel[0].Replace('/', Path.DirectorySeparatorChar))));

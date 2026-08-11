@@ -62,7 +62,7 @@ public class DemoYouTubePublisherServiceTests
 
             await publisher.PublishAsync(entry.Id);
 
-            var updated = demos.TryGet(entry.Id);
+            var updated = await demos.TryGetAsync(entry.Id);
             Assert.NotNull(updated);
             Assert.Equal("failed", updated!.YoutubeUploadStatus);
             Assert.Null(updated.YoutubeId);
@@ -95,12 +95,12 @@ public class DemoYouTubePublisherServiceTests
         try
         {
             var entry = await PublishSampleAsync(demos);
-            demos.SetYouTubeUploadStatus(entry.Id, "done", "already123", "https://youtu.be/already123");
+            await demos.SetYouTubeUploadStatusAsync(entry.Id, "done", "already123", "https://youtu.be/already123");
             Assert.Null(demos.ResolveMoviePath(entry.Id)); // deleted on done
 
             await publisher.PublishAsync(entry.Id);
 
-            var updated = demos.TryGet(entry.Id);
+            var updated = await demos.TryGetAsync(entry.Id);
             Assert.Equal("already123", updated!.YoutubeId); // unchanged — no re-upload attempted
             Assert.Equal("done", updated.YoutubeUploadStatus);
         }
@@ -117,14 +117,14 @@ public class DemoYouTubePublisherServiceTests
         try
         {
             var entry = await PublishSampleAsync(demos);
-            demos.SetYouTubeUploadStatus(entry.Id, "done", "oldvid99", "https://youtu.be/oldvid99");
+            await demos.SetYouTubeUploadStatusAsync(entry.Id, "done", "oldvid99", "https://youtu.be/oldvid99");
             // Simulate re-publish: new movie.mp4 next to existing YoutubeId
             var demoDir = Path.Combine(root, "_demos", entry.Id);
             WriteFakeMp4(demoDir);
 
             await publisher.PublishAsync(entry.Id);
 
-            var updated = demos.TryGet(entry.Id);
+            var updated = await demos.TryGetAsync(entry.Id);
             Assert.NotNull(updated);
             // YouTube not configured → upload fails, but we took the V2 path (not no-op).
             Assert.Equal("failed", updated!.YoutubeUploadStatus);
@@ -162,19 +162,19 @@ public class DemoYouTubePublisherServiceTests
 
             var entry = await PublishSampleAsync(demos);
             // Force project id / public / youtube
-            demos.SetStatus(entry.Id, DemoCatalogService.DemoStatuses.Public, "user1", "test");
+            await demos.SetStatusAsync(entry.Id, DemoCatalogService.DemoStatuses.Public, "user1", "test");
             // Manually patch projectId via attach after setting youtube
-            demos.SetYouTubeUploadStatus(entry.Id, "done", "yt1", "https://youtu.be/yt1");
+            await demos.SetYouTubeUploadStatusAsync(entry.Id, "done", "yt1", "https://youtu.be/yt1");
 
             // Re-point project: AttachMovie uses demo id; FindPublic needs matching projectId
             // Publish sample used project "Demo" — use that
-            var found = demos.FindPublicDemoForProject("Demo", "user1");
+            var found = await demos.FindPublicDemoForProjectAsync("Demo", "user1");
             Assert.NotNull(found);
             Assert.Equal(entry.Id, found!.Id);
 
             // Attach from file directly (WIP path may vary)
             var newMovie = WriteFakeMp4(Path.Combine(root, "tmp"), "new.mp4");
-            var updated = demos.AttachMovieFromFile(entry.Id, newMovie, title: "Updated Title");
+            var updated = await demos.AttachMovieFromFileAsync(entry.Id, newMovie, title: "Updated Title");
             Assert.Equal("Updated Title", updated.Title);
             Assert.Equal("yt1", updated.YoutubeId); // pointer kept until V2 succeeds
             Assert.Equal("pending_replace", updated.YoutubeUploadStatus);

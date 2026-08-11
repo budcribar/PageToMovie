@@ -56,11 +56,11 @@ public class ReviewEventStoreTests : IDisposable
         });
 
         Assert.True(File.Exists(_store.EventsPath));
-        var all = _store.Query(projectId: "Buster", take: 10);
+        var all = await _store.QueryAsync(projectId: "Buster", take: 10);
         Assert.Equal(2, all.Count);
         Assert.Contains(all, e => e.Type == "clip_fail" && e.Category == "wrong_voice");
 
-        var insights = _store.BuildInsights("Buster");
+        var insights = await _store.BuildInsightsAsync("Buster");
         Assert.Equal(2, insights.EventCount);
         Assert.Equal(1, insights.HumanFail);
         Assert.Equal(1, insights.AutoReview);
@@ -73,7 +73,7 @@ public class ReviewEventStoreTests : IDisposable
     {
         await _store.AppendAsync(new ReviewLearningEvent { ProjectId = "P", Type = "auto_review_apply", SuggestionCount = 2 });
         await _store.AppendAsync(new ReviewLearningEvent { ProjectId = "P", Type = "regen_after_review", Scene = 1, Clip = 1, Outcome = "done" });
-        var i = _store.BuildInsights("P");
+        var i = await _store.BuildInsightsAsync("P");
         Assert.Equal(1, i.ApplyCount);
         Assert.Equal(1, i.RegenCount);
     }

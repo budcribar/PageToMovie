@@ -289,9 +289,6 @@ public sealed class ProjectContributionService
         return clips;
     }
 
-    private static List<MediaClipContributionDto> ComputeMediaClips(string targetDir, string originDir) =>
-        ComputeMediaClipsAsync(targetDir, originDir).GetAwaiter().GetResult();
-
     private static async Task<List<MediaClipContributionDto>> ExtractClipsFromBlueprintAsync(string blueprintPath, string projectDir, CancellationToken ct = default)
     {
         var clips = new List<MediaClipContributionDto>();
@@ -336,9 +333,6 @@ public sealed class ProjectContributionService
 
         return clips;
     }
-
-    private static List<MediaClipContributionDto> ExtractClipsFromBlueprint(string blueprintPath, string projectDir) =>
-        ExtractClipsFromBlueprintAsync(blueprintPath, projectDir).GetAwaiter().GetResult();
 
     private static MediaClipContributionDto? ParseClipElement(JsonElement clip, int defaultScene, int defaultClip, string projectDir)
     {

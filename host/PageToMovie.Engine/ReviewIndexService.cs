@@ -233,14 +233,6 @@ public sealed class ReviewIndexService
         return rel;
     }
 
-    public IReadOnlyList<string> PersistDurableFrames(
-        string projectId,
-        int scene,
-        int clip,
-        IReadOnlyList<string> sourceFramePaths,
-        int maxFrames = 4) =>
-        PersistDurableFramesAsync(projectId, scene, clip, sourceFramePaths, maxFrames).GetAwaiter().GetResult();
-
     public IReadOnlyList<string> ListExistingFrameRelPaths(string projectId, int scene, int clip)
     {
         var framesDir = FramesDir(projectId);

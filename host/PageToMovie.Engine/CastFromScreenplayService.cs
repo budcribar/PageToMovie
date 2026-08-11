@@ -289,7 +289,7 @@ public sealed class CastFromScreenplayService
         {
             if (normalized.TryGetValue("render_style_lock", out var rslObj) &&
                 rslObj?.ToString() is { Length: > 0 } rsl &&
-                _projectRules.EnsureStyleRuleFromRenderLock(projectId, rsl, approvedBy: "cast_extract"))
+                await _projectRules.EnsureStyleRuleFromRenderLockAsync(projectId, rsl, approvedBy: "cast_extract", ct: ct).ConfigureAwait(false))
                 onProgress?.Invoke("Project style rule updated from book/screenplay medium.");
 
             // Persist structured medium for portraits (prefer adaptation vision_meta if already set).
@@ -299,7 +299,7 @@ public sealed class CastFromScreenplayService
 
             if (normalized.TryGetValue("performance_lock", out var perfObj) &&
                 perfObj?.ToString() is { Length: > 0 } perf &&
-                _projectRules.EnsurePerformanceRuleFromLock(projectId, perf, approvedBy: "cast_extract"))
+                await _projectRules.EnsurePerformanceRuleFromLockAsync(projectId, perf, approvedBy: "cast_extract", ct: ct).ConfigureAwait(false))
                 onProgress?.Invoke("Project performance/address rule updated from book/screenplay.");
         }
         catch (Exception ex)

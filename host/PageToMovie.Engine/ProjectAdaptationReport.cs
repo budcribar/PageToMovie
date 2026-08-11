@@ -45,8 +45,6 @@ public static class ProjectAdaptationReport
         await File.WriteAllTextAsync(path, json + "\n", ct).ConfigureAwait(false);
     }
 
-    public static void Write(string projectDir, AdaptationReport report) => WriteAsync(projectDir, report).GetAwaiter().GetResult();
-
     public static async Task<AdaptationReport?> TryReadAsync(string projectDir, CancellationToken ct = default)
     {
         var path = GetPath(projectDir);
@@ -62,6 +60,4 @@ public static class ProjectAdaptationReport
             return null;
         }
     }
-
-    public static AdaptationReport? TryRead(string projectDir) => TryReadAsync(projectDir).GetAwaiter().GetResult();
 }

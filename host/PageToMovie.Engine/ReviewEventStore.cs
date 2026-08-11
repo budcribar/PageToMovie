@@ -104,23 +104,9 @@ public sealed class ReviewEventStore
         }, ct);
     }
 
-    /// <summary>Read recent events (newest first). Optional filters.</summary>
-    public IReadOnlyList<ReviewLearningEvent> Query(
-        string? projectId = null,
-        string? type = null,
-        string? category = null,
-        DateTimeOffset? from = null,
-        DateTimeOffset? to = null,
-        int take = 200)
-    {
-        take = Math.Clamp(take, 1, 5000);
-        var all = ReadAll();
-        return FilterOrderTake(all, projectId, type, category, from, to, take);
-    }
-
     /// <summary>
     /// Apply the optional projectId/type/category/from/to filters, order newest-first, and take
-    /// at most <paramref name="take"/>. Shared by <see cref="Query"/> / <see cref="QueryAsync"/>.
+    /// at most <paramref name="take"/>. Shared by <see cref="QueryAsync"/>.
     /// </summary>
     private static List<ReviewLearningEvent> FilterOrderTake(
         IEnumerable<ReviewLearningEvent> all,
@@ -145,13 +131,14 @@ public sealed class ReviewEventStore
         return q.OrderByDescending(e => e.Ts).Take(take).ToList();
     }
 
-    public LearningInsightsDto BuildInsights(
+    public async Task<LearningInsightsDto> BuildInsightsAsync(
         string? projectId = null,
         DateTimeOffset? from = null,
         DateTimeOffset? to = null,
-        int recentTake = 40)
+        int recentTake = 40,
+        CancellationToken ct = default)
     {
-        var events = Query(projectId, from: from, to: to, take: 5000);
+        var events = await QueryAsync(projectId, from: from, to: to, take: 5000, ct: ct).ConfigureAwait(false);
         var dto = new LearningInsightsDto
         {
             EventCount = events.Count,
@@ -225,7 +212,7 @@ public sealed class ReviewEventStore
 
     /// <summary>
     /// Deserialize one JSON event per non-blank line into <paramref name="list"/>, silently
-    /// skipping any malformed line. Shared by <see cref="ReadAll"/> / <see cref="ReadAllAsync"/>.
+    /// skipping any malformed line. Shared by <see cref="ReadAllAsync"/>.
     /// </summary>
     private static void ParseEventLines(string[] lines, List<ReviewLearningEvent> list)
     {
@@ -258,9 +245,6 @@ public sealed class ReviewEventStore
         return FilterOrderTake(all, projectId, type, category, from, to, take);
     }
 
-    public IReadOnlyList<ReviewLearningEvent> ReadAll() =>
-        ReadAllAsync().ConfigureAwait(false).GetAwaiter().GetResult();
-
     private static void Bump(Dictionary<string, int> map, string key)
     {
         if (string.IsNullOrWhiteSpace(key)) key = "unknown";
@@ -268,9 +252,9 @@ public sealed class ReviewEventStore
         map[key] = n + 1;
     }
 
-    public ReviewComparisonInsightsDto GetReviewComparison(string? projectId = null)
+    public async Task<ReviewComparisonInsightsDto> GetReviewComparisonAsync(string? projectId = null, CancellationToken ct = default)
     {
-        var events = ReadAll();
+        var events = await ReadAllAsync(ct).ConfigureAwait(false);
         if (!string.IsNullOrWhiteSpace(projectId))
         {
             events = events.Where(e => string.Equals(e.ProjectId, projectId, StringComparison.OrdinalIgnoreCase)).ToList();

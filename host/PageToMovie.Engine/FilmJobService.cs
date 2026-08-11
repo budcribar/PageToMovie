@@ -487,7 +487,7 @@ public sealed class FilmJobService
     /// Phase 2: accept job as <c>queued</c> immediately, wait for locks + worker slot, then run.
     /// Hard 409 only when user queue is full, or <paramref name="failIfLocked"/> and lock held by other.
     /// </summary>
-    private Task<JobSnapshot> StartBackgroundJobAsync(
+    private async Task<JobSnapshot> StartBackgroundJobAsync(
         Func<CancellationToken, Task> work,
         JobEnqueueMeta meta,
         IReadOnlyList<string>? lockResources = null,
@@ -518,13 +518,13 @@ public sealed class FilmJobService
 
         var apiKey = !string.IsNullOrWhiteSpace(_user.RequestApiKey)
             ? _user.RequestApiKey
-            : _keys.GetKey(userId, "grok");
-        var geminiKey = _keys.GetKey(userId, "gemini");
-        var anthropicKey = _keys.GetKey(userId, "anthropic");
-        var falKey = _keys.GetKey(userId, "fal");
-        var sunoKey = _keys.GetKey(userId, "suno");
-        var aiMusicApiKey = _keys.GetKey(userId, "aimusicapi");
-        var elevenLabsKey = _keys.GetKey(userId, "elevenlabs");
+            : await _keys.GetKeyAsync(userId, "grok").ConfigureAwait(false);
+        var geminiKey = await _keys.GetKeyAsync(userId, "gemini").ConfigureAwait(false);
+        var anthropicKey = await _keys.GetKeyAsync(userId, "anthropic").ConfigureAwait(false);
+        var falKey = await _keys.GetKeyAsync(userId, "fal").ConfigureAwait(false);
+        var sunoKey = await _keys.GetKeyAsync(userId, "suno").ConfigureAwait(false);
+        var aiMusicApiKey = await _keys.GetKeyAsync(userId, "aimusicapi").ConfigureAwait(false);
+        var elevenLabsKey = await _keys.GetKeyAsync(userId, "elevenlabs").ConfigureAwait(false);
 
         var queuedAt = DateTimeOffset.UtcNow;
         var cts = new CancellationTokenSource();
@@ -668,7 +668,7 @@ public sealed class FilmJobService
             }
         }, CancellationToken.None);
 
-        return Task.FromResult(rec.ToSnapshot());
+        return rec.ToSnapshot();
     }
 
     private async Task WaitForLocksAsync(JobRunState run, CancellationToken ct)
@@ -2499,7 +2499,7 @@ public sealed class FilmJobService
             {
                 throw new InvalidOperationException("Could not read WIP movie for hash gate: " + ex.Message, ex);
             }
-            var publishGate = FilmBuildService.ApplyUploadHashGate(_projects, projectId, uploadBytes);
+            var publishGate = await FilmBuildService.ApplyUploadHashGateAsync(_projects, projectId, uploadBytes, ct: ct).ConfigureAwait(false);
             await AppendLogAsync(
                 $"Film publish path: {publishGate.Path} (upload sha {publishGate.UploadSha256[..Math.Min(12, publishGate.UploadSha256.Length)]}…)");
 
@@ -2575,14 +2575,14 @@ public sealed class FilmJobService
             // Re-record publish block with YouTube ids; create learning package when intact.
             try
             {
-                var finalPublish = FilmBuildService.ApplyUploadHashGate(
+                var finalPublish = await FilmBuildService.ApplyUploadHashGateAsync(
                     _projects, projectId, uploadBytes,
-                    youtubeVideoId: videoId, youtubeUrl: url);
+                    youtubeVideoId: videoId, youtubeUrl: url, ct: ct).ConfigureAwait(false);
                 await AppendLogAsync($"Film build publish recorded ({finalPublish.Path}).");
                 if (string.Equals(finalPublish.Path, FilmBuildPublish.PathStudioIntact, StringComparison.Ordinal))
                 {
-                    var lp = LearningPackageService.CreateFromProject(
-                        _projects, projectId, workspaceRoot: TryFindWorkspaceRoot());
+                    var lp = await LearningPackageService.CreateFromProjectAsync(
+                        _projects, projectId, workspaceRoot: TryFindWorkspaceRoot(), ct: ct).ConfigureAwait(false);
                     await AppendLogAsync($"Learning package {lp.PackageId} → {lp.ProjectRelativePath}");
                 }
                 else
@@ -4057,7 +4057,7 @@ public sealed class FilmJobService
             string? styleHead = null;
             try
             {
-                var rules = _projectRules.GetActiveRulesBlock(projectId);
+                var rules = await _projectRules.GetActiveRulesBlockAsync(projectId, ct).ConfigureAwait(false);
                 if (!string.IsNullOrWhiteSpace(rules))
                 {
                     var m = System.Text.RegularExpressions.Regex.Match(
@@ -4124,7 +4124,7 @@ public sealed class FilmJobService
             // embedded prompts/clip_gen_rules.txt and are composed inside ClipVideoPromptBuilder.
             try
             {
-                var rules = _projectRules.GetActiveRulesBlock(projectId);
+                var rules = await _projectRules.GetActiveRulesBlockAsync(projectId, ct).ConfigureAwait(false);
                 if (!string.IsNullOrWhiteSpace(rules))
                 {
                     built = built.WithPrompt(

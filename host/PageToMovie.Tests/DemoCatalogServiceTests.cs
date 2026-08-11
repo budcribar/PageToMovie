@@ -63,7 +63,7 @@ public class DemoCatalogServiceTests
             Assert.NotNull(moviePath);
             Assert.True(File.Exists(moviePath));
 
-            var updated = demos.SetYouTubeUploadStatus(entry.Id, "done", "yt123", "https://youtu.be/yt123");
+            var updated = await demos.SetYouTubeUploadStatusAsync(entry.Id, "done", "yt123", "https://youtu.be/yt123");
 
             Assert.NotNull(updated);
             Assert.Equal("yt123", updated!.YoutubeId);
@@ -72,7 +72,7 @@ public class DemoCatalogServiceTests
             Assert.False(File.Exists(moviePath!)); // local copy removed — server footprint goal
 
             // Entry must still resolve (it now lives on YouTube, not on disk).
-            var reread = demos.TryGet(entry.Id);
+            var reread = await demos.TryGetAsync(entry.Id);
             Assert.NotNull(reread);
             Assert.Equal("yt123", reread!.YoutubeId);
         }
@@ -90,7 +90,7 @@ public class DemoCatalogServiceTests
         {
             var entry = await PublishSampleAsync(demos);
 
-            var updated = demos.SetYouTubeUploadStatus(entry.Id, "failed", error: "quota exceeded");
+            var updated = await demos.SetYouTubeUploadStatusAsync(entry.Id, "failed", error: "quota exceeded");
 
             Assert.NotNull(updated);
             Assert.Equal("failed", updated!.YoutubeUploadStatus);
@@ -121,12 +121,12 @@ public class DemoCatalogServiceTests
                 string.Equals(email, "budcribar@msn.com", StringComparison.OrdinalIgnoreCase) ? "budcribar" : null;
 
             // First pass rewrites exactly the email record.
-            Assert.Equal(1, demos.MigrateEmailCreatedBy(resolver));
-            Assert.Equal("budcribar", demos.TryGet(legacy.Id)!.CreatedBy);
-            Assert.Equal("somehandle", demos.TryGet(modern.Id)!.CreatedBy); // non-email handle untouched
+            Assert.Equal(1, await demos.MigrateEmailCreatedByAsync(resolver));
+            Assert.Equal("budcribar", (await demos.TryGetAsync(legacy.Id))!.CreatedBy);
+            Assert.Equal("somehandle", (await demos.TryGetAsync(modern.Id))!.CreatedBy); // non-email handle untouched
 
             // Idempotent: nothing left to change on a second pass.
-            Assert.Equal(0, demos.MigrateEmailCreatedBy(resolver));
+            Assert.Equal(0, await demos.MigrateEmailCreatedByAsync(resolver));
 
             // Unresolvable email is left as-is rather than blanked.
             var (demos2, root2) = MakeHarness();
@@ -134,8 +134,8 @@ public class DemoCatalogServiceTests
             {
                 await using var s3 = new MemoryStream(bytes);
                 var orphan = await demos2.PublishFromStreamAsync(s3, "Orphan", "d", "Demo", "nobody@example.com", acceptedGuidelines: true);
-                Assert.Equal(0, demos2.MigrateEmailCreatedBy(_ => null));
-                Assert.Equal("nobody@example.com", demos2.TryGet(orphan.Id)!.CreatedBy);
+                Assert.Equal(0, await demos2.MigrateEmailCreatedByAsync(_ => null));
+                Assert.Equal("nobody@example.com", (await demos2.TryGetAsync(orphan.Id))!.CreatedBy);
             }
             finally { Directory.Delete(root2, true); }
         }
@@ -155,7 +155,7 @@ public class DemoCatalogServiceTests
             var moviePath = demos.ResolveMoviePath(entry.Id)!;
             File.Delete(moviePath); // simulate corruption/partial write without a YouTube migration
 
-            Assert.Null(demos.TryGet(entry.Id));
+            Assert.Null(await demos.TryGetAsync(entry.Id));
         }
         finally
         {

@@ -171,9 +171,6 @@ public static class AdaptationPromptPack
     public static async Task<string> ReadBookToFountainBodyAsync(CancellationToken ct = default) =>
         await ReadPromptBodyAsync(BookToFountainRelativePath, EmbeddedLogicalName, ct).ConfigureAwait(false);
 
-    public static string ReadBookToFountainBody() =>
-        ReadBookToFountainBodyAsync().GetAwaiter().GetResult();
-
     /// <summary>
     /// Fountain → Fountain "re-skin" system prompt with the target medium resolved.
     /// Descriptive layer only; dialogue / cues / scene count preserved.
@@ -197,9 +194,6 @@ public static class AdaptationPromptPack
                 string.Join(", ", leftovers.Select(t => "{{" + t + "}}")) + ".");
         return body;
     }
-
-    public static string BuildReskinSystemPrompt(string? visualMedium) =>
-        BuildReskinSystemPromptAsync(visualMedium).GetAwaiter().GetResult();
 
     /// <summary>
     /// Fountain → Fountain "embellish" system prompt with the target medium resolved.
@@ -225,9 +219,6 @@ public static class AdaptationPromptPack
         return body;
     }
 
-    public static string BuildEmbellishSystemPrompt(string? visualMedium) =>
-        BuildEmbellishSystemPromptAsync(visualMedium).GetAwaiter().GetResult();
-
     /// <summary>
     /// Fountain → Fountain "trim" system prompt with the runtime targets resolved. Structure may shrink
     /// (condense/merge/cut) toward the target; never expands.
@@ -249,9 +240,6 @@ public static class AdaptationPromptPack
         return body;
     }
 
-    public static string BuildTrimSystemPrompt(int targetMinutes, int naturalMinutes) =>
-        BuildTrimSystemPromptAsync(targetMinutes, naturalMinutes).GetAwaiter().GetResult();
-
     private static async Task<string> ReadPromptBodyAsync(string relativePath, string logicalName, CancellationToken ct = default)
     {
         var fromOverride = await TryReadOverrideFileAsync(relativePath, ct).ConfigureAwait(false);
@@ -272,9 +260,6 @@ public static class AdaptationPromptPack
             $"Available: {(string.IsNullOrEmpty(available) ? "(none — rebuild Adaptation with prompts/)" : available)}. " +
             "Or set PAGETOMOVIE_PROMPTS_DIR to a folder with the .txt file.");
     }
-
-    private static string ReadPromptBody(string relativePath, string logicalName) =>
-        ReadPromptBodyAsync(relativePath, logicalName).GetAwaiter().GetResult();
 
     private static AdaptationPromptTokens CloneWithRuntime(AdaptationPromptTokens t, int? minutes) =>
         new()
@@ -300,7 +285,4 @@ public static class AdaptationPromptPack
         var full = Path.Combine(dir, Path.GetFileName(relativePath));
         return File.Exists(full) ? await File.ReadAllTextAsync(full, ct).ConfigureAwait(false) : null;
     }
-
-    private static string? TryReadOverrideFile(string relativePath) =>
-        TryReadOverrideFileAsync(relativePath).GetAwaiter().GetResult();
 }

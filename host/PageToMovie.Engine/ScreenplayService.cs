@@ -984,7 +984,7 @@ public static string NormalizeText(string text)
             {
                 if (result.AdaptationReport is not null)
                 {
-                    ProjectAdaptationReport.Write(projectDir, result.AdaptationReport);
+                    await ProjectAdaptationReport.WriteAsync(projectDir, result.AdaptationReport, ct).ConfigureAwait(false);
                     onProgress?.Invoke(
                         $"Saved adaptation report (source_complete={result.AdaptationReport.SourceComplete}, " +
                         $"issues={result.AdaptationReport.Issues.Count})");

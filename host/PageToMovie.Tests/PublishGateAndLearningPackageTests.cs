@@ -19,9 +19,9 @@ public sealed class PublishGateAndLearningPackageTests
     }
 
     [Fact]
-    public void ApplyUploadHashGate_and_learning_package_roundtrip()
+    public async Task FilmBuild_PublishGate_IntactWhenShaMatches()
     {
-        var root = Path.Combine(Path.GetTempPath(), "ptm_lp_" + Guid.NewGuid().ToString("N"));
+        var root = Path.Combine(Path.GetTempPath(), "ptm_pubgate_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
         try
         {
@@ -33,10 +33,10 @@ public sealed class PublishGateAndLearningPackageTests
             var studioBytes = new byte[] { 1, 2, 3, 4, 5 };
             var sha = FilmBuildService.HashBytes(studioBytes);
             var doc = FilmBuildService.Create("test/Mary", sha, 8.0, null, studioBytes.Length);
-            FilmBuildService.Write(projectDir, doc);
+            await FilmBuildService.WriteAsync(projectDir, doc);
 
             // Simulate upload of identical bytes
-            var loaded = FilmBuildService.TryRead(projectDir);
+            var loaded = await FilmBuildService.TryReadAsync(projectDir);
             Assert.NotNull(loaded);
             Assert.Equal(sha, loaded!.Studio.Sha256);
 

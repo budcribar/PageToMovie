@@ -93,13 +93,13 @@ public class LearningServicesTests : IDisposable
             });
         }
 
-        var doc = _rules.SuggestFromFails("Demo", minFails: 3);
+        var doc = await _rules.SuggestFromFailsAsync("Demo", minFails: 3);
         Assert.NotEmpty(doc.Pending);
         var sug = doc.Pending.First(p => p.Category == "wrong_voice");
-        doc = _rules.Approve("Demo", sug.Id, textOverride: null, approvedBy: "admin");
+        doc = await _rules.ApproveAsync("Demo", sug.Id, textOverride: null, approvedBy: "admin");
         Assert.DoesNotContain(doc.Pending, p => p.Id == sug.Id);
         Assert.Contains(doc.Active, a => a.Category == "wrong_voice");
-        var block = _rules.GetActiveRulesBlock("Demo");
+        var block = await _rules.GetActiveRulesBlockAsync("Demo");
         Assert.Contains("voice", block, StringComparison.OrdinalIgnoreCase);
     }
 

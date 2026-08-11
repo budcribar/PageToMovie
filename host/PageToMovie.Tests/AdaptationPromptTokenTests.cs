@@ -37,11 +37,10 @@ public sealed class AdaptationPromptTokenTests
     }
 
     [Fact]
-    public void Production_prompt_has_no_leftover_tokens()
+    public async Task Production_prompt_has_no_leftover_tokens()
     {
         // Uses embedded/disk production book_to_fountain.txt
-        var text = AdaptationPromptPack.LoadBookToFountainSystemPromptAsync(null)
-            .GetAwaiter().GetResult();
+        var text = await AdaptationPromptPack.LoadBookToFountainSystemPromptAsync(null);
         Assert.DoesNotContain("{{", text);
         Assert.Contains("unlimited", text, StringComparison.OrdinalIgnoreCase);
     }

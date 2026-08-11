@@ -60,8 +60,6 @@ public sealed class MovieAutoReviewService
         }
     }
 
-    public MovieAutoReviewReport? LoadReport(string projectId) => LoadReportAsync(projectId).GetAwaiter().GetResult();
-
     public async Task SaveReportAsync(MovieAutoReviewReport report, CancellationToken ct = default)
     {
         var projectDir = await _projects.GetProjectDirAsync(report.ProjectId, ct).ConfigureAwait(false);
@@ -76,8 +74,6 @@ public sealed class MovieAutoReviewService
             new { report.ProjectId }, report, issues, ct).ConfigureAwait(false);
         _projects.TriggerAutoGitCommit(report.ProjectId, $"Update full movie AI review report (Score: {report.OverallScore}/10)");
     }
-
-    public void SaveReport(MovieAutoReviewReport report) => SaveReportAsync(report).GetAwaiter().GetResult();
 
     /// <summary>
     /// Evaluates the full movie using scene-chunked vision requests + master synthesis.

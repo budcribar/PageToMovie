@@ -35,24 +35,24 @@ public class ProjectStyleRuleTests : IDisposable
     }
 
     [Fact]
-    public void EnsureStyleRule_writes_active_style_from_render_lock()
+    public async Task EnsureStyleRule_writes_active_style_from_render_lock()
     {
-        var changed = _rules.EnsureStyleRuleFromRenderLock(
+        var changed = await _rules.EnsureStyleRuleFromRenderLockAsync(
             "Demo",
             "STYLE LOCK: stylized 3D picture-book CG; not photoreal live-action",
             approvedBy: "cast_extract");
         Assert.True(changed);
-        var doc = _rules.Load("Demo");
+        var doc = await _rules.LoadAsync("Demo");
         var style = Assert.Single(doc.Active, r => r.Category == "style");
         Assert.Equal(ProjectRulesService.StyleRuleId, style.Id);
         Assert.Contains("picture-book", style.Text, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("style", _rules.GetActiveRulesBlock("Demo"), StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("style", await _rules.GetActiveRulesBlockAsync("Demo"), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public void EnsureStyleRule_does_not_overwrite_user_style()
+    public async Task EnsureStyleRule_does_not_overwrite_user_style()
     {
-        var doc = _rules.Load("Demo");
+        var doc = await _rules.LoadAsync("Demo");
         doc.Active.Add(new ProjectRule
         {
             Id = "user_style",
@@ -61,27 +61,27 @@ public class ProjectStyleRuleTests : IDisposable
             ApprovedBy = "admin",
             ApprovedAt = DateTimeOffset.UtcNow,
         });
-        _rules.Save("Demo", doc);
+        await _rules.SaveAsync("Demo", doc);
 
-        var changed = _rules.EnsureStyleRuleFromRenderLock(
+        var changed = await _rules.EnsureStyleRuleFromRenderLockAsync(
             "Demo",
             "STYLE LOCK: photoreal 1840s",
             approvedBy: "cast_extract");
         Assert.False(changed);
-        var again = _rules.Load("Demo");
+        var again = await _rules.LoadAsync("Demo");
         Assert.Contains(again.Active, r => r.Text!.Contains("watercolor"));
         Assert.DoesNotContain(again.Active, r => r.Text!.Contains("photoreal 1840s"));
     }
 
     [Fact]
-    public void EnsurePerformanceRule_writes_from_book_inferred_lock()
+    public async Task EnsurePerformanceRule_writes_from_book_inferred_lock()
     {
-        var changed = _rules.EnsurePerformanceRuleFromLock(
+        var changed = await _rules.EnsurePerformanceRuleFromLockAsync(
             "Demo",
             "first-person confessional often addresses implied listener when speaking",
             approvedBy: "cast_extract");
         Assert.True(changed);
-        var block = _rules.GetActiveRulesBlock("Demo");
+        var block = await _rules.GetActiveRulesBlockAsync("Demo");
         Assert.Contains("performance", block, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("confessional", block, StringComparison.OrdinalIgnoreCase);
     }

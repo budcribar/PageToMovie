@@ -125,31 +125,42 @@ public sealed class DemoCatalogService
         public DateTimeOffset? YoutubeStatsRefreshedAt { get; set; }
     }
 
-    public void SetYouTubeStats(string id, ulong? likeCount, ulong? viewCount)
+    public async Task SetYouTubeStatsAsync(string id, ulong? likeCount, ulong? viewCount, CancellationToken ct = default)
     {
         if (!IsValidId(id)) return;
-        lock (_lock)
+        await _semaphore.WaitAsync(ct).ConfigureAwait(false);
+        try
         {
-            var e = ReadUnlocked(id);
+            var e = await ReadUnlockedAsync(id, ct).ConfigureAwait(false);
             if (e is null) return;
             e.YoutubeLikeCount = likeCount;
             e.YoutubeViewCount = viewCount;
             e.YoutubeStatsRefreshedAt = DateTimeOffset.UtcNow;
-            SaveUnlocked(e);
+            await SaveUnlockedAsync(e, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _semaphore.Release();
         }
     }
 
-    public IReadOnlyList<DemoEntry> List(int take = 50, string? status = null)
+    public async Task<IReadOnlyList<DemoEntry>> ListAsync(int take = 50, string? status = null, CancellationToken ct = default)
     {
         take = Math.Clamp(take, 1, 200);
-        lock (_lock)
+        await _semaphore.WaitAsync(ct).ConfigureAwait(false);
+        try
         {
-            return LoadAllUnlocked()
+            var all = await LoadAllUnlockedAsync(ct).ConfigureAwait(false);
+            return all
                 .Where(e => status is null
                     || string.Equals(e.Status, status, StringComparison.OrdinalIgnoreCase))
                 .OrderByDescending(e => e.CreatedAt)
                 .Take(take)
                 .ToList();
+        }
+        finally
+        {
+            _semaphore.Release();
         }
     }
 
@@ -157,12 +168,14 @@ public sealed class DemoCatalogService
     /// Public gallery: demos that live on YouTube (source of truth for the film).
     /// Removed/rejected are excluded; pending-without-YouTube never appear.
     /// </summary>
-    public IReadOnlyList<DemoEntry> ListPublic(int take = 50)
+    public async Task<IReadOnlyList<DemoEntry>> ListPublicAsync(int take = 50, CancellationToken ct = default)
     {
         take = Math.Clamp(take, 1, 200);
-        lock (_lock)
+        await _semaphore.WaitAsync(ct).ConfigureAwait(false);
+        try
         {
-            return LoadAllUnlocked()
+            var all = await LoadAllUnlockedAsync(ct).ConfigureAwait(false);
+            return all
                 .Where(e =>
                     !string.Equals(e.Status, DemoStatuses.Removed, StringComparison.OrdinalIgnoreCase)
                     && !string.Equals(e.Status, DemoStatuses.Rejected, StringComparison.OrdinalIgnoreCase)
@@ -171,13 +184,24 @@ public sealed class DemoCatalogService
                 .Take(take)
                 .ToList();
         }
+        finally
+        {
+            _semaphore.Release();
+        }
     }
 
-    public DemoEntry? TryGet(string id)
+    public async Task<DemoEntry?> TryGetAsync(string id, CancellationToken ct = default)
     {
         if (!IsValidId(id)) return null;
-        lock (_lock)
-            return ReadUnlocked(id);
+        await _semaphore.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            return await ReadUnlockedAsync(id, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _semaphore.Release();
+        }
     }
 
     public string? ResolveMoviePath(string id)
@@ -191,12 +215,14 @@ public sealed class DemoCatalogService
     /// Most recently created public demo for this project by this creator (if any).
     /// Used for YouTube V2 replace when re-publishing an updated cut.
     /// </summary>
-    public DemoEntry? FindPublicDemoForProject(string projectId, string? createdBy)
+    public async Task<DemoEntry?> FindPublicDemoForProjectAsync(string projectId, string? createdBy, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(projectId)) return null;
-        lock (_lock)
+        await _semaphore.WaitAsync(ct).ConfigureAwait(false);
+        try
         {
-            return LoadAllUnlocked()
+            var all = await LoadAllUnlockedAsync(ct).ConfigureAwait(false);
+            return all
                 .Where(e =>
                     string.Equals(e.Status, DemoStatuses.Public, StringComparison.OrdinalIgnoreCase)
                     && string.Equals(e.ProjectId, projectId, StringComparison.OrdinalIgnoreCase)
@@ -205,13 +231,17 @@ public sealed class DemoCatalogService
                 .OrderByDescending(e => e.CreatedAt)
                 .FirstOrDefault();
         }
+        finally
+        {
+            _semaphore.Release();
+        }
     }
 
     /// <summary>
     /// Copy the project's WIP movie onto an existing demo as movie.mp4 (for V2 YouTube replace).
     /// Updates size/metadata; does not clear <see cref="DemoEntry.YoutubeId"/>.
     /// </summary>
-    public DemoEntry AttachMovieFromWip(
+    public async Task<DemoEntry> AttachMovieFromWipAsync(
         string demoId,
         string projectId,
         string? title = null,
@@ -219,15 +249,16 @@ public sealed class DemoCatalogService
         bool? madeForKids = null,
         bool? isAiSyntheticContent = null,
         string? privacyStatus = null,
-        List<string>? tags = null)
+        List<string>? tags = null,
+        CancellationToken ct = default)
     {
         var wip = _projects.ResolveWipMoviePath(projectId)
                   ?? throw new InvalidOperationException("WIP movie not found — build the cut first.");
-        return AttachMovieFromFile(demoId, wip, title, description, madeForKids, isAiSyntheticContent, privacyStatus, tags);
+        return await AttachMovieFromFileAsync(demoId, wip, title, description, madeForKids, isAiSyntheticContent, privacyStatus, tags, ct).ConfigureAwait(false);
     }
 
     /// <summary>Write a new movie.mp4 onto an existing demo (V2 replace source material).</summary>
-    public DemoEntry AttachMovieFromFile(
+    public async Task<DemoEntry> AttachMovieFromFileAsync(
         string demoId,
         string sourceMp4Path,
         string? title = null,
@@ -235,16 +266,18 @@ public sealed class DemoCatalogService
         bool? madeForKids = null,
         bool? isAiSyntheticContent = null,
         string? privacyStatus = null,
-        List<string>? tags = null)
+        List<string>? tags = null,
+        CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(sourceMp4Path) || !File.Exists(sourceMp4Path))
             throw new InvalidOperationException("Source movie not found");
         if (!LooksLikeMp4(sourceMp4Path))
             throw new InvalidOperationException("Source file is not a valid MP4.");
 
-        lock (_lock)
+        await _semaphore.WaitAsync(ct).ConfigureAwait(false);
+        try
         {
-            var entry = ReadUnlocked(demoId)
+            var entry = await ReadUnlockedAsync(demoId, ct).ConfigureAwait(false)
                         ?? throw new InvalidOperationException("Demo not found");
             var dir = Path.Combine(DemosDir, entry.Id);
             Directory.CreateDirectory(dir);
@@ -272,16 +305,20 @@ public sealed class DemoCatalogService
             entry.YoutubeUploadStatus = string.IsNullOrWhiteSpace(entry.YoutubeId) ? "none" : "pending_replace";
             entry.YoutubeUploadError = null;
 
-            SaveUnlocked(entry);
+            await SaveUnlockedAsync(entry, ct).ConfigureAwait(false);
             _log.LogInformation(
                 "Demo {Id} attached new movie ({Bytes} bytes) for YouTube replace; prior YoutubeId={Yt}",
                 entry.Id, entry.SizeBytes, entry.YoutubeId);
             return entry;
         }
+        finally
+        {
+            _semaphore.Release();
+        }
     }
 
     /// <summary>
-    /// Stream a new movie onto an existing demo (same as <see cref="AttachMovieFromFile"/> for uploads).
+    /// Stream a new movie onto an existing demo (same as <see cref="AttachMovieFromFileAsync"/> for uploads).
     /// </summary>
     public async Task<DemoEntry> AttachMovieFromStreamAsync(
         string demoId,
@@ -314,7 +351,7 @@ public sealed class DemoCatalogService
                 throw new InvalidOperationException(
                     "Upload is not a valid MP4 (missing ftyp box). Only MP4 video is accepted.");
 
-            return AttachMovieFromFile(demoId, temp, title, description, madeForKids, isAiSyntheticContent, privacyStatus, tags);
+            return await AttachMovieFromFileAsync(demoId, temp, title, description, madeForKids, isAiSyntheticContent, privacyStatus, tags, ct).ConfigureAwait(false);
         }
         finally
         {
@@ -347,17 +384,19 @@ public sealed class DemoCatalogService
     }
 
     /// <summary>Enforce publish rate before accepting a new demo (no admin review queue).</summary>
-    public void EnsureUserMayPublish(string? userId, bool isAdmin)
+    public async Task EnsureUserMayPublishAsync(string? userId, bool isAdmin, CancellationToken ct = default)
     {
         if (isAdmin)
             return;
         if (string.IsNullOrWhiteSpace(userId))
             throw new InvalidOperationException("Sign in required to publish a demo.");
 
-        lock (_lock)
+        await _semaphore.WaitAsync(ct).ConfigureAwait(false);
+        try
         {
             var since = DateTimeOffset.UtcNow.AddHours(-24);
-            var mineToday = LoadAllUnlocked()
+            var all = await LoadAllUnlockedAsync(ct).ConfigureAwait(false);
+            var mineToday = all
                 .Where(e =>
                     string.Equals(e.CreatedBy, userId, StringComparison.OrdinalIgnoreCase)
                     && e.CreatedAt >= since)
@@ -368,9 +407,13 @@ public sealed class DemoCatalogService
                     $"Publish limit reached ({MaxPublishesPerUserPerDay} demos per 24 hours). Try again later.");
             }
         }
+        finally
+        {
+            _semaphore.Release();
+        }
     }
 
-    public DemoEntry PublishFromWip(
+    public async Task<DemoEntry> PublishFromWipAsync(
         string projectId,
         string title,
         string? description,
@@ -379,13 +422,14 @@ public sealed class DemoCatalogService
         bool madeForKids = false,
         bool isAiSyntheticContent = true,
         string privacyStatus = "public",
-        List<string>? tags = null)
+        List<string>? tags = null,
+        CancellationToken ct = default)
     {
         var wip = _projects.ResolveWipMoviePath(projectId)
                   ?? throw new InvalidOperationException("WIP movie not found — build the cut first.");
-        return PublishFromFile(
+        return await PublishFromFileAsync(
             wip, title, description, projectId, createdBy, acceptedGuidelines,
-            madeForKids, isAiSyntheticContent, privacyStatus, tags);
+            madeForKids, isAiSyntheticContent, privacyStatus, tags, ct).ConfigureAwait(false);
     }
 
     public async Task<DemoEntry> PublishFromStreamAsync(
@@ -504,24 +548,12 @@ public sealed class DemoCatalogService
         }
     }
 
-    public DemoEntry PublishFromFile(
-        string sourceMp4Path,
-        string title,
-        string? description,
-        string? projectId,
-        string? createdBy,
-        bool acceptedGuidelines,
-        bool madeForKids = false,
-        bool isAiSyntheticContent = true,
-        string privacyStatus = "public",
-        List<string>? tags = null) =>
-        PublishFromFileAsync(sourceMp4Path, title, description, projectId, createdBy, acceptedGuidelines, madeForKids, isAiSyntheticContent, privacyStatus, tags).GetAwaiter().GetResult();
-
-    public DemoEntry? Report(string id, string? note, string? reporterUserId)
+    public async Task<DemoEntry?> ReportAsync(string id, string? note, string? reporterUserId, CancellationToken ct = default)
     {
-        lock (_lock)
+        await _semaphore.WaitAsync(ct).ConfigureAwait(false);
+        try
         {
-            var entry = ReadUnlocked(id);
+            var entry = await ReadUnlockedAsync(id, ct).ConfigureAwait(false);
             if (entry is null)
                 return null;
             if (!string.Equals(entry.Status, DemoStatuses.Public, StringComparison.OrdinalIgnoreCase))
@@ -544,23 +576,29 @@ public sealed class DemoCatalogService
                 _log.LogWarning("Demo {Id} auto-removed after {N} reports", id, entry.ReportCount);
             }
 
-            SaveUnlocked(entry);
+            await SaveUnlockedAsync(entry, ct).ConfigureAwait(false);
             return entry;
+        }
+        finally
+        {
+            _semaphore.Release();
         }
     }
 
-    public DemoEntry? SetStatus(
+    public async Task<DemoEntry?> SetStatusAsync(
         string id,
         string status,
         string? reviewerUserId,
-        string? reviewNote)
+        string? reviewNote,
+        CancellationToken ct = default)
     {
         if (!DemoStatuses.IsKnown(status))
             throw new InvalidOperationException($"Unknown status: {status}");
 
-        lock (_lock)
+        await _semaphore.WaitAsync(ct).ConfigureAwait(false);
+        try
         {
-            var entry = ReadUnlocked(id);
+            var entry = await ReadUnlockedAsync(id, ct).ConfigureAwait(false);
             if (entry is null)
                 return null;
 
@@ -570,38 +608,48 @@ public sealed class DemoCatalogService
             if (!string.IsNullOrWhiteSpace(reviewNote))
                 entry.ReviewNote = reviewNote.Trim();
 
-            SaveUnlocked(entry);
+            await SaveUnlockedAsync(entry, ct).ConfigureAwait(false);
             _log.LogInformation(
                 "Demo {Id} → {Status} by {Reviewer}",
                 id, entry.Status, reviewerUserId);
             return entry;
         }
+        finally
+        {
+            _semaphore.Release();
+        }
     }
 
     /// <summary>Hard-delete every demo created by <paramref name="userId"/> (admin cascade).</summary>
-    public int HardDeleteAllByUser(string? userId)
+    public async Task<int> HardDeleteAllByUserAsync(string? userId, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(userId)) return 0;
         List<string> ids;
-        lock (_lock)
+        await _semaphore.WaitAsync(ct).ConfigureAwait(false);
+        try
         {
-            ids = LoadAllUnlocked()
+            var all = await LoadAllUnlockedAsync(ct).ConfigureAwait(false);
+            ids = all
                 .Where(e => string.Equals(e.CreatedBy, userId, StringComparison.OrdinalIgnoreCase))
                 .Select(e => e.Id)
                 .ToList();
         }
+        finally
+        {
+            _semaphore.Release();
+        }
         var n = 0;
         foreach (var id in ids)
         {
-            if (Delete(id, requesterUserId: null, isAdmin: true))
+            if (await DeleteAsync(id, requesterUserId: null, isAdmin: true, ct: ct).ConfigureAwait(false))
                 n++;
         }
         return n;
     }
 
-    public bool Delete(string id, string? requesterUserId, bool isAdmin)
+    public async Task<bool> DeleteAsync(string id, string? requesterUserId, bool isAdmin, CancellationToken ct = default)
     {
-        var entry = TryGet(id);
+        var entry = await TryGetAsync(id, ct).ConfigureAwait(false);
         if (entry is null) return false;
         if (!isAdmin &&
             !string.Equals(entry.CreatedBy, requesterUserId, StringComparison.OrdinalIgnoreCase))
@@ -611,7 +659,8 @@ public sealed class DemoCatalogService
         // Hard-delete for admin always; owner can hard-delete their own pending/rejected.
         if (isAdmin || !string.Equals(entry.Status, DemoStatuses.Public, StringComparison.OrdinalIgnoreCase))
         {
-            lock (_lock)
+            await _semaphore.WaitAsync(ct).ConfigureAwait(false);
+            try
             {
                 var dir = Path.Combine(DemosDir, id);
                 if (!Directory.Exists(dir)) return false;
@@ -626,10 +675,14 @@ public sealed class DemoCatalogService
                     return false;
                 }
             }
+            finally
+            {
+                _semaphore.Release();
+            }
         }
 
         // Public demos: owner request → removed (hidden), admin can hard-delete later.
-        return SetStatus(id, DemoStatuses.Removed, requesterUserId, "Removed by publisher") is not null;
+        return (await SetStatusAsync(id, DemoStatuses.Removed, requesterUserId, "Removed by publisher", ct).ConfigureAwait(false)) is not null;
     }
 
     public static bool LooksLikeMp4(string path)
@@ -689,16 +742,18 @@ public sealed class DemoCatalogService
     /// Record a YouTube upload attempt/result. On success, deletes the local movie.mp4 (server
     /// footprint goal) — the entry stays valid without it once <see cref="DemoEntry.YoutubeId"/> is set.
     /// </summary>
-    public DemoEntry? SetYouTubeUploadStatus(
+    public async Task<DemoEntry?> SetYouTubeUploadStatusAsync(
         string id,
         string status,
         string? youtubeId = null,
         string? youtubeUrl = null,
-        string? error = null)
+        string? error = null,
+        CancellationToken ct = default)
     {
-        lock (_lock)
+        await _semaphore.WaitAsync(ct).ConfigureAwait(false);
+        try
         {
-            var entry = ReadUnlocked(id);
+            var entry = await ReadUnlockedAsync(id, ct).ConfigureAwait(false);
             if (entry is null)
                 return null;
 
@@ -716,7 +771,7 @@ public sealed class DemoCatalogService
                 entry.YoutubeUploadError = null;
             }
 
-            SaveUnlocked(entry);
+            await SaveUnlockedAsync(entry, ct).ConfigureAwait(false);
 
             if (string.Equals(status, "done", StringComparison.OrdinalIgnoreCase))
             {
@@ -739,19 +794,24 @@ public sealed class DemoCatalogService
 
             return entry;
         }
+        finally
+        {
+            _semaphore.Release();
+        }
     }
 
     /// <summary>
     /// Admin: put an existing YouTube video on the public gallery without uploading a local MP4.
     /// YouTube remains the source of truth for playback.
     /// </summary>
-    public DemoEntry RegisterFromYouTube(
+    public async Task<DemoEntry> RegisterFromYouTubeAsync(
         string youtubeIdOrUrl,
         string title,
         string? description,
         string? createdBy,
         string? projectId = null,
-        bool fromChannel = false)
+        bool fromChannel = false,
+        CancellationToken ct = default)
     {
         var ytId = ExtractYouTubeVideoId(youtubeIdOrUrl)
             ?? throw new InvalidOperationException(
@@ -759,10 +819,12 @@ public sealed class DemoCatalogService
         if (string.IsNullOrWhiteSpace(title))
             throw new InvalidOperationException("Title is required.");
 
-        lock (_lock)
+        await _semaphore.WaitAsync(ct).ConfigureAwait(false);
+        try
         {
             // Match by YouTube id — channel is playback SoT; studio fields (category/tags/project) stay local.
-            var existing = LoadAllUnlocked()
+            var all = await LoadAllUnlockedAsync(ct).ConfigureAwait(false);
+            var existing = all
                 .FirstOrDefault(e =>
                     string.Equals(e.YoutubeId, ytId, StringComparison.OrdinalIgnoreCase));
             if (existing is not null)
@@ -780,7 +842,7 @@ public sealed class DemoCatalogService
                     existing.ProjectId = projectId.Trim();
                 if (string.IsNullOrWhiteSpace(existing.CreatedBy) && !string.IsNullOrWhiteSpace(createdBy))
                     existing.CreatedBy = createdBy;
-                SaveUnlocked(existing);
+                await SaveUnlockedAsync(existing, ct).ConfigureAwait(false);
                 _log.LogInformation("Demo {Id} matched YouTube {Yt} (title refreshed from channel)", existing.Id, ytId);
                 return existing;
             }
@@ -798,27 +860,29 @@ public sealed class DemoCatalogService
             entry.YoutubeUrl = $"https://www.youtube.com/watch?v={ytId}";
             entry.YoutubeUploadStatus = "done";
             entry.Status = DemoStatuses.Public;
-            SaveUnlocked(entry);
+            await SaveUnlockedAsync(entry, ct).ConfigureAwait(false);
             _log.LogInformation(
                 "Demo {Id} registered from YouTube {Yt} title={Title} by={User}",
                 id, ytId, entry.Title, createdBy);
             return entry;
         }
+        finally
+        {
+            _semaphore.Release();
+        }
     }
 
     /// <summary>
-    /// After a channel sync: hide public demos whose YouTube id is no longer on the channel
-    /// (stale manual entries / renamed ghosts). Studio category/tags kept if they return later.
-    /// </summary>
-    /// <summary>
     /// Undo accidental gallery wipe when sync listed 0 videos (channel-hidden only).
     /// </summary>
-    public int RestoreChannelHiddenDemos()
+    public async Task<int> RestoreChannelHiddenDemosAsync(CancellationToken ct = default)
     {
         var restored = 0;
-        lock (_lock)
+        await _semaphore.WaitAsync(ct).ConfigureAwait(false);
+        try
         {
-            foreach (var e in LoadAllUnlocked())
+            var all = await LoadAllUnlockedAsync(ct).ConfigureAwait(false);
+            foreach (var e in all)
             {
                 if (!string.Equals(e.Status, DemoStatuses.Removed, StringComparison.OrdinalIgnoreCase))
                     continue;
@@ -831,9 +895,13 @@ public sealed class DemoCatalogService
                 e.Status = DemoStatuses.Public;
                 e.ReviewNote = null;
                 e.YoutubeUploadStatus = "done";
-                SaveUnlocked(e);
+                await SaveUnlockedAsync(e, ct).ConfigureAwait(false);
                 restored++;
             }
+        }
+        finally
+        {
+            _semaphore.Release();
         }
         if (restored > 0)
             _log.LogInformation("Restored {N} gallery demos previously hidden by empty channel sync", restored);
@@ -845,9 +913,10 @@ public sealed class DemoCatalogService
     /// never hide in that case. A successful empty list means the channel has no videos; hide all
     /// gallery rows that pointed at channel ids no longer present.
     /// </param>
-    public int HideDemosNotOnChannel(
+    public async Task<int> HideDemosNotOnChannelAsync(
         IReadOnlyCollection<string> channelYoutubeIds,
-        bool listIsAuthoritative = true)
+        bool listIsAuthoritative = true,
+        CancellationToken ct = default)
     {
         if (!listIsAuthoritative)
         {
@@ -858,11 +927,12 @@ public sealed class DemoCatalogService
         var set = new HashSet<string>(
             (channelYoutubeIds ?? Array.Empty<string>()).Where(s => !string.IsNullOrWhiteSpace(s)),
             StringComparer.OrdinalIgnoreCase);
-        // set.Count == 0 is valid: last video deleted from channel → hide remaining gallery rows.
         var hidden = 0;
-        lock (_lock)
+        await _semaphore.WaitAsync(ct).ConfigureAwait(false);
+        try
         {
-            foreach (var e in LoadAllUnlocked())
+            var all = await LoadAllUnlockedAsync(ct).ConfigureAwait(false);
+            foreach (var e in all)
             {
                 if (string.IsNullOrWhiteSpace(e.YoutubeId))
                     continue;
@@ -873,9 +943,13 @@ public sealed class DemoCatalogService
                     continue;
                 e.Status = DemoStatuses.Removed;
                 e.ReviewNote = "Hidden: video not on connected Page to Movie channel";
-                SaveUnlocked(e);
+                await SaveUnlockedAsync(e, ct).ConfigureAwait(false);
                 hidden++;
             }
+        }
+        finally
+        {
+            _semaphore.Release();
         }
         if (hidden > 0)
             _log.LogInformation("Hid {N} gallery demos not present on YouTube channel", hidden);
@@ -886,9 +960,10 @@ public sealed class DemoCatalogService
     /// Upsert public gallery entries for every channel upload. Returns counts.
     /// Skips videos already removed/rejected intentionally? — re-public if still on channel.
     /// </summary>
-    public (int Added, int Updated, int Total) SyncFromChannelUploads(
+    public async Task<(int Added, int Updated, int Total)> SyncFromChannelUploadsAsync(
         IReadOnlyList<YouTubeAuthService.ChannelUploadVideo> videos,
-        string? createdBy = "youtube-channel")
+        string? createdBy = "youtube-channel",
+        CancellationToken ct = default)
     {
         if (videos is null || videos.Count == 0)
             return (0, 0, 0);
@@ -900,17 +975,24 @@ public sealed class DemoCatalogService
             if (string.IsNullOrWhiteSpace(v.VideoId))
                 continue;
             bool existed;
-            lock (_lock)
+            await _semaphore.WaitAsync(ct).ConfigureAwait(false);
+            try
             {
-                existed = LoadAllUnlocked().Any(e =>
+                var all = await LoadAllUnlockedAsync(ct).ConfigureAwait(false);
+                existed = all.Any(e =>
                     string.Equals(e.YoutubeId, v.VideoId, StringComparison.OrdinalIgnoreCase));
             }
-            RegisterFromYouTube(
+            finally
+            {
+                _semaphore.Release();
+            }
+            await RegisterFromYouTubeAsync(
                 v.VideoId,
                 v.Title,
                 v.Description,
                 createdBy,
-                fromChannel: true);
+                fromChannel: true,
+                ct: ct).ConfigureAwait(false);
             if (existed) updated++;
             else added++;
         }
@@ -933,9 +1015,9 @@ public sealed class DemoCatalogService
     /// skipped. Returns the number of records rewritten. Generic on purpose — any user's stale email
     /// record is healed, nothing story- or account-specific is hardcoded.
     /// </summary>
-    public async Task<int> MigrateEmailCreatedByAsync(Func<string, string?> resolveCanonicalIdByEmail, CancellationToken ct = default)
+    public async Task<int> MigrateEmailCreatedByAsync(Func<string, CancellationToken, Task<string?>> resolveCanonicalIdByEmailAsync, CancellationToken ct = default)
     {
-        ArgumentNullException.ThrowIfNull(resolveCanonicalIdByEmail);
+        ArgumentNullException.ThrowIfNull(resolveCanonicalIdByEmailAsync);
         await _semaphore.WaitAsync(ct).ConfigureAwait(false);
         try
         {
@@ -953,7 +1035,7 @@ public sealed class DemoCatalogService
                     if (entry is null || string.IsNullOrEmpty(oldBy) || !oldBy.Contains('@'))
                         continue;
 
-                    var canonical = resolveCanonicalIdByEmail(oldBy)?.Trim();
+                    var canonical = (await resolveCanonicalIdByEmailAsync(oldBy, ct).ConfigureAwait(false))?.Trim();
                     if (string.IsNullOrEmpty(canonical) ||
                         canonical.Contains('@') ||
                         string.Equals(canonical, oldBy, StringComparison.OrdinalIgnoreCase))
@@ -979,10 +1061,10 @@ public sealed class DemoCatalogService
         }
     }
 
-    public int MigrateEmailCreatedBy(Func<string, string?> resolveCanonicalIdByEmail) =>
-        MigrateEmailCreatedByAsync(resolveCanonicalIdByEmail).GetAwaiter().GetResult();
+    public Task<int> MigrateEmailCreatedByAsync(Func<string, string?> resolveCanonicalIdByEmail, CancellationToken ct = default) =>
+        MigrateEmailCreatedByAsync((email, _) => Task.FromResult(resolveCanonicalIdByEmail(email)), ct);
 
-    private List<DemoEntry> LoadAllUnlocked()
+    private async Task<List<DemoEntry>> LoadAllUnlockedAsync(CancellationToken ct = default)
     {
         if (!Directory.Exists(DemosDir))
             return new List<DemoEntry>();
@@ -993,7 +1075,7 @@ public sealed class DemoCatalogService
             try
             {
                 var id = Path.GetFileName(dir);
-                var entry = ReadUnlocked(id);
+                var entry = await ReadUnlockedAsync(id, ct).ConfigureAwait(false);
                 if (entry is not null)
                     list.Add(entry);
             }
@@ -1039,9 +1121,6 @@ public sealed class DemoCatalogService
         }
     }
 
-    private DemoEntry? ReadUnlocked(string id) =>
-        ReadUnlockedAsync(id).GetAwaiter().GetResult();
-
     private async Task SaveUnlockedAsync(DemoEntry entry, CancellationToken ct = default)
     {
         var dir = Path.Combine(DemosDir, entry.Id);
@@ -1051,9 +1130,6 @@ public sealed class DemoCatalogService
             JsonSerializer.Serialize(entry, JsonOpts) + "\n",
             ct).ConfigureAwait(false);
     }
-
-    private void SaveUnlocked(DemoEntry entry) =>
-        SaveUnlockedAsync(entry).GetAwaiter().GetResult();
 
     private static async Task WriteMetaAsync(string dir, DemoEntry entry, CancellationToken ct) =>
         await File.WriteAllTextAsync(

@@ -58,8 +58,8 @@ public class DemoCatalogStarsTests
                 acceptedGuidelines: true);
 
             // Act: Update stats with YouTube likes and views
-            demos.SetYouTubeStats(entry.Id, likeCount: 42, viewCount: 150);
-            var updated = demos.TryGet(entry.Id);
+            await demos.SetYouTubeStatsAsync(entry.Id, likeCount: 42, viewCount: 150);
+            var updated = await demos.TryGetAsync(entry.Id);
 
             // Assert
             Assert.NotNull(updated);

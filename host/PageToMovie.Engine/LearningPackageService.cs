@@ -142,14 +142,6 @@ public static class LearningPackageService
         };
     }
 
-    public static LearningPackageResult CreateFromProject(
-        ProjectStore store,
-        string projectId,
-        string? workspaceRoot = null,
-        string? outcome = null,
-        IReadOnlyList<string>? failureTags = null) =>
-        CreateFromProjectAsync(store, projectId, workspaceRoot, outcome, failureTags).GetAwaiter().GetResult();
-
     private static async Task<YouTubeUploadInfo?> TryReadYoutubeAsync(string projectDir, CancellationToken ct = default)
     {
         var path = Path.Combine(projectDir, "assets", "youtube_upload.json");
@@ -166,8 +158,6 @@ public static class LearningPackageService
             return null;
         }
     }
-
-    private static YouTubeUploadInfo? TryReadYoutube(string projectDir) => TryReadYoutubeAsync(projectDir).GetAwaiter().GetResult();
 }
 
 public sealed class LearningPackageResult

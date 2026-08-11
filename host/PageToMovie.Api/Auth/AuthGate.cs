@@ -104,7 +104,7 @@ public static class AuthGate
             {
                 foreach (var p in providers)
                 {
-                    if (keys.HasKey(user.UserId, p) || keys.HasKey(null, p))
+                    if (await keys.HasKeyAsync(user.UserId, p).ConfigureAwait(false) || await keys.HasKeyAsync(null, p).ConfigureAwait(false))
                         return null;
                 }
             }

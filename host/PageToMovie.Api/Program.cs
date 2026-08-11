@@ -317,9 +317,9 @@ static async Task<IResult> RunProjectVersionActionAsync(
 // Shared response shaping for the adaptation draft-edit endpoints (reskin / embellish / trim):
 // they all run a ScreenplayService.*DraftAsync, then map the shared DraftEditResult to the same
 // fail/success JSON and (on apply) auto-commit with an endpoint-specific tag.
-static IResult DraftEditResponse(
+static async Task<IResult> DraftEditResponseAsync(
     ScreenplayService.DraftEditResult result, string id, string commitTag,
-    ProjectStore store, IUserContext user)
+    ProjectStore store, IUserContext user, CancellationToken ct = default)
 {
     if (!result.Ok)
         return Results.BadRequest(new { ok = false, error = result.Error });
@@ -336,7 +336,7 @@ static IResult DraftEditResponse(
         sceneCountBefore = result.SceneCountBefore,
         sceneCountAfter = result.SceneCountAfter,
         screenplay = result.Status,
-        adaptation = result.Applied ? store.GetAdaptationStatus(id, user.UserId) : null,
+        adaptation = result.Applied ? await store.GetAdaptationStatusAsync(id, user.UserId, ct) : null,
     });
 }
 
@@ -682,13 +682,13 @@ app.Use(async (context, next) =>
     // Request header override is treated as xAI/Grok (legacy X-Api-Key).
     var xai = !string.IsNullOrWhiteSpace(user?.RequestApiKey)
         ? user!.RequestApiKey
-        : keyProvider?.GetKey(uid, "grok");
-    var gemini = keyProvider?.GetKey(uid, "gemini");
-    var anthropic = keyProvider?.GetKey(uid, "anthropic");
-    var fal = keyProvider?.GetKey(uid, "fal");
-    var suno = keyProvider?.GetKey(uid, "suno");
-    var aimusicapi = keyProvider?.GetKey(uid, "aimusicapi");
-    var elevenlabs = keyProvider?.GetKey(uid, "elevenlabs");
+        : (keyProvider is not null ? await keyProvider.GetKeyAsync(uid, "grok") : null);
+    var gemini = keyProvider is not null ? await keyProvider.GetKeyAsync(uid, "gemini") : null;
+    var anthropic = keyProvider is not null ? await keyProvider.GetKeyAsync(uid, "anthropic") : null;
+    var fal = keyProvider is not null ? await keyProvider.GetKeyAsync(uid, "fal") : null;
+    var suno = keyProvider is not null ? await keyProvider.GetKeyAsync(uid, "suno") : null;
+    var aimusicapi = keyProvider is not null ? await keyProvider.GetKeyAsync(uid, "aimusicapi") : null;
+    var elevenlabs = keyProvider is not null ? await keyProvider.GetKeyAsync(uid, "elevenlabs") : null;
     using (ApiKeyScope.Push(new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
     {
         ["grok"] = xai,
@@ -1125,43 +1125,46 @@ app.MapGet("/api/admin/book-cache", async (
 
 // ── Admin config + actions (Phase D) ────────────────────────────────────────
 // ---- Admin Learning (P0–P4) ----
-app.MapGet("/api/admin/learning/insights", (
+app.MapGet("/api/admin/learning/insights", async (
     IUserContext user,
     ReviewEventStore learning,
     string? projectId,
-    int? take) =>
+    int? take,
+    CancellationToken ct) =>
 {
     if (!user.IsAdmin)
         return Results.Json(new { ok = false, error = "admin role required" },
             statusCode: StatusCodes.Status403Forbidden);
-    var insights = learning.BuildInsights(projectId, recentTake: take ?? 40);
+    var insights = await learning.BuildInsightsAsync(projectId, recentTake: take ?? 40, ct: ct);
     return Results.Ok(new { ok = true, insights });
 });
 
-app.MapGet("/api/admin/learning/events", (
+app.MapGet("/api/admin/learning/events", async (
     IUserContext user,
     ReviewEventStore learning,
     string? projectId,
     string? type,
     string? category,
-    int? take) =>
+    int? take,
+    CancellationToken ct) =>
 {
     if (!user.IsAdmin)
         return Results.Json(new { ok = false, error = "admin role required" },
             statusCode: StatusCodes.Status403Forbidden);
-    var events = learning.Query(projectId, type, category, take: take ?? 100);
+    var events = await learning.QueryAsync(projectId, type, category, take: take ?? 100, ct: ct);
     return Results.Ok(new { ok = true, events });
 });
 
-app.MapGet("/api/admin/learning/review-comparison", (
+app.MapGet("/api/admin/learning/review-comparison", async (
     IUserContext user,
     ReviewEventStore learning,
-    string? projectId) =>
+    string? projectId,
+    CancellationToken ct) =>
 {
     if (!user.IsAdmin)
         return Results.Json(new { ok = false, error = "admin role required" },
             statusCode: StatusCodes.Status403Forbidden);
-    var comparison = learning.GetReviewComparison(projectId);
+    var comparison = await learning.GetReviewComparisonAsync(projectId, ct: ct);
     return Results.Ok(comparison);
 });
 
@@ -1282,29 +1285,31 @@ app.MapPost("/api/admin/learning/proposal-checklist/accept-matching", (
     }
 });
 
-app.MapGet("/api/admin/learning/project-rules/{projectId}", (
+app.MapGet("/api/admin/learning/project-rules/{projectId}", async (
     string projectId,
     IUserContext user,
-    ProjectRulesService rules) =>
+    ProjectRulesService rules,
+    CancellationToken ct) =>
 {
     if (!user.IsAdmin)
         return Results.Json(new { ok = false, error = "admin role required" },
             statusCode: StatusCodes.Status403Forbidden);
-    return Results.Ok(new { ok = true, projectId, rules = rules.Load(projectId) });
+    return Results.Ok(new { ok = true, projectId, rules = await rules.LoadAsync(projectId, ct) });
 });
 
-app.MapPost("/api/admin/learning/project-rules/{projectId}/suggest", (
+app.MapPost("/api/admin/learning/project-rules/{projectId}/suggest", async (
     string projectId,
     IUserContext user,
     ProjectRulesService rules,
-    int? minFails) =>
+    int? minFails,
+    CancellationToken ct) =>
 {
     if (!user.IsAdmin)
         return Results.Json(new { ok = false, error = "admin role required" },
             statusCode: StatusCodes.Status403Forbidden);
     try
     {
-        var doc = rules.SuggestFromFails(projectId, minFails ?? ProjectRulesService.DefaultMinFailsForSuggest);
+        var doc = await rules.SuggestFromFailsAsync(projectId, minFails ?? ProjectRulesService.DefaultMinFailsForSuggest, ct);
         return Results.Ok(new { ok = true, projectId, rules = doc });
     }
     catch (Exception ex)
@@ -1313,12 +1318,13 @@ app.MapPost("/api/admin/learning/project-rules/{projectId}/suggest", (
     }
 });
 
-app.MapPost("/api/admin/learning/project-rules/{projectId}/approve", (
+app.MapPost("/api/admin/learning/project-rules/{projectId}/approve", async (
     string projectId,
     ApproveProjectRuleRequest body,
     IUserContext user,
     ProjectRulesService rules,
-    ProposalChecklistService checklist) =>
+    ProposalChecklistService checklist,
+    CancellationToken ct) =>
 {
     if (!user.IsAdmin)
         return Results.Json(new { ok = false, error = "admin role required" },
@@ -1326,14 +1332,14 @@ app.MapPost("/api/admin/learning/project-rules/{projectId}/approve", (
     try
     {
         // Capture text before approve (suggestion removed from pending)
-        var before = rules.Load(projectId);
+        var before = await rules.LoadAsync(projectId, ct);
         var sug = before.Pending.FirstOrDefault(p =>
             string.Equals(p.Id, body.SuggestionId, StringComparison.OrdinalIgnoreCase));
         var approvedText = !string.IsNullOrWhiteSpace(body.Text)
             ? body.Text!.Trim()
             : (sug?.Text ?? "").Trim();
 
-        var doc = rules.Approve(projectId, body.SuggestionId, body.Text, user.UserId);
+        var doc = await rules.ApproveAsync(projectId, body.SuggestionId, body.Text, user.UserId, ct);
 
         // Keep admin checklist in sync (theme match) so Propose doesn't look "reset"
         ProposalChecklistDocument? checklistDoc = null;
@@ -1360,18 +1366,19 @@ app.MapPost("/api/admin/learning/project-rules/{projectId}/approve", (
     }
 });
 
-app.MapPost("/api/admin/learning/project-rules/{projectId}/reject", (
+app.MapPost("/api/admin/learning/project-rules/{projectId}/reject", async (
     string projectId,
     RejectProjectRuleRequest body,
     IUserContext user,
-    ProjectRulesService rules) =>
+    ProjectRulesService rules,
+    CancellationToken ct) =>
 {
     if (!user.IsAdmin)
         return Results.Json(new { ok = false, error = "admin role required" },
             statusCode: StatusCodes.Status403Forbidden);
     try
     {
-        var doc = rules.Reject(projectId, body.SuggestionId);
+        var doc = await rules.RejectAsync(projectId, body.SuggestionId, ct);
         return Results.Ok(new { ok = true, projectId, rules = doc });
     }
     catch (Exception ex)
@@ -2057,10 +2064,10 @@ app.MapPost("/api/admin/users/delete", async (
         }
     }
 
-    var deletedDemos = demos.HardDeleteAllByUser(target.UserId);
+    var deletedDemos = await demos.HardDeleteAllByUserAsync(target.UserId, ct);
     // Also match demos stored under username if different from user_id.
     if (!string.Equals(target.UserId, target.Username, StringComparison.OrdinalIgnoreCase))
-        deletedDemos += demos.HardDeleteAllByUser(target.Username);
+        deletedDemos += await demos.HardDeleteAllByUserAsync(target.Username, ct);
 
     var removed = await userDb.HardDeleteUserAsync(target.UserId, ct);
     if (!removed)
@@ -2401,8 +2408,10 @@ app.MapPost("/api/jobs/{jobId}/cancel", async (string jobId, FilmJobService jobS
     return Results.Ok(new { ok = true, job = jobService.GetJob(jobId) });
 });
 
-app.MapGet("/health", (ProjectStore store, IOptions<PageToMovieOptions> opts, IUserContext user, IUserApiKeyProvider keyProvider) =>
-    Results.Ok(new
+app.MapGet("/health", async (ProjectStore store, IOptions<PageToMovieOptions> opts, IUserContext user, IUserApiKeyProvider keyProvider) =>
+{
+    var hasKey = await keyProvider.HasKeyAsync(user.UserId);
+    return Results.Ok(new
     {
         ok = true,
         service = "PageToMovie.Api",
@@ -2411,11 +2420,12 @@ app.MapGet("/health", (ProjectStore store, IOptions<PageToMovieOptions> opts, IU
         useFakes = opts.Value.UseFakes || useFakes,
         enableReadCaches = store.ReadCachesEnabled,
         capacity = opts.Value.Capacity,
-        xaiConfigured = keyProvider.HasKey(user.UserId) || (opts.Value.AllowServerApiKeyFallback && !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("XAI_API_KEY"))) || useFakes,
-        xaiKeyPresent = keyProvider.HasKey(user.UserId) || (opts.Value.AllowServerApiKeyFallback && !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("XAI_API_KEY"))),
+        xaiConfigured = hasKey || (opts.Value.AllowServerApiKeyFallback && !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("XAI_API_KEY"))) || useFakes,
+        xaiKeyPresent = hasKey || (opts.Value.AllowServerApiKeyFallback && !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("XAI_API_KEY"))),
         userId = user.UserId,
         isAdmin = user.IsAdmin,
-    }));
+    });
+});
 
 app.MapGet("/api/capacity", (FilmJobService jobService, IOptions<PageToMovieOptions> opts) =>
 {
@@ -5407,11 +5417,11 @@ static string GuessImageContentType(string path) =>
     : "application/octet-stream";
 
 // ---- Adaptation (book / Stage 1 / Stage 2 status + jobs) ----
-app.MapGet("/api/projects/{id}/adaptation", (string id, ProjectStore store, IUserContext user) =>
+app.MapGet("/api/projects/{id}/adaptation", async (string id, ProjectStore store, IUserContext user, CancellationToken ct) =>
 {
     try
     {
-        var status = store.GetAdaptationStatus(id, user.UserId);
+        var status = await store.GetAdaptationStatusAsync(id, user.UserId, ct);
         return Results.Ok(new { ok = true, projectId = id, adaptation = status });
     }
     catch (Exception ex)
@@ -5512,7 +5522,7 @@ app.MapPost("/api/projects/{id}/adaptation/upload", async (
                 text, user.UserId, id, project?.VisibilityMode ?? ProjectVisibility.Private,
                 req.HttpContext.RequestAborted);
         }
-        var status = store.GetAdaptationStatus(id, user.UserId);
+        var status = await store.GetAdaptationStatusAsync(id, user.UserId, req.HttpContext.RequestAborted);
         return Results.Ok(new
         {
             ok = true,
@@ -5600,7 +5610,7 @@ app.MapGet("/api/book-artifacts/{artifactId}", async (
 /// Import a Fountain file as the editable screenplay draft (does not approve / Stage 1 yet).
 /// User reviews on Screenplay, then sign-off materialises Stage 1.
 /// </summary>
-app.MapPost("/api/projects/{id}/adaptation/import-fountain", async (string id, HttpRequest req, ProjectStore store, IUserContext user) =>
+app.MapPost("/api/projects/{id}/adaptation/import-fountain", async (string id, HttpRequest req, ProjectStore store, IUserContext user, CancellationToken ct) =>
 {
     try
     {
@@ -5608,18 +5618,18 @@ app.MapPost("/api/projects/{id}/adaptation/import-fountain", async (string id, H
         string? fileName = null;
         if (req.HasFormContentType)
         {
-            var form = await req.ReadFormAsync();
+            var form = await req.ReadFormAsync(ct);
             var file = form.Files.GetFile("file") ?? form.Files.FirstOrDefault();
             if (file is null || file.Length == 0)
                 return Results.BadRequest(new { ok = false, error = "file required" });
             fileName = file.FileName;
             using var reader = new StreamReader(file.OpenReadStream());
-            text = await reader.ReadToEndAsync();
+            text = await reader.ReadToEndAsync(ct);
         }
         else
         {
             using var reader = new StreamReader(req.Body);
-            text = await reader.ReadToEndAsync();
+            text = await reader.ReadToEndAsync(ct);
             fileName = ScreenplayService.CanonicalFileName;
         }
 
@@ -5630,7 +5640,7 @@ app.MapPost("/api/projects/{id}/adaptation/import-fountain", async (string id, H
         if (!result.Ok)
             return Results.BadRequest(new { ok = false, error = result.Error });
 
-        var status = store.GetAdaptationStatus(id, user.UserId);
+        var status = await store.GetAdaptationStatusAsync(id, user.UserId, ct);
         return Results.Ok(new
         {
             ok = true,
@@ -5651,7 +5661,7 @@ app.MapPost("/api/projects/{id}/adaptation/import-fountain", async (string id, H
 });
 
 /// <summary>Get the editable Fountain draft + status.</summary>
-app.MapGet("/api/projects/{id}/screenplay", (string id, ProjectStore store, IUserContext user) =>
+app.MapGet("/api/projects/{id}/screenplay", async (string id, ProjectStore store, IUserContext user, CancellationToken ct) =>
 {
     try
     {
@@ -5662,7 +5672,7 @@ app.MapGet("/api/projects/{id}/screenplay", (string id, ProjectStore store, IUse
             projectId = id,
             text = doc.Text,
             screenplay = doc.Status,
-            adaptation = store.GetAdaptationStatus(id, user.UserId),
+            adaptation = await store.GetAdaptationStatusAsync(id, user.UserId, ct),
         });
     }
     catch (Exception ex)
@@ -5717,7 +5727,7 @@ app.MapPut("/api/projects/{id}/screenplay", async (string id, HttpRequest req, P
             projectId = id,
             message = result.Message,
             screenplay = result.Status,
-            adaptation = store.GetAdaptationStatus(id, user.UserId),
+            adaptation = await store.GetAdaptationStatusAsync(id, user.UserId, req.HttpContext.RequestAborted),
         });
     }
     catch (Exception ex)
@@ -5807,7 +5817,7 @@ app.MapPost("/api/projects/{id}/screenplay/sign-off", async (
             hashChanged = result.HashChanged,
             message = result.Message,
             screenplay = result.Status,
-            adaptation = store.GetAdaptationStatus(id, user.UserId),
+            adaptation = await store.GetAdaptationStatusAsync(id, user.UserId, ct),
             cast,
         });
     }
@@ -5935,7 +5945,7 @@ app.MapPost("/api/projects/{id}/adaptation/reskin", async (
             medium = ProjectVisionMeta.GetAdaptationMediumPreference(dir);
 
         var result = await ScreenplayService.ReskinDraftAsync(store, id, medium, chat, ct: ct);
-        return DraftEditResponse(result, id, $"ptm:stage=reskin medium={medium}", store, user);
+        return await DraftEditResponseAsync(result, id, $"ptm:stage=reskin medium={medium}", store, user, ct);
     }
     catch (Exception ex)
     {
@@ -5964,7 +5974,7 @@ app.MapPost("/api/projects/{id}/adaptation/embellish", async (
         var medium = ProjectVisionMeta.GetAdaptationMediumPreference(await store.GetProjectDirAsync(id, ct));
 
         var result = await ScreenplayService.EmbellishDraftAsync(store, id, medium, chat, ct: ct);
-        return DraftEditResponse(result, id, "ptm:stage=embellish", store, user);
+        return await DraftEditResponseAsync(result, id, "ptm:stage=embellish", store, user, ct);
     }
     catch (Exception ex)
     {
@@ -5992,7 +6002,7 @@ app.MapPost("/api/projects/{id}/adaptation/trim", async (
         await store.RequireProjectAsync(id, ct);
 
         var result = await ScreenplayService.TrimDraftAsync(store, id, chat, ct: ct);
-        return DraftEditResponse(result, id, "ptm:stage=trim", store, user);
+        return await DraftEditResponseAsync(result, id, "ptm:stage=trim", store, user, ct);
     }
     catch (Exception ex)
     {
@@ -6064,7 +6074,7 @@ app.MapPut("/api/projects/{id}/film-runtime", async (
                 : snap.TargetMinutes == snap.NaturalMinutes
                     ? $"Target set to natural length (~{snap.NaturalMinutes} min)."
                     : $"Target set to {snap.TargetMinutes} min (longer than natural ~{snap.NaturalMinutes} min).",
-            adaptation = store.GetAdaptationStatus(id, user.UserId),
+            adaptation = await store.GetAdaptationStatusAsync(id, user.UserId, ct),
         });
     }
     catch (Exception ex)
@@ -6102,7 +6112,7 @@ app.MapPost("/api/projects/{id}/screenplay/from-book", async (
             projectId = id,
             message = result.Message,
             screenplay = result.Status,
-            adaptation = store.GetAdaptationStatus(id, user.UserId),
+            adaptation = await store.GetAdaptationStatusAsync(id, user.UserId, ct),
         });
     }
     catch (Exception ex)
@@ -7190,18 +7200,19 @@ app.MapGet("/api/projects/{id}/movie/wip", (string id, ProjectStore store, IUser
 });
 
 /// <summary>Create or reuse a public share link for the WIP movie (login required).</summary>
-app.MapPost("/api/projects/{id}/movie/wip/share", (
+app.MapPost("/api/projects/{id}/movie/wip/share", async (
     string id,
     IUserContext user,
     IOptions<PageToMovieOptions> opts,
     MediaShareService shares,
-    HttpContext http) =>
+    HttpContext http,
+    CancellationToken ct) =>
 {
     if (AuthGate.RequireLogin(user, opts) is { } denied)
         return denied;
     try
     {
-        var rec = shares.EnsureWipShare(id, user.UserId);
+        var rec = await shares.EnsureWipShareAsync(id, user.UserId, ct: ct);
         var path = $"/api/share/{Uri.EscapeDataString(rec.Token)}";
         var baseUrl = $"{http.Request.Scheme}://{http.Request.Host}";
         return Results.Ok(new
@@ -7359,9 +7370,9 @@ app.MapGet("/api/projects/{id}/media/file", async (
 });
 
 /// <summary>Public stream for a shared WIP (no login — token is the capability).</summary>
-app.MapGet("/api/share/{token}", (string token, MediaShareService shares, ProjectStore store) =>
+app.MapGet("/api/share/{token}", async (string token, MediaShareService shares, ProjectStore store, CancellationToken ct) =>
 {
-    var rec = shares.TryGet(token);
+    var rec = await shares.TryGetAsync(token, ct);
     if (rec is null)
         return Results.NotFound(new { ok = false, error = "Share link not found or expired" });
     if (!string.Equals(rec.Kind, "wip", StringComparison.OrdinalIgnoreCase))
@@ -7456,7 +7467,7 @@ app.MapGet("/api/demos", async (
     try { await channelSync.EnsureSyncedAsync(force: false, ct: ct); }
     catch { /* non-fatal for public list */ }
 
-    var list = demos.ListPublic(take ?? 50).ToList();
+    var list = (await demos.ListPublicAsync(take ?? 50, ct)).ToList();
     var ids = list.Select(d => d.Id).ToList();
     var counts = await upvotes.GetCountsAsync(ids, ct);
     var mine = await upvotes.GetUpvotedSetAsync(user.UserId, ids, ct);
@@ -7508,12 +7519,13 @@ app.MapGet("/api/demos", async (
 });
 
 /// <summary>Admin list of demos (reports/removed). Content approval queue is retired — YouTube is the gate.</summary>
-app.MapGet("/api/admin/demos", (
+app.MapGet("/api/admin/demos", async (
     DemoCatalogService demos,
     IUserContext user,
     IOptions<PageToMovieOptions> opts,
     string? status,
-    int? take) =>
+    int? take,
+    CancellationToken ct) =>
 {
     if (AuthGate.RequireLogin(user, opts) is { } denied)
         return denied;
@@ -7521,13 +7533,13 @@ app.MapGet("/api/admin/demos", (
         return Results.Json(new { ok = false, error = "Admin only" }, statusCode: StatusCodes.Status403Forbidden);
 
     var st = string.IsNullOrWhiteSpace(status) ? null : status.Trim();
-    var list = demos.List(take ?? 100, st);
+    var list = await demos.ListAsync(take ?? 100, st, ct);
     return Results.Ok(new
     {
         ok = true,
         status = st,
         demos = list.Select(DemoAdminDto),
-        pendingCount = demos.List(200, DemoCatalogService.DemoStatuses.Pending).Count,
+        pendingCount = (await demos.ListAsync(200, DemoCatalogService.DemoStatuses.Pending, ct)).Count,
     });
 });
 
@@ -7535,11 +7547,12 @@ app.MapGet("/api/admin/demos", (
 /// Admin: register an existing YouTube video on the public gallery (no local MP4 upload).
 /// Body: { youtubeIdOrUrl, title, description?, projectId? }
 /// </summary>
-app.MapPost("/api/admin/demos/from-youtube", (
+app.MapPost("/api/admin/demos/from-youtube", async (
     DemoCatalogService demos,
     IUserContext user,
     IOptions<PageToMovieOptions> opts,
-    RegisterYouTubeDemoRequest? body) =>
+    RegisterYouTubeDemoRequest? body,
+    CancellationToken ct) =>
 {
     if (AuthGate.RequireLogin(user, opts) is { } denied)
         return denied;
@@ -7549,12 +7562,13 @@ app.MapPost("/api/admin/demos/from-youtube", (
         return Results.BadRequest(new { ok = false, error = "youtubeIdOrUrl and title are required" });
     try
     {
-        var entry = demos.RegisterFromYouTube(
+        var entry = await demos.RegisterFromYouTubeAsync(
             body.YoutubeIdOrUrl,
             body.Title,
             body.Description,
             createdBy: user.UserId,
-            projectId: body.ProjectId);
+            projectId: body.ProjectId,
+            ct: ct);
         return Results.Ok(new
         {
             ok = true,
@@ -7614,7 +7628,7 @@ app.MapGet("/api/demos/{demoId}", async (
     IUserContext user,
     CancellationToken ct) =>
 {
-    var d = demos.TryGet(demoId);
+    var d = await demos.TryGetAsync(demoId, ct);
     if (d is null)
         return Results.NotFound(new { ok = false, error = "Demo not found" });
     if (!demos.CanUserViewVideo(d, user.UserId, user.IsAdmin))
@@ -7645,7 +7659,7 @@ app.MapPost("/api/demos/{demoId}/upvote", async (
 {
     if (AuthGate.RequireLogin(user, opts) is { } denied)
         return denied;
-    var d = demos.TryGet(demoId);
+    var d = await demos.TryGetAsync(demoId, ct);
     if (d is null || !demos.IsPubliclyStreamable(d))
         return Results.NotFound(new { ok = false, error = "Demo not found" });
     if (!string.IsNullOrWhiteSpace(d.CreatedBy) &&
@@ -7687,7 +7701,7 @@ app.MapPost("/api/demos/{demoId}/fork", async (
     if (await AuthGate.RequireTermsAcceptedAsync(user, userDb, opts) is { } denied)
         return denied;
 
-    var d = demos.TryGet(demoId);
+    var d = await demos.TryGetAsync(demoId, ct);
     if (d is null || !demos.IsPubliclyStreamable(d))
         return Results.NotFound(new { ok = false, error = "Demo not found" });
 
@@ -7748,7 +7762,7 @@ app.MapDelete("/api/demos/{demoId}/upvote", async (
 {
     if (AuthGate.RequireLogin(user, opts) is { } denied)
         return denied;
-    var d = demos.TryGet(demoId);
+    var d = await demos.TryGetAsync(demoId, ct);
     if (d is null || !demos.IsPubliclyStreamable(d))
         return Results.NotFound(new { ok = false, error = "Demo not found" });
 
@@ -7814,12 +7828,13 @@ app.MapPost("/api/projects/{id}/review/movie", async (
 /// Demo playback: redirect to YouTube when published there (source of truth).
 /// Local MP4 only while staging (owner/admin) before upload completes.
 /// </summary>
-app.MapGet("/api/demos/{demoId}/video", (
+app.MapGet("/api/demos/{demoId}/video", async (
     string demoId,
     DemoCatalogService demos,
-    IUserContext user) =>
+    IUserContext user,
+    CancellationToken ct) =>
 {
-    var d = demos.TryGet(demoId);
+    var d = await demos.TryGetAsync(demoId, ct);
     if (d is null)
         return Results.NotFound(new { ok = false, error = "Demo video not found" });
     if (!demos.CanUserViewVideo(d, user.UserId, user.IsAdmin))
@@ -8361,7 +8376,7 @@ app.MapPost("/api/demos", async (
             }, statusCode: StatusCodes.Status403Forbidden);
         }
 
-        demos.EnsureUserMayPublish(user.UserId, user.IsAdmin);
+        await demos.EnsureUserMayPublishAsync(user.UserId, user.IsAdmin, ct);
 
         DemoCatalogService.DemoEntry entry;
         var autoPublic = false;
@@ -8369,7 +8384,7 @@ app.MapPost("/api/demos", async (
 
         // Item 11: re-publish → attach new movie to existing public demo and V2 YouTube replace.
         var existingPublic = replaceExisting
-            ? demos.FindPublicDemoForProject(projectId!, user.UserId)
+            ? await demos.FindPublicDemoForProjectAsync(projectId!, user.UserId, ct)
             : null;
         var canReplace = existingPublic is not null
                          && !string.IsNullOrWhiteSpace(existingPublic.YoutubeId);
@@ -8391,7 +8406,7 @@ app.MapPost("/api/demos", async (
             }
 
             await using var ms = new MemoryStream();
-            await file.CopyToAsync(ms);
+            await file.CopyToAsync(ms, ct);
             var bytes = ms.ToArray();
             var sha = MediaRegistryService.HashBytes(bytes);
             autoPublic = await media.IsTrustedShaAsync(projectId!, sha);
@@ -8407,24 +8422,26 @@ app.MapPost("/api/demos", async (
                     madeForKids,
                     isAiSynthetic,
                     privacyStatus,
-                    tags);
+                    tags,
+                    ct);
                 replacedExisting = true;
                 // Always overwrite assets/movie_wip.mp4 on server disk so WIP movie matches the fresh cut!
                 try
                 {
                     var wipPath = Path.Combine(await store.GetProjectDirAsync(projectId!, ct), "assets", "movie_wip.mp4");
                     Directory.CreateDirectory(Path.GetDirectoryName(wipPath)!);
-                    await File.WriteAllBytesAsync(wipPath, bytes);
+                    await File.WriteAllBytesAsync(wipPath, bytes, ct);
                     try
                     {
-                        FilmBuildService.Register(
+                        await FilmBuildService.RegisterAsync(
                             store,
                             projectId!,
                             FilmBuildService.HashBytes(bytes),
                             durationSeconds: 0,
                             segments: null,
                             byteLength: bytes.Length,
-                            assemblyWhere: "server");
+                            assemblyWhere: "server",
+                            ct: ct);
                     }
                     catch { /* non-fatal film_build */ }
                 }
@@ -8432,8 +8449,8 @@ app.MapPost("/api/demos", async (
 
                 // Keep public; re-upload to YouTube in background (V2 replace).
                 if (!string.Equals(entry.Status, DemoCatalogService.DemoStatuses.Public, StringComparison.OrdinalIgnoreCase))
-                    demos.SetStatus(entry.Id, DemoCatalogService.DemoStatuses.Public, user.UserId, "Re-publish: YouTube V2 replace");
-                entry = demos.TryGet(entry.Id) ?? entry;
+                    await demos.SetStatusAsync(entry.Id, DemoCatalogService.DemoStatuses.Public, user.UserId, "Re-publish: YouTube V2 replace", ct);
+                entry = await demos.TryGetAsync(entry.Id, ct) ?? entry;
                 var demoIdForUpload = entry.Id;
                 _ = Task.Run(() => youTubePublisher.PublishAsync(demoIdForUpload, CancellationToken.None));
                 autoPublic = true; // already public / re-pointing gallery
@@ -8450,28 +8467,30 @@ app.MapPost("/api/demos", async (
                     madeForKids: madeForKids,
                     isAiSyntheticContent: isAiSynthetic,
                     privacyStatus: privacyStatus,
-                    tags: tags);
+                    tags: tags,
+                    ct: ct);
 
-                demos.SetStatus(entry.Id, DemoCatalogService.DemoStatuses.Public, user.UserId,
-                    "Auto-public: creator publish");
-                entry = demos.TryGet(entry.Id) ?? entry;
+                await demos.SetStatusAsync(entry.Id, DemoCatalogService.DemoStatuses.Public, user.UserId,
+                    "Auto-public: creator publish", ct);
+                entry = await demos.TryGetAsync(entry.Id, ct) ?? entry;
 
                 // Always overwrite assets/movie_wip.mp4 on server disk so WIP movie matches the fresh cut!
                 try
                 {
                     var wipPath = Path.Combine(await store.GetProjectDirAsync(projectId!, ct), "assets", "movie_wip.mp4");
                     Directory.CreateDirectory(Path.GetDirectoryName(wipPath)!);
-                    await File.WriteAllBytesAsync(wipPath, bytes);
+                    await File.WriteAllBytesAsync(wipPath, bytes, ct);
                     try
                     {
-                        FilmBuildService.Register(
+                        await FilmBuildService.RegisterAsync(
                             store,
                             projectId!,
                             FilmBuildService.HashBytes(bytes),
                             durationSeconds: 0,
                             segments: null,
                             byteLength: bytes.Length,
-                            assemblyWhere: "server");
+                            assemblyWhere: "server",
+                            ct: ct);
                     }
                     catch { /* non-fatal film_build */ }
                 }
@@ -8497,7 +8516,7 @@ app.MapPost("/api/demos", async (
         }
         else if (canReplace)
         {
-            entry = demos.AttachMovieFromWip(
+            entry = await demos.AttachMovieFromWipAsync(
                 existingPublic!.Id,
                 projectId!,
                 title ?? existingPublic.Title,
@@ -8505,18 +8524,19 @@ app.MapPost("/api/demos", async (
                 madeForKids,
                 isAiSynthetic,
                 privacyStatus,
-                tags);
+                tags,
+                ct);
             replacedExisting = true;
             if (!string.Equals(entry.Status, DemoCatalogService.DemoStatuses.Public, StringComparison.OrdinalIgnoreCase))
-                demos.SetStatus(entry.Id, DemoCatalogService.DemoStatuses.Public, user.UserId, "Re-publish: YouTube V2 replace");
-            entry = demos.TryGet(entry.Id) ?? entry;
+                await demos.SetStatusAsync(entry.Id, DemoCatalogService.DemoStatuses.Public, user.UserId, "Re-publish: YouTube V2 replace", ct);
+            entry = await demos.TryGetAsync(entry.Id, ct) ?? entry;
             var demoIdForUpload = entry.Id;
             _ = Task.Run(() => youTubePublisher.PublishAsync(demoIdForUpload, CancellationToken.None));
             autoPublic = true;
         }
         else
         {
-            entry = demos.PublishFromWip(
+            entry = await demos.PublishFromWipAsync(
                 projectId,
                 title ?? projectId,
                 description,
@@ -8525,7 +8545,8 @@ app.MapPost("/api/demos", async (
                 madeForKids: madeForKids,
                 isAiSyntheticContent: isAiSynthetic,
                 privacyStatus: privacyStatus,
-                tags: tags);
+                tags: tags,
+                ct: ct);
             // Always push to YouTube — gallery only lists films with a YouTube id.
             var demoIdForUpload = entry.Id;
             _ = Task.Run(() => youTubePublisher.PublishAsync(demoIdForUpload, CancellationToken.None));
@@ -8556,14 +8577,15 @@ app.MapPost("/api/demos", async (
 });
 
 /// <summary>Report a public demo (any viewer; optional login). Auto-removed after 3 reports.</summary>
-app.MapPost("/api/demos/{demoId}/report", (
+app.MapPost("/api/demos/{demoId}/report", async (
     string demoId,
     DemoReportRequest? body,
     DemoCatalogService demos,
-    IUserContext user) =>
+    IUserContext user,
+    CancellationToken ct) =>
 {
     var note = body?.Note;
-    var d = demos.Report(demoId, note, user.IsAuthenticated ? user.UserId : null);
+    var d = await demos.ReportAsync(demoId, note, user.IsAuthenticated ? user.UserId : null, ct);
     if (d is null)
         return Results.NotFound(new { ok = false, error = "Demo not found" });
     return Results.Ok(new
@@ -8578,13 +8600,14 @@ app.MapPost("/api/demos/{demoId}/report", (
 });
 
 /// <summary>Admin: approve / reject / re-queue a demo (no AI).</summary>
-app.MapPost("/api/admin/demos/{demoId}/review", (
+app.MapPost("/api/admin/demos/{demoId}/review", async (
     string demoId,
     DemoReviewRequest? body,
     DemoCatalogService demos,
     IUserContext user,
     IOptions<PageToMovieOptions> opts,
-    DemoYouTubePublisherService youTubePublisher) =>
+    DemoYouTubePublisherService youTubePublisher,
+    CancellationToken ct) =>
 {
     if (AuthGate.RequireLogin(user, opts) is { } denied)
         return denied;
@@ -8607,7 +8630,7 @@ app.MapPost("/api/admin/demos/{demoId}/review", (
 
     try
     {
-        var d = demos.SetStatus(demoId, status, user.UserId, body?.Note);
+        var d = await demos.SetStatusAsync(demoId, status, user.UserId, body?.Note, ct);
         if (d is null)
             return Results.NotFound(new { ok = false, error = "Demo not found" });
 
@@ -8625,15 +8648,16 @@ app.MapPost("/api/admin/demos/{demoId}/review", (
 });
 
 /// <summary>Delete a demo (owner or admin).</summary>
-app.MapDelete("/api/demos/{demoId}", (
+app.MapDelete("/api/demos/{demoId}", async (
     string demoId,
     IUserContext user,
     IOptions<PageToMovieOptions> opts,
-    DemoCatalogService demos) =>
+    DemoCatalogService demos,
+    CancellationToken ct) =>
 {
     if (AuthGate.RequireLogin(user, opts) is { } denied)
         return denied;
-    if (!demos.Delete(demoId, user.UserId, user.IsAdmin))
+    if (!await demos.DeleteAsync(demoId, user.UserId, user.IsAdmin, ct))
         return Results.NotFound(new { ok = false, error = "Demo not found or not allowed" });
     return Results.Ok(new { ok = true });
 });
@@ -8706,7 +8730,7 @@ app.MapPost("/api/projects/{id}/film-build", async (
         var sha = (body.StudioSha256 ?? "").Trim().ToLowerInvariant();
         if (string.IsNullOrWhiteSpace(sha) && body.HashFromServerWip == true)
         {
-            var docFromFile = FilmBuildService.RegisterFromWipFile(store, id, body.StudioPath);
+            var docFromFile = await FilmBuildService.RegisterFromWipFileAsync(store, id, body.StudioPath, ct);
             if (docFromFile is null)
                 return Results.BadRequest(new { ok = false, error = "WIP file not found to hash" });
             return Results.Ok(new { ok = true, filmId = docFromFile.FilmId, path = FilmBuildService.RelativePath, filmBuild = docFromFile });
@@ -8728,19 +8752,20 @@ app.MapPost("/api/projects/{id}/film-build", async (
             Sidecar = s.Sidecar,
         }).ToList();
 
-        var doc = FilmBuildService.Register(
+        var doc = await FilmBuildService.RegisterAsync(
             store,
             id,
             sha,
             body.DurationSeconds,
             segments,
             body.ByteLength,
-            string.IsNullOrWhiteSpace(body.AssemblyWhere) ? "client" : body.AssemblyWhere!);
+            string.IsNullOrWhiteSpace(body.AssemblyWhere) ? "client" : body.AssemblyWhere!,
+            ct);
 
         if (!string.IsNullOrWhiteSpace(body.StudioPath))
             doc.Studio.Path = body.StudioPath!;
 
-        FilmBuildService.Write(await store.GetProjectDirAsync(id, ct), doc);
+        await FilmBuildService.WriteAsync(await store.GetProjectDirAsync(id, ct), doc, ct);
 
         return Results.Ok(new
         {
@@ -8768,7 +8793,7 @@ app.MapGet("/api/projects/{id}/film-build", async (
     try
     {
         await store.RequireProjectAsync(id, ct);
-        var doc = FilmBuildService.TryRead(await store.GetProjectDirAsync(id, ct));
+        var doc = await FilmBuildService.TryReadAsync(await store.GetProjectDirAsync(id, ct), ct);
         if (doc is null)
             return Results.Ok(new { ok = true, exists = false, path = FilmBuildService.RelativePath });
         return Results.Ok(new { ok = true, exists = true, path = FilmBuildService.RelativePath, filmBuild = doc });
@@ -8808,7 +8833,7 @@ app.MapPost("/api/projects/{id}/learning-package", async (
         }
         catch { /* ignore */ }
 
-        var result = LearningPackageService.CreateFromProject(store, id, workspaceRoot: workspace);
+        var result = await LearningPackageService.CreateFromProjectAsync(store, id, workspaceRoot: workspace, ct: ct);
         return Results.Ok(new
         {
             ok = true,
@@ -8964,9 +8989,9 @@ try
 {
     var demosService = app.Services.GetRequiredService<DemoCatalogService>();
     var userDb = app.Services.GetRequiredService<UserDatabaseService>();
-    var migrated = demosService.MigrateEmailCreatedBy(email =>
+    var migrated = await demosService.MigrateEmailCreatedByAsync(async (email, ct) =>
     {
-        var u = userDb.GetUserByEmailAsync(email).GetAwaiter().GetResult();
+        var u = await userDb.GetUserByEmailAsync(email, ct).ConfigureAwait(false);
         if (u is null) return null;
         return string.IsNullOrWhiteSpace(u.UserId)
             ? (string.IsNullOrWhiteSpace(u.Username) ? null : u.Username.Trim())

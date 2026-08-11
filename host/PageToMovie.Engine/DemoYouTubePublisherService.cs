@@ -34,7 +34,7 @@ public sealed class DemoYouTubePublisherService
 
     public async Task PublishAsync(string demoId, CancellationToken ct = default)
     {
-        var entry = _demos.TryGet(demoId);
+        var entry = await _demos.TryGetAsync(demoId, ct).ConfigureAwait(false);
         if (entry is null)
             return;
 
@@ -56,7 +56,7 @@ public sealed class DemoYouTubePublisherService
         }
 
         var isReplace = oldYoutubeId is not null;
-        _demos.SetYouTubeUploadStatus(demoId, "uploading");
+        await _demos.SetYouTubeUploadStatusAsync(demoId, "uploading", ct: ct).ConfigureAwait(false);
 
         Google.Apis.YouTube.v3.YouTubeService? youtube;
         try
@@ -66,22 +66,22 @@ public sealed class DemoYouTubePublisherService
         catch (Exception ex)
         {
             _log.LogWarning(ex, "YouTube auth failed publishing demo {Id}", demoId);
-            _demos.SetYouTubeUploadStatus(demoId, "failed", error: ex.Message);
+            await _demos.SetYouTubeUploadStatusAsync(demoId, "failed", error: ex.Message, ct: ct).ConfigureAwait(false);
             return;
         }
 
         if (youtube is null)
         {
-            _demos.SetYouTubeUploadStatus(
+            await _demos.SetYouTubeUploadStatusAsync(
                 demoId, "failed",
-                error: "YouTube channel not connected (admin: connect it from Review).");
+                error: "YouTube channel not connected (admin: connect it from Review).", ct: ct).ConfigureAwait(false);
             return;
         }
 
         try
         {
             // Re-read entry for latest metadata (title/privacy) while uploading.
-            entry = _demos.TryGet(demoId) ?? entry;
+            entry = await _demos.TryGetAsync(demoId, ct).ConfigureAwait(false) ?? entry;
             // Channel is app-operated; default unlisted so gallery can embed without open YT browse.
             var privacy = entry.PrivacyStatus is "private" or "unlisted" or "public"
                 ? entry.PrivacyStatus
@@ -115,12 +115,12 @@ public sealed class DemoYouTubePublisherService
                 var err = result.Exception?.Message ?? $"Upload status: {result.Status}";
                 _log.LogWarning("YouTube upload incomplete for demo {Id}: {Error}", demoId, err);
                 // Keep previous YoutubeId on V2 failure so gallery still embeds the old video.
-                _demos.SetYouTubeUploadStatus(demoId, "failed", error: err);
+                await _demos.SetYouTubeUploadStatusAsync(demoId, "failed", error: err, ct: ct).ConfigureAwait(false);
                 return;
             }
 
             var url = $"https://youtu.be/{videoId}";
-            _demos.SetYouTubeUploadStatus(demoId, "done", videoId, url);
+            await _demos.SetYouTubeUploadStatusAsync(demoId, "done", videoId, url, ct: ct).ConfigureAwait(false);
             _log.LogInformation(
                 isReplace
                     ? "Demo {Id} YouTube V2 published: {Url} (replaced {Old})"
@@ -149,7 +149,7 @@ public sealed class DemoYouTubePublisherService
         catch (Exception ex)
         {
             _log.LogWarning(ex, "YouTube upload failed for demo {Id}", demoId);
-            _demos.SetYouTubeUploadStatus(demoId, "failed", error: ex.Message);
+            await _demos.SetYouTubeUploadStatusAsync(demoId, "failed", error: ex.Message, ct: ct).ConfigureAwait(false);
         }
     }
 
