@@ -1,0 +1,108 @@
+@page "/locations"
+@using PageToMovie.Core.Models
+@using Microsoft.AspNetCore.Components.Forms
+@inject EngineApiClient Engine
+@inject ActiveProjectState ActiveProject
+@inject NavigationManager Nav
+@inject IJSRuntime Js
+@implements IDisposable
+
+<PageTitle>Locations — PageToMovie</PageTitle>
+
+<div class="container-fluid py-3" data-testid="locations-page">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div>
+            <h1 class="h4 mb-0">Locations</h1>
+            <p class="small text-muted mb-0">Set design locks — describe by text or voice; lock a plate for video refs (next: generate).</p>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@_busy" @onclick="LoadAsync">Refresh</button>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(_error))
+    {
+        <div class="alert alert-danger py-2" data-testid="locations-error">@_error</div>
+    }
+    @if (!string.IsNullOrWhiteSpace(_message))
+    {
+        <div class="alert alert-success py-2">@_message</div>
+    }
+
+    @if (string.IsNullOrWhiteSpace(_projectId))
+    {
+        <div class="text-muted">Select a project on Home first.</div>
+    }
+    else if (_loading)
+    {
+        <div class="text-muted">Loading locations…</div>
+    }
+    else
+    {
+        <div class="row g-3">
+            <div class="col-12 col-md-4 col-lg-3">
+                <div class="list-group list-group-flush border rounded bg-dark-subtle" style="max-height: 70vh; overflow: auto;">
+                    @foreach (var loc in _locations)
+                    {
+                        var key = loc.Key;
+                        var active = string.Equals(key, _selectedKey, StringComparison.OrdinalIgnoreCase);
+                        <button type="button"
+                                class="list-group-item list-group-item-action bg-transparent text-start @(active ? "active" : "")"
+                                @onclick="() => SelectAsync(key)">
+                            <div class="fw-semibold text-uppercase small">@loc.DisplayName</div>
+                            <div class="small opacity-75">
+                                @(loc.Locked ? "Locked plate" : "No plate yet")
+                            </div>
+                        </button>
+                    }
+                    @if (_locations.Count == 0)
+                    {
+                        <div class="p-3 small text-muted">No locations yet. Approve a screenplay / rebuild cast so places are seeded.</div>
+                    }
+                </div>
+            </div>
+            <div class="col-12 col-md-8 col-lg-9">
+                @if (_selected is null)
+                {
+                    <div class="text-muted border rounded p-4">Select a location to edit its look.</div>
+                }
+                else
+                {
+                    <div class="card bg-dark border-secondary">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <span class="fw-bold text-info text-uppercase">@_selected.DisplayName</span>
+                            <span class="badge @(_selected.Locked ? "text-bg-success" : "text-bg-secondary")">
+                                @(_selected.Locked ? "Plate locked" : "Text only")
+                            </span>
+                        </div>
+                        <div class="card-body">
+                            @if (_selected.HasPreferred && !string.IsNullOrWhiteSpace(_plateUrl))
+                            {
+                                <div class="mb-3">
+                                    <img src="@_plateUrl" alt="Location plate" class="img-fluid rounded border border-secondary"
+                                         style="max-height: 220px; object-fit: contain;" />
+                                </div>
+                            }
+                            <LocationLookPanel Description="@_editDescription"
+                                               DescriptionChanged="OnDescriptionChanged"
+                                               VisualLock="@_editVisualLock"
+                                               VisualLockChanged="OnVisualLockChanged"
+                                               ImageEditInstruction="@_imageEditInstruction"
+                                               ImageEditInstructionChanged="OnImageEditChanged"
+                                               ShowImageEditInstruction="@_selected.HasPreferred"
+                                               Busy="@_busy"
+                                               Hint="@(_saveHint ?? "Text saves automatically · use Voice to dictate")"
+                                               TestId="loc-look-panel">
+                                <Actions>
+                                    <label class="btn btn-sm btn-outline-primary mb-0">
+                                        Upload & lock plate
+                                        <InputFile OnChange="OnUploadAsync" accept="image/*" class="d-none" disabled="@_busy" />
+                                    </label>
+                                    <span class="small text-muted">Generate-from-text ships next; storage + lock is live.</span>
+                                </Actions>
+                            </LocationLookPanel>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</div>

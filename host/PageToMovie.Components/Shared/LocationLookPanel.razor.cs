@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Components;
 
 namespace PageToMovie.Web.Components;
 
-public partial class CharacterLookPanel
+public partial class LocationLookPanel
 {
     [Parameter] public string Description { get; set; } = "";
     [Parameter] public EventCallback<string> DescriptionChanged { get; set; }
@@ -16,7 +16,7 @@ public partial class CharacterLookPanel
     [Parameter] public string? TestId { get; set; }
     [Parameter] public RenderFragment? Actions { get; set; }
 
-    private string Prefix => string.IsNullOrWhiteSpace(TestId) ? "look" : TestId!;
+    private string Prefix => string.IsNullOrWhiteSpace(TestId) ? "loc" : TestId!;
     private string DescFieldId => Prefix + "-desc";
     private string VlockFieldId => Prefix + "-vlock";
     private string ImgEditFieldId => Prefix + "-imgedit";

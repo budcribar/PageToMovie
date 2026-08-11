@@ -3244,6 +3244,81 @@ app.MapGet("/api/projects/{id}/locations", (string id, ProjectStore store) =>
     }
 });
 
+/// <summary>Serve locked location set plate (no-cache — plates are overwritten in place).</summary>
+app.MapGet("/api/projects/{projectId}/locations/{locKey}/ref", (HttpContext ctx, string projectId, string locKey, ProjectStore store) =>
+{
+    var path = store.ResolveLocationRefPath(projectId, locKey);
+    if (path is null)
+        return Results.NotFound(new { ok = false, error = "No locked location plate" });
+    return ServeCachedFile(ctx, path, "image/png", immutable: false);
+});
+
+/// <summary>Save location description / visual_lock into location_seed_tokens.</summary>
+app.MapPost("/api/projects/{id}/locations/{locKey}/look", async (
+    string id,
+    string locKey,
+    UpdateLocationLookRequest body,
+    ProjectStore store) =>
+{
+    try
+    {
+        locKey = Uri.UnescapeDataString(locKey ?? "");
+        if (string.IsNullOrWhiteSpace(locKey))
+            return Results.BadRequest(new { ok = false, error = "locKey required" });
+        var ok = store.UpdateLocationLook(id, locKey, body.Description, body.VisualLock);
+        if (!ok)
+            return Results.BadRequest(new { ok = false, error = "Could not update location look" });
+        var row = store.ListLocations(id).FirstOrDefault(l =>
+            string.Equals(l.Key, locKey, StringComparison.OrdinalIgnoreCase));
+        return Results.Ok(new
+        {
+            ok = true,
+            location = row,
+            description = body.Description,
+            visualLock = body.VisualLock,
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { ok = false, error = ex.Message });
+    }
+});
+
+/// <summary>Upload and lock an operator-provided location set plate.</summary>
+app.MapPost("/api/projects/{id}/locations/{locKey}/upload-ref", async (
+    string id,
+    string locKey,
+    HttpRequest req,
+    ProjectStore store) =>
+{
+    try
+    {
+        locKey = Uri.UnescapeDataString(locKey ?? "");
+        if (string.IsNullOrWhiteSpace(locKey))
+            return Results.BadRequest(new { ok = false, error = "locKey required" });
+        if (!req.HasFormContentType)
+            return Results.BadRequest(new { ok = false, error = "multipart form expected" });
+        var form = await req.ReadFormAsync();
+        var file = form.Files.GetFile("file") ?? form.Files.FirstOrDefault();
+        if (file is null || file.Length < 64)
+            return Results.BadRequest(new { ok = false, error = "Image file required" });
+        await using var ms = new MemoryStream();
+        await file.CopyToAsync(ms);
+        var path = store.LockLocationRefFromBytes(id, locKey, ms.ToArray());
+        return Results.Ok(new
+        {
+            ok = true,
+            message = "Locked location plate from your upload",
+            path = path,
+            url = $"/api/projects/{Uri.EscapeDataString(id)}/locations/{Uri.EscapeDataString(locKey)}/ref",
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { ok = false, error = ex.Message });
+    }
+});
+
 // immutable=true is only correct for files that can never change at the same URL (e.g. book
 // page images extracted once at import). Character ref/variant/book-ref images are overwritten
 // in place at the same path on regeneration — "public, max-age=31536000, immutable" would tell

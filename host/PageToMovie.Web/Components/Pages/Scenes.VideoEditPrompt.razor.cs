@@ -14,4 +14,7 @@ public partial class Scenes_VideoEditPrompt
 
     private Task OnPromptInput(ChangeEventArgs e) =>
         PromptChanged.InvokeAsync(e.Value?.ToString() ?? "");
+
+    private Task OnPromptVoice(string value) =>
+        PromptChanged.InvokeAsync(value ?? "");
 }

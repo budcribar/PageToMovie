@@ -3,12 +3,20 @@
 @if (Visible)
 {
     <DarkModalShell Visible="true" OnClose="OnClose">
-        <Title>✂️ AI edit clip</Title>
+        <Title>AI edit clip</Title>
         <ChildContent>
             <p class="small text-muted">
                 Describe the change — e.g. "change her jacket to red" or "make him wave instead of nod".
-                Saved as a new take; the current version stays in 🎬 Takes.
+                Speak or type. Saved as a new take; the current version stays in Takes.
             </p>
+            <div class="d-flex justify-content-end mb-1">
+                <VoiceDictationButton Text="@Prompt"
+                                      TextChanged="OnPromptVoice"
+                                      FieldId="clip-video-edit"
+                                      Replace="true"
+                                      Disabled="@Busy"
+                                      TestId="clip-video-edit-voice" />
+            </div>
             <textarea class="form-control bg-dark text-white border-secondary"
                       data-testid="clip-video-edit-prompt"
                       rows="3"
@@ -24,7 +32,7 @@
                     data-testid="clip-video-edit-go"
                     disabled="@(Busy || JobRunning || string.IsNullOrWhiteSpace(Prompt))"
                     @onclick="OnSubmit">
-                ✂️ Edit clip
+                Edit clip
             </button>
         </Footer>
     </DarkModalShell>

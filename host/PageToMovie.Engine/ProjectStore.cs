@@ -2453,13 +2453,15 @@ public sealed partial class ProjectStore
                 desc = vlock;
             if (string.IsNullOrWhiteSpace(vlock) && !string.IsNullOrWhiteSpace(desc))
                 vlock = desc;
-            rows.Add(new LocationSummary
+            var row = new LocationSummary
             {
                 Key = key,
                 DisplayName = display,
                 Description = desc,
                 VisualLock = vlock,
-            });
+            };
+            FillLocationPlateStatus(projectId, row);
+            rows.Add(row);
         }
 
         // If seeds were name-only stubs, re-derive from fountain prose and fill blanks.
@@ -2777,6 +2779,121 @@ public sealed partial class ProjectStore
         }
 
         return unlocked;
+    }
+
+    // ── Location set plates (step 1: storage + lock; generate/edit later) ─────────
+
+    /// <summary>Project-relative directory for location set plates.</summary>
+    public static string LocationAssetsRelativeDir => Path.Combine("assets", "locations");
+
+    public string GetLocationAssetsDir(string projectId)
+    {
+        var dir = Path.Combine(GetProjectDir(projectId), LocationAssetsRelativeDir);
+        Directory.CreateDirectory(dir);
+        return dir;
+    }
+
+    /// <summary>Canonical locked set plate: <c>{loc_key_lower}_ref.png</c>.</summary>
+    public static string LocationRefFileName(string locKey)
+    {
+        var k = (locKey ?? "").Trim().Replace(' ', '_').Replace('\\', '/');
+        k = Path.GetFileName(k).ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(k) || k is "." or "..")
+            k = "unknown_location";
+        if (k.EndsWith("_ref.png", StringComparison.OrdinalIgnoreCase))
+            return k;
+        return $"{k}_ref.png";
+    }
+
+    public static string LocationVariantFileName(string locKey, int index) =>
+        $"{Path.GetFileNameWithoutExtension(LocationRefFileName(locKey)).Replace("_ref", "", StringComparison.OrdinalIgnoreCase)}_variant_{index:D2}.png"
+            .ToLowerInvariant();
+
+    /// <summary>Absolute path to locked location plate if present and non-empty.</summary>
+    public string? ResolveLocationRefPath(string projectId, string locKey)
+    {
+        var dir = Path.Combine(GetProjectDir(projectId), LocationAssetsRelativeDir);
+        if (!Directory.Exists(dir)) return null;
+        var name = LocationRefFileName(locKey);
+        var full = Path.Combine(dir, name);
+        if (File.Exists(full) && new FileInfo(full).Length >= 64)
+            return full;
+        // Alias: Loc_Foo → foo_ref.png without Loc_
+        var raw = (locKey ?? "").Trim();
+        if (raw.StartsWith("Loc_", StringComparison.OrdinalIgnoreCase))
+        {
+            var bare = raw["Loc_".Length..];
+            var alt = Path.Combine(dir, LocationRefFileName(bare));
+            if (File.Exists(alt) && new FileInfo(alt).Length >= 64)
+                return alt;
+        }
+        return null;
+    }
+
+    private void FillLocationPlateStatus(string projectId, LocationSummary row)
+    {
+        var path = ResolveLocationRefPath(projectId, row.Key);
+        if (path is null) return;
+        row.Locked = true;
+        row.HasPreferred = true;
+        row.PreferredRelativePath = Path.Combine(LocationAssetsRelativeDir, Path.GetFileName(path)).Replace('\\', '/');
+        row.PreferredUrl = $"/api/projects/{Uri.EscapeDataString(projectId)}/locations/{Uri.EscapeDataString(row.Key)}/ref";
+    }
+
+    /// <summary>Write description + visual_lock into location_seed_tokens (cast_seeds / blueprint).</summary>
+    public bool UpdateLocationLook(string projectId, string locKey, string? description, string? visualLock)
+    {
+        if (string.IsNullOrWhiteSpace(locKey)) return false;
+        try
+        {
+            var castPath = Path.Combine(GetProjectDir(projectId), "source", ScreenplayService.CastSeedsFileName);
+            System.Text.Json.Nodes.JsonObject root;
+            if (File.Exists(castPath))
+            {
+                root = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(castPath)) as System.Text.Json.Nodes.JsonObject
+                       ?? new System.Text.Json.Nodes.JsonObject();
+            }
+            else
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(castPath)!);
+                root = new System.Text.Json.Nodes.JsonObject { ["schema_version"] = "cast_seeds.v1" };
+            }
+
+            var locs = root["location_seed_tokens"] as System.Text.Json.Nodes.JsonObject
+                       ?? new System.Text.Json.Nodes.JsonObject();
+            var entry = locs[locKey] as System.Text.Json.Nodes.JsonObject
+                        ?? new System.Text.Json.Nodes.JsonObject
+                        {
+                            ["display_name"] = locKey.StartsWith("Loc_", StringComparison.OrdinalIgnoreCase)
+                                ? locKey["Loc_".Length..].Replace('_', ' ')
+                                : locKey.Replace('_', ' '),
+                        };
+            if (description is not null)
+                entry["description"] = description;
+            if (visualLock is not null)
+                entry["visual_lock"] = visualLock;
+            locs[locKey] = entry;
+            root["location_seed_tokens"] = locs;
+            // Preserve character_seed_tokens if present
+            File.WriteAllText(castPath, root.ToJsonString(JsonDefaults.Indented) + "\n");
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Write uploaded/generated bytes as the locked location plate.</summary>
+    public string LockLocationRefFromBytes(string projectId, string locKey, byte[] pngBytes)
+    {
+        if (pngBytes is null || pngBytes.Length < 64)
+            throw new InvalidOperationException("Location image is empty or unreadable.");
+        var dir = GetLocationAssetsDir(projectId);
+        var name = LocationRefFileName(locKey);
+        var full = Path.Combine(dir, name);
+        File.WriteAllBytes(full, pngBytes);
+        return full;
     }
 
     /// <summary>

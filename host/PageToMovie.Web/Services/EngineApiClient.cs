@@ -3387,6 +3387,53 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
             ct);
     }
 
+    public async Task UpdateLocationLookAsync(
+        string projectId,
+        string locKey,
+        string? description,
+        string? visualLock = null,
+        CancellationToken ct = default)
+    {
+        using var resp = await _http.PostAsJsonAsync(
+            $"/api/projects/{Uri.EscapeDataString(projectId)}/locations/{Uri.EscapeDataString(locKey)}/look",
+            new UpdateLocationLookRequest
+            {
+                Description = description,
+                VisualLock = visualLock,
+            },
+            JsonOpts,
+            ct);
+        await EnsureOkAsync(resp, ct);
+    }
+
+    public string LocationRefUrl(string projectId, string locKey) =>
+        AbsolutizeMediaUrl(
+            $"/api/projects/{Uri.EscapeDataString(projectId)}/locations/{Uri.EscapeDataString(locKey)}/ref")
+        ?? $"/api/projects/{Uri.EscapeDataString(projectId)}/locations/{Uri.EscapeDataString(locKey)}/ref";
+
+    /// <summary>Upload and lock an operator-provided location set plate.</summary>
+    public async Task UploadLocationRefAsync(
+        string projectId,
+        string locKey,
+        Stream content,
+        string fileName,
+        CancellationToken ct = default)
+    {
+        var ext = Path.GetExtension(fileName).ToLowerInvariant();
+        var contentType = ext switch
+        {
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".webp" => "image/webp",
+            ".gif" => "image/gif",
+            ".bmp" => "image/bmp",
+            _ => "image/png",
+        };
+        await UploadFileFormAsync(
+            $"/api/projects/{Uri.EscapeDataString(projectId)}/locations/{Uri.EscapeDataString(locKey)}/upload-ref",
+            content, fileName, contentType, ct);
+    }
+
+
     /// <summary>Server-side HttpClient origin (often loopback). Do not use for browser &lt;img&gt; src.</summary>
     public string ApiBaseUrl =>
         (_http.BaseAddress?.ToString() ?? "").TrimEnd('/');

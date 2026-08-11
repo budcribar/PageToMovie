@@ -1,6 +1,6 @@
 @namespace PageToMovie.Web.Components
 
-<div class="character-look-panel" data-testid="@TestId">
+<div class="location-look-panel" data-testid="@TestId">
     <div class="mb-2">
         <div class="d-flex justify-content-between align-items-center mb-1">
             <label class="form-label small mb-0">Description</label>
@@ -15,7 +15,7 @@
                   disabled="@Busy"
                   value="@Description"
                   @oninput="OnDescriptionInput"
-                  placeholder="Age, build, face, hair, wardrobe…"></textarea>
+                  placeholder="Architecture, materials, era, signature props, light…"></textarea>
     </div>
     <div class="mb-2">
         <div class="d-flex justify-content-between align-items-center mb-1">
@@ -27,17 +27,17 @@
                                   TestId="@VlockVoiceTestId" />
         </div>
         <textarea class="form-control form-control-sm"
-                  rows="3"
+                  rows="2"
                   disabled="@Busy"
                   value="@VisualLock"
                   @oninput="OnVisualLockInput"
-                  placeholder="Must not drift between scenes…"></textarea>
+                  placeholder="Set look that must stay consistent across clips…"></textarea>
     </div>
     @if (ShowImageEditInstruction)
     {
         <div class="mb-2 border border-secondary-subtle rounded p-2">
             <div class="d-flex justify-content-between align-items-center mb-1">
-                <label class="form-label small mb-0">Edit image (voice or text)</label>
+                <label class="form-label small mb-0">Edit set image (voice or text)</label>
                 <VoiceDictationButton Text="@ImageEditInstruction"
                                       TextChanged="OnImageEditVoice"
                                       FieldId="@ImgEditFieldId"
@@ -50,8 +50,7 @@
                       disabled="@Busy"
                       value="@ImageEditInstruction"
                       @oninput="OnImageEditInput"
-                      placeholder="e.g. make hair shorter, older face, blue cloak…"></textarea>
-            <div class="form-text">Applied when you generate looks from the locked / preferred plate.</div>
+                      placeholder="e.g. night torches, wider courtyard, rainy wet stone…"></textarea>
         </div>
     }
     @if (!string.IsNullOrWhiteSpace(Hint))

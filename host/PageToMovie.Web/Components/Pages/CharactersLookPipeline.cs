@@ -158,22 +158,46 @@ public partial class Characters
 
             // Always 3 options so the pick grid is useful on first and later generates
             // (engine otherwise uses 1 when the character is already locked).
+            var hasImageEdit = !string.IsNullOrWhiteSpace(S.LookEdit._imageEditInstruction)
+                               && S.List.PreferredImageUrl is { Length: > 0 };
+            var descForGen = hasImageEdit
+                ? BuildImageEditPrompt(S.LookEdit._editDescription, S.LookEdit._editVisualLock, S.LookEdit._imageEditInstruction)
+                : S.LookEdit._editDescription;
             await StartGenerateCoreAsync(new StartCharacterVariantsRequest
             {
                 ProjectId = S._projectId,
                 CharKey = S.List._selected.Key,
                 Count = 3,
-                SeedMode = S.LookBook.SelectedSeedCount == 0 ? "none" : "explicit",
-                IncludePreferred = includePref,
-                IncludeLockedRef = includePref,
-                BookRefIndices = books,
-                VariantIndices = variants,
-                SeedOrderKeys = sendOrder,
-                MaxRefs = maxSend,
-                DescriptionOverride = S.LookEdit._editDescription,
+                // Voice/text image edit always anchors on the preferred plate.
+                SeedMode = hasImageEdit
+                    ? "preferred_only"
+                    : (S.LookBook.SelectedSeedCount == 0 ? "none" : "explicit"),
+                IncludePreferred = hasImageEdit || includePref,
+                IncludeLockedRef = hasImageEdit || includePref,
+                BookRefIndices = hasImageEdit ? new List<int>() : books,
+                VariantIndices = hasImageEdit ? new List<int>() : variants,
+                SeedOrderKeys = hasImageEdit ? new List<string> { "p" } : sendOrder,
+                MaxRefs = hasImageEdit ? 1 : maxSend,
+                DescriptionOverride = descForGen,
                 VisualLockOverride = S.LookEdit._editVisualLock,
-                PersistDescription = true,
+                PersistDescription = !hasImageEdit, // don't overwrite seed with ephemeral edit instruction
             });
+            if (hasImageEdit)
+                S.LookEdit._imageEditInstruction = "";
+        }
+
+        /// <summary>Prompt for Grok image edit: keep identity, apply spoken/typed change.</summary>
+        internal static string BuildImageEditPrompt(string? description, string? visualLock, string instruction)
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.Append("Edit this character reference image. Keep the same person, face identity, and era. ");
+            sb.Append("Change only what the instruction asks. ");
+            sb.Append("Instruction: ").Append(instruction.Trim()).Append('.');
+            if (!string.IsNullOrWhiteSpace(visualLock))
+                sb.Append(" Visual lock: ").Append(visualLock.Trim());
+            if (!string.IsNullOrWhiteSpace(description))
+                sb.Append(" Base description: ").Append(description.Trim());
+            return sb.ToString();
         }
 
 

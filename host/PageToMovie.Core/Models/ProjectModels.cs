@@ -406,6 +406,21 @@ public sealed class LocationSummary
     public string DisplayName { get; set; } = "";
     public string Description { get; set; } = "";
     public string VisualLock { get; set; } = "";
+    /// <summary>True when <c>assets/locations/{key}_ref.png</c> exists and is locked.</summary>
+    public bool Locked { get; set; }
+    /// <summary>True when a preferred/locked plate exists on disk.</summary>
+    public bool HasPreferred { get; set; }
+    /// <summary>Browser URL for the locked/preferred set plate (if any).</summary>
+    public string? PreferredUrl { get; set; }
+    /// <summary>Relative path under the project for the locked ref image.</summary>
+    public string? PreferredRelativePath { get; set; }
+}
+
+/// <summary>Save location description / visual_lock (Locations look panel).</summary>
+public sealed class UpdateLocationLookRequest
+{
+    public string? Description { get; set; }
+    public string? VisualLock { get; set; }
 }
 
 /// <summary>

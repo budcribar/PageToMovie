@@ -22,6 +22,9 @@ public partial class Characters
 
         internal string _editVisualLock = "";
 
+        /// <summary>Voice/text instruction for refining the preferred plate on next generate.</summary>
+        internal string _imageEditInstruction = "";
+
         internal VisualMedium _editVisualMedium = VisualMedium.LiveAction;
 
         internal CancellationTokenSource? _lookSaveCts;
@@ -69,6 +72,11 @@ public partial class Characters
             return Task.CompletedTask;
         }
 
+        internal Task OnImageEditInstructionChanged(string value)
+        {
+            _imageEditInstruction = value ?? "";
+            return Task.CompletedTask;
+        }
 
         /// <summary>
         /// Debounced autosave: wait until typing pauses (~800ms) so we do not hit the API on every keystroke.

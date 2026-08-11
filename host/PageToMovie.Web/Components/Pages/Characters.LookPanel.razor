@@ -183,8 +183,11 @@
                                                        DescriptionChanged="LookEdit!.OnLookDescriptionChanged"
                                                        VisualLock="@LookEdit!._editVisualLock"
                                                        VisualLockChanged="LookEdit!.OnLookVisualLockChanged"
+                                                       ImageEditInstruction="@LookEdit!._imageEditInstruction"
+                                                       ImageEditInstructionChanged="LookEdit!.OnImageEditInstructionChanged"
+                                                       ShowImageEditInstruction="@(List!.PreferredImageUrl is { Length: > 0 })"
                                                        Busy="@(Host._busy || Jobs!.JobRunning)"
-                                                       Hint="@(LookEdit!._lookSaveHint ?? "Text saves automatically")"
+                                                       Hint="@(LookEdit!._lookSaveHint ?? "Text saves automatically · use Voice to dictate")"
                                                        TestId="char-look-panel">
                                         <Actions>
                                             <CapabilityLockedControl Enabled="Caps.ImageReady"
@@ -195,7 +198,9 @@
                                                         disabled="@(Host._busy || Jobs!.JobRunning || string.IsNullOrWhiteSpace(LookEdit!._editDescription))"
                                                         @onclick="LookPipe!.StartRegenerateAsync"
                                                         data-testid="char-generate-looks">
-                                                    Generate 3 looks
+                                                    @(string.IsNullOrWhiteSpace(LookEdit!._imageEditInstruction)
+                                                        ? "Generate 3 looks"
+                                                        : "Apply edit → 3 looks")
                                                 </button>
                                             </CapabilityLockedControl>
                                             @if (LookEdit!._savingLook)
