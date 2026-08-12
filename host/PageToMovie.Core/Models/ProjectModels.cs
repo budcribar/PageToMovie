@@ -514,6 +514,12 @@ public sealed class StartCharacterVariantsRequest
     public bool IterativeEdit { get; set; }
 }
 
+/// <summary>Admin / one-shot: enrich the full-length screenplay as a background job.</summary>
+public sealed class StartEmbellishRequest
+{
+    public string ProjectId { get; set; } = "";
+}
+
 /// <summary>
 /// Batch: generate looks for every used-in-plan cast face + location, vision auto-lock best.
 /// Skips group / voice-only cast. Operator can re-lock any plate from Cast / Locations.

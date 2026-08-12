@@ -1302,6 +1302,28 @@ public sealed class FilmJobService
             lockReason: "plan looks batch");
     }
 
+    /// <summary>
+    /// Admin / one-shot: enrich the full-length screenplay (visual action from the book).
+    /// Long chat pass — must not be a blocking HTTP request.
+    /// </summary>
+    public Task<JobSnapshot> StartEmbellishAsync(string projectId)
+    {
+        if (string.IsNullOrWhiteSpace(projectId))
+            projectId = _projects.ActiveProjectId;
+        if (string.IsNullOrWhiteSpace(projectId))
+            throw new InvalidOperationException("projectId required");
+        return StartBackgroundJobAsync(
+            ct => RunEmbellishAsync(projectId, ct),
+            new JobEnqueueMeta
+            {
+                Kind = "embellish",
+                ProjectId = projectId,
+                Message = "Queued screenplay enrich…",
+            },
+            lockResources: new[] { LockKeys.Stage(projectId) },
+            lockReason: "screenplay enrich");
+    }
+
     /// <summary>Background music (or singing) for one scene via audio API (client saves the
     /// segment(s)). <paramref name="model"/> overrides the project's configured audio_model_name for
     /// this run only; <paramref name="isVocal"/> requests sung vocals (Suno-family models only).</summary>
@@ -2360,6 +2382,80 @@ public sealed class FilmJobService
         catch (Exception ex)
         {
             _log.LogError(ex, "Character variants failed");
+            await FinishAsync("error", ex.Message, ex.Message);
+        }
+    }
+
+    private async Task RunEmbellishAsync(string projectId, CancellationToken ct)
+    {
+        await _projects.RequireProjectAsync(projectId, ct);
+
+        Snapshot = new JobSnapshot
+        {
+            Status = "running",
+            Kind = "embellish",
+            ProjectId = projectId,
+            Message = "Enriching screenplay…",
+            Index = 0,
+            Total = 4,
+            StartedAt = DateTimeOffset.UtcNow,
+            Log = new List<string>(),
+        };
+        RegisterActiveJob();
+        await PublishAsync();
+
+        try
+        {
+            await AppendLogAsync($"Enrich screenplay for {projectId} (visual detail from the book; dialogue unchanged)");
+            await UpdateAsync(s => { s.Index = 1; s.Message = "Loading draft + book text…"; });
+
+            string? medium = null;
+            try
+            {
+                var dir = await _projects.GetProjectDirAsync(projectId, ct);
+                medium = ProjectVisionMeta.TryRead(dir)?.VisualMedium
+                         ?? ProjectVisionMeta.GetAdaptationMediumPreference(dir);
+            }
+            catch { /* enrich without medium */ }
+
+            await UpdateAsync(s => { s.Index = 2; s.Message = "Calling the model (this can take several minutes)…"; });
+
+            var result = await ScreenplayService.EmbellishDraftAsync(
+                _projects,
+                projectId,
+                medium,
+                _chat,
+                model: "",
+                onProgress: line =>
+                {
+                    _ = AppendLogAsync(line);
+                    _ = UpdateAsync(s => s.Message = line);
+                },
+                ct: ct);
+
+            if (!result.Ok)
+            {
+                await FinishAsync("error", result.Error ?? "Enrich failed.", result.Error);
+                return;
+            }
+
+            await UpdateAsync(s => { s.Index = 3; s.Message = "Saving enriched draft…"; });
+            if (result.Applied)
+                _projects.TriggerAutoGitCommit(projectId, "ptm:stage=embellish");
+
+            await UpdateAsync(s => s.Index = 4);
+            await FinishAsync(
+                "done",
+                result.Message
+                ?? $"Enriched {projectId} ({result.SceneCountAfter} scenes). Re-approve, then Fit length if you use a target runtime.");
+        }
+        catch (OperationCanceledException)
+        {
+            await FinishAsync("cancelled", "Cancelled by user");
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Screenplay enrich failed");
             await FinishAsync("error", ex.Message, ex.Message);
         }
     }

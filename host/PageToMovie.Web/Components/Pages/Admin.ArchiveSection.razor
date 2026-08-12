@@ -108,11 +108,24 @@
                                 One-shot ops for an existing draft. Normal users get enrich automatically after
                                 <strong>Create draft from book</strong>; use this if a project skipped that step.
                             </p>
+                            <p class="small mb-2" data-testid="admin-enrich-status">
+                                @if (Archive!._enrichDone == true)
+                                {
+                                    <span class="badge text-bg-success">Enrich already recorded</span>
+                                    <span class="text-muted ms-1">You can run it again to re-do the visual pass.</span>
+                                }
+                                else if (Archive!._enrichDone == false)
+                                {
+                                    <span class="badge text-bg-warning">Never recorded</span>
+                                    <span class="text-muted ms-1">This project has no enrich stamp — Odyssey is in this state.</span>
+                                }
+                            </p>
                             <div class="d-flex flex-wrap gap-2 align-items-center">
                                 <select class="form-select form-select-sm" style="max-width: 16rem;"
-                                        @bind="Archive._enrichProjectId"
+                                        value="@Archive._enrichProjectId"
                                         disabled="@(Archive._archiveBusy || Archive._projectOptions.Count == 0)"
-                                        data-testid="admin-enrich-project">
+                                        data-testid="admin-enrich-project"
+                                        @onchange="Archive.OnEnrichProjectChangedAsync">
                                     @if (Archive._projectOptions.Count == 0)
                                     {
                                         <option value="">No projects</option>
@@ -136,8 +149,21 @@
                                         : "Enrich screenplay")
                                 </button>
                             </div>
+                            @if (Archive!._enrichJob is { } ej &&
+                                (ej.Status is "running" or "queued" || Archive!._archiveAction == "enrich"))
+                            {
+                                <JobProgressCard Status="@ej.Status"
+                                                 Message="@(ej.Message ?? "")"
+                                                 Index="@ej.Index"
+                                                 Total="@ej.Total"
+                                                 Kind="@ej.Kind"
+                                                 LogLines="@ej.Log"
+                                                 ShowLog="true"
+                                                 CssClass="mt-2 mb-0"
+                                                 TestId="admin-enrich-job" />
+                            }
                             <p class="form-text mb-0 mt-1">
-                                After enrich: open Book → Re-approve if needed, then rebuild shot plan / looks if they already exist.
+                                After enrich: open Book → Re-approve if needed → Fit length again if you use a target runtime.
                             </p>
                         </div>
                         <div class="col-md-12 mt-3 pt-3 border-top">

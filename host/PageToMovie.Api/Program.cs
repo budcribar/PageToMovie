@@ -3593,6 +3593,36 @@ app.MapPost("/api/jobs/location-variants", async (StartLocationVariantsRequest b
 });
 
 /// <summary>
+/// Background enrich of the full-length screenplay (visual action from the book). Prefer this
+/// over the synchronous POST /adaptation/embellish — Odyssey-scale drafts take minutes.
+/// </summary>
+app.MapPost("/api/jobs/embellish", async (StartEmbellishRequest? body, FilmJobService jobService) =>
+{
+    try
+    {
+        var projectId = body?.ProjectId ?? "";
+        if (string.IsNullOrWhiteSpace(projectId))
+            return Results.BadRequest(new { ok = false, error = "projectId required" });
+        var job = await jobService.StartEmbellishAsync(projectId);
+        return Results.Accepted($"/api/jobs/{job.JobId}", new
+        {
+            ok = true,
+            jobId = job.JobId,
+            message = "Queued screenplay enrich",
+            job,
+        });
+    }
+    catch (LockConflictException ex)
+    {
+        return Results.Conflict(new { ok = false, error = ex.Message, resource = ex.Resource, owner = ex.OwnerUserId });
+    }
+    catch (Exception ex)
+    {
+        return JobStartError(ex, jobService);
+    }
+});
+
+/// <summary>
 /// Batch: 3 looks per used-in-plan cast face + location, vision auto-locks best (operator can override).
 /// </summary>
 app.MapPost("/api/jobs/plan-looks", async (StartPlanLooksRequest body, FilmJobService jobService) =>

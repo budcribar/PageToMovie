@@ -4110,6 +4110,17 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         await EnsureOkAsync(resp, ct);
     }
 
+    /// <summary>Queue a background screenplay enrich (visual detail from the book).</summary>
+    public async Task StartEmbellishJobAsync(string projectId, CancellationToken ct = default)
+    {
+        using var resp = await _http.PostAsJsonAsync(
+            "/api/jobs/embellish",
+            new StartEmbellishRequest { ProjectId = projectId },
+            JsonOpts,
+            ct);
+        await EnsureOkAsync(resp, ct);
+    }
+
     public async Task LockLocationVariantAsync(
         string projectId,
         string locKey,

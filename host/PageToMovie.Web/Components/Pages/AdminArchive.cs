@@ -39,6 +39,9 @@ public partial class Admin
         internal double? _exportPercent;
         internal bool _exportIndeterminate;
         internal string? _exportPhaseLabel;
+        internal JobSnapshot? _enrichJob;
+        internal bool? _enrichDone;
+        internal CancellationTokenSource? _enrichPollCts;
 
         internal async Task RefreshProjectOptionsAsync()
         {
@@ -78,6 +81,8 @@ public partial class Admin
             {
                 /* keep prior list */
             }
+
+            await RefreshEnrichStatusAsync();
 
             try
             {
@@ -371,36 +376,113 @@ public partial class Admin
         }
 
         
+        internal async Task OnEnrichProjectChangedAsync(ChangeEventArgs e)
+        {
+            _enrichProjectId = e.Value?.ToString() ?? "";
+            await RefreshEnrichStatusAsync();
+        }
+
         internal async Task EnrichScreenplayAsync()
         {
             if (string.IsNullOrWhiteSpace(_enrichProjectId)) return;
             _archiveBusy = true;
             _archiveAction = "enrich";
             _archiveError = null;
-            _archiveMsg = $"Enriching screenplay for {_enrichProjectId} (visual detail from book; dialogue unchanged)…";
-            await RunArchiveActionAsync(async () =>
+            _archiveMsg = $"Queuing enrich for {_enrichProjectId}…";
+            _enrichJob = null;
+            await S.NotifyChangedAsync();
+            try
             {
-                var result = await S.Api.EmbellishScreenplayAsync(_enrichProjectId);
-                if (result is null)
-                {
-                    _archiveError = "Enrich failed — no response.";
-                    _archiveMsg = null;
-                    return;
-                }
-                if (result.Ok)
-                {
-                    _archiveMsg = result.Message
-                        ?? $"Enriched {_enrichProjectId}. Re-approve the screenplay if it was already approved.";
-                }
-                else
-                {
-                    _archiveError = result.Error ?? "Enrich failed.";
-                    _archiveMsg = null;
-                }
-            });
+                await S.Api.StartEmbellishJobAsync(_enrichProjectId);
+                _archiveMsg = "Enrich running — this can take several minutes on a long screenplay.";
+                StartEnrichPoll();
+            }
+            catch (Exception ex)
+            {
+                _archiveError = ex.Message;
+                _archiveMsg = null;
+                _archiveBusy = false;
+                _archiveAction = null;
+            }
         }
 
-internal async Task AugmentMusicAsync()
+        internal async Task RefreshEnrichStatusAsync()
+        {
+            _enrichDone = null;
+            if (string.IsNullOrWhiteSpace(_enrichProjectId)) return;
+            try
+            {
+                var dto = await S.Api.GetAdaptationAsync(_enrichProjectId);
+                _enrichDone = dto?.Adaptation?.BookSubsteps?.EnrichDone;
+            }
+            catch
+            {
+                _enrichDone = null;
+            }
+        }
+
+        private void StartEnrichPoll()
+        {
+            _enrichPollCts?.Cancel();
+            _enrichPollCts?.Dispose();
+            _enrichPollCts = new CancellationTokenSource();
+            var token = _enrichPollCts.Token;
+            _ = PollEnrichJobAsync(token);
+        }
+
+        private async Task PollEnrichJobAsync(CancellationToken token)
+        {
+            try
+            {
+                for (var i = 0; i < 600 && !token.IsCancellationRequested; i++)
+                {
+                    var jobs = await S.Api.GetJobAsync(token);
+                    var j = jobs?.Job;
+                    if (j is not null &&
+                        string.Equals(j.Kind, "embellish", StringComparison.OrdinalIgnoreCase) &&
+                        string.Equals(j.ProjectId, _enrichProjectId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        _enrichJob = j;
+                        await S.NotifyChangedAsync();
+                        if (j.IsFinished)
+                        {
+                            if (j.IsSuccess)
+                            {
+                                _archiveMsg = j.Message ?? "Enrich finished.";
+                                await RefreshEnrichStatusAsync();
+                            }
+                            else
+                            {
+                                _archiveError = j.Error ?? j.Message ?? "Enrich failed.";
+                                _archiveMsg = null;
+                            }
+                            _archiveBusy = false;
+                            _archiveAction = null;
+                            await S.NotifyChangedAsync();
+                            return;
+                        }
+                    }
+                    await Task.Delay(2000, token);
+                }
+                if (!token.IsCancellationRequested)
+                {
+                    _archiveError = "Timed out waiting for enrich (still running on the server — check Jobs).";
+                    _archiveBusy = false;
+                    _archiveAction = null;
+                    await S.NotifyChangedAsync();
+                }
+            }
+            catch (TaskCanceledException) { }
+            catch (Exception ex)
+            {
+                _archiveError = ex.Message;
+                _archiveBusy = false;
+                _archiveAction = null;
+                await S.NotifyChangedAsync();
+            }
+        }
+
+        internal async Task AugmentMusicAsync()
         {
             if (string.IsNullOrWhiteSpace(_augmentProjectId)) return;
 
