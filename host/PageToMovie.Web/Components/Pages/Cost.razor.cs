@@ -62,6 +62,10 @@ public partial class Cost : IAsyncDisposable
     private string? _prePruneCheckpointHash;
     private string? _prePruneCheckpointLabel;
 
+    /// <summary>Tooltip for the Undo prune control.</summary>
+    internal string PrePruneUndoTitle =>
+        _prePruneCheckpointLabel ?? "Restore the screenplay from just before prune";
+
     [Inject] private IJSRuntime Js { get; set; } = null!;
     [Inject] private ProjectCollabHubClient CollabHub { get; set; } = null!;
     [Inject] private StudioUserPrefsService UserPrefs { get; set; } = null!;

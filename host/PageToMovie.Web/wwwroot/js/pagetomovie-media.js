@@ -742,19 +742,26 @@ window.PageToMovieMedia = {
                     await walk(handle, rel);
                     continue;
                 }
-                if (handle.kind !== "file") continue;
-                const lower = name.toLowerCase();
-                const dot = lower.lastIndexOf(".");
-                const ext = dot >= 0 ? lower.slice(dot) : "";
-                if (!extSet.has(ext)) continue;
-                try {
-                    const f = await handle.getFile();
-                    if (requireSize && (!f || f.size <= 0)) continue;
-                    files.push({ relativePath: rel.replace(/\\/g, "/"), name, sizeBytes: f.size });
-                } catch (_) { /* skip */ }
+                await this._tryPushMatchingFileAsync(files, handle, name, rel, extSet, requireSize);
             }
         };
         await walk(dir, relBase);
         return files;
+    },
+
+    _fileExtLower: function (name) {
+        const lower = name.toLowerCase();
+        const dot = lower.lastIndexOf(".");
+        return dot >= 0 ? lower.slice(dot) : "";
+    },
+
+    _tryPushMatchingFileAsync: async function (files, handle, name, rel, extSet, requireSize) {
+        if (handle.kind !== "file") return;
+        if (!extSet.has(this._fileExtLower(name))) return;
+        try {
+            const f = await handle.getFile();
+            if (requireSize && (!f || f.size <= 0)) return;
+            files.push({ relativePath: rel.replace(/\\/g, "/"), name, sizeBytes: f.size });
+        } catch (_) { /* skip */ }
     },
 };

@@ -125,20 +125,9 @@ async function genVariants(charKey) {
   return jobLog;
 }
 
-async function main() {
-  log("API", API_URL, "WEB", WEB_URL, "project", PROJECT);
-  const health = await api("GET", "/health");
-  if (!health.ok)
-    throw new Error(
-      "API not healthy — start it with FilmStudio__UseFakes=true (see host/playwright/README.md Phase A)"
-    );
-
+function seedThrowawayProject() {
   // Fresh throwaway project — NEVER touches TellTaleHeartV7's real locked assets.
-  const created = await api("POST", "/api/projects", { name: PROJECT });
-  if (!created.ok) throw new Error(`create project failed: ${created.status} ${created.text}`);
-  log("created project", PROJECT);
-
-  // Seed it with the migrated wardrobe_lock_tokens cast (copied from TellTaleHeartV7,
+  // Seed with the migrated wardrobe_lock_tokens cast (copied from TellTaleHeartV7,
   // which already has all three officers pointing at Wardrobe_PoliceOfficer). Also copy
   // the signed screenplay + sign-off metadata verbatim (hash-based sign-off, so identical
   // bytes stay "signed") purely so the Characters UI's screenplay-approved gate opens —
@@ -152,56 +141,58 @@ async function main() {
     fs.copyFileSync(src, path.join(sourceDir, name));
   }
   log("seeded cast_seeds.json (wardrobe_lock_tokens) + signed screenplay from TellTaleHeartV7");
+}
 
-  const officers = ["Character_OfficerReynolds", "Character_OfficerHale", "Character_OfficerBriggs"];
-  const wardrobeFile = "wardrobe_policeofficer_ref.png";
-  let wardrobeStatAfterFirst = null;
-
-  for (let i = 0; i < officers.length; i++) {
-    const key = officers[i];
-    log("=== generating", key, "===");
-    const jobLog = await genVariants(key);
-    fs.writeFileSync(path.join(ARTIFACTS, `${key}.joblog.txt`), jobLog.join("\n"));
-
-    const variants = [1, 2, 3].map((n) => fileStat(`${key.toLowerCase()}_variant_0${n}.png`));
-    check(`${key}: 3 variant files written`, variants.every(Boolean), variants.map((s) => s?.size).join(","));
-
-    const generatedShared = jobLog.some((l) => /Generating shared uniform reference/i.test(l));
-    const reusedShared = jobLog.some((l) => /shared costume ref/i.test(l));
-    const modeWardrobeLocked = jobLog.some((l) => /mode=.*wardrobe_locked/i.test(l));
-
-    if (i === 0) {
-      check(`${key}: generated the shared uniform plate (first officer)`, generatedShared);
-    } else {
-      check(
-        `${key}: reused the existing uniform plate, did NOT regenerate it`,
-        !generatedShared && reusedShared
-      );
-    }
-    check(`${key}: job mode reports wardrobe_locked`, modeWardrobeLocked, jobLog[jobLog.length - 1]);
-
-    const wStat = fileStat(wardrobeFile);
-    check(`${key}: shared wardrobe ref exists on disk`, !!wStat);
-    if (i === 0) {
-      wardrobeStatAfterFirst = wStat;
-    } else if (wardrobeStatAfterFirst && wStat) {
-      check(
-        `${key}: shared wardrobe ref is byte-identical to the one from officer #1 (not regenerated)`,
-        wStat.size === wardrobeStatAfterFirst.size && wStat.mtimeMs === wardrobeStatAfterFirst.mtimeMs,
-        `size ${wStat.size} vs ${wardrobeStatAfterFirst.size}, mtime ${wStat.mtimeMs} vs ${wardrobeStatAfterFirst.mtimeMs}`
-      );
-    }
-
-    // Lock variant 1 — mirrors the real "pick best of 3" UI action.
-    const lock = await api(
-      "POST",
-      `/api/projects/${encodeURIComponent(PROJECT)}/characters/${encodeURIComponent(key)}/lock-variant`,
-      { index: 1 }
+function checkOfficerJobLog(key, i, jobLog) {
+  const generatedShared = jobLog.some((l) => /Generating shared uniform reference/i.test(l));
+  const reusedShared = jobLog.some((l) => /shared costume ref/i.test(l));
+  const modeWardrobeLocked = jobLog.some((l) => /mode=.*wardrobe_locked/i.test(l));
+  if (i === 0) {
+    check(`${key}: generated the shared uniform plate (first officer)`, generatedShared);
+  } else {
+    check(
+      `${key}: reused the existing uniform plate, did NOT regenerate it`,
+      !generatedShared && reusedShared
     );
-    check(`${key}: lock-variant succeeded`, lock.ok, (lock.text || "").slice(0, 200));
   }
+  check(`${key}: job mode reports wardrobe_locked`, modeWardrobeLocked, jobLog[jobLog.length - 1]);
+}
 
-  // Drive the real Blazor Characters UI and confirm it renders this project cleanly.
+function checkSharedWardrobeFile(key, i, wardrobeFile, wardrobeStatAfterFirst) {
+  const wStat = fileStat(wardrobeFile);
+  check(`${key}: shared wardrobe ref exists on disk`, !!wStat);
+  if (i === 0) return wStat;
+  if (wardrobeStatAfterFirst && wStat) {
+    check(
+      `${key}: shared wardrobe ref is byte-identical to the one from officer #1 (not regenerated)`,
+      wStat.size === wardrobeStatAfterFirst.size && wStat.mtimeMs === wardrobeStatAfterFirst.mtimeMs,
+      `size ${wStat.size} vs ${wardrobeStatAfterFirst.size}, mtime ${wStat.mtimeMs} vs ${wardrobeStatAfterFirst.mtimeMs}`
+    );
+  }
+  return wardrobeStatAfterFirst;
+}
+
+async function generateAndLockOfficer(key, i, wardrobeFile, wardrobeStatAfterFirst) {
+  log("=== generating", key, "===");
+  const jobLog = await genVariants(key);
+  fs.writeFileSync(path.join(ARTIFACTS, `${key}.joblog.txt`), jobLog.join("\n"));
+
+  const variants = [1, 2, 3].map((n) => fileStat(`${key.toLowerCase()}_variant_0${n}.png`));
+  check(`${key}: 3 variant files written`, variants.every(Boolean), variants.map((s) => s?.size).join(","));
+
+  checkOfficerJobLog(key, i, jobLog);
+  const nextStat = checkSharedWardrobeFile(key, i, wardrobeFile, wardrobeStatAfterFirst);
+
+  const lock = await api(
+    "POST",
+    `/api/projects/${encodeURIComponent(PROJECT)}/characters/${encodeURIComponent(key)}/lock-variant`,
+    { index: 1 }
+  );
+  check(`${key}: lock-variant succeeded`, lock.ok, (lock.text || "").slice(0, 200));
+  return nextStat;
+}
+
+async function verifyCharactersUi(officers) {
   await api("POST", `/api/projects/${encodeURIComponent(PROJECT)}/activate`, {});
   const browser = await chromium.launch({ headless: process.env.HEADED !== "1" });
   try {
@@ -225,6 +216,36 @@ async function main() {
   } finally {
     await browser.close();
   }
+}
+
+async function main() {
+  log("API", API_URL, "WEB", WEB_URL, "project", PROJECT);
+  const health = await api("GET", "/health");
+  if (!health.ok)
+    throw new Error(
+      "API not healthy — start it with FilmStudio__UseFakes=true (see host/playwright/README.md Phase A)"
+    );
+
+  const created = await api("POST", "/api/projects", { name: PROJECT });
+  if (!created.ok) throw new Error(`create project failed: ${created.status} ${created.text}`);
+  log("created project", PROJECT);
+
+  seedThrowawayProject();
+
+  const officers = ["Character_OfficerReynolds", "Character_OfficerHale", "Character_OfficerBriggs"];
+  const wardrobeFile = "wardrobe_policeofficer_ref.png";
+  let wardrobeStatAfterFirst = null;
+
+  for (let i = 0; i < officers.length; i++) {
+    wardrobeStatAfterFirst = await generateAndLockOfficer(
+      officers[i],
+      i,
+      wardrobeFile,
+      wardrobeStatAfterFirst
+    );
+  }
+
+  await verifyCharactersUi(officers);
 
   fs.writeFileSync(path.join(ARTIFACTS, "summary.json"), JSON.stringify(results, null, 2));
   const failed = results.checks.filter((c) => !c.pass);

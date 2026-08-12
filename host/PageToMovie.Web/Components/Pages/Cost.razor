@@ -75,7 +75,7 @@ else
                         <button type="button"
                                 class="btn btn-sm btn-outline-secondary"
                                 data-testid="cost-revert-prune"
-                                title="@(_prePruneCheckpointLabel ?? "Restore the screenplay from just before prune")"
+                                title="@PrePruneUndoTitle"
                                 disabled="@_busy"
                                 @onclick="RevertPruneAsync">
                             Undo prune

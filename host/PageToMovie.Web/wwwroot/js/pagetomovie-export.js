@@ -237,25 +237,7 @@ window.PageToMovieExport = {
             }
 
             return await new Promise((resolve) => {
-                xhr.onload = () => {
-                    let json = null;
-                    try { json = xhr.responseText ? JSON.parse(xhr.responseText) : null; } catch (_) {}
-                    if (xhr.status < 200 || xhr.status >= 300) {
-                        const err = (json && (json.error || json.message)) || xhr.responseText || ("HTTP " + xhr.status);
-                        resolve({ success: false, error: String(err) });
-                    } else {
-                        if (dotNetRef) {
-                            try { dotNetRef.invokeMethodAsync("ReportPublishProgress", 100, "Upload complete! YouTube processing starting in background."); } catch (_) {}
-                        }
-                        resolve({
-                            success: true,
-                            demo: json && json.demo ? json.demo : json,
-                            pendingReview: !!(json && json.pendingReview),
-                            replacedExisting: !!(json && json.replacedExisting),
-                            message: json && json.message ? json.message : null,
-                        });
-                    }
-                };
+                xhr.onload = () => this._handleUploadDemoXhrLoad(xhr, dotNetRef, resolve);
                 xhr.onerror = () => resolve({ success: false, error: "Network connection lost during upload" });
                 xhr.send(form);
             });
@@ -263,6 +245,37 @@ window.PageToMovieExport = {
             console.error("uploadDemoMovieAsync failed:", err);
             return { success: false, error: err.message || String(err) };
         }
+    },
+
+    _parseXhrJson: function (xhr) {
+        try { return xhr.responseText ? JSON.parse(xhr.responseText) : null; } catch (_) { return null; }
+    },
+
+    _uploadDemoXhrError: function (xhr, json) {
+        const err = (json && (json.error || json.message)) || xhr.responseText || ("HTTP " + xhr.status);
+        return { success: false, error: String(err) };
+    },
+
+    _uploadDemoXhrSuccess: function (json) {
+        return {
+            success: true,
+            demo: json && json.demo ? json.demo : json,
+            pendingReview: !!(json && json.pendingReview),
+            replacedExisting: !!(json && json.replacedExisting),
+            message: json && json.message ? json.message : null,
+        };
+    },
+
+    _handleUploadDemoXhrLoad: function (xhr, dotNetRef, resolve) {
+        const json = this._parseXhrJson(xhr);
+        if (xhr.status < 200 || xhr.status >= 300) {
+            resolve(this._uploadDemoXhrError(xhr, json));
+            return;
+        }
+        if (dotNetRef) {
+            try { dotNetRef.invokeMethodAsync("ReportPublishProgress", 100, "Upload complete! YouTube processing starting in background."); } catch (_) {}
+        }
+        resolve(this._uploadDemoXhrSuccess(json));
     },
 
     _buildUploadDemoFormData: function (blob, meta) {
@@ -400,20 +413,8 @@ window.PageToMovieExport = {
      */
     importZipMediaToClientFolderAsync: async function (contentStreamReference, targetProjectId) {
         try {
-            if (!window.PageToMovieMedia) {
-                return { success: false, error: "PageToMovieMedia not loaded", written: 0 };
-            }
-            if (!window.PageToMovieMedia._root) {
-                const c = await window.PageToMovieMedia.connectFolderAsync();
-                if (!c.success) {
-                    return {
-                        success: false,
-                        error: c.error || "Connect a local media folder to restore MP4/MP3 files",
-                        written: 0,
-                        needsMediaFolder: true,
-                    };
-                }
-            }
+            const folder = await this._ensureClientMediaFolderAsync();
+            if (!folder.success) return folder;
 
             const targetId = (targetProjectId || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
             if (!targetId) {
@@ -422,24 +423,7 @@ window.PageToMovieExport = {
 
             const buf = await contentStreamReference.arrayBuffer();
             const entries = await this._zipReadAllAsync(new Uint8Array(buf));
-            const mediaExt = new Set([
-                ".mp4", ".webm", ".mov", ".mkv", ".m4v",
-                ".mp3", ".wav", ".m4a", ".ogg", ".aac", ".flac", ".opus",
-                ".png", ".jpg", ".jpeg", ".webp", ".gif",
-            ]);
-
-            let written = 0;
-            let skipped = 0;
-            const errors = [];
-
-            for (const e of entries) {
-                const res = await this._processZipMediaEntryAsync(e, targetId, mediaExt);
-                if (res.status === "written") written++;
-                else if (res.status === "skipped") {
-                    skipped++;
-                    if (res.error && errors.length < 5) errors.push(res.error);
-                }
-            }
+            const { written, skipped, errors } = await this._countZipMediaWritesAsync(entries, targetId);
 
             return {
                 success: true,
@@ -453,6 +437,41 @@ window.PageToMovieExport = {
             console.error("importZipMediaToClientFolderAsync failed:", err);
             return { success: false, error: err.message || String(err), written: 0 };
         }
+    },
+
+    _ensureClientMediaFolderAsync: async function () {
+        if (!window.PageToMovieMedia) {
+            return { success: false, error: "PageToMovieMedia not loaded", written: 0 };
+        }
+        if (window.PageToMovieMedia._root) return { success: true };
+        const c = await window.PageToMovieMedia.connectFolderAsync();
+        if (c.success) return { success: true };
+        return {
+            success: false,
+            error: c.error || "Connect a local media folder to restore MP4/MP3 files",
+            written: 0,
+            needsMediaFolder: true,
+        };
+    },
+
+    _countZipMediaWritesAsync: async function (entries, targetId) {
+        const mediaExt = new Set([
+            ".mp4", ".webm", ".mov", ".mkv", ".m4v",
+            ".mp3", ".wav", ".m4a", ".ogg", ".aac", ".flac", ".opus",
+            ".png", ".jpg", ".jpeg", ".webp", ".gif",
+        ]);
+        let written = 0;
+        let skipped = 0;
+        const errors = [];
+        for (const e of entries) {
+            const res = await this._processZipMediaEntryAsync(e, targetId, mediaExt);
+            if (res.status === "written") written++;
+            else if (res.status === "skipped") {
+                skipped++;
+                if (res.error && errors.length < 5) errors.push(res.error);
+            }
+        }
+        return { written, skipped, errors };
     },
 
     _processZipMediaEntryAsync: async function (e, targetId, mediaExt) {
