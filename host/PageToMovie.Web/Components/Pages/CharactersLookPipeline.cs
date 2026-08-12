@@ -181,6 +181,7 @@ public partial class Characters
                 DescriptionOverride = descForGen,
                 VisualLockOverride = S.LookEdit._editVisualLock,
                 PersistDescription = !hasImageEdit, // don't overwrite seed with ephemeral edit instruction
+                AutoLockBest = true,
             });
             if (hasImageEdit)
                 S.LookEdit._imageEditInstruction = "";

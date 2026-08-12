@@ -197,10 +197,41 @@ public partial class Locations : IDisposable
                 VisualLockOverride = _editVisualLock,
                 ImageEditInstruction = hasEdit ? _imageEditInstruction : null,
                 PersistDescription = !hasEdit,
+                AutoLockBest = true,
             });
             if (hasEdit)
                 _imageEditInstruction = "";
             _message = "Generating set plates…";
+            StartJobPoll();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task StartPlanLooksAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_projectId) || _busy) return;
+        if (_job is { Status: "running" or "queued" }) return;
+        _busy = true;
+        _error = null;
+        _message = null;
+        try
+        {
+            await Engine.StartPlanLooksAsync(new StartPlanLooksRequest
+            {
+                ProjectId = _projectId,
+                Count = 3,
+                SkipAlreadyLocked = true,
+                IncludeCast = true,
+                IncludeLocations = true,
+            });
+            _message = "Generating looks for plan cast + places…";
             StartJobPoll();
         }
         catch (Exception ex)
@@ -231,7 +262,8 @@ public partial class Locations : IDisposable
                 var jobs = await Engine.GetJobAsync(token);
                 var j = jobs?.Job;
                 if (j is not null &&
-                    string.Equals(j.Kind, "location_variants", StringComparison.OrdinalIgnoreCase) &&
+                    (string.Equals(j.Kind, "location_variants", StringComparison.OrdinalIgnoreCase)
+                     || string.Equals(j.Kind, "plan_looks", StringComparison.OrdinalIgnoreCase)) &&
                     string.Equals(j.ProjectId, _projectId, StringComparison.OrdinalIgnoreCase))
                 {
                     _job = j;

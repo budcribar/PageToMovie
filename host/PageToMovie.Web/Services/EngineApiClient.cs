@@ -4022,6 +4022,19 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         await EnsureOkAsync(resp, ct);
     }
 
+    /// <summary>Batch generate + AI auto-lock looks for used-in-plan cast and locations.</summary>
+    public async Task StartPlanLooksAsync(
+        StartPlanLooksRequest req,
+        CancellationToken ct = default)
+    {
+        using var resp = await _http.PostAsJsonAsync(
+            "/api/jobs/plan-looks",
+            req,
+            JsonOpts,
+            ct);
+        await EnsureOkAsync(resp, ct);
+    }
+
     public async Task LockLocationVariantAsync(
         string projectId,
         string locKey,

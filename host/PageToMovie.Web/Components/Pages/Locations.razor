@@ -16,7 +16,17 @@
             <h1 class="h4 mb-0">Locations</h1>
             <p class="small text-muted mb-0">Set plates — text or voice, generate 3 looks, lock one for video refs.</p>
         </div>
-        <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@_busy" @onclick="LoadAsync">Refresh</button>
+        <div class="d-flex flex-wrap gap-2">
+            <button type="button"
+                    class="btn btn-sm btn-primary"
+                    data-testid="locations-plan-looks"
+                    disabled="@(_busy || string.IsNullOrWhiteSpace(_projectId) || (_job is { Status: "running" or "queued" }))"
+                    title="Generate 3 set plates for each used-in-plan place (and cast faces). AI locks the best."
+                    @onclick="StartPlanLooksAsync">
+                Generate looks for plan
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@_busy" @onclick="LoadAsync">Refresh</button>
+        </div>
     </div>
 
     @if (!string.IsNullOrWhiteSpace(_error))

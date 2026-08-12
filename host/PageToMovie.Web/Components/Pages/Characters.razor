@@ -77,35 +77,49 @@ else
         <span class="small text-muted ms-2">Screenplay + book → names, voices, and portrait-ready looks</span>
     </div>
 }
-else if (Session.IsAdmin && List.HasCast && !Jobs.JobRunning && !List._extractingCast)
+else if (List.HasCast && !Jobs.JobRunning && !List._extractingCast)
 {
-    @* Admin-only redo. These are NOT the same step:
-       • Rebuild cast — AI re-reads Fountain (+ book) and replaces character_seed_tokens (names, looks, voices, locations).
-       • Re-match book pictures — only re-sorts book plates onto the existing cast; does not change who is in the cast. *@
-    <details class="mb-2">
-        <summary class="small text-muted" style="cursor:pointer">Setup again (admin)</summary>
-        <div class="d-flex flex-column gap-2 mt-2" style="max-width: 36rem;">
-            <div class="d-flex flex-wrap align-items-center gap-2">
-                <button type="button" class="btn btn-sm btn-outline-secondary"
-                        data-testid="characters-extract-cast"
-                        disabled="@_busy"
-                        title="AI: re-read screenplay + book and rebuild the cast list, looks, and location seeds. Overwrites cast_seeds.json."
-                        @onclick="List.ExtractCastAsync">
-                    Rebuild cast from screenplay
-                </button>
-                <span class="small text-muted">Replaces who is in the cast and their text looks</span>
+    <div class="mb-3 d-flex flex-wrap align-items-center gap-2">
+        <button type="button"
+                class="btn btn-primary btn-sm"
+                data-testid="characters-plan-looks"
+                disabled="@(_busy || Jobs.JobRunning)"
+                title="Generate 3 looks for each used-in-plan face and place, AI locks the best. You can re-lock anytime."
+                @onclick="Jobs.StartPlanLooksAsync">
+            Generate looks for plan
+        </button>
+        <span class="small text-muted">Used cast + places · 3 options each · AI auto-locks best (override anytime)</span>
+    </div>
+    @if (Session.IsAdmin)
+    {
+        @* Admin-only redo. These are NOT the same step:
+           • Rebuild cast — AI re-reads Fountain (+ book) and replaces character_seed_tokens (names, looks, voices, locations).
+           • Re-match book pictures — only re-sorts book plates onto the existing cast; does not change who is in the cast. *@
+        <details class="mb-2">
+            <summary class="small text-muted" style="cursor:pointer">Setup again (admin)</summary>
+            <div class="d-flex flex-column gap-2 mt-2" style="max-width: 36rem;">
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <button type="button" class="btn btn-sm btn-outline-secondary"
+                            data-testid="characters-extract-cast"
+                            disabled="@_busy"
+                            title="AI: re-read screenplay + book and rebuild the cast list, looks, and location seeds. Overwrites cast_seeds.json."
+                            @onclick="List.ExtractCastAsync">
+                        Rebuild cast from screenplay
+                    </button>
+                    <span class="small text-muted">Replaces who is in the cast and their text looks</span>
+                </div>
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <button type="button" class="btn btn-sm btn-outline-secondary"
+                            disabled="@_busy"
+                            title="Vision: re-match book illustration pages to the current cast. Does not add/remove characters."
+                            @onclick="() => LookBook.StartSortCharacterPlatesAsync(useGrok: true)">
+                        Re-match book pictures
+                    </button>
+                    <span class="small text-muted">Keeps the cast list; only re-assigns book plates</span>
+                </div>
             </div>
-            <div class="d-flex flex-wrap align-items-center gap-2">
-                <button type="button" class="btn btn-sm btn-outline-secondary"
-                        disabled="@_busy"
-                        title="Vision: re-match book illustration pages to the current cast. Does not add/remove characters."
-                        @onclick="() => LookBook.StartSortCharacterPlatesAsync(useGrok: true)">
-                    Re-match book pictures
-                </button>
-                <span class="small text-muted">Keeps the cast list; only re-assigns book plates</span>
-            </div>
-        </div>
-    </details>
+        </details>
+    }
 }
 
 @if (LookPipe._styleRejectCandidate is not null && !Jobs.JobRunning)
@@ -208,8 +222,8 @@ else if (List.IsCastComplete && !Jobs.JobRunning && !List._extractingCast)
     </div>
 }
 else if (Jobs._job is not null &&
-     (Jobs._job.Kind is "character" or "character-plates" or "voice-preview" or "cast-extract") &&
-     (Jobs._job.Status is "running" or "queued"))
+     (Jobs._job.Kind is "character" or "character_variants" or "character-plates" or "voice-preview" or "cast-extract" or "plan_looks") &&
+     (Jobs._job.Status is "running" or "queued" or "partial"))
 {
     var voiceDetail = !string.IsNullOrEmpty(Jobs._job.Message)
         && string.Equals(Jobs._job.Kind, "voice-preview", StringComparison.OrdinalIgnoreCase)

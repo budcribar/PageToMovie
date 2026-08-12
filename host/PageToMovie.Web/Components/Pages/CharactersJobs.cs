@@ -49,8 +49,19 @@ public partial class Characters
                 return job.Total > 0
                     ? $"Matching book pictures… ({job.Index} of {job.Total})"
                     : "Matching book pictures…";
-            if (string.Equals(kind, "character", StringComparison.OrdinalIgnoreCase))
-                return "Creating portrait…";
+            if (string.Equals(kind, "character", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(kind, "character_variants", StringComparison.OrdinalIgnoreCase))
+                return job.Total > 0
+                    ? $"Creating portrait… ({job.Index} of {job.Total})"
+                    : "Creating portrait…";
+            if (string.Equals(kind, "plan_looks", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!string.IsNullOrWhiteSpace(job.Message))
+                    return job.Message!;
+                return job.Total > 0
+                    ? $"Generating looks for plan… ({job.Index} of {job.Total})"
+                    : "Generating looks for plan…";
+            }
             if (string.Equals(kind, "voice-preview", StringComparison.OrdinalIgnoreCase))
                 return "Generating voice sample…";
             return "Working…";
@@ -126,6 +137,32 @@ public partial class Characters
                     {
                         S._error = null;
                         S._message = "Cast extract cancelled.";
+                    }
+                    S.StateHasChanged();
+                });
+            }
+            else if ((snap.Status is "done" or "partial" or "error" or "cancelled") &&
+                string.Equals(snap.Kind, "plan_looks", StringComparison.OrdinalIgnoreCase))
+            {
+                _ = S.InvokeAsync(async () =>
+                {
+                    await S.List.LoadAsync();
+                    if (snap.Status is "done" or "partial")
+                    {
+                        S._error = null;
+                        S._message = snap.Message ?? "Plan looks ready — AI locked best picks (override any plate anytime).";
+                    }
+                    else if (snap.Status == "error")
+                    {
+                        S._message = null;
+                        S._error = S.Session.IsAdmin
+                            ? (snap.Error ?? snap.Message ?? "Plan looks failed.")
+                            : "Could not generate plan looks. Try again.";
+                    }
+                    else
+                    {
+                        S._error = null;
+                        S._message = "Plan looks cancelled.";
                     }
                     S.StateHasChanged();
                 });
@@ -240,6 +277,35 @@ public partial class Characters
             S._error = null;
             S._message = "Cancelled. You can try again when ready.";
             S.StateHasChanged();
+        }
+
+        internal async Task StartPlanLooksAsync()
+        {
+            if (string.IsNullOrWhiteSpace(S._projectId) || JobRunning) return;
+            S._error = null;
+            S._message = null;
+            S._busy = true;
+            try
+            {
+                await S.Engine.StartPlanLooksAsync(new StartPlanLooksRequest
+                {
+                    ProjectId = S._projectId,
+                    Count = 3,
+                    SkipAlreadyLocked = true,
+                    IncludeCast = true,
+                    IncludeLocations = true,
+                });
+                S._message = "Generating looks for plan cast + places…";
+            }
+            catch (Exception ex)
+            {
+                S._error = ex.Message;
+            }
+            finally
+            {
+                S._busy = false;
+                S.StateHasChanged();
+            }
         }
 
 

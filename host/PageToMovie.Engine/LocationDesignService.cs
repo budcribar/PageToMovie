@@ -14,17 +14,20 @@ public sealed class LocationDesignService
 {
     private readonly ProjectStore _projects;
     private readonly IImageClient _images;
+    private readonly IVisionClient _vision;
     private readonly PageToMovieOptions _opts;
     private readonly ILogger<LocationDesignService> _log;
 
     public LocationDesignService(
         ProjectStore projects,
         IImageClient images,
+        IVisionClient vision,
         IOptions<PageToMovieOptions> opts,
         ILogger<LocationDesignService> log)
     {
         _projects = projects;
         _images = images;
+        _vision = vision;
         _opts = opts.Value;
         _log = log;
     }
@@ -166,6 +169,42 @@ public sealed class LocationDesignService
             throw new InvalidOperationException($"Variant not found: {fileName}");
         var bytes = await File.ReadAllBytesAsync(variantPath, ct).ConfigureAwait(false);
         return _projects.LockLocationRefFromBytes(projectId, locKey, bytes);
+    }
+
+    /// <summary>
+    /// Rank existing location variants with vision; lock the best as the set plate.
+    /// Operator can re-lock another variant from the Locations UI.
+    /// </summary>
+    public async Task<(int VariantIndex, string RefPath)> AutoLockBestVariantAsync(
+        string projectId,
+        string locKey,
+        int maxVariants = 3,
+        Action<string>? onProgress = null,
+        CancellationToken ct = default)
+    {
+        await _projects.RequireProjectAsync(projectId, ct).ConfigureAwait(false);
+        var locDir = _projects.GetLocationAssetsDir(projectId);
+        var rows = _projects.ListLocations(projectId);
+        var row = rows.FirstOrDefault(r => string.Equals(r.Key, locKey, StringComparison.OrdinalIgnoreCase));
+        var desc = row?.Description ?? "";
+        var vlock = row?.VisualLock ?? "";
+
+        var found = new List<(int Index, string Path)>();
+        for (var i = 1; i <= Math.Clamp(maxVariants, 1, 6); i++)
+        {
+            var path = Path.Combine(locDir, ProjectStore.LocationVariantFileName(locKey, i));
+            if (File.Exists(path) && new FileInfo(path).Length >= 64)
+                found.Add((i, path));
+        }
+        if (found.Count == 0)
+            throw new InvalidOperationException($"No set plate variants on disk for {locKey}");
+
+        onProgress?.Invoke($"AI picking best set for {locKey} ({found.Count} options)…");
+        var best = await LookVariantPicker.PickBestIndexAsync(
+            _vision, _log, "location set plate", locKey, desc, vlock, found, ct).ConfigureAwait(false);
+        onProgress?.Invoke($"Auto-locking set variant {best} for {locKey}");
+        var refPath = await LockVariantAsync(projectId, locKey, best, ct).ConfigureAwait(false);
+        return (best, refPath);
     }
 
     public static string BuildGeneratePrompt(string locKey, string description, string visualLock, bool seedFromExisting)

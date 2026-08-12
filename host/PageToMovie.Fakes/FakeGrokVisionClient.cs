@@ -106,6 +106,16 @@ public sealed class FakeGrokVisionClient : IVisionClient
                 result = $"{{\"pass\":true,\"medium\":\"{medium}\",\"reason\":\"Fake style gate pass.\"}}";
             }
         }
+        else if (!string.IsNullOrEmpty(prompt) &&
+                 (prompt.Contains("choosing the best character portrait", StringComparison.OrdinalIgnoreCase)
+                  || prompt.Contains("choosing the best location set plate", StringComparison.OrdinalIgnoreCase)
+                  || prompt.Contains("\"best\":1", StringComparison.OrdinalIgnoreCase)
+                  || prompt.Contains("Pick the single image that best matches", StringComparison.OrdinalIgnoreCase)))
+        {
+            kind = "vision";
+            // Prefer first image — stable for tests; real vision ranks quality.
+            result = """{"best":1,"reason":"Fake look pick — first variant."}""";
+        }
         else if (!string.IsNullOrEmpty(prompt) && prompt.Contains("music supervisor", StringComparison.OrdinalIgnoreCase))
         {
             kind = "vision";

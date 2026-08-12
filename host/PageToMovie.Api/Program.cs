@@ -3592,6 +3592,33 @@ app.MapPost("/api/jobs/location-variants", async (StartLocationVariantsRequest b
     }
 });
 
+/// <summary>
+/// Batch: 3 looks per used-in-plan cast face + location, vision auto-locks best (operator can override).
+/// </summary>
+app.MapPost("/api/jobs/plan-looks", async (StartPlanLooksRequest body, FilmJobService jobService) =>
+{
+    try
+    {
+        if (string.IsNullOrWhiteSpace(body.ProjectId))
+            return Results.BadRequest(new { ok = false, error = "projectId required" });
+        var job = await jobService.StartPlanLooksAsync(body);
+        return Results.Accepted($"/api/jobs/{job.JobId}", new
+        {
+            ok = true,
+            message = "Queued looks for plan cast + places (AI auto-lock best)",
+            job,
+        });
+    }
+    catch (LockConflictException ex)
+    {
+        return Results.Conflict(new { ok = false, error = ex.Message, resource = ex.Resource, owner = ex.OwnerUserId });
+    }
+    catch (Exception ex)
+    {
+        return JobStartError(ex, jobService);
+    }
+});
+
 
 /// <summary>Save voice_label / voice_profile into cast_seeds (+ blueprint) character seeds.</summary>
 app.MapPost("/api/projects/{id}/characters/{charKey}/voice",

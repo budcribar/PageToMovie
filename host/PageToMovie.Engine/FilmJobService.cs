@@ -1308,6 +1308,28 @@ public sealed class FilmJobService
             lockReason: $"loc variants {req.LocKey}");
     }
 
+    /// <summary>
+    /// Batch generate + vision auto-lock looks for every used-in-plan cast face and location.
+    /// </summary>
+    public Task<JobSnapshot> StartPlanLooksAsync(StartPlanLooksRequest req)
+    {
+        var projectId = string.IsNullOrWhiteSpace(req.ProjectId)
+            ? _projects.ActiveProjectId
+            : req.ProjectId;
+        if (string.IsNullOrWhiteSpace(projectId))
+            throw new InvalidOperationException("projectId required");
+        return StartBackgroundJobAsync(
+            ct => RunPlanLooksAsync(req, projectId, ct),
+            new JobEnqueueMeta
+            {
+                Kind = "plan_looks",
+                ProjectId = projectId,
+                Message = "Queued looks for plan cast + places…",
+            },
+            lockResources: new[] { LockKeys.Stage(projectId) },
+            lockReason: "plan looks batch");
+    }
+
     /// <summary>Background music (or singing) for one scene via audio API (client saves the
     /// segment(s)). <paramref name="model"/> overrides the project's configured audio_model_name for
     /// this run only; <paramref name="isVocal"/> requests sung vocals (Suno-family models only).</summary>
@@ -2210,9 +2232,28 @@ public sealed class FilmJobService
                 s.Total = Math.Max(s.Total, result.Paths.Count);
             });
             await AppendLogAsync($"mode={result.Mode} · {result.Paths.Count} file(s)");
-            await FinishAsync(
-                "done",
-                $"Set plates ready for {req.LocKey} ({result.Mode}, {result.Paths.Count} image(s))");
+
+            if (req.AutoLockBest && result.Paths.Count > 0)
+            {
+                await UpdateAsync(s => s.Message = $"AI picking best set for {req.LocKey}…");
+                var (best, _) = await _locations.AutoLockBestVariantAsync(
+                    projectId, req.LocKey, maxVariants: Math.Max(req.Count, result.Paths.Count),
+                    onProgress: line =>
+                    {
+                        _ = AppendLogAsync(line);
+                        _ = UpdateAsync(s => s.Message = line);
+                    },
+                    ct: ct);
+                await FinishAsync(
+                    "done",
+                    $"Set plates ready for {req.LocKey} — auto-locked variant {best}");
+            }
+            else
+            {
+                await FinishAsync(
+                    "done",
+                    $"Set plates ready for {req.LocKey} ({result.Mode}, {result.Paths.Count} image(s))");
+            }
         }
         catch (OperationCanceledException)
         {
@@ -2291,9 +2332,28 @@ public sealed class FilmJobService
                 (result.BookRefs.Count > 0
                     ? $" · book refs: {string.Join(", ", result.BookRefs)}"
                     : ""));
-            await FinishAsync(
-                "done",
-                $"Variants ready for {req.CharKey} ({result.Mode}, {result.Paths.Count} image(s))");
+
+            if (req.AutoLockBest && result.Paths.Count > 0)
+            {
+                await UpdateAsync(s => s.Message = $"AI picking best look for {req.CharKey}…");
+                var (best, _) = await _characters.AutoLockBestVariantAsync(
+                    projectId, req.CharKey, maxVariants: 3,
+                    onProgress: line =>
+                    {
+                        _ = AppendLogAsync(line);
+                        _ = UpdateAsync(s => s.Message = line);
+                    },
+                    ct: ct);
+                await FinishAsync(
+                    "done",
+                    $"Portraits ready for {req.CharKey} — auto-locked variant {best}");
+            }
+            else
+            {
+                await FinishAsync(
+                    "done",
+                    $"Variants ready for {req.CharKey} ({result.Mode}, {result.Paths.Count} image(s))");
+            }
         }
         catch (OperationCanceledException)
         {
@@ -2302,6 +2362,162 @@ public sealed class FilmJobService
         catch (Exception ex)
         {
             _log.LogError(ex, "Character variants failed");
+            await FinishAsync("error", ex.Message, ex.Message);
+        }
+    }
+
+    private async Task RunPlanLooksAsync(StartPlanLooksRequest req, string projectId, CancellationToken ct)
+    {
+        await _projects.RequireProjectAsync(projectId, ct);
+
+        var count = req.Count > 0 ? req.Count : 3;
+        var cast = req.IncludeCast
+            ? _projects.ListCharacters(projectId)
+                .Where(c => c.UsedInPlan && !c.IsGroup && !c.VoiceOnly)
+                .Where(c => !req.SkipAlreadyLocked || !c.Locked)
+                .OrderBy(c => c.DisplayName, StringComparer.OrdinalIgnoreCase)
+                .ToList()
+            : new List<CharacterSummary>();
+        var locs = req.IncludeLocations
+            ? _projects.ListLocations(projectId)
+                .Where(l => l.UsedInPlan)
+                .Where(l => !req.SkipAlreadyLocked || !l.Locked)
+                .OrderBy(l => l.DisplayName, StringComparer.OrdinalIgnoreCase)
+                .ToList()
+            : new List<LocationSummary>();
+
+        var total = cast.Count + locs.Count;
+        Snapshot = new JobSnapshot
+        {
+            Status = "running",
+            Kind = "plan_looks",
+            ProjectId = projectId,
+            Message = total == 0
+                ? "Nothing to generate — all plan looks already locked"
+                : $"Looks for plan: {cast.Count} cast + {locs.Count} places…",
+            Index = 0,
+            Total = Math.Max(1, total),
+            StartedAt = DateTimeOffset.UtcNow,
+            Log = new List<string>(),
+        };
+        RegisterActiveJob();
+        await PublishAsync();
+
+        if (total == 0)
+        {
+            await FinishAsync("done", "All used cast/places already have locked looks (or none in plan).");
+            return;
+        }
+
+        var done = 0;
+        var lockedN = 0;
+        var failed = new List<string>();
+
+        try
+        {
+            await AppendLogAsync(
+                $"Plan looks: {cast.Count} cast · {locs.Count} locations · {count} variants each · auto-lock best");
+
+            foreach (var c in cast)
+            {
+                ct.ThrowIfCancellationRequested();
+                await UpdateAsync(s =>
+                {
+                    s.Message = $"Cast look {done + 1}/{total}: {c.DisplayName}";
+                    s.Index = done;
+                    s.CharKey = c.Key;
+                });
+                await AppendLogAsync($"── Cast {c.Key} ({c.DisplayName}) ──");
+                try
+                {
+                    var result = await _characters.GenerateVariantsAsync(
+                        projectId,
+                        c.Key,
+                        n: count,
+                        seedOptions: new StartCharacterVariantsRequest
+                        {
+                            ProjectId = projectId,
+                            CharKey = c.Key,
+                            Count = count,
+                            SeedMode = "auto",
+                            AutoLockBest = false,
+                        },
+                        onProgress: line => _ = AppendLogAsync("  " + line),
+                        ct: ct);
+                    if (result.Paths.Count == 0)
+                        throw new InvalidOperationException("no variants produced");
+                    var (best, _) = await _characters.AutoLockBestVariantAsync(
+                        projectId, c.Key, maxVariants: count,
+                        onProgress: line => _ = AppendLogAsync("  " + line),
+                        ct: ct);
+                    lockedN++;
+                    await AppendLogAsync($"  locked variant {best}");
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex)
+                {
+                    failed.Add($"{c.Key}: {ex.Message}");
+                    await AppendLogAsync($"  FAILED: {ex.Message}");
+                    _log.LogWarning(ex, "Plan looks cast failed {Key}", c.Key);
+                }
+                done++;
+                await UpdateAsync(s => s.Index = done);
+            }
+
+            foreach (var loc in locs)
+            {
+                ct.ThrowIfCancellationRequested();
+                await UpdateAsync(s =>
+                {
+                    s.Message = $"Place look {done + 1}/{total}: {loc.DisplayName}";
+                    s.Index = done;
+                    s.CharKey = loc.Key;
+                });
+                await AppendLogAsync($"── Location {loc.Key} ({loc.DisplayName}) ──");
+                try
+                {
+                    var result = await _locations.GenerateVariantsAsync(
+                        projectId,
+                        loc.Key,
+                        n: count,
+                        onProgress: line => _ = AppendLogAsync("  " + line),
+                        ct: ct);
+                    if (result.Paths.Count == 0)
+                        throw new InvalidOperationException("no variants produced");
+                    var (best, _) = await _locations.AutoLockBestVariantAsync(
+                        projectId, loc.Key, maxVariants: count,
+                        onProgress: line => _ = AppendLogAsync("  " + line),
+                        ct: ct);
+                    lockedN++;
+                    await AppendLogAsync($"  locked variant {best}");
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex)
+                {
+                    failed.Add($"{loc.Key}: {ex.Message}");
+                    await AppendLogAsync($"  FAILED: {ex.Message}");
+                    _log.LogWarning(ex, "Plan looks location failed {Key}", loc.Key);
+                }
+                done++;
+                await UpdateAsync(s => s.Index = done);
+            }
+
+            var summary = $"Plan looks done: locked {lockedN}/{total}"
+                + (failed.Count > 0 ? $" · {failed.Count} failed" : "");
+            if (failed.Count > 0 && lockedN == 0)
+                await FinishAsync("error", summary, string.Join("; ", failed.Take(5)));
+            else if (failed.Count > 0)
+                await FinishAsync("partial", summary);
+            else
+                await FinishAsync("done", summary);
+        }
+        catch (OperationCanceledException)
+        {
+            await FinishAsync("cancelled", "Cancelled by user");
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Plan looks batch failed");
             await FinishAsync("error", ex.Message, ex.Message);
         }
     }

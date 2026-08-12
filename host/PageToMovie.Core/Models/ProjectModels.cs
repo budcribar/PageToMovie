@@ -457,6 +457,8 @@ public sealed class StartLocationVariantsRequest
     /// <summary>When set with an existing lock, runs image edit from the locked plate.</summary>
     public string? ImageEditInstruction { get; set; }
     public bool PersistDescription { get; set; } = true;
+    /// <summary>After gen, vision ranks variants and locks the best (operator can override later).</summary>
+    public bool AutoLockBest { get; set; }
 }
 
 /// <summary>
@@ -503,6 +505,25 @@ public sealed class StartCharacterVariantsRequest
     public string? VisualLockOverride { get; set; }
     /// <summary>Write DescriptionOverride / VisualLockOverride into scenes.json seeds before generate.</summary>
     public bool PersistDescription { get; set; } = true;
+    /// <summary>After gen, vision ranks variants and locks the best (operator can override later).</summary>
+    public bool AutoLockBest { get; set; }
+}
+
+/// <summary>
+/// Batch: generate looks for every used-in-plan cast face + location, vision auto-lock best.
+/// Skips group / voice-only cast. Operator can re-lock any plate from Cast / Locations.
+/// </summary>
+public sealed class StartPlanLooksRequest
+{
+    public string ProjectId { get; set; } = "";
+    /// <summary>Variants per subject (default 3).</summary>
+    public int Count { get; set; } = 3;
+    /// <summary>When true, skip subjects that already have a locked plate.</summary>
+    public bool SkipAlreadyLocked { get; set; } = true;
+    /// <summary>Include cast faces (default true).</summary>
+    public bool IncludeCast { get; set; } = true;
+    /// <summary>Include location set plates (default true).</summary>
+    public bool IncludeLocations { get; set; } = true;
 }
 
 public sealed class ExtractCastRequest

@@ -525,6 +525,44 @@ public sealed class CharacterDesignService
         return await LockFromPathAsync(projectId, charKey, variantPath, allowStyleOverride, ct).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Rank existing variant_01..N with vision against description/visual_lock, lock the winner.
+    /// Operator can re-lock another variant later from the Cast UI.
+    /// </summary>
+    public async Task<(int VariantIndex, string RefPath)> AutoLockBestVariantAsync(
+        string projectId,
+        string charKey,
+        int maxVariants = 3,
+        Action<string>? onProgress = null,
+        CancellationToken ct = default)
+    {
+        var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
+        var seeds = _projects.GetCharacterSeed(projectId, charKey)
+            ?? throw new InvalidOperationException($"Unknown character seed: {charKey}");
+        var desc = seeds.TryGetProperty("description", out var d) ? d.GetString() ?? "" : "";
+        var vlock = seeds.TryGetProperty("visual_lock", out var v) ? v.GetString() ?? "" : "";
+
+        var found = new List<(int Index, string Path)>();
+        for (var i = 1; i <= Math.Clamp(maxVariants, 1, 3); i++)
+        {
+            var path = Path.Combine(projectDir, "assets", "characters",
+                $"{charKey.ToLowerInvariant()}_variant_0{i}.png");
+            if (File.Exists(path) && new FileInfo(path).Length >= 64)
+                found.Add((i, path));
+        }
+        if (found.Count == 0)
+            throw new InvalidOperationException($"No portrait variants on disk for {charKey}");
+
+        onProgress?.Invoke($"AI picking best look for {charKey} ({found.Count} options)…");
+        var best = await LookVariantPicker.PickBestIndexAsync(
+            _vision, _log, "character portrait", charKey, desc, vlock, found, ct).ConfigureAwait(false);
+        onProgress?.Invoke($"Auto-locking variant {best} for {charKey}");
+        // allowStyleOverride: batch auto-lock should not hard-fail the whole plan on style gate
+        var refPath = await LockVariantAsync(projectId, charKey, best, allowStyleOverride: true, ct)
+            .ConfigureAwait(false);
+        return (best, refPath);
+    }
+
     public Task<string> LockBookRefAsync(
         string projectId,
         string charKey,
