@@ -64,13 +64,11 @@ window.PageToMovieFfmpeg = {
     ensureLoadedAsync: async function (onProgress) {
         if (this._loaded && this._ffmpeg) return { success: true };
         if (this._loading) return this._loading;
-
-        const self = this;
         this._loading = (async () => {
             try {
                 reportProgress(onProgress, 0, "Loading video tools…");
-                await self._ensureScript(self._assets.ffmpegJs.url);
-                await self._ensureScript(self._assets.utilJs.url);
+                await this._ensureScript(this._assets.ffmpegJs.url);
+                await this._ensureScript(this._assets.utilJs.url);
 
                 const FFmpegClass = (window.FFmpegWASM && window.FFmpegWASM.FFmpeg)
                     || (window.FFmpeg && window.FFmpeg.FFmpeg)
@@ -80,7 +78,7 @@ window.PageToMovieFfmpeg = {
                 }
 
                 const ffmpeg = new FFmpegClass();
-                ffmpeg.on("log", ({ message }) => self._log(message));
+                ffmpeg.on("log", ({ message }) => this._log(message));
                 ffmpeg.on("progress", ({ progress }) => {
                     const pct = Math.max(0, Math.min(99, Math.round((progress || 0) * 100)));
                     reportProgress(onProgress, pct, "Combining…");
@@ -94,20 +92,20 @@ window.PageToMovieFfmpeg = {
                 const origin = window.location.origin;
                 await ffmpeg.load({
                     coreURL: origin + "/js/ffmpeg/ffmpeg-core.js", // used only to derive default wasmURL path
-                    wasmURL: origin + self._assets.wasmJs,
-                    classWorkerURL: origin + self._assets.workerBundleJs,
+                    wasmURL: origin + this._assets.wasmJs,
+                    classWorkerURL: origin + this._assets.workerBundleJs,
                 });
 
-                self._ffmpeg = ffmpeg;
-                self._loaded = true;
+                this._ffmpeg = ffmpeg;
+                this._loaded = true;
                 reportProgress(onProgress, 10, "Ready");
                 return { success: true };
             } catch (err) {
-                self._loading = null;
+                this._loading = null;
                 console.error("ffmpeg.wasm load failed:", err);
                 return { success: false, error: err.message || String(err) };
             } finally {
-                self._loading = null;
+                this._loading = null;
             }
         })();
 
@@ -217,13 +215,11 @@ window.PageToMovieFfmpeg = {
             reportProgress(onProgress, 100, "Ready");
             return { success: true, url: list[0], count: 1, single: true };
         }
-
-        const self = this;
-        return this._runExclusiveAsync(async function () {
-            const load = await self.ensureLoadedAsync(onProgress);
+        return this._runExclusiveAsync(async () => {
+            const load = await this.ensureLoadedAsync(onProgress);
             if (!load.success) return load;
 
-            const ffmpeg = self._ffmpeg;
+            const ffmpeg = this._ffmpeg;
             const util = window.FFmpegUtil || {};
             const fetchFile = util.fetchFile;
             if (typeof fetchFile !== "function") {
@@ -233,7 +229,7 @@ window.PageToMovieFfmpeg = {
             let written = [];
             try {
                 reportProgress(onProgress, 12, "Downloading clips…");
-                written = await self._writeSequentialInputsAsync(ffmpeg, list, "mp4", onProgress, 12, 52);
+                written = await this._writeSequentialInputsAsync(ffmpeg, list, "mp4", onProgress, 12, 52);
 
                 // concat demuxer list
                 const listBody = written.map(n => "file '" + n + "'").join("\n");
@@ -250,7 +246,7 @@ window.PageToMovieFfmpeg = {
                     ]);
                     ok = true;
                 } catch (copyErr) {
-                    self._log("copy concat failed, re-encoding: " + (copyErr && copyErr.message));
+                    this._log("copy concat failed, re-encoding: " + (copyErr && copyErr.message));
                     try { await ffmpeg.deleteFile("out.mp4"); } catch (_) { /* */ }
                     await ffmpeg.exec([
                         "-f", "concat", "-safe", "0", "-i", "list.txt",
@@ -291,10 +287,10 @@ window.PageToMovieFfmpeg = {
                     // Re-wrap so the blob URL still works after arrayBuffer()
                     blob = new Blob([ab], { type: blob.type || "video/mp4" });
                 } catch (hashErr) {
-                    self._log("stitch sha256 skipped: " + (hashErr && hashErr.message));
+                    this._log("stitch sha256 skipped: " + (hashErr && hashErr.message));
                 }
 
-                self._blobUrl = URL.createObjectURL(blob);
+                this._blobUrl = URL.createObjectURL(blob);
 
                 // Cleanup MEMFS
                 for (const n of written) {
@@ -304,7 +300,7 @@ window.PageToMovieFfmpeg = {
                 try { await ffmpeg.deleteFile("out.mp4"); } catch (_) { /* */ }
 
                 reportProgress(onProgress, 100, "Ready");
-                return { success: true, url: self._blobUrl, count: list.length, sha256: sha256, byteLength: byteLength };
+                return { success: true, url: this._blobUrl, count: list.length, sha256: sha256, byteLength: byteLength };
             } catch (err) {
                 console.error("concatVideosAsync failed:", err);
                 return { success: false, error: err.message || String(err) };
@@ -437,21 +433,20 @@ window.PageToMovieFfmpeg = {
      */
     renderCreditsClipAsync: async function (opts) {
         opts = opts || {};
-        const self = this;
         const w = Math.max(16, Math.round(opts.width || 1280));
         const h = Math.max(16, Math.round(opts.height || 720));
         const fps = Math.max(1, Math.round(opts.fps || 24));
         const dur = Math.max(1, Number(opts.durationSec || 5));
-        return this._runExclusiveAsync(async function () {
-            const load = await self.ensureLoadedAsync(opts.onProgress);
+        return this._runExclusiveAsync(async () => {
+            const load = await this.ensureLoadedAsync(opts.onProgress);
             if (!load.success) return load;
-            const ffmpeg = self._ffmpeg;
+            const ffmpeg = this._ffmpeg;
             try {
                 // Same-origin favicon → drawing it does not taint the canvas, so export still works.
                 let logoImg = null;
-                try { logoImg = await self._loadImageAsync(opts.logoUrl || "/favicon.png"); }
+                try { logoImg = await this._loadImageAsync(opts.logoUrl || "/favicon.png"); }
                 catch (_) { /* logo is optional — the card still renders without it */ }
-                const cv = self._drawCreditsCard({ ...opts, width: w, height: h, logoImg: logoImg });
+                const cv = this._drawCreditsCard({ ...opts, width: w, height: h, logoImg: logoImg });
                 const blob = await new Promise((res) => cv.toBlob(res, "image/png"));
                 if (!blob) return { success: false, error: "canvas toBlob failed" };
                 const png = new Uint8Array(await blob.arrayBuffer());
@@ -485,19 +480,18 @@ window.PageToMovieFfmpeg = {
 
     probeDurationAsync: async function (url) {
         if (!url) return { success: false, error: "No URL" };
-        const self = this;
-        return this._runExclusiveAsync(async function () {
-            const load = await self.ensureLoadedAsync();
+        return this._runExclusiveAsync(async () => {
+            const load = await this.ensureLoadedAsync();
             if (!load.success) return { success: false, error: load.error };
             const inName = "probe_tmp.mp4";
             try {
-                const data = await self._safeFetchFile(url);
-                await self._ffmpeg.writeFile(inName, data);
-                const probe = await self._probeDurationMemfsAsync(inName);
-                try { await self._ffmpeg.deleteFile(inName); } catch (_) {}
+                const data = await this._safeFetchFile(url);
+                await this._ffmpeg.writeFile(inName, data);
+                const probe = await this._probeDurationMemfsAsync(inName);
+                try { await this._ffmpeg.deleteFile(inName); } catch (_) {}
                 return probe;
             } catch (err) {
-                try { await self._ffmpeg.deleteFile(inName); } catch (_) {}
+                try { await this._ffmpeg.deleteFile(inName); } catch (_) {}
                 return { success: false, error: err.message || String(err) };
             }
         });
@@ -527,10 +521,8 @@ window.PageToMovieFfmpeg = {
     analyzeSilenceAsync: async function (url, opts, onProgress) {
         opts = opts || {};
         if (!url) return { success: false, token: null, totalSec: 0, log: "", error: "No URL" };
-
-        const self = this;
-        return this._runExclusiveAsync(async function () {
-            const load = await self.ensureLoadedAsync(onProgress);
+        return this._runExclusiveAsync(async () => {
+            const load = await this.ensureLoadedAsync(onProgress);
             if (!load.success) {
                 return {
                     success: true, token: null, totalSec: 0, log: "",
@@ -538,16 +530,16 @@ window.PageToMovieFfmpeg = {
                 };
             }
 
-            const ffmpeg = self._ffmpeg;
-            const token = "sil" + (++self._silenceSessionSeq);
+            const ffmpeg = this._ffmpeg;
+            const token = "sil" + (++this._silenceSessionSeq);
             const inName = token + "_in.mp4";
             try {
                 reportProgress(onProgress, 8, "Loading clip…");
-                const data = await self._safeFetchFile(url);
+                const data = await this._safeFetchFile(url);
                 await ffmpeg.writeFile(inName, data);
 
                 reportProgress(onProgress, 18, "Probing duration…");
-                const probe = await self._probeDurationMemfsAsync(inName);
+                const probe = await this._probeDurationMemfsAsync(inName);
                 if (!probe.success || !(probe.seconds > 1.5)) {
                     try { await ffmpeg.deleteFile(inName); } catch (_) { /* */ }
                     return {
@@ -557,7 +549,7 @@ window.PageToMovieFfmpeg = {
                 }
 
                 reportProgress(onProgress, 30, "Detecting silence…");
-                const det = await self._silenceDetectMemfsAsync(inName, opts.noiseDb, opts.minSilenceSec);
+                const det = await this._silenceDetectMemfsAsync(inName, opts.noiseDb, opts.minSilenceSec);
                 if (!det.success) {
                     try { await ffmpeg.deleteFile(inName); } catch (_) { /* */ }
                     return {
@@ -566,7 +558,7 @@ window.PageToMovieFfmpeg = {
                     };
                 }
 
-                self._silenceSessions[token] = inName;
+                this._silenceSessions[token] = inName;
                 return { success: true, token: token, totalSec: probe.seconds, log: det.log };
             } catch (err) {
                 try { await ffmpeg.deleteFile(inName); } catch (_) { /* */ }
@@ -620,28 +612,27 @@ window.PageToMovieFfmpeg = {
     detectSpeechSegmentsAsync: async function (url, opts, onProgress) {
         opts = opts || {};
         if (!url) return { success: false, error: "No URL" };
-        const self = this;
-        return this._runExclusiveAsync(async function () {
-            const load = await self.ensureLoadedAsync(onProgress);
+        return this._runExclusiveAsync(async () => {
+            const load = await this.ensureLoadedAsync(onProgress);
             if (!load.success) return { success: false, error: load.error || "ffmpeg load failed" };
 
-            const ffmpeg = self._ffmpeg;
+            const ffmpeg = this._ffmpeg;
             const inName = "speechdet_in.mp4";
             try {
                 reportProgress(onProgress, 10, "Loading clip…");
-                await ffmpeg.writeFile(inName, await self._safeFetchFile(url));
+                await ffmpeg.writeFile(inName, await this._safeFetchFile(url));
 
                 reportProgress(onProgress, 30, "Probing duration…");
-                const probe = await self._probeDurationMemfsAsync(inName);
+                const probe = await this._probeDurationMemfsAsync(inName);
                 const totalSec = probe.success && probe.seconds > 0 ? probe.seconds : 0;
 
                 reportProgress(onProgress, 55, "Detecting speech…");
-                const det = await self._silenceDetectMemfsAsync(inName, opts.noiseDb, opts.minSilenceSec);
+                const det = await this._silenceDetectMemfsAsync(inName, opts.noiseDb, opts.minSilenceSec);
                 if (!det.success) {
                     return { success: false, error: det.error || "silence detect failed" };
                 }
 
-                const segments = self._invertSilenceToSpeech(det.log || "", totalSec, opts.minSilenceSec);
+                const segments = this._invertSilenceToSpeech(det.log || "", totalSec, opts.minSilenceSec);
                 reportProgress(onProgress, 100, "Speech detected");
                 return { success: true, totalSec: totalSec, segments: segments };
             } catch (err) {
@@ -659,15 +650,14 @@ window.PageToMovieFfmpeg = {
      */
     extractAudioSegmentAsync: async function (videoUrl, startSec, endSec, onProgress) {
         if (!videoUrl) throw new Error("No video URL");
-        const self = this;
-        return this._runExclusiveAsync(async function () {
-            const load = await self.ensureLoadedAsync(onProgress);
+        return this._runExclusiveAsync(async () => {
+            const load = await this.ensureLoadedAsync(onProgress);
             if (!load.success) throw new Error(load.error || "ffmpeg load failed");
-            const ffmpeg = self._ffmpeg;
+            const ffmpeg = this._ffmpeg;
             const inName = "seg_in.mp4";
             const outName = "seg_out.wav";
             try {
-                await ffmpeg.writeFile(inName, await self._safeFetchFile(videoUrl));
+                await ffmpeg.writeFile(inName, await this._safeFetchFile(videoUrl));
                 const start = Math.max(0, +startSec || 0);
                 const dur = Math.max(0.1, (+endSec || 0) - start);
                 const args = ["-hide_banner", "-y"];
@@ -689,15 +679,14 @@ window.PageToMovieFfmpeg = {
      */
     extractAudioSegmentToUrlAsync: async function (videoUrl, startSec, endSec, onProgress) {
         if (!videoUrl) return { success: false, error: "No video URL" };
-        const self = this;
-        return this._runExclusiveAsync(async function () {
-            const load = await self.ensureLoadedAsync(onProgress);
+        return this._runExclusiveAsync(async () => {
+            const load = await this.ensureLoadedAsync(onProgress);
             if (!load.success) return { success: false, error: load.error || "ffmpeg load failed" };
-            const ffmpeg = self._ffmpeg;
+            const ffmpeg = this._ffmpeg;
             const inName = "segurl_in.mp4";
             const outName = "segurl_out.wav";
             try {
-                await ffmpeg.writeFile(inName, await self._safeFetchFile(videoUrl));
+                await ffmpeg.writeFile(inName, await this._safeFetchFile(videoUrl));
                 const start = Math.max(0, +startSec || 0);
                 const dur = Math.max(0.1, (+endSec || 0) - start);
                 const args = ["-hide_banner", "-y"];
@@ -1131,18 +1120,17 @@ window.PageToMovieFfmpeg = {
     concatAudioToBytesAsync: async function (urls, onProgress) {
         const list = Array.isArray(urls) ? urls.filter(u => u) : [];
         if (list.length === 0) throw new Error("no audio urls");
-        const self = this;
-        return this._runExclusiveAsync(async function () {
-            const load = await self.ensureLoadedAsync(onProgress);
+        return this._runExclusiveAsync(async () => {
+            const load = await this.ensureLoadedAsync(onProgress);
             if (!load.success) throw new Error(load.error || "ffmpeg load failed");
-            const ffmpeg = self._ffmpeg;
+            const ffmpeg = this._ffmpeg;
             const names = [];
             const outName = "cat_out.wav";
             try {
                 const inputs = [];
                 for (let i = 0; i < list.length; i++) {
                     const nm = "cat_in_" + i;
-                    await ffmpeg.writeFile(nm, await self._safeFetchFile(list[i]));
+                    await ffmpeg.writeFile(nm, await this._safeFetchFile(list[i]));
                     names.push(nm);
                     inputs.push("-i", nm);
                 }
@@ -1232,19 +1220,17 @@ window.PageToMovieFfmpeg = {
         // muteBase: drop the original clip audio entirely and use the cloned voice as the whole
         // soundtrack (narrator-only scenes) — no bed to duck, so no double voice.
         const muteBase = !!opts.muteBase;
-
-        const self = this;
-        return this._runExclusiveAsync(async function () {
-            const load = await self.ensureLoadedAsync(onProgress);
+        return this._runExclusiveAsync(async () => {
+            const load = await this.ensureLoadedAsync(onProgress);
             if (!load.success) return load;
 
-            const ffmpeg = self._ffmpeg;
+            const ffmpeg = this._ffmpeg;
             const inVideo = "ov_in_video.mp4";
             const outName = "ov_out.mp4";
             const audioNames = [];
             try {
                 reportProgress(onProgress, 8, "Loading picture…");
-                await ffmpeg.writeFile(inVideo, await self._safeFetchFile(videoUrl));
+                await ffmpeg.writeFile(inVideo, await this._safeFetchFile(videoUrl));
 
                 console.log("[dub] overlay: " + list.length + " voice segment(s)");
 
@@ -1263,7 +1249,7 @@ window.PageToMovieFfmpeg = {
                     else if (/\.m4a(\?|$)/i.test(seg.audioUrl) || (seg.audioUrl.indexOf("audio/mp4") >= 0)) ext = ".m4a";
                     const rawName = "ov_voice_raw_" + i + ext;
                     const wavName = "ov_voice_" + i + ".wav";
-                    const bytes = await self._safeFetchFile(seg.audioUrl);
+                    const bytes = await this._safeFetchFile(seg.audioUrl);
                     console.log("[dub] voice " + i + ": " + (bytes ? bytes.length : 0) + " bytes");
                     if (!bytes || bytes.length < 512) {
                         console.warn("[dub] voice " + i + " suspiciously small — TTS likely returned silence/empty.");
@@ -1307,7 +1293,7 @@ window.PageToMovieFfmpeg = {
                         const seg = list[i];
                         const startSec = Math.max(0, +seg.startSec || 0);
                         const targetDur = Math.max(0.2, (+seg.endSec || 0) - startSec);
-                        const probe = await self._probeDurationMemfsAsync(audioNames[i]);
+                        const probe = await this._probeDurationMemfsAsync(audioNames[i]);
                         const natSec = probe && probe.success && probe.seconds > 0 ? probe.seconds : targetDur;
                         segInfo.push({ i: i, startSec: startSec, natSec: natSec, ratio: natSec / targetDur });
                     }
@@ -1374,7 +1360,7 @@ window.PageToMovieFfmpeg = {
                 ]);
 
                 reportProgress(onProgress, 90, "Saving clip…");
-                const url = await self._readAndCleanupAsync(
+                const url = await this._readAndCleanupAsync(
                     ffmpeg, outName, "video/mp4", [inVideo].concat(audioNames));
                 reportProgress(onProgress, 100, "Ready");
                 return { success: true, url: url };
@@ -1389,13 +1375,12 @@ window.PageToMovieFfmpeg = {
     },
 
     encodeSliceAsync: async function (token, startSec, durationSec, onProgress) {
-        const self = this;
-        return this._runExclusiveAsync(async function () {
-            const inName = self._silenceSessions[token];
+        return this._runExclusiveAsync(async () => {
+            const inName = this._silenceSessions[token];
             if (!inName) return { success: false, error: "Unknown or expired silence-trim session" };
-            delete self._silenceSessions[token];
+            delete this._silenceSessions[token];
 
-            const ffmpeg = self._ffmpeg;
+            const ffmpeg = this._ffmpeg;
             const outName = token + "_out.mp4";
             try {
                 reportProgress(onProgress, 55, "Re-encoding trimmed clip…");
@@ -1432,22 +1417,21 @@ window.PageToMovieFfmpeg = {
     // caller only ever wants one trim, not an analyze-then-slice round trip.
     trimTailAsync: async function (url, keepSeconds, onProgress) {
         if (!url) return { success: false, error: "No URL" };
-        const self = this;
-        return this._runExclusiveAsync(async function () {
-            const load = await self.ensureLoadedAsync(onProgress);
+        return this._runExclusiveAsync(async () => {
+            const load = await this.ensureLoadedAsync(onProgress);
             if (!load.success) return { success: false, error: load.error };
 
-            const ffmpeg = self._ffmpeg;
-            const seq = ++self._trimTailSeq;
+            const ffmpeg = this._ffmpeg;
+            const seq = ++this._trimTailSeq;
             const inName = "trimtail_in_" + seq + ".mp4";
             const outName = "trimtail_out_" + seq + ".mp4";
             try {
                 reportProgress(onProgress, 10, "Loading clip…");
-                const data = await self._safeFetchFile(url);
+                const data = await this._safeFetchFile(url);
                 await ffmpeg.writeFile(inName, data);
 
                 reportProgress(onProgress, 30, "Probing duration…");
-                const probe = await self._probeDurationMemfsAsync(inName);
+                const probe = await this._probeDurationMemfsAsync(inName);
                 if (!probe.success || !(probe.seconds > 0)) {
                     return { success: false, error: "Could not read source duration" };
                 }
@@ -1484,12 +1468,11 @@ window.PageToMovieFfmpeg = {
     },
 
     discardSessionAsync: async function (token) {
-        const self = this;
-        return this._runExclusiveAsync(async function () {
-            const inName = self._silenceSessions[token];
+        return this._runExclusiveAsync(async () => {
+            const inName = this._silenceSessions[token];
             if (!inName) return { success: true };
-            delete self._silenceSessions[token];
-            try { await self._ffmpeg.deleteFile(inName); } catch (_) { /* */ }
+            delete this._silenceSessions[token];
+            try { await this._ffmpeg.deleteFile(inName); } catch (_) { /* */ }
             return { success: true };
         });
     },
@@ -1501,18 +1484,16 @@ window.PageToMovieFfmpeg = {
         const count = Math.max(1, Math.min(6, opts.count != null ? opts.count : (mode === "tail" ? 3 : 3)));
         const maxWidth = opts.maxWidth != null ? opts.maxWidth : 640;
         const quality = opts.quality != null ? opts.quality : 5;
-
-        const self = this;
-        return this._runExclusiveAsync(async function () {
-            const load = await self.ensureLoadedAsync(onProgress);
+        return this._runExclusiveAsync(async () => {
+            const load = await this.ensureLoadedAsync(onProgress);
             if (!load.success) return { success: false, error: load.error || "ffmpeg load failed" };
 
-            const ffmpeg = self._ffmpeg;
+            const ffmpeg = this._ffmpeg;
             const inName = "frame_in.mp4";
             const written = [];
             try {
                 reportProgress(onProgress, 10, "Loading video for frames…");
-                const data = await self._safeFetchFile(url);
+                const data = await this._safeFetchFile(url);
                 await ffmpeg.writeFile(inName, data);
                 written.push(inName);
 
@@ -1542,7 +1523,7 @@ window.PageToMovieFfmpeg = {
                         ]);
                     }
                 } catch (execErr) {
-                    self._log("frame extract primary failed: " + (execErr && execErr.message));
+                    this._log("frame extract primary failed: " + (execErr && execErr.message));
                     try {
                         await ffmpeg.exec([
                             "-hide_banner", "-y",
@@ -1572,7 +1553,7 @@ window.PageToMovieFfmpeg = {
                         const bytes = out instanceof Uint8Array ? out : new Uint8Array(out.buffer || out);
                         if (bytes.length < 64) continue;
                         frames.push({
-                            base64: self._bytesToBase64(bytes),
+                            base64: this._bytesToBase64(bytes),
                             mime: "image/jpeg",
                         });
                     } catch (_) {
@@ -1621,17 +1602,15 @@ window.PageToMovieFfmpeg = {
             reportProgress(onProgress, 100, "Ready");
             return { success: true, url: list[0], single: true };
         }
-
-        const self = this;
-        return this._runExclusiveAsync(async function () {
-            const load = await self.ensureLoadedAsync(onProgress);
+        return this._runExclusiveAsync(async () => {
+            const load = await this.ensureLoadedAsync(onProgress);
             if (!load.success) return load;
 
-            const ffmpeg = self._ffmpeg;
+            const ffmpeg = this._ffmpeg;
             let written = [];
             try {
                 reportProgress(onProgress, 12, "Downloading music segments…");
-                written = await self._writeSequentialInputsAsync(ffmpeg, list, "wav", onProgress, 12, 55);
+                written = await this._writeSequentialInputsAsync(ffmpeg, list, "wav", onProgress, 12, 55);
 
                 const listBody = written.map(n => "file '" + n + "'").join("\n");
                 await ffmpeg.writeFile("music_list.txt", listBody);
@@ -1644,7 +1623,7 @@ window.PageToMovieFfmpeg = {
                 ]);
 
                 reportProgress(onProgress, 90, "Preparing…");
-                const url = await self._readAndCleanupAsync(
+                const url = await this._readAndCleanupAsync(
                     ffmpeg, "out_music.m4a", "audio/mp4", written.concat(["music_list.txt"]));
                 reportProgress(onProgress, 100, "Ready");
                 return { success: true, url: url };
@@ -1672,23 +1651,21 @@ window.PageToMovieFfmpeg = {
         if (!musicUrl) return { success: true, url: videoUrl }; // nothing to mix — pass through
 
         const volRatio = Math.max(0.05, Math.min(1.0, (volumePercent != null ? volumePercent : 20) / 100));
-
-        const self = this;
-        return this._runExclusiveAsync(async function () {
-            const load = await self.ensureLoadedAsync(onProgress);
+        return this._runExclusiveAsync(async () => {
+            const load = await this.ensureLoadedAsync(onProgress);
             if (!load.success) return load;
 
-            const ffmpeg = self._ffmpeg;
+            const ffmpeg = this._ffmpeg;
             const inVideo = "mix_in_video.mp4";
             const inMusic = "mix_in_music.m4a";
             const outName = "mix_out.mp4";
             try {
                 reportProgress(onProgress, 10, "Loading video…");
-                await ffmpeg.writeFile(inVideo, await self._safeFetchFile(videoUrl));
+                await ffmpeg.writeFile(inVideo, await this._safeFetchFile(videoUrl));
                 reportProgress(onProgress, 30, "Loading music…");
-                await ffmpeg.writeFile(inMusic, await self._safeFetchFile(musicUrl));
+                await ffmpeg.writeFile(inMusic, await this._safeFetchFile(musicUrl));
 
-                const probe = await self._probeDurationMemfsAsync(inVideo);
+                const probe = await this._probeDurationMemfsAsync(inVideo);
                 const durationSec = probe.success && probe.seconds > 0 ? probe.seconds : 0;
                 const fadeStart = Math.max(0, durationSec - 1.5);
                 const musicFilter = "[1:a]volume=" + volRatio.toFixed(2) +
@@ -1707,7 +1684,7 @@ window.PageToMovieFfmpeg = {
                 ]);
 
                 reportProgress(onProgress, 90, "Preparing player…");
-                const url = await self._readAndCleanupAsync(ffmpeg, outName, "video/mp4", [inVideo, inMusic]);
+                const url = await this._readAndCleanupAsync(ffmpeg, outName, "video/mp4", [inVideo, inMusic]);
                 reportProgress(onProgress, 100, "Ready");
                 return { success: true, url: url };
             } catch (err) {
@@ -1729,19 +1706,17 @@ window.PageToMovieFfmpeg = {
     replaceVideoAudioAsync: async function (videoUrl, audioUrl, onProgress) {
         if (!videoUrl) return { success: false, error: "No video URL" };
         if (!audioUrl) return { success: false, error: "No audio URL" };
-
-        const self = this;
-        return this._runExclusiveAsync(async function () {
-            const load = await self.ensureLoadedAsync(onProgress);
+        return this._runExclusiveAsync(async () => {
+            const load = await this.ensureLoadedAsync(onProgress);
             if (!load.success) return load;
 
-            const ffmpeg = self._ffmpeg;
+            const ffmpeg = this._ffmpeg;
             const inVideo = "rv_in_video.mp4";
             const inAudio = "rv_in_audio";
             const outName = "rv_out.mp4";
             try {
                 reportProgress(onProgress, 8, "Loading picture…");
-                await ffmpeg.writeFile(inVideo, await self._safeFetchFile(videoUrl));
+                await ffmpeg.writeFile(inVideo, await this._safeFetchFile(videoUrl));
                 reportProgress(onProgress, 28, "Loading voice…");
                 // Keep extension so ffmpeg can sniff container (mp3/wav/m4a)
                 let audioName = inAudio + ".bin";
@@ -1751,9 +1726,9 @@ window.PageToMovieFfmpeg = {
                     else if (audioUrl.indexOf("audio/mpeg") >= 0 || /\.mp3(\?|$)/i.test(audioUrl)) audioName = inAudio + ".mp3";
                     else audioName = inAudio + ".mp3";
                 }
-                await ffmpeg.writeFile(audioName, await self._safeFetchFile(audioUrl));
+                await ffmpeg.writeFile(audioName, await this._safeFetchFile(audioUrl));
 
-                const probe = await self._probeDurationMemfsAsync(inVideo);
+                const probe = await this._probeDurationMemfsAsync(inVideo);
                 const durationSec = probe.success && probe.seconds > 0 ? probe.seconds : 0;
 
                 reportProgress(onProgress, 50, "Replacing audio…");
@@ -1784,7 +1759,7 @@ window.PageToMovieFfmpeg = {
                 }
 
                 reportProgress(onProgress, 90, "Saving clip…");
-                const url = await self._readAndCleanupAsync(
+                const url = await this._readAndCleanupAsync(
                     ffmpeg, outName, "video/mp4", [inVideo, audioName]);
                 reportProgress(onProgress, 100, "Ready");
                 return { success: true, url: url };
@@ -1803,16 +1778,15 @@ window.PageToMovieFfmpeg = {
      */
     stripVideoAudioAsync: async function (videoUrl, onProgress) {
         if (!videoUrl) return { success: false, error: "No video URL" };
-        const self = this;
-        return this._runExclusiveAsync(async function () {
-            const load = await self.ensureLoadedAsync(onProgress);
+        return this._runExclusiveAsync(async () => {
+            const load = await this.ensureLoadedAsync(onProgress);
             if (!load.success) return load;
-            const ffmpeg = self._ffmpeg;
+            const ffmpeg = this._ffmpeg;
             const inVideo = "sa_in.mp4";
             const outName = "sa_out.mp4";
             try {
                 reportProgress(onProgress, 20, "Loading picture…");
-                await ffmpeg.writeFile(inVideo, await self._safeFetchFile(videoUrl));
+                await ffmpeg.writeFile(inVideo, await this._safeFetchFile(videoUrl));
                 reportProgress(onProgress, 55, "Removing audio…");
                 await ffmpeg.exec([
                     "-hide_banner", "-y",
@@ -1822,7 +1796,7 @@ window.PageToMovieFfmpeg = {
                     outName,
                 ]);
                 reportProgress(onProgress, 90, "Saving…");
-                const url = await self._readAndCleanupAsync(ffmpeg, outName, "video/mp4", [inVideo]);
+                const url = await this._readAndCleanupAsync(ffmpeg, outName, "video/mp4", [inVideo]);
                 reportProgress(onProgress, 100, "Ready");
                 return { success: true, url: url };
             } catch (err) {

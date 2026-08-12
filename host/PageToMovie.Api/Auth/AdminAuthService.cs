@@ -177,7 +177,7 @@ public sealed class AdminAuthService : IAdminAuthService
         {
             try
             {
-                await _email.SendAsync(user.Email!, subject, html, text);
+                await _email.SendAsync(user.Email!, subject, html, text, ct);
                 _logger?.LogInformation("EMAIL CONFIRMATION SENT successfully to {Email}", user.Email);
             }
             catch (Exception ex)
@@ -209,7 +209,7 @@ public sealed class AdminAuthService : IAdminAuthService
         {
             try
             {
-                await _email.SendAsync(user.Email!, subject, html, text);
+                await _email.SendAsync(user.Email!, subject, html, text, ct);
                 _logger?.LogInformation("PASSWORD RESET EMAIL SENT successfully to {Email}", user.Email);
             }
             catch (Exception ex)

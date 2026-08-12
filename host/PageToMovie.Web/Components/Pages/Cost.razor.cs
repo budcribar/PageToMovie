@@ -947,7 +947,7 @@ public partial class Cost : IAsyncDisposable
             try { CollabHub.LeaseChanged -= OnLeaseChanged; } catch { /* */ }
             _collabHubHooked = false;
         }
-        try { await CollabHub.LeaveAsync(); } catch { /* */ }
+        try { await CollabHub.LeaveAsync(CancellationToken.None); } catch { /* */ }
         try { _pageCts.Cancel(); } catch { /* */ }
         try { _pageCts.Dispose(); } catch { /* */ }
     }

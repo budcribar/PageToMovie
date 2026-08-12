@@ -1,3 +1,4 @@
+using System;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
@@ -7,7 +8,7 @@ using PageToMovie.Core.Util;
 
 namespace PageToMovie.Web.Components;
 
-public partial class CopyToClipboardButton
+public partial class CopyToClipboardButton : IAsyncDisposable, IDisposable
 {
     [Parameter] public string Text { get; set; } = "";
     [Parameter] public string Label { get; set; } = "Copy";
@@ -47,6 +48,16 @@ public partial class CopyToClipboardButton
         catch (OperationCanceledException)
         {
             /* superseded by another copy */
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_resetCts is { } oldCts)
+        {
+            try { oldCts.Cancel(); } catch { }
+            oldCts.Dispose();
+            _resetCts = null;
         }
     }
 

@@ -212,7 +212,7 @@ public partial class FilmLengthCard : IDisposable
         // Wait out an in-flight save (previous keystrokes) before forcing natural length.
         var spin = 0;
         while (_saving && spin++ < 40)
-            await Task.Delay(50);
+            await Task.Delay(50, CancellationToken.None);
         if (_edit == _target)
         {
             StateHasChanged();

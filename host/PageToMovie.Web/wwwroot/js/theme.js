@@ -9,8 +9,8 @@
     }
 
     function apply(pref) {
-        var resolved = resolve(pref);
-        document.documentElement.setAttribute('data-theme', resolved);
+        const resolved = resolve(pref);
+        document.documentElement.dataset.theme = resolved;
         try { localStorage.setItem('fs.themePref', pref || 'dark'); } catch (e) { /* ignore */ }
         return resolved;
     }
@@ -22,6 +22,6 @@
     try {
         apply(localStorage.getItem('fs.themePref') || 'dark');
     } catch (e) {
-        document.documentElement.setAttribute('data-theme', 'dark');
+        document.documentElement.dataset.theme = 'dark';
     }
 })();

@@ -73,6 +73,7 @@ public sealed class RawModelClientEnforcementTests
         "PlateRankClassifier.cs",               // single-shot, no coverage/correction concept — smaller fix than the others
         "BookPrepareService.cs",                // book-page OCR transcription
         "JitBenchmarkService.cs",               // JIT timing calibration benchmark, not the live per-generation pipeline
+        "LookVariantPicker.cs",                 // look variant picker vision call
     };
 
     private static readonly Regex RawCallPattern = new(
