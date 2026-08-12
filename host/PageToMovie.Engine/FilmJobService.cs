@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using PageToMovie.Core.Models;
 using PageToMovie.Core.Options;
 using PageToMovie.Engine.Abstractions;
@@ -2447,7 +2448,15 @@ public sealed class FilmJobService
                     onProgress: line =>
                     {
                         _ = AppendLogAsync(line);
-                        _ = UpdateAsync(s => s.Message = line);
+                        _ = UpdateAsync(s =>
+                        {
+                            s.Message = line;
+                            if (TryParseSceneProgress(line, out var idx, out var tot))
+                            {
+                                s.Index = idx;
+                                s.Total = tot;
+                            }
+                        });
                     },
                     ct: ct,
                     responses: _xaiResponses,
@@ -2496,7 +2505,7 @@ public sealed class FilmJobService
             {
                 await Task.Delay(TimeSpan.FromSeconds(15), token).ConfigureAwait(false);
                 var elapsed = DateTimeOffset.UtcNow - started;
-                var msg = $"Still generating… {FormatEnrichElapsed(elapsed)} elapsed. One rewrite of the full screenplay — this is normal.";
+                var msg = $"Still generating… {FormatEnrichElapsed(elapsed)} elapsed. Scene-by-scene enrich — this is normal.";
                 await UpdateAsync(s =>
                 {
                     s.Message = msg;
@@ -2511,6 +2520,18 @@ public sealed class FilmJobService
         {
             /* expected when the model call returns */
         }
+    }
+
+    private static bool TryParseSceneProgress(string? line, out int index, out int total)
+    {
+        index = 0;
+        total = 0;
+        if (string.IsNullOrWhiteSpace(line)) return false;
+        var m = CommonRegex.Match(line, @"scene\s+(\d+)\s*/\s*(\d+)", RegexOptions.IgnoreCase);
+        if (!m.Success) return false;
+        if (!int.TryParse(m.Groups[1].Value, out index)) return false;
+        if (!int.TryParse(m.Groups[2].Value, out total) || total <= 0) return false;
+        return true;
     }
 
     private static string FormatEnrichElapsed(TimeSpan elapsed)

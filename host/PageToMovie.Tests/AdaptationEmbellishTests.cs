@@ -1,4 +1,5 @@
 using PageToMovie.Adaptation;
+using PageToMovie.Adaptation.Conversion;
 using PageToMovie.Core.Abstractions;
 using Xunit;
 
@@ -57,6 +58,29 @@ public sealed class AdaptationEmbellishTests
 
         Assert.NotNull(seenUser);
         Assert.Contains("MAGIC_BOOK_MARKER", seenUser!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Embellish_long_script_goes_per_scene_and_survives_whole_script_collapse()
+    {
+        var input = Fountain(scenes: 8, tag: "sparse");
+        var chat = new FakeChat(u =>
+        {
+            var n = BookToFountainConverter.CountSceneHeadings(u);
+            // Whole-script collapse (what Odyssey did: 28 → 15). Per-scene user has 1 heading.
+            if (n >= 8) return Fountain(scenes: 3, tag: "collapsed");
+            return Fountain(scenes: Math.Max(1, n), tag: "lantern-lit");
+        });
+
+        var result = await new AdaptationService().EmbellishAsync(input, "auto", chat);
+
+        Assert.True(result.Ok);
+        Assert.True(result.StructurePreserved);
+        Assert.Equal(8, result.SceneCountBefore);
+        Assert.Equal(8, result.SceneCountAfter);
+        Assert.Equal(8, chat.Calls);
+        Assert.Contains("lantern-lit", result.Fountain, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("collapsed", result.Fountain, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string Fountain(int scenes, string tag)

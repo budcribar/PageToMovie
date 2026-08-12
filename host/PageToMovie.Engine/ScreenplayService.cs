@@ -638,13 +638,24 @@ public static string NormalizeText(string text)
     {
         if (responses is null) return null;
         var deps = new ScreenplayEnrichFiles.Deps(responses, bookRegistry, bookFileSessions, useFakes);
-        return async (system, _, token) =>
+        return async (system, chunk, token) =>
         {
             try
             {
+                var oneScene = !string.IsNullOrWhiteSpace(chunk)
+                    && !string.Equals(chunk, screenplay, StringComparison.Ordinal);
+                var resolvedInstruction = oneScene
+                    ? "Book file attached (if any). Enrich THIS ONE scene only. Keep the exact heading. " +
+                      "Dialogue unchanged. Return only this scene — no other INT./EXT. headings.\n\n" + chunk
+                    : instruction;
                 return await ScreenplayEnrichFiles.TryCompleteAsync(
-                    deps, projectId, projectDir, screenplay, bookText, system, instruction, model,
-                    onProgress, token, attachBook, requireScreenplay: true, screenplayKind, screenplayFilename, label)
+                    deps, projectId, projectDir,
+                    oneScene ? null : screenplay,
+                    bookText, system, resolvedInstruction, model,
+                    onProgress, token,
+                    attachBook: attachBook,
+                    requireScreenplay: !oneScene,
+                    screenplayKind, screenplayFilename, label)
                     .ConfigureAwait(false);
             }
             catch (Exception ex)

@@ -2839,6 +2839,35 @@ public static class BookToFountainConverter
     public static int CountSceneHeadings(string? fountain) =>
         CommonRegex.Matches(fountain ?? "", @"(?im)^(INT|EXT|EST|I/E)[\./ ]").Count;
 
+    /// <summary>
+    /// Split a Fountain draft into title-page/preamble + one string per scene heading.
+    /// Headings match <see cref="CountSceneHeadings"/> so counts stay aligned.
+    /// </summary>
+    public static (string Preamble, IReadOnlyList<string> Scenes) SplitFountainByScenes(string? fountain)
+    {
+        var text = (fountain ?? "").Replace("\r\n", "\n", StringComparison.Ordinal);
+        var lines = text.Split('\n');
+        var preamble = new StringBuilder();
+        var scenes = new List<StringBuilder>();
+        StringBuilder? current = null;
+        foreach (var line in lines)
+        {
+            var t = line.Trim();
+            if (t.StartsWith('.')) t = t[1..].Trim();
+            if (CommonRegex.IsMatch(t, @"^(INT|EXT|EST|I/E)[\./ ]", RegexOptions.IgnoreCase))
+            {
+                current = new StringBuilder();
+                scenes.Add(current);
+                current.Append(line).Append('\n');
+            }
+            else if (current is not null)
+                current.Append(line).Append('\n');
+            else
+                preamble.Append(line).Append('\n');
+        }
+        return (preamble.ToString(), scenes.ConvertAll(s => s.ToString()));
+    }
+
     // ── fountain text surgery ────────────────────────────────────────────
 
     private static string StripTitlePage(string fountain)

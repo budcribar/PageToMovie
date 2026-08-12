@@ -311,9 +311,19 @@ public sealed class AdaptationService
                 book + "\n\n---\n\nSCREENPLAY TO ENRICH:\n";
         }
 
+        var system = await AdaptationPromptPack.BuildEmbellishSystemPromptAsync(visualMedium, ct).ConfigureAwait(false);
+        var before = SafeSceneCount(fountain);
+        // Feature-length drafts overflow one model pass (Odyssey: 28 → 15). Enrich scene-by-scene
+        // so headings cannot collapse. Short drafts stay one call.
+        if (before >= 8)
+        {
+            return await EmbellishPerSceneAsync(
+                fountain, system, bookText, chat, model, progress, ct, completeViaFiles).ConfigureAwait(false);
+        }
+
         return await ApplyDescriptiveEditAsync(
             fountain,
-            await AdaptationPromptPack.BuildEmbellishSystemPromptAsync(visualMedium, ct).ConfigureAwait(false),
+            system,
             userContent: userContent,
             operation: "enrichment",
             mode: "fountain_embellish",
@@ -323,6 +333,89 @@ public sealed class AdaptationService
             progressMessage: "Enriching the screenplay…",
             ct: ct,
             completeViaFiles: completeViaFiles).ConfigureAwait(false);
+    }
+
+    const string PerSceneSystemSuffix =
+        "\n\nTHIS CALL IS ONE SCENE ONLY. Output that scene only. Keep the first scene heading exactly. " +
+        "Do not add INT./EXT./EST./I/E. headings. Do not output the rest of the screenplay.";
+
+    static async Task<FountainEditResult> EmbellishPerSceneAsync(
+        string fountain,
+        string system,
+        string? bookText,
+        IChatClient chat,
+        string? model,
+        IProgress<string>? progress,
+        CancellationToken ct,
+        Func<string, string, CancellationToken, Task<string?>>? completeViaFiles)
+    {
+        var (preamble, scenes) = BookToFountainConverter.SplitFountainByScenes(fountain);
+        var before = scenes.Count;
+        if (before == 0)
+            return await ApplyDescriptiveEditAsync(
+                fountain, system, userContent: null, operation: "enrichment", mode: "fountain_embellish",
+                chat, model, progress, "Enriching the screenplay…", ct, completeViaFiles).ConfigureAwait(false);
+
+        progress?.Report($"Enriching {before} scenes one at a time (keeps headings)…");
+        string? sceneBook = null;
+        if (completeViaFiles is null && !string.IsNullOrWhiteSpace(bookText))
+        {
+            const int maxBookChars = 12_000;
+            sceneBook = bookText.Length <= maxBookChars ? bookText : bookText[..maxBookChars];
+        }
+
+        var outScenes = new List<string>(before);
+        var enriched = 0;
+        var kept = 0;
+        for (var i = 0; i < before; i++)
+        {
+            ct.ThrowIfCancellationRequested();
+            var original = scenes[i];
+            progress?.Report($"Enriching scene {i + 1}/{before}…");
+            var userContent = sceneBook is null
+                ? null
+                : "ORIGINAL BOOK TEXT (grounding only — do not add plot):\n" + sceneBook +
+                  "\n\n---\n\nONE SCENE TO ENRICH:\n";
+            var r = await ApplyDescriptiveEditAsync(
+                original,
+                system + PerSceneSystemSuffix,
+                userContent: userContent,
+                operation: "enrichment",
+                mode: "fountain_embellish",
+                chat: chat,
+                model: model,
+                progress: null,
+                progressMessage: $"Enriching scene {i + 1}/{before}…",
+                ct: ct,
+                completeViaFiles: completeViaFiles).ConfigureAwait(false);
+            var originalCount = SafeSceneCount(original);
+            if (r.Ok && r.StructurePreserved && r.SceneCountAfter == originalCount &&
+                !string.IsNullOrWhiteSpace(r.Fountain))
+            {
+                outScenes.Add(r.Fountain);
+                enriched++;
+            }
+            else
+            {
+                outScenes.Add(original);
+                kept++;
+                if (!string.IsNullOrWhiteSpace(r.Warning))
+                    progress?.Report($"Scene {i + 1}: kept original ({r.Warning})");
+            }
+        }
+
+        var assembled = preamble + string.Concat(outScenes);
+        var after = SafeSceneCount(assembled);
+        if (before > 0 && after != before)
+            return new FountainEditResult(false, fountain, before, after, false,
+                $"The enrichment changed the scene count ({before} → {after}); kept the original screenplay.");
+
+        if (enriched == 0)
+            return new FountainEditResult(false, fountain, before, after, true,
+                "Every scene-level enrich was rejected; kept the original screenplay.");
+
+        progress?.Report($"Enriched {enriched}/{before} scenes" + (kept > 0 ? $" ({kept} kept original)." : "."));
+        return new FountainEditResult(true, assembled, before, after, true, null);
     }
 
     /// <summary>
