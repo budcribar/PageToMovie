@@ -93,40 +93,46 @@
                     <span class="mx-1">·</span>
                     <span class="@(NeedPlateCount > 0 ? "text-warning" : "")">@NeedPlateCount need plate</span>
                 </div>
-                <div class="list-group list-group-flush border rounded bg-dark-subtle" style="max-height: 70vh; overflow: auto;">
+                <div class="list-group list-group-flush border rounded loc-index-list" style="max-height: 70vh; overflow: auto;">
                     @foreach (var loc in LocationsForUi)
                     {
                         var key = loc.Key;
                         var active = string.Equals(key, _selectedKey, StringComparison.OrdinalIgnoreCase);
                         var thumb = ListThumbUrl(loc);
+                        var isLocked = loc.Locked || loc.HasPreferred;
                         <button type="button"
-                                class="list-group-item list-group-item-action bg-transparent text-start d-flex align-items-center gap-2 @(active ? "active" : "") @(!loc.UsedInPlan ? "opacity-75" : "")"
+                                class="list-group-item list-group-item-action loc-list-item text-start d-flex align-items-center gap-2 @(active ? "active" : "") @(!loc.UsedInPlan ? "opacity-75" : "")"
                                 data-loc-used="@(loc.UsedInPlan ? "true" : "false")"
                                 data-testid="loc-list-item"
                                 title="@(!loc.UsedInPlan ? "Not in current shot plan — kept for later" : null)"
                                 @onclick="() => SelectAsync(key)">
-                            @if (thumb is { Length: > 0 })
-                            {
-                                <img src="@thumb" alt="" class="loc-list-thumb" />
-                            }
-                            else
-                            {
-                                <span class="loc-list-thumb loc-list-thumb--empty" title="No plate yet" aria-hidden="true">⌂</span>
-                            }
+                            <span class="loc-list-thumb-wrap">
+                                @if (thumb is { Length: > 0 })
+                                {
+                                    <img src="@thumb" alt="" class="loc-list-thumb" />
+                                }
+                                else
+                                {
+                                    <span class="loc-list-thumb loc-list-thumb--empty" title="No plate yet" aria-hidden="true">⌂</span>
+                                }
+                                <span class="loc-list-lock-badge @(isLocked ? "is-locked" : "is-open")"
+                                      title="@(isLocked ? "Plate locked" : "No locked plate")"
+                                      aria-hidden="true">@(isLocked ? "🔒" : "🔓")</span>
+                            </span>
                             <div class="min-w-0 flex-grow-1">
-                                <div class="fw-semibold text-uppercase small text-truncate">
+                                <div class="loc-list-name text-uppercase small text-truncate">
                                     @loc.DisplayName
                                     @if (!loc.UsedInPlan)
                                     {
                                         <span class="badge text-bg-secondary ms-1">unused</span>
                                     }
                                 </div>
-                                <div class="small opacity-75">
-                                    @(loc.Locked || loc.HasPreferred
-                                        ? "Plate locked"
+                                <div class="loc-list-meta small">
+                                    @(isLocked
+                                        ? "Locked"
                                         : loc.Variants.Any(v => v.Exists)
-                                            ? $"{loc.Variants.Count(v => v.Exists)} looks — pick one"
-                                            : "No plate yet")
+                                            ? $"{loc.Variants.Count(v => v.Exists)} looks"
+                                            : "No plate")
                                 </div>
                             </div>
                         </button>
@@ -144,11 +150,13 @@
                 }
                 else
                 {
+                    var selectedLocked = _selected.Locked || _selected.HasPreferred;
                     <div class="card bg-dark border-secondary">
                         <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                             <span class="fw-bold text-info text-uppercase">@_selected.DisplayName</span>
-                            <span class="badge @(_selected.Locked || _selected.HasPreferred ? "text-bg-success" : "text-bg-secondary")">
-                                @(_selected.Locked || _selected.HasPreferred ? "Plate locked" : "Text only")
+                            <span class="badge @(selectedLocked ? "text-bg-success" : "text-bg-secondary")"
+                                  title="@(selectedLocked ? "Preferred plate is locked for video" : "No preferred plate yet")">
+                                @(selectedLocked ? "🔒 Locked" : "🔓 Unlocked")
                             </span>
                         </div>
                         <div class="card-body">
@@ -156,7 +164,10 @@
                             {
                                 <div class="mb-3" data-testid="loc-locked-plate">
                                     <div class="small text-muted mb-1">Preferred plate</div>
-                                    <img src="@_plateUrl" alt="Location plate" class="rounded border border-secondary loc-preferred-preview" />
+                                    <div class="loc-preferred-frame">
+                                        <img src="@_plateUrl" alt="Location plate" class="rounded border border-secondary loc-preferred-preview" />
+                                        <span class="loc-plate-lock-icon is-locked" title="Locked preferred plate" aria-label="Locked">🔒</span>
+                                    </div>
                                 </div>
                             }
                             else if (!_selected.Variants.Any(v => v.Exists))
@@ -171,19 +182,25 @@
                             {
                                 <div class="mb-3" data-testid="loc-variants">
                                     <div class="small fw-semibold mb-1">Pick a set look</div>
-                                    <p class="small text-muted mb-2">Three options. Lock one, or re-run generate (auto-locks best).</p>
+                                    <p class="small text-muted mb-2">Click the lock on a look to make it preferred. AI auto-picks on generate; override anytime.</p>
                                     <div class="d-flex flex-wrap gap-2">
                                         @foreach (var v in _selected.Variants.Where(x => x.Exists).OrderBy(x => x.Index))
                                         {
                                             var vi = v.Index ?? 1;
                                             var src = KeyFormatting.CacheBust(Engine.LocationVariantUrl(_projectId, _selected.Key, vi));
-                                            <div class="border border-secondary rounded p-1 text-center loc-variant-tile">
-                                                <img src="@src" alt="Variant @vi" class="rounded mb-1 loc-variant-img" />
-                                                <button type="button" class="btn btn-sm btn-primary w-100"
+                                            <div class="loc-variant-tile @(selectedLocked && IsPreferredVariant(vi) ? "is-preferred" : "")">
+                                                <button type="button"
+                                                        class="loc-variant-frame"
                                                         disabled="@_busy"
+                                                        title="@(selectedLocked && IsPreferredVariant(vi) ? $"Look #{vi} is preferred" : $"Use look #{vi} as preferred plate")"
                                                         data-testid="@($"loc-lock-v{vi}")"
                                                         @onclick="() => LockVariantAsync(vi)">
-                                                    Lock #@vi
+                                                    <img src="@src" alt="Variant @vi" class="loc-variant-img" />
+                                                    <span class="loc-plate-lock-icon @(selectedLocked && IsPreferredVariant(vi) ? "is-locked" : "is-open")"
+                                                          aria-hidden="true">
+                                                        @(selectedLocked && IsPreferredVariant(vi) ? "🔒" : "🔓")
+                                                    </span>
+                                                    <span class="loc-variant-num">#@vi</span>
                                                 </button>
                                             </div>
                                         }
@@ -199,7 +216,7 @@
                                                ImageEditInstructionChanged="OnImageEditChanged"
                                                ShowImageEditInstruction="@(_selected.HasPreferred || _selected.Locked)"
                                                Busy="@_busy"
-                                               Hint="@(_saveHint ?? "Text saves automatically · use Voice to dictate")"
+                                               Hint="@(_saveHint ?? "Text saves automatically · use Dictate to speak")"
                                                TestId="loc-look-panel">
                                 <Actions>
                                     <button type="button" class="btn btn-sm btn-primary"
@@ -225,28 +242,83 @@
 </div>
 
 <style>
+    /* Places index — high-contrast cards (dark theme) */
+    .loc-index-list {
+        background: var(--fs-bg-card, #1a222d);
+        border-color: var(--fs-border-color, #3a4554) !important;
+    }
+    .loc-list-item {
+        background: var(--fs-bg-card, #1a222d) !important;
+        color: var(--fs-text-primary, #e8eef6) !important;
+        border-color: rgba(148, 163, 184, 0.12) !important;
+        padding: 0.45rem 0.55rem !important;
+    }
+    .loc-list-item:hover:not(.active) {
+        background: var(--fs-bg-card-hover, #232d3b) !important;
+        color: var(--fs-text-primary, #e8eef6) !important;
+    }
+    .loc-list-item.active {
+        background: var(--fs-accent-indigo, #4f46e5) !important;
+        border-color: var(--fs-accent-indigo, #4f46e5) !important;
+        color: #fff !important;
+        z-index: 1;
+    }
+    .loc-list-name {
+        font-weight: 650;
+        color: inherit;
+    }
+    .loc-list-meta {
+        color: rgba(232, 238, 246, 0.72);
+    }
+    .loc-list-item.active .loc-list-meta {
+        color: rgba(255, 255, 255, 0.85);
+    }
+    .loc-list-thumb-wrap {
+        position: relative;
+        flex-shrink: 0;
+        width: 44px;
+        height: 32px;
+    }
     .loc-list-thumb {
-        width: 40px;
-        height: 28px;
+        width: 44px;
+        height: 32px;
         border-radius: 0.3rem;
         object-fit: cover;
         background: #0b0f14;
-        border: 1px solid rgba(255,255,255,0.08);
-        flex-shrink: 0;
+        border: 1px solid rgba(255,255,255,0.12);
+        display: block;
     }
     .loc-list-thumb--empty {
         display: inline-flex;
         align-items: center;
         justify-content: center;
         font-size: 0.85rem;
-        color: #842029;
-        background: #f8d7da;
-        border-color: #dc3545;
+        color: #fde68a;
+        background: #422006;
+        border-color: #b45309;
     }
-    .list-group-item.active .loc-list-thumb--empty {
-        background: rgba(255,255,255,0.2);
+    .loc-list-lock-badge {
+        position: absolute;
+        right: -4px;
+        bottom: -4px;
+        font-size: 0.7rem;
+        line-height: 1;
+        filter: drop-shadow(0 1px 1px rgba(0,0,0,0.65));
+    }
+    .loc-list-item.active .loc-list-thumb--empty {
+        background: rgba(255,255,255,0.18);
         border-color: rgba(255,255,255,0.35);
         color: #fff;
+    }
+
+    .loc-preferred-frame,
+    .loc-variant-frame {
+        position: relative;
+        display: inline-block;
+        padding: 0;
+        border: none;
+        background: transparent;
+        color: inherit;
     }
     .loc-preferred-preview {
         max-height: 160px;
@@ -258,11 +330,58 @@
     .loc-variant-tile {
         width: 148px;
     }
+    .loc-variant-tile.is-preferred .loc-variant-frame {
+        box-shadow: 0 0 0 2px #22c55e;
+        border-radius: 0.4rem;
+    }
+    .loc-variant-frame {
+        width: 100%;
+        border-radius: 0.4rem;
+        overflow: hidden;
+        cursor: pointer;
+        border: 1px solid rgba(148, 163, 184, 0.25) !important;
+    }
+    .loc-variant-frame:hover:not(:disabled) {
+        border-color: rgba(125, 211, 252, 0.7) !important;
+    }
+    .loc-variant-frame:disabled {
+        opacity: 0.65;
+        cursor: wait;
+    }
     .loc-variant-img {
         width: 100%;
         height: 84px;
         object-fit: cover;
         display: block;
         background: #0b0f14;
+    }
+    .loc-plate-lock-icon {
+        position: absolute;
+        right: 0.35rem;
+        bottom: 0.35rem;
+        font-size: 1rem;
+        line-height: 1;
+        padding: 0.15rem 0.25rem;
+        border-radius: 0.35rem;
+        background: rgba(0, 0, 0, 0.62);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        filter: none;
+    }
+    .loc-plate-lock-icon.is-locked {
+        background: rgba(22, 101, 52, 0.85);
+    }
+    .loc-plate-lock-icon.is-open {
+        background: rgba(0, 0, 0, 0.62);
+    }
+    .loc-variant-num {
+        position: absolute;
+        left: 0.35rem;
+        top: 0.3rem;
+        font-size: 0.65rem;
+        font-weight: 700;
+        padding: 0.1rem 0.35rem;
+        border-radius: 999px;
+        background: rgba(0, 0, 0, 0.55);
+        color: #e8eef6;
     }
 </style>

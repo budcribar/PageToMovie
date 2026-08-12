@@ -8,6 +8,8 @@
                                   TextChanged="OnDescriptionVoice"
                                   FieldId="@DescFieldId"
                                   Disabled="@Busy"
+                                  Label="Dictate"
+                                  Title="Speak the set description"
                                   TestId="@DescVoiceTestId" />
         </div>
         <textarea class="form-control form-control-sm"
@@ -24,6 +26,8 @@
                                   TextChanged="OnVisualLockVoice"
                                   FieldId="@VlockFieldId"
                                   Disabled="@Busy"
+                                  Label="Dictate"
+                                  Title="Speak traits that must stay the same in every clip"
                                   TestId="@VlockVoiceTestId" />
         </div>
         <textarea class="form-control form-control-sm"
@@ -36,13 +40,15 @@
     @if (ShowImageEditInstruction)
     {
         <div class="mb-2 border border-secondary-subtle rounded p-2">
-            <div class="d-flex justify-content-between align-items-center mb-1">
-                <label class="form-label small mb-0">Edit set image (voice or text)</label>
+            <div class="d-flex justify-content-between align-items-center mb-1 gap-2">
+                <label class="form-label small mb-0">Edit the plate with words</label>
                 <VoiceDictationButton Text="@ImageEditInstruction"
                                       TextChanged="OnImageEditVoice"
                                       FieldId="@ImgEditFieldId"
                                       Replace="true"
                                       Disabled="@Busy"
+                                      Label="Dictate edit"
+                                      Title="Speak how to change the locked set picture, then Generate"
                                       TestId="@ImgEditVoiceTestId" />
             </div>
             <textarea class="form-control form-control-sm"
@@ -51,6 +57,7 @@
                       value="@ImageEditInstruction"
                       @oninput="OnImageEditInput"
                       placeholder="e.g. night torches, wider courtyard, rainy wet stone…"></textarea>
+            <div class="form-text">Dictate or type a change, then <strong>Apply edit → 3 looks</strong>.</div>
         </div>
     }
     @if (!string.IsNullOrWhiteSpace(Hint))

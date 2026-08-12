@@ -46,6 +46,18 @@ public partial class Locations : IDisposable
         }
         return null;
     }
+
+    /// <summary>
+    /// Which variant tile shows the locked badge (session last-lock, or sole variant).
+    /// </summary>
+    private bool IsPreferredVariant(int variantIndex)
+    {
+        if (_selected is null || !(_selected.HasPreferred || _selected.Locked)) return false;
+        if (_lastLockedVariantIndex is int last && last == variantIndex) return true;
+        var existing = _selected.Variants.Where(x => x.Exists).Select(x => x.Index ?? 0).Where(i => i > 0).ToList();
+        if (existing.Count == 1 && existing[0] == variantIndex) return true;
+        return false;
+    }
     private LocationSummary? _selected;
     private string _editDescription = "";
     private string _editVisualLock = "";
@@ -59,6 +71,8 @@ public partial class Locations : IDisposable
     private CancellationTokenSource? _saveCts;
     internal JobSnapshot? _job;
     private CancellationTokenSource? _pollCts;
+    /// <summary>Last variant index locked this session (for lock badge on tiles).</summary>
+    private int? _lastLockedVariantIndex;
 
     protected override async Task OnInitializedAsync()
     {
@@ -338,7 +352,8 @@ public partial class Locations : IDisposable
         try
         {
             await Engine.LockLocationVariantAsync(_projectId, _selected.Key, index);
-            _message = $"Locked variant {index}.";
+            _lastLockedVariantIndex = index;
+            _message = $"Locked look #{index} as preferred.";
             await LoadAsync();
             await SelectAsync(_selected.Key);
         }

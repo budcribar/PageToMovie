@@ -1,8 +1,8 @@
 @namespace PageToMovie.Web.Components
 
 <button type="button"
-        class="btn btn-sm @(_listening ? "btn-danger" : "btn-outline-secondary") py-0 px-2"
-        title="@(_listening ? "Stop listening" : "Speak to fill this field")"
+        class="btn btn-sm @(_listening ? "btn-danger" : "btn-outline-secondary") py-0 px-2 voice-dictation-btn"
+        title="@(_listening ? "Stop listening" : Title)"
         disabled="@(!Supported || Disabled)"
         data-testid="@TestId"
         @onclick="ToggleAsync">
@@ -12,7 +12,7 @@
     }
     else
     {
-        <span aria-hidden="true">🎤</span><span> Voice</span>
+        <span aria-hidden="true">🎤</span><span> @Label</span>
     }
 </button>
 @if (!string.IsNullOrWhiteSpace(_error))

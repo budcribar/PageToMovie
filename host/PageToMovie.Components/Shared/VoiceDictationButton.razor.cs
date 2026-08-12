@@ -28,6 +28,12 @@ public partial class VoiceDictationButton : ComponentBase, IAsyncDisposable
     /// <summary>Optional stable id when several mics share a page.</summary>
     [Parameter] public string FieldId { get; set; } = "dictation";
 
+    /// <summary>Visible label next to the mic (default: Dictate).</summary>
+    [Parameter] public string Label { get; set; } = "Dictate";
+
+    /// <summary>Hover / title text when not listening.</summary>
+    [Parameter] public string Title { get; set; } = "Speak to fill this field";
+
     private bool Supported { get; set; } = true;
     private bool _listening;
     private string? _error;
