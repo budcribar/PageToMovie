@@ -452,7 +452,8 @@ public partial class Scenes
         catch (Exception ex)
         {
             S._error = ex.Message;
-            _scenes = null;
+            // Keep last good list so Film doesn't stick on "Loading scenes…" after a refresh blip.
+            _scenes ??= new List<SceneSummary>();
         }
         finally { S._busy = false; }
     }

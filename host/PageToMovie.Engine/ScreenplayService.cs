@@ -817,6 +817,8 @@ public static string NormalizeText(string text)
                     WriteMaxBase(store, projectId, cachedFountain); // D0: full-length base for Trim
                     store.ClearBookSubsteps(projectId); // fresh screenplay → prior Look/Enrich/Fit length no longer apply
                     ProjectVisionMeta.Write(projectDir, cachedConversion.VisionMeta);
+                    await TryAutoEnrichAfterDraftAsync(
+                        store, projectId, chat, model, onProgress, ct).ConfigureAwait(false);
                     cachedSave.Message = "Screenplay draft ready — reused shared book adaptation";
                     return cachedSave;
                 }
@@ -1019,12 +1021,52 @@ public static string NormalizeText(string text)
                 onProgress?.Invoke("Stage commit skipped: " + gitEx.Message);
             }
 
+            await TryAutoEnrichAfterDraftAsync(
+                store, projectId, chat, model, onProgress, ct).ConfigureAwait(false);
+
             save.Message = "Screenplay draft ready — review and approve";
             return save;
         }
         catch (Exception ex)
         {
             return new SaveResult { Ok = false, Error = ex.Message };
+        }
+    }
+
+    /// <summary>
+    /// North Star: enrich once right after draft-from-book so cast extract + Stage 2 see richer
+    /// action lines. Best-effort — never fails draft creation if enrich errors.
+    /// </summary>
+    private static async Task TryAutoEnrichAfterDraftAsync(
+        ProjectStore store,
+        string projectId,
+        PageToMovie.Core.Abstractions.IChatClient? chat,
+        string model,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
+        if (chat is null || !chat.IsConfigured) return;
+        try
+        {
+            onProgress?.Invoke("Enriching screenplay with visual detail from the book…");
+            string? medium = null;
+            try
+            {
+                var dir = await store.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
+                medium = ProjectVisionMeta.TryRead(dir)?.VisualMedium;
+            }
+            catch { /* enrich without medium */ }
+
+            var enrich = await EmbellishDraftAsync(
+                store, projectId, medium, chat, model, onProgress, ct).ConfigureAwait(false);
+            if (enrich.Ok)
+                onProgress?.Invoke(enrich.Message ?? "Screenplay enriched.");
+            else if (!string.IsNullOrWhiteSpace(enrich.Error))
+                onProgress?.Invoke("Auto-enrich skipped: " + enrich.Error);
+        }
+        catch (Exception ex)
+        {
+            onProgress?.Invoke("Auto-enrich skipped: " + ex.Message);
         }
     }
 

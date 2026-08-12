@@ -104,23 +104,19 @@
         </div>
     </div>
 
-    @* A5: remaining estimate while gen runs (spent + missing) *@
-    @if (List._costReport is { } cr && (cr.Summary.ClipsOnDisk > 0 || cr.Summary.ActualUsd > 0.005 || Gen.JobRunning))
+    @* Remaining spend — only while generating (avoid duplicating the Estimate page). *@
+    @if (Gen.JobRunning && List._costReport is { } cr)
     {
         <div class="card mb-3 border-0 border-start border-4 border-primary" data-testid="film-remaining-strip">
             <div class="card-body py-2 px-3">
                 <div class="d-flex flex-wrap align-items-center gap-3 small">
-                    <strong class="text-uppercase text-muted" style="letter-spacing:.04em;">Remaining</strong>
+                    <strong class="text-uppercase text-muted" style="letter-spacing:.04em;">While generating</strong>
                     <span data-testid="film-remaining-spent">
                         Spent <strong>@CostFormatting.Usd(cr.Summary.ActualUsd)</strong>
                     </span>
                     <span class="text-muted">·</span>
                     <span data-testid="film-remaining-usd">
-                        Remaining <strong>@CostFormatting.Usd(cr.Summary.RemainingFirstPassUsd)</strong>
-                    </span>
-                    <span class="text-muted">·</span>
-                    <span data-testid="film-remaining-finish">
-                        Finish ~<strong>@CostFormatting.Usd(cr.Summary.FinishFromActualUsd > 0 ? cr.Summary.FinishFromActualUsd : cr.Summary.ActualUsd + cr.Summary.RemainingFirstPassUsd)</strong>
+                        Left <strong>@CostFormatting.Usd(cr.Summary.RemainingFirstPassUsd)</strong>
                     </span>
                     @if (cr.Summary.ClipsMissing > 0)
                     {
@@ -128,18 +124,6 @@
                         <span class="text-warning" data-testid="film-remaining-clips">
                             <strong>@cr.Summary.ClipsMissing</strong> clips left
                         </span>
-                    }
-                    <span class="text-muted">·</span>
-                    <span data-testid="film-remaining-basis" class="text-muted">
-                        basis: @(string.Equals(cr.EstimateBasis, "remaining", StringComparison.OrdinalIgnoreCase) ? "remaining" : cr.EstimateBasis)
-                    </span>
-                    @if (ProductionModes.IsDraft(cr.ProductionMode))
-                    {
-                        <span class="badge text-bg-warning" data-testid="film-mode-draft">Draft mode</span>
-                    }
-                    @if (!string.IsNullOrWhiteSpace(cr.RemainingLabel))
-                    {
-                        <span class="ms-auto text-muted d-none d-md-inline" data-testid="film-remaining-label">@cr.RemainingLabel</span>
                     }
                     <a class="btn btn-sm btn-link ms-md-auto" href="cost" data-testid="film-remaining-to-cost">Estimate →</a>
                 </div>

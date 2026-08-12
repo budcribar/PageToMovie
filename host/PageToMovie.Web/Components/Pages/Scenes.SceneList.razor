@@ -8,11 +8,28 @@
 
 
     @* ---- Scene list ---- *@
-    @if (ListState!._scenes is null)
+    @if (Host.List._scenes is null)
     {
-        <EmptyState Message="Loading scenes…" CssClass="text-muted" />
+        @if (!string.IsNullOrWhiteSpace(Host._error))
+        {
+            <EmptyState Message="@($"Could not load scenes: {Host._error}")"
+                        ActionHref="scenes"
+                        ActionLabel="Retry"
+                        CssClass="text-muted" />
+        }
+        else if (Host._busy)
+        {
+            <EmptyState Message="Loading scenes…" CssClass="text-muted" />
+        }
+        else
+        {
+            <EmptyState Message="No scene list yet. Rebuild the shot plan from the screenplay, then return here."
+                        ActionHref="adaptation/shots"
+                        ActionLabel="Open shot plan →"
+                        CssClass="text-muted" />
+        }
     }
-    else if (ListState!._scenes.Count == 0)
+    else if (Host.List._scenes.Count == 0)
     {
         <EmptyState Message="No scenes in the shot plan yet."
                     ActionHref="adaptation/shots"
@@ -23,38 +40,38 @@
     {
         @* Authoritative scene/clip counts for tests, queryable in one place without counting rows. *@
         <div data-testid="scenes-status"
-             data-scene-count="@ListState!._scenes.Count"
-             data-clip-count="@ListState!._scenes.Sum(s => s.ClipCount)"
-             data-clips-on-disk="@ListState!._scenes.Sum(s => s.ClipsOnDisk)"
-             data-scenes-complete="@ListState!._scenes.Count(s => s.ClipsComplete)"
+             data-scene-count="@Host.List._scenes.Count"
+             data-clip-count="@Host.List._scenes.Sum(s => s.ClipCount)"
+             data-clips-on-disk="@Host.List._scenes.Sum(s => s.ClipsOnDisk)"
+             data-scenes-complete="@Host.List._scenes.Count(s => s.ClipsComplete)"
              class="visually-hidden" aria-hidden="true"></div>
         @* Batch generation is started from THIS all-scenes view, so its progress/message/result must
            show here too — the detail view below has its own copy for single-scene work. Without this,
            confirming Generate from the list started the job but showed nothing (dead-click symptom). *@
         <InlineAlert Message="@Host._error" CssClass="mb-3" />
-        @if (!Gen!.JobRunning)
+        @if (!Host.Gen.JobRunning)
         {
             <InlineAlert Message="@Host._message" Variant="info" CssClass="mb-3" />
         }
-        @if (Gen!.ShowLiveGenProgress && Gen!._job is not null)
+        @if (Host.Gen.ShowLiveGenProgress && Host.Gen._job is not null)
         {
-            <JobProgressCard Status="@Gen!._job.Status"
-                             Message="@Scenes.ScenesGeneration.LiveGenStatusLabel(Gen!._job)"
-                             Index="Gen!._job.Index"
-                             Total="Gen!._job.Total"
-                             Percent="Gen!.LiveGenProgressPercent(Gen!._job)"
+            <JobProgressCard Status="@Host.Gen._job.Status"
+                             Message="@Scenes.ScenesGeneration.LiveGenStatusLabel(Host.Gen._job)"
+                             Index="Host.Gen._job.Index"
+                             Total="Host.Gen._job.Total"
+                             Percent="Host.Gen.LiveGenProgressPercent(Host.Gen._job)"
                              ShowCancel="true"
                              CancelDisabled="false"
-                             OnCancel="Gen!.CancelAsync"
-                             Kind="@Gen!._job.Kind"
+                             OnCancel="Host.Gen.CancelAsync"
+                             Kind="@Host.Gen._job.Kind"
                              TestId="scenes-gen-progress"
                              CancelTestId="scenes-gen-cancel" />
         }
-        else if (Gen!.ShowOperatorGenPartial && Gen!._job is not null)
+        else if (Host.Gen.ShowOperatorGenPartial && Host.Gen._job is not null)
         {
             <Scenes_GenPartialAlert />
         }
-        else if (Gen!.ShowOperatorGenError && Gen!._job is not null)
+        else if (Host.Gen.ShowOperatorGenError && Host.Gen._job is not null)
         {
             <Scenes_GenErrorAlert />
         }
@@ -68,11 +85,11 @@
                                              TestId="scenes-generate-batch-cap">
                     <button type="button"
                             data-testid="scenes-generate-batch"
-                            class="btn batch-go @(ListState!._selected.Count > 0 && !Gen!.JobRunning && ListState!.CastReady ? "batch-go--ready" : "")"
-                            disabled="@(Host._busy || ListState!._selected.Count == 0 || Gen!.JobRunning || !ListState!.CastReady || ListState!.SelectedLockedByOther)"
-                            title="@(!ListState!.CastReady ? ListState!.CastBlockedTitle : ListState!.SelectedLockedByOther ? "Selection includes scenes locked by another user" : null)"
-                            @onclick="Gen!.OpenGenerateConfirmAsync">
-                        @if (Gen!.JobRunning)
+                            class="btn batch-go @(Host.List._selected.Count > 0 && !Host.Gen.JobRunning && Host.List.CastReady ? "batch-go--ready" : "")"
+                            disabled="@(Host._busy || Host.List._selected.Count == 0 || Host.Gen.JobRunning || !Host.List.CastReady || Host.List.SelectedLockedByOther)"
+                            title="@(!Host.List.CastReady ? Host.List.CastBlockedTitle : Host.List.SelectedLockedByOther ? "Selection includes scenes locked by another user" : null)"
+                            @onclick="Host.Gen.OpenGenerateConfirmAsync">
+                        @if (Host.Gen.JobRunning)
                         {
                             <span class="batch-go__spin" aria-hidden="true"></span>
                             <span>Generating…</span>
@@ -81,8 +98,8 @@
                         {
                             <span class="batch-go__play" aria-hidden="true">▶</span>
                             <span>
-                                Generate @(ListState!._selected.Count > 0 ? $"{ListState!._selected.Count} scene{(ListState!._selected.Count == 1 ? "" : "s")}" : "Batch")
-                                @if (ListState!._selected.Count > 0)
+                                Generate @(Host.List._selected.Count > 0 ? $"{Host.List._selected.Count} scene{(Host.List._selected.Count == 1 ? "" : "s")}" : "Batch")
+                                @if (Host.List._selected.Count > 0)
                                 {
                                     <span class="batch-go__meta">· ~@ClipSel!.EstimateSelectedClips() clips</span>
                                 }
@@ -91,13 +108,13 @@
                     </button>
                     </CapabilityLockedControl>
 
-                    @if (ListState!._scenes is not null && ListState!.GetVisibleScenes().Any(s => !s.ClipsComplete || s.ClipsOnDisk < s.ClipCount))
+                    @if (Host.List._scenes is not null && Host.List.GetVisibleScenes().Any(s => !s.ClipsComplete || s.ClipsOnDisk < s.ClipCount))
                     {
                         <button type="button"
                                 class="btn btn-sm btn-outline-secondary ms-2"
                                 disabled="@Host._busy"
                                 title="Select scenes that still need clips"
-                                @onclick="ListState!.SelectMissingScenes">
+                                @onclick="Host.List.SelectMissingScenes">
                             @L["ScenesPage.SelectMissing"]
                         </button>
                     }
@@ -112,11 +129,11 @@
                             disabled="@(Host._busy || Playback!._clientStitching || !Playback!.CanPlaySelected)"
                             title="@(Playback!.CanPlaySelected
                                 ? "Stitch selected scenes in the browser (composites or clips)"
-                                : ListState!._selected.Count == 0
+                                : Host.List._selected.Count == 0
                                     ? "Select one or more scenes first"
                                     : "Selected scenes have no clips or composites to play yet")"
                             @onclick="Playback!.PlaySelectedAsync">
-                        ▶ @L["ScenesPage.PlaySelected"]@(ListState!._selected.Count > 0 ? $" ({ListState!._selected.Count})" : "")
+                        ▶ @L["ScenesPage.PlaySelected"]@(Host.List._selected.Count > 0 ? $" ({Host.List._selected.Count})" : "")
                     </button>
                     <CapabilityLockedControl Enabled="Caps.VideoReviewReady"
                                              BlockedReason="@Caps.VideoReviewBlockedReason"
@@ -124,48 +141,48 @@
                                              TestId="scenes-verify-dialogue-cap">
                     <button type="button"
                             class="btn btn-outline-primary btn-sm"
-                            disabled="@(Host._busy || Gen!.JobRunning || Dialogue!._verifyingClip || !Dialogue!.SelectedScenesHaveClipsToVerify)"
+                            disabled="@(Host._busy || Host.Gen.JobRunning || Dialogue!._verifyingClip || !Dialogue!.SelectedScenesHaveClipsToVerify)"
                             title="@(Dialogue!.SelectedScenesHaveClipsToVerify
                                 ? "Check the spoken words in each finished clip against the screenplay"
-                                : ListState!._selected.Count == 0
+                                : Host.List._selected.Count == 0
                                     ? "Select one or more scenes with finished clips first"
                                     : "Selected scenes have no finished clips to check yet")"
                             @onclick="Dialogue!.VerifySelectedScenesDialogueAsync">
-                        🔍 @L["ScenesPage.VerifySceneDialogue"]@(ListState!._selected.Count > 0 ? $" ({ListState!._selected.Count})" : "")
+                        🔍 @L["ScenesPage.VerifySceneDialogue"]@(Host.List._selected.Count > 0 ? $" ({Host.List._selected.Count})" : "")
                     </button>
                     </CapabilityLockedControl>
                     <button type="button"
                             class="btn btn-outline-secondary btn-sm"
-                            disabled="@(Host._busy || Gen!.JobRunning)"
-                            title="@(ListState!._selected.Count > 0
-                                ? $"Regenerate only the {ListState!._selected.Count} checked scene(s) from the screenplay — other scenes are left untouched"
+                            disabled="@(Host._busy || Host.Gen.JobRunning)"
+                            title="@(Host.List._selected.Count > 0
+                                ? $"Regenerate only the {Host.List._selected.Count} checked scene(s) from the screenplay — other scenes are left untouched"
                                 : "Check scenes first to regenerate just those — with nothing checked, this rebuilds every scene from the screenplay")"
-                            @onclick="ListState!.RebuildShotPlanAsync">
+                            @onclick="Host.List.RebuildShotPlanAsync">
                         🔄 @L["ScenesPage.RebuildShotPlan"]
                     </button>
                     <button type="button"
                             class="btn btn-outline-secondary btn-sm"
                             data-testid="scenes-add-scene"
-                            disabled="@(Host._busy || Gen!.JobRunning)"
+                            disabled="@(Host._busy || Host.Gen.JobRunning)"
                             title="Add a new empty scene to the shot plan"
-                            @onclick="() => ListState!.AddSceneAsync(false)">
+                            @onclick="() => Host.List.AddSceneAsync(false)">
                         ➕ @L["ScenesPage.AddScene"]
                     </button>
                     @* Credits are auto-inserted into the shot plan; this only re-adds one if it was deleted. *@
-                    @if (!Gen!.HasCreditsScene)
+                    @if (!Host.Gen.HasCreditsScene)
                     {
                         <button type="button"
                                 class="btn btn-outline-secondary btn-sm"
                                 data-testid="scenes-add-credits"
-                                disabled="@(Host._busy || Gen!.JobRunning)"
+                                disabled="@(Host._busy || Host.Gen.JobRunning)"
                                 title="Re-add the end-credits scene (normally added automatically)"
-                                @onclick="() => ListState!.AddSceneAsync(true)">
+                                @onclick="() => Host.List.AddSceneAsync(true)">
                             🎬 @L["ScenesPage.AddCredits"]
                         </button>
                     }
                     <button class="btn btn-sm btn-outline-secondary" data-testid="scenes-select-toggle"
-                            disabled="@Host._busy" @onclick="() => ListState!._showFilters = !ListState!._showFilters">
-                        🔍 @L["ScenesPage.Filters"] @(ListState!.HasActiveFilters ? " (Active)" : "")
+                            disabled="@Host._busy" @onclick="() => Host.List._showFilters = !Host.List._showFilters">
+                        🔍 @L["ScenesPage.Filters"] @(Host.List.HasActiveFilters ? " (Active)" : "")
                     </button>
                 </div>
             </div>
@@ -187,7 +204,7 @@
                     <button type="button"
                             class="btn btn-sm btn-outline-info py-0 px-2"
                             data-testid="scenes-goto-fit-length"
-                            disabled="@(Host._busy || Gen!.JobRunning)"
+                            disabled="@(Host._busy || Host.Gen.JobRunning)"
                             title="Change the movie's target length (extend or shorten)"
                             @onclick="Host.AdjustFitLengthAsync">
                         ⏱ @L["ScenesPage.FitLength"]
@@ -195,7 +212,7 @@
                     <button type="button"
                             class="btn btn-sm btn-outline-info py-0 px-2"
                             data-testid="scenes-goto-embellish"
-                            disabled="@(Host._busy || Gen!.JobRunning)"
+                            disabled="@(Host._busy || Host.Gen.JobRunning)"
                             title="Embellish the scene descriptions"
                             @onclick="Host.AdjustEmbellishAsync">
                         ✨ @L["ScenesPage.Embellish"]
@@ -214,36 +231,36 @@
                             <input class="form-check-input" type="checkbox"
                                    data-testid="scenes-select-all"
                                    title="Select all shown scenes"
-                                   checked="@ListState!.AreAllVisibleSelected()"
-                                   disabled="@(Host._busy || ListState!.GetVisibleScenes().Count == 0)"
-                                   @onchange="e => ListState!.ToggleSelectAllShown((bool)(e.Value ?? false))" />
+                                   checked="@Host.List.AreAllVisibleSelected()"
+                                   disabled="@(Host._busy || Host.List.GetVisibleScenes().Count == 0)"
+                                   @onchange="e => Host.List.ToggleSelectAllShown((bool)(e.Value ?? false))" />
                         </th>
-                        <th style="width:7rem; cursor:pointer; user-select:none;" @onclick='() => ListState!.ToggleSort("number")' title="Click to sort by Scene Number">
-                            # @(ListState!._sortBy == "number" ? (ListState!._sortAscending ? "▲" : "▼") : "⇅")
+                        <th style="width:7rem; cursor:pointer; user-select:none;" @onclick='() => Host.List.ToggleSort("number")' title="Click to sort by Scene Number">
+                            # @(Host.List._sortBy == "number" ? (Host.List._sortAscending ? "▲" : "▼") : "⇅")
                         </th>
                         <th>@L["ScenesPage.Setting"]</th>
                         <th>@L["ScenesPage.CastLocation"]</th>
                         <th style="width:6rem;">@L["ReviewPage.Clips"]</th>
-                        <th style="width:7.5rem; cursor:pointer; user-select:none;" @onclick='() => ListState!.ToggleSort("duration")' title="Click to sort by Duration">
-                            @L["ReviewPage.Dur"] @(ListState!._sortBy == "duration" ? (ListState!._sortAscending ? "▲" : "▼") : "⇅")
+                        <th style="width:7.5rem; cursor:pointer; user-select:none;" @onclick='() => Host.List.ToggleSort("duration")' title="Click to sort by Duration">
+                            @L["ReviewPage.Dur"] @(Host.List._sortBy == "duration" ? (Host.List._sortAscending ? "▲" : "▼") : "⇅")
                         </th>
                         <th style="width:9rem;" title="Score background music for this scene">@L["ScenesPage.Music"]</th>
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var s in ListState!.SortedVisibleScenes)
+                    @foreach (var s in Host.List.SortedVisibleScenes)
                     {
                         var sn = s.SceneNumber;
-                        var isSel = ListState!._selected.Contains(sn);
+                        var isSel = Host.List._selected.Contains(sn);
                         <tr class="@(isSel ? "table-active" : "")" style="cursor:pointer;" @key="sn"
                             data-testid="scene-row" data-scene-number="@sn">
                             <td @onclick:stopPropagation="true">
                                 <input class="form-check-input" type="checkbox"
                                        checked="@isSel"
                                        disabled="@Host._busy"
-                                       @onchange="e => ListState!.ToggleSelect(sn, (bool)(e.Value ?? false))" />
+                                       @onchange="e => Host.List.ToggleSelect(sn, (bool)(e.Value ?? false))" />
                             </td>
-                            <td class="text-nowrap" @onclick="() => ListState!.OpenSceneAsync(sn)">
+                            <td class="text-nowrap" @onclick="() => Host.List.OpenSceneAsync(sn)">
                                 <span class="badge @(s.ClipsComplete ? "bg-success text-white" : "bg-warning text-dark") px-2 py-1 rounded-pill" style="font-weight:600;">
                                     S@(sn.ToString("D2"))
                                 </span>
@@ -251,14 +268,14 @@
                                         class="btn btn-sm btn-link text-danger p-0 ms-2 text-decoration-none"
                                         title="Delete scene S@(sn.ToString("D2")) from plan"
                                         @onclick:stopPropagation="true"
-                                        @onclick="() => ListState!.RequestDeleteScene(sn)">
+                                        @onclick="() => Host.List.RequestDeleteScene(sn)">
                                     🗑️
                                 </button>
                                 <button type="button"
                                         class="btn btn-sm btn-link text-info p-0 ms-1 text-decoration-none"
                                         title="Open editor for scene S@(sn.ToString("D2"))"
                                         @onclick:stopPropagation="true"
-                                        @onclick="() => ListState!.OpenSceneAsync(sn)">
+                                        @onclick="() => Host.List.OpenSceneAsync(sn)">
                                     ✏️
                                 </button>
                                 <button type="button"
@@ -273,14 +290,14 @@
                                     <span class="badge bg-warning text-dark ms-1" title="Locked by @s.LockOwnerUserId">🔒 @s.LockOwnerUserId</span>
                                 }
                             </td>
-                            <td @onclick="() => ListState!.OpenSceneAsync(sn)">
+                            <td @onclick="() => Host.List.OpenSceneAsync(sn)">
                                 @(s.Setting is { Length: > 0 } set ? Scenes.Trunc(set, 56) : "—")
                                 @if (s.CompositeExists)
                                 {
                                     <span class="badge bg-light text-dark border ms-1">mux</span>
                                 }
                             </td>
-                            <td @onclick="() => ListState!.OpenSceneAsync(sn)" class="small">
+                            <td @onclick="() => Host.List.OpenSceneAsync(sn)" class="small">
                                 @if (s.CharactersOnScreen.Count > 0)
                                 {
                                     <span class="text-muted">@string.Join(", ", s.CharactersOnScreen.Select(Scenes.ShortChar).Take(4))</span>
@@ -296,14 +313,14 @@
                                     </div>
                                 }
                             </td>
-                            <td @onclick="() => ListState!.OpenSceneAsync(sn)" class="text-nowrap">
-                                @{ var (pg, pgCls, pgTitle) = ListState!.SceneProgressGlyph(s); }
+                            <td @onclick="() => Host.List.OpenSceneAsync(sn)" class="text-nowrap">
+                                @{ var (pg, pgCls, pgTitle) = Host.List.SceneProgressGlyph(s); }
                                 <span class="@pgCls me-1" title="@pgTitle" aria-label="@pgTitle">@pg</span>
                                 <span class="@(s.ClipsComplete ? "text-success" : s.ClipsOnDisk > 0 ? "text-warning" : "text-muted")">
                                     @s.ClipsOnDisk/@s.ClipCount
                                 </span>
                             </td>
-                            <td @onclick="() => ListState!.OpenSceneAsync(sn)" class="small">
+                            <td @onclick="() => Host.List.OpenSceneAsync(sn)" class="small">
                                 @if (s.ActualDurationSeconds is double act)
                                 {
                                     <span title="Measured from composite or clips">@Scenes.FormatClock(act)</span>
@@ -325,7 +342,7 @@
                                 <button type="button"
                                         class="btn btn-sm btn-warning text-black fw-bold py-0 px-2"
                                         data-testid="scene-row-score-music"
-                                        disabled="@(Host._busy || Gen!.JobRunning || Music!._scoringMusic || !Caps.MusicReady || s.LockedByOther)"
+                                        disabled="@(Host._busy || Host.Gen.JobRunning || Music!._scoringMusic || !Caps.MusicReady || s.LockedByOther)"
                                         title="@(Caps.MusicReady ? "Score background music for this scene" : Caps.MusicBlockedReason)"
                                         @onclick="() => Music!.OpenScoreMenu(sn)">
                                     🎵 Score
