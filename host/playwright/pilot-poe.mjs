@@ -196,56 +196,70 @@ async function dumpJob(page, step) {
   }
 }
 
+async function findActiveJob(projectId) {
+  const j = await apiGet(`/api/jobs?projectId=${encodeURIComponent(projectId)}`);
+  const jobs = j.json?.jobs || [];
+  return jobs.find((x) => /queued|running/i.test(x.status || ""));
+}
+
+function hangTimeoutMsForMessage(message) {
+  // Hang detection: real Grok can sit on "pending" for many minutes — only treat
+  // local ffmpeg/post steps as hung. Pending/polling video is allowed longer.
+  const msgLower = (message || "").toLowerCase();
+  const isRemoteWait =
+    msgLower.includes("pending") ||
+    msgLower.includes("poll") ||
+    msgLower.includes("submit") ||
+    msgLower.includes("waiting") ||
+    msgLower.includes("%") ||
+    msgLower.includes("generating s");
+  return isRemoteWait
+    ? Number(process.env.REMOTE_HANG_MS || 15 * 60_000) // 15 min for real video
+    : Number(process.env.LOCAL_HANG_MS || 3 * 60_000); // 3 min for ffmpeg local
+}
+
+async function cancelHungJob(active, lastMsgAt) {
+  log(
+    "WARN job hung — cancelling",
+    active.jobId,
+    `idle=${Math.round((Date.now() - lastMsgAt) / 1000)}s`,
+    (active.message || "").slice(0, 100)
+  );
+  if (active.jobId) {
+    await fetch(`${API_URL}/api/jobs/${active.jobId}/cancel`, { method: "POST" }).catch(() => {});
+  }
+  await fetch(`${API_URL}/api/jobs/cancel`, { method: "POST" }).catch(() => {});
+}
+
+/** @returns {Promise<boolean>} true when idle (or hung-and-cancelled) so the waiter can return. */
+async function pollJobUntilIdleOrHung(page, projectId, state) {
+  const active = await findActiveJob(projectId);
+  if (!active) {
+    await page.waitForTimeout(800);
+    const active2 = await findActiveJob(projectId);
+    return !active2;
+  }
+  const msg = `${active.kind}|${active.index}|${active.message || ""}`;
+  if (msg !== state.lastMsg) {
+    state.lastMsg = msg;
+    state.lastMsgAt = Date.now();
+    log("job", active.status, active.kind, (active.message || "").slice(0, 140));
+  }
+  if (Date.now() - state.lastMsgAt > hangTimeoutMsForMessage(active.message)) {
+    await cancelHungJob(active, state.lastMsgAt);
+    await page.waitForTimeout(1500);
+    return true;
+  }
+  return false;
+}
+
 async function waitJobIdle(page, timeoutMs = 600_000, projectId = PROJECT_NAME) {
   const start = Date.now();
-  let lastMsg = "";
-  let lastMsgAt = Date.now();
+  const state = { lastMsg: "", lastMsgAt: Date.now() };
   while (Date.now() - start < timeoutMs) {
     // API by projectId works without browser auth cookies
     try {
-      const j = await apiGet(`/api/jobs?projectId=${encodeURIComponent(projectId)}`);
-      const jobs = j.json?.jobs || [];
-      const active = jobs.find((x) => /queued|running/i.test(x.status || ""));
-      if (!active) {
-        await page.waitForTimeout(800);
-        const j2 = await apiGet(`/api/jobs?projectId=${encodeURIComponent(projectId)}`);
-        const active2 = (j2.json?.jobs || []).find((x) => /queued|running/i.test(x.status || ""));
-        if (!active2) return;
-      } else {
-        const msg = `${active.kind}|${active.index}|${active.message || ""}`;
-        if (msg !== lastMsg) {
-          lastMsg = msg;
-          lastMsgAt = Date.now();
-          log("job", active.status, active.kind, (active.message || "").slice(0, 140));
-        }
-        // Hang detection: real Grok can sit on "pending" for many minutes — only treat
-        // local ffmpeg/post steps as hung. Pending/polling video is allowed longer.
-        const msgLower = (active.message || "").toLowerCase();
-        const isRemoteWait =
-          msgLower.includes("pending") ||
-          msgLower.includes("poll") ||
-          msgLower.includes("submit") ||
-          msgLower.includes("waiting") ||
-          msgLower.includes("%") ||
-          msgLower.includes("generating s");
-        const hangMs = isRemoteWait
-          ? Number(process.env.REMOTE_HANG_MS || 15 * 60_000) // 15 min for real video
-          : Number(process.env.LOCAL_HANG_MS || 3 * 60_000);  // 3 min for ffmpeg local
-        if (Date.now() - lastMsgAt > hangMs) {
-          log(
-            "WARN job hung — cancelling",
-            active.jobId,
-            `idle=${Math.round((Date.now() - lastMsgAt) / 1000)}s`,
-            (active.message || "").slice(0, 100)
-          );
-          if (active.jobId) {
-            await fetch(`${API_URL}/api/jobs/${active.jobId}/cancel`, { method: "POST" }).catch(() => {});
-          }
-          await fetch(`${API_URL}/api/jobs/cancel`, { method: "POST" }).catch(() => {});
-          await page.waitForTimeout(1500);
-          return;
-        }
-      }
+      if (await pollJobUntilIdleOrHung(page, projectId, state)) return;
     } catch {
       /* fall through */
     }
@@ -383,6 +397,371 @@ async function pickBestVariantAndLock(charKey) {
       `Inspect artifacts/cast/${charKey}/ and re-gen with project render_style_lock. ` +
       `Failures: ${failures.join(" | ").slice(0, 800)}`
   );
+}
+
+function ensureBookFullTxt() {
+  const sourceDir = path.join(WORKSPACE, "projects", PROJECT_NAME, "source");
+  ensureDir(sourceDir);
+  const bookDest = path.join(sourceDir, "book_full.txt");
+  if (!fs.existsSync(bookDest) && fs.existsSync(BOOK_FIXTURE)) {
+    fs.copyFileSync(BOOK_FIXTURE, bookDest);
+    log("copied book_full.txt for cast looks");
+  }
+}
+
+async function extractCastViaApiOrUi(page) {
+  log("API extract-cast (force)…");
+  const extractRes = await apiPost(
+    `/api/projects/${encodeURIComponent(PROJECT_NAME)}/characters/extract-cast`,
+    { force: true, model: "grok-4.5" }
+  );
+  if (extractRes.ok) {
+    log(
+      "extract-cast ok",
+      `count=${extractRes.json?.characterCount}`,
+      (extractRes.json?.characters || []).join?.(", ") || ""
+    );
+    return;
+  }
+  log("WARN extract-cast API", String(extractRes.status), (extractRes.text || "").slice(0, 300));
+  await page.goto(`${WEB_URL}/characters?admin=1`, { waitUntil: "networkidle" });
+  await page.waitForTimeout(1000);
+  const extractBtn = page.getByTestId("characters-extract-cast");
+  if (!(await extractBtn.count())) return;
+  await extractBtn.first().click({ force: true });
+  for (let i = 0; i < 180; i++) {
+    await page.waitForTimeout(2000);
+    const mid = await apiGet(`/api/projects/${encodeURIComponent(PROJECT_NAME)}/characters`);
+    const n = (mid.json?.characters || mid.json?.Characters || []).length;
+    if (n >= 3) {
+      log("UI extract appears done, cast count", String(n));
+      break;
+    }
+  }
+}
+
+async function ensureVoiceOnlyProfile(key, voice) {
+  if (voice) return;
+  await apiPost(
+    `/api/projects/${encodeURIComponent(PROJECT_NAME)}/characters/${encodeURIComponent(key)}/voice`,
+    {
+      voiceProfile: "Consistent character voice for this production.",
+      voiceLabel: key.replace(/^Character_/, ""),
+    }
+  );
+  log("set default voice for", key);
+}
+
+function shouldForceRelock() {
+  return process.env.RELOCK_ALL === "1" || process.env.RELOCK_ALL === "true";
+}
+
+async function generateCharacterPortraits(key) {
+  log("generate portraits for", key);
+  const gen = await apiPost("/api/jobs/character-variants", {
+    projectId: PROJECT_NAME,
+    charKey: key,
+    count: 3,
+    seedMode: "none",
+    includePreferred: false,
+    includeLockedRef: false,
+    maxRefs: 0,
+    persistDescription: true,
+  });
+  if (!gen.ok) {
+    log("WARN character-variants failed", key, String(gen.status), (gen.text || "").slice(0, 200));
+    const gen2 = await apiPost("/api/jobs/character-variants", {
+      projectId: PROJECT_NAME,
+      charKey: key,
+      count: 3,
+      seedMode: "auto",
+      persistDescription: true,
+    });
+    if (!gen2.ok) throw new Error(`character-variants ${key}: ${gen2.status} ${gen2.text}`);
+  }
+  await waitApiJobsIdle(PROJECT_NAME, Number(process.env.CHAR_GEN_TIMEOUT_MS || 20 * 60_000));
+}
+
+async function prepareOnScreenCharacter(page, key, locked) {
+  const forceRelock = shouldForceRelock();
+  if (locked && !forceRelock) {
+    log("already locked", key, "— snapshot for QA (set RELOCK_ALL=1 to re-verify style)");
+    snapshotCharacterVariants(PROJECT_NAME, key);
+    return;
+  }
+  if (locked && forceRelock) {
+    log("RELOCK_ALL: unlock", key);
+    await apiPost(
+      `/api/projects/${encodeURIComponent(PROJECT_NAME)}/characters/${encodeURIComponent(key)}/unlock`,
+      {}
+    );
+  }
+  await generateCharacterPortraits(key);
+  await pickBestVariantAndLock(key);
+  await page.waitForTimeout(300);
+}
+
+async function prepareCharacterRow(page, c) {
+  const key = c.key || c.Key;
+  const voiceOnly = !!(c.voiceOnly ?? c.VoiceOnly);
+  const locked = !!(c.locked ?? c.Locked);
+  const voice = (c.voiceProfile || c.VoiceProfile || "").trim();
+  log(
+    "character",
+    key,
+    voiceOnly ? "voice-only" : "on-screen",
+    locked ? "locked" : "unlocked",
+    `voiceLen=${voice.length}`
+  );
+  if (voiceOnly) {
+    await ensureVoiceOnlyProfile(key, voice);
+    return;
+  }
+  await prepareOnScreenCharacter(page, key, locked);
+}
+
+function isCastGateOpen(cast) {
+  return (
+    cast.readyForShots === true ||
+    cast.ReadyForShots === true ||
+    (Number(cast.ready ?? cast.Ready ?? 0) > 0 &&
+      Number(cast.ready ?? cast.Ready ?? 0) === Number(cast.total ?? cast.Total ?? -1))
+  );
+}
+
+async function lockCastUntilReady(page) {
+  for (let pass = 1; pass <= 4; pass++) {
+    const charsRes = await apiGet(`/api/projects/${encodeURIComponent(PROJECT_NAME)}/characters`);
+    const rows = charsRes.json?.characters || charsRes.json?.Characters || [];
+    log("cast list pass", String(pass), String(rows.length), rows.map((c) => c.key || c.Key).join(", "));
+    if (rows.length === 0) throw new Error("No characters after cast extract");
+
+    for (const c of rows) {
+      await prepareCharacterRow(page, c);
+    }
+
+    const adapt = await apiGet(`/api/projects/${encodeURIComponent(PROJECT_NAME)}/adaptation`);
+    const cast = adapt.json?.adaptation?.cast || adapt.json?.Adaptation?.Cast || {};
+    log("cast readiness", JSON.stringify(cast).slice(0, 280));
+    if (isCastGateOpen(cast)) {
+      log("cast gate OPEN", `ready=${cast.ready ?? cast.Ready}/${cast.total ?? cast.Total}`);
+      break;
+    }
+    const missing = cast.missing || cast.Missing || [];
+    if (pass === 4) {
+      throw new Error(
+        `Cast not ready after ${pass} passes: ${JSON.stringify(missing || cast).slice(0, 400)}`
+      );
+    }
+    log("cast gate still closed; retry missing", JSON.stringify(missing).slice(0, 200));
+  }
+}
+
+async function skipFindPlatesIfVisible(page) {
+  const find = page.getByTestId("characters-find-plates");
+  if (await find.isVisible().catch(() => false)) {
+    log("skip find-plates (no book art for Poe text/fountain import)");
+  }
+}
+
+async function gotoShotsFromCharacters(page) {
+  const toShots = page.getByTestId("characters-to-shots");
+  if (await toShots.isVisible().catch(() => false)) {
+    await toShots.click();
+  } else {
+    await page.goto(`${WEB_URL}/adaptation/shots?admin=1`);
+  }
+}
+
+async function discoverSceneNums(page, maxScene) {
+  const genBtns = page.locator('[data-testid^="scenes-gen-"]');
+  const btnCount = await genBtns.count();
+  const sceneNums = [];
+  for (let i = 0; i < btnCount; i++) {
+    const sn = Number(await genBtns.nth(i).getAttribute("data-scene"));
+    if (sn >= 1 && sn <= maxScene) sceneNums.push(sn);
+  }
+  if (sceneNums.length === 0) sceneNums.push(1);
+  return sceneNums;
+}
+
+function copyClipPromptArtifacts(v) {
+  const base = path.basename(v, ".mp4");
+  const m = base.match(/scene_(\d+)_clip_(\d+)/i);
+  if (!m) return;
+  const promptPath = path.join(
+    WORKSPACE,
+    "projects",
+    PROJECT_NAME,
+    "assets",
+    "video",
+    "prompts",
+    `S${m[1]}C${m[2]}.txt`
+  );
+  const p2 = path.join(
+    WORKSPACE,
+    "projects",
+    PROJECT_NAME,
+    "assets",
+    "video",
+    "prompts",
+    `S${m[1].padStart(2, "0")}C${m[2].padStart(2, "0")}.txt`
+  );
+  for (const pp of [promptPath, p2]) {
+    if (fs.existsSync(pp)) {
+      fs.copyFileSync(pp, path.join(ARTIFACTS, path.basename(pp)));
+      const text = fs.readFileSync(pp, "utf8");
+      log("prompt", path.basename(pp), `len=${text.length}`, text.slice(0, 160).replace(/\s+/g, " "));
+    }
+  }
+}
+
+async function generateOneScene(page, sn, res) {
+  await page.goto(`${WEB_URL}/scenes?admin=1`, { waitUntil: "networkidle" });
+  await page.waitForTimeout(1500);
+  await waitJobIdle(page, 60_000).catch(() => {});
+  if (await res.count()) await res.selectOption("480p");
+  const gen = page.getByTestId(`scenes-gen-${sn}`);
+  if (!(await gen.count())) {
+    log("no gen button for scene", String(sn));
+    return;
+  }
+  const existing = findProjectVideos(PROJECT_NAME).filter((v) =>
+    path.basename(v).match(new RegExp(`scene_0*${sn}_clip_`, "i"))
+  );
+  log(`scene ${sn}: ${existing.length} clip(s) already on disk`);
+  if (await gen.isDisabled().catch(() => false)) {
+    const title = (await gen.getAttribute("title")) || "";
+    throw new Error(
+      `scenes-gen-${sn} disabled (cast not ready for video). ${title}`.trim()
+    );
+  }
+  await gen.click();
+  log(`waiting for scene ${sn} gen…`);
+  await waitJobIdle(page, Number(process.env.GEN_TIMEOUT_MS || 45 * 60_000));
+  await page.waitForTimeout(1500);
+  const reload = page.getByTestId("scenes-reload");
+  if (await reload.count()) await reload.click();
+  await page.waitForTimeout(800);
+  await dumpJob(page, `gen-s${sn}`);
+  await screenshot(page, `06-gen-s${sn}`);
+
+  const vids = findProjectVideos(PROJECT_NAME).filter(
+    (v) =>
+      !path.basename(v).startsWith("_") &&
+      path.basename(v).match(new RegExp(`scene_0*${sn}_clip_`, "i"))
+  );
+  log(`scene ${sn} videos`, String(vids.length));
+  for (const v of vids) {
+    await extractKeyframes(v, path.join(ARTIFACTS, "frames"), path.basename(v, ".mp4"));
+    copyClipPromptArtifacts(v);
+  }
+  fs.writeFileSync(
+    path.join(ARTIFACTS, `videos-after-s${sn}.json`),
+    JSON.stringify(findProjectVideos(PROJECT_NAME), null, 2)
+  );
+}
+
+async function applyHumanReview(page, scene, clip, failThis) {
+  if (failThis) {
+    const fail = page.getByTestId(`review-fail-${scene}-${clip}`);
+    if (await fail.isVisible().catch(() => false) && !(await fail.isDisabled().catch(() => true))) {
+      await fail.click();
+      log("human FAIL", `S${scene}C${clip}`);
+    }
+    return;
+  }
+  const note = `Pilot accept S${scene}C${clip} after auto-review for learning run`;
+  const rev = await apiPost(
+    `/api/projects/${encodeURIComponent(PROJECT_NAME)}/clips/review`,
+    { scene: Number(scene), clip: Number(clip), status: "pass", note }
+  );
+  if (rev.ok) {
+    log("human PASS (API)", `S${scene}C${clip}`, "with override note");
+  } else {
+    log(
+      "human PASS blocked by assembly rules",
+      `S${scene}C${clip}`,
+      String(rev.status),
+      (rev.text || "").slice(0, 200)
+    );
+  }
+}
+
+async function autoReviewOneClip(page, btn, reviewState, failEvery) {
+  const testId = await btn.getAttribute("data-testid");
+  const clip = await btn.getAttribute("data-clip");
+  const scene = await btn.getAttribute("data-scene");
+  const onDisk = findProjectVideos(PROJECT_NAME).some((v) =>
+    path
+      .basename(v)
+      .match(new RegExp(`scene_0*${scene}_clip_0*${clip}\\.mp4$`, "i"))
+  );
+  log("auto-review", testId, onDisk ? "on-disk" : "missing");
+  if (!onDisk) return;
+  const live = page.getByTestId(testId);
+  if (!(await live.count()) || (await live.isDisabled().catch(() => true))) {
+    log("skip disabled", testId);
+    return;
+  }
+  await live.click();
+  await waitJobIdle(page, 300_000);
+  await dumpJob(page, `auto-s${scene}c${clip}`);
+  await screenshot(page, `07-auto-s${scene}c${clip}`);
+  const failThis = reviewState.index % failEvery === 0;
+  reviewState.index++;
+  await applyHumanReview(page, scene, clip, failThis);
+  await page.waitForTimeout(500);
+}
+
+async function reviewOneScene(page, label, reviewState, failEvery) {
+  const sceneNum = Number(label.slice(1));
+  const hasClips = findProjectVideos(PROJECT_NAME).some((v) =>
+    path.basename(v).match(new RegExp(`scene_0*${sceneNum}_clip_`, "i"))
+  );
+  if (!hasClips) {
+    log("review skip scene — no clips", label);
+    return;
+  }
+  await page.goto(`${WEB_URL}/review?admin=1`, { waitUntil: "networkidle" });
+  await page.waitForTimeout(1200);
+  const clipsBtn = page.locator("tr", { hasText: label }).getByRole("button", { name: "Clips" });
+  if (!(await clipsBtn.count())) {
+    log("no Clips button for", label);
+    return;
+  }
+  await clipsBtn.click();
+  await page.waitForTimeout(1000);
+  await screenshot(page, `07-review-${label}-open`);
+  const autoBtns = page.locator(`[data-testid^="review-auto-${sceneNum}-"]`);
+  const n = await autoBtns.count();
+  log(`${label} auto-review buttons`, String(n));
+  for (let i = 0; i < n; i++) {
+    await autoReviewOneClip(page, autoBtns.nth(i), reviewState, failEvery);
+  }
+}
+
+async function rebuildWipIfVisible(page) {
+  const rebuild = page.getByTestId("review-rebuild-wip");
+  if (await rebuild.isVisible().catch(() => false) && !(await rebuild.isDisabled())) {
+    await rebuild.click();
+    try {
+      await waitJobIdle(page, 600_000);
+    } catch (e) {
+      log("WIP rebuild after review:", String(e).slice(0, 300));
+    }
+  }
+}
+
+async function snapshotWipMovie() {
+  const wip = path.join(WORKSPACE, "projects", PROJECT_NAME, "assets", "movie_wip.mp4");
+  if (!fs.existsSync(wip)) return;
+  await extractKeyframes(wip, path.join(ARTIFACTS, "frames"), "wip");
+  try {
+    log("WIP movie", wip, String(fs.statSync(wip).size));
+  } catch {
+    log("WIP movie", wip);
+  }
 }
 
 async function step(name, fn) {
@@ -549,172 +928,27 @@ async function main() {
 
     await step("04_characters_extract_and_lock", async () => {
       // Ensure book text is present for book-aware looks (fountain import alone may not copy it)
-      const sourceDir = path.join(WORKSPACE, "projects", PROJECT_NAME, "source");
-      ensureDir(sourceDir);
-      const bookDest = path.join(sourceDir, "book_full.txt");
-      if (!fs.existsSync(bookDest) && fs.existsSync(BOOK_FIXTURE)) {
-        fs.copyFileSync(BOOK_FIXTURE, bookDest);
-        log("copied book_full.txt for cast looks");
-      }
+      ensureBookFullTxt();
 
       // Extract is a long sync API call (not a background job). Drive it via API so we
       // never race the UI and list a partial cast before fountain_to_cast finishes.
-      log("API extract-cast (force)…");
-      const extractRes = await apiPost(
-        `/api/projects/${encodeURIComponent(PROJECT_NAME)}/characters/extract-cast`,
-        { force: true, model: "grok-4.5" }
-      );
-      if (!extractRes.ok) {
-        log("WARN extract-cast API", String(extractRes.status), (extractRes.text || "").slice(0, 300));
-        // Fall back to UI Build cast / Rebuild cast
-        await page.goto(`${WEB_URL}/characters?admin=1`, { waitUntil: "networkidle" });
-        await page.waitForTimeout(1000);
-        const extractBtn = page.getByTestId("characters-extract-cast");
-        if (await extractBtn.count()) {
-          await extractBtn.first().click({ force: true });
-          // Poll until cast seeds grow or timeout (UI path is also sync-ish)
-          for (let i = 0; i < 180; i++) {
-            await page.waitForTimeout(2000);
-            const mid = await apiGet(`/api/projects/${encodeURIComponent(PROJECT_NAME)}/characters`);
-            const n = (mid.json?.characters || mid.json?.Characters || []).length;
-            if (n >= 3) {
-              log("UI extract appears done, cast count", String(n));
-              break;
-            }
-          }
-        }
-      } else {
-        log(
-          "extract-cast ok",
-          `count=${extractRes.json?.characterCount}`,
-          (extractRes.json?.characters || []).join?.(", ") || ""
-        );
-      }
+      await extractCastViaApiOrUi(page);
 
       await page.goto(`${WEB_URL}/characters?admin=1`, { waitUntil: "networkidle" });
       await page.waitForTimeout(1000);
 
       // Skip plate matching when no illustrated book pages (text-only Poe)
-      const find = page.getByTestId("characters-find-plates");
-      if (await find.isVisible().catch(() => false)) {
-        log("skip find-plates (no book art for Poe text/fountain import)");
-      }
+      await skipFindPlatesIfVisible(page);
 
       // --- Generate + lock portraits for every on-screen character (API) ---
       // Loop until cast gate is ready (handles late seeds / missing officers).
-      for (let pass = 1; pass <= 4; pass++) {
-        const charsRes = await apiGet(`/api/projects/${encodeURIComponent(PROJECT_NAME)}/characters`);
-        const rows = charsRes.json?.characters || charsRes.json?.Characters || [];
-        log("cast list pass", String(pass), String(rows.length), rows.map((c) => c.key || c.Key).join(", "));
-        if (rows.length === 0) throw new Error("No characters after cast extract");
-
-        for (const c of rows) {
-          const key = c.key || c.Key;
-          const voiceOnly = !!(c.voiceOnly ?? c.VoiceOnly);
-          const locked = !!(c.locked ?? c.Locked);
-          const voice = (c.voiceProfile || c.VoiceProfile || "").trim();
-          log(
-            "character",
-            key,
-            voiceOnly ? "voice-only" : "on-screen",
-            locked ? "locked" : "unlocked",
-            `voiceLen=${voice.length}`
-          );
-
-          if (voiceOnly) {
-            if (!voice) {
-              await apiPost(
-                `/api/projects/${encodeURIComponent(PROJECT_NAME)}/characters/${encodeURIComponent(key)}/voice`,
-                {
-                  voiceProfile: "Consistent character voice for this production.",
-                  voiceLabel: key.replace(/^Character_/, ""),
-                }
-              );
-              log("set default voice for", key);
-            }
-            continue;
-          }
-
-          // Even if already locked, re-snapshot for QA. Force re-gen when RELOCK_ALL=1
-          // or when lock looks like a style miss from a prior bad run.
-          const forceRelock =
-            process.env.RELOCK_ALL === "1" || process.env.RELOCK_ALL === "true";
-          if (locked && !forceRelock) {
-            log("already locked", key, "— snapshot for QA (set RELOCK_ALL=1 to re-verify style)");
-            snapshotCharacterVariants(PROJECT_NAME, key);
-            continue;
-          }
-
-          if (locked && forceRelock) {
-            log("RELOCK_ALL: unlock", key);
-            await apiPost(
-              `/api/projects/${encodeURIComponent(PROJECT_NAME)}/characters/${encodeURIComponent(key)}/unlock`,
-              {}
-            );
-          }
-
-          log("generate portraits for", key);
-          const gen = await apiPost("/api/jobs/character-variants", {
-            projectId: PROJECT_NAME,
-            charKey: key,
-            count: 3,
-            seedMode: "none",
-            includePreferred: false,
-            includeLockedRef: false,
-            maxRefs: 0,
-            persistDescription: true,
-          });
-          if (!gen.ok) {
-            log("WARN character-variants failed", key, String(gen.status), (gen.text || "").slice(0, 200));
-            const gen2 = await apiPost("/api/jobs/character-variants", {
-              projectId: PROJECT_NAME,
-              charKey: key,
-              count: 3,
-              seedMode: "auto",
-              persistDescription: true,
-            });
-            if (!gen2.ok) throw new Error(`character-variants ${key}: ${gen2.status} ${gen2.text}`);
-          }
-          await waitApiJobsIdle(PROJECT_NAME, Number(process.env.CHAR_GEN_TIMEOUT_MS || 20 * 60_000));
-
-          // Inspect variants + lock first that passes server style gate.
-          // On total failure: STOP movie — never build shots or spend on video.
-          await pickBestVariantAndLock(key);
-          await page.waitForTimeout(300);
-        }
-
-        const adapt = await apiGet(`/api/projects/${encodeURIComponent(PROJECT_NAME)}/adaptation`);
-        const cast = adapt.json?.adaptation?.cast || adapt.json?.Adaptation?.Cast || {};
-        log("cast readiness", JSON.stringify(cast).slice(0, 280));
-        const ready =
-          cast.readyForShots === true ||
-          cast.ReadyForShots === true ||
-          (Number(cast.ready ?? cast.Ready ?? 0) > 0 &&
-            Number(cast.ready ?? cast.Ready ?? 0) === Number(cast.total ?? cast.Total ?? -1));
-        if (ready) {
-          log("cast gate OPEN", `ready=${cast.ready ?? cast.Ready}/${cast.total ?? cast.Total}`);
-          break;
-        }
-        const missing = cast.missing || cast.Missing || [];
-        if (pass === 4) {
-          throw new Error(
-            `Cast not ready after ${pass} passes: ${JSON.stringify(missing || cast).slice(0, 400)}`
-          );
-        }
-        log("cast gate still closed; retry missing", JSON.stringify(missing).slice(0, 200));
-      }
+      await lockCastUntilReady(page);
 
       await dumpJob(page, "characters");
       await page.goto(`${WEB_URL}/characters?admin=1`, { waitUntil: "networkidle" });
       await page.waitForTimeout(1000);
       await screenshot(page, "04-characters-locked");
-
-      const toShots = page.getByTestId("characters-to-shots");
-      if (await toShots.isVisible().catch(() => false)) {
-        await toShots.click();
-      } else {
-        await page.goto(`${WEB_URL}/adaptation/shots?admin=1`);
-      }
+      await gotoShotsFromCharacters(page);
     });
 
     await step("05_build_shot_plan", async () => {
@@ -750,93 +984,11 @@ async function main() {
       const res = page.getByTestId("scenes-resolution");
       if (await res.count()) await res.selectOption("480p");
 
-      // Discover scene gen buttons
-      const genBtns = page.locator('[data-testid^="scenes-gen-"]');
-      const btnCount = await genBtns.count();
-      const sceneNums = [];
-      for (let i = 0; i < btnCount; i++) {
-        const sn = Number(await genBtns.nth(i).getAttribute("data-scene"));
-        if (sn >= 1 && sn <= maxScene) sceneNums.push(sn);
-      }
-      if (sceneNums.length === 0) sceneNums.push(1);
+      const sceneNums = await discoverSceneNums(page, maxScene);
       log("will generate scenes", sceneNums.join(", "), fullMovie ? "(FULL_MOVIE)" : "(pilot)");
 
       for (const sn of sceneNums) {
-        await page.goto(`${WEB_URL}/scenes?admin=1`, { waitUntil: "networkidle" });
-        await page.waitForTimeout(1500);
-        await waitJobIdle(page, 60_000).catch(() => {});
-        if (await res.count()) await res.selectOption("480p");
-        const gen = page.getByTestId(`scenes-gen-${sn}`);
-        if (!(await gen.count())) {
-          log("no gen button for scene", String(sn));
-          continue;
-        }
-        // Skip if already complete on disk
-        const existing = findProjectVideos(PROJECT_NAME).filter((v) =>
-          path.basename(v).match(new RegExp(`scene_0*${sn}_clip_`, "i"))
-        );
-        log(`scene ${sn}: ${existing.length} clip(s) already on disk`);
-        // Cast gate may leave the button disabled — fail fast with a clear message.
-        if (await gen.isDisabled().catch(() => false)) {
-          const title = (await gen.getAttribute("title")) || "";
-          throw new Error(
-            `scenes-gen-${sn} disabled (cast not ready for video). ${title}`.trim()
-          );
-        }
-        await gen.click();
-        log(`waiting for scene ${sn} gen…`);
-        await waitJobIdle(page, Number(process.env.GEN_TIMEOUT_MS || 45 * 60_000));
-        await page.waitForTimeout(1500);
-        const reload = page.getByTestId("scenes-reload");
-        if (await reload.count()) await reload.click();
-        await page.waitForTimeout(800);
-        await dumpJob(page, `gen-s${sn}`);
-        await screenshot(page, `06-gen-s${sn}`);
-
-        const vids = findProjectVideos(PROJECT_NAME).filter(
-          (v) =>
-            !path.basename(v).startsWith("_") &&
-            path.basename(v).match(new RegExp(`scene_0*${sn}_clip_`, "i"))
-        );
-        log(`scene ${sn} videos`, String(vids.length));
-        for (const v of vids) {
-          await extractKeyframes(v, path.join(ARTIFACTS, "frames"), path.basename(v, ".mp4"));
-          // Human review note: dump prompt if present
-          const base = path.basename(v, ".mp4");
-          const m = base.match(/scene_(\d+)_clip_(\d+)/i);
-          if (m) {
-            const promptPath = path.join(
-              WORKSPACE,
-              "projects",
-              PROJECT_NAME,
-              "assets",
-              "video",
-              "prompts",
-              `S${m[1]}C${m[2]}.txt`
-            );
-            // also try S01C01 style
-            const p2 = path.join(
-              WORKSPACE,
-              "projects",
-              PROJECT_NAME,
-              "assets",
-              "video",
-              "prompts",
-              `S${m[1].padStart(2, "0")}C${m[2].padStart(2, "0")}.txt`
-            );
-            for (const pp of [promptPath, p2]) {
-              if (fs.existsSync(pp)) {
-                fs.copyFileSync(pp, path.join(ARTIFACTS, path.basename(pp)));
-                const text = fs.readFileSync(pp, "utf8");
-                log("prompt", path.basename(pp), `len=${text.length}`, text.slice(0, 160).replace(/\s+/g, " "));
-              }
-            }
-          }
-        }
-        fs.writeFileSync(
-          path.join(ARTIFACTS, `videos-after-s${sn}.json`),
-          JSON.stringify(findProjectVideos(PROJECT_NAME), null, 2)
-        );
+        await generateOneScene(page, sn, res);
       }
     });
 
@@ -848,115 +1000,19 @@ async function main() {
       await waitJobIdle(page, 120_000).catch(() => {});
       await screenshot(page, "07-review-start");
 
-      // Discover scene rows S01, S02, …
       const sceneLabels = fullMovie
         ? ["S01", "S02", "S03", "S04", "S05", "S06", "S07", "S08"]
         : ["S01"];
       const failEvery = Math.max(1, Math.round(1 / Math.max(0.01, FAIL_RATE)));
-      let reviewIndex = 0;
+      const reviewState = { index: 0 };
 
       for (const label of sceneLabels) {
-        const sceneNum = Number(label.slice(1));
-        const hasClips = findProjectVideos(PROJECT_NAME).some((v) =>
-          path.basename(v).match(new RegExp(`scene_0*${sceneNum}_clip_`, "i"))
-        );
-        if (!hasClips) {
-          log("review skip scene — no clips", label);
-          continue;
-        }
-        await page.goto(`${WEB_URL}/review?admin=1`, { waitUntil: "networkidle" });
-        await page.waitForTimeout(1200);
-        const clipsBtn = page.locator("tr", { hasText: label }).getByRole("button", { name: "Clips" });
-        if (await clipsBtn.count()) {
-          await clipsBtn.click();
-          await page.waitForTimeout(1000);
-        } else {
-          log("no Clips button for", label);
-          continue;
-        }
-        await screenshot(page, `07-review-${label}-open`);
-
-        const autoBtns = page.locator(`[data-testid^="review-auto-${sceneNum}-"]`);
-        const n = await autoBtns.count();
-        log(`${label} auto-review buttons`, String(n));
-
-        for (let i = 0; i < n; i++) {
-          const btn = autoBtns.nth(i);
-          const testId = await btn.getAttribute("data-testid");
-          const clip = await btn.getAttribute("data-clip");
-          const scene = await btn.getAttribute("data-scene");
-          const onDisk = findProjectVideos(PROJECT_NAME).some((v) =>
-            path
-              .basename(v)
-              .match(new RegExp(`scene_0*${scene}_clip_0*${clip}\\.mp4$`, "i"))
-          );
-          log("auto-review", testId, onDisk ? "on-disk" : "missing");
-          if (!onDisk) continue;
-          // Re-query in case DOM refreshed
-          const live = page.getByTestId(testId);
-          if (!(await live.count()) || (await live.isDisabled().catch(() => true))) {
-            log("skip disabled", testId);
-            continue;
-          }
-          await live.click();
-          await waitJobIdle(page, 300_000);
-          await dumpJob(page, `auto-s${scene}c${clip}`);
-          await screenshot(page, `07-auto-s${scene}c${clip}`);
-
-          // Human: fail ~FAIL_RATE for learning; otherwise pass if looks ok.
-          // Assembly gate: after auto-fail, Pass needs a real override note (API enforces).
-          const failThis = reviewIndex % failEvery === 0;
-          reviewIndex++;
-          if (failThis) {
-            const fail = page.getByTestId(`review-fail-${scene}-${clip}`);
-            if (await fail.isVisible().catch(() => false) && !(await fail.isDisabled().catch(() => true))) {
-              await fail.click();
-              log("human FAIL", `S${scene}C${clip}`);
-            }
-          } else {
-            // Prefer API pass with override-capable note so assembly gate can accept after auto-fail
-            const note = `Pilot accept S${scene}C${clip} after auto-review for learning run`;
-            const rev = await apiPost(
-              `/api/projects/${encodeURIComponent(PROJECT_NAME)}/clips/review`,
-              { scene: Number(scene), clip: Number(clip), status: "pass", note }
-            );
-            if (rev.ok) {
-              log("human PASS (API)", `S${scene}C${clip}`, "with override note");
-            } else {
-              log(
-                "human PASS blocked by assembly rules",
-                `S${scene}C${clip}`,
-                String(rev.status),
-                (rev.text || "").slice(0, 200)
-              );
-              // Leave as auto-fail / unpassed — WIP rebuild must exclude it
-            }
-          }
-          await page.waitForTimeout(500);
-        }
+        await reviewOneScene(page, label, reviewState, failEvery);
       }
 
-      const rebuild = page.getByTestId("review-rebuild-wip");
-      if (await rebuild.isVisible().catch(() => false) && !(await rebuild.isDisabled())) {
-        await rebuild.click();
-        // May fail if all clips blocked — that is correct assembly-gate behavior
-        try {
-          await waitJobIdle(page, 600_000);
-        } catch (e) {
-          log("WIP rebuild after review:", String(e).slice(0, 300));
-        }
-      }
+      await rebuildWipIfVisible(page);
       await screenshot(page, "07-review-done");
-
-      const wip = path.join(WORKSPACE, "projects", PROJECT_NAME, "assets", "movie_wip.mp4");
-      if (fs.existsSync(wip)) {
-        await extractKeyframes(wip, path.join(ARTIFACTS, "frames"), "wip");
-        try {
-          log("WIP movie", wip, String(fs.statSync(wip).size));
-        } catch {
-          log("WIP movie", wip);
-        }
-      }
+      await snapshotWipMovie();
     });
 
     await step("08_admin_learning", async () => {

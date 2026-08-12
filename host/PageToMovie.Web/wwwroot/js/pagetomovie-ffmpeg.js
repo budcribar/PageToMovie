@@ -167,6 +167,36 @@ window.PageToMovieFfmpeg = {
         return url;
     },
 
+    _deleteMemfsFiles: async function (ffmpeg, names) {
+        for (const n of names) {
+            try { await ffmpeg.deleteFile(n); } catch (_) { /* */ }
+        }
+    },
+
+    /** Fine RMS envelope of a PCM channel (same 8%-of-peak trim the scorer uses). */
+    _rmsEnvelopeFromChannel: function (ch, fine) {
+        fine = fine || 400;
+        const n = ch.length;
+        const per = Math.max(1, Math.floor(n / fine));
+        const raw = new Float32Array(fine);
+        let mx = 0;
+        for (let i = 0; i < fine; i++) {
+            let sum = 0, c = 0; const s = i * per, e = Math.min(n, s + per);
+            for (let j = s; j < e; j++) { sum += ch[j] * ch[j]; c++; }
+            raw[i] = c ? Math.sqrt(sum / c) : 0; if (raw[i] > mx) mx = raw[i];
+        }
+        return { raw: raw, per: per, mx: mx, fine: fine };
+    },
+
+    _speechSpanBins: function (raw, mx, fine) {
+        const thr = mx * 0.08;
+        let lo = 0, hi = fine - 1;
+        while (lo < fine && raw[lo] < thr) lo++;
+        while (hi > lo && raw[hi] < thr) hi--;
+        if (lo >= hi) { lo = 0; hi = fine - 1; }
+        return { lo: lo, hi: hi, span: hi - lo + 1 };
+    },
+
     /**
      * Fetch ordered video URLs and concatenate into one MP4 blob URL for <video src>.
      * @param {string[]} urls absolute or root-relative clip/scene URLs
@@ -781,56 +811,46 @@ window.PageToMovieFfmpeg = {
             const AC = window.AudioContext || window.webkitAudioContext;
             actx = new AC();
             const audio = await actx.decodeAudioData(arr);
-            const data = audio.getChannelData(0);
-            const n = data.length;
-
-            // Fine RMS envelope, then trim leading/trailing silence (< 8% of peak) — the SAME trim the
-            // scorer uses, so both strips start at the first sound (no leading-silence offset) and the
-            // "you" colour regions line up with the speech instead of the dead air at the front.
-            const fine = 400;
-            const per = Math.max(1, Math.floor(n / fine));
-            const raw = new Float32Array(fine);
-            let mx = 0;
-            for (let i = 0; i < fine; i++) {
-                let sum = 0, c = 0; const s = i * per, e = Math.min(n, s + per);
-                for (let j = s; j < e; j++) { sum += data[j] * data[j]; c++; }
-                raw[i] = c ? Math.sqrt(sum / c) : 0; if (raw[i] > mx) mx = raw[i];
-            }
-            const thr = mx * 0.08;
-            let lo = 0, hi = fine - 1;
-            while (lo < fine && raw[lo] < thr) lo++;
-            while (hi > lo && raw[hi] < thr) hi--;
-            if (lo >= hi) { lo = 0; hi = fine - 1; } // all quiet → keep everything
-            const spanLen = hi - lo + 1;
-
-            // Resample the SPEECH span (lo..hi) across the strip.
+            const { raw, mx, fine } = this._rmsEnvelopeFromChannel(audio.getChannelData(0), 400);
+            const { lo, hi } = this._speechSpanBins(raw, mx, fine);
             const bins = Math.min(w, 220);
-            const env = new Array(bins).fill(0);
-            let mx2 = 1e-6;
-            for (let i = 0; i < bins; i++) {
-                const idx = lo + Math.floor(i * spanLen / bins);
-                env[i] = raw[Math.min(fine - 1, idx)];
-                if (env[i] > mx2) mx2 = env[i];
-            }
-
-            const barW = w / bins;
-            const hasReg = Array.isArray(regions) && regions.length > 0;
-            for (let i = 0; i < bins; i++) {
-                const v = env[i] / mx2;
-                const bh = Math.max(1, v * (h - 2));
-                let color = "rgba(147,197,253,.9)"; // neutral blue (narrator)
-                if (hasReg) {
-                    const m = regions[Math.min(regions.length - 1, Math.floor(i / bins * regions.length))];
-                    color = m >= 0.7 ? "rgba(52,199,89,.95)" : m >= 0.5 ? "rgba(255,204,0,.95)" : "rgba(255,59,48,.95)";
-                }
-                ctx.fillStyle = color;
-                ctx.fillRect(i * barW, (h - bh) / 2, Math.max(1, barW - 0.5), bh);
-            }
+            const sampled = this._resampleSpan(raw, lo, hi - lo + 1, fine, bins);
+            this._drawWaveformBars(ctx, sampled.env, sampled.mx2, w, h, regions);
             return true;
         } catch (_) {
             return false;
         } finally {
             if (actx) { try { await actx.close(); } catch (_) { /* */ } }
+        }
+    },
+
+    _resampleSpan: function (raw, lo, spanLen, fine, bins) {
+        const env = new Array(bins).fill(0);
+        let mx2 = 1e-6;
+        for (let i = 0; i < bins; i++) {
+            const idx = lo + Math.floor(i * spanLen / bins);
+            env[i] = raw[Math.min(fine - 1, idx)];
+            if (env[i] > mx2) mx2 = env[i];
+        }
+        return { env: env, mx2: mx2 };
+    },
+
+    _waveformBarColor: function (regions, i, bins) {
+        if (!Array.isArray(regions) || regions.length === 0) return "rgba(147,197,253,.9)";
+        const m = regions[Math.min(regions.length - 1, Math.floor(i / bins * regions.length))];
+        if (m >= 0.7) return "rgba(52,199,89,.95)";
+        if (m >= 0.5) return "rgba(255,204,0,.95)";
+        return "rgba(255,59,48,.95)";
+    },
+
+    _drawWaveformBars: function (ctx, env, mx2, w, h, regions) {
+        const bins = env.length;
+        const barW = w / bins;
+        for (let i = 0; i < bins; i++) {
+            const v = env[i] / mx2;
+            const bh = Math.max(1, v * (h - 2));
+            ctx.fillStyle = this._waveformBarColor(regions, i, bins);
+            ctx.fillRect(i * barW, (h - bh) / 2, Math.max(1, barW - 0.5), bh);
         }
     },
 
@@ -963,42 +983,24 @@ window.PageToMovieFfmpeg = {
         const ctx = new AC();
         try {
             const decoded = await ctx.decodeAudioData(buf);
-            const ch = decoded.getChannelData(0);
-            const n = ch.length;
-
-            // Fine envelope first, so we can find the speech span.
-            const fine = 400;
-            const raw = new Float32Array(fine);
-            const per = Math.max(1, Math.floor(n / fine));
-            for (let i = 0; i < fine; i++) {
-                let sum = 0, cnt = 0;
-                const s = i * per, e = Math.min(n, s + per);
-                for (let j = s; j < e; j++) { sum += ch[j] * ch[j]; cnt++; }
-                raw[i] = cnt ? Math.sqrt(sum / cnt) : 0;
-            }
-            let mx = 0; for (let i = 0; i < fine; i++) if (raw[i] > mx) mx = raw[i];
-
-            // Trim leading/trailing silence (bins below 8% of peak).
-            const thr = mx * 0.08;
-            let lo = 0, hi = fine - 1;
-            while (lo < fine && raw[lo] < thr) lo++;
-            while (hi > lo && raw[hi] < thr) hi--;
-            if (lo >= hi) { lo = 0; hi = fine - 1; } // all quiet → keep everything
-            const span = hi - lo + 1;
-
-            // Resample the speech span to `frames`, normalized.
-            const env = new Float32Array(frames);
-            for (let i = 0; i < frames; i++) {
-                const idx = lo + Math.floor(i * span / frames);
-                env[i] = raw[Math.min(fine - 1, idx)];
-            }
-            let mx2 = 0; for (let i = 0; i < frames; i++) if (env[i] > mx2) mx2 = env[i];
-            if (mx2 > 0) for (let i = 0; i < frames; i++) env[i] /= mx2;
-
+            const { raw, mx, fine } = this._rmsEnvelopeFromChannel(decoded.getChannelData(0), 400);
+            const { lo, span } = this._speechSpanBins(raw, mx, fine);
+            const env = this._resampleNormalized(raw, lo, span, fine, frames);
             return { env: env, durationSec: decoded.duration * (span / fine) };
         } finally {
             try { await ctx.close(); } catch (_) { /* */ }
         }
+    },
+
+    _resampleNormalized: function (raw, lo, span, fine, frames) {
+        const env = new Float32Array(frames);
+        for (let i = 0; i < frames; i++) {
+            const idx = lo + Math.floor(i * span / frames);
+            env[i] = raw[Math.min(fine - 1, idx)];
+        }
+        let mx2 = 0; for (let i = 0; i < frames; i++) if (env[i] > mx2) mx2 = env[i];
+        if (mx2 > 0) for (let i = 0; i < frames; i++) env[i] /= mx2;
+        return env;
     },
 
     /** Pearson correlation of two equal-length series, -1..1. */
@@ -1030,51 +1032,48 @@ window.PageToMovieFfmpeg = {
             const gap = Math.max(0, gapSec == null ? 0.4 : gapSec);
             const gapSamples = Math.round(gap * sr);
             const pad = Math.round(0.03 * sr); // keep 30 ms either side so we don't clip soft edges
-
-            const slices = [];
-            let total = 0;
-            for (const url of list) {
-                const resp = await fetch(url);
-                const arr = await resp.arrayBuffer();
-                let decoded;
-                try { decoded = await ctx.decodeAudioData(arr); } catch (_) { continue; }
-                const ch = decoded.getChannelData(0);
-                const n = ch.length;
-
-                // Fine RMS envelope → speech span (< 8% of peak = silence), same trim as the scorer.
-                const fine = 400;
-                const per = Math.max(1, Math.floor(n / fine));
-                const raw = new Float32Array(fine);
-                let mx = 0;
-                for (let i = 0; i < fine; i++) {
-                    let sum = 0, c = 0; const s = i * per, e = Math.min(n, s + per);
-                    for (let j = s; j < e; j++) { sum += ch[j] * ch[j]; c++; }
-                    raw[i] = c ? Math.sqrt(sum / c) : 0; if (raw[i] > mx) mx = raw[i];
-                }
-                const thr = mx * 0.08;
-                let lo = 0, hi = fine - 1;
-                while (lo < fine && raw[lo] < thr) lo++;
-                while (hi > lo && raw[hi] < thr) hi--;
-                if (lo >= hi) { lo = 0; hi = fine - 1; }
-
-                const sStart = Math.max(0, lo * per - pad);
-                const sEnd = Math.min(n, (hi + 1) * per + pad);
-                if (sEnd > sStart) { slices.push(ch.subarray(sStart, sEnd)); total += (sEnd - sStart); }
-            }
+            const slices = await this._speechSlicesFromUrlsAsync(ctx, list, pad);
             if (slices.length === 0) throw new Error("no decodable takes");
-
-            const totalLen = total + gapSamples * (slices.length - 1);
-            const out = new Float32Array(totalLen); // gaps stay as zeros = the natural pause
-            let pos = 0;
-            for (let k = 0; k < slices.length; k++) {
-                out.set(slices[k], pos);
-                pos += slices[k].length;
-                if (k < slices.length - 1) pos += gapSamples;
-            }
-            return this._encodeWavPcm16(out, sr);
+            return this._encodeWavPcm16(this._concatSlicesWithGap(slices, gapSamples), sr);
         } finally {
             try { await ctx.close(); } catch (_) { /* */ }
         }
+    },
+
+    _speechSliceFromChannel: function (ch, pad) {
+        const n = ch.length;
+        const { raw, per, mx, fine } = this._rmsEnvelopeFromChannel(ch, 400);
+        const { lo, hi } = this._speechSpanBins(raw, mx, fine);
+        const sStart = Math.max(0, lo * per - pad);
+        const sEnd = Math.min(n, (hi + 1) * per + pad);
+        if (sEnd <= sStart) return null;
+        return ch.subarray(sStart, sEnd);
+    },
+
+    _speechSlicesFromUrlsAsync: async function (ctx, list, pad) {
+        const slices = [];
+        for (const url of list) {
+            const resp = await fetch(url);
+            const arr = await resp.arrayBuffer();
+            let decoded;
+            try { decoded = await ctx.decodeAudioData(arr); } catch (_) { continue; }
+            const slice = this._speechSliceFromChannel(decoded.getChannelData(0), pad);
+            if (slice) slices.push(slice);
+        }
+        return slices;
+    },
+
+    _concatSlicesWithGap: function (slices, gapSamples) {
+        let total = 0;
+        for (let k = 0; k < slices.length; k++) total += slices[k].length;
+        const out = new Float32Array(total + gapSamples * (slices.length - 1));
+        let pos = 0;
+        for (let k = 0; k < slices.length; k++) {
+            out.set(slices[k], pos);
+            pos += slices[k].length;
+            if (k < slices.length - 1) pos += gapSamples;
+        }
+        return out;
     },
 
     /** Encode a mono Float32 buffer to a 16-bit PCM WAV (Uint8Array). */
@@ -1474,80 +1473,92 @@ window.PageToMovieFfmpeg = {
         const count = Math.max(1, Math.min(6, opts.count != null ? opts.count : 3));
         const maxWidth = opts.maxWidth != null ? opts.maxWidth : 640;
         const quality = opts.quality != null ? opts.quality : 5;
-        return this._runExclusiveAsync(async () => {
-            const load = await this.ensureLoadedAsync(onProgress);
-            if (!load.success) return { success: false, error: load.error || "ffmpeg load failed" };
+        return this._runExclusiveAsync(() =>
+            this._extractFramesLockedAsync(url, mode, count, maxWidth, quality, onProgress));
+    },
 
-            const ffmpeg = this._ffmpeg;
-            const inName = "frame_in.mp4";
-            const written = [];
+    _extractFramesLockedAsync: async function (url, mode, count, maxWidth, quality, onProgress) {
+        const load = await this.ensureLoadedAsync(onProgress);
+        if (!load.success) return { success: false, error: load.error || "ffmpeg load failed" };
+
+        const ffmpeg = this._ffmpeg;
+        const inName = "frame_in.mp4";
+        const written = [];
+        try {
+            reportProgress(onProgress, 10, "Loading video for frames…");
+            const data = await this._safeFetchFile(url);
+            await ffmpeg.writeFile(inName, data);
+            written.push(inName);
+
+            const scale = "scale='min(" + maxWidth + ",iw)':-2";
+            const pattern = "frame_%02d.jpg";
+            reportProgress(onProgress, 40, mode === "tail" ? "Sampling clip end…" : "Sampling clip…");
+
+            const execErr = await this._tryExtractFramesOrFallback(ffmpeg, inName, mode, count, scale, quality, pattern);
+            if (execErr) return execErr;
+
+            reportProgress(onProgress, 80, "Encoding frames…");
+            const frames = await this._readExtractedJpegFramesAsync(ffmpeg, count, written);
+            await this._deleteMemfsFiles(ffmpeg, written);
+
+            if (frames.length === 0)
+                return { success: false, error: "No frames produced" };
+
+            reportProgress(onProgress, 100, "Frames ready");
+            return { success: true, frames: frames };
+        } catch (err) {
+            await this._deleteMemfsFiles(ffmpeg, written);
+            return { success: false, error: err.message || String(err) };
+        }
+    },
+
+    _tryExtractFramesOrFallback: async function (ffmpeg, inName, mode, count, scale, quality, pattern) {
+        try {
+            await this._execExtractFramesAsync(ffmpeg, inName, mode, count, scale, quality, pattern);
+            return null;
+        } catch (execErr) {
+            this._log("frame extract primary failed: " + (execErr && execErr.message));
             try {
-                reportProgress(onProgress, 10, "Loading video for frames…");
-                const data = await this._safeFetchFile(url);
-                await ffmpeg.writeFile(inName, data);
-                written.push(inName);
-
-                const scale = "scale='min(" + maxWidth + ",iw)':-2";
-                const pattern = "frame_%02d.jpg";
-                reportProgress(onProgress, 40, mode === "tail" ? "Sampling clip end…" : "Sampling clip…");
-
-                try {
-                    await this._execExtractFramesAsync(ffmpeg, inName, mode, count, scale, quality, pattern);
-                } catch (execErr) {
-                    this._log("frame extract primary failed: " + (execErr && execErr.message));
-                    try {
-                        await ffmpeg.exec([
-                            "-hide_banner", "-y",
-                            "-ss", "0.5",
-                            "-i", inName,
-                            "-vf", scale,
-                            "-frames:v", "1",
-                            "-q:v", String(quality),
-                            "frame_01.jpg",
-                        ]);
-                    } catch (fbErr) {
-                        return {
-                            success: false,
-                            error: "Frame extract failed: " + (fbErr.message || String(fbErr)),
-                        };
-                    }
-                }
-
-                reportProgress(onProgress, 80, "Encoding frames…");
-                const frames = [];
-                for (let i = 1; i <= count + 2; i++) {
-                    const name = "frame_" + String(i).padStart(2, "0") + ".jpg";
-                    try {
-                        const out = await ffmpeg.readFile(name);
-                        written.push(name);
-                        if (!out || !out.length) continue;
-                        const bytes = out instanceof Uint8Array ? out : new Uint8Array(out.buffer || out);
-                        if (bytes.length < 64) continue;
-                        frames.push({
-                            base64: this._bytesToBase64(bytes),
-                            mime: "image/jpeg",
-                        });
-                    } catch (_) {
-                        if (i > 1) break;
-                    }
-                }
-
-                for (const n of written) {
-                    try { await ffmpeg.deleteFile(n); } catch (_) { /* */ }
-                }
-
-                if (frames.length === 0)
-                    return { success: false, error: "No frames produced" };
-
-                reportProgress(onProgress, 100, "Frames ready");
-                return { success: true, frames: frames };
-            } catch (err) {
-                for (const n of written) {
-                    try { await ffmpeg.deleteFile(n); } catch (_) { /* */ }
-                }
-                return { success: false, error: err.message || String(err) };
+                await ffmpeg.exec([
+                    "-hide_banner", "-y",
+                    "-ss", "0.5",
+                    "-i", inName,
+                    "-vf", scale,
+                    "-frames:v", "1",
+                    "-q:v", String(quality),
+                    "frame_01.jpg",
+                ]);
+                return null;
+            } catch (fbErr) {
+                return {
+                    success: false,
+                    error: "Frame extract failed: " + (fbErr.message || String(fbErr)),
+                };
             }
-        });
+        }
+    },
+
+    _jpegFrameFromBytes: function (out) {
+        if (!out || !out.length) return null;
+        const bytes = out instanceof Uint8Array ? out : new Uint8Array(out.buffer || out);
+        if (bytes.length < 64) return null;
+        return { base64: this._bytesToBase64(bytes), mime: "image/jpeg" };
+    },
+
+    _readExtractedJpegFramesAsync: async function (ffmpeg, count, written) {
+        const frames = [];
+        for (let i = 1; i <= count + 2; i++) {
+            const name = "frame_" + String(i).padStart(2, "0") + ".jpg";
+            try {
+                const out = await ffmpeg.readFile(name);
+                written.push(name);
+                const frame = this._jpegFrameFromBytes(out);
+                if (frame) frames.push(frame);
+            } catch (_) {
+                if (i > 1) break;
+            }
+        }
+        return frames;
     },
 
     _bytesToBase64: function (bytes) {
@@ -1677,69 +1688,75 @@ window.PageToMovieFfmpeg = {
     replaceVideoAudioAsync: async function (videoUrl, audioUrl, onProgress) {
         if (!videoUrl) return { success: false, error: "No video URL" };
         if (!audioUrl) return { success: false, error: "No audio URL" };
-        return this._runExclusiveAsync(async () => {
-            const load = await this.ensureLoadedAsync(onProgress);
-            if (!load.success) return load;
+        return this._runExclusiveAsync(() =>
+            this._replaceVideoAudioLockedAsync(videoUrl, audioUrl, onProgress));
+    },
 
-            const ffmpeg = this._ffmpeg;
-            const inVideo = "rv_in_video.mp4";
-            const inAudio = "rv_in_audio";
-            const outName = "rv_out.mp4";
-            try {
-                reportProgress(onProgress, 8, "Loading picture…");
-                await ffmpeg.writeFile(inVideo, await this._safeFetchFile(videoUrl));
-                reportProgress(onProgress, 28, "Loading voice…");
-                // Keep extension so ffmpeg can sniff container (mp3/wav/m4a)
-                let audioName = inAudio + ".bin";
-                if (typeof audioUrl === "string") {
-                    if (audioUrl.indexOf("audio/wav") >= 0 || /\.wav(\?|$)/i.test(audioUrl)) audioName = inAudio + ".wav";
-                    else if (audioUrl.indexOf("audio/mp4") >= 0 || /\.m4a(\?|$)/i.test(audioUrl)) audioName = inAudio + ".m4a";
-                    else if (audioUrl.indexOf("audio/mpeg") >= 0 || /\.mp3(\?|$)/i.test(audioUrl)) audioName = inAudio + ".mp3";
-                    else audioName = inAudio + ".mp3";
-                }
-                await ffmpeg.writeFile(audioName, await this._safeFetchFile(audioUrl));
+    _audioExtForUrl: function (audioUrl) {
+        if (typeof audioUrl !== "string") return ".bin";
+        if (audioUrl.indexOf("audio/wav") >= 0 || /\.wav(\?|$)/i.test(audioUrl)) return ".wav";
+        if (audioUrl.indexOf("audio/mp4") >= 0 || /\.m4a(\?|$)/i.test(audioUrl)) return ".m4a";
+        if (audioUrl.indexOf("audio/mpeg") >= 0 || /\.mp3(\?|$)/i.test(audioUrl)) return ".mp3";
+        return ".mp3";
+    },
 
-                const probe = await this._probeDurationMemfsAsync(inVideo);
-                const durationSec = probe.success && probe.seconds > 0 ? probe.seconds : 0;
+    _execReplaceVideoAudioAsync: async function (ffmpeg, inVideo, audioName, outName, durationSec) {
+        if (durationSec > 0.05) {
+            const filter =
+                "[1:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=mono," +
+                "apad=whole_dur=" + durationSec.toFixed(3) + "[a]";
+            await ffmpeg.exec([
+                "-hide_banner", "-y",
+                "-i", inVideo, "-i", audioName,
+                "-filter_complex", filter,
+                "-map", "0:v", "-map", "[a]",
+                "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+                "-t", durationSec.toFixed(3),
+                outName,
+            ]);
+            return;
+        }
+        await ffmpeg.exec([
+            "-hide_banner", "-y",
+            "-i", inVideo, "-i", audioName,
+            "-map", "0:v", "-map", "1:a",
+            "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+            "-shortest",
+            outName,
+        ]);
+    },
 
-                reportProgress(onProgress, 50, "Replacing audio…");
-                // Drop original audio entirely; use TTS only. Pad TTS with silence to video length
-                // when known so picture does not cut short; -shortest still guards runaway audio.
-                if (durationSec > 0.05) {
-                    const filter =
-                        "[1:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=mono," +
-                        "apad=whole_dur=" + durationSec.toFixed(3) + "[a]";
-                    await ffmpeg.exec([
-                        "-hide_banner", "-y",
-                        "-i", inVideo, "-i", audioName,
-                        "-filter_complex", filter,
-                        "-map", "0:v", "-map", "[a]",
-                        "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
-                        "-t", durationSec.toFixed(3),
-                        outName,
-                    ]);
-                } else {
-                    await ffmpeg.exec([
-                        "-hide_banner", "-y",
-                        "-i", inVideo, "-i", audioName,
-                        "-map", "0:v", "-map", "1:a",
-                        "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
-                        "-shortest",
-                        outName,
-                    ]);
-                }
+    _replaceVideoAudioLockedAsync: async function (videoUrl, audioUrl, onProgress) {
+        const load = await this.ensureLoadedAsync(onProgress);
+        if (!load.success) return load;
 
-                reportProgress(onProgress, 90, "Saving clip…");
-                const url = await this._readAndCleanupAsync(
-                    ffmpeg, outName, "video/mp4", [inVideo, audioName]);
-                reportProgress(onProgress, 100, "Ready");
-                return { success: true, url: url };
-            } catch (err) {
-                console.error("replaceVideoAudioAsync failed:", err);
-                for (const n of [inVideo, outName]) { try { await ffmpeg.deleteFile(n); } catch (_) { /* */ } }
-                return { success: false, error: err.message || String(err) };
-            }
-        });
+        const ffmpeg = this._ffmpeg;
+        const inVideo = "rv_in_video.mp4";
+        const inAudio = "rv_in_audio";
+        const outName = "rv_out.mp4";
+        try {
+            reportProgress(onProgress, 8, "Loading picture…");
+            await ffmpeg.writeFile(inVideo, await this._safeFetchFile(videoUrl));
+            reportProgress(onProgress, 28, "Loading voice…");
+            const audioName = inAudio + this._audioExtForUrl(audioUrl);
+            await ffmpeg.writeFile(audioName, await this._safeFetchFile(audioUrl));
+
+            const probe = await this._probeDurationMemfsAsync(inVideo);
+            const durationSec = probe.success && probe.seconds > 0 ? probe.seconds : 0;
+
+            reportProgress(onProgress, 50, "Replacing audio…");
+            await this._execReplaceVideoAudioAsync(ffmpeg, inVideo, audioName, outName, durationSec);
+
+            reportProgress(onProgress, 90, "Saving clip…");
+            const url = await this._readAndCleanupAsync(
+                ffmpeg, outName, "video/mp4", [inVideo, audioName]);
+            reportProgress(onProgress, 100, "Ready");
+            return { success: true, url: url };
+        } catch (err) {
+            console.error("replaceVideoAudioAsync failed:", err);
+            await this._deleteMemfsFiles(ffmpeg, [inVideo, outName]);
+            return { success: false, error: err.message || String(err) };
+        }
     },
 
     /**
