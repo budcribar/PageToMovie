@@ -288,21 +288,53 @@ public static class CastPackageCrossCheck
         return t.ToUpperInvariant();
     }
 
+    /// <summary>Public entry for Engine gates that need the same speaker normalization.</summary>
+    public static string NormalizeSpeakerToken(string raw) => NormalizeSpeaker(raw);
+
+    /// <summary>
+    /// Public: map numbered generic speaker (or Character_Suitor_1 key suffix) to a group seed key.
+    /// </summary>
+    public static string? TryResolveNumberedToGroupKey(
+        string speakerOrKey,
+        IReadOnlyDictionary<string, JsonElement> seeds)
+    {
+        if (seeds.Count == 0) return null;
+        var dict = seeds as Dictionary<string, JsonElement>
+            ?? new Dictionary<string, JsonElement>(seeds, StringComparer.OrdinalIgnoreCase);
+        var raw = (speakerOrKey ?? "").Trim();
+        if (raw.StartsWith("Character_", StringComparison.OrdinalIgnoreCase))
+            raw = CastKindClassifier.StripPrefix(raw).Replace('_', ' ');
+        var want = NormalizeSpeaker(raw);
+        return ResolveNumberedSpeakerToGroupKey(want, dict);
+    }
+
     private static bool IsAllowedWithoutBookMention(string speaker)
     {
         // Roles / group chorus tokens common in adaptations of unnamed ensembles.
-        return speaker is "TEACHER" or "MOTHER" or "FATHER" or "PARENT" or "DOCTOR"
+        if (speaker is "TEACHER" or "MOTHER" or "FATHER" or "PARENT" or "DOCTOR"
             or "NURSE" or "POLICE" or "OFFICER" or "GUARD" or "KING" or "QUEEN"
             or "PRINCE" or "PRINCESS" or "CHILDREN" or "CHILD" or "KIDS" or "PUPILS"
             or "STUDENTS" or "CROWD" or "CLASS" or "CLASSMATES" or "VILLAGERS"
             or "TOWNSFOLK" or "PEOPLE" or "GROUP" or "CHORUS" or "ENSEMBLE"
             or "BOY" or "GIRL" or "MAN" or "WOMAN" or "LAMB" or "DOG" or "CAT"
-            or "ANIMAL" or "CREATURE";
+            or "ANIMAL" or "CREATURE" or "SUITOR" or "SUITORS")
+            return true;
+
+        // Numbered generics (SUITOR 1) are role labels, not invented proper names.
+        if (ExtractNumberedStem(speaker) is not null)
+            return true;
+
+        return false;
     }
 
     private static string SanitizeKey(string speaker) =>
         Regex.Replace(speaker, @"[^A-Za-z0-9]+", "_").Trim('_');
 
+    /// <summary>
+    /// Resolve a Fountain speaker cue to a cast_seeds key.
+    /// North Star: numbered generics (SUITOR 1, MAN 2) map to an ensemble group seed
+    /// (Character_Suitors / Character_Men) when present — do not invent individual plate keys.
+    /// </summary>
     private static string? ResolveCastKey(string speaker, Dictionary<string, JsonElement> seeds)
     {
         var want = NormalizeSpeaker(speaker);
@@ -325,6 +357,94 @@ public static class CastPackageCrossCheck
                     NormalizeSpeaker(p.GetString() ?? "").Equals(want, StringComparison.OrdinalIgnoreCase))
                     return key;
             }
+        }
+
+        // Numbered / ordinal generic → ensemble group (SUITOR 1 → Character_Suitors).
+        var groupKey = ResolveNumberedSpeakerToGroupKey(want, seeds);
+        if (groupKey is not null)
+            return groupKey;
+
+        return null;
+    }
+
+    /// <summary>
+    /// SUITOR 1 / MAN 2 / FIRST OFFICER → matching group cast key when that seed is an ensemble.
+    /// </summary>
+    internal static string? ResolveNumberedSpeakerToGroupKey(
+        string normalizedSpeaker,
+        Dictionary<string, JsonElement> seeds)
+    {
+        if (string.IsNullOrWhiteSpace(normalizedSpeaker) || seeds.Count == 0)
+            return null;
+
+        var stem = ExtractNumberedStem(normalizedSpeaker);
+        if (string.IsNullOrWhiteSpace(stem))
+            return null;
+
+        // Candidate group labels from the stem (SUITOR → SUITORS, MAN → MEN / PEOPLE).
+        var candidates = new List<string> { stem, stem + "S", stem + "ES" };
+        if (stem.Equals("MAN", StringComparison.OrdinalIgnoreCase))
+            candidates.AddRange(new[] { "MEN", "PEOPLE", "CROWD" });
+        if (stem.Equals("WOMAN", StringComparison.OrdinalIgnoreCase))
+            candidates.AddRange(new[] { "WOMEN", "PEOPLE", "CROWD" });
+        if (stem.Equals("CHILD", StringComparison.OrdinalIgnoreCase))
+            candidates.AddRange(new[] { "CHILDREN", "KIDS" });
+        if (stem.Equals("SUITOR", StringComparison.OrdinalIgnoreCase))
+            candidates.Add("THE SUITORS");
+
+        foreach (var cand in candidates.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var tryKey = "Character_" + SanitizeKey(cand);
+            foreach (var key in seeds.Keys)
+            {
+                if (!key.Equals(tryKey, StringComparison.OrdinalIgnoreCase)
+                    && !NormalizeSpeaker(CastKindClassifier.StripPrefix(key))
+                        .Equals(NormalizeSpeaker(cand), StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                // Prefer true groups; still accept a singular stem key if that's all we have.
+                var seed = seeds[key];
+                string? castKind = null;
+                string? display = null;
+                string? desc = null;
+                if (seed.ValueKind == JsonValueKind.Object)
+                {
+                    if (seed.TryGetProperty("cast_kind", out var ck) && ck.ValueKind == JsonValueKind.String)
+                        castKind = ck.GetString();
+                    if (seed.TryGetProperty("canonical_given_name", out var cn) && cn.ValueKind == JsonValueKind.String)
+                        display = cn.GetString();
+                    if (seed.TryGetProperty("description", out var ds) && ds.ValueKind == JsonValueKind.String)
+                        desc = ds.GetString();
+                }
+                var isGroup = CastKindClassifier.IsGroup(key, display, castKind, desc);
+                // Numbered generics should land on groups when available.
+                if (isGroup || key.Equals(tryKey, StringComparison.OrdinalIgnoreCase))
+                    return key;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>SUITOR 1 / FIRST SUITOR / SUITOR #2 → SUITOR; null if not numbered-generic shaped.</summary>
+    internal static string? ExtractNumberedStem(string normalizedSpeaker)
+    {
+        var s = (normalizedSpeaker ?? "").Trim().ToUpperInvariant();
+        if (string.IsNullOrWhiteSpace(s)) return null;
+
+        // FIRST/SECOND/… STEM
+        var m = Regex.Match(s, @"^(FIRST|SECOND|THIRD|FOURTH|FIFTH|SIXTH|SEVENTH|EIGHTH|NINTH|TENTH|1ST|2ND|3RD|4TH|5TH)\s+(.+)$");
+        if (m.Success)
+            return m.Groups[2].Value.Trim();
+
+        // STEM #? N  or  STEM ONE/TWO…
+        m = Regex.Match(s, @"^(.+?)\s*[#]?\s*(\d{1,2}|ONE|TWO|THREE|FOUR|FIVE|SIX|SEVEN|EIGHT|NINE|TEN)$");
+        if (m.Success)
+        {
+            var stem = m.Groups[1].Value.Trim();
+            // Avoid stripping real names that end with roman noise — stem must look like a role noun.
+            if (stem.Length >= 3 && !stem.Contains('\'') && stem.All(c => char.IsLetter(c) || c is ' ' or '-'))
+                return stem.Replace(' ', ' ').Trim();
         }
 
         return null;

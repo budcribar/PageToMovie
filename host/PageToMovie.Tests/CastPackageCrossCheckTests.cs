@@ -292,4 +292,52 @@ public sealed class CastPackageCrossCheckTests
         Assert.True(report.MembershipScore >= 99, $"score={report.MembershipScore} failures={string.Join(';', report.Failures)}");
     }
 
+    [Fact]
+    public void Numbered_suitors_map_to_Suitors_group_not_missing_cast()
+    {
+        var fountain = """
+            Title: Hall
+
+            INT. HALL - DAY
+
+            SUITOR 1
+            Throw the beggar out!
+
+            SUITOR 2
+            Let him stay — for sport.
+
+            ANTINOUS
+            Silence.
+            """;
+        var cast = """
+            {
+              "schema_version": "cast_seeds.v1",
+              "character_seed_tokens": {
+                "Character_Antinous": {
+                  "canonical_given_name": "Antinous",
+                  "description": "Handsome arrogant suitor ringleader in his late twenties, Mediterranean features.",
+                  "visual_lock": "arrogant young noble face",
+                  "species_kind": "human"
+                },
+                "Character_Suitors": {
+                  "canonical_given_name": "the Suitors",
+                  "cast_kind": "group",
+                  "description": "Group of young Achaean noblemen from Ithaca at the feast tables.",
+                  "visual_lock": "collective feast guests",
+                  "species_kind": "human"
+                }
+              }
+            }
+            """;
+        var report = CastPackageCrossCheck.Evaluate(fountain, cast, bookText: "Antinous and the suitors filled the hall of Odysseus.");
+        Assert.Empty(report.SpeakersMissingFromCast);
+        Assert.DoesNotContain(report.Failures, f => f.Contains("SUITOR", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("Character_Suitors", report.MatchedKeys);
+        Assert.True(report.Ok, string.Join("; ", report.Failures));
+        Assert.True(report.MembershipScore >= 99, $"membership={report.MembershipScore}");
+        // Numbered generics are not "invented proper names"
+        Assert.DoesNotContain("SUITOR 1", report.SpeakersMissingFromBook);
+        Assert.DoesNotContain("SUITOR 2", report.SpeakersMissingFromBook);
+    }
+
 }

@@ -2882,6 +2882,10 @@ public sealed partial class ProjectStore
             // CastKindClassifier signal so it generalizes across books/casts (not a name hardcode).
             if (IsGroupSeed(key, seed))
                 continue;
+            // Blueprint may still say Character_Suitor_1 while cast_seeds only has Character_Suitors.
+            // North Star: numbered generics covered by an ensemble group never need a solo plate.
+            if (seed is null && ResolvesToExistingGroupCast(projectId, key))
+                continue;
             // Unknown seed still counts as needing a lock if mentioned on-screen
             if (ResolveCharacterRefPath(projectId, key) is null)
                 unlocked.Add(key);
@@ -7225,6 +7229,28 @@ public sealed partial class ProjectStore
             if (s.TryGetProperty("description", out var d)) desc = d.GetString();
         }
         return CastKindClassifier.IsGroup(key, display, castKind, desc);
+    }
+
+    /// <summary>
+    /// Blueprint may list Character_Suitor_1 while only Character_Suitors exists in cast_seeds.
+    /// North Star: treat that as covered by the ensemble group (no solo plate).
+    /// </summary>
+    private bool ResolvesToExistingGroupCast(string projectId, string onScreenKey)
+    {
+        try
+        {
+            var seeds = LoadCharacterSeeds(projectId);
+            if (seeds.Count == 0) return false;
+            var dict = new Dictionary<string, System.Text.Json.JsonElement>(StringComparer.OrdinalIgnoreCase);
+            foreach (var (k, el) in seeds)
+                dict[k] = el;
+            return PageToMovie.Adaptation.Validation.CastPackageCrossCheck
+                .TryResolveNumberedToGroupKey(onScreenKey, dict) is not null;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
 
