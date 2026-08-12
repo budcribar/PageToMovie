@@ -2276,13 +2276,13 @@ h1:focus {
 }
 
 .voice-dictation-scrim {
-  position: fixed;
+  position: fixed !important;
   inset: 0;
-  z-index: 10800;
+  z-index: 20000;
   background: rgba(2, 6, 23, 0.55);
 }
 .voice-dictation-popover {
-  z-index: 10801;
+  z-index: 20001;
   width: min(22rem, 92vw);
   padding: 0.85rem 0.95rem 0.95rem;
   border-radius: 0.75rem;
@@ -2292,12 +2292,12 @@ h1:focus {
 }
 /* Always in the viewport — never a dropdown that falls off the long Locations/Cast page. */
 .voice-dictation-popover--modal {
-  position: fixed;
-  left: 50%;
-  top: 50%;
-  right: auto;
-  transform: translate(-50%, -50%);
-  max-height: min(90vh, 32rem);
+  position: fixed !important;
+  left: 50% !important;
+  top: 50% !important;
+  right: auto !important;
+  transform: translate(-50%, -50%) !important;
+  max-height: min(90vh, 34rem);
   overflow: auto;
 }
 .voice-dictation-popover__head {

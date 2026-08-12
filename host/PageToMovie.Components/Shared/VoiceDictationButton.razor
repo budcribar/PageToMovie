@@ -23,7 +23,7 @@
     {
         <div class="voice-dictation-scrim"
              data-testid="@(TestId)-scrim"
-             @onclick="ClosePopoverAsync"></div>
+             @onclick="CancelAsync"></div>
         <div class="voice-dictation-popover voice-dictation-popover--modal shadow"
              role="dialog"
              aria-modal="true"
@@ -32,13 +32,13 @@
              @onclick:stopPropagation="true">
             <div class="voice-dictation-popover__head">
                 <span class="voice-dictation-popover__status @(_listening ? "is-live" : "")">
-                    @(_listening ? "Listening…" : "Ready")
+                    @(_listening ? "Listening…" : "Edit before you generate")
                 </span>
                 <button type="button"
                         class="btn btn-link btn-sm text-muted p-0"
-                        @onclick="ClosePopoverAsync"
+                        @onclick="CancelAsync"
                         data-testid="@(TestId)-close">
-                    @(string.IsNullOrWhiteSpace(Text) ? "Close" : "Apply tweak")
+                    Cancel
                 </button>
             </div>
 
@@ -51,16 +51,14 @@
                 }
             </div>
 
-            @if (!string.IsNullOrWhiteSpace(Text))
-            {
-                <div class="voice-dictation-transcript small" data-testid="@(TestId)-transcript">
-                    “@Text”
-                </div>
-            }
-            else if (_listening)
-            {
-                <div class="voice-dictation-transcript small text-muted">Speak a change…</div>
-            }
+            <label class="form-label small mb-1">Tweak</label>
+            <textarea class="form-control form-control-sm mb-2"
+                      rows="3"
+                      disabled="@Disabled"
+                      value="@_draft"
+                      @oninput="OnDraftInput"
+                      placeholder="Speak, pick a hint, or type…"
+                      data-testid="@(TestId)-draft"></textarea>
 
             <div class="voice-dictation-tips">
                 <div class="voice-dictation-tips__label">Try saying</div>
@@ -71,12 +69,27 @@
                         <button type="button"
                                 class="btn btn-sm btn-outline-secondary voice-dictation-chip"
                                 disabled="@Disabled"
-                                @onclick="() => ApplySuggestionAsync(chip)"
+                                @onclick="() => ApplySuggestionToDraft(chip)"
                                 data-testid="@(TestId)-chip">
                             @chip
                         </button>
                     }
                 </div>
+            </div>
+
+            <div class="d-flex justify-content-end gap-2 mt-3">
+                <button type="button"
+                        class="btn btn-sm btn-outline-secondary"
+                        @onclick="CancelAsync">
+                    Cancel
+                </button>
+                <button type="button"
+                        class="btn btn-sm btn-primary"
+                        disabled="@(Disabled || string.IsNullOrWhiteSpace(_draft))"
+                        @onclick="UseDraftAsync"
+                        data-testid="@(TestId)-use">
+                    Use this
+                </button>
             </div>
         </div>
     }

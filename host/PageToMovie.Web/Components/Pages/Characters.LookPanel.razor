@@ -144,8 +144,21 @@
                                                                ShowDescription="false"
                                                                ShowImageEditInstruction="true"
                                                                Busy="@(Host._busy || Jobs!.JobRunning)"
-                                                               OnTweakRequested="LookPipe!.StartTweakFromCoachAsync"
-                                                               TestId="char-tweak-preferred" />
+                                                               TestId="char-tweak-preferred">
+                                                <Actions>
+                                                    <CapabilityLockedControl Enabled="Caps.ImageReady"
+                                                                             BlockedReason="@Caps.ImageBlockedReason"
+                                                                             SettingsHref="@Caps.ImageSettingsHref"
+                                                                             TestId="char-tweak-preferred-cap">
+                                                        <button type="button" class="btn btn-primary btn-sm"
+                                                                disabled="@(Host._busy || Jobs!.JobRunning || string.IsNullOrWhiteSpace(LookEdit!._imageEditInstruction))"
+                                                                @onclick="LookPipe!.StartRegenerateAsync"
+                                                                data-testid="char-tweak-preferred-go">
+                                                            Tweak face
+                                                        </button>
+                                                    </CapabilityLockedControl>
+                                                </Actions>
+                                            </CharacterLookPanel>
                                         </div>
                                     </div>
                                 }
@@ -199,7 +212,6 @@
                                                        ShowImageEditInstruction="@(List!.PreferredImageUrl is { Length: > 0 })"
                                                        Busy="@(Host._busy || Jobs!.JobRunning)"
                                                        Hint="@(LookEdit!._lookSaveHint ?? "Description saves automatically.")"
-                                                       OnTweakRequested="LookPipe!.StartTweakFromCoachAsync"
                                                        TestId="char-look-panel">
                                         <Actions>
                                             <CapabilityLockedControl Enabled="Caps.ImageReady"

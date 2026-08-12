@@ -28,8 +28,7 @@
                                       Label="Dictate edit"
                                       Title="Speak a change to the locked picture"
                                       TestId="@ImgEditVoiceTestId"
-                                      Suggestions="@PlateTweakSuggestions"
-                                      OnCommitted="OnTweakCommittedAsync" />
+                                      Suggestions="@PlateTweakSuggestions" />
             </div>
             <textarea class="form-control form-control-sm"
                       rows="2"
@@ -37,22 +36,6 @@
                       value="@ImageEditInstruction"
                       @oninput="OnImageEditInput"
                       placeholder="e.g. make the trees a little taller…"></textarea>
-            <div class="voice-dictation-tips mt-2">
-                <div class="voice-dictation-tips__label">Try saying</div>
-                <div class="voice-dictation-tips__chips">
-                    @foreach (var tip in PlateTweakSuggestions)
-                    {
-                        var chip = tip;
-                        <button type="button"
-                                class="btn btn-sm btn-outline-secondary voice-dictation-chip"
-                                disabled="@Busy"
-                                @onclick="() => OnTweakCommittedAsync(chip)"
-                                data-testid="loc-tweak-chip">
-                            @chip
-                        </button>
-                    }
-                </div>
-            </div>
         </div>
     }
 

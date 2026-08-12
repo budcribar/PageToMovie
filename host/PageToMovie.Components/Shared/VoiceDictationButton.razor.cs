@@ -6,9 +6,8 @@ namespace PageToMovie.Web.Components;
 /// <summary>
 /// Mic control that fills a text field via the browser Web Speech API (no server STT required).
 /// Parent binds <see cref="Text"/> / <see cref="TextChanged"/> like a two-way string.
-/// When <see cref="Suggestions"/> is set, opens a coach popover (try-saying chips + waveform).
-/// <see cref="OnCommitted"/> fires when the user applies a chip or closes with spoken/typed text
-/// so the parent can start the one-shot plate tweak.
+/// When <see cref="Suggestions"/> is set, opens a centered coach (try-saying chips + waveform + editable draft).
+/// Closing with <c>Use this</c> writes the draft into the field — it does not start generation.
 /// </summary>
 public partial class VoiceDictationButton : ComponentBase, IAsyncDisposable
 {
@@ -45,9 +44,6 @@ public partial class VoiceDictationButton : ComponentBase, IAsyncDisposable
     /// </summary>
     [Parameter] public IReadOnlyList<string>? Suggestions { get; set; }
 
-    /// <summary>Fired with the final instruction when the user applies a chip or closes the coach.</summary>
-    [Parameter] public EventCallback<string> OnCommitted { get; set; }
-
     private bool CoachMode => Suggestions is { Count: > 0 };
 
     private bool Supported { get; set; } = true;
@@ -55,6 +51,7 @@ public partial class VoiceDictationButton : ComponentBase, IAsyncDisposable
     private bool _popoverOpen;
     private string? _error;
     private double _level;
+    private string _draft = "";
     private DotNetObjectReference<VoiceDictationButton>? _self;
     private string _baseBeforeListen = "";
 
@@ -88,9 +85,11 @@ public partial class VoiceDictationButton : ComponentBase, IAsyncDisposable
             return;
         }
 
-        // Open coach first so hints are visible even if the mic fails.
         if (CoachMode)
+        {
             _popoverOpen = true;
+            _draft = Text ?? "";
+        }
 
         _self?.Dispose();
         _self = DotNetObjectReference.Create(this);
@@ -121,28 +120,35 @@ public partial class VoiceDictationButton : ComponentBase, IAsyncDisposable
         _level = 0;
     }
 
-    private Task ClosePopoverAsync() => FinishAsync(commit: true);
-
-    private Task ApplySuggestionAsync(string tip) => FinishAsync(commit: true, overrideText: tip);
-
-    private async Task FinishAsync(bool commit, string? overrideText = null)
+    private async Task CancelAsync()
     {
         if (_listening)
             await StopAsync();
-
-        var text = (overrideText ?? Text ?? "").Trim();
         _popoverOpen = false;
-        if (!commit || string.IsNullOrEmpty(text))
-        {
-            await InvokeAsync(StateHasChanged);
-            return;
-        }
+    }
 
+    private void ApplySuggestionToDraft(string tip)
+    {
+        _draft = (tip ?? "").Trim();
+        _baseBeforeListen = _draft;
+    }
+
+    private void OnDraftInput(ChangeEventArgs e)
+    {
+        _draft = e.Value?.ToString() ?? "";
+        _baseBeforeListen = _draft;
+    }
+
+    private async Task UseDraftAsync()
+    {
+        if (_listening)
+            await StopAsync();
+        var text = (_draft ?? "").Trim();
+        _popoverOpen = false;
+        if (string.IsNullOrEmpty(text))
+            return;
         Text = text;
         await TextChanged.InvokeAsync(text);
-        if (OnCommitted.HasDelegate)
-            await OnCommitted.InvokeAsync(text);
-        await InvokeAsync(StateHasChanged);
     }
 
     [JSInvokable]
@@ -150,8 +156,7 @@ public partial class VoiceDictationButton : ComponentBase, IAsyncDisposable
     {
         if (!string.Equals(fieldId, FieldId, StringComparison.Ordinal)) return;
         var merged = Merge(_baseBeforeListen, text);
-        Text = merged;
-        await TextChanged.InvokeAsync(merged);
+        _draft = merged;
         await InvokeAsync(StateHasChanged);
     }
 
@@ -162,11 +167,7 @@ public partial class VoiceDictationButton : ComponentBase, IAsyncDisposable
         _listening = false;
         _level = 0;
         if (!string.IsNullOrWhiteSpace(finalText))
-        {
-            var merged = Merge(_baseBeforeListen, finalText);
-            Text = merged;
-            await TextChanged.InvokeAsync(merged);
-        }
+            _draft = Merge(_baseBeforeListen, finalText);
         await InvokeAsync(StateHasChanged);
     }
 
