@@ -209,15 +209,7 @@
                             @onclick="Host.AdjustFitLengthAsync">
                         ⏱ @L["ScenesPage.FitLength"]
                     </button>
-                    <button type="button"
-                            class="btn btn-sm btn-outline-info py-0 px-2"
-                            data-testid="scenes-goto-embellish"
-                            disabled="@(Host._busy || Host.Gen.JobRunning)"
-                            title="Embellish the scene descriptions"
-                            @onclick="Host.AdjustEmbellishAsync">
-                        ✨ @L["ScenesPage.Embellish"]
-                    </button>
-                    <span class="text-muted">· editing re-opens the screenplay (you'll re-approve it &amp; re-check cast)</span>
+                                        <span class="text-muted">· editing re-opens the screenplay (you'll re-approve it &amp; re-check cast)</span>
                 </div>
             }
 
