@@ -1,5 +1,6 @@
 // Browser speech-to-text for look / image-edit prompts (Web Speech API).
-// Blazor: startDictation(dotNetRef, fieldId), stopDictation(), isDictationSupported()
+// Optional mic level meter for the coach popover waveform.
+// Blazor: ptmDictation.start(dotNetRef, fieldId, lang), .stop(), .isSupported()
 (function () {
   "use strict";
 
@@ -7,9 +8,76 @@
   var _dotNet = null;
   var _fieldId = null;
   var _final = "";
+  var _audioStream = null;
+  var _audioCtx = null;
+  var _analyser = null;
+  var _meterRaf = 0;
+  var _meterData = null;
 
   function SpeechCtor() {
     return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+  }
+
+  function stopMeter() {
+    if (_meterRaf) {
+      try { cancelAnimationFrame(_meterRaf); } catch (_) { /* ignore */ }
+      _meterRaf = 0;
+    }
+    _analyser = null;
+    _meterData = null;
+    if (_audioStream) {
+      try {
+        _audioStream.getTracks().forEach(function (t) { t.stop(); });
+      } catch (_) { /* ignore */ }
+      _audioStream = null;
+    }
+    if (_audioCtx) {
+      try { _audioCtx.close(); } catch (_) { /* ignore */ }
+      _audioCtx = null;
+    }
+  }
+
+  function startMeter(dotNetRef, fieldId) {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      return Promise.resolve({ ok: false });
+    }
+    stopMeter();
+    return navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+      .then(function (stream) {
+        _audioStream = stream;
+        var Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) return { ok: false };
+        _audioCtx = new Ctx();
+        var src = _audioCtx.createMediaStreamSource(stream);
+        _analyser = _audioCtx.createAnalyser();
+        _analyser.fftSize = 256;
+        _analyser.smoothingTimeConstant = 0.75;
+        src.connect(_analyser);
+        _meterData = new Uint8Array(_analyser.frequencyBinCount);
+
+        function tick() {
+          if (!_analyser || !_meterData) return;
+          _analyser.getByteTimeDomainData(_meterData);
+          var sum = 0;
+          for (var i = 0; i < _meterData.length; i++) {
+            var v = (_meterData[i] - 128) / 128;
+            sum += v * v;
+          }
+          var rms = Math.sqrt(sum / _meterData.length);
+          // Soft boost so quiet speech still moves bars
+          var level = Math.min(1, rms * 4.5);
+          if (dotNetRef) {
+            dotNetRef.invokeMethodAsync("OnDictationLevel", fieldId, level).catch(function () { /* disposed */ });
+          }
+          _meterRaf = requestAnimationFrame(tick);
+        }
+        tick();
+        return { ok: true };
+      })
+      .catch(function () {
+        // Permission denied or no device — coach UI still works without a live meter
+        return { ok: false };
+      });
   }
 
   window.ptmDictation = {
@@ -27,6 +95,7 @@
           try { _rec.stop(); } catch (_) { /* ignore */ }
           _rec = null;
         }
+        stopMeter();
         _dotNet = dotNetRef;
         _fieldId = fieldId || "default";
         _final = "";
@@ -51,17 +120,22 @@
           if (_dotNet) {
             _dotNet.invokeMethodAsync("OnDictationError", _fieldId, err).catch(function () { });
           }
+          stopMeter();
         };
         rec.onend = function () {
           if (_dotNet) {
             _dotNet.invokeMethodAsync("OnDictationEnd", _fieldId, (_final || "").trim()).catch(function () { });
           }
           _rec = null;
+          stopMeter();
         };
         _rec = rec;
         rec.start();
+        // Live waveform for coach popover (best-effort; speech still works if meter fails)
+        startMeter(dotNetRef, _fieldId);
         return Promise.resolve({ ok: true });
       } catch (ex) {
+        stopMeter();
         return Promise.resolve({ ok: false, error: (ex && ex.message) || String(ex) });
       }
     },
@@ -70,6 +144,7 @@
       try {
         if (_rec) _rec.stop();
       } catch (_) { /* ignore */ }
+      stopMeter();
       return Promise.resolve({ ok: true });
     },
   };

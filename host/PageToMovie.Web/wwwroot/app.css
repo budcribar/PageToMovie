@@ -2260,3 +2260,106 @@ h1:focus {
     font-weight: 700;
     line-height: 1;
 }
+
+/* ── Voice dictation coach popover (plate / face tweak mic) ── */
+.voice-dictation {
+  position: relative;
+  display: inline-block;
+  vertical-align: middle;
+}
+.voice-dictation-popover {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.35rem);
+  z-index: 1080;
+  width: min(20rem, 92vw);
+  padding: 0.65rem 0.75rem 0.7rem;
+  border-radius: 0.65rem;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: var(--bs-body-bg, #111827);
+  color: var(--bs-body-color, #e5e7eb);
+}
+.voice-dictation-popover__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+.voice-dictation-popover__status {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #94a3b8;
+}
+.voice-dictation-popover__status.is-live {
+  color: #f87171;
+}
+.voice-dictation-popover__status.is-live::before {
+  content: "";
+  display: inline-block;
+  width: 0.45rem;
+  height: 0.45rem;
+  margin-right: 0.35rem;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.6);
+  animation: voice-dictation-pulse 1.2s ease-out infinite;
+  vertical-align: middle;
+}
+@keyframes voice-dictation-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.55); }
+  70% { box-shadow: 0 0 0 0.45rem rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+.voice-dictation-wave {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 0.2rem;
+  height: 2.25rem;
+  margin: 0.35rem 0 0.5rem;
+  padding: 0.25rem 0.4rem;
+  border-radius: 0.4rem;
+  background: rgba(15, 23, 42, 0.45);
+}
+.voice-dictation-wave__bar {
+  display: block;
+  width: 0.22rem;
+  min-height: 12%;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #38bdf8 0%, #6366f1 100%);
+  transition: height 0.05s linear;
+}
+.voice-dictation-transcript {
+  min-height: 1.25rem;
+  margin-bottom: 0.45rem;
+  font-style: italic;
+  word-break: break-word;
+}
+.voice-dictation-tips__label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #94a3b8;
+  margin-bottom: 0.3rem;
+}
+.voice-dictation-tips__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.voice-dictation-chip {
+  font-size: 0.72rem !important;
+  line-height: 1.2;
+  padding: 0.2rem 0.45rem !important;
+  border-radius: 999px !important;
+  white-space: normal;
+  text-align: left;
+}
+.voice-dictation-popover__foot {
+  margin-top: 0.55rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.2);
+}

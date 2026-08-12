@@ -1,21 +1,87 @@
 @namespace PageToMovie.Web.Components
 
-<button type="button"
-        class="btn btn-sm @(_listening ? "btn-danger" : "btn-outline-secondary") py-0 px-2 voice-dictation-btn"
-        title="@(_listening ? "Stop listening" : Title)"
-        disabled="@(!Supported || Disabled)"
-        data-testid="@TestId"
-        @onclick="ToggleAsync">
-    @if (_listening)
+<div class="voice-dictation @(_popoverOpen ? "voice-dictation--open" : "")"
+     data-testid="@TestId">
+    <button type="button"
+            class="btn btn-sm @(_listening ? "btn-danger" : "btn-outline-secondary") py-0 px-2 voice-dictation-btn"
+            title="@(_listening ? "Stop listening" : Title)"
+            disabled="@(!Supported || Disabled)"
+            data-testid="@(TestId)-btn"
+            aria-expanded="@(_popoverOpen ? "true" : "false")"
+            @onclick="ToggleAsync">
+        @if (_listening)
+        {
+            <span aria-hidden="true">●</span><span> Stop</span>
+        }
+        else
+        {
+            <span aria-hidden="true">🎤</span><span> @Label</span>
+        }
+    </button>
+
+    @if (_popoverOpen && CoachMode)
     {
-        <span aria-hidden="true">●</span><span> Stop</span>
+        <div class="voice-dictation-popover shadow"
+             role="dialog"
+             aria-label="Voice edit coach"
+             data-testid="@(TestId)-popover">
+            <div class="voice-dictation-popover__head">
+                <span class="voice-dictation-popover__status @(_listening ? "is-live" : "")">
+                    @(_listening ? "Listening…" : "Ready")
+                </span>
+                <button type="button"
+                        class="btn btn-link btn-sm text-muted p-0"
+                        @onclick="ClosePopoverAsync"
+                        data-testid="@(TestId)-close">
+                    Close
+                </button>
+            </div>
+
+            <div class="voice-dictation-wave" aria-hidden="true" data-testid="@(TestId)-wave">
+                @for (var i = 0; i < WaveBarCount; i++)
+                {
+                    var h = WaveHeight(i);
+                    <span class="voice-dictation-wave__bar"
+                          style="height: @(h.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%"></span>
+                }
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(Text))
+            {
+                <div class="voice-dictation-transcript small" data-testid="@(TestId)-transcript">
+                    “@Text”
+                </div>
+            }
+            else if (_listening)
+            {
+                <div class="voice-dictation-transcript small text-muted">Speak a change…</div>
+            }
+
+            <div class="voice-dictation-tips">
+                <div class="voice-dictation-tips__label">Try saying</div>
+                <div class="voice-dictation-tips__chips">
+                    @foreach (var tip in Suggestions!)
+                    {
+                        var chip = tip;
+                        <button type="button"
+                                class="btn btn-sm btn-outline-secondary voice-dictation-chip"
+                                disabled="@Disabled"
+                                @onclick="() => ApplySuggestionAsync(chip)"
+                                data-testid="@(TestId)-chip">
+                            @chip
+                        </button>
+                    }
+                </div>
+            </div>
+
+            <div class="voice-dictation-popover__foot small text-muted">
+                Or keep talking — text fills the tweak box. Then run <strong>Tweak</strong>.
+            </div>
+        </div>
     }
-    else
+
+    @if (!string.IsNullOrWhiteSpace(_error))
     {
-        <span aria-hidden="true">🎤</span><span> @Label</span>
+        <span class="small text-warning ms-1">@_error</span>
     }
-</button>
-@if (!string.IsNullOrWhiteSpace(_error))
-{
-    <span class="small text-warning ms-1">@_error</span>
-}
+</div>
