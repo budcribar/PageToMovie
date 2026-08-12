@@ -2150,3 +2150,113 @@ h1:focus {
     object-fit: contain;
     background: #0b0f14;
 }
+
+/* Cast index — global so Characters_CastList (child) gets constraints */
+.cast-index-list {
+    background: var(--fs-bg-card, #1a222d);
+    border-color: var(--fs-border-color, #3a4554) !important;
+}
+.cast-index-list .char-list-item,
+.list-group-item.char-list-item {
+    display: flex !important;
+    align-items: center !important;
+    gap: 0.55rem !important;
+    padding-top: 0.4rem !important;
+    padding-bottom: 0.4rem !important;
+    background-color: var(--fs-bg-card, #1a222d) !important;
+    color: var(--fs-text-primary, #e8eef6) !important;
+    border-color: rgba(148, 163, 184, 0.12) !important;
+    width: 100%;
+    text-align: left;
+}
+.cast-index-list .char-list-item:hover:not(:disabled):not(.active),
+.list-group-item.char-list-item:hover:not(:disabled):not(.active) {
+    background-color: var(--fs-bg-card-hover, #232d3b) !important;
+    color: var(--fs-text-primary, #e8eef6) !important;
+}
+.list-group-item.char-list-item.active,
+.list-group-item.char-list-item.active:hover,
+.list-group-item.char-list-item.active:focus,
+.list-group-item.char-list-item.active:focus-visible,
+.list-group-item.char-list-item.active:active {
+    background-color: var(--fs-accent-indigo, #4f46e5) !important;
+    border-color: var(--fs-accent-indigo, #4f46e5) !important;
+    color: #ffffff !important;
+    z-index: 2;
+}
+.char-list-name {
+    flex: 1;
+    min-width: 0;
+    text-align: left;
+    color: inherit !important;
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+.list-group-item.char-list-item.active .char-list-name {
+    color: #ffffff !important;
+}
+.char-list-thumb {
+    width: 36px !important;
+    height: 36px !important;
+    max-width: 36px !important;
+    max-height: 36px !important;
+    border-radius: 0.35rem;
+    object-fit: cover !important;
+    background: #0b0f14;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    flex-shrink: 0 !important;
+    display: block;
+}
+.char-list-thumb--empty,
+.char-list-thumb--voice,
+.char-list-thumb--voice-missing,
+.char-list-thumb--group {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+}
+.char-list-thumb--empty {
+    background: #422006;
+    border-color: #b45309;
+    color: #fde68a;
+}
+.char-list-thumb--empty .char-list-thumb__icon { color: #fde68a; }
+.char-list-thumb--voice {
+    background: #14532d;
+    border-color: #22c55e;
+}
+.char-list-thumb--voice .char-list-thumb__icon { color: #bbf7d0; }
+.char-list-thumb--voice-missing {
+    background: #422006;
+    border-color: #b45309;
+}
+.char-list-thumb--voice-missing .char-list-thumb__icon { color: #fde68a; }
+.char-list-thumb--group {
+    background: rgba(13, 202, 240, 0.15);
+    border: 1px solid rgba(13, 202, 240, 0.45);
+}
+.char-list-thumb__icon {
+    font-size: 0.85rem;
+    font-weight: 700;
+    line-height: 1;
+    user-select: none;
+}
+.char-list-lock {
+    flex-shrink: 0;
+    font-size: 0.8rem;
+}
+.char-list-voice-miss {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.35rem;
+    height: 1.35rem;
+    border-radius: 0.3rem;
+    background: #422006;
+    border: 1px solid #b45309;
+    color: #fde68a;
+    font-size: 0.75rem;
+    font-weight: 700;
+    line-height: 1;
+}

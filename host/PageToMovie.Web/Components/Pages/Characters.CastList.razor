@@ -9,108 +9,116 @@
 @using PageToMovie.Core.Models
 @using PageToMovie.Web.Services
 
+@{
+    var roster = List!.CharactersForUiGrouped().ToList();
+}
 
-        <div class="col-md-3" data-testid="cast-index">
-            <div class="d-flex align-items-center justify-content-between gap-1 mb-1 px-1">
-                <span class="small fw-semibold">Cast index</span>
-                @if (List!.UnusedInPlanCount > 0)
+<div class="col-12 col-md-4 col-lg-3" data-testid="cast-index">
+    <div class="d-flex align-items-center justify-content-between gap-1 mb-1 px-1">
+        <span class="small fw-semibold">Cast index</span>
+        @if (List!.UnusedInPlanCount > 0)
+        {
+            <button type="button"
+                    class="btn btn-link btn-sm py-0 px-1"
+                    data-testid="char-toggle-unused"
+                    title="Seeds kept on disk but not in any scene of the current plan"
+                    @onclick="() => List!._showUnusedInPlan = !List!._showUnusedInPlan">
+                @(List!._showUnusedInPlan
+                    ? "Hide unused"
+                    : $"Show unused ({List!.UnusedInPlanCount})")
+            </button>
+        }
+    </div>
+    <div class="small text-muted mb-2 px-1" data-testid="cast-index-summary">
+        <span title="In the current shot plan">@List!.UsedInPlanCount used</span>
+        <span class="mx-1">·</span>
+        <span title="Locked preferred look">@List!.LockedLookCount locked</span>
+        <span class="mx-1">·</span>
+        <span class="@(List!.NeedLookCount > 0 ? "text-warning" : "")"
+              title="Faces still missing a preferred look">@List!.NeedLookCount need look</span>
+    </div>
+    <div class="list-group list-group-flush border rounded cast-index-list"
+         style="max-height: 70vh; overflow: auto;">
+        @foreach (var c in roster)
+        {
+            var active = string.Equals(c.Key, List!._selectedKey, StringComparison.OrdinalIgnoreCase);
+            var thumb = List!.ListThumbUrl(c);
+            var hasVoice = Characters.CharactersVoice.HasVoiceProfile(c);
+            var isAgeVariant = !string.IsNullOrWhiteSpace(c.VariantOf);
+            var isLocked = c.Locked || c.HasPreferred;
+            <button type="button"
+                    @key="c.Key"
+                    data-testid="char-list-item"
+                    data-char-key="@c.Key"
+                    data-char-group="@(c.IsGroup ? "true" : "false")"
+                    data-char-voice-only="@(c.VoiceOnly ? "true" : "false")"
+                    data-char-age-variant="@(isAgeVariant ? "true" : "false")"
+                    data-char-used="@(c.UsedInPlan ? "true" : "false")"
+                    class="list-group-item list-group-item-action char-list-item @(active ? "active" : "") @(isAgeVariant ? "char-list-item--variant" : "") @(!c.UsedInPlan ? "opacity-75" : "")"
+                    style="@(isAgeVariant ? "padding-left: 2rem;" : null)"
+                    disabled="@List!.CastListLocked"
+                    title="@(List!.CastListLocked ? "Wait until the current action finishes" : (!c.UsedInPlan ? "Not in current shot plan — kept for later" : c.DisplayName))"
+                    @onclick="() => List!.SelectAsync(c.Key)">
+                @if (c.VoiceOnly)
                 {
-                    <button type="button"
-                            class="btn btn-link btn-sm py-0 px-1"
-                            data-testid="char-toggle-unused"
-                            title="Seeds kept on disk but not in any scene of the current plan"
-                            @onclick="() => List!._showUnusedInPlan = !List!._showUnusedInPlan">
-                        @(List!._showUnusedInPlan
-                            ? "Hide unused"
-                            : $"Show unused ({List!.UnusedInPlanCount})")
-                    </button>
+                    <span class="char-list-thumb @(hasVoice ? "char-list-thumb--voice" : "char-list-thumb--voice-missing")"
+                          title="@(hasVoice ? "Voice" : "No voice profile")"
+                          aria-hidden="true">
+                        <span class="char-list-thumb__icon">♪</span>
+                    </span>
                 }
-            </div>
-            <div class="small text-muted mb-2 px-1" data-testid="cast-index-summary">
-                <span title="In the current shot plan">@List!.UsedInPlanCount used</span>
-                <span class="mx-1">·</span>
-                <span title="Locked preferred look">@List!.LockedLookCount locked</span>
-                <span class="mx-1">·</span>
-                <span class="@(List!.NeedLookCount > 0 ? "text-warning" : "")"
-                      title="Faces still missing a preferred look">@List!.NeedLookCount need look</span>
-            </div>
-            <div class="list-group list-group-flush border rounded bg-dark-subtle cast-index-list"
-                 style="max-height: 70vh; overflow: auto;">
-                @foreach (var c in List!.CharactersForUiGrouped())
+                else if (c.IsGroup && thumb is null)
                 {
-                    var active = c.Key == List!._selectedKey;
-                    var thumb = List!.ListThumbUrl(c);
-                    var hasVoice = Characters.CharactersVoice.HasVoiceProfile(c);
-                    var isAgeVariant = !string.IsNullOrWhiteSpace(c.VariantOf);
-                    <button type="button"
-                            @key="c.Key"
-                            data-testid="char-list-item"
-                            data-char-key="@c.Key"
-                            data-char-group="@(c.IsGroup ? "true" : "false")"
-                            data-char-voice-only="@(c.VoiceOnly ? "true" : "false")"
-                            data-char-age-variant="@(isAgeVariant ? "true" : "false")"
-                            data-char-used="@(c.UsedInPlan ? "true" : "false")"
-                            class="list-group-item list-group-item-action char-list-item @(active ? "active" : "") @(isAgeVariant ? "char-list-item--variant" : "") @(!c.UsedInPlan ? "opacity-75" : "")"
-                            style="@(isAgeVariant ? "padding-left: 2rem;" : null)"
-                            disabled="@List!.CastListLocked"
-                            title="@(List!.CastListLocked ? "Wait until the current action finishes" : (!c.UsedInPlan ? "Not in current shot plan — kept for later" : null))"
-                            @onclick="() => List!.SelectAsync(c.Key)">
-                        @if (c.VoiceOnly)
-                        {
-                            <span class="char-list-thumb @(hasVoice ? "char-list-thumb--voice" : "char-list-thumb--voice-missing")"
-                                  title="@(hasVoice ? "Voice" : "No voice profile")"
-                                  aria-hidden="true">
-                                <span class="char-list-thumb__icon">♪</span>
-                            </span>
-                        }
-                        else if (c.IsGroup && thumb is null)
-                        {
-                            <span class="char-list-thumb char-list-thumb--group"
-                                  title="Group / chorus (no single face required)"
-                                  aria-hidden="true">
-                                <span class="char-list-thumb__icon">👥</span>
-                            </span>
-                        }
-                        else if (thumb is { Length: > 0 })
-                        {
-                            <img @key="c.Key" src="@thumb" alt="" class="char-list-thumb" />
-                        }
-                        else
-                        {
-                            <span class="char-list-thumb char-list-thumb--empty"
-                                  title="No look yet — generate or lock a picture"
-                                  aria-label="No look yet">
-                                <span class="char-list-thumb__icon" aria-hidden="true"><i class="bi bi-person"></i></span>
-                            </span>
-                        }
-                        <span class="char-list-name text-truncate">
-                            @if (isAgeVariant)
-                            {
-                                <span class="text-muted" aria-hidden="true">↳ </span>
-                            }
-                            @c.DisplayName
-                        </span>
-                        @if (c.Locked)
-                        {
-                            <span class="char-list-lock ms-auto text-muted" title="Locked" aria-label="Locked">🔒</span>
-                        }
-                        @if (c.IsGroup)
-                        {
-                            <span class="badge text-bg-info ms-1" title="Group / chorus cast">group</span>
-                        }
-                        @if (!c.UsedInPlan)
-                        {
-                            <span class="badge text-bg-secondary ms-1" title="Not in current shot plan">unused</span>
-                        }
-                        @if (!c.VoiceOnly && !hasVoice)
-                        {
-                            <span class="char-list-voice-miss" title="No voice profile" aria-label="No voice profile">♪</span>
-                        }
-                    </button>
+                    <span class="char-list-thumb char-list-thumb--group"
+                          title="Group / chorus (no single face required)"
+                          aria-hidden="true">
+                        <span class="char-list-thumb__icon">👥</span>
+                    </span>
                 }
-                @if (!List!.CharactersForUiGrouped().Any())
+                else if (thumb is { Length: > 0 })
                 {
-                    <div class="p-3 small text-muted">No cast in this list. Build cast from the screenplay, or show unused.</div>
+                    <img src="@thumb" alt="" class="char-list-thumb" width="36" height="36" loading="lazy" />
                 }
-            </div>
-        </div>
+                else
+                {
+                    <span class="char-list-thumb char-list-thumb--empty"
+                          title="No look yet — generate or lock a picture"
+                          aria-label="No look yet">
+                        <span class="char-list-thumb__icon" aria-hidden="true"><i class="bi bi-person"></i></span>
+                    </span>
+                }
+                <span class="char-list-name text-truncate">
+                    @if (isAgeVariant)
+                    {
+                        <span aria-hidden="true">↳ </span>
+                    }
+                    @c.DisplayName
+                </span>
+                @if (isLocked)
+                {
+                    <span class="char-list-lock ms-auto" title="Locked" aria-label="Locked">🔒</span>
+                }
+                else if (!c.VoiceOnly && !c.IsGroup)
+                {
+                    <span class="char-list-lock ms-auto opacity-50" title="Unlocked" aria-label="Unlocked">🔓</span>
+                }
+                @if (c.IsGroup)
+                {
+                    <span class="badge text-bg-info ms-1" title="Group / chorus cast">group</span>
+                }
+                @if (!c.UsedInPlan)
+                {
+                    <span class="badge text-bg-secondary ms-1" title="Not in current shot plan">unused</span>
+                }
+                @if (!c.VoiceOnly && !hasVoice)
+                {
+                    <span class="char-list-voice-miss" title="No voice profile" aria-label="No voice profile">♪</span>
+                }
+            </button>
+        }
+        @if (roster.Count == 0)
+        {
+            <div class="p-3 small text-muted">No cast in this list. Build cast from the screenplay, or show unused.</div>
+        }
+    </div>
+</div>

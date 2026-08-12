@@ -269,15 +269,22 @@ public partial class Characters
                 _plates = dto?.CharacterPlates;
                 S.LookBook._imageSeedLimits = dto?.ImageSeedLimits;
                 S.LookPipe._imgBust = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                // Do not auto-open a character — user clicks the list to choose source.
+                // Keep selection if still in the list; otherwise open the first used face
+                // so the index never looks like a broken empty strip of thumbnails.
                 if (_selectedKey is not null && CharactersForUi.Any(c => c.Key == _selectedKey))
                     await SelectCoreAsync(_selectedKey, resetMode: false, flushPending: false);
                 else
                 {
-                    _selectedKey = null;
-                    _selected = null;
-                    S.LookPipe.ResetCompare();
-                    S.LookPipe._mode = Mode.PickSource;
+                    var first = CharactersForUiGrouped().FirstOrDefault();
+                    if (first is not null)
+                        await SelectCoreAsync(first.Key, resetMode: true, flushPending: false);
+                    else
+                    {
+                        _selectedKey = null;
+                        _selected = null;
+                        S.LookPipe.ResetCompare();
+                        S.LookPipe._mode = Mode.PickSource;
+                    }
                 }
 
                 FocusNarratorIfNeeded();

@@ -280,13 +280,13 @@ else
     <CascadingValue Value="Voice" IsFixed="true">
 
         <Characters_CastList />
-        <div class="col-md-9">
+        <div class="col-12 col-md-8 col-lg-9">
             @if (List._selected is null)
             {
                 <p class="text-muted">
                     @(List._simpleMode
                         ? "Pick the narrator (or lead) on the left, then record your sample."
-                        : "Click a character on the left to set a preferred look and choose how to generate.")
+                        : "Click a character in the Cast index to review or change their look.")
                 </p>
             }
             else if (List._simpleMode)
