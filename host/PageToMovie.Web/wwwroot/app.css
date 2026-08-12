@@ -2050,3 +2050,103 @@ h1:focus {
 .ptm-cfg-section[open] > .ptm-cfg-summary {
   border-bottom: var(--bs-border-width) solid var(--bs-border-color);
 }
+
+/* Cast / look pick — global so CharacterPickCard (child assembly) is constrained */
+.char-pick__grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.65rem;
+    align-items: stretch;
+}
+@media (min-width: 768px) {
+    .char-pick__grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.75rem;
+    }
+    .char-pick__grid:has(.char-pick__card:nth-child(1):last-child),
+    .char-pick__grid:has(.char-pick__card:nth-child(2):last-child) {
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        max-width: 28rem;
+    }
+}
+.char-pick__card {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.35rem;
+    padding: 0.45rem;
+    border: 2px solid var(--fs-border-color, #3a4554);
+    border-radius: 0.65rem;
+    background: var(--fs-bg-card, #1a222d);
+    color: var(--fs-text-primary, #e8eef6);
+    text-align: left;
+    min-width: 0;
+}
+.char-pick__card.is-chosen {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.45);
+}
+.char-pick__frame {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 3 / 4;
+    min-height: 140px;
+    max-height: min(32vh, 220px);
+    border-radius: 0.45rem;
+    overflow: hidden;
+    background: #0b0f14;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+}
+@media (min-width: 992px) {
+    .char-pick__frame {
+        min-height: 160px;
+        max-height: min(34vh, 240px);
+    }
+}
+.char-pick__frame img,
+.char-pick__card img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background: #0b0f14;
+}
+.char-pick__frame--zoomable {
+    display: block;
+    padding: 0;
+    border: none;
+    cursor: zoom-in;
+    color: inherit;
+    background: transparent;
+}
+.char-pick__frame--zoomable:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+.char-pick__zoom-badge {
+    position: absolute;
+    right: 0.45rem;
+    bottom: 0.45rem;
+    font-size: 0.7rem;
+    font-weight: 650;
+    padding: 0.2rem 0.45rem;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.65);
+    color: #e8eef6;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    pointer-events: none;
+}
+.char-pick__label {
+    font-size: 0.85rem;
+    font-weight: 650;
+}
+.char-pick__use {
+    align-self: stretch;
+}
+.char-preferred-preview {
+    width: 120px;
+    height: 120px;
+    max-width: 28vw;
+    object-fit: contain;
+    background: #0b0f14;
+}
