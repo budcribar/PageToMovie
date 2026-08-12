@@ -149,16 +149,26 @@
                                         : "Enrich screenplay")
                                 </button>
                             </div>
-                            @if (Archive!._enrichJob is { } ej &&
-                                (ej.Status is "running" or "queued" || Archive!._archiveAction == "enrich"))
+                            @if (Archive!._archiveAction == "enrich" || Archive!._enrichJob is { } runningEnrich)
                             {
-                                <JobProgressCard Status="@ej.Status"
-                                                 Message="@(ej.Message ?? "")"
-                                                 Index="@ej.Index"
-                                                 Total="@ej.Total"
-                                                 Kind="@ej.Kind"
-                                                 LogLines="@ej.Log"
+                                var ej = Archive._enrichJob;
+                                var enriching = Archive._archiveAction == "enrich"
+                                    || string.Equals(ej?.Status, "running", StringComparison.OrdinalIgnoreCase)
+                                    || string.Equals(ej?.Status, "queued", StringComparison.OrdinalIgnoreCase);
+                                <JobProgressCard Status="@(ej?.Status ?? (enriching ? "running" : ""))"
+                                                 Message="@(ej?.Message ?? Archive._archiveMsg ?? "Starting enrich…")"
+                                                 DetailMessage="One rewrite of the full screenplay. The bar stays mid-way until it finishes — that is expected."
+                                                 Index="@(ej?.Index ?? 0)"
+                                                 Total="@(ej?.Total > 0 ? ej.Total : 4)"
+                                                 Kind="embellish"
+                                                 Indeterminate="@enriching"
+                                                 Elapsed="@Archive._enrichElapsed"
+                                                 LogLines="@(ej?.Log)"
                                                  ShowLog="true"
+                                                 OpenLogByDefault="true"
+                                                 ShowCancel="@enriching"
+                                                 CancelLabel="Cancel"
+                                                 OnCancel="Archive.CancelEnrichAsync"
                                                  CssClass="mt-2 mb-0"
                                                  TestId="admin-enrich-job" />
                             }

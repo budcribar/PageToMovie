@@ -35,6 +35,8 @@ public partial class JobProgressCard
     [Parameter] public string? CancelTestId { get; set; }
     [Parameter] public string? CssClass { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>Optional live elapsed label (e.g. "4m 12s") shown while the job is active.</summary>
+    [Parameter] public string? Elapsed { get; set; }
     /// <summary>
     /// When false, skip the progress bar entirely (message + optional log only).
     /// Default: show bar while active/indeterminate; hide for successful done (bar looked “stuck”).

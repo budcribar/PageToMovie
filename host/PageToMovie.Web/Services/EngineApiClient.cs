@@ -2679,6 +2679,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     {
         public bool Ok { get; set; }
         public JobSnapshot? Job { get; set; }
+        public string? JobId { get; set; }
         public string? Message { get; set; }
     }
 
@@ -4110,8 +4111,8 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         await EnsureOkAsync(resp, ct);
     }
 
-    /// <summary>Queue a background screenplay enrich (visual detail from the book).</summary>
-    public async Task StartEmbellishJobAsync(string projectId, CancellationToken ct = default)
+    /// <summary>Queue a background screenplay enrich (visual detail from the book). Returns the job so the UI can poll by id.</summary>
+    public async Task<JobSnapshot?> StartEmbellishJobAsync(string projectId, CancellationToken ct = default)
     {
         using var resp = await _http.PostAsJsonAsync(
             "/api/jobs/embellish",
@@ -4119,6 +4120,15 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
             JsonOpts,
             ct);
         await EnsureOkAsync(resp, ct);
+        try
+        {
+            var env = await resp.Content.ReadFromJsonAsync<JobStartEnvelope>(JsonOpts, ct);
+            if (env?.Job is not null) return env.Job;
+            if (!string.IsNullOrWhiteSpace(env?.JobId))
+                return new JobSnapshot { JobId = env.JobId, Kind = "embellish", Status = "queued", ProjectId = projectId };
+        }
+        catch { /* fall through */ }
+        return new JobSnapshot { Kind = "embellish", Status = "queued", ProjectId = projectId };
     }
 
     public async Task LockLocationVariantAsync(

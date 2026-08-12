@@ -42,6 +42,9 @@ public partial class Admin
         internal JobSnapshot? _enrichJob;
         internal bool? _enrichDone;
         internal CancellationTokenSource? _enrichPollCts;
+        internal string? _enrichJobId;
+        internal DateTimeOffset? _enrichStarted;
+        internal string _enrichElapsed = "";
 
         internal async Task RefreshProjectOptionsAsync()
         {
@@ -388,13 +391,35 @@ public partial class Admin
             _archiveBusy = true;
             _archiveAction = "enrich";
             _archiveError = null;
-            _archiveMsg = $"Queuing enrich for {_enrichProjectId}…";
-            _enrichJob = null;
+            _archiveMsg = $"Starting enrich for {_enrichProjectId}…";
+            _enrichJobId = null;
+            _enrichStarted = DateTimeOffset.UtcNow;
+            _enrichElapsed = "0s";
+            _enrichJob = new JobSnapshot
+            {
+                Kind = "embellish",
+                Status = "queued",
+                ProjectId = _enrichProjectId,
+                Message = "Queuing enrich…",
+                Index = 0,
+                Total = 4,
+                StartedAt = _enrichStarted,
+                Log = new List<string> { "Queued — waiting for the worker." },
+            };
             await S.NotifyChangedAsync();
             try
             {
-                await S.Api.StartEmbellishJobAsync(_enrichProjectId);
-                _archiveMsg = "Enrich running — this can take several minutes on a long screenplay.";
+                var started = await S.Api.StartEmbellishJobAsync(_enrichProjectId);
+                if (started is not null)
+                {
+                    _enrichJob = started;
+                    _enrichJobId = started.JobId;
+                    if (started.StartedAt is { } t)
+                        _enrichStarted = t;
+                    if (string.IsNullOrWhiteSpace(started.Message))
+                        started.Message = "Enrich running…";
+                }
+                _archiveMsg = "Enrich is running. One rewrite of the full screenplay — 10–20 minutes is normal.";
                 StartEnrichPoll();
             }
             catch (Exception ex)
@@ -403,7 +428,26 @@ public partial class Admin
                 _archiveMsg = null;
                 _archiveBusy = false;
                 _archiveAction = null;
+                _enrichJob = null;
             }
+            await S.NotifyChangedAsync();
+        }
+
+        internal async Task CancelEnrichAsync()
+        {
+            var id = _enrichJobId ?? _enrichJob?.JobId;
+            if (string.IsNullOrWhiteSpace(id)) return;
+            try
+            {
+                await S.Api.CancelJobByIdAsync(id);
+                _archiveMsg = "Cancel requested…";
+            }
+            catch (Exception ex)
+            {
+                try { await S.Api.AdminCancelJobAsync(id); }
+                catch { _archiveError = ex.Message; }
+            }
+            await S.NotifyChangedAsync();
         }
 
         internal async Task RefreshEnrichStatusAsync()
@@ -428,21 +472,56 @@ public partial class Admin
             _enrichPollCts = new CancellationTokenSource();
             var token = _enrichPollCts.Token;
             _ = PollEnrichJobAsync(token);
+            _ = TickEnrichElapsedAsync(token);
+        }
+
+        private async Task TickEnrichElapsedAsync(CancellationToken token)
+        {
+            try
+            {
+                while (!token.IsCancellationRequested && _archiveAction == "enrich")
+                {
+                    var start = _enrichStarted ?? DateTimeOffset.UtcNow;
+                    var e = DateTimeOffset.UtcNow - start;
+                    _enrichElapsed = e.TotalHours >= 1
+                        ? $"{(int)e.TotalHours}h {e.Minutes}m"
+                        : e.TotalMinutes >= 1
+                            ? $"{(int)e.TotalMinutes}m {e.Seconds:00}s"
+                            : $"{Math.Max(0, e.Seconds)}s";
+                    await S.NotifyChangedAsync();
+                    await Task.Delay(1000, token);
+                }
+            }
+            catch (TaskCanceledException) { }
         }
 
         private async Task PollEnrichJobAsync(CancellationToken token)
         {
             try
             {
-                for (var i = 0; i < 600 && !token.IsCancellationRequested; i++)
+                // ~90 minutes — Odyssey-scale rewrite can sit in one model call that long.
+                for (var i = 0; i < 2700 && !token.IsCancellationRequested; i++)
                 {
-                    var jobs = await S.Api.GetJobAsync(token);
-                    var j = jobs?.Job;
-                    if (j is not null &&
-                        string.Equals(j.Kind, "embellish", StringComparison.OrdinalIgnoreCase) &&
-                        string.Equals(j.ProjectId, _enrichProjectId, StringComparison.OrdinalIgnoreCase))
+                    JobSnapshot? j = null;
+                    if (!string.IsNullOrWhiteSpace(_enrichJobId))
+                        j = await S.Api.TryGetJobAsync(_enrichJobId, token);
+                    if (j is null)
                     {
+                        var jobs = await S.Api.GetJobAsync(token);
+                        var cand = jobs?.Job;
+                        if (cand is not null &&
+                            string.Equals(cand.Kind, "embellish", StringComparison.OrdinalIgnoreCase) &&
+                            (string.IsNullOrWhiteSpace(_enrichProjectId) ||
+                             string.Equals(cand.ProjectId, _enrichProjectId, StringComparison.OrdinalIgnoreCase)))
+                            j = cand;
+                    }
+                    if (j is not null)
+                    {
+                        if (string.IsNullOrWhiteSpace(_enrichJobId) && !string.IsNullOrWhiteSpace(j.JobId))
+                            _enrichJobId = j.JobId;
                         _enrichJob = j;
+                        if (j.StartedAt is { } t)
+                            _enrichStarted = t;
                         await S.NotifyChangedAsync();
                         if (j.IsFinished)
                         {
@@ -462,7 +541,7 @@ public partial class Admin
                             return;
                         }
                     }
-                    await Task.Delay(2000, token);
+                    await Task.Delay(i < 20 ? 500 : 2000, token);
                 }
                 if (!token.IsCancellationRequested)
                 {

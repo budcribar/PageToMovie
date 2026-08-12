@@ -2423,24 +2423,42 @@ public sealed class FilmJobService
             }
             catch { /* enrich without medium */ }
 
-            await UpdateAsync(s => { s.Index = 2; s.Message = "Calling the model (this can take several minutes)…"; });
+            await UpdateAsync(s =>
+            {
+                s.Index = 2;
+                s.Message = "Generating the full screenplay… one long rewrite (10–20 min is normal).";
+            });
+            await AppendLogAsync("Model call started — no per-scene ticks; the clock keeps running.");
 
-            var result = await ScreenplayService.EmbellishDraftAsync(
-                _projects,
-                projectId,
-                medium,
-                _chat,
-                model: "",
-                onProgress: line =>
-                {
-                    _ = AppendLogAsync(line);
-                    _ = UpdateAsync(s => s.Message = line);
-                },
-                ct: ct,
-                responses: _xaiResponses,
-                bookRegistry: _bookRegistry,
-                bookFileSessions: _bookFileSessionFactory,
-                useFakes: _opts.UseFakes);
+            using var hbCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            var started = DateTimeOffset.UtcNow;
+            var heartbeat = HeartbeatEnrichAsync(started, hbCts.Token);
+
+            DraftEditResult result;
+            try
+            {
+                result = await ScreenplayService.EmbellishDraftAsync(
+                    _projects,
+                    projectId,
+                    medium,
+                    _chat,
+                    model: "",
+                    onProgress: line =>
+                    {
+                        _ = AppendLogAsync(line);
+                        _ = UpdateAsync(s => s.Message = line);
+                    },
+                    ct: ct,
+                    responses: _xaiResponses,
+                    bookRegistry: _bookRegistry,
+                    bookFileSessions: _bookFileSessionFactory,
+                    useFakes: _opts.UseFakes);
+            }
+            finally
+            {
+                hbCts.Cancel();
+                try { await heartbeat.ConfigureAwait(false); } catch (OperationCanceledException) { }
+            }
 
             if (!result.Ok)
             {
@@ -2467,6 +2485,40 @@ public sealed class FilmJobService
             _log.LogError(ex, "Screenplay enrich failed");
             await FinishAsync("error", ex.Message, ex.Message);
         }
+    }
+
+    private async Task HeartbeatEnrichAsync(DateTimeOffset started, CancellationToken token)
+    {
+        try
+        {
+            while (!token.IsCancellationRequested)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(15), token).ConfigureAwait(false);
+                var elapsed = DateTimeOffset.UtcNow - started;
+                var msg = $"Still generating… {FormatEnrichElapsed(elapsed)} elapsed. One rewrite of the full screenplay — this is normal.";
+                await UpdateAsync(s =>
+                {
+                    s.Message = msg;
+                    if (s.Log.Count > 0 && s.Log[^1].StartsWith("Still generating…", StringComparison.Ordinal))
+                        s.Log[^1] = msg;
+                    else
+                        s.Log.Add(msg);
+                }).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            /* expected when the model call returns */
+        }
+    }
+
+    private static string FormatEnrichElapsed(TimeSpan elapsed)
+    {
+        if (elapsed.TotalHours >= 1)
+            return $"{(int)elapsed.TotalHours}h {elapsed.Minutes}m";
+        if (elapsed.TotalMinutes >= 1)
+            return $"{(int)elapsed.TotalMinutes}m {elapsed.Seconds:00}s";
+        return $"{Math.Max(1, elapsed.Seconds)}s";
     }
 
     private async Task RunPlanLooksAsync(StartPlanLooksRequest req, string projectId, CancellationToken ct)

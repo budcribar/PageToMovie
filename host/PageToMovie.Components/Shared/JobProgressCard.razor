@@ -20,6 +20,10 @@
                     {
                         <span>Working…</span>
                     }
+                    @if (!string.IsNullOrWhiteSpace(Elapsed) && IsActive)
+                    {
+                        <span class="text-muted ms-2" data-testid="@(TestId)-elapsed">@Elapsed</span>
+                    }
                     @if (!Indeterminate && Total > 0 && IsActive)
                     {
                         <span class="text-muted ms-1">@Index / @Total</span>
