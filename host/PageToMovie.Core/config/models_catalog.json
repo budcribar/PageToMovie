@@ -606,6 +606,31 @@
       "pricingLastReviewedAt": "2026-08-05"
     },
     {
+      "id": "grok-4.6",
+      "displayName": "Grok 4.6",
+      "capability": "Chat",
+      "provider": "Xai",
+      "apiBase": "https://api.x.ai/v1",
+      "endpointPath": "chat/completions",
+      "requiredEnvKeys": [
+        "XAI_API_KEY"
+      ],
+      "enabled": true,
+      "maxInputTokens": 500000,
+      "maxOutputTokens": 128000,
+      "inputCostPerMillionTokens": 2.0,
+      "outputCostPerMillionTokens": 6.0,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": false,
+      "supportsVideoReview": false,
+      "notes": "xAI flagship (2026-08-12): 500k context, configurable reasoning, same $2/$6 as grok-4.5. Stage planning, cast scrub, screenplay helpers. maxOutputTokens=128000 is xAI's platform-wide chat default (docs.x.ai/developers/rest-api-reference/inference/chat). Long-context surcharge (≥200k tokens): $4 in / $12 out — not modeled here.",
+      "providerId": "grok",
+      "providerLabel": "xAI",
+      "pricingNotes": "docs.x.ai/developers/models 2026-08-12: $2.00 / $6.00 per 1M tokens (short context). Cached input $0.50.",
+      "lastVerifiedAt": "2026-08-12",
+      "pricingLastReviewedAt": "2026-08-12"
+    },
+    {
       "id": "grok-4.5",
       "displayName": "Grok 4.5",
       "capability": "Chat",
@@ -804,6 +829,31 @@
       "pricingNotes": "Token rates from provider list prices in catalog; re-check when vendors change pricing.",
       "lastVerifiedAt": "2026-08-05",
       "pricingLastReviewedAt": "2026-08-05"
+    },
+    {
+      "id": "grok-4.6",
+      "displayName": "Grok 4.6 (vision)",
+      "capability": "Vision",
+      "provider": "Xai",
+      "apiBase": "https://api.x.ai/v1",
+      "endpointPath": "chat/completions",
+      "requiredEnvKeys": [
+        "XAI_API_KEY"
+      ],
+      "enabled": true,
+      "maxInputTokens": 500000,
+      "inputCostPerMillionTokens": 2.0,
+      "outputCostPerMillionTokens": 6.0,
+      "supportsVideoContinue": false,
+      "supportsReferenceImages": false,
+      "supportsVideoReview": false,
+      "notes": "GrokVisionClient: book-page OCR, cast-on-image classify, and multi-image frame review. Same id as chat sibling (Chat↔Vision overlap).",
+      "providerId": "grok",
+      "providerLabel": "xAI",
+      "maxOutputTokens": 128000,
+      "lastVerifiedAt": "2026-08-12",
+      "pricingNotes": "Same token rates as chat sibling (docs.x.ai/developers/models 2026-08-12).",
+      "pricingLastReviewedAt": "2026-08-12"
     },
     {
       "id": "grok-4.5",
@@ -1174,29 +1224,35 @@
   "task_rankings": {
     "script_import": [
       "claude-sonnet-5",
+      "grok-4.6",
       "grok-4.5",
       "gemini-2.5-flash"
     ],
     "beat_pacing": [
+      "grok-4.6",
       "grok-4.5",
       "gemini-2.0-flash",
       "claude-sonnet-5"
     ],
     "camera_director": [
+      "grok-4.6",
       "grok-4.5",
       "claude-sonnet-5"
     ],
     "sound_design": [
+      "grok-4.6",
       "grok-4.5",
       "gemini-2.5-flash"
     ],
     "cast_analysis": [
+      "grok-4.6",
       "grok-4.5",
       "claude-sonnet-5",
       "gemini-2.5-flash"
     ],
     "video_review": [
       "gemini-2.5-flash",
+      "grok-4.6",
       "grok-4.5"
     ]
   }

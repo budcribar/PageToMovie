@@ -251,6 +251,7 @@ public class SupportedModelCatalogTests
     }
 
     [Theory]
+    [InlineData("grok-4.6", ModelCapability.Chat, 500_000)]
     [InlineData("grok-4.5", ModelCapability.Chat, 500_000)]
     [InlineData("grok-4", ModelCapability.Chat, 256_000)]
     [InlineData("claude-sonnet-5", ModelCapability.Chat, 1_000_000)]
@@ -276,6 +277,7 @@ public class SupportedModelCatalogTests
     }
 
     [Theory]
+    [InlineData("grok-4.6", ModelCapability.Chat, 2.00, 6.00)]
     [InlineData("grok-4.5", ModelCapability.Chat, 2.00, 6.00)]
     [InlineData("grok-4", ModelCapability.Chat, 3.00, 15.00)]
     [InlineData("claude-sonnet-5", ModelCapability.Chat, 2.00, 10.00)]
@@ -342,6 +344,7 @@ public class SupportedModelCatalogTests
     [Theory]
     [InlineData("claude-sonnet-5", ModelCapability.Chat, 128_000)]
     [InlineData("claude-opus-5", ModelCapability.Chat, 128_000)]
+    [InlineData("grok-4.6", ModelCapability.Chat, 128_000)]
     [InlineData("grok-4.5", ModelCapability.Chat, 128_000)]
     [InlineData("grok-4", ModelCapability.Chat, 128_000)]
     [InlineData("grok-4.20-reasoning", ModelCapability.Chat, 128_000)]

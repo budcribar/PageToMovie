@@ -152,6 +152,7 @@ public class MultiProviderClientTests
     [Theory]
     [InlineData("claude-sonnet-5", ModelProviderFamily.Anthropic)]
     [InlineData("gemini-2.5-flash", ModelProviderFamily.Google)]
+    [InlineData("grok-4.6", ModelProviderFamily.Xai)]
     [InlineData("grok-4.5", ModelProviderFamily.Xai)]
     [InlineData("grok-4", ModelProviderFamily.Xai)]
     public void Chat_routing_resolves_expected_provider(string model, ModelProviderFamily expected)
