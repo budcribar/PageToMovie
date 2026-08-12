@@ -1,14 +1,14 @@
 @using Microsoft.AspNetCore.Components
 
 <Admin_CollapsibleCard Title="⏱️ Action & Camera Timing Telemetry"
-                               Expanded="Ui!._showTimingTelemetry"
-                               ExpandedChanged="@(async v => { Ui!._showTimingTelemetry = v; await Host!.NotifyChangedAsync(); })">
+                               Expanded="Ui._showTimingTelemetry"
+                               ExpandedChanged="@(async v => { Ui._showTimingTelemetry = v; await Host.NotifyChangedAsync(); })">
 <div class="d-flex justify-content-end mb-3">
-                        <button class="btn btn-sm btn-outline-success border border-success" @onclick="Telemetry!.SeedTimingDatabaseAsync" disabled="@Telemetry!._seedingTiming">
+                        <button class="btn btn-sm btn-outline-success border border-success" @onclick="Telemetry.SeedTimingDatabaseAsync" disabled="@Telemetry._seedingTiming">
                             🌱 Seed Database with Benchmarks
                         </button>
                     </div>
-                    @if (Telemetry!._seedingTiming)
+                    @if (Telemetry._seedingTiming)
                     {
                         <div class="mb-3">
                             <div class="d-flex justify-content-between small mb-1">
@@ -25,15 +25,15 @@
                         <div class="col-md-4 mb-3 mb-md-0">
                             <div class="p-3 rounded" style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05);">
                                 <div class="text-muted small mb-1">DATABASE CACHE HIT RATE</div>
-                                <div class="h2 text-success mb-1">@(Telemetry!._timingTelemetry?.Stats?.HitRatePercent.ToString("F1") ?? "0.0")%</div>
+                                <div class="h2 text-success mb-1">@(Telemetry._timingTelemetry?.Stats?.HitRatePercent.ToString("F1") ?? "0.0")%</div>
                                 <div class="progress mb-2" style="height: 6px; background: rgba(255,255,255,0.08);">
-                                    <div class="progress-bar bg-success" style="width: @(Math.Clamp(Telemetry!._timingTelemetry?.Stats?.HitRatePercent ?? 0.0, 0.0, 100.0))%;"></div>
+                                    <div class="progress-bar bg-success" style="width: @(Math.Clamp(Telemetry._timingTelemetry?.Stats?.HitRatePercent ?? 0.0, 0.0, 100.0))%;"></div>
                                 </div>
-                                <div class="small text-muted">@(Telemetry!._timingTelemetry?.Stats?.TotalHits ?? 0) Cache Hits · @(Telemetry!._timingTelemetry?.Stats?.TotalMisses ?? 0) Misses</div>
+                                <div class="small text-muted">@(Telemetry._timingTelemetry?.Stats?.TotalHits ?? 0) Cache Hits · @(Telemetry._timingTelemetry?.Stats?.TotalMisses ?? 0) Misses</div>
                             </div>
                             <div class="p-3 rounded mt-2" style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05);">
                                 <div class="text-muted small mb-1">ESTIMATE vs ACTUAL ACCURACY</div>
-                                <div class="h2 text-info mb-1">@(Telemetry!._timingTelemetry?.Stats?.MeanAbsoluteErrorSec.ToString("F2") ?? "0.00")s</div>
+                                <div class="h2 text-info mb-1">@(Telemetry._timingTelemetry?.Stats?.MeanAbsoluteErrorSec.ToString("F2") ?? "0.00")s</div>
                                 <div class="progress mb-2" style="height: 6px; background: rgba(255,255,255,0.08);">
                                     <div class="progress-bar bg-info" style="width: 85%;"></div>
                                 </div>
@@ -50,12 +50,12 @@
                                 <line x1="40" y1="60" x2="480" y2="60" stroke="#334155" stroke-dasharray="2,2"/>
                                 <line x1="40" y1="100" x2="480" y2="100" stroke="#334155"/>
                                 
-                                @if (Telemetry!._timingTelemetry?.Trend is { Count: > 0 } trendList)
+                                @if (Telemetry._timingTelemetry?.Trend is { Count: > 0 } trendList)
                                 {
                                     var count = trendList.Count;
                                     var stepX = count > 1 ? (440.0 - 50.0) / (count - 1) : 0;
 
-                                    <polyline fill="none" stroke="#22c55e" stroke-width="3" points="@Telemetry!.GetHitRatePolylinePoints()" />
+                                    <polyline fill="none" stroke="#22c55e" stroke-width="3" points="@Telemetry.GetHitRatePolylinePoints()" />
                                     @for (int i = 0; i < count; i++)
                                     {
                                         var idx = i;
@@ -67,7 +67,7 @@
                                         </circle>
                                     }
 
-                                    <polyline fill="none" stroke="#38bdf8" stroke-width="3" points="@Telemetry!.GetMaePolylinePoints()" />
+                                    <polyline fill="none" stroke="#38bdf8" stroke-width="3" points="@Telemetry.GetMaePolylinePoints()" />
                                     @for (int i = 0; i < count; i++)
                                     {
                                         var idx = i;

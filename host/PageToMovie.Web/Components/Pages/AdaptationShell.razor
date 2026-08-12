@@ -81,13 +81,13 @@
         Host.Jobs.Job!, Host.Jobs.ProgressIndex, Host.Jobs.ProgressTotal, Host.Jobs.JobRunning);
     var runPct = Host.Jobs.JobRunning
         ? AdaptationPageBase.AdaptationStepUi.ComputeProgressPercent(
-            displayIdx, jobTot, waiting, Host.Jobs.JobRunning, Host.Jobs.Job!.StartedAt)
+            displayIdx, jobTot, waiting, Host.Jobs.JobRunning, Host.Jobs.Job.StartedAt)
         : (int?)null;
     var jobMsg = Host.Jobs.JobRunning
         ? AdaptationPageBase.AdaptationJobs.OperatorJobRunningMessage(Host.Jobs.Job!)
         : AdaptationPageBase.AdaptationStepUi.OperatorJobDoneMessage(Host.Jobs.Job!);
     <JobProgressCard Visible="true"
-                     Status="@Host.Jobs.Job!.Status"
+                     Status="@Host.Jobs.Job.Status"
                      Message="@jobMsg"
                      Index="displayIdx"
                      Total="jobTot"

@@ -112,23 +112,23 @@ public partial class AdaptationScreenplay
                         profile.FromClassifier = true;
                         // Prefer live cast API text; clear stub values that are just the Character_ key.
                         if (!string.IsNullOrWhiteSpace(c.Description) && !LooksLikeSeedKey(c.Description, c.Key, name))
-                            profile.Description = c.Description!.Trim();
+                            profile.Description = c.Description.Trim();
                         else if (LooksLikeSeedKey(profile.Description, c.Key, name))
                             profile.Description = "";
                         if (!string.IsNullOrWhiteSpace(c.VisualLock) && !LooksLikeSeedKey(c.VisualLock, c.Key, name))
-                            profile.VisualLockPrompt = c.VisualLock!.Trim();
+                            profile.VisualLockPrompt = c.VisualLock.Trim();
                         else if (LooksLikeSeedKey(profile.VisualLockPrompt, c.Key, name))
                             profile.VisualLockPrompt = "";
                         if (string.IsNullOrWhiteSpace(profile.WardrobeAlways) && c.WardrobeAlways is { Count: > 0 })
                             profile.WardrobeAlways = string.Join("; ", c.WardrobeAlways);
                         if (string.IsNullOrWhiteSpace(profile.VoiceId) && !string.IsNullOrWhiteSpace(c.VoiceProviderVoiceId))
-                            profile.VoiceId = c.VoiceProviderVoiceId!;
+                            profile.VoiceId = c.VoiceProviderVoiceId;
                         if (string.IsNullOrWhiteSpace(profile.VoiceProvider) && !string.IsNullOrWhiteSpace(c.VoiceProvider))
-                            profile.VoiceProvider = c.VoiceProvider!;
+                            profile.VoiceProvider = c.VoiceProvider;
                         if (string.IsNullOrWhiteSpace(profile.VoiceLabel) && !string.IsNullOrWhiteSpace(c.VoiceLabel))
-                            profile.VoiceLabel = c.VoiceLabel!;
+                            profile.VoiceLabel = c.VoiceLabel;
                         if (string.IsNullOrWhiteSpace(profile.VoiceProfile) && !string.IsNullOrWhiteSpace(c.VoiceProfile))
-                            profile.VoiceProfile = c.VoiceProfile!;
+                            profile.VoiceProfile = c.VoiceProfile;
                         profile.Speaks = c.Speaks;
                         profile.SpeciesKind = c.SpeciesKind;
                         profile.IsImageLocked = c.Locked || c.HasPreferred;
@@ -164,15 +164,15 @@ public partial class AdaptationScreenplay
                         || profile.Description.StartsWith("ext.", StringComparison.OrdinalIgnoreCase)
                         || profile.Description.StartsWith("int.", StringComparison.OrdinalIgnoreCase);
                     if (stubDesc && !string.IsNullOrWhiteSpace(loc.Description))
-                        profile.Description = loc.Description!;
+                        profile.Description = loc.Description;
                     var stubLock = string.IsNullOrWhiteSpace(profile.VisualLock)
                         || profile.VisualLock.Equals(profile.Name, StringComparison.OrdinalIgnoreCase)
                         || profile.VisualLock.StartsWith("ext ", StringComparison.OrdinalIgnoreCase)
                         || profile.VisualLock.StartsWith("int ", StringComparison.OrdinalIgnoreCase);
                     if (stubLock && !string.IsNullOrWhiteSpace(loc.VisualLock))
-                        profile.VisualLock = loc.VisualLock!;
+                        profile.VisualLock = loc.VisualLock;
                     else if (stubLock && !string.IsNullOrWhiteSpace(loc.Description))
-                        profile.VisualLock = loc.Description!;
+                        profile.VisualLock = loc.Description;
                 }
 
                 // Also attach descriptions to scene headings that match a seed under a different key
@@ -201,9 +201,9 @@ public partial class AdaptationScreenplay
                             && scene.Location.Contains(l.DisplayName, StringComparison.OrdinalIgnoreCase)));
                     if (match is null) continue;
                     if (!string.IsNullOrWhiteSpace(match.Description))
-                        p.Description = match.Description!;
+                        p.Description = match.Description;
                     if (!string.IsNullOrWhiteSpace(match.VisualLock))
-                        p.VisualLock = match.VisualLock!;
+                        p.VisualLock = match.VisualLock;
                 }
             }
             catch

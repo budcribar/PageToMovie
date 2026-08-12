@@ -4,12 +4,12 @@
 @* Default collapsed — expand only when running LoadSim / debugging traffic. *@
 <Admin_CollapsibleCard Title="📊 LoadSim Performance & System Latency"
                                CssClass="loadsim-panel border-secondary"
-                               Badge="@(Telemetry!._loadSim?.Latest is null ? "idle" : "live")"
-                               BadgeClass="@(Telemetry!._loadSim?.Latest is null ? "text-bg-secondary" : "text-bg-success")"
-                               Expanded="Ui!._showLoadSim"
-                               ExpandedChanged="@(async v => { Ui!._showLoadSim = v; await Host!.NotifyChangedAsync(); })">
+                               Badge="@(Telemetry._loadSim?.Latest is null ? "idle" : "live")"
+                               BadgeClass="@(Telemetry._loadSim?.Latest is null ? "text-bg-secondary" : "text-bg-success")"
+                               Expanded="Ui._showLoadSim"
+                               ExpandedChanged="@(async v => { Ui._showLoadSim = v; await Host.NotifyChangedAsync(); })">
 
-@if (State!._state.Http is { } http && http.NonAdminLast5Sec <= 2)
+@if (State._state.Http is { } http && http.NonAdminLast5Sec <= 2)
 {
     <div class="alert alert-secondary py-2 small mb-3 border">
         <strong class="text-muted">HTTP Traffic Note:</strong>
@@ -27,7 +27,7 @@
     </div>
 }
 
-@if (Telemetry!._loadSim?.Latest is null)
+@if (Telemetry._loadSim?.Latest is null)
                     {
                         <p class="small mb-0 text-muted" style="opacity:0.75;">
                             No LoadSim telemetry yet. Start LoadSim — it posts every 2s to
@@ -37,7 +37,7 @@
                     }
                     else
                     {
-                        var L = Telemetry!._loadSim.Latest;
+                        var L = Telemetry._loadSim.Latest;
                         <div class="row g-2 mb-3 text-center">
                             <div class="col-6 col-md-3">
                                 <div class="loadsim-kpi">
@@ -90,11 +90,11 @@
                                 </div>
                             </div>
                         </div>
-                        @if (Telemetry!._chartWarning is { Length: > 0 } cw)
+                        @if (Telemetry._chartWarning is { Length: > 0 } cw)
                         {
                             <InlineAlert Variant="warning" CssClass="py-1 small mb-2">
                                 Charts failed to update: @cw
-                                <button type="button" class="btn btn-sm btn-link p-0 ms-1 align-baseline" @onclick="Telemetry!.UpdateChartsAsync">Retry</button>
+                                <button type="button" class="btn btn-sm btn-link p-0 ms-1 align-baseline" @onclick="Telemetry.UpdateChartsAsync">Retry</button>
                             </InlineAlert>
                         }
                         <div class="row g-3">
@@ -151,7 +151,7 @@
                             <div class="loadsim-chart-wrap loadsim-chart-wrap--tall">
                                 <div class="loadsim-chart-title">
                                     Process memory
-                                    @if (State!._state.Process is { } proc)
+                                    @if (State._state.Process is { } proc)
                                     {
                                         <span class="ms-2" style="font-weight:400; opacity:0.85;">
                                             WS <strong>@proc.WorkingSetMb</strong> MB · GC <strong>@proc.GcHeapMb</strong> MB · threads @proc.ThreadCount

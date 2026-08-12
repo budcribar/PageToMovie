@@ -2407,7 +2407,7 @@ app.MapPost("/api/jobs/{jobId}/cancel", async (
     if (!user.IsAdmin && !isStarter && !string.IsNullOrWhiteSpace(job.ProjectId))
     {
         // I10: project Owner may cancel any job on their project
-        isOwner = await acl.CanAccessAsync(job.ProjectId!, user.UserId ?? "",
+        isOwner = await acl.CanAccessAsync(job.ProjectId, user.UserId ?? "",
             PageToMovie.Engine.Collaboration.ProjectAccessLevel.Owner, ct);
     }
     if (!user.IsAdmin && !isStarter && !isOwner)
@@ -5323,7 +5323,7 @@ app.MapPost("/api/jobs/extract-cast", async (ExtractCastRequest? body, FilmJobSe
     try
     {
         body ??= new ExtractCastRequest();
-        var id = string.IsNullOrWhiteSpace(body.ProjectId) ? store.ActiveProjectId : body.ProjectId!;
+        var id = string.IsNullOrWhiteSpace(body.ProjectId) ? store.ActiveProjectId : body.ProjectId;
         var job = await jobService.StartExtractCastAsync(id, force: body.Force, model: body.Model);
         return Results.Ok(new { ok = true, job });
     }
@@ -8681,7 +8681,7 @@ app.MapPost("/api/demos", async (
             await file.CopyToAsync(ms, ct);
             var bytes = ms.ToArray();
             var sha = MediaRegistryService.HashBytes(bytes);
-            autoPublic = await media.IsTrustedShaAsync(projectId!, sha);
+            autoPublic = await media.IsTrustedShaAsync(projectId, sha);
 
             await using var stream = new MemoryStream(bytes);
             if (canReplace)
@@ -8700,14 +8700,14 @@ app.MapPost("/api/demos", async (
                 // Always overwrite assets/movie_wip.mp4 on server disk so WIP movie matches the fresh cut!
                 try
                 {
-                    var wipPath = Path.Combine(await store.GetProjectDirAsync(projectId!, ct), "assets", "movie_wip.mp4");
+                    var wipPath = Path.Combine(await store.GetProjectDirAsync(projectId, ct), "assets", "movie_wip.mp4");
                     Directory.CreateDirectory(Path.GetDirectoryName(wipPath)!);
                     await File.WriteAllBytesAsync(wipPath, bytes, ct);
                     try
                     {
                         await FilmBuildService.RegisterAsync(
                             store,
-                            projectId!,
+                            projectId,
                             FilmBuildService.HashBytes(bytes),
                             durationSeconds: 0,
                             segments: null,
@@ -8749,14 +8749,14 @@ app.MapPost("/api/demos", async (
                 // Always overwrite assets/movie_wip.mp4 on server disk so WIP movie matches the fresh cut!
                 try
                 {
-                    var wipPath = Path.Combine(await store.GetProjectDirAsync(projectId!, ct), "assets", "movie_wip.mp4");
+                    var wipPath = Path.Combine(await store.GetProjectDirAsync(projectId, ct), "assets", "movie_wip.mp4");
                     Directory.CreateDirectory(Path.GetDirectoryName(wipPath)!);
                     await File.WriteAllBytesAsync(wipPath, bytes, ct);
                     try
                     {
                         await FilmBuildService.RegisterAsync(
                             store,
-                            projectId!,
+                            projectId,
                             FilmBuildService.HashBytes(bytes),
                             durationSeconds: 0,
                             segments: null,
@@ -8771,7 +8771,7 @@ app.MapPost("/api/demos", async (
                 try
                 {
                     await media.UpsertAsync(
-                        projectId!,
+                        projectId,
                         $"_demos/{entry.Id}/movie.mp4",
                         sha,
                         bytes.LongLength,
@@ -9031,11 +9031,11 @@ app.MapPost("/api/projects/{id}/film-build", async (
             body.DurationSeconds,
             segments,
             body.ByteLength,
-            string.IsNullOrWhiteSpace(body.AssemblyWhere) ? "client" : body.AssemblyWhere!,
+            string.IsNullOrWhiteSpace(body.AssemblyWhere) ? "client" : body.AssemblyWhere,
             ct);
 
         if (!string.IsNullOrWhiteSpace(body.StudioPath))
-            doc.Studio.Path = body.StudioPath!;
+            doc.Studio.Path = body.StudioPath;
 
         await FilmBuildService.WriteAsync(await store.GetProjectDirAsync(id, ct), doc, ct);
 

@@ -55,82 +55,83 @@ public enum UserAccountStatus
 /// </summary>
 public static class CoreLayerEnumExtensions
 {
-    public static string ToApiString(this ModelEnablementState state) => state switch
-    {
-        ModelEnablementState.Enabled => "enabled",
-        ModelEnablementState.Disabled => "disabled",
-        ModelEnablementState.Deprecated => "deprecated",
-        ModelEnablementState.Experimental => "experimental",
-        ModelEnablementState.Preview => "preview",
-        _ => "disabled"
-    };
-
     public static ModelEnablementState ParseModelEnablementState(string? value) =>
-        (value ?? "").Trim().ToLowerInvariant() switch
+            (value ?? "").Trim().ToLowerInvariant() switch
+            {
+                "enabled" or "active" => ModelEnablementState.Enabled,
+                "deprecated" or "archived" => ModelEnablementState.Deprecated,
+                "experimental" or "beta" => ModelEnablementState.Experimental,
+                "preview" => ModelEnablementState.Preview,
+                _ => ModelEnablementState.Disabled
+            };
+
+    public static ProjectStateName ParseProjectStateName(string? value) =>
+            (value ?? "").Trim().ToLowerInvariant() switch
+            {
+                "active" => ProjectStateName.Active,
+                "archived" => ProjectStateName.Archived,
+                "completed" => ProjectStateName.Completed,
+                "deleted" => ProjectStateName.Deleted,
+                "in_production" or "inproduction" => ProjectStateName.InProduction,
+                "setup_required" => ProjectStateName.SetupRequired,
+                "import_required" => ProjectStateName.ImportRequired,
+                "text_extraction_pending" => ProjectStateName.TextExtractionPending,
+                "screenplay_draft" => ProjectStateName.ScreenplayDraft,
+                "screenplay_approved" => ProjectStateName.ScreenplayApproved,
+                "shot_plan_ready" => ProjectStateName.ShotPlanReady,
+                "review_ready" => ProjectStateName.ReviewReady,
+                _ => ProjectStateName.Draft
+            };
+
+    public static UserAccountStatus ParseUserAccountStatus(string? value) =>
+            (value ?? "").Trim().ToLowerInvariant() switch
+            {
+                "active" => UserAccountStatus.Active,
+                "pending_confirmation" or "pendingconfirmation" or "pending" => UserAccountStatus.PendingConfirmation,
+                "unconfirmed" => UserAccountStatus.Unconfirmed,
+                "disabled" => UserAccountStatus.Disabled,
+                "suspended" => UserAccountStatus.Suspended,
+                "locked" => UserAccountStatus.Locked,
+                _ => UserAccountStatus.Active
+            };
+
+    public static string ToApiString(this ModelEnablementState state) => state switch
         {
-            "enabled" or "active" => ModelEnablementState.Enabled,
-            "deprecated" or "archived" => ModelEnablementState.Deprecated,
-            "experimental" or "beta" => ModelEnablementState.Experimental,
-            "preview" => ModelEnablementState.Preview,
-            _ => ModelEnablementState.Disabled
+            ModelEnablementState.Enabled => "enabled",
+            ModelEnablementState.Disabled => "disabled",
+            ModelEnablementState.Deprecated => "deprecated",
+            ModelEnablementState.Experimental => "experimental",
+            ModelEnablementState.Preview => "preview",
+            _ => "disabled"
         };
 
     public static string ToApiString(this ProjectStateName state) => state switch
-    {
-        ProjectStateName.Draft => "draft",
-        ProjectStateName.Active => "active",
-        ProjectStateName.Archived => "archived",
-        ProjectStateName.Completed => "completed",
-        ProjectStateName.Deleted => "deleted",
-        ProjectStateName.InProduction => "in_production",
-        ProjectStateName.SetupRequired => "setup_required",
-        ProjectStateName.ImportRequired => "import_required",
-        ProjectStateName.TextExtractionPending => "text_extraction_pending",
-        ProjectStateName.ScreenplayDraft => "screenplay_draft",
-        ProjectStateName.ScreenplayApproved => "screenplay_approved",
-        ProjectStateName.ShotPlanReady => "shot_plan_ready",
-        ProjectStateName.ReviewReady => "review_ready",
-        _ => "draft"
-    };
-
-    public static ProjectStateName ParseProjectStateName(string? value) =>
-        (value ?? "").Trim().ToLowerInvariant() switch
         {
-            "active" => ProjectStateName.Active,
-            "archived" => ProjectStateName.Archived,
-            "completed" => ProjectStateName.Completed,
-            "deleted" => ProjectStateName.Deleted,
-            "in_production" or "inproduction" => ProjectStateName.InProduction,
-            "setup_required" => ProjectStateName.SetupRequired,
-            "import_required" => ProjectStateName.ImportRequired,
-            "text_extraction_pending" => ProjectStateName.TextExtractionPending,
-            "screenplay_draft" => ProjectStateName.ScreenplayDraft,
-            "screenplay_approved" => ProjectStateName.ScreenplayApproved,
-            "shot_plan_ready" => ProjectStateName.ShotPlanReady,
-            "review_ready" => ProjectStateName.ReviewReady,
-            _ => ProjectStateName.Draft
+            ProjectStateName.Draft => "draft",
+            ProjectStateName.Active => "active",
+            ProjectStateName.Archived => "archived",
+            ProjectStateName.Completed => "completed",
+            ProjectStateName.Deleted => "deleted",
+            ProjectStateName.InProduction => "in_production",
+            ProjectStateName.SetupRequired => "setup_required",
+            ProjectStateName.ImportRequired => "import_required",
+            ProjectStateName.TextExtractionPending => "text_extraction_pending",
+            ProjectStateName.ScreenplayDraft => "screenplay_draft",
+            ProjectStateName.ScreenplayApproved => "screenplay_approved",
+            ProjectStateName.ShotPlanReady => "shot_plan_ready",
+            ProjectStateName.ReviewReady => "review_ready",
+            _ => "draft"
         };
 
     public static string ToApiString(this UserAccountStatus status) => status switch
-    {
-        UserAccountStatus.Active => "active",
-        UserAccountStatus.PendingConfirmation => "pending_confirmation",
-        UserAccountStatus.Unconfirmed => "unconfirmed",
-        UserAccountStatus.Disabled => "disabled",
-        UserAccountStatus.Suspended => "suspended",
-        UserAccountStatus.Locked => "locked",
-        _ => "active"
-    };
-
-    public static UserAccountStatus ParseUserAccountStatus(string? value) =>
-        (value ?? "").Trim().ToLowerInvariant() switch
         {
-            "active" => UserAccountStatus.Active,
-            "pending_confirmation" or "pendingconfirmation" or "pending" => UserAccountStatus.PendingConfirmation,
-            "unconfirmed" => UserAccountStatus.Unconfirmed,
-            "disabled" => UserAccountStatus.Disabled,
-            "suspended" => UserAccountStatus.Suspended,
-            "locked" => UserAccountStatus.Locked,
-            _ => UserAccountStatus.Active
+            UserAccountStatus.Active => "active",
+            UserAccountStatus.PendingConfirmation => "pending_confirmation",
+            UserAccountStatus.Unconfirmed => "unconfirmed",
+            UserAccountStatus.Disabled => "disabled",
+            UserAccountStatus.Suspended => "suspended",
+            UserAccountStatus.Locked => "locked",
+            _ => "active"
         };
+
 }

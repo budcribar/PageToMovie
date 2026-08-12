@@ -2,8 +2,8 @@
 @using Microsoft.AspNetCore.Components
 
 <Admin_CollapsibleCard Title="📦 Project Export, Import & Music Synthesis"
-                               Expanded="Ui!._showProjectArchiving"
-                               ExpandedChanged="@(async v => { Ui!._showProjectArchiving = v; await Host!.NotifyChangedAsync(); })">
+                               Expanded="Ui._showProjectArchiving"
+                               ExpandedChanged="@(async v => { Ui._showProjectArchiving = v; await Host.NotifyChangedAsync(); })">
 <div class="row g-3">
                         <div class="col-md-6">
                             <div class="fw-semibold small mb-2">Export (download zip)</div>
@@ -13,41 +13,41 @@
                             </p>
                             <div class="d-flex flex-wrap gap-2 align-items-center">
                                 <select class="form-select form-select-sm" style="max-width: 16rem;"
-                                        @bind="Archive!._exportProjectId"
-                                        disabled="@(Archive!._archiveBusy || Archive!._projectOptions.Count == 0)">
-                                    @if (Archive!._projectOptions.Count == 0)
+                                        @bind="Archive._exportProjectId"
+                                        disabled="@(Archive._archiveBusy || Archive._projectOptions.Count == 0)">
+                                    @if (Archive._projectOptions.Count == 0)
                                     {
                                         <option value="">No projects</option>
                                     }
                                     else
                                     {
-                                        @foreach (var p in Archive!._projectOptions)
+                                        @foreach (var p in Archive._projectOptions)
                                         {
                                             <option value="@p">@p</option>
                                         }
                                     }
                                 </select>
                                 <button type="button" class="btn btn-sm btn-primary"
-                                        disabled="@(Archive!._archiveBusy || string.IsNullOrWhiteSpace(Archive!._exportProjectId))"
-                                        @onclick="Archive!.ExportProjectAsync">
-                                    @(Archive!._archiveBusy && Archive!._archiveAction == "export" ? "Exporting…" : "Download full project + media")
+                                        disabled="@(Archive._archiveBusy || string.IsNullOrWhiteSpace(Archive._exportProjectId))"
+                                        @onclick="Archive.ExportProjectAsync">
+                                    @(Archive._archiveBusy && Archive._archiveAction == "export" ? "Exporting…" : "Download full project + media")
                                 </button>
                             </div>
-                            @if (Archive!._archiveBusy && Archive!._archiveAction == "export")
+                            @if (Archive._archiveBusy && Archive._archiveAction == "export")
                             {
                                 <div class="mt-2" data-testid="admin-export-progress" style="max-width: 28rem;">
                                     <div class="d-flex justify-content-between small text-muted mb-1">
-                                        <span class="text-truncate pe-2">@(Archive!._exportPhaseLabel ?? Archive!._archiveMsg ?? "Exporting…")</span>
-                                        @if (Archive!._exportPercent is { } ep)
+                                        <span class="text-truncate pe-2">@(Archive._exportPhaseLabel ?? Archive._archiveMsg ?? "Exporting…")</span>
+                                        @if (Archive._exportPercent is { } ep)
                                         {
                                             <span class="flex-shrink-0">@($"{ep:0}%")</span>
                                         }
                                     </div>
                                     <div class="progress" style="height: 0.5rem;" role="progressbar"
                                          aria-valuemin="0" aria-valuemax="100"
-                                         aria-valuenow="@(Archive!._exportPercent is { } v ? (int)v : 0)"
+                                         aria-valuenow="@(Archive._exportPercent is { } v ? (int)v : 0)"
                                          aria-label="Export progress">
-                                        @if (Archive!._exportIndeterminate || Archive!._exportPercent is null)
+                                        @if (Archive._exportIndeterminate || Archive._exportPercent is null)
                                         {
                                             <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
                                                  style="width: 100%"></div>
@@ -55,7 +55,7 @@
                                         else
                                         {
                                             <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
-                                                 style="width: @(Math.Clamp(Archive!._exportPercent.Value, 0, 100).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%"></div>
+                                                 style="width: @(Math.Clamp(Archive._exportPercent.Value, 0, 100).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%"></div>
                                         }
                                     </div>
                                 </div>
@@ -70,32 +70,32 @@
                                 Stage 1: project files to the server. Stage 2: MP4/MP3/etc. into your
                                 connected media folder (same layout as export). Connect the media folder first for a full restore.
                             </p>
-                            <InputFile OnChange="Archive!.OnImportFileSelected" accept=".zip,application/zip"
+                            <InputFile OnChange="Archive.OnImportFileSelected" accept=".zip,application/zip"
                                        class="form-control form-control-sm mb-2"
-                                       disabled="@Archive!._archiveBusy" />
+                                       disabled="@Archive._archiveBusy" />
                             <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
                                 <input class="form-control form-control-sm" style="max-width: 11rem;"
                                        placeholder="Optional new id"
-                                       @bind="Archive!._importPreferredId"
-                                       disabled="@Archive!._archiveBusy" />
+                                       @bind="Archive._importPreferredId"
+                                       disabled="@Archive._archiveBusy" />
                                 <select class="form-select form-select-sm" style="max-width: 13rem;"
-                                        @bind="Archive!._importTargetUserId"
-                                        disabled="@Archive!._archiveBusy"
+                                        @bind="Archive._importTargetUserId"
+                                        disabled="@Archive._archiveBusy"
                                         title="Select a target user to own the imported project area">
                                     <option value="">Target owner: (unassigned / admin)</option>
-                                    @foreach (var u in Archive!._userList)
+                                    @foreach (var u in Archive._userList)
                                     {
                                         <option value="@u">User: @u</option>
                                     }
                                 </select>
                                 <div class="form-check mb-0">
-                                    <InputCheckbox class="form-check-input" id="importOverwrite" @bind-Value="Archive!._importOverwrite" />
+                                    <InputCheckbox class="form-check-input" id="importOverwrite" @bind-Value="Archive._importOverwrite" />
                                     <label class="form-check-label small" for="importOverwrite">Overwrite</label>
                                 </div>
                                 <button type="button" class="btn btn-sm btn-success"
-                                        disabled="@(Archive!._archiveBusy || Archive!._importFile is null)"
-                                        @onclick="Archive!.ImportProjectAsync">
-                                    @(Archive!._archiveBusy && Archive!._archiveAction == "import" ? "Importing…" : "Import project")
+                                        disabled="@(Archive._archiveBusy || Archive._importFile is null)"
+                                        @onclick="Archive.ImportProjectAsync">
+                                    @(Archive._archiveBusy && Archive._archiveAction == "import" ? "Importing…" : "Import project")
                                 </button>
                             </div>
                             <p class="form-text mb-0 mt-1">
@@ -110,16 +110,16 @@
                             </p>
                             <div class="d-flex flex-wrap gap-2 align-items-center">
                                 <select class="form-select form-select-sm" style="max-width: 16rem;"
-                                        @bind="Archive!._enrichProjectId"
-                                        disabled="@(Archive!._archiveBusy || Archive!._projectOptions.Count == 0)"
+                                        @bind="Archive._enrichProjectId"
+                                        disabled="@(Archive._archiveBusy || Archive._projectOptions.Count == 0)"
                                         data-testid="admin-enrich-project">
-                                    @if (Archive!._projectOptions.Count == 0)
+                                    @if (Archive._projectOptions.Count == 0)
                                     {
                                         <option value="">No projects</option>
                                     }
                                     else
                                     {
-                                        @foreach (var p in Archive!._projectOptions)
+                                        @foreach (var p in Archive._projectOptions)
                                         {
                                             <option value="@p">@p</option>
                                         }
@@ -128,10 +128,10 @@
                                 <button type="button"
                                         class="btn btn-sm btn-outline-warning"
                                         data-testid="admin-enrich-run"
-                                        disabled="@(Archive!._archiveBusy || string.IsNullOrWhiteSpace(Archive!._enrichProjectId))"
+                                        disabled="@(Archive._archiveBusy || string.IsNullOrWhiteSpace(Archive._enrichProjectId))"
                                         title="Add visual detail to action lines from the book. Dialogue and scene structure stay the same. Re-approve the screenplay afterward."
-                                        @onclick="Archive!.EnrichScreenplayAsync">
-                                    @(Archive!._archiveBusy && Archive!._archiveAction == "enrich"
+                                        @onclick="Archive.EnrichScreenplayAsync">
+                                    @(Archive._archiveBusy && Archive._archiveAction == "enrich"
                                         ? "Enriching…"
                                         : "Enrich screenplay")
                                 </button>
@@ -144,34 +144,34 @@
                             <div class="fw-semibold small mb-2">🎵 Augment &amp; Synthesize Project Music Scores</div>
                             <div class="d-flex flex-wrap gap-2 align-items-center">
                                 <select class="form-select form-select-sm" style="max-width: 16rem;"
-                                        @bind="Archive!._augmentProjectId"
-                                        disabled="@(Archive!._archiveBusy || Archive!._projectOptions.Count == 0)">
-                                    @if (Archive!._projectOptions.Count == 0)
+                                        @bind="Archive._augmentProjectId"
+                                        disabled="@(Archive._archiveBusy || Archive._projectOptions.Count == 0)">
+                                    @if (Archive._projectOptions.Count == 0)
                                     {
                                         <option value="">No projects</option>
                                     }
                                     else
                                     {
-                                        @foreach (var p in Archive!._projectOptions)
+                                        @foreach (var p in Archive._projectOptions)
                                         {
                                             <option value="@p">@p</option>
                                         }
                                     }
                                 </select>
                                 <button type="button" class="btn btn-sm btn-outline-primary"
-                                        disabled="@(Archive!._archiveBusy || string.IsNullOrWhiteSpace(Archive!._augmentProjectId))"
-                                        @onclick="Archive!.AugmentMusicAsync">
-                                    @(Archive!._archiveBusy && Archive!._archiveAction == "augment" ? "Composing Scores…" : "1. Compose Score Prompts")
+                                        disabled="@(Archive._archiveBusy || string.IsNullOrWhiteSpace(Archive._augmentProjectId))"
+                                        @onclick="Archive.AugmentMusicAsync">
+                                    @(Archive._archiveBusy && Archive._archiveAction == "augment" ? "Composing Scores…" : "1. Compose Score Prompts")
                                 </button>
                                 <button type="button" class="btn btn-sm btn-outline-success ms-1"
-                                        disabled="@(Archive!._archiveBusy || string.IsNullOrWhiteSpace(Archive!._augmentProjectId))"
-                                        @onclick="Archive!.SynthesizeAudioAsync">
-                                    @(Archive!._archiveBusy && Archive!._archiveAction == "synthesize" ? $"Synthesizing Audio ({Archive!._synthesizeCurrent}/{Archive!._synthesizeTotal})…" : "🎼 Synthesize Scene Audio Tracks (Skip Existing)")
+                                        disabled="@(Archive._archiveBusy || string.IsNullOrWhiteSpace(Archive._augmentProjectId))"
+                                        @onclick="Archive.SynthesizeAudioAsync">
+                                    @(Archive._archiveBusy && Archive._archiveAction == "synthesize" ? $"Synthesizing Audio ({Archive._synthesizeCurrent}/{Archive._synthesizeTotal})…" : "🎼 Synthesize Scene Audio Tracks (Skip Existing)")
                                 </button>
                             </div>
-                            @if (Archive!._archiveBusy && Archive!._archiveAction == "synthesize" && Archive!._synthesizeTotal > 0)
+                            @if (Archive._archiveBusy && Archive._archiveAction == "synthesize" && Archive._synthesizeTotal > 0)
                             {
-                                var pct = Math.Min(100, Math.Max(5, (int)Math.Round((double)Archive!._synthesizeCurrent / Archive!._synthesizeTotal * 100.0)));
+                                var pct = Math.Min(100, Math.Max(5, (int)Math.Round((double)Archive._synthesizeCurrent / Archive._synthesizeTotal * 100.0)));
                                 <div class="progress mt-2 mb-1" style="height: 20px;">
                                     <div class="progress-bar progress-bar-striped progress-bar-animated bg-success"
                                          role="progressbar"
@@ -179,7 +179,7 @@
                                          aria-valuenow="@pct"
                                          aria-valuemin="0"
                                          aria-valuemax="100">
-                                        @Archive!._synthesizeCurrent / @Archive!._synthesizeTotal scenes (@pct%)
+                                        @Archive._synthesizeCurrent / @Archive._synthesizeTotal scenes (@pct%)
                                     </div>
                                 </div>
                             }
@@ -187,7 +187,7 @@
                                 1. <strong>Compose Score Prompts</strong> non-destructively enriches <code>blueprint.clips.grok.json</code> with AI background music score prompts across all scenes.<br/>
                                 2. <strong>Synthesize Scene Audio Tracks</strong> checks each scene and queues AI stereo background music generation for any scene missing audio.
                             </p>
-                            @if (Archive!._archiveBusy && Archive!._archiveAction == "synthesize")
+                            @if (Archive._archiveBusy && Archive._archiveAction == "synthesize")
                             {
                                 <p class="form-text mb-0 mt-1">
                                     Local media folder:
@@ -207,7 +207,7 @@
                             }
                         </div>
                     </div>
-                    <InlineAlert Message="@Archive!._archiveMsg" Variant="info" CssClass="py-2 small mt-3 mb-0" />
-                    <InlineAlert Message="@Archive!._archiveError" CssClass="py-2 small mt-3 mb-0" />
+                    <InlineAlert Message="@Archive._archiveMsg" Variant="info" CssClass="py-2 small mt-3 mb-0" />
+                    <InlineAlert Message="@Archive._archiveError" CssClass="py-2 small mt-3 mb-0" />
         
 </Admin_CollapsibleCard>

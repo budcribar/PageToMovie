@@ -524,7 +524,7 @@ public sealed class FilmJobService
         {
             try
             {
-                var aclDoc = await _acl.GetOrCreateAclAsync(meta.ProjectId!, userId).ConfigureAwait(false);
+                var aclDoc = await _acl.GetOrCreateAclAsync(meta.ProjectId, userId).ConfigureAwait(false);
                 keyMode = PageToMovie.Engine.Collaboration.ProjectKeyModes.Normalize(aclDoc.KeyMode);
                 if (PageToMovie.Engine.Collaboration.ProjectKeyModes.IsShared(keyMode)
                     && !string.IsNullOrWhiteSpace(aclDoc.OwnerUserId))

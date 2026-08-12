@@ -1513,7 +1513,7 @@ public class UserDatabaseService
                 """;
             var ts = string.IsNullOrWhiteSpace(rec.Ts)
                 ? DateTimeOffset.UtcNow.ToString("o")
-                : rec.Ts!;
+                : rec.Ts;
             cmd.Parameters.AddWithValue("@ts", ts);
             cmd.Parameters.AddWithValue("@projectId", rec.ProjectId.Trim());
             cmd.Parameters.AddWithValue("@userId", (object?)rec.UserId ?? DBNull.Value);

@@ -466,9 +466,5 @@ public class SupportedModelCatalogTests
             "expected task_rankings from models_catalog.json");
         Assert.True(SupportedModelCatalog.TaskRankings.ContainsKey("script_import"));
         Assert.True(SupportedModelCatalog.TaskRankings.ContainsKey("video_review"));
-        // C# DefaultTaskRankings is intentionally empty (obsolete).
-#pragma warning disable CS0618
-        Assert.Empty(SupportedModelCatalog.DefaultTaskRankings);
-#pragma warning restore CS0618
     }
 }

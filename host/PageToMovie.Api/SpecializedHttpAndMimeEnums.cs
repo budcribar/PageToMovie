@@ -45,6 +45,7 @@ public enum SpecializedMimeType
 public static class SpecializedHttpAndMimeExtensions
 {
     public static string ToApiString(this SpecializedHttpHeader header) => header.ToHeaderName();
+    public static string ToApiString(this SpecializedMimeType mimeType) => mimeType.ToMimeTypeString();
 
     public static string ToHeaderName(this SpecializedHttpHeader header) => header switch
     {
@@ -124,8 +125,6 @@ public static class SpecializedHttpAndMimeExtensions
 
         return true;
     }
-
-    public static string ToApiString(this SpecializedMimeType mimeType) => mimeType.ToMimeTypeString();
 
     public static string ToMimeTypeString(this SpecializedMimeType mimeType) => mimeType switch
     {

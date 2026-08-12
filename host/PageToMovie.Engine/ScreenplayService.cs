@@ -817,8 +817,6 @@ public static string NormalizeText(string text)
                     WriteMaxBase(store, projectId, cachedFountain); // D0: full-length base for Trim
                     store.ClearBookSubsteps(projectId); // fresh screenplay → prior Look/Enrich/Fit length no longer apply
                     ProjectVisionMeta.Write(projectDir, cachedConversion.VisionMeta);
-                    await TryAutoEnrichAfterDraftAsync(
-                        store, projectId, chat, model, onProgress, ct).ConfigureAwait(false);
                     cachedSave.Message = "Screenplay draft ready — reused shared book adaptation";
                     return cachedSave;
                 }

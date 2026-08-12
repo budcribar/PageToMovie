@@ -89,7 +89,7 @@ public sealed class ProjectCollabHubClient : IAsyncDisposable
             .WithUrl(url, options =>
             {
                 if (!string.IsNullOrWhiteSpace(_session?.Token))
-                    options.AccessTokenProvider = () => Task.FromResult<string?>(_session!.Token);
+                    options.AccessTokenProvider = () => Task.FromResult(_session?.Token);
                 options.Headers["X-User-Id"] = userId;
             })
             .WithAutomaticReconnect()

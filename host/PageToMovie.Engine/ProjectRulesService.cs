@@ -60,7 +60,8 @@ public sealed class ProjectRulesService
     public async Task SaveAsync(string projectId, ProjectRulesDocument doc, CancellationToken ct = default)
     {
         var path = await RulesPathAsync(projectId, ct).ConfigureAwait(false);
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var dir = Path.GetDirectoryName(path);
+        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
         await File.WriteAllTextAsync(path, JsonSerializer.Serialize(doc, JsonOpts) + "\n", ct).ConfigureAwait(false);
     }
 

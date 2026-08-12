@@ -29,6 +29,14 @@ public static class Mp4DurationReader
         }
     }
 
+    public static double? TryReadSeconds(Stream stream)
+    {
+        if (!stream.CanSeek) return null;
+        var end = stream.Length;
+        stream.Position = 0;
+        return ScanBoxes(stream, end, depth: 0);
+    }
+
     public static async Task<double?> TryReadSecondsAsync(string? path, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
@@ -43,14 +51,6 @@ public static class Mp4DurationReader
         {
             return null;
         }
-    }
-
-    public static double? TryReadSeconds(Stream stream)
-    {
-        if (!stream.CanSeek) return null;
-        var end = stream.Length;
-        stream.Position = 0;
-        return ScanBoxes(stream, end, depth: 0);
     }
 
     private static double? ScanBoxes(Stream stream, long end, int depth)

@@ -110,15 +110,12 @@ public static class ApiLayerEnumExtensions
         _ => "Authorization"
     };
 
-    public static string ToContentTypeString(this HttpResponseContentType contentType) => contentType switch
+    public static string ToHeaderName(this CorrelationIdHeader header) => header switch
     {
-        HttpResponseContentType.Json => "application/json",
-        HttpResponseContentType.FormUrlEncoded => "application/x-www-form-urlencoded",
-        HttpResponseContentType.MultipartFormData => "multipart/form-data",
-        HttpResponseContentType.TextPlain => "text/plain",
-        HttpResponseContentType.ApplicationOctetStream => "application/octet-stream",
-        HttpResponseContentType.EventStream => "text/event-stream",
-        _ => "application/json"
+        CorrelationIdHeader.XCorrelationId => "X-Correlation-Id",
+        CorrelationIdHeader.TraceParent => "traceparent",
+        CorrelationIdHeader.XRequestId => "X-Request-ID",
+        _ => "X-Correlation-Id"
     };
 
     public static string ToApiString(this YouTubePrivacyStatus status) => status switch
@@ -128,14 +125,6 @@ public static class ApiLayerEnumExtensions
         YouTubePrivacyStatus.Public => "public",
         _ => "unlisted"
     };
-
-    public static YouTubePrivacyStatus ParseYouTubePrivacyStatus(string? value) =>
-        (value ?? "").Trim().ToLowerInvariant() switch
-        {
-            "private" => YouTubePrivacyStatus.Private,
-            "public" => YouTubePrivacyStatus.Public,
-            _ => YouTubePrivacyStatus.Unlisted
-        };
 
     public static string ToApiString(this ProjectExportTarget target) => target switch
     {
@@ -156,11 +145,22 @@ public static class ApiLayerEnumExtensions
         _ => "google"
     };
 
-    public static string ToHeaderName(this CorrelationIdHeader header) => header switch
+    public static string ToContentTypeString(this HttpResponseContentType contentType) => contentType switch
     {
-        CorrelationIdHeader.XCorrelationId => "X-Correlation-Id",
-        CorrelationIdHeader.TraceParent => "traceparent",
-        CorrelationIdHeader.XRequestId => "X-Request-ID",
-        _ => "X-Correlation-Id"
+        HttpResponseContentType.Json => "application/json",
+        HttpResponseContentType.FormUrlEncoded => "application/x-www-form-urlencoded",
+        HttpResponseContentType.MultipartFormData => "multipart/form-data",
+        HttpResponseContentType.TextPlain => "text/plain",
+        HttpResponseContentType.ApplicationOctetStream => "application/octet-stream",
+        HttpResponseContentType.EventStream => "text/event-stream",
+        _ => "application/json"
     };
+
+    public static YouTubePrivacyStatus ParseYouTubePrivacyStatus(string? value) =>
+        (value ?? "").Trim().ToLowerInvariant() switch
+        {
+            "private" => YouTubePrivacyStatus.Private,
+            "public" => YouTubePrivacyStatus.Public,
+            _ => YouTubePrivacyStatus.Unlisted
+        };
 }

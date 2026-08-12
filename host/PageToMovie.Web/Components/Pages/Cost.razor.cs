@@ -364,7 +364,7 @@ public partial class Cost : IAsyncDisposable
         get
         {
             if ((_filmRuntime?.TargetMinutes ?? 0) > 0)
-                return _filmRuntime!.TargetMinutes;
+                return _filmRuntime.TargetMinutes;
             if (_report?.DurationMinutes is > 0)
                 return (int)Math.Round(_report.DurationMinutes.Value);
             return Math.Max(1, _filmRuntime?.NaturalMinutes ?? 1);
@@ -406,7 +406,7 @@ public partial class Cost : IAsyncDisposable
             if (_report?.DurationMinutes is > 0)
                 planMin = _report.DurationMinutes.Value;
             else if ((_filmRuntime?.NaturalMinutes ?? 0) > 0)
-                planMin = _filmRuntime!.NaturalMinutes;
+                planMin = _filmRuntime.NaturalMinutes;
             if (planMin <= 0) return null;
             return target / planMin;
         }
@@ -450,7 +450,7 @@ public partial class Cost : IAsyncDisposable
             if (target > 0)
                 return $"~{target} min";
             if (!string.IsNullOrWhiteSpace(_report?.DurationLabel)
-                && _report!.DurationLabel != "duration TBD")
+                && _report.DurationLabel != "duration TBD")
                 return _report.DurationLabel;
             if (natural is > 0)
                 return $"~{natural} min";
@@ -468,7 +468,7 @@ public partial class Cost : IAsyncDisposable
                 var est = DisplayEstimateUsd;
                 return est > 0 ? Usd(est) : "—";
             }
-            if (!string.IsNullOrWhiteSpace(_report?.CostLabel) && _report!.CostLabel != "—")
+            if (!string.IsNullOrWhiteSpace(_report?.CostLabel) && _report.CostLabel != "—")
                 return _report.CostLabel;
             var point = DisplayEstimateUsd;
             return point > 0 ? Usd(point) : "—";

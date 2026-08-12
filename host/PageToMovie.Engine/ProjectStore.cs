@@ -2433,7 +2433,7 @@ public sealed partial class ProjectStore
             foreach (var r in rows)
             {
                 r.UsedInPlan = planCast.Contains(r.Key)
-                    || (!string.IsNullOrWhiteSpace(r.VariantOf) && planCast.Contains(r.VariantOf!));
+                    || (!string.IsNullOrWhiteSpace(r.VariantOf) && planCast.Contains(r.VariantOf));
             }
             var usedBases = new HashSet<string>(
                 rows.Where(r => r.UsedInPlan).Select(r => r.Key),
@@ -2442,7 +2442,7 @@ public sealed partial class ProjectStore
             {
                 if (!r.UsedInPlan
                     && !string.IsNullOrWhiteSpace(r.VariantOf)
-                    && usedBases.Contains(r.VariantOf!))
+                    && usedBases.Contains(r.VariantOf))
                     r.UsedInPlan = true;
             }
         }
@@ -2596,7 +2596,8 @@ public sealed partial class ProjectStore
             }
             else
             {
-                Directory.CreateDirectory(Path.GetDirectoryName(castPath)!);
+                var dir = Path.GetDirectoryName(castPath);
+                if (dir != null) Directory.CreateDirectory(dir);
                 root = new System.Text.Json.Nodes.JsonObject
                 {
                     ["schema_version"] = "cast_seeds.v1",
@@ -2645,9 +2646,9 @@ public sealed partial class ProjectStore
                         cur[field] = inV; // longer AI set design wins
                 }
                 if (cur["display_name"] is null && incomingNode["display_name"] is not null)
-                    cur["display_name"] = incomingNode["display_name"]!.DeepClone();
+                    cur["display_name"] = incomingNode["display_name"].DeepClone();
                 if (cur["location_type"] is null && incomingNode["location_type"] is not null)
-                    cur["location_type"] = incomingNode["location_type"]!.DeepClone();
+                    cur["location_type"] = incomingNode["location_type"].DeepClone();
             }
 
             root["location_seed_tokens"] = existing;
@@ -5199,7 +5200,7 @@ public sealed partial class ProjectStore
                 LocationIds = locs,
                 PrimaryLocationId = primaryLoc,
                 PrimaryLocationLocked = !string.IsNullOrWhiteSpace(primaryLoc) &&
-                    ResolveLocationRefPath(projectId, primaryLoc!) is not null,
+                    ResolveLocationRefPath(projectId, primaryLoc) is not null,
                 Status = status,
                 IsApproved = isApproved,
                 HasBackgroundMusic = musicScenes.Contains(sn),
@@ -5356,8 +5357,8 @@ public sealed partial class ProjectStore
                                     s1bs.ValueKind == JsonValueKind.Array
                     ? s1bs.EnumerateArray()
                         .Select(x => x.GetString())
+                        .OfType<string>()
                         .Where(x => !string.IsNullOrWhiteSpace(x))
-                        .Select(x => x!)
                         .ToList()
                     : new List<string>();
                 // E3 write-through: fill stable beat id from content when blueprint lacks it
@@ -5369,7 +5370,7 @@ public sealed partial class ProjectStore
                         $"S{sceneNumber:D2}", kind, speaker, string.IsNullOrWhiteSpace(dialogue) ? visualPrompt : dialogue);
                 }
                 if (stage1BeatIds.Count == 0 && !string.IsNullOrWhiteSpace(stage1BeatId))
-                    stage1BeatIds.Add(stage1BeatId!);
+                    stage1BeatIds.Add(stage1BeatId);
 
                 var dialogueVer = await LoadClipDialogueVerificationAsync(projectDir, sceneNumber, cn, ct).ConfigureAwait(false);
                 var (isStale, staleReason) = EvaluateClipStale(
@@ -5518,7 +5519,7 @@ public sealed partial class ProjectStore
         };
         if (!string.IsNullOrWhiteSpace(detail.PrimaryLocationId))
             detail.PrimaryLocationLocked =
-                ResolveLocationRefPath(projectId, detail.PrimaryLocationId!) is not null;
+                ResolveLocationRefPath(projectId, detail.PrimaryLocationId) is not null;
         return detail;
         }
         finally

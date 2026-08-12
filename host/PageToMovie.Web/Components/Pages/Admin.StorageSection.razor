@@ -1,19 +1,19 @@
 @using Microsoft.AspNetCore.Components
 
 <Admin_CollapsibleCard Title="💾 Storage, Memory & System Metrics"
-                               Expanded="Ui!._showStorageAndCapacity"
-                               ExpandedChanged="@(async v => { Ui!._showStorageAndCapacity = v; await Host!.NotifyChangedAsync(); })">
+                               Expanded="Ui._showStorageAndCapacity"
+                               ExpandedChanged="@(async v => { Ui._showStorageAndCapacity = v; await Host.NotifyChangedAsync(); })">
 <div class="row g-3 mb-3">
                         <div class="col-md-6 col-lg-3">
                             <div class="card h-100 border">
                                 <div class="card-header py-2 fw-semibold">Process</div>
                                 <div class="card-body small">
-                                    <div>Uptime: <strong>@Admin.AdminState.FormatUptime(State!._state.Process?.UptimeSec ?? 0)</strong></div>
-                                    <div>Working set: <strong>@(State!._state.Process?.WorkingSetMb ?? 0) MB</strong></div>
-                                    <div>GC heap: <strong>@(State!._state.Process?.GcHeapMb ?? 0) MB</strong></div>
-                                    <div>Threads: <strong>@(State!._state.Process?.ThreadCount ?? 0)</strong></div>
-                                    <div>Env: <strong>@(State!._state.Process?.Environment ?? "?")</strong></div>
-                                    <div>Fakes: <strong>@((State!._state.Process?.UseFakes ?? false) ? "ON" : "off")</strong></div>
+                                    <div>Uptime: <strong>@Admin.AdminState.FormatUptime(State._state.Process?.UptimeSec ?? 0)</strong></div>
+                                    <div>Working set: <strong>@(State._state.Process?.WorkingSetMb ?? 0) MB</strong></div>
+                                    <div>GC heap: <strong>@(State._state.Process?.GcHeapMb ?? 0) MB</strong></div>
+                                    <div>Threads: <strong>@(State._state.Process?.ThreadCount ?? 0)</strong></div>
+                                    <div>Env: <strong>@(State._state.Process?.Environment ?? "?")</strong></div>
+                                    <div>Fakes: <strong>@((State._state.Process?.UseFakes ?? false) ? "ON" : "off")</strong></div>
                                 </div>
                             </div>
                         </div>
@@ -21,16 +21,16 @@
                             <div class="card h-100 border">
                                 <div class="card-header py-2 fw-semibold">Capacity</div>
                                 <div class="card-body small">
-                                    @if (State!._state.Capacity is { } c)
+                                    @if (State._state.Capacity is { } c)
                                     {
                                         <div>MaxVideoInFlight: <strong>@c.MaxVideoInFlight</strong></div>
                                         <div>MaxVideoInFlightPerUser: <strong>@c.MaxVideoInFlightPerUser</strong></div>
                                         <div>MaxQueuePerUser: <strong>@c.MaxQueuePerUser</strong></div>
                                     }
                                     <div class="mt-2">
-                                        API in-flight: <strong>@State!._apiInFlight</strong>
+                                        API in-flight: <strong>@State._apiInFlight</strong>
                                     </div>
-                                    <div>Rejects: <strong>@State!._capacityRejects</strong> · Lock conflicts: <strong>@State!._lockConflicts</strong></div>
+                                    <div>Rejects: <strong>@State._capacityRejects</strong> · Lock conflicts: <strong>@State._lockConflicts</strong></div>
                                     <a class="btn btn-sm btn-link px-0" href="/admin/config">Edit capacity…</a>
                                 </div>
                             </div>
@@ -39,12 +39,12 @@
                             <div class="card h-100 border">
                                 <div class="card-header py-2 fw-semibold">Projects</div>
                                 <div class="card-body small">
-                                    <div>Active: <strong>@(State!._state.Projects?.Active ?? "—")</strong></div>
-                                    <div class="text-truncate" title="@State!._state.Projects?.Workspace">
-                                        Workspace: <code class="small">@(State!._state.Projects?.Workspace ?? "—")</code>
+                                    <div>Active: <strong>@(State._state.Projects?.Active ?? "—")</strong></div>
+                                    <div class="text-truncate" title="@State._state.Projects?.Workspace">
+                                        Workspace: <code class="small">@(State._state.Projects?.Workspace ?? "—")</code>
                                     </div>
                                     <div class="mt-2 text-muted">
-                                        Snapshot @(State!._state.GeneratedAt?.ToLocalTime().ToString("HH:mm:ss") ?? "—")
+                                        Snapshot @(State._state.GeneratedAt?.ToLocalTime().ToString("HH:mm:ss") ?? "—")
                                     </div>
                                 </div>
                             </div>
@@ -53,36 +53,36 @@
                             <div class="card h-100 border">
                                 <div class="card-header py-2 fw-semibold">Disk Space &amp; Storage</div>
                                 <div class="card-body small">
-                                    <div class="text-truncate" title="@(State!._state.Disk?.VolumePath ?? "/data")">
-                                        Volume: <code class="small">@(State!._state.Disk?.VolumePath ?? "/data")</code>
+                                    <div class="text-truncate" title="@(State._state.Disk?.VolumePath ?? "/data")">
+                                        Volume: <code class="small">@(State._state.Disk?.VolumePath ?? "/data")</code>
                                     </div>
-                                    <div>Total size: <strong>@(State!._state.Disk?.FormattedTotal ?? "—")</strong></div>
-                                    <div>Used: <strong>@(State!._state.Disk?.FormattedUsed ?? "—")</strong> (@(State!._state.Disk?.UsedPercent ?? 0)%)</div>
-                                    <div>Free left: <strong class="text-success">@(State!._state.Disk?.FormattedFree ?? "—")</strong></div>
+                                    <div>Total size: <strong>@(State._state.Disk?.FormattedTotal ?? "—")</strong></div>
+                                    <div>Used: <strong>@(State._state.Disk?.FormattedUsed ?? "—")</strong> (@(State._state.Disk?.UsedPercent ?? 0)%)</div>
+                                    <div>Free left: <strong class="text-success">@(State._state.Disk?.FormattedFree ?? "—")</strong></div>
                                     <div class="progress mt-2" style="height: 6px;">
-                                        <div class="progress-bar @Admin.AdminState.GetDiskProgressBarClass(State!._state.Disk?.UsedPercent ?? 0)"
+                                        <div class="progress-bar @Admin.AdminState.GetDiskProgressBarClass(State._state.Disk?.UsedPercent ?? 0)"
                                              role="progressbar"
-                                             style="width: @(Math.Min(100, Math.Max(0, State!._state.Disk?.UsedPercent ?? 0)))%"></div>
+                                             style="width: @(Math.Min(100, Math.Max(0, State._state.Disk?.UsedPercent ?? 0)))%"></div>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    @if (State!._state.DiskHistory is { Count: > 0 })
+                    @if (State._state.DiskHistory is { Count: > 0 })
                     {
                         <div class="card border mt-2">
                             <div class="card-header d-flex justify-content-between align-items-center py-2">
-                                <span class="small">Daily Storage Usage History (Railway Volume <code>@(State!._state.Disk?.VolumePath ?? "/data")</code>)</span>
+                                <span class="small">Daily Storage Usage History (Railway Volume <code>@(State._state.Disk?.VolumePath ?? "/data")</code>)</span>
                                 <div class="d-flex align-items-center gap-2">
-                                    <span class="badge bg-secondary">@State!._state.DiskHistory.Count day(s)</span>
+                                    <span class="badge bg-secondary">@State._state.DiskHistory.Count day(s)</span>
                                     <button type="button" class="btn btn-sm btn-outline-secondary"
-                                            @onclick="() => { Ui!._showDiskHistory = !Ui!._showDiskHistory; _ = Host!.NotifyChangedAsync(); }">
-                                        @(Ui!._showDiskHistory ? "▲ Collapse" : "▼ Expand")
+                                            @onclick="() => { Ui._showDiskHistory = !Ui._showDiskHistory; _ = Host.NotifyChangedAsync(); }">
+                                        @(Ui._showDiskHistory ? "▲ Collapse" : "▼ Expand")
                                     </button>
                                 </div>
                             </div>
-                            @if (Ui!._showDiskHistory)
+                            @if (Ui._showDiskHistory)
                             {
                             <div class="card-body p-0">
                                 <div class="table-responsive">
@@ -98,7 +98,7 @@
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            @foreach (var snap in State!._state.DiskHistory)
+                                            @foreach (var snap in State._state.DiskHistory)
                                             {
                                                 <tr>
                                                     <td><strong>@snap.SnapshotDate</strong></td>

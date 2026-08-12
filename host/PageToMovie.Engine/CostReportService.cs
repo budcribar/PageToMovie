@@ -1851,6 +1851,12 @@ public sealed class CostReportService
     private static double GetDouble(Dictionary<string, JsonElement> cfg, string key, double fallback) =>
         cfg.TryGetValue(key, out var el) && el.TryGetDouble(out var v) ? v : fallback;
 
+    private static double GetDouble(Dictionary<string, object?> rates, string key, double fallback)
+    {
+        if (!rates.TryGetValue(key, out var v) || v is null) return fallback;
+        return Convert.ToDouble(v, CultureInfo.InvariantCulture);
+    }
+
     private static double RequireRate(Dictionary<string, object?> rates, string key)
     {
         if (rates.TryGetValue(key, out var v) && v is double d)
@@ -1860,12 +1866,6 @@ public sealed class CostReportService
         throw new InvalidOperationException(
             $"Cost rate '{key}' missing from catalog-derived rate table. "
             + "Add the field to models_catalog.json — Engine does not invent USD.");
-    }
-
-    private static double GetDouble(Dictionary<string, object?> rates, string key, double fallback)
-    {
-        if (!rates.TryGetValue(key, out var v) || v is null) return fallback;
-        return Convert.ToDouble(v, CultureInfo.InvariantCulture);
     }
 
     private static bool GetBool(Dictionary<string, object?> rates, string key, bool fallback)

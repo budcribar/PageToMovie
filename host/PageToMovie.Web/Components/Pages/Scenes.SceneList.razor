@@ -101,7 +101,7 @@
                                 Generate @(Host.List._selected.Count > 0 ? $"{Host.List._selected.Count} scene{(Host.List._selected.Count == 1 ? "" : "s")}" : "Batch")
                                 @if (Host.List._selected.Count > 0)
                                 {
-                                    <span class="batch-go__meta">· ~@ClipSel!.EstimateSelectedClips() clips</span>
+                                    <span class="batch-go__meta">· ~@ClipSel.EstimateSelectedClips() clips</span>
                                 }
                             </span>
                         }
@@ -126,13 +126,13 @@
                     <button type="button"
                             data-testid="scenes-play-selected"
                             class="btn btn-outline-primary btn-sm"
-                            disabled="@(Host._busy || Playback!._clientStitching || !Playback!.CanPlaySelected)"
-                            title="@(Playback!.CanPlaySelected
+                            disabled="@(Host._busy || Playback._clientStitching || !Playback.CanPlaySelected)"
+                            title="@(Playback.CanPlaySelected
                                 ? "Stitch selected scenes in the browser (composites or clips)"
                                 : Host.List._selected.Count == 0
                                     ? "Select one or more scenes first"
                                     : "Selected scenes have no clips or composites to play yet")"
-                            @onclick="Playback!.PlaySelectedAsync">
+                            @onclick="Playback.PlaySelectedAsync">
                         ▶ @L["ScenesPage.PlaySelected"]@(Host.List._selected.Count > 0 ? $" ({Host.List._selected.Count})" : "")
                     </button>
                     <CapabilityLockedControl Enabled="Caps.VideoReviewReady"
@@ -141,13 +141,13 @@
                                              TestId="scenes-verify-dialogue-cap">
                     <button type="button"
                             class="btn btn-outline-primary btn-sm"
-                            disabled="@(Host._busy || Host.Gen.JobRunning || Dialogue!._verifyingClip || !Dialogue!.SelectedScenesHaveClipsToVerify)"
-                            title="@(Dialogue!.SelectedScenesHaveClipsToVerify
+                            disabled="@(Host._busy || Host.Gen.JobRunning || Dialogue._verifyingClip || !Dialogue.SelectedScenesHaveClipsToVerify)"
+                            title="@(Dialogue.SelectedScenesHaveClipsToVerify
                                 ? "Check the spoken words in each finished clip against the screenplay"
                                 : Host.List._selected.Count == 0
                                     ? "Select one or more scenes with finished clips first"
                                     : "Selected scenes have no finished clips to check yet")"
-                            @onclick="Dialogue!.VerifySelectedScenesDialogueAsync">
+                            @onclick="Dialogue.VerifySelectedScenesDialogueAsync">
                         🔍 @L["ScenesPage.VerifySceneDialogue"]@(Host.List._selected.Count > 0 ? $" ({Host.List._selected.Count})" : "")
                     </button>
                     </CapabilityLockedControl>
@@ -274,7 +274,7 @@
                                         class="btn btn-sm btn-link text-secondary p-0 ms-1 text-decoration-none"
                                         title="View changes & history for scene S@(sn.ToString("D2"))"
                                         @onclick:stopPropagation="true"
-                                        @onclick="() => History!.OpenSceneHistoryAsync(sn)">
+                                        @onclick="() => History.OpenSceneHistoryAsync(sn)">
                                     📜
                                 </button>
                                 @if (s.LockedByOther)
@@ -334,9 +334,9 @@
                                 <button type="button"
                                         class="btn btn-sm btn-warning text-black fw-bold py-0 px-2"
                                         data-testid="scene-row-score-music"
-                                        disabled="@(Host._busy || Host.Gen.JobRunning || Music!._scoringMusic || !Caps.MusicReady || s.LockedByOther)"
+                                        disabled="@(Host._busy || Host.Gen.JobRunning || Music._scoringMusic || !Caps.MusicReady || s.LockedByOther)"
                                         title="@(Caps.MusicReady ? "Score background music for this scene" : Caps.MusicBlockedReason)"
-                                        @onclick="() => Music!.OpenScoreMenu(sn)">
+                                        @onclick="() => Music.OpenScoreMenu(sn)">
                                     🎵 Score
                                 </button>
                                 @if (s.HasBackgroundMusic)
@@ -344,7 +344,7 @@
                                     <button type="button"
                                             class="btn btn-sm btn-link text-info p-0 ms-1 text-decoration-none"
                                             title="View & compare past audio takes for this scene"
-                                            @onclick="() => Music!.OpenMusicCompareAsync(sn)">
+                                            @onclick="() => Music.OpenMusicCompareAsync(sn)">
                                         🎧
                                     </button>
                                 }

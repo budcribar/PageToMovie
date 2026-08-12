@@ -30,7 +30,7 @@ public partial class ProjectSharePanel
     {
         await Run(async () =>
         {
-            _acl = await Engine.GetProjectAclAsync(ActiveProject.ProjectId!);
+            _acl = await Engine.GetProjectAclAsync(ActiveProject.ProjectId ?? "");
             if (_acl is not null)
             {
                 _keyMode = string.IsNullOrWhiteSpace(_acl.KeyMode) ? "personal" : _acl.KeyMode.Trim().ToLowerInvariant();
@@ -46,7 +46,7 @@ public partial class ProjectSharePanel
     {
         await Run(async () =>
         {
-            var (ok, err) = await Engine.SetProjectKeyModeAsync(ActiveProject.ProjectId!, _keyMode);
+            var (ok, err) = await Engine.SetProjectKeyModeAsync(ActiveProject.ProjectId ?? "", _keyMode);
             if (!ok)
             {
                 _error = err ?? "Failed to save key mode.";
@@ -76,19 +76,33 @@ public partial class ProjectSharePanel
         });
     }
 
+    async Task RemoveUserAsync(string userId)
+    {
+        await Run(async () =>
+        {
+            var res = await Http.DeleteAsync($"api/projects/{EncodedId}/acl/users/{Uri.EscapeDataString(userId)}");
+            if (!res.IsSuccessStatusCode)
+            {
+                _error = await res.Content.ReadAsStringAsync();
+                return;
+            }
+            _acl = await res.Content.ReadFromJsonAsync<ProjectAclClientDto>();
+            _info = $"Removed {userId}.";
+        });
+    }
+
     async Task AcquireLeaseAsync()
     {
         await Run(async () =>
         {
             var key = $"scene:{_sceneNumber}";
-            var res = await Http.PostAsync($"api/projects/{EncodedId}/leases/{Uri.EscapeDataString(key)}/acquire", null);
-            var body = await res.Content.ReadAsStringAsync();
-            if (res.StatusCode == System.Net.HttpStatusCode.Locked || (int)res.StatusCode == 423)
-                _leaseStatus = $"Locked by another user: {body}";
-            else if (!res.IsSuccessStatusCode)
-                _error = body;
-            else
-                _leaseStatus = $"Acquired {key}: {body}";
+            var res = await Http.PostAsync($"api/projects/{EncodedId}/leases/{Uri.EscapeDataString(key)}", null);
+            if (!res.IsSuccessStatusCode)
+            {
+                _error = await res.Content.ReadAsStringAsync();
+                return;
+            }
+            _leaseStatus = $"{key}: acquired";
         });
     }
 
@@ -97,8 +111,13 @@ public partial class ProjectSharePanel
         await Run(async () =>
         {
             var key = $"scene:{_sceneNumber}";
-            var res = await Http.PostAsync($"api/projects/{EncodedId}/leases/{Uri.EscapeDataString(key)}/release", null);
-            _leaseStatus = res.IsSuccessStatusCode ? $"Released {key}" : await res.Content.ReadAsStringAsync();
+            var res = await Http.DeleteAsync($"api/projects/{EncodedId}/leases/{Uri.EscapeDataString(key)}");
+            if (!res.IsSuccessStatusCode)
+            {
+                _error = await res.Content.ReadAsStringAsync();
+                return;
+            }
+            _leaseStatus = $"{key}: released";
         });
     }
 
@@ -119,7 +138,7 @@ public partial class ProjectSharePanel
     {
         await Run(async () =>
         {
-            _presence = await Engine.ListPresenceAsync(ActiveProject.ProjectId!);
+            _presence = await Engine.ListPresenceAsync(ActiveProject.ProjectId ?? "");
         });
     }
 

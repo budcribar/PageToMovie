@@ -713,6 +713,17 @@ namespace PageToMovie.Engine
             return status;
         }
 
+        /// <summary>Status for a known project id (branch naming matches push).</summary>
+        public ProjectGitStatus GetStatus(string projectPath, string projectId)
+        {
+            var s = GetStatus(projectPath);
+            if (s.Available && string.IsNullOrWhiteSpace(s.HistoryUrl))
+                s.HistoryUrl = BuildHistoryUrlIfPossible(projectPath, projectId);
+            else if (s.Available)
+                s.HistoryUrl = BuildHistoryUrlIfPossible(projectPath, projectId);
+            return s;
+        }
+
         private string? BuildHistoryUrlIfPossible(string projectPath, string? projectId = null)
         {
             if (!_git.Enabled || string.IsNullOrWhiteSpace(_git.ProjectsRepoUrl))
@@ -740,17 +751,6 @@ namespace PageToMovie.Engine
             }
             catch { /* ignore */ }
             return null;
-        }
-
-        /// <summary>Status for a known project id (branch naming matches push).</summary>
-        public ProjectGitStatus GetStatus(string projectPath, string projectId)
-        {
-            var s = GetStatus(projectPath);
-            if (s.Available && string.IsNullOrWhiteSpace(s.HistoryUrl))
-                s.HistoryUrl = BuildHistoryUrlIfPossible(projectPath, projectId);
-            else if (s.Available)
-                s.HistoryUrl = BuildHistoryUrlIfPossible(projectPath, projectId);
-            return s;
         }
 
         private static string EmailFor(string author)

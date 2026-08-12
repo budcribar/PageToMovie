@@ -44,7 +44,7 @@ public static class PdfFormatter
     private static List<List<PdfTextLine>> LayoutPages(ScreenplayModel model)
     {
         var pages = new List<List<PdfTextLine>>();
-        List<PdfTextLine> currentPage = null!;
+        var currentPage = new List<PdfTextLine>();
         double cursorY = 0;
 
         void NewPage()

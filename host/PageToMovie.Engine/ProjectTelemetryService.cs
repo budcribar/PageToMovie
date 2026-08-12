@@ -83,11 +83,6 @@ public sealed class ProjectTelemetryService
 
     public string MediaOpsPath(string projectId) =>
         Path.Combine(TelemetryDir(projectId), "media_ops.jsonl");
-
-    /// <summary>Legacy alias for <see cref="MediaOpsPath"/>.</summary>
-    [Obsolete("Use MediaOpsPath — server no longer runs native ffmpeg.")]
-    public string FfmpegPath(string projectId) => MediaOpsPath(projectId);
-
     public async Task LogApiCallAsync(ApiCallTelemetry rec, CancellationToken ct = default)
     {
         var projectId = rec.ProjectId ?? CurrentProjectId;
@@ -227,10 +222,6 @@ public sealed class ProjectTelemetryService
         "video" or "video_extend" or "video_poll" or "image" or "image_edit" => false,
         _ => true,
     };
-
-    [Obsolete("Use SupportedModelCatalog.CatalogProviderId — catalog is SSoT.")]
-    private static string? TryProviderForModel(string model, string? kind) =>
-        SupportedModelCatalog.CatalogProviderId(model, kind);
 
     /// <summary>Catalog list-rate estimate — not a provider invoice line. No invent / no synthetic models.</summary>
     public static double? EstimateListRateUsd(ApiCallTelemetry rec)
@@ -443,26 +434,6 @@ public sealed class ProjectTelemetryService
         };
     }
 
-    /// <summary>Legacy alias for <see cref="CondenseMediaOp"/>.</summary>
-    [Obsolete("Use CondenseMediaOp.")]
-    public static FfmpegOpTelemetry CondenseFfmpegOp(
-        string op,
-        string args,
-        IReadOnlyList<string>? inputs,
-        string? output,
-        int exitCode,
-        bool timedOut,
-        long wallMs,
-        string? rawLog,
-        string? ffmpegExe = null,
-        int? scene = null,
-        int? includedCount = null,
-        int? excludedCount = null,
-        string? fallback = null,
-        string? projectId = null) =>
-        CondenseMediaOp(
-            op, args, inputs, output, exitCode, timedOut, wallMs, rawLog,
-            ffmpegExe, scene, includedCount, excludedCount, fallback, projectId);
 
     public static bool IsInterestingLogLine(string line)
     {

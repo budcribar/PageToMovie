@@ -8,7 +8,7 @@
 <div class="card mb-3 home-studio-card" data-testid="home-studio-card">
     <div class="card-body py-3">
         @{
-            var activeMeta = Host.Projects._projects!.Projects.FirstOrDefault(p =>
+            var activeMeta = Host.Projects._projects.Projects.FirstOrDefault(p =>
                 string.Equals(p.Id, Host.Projects._projects.Active?.Id, StringComparison.OrdinalIgnoreCase));
             var hasActive = ActiveProject.HasProject || !string.IsNullOrWhiteSpace(Host.Projects._projects.Active?.Id);
         }

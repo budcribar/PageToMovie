@@ -44,7 +44,7 @@ public partial class Characters
             if (string.Equals(kind, "cast-extract", StringComparison.OrdinalIgnoreCase))
                 return string.IsNullOrWhiteSpace(job.Message)
                     ? "Building cast from screenplay…"
-                    : job.Message!;
+                    : job.Message;
             if (string.Equals(kind, "character-plates", StringComparison.OrdinalIgnoreCase))
                 return job.Total > 0
                     ? $"Matching book pictures… ({job.Index} of {job.Total})"
@@ -57,7 +57,7 @@ public partial class Characters
             if (string.Equals(kind, "plan_looks", StringComparison.OrdinalIgnoreCase))
             {
                 if (!string.IsNullOrWhiteSpace(job.Message))
-                    return job.Message!;
+                    return job.Message;
                 return job.Total > 0
                     ? $"Generating looks for plan… ({job.Index} of {job.Total})"
                     : "Generating looks for plan…";

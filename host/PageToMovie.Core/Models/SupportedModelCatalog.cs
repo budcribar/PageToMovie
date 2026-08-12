@@ -463,13 +463,6 @@ public static class SupportedModelCatalog
         }
     }
 
-    /// <summary>
-    /// Obsolete empty shell — rankings live only in <c>models_catalog.json</c>
-    /// (<c>task_rankings</c>). Prefer <see cref="TaskRankings"/>.
-    /// </summary>
-    [Obsolete("Use TaskRankings from models_catalog.json — no C# hardcoded rankings.")]
-    public static readonly Dictionary<string, List<string>> DefaultTaskRankings = new(StringComparer.OrdinalIgnoreCase);
-
     /// <summary>All catalog rows, from the embedded catalog (real, or fake in fakes mode — see
     /// <see cref="EmbeddedCatalogResourceName"/>). Throws via <see cref="EnsureLoaded"/> if the
     /// embedded catalog is missing or fails its self-test.</summary>
@@ -841,11 +834,6 @@ public static class SupportedModelCatalog
             "Open Settings → Studio coverage and choose a catalog model for this job. " +
             "Do not rely on code defaults.");
     }
-
-    [Obsolete("Synthetic catalog entries are forbidden — add models to models_catalog.json.")]
-    private static SupportedModelEntry MakeSynthetic(string id, ModelCapability capability) =>
-        throw new InvalidOperationException(
-            $"Refusing synthetic model '{id}' ({capability}). Add it to models_catalog.json or select a catalog model in Settings.");
 
     /// <summary>
     /// Build Configuration "API keys" rows from the catalog (enabled models only).

@@ -122,15 +122,6 @@ public static class FountainLayerEnumExtensions
         _ => "INT."
     };
 
-    public static FountainHeadingEnvironment ParseEnvironment(string? text)
-    {
-        if (string.IsNullOrWhiteSpace(text)) return FountainHeadingEnvironment.INT;
-        var upper = text.Trim().ToUpperInvariant();
-        if (upper.StartsWith("INT./EXT") || upper.StartsWith("I/E") || upper.StartsWith("INT/EXT")) return FountainHeadingEnvironment.INT_EXT;
-        if (upper.StartsWith("EXT")) return FountainHeadingEnvironment.EXT;
-        return FountainHeadingEnvironment.INT;
-    }
-
     public static string ToDisplayString(this FountainTimeOfDay time) => time switch
     {
         FountainTimeOfDay.DAY => "DAY",
@@ -141,6 +132,34 @@ public static class FountainLayerEnumExtensions
         FountainTimeOfDay.DUSK => "DUSK",
         _ => "DAY"
     };
+
+    public static string ToDisplayString(this FountainSpeakerExtension ext) => ext switch
+    {
+        FountainSpeakerExtension.VO => "V.O.",
+        FountainSpeakerExtension.OS => "O.S.",
+        FountainSpeakerExtension.CONTD => "CONT'D",
+        _ => ""
+    };
+
+    public static string ToDisplayString(this FountainTransitionPreset preset) => preset switch
+    {
+        FountainTransitionPreset.CutTo => "CUT TO:",
+        FountainTransitionPreset.FadeIn => "FADE IN:",
+        FountainTransitionPreset.FadeOut => "FADE OUT.",
+        FountainTransitionPreset.DissolveTo => "DISSOLVE TO:",
+        FountainTransitionPreset.SmashCutTo => "SMASH CUT TO:",
+        FountainTransitionPreset.Blackout => "BLACKOUT",
+        _ => "CUT TO:"
+    };
+
+    public static FountainHeadingEnvironment ParseEnvironment(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return FountainHeadingEnvironment.INT;
+        var upper = text.Trim().ToUpperInvariant();
+        if (upper.StartsWith("INT./EXT") || upper.StartsWith("I/E") || upper.StartsWith("INT/EXT")) return FountainHeadingEnvironment.INT_EXT;
+        if (upper.StartsWith("EXT")) return FountainHeadingEnvironment.EXT;
+        return FountainHeadingEnvironment.INT;
+    }
 
     public static FountainTimeOfDay ParseTimeOfDay(string? text)
     {
@@ -154,14 +173,6 @@ public static class FountainLayerEnumExtensions
         return FountainTimeOfDay.DAY;
     }
 
-    public static string ToDisplayString(this FountainSpeakerExtension ext) => ext switch
-    {
-        FountainSpeakerExtension.VO => "V.O.",
-        FountainSpeakerExtension.OS => "O.S.",
-        FountainSpeakerExtension.CONTD => "CONT'D",
-        _ => ""
-    };
-
     public static FountainSpeakerExtension ParseSpeakerExtension(string? text)
     {
         if (string.IsNullOrWhiteSpace(text)) return FountainSpeakerExtension.None;
@@ -171,15 +182,4 @@ public static class FountainLayerEnumExtensions
         if (upper.Contains("CONT")) return FountainSpeakerExtension.CONTD;
         return FountainSpeakerExtension.None;
     }
-
-    public static string ToDisplayString(this FountainTransitionPreset preset) => preset switch
-    {
-        FountainTransitionPreset.CutTo => "CUT TO:",
-        FountainTransitionPreset.FadeIn => "FADE IN:",
-        FountainTransitionPreset.FadeOut => "FADE OUT.",
-        FountainTransitionPreset.DissolveTo => "DISSOLVE TO:",
-        FountainTransitionPreset.SmashCutTo => "SMASH CUT TO:",
-        FountainTransitionPreset.Blackout => "BLACKOUT",
-        _ => "CUT TO:"
-    };
 }

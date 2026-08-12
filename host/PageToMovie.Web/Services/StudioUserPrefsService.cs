@@ -44,7 +44,7 @@ public sealed class StudioUserPrefsService
             var path = await GetAsync("preferPath");
             if (string.Equals(path, "edit", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(path, "generate", StringComparison.OrdinalIgnoreCase))
-                PreferPath = path!.ToLowerInvariant();
+                PreferPath = path.ToLowerInvariant();
 
             var focus = await GetAsync("editFocus");
             if (focus is "cost" or "duration" or "both" or "craft")

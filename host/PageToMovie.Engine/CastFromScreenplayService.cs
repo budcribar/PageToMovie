@@ -504,7 +504,7 @@ public sealed class CastFromScreenplayService
                     if (val is Dictionary<string, object?> d
                         && d.TryGetValue("display_name", out var dn)
                         && !string.IsNullOrWhiteSpace(dn?.ToString()))
-                        display = dn!.ToString()!;
+                        display = dn.ToString();
                     sb.AppendLine($"- {key} ({display})");
                 }
                 return sb.ToString();
@@ -996,7 +996,7 @@ public sealed class CastFromScreenplayService
             // own description/wardrobe_always — see EnsureWardrobeReferenceAsync.
             var wardrobeLock = CoerceString(seed, "wardrobe_lock");
             if (!string.IsNullOrWhiteSpace(wardrobeLock))
-                clean["wardrobe_lock"] = NormalizeWardrobeKey(wardrobeLock!);
+                clean["wardrobe_lock"] = NormalizeWardrobeKey(wardrobeLock);
 
             // cast_kind: prefer model output; else classify so pin gates skip group portraits.
             clean["cast_kind"] = ResolveCastKind(k, name, CoerceString(seed, "cast_kind"), desc);
@@ -1005,11 +1005,11 @@ public sealed class CastFromScreenplayService
             // characters appear at one life stage and have neither field set.
             var ageBand = CoerceString(seed, "age_band");
             if (!string.IsNullOrWhiteSpace(ageBand))
-                clean["age_band"] = ageBand!.Trim();
+                clean["age_band"] = ageBand.Trim();
             var variantOfRaw = CoerceString(seed, "variant_of");
             if (!string.IsNullOrWhiteSpace(variantOfRaw))
             {
-                var variantOfKey = variantOfRaw!.StartsWith("Character_", StringComparison.OrdinalIgnoreCase)
+                var variantOfKey = variantOfRaw.StartsWith("Character_", StringComparison.OrdinalIgnoreCase)
                     ? variantOfRaw
                     : "Character_" + NonAlphaNumericRegex.Replace(variantOfRaw, "_").Trim('_');
                 if (!string.Equals(variantOfKey, k, StringComparison.OrdinalIgnoreCase))

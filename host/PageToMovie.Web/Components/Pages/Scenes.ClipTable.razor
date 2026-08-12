@@ -16,15 +16,15 @@
                                 <input class="form-check-input" type="checkbox"
                                        data-testid="clip-select-all"
                                        title="Select all clips"
-                                       checked="@ClipSel!.AllClipsSelected"
-                                       disabled="@(Host._busy || ListState!._detail is not { Clips.Count: > 0 })"
-                                       @onchange="e => ClipSel!.ToggleSelectAllClips((bool)(e.Value ?? false))" />
+                                       checked="@ClipSel.AllClipsSelected"
+                                       disabled="@(Host._busy || ListState._detail is not { Clips.Count: > 0 })"
+                                       @onchange="e => ClipSel.ToggleSelectAllClips((bool)(e.Value ?? false))" />
                             </th>
                             <th style="width:7rem;">Clip</th>
                             <th style="width:6rem; cursor:pointer; user-select:none;"
-                                @onclick="ClipSel!.ToggleClipDurationSort"
+                                @onclick="ClipSel.ToggleClipDurationSort"
                                 title="Click to sort by duration">
-                                Dur @(ClipSel!._clipSortByDuration ? (ClipSel!._clipSortAscending ? "▲" : "▼") : "⇅")
+                                Dur @(ClipSel._clipSortByDuration ? (ClipSel._clipSortAscending ? "▲" : "▼") : "⇅")
                             </th>
                             <th>Dialogue</th>
                             <th style="width:7rem;">Beat</th>
@@ -32,23 +32,23 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var c in ClipSel!.SortedDetailClips)
+                        @foreach (var c in ClipSel.SortedDetailClips)
                         {
-                            var active = ClipForm!._selectedClip == c.ClipNumber;
+                            var active = ClipForm._selectedClip == c.ClipNumber;
                             var cn = c.ClipNumber;
-                            var isChecked = ClipSel!._selectedClips.Contains(cn);
+                            var isChecked = ClipSel._selectedClips.Contains(cn);
                             <tr class="@(active ? "table-primary" : isChecked ? "table-warning" : "")" style="cursor:pointer;"
-                                @onclick="() => ClipForm!.SelectClip(cn)">
+                                @onclick="() => ClipForm.SelectClip(cn)">
                                 <td @onclick:stopPropagation="true">
                                     <input class="form-check-input" type="checkbox"
                                            data-testid="@($"clip-select-{cn}")"
                                            checked="@isChecked"
                                            disabled="@Host._busy"
-                                           @onchange="e => ClipSel!.ToggleClipSelect(cn, (bool)(e.Value ?? false))" />
+                                           @onchange="e => ClipSel.ToggleClipSelect(cn, (bool)(e.Value ?? false))" />
                                 </td>
                                 <td class="text-nowrap" @onclick:stopPropagation="true">
                                     @{
-                                        var clipBusy = ClipSel!.IsClipGenBusy(cn);
+                                        var clipBusy = ClipSel.IsClipGenBusy(cn);
                                     }
                                     @if (clipBusy)
                                     {
@@ -61,7 +61,7 @@
                                                 class="btn btn-sm btn-success rounded-pill px-2 py-0 font-monospace fw-semibold align-baseline me-1 shadow-sm"
                                                 style="font-size:0.78rem; border-width:1px;"
                                                 title="Click to play clip C@(cn.ToString("D2")) video"
-                                                @onclick="() => ClipForm!.SelectClip(cn)">
+                                                @onclick="() => ClipForm.SelectClip(cn)">
                                             ▶ Play C@(cn.ToString("D2"))
                                         </button>
                                     }
@@ -89,7 +89,7 @@
                                         };
                                         <button type="button" class="btn btn-sm p-0 border-0 align-baseline"
                                                 @onclick:stopPropagation="true"
-                                                @onclick="() => Host.OpenVerificationModal(ListState!._detail.SceneNumber, cn, ver)">
+                                                @onclick="() => Host.OpenVerificationModal(ListState._detail.SceneNumber, cn, ver)">
                                             <span class="badge @badgeClass ms-1 d-inline-block text-center" style="min-width: 140px; cursor:pointer; padding: 0.35em 0.6em; font-size: 0.75rem;" title="Click to view verification report details">
                                                 @badgeText 📋
                                             </span>
@@ -97,19 +97,19 @@
                                     }
                                     <button type="button"
                                             class="btn btn-sm btn-outline-info py-0 px-1 ms-2 text-decoration-none small"
-                                            disabled="@(Host._busy || Gen!.JobRunning)"
+                                            disabled="@(Host._busy || Gen.JobRunning)"
                                             title="View past takes & version comparison grid for this clip"
                                             @onclick:stopPropagation="true"
-                                            @onclick="() => ClipVer!.OpenClipCompareAsync(ListState!._detail.SceneNumber, cn)">
+                                            @onclick="() => ClipVer.OpenClipCompareAsync(ListState._detail.SceneNumber, cn)">
                                         🎬 Takes
                                     </button>
                                     <button type="button"
                                             class="btn btn-sm btn-link text-danger p-0 ms-2 text-decoration-none"
                                             data-testid="@($"clip-delete-{cn}")"
-                                            disabled="@(Host._busy || Gen!.JobRunning)"
+                                            disabled="@(Host._busy || Gen.JobRunning)"
                                             title="Delete this clip (video + shot plan entry)"
                                             @onclick:stopPropagation="true"
-                                            @onclick="() => ClipForm!.RequestDeleteClip(ListState!._detail.SceneNumber, cn)">
+                                            @onclick="() => ClipForm.RequestDeleteClip(ListState._detail.SceneNumber, cn)">
                                         🗑️
                                     </button>
                                 </td>
@@ -135,7 +135,7 @@
                                     title="@(string.IsNullOrWhiteSpace(c.Dialogue) ? "Click to add dialogue" : c.Dialogue + " (click to edit)")"
                                     style="cursor:pointer;"
                                     @onclick:stopPropagation="true"
-                                    @onclick="() => ClipForm!.OpenClipEditor(c)">
+                                    @onclick="() => ClipForm.OpenClipEditor(c)">
                                     @if (string.IsNullOrWhiteSpace(c.Dialogue))
                                     {
                                         <span class="clip-dialogue-link clip-dialogue-link--empty">—</span>
@@ -147,7 +147,7 @@
                                 </td>
                             
                                 <td class="small font-monospace text-muted" data-testid="@($"clip-beat-{cn}")" title="Stable beat id">
-                                    @(string.IsNullOrWhiteSpace(c.Stage1BeatId) ? "—" : (c.Stage1BeatId!.Length > 14 ? c.Stage1BeatId[..12] + "…" : c.Stage1BeatId))
+                                    @(string.IsNullOrWhiteSpace(c.Stage1BeatId) ? "—" : (c.Stage1BeatId.Length > 14 ? c.Stage1BeatId[..12] + "…" : c.Stage1BeatId))
                                 </td>
                                 <td>
                                     @if (!c.OnDisk)

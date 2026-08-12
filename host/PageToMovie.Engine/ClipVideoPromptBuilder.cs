@@ -154,7 +154,7 @@ public static class ClipVideoPromptBuilder
         // Clip location_id, else scene primary_location_id from caller (many clips omit location_id).
         var locationKeyResolved = ResolveClipLocationKey(clipEl) ?? NormalizeLocationKey(fallbackLocationKey);
         var hasLocationPlate = !string.IsNullOrWhiteSpace(locationKeyResolved) &&
-                               ResolveLocationRefPath(projectDir, locationKeyResolved!) is not null;
+                               ResolveLocationRefPath(projectDir, locationKeyResolved) is not null;
         // Reserve one IMAGE slot for a locked set plate so multi-cast scenes still keep place identity.
         var charRefBudget = hasLocationPlate && maxRefs > 1 ? maxRefs - 1 : maxRefs;
 
@@ -188,7 +188,7 @@ public static class ClipVideoPromptBuilder
             // Soft: one location set plate after faces (reserved slot when plate exists).
             if (!string.IsNullOrWhiteSpace(locationKey) && orderedPaths.Count < maxRefs)
             {
-                var locPath = ResolveLocationRefPath(projectDir, locationKey!);
+                var locPath = ResolveLocationRefPath(projectDir, locationKey);
                 if (locPath is not null)
                 {
                     n++;

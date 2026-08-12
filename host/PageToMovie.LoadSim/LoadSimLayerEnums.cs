@@ -118,73 +118,74 @@ public enum BuildConfigurationMode
 
 public static class LoadSimLayerEnumExtensions
 {
-    public static string ToApiString(this LoadSimScenarioName scenario) => scenario switch
-    {
-        LoadSimScenarioName.Browse => "browse",
-        LoadSimScenarioName.Play => "play",
-        LoadSimScenarioName.Gen => "gen",
-        LoadSimScenarioName.Remux => "remux",
-        LoadSimScenarioName.Mixed => "mixed",
-        LoadSimScenarioName.Soak => "soak",
-        LoadSimScenarioName.Stress => "stress",
-        _ => "mixed"
-    };
-
     public static LoadSimScenarioName ParseScenarioName(string? value) =>
-        (value ?? "").Trim().ToLowerInvariant() switch
+            (value ?? "").Trim().ToLowerInvariant() switch
+            {
+                "browse" => LoadSimScenarioName.Browse,
+                "play" => LoadSimScenarioName.Play,
+                "gen" => LoadSimScenarioName.Gen,
+                "remux" => LoadSimScenarioName.Remux,
+                "soak" => LoadSimScenarioName.Soak,
+                "stress" => LoadSimScenarioName.Stress,
+                _ => LoadSimScenarioName.Mixed
+            };
+
+    public static string ToApiString(this LoadSimScenarioName scenario) => scenario switch
         {
-            "browse" => LoadSimScenarioName.Browse,
-            "play" => LoadSimScenarioName.Play,
-            "gen" => LoadSimScenarioName.Gen,
-            "remux" => LoadSimScenarioName.Remux,
-            "soak" => LoadSimScenarioName.Soak,
-            "stress" => LoadSimScenarioName.Stress,
-            _ => LoadSimScenarioName.Mixed
+            LoadSimScenarioName.Browse => "browse",
+            LoadSimScenarioName.Play => "play",
+            LoadSimScenarioName.Gen => "gen",
+            LoadSimScenarioName.Remux => "remux",
+            LoadSimScenarioName.Mixed => "mixed",
+            LoadSimScenarioName.Soak => "soak",
+            LoadSimScenarioName.Stress => "stress",
+            _ => "mixed"
         };
 
     public static string ToApiString(this LoadSimVirtualUserState state) => state switch
-    {
-        LoadSimVirtualUserState.Idle => "idle",
-        LoadSimVirtualUserState.Initializing => "initializing",
-        LoadSimVirtualUserState.Ready => "ready",
-        LoadSimVirtualUserState.Running => "running",
-        LoadSimVirtualUserState.Thinking => "thinking",
-        LoadSimVirtualUserState.Waiting => "waiting",
-        LoadSimVirtualUserState.Stopped => "stopped",
-        LoadSimVirtualUserState.Failed => "failed",
-        _ => "idle"
-    };
-
-    public static string ToMetricName(this LoadSimMetricType metric) => metric switch
-    {
-        LoadSimMetricType.Latency => "latency_ms",
-        LoadSimMetricType.Throughput => "req_per_sec",
-        LoadSimMetricType.ErrorRate => "error_rate",
-        LoadSimMetricType.RequestCount => "total_requests",
-        LoadSimMetricType.ActiveUsers => "active_users",
-        LoadSimMetricType.CpuUsage => "cpu_percent",
-        LoadSimMetricType.MemoryUsage => "memory_mb",
-        _ => "latency_ms"
-    };
-
-    public static string ToSuiteName(this BenchmarkSuiteName suite) => suite switch
-    {
-        BenchmarkSuiteName.ScreenplayAdaptation => "screenplay_adaptation",
-        BenchmarkSuiteName.ClassifierBenchmark => "classifier_benchmark",
-        BenchmarkSuiteName.SilentBeatEval => "silent_beat_eval",
-        BenchmarkSuiteName.PerformanceSoak => "performance_soak",
-        BenchmarkSuiteName.LiveApiBenchmark => "live_api_benchmark",
-        _ => "classifier_benchmark"
-    };
+        {
+            LoadSimVirtualUserState.Idle => "idle",
+            LoadSimVirtualUserState.Initializing => "initializing",
+            LoadSimVirtualUserState.Ready => "ready",
+            LoadSimVirtualUserState.Running => "running",
+            LoadSimVirtualUserState.Thinking => "thinking",
+            LoadSimVirtualUserState.Waiting => "waiting",
+            LoadSimVirtualUserState.Stopped => "stopped",
+            LoadSimVirtualUserState.Failed => "failed",
+            _ => "idle"
+        };
 
     public static string ToLabelName(this ClassifierGroundTruthLabel label) => label switch
-    {
-        ClassifierGroundTruthLabel.Action => "action",
-        ClassifierGroundTruthLabel.Dialogue => "dialogue",
-        ClassifierGroundTruthLabel.Transition => "transition",
-        ClassifierGroundTruthLabel.Parenthetical => "parenthetical",
-        ClassifierGroundTruthLabel.SceneHeading => "scene_heading",
-        ClassifierGroundTruthLabel.Unclassified => "unclassified",
-        _ => "unclassified"
-    };
+        {
+            ClassifierGroundTruthLabel.Action => "action",
+            ClassifierGroundTruthLabel.Dialogue => "dialogue",
+            ClassifierGroundTruthLabel.Transition => "transition",
+            ClassifierGroundTruthLabel.Parenthetical => "parenthetical",
+            ClassifierGroundTruthLabel.SceneHeading => "scene_heading",
+            ClassifierGroundTruthLabel.Unclassified => "unclassified",
+            _ => "unclassified"
+        };
+
+    public static string ToMetricName(this LoadSimMetricType metric) => metric switch
+        {
+            LoadSimMetricType.Latency => "latency_ms",
+            LoadSimMetricType.Throughput => "req_per_sec",
+            LoadSimMetricType.ErrorRate => "error_rate",
+            LoadSimMetricType.RequestCount => "total_requests",
+            LoadSimMetricType.ActiveUsers => "active_users",
+            LoadSimMetricType.CpuUsage => "cpu_percent",
+            LoadSimMetricType.MemoryUsage => "memory_mb",
+            _ => "latency_ms"
+        };
+
+    public static string ToSuiteName(this BenchmarkSuiteName suite) => suite switch
+        {
+            BenchmarkSuiteName.ScreenplayAdaptation => "screenplay_adaptation",
+            BenchmarkSuiteName.ClassifierBenchmark => "classifier_benchmark",
+            BenchmarkSuiteName.SilentBeatEval => "silent_beat_eval",
+            BenchmarkSuiteName.PerformanceSoak => "performance_soak",
+            BenchmarkSuiteName.LiveApiBenchmark => "live_api_benchmark",
+            _ => "classifier_benchmark"
+        };
+
 }

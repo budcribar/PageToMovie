@@ -117,17 +117,24 @@ public static class EnumExtensions
         _ => "DAY"
     };
 
-    public static TimeOfDay ParseTimeOfDay(string text)
+    public static string ToDisplayString(this SpeakerExtension ext) => ext switch
     {
-        if (string.IsNullOrWhiteSpace(text)) return TimeOfDay.DAY;
-        var upper = text.Trim().ToUpperInvariant();
-        if (upper.Contains("NIGHT")) return TimeOfDay.NIGHT;
-        if (upper.Contains("MOMENT")) return TimeOfDay.MOMENTS_LATER;
-        if (upper.Contains("CONTINUOUS")) return TimeOfDay.CONTINUOUS;
-        if (upper.Contains("DAWN")) return TimeOfDay.DAWN;
-        if (upper.Contains("DUSK")) return TimeOfDay.DUSK;
-        return TimeOfDay.DAY;
-    }
+        SpeakerExtension.VO => "V.O.",
+        SpeakerExtension.OS => "O.S.",
+        SpeakerExtension.CONTD => "CONT'D",
+        _ => ""
+    };
+
+    public static string ToDisplayString(this TransitionPreset preset) => preset switch
+    {
+        TransitionPreset.CutTo => "CUT TO:",
+        TransitionPreset.FadeIn => "FADE IN:",
+        TransitionPreset.FadeOut => "FADE OUT.",
+        TransitionPreset.DissolveTo => "DISSOLVE TO:",
+        TransitionPreset.SmashCutTo => "SMASH CUT TO:",
+        TransitionPreset.Blackout => "BLACKOUT",
+        _ => "CUT TO:"
+    };
 
     public static string GetJargonHint(this SceneEnvironment env) => env switch
     {
@@ -148,14 +155,6 @@ public static class EnumExtensions
         _ => "Time of day on the scene heading (after the location)."
     };
 
-    public static string ToDisplayString(this SpeakerExtension ext) => ext switch
-    {
-        SpeakerExtension.VO => "V.O.",
-        SpeakerExtension.OS => "O.S.",
-        SpeakerExtension.CONTD => "CONT'D",
-        _ => ""
-    };
-
     public static string GetJargonHint(this SpeakerExtension ext) => ext switch
     {
         SpeakerExtension.VO => "V.O. (Voice Over) — Character is heard but not speaking on-camera (narration, phone, thoughts).",
@@ -163,6 +162,18 @@ public static class EnumExtensions
         SpeakerExtension.CONTD => "CONT'D (Continued) — Same character keeps talking after an action or interruption.",
         _ => "No extension — standard on-screen dialogue."
     };
+
+    public static TimeOfDay ParseTimeOfDay(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return TimeOfDay.DAY;
+        var upper = text.Trim().ToUpperInvariant();
+        if (upper.Contains("NIGHT")) return TimeOfDay.NIGHT;
+        if (upper.Contains("MOMENT")) return TimeOfDay.MOMENTS_LATER;
+        if (upper.Contains("CONTINUOUS")) return TimeOfDay.CONTINUOUS;
+        if (upper.Contains("DAWN")) return TimeOfDay.DAWN;
+        if (upper.Contains("DUSK")) return TimeOfDay.DUSK;
+        return TimeOfDay.DAY;
+    }
 
     public static SpeakerExtension ParseSpeakerExtension(string text)
     {
@@ -173,17 +184,6 @@ public static class EnumExtensions
         if (upper.Contains("CONT")) return SpeakerExtension.CONTD;
         return SpeakerExtension.None;
     }
-
-    public static string ToDisplayString(this TransitionPreset preset) => preset switch
-    {
-        TransitionPreset.CutTo => "CUT TO:",
-        TransitionPreset.FadeIn => "FADE IN:",
-        TransitionPreset.FadeOut => "FADE OUT.",
-        TransitionPreset.DissolveTo => "DISSOLVE TO:",
-        TransitionPreset.SmashCutTo => "SMASH CUT TO:",
-        TransitionPreset.Blackout => "BLACKOUT",
-        _ => "CUT TO:"
-    };
 
     public static string GetJargonHint(this TransitionPreset preset) => preset switch
     {

@@ -10,39 +10,39 @@
 @using PageToMovie.Web.Services
 
 @{
-    var roster = List!.CharactersForUiGrouped().ToList();
+    var roster = List.CharactersForUiGrouped().ToList();
 }
 
 <div class="col-12 col-md-4 col-lg-3" data-testid="cast-index">
     <div class="d-flex align-items-center justify-content-between gap-1 mb-1 px-1">
         <span class="small fw-semibold">Cast index</span>
-        @if (List!.UnusedInPlanCount > 0)
+        @if (List.UnusedInPlanCount > 0)
         {
             <button type="button"
                     class="btn btn-link btn-sm py-0 px-1"
                     data-testid="char-toggle-unused"
                     title="Seeds kept on disk but not in any scene of the current plan"
-                    @onclick="() => List!._showUnusedInPlan = !List!._showUnusedInPlan">
-                @(List!._showUnusedInPlan
+                    @onclick="() => List._showUnusedInPlan = !List._showUnusedInPlan">
+                @(List._showUnusedInPlan
                     ? "Hide unused"
-                    : $"Show unused ({List!.UnusedInPlanCount})")
+                    : $"Show unused ({List.UnusedInPlanCount})")
             </button>
         }
     </div>
     <div class="small text-muted mb-2 px-1" data-testid="cast-index-summary">
-        <span title="In the current shot plan">@List!.UsedInPlanCount used</span>
+        <span title="In the current shot plan">@List.UsedInPlanCount used</span>
         <span class="mx-1">·</span>
-        <span title="Locked preferred look">@List!.LockedLookCount locked</span>
+        <span title="Locked preferred look">@List.LockedLookCount locked</span>
         <span class="mx-1">·</span>
-        <span class="@(List!.NeedLookCount > 0 ? "text-warning" : "")"
-              title="Faces still missing a preferred look">@List!.NeedLookCount need look</span>
+        <span class="@(List.NeedLookCount > 0 ? "text-warning" : "")"
+              title="Faces still missing a preferred look">@List.NeedLookCount need look</span>
     </div>
     <div class="list-group list-group-flush border rounded cast-index-list"
          style="max-height: 70vh; overflow: auto;">
         @foreach (var c in roster)
         {
-            var active = string.Equals(c.Key, List!._selectedKey, StringComparison.OrdinalIgnoreCase);
-            var thumb = List!.ListThumbUrl(c);
+            var active = string.Equals(c.Key, List._selectedKey, StringComparison.OrdinalIgnoreCase);
+            var thumb = List.ListThumbUrl(c);
             var hasVoice = Characters.CharactersVoice.HasVoiceProfile(c);
             var isAgeVariant = !string.IsNullOrWhiteSpace(c.VariantOf);
             var isLocked = c.Locked || c.HasPreferred;
@@ -56,9 +56,9 @@
                     data-char-used="@(c.UsedInPlan ? "true" : "false")"
                     class="list-group-item list-group-item-action char-list-item @(active ? "active" : "") @(isAgeVariant ? "char-list-item--variant" : "") @(!c.UsedInPlan ? "opacity-75" : "")"
                     style="@(isAgeVariant ? "padding-left: 2rem;" : null)"
-                    disabled="@List!.CastListLocked"
-                    title="@(List!.CastListLocked ? "Wait until the current action finishes" : (!c.UsedInPlan ? "Not in current shot plan — kept for later" : c.DisplayName))"
-                    @onclick="() => List!.SelectAsync(c.Key)">
+                    disabled="@List.CastListLocked"
+                    title="@(List.CastListLocked ? "Wait until the current action finishes" : (!c.UsedInPlan ? "Not in current shot plan — kept for later" : c.DisplayName))"
+                    @onclick="() => List.SelectAsync(c.Key)">
                 @if (c.VoiceOnly)
                 {
                     <span class="char-list-thumb @(hasVoice ? "char-list-thumb--voice" : "char-list-thumb--voice-missing")"

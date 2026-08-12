@@ -185,7 +185,7 @@ public static class Stage1Normalizer
             CoerceString(s.TryGetValue("dramatic_function", out var df) ? df : null) ?? "";
         s["summary"] =
             CoerceString(s.TryGetValue("summary", out var sum) ? sum : null)
-            ?? (string.IsNullOrEmpty(s[SettingKey] as string) ? $"Scene {sn}" : (string)s[SettingKey]!);
+            ?? (s[SettingKey] is string settingStr && !string.IsNullOrEmpty(settingStr) ? settingStr : $"Scene {sn}");
         s["transition_type"] =
             CoerceString(s.TryGetValue("transition_type", out var tt) ? tt : null) ?? "cut";
         s["lighting_continuity_token"] =

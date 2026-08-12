@@ -10,37 +10,37 @@
 @using PageToMovie.Web.Services
 
 
-                <div class="card mb-2 @(LookPipe!._mode == Characters.Mode.PickSource ? "border-primary" : "")">
+                <div class="card mb-2 @(LookPipe._mode == Characters.Mode.PickSource ? "border-primary" : "")">
                     <div class="card-header py-1 px-2 d-flex justify-content-between align-items-center gap-2">
                         <button type="button"
                                 class="char-panel-toggle border-0 bg-transparent text-start p-0 flex-grow-1 d-flex justify-content-between align-items-center gap-2"
-                                @onclick="() => LookEdit!._panelPictureOpen = !LookEdit!._panelPictureOpen">
+                                @onclick="() => LookEdit._panelPictureOpen = !LookEdit._panelPictureOpen">
                             <span><strong>Look & voice</strong></span>
-                            <span class="small text-muted">@(LookEdit!._panelPictureOpen ? "▲" : "▼")</span>
+                            <span class="small text-muted">@(LookEdit._panelPictureOpen ? "▲" : "▼")</span>
                         </button>
-                        @if (List!._selected.Locked)
+                        @if (List._selected.Locked)
                         {
                             <button type="button" class="btn btn-sm btn-outline-warning" disabled="@Host._busy"
                                     title="Unlock this character look so it can be changed"
-                                    @onclick="LookPipe!.UnlockAsync"
+                                    @onclick="LookPipe.UnlockAsync"
                                     @onclick:stopPropagation="true">Unlock</button>
                         }
                     </div>
-                    @if (LookEdit!._panelPictureOpen)
+                    @if (LookEdit._panelPictureOpen)
                     {
                         <div class="card-body py-2">
-                            @if (LookPipe!._mode == Characters.Mode.WaitingGenerate)
+                            @if (LookPipe._mode == Characters.Mode.WaitingGenerate)
                             {
                                 <div class="alert alert-info mb-0 py-2">
-                                    Generating three looks for @List!._selected.DisplayName…
-                                    @if (Jobs!.JobRunning)
+                                    Generating three looks for @List._selected.DisplayName…
+                                    @if (Jobs.JobRunning)
                                     {
                                         <button type="button" class="btn btn-sm btn-outline-danger ms-2 py-0"
-                                                disabled="@Host._busy" @onclick="Jobs!.CancelAsync">Cancel</button>
+                                                disabled="@Host._busy" @onclick="Jobs.CancelAsync">Cancel</button>
                                     }
                                 </div>
                             }
-                            else if (LookPipe!._mode == Characters.Mode.Compare && LookPipe!._allCandidates.Count > 0)
+                            else if (LookPipe._mode == Characters.Mode.Compare && LookPipe._allCandidates.Count > 0)
                             {
                                 <div class="char-pick">
                                     <div class="small fw-semibold mb-1">Pick the best look</div>
@@ -48,27 +48,27 @@
                                         Click a picture to zoom and compare detail. Use <strong>Use this look</strong> only when you’ve chosen.
                                     </p>
                                     <div class="char-pick__grid" data-testid="char-pick-grid">
-                                        @foreach (var c in LookPipe!._allCandidates)
+                                        @foreach (var c in LookPipe._allCandidates)
                                         {
                                             <CharacterPickCard Label="@c.Label"
                                                                ImageUrl="@c.Url"
-                                                               Selected="@(LookPipe!._chosenCandidateKey == Characters.CharactersLookPipeline.CandidateKey(c))"
+                                                               Selected="@(LookPipe._chosenCandidateKey == Characters.CharactersLookPipeline.CandidateKey(c))"
                                                                ShowZoomBadge="true"
-                                                               FrameDisabled="@(Host._busy || Jobs!.JobRunning)"
-                                                               FrameTitle="@($"Click to save this look for {List!._selected?.DisplayName}")"
+                                                               FrameDisabled="@(Host._busy || Jobs.JobRunning)"
+                                                               FrameTitle="@($"Click to save this look for {List._selected?.DisplayName}")"
                                                                FrameAriaLabel="@($"Use look {c.Label}")"
-                                                               OnFrameClick="@(() => LookPipe!.LockCandidateAsync(c))"
+                                                               OnFrameClick="@(() => LookPipe.LockCandidateAsync(c))"
                                                                UseLabel="Use this look"
                                                                UseTitle="Save as preferred look for film"
-                                                               UseDisabled="@(Host._busy || Jobs!.JobRunning)"
-                                                               OnUse="@(() => LookPipe!.LockCandidateAsync(c))"
+                                                               UseDisabled="@(Host._busy || Jobs.JobRunning)"
+                                                               OnUse="@(() => LookPipe.LockCandidateAsync(c))"
                                                                UseTestId="char-use-look">
                                                 <ExtraActions>
                                                     <button type="button"
                                                             class="btn btn-sm btn-outline-secondary"
-                                                            disabled="@(Host._busy || Jobs!.JobRunning)"
+                                                            disabled="@(Host._busy || Jobs.JobRunning)"
                                                             title="Zoom — inspect detail"
-                                                            @onclick="@(() => LookPipe!.OpenLookZoom(c))">
+                                                            @onclick="@(() => LookPipe.OpenLookZoom(c))">
                                                         Zoom
                                                     </button>
                                                 </ExtraActions>
@@ -76,32 +76,32 @@
                                         }
                                     </div>
                                     <button type="button" class="btn btn-sm btn-outline-secondary mt-2"
-                                            disabled="@(Host._busy || Jobs!.JobRunning)"
-                                            @onclick="LookPipe!.BackToSource">
+                                            disabled="@(Host._busy || Jobs.JobRunning)"
+                                            @onclick="LookPipe.BackToSource">
                                         ← Change route
                                     </button>
                                 </div>
 
                                 @* Full-screen zoom lightbox for detail compare *@
-                                <Characters_LookZoom Visible="@(LookPipe!._zoomCandidate is not null)"
-                                                     Label="@LookPipe!._zoomCandidate?.Label"
-                                                     ImageUrl="@LookPipe!._zoomCandidate?.Url"
-                                                     Scale="LookPipe!._zoomScale"
-                                                     CanNavigate="@(LookPipe!._allCandidates.Count >= 2)"
-                                                     UseDisabled="@(Host._busy || Jobs!.JobRunning)"
-                                                     OnClose="LookPipe!.CloseLookZoom"
-                                                     OnPrev="LookPipe!.ZoomPrev"
-                                                     OnNext="LookPipe!.ZoomNext"
-                                                     OnToggleScale="LookPipe!.ToggleLookZoomScale"
-                                                     OnUse="LookPipe!.LockFromZoomAsync" />
+                                <Characters_LookZoom Visible="@(LookPipe._zoomCandidate is not null)"
+                                                     Label="@LookPipe._zoomCandidate?.Label"
+                                                     ImageUrl="@LookPipe._zoomCandidate?.Url"
+                                                     Scale="LookPipe._zoomScale"
+                                                     CanNavigate="@(LookPipe._allCandidates.Count >= 2)"
+                                                     UseDisabled="@(Host._busy || Jobs.JobRunning)"
+                                                     OnClose="LookPipe.CloseLookZoom"
+                                                     OnPrev="LookPipe.ZoomPrev"
+                                                     OnNext="LookPipe.ZoomNext"
+                                                     OnToggleScale="LookPipe.ToggleLookZoomScale"
+                                                     OnUse="LookPipe.LockFromZoomAsync" />
                             }
-                            else if (LookPipe!._mode == Characters.Mode.PickSource)
+                            else if (LookPipe._mode == Characters.Mode.PickSource)
                             {
                                 @* Already have a preferred look *@
-                                @if (List!._selected.HasPreferred && LookPipe!._pictureRoute == Characters.PictureRoute.Choose)
+                                @if (List._selected.HasPreferred && LookPipe._pictureRoute == Characters.PictureRoute.Choose)
                                 {
                                     <div class="d-flex flex-wrap align-items-start gap-3 mb-2">
-                                        @if (List!.PreferredImageUrl is { Length: > 0 } pu)
+                                        @if (List.PreferredImageUrl is { Length: > 0 } pu)
                                         {
                                             <img src="@pu" alt="Preferred" class="rounded border char-preferred-preview" />
                                         }
@@ -110,28 +110,28 @@
                                             <p class="small text-muted mb-2">This picture is used for film. Tweak it with words, or generate new looks.</p>
                                             <div class="d-flex flex-wrap gap-2 mb-2">
                                                 <button type="button" class="btn btn-sm btn-outline-primary"
-                                                        disabled="@(Host._busy || Jobs!.JobRunning)"
-                                                        @onclick="() => LookPipe!.ChoosePictureRoute(Characters.PictureRoute.Generate)">
+                                                        disabled="@(Host._busy || Jobs.JobRunning)"
+                                                        @onclick="() => LookPipe.ChoosePictureRoute(Characters.PictureRoute.Generate)">
                                                     Generate new looks
                                                 </button>
-                                                <label class="btn btn-sm btn-outline-primary mb-0 @(Host._busy || Jobs!.JobRunning ? "disabled" : "")">
+                                                <label class="btn btn-sm btn-outline-primary mb-0 @(Host._busy || Jobs.JobRunning ? "disabled" : "")">
                                                     Replace with upload
-                                                    <InputFile OnChange="LookPipe!.OnUploadRefAsync"
+                                                    <InputFile OnChange="LookPipe.OnUploadRefAsync"
                                                                accept=".png,.jpg,.jpeg,.webp,.gif"
                                                                class="d-none"
-                                                               disabled="@(Host._busy || Jobs!.JobRunning)" />
+                                                               disabled="@(Host._busy || Jobs.JobRunning)" />
                                                 </label>
-                                                @if (LookBook!.CanUseBookPictures)
+                                                @if (LookBook.CanUseBookPictures)
                                                 {
                                                     <button type="button" class="btn btn-sm btn-outline-secondary"
-                                                            disabled="@(Host._busy || Jobs!.JobRunning)"
-                                                            @onclick="() => LookPipe!.ChoosePictureRoute(Characters.PictureRoute.Book)">
+                                                            disabled="@(Host._busy || Jobs.JobRunning)"
+                                                            @onclick="() => LookPipe.ChoosePictureRoute(Characters.PictureRoute.Book)">
                                                         From book pictures
                                                     </button>
                                                 }
                                                 <button type="button" class="btn btn-sm btn-outline-danger"
-                                                        disabled="@(Host._busy || Jobs!.JobRunning)"
-                                                        @onclick="@(() => LookPipe!.RequestDeleteImage("preferred", 0))">
+                                                        disabled="@(Host._busy || Jobs.JobRunning)"
+                                                        @onclick="@(() => LookPipe.RequestDeleteImage("preferred", 0))">
                                                     Remove
                                                 </button>
                                             </div>
@@ -162,33 +162,33 @@
                                         </div>
                                     </div>
                                 }
-                                else if (LookPipe!._pictureRoute == Characters.PictureRoute.Choose)
+                                else if (LookPipe._pictureRoute == Characters.PictureRoute.Choose)
                                 {
-                                    <p class="small text-muted mb-2">How do you want the look for <strong>@List!._selected.DisplayName</strong>?</p>
+                                    <p class="small text-muted mb-2">How do you want the look for <strong>@List._selected.DisplayName</strong>?</p>
                                     <div class="d-flex flex-column gap-2">
                                         <button type="button"
                                                 class="btn btn-outline-primary text-start"
-                                                disabled="@(Host._busy || Jobs!.JobRunning)"
-                                                @onclick="() => LookPipe!.ChoosePictureRoute(Characters.PictureRoute.Generate)"
+                                                disabled="@(Host._busy || Jobs.JobRunning)"
+                                                @onclick="() => LookPipe.ChoosePictureRoute(Characters.PictureRoute.Generate)"
                                                 data-testid="char-route-generate">
                                             <strong>Generate from description</strong>
                                             <div class="small opacity-75">Edit look text → create 3 options → pick one</div>
                                         </button>
-                                        <label class="btn btn-outline-primary text-start mb-0 @(Host._busy || Jobs!.JobRunning ? "disabled" : "")"
+                                        <label class="btn btn-outline-primary text-start mb-0 @(Host._busy || Jobs.JobRunning ? "disabled" : "")"
                                                data-testid="char-route-upload">
                                             <strong>Upload a photo</strong>
                                             <div class="small opacity-75">Your picture becomes the preferred look — no description needed</div>
-                                            <InputFile OnChange="LookPipe!.OnUploadRefAsync"
+                                            <InputFile OnChange="LookPipe.OnUploadRefAsync"
                                                        accept=".png,.jpg,.jpeg,.webp,.gif"
                                                        class="d-none"
-                                                       disabled="@(Host._busy || Jobs!.JobRunning)" />
+                                                       disabled="@(Host._busy || Jobs.JobRunning)" />
                                         </label>
-                                        @if (LookBook!.CanUseBookPictures)
+                                        @if (LookBook.CanUseBookPictures)
                                         {
                                             <button type="button"
                                                     class="btn btn-outline-primary text-start"
-                                                    disabled="@(Host._busy || Jobs!.JobRunning)"
-                                                    @onclick="() => LookPipe!.ChoosePictureRoute(Characters.PictureRoute.Book)"
+                                                    disabled="@(Host._busy || Jobs.JobRunning)"
+                                                    @onclick="() => LookPipe.ChoosePictureRoute(Characters.PictureRoute.Book)"
                                                     data-testid="char-route-book">
                                                 <strong>Guide from book pictures</strong>
                                                 <div class="small opacity-75">Pick illustrations from the PDF, then generate looks from them</div>
@@ -196,22 +196,22 @@
                                         }
                                     </div>
                                 }
-                                else if (LookPipe!._pictureRoute == Characters.PictureRoute.Generate)
+                                else if (LookPipe._pictureRoute == Characters.PictureRoute.Generate)
                                 {
                                     <div class="d-flex justify-content-between align-items-center mb-2">
                                         <span class="small fw-semibold">Generate from description</span>
                                         <button type="button" class="btn btn-link btn-sm text-muted p-0"
-                                                @onclick="() => LookPipe!.ChoosePictureRoute(Characters.PictureRoute.Choose)">← Routes</button>
+                                                @onclick="() => LookPipe.ChoosePictureRoute(Characters.PictureRoute.Choose)">← Routes</button>
                                     </div>
-                                    <CharacterLookPanel Description="@LookEdit!._editDescription"
-                                                       DescriptionChanged="LookEdit!.OnLookDescriptionChanged"
-                                                       VisualLock="@LookEdit!._editVisualLock"
-                                                       VisualLockChanged="LookEdit!.OnLookVisualLockChanged"
-                                                       ImageEditInstruction="@LookEdit!._imageEditInstruction"
-                                                       ImageEditInstructionChanged="LookEdit!.OnImageEditInstructionChanged"
-                                                       ShowImageEditInstruction="@(List!.PreferredImageUrl is { Length: > 0 })"
-                                                       Busy="@(Host._busy || Jobs!.JobRunning)"
-                                                       Hint="@(LookEdit!._lookSaveHint ?? "Description saves automatically.")"
+                                    <CharacterLookPanel Description="@LookEdit._editDescription"
+                                                       DescriptionChanged="LookEdit.OnLookDescriptionChanged"
+                                                       VisualLock="@LookEdit._editVisualLock"
+                                                       VisualLockChanged="LookEdit.OnLookVisualLockChanged"
+                                                       ImageEditInstruction="@LookEdit._imageEditInstruction"
+                                                       ImageEditInstructionChanged="LookEdit.OnImageEditInstructionChanged"
+                                                       ShowImageEditInstruction="@(List.PreferredImageUrl is { Length: > 0 })"
+                                                       Busy="@(Host._busy || Jobs.JobRunning)"
+                                                       Hint="@(LookEdit._lookSaveHint ?? "Description saves automatically.")"
                                                        TestId="char-look-panel">
                                         <Actions>
                                             <CapabilityLockedControl Enabled="Caps.ImageReady"
@@ -219,98 +219,98 @@
                                                                      SettingsHref="@Caps.ImageSettingsHref"
                                                                      TestId="char-generate-looks-cap">
                                                 <button type="button" class="btn btn-primary btn-sm"
-                                                        disabled="@(Host._busy || Jobs!.JobRunning || (string.IsNullOrWhiteSpace(LookEdit!._editDescription) && string.IsNullOrWhiteSpace(LookEdit!._imageEditInstruction)))"
-                                                        @onclick="LookPipe!.StartRegenerateAsync"
+                                                        disabled="@(Host._busy || Jobs.JobRunning || (string.IsNullOrWhiteSpace(LookEdit._editDescription) && string.IsNullOrWhiteSpace(LookEdit._imageEditInstruction)))"
+                                                        @onclick="LookPipe.StartRegenerateAsync"
                                                         data-testid="char-generate-looks">
-                                                    @(string.IsNullOrWhiteSpace(LookEdit!._imageEditInstruction)
+                                                    @(string.IsNullOrWhiteSpace(LookEdit._imageEditInstruction)
                                                         ? "Generate 3 looks"
                                                         : "Tweak face")
                                                 </button>
                                             </CapabilityLockedControl>
-                                            @if (LookEdit!._savingLook)
+                                            @if (LookEdit._savingLook)
                                             {
                                                 <span class="small text-muted">Saving…</span>
                                             }
                                         </Actions>
                                     </CharacterLookPanel>
                                 }
-                                else if (LookPipe!._pictureRoute == Characters.PictureRoute.Book)
+                                else if (LookPipe._pictureRoute == Characters.PictureRoute.Book)
                                 {
                                     <div class="d-flex justify-content-between align-items-center mb-2">
                                         <span class="small fw-semibold">Guide from book pictures</span>
                                         <button type="button" class="btn btn-link btn-sm text-muted p-0"
-                                                @onclick="() => { LookBook!._showBookCandidateGallery = false; LookPipe!.ChoosePictureRoute(Characters.PictureRoute.Choose); }">← Routes</button>
+                                                @onclick="() => { LookBook._showBookCandidateGallery = false; LookPipe.ChoosePictureRoute(Characters.PictureRoute.Choose); }">← Routes</button>
                                     </div>
                                     <p class="small text-muted mb-2">
                                         Select up to 3 illustrations that look like this character, then generate portraits guided by those pages.
                                     </p>
-                                    @if (!LookBook!._showBookCandidateGallery && !List!._selected.BookRefs.Any(b => b.Exists))
+                                    @if (!LookBook._showBookCandidateGallery && !List._selected.BookRefs.Any(b => b.Exists))
                                     {
                                         <button type="button" class="btn btn-primary btn-sm"
-                                                disabled="@(Host._busy || Jobs!.JobRunning)"
-                                                @onclick="LookBook!.ToggleBookCandidateGalleryAsync">
+                                                disabled="@(Host._busy || Jobs.JobRunning)"
+                                                @onclick="LookBook.ToggleBookCandidateGalleryAsync">
                                             Browse book pictures…
                                         </button>
                                     }
-                                    @if (List!._selected.BookRefs.Any(b => b.Exists))
+                                    @if (List._selected.BookRefs.Any(b => b.Exists))
                                     {
                                         <div class="d-flex flex-wrap gap-2 mb-2">
-                                            @foreach (var b in List!._selected.BookRefs.Where(x => x.Exists))
+                                            @foreach (var b in List._selected.BookRefs.Where(x => x.Exists))
                                             {
                                                 var bi = b.Index ?? 0;
                                                 var src = !string.IsNullOrEmpty(b.Url)
                                                     ? Host.CacheBust(b.Url!)
-                                                    : Host.CacheBust(Engine.CharacterBookRefUrl(Host._projectId, List!._selected.Key, bi));
+                                                    : Host.CacheBust(Engine.CharacterBookRefUrl(Host._projectId, List._selected.Key, bi));
                                                 <div class="char-seed-tile-wrap">
                                                     <div class="char-seed-tile char-seed-tile--on">
                                                         <img src="@src" alt="Book" />
                                                         <span class="char-seed-tile__label">Book</span>
                                                     </div>
                                                     <button type="button" class="char-seed-hide" title="Remove"
-                                                            disabled="@(Host._busy || Jobs!.JobRunning)"
-                                                            @onclick="@(() => LookPipe!.RequestDeleteImage("bookref", bi))">×</button>
+                                                            disabled="@(Host._busy || Jobs.JobRunning)"
+                                                            @onclick="@(() => LookPipe.RequestDeleteImage("bookref", bi))">×</button>
                                                 </div>
                                             }
                                         </div>
                                         <div class="d-flex flex-wrap gap-2">
                                             <button type="button" class="btn btn-sm btn-outline-secondary"
-                                                    disabled="@(Host._busy || Jobs!.JobRunning)"
-                                                    @onclick="LookBook!.ToggleBookCandidateGalleryAsync">
+                                                    disabled="@(Host._busy || Jobs.JobRunning)"
+                                                    @onclick="LookBook.ToggleBookCandidateGalleryAsync">
                                                 Change book picks
                                             </button>
                                             <button type="button" class="btn btn-primary btn-sm"
-                                                    disabled="@(Host._busy || Jobs!.JobRunning)"
-                                                    @onclick="LookPipe!.StartBookGuidedGenerateAsync">
+                                                    disabled="@(Host._busy || Jobs.JobRunning)"
+                                                    @onclick="LookPipe.StartBookGuidedGenerateAsync">
                                                 Generate 3 looks from book
                                             </button>
                                         </div>
                                     }
 
-                                    @if (LookBook!._showBookCandidateGallery)
+                                    @if (LookBook._showBookCandidateGallery)
                                     {
                                         <div class="border border-secondary border-opacity-50 rounded p-3 mt-3 bg-dark bg-opacity-75 text-white shadow-sm">
                                             <div class="d-flex justify-content-between align-items-center mb-2">
-                                                <strong class="small text-light">Book pictures for @List!._selected.DisplayName</strong>
+                                                <strong class="small text-light">Book pictures for @List._selected.DisplayName</strong>
                                                 <button type="button" class="btn btn-sm btn-outline-secondary"
-                                                        @onclick="() => LookBook!._showBookCandidateGallery = false">✕</button>
+                                                        @onclick="() => LookBook._showBookCandidateGallery = false">✕</button>
                                             </div>
-                                            @if (LookBook!._loadingBookCandidates)
+                                            @if (LookBook._loadingBookCandidates)
                                             {
                                                 <div class="small text-muted py-2">Scanning book illustrations…</div>
                                             }
-                                            else if (LookBook!._rankedBookCandidates is null || LookBook!._rankedBookCandidates.Count == 0)
+                                            else if (LookBook._rankedBookCandidates is null || LookBook._rankedBookCandidates.Count == 0)
                                             {
                                                 <div class="small text-muted py-2">No book illustration candidates found for this project.</div>
                                             }
                                             else
                                             {
                                                 <div class="d-flex flex-wrap gap-2 py-2" style="max-height: 320px; overflow-y: auto;">
-                                                    @foreach (var cand in LookBook!._rankedBookCandidates)
+                                                    @foreach (var cand in LookBook._rankedBookCandidates)
                                                     {
-                                                        var isSel = LookBook!._selectedBookCandidatePaths.Contains(cand.PathRel, StringComparer.OrdinalIgnoreCase);
+                                                        var isSel = LookBook._selectedBookCandidatePaths.Contains(cand.PathRel, StringComparer.OrdinalIgnoreCase);
                                                         <div class="border rounded p-1 text-center bg-dark"
                                                              style="width: 110px; cursor: pointer; border-color: @(isSel ? "#6366f1" : "#374151"); background: @(isSel ? "rgba(99, 102, 241, 0.25)" : "#151922");"
-                                                             @onclick="() => LookBook!.ToggleBookCandidateSelection(cand.PathRel)">
+                                                             @onclick="() => LookBook.ToggleBookCandidateSelection(cand.PathRel)">
                                                             <div class="position-relative mb-1" style="height: 100px; background: #000; overflow: hidden; border-radius: 4px;">
                                                                 <img src="@cand.Url" alt="@cand.Name" style="width: 100%; height: 100%; object-fit: contain;" />
                                                                 @if (isSel)
@@ -323,32 +323,32 @@
                                                     }
                                                 </div>
                                                 <div class="d-flex justify-content-between align-items-center mt-2 pt-2 border-top border-secondary border-opacity-50">
-                                                    <span class="small text-muted">@LookBook!._selectedBookCandidatePaths.Count of 3 selected</span>
+                                                    <span class="small text-muted">@LookBook._selectedBookCandidatePaths.Count of 3 selected</span>
                                                     <button type="button" class="btn btn-sm btn-success"
-                                                            disabled="@(Host._busy || LookBook!._savingBookRefs || LookBook!._selectedBookCandidatePaths.Count == 0)"
-                                                            @onclick="LookBook!.ApplySelectedBookCandidatesAsync">
-                                                        @(LookBook!._savingBookRefs ? "Saving…" : "Use selected")
+                                                            disabled="@(Host._busy || LookBook._savingBookRefs || LookBook._selectedBookCandidatePaths.Count == 0)"
+                                                            @onclick="LookBook.ApplySelectedBookCandidatesAsync">
+                                                        @(LookBook._savingBookRefs ? "Saving…" : "Use selected")
                                                     </button>
                                                 </div>
                                             }
                                         </div>
                                     }
                                 }
-                                else if (LookPipe!._pictureRoute == Characters.PictureRoute.Upload)
+                                else if (LookPipe._pictureRoute == Characters.PictureRoute.Upload)
                                 {
                                     @* Upload is one-shot via InputFile on route cards; this branch is a fallback *@
                                     <label class="btn btn-primary btn-sm mb-0">
                                         Choose photo…
-                                        <InputFile OnChange="LookPipe!.OnUploadRefAsync"
+                                        <InputFile OnChange="LookPipe.OnUploadRefAsync"
                                                    accept=".png,.jpg,.jpeg,.webp,.gif"
                                                    class="d-none"
-                                                   disabled="@(Host._busy || Jobs!.JobRunning)" />
+                                                   disabled="@(Host._busy || Jobs.JobRunning)" />
                                     </label>
-                                    <button type="button" class="btn btn-link btn-sm" @onclick="() => LookPipe!.ChoosePictureRoute(Characters.PictureRoute.Choose)">← Routes</button>
+                                    <button type="button" class="btn btn-link btn-sm" @onclick="() => LookPipe.ChoosePictureRoute(Characters.PictureRoute.Choose)">← Routes</button>
                                 }
                             }
 
-                            @if (Voice!.ShowVoiceFields(List!._selected))
+                            @if (Voice.ShowVoiceFields(List._selected))
                             {
                                 <hr class="my-3" />
                                 <div class="char-voice-inline" data-testid="char-voice-section">
@@ -357,11 +357,11 @@
                                             <strong class="small">Voice</strong>
                                             <span class="badge text-bg-secondary ms-1" style="font-size:0.65rem">optional</span>
                                         </div>
-                                        @if (Characters.CharactersVoice.HasVoiceProfile(List!._selected))
+                                        @if (Characters.CharactersVoice.HasVoiceProfile(List._selected))
                                         {
                                             <span class="badge text-bg-success" style="font-size:0.65rem">Profile set</span>
                                         }
-                                        else if (List!._selected.HasVoiceCloneSample)
+                                        else if (List._selected.HasVoiceCloneSample)
                                         {
                                             <span class="badge text-bg-info text-dark" style="font-size:0.65rem">Clone sample</span>
                                         }
@@ -381,7 +381,7 @@
                                     </p>
                                     <button type="button"
                                             class="btn btn-sm btn-outline-secondary"
-                                            @onclick="() => Voice!._forceShowVoice = true">
+                                            @onclick="() => Voice._forceShowVoice = true">
                                         Add voice…
                                     </button>
                                 </div>
@@ -390,7 +390,7 @@
                     }
                 </div>
 
-                @if (List!.HasAgeVariants(List!._selected))
+                @if (List.HasAgeVariants(List._selected))
                 {
                     <div class="card mb-2" data-testid="char-age-variants">
                         <div class="card-header py-1 px-2">
@@ -398,15 +398,15 @@
                         </div>
                         <div class="card-body py-2">
                             <p class="small text-muted mb-2">
-                                @List!._selected.DisplayName appears at more than one age in this story —
+                                @List._selected.DisplayName appears at more than one age in this story —
                                 each life stage gets its own look and voice.
                             </p>
                             <div class="d-flex flex-wrap gap-2">
-                                @foreach (var sib in List!.VariantSiblingsOf(List!._selected))
+                                @foreach (var sib in List.VariantSiblingsOf(List._selected))
                                 {
                                     <button type="button" class="btn btn-sm btn-outline-secondary"
-                                            disabled="@(Host._busy || Jobs!.JobRunning)"
-                                            @onclick="() => List!.SelectAsync(sib.Key)">
+                                            disabled="@(Host._busy || Jobs.JobRunning)"
+                                            @onclick="() => List.SelectAsync(sib.Key)">
                                         @Characters.CharactersListState.AgeVariantLabel(sib)
                                     </button>
                                 }

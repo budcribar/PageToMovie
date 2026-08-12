@@ -47,7 +47,7 @@ public sealed class ProjectAclService : IProjectAclService
         try
         {
             var proj = await _projects.GetProjectAsync(projectId, ct).ConfigureAwait(false);
-            return string.IsNullOrWhiteSpace(proj?.OwnerUserId) ? null : proj!.OwnerUserId;
+            return string.IsNullOrWhiteSpace(proj?.OwnerUserId) ? null : proj.OwnerUserId;
         }
         catch
         {
