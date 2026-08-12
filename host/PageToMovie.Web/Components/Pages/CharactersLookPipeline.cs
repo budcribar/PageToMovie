@@ -278,7 +278,7 @@ public partial class Characters
             {
                 Kind = "variant",
                 Index = v.Index ?? 1,
-                Label = $"Option {v.Index}",
+                Label = $"Look #{v.Index}",
                 // Bust cache so second generate doesn't show stale first-round images
                 Url = S.CacheBust(S.Engine.CharacterVariantUrl(S._projectId, S.List._selected.Key, v.Index ?? 1)),
             }).ToList();

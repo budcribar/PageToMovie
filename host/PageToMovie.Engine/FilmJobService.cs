@@ -2205,13 +2205,19 @@ public sealed class FilmJobService
             });
             await AppendLogAsync($"mode={result.Mode} · {result.Paths.Count} file(s)");
 
-            if (result.LockedAsPreferred)
+            if (result.PreviousVariantIndex is int prevLoc && result.NewVariantIndex is int nextLoc)
+            {
+                await FinishAsync(
+                    "done",
+                    $"New look is #{nextLoc} — current lock is still #{prevLoc}. Click a lock to keep old or switch.");
+            }
+            else if (result.LockedAsPreferred)
             {
                 await FinishAsync(
                     "done",
                     $"Plate tweaked for {req.LocKey} — new look is locked. Tweak again with words if needed.");
             }
-            else if (req.AutoLockBest && result.Paths.Count > 0)
+            else if (req.AutoLockBest && string.IsNullOrWhiteSpace(req.ImageEditInstruction) && result.Paths.Count > 0)
             {
                 await UpdateAsync(s => s.Message = $"AI picking best set for {req.LocKey}…");
                 var (best, _) = await _locations.AutoLockBestVariantAsync(
@@ -2313,13 +2319,19 @@ public sealed class FilmJobService
                     ? $" · book refs: {string.Join(", ", result.BookRefs)}"
                     : ""));
 
-            if (result.LockedAsPreferred)
+            if (result.PreviousVariantIndex is int prevChar && result.NewVariantIndex is int nextChar)
+            {
+                await FinishAsync(
+                    "done",
+                    $"New look is #{nextChar} — current lock is still #{prevChar}. Pick one.");
+            }
+            else if (result.LockedAsPreferred)
             {
                 await FinishAsync(
                     "done",
                     $"Portrait tweaked for {req.CharKey} — new look is locked. Tweak again with words if needed.");
             }
-            else if (req.AutoLockBest && result.Paths.Count > 0)
+            else if (req.AutoLockBest && !req.IterativeEdit && result.Paths.Count > 0)
             {
                 await UpdateAsync(s => s.Message = $"AI picking best look for {req.CharKey}…");
                 var (best, _) = await _characters.AutoLockBestVariantAsync(

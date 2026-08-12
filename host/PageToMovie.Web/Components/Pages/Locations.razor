@@ -195,8 +195,7 @@
                                 <div class="mb-3" data-testid="loc-variants">
                                     <div class="small fw-semibold mb-1">Pick a set look</div>
                                     <p class="small text-muted mb-2">
-                                        Click the lock on a look to make it preferred. AI auto-picks on generate; switch anytime.
-                                        To tweak the locked one without rewriting the description, use <strong>Tweak locked plate</strong> below.
+                                        Click the lock on the look you want. A tweak adds a new tile — keep the current lock or switch to the new one.
                                     </p>
                                     <div class="d-flex flex-wrap gap-2">
                                         @foreach (var v in _selected.Variants.Where(x => x.Exists).OrderBy(x => x.Index))

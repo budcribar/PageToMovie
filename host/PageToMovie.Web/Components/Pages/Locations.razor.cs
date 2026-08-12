@@ -418,8 +418,9 @@ public partial class Locations : IDisposable
             if (hasEdit)
                 _imageEditInstruction = "";
             _message = hasEdit
-                ? "Tweaking locked plate (one look) — will replace preferred. Say another edit if you want more change…"
+                ? "New look is ready next to the current lock — click a lock to keep old or switch."
                 : "Generating 3 set looks — AI will lock the best…";
+
             StartJobPoll();
         }
         catch (Exception ex)

@@ -65,9 +65,14 @@ public sealed class LocationDesignService
         n = Math.Clamp(n <= 0 ? 3 : n, 1, 6);
         var preferred = _projects.ResolveLocationRefPath(projectId, locKey);
         var hasEdit = !string.IsNullOrWhiteSpace(imageEditInstruction) && preferred is not null;
-        // Iterative plate tweaks: one edit at a time (user → re-tweak), not a 3-way bake-off.
+        // Iterative plate tweaks: one new look, keep the current lock as a sibling to pick from.
+        LookTweakSlots.Pair? tweakSlots = null;
         if (hasEdit)
+        {
             n = 1;
+            tweakSlots = LookTweakSlots.Allocate(
+                locDir, i => ProjectStore.LocationVariantFileName(locKey, i), preferred);
+        }
         var imageModel = ProjectModelSelection.RequireImage(
             await _projects.GetConfigAsync(projectId, ct).ConfigureAwait(false),
             "Location plate generation");
@@ -138,7 +143,7 @@ public sealed class LocationDesignService
         var paths = new List<string>();
         for (var i = 0; i < blobs.Count && i < n; i++)
         {
-            var idx = i + 1;
+            var idx = tweakSlots is { } slots ? slots.Next : i + 1;
             var fileName = ProjectStore.LocationVariantFileName(locKey, idx);
             var full = Path.Combine(locDir, fileName);
             await File.WriteAllBytesAsync(full, blobs[i], ct).ConfigureAwait(false);
@@ -146,19 +151,18 @@ public sealed class LocationDesignService
             onProgress?.Invoke($"saved variant {idx}/{n} → {fileName}");
         }
 
-        // Image-edit tweak: immediately become the locked preferred plate (no pick among three).
-        if (hasEdit && blobs.Count > 0)
-        {
-            var locked = _projects.LockLocationRefFromBytes(projectId, locKey, blobs[0]);
-            onProgress?.Invoke($"Locked edited plate → {Path.GetFileName(locked)}");
-        }
+        // Tweak: keep current preferred locked. Operator picks new vs old from the tiles.
+        if (hasEdit && tweakSlots is { } kept)
+            onProgress?.Invoke($"New look is #{kept.Next} — current lock is #{kept.Previous}. Click a lock to choose.");
 
         return new LocationDesignResult
         {
             Mode = mode,
             Paths = paths,
             LocKey = locKey,
-            LockedAsPreferred = hasEdit && blobs.Count > 0,
+            LockedAsPreferred = false,
+            PreviousVariantIndex = tweakSlots?.Previous,
+            NewVariantIndex = tweakSlots?.Next,
         };
     }
 
@@ -262,4 +266,6 @@ public sealed class LocationDesignResult
     public IReadOnlyList<string> Paths { get; init; } = Array.Empty<string>();
     /// <summary>True when an image-edit tweak was applied and locked as preferred (no multi-variant pick).</summary>
     public bool LockedAsPreferred { get; init; }
+    public int? PreviousVariantIndex { get; init; }
+    public int? NewVariantIndex { get; init; }
 }
