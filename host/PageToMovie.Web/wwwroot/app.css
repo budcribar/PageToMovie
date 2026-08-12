@@ -1757,7 +1757,22 @@ h1:focus {
     margin-bottom: 0.5rem;
 }
 
-/* Studio process strip (5 steps) */
+/* Studio process strip (5 steps) + Back/Next chrome */
+.ptm-process-nav {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: 0.5rem 0.65rem;
+}
+.ptm-process-nav__btn {
+    flex: 0 0 auto;
+    align-self: center;
+    min-width: 4.75rem;
+    white-space: nowrap;
+}
+.ptm-process-nav .ptm-step-strip {
+    min-width: 0;
+}
 .ptm-step-strip--studio {
     grid-template-columns: repeat(5, minmax(0, 1fr));
 }
@@ -1769,6 +1784,13 @@ h1:focus {
 @media (max-width: 640px) {
     .ptm-step-strip--studio {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .ptm-process-nav {
+        justify-content: space-between;
+    }
+    .ptm-process-nav .ptm-step-strip {
+        order: 3;
+        flex: 1 1 100%;
     }
 }
 .ptm-voice-clone {

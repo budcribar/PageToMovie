@@ -1,12 +1,23 @@
 <style>.ptm-process-strip-loading { cursor: wait; opacity: 0.9; }</style>
 @namespace PageToMovie.Web.Components
 @* Full studio: Setup (0) → Book → Estimate → Film → Review; Cast is optional craft (Edit path).
-   SimpleMode: Book → Your voice → Film (bait path for library + narrator clone) *@
+   SimpleMode: Book → Your voice → Film (bait path for library + narrator clone)
+   Back / Next always sit with the strip so every stage has the same prev/next chrome. *@
 @inject ActiveProjectState ActiveProject
 @inject NavigationManager Nav
 @inject IAppLocalizer L
 
-<nav class="ptm-step-strip ptm-step-strip--studio mb-3" aria-label="Studio process steps">
+<div class="ptm-process-nav mb-3" data-testid="studio-process-nav">
+    <button type="button"
+            class="btn btn-sm btn-outline-secondary ptm-process-nav__btn"
+            data-testid="studio-step-back"
+            disabled="@(!CanGoBack)"
+            title="@(CanGoBack ? $"Back to {PrevStep.Label}" : (PrevStep.BlockedReason ?? "No previous step"))"
+            @onclick="GoBack">
+        ← Back
+    </button>
+
+    <nav class="ptm-step-strip ptm-step-strip--studio mb-0 flex-grow-1" aria-label="Studio process steps">
     @if (NeedsSetup)
     {
         <a class="ptm-step @(Active == "setup" ? "is-active" : "")"
@@ -93,7 +104,7 @@
         </a>
         <a class="ptm-step @(Active == "estimate" ? "is-active" : "") @(!ActiveProject.CanEstimate && Active != "estimate" ? "is-disabled" : "")"
            href="@(ActiveProject.CanEstimate || Active == "estimate" ? "cost" : "javascript:void(0)")"
-           title="@(ActiveProject.CanEstimate ? "Forecast · Generate movie or Edit plan (cast lives under Edit)" : ActiveProject.EstimateBlockedReason)"
+           title="@(ActiveProject.CanEstimate ? "Forecast · Generate movie" : ActiveProject.EstimateBlockedReason)"
            data-testid="studio-step-estimate"
            @onclick:preventDefault="@(!ActiveProject.CanEstimate && Active != "estimate")">
             <span class="ptm-step__num">2</span>
@@ -102,7 +113,7 @@
                 <span class="ptm-step__hint">@L["ProcessStrip.QuoteConfirm"]</span>
             </span>
         </a>
-        @* Cast is NOT on this strip — open via Estimate → Edit plan → craft *@
+        @* Cast is NOT on this strip — open via craft / Characters *@
         <a class="ptm-step @(Active == "film" ? "is-active" : "") @(!ActiveProject.CanScenes && Active != "film" ? "is-disabled" : "")"
            href="@(ActiveProject.CanScenes || Active == "film" ? "scenes" : "javascript:void(0)")"
            title="@(ActiveProject.CanScenes ? "Watch and generate clips" : (ActiveProject.CanEstimate ? "Use Estimate → Generate movie first" : ActiveProject.ScenesBlockedReason))"
@@ -128,4 +139,14 @@
             </a>
         }
     }
-</nav>
+    </nav>
+
+    <button type="button"
+            class="btn btn-sm btn-outline-primary ptm-process-nav__btn"
+            data-testid="studio-step-next"
+            disabled="@(!CanGoNext)"
+            title="@(CanGoNext ? $"Next: {NextStep.Label}" : (NextStep.BlockedReason ?? "No next step"))"
+            @onclick="GoNext">
+        Next →
+    </button>
+</div>

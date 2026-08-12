@@ -51,4 +51,88 @@ public partial class StudioProcessStrip
     }
 
     private void GoToModelSettings() => Nav.NavigateTo("configuration?focus=planning");
+
+    private string ActiveKey => (Active ?? "book").Trim().ToLowerInvariant();
+
+    /// <summary>Previous primary step (setup/book/estimate/film/review spine).</summary>
+    private (string? Href, string Label, string? BlockedReason) PrevStep
+    {
+        get
+        {
+            if (UseSimple)
+            {
+                return ActiveKey switch
+                {
+                    "cast" => ("simple-voice", "Story", null),
+                    "film" => ("simple-voice", "Your voice", null),
+                    "review" => (ActiveProject.CanScenes ? "scenes?simple=1" : null, "Movie",
+                        ActiveProject.CanScenes ? null : ActiveProject.ScenesBlockedReason),
+                    _ => (null, "Back", null),
+                };
+            }
+
+            return ActiveKey switch
+            {
+                "setup" => (null, "Back", null),
+                "book" => NeedsSetup ? ("configuration", "Setup", null) : (null, "Back", null),
+                "estimate" or "cast" or "characters" or "locations" =>
+                    (BookLocked ? null : "adaptation", "Book", BookLocked ? "Connect API keys in Setup first" : null),
+                "film" => (ActiveProject.CanEstimate ? "cost" : null, "Estimate",
+                    ActiveProject.CanEstimate ? null : ActiveProject.EstimateBlockedReason),
+                "review" => (ActiveProject.CanScenes ? "scenes" : "cost", "Film", null),
+                _ => (null, "Back", null),
+            };
+        }
+    }
+
+    private (string? Href, string Label, string? BlockedReason) NextStep
+    {
+        get
+        {
+            if (UseSimple)
+            {
+                return ActiveKey switch
+                {
+                    "book" or "setup" => ("simple-voice", "Your voice", null),
+                    "cast" => (ActiveProject.CanScenes ? "scenes?simple=1" : null, "Movie",
+                        ActiveProject.CanScenes ? null : ActiveProject.ScenesBlockedReason),
+                    "film" => (ActiveProject.CanReview ? "review" : null, "Review",
+                        ActiveProject.CanReview ? null : "Review unlocks after you have a cut"),
+                    _ => (null, "Next", null),
+                };
+            }
+
+            return ActiveKey switch
+            {
+                "setup" => (BookLocked ? null : "adaptation", "Book", BookLocked ? "Connect API keys first" : null),
+                "book" => (ActiveProject.CanEstimate ? "cost" : null, "Estimate",
+                    ActiveProject.CanEstimate ? null : ActiveProject.EstimateBlockedReason),
+                "estimate" or "cast" or "characters" or "locations" =>
+                    (ActiveProject.CanScenes ? "scenes" : null, "Film",
+                        ActiveProject.CanScenes
+                            ? null
+                            : (ActiveProject.CanEstimate
+                                ? "Generate movie on Estimate first"
+                                : ActiveProject.ScenesBlockedReason)),
+                "film" => (ActiveProject.CanReview ? "review" : null, "Review",
+                    ActiveProject.CanReview ? null : "Review unlocks after you have a cut"),
+                _ => (null, "Next", null),
+            };
+        }
+    }
+
+    private bool CanGoBack => !string.IsNullOrWhiteSpace(PrevStep.Href);
+    private bool CanGoNext => !string.IsNullOrWhiteSpace(NextStep.Href);
+
+    private void GoBack()
+    {
+        if (PrevStep.Href is { Length: > 0 } href)
+            Nav.NavigateTo(href);
+    }
+
+    private void GoNext()
+    {
+        if (NextStep.Href is { Length: > 0 } href)
+            Nav.NavigateTo(href);
+    }
 }

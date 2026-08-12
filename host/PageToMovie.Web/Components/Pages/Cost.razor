@@ -208,20 +208,16 @@ else
                                 Generate movie
                             </button>
                         }
-                        <a class="btn btn-outline-secondary"
-                           href="@(ActiveProject.CanScenes ? "scenes" : "javascript:void(0)")"
-                           data-testid="decision-go-film"
-                           title="@(ActiveProject.CanScenes ? "Open Film without starting a job" : "Film unlocks after you generate (shot plan)")"
-                           @onclick:preventDefault="@(!ActiveProject.CanScenes)">
-                            Go to Film
-                        </a>
                         @if (GeneratingBusy)
                         {
                             <span class="small text-info" data-testid="decision-generating-busy">
-                                Job running — watch on Film.
+                                Job running — use Next → Film to watch.
                             </span>
                         }
                     </div>
+                    <p class="cost-hub-meta mt-1 mb-0">
+                        Generate accepts the estimate and starts the movie. Use <strong>Next</strong> on the strip for Film when ready.
+                    </p>
                 </div>
             }
             else if (IsViewerOnly)
