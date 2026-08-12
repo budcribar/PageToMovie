@@ -103,6 +103,44 @@
                             </p>
                         </div>
                         <div class="col-md-12 mt-3 pt-3 border-top">
+                            <div class="fw-semibold small mb-2">Screenplay tools (admin)</div>
+                            <p class="small text-muted mb-2">
+                                One-shot ops for an existing draft. Normal users get enrich automatically after
+                                <strong>Create draft from book</strong>; use this if a project skipped that step.
+                            </p>
+                            <div class="d-flex flex-wrap gap-2 align-items-center">
+                                <select class="form-select form-select-sm" style="max-width: 16rem;"
+                                        @bind="Archive!._enrichProjectId"
+                                        disabled="@(Archive!._archiveBusy || Archive!._projectOptions.Count == 0)"
+                                        data-testid="admin-enrich-project">
+                                    @if (Archive!._projectOptions.Count == 0)
+                                    {
+                                        <option value="">No projects</option>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var p in Archive!._projectOptions)
+                                        {
+                                            <option value="@p">@p</option>
+                                        }
+                                    }
+                                </select>
+                                <button type="button"
+                                        class="btn btn-sm btn-outline-warning"
+                                        data-testid="admin-enrich-run"
+                                        disabled="@(Archive!._archiveBusy || string.IsNullOrWhiteSpace(Archive!._enrichProjectId))"
+                                        title="Add visual detail to action lines from the book. Dialogue and scene structure stay the same. Re-approve the screenplay afterward."
+                                        @onclick="Archive!.EnrichScreenplayAsync">
+                                    @(Archive!._archiveBusy && Archive!._archiveAction == "enrich"
+                                        ? "Enriching…"
+                                        : "Enrich screenplay")
+                                </button>
+                            </div>
+                            <p class="form-text mb-0 mt-1">
+                                After enrich: open Book → Re-approve if needed, then rebuild shot plan / looks if they already exist.
+                            </p>
+                        </div>
+                        <div class="col-md-12 mt-3 pt-3 border-top">
                             <div class="fw-semibold small mb-2">🎵 Augment &amp; Synthesize Project Music Scores</div>
                             <div class="d-flex flex-wrap gap-2 align-items-center">
                                 <select class="form-select form-select-sm" style="max-width: 16rem;"

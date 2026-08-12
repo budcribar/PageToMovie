@@ -21,6 +21,8 @@ public partial class Admin
         internal List<string> _userList = new();
         internal string _exportProjectId = "";
         internal string _augmentProjectId = "";
+        /// <summary>Target for admin one-shot screenplay enrich.</summary>
+        internal string _enrichProjectId = "";
         internal string _importPreferredId = "";
         internal string _importTargetUserId = "";
         internal bool _importOverwrite;
@@ -62,6 +64,14 @@ public partial class Admin
                     _augmentProjectId = projs?.Active?.Id
                                         ?? _projectOptions.FirstOrDefault()
                                         ?? "";
+                }
+                if (string.IsNullOrWhiteSpace(_enrichProjectId) ||
+                    !_projectOptions.Contains(_enrichProjectId, StringComparer.OrdinalIgnoreCase))
+                {
+                    _enrichProjectId = projs?.Active?.Id
+                                       ?? _exportProjectId
+                                       ?? _projectOptions.FirstOrDefault()
+                                       ?? "";
                 }
             }
             catch
@@ -360,7 +370,37 @@ public partial class Admin
             });
         }
 
-        internal async Task AugmentMusicAsync()
+        
+        internal async Task EnrichScreenplayAsync()
+        {
+            if (string.IsNullOrWhiteSpace(_enrichProjectId)) return;
+            _archiveBusy = true;
+            _archiveAction = "enrich";
+            _archiveError = null;
+            _archiveMsg = $"Enriching screenplay for {_enrichProjectId} (visual detail from book; dialogue unchanged)…";
+            await RunArchiveActionAsync(async () =>
+            {
+                var result = await S.Api.EmbellishScreenplayAsync(_enrichProjectId);
+                if (result is null)
+                {
+                    _archiveError = "Enrich failed — no response.";
+                    _archiveMsg = null;
+                    return;
+                }
+                if (result.Ok)
+                {
+                    _archiveMsg = result.Message
+                        ?? $"Enriched {_enrichProjectId}. Re-approve the screenplay if it was already approved.";
+                }
+                else
+                {
+                    _archiveError = result.Error ?? "Enrich failed.";
+                    _archiveMsg = null;
+                }
+            });
+        }
+
+internal async Task AugmentMusicAsync()
         {
             if (string.IsNullOrWhiteSpace(_augmentProjectId)) return;
 

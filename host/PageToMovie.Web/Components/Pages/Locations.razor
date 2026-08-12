@@ -228,7 +228,8 @@
                                                ImageEditInstructionChanged="OnImageEditChanged"
                                                ShowImageEditInstruction="@(_selected.HasPreferred || _selected.Locked)"
                                                Busy="@_busy"
-                                               Hint="@(_saveHint ?? "Text saves automatically · use Dictate to speak")"
+                                               Hint="@(_saveHint ?? "Description & visual lock save automatically.")"
+
                                                TestId="loc-look-panel">
                                 <Actions>
                                     <button type="button" class="btn btn-sm btn-primary"
