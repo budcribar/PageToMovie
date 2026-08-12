@@ -74,15 +74,28 @@ More detail: **`host/README.md`**.
 
 ```mermaid
 flowchart TD
-    A["Raw Story Text / PDF / Fountain"] --> B["Step 1: Text Ingestion\n(BookPrepareService)"]
-    B --> C["Step 2: Stage 1 Adaptation\n(Grok 4.5 LLM Screenwriter)"]
-    C --> D["Step 3: Cast Discovery & Vision Gate\n(Grok 4.5 + Grok/Gemini Image + Vision Classifier)"]
-    D --> E["Step 4: Stage 2 Shot Planning\n(15 Grok 4.5 AI Classifiers)"]
-    E --> F["Step 5: Video Generation\n(Grok Imagine Video / Veo + Reference Locks)"]
-    F --> G["Step 6: Multi-Frame Auto-Review & Action-Hit Detection\n(IVisionClient)"]
-    G --> H["Step 7: Background Music Scoring & Audio Ducking\n(IMusicClient / Fal.ai Stable Audio)"]
-    H --> I["Step 8: Browser Stitch / Master Export\n(ffmpeg / client media folder)"]
-    I --> J["🎬 Playable draft / master export"]
+    A["Raw Story Text / PDF / Fountain"] --> B["1 · Text ingestion<br/>BookPrepareService"]
+    B --> C["2 · Stage 1 screenplay<br/>BookToFountainConverter"]
+    C --> D["3 · Cast & locations<br/>CastFromScreenplayService"]
+    D --> D2["3b · Looks batch optional<br/>3 variants + LookVariantPicker auto-lock"]
+    D2 --> E["4 · Stage 2 shot plan<br/>Stage2PlannerService"]
+
+    subgraph S2["Stage 2 classifier suite"]
+      direction TB
+      E1["Book-wide pass once<br/>SilentBeat · AmbientSfx · SpeciesKind<br/>OnScreenCast · ExtendCut"]
+      E2["Per scene ×2 parallel scenes<br/>9 classifiers WhenAll"]
+      E3["Per-scene suite<br/>BeatPacing · Lighting · Camera<br/>Negative · Wardrobe · Emotion<br/>SoundDesign · DepthOfField · ColorGrading"]
+      E4["Per scene refine<br/>ShotPlanRefiningClassifier"]
+      E1 --> E2 --> E3 --> E4
+    end
+
+    E --> E1
+    E4 --> F["5 · Video generation<br/>Grok Imagine / Veo + ref locks"]
+    F --> F2["Action timing learn<br/>ClipDurationEstimator · AiActionOverheadClassifier"]
+    F --> G["6 · Multi-frame auto-review<br/>IVisionClient"]
+    G --> H["7 · Music / audio plan<br/>SceneMusic · Fal Stable Audio"]
+    H --> I["8 · Browser stitch / export<br/>ffmpeg.wasm · client media"]
+    I --> J["Playable draft / master"]
 ```
 
 ### 1. Source Text Ingestion (`BookPrepareService`)
@@ -93,40 +106,48 @@ flowchart TD
 - **AI Engine**: **Grok 4.5 LLM (`book_to_fountain`)**
 - **Action**: Converts raw book prose into a valid **Fountain 1.1** screenplay containing filmable scene headings (`INT.`/`EXT.`), visual action prose, character dialogue, and voiceover (`V.O.`).
 - **Automated AI Recovery**: Verifies screenplay formatting against strict Fountain syntax rules. If scene headings or dialogue cues contain formatting errors, specialized AI fixup passes (`book_to_fountain_locations_retry`, `book_to_fountain_speakers_retry`) resolve errors automatically without human intervention.
+- **Numbered generics**: cues like `SUITOR 1` map to ensemble group seeds (`Character_Suitors`) for membership — not individual portrait keys.
 
 ### 3. Character Discovery & Visual Style Lock (`CastFromScreenplayService` & `CharacterDesignService`)
-- **AI Engine**: **Grok 4.5 LLM (`cast_from_screenplay`)** + **Grok Imagine Image / Gemini Image** + **Grok Vision Classifier**
+- **AI Engine**: **Grok 4.5 LLM (`cast_from_screenplay`)** + **Grok Imagine Image / Gemini Image** + **Grok Vision**
 - **Action**:
-  1. **Character Extraction**: AI analyzes the screenplay to extract character identities, species, estimated age, build, clothing, and visual locks (unvarying physical traits).
-  2. **Portrait Generation**: Generates candidate reference portraits for each character.
-  3. **AI Vision Style Gate (`RequirePortraitStyleGate`)**: An AI Vision Classifier audits generated portraits against the project's global render style (e.g. *period live-action gothic* vs. *3D CG animation*) before locking, ensuring zero visual style drift across the cast.
+  1. **Character Extraction**: AI analyzes the screenplay to extract character identities, species, estimated age, build, clothing, and visual locks (unvarying physical traits). Location seeds are extracted in the same package.
+  2. **Used-in-plan filter**: Cast/Locations UI hides seeds not referenced by the shot plan (toggle “Show unused”).
+  3. **Portrait / set plates**: Generate **3 variants** per used face or place.
+  4. **AI auto-lock (`LookVariantPicker`)**: Vision ranks the 3 options against description + visual lock and locks the best; operator can re-lock anytime. Batch job: **Generate looks for plan** (`plan_looks`).
+  5. **Style gate**: Vision audits locked portraits against the project’s global render style before video spend (Full mode).
+  6. **Book plate rank (`PlateRankClassifier`)**: optional chat re-rank of book illustration basenames for portrait seeds.
 
 ### 4. Stage 2: Shot Planning & AI Classifier Suite (`Stage2PlannerService`)
-- **AI Engine**: **15 Specialized Grok 4.5 Classifiers**
-- **Action**: Transforms the Fountain screenplay into a frame-accurate, timestamped shot plan (`blueprint.clips.json`) using 15 AI classifiers:
-  1. **`OnScreenCastClassifier`**: Evaluates dialogue and action per beat to determine on-screen vs. off-screen/VO characters per shot, enforcing off-camera speaker rules.
-  2. **`SilentBeatActionClassifier`**: Classifies silent action beats (`action_class`) with surrounding narrative context to allocate precise duration budgets ($3\text{s}$–$8\text{s}$).
-  3. **`AmbientSfxClassifier`**: Separates background ambient soundscapes from transient sound effects (SFX).
-  4. **`SpeciesKindClassifier`**: Categorizes character body types (`animal`, `human`, `other`) to enforce prompt framing rules.
-  5. **`ExtendCutClassifier`**: Determines continuity transitions (`extend_previous` vs. `hard_cut`).
-  6. **`ShotPlanRefiningClassifier`**: Evaluates multi-clip monologues to generate progressive camera angles (Establishing Wide $\rightarrow$ Close-Up on detail $\rightarrow$ Reaction Shot), eliminating static visual prompt repetition across extended scenes.
-  7. **`BeatPacingClassifier`**: Analyzes narrative rhythm, suspense, and emotional weight to assign dynamic clip duration budgets ($2\text{s}$–$12\text{s}$) tailored to scene tension.
-  8. **`CinematicLightingClassifier`**: Generates rich atmospheric lighting descriptions, shadow quality, volumetric effects, and mood color palettes locked across all shots in a scene.
-  9. **`CameraDirectorClassifier`**: Assigns professional lens choices (24mm wide anamorphic, 85mm portrait), camera movements (dolly push-in, low-angle tracking, tripod hold), and shot composition directives per beat.
-  10. **`NegativePromptClassifier`**: Evaluates period setting and scene environment to generate era-specific anachronism negative prompts (*"no modern wristwatches, no electric light bulbs, no plastic, no zippers"*), eliminating visual immersion glitches.
-  11. **`WardrobeContinuityClassifier`**: Acts as a Costume Department Supervisor to dynamically track and assign context-appropriate attire per character per scene based on location, time of day, and story beats.
-  12. **`CharacterEmotionArcClassifier`**: Acts as an Acting Coach & Performance Director, calculating emotional intensity ($1$–$10$ scale) and facial micro-expressions per beat to drive acting performances in video generation.
-  13. **`SoundDesignComposerClassifier`**: Acts as a Film Sound Designer & Audio Supervisor, composing 3-layer audio blueprints (`ambient_layer`, `foley_layer`, `score_layer`) per beat for synthesis planning (export stitch is client-side).
-  14. **`DepthOfFieldClassifier`**: Acts as a Focus Puller & Optical Cinematographer, assigning optical aperture settings ($f/1.4$ to $f/8$), primary focal planes, and dynamic rack-focus transitions per shot.
-  15. **`ColorPaletteGradingClassifier`**: Acts as a Master Colorist & Film Stock Director, assigning film stock emulsion characteristics (*Kodak Vision3 500T 5219*, *Fuji Eterna*), color palettes, and color grading prompts per scene.
-- **Deterministic Pacing**: *Silent Prelude Coalescing* automatically folds 5s silent lead-in beats into Beat 2 so voiceover/dialogue begins on frame 1 of the scene.
-- **Action Timing & Concurrency Learning System** (`ClipDurationEstimator`, `ActionCameraOverheadLedger`, `AiActionOverheadClassifier`, `JitBenchmarkService`): deterministic word-count + calibrated camera/action overhead model (with a Concurrency Overlap Factor for serial vs. concurrent action/dialogue beats) decides how much dialogue fits a clip before it's split, model-aware per the project's selected video model's actual duration limits. Falls back to a confidence-gated AI classifier or a live 1-clip JIT benchmark for uncalibrated actions, and — for continuation-chain models — reconciles the next clip's duration against the previous clip's real measured result within a scene at no added cost. See `host/docs/action-timing-plan.md` for the full closed-loop design.
+- **AI Engine**: **Grok 4.5** — **5 book-wide + 9 per-scene + 1 refiner = 15 classifiers** (see diagram).
+- **Concurrency**: up to **2 scenes** in flight; within each scene the **9** per-scene classifiers run via `Task.WhenAll`. Progress: `Scene N of M` / `Planning scenes: k/M complete`. Shared chat semaphore (max 4–8) is backlog **J1**.
+- **Book-wide (once per plan)**:
+  1. **`SilentBeatActionClassifier`** — silent action duration classes  
+  2. **`AmbientSfxClassifier`** — ambient vs transient SFX  
+  3. **`SpeciesKindClassifier`** — human / animal / other framing  
+  4. **`OnScreenCastClassifier`** — on-camera vs VO per beat  
+  5. **`ExtendCutClassifier`** — `extend_previous` vs `hard_cut`  
+- **Per scene (parallel suite)**:
+  6. **`BeatPacingClassifier`** — duration budgets from rhythm / tension  
+  7. **`CinematicLightingClassifier`** — lighting & mood lock for the scene  
+  8. **`CameraDirectorClassifier`** — lens, move, composition per beat  
+  9. **`NegativePromptClassifier`** — period / anachronism negatives  
+  10. **`WardrobeContinuityClassifier`** — attire per character per scene  
+  11. **`CharacterEmotionArcClassifier`** — intensity & micro-expression per beat  
+  12. **`SoundDesignComposerClassifier`** — ambient / foley / score layers  
+  13. **`DepthOfFieldClassifier`** — aperture, focal plane, rack focus  
+  14. **`ColorPaletteGradingClassifier`** — film stock / palette / grade  
+- **Per scene after suite**:
+  15. **`ShotPlanRefiningClassifier`** — progressive angles across multi-clip monologues  
+- **Output**: frame-oriented blueprint (`blueprint.clips.*.json`) with `scenes[].veo_clips`.
+- **Deterministic pacing**: silent-prelude coalescing folds short lead-ins so dialogue can start on frame 1.
+- **Action timing** (`ClipDurationEstimator`, `ActionCameraOverheadLedger`, **`AiActionOverheadClassifier`**, `JitBenchmarkService`): word-count + calibrated overhead decides dialogue fit; AI/JIT only for uncalibrated actions. See `host/docs/action-timing-plan.md`.
 
 ### 5. Video Generation (`ClipVideoPromptBuilder` & `GrokVideoClient` / `GeminiVideoClient`)
 - **AI Engine**: **Grok Imagine Video / Veo**
-- **Action**: Constructs 4,000-character prompts incorporating style locks, on-screen cast counts, visual action prose, and locked character reference images (`<IMAGE_1>`, `<IMAGE_2>`).
-- **Identity Attachment**: Attaches locked reference image plates directly to the video generation API call for 100% character face and wardrobe consistency across shots.
-- **Dialogue Verification & Timing Telemetry**: after each clip, `ClipDialogueVerificationService` automatically transcribes the rendered audio and compares it against the expected line; the result (including a truncation signal) and the clip's real measured duration feed back into the Action Timing system's SQLite telemetry so future estimates improve — see `host/docs/action-timing-plan.md`.
+- **Action**: Constructs prompts incorporating style locks, on-screen cast, visual prose, and locked character/location refs (`<IMAGE_1>`, …).
+- **Identity**: Locked plates attach to the video API for face/set continuity.
+- **Dialogue verification**: `ClipDialogueVerificationService` transcribes rendered audio vs expected line; feeds timing telemetry.
 
 ### 6. Multi-Frame Auto-Review (`ClipAutoReviewService`)
 - **Browser**: Samples previous-clip tail + current-clip frames with **ffmpeg.wasm**, uploads JPEGs over the authenticated job API.
