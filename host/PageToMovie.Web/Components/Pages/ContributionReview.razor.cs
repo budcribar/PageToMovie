@@ -17,12 +17,12 @@ public partial class ContributionReview
     [Parameter] public string Id { get; set; } = "";
 
     private DiffDto? _diff;
-    private string? _message;
-    private string? _error;
+    internal string? _message;
+    internal string? _error;
     private bool _messageOk;
-    private bool _busy;
+    internal bool _busy;
     private bool _hasConflicts;
-    private int _autoResolvedCount;
+    internal int _autoResolvedCount;
     private List<string> _remainingConflictPaths = new();
     private bool _lastSyncWasFromOrigin = true;
 

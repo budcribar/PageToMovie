@@ -12,9 +12,9 @@ namespace PageToMovie.Web.Components.Pages;
 
 public partial class AccountCosts
 {
-    private bool _loading = true;
-    private string? _error;
-    private string _activeProjectId = "";
+    internal bool _loading = true;
+    internal string? _error;
+    internal string _activeProjectId = "";
     private EngineApiClient.UserSpendSummaryDto? _mySpend;
 
     private sealed record Slice(string Label, double Usd, string Color);

@@ -43,24 +43,21 @@ public partial class ScreenplayEditor_CharacterModal : ComponentBase
         }
     }
 
-    public List<string> OrderedCharacterNames
+    public List<string> GetOrderedCharacterNames()
     {
-        get
-        {
-            var all = Model.GetAllCharacters().ToList();
-            if (string.IsNullOrWhiteSpace(FocusName)) return all;
+        var all = Model.GetAllCharacters().ToList();
+        if (string.IsNullOrWhiteSpace(FocusName)) return all;
 
-            var focus = FocusName.Trim();
-            var match = all.FirstOrDefault(n => n.Equals(focus, StringComparison.OrdinalIgnoreCase));
-            // Cast outline / known speaker → only that card.
-            if (match is not null)
-                return new List<string> { match };
+        var focus = FocusName.Trim();
+        var match = all.FirstOrDefault(n => n.Equals(focus, StringComparison.OrdinalIgnoreCase));
+        // Cast outline / known speaker → only that card.
+        if (match is not null)
+            return new List<string> { match };
 
-            // Unknown speaker on a line — full list so they can pick/add.
-            return all
-                .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-        }
+        // Unknown speaker on a line — full list so they can pick/add.
+        return all
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     /// <summary>True when the focused dialogue speaker is not in the cast.</summary>

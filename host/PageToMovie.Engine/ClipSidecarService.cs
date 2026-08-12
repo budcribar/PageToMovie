@@ -50,14 +50,11 @@ public sealed class ClipSidecarService
         sidecar["created_at_utc"] = createdUtc.ToString("o");
         return sidecar;
     }
-
-    private readonly ProjectStore _projects;
     private readonly ProjectAutoGitService? _autoGit;
     private readonly ILogger<ClipSidecarService> _log;
 
     public ClipSidecarService(ProjectStore projects, ProjectAutoGitService? autoGit = null, ILogger<ClipSidecarService>? log = null)
     {
-        _projects = projects;
         _autoGit = autoGit;
         _log = log ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<ClipSidecarService>.Instance;
     }

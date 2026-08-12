@@ -38,7 +38,6 @@ public sealed class AnthropicChatClient : IChatClient, IVisionClient
 
     private readonly HttpClient _http;
     private readonly ProjectTelemetryService _telemetry;
-    private readonly ILogger<AnthropicChatClient> _log;
     private readonly GenerationErrorLogger? _errorLogger;
 
     public AnthropicChatClient(
@@ -51,7 +50,6 @@ public sealed class AnthropicChatClient : IChatClient, IVisionClient
         _ = opts; // reserved — no Anthropic-specific options today
         _http = http;
         _telemetry = telemetry;
-        _log = log;
         _errorLogger = errorLogger;
         if (_http.BaseAddress is null)
             _http.BaseAddress = new Uri(ApiBase + "/");

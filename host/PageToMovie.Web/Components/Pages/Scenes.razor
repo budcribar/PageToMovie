@@ -281,7 +281,7 @@ else
                 <label class="form-label small text-muted">Character</label>
                 <select class="form-select form-select-sm bg-dark text-white border-secondary" @bind="List._pickCharacter" @bind:after="List.SelectByCharacter" disabled="@_busy">
                     <option value="">All characters…</option>
-                    @foreach (var c in CharacterOptions)
+                    @foreach (var c in GetCharacterOptions())
                     {
                         <option value="@c">@ShortChar(c)</option>
                     }
@@ -291,7 +291,7 @@ else
                 <label class="form-label small text-muted">Location</label>
                 <select class="form-select form-select-sm bg-dark text-white border-secondary" @bind="List._pickLocation" @bind:after="List.SelectByLocation" disabled="@_busy">
                     <option value="">All locations…</option>
-                    @foreach (var loc in LocationOptions)
+                    @foreach (var loc in GetLocationOptions())
                     {
                         <option value="@loc">@ShortLoc(loc)</option>
                     }
@@ -509,7 +509,7 @@ else
                             IsNew="ClipForm._clipEditorIsNew"
                             Busy="_busy"
                             Error="@_error"
-                            CharacterOptions="CharacterOptions"
+                            CharacterOptions="GetCharacterOptions()"
                             CastKeys="ClipForm._clipEditorCast"
                             OnClose="ClipForm.CloseClipEditor"
                             OnSave="ClipForm.SaveClipEditorAsync"

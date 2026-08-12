@@ -11,13 +11,13 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class AdminDemos
 {
 
-    private bool _loading = true;
+    internal bool _loading = true;
     private bool _busy;
-    private string? _error;
-    private string? _message;
+    internal string? _error;
+    internal string? _message;
     private string? _statusFilter = "";
-    private List<DemoListItem> _demos = new();
-    private YouTubeStatusDto? _yt;
+    internal List<DemoListItem> _demos = new();
+    internal YouTubeStatusDto? _yt;
     private string _ytUrl = "";
     private string _ytTitle = "";
     private string _ytDesc = "";

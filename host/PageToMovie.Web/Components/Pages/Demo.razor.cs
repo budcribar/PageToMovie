@@ -14,14 +14,14 @@ namespace PageToMovie.Web.Components.Pages;
 
 public partial class Demo
 {
-    private string? _youtubeSyncHint;
+    internal string? _youtubeSyncHint;
 
     private List<DemoListItem> _demos = new();
-    private bool _loading = true;
+    internal bool _loading = true;
     private bool _busy;
-    private string? _error;
-    private string? _message;
-    private string? _highlightId;
+    internal string? _error;
+    internal string? _message;
+    internal string? _highlightId;
     private string _sort = "top";
     private readonly HashSet<string> _reported = new(StringComparer.OrdinalIgnoreCase);
 

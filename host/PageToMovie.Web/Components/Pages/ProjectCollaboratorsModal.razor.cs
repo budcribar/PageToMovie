@@ -17,11 +17,11 @@ public partial class ProjectCollaboratorsModal : IDisposable
 
     private string searchHandle = "";
     private string emailInput = "";
-    private string statusMessage = "";
-    private bool isError;
-    private bool isSending;
-    private bool _searching;
-    private bool _searchAttempted;
+    internal string statusMessage = "";
+    internal bool isError;
+    internal bool isSending;
+    internal bool _searching;
+    internal bool _searchAttempted;
     private List<string> _suggestions = new();
     private int _highlight = -1;
     private int _searchSeq;

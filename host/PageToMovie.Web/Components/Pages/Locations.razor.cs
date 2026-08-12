@@ -22,14 +22,14 @@ public partial class Locations : IDisposable
     private string _editDescription = "";
     private string _editVisualLock = "";
     private string _imageEditInstruction = "";
-    private string? _plateUrl;
-    private string? _error;
-    private string? _message;
-    private string? _saveHint;
-    private bool _busy;
-    private bool _loading = true;
+    internal string? _plateUrl;
+    internal string? _error;
+    internal string? _message;
+    internal string? _saveHint;
+    internal bool _busy;
+    internal bool _loading = true;
     private CancellationTokenSource? _saveCts;
-    private JobSnapshot? _job;
+    internal JobSnapshot? _job;
     private CancellationTokenSource? _pollCts;
 
     protected override async Task OnInitializedAsync()

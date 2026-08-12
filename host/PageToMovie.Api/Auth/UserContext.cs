@@ -49,8 +49,11 @@ public sealed class HttpUserContext : IUserContext
     {
         get
         {
-            var roles = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { AppRoles.User };
             var ctx = _http.HttpContext;
+            if (ctx?.Items["__CachedRoles"] is IReadOnlyList<string> cached)
+                return cached;
+
+            var roles = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { AppRoles.User };
             if (ctx?.User?.Identity?.IsAuthenticated == true)
             {
                 foreach (var c in ctx.User.FindAll(ClaimTypes.Role))
@@ -76,7 +79,11 @@ public sealed class HttpUserContext : IUserContext
                 roles.Add(AppRoles.Admin);
             }
 
-            return roles.ToList();
+            var result = roles.ToArray();
+            if (ctx != null)
+                ctx.Items["__CachedRoles"] = result;
+
+            return result;
         }
     }
 

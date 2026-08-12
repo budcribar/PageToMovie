@@ -19,8 +19,6 @@ public sealed class FalVideoClient : IVideoClient
     public const string ApiBase = SupportedModelCatalog.FalApiBase;
 
     private readonly HttpClient _http;
-    private readonly PageToMovieOptions _opts;
-    private readonly ProjectTelemetryService _telemetry;
     private readonly ILogger<FalVideoClient> _log;
 
     public FalVideoClient(
@@ -30,8 +28,6 @@ public sealed class FalVideoClient : IVideoClient
         ILogger<FalVideoClient> log)
     {
         _http = http;
-        _opts = opts.Value;
-        _telemetry = telemetry;
         _log = log;
         if (_http.BaseAddress is null)
             _http.BaseAddress = new Uri(ApiBase.TrimEnd('/') + "/");

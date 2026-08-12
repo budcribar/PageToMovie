@@ -42,7 +42,6 @@ public sealed class FilmJobService
     private readonly ProjectTelemetryService _telemetry;
     private readonly ProjectArtifactIndexService _artifactIndex;
     private readonly ReviewEventStore _learning;
-    private readonly EditLogService _editLogs;
     private readonly ProjectRulesService _projectRules;
     private readonly CostReportService _costs;
     private readonly IJobStore _jobs;
@@ -142,7 +141,6 @@ public sealed class FilmJobService
         _telemetry = telemetry;
         _artifactIndex = artifactIndex;
         _learning = learning;
-        _editLogs = editLogs;
         _projectRules = projectRules;
         _costs = costs;
         _jobs = jobs;
@@ -963,32 +961,6 @@ public sealed class FilmJobService
             },
             lockResources: new[] { LockKeys.Stage(req.ProjectId) },
             lockReason: "book import");
-    }
-
-    private sealed class JobRunState
-    {
-        public JobSnapshot Snapshot { get; set; } = new() { Status = "idle" };
-        public string? ActiveJobId { get; set; }
-        public CancellationTokenSource Cts { get; set; } = new();
-        public string UserId { get; set; } = "local";
-        public string? ApiKey { get; set; }
-        public string? KeyMode { get; set; }
-        public string? KeyUserId { get; set; }
-        /// <summary>H2 — optional take trigger for video cost events on this run.</summary>
-        public string? TakeTrigger { get; set; }
-        public bool OnlyMissing { get; set; } = true;
-        public string? GeminiApiKey { get; set; }
-        public string? AnthropicApiKey { get; set; }
-        public string? FalApiKey { get; set; }
-        public string? SunoApiKey { get; set; }
-        public string? AiMusicApiKey { get; set; }
-        public string? ElevenLabsApiKey { get; set; }
-        public DateTimeOffset QueuedAt { get; set; } = DateTimeOffset.UtcNow;
-        public DateTimeOffset? StartedAt { get; set; }
-        public List<string> HeldLocks { get; set; } = new();
-        public List<string> PendingLockResources { get; set; } = new();
-        public string? LockReason { get; set; }
-        public SemaphoreSlim SnapLock { get; } = new(1, 1);
     }
 
     private async Task RunBookPrepareAsync(StartBookPrepareRequest req, CancellationToken ct)
@@ -5652,4 +5624,30 @@ public sealed class FilmJobService
         StartedAt = s.StartedAt,
         FinishedAt = s.FinishedAt,
     };
+}
+
+internal sealed class JobRunState
+{
+    public JobSnapshot Snapshot { get; set; } = new() { Status = "idle" };
+    public string? ActiveJobId { get; set; }
+    public CancellationTokenSource Cts { get; set; } = new();
+    public string UserId { get; set; } = "local";
+    public string? ApiKey { get; set; }
+    public string? KeyMode { get; set; }
+    public string? KeyUserId { get; set; }
+    /// <summary>H2 — optional take trigger for video cost events on this run.</summary>
+    public string? TakeTrigger { get; set; }
+    public bool OnlyMissing { get; set; } = true;
+    public string? GeminiApiKey { get; set; }
+    public string? AnthropicApiKey { get; set; }
+    public string? FalApiKey { get; set; }
+    public string? SunoApiKey { get; set; }
+    public string? AiMusicApiKey { get; set; }
+    public string? ElevenLabsApiKey { get; set; }
+    public DateTimeOffset QueuedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? StartedAt { get; set; }
+    public List<string> HeldLocks { get; set; } = new();
+    public List<string> PendingLockResources { get; set; } = new();
+    public string? LockReason { get; set; }
+    public SemaphoreSlim SnapLock { get; } = new(1, 1);
 }

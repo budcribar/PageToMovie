@@ -15,7 +15,6 @@ public sealed class LocationDesignService
     private readonly ProjectStore _projects;
     private readonly IImageClient _images;
     private readonly IVisionClient _vision;
-    private readonly PageToMovieOptions _opts;
     private readonly ILogger<LocationDesignService> _log;
 
     public LocationDesignService(
@@ -28,7 +27,6 @@ public sealed class LocationDesignService
         _projects = projects;
         _images = images;
         _vision = vision;
-        _opts = opts.Value;
         _log = log;
     }
 

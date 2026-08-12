@@ -49,7 +49,7 @@ public static class BookToFountainConverter
     public const int SingleShotMaxChars = 28_000;
 
     /// <summary>Default soft max book chars per adapt chunk when caller omits budget.</summary>
-    public const int ChunkSoftMaxChars = 16_000;
+    public const int DefaultFallbackChunkSoftMaxChars = 16_000;
 
     /// <summary>Default cap on adapt calls for typical books (cost / latency).</summary>
     public const int MaxAdaptChunks = 8;
@@ -74,7 +74,7 @@ public static class BookToFountainConverter
     public const int AbsoluteSingleShotCeiling = 400_000;
 
     /// <summary>Reserved chars for system prompt + scaffolding + continuity.</summary>
-    public const int ReservedOverheadChars = 12_000;
+    public const int DefaultReservedOverheadChars = 12_000;
 
     public enum AdaptPath
     {
@@ -1916,7 +1916,7 @@ public static class BookToFountainConverter
         var catalogInputTokens = SupportedModelCatalog.Find(id, ModelCapability.Chat)?.MaxInputTokens;
         var inputTokens = catalogInputTokens ?? 128_000;
 
-        var reserved = ReservedOverheadChars;
+        var reserved = DefaultReservedOverheadChars;
         var tokenDerivedBookMax = Math.Clamp(
             (int)(inputTokens * 3.2) - reserved,
             8_000,
@@ -2188,7 +2188,7 @@ public static class BookToFountainConverter
     public static IReadOnlyList<string> ChunkBookForAdaptation(
         string bookText,
         int maxChunks = MaxAdaptChunks,
-        int softMaxChars = ChunkSoftMaxChars)
+        int softMaxChars = DefaultFallbackChunkSoftMaxChars)
     {
         bookText = NormalizeBookText(bookText);
         maxChunks = Math.Clamp(maxChunks, 1, AbsoluteMaxAdaptChunks);
@@ -2488,7 +2488,7 @@ public static class BookToFountainConverter
         string model,
         Action<string>? onProgress,
         CancellationToken ct,
-        int softMaxChars = ChunkSoftMaxChars,
+        int softMaxChars = DefaultFallbackChunkSoftMaxChars,
         int maxChunks = MaxAdaptChunks,
         string? reasoningEffort = null,
         double temperature = 0.2)

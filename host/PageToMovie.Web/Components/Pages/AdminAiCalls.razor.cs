@@ -14,9 +14,9 @@ public partial class AdminAiCalls : ComponentBase
     [Inject] private EngineApiClient Api { get; set; } = default!;
     [Inject] private AdminSessionService Session { get; set; } = default!;
 
-    private AiCallAnalyticsDto? _data;
-    private bool _loading;
-    private string? _error;
+    internal AiCallAnalyticsDto? _data;
+    internal bool _loading;
+    internal string? _error;
 
     protected override async Task OnInitializedAsync()
     {

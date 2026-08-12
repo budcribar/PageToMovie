@@ -19,11 +19,11 @@ public partial class SceneVersionHistory
     [Parameter] public EventCallback OnClose { get; set; }
     [Parameter] public EventCallback OnRestored { get; set; }
 
-    private List<VersionDto> _versions = new();
-    private bool _loading;
-    private bool _busy;
+    internal List<VersionDto> _versions = new();
+    internal bool _loading;
+    internal bool _busy;
     private bool _ok;
-    private string? _message;
+    internal string? _message;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -110,13 +110,13 @@ public partial class SceneVersionHistory
         }
     }
 
-    private sealed class ListResponse
+    internal sealed class ListResponse
     {
         public bool Ok { get; set; }
         public List<VersionDto> Versions { get; set; } = new();
     }
 
-    private sealed class VersionDto
+    internal sealed class VersionDto
     {
         public string VersionId { get; set; } = "";
         public string SceneKey { get; set; } = "";

@@ -103,7 +103,7 @@ public partial class Scenes
     {
         get
         {
-            var scenes = VisibleScenes;
+            var scenes = GetVisibleScenes();
             return _sortBy switch
             {
                 "duration" => _sortAscending
@@ -245,7 +245,7 @@ public partial class Scenes
 
 
 
-    internal List<SceneSummary> VisibleScenes => FilteredScenes.ToList();
+    internal List<SceneSummary> GetVisibleScenes() => FilteredScenes.ToList();
 
 
 
@@ -286,7 +286,7 @@ public partial class Scenes
     {
         if (_scenes is null) return;
         _selected.Clear();
-        foreach (var s in VisibleScenes.Where(s => !s.ClipsComplete || s.ClipsOnDisk < s.ClipCount))
+        foreach (var s in GetVisibleScenes().Where(s => !s.ClipsComplete || s.ClipsOnDisk < s.ClipCount))
             _selected.Add(s.SceneNumber);
         _selectionMode = _selected.Count > 0 ? "missing" : "";
     }
@@ -619,7 +619,7 @@ public partial class Scenes
 
     internal void SelectAll()
     {
-        _selected = VisibleScenes.Select(s => s.SceneNumber).ToHashSet();
+        _selected = GetVisibleScenes().Select(s => s.SceneNumber).ToHashSet();
         _selectionMode = "all";
     }
 
@@ -633,8 +633,11 @@ public partial class Scenes
 
 
 
-    internal bool AllShownScenesSelected =>
-        VisibleScenes.Count > 0 && VisibleScenes.All(s => _selected.Contains(s.SceneNumber));
+    internal bool AreAllVisibleSelected()
+    {
+        var visible = GetVisibleScenes();
+        return visible.Count > 0 && visible.All(s => _selected.Contains(s.SceneNumber));
+    }
 
 
 

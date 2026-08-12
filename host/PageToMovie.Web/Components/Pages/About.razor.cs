@@ -11,10 +11,10 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class About
 {
 
-    private bool _busy;
-    private string? _error;
-    private HealthInfo? _health;
-    private CapacityDto? _capacity;
+    internal bool _busy;
+    internal string? _error;
+    internal HealthInfo? _health;
+    internal CapacityDto? _capacity;
 
     protected override async Task OnInitializedAsync()
     {
@@ -64,7 +64,7 @@ public partial class About
         }
     }
 
-    private sealed class HealthInfo
+    internal sealed class HealthInfo
     {
         public string? Service { get; set; }
         public string? Workspace { get; set; }

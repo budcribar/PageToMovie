@@ -38,7 +38,7 @@ public sealed class GenerationErrorsMigrationTests
             {
                 verCmd.CommandText = "PRAGMA user_version;";
                 var version = Convert.ToInt32(await verCmd.ExecuteScalarAsync());
-                Assert.Equal(6, version);
+                Assert.Equal(7, version);
             }
 
             var expectedColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase)

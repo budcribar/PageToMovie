@@ -20,7 +20,7 @@ public sealed class FakeGeminiChatClient : IGeminiVideoAnalysisClient
     public Task<string> CompleteWithImagesAsync(
         string prompt,
         IReadOnlyList<string> imagePaths,
-        string model = "gemini-2.5-flash",
+        string model = "",
         string detail = "low",
         CancellationToken ct = default)
     {

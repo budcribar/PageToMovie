@@ -29,7 +29,6 @@ public sealed class ClipDialogueVerificationService
     private readonly ProjectStore _projects;
     private readonly IVisionClient _vision;
     private readonly IGeminiVideoAnalysisClient? _gemini;
-    private readonly ProjectTelemetryService _telemetry;
     private readonly ILogger<ClipDialogueVerificationService> _log;
 
     public ClipDialogueVerificationService(
@@ -42,7 +41,6 @@ public sealed class ClipDialogueVerificationService
         _projects = projects;
         _vision = vision;
         _gemini = gemini;
-        _telemetry = telemetry;
         _log = log ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<ClipDialogueVerificationService>.Instance;
     }
 

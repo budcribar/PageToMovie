@@ -47,7 +47,7 @@ public static class FountainLexer
     {
         if (string.IsNullOrEmpty(text)) return text;
         // Protect escapes (Markdown convention)
-        text = text.Replace("\\*", "").Replace("\\_", "");
+        text = text.Replace("\\*", "\u0001").Replace("\\_", "\u0002");
         // Content must start and end with non-whitespace (Markdown/Fountain spacing rules).
         // Single non-space char is allowed: *a*, **b**, etc.
         // ***bold italic*** then **bold** then *italic* then _underline_
@@ -55,7 +55,7 @@ public static class FountainLexer
         text = Regex.Replace(text, @"\*\*(\S(?:[^*]*\S)?)\*\*", "$1");
         text = Regex.Replace(text, @"\*(\S(?:[^*]*\S)?)\*", "$1");
         text = Regex.Replace(text, @"_(\S(?:[^_]*\S)?)_", "$1");
-        return text.Replace("", "*").Replace("", "_");
+        return text.Replace("\u0001", "*").Replace("\u0002", "_");
     }
 
     /// <summary>Alias for <see cref="StripEmphasis"/> — Fountain has no separate unescape pass.</summary>

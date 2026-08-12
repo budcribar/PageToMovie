@@ -15,9 +15,9 @@ public partial class AdminGenerationErrors : ComponentBase
     [Inject] private EngineApiClient Api { get; set; } = default!;
     [Inject] private AdminSessionService Session { get; set; } = default!;
 
-    private List<EngineApiClient.GenerationErrorRowDto> _rows = new();
-    private bool _loading;
-    private string? _error;
+    internal List<EngineApiClient.GenerationErrorRowDto> _rows = new();
+    internal bool _loading;
+    internal string? _error;
 
     protected override async Task OnInitializedAsync()
     {

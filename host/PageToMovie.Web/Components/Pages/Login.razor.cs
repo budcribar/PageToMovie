@@ -23,13 +23,13 @@ public partial class Login : IDisposable
     private bool _forgotMode;
     private bool _resetTokenMode;
     private bool _showPassword;
-    private bool _needsResend;
-    private string? _error;
-    private string? _info;
-    private string _status = "Checking session…";
-    private bool _busy;
+    internal bool _needsResend;
+    internal string? _error;
+    internal string? _info;
+    internal string _status = "Checking session…";
+    internal bool _busy;
     private bool _started;
-    private bool _checkedSession;
+    internal bool _checkedSession;
 
     private string PageTitleText =>
         _resetTokenMode ? "Reset password"

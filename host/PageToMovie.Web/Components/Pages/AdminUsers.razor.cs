@@ -12,9 +12,9 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class AdminUsers
 {
     private AdminCreditsOverviewDto? _overview;
-    private string? _error;
-    private string? _message;
-    private bool _busy;
+    internal string? _error;
+    internal string? _message;
+    internal bool _busy;
     private bool _started;
 
     private UserCreditSummaryDto? _grantUser;

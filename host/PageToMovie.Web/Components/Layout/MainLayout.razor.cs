@@ -22,11 +22,11 @@ public partial class MainLayout : IDisposable
     private bool _sidebarCollapsed;
     private bool _hydrated;
     private bool _locationHooked;
-    private bool _showTermsModal;
+    internal bool _showTermsModal;
     private string _currentUserId = "";
-    private List<string> _presenceOthers = new();
+    internal List<string> _presenceOthers = new();
     private System.Threading.Timer? _presenceTimer;
-    private string? _presenceProjectId;
+    internal string? _presenceProjectId;
 
     protected override void OnInitialized()
     {

@@ -16,7 +16,6 @@ namespace PageToMovie.Engine;
 public sealed class ProjectAutoGitService
 {
     private readonly ProjectGitRepositoryService _gitRepo;
-    private readonly IOptions<PageToMovieOptions> _opts;
     private readonly ILogger<ProjectAutoGitService> _log;
     private readonly ConcurrentDictionary<string, (string Message, string Author, DateTime ScheduledAt)> _pendingQueue = new(StringComparer.OrdinalIgnoreCase);
 
@@ -26,7 +25,6 @@ public sealed class ProjectAutoGitService
         ILogger<ProjectAutoGitService>? log = null)
     {
         _gitRepo = gitRepo;
-        _opts = opts;
         _log = log ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<ProjectAutoGitService>.Instance;
     }
 

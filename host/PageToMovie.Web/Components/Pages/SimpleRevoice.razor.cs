@@ -20,8 +20,8 @@ public partial class SimpleRevoice : IAsyncDisposable
     internal bool _busy;
     internal bool _loading = true;
     internal bool _done;
-    private string? _error;
-    private string? _message;
+    internal string? _error;
+    internal string? _message;
     internal string _status = "Ready";
     internal int _doneCount;
     internal string? _previewUrl;

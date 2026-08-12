@@ -148,7 +148,7 @@ public class CanonicalAccountMigrationTests
             conn.Open();
             using var ver = conn.CreateCommand();
             ver.CommandText = "PRAGMA user_version;";
-            Assert.Equal(6, Convert.ToInt32(ver.ExecuteScalar()));
+            Assert.Equal(7, Convert.ToInt32(ver.ExecuteScalar()));
 
             // Alias user gone
             using var u = conn.CreateCommand();

@@ -33,7 +33,6 @@ public sealed class GrokVisionClient : IVisionClient
     private readonly HttpClient _http;
     private readonly ProjectTelemetryService _telemetry;
     private readonly IUserApiKeyProvider? _keyProvider;
-    private readonly ILogger<GrokVisionClient> _log;
     private readonly GenerationErrorLogger? _errorLogger;
 
     public GrokVisionClient(
@@ -47,7 +46,6 @@ public sealed class GrokVisionClient : IVisionClient
         _http = http;
         _telemetry = telemetry;
         _keyProvider = keyProvider;
-        _log = log;
         _errorLogger = errorLogger;
         if (_http.BaseAddress is null)
             _http.BaseAddress = new Uri(ApiBase + "/");

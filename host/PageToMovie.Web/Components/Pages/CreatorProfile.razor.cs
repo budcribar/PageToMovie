@@ -18,9 +18,9 @@ public partial class CreatorProfile
     public string? Handle { get; set; }
 
     private CreatorProfileDto? _profile;
-    private List<DemoListItem>? _demos;
-    private bool _loading = true;
-    private string? _error;
+    internal List<DemoListItem>? _demos;
+    internal bool _loading = true;
+    internal string? _error;
 
     protected override async Task OnParametersSetAsync()
     {

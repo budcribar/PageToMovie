@@ -12,8 +12,8 @@ public partial class AdminBookCache
 {
 
     private BookCacheAdminDto? _snap;
-    private string? _error;
-    private bool _busy;
+    internal string? _error;
+    internal bool _busy;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {

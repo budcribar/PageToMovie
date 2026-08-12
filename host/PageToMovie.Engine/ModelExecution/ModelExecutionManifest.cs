@@ -17,12 +17,12 @@ public static class ModelExecutionManifest
     public static string Serialize<TResult>(ValidatedModelResult<TResult> result)
         where TResult : class =>
         JsonSerializer.Serialize(new ManifestEnvelope<TResult>(SchemaVersion, result), Options) + "\n";
-
-    private sealed record ManifestEnvelope<TResult>(
-        string SchemaVersion,
-        ValidatedModelResult<TResult> Result)
-        where TResult : class;
 }
+
+file sealed record ManifestEnvelope<TResult>(
+    string SchemaVersion,
+    ValidatedModelResult<TResult> Result)
+    where TResult : class;
 
 /// <summary>Offline operation that replays recorded raw responses through current parsing and validation.</summary>
 public sealed class ReplayModelOperation<TInput, TRaw> : IModelOperation<TInput, TRaw>

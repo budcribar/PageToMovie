@@ -62,7 +62,7 @@ public static class BookToFountainConverter
         return new ProjectVisionMeta.Document
         {
             SchemaVersion = string.IsNullOrWhiteSpace(v.SchemaVersion)
-                ? ProjectVisionMeta.SchemaVersion
+                ? ProjectVisionMeta.CurrentSchemaVersion
                 : v.SchemaVersion,
             VisualMedium = ProjectVisionMeta.NormalizeMedium(v.VisualMedium),
             RenderStyleLock = v.RenderStyleLock,

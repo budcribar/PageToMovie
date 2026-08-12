@@ -20,7 +20,6 @@ public sealed class GrokChatClient : IChatClient
     private readonly HttpClient _http;
     private readonly ProjectTelemetryService _telemetry;
     private readonly IUserApiKeyProvider? _keyProvider;
-    private readonly ILogger<GrokChatClient> _log;
     private readonly GenerationErrorLogger? _errorLogger;
 
     public GrokChatClient(
@@ -34,7 +33,6 @@ public sealed class GrokChatClient : IChatClient
         _http = http;
         _telemetry = telemetry;
         _keyProvider = keyProvider;
-        _log = log;
         _errorLogger = errorLogger;
     }
 

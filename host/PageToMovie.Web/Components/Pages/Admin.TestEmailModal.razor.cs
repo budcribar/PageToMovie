@@ -12,10 +12,10 @@ public partial class Admin_TestEmailModal
     [Inject] private EngineApiClient Api { get; set; } = default!;
 
     private string _address = "";
-    private string? _status;
-    private string? _error;
-    private bool _busy;
-    private TestEmailResponse? _result;
+    internal string? _status;
+    internal string? _error;
+    internal bool _busy;
+    internal TestEmailResponse? _result;
     private bool _wasVisible;
 
     protected override void OnParametersSet()

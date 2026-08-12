@@ -36,10 +36,12 @@
 
                     @if (!SingleCharacterMode)
                     {
-                        <label class="form-label fw-semibold text-secondary small">Cast (@OrderedCharacterNames.Count)</label>
+                        var names = GetOrderedCharacterNames();
+                        <label class="form-label fw-semibold text-secondary small">Cast (@names.Count)</label>
                     }
                     <div class="d-flex flex-column gap-2 overflow-auto" style="max-height: 420px;">
-                        @foreach (var charaName in OrderedCharacterNames)
+                        @{ var charaNames = GetOrderedCharacterNames(); }
+                        @foreach (var charaName in charaNames)
                         {
                             var profile = Model.GetOrCreateCharacterProfile(charaName);
                             var isFocus = IsFocused(charaName);
@@ -109,7 +111,7 @@
                                 }
                             </div>
                         }
-                        @if (OrderedCharacterNames.Count == 0)
+                        @if (charaNames.Count == 0)
                         {
                             <div class="text-secondary small border border-secondary-subtle rounded p-3">
                                 No cast yet. Build cast on the Cast step, or add a name above.

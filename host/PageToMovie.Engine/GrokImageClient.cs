@@ -20,7 +20,6 @@ public sealed class GrokImageClient : IImageClient
     public const string ApiBase = SupportedModelCatalog.XaiApiBase;
 
     private readonly HttpClient _http;
-    private readonly PageToMovieOptions _opts;
     private readonly ProjectTelemetryService _telemetry;
     private readonly ILogger<GrokImageClient> _log;
     private readonly GenerationErrorLogger? _errorLogger;
@@ -33,7 +32,6 @@ public sealed class GrokImageClient : IImageClient
         GenerationErrorLogger? errorLogger = null)
     {
         _http = http;
-        _opts = opts.Value;
         _telemetry = telemetry;
         _log = log;
         _errorLogger = errorLogger;

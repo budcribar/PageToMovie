@@ -11,19 +11,19 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class AdminLearning
 {
 
-    private bool _busy;
-    private string? _error;
-    private string? _message;
+    internal bool _busy;
+    internal string? _error;
+    internal string? _message;
     private string _projectFilter = "";
-    private LearningInsightsDto? _insights;
-    private ReviewComparisonInsightsDto? _comparison;
-    private List<ReviewLearningEvent> _events = new();
+    internal LearningInsightsDto? _insights;
+    internal ReviewComparisonInsightsDto? _comparison;
+    internal List<ReviewLearningEvent> _events = new();
     private int _proposeN = 50;
-    private string? _proposal;
+    internal string? _proposal;
     private ProposalChecklistDocument? _checklist;
     private bool _showDoneItems;
     private string _rulesProject = "";
-    private ProjectRulesDocument? _rules;
+    internal ProjectRulesDocument? _rules;
 
     private static bool IsChecklistDone(ProposalChecklistItem item) =>
         string.Equals(item.Disposition, "accepted", StringComparison.OrdinalIgnoreCase) ||

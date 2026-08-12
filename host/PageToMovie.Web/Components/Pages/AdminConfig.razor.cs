@@ -12,9 +12,9 @@ public partial class AdminConfig
 {
 
     private RuntimeConfigDto? _cfg;
-    private string? _error;
-    private string? _message;
-    private bool _busy;
+    internal string? _error;
+    internal string? _message;
+    internal bool _busy;
     private bool _masonryPending;
 
     private int _maxVideo = 4;

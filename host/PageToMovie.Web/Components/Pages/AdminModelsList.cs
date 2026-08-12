@@ -75,7 +75,7 @@ public partial class AdminModelsCatalog
             return !isDeprecated;
         });
 
-        internal List<string> AvailableProviders => _modelList
+        internal List<string> GetAvailableProviders() => _modelList
             .Select(m => m["provider"]?.ToString())
             .Where(p => !string.IsNullOrWhiteSpace(p))
             .Distinct(StringComparer.OrdinalIgnoreCase)

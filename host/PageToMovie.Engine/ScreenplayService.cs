@@ -797,7 +797,7 @@ public static string NormalizeText(string text)
                 title,
                 author,
                 totalRuntimeMinutes = minutes,
-                visionMetaSchema = ProjectVisionMeta.SchemaVersion,
+                visionMetaSchema = ProjectVisionMeta.CurrentSchemaVersion,
                 cachePackageSchema = "adaptation-conversion.v1",
             });
 

@@ -17,8 +17,8 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class ProjectCosts
 {
     internal bool _busy;
-    private string? _error;
-    private string? _message;
+    internal string? _error;
+    internal string? _message;
     private string _projectId = "";
     internal CostReport? _report;
     internal string _draftRes = "480p";

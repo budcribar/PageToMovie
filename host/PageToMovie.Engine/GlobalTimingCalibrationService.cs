@@ -9,7 +9,6 @@ namespace PageToMovie.Engine;
 public sealed class GlobalTimingCalibrationService
 {
     private readonly ClipTimingTelemetryRepository _repo;
-    private readonly ActionCameraOverheadLedger _ledger;
     private readonly ILogger<GlobalTimingCalibrationService>? _log;
 
     public GlobalTimingCalibrationService(
@@ -18,7 +17,6 @@ public sealed class GlobalTimingCalibrationService
         ILogger<GlobalTimingCalibrationService>? log = null)
     {
         _repo = repo;
-        _ledger = ledger;
         _log = log;
     }
 

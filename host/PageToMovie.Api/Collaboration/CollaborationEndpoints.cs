@@ -41,7 +41,7 @@ public static class CollaborationEndpoints
         return app;
     }
 
-    static string? UserId(HttpContext http, IUserContext user) =>
+    static string? GetCallingUserId(HttpContext http, IUserContext user) =>
         user.UserId
         ?? http.User.FindFirstValue(ClaimTypes.NameIdentifier)
         ?? http.User.FindFirstValue("sub");
@@ -49,7 +49,7 @@ public static class CollaborationEndpoints
     static async Task<IResult> GetAclAsync(
         string projectId, IProjectAclService acl, IUserContext user, HttpContext http, CancellationToken ct)
     {
-        var uid = UserId(http, user);
+        var uid = GetCallingUserId(http, user);
         if (string.IsNullOrWhiteSpace(uid)) return Results.Unauthorized();
         if (!await acl.CanAccessAsync(projectId, uid, ProjectAccessLevel.Viewer, ct))
             return Results.Json(new { error = "project_access_denied" }, statusCode: StatusCodes.Status403Forbidden);
@@ -62,7 +62,7 @@ public static class CollaborationEndpoints
     static async Task<IResult> SetKeyModeAsync(
         string projectId, KeyModeBody body, IProjectAclService acl, IUserContext user, HttpContext http, CancellationToken ct)
     {
-        var uid = UserId(http, user);
+        var uid = GetCallingUserId(http, user);
         if (string.IsNullOrWhiteSpace(uid)) return Results.Unauthorized();
         if (!await acl.CanAccessAsync(projectId, uid, ProjectAccessLevel.Owner, ct))
             return Results.Json(new { error = "owner_required" }, statusCode: StatusCodes.Status403Forbidden);
@@ -77,7 +77,7 @@ public static class CollaborationEndpoints
     static async Task<IResult> InviteEditorAsync(
         string projectId, InviteBody body, IProjectAclService acl, IUserContext user, HttpContext http, CancellationToken ct)
     {
-        var uid = UserId(http, user);
+        var uid = GetCallingUserId(http, user);
         if (string.IsNullOrWhiteSpace(uid)) return Results.Unauthorized();
         if (string.IsNullOrWhiteSpace(body.UserId)) return Results.BadRequest(new { error = "userId required" });
         try
@@ -94,7 +94,7 @@ public static class CollaborationEndpoints
     static async Task<IResult> RemoveEditorAsync(
         string projectId, string editorUserId, IProjectAclService acl, IUserContext user, HttpContext http, CancellationToken ct)
     {
-        var uid = UserId(http, user);
+        var uid = GetCallingUserId(http, user);
         if (string.IsNullOrWhiteSpace(uid)) return Results.Unauthorized();
         try
         {
@@ -110,7 +110,7 @@ public static class CollaborationEndpoints
     static async Task<IResult> InviteViewerAsync(
         string projectId, InviteBody body, IProjectAclService acl, IUserContext user, HttpContext http, CancellationToken ct)
     {
-        var uid = UserId(http, user);
+        var uid = GetCallingUserId(http, user);
         if (string.IsNullOrWhiteSpace(uid)) return Results.Unauthorized();
         if (string.IsNullOrWhiteSpace(body.UserId)) return Results.BadRequest(new { error = "userId required" });
         try
@@ -127,7 +127,7 @@ public static class CollaborationEndpoints
     static async Task<IResult> RemoveViewerAsync(
         string projectId, string viewerUserId, IProjectAclService acl, IUserContext user, HttpContext http, CancellationToken ct)
     {
-        var uid = UserId(http, user);
+        var uid = GetCallingUserId(http, user);
         if (string.IsNullOrWhiteSpace(uid)) return Results.Unauthorized();
         try
         {
@@ -144,7 +144,7 @@ public static class CollaborationEndpoints
         string projectId, string resourceKey, IProjectLeaseService leases, IProjectAclService acl,
         IUserContext user, HttpContext http, IHubContext<ProjectHub>? hub, CancellationToken ct)
     {
-        var uid = UserId(http, user);
+        var uid = GetCallingUserId(http, user);
         if (string.IsNullOrWhiteSpace(uid)) return Results.Unauthorized();
         if (!await acl.CanAccessAsync(projectId, uid, ProjectAccessLevel.Editor, ct))
             return Results.Json(new { error = "project_access_denied" }, statusCode: StatusCodes.Status403Forbidden);
@@ -164,7 +164,7 @@ public static class CollaborationEndpoints
         string projectId, string resourceKey, IProjectLeaseService leases, IProjectAclService acl,
         IUserContext user, HttpContext http, IHubContext<ProjectHub>? hub, CancellationToken ct)
     {
-        var uid = UserId(http, user);
+        var uid = GetCallingUserId(http, user);
         if (string.IsNullOrWhiteSpace(uid)) return Results.Unauthorized();
         if (!await acl.CanAccessAsync(projectId, uid, ProjectAccessLevel.Editor, ct))
             return Results.Json(new { error = "project_access_denied" }, statusCode: StatusCodes.Status403Forbidden);
@@ -180,7 +180,7 @@ public static class CollaborationEndpoints
         string projectId, string resourceKey, IProjectLeaseService leases, IProjectAclService acl,
         IUserContext user, HttpContext http, CancellationToken ct)
     {
-        var uid = UserId(http, user);
+        var uid = GetCallingUserId(http, user);
         if (string.IsNullOrWhiteSpace(uid)) return Results.Unauthorized();
         if (!await acl.CanAccessAsync(projectId, uid, ProjectAccessLevel.Editor, ct))
             return Results.Json(new { error = "project_access_denied" }, statusCode: StatusCodes.Status403Forbidden);
@@ -193,7 +193,7 @@ public static class CollaborationEndpoints
         string projectId, string resourceKey, TransferBody body, IProjectLeaseService leases, IProjectAclService acl,
         IUserContext user, HttpContext http, IHubContext<ProjectHub>? hub, CancellationToken ct)
     {
-        var uid = UserId(http, user);
+        var uid = GetCallingUserId(http, user);
         if (string.IsNullOrWhiteSpace(uid)) return Results.Unauthorized();
         if (string.IsNullOrWhiteSpace(body.ToUserId)) return Results.BadRequest(new { error = "toUserId required" });
         if (!await acl.CanAccessAsync(projectId, uid, ProjectAccessLevel.Editor, ct))
@@ -210,7 +210,7 @@ public static class CollaborationEndpoints
         string projectId, string resourceKey, IProjectLeaseService leases, IProjectAclService acl,
         IUserContext user, HttpContext http, CancellationToken ct)
     {
-        var uid = UserId(http, user);
+        var uid = GetCallingUserId(http, user);
         if (string.IsNullOrWhiteSpace(uid)) return Results.Unauthorized();
         if (!await acl.CanAccessAsync(projectId, uid, ProjectAccessLevel.Viewer, ct))
             return Results.Json(new { error = "project_access_denied" }, statusCode: StatusCodes.Status403Forbidden);
@@ -222,7 +222,7 @@ public static class CollaborationEndpoints
         string projectId, IProjectLeaseService leases, IProjectAclService acl,
         IUserContext user, HttpContext http, CancellationToken ct)
     {
-        var uid = UserId(http, user);
+        var uid = GetCallingUserId(http, user);
         if (string.IsNullOrWhiteSpace(uid)) return Results.Unauthorized();
         if (!await acl.CanAccessAsync(projectId, uid, ProjectAccessLevel.Viewer, ct))
             return Results.Json(new { error = "project_access_denied" }, statusCode: StatusCodes.Status403Forbidden);
@@ -234,7 +234,7 @@ public static class CollaborationEndpoints
         string projectId, IProjectLeaseService leases, IProjectAclService acl,
         IUserContext user, HttpContext http, IHubContext<ProjectHub>? hub, CancellationToken ct)
     {
-        var uid = UserId(http, user);
+        var uid = GetCallingUserId(http, user);
         if (string.IsNullOrWhiteSpace(uid)) return Results.Unauthorized();
         if (!await acl.CanAccessAsync(projectId, uid, ProjectAccessLevel.Viewer, ct))
             return Results.Json(new { error = "project_access_denied" }, statusCode: StatusCodes.Status403Forbidden);
@@ -249,7 +249,7 @@ public static class CollaborationEndpoints
         string projectId, IProjectPresenceService presence, IProjectAclService acl,
         IUserContext user, HttpContext http, CancellationToken ct)
     {
-        var uid = UserId(http, user);
+        var uid = GetCallingUserId(http, user);
         if (string.IsNullOrWhiteSpace(uid)) return Results.Unauthorized();
         if (!await acl.CanAccessAsync(projectId, uid, ProjectAccessLevel.Viewer, ct))
             return Results.Json(new { error = "project_access_denied" }, statusCode: StatusCodes.Status403Forbidden);
@@ -260,7 +260,7 @@ public static class CollaborationEndpoints
         string projectId, IProjectPresenceService presence, IProjectAclService acl,
         IUserContext user, HttpContext http, CancellationToken ct)
     {
-        var uid = UserId(http, user);
+        var uid = GetCallingUserId(http, user);
         if (string.IsNullOrWhiteSpace(uid)) return Results.Unauthorized();
         if (!await acl.CanAccessAsync(projectId, uid, ProjectAccessLevel.Viewer, ct))
             return Results.Json(new { error = "project_access_denied" }, statusCode: StatusCodes.Status403Forbidden);
@@ -273,7 +273,7 @@ public static class CollaborationEndpoints
         string projectId, IProjectPresenceService presence, IProjectLeaseService leases,
         IUserContext user, HttpContext http, IHubContext<ProjectHub>? hub, CancellationToken ct)
     {
-        var uid = UserId(http, user);
+        var uid = GetCallingUserId(http, user);
         if (string.IsNullOrWhiteSpace(uid)) return Results.Unauthorized();
         await presence.LeaveAsync(projectId, uid, ct);
         var released = await leases.ReleaseAllForUserAsync(projectId, uid, ct);
@@ -291,7 +291,7 @@ public static class CollaborationEndpoints
     static async Task<IResult> GetRevAsync(
         string projectId, IProjectAclService acl, IUserContext user, HttpContext http, CancellationToken ct)
     {
-        var uid = UserId(http, user);
+        var uid = GetCallingUserId(http, user);
         if (string.IsNullOrWhiteSpace(uid)) return Results.Unauthorized();
         if (!await acl.CanAccessAsync(projectId, uid, ProjectAccessLevel.Viewer, ct))
             return Results.Json(new { error = "project_access_denied" }, statusCode: StatusCodes.Status403Forbidden);
@@ -304,7 +304,7 @@ public static class CollaborationEndpoints
         string projectId, IProjectAclService acl, IUserContext user, HttpContext http,
         IHubContext<ProjectHub>? hub, CancellationToken ct)
     {
-        var uid = UserId(http, user);
+        var uid = GetCallingUserId(http, user);
         if (string.IsNullOrWhiteSpace(uid)) return Results.Unauthorized();
         if (!await acl.CanAccessAsync(projectId, uid, ProjectAccessLevel.Editor, ct))
             return Results.Json(new { error = "project_access_denied" }, statusCode: StatusCodes.Status403Forbidden);

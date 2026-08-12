@@ -16,10 +16,10 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class Join
 {
     private string? _token;
-    private bool _busy;
-    private string? _error;
-    private string? _forkedProjectId;
-    private string? _forkedTitle;
+    internal bool _busy;
+    internal string? _error;
+    internal string? _forkedProjectId;
+    internal string? _forkedTitle;
 
     protected override async Task OnInitializedAsync()
     {

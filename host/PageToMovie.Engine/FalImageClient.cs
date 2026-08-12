@@ -19,7 +19,6 @@ public sealed class FalImageClient : IImageClient
     public const string ApiBase = "https://fal.run/";
 
     private readonly HttpClient _http;
-    private readonly PageToMovieOptions _opts;
     private readonly ILogger<FalImageClient> _log;
 
     public FalImageClient(
@@ -28,7 +27,6 @@ public sealed class FalImageClient : IImageClient
         ILogger<FalImageClient> log)
     {
         _http = http;
-        _opts = opts.Value;
         _log = log;
         if (_http.BaseAddress is null)
             _http.BaseAddress = new Uri(ApiBase);

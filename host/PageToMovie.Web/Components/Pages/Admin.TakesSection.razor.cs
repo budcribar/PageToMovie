@@ -9,9 +9,9 @@ public partial class Admin_TakesSection
     [Inject] private EngineApiClient Api { get; set; } = default!;
     [CascadingParameter] public Admin? Host { get; set; }
 
-    private bool _busy;
-    private bool _expanded;
-    private string? _error;
+    internal bool _busy;
+    internal bool _expanded;
+    internal string? _error;
     private TakesTelemetryStats? _global;
 
     protected override async Task OnInitializedAsync()

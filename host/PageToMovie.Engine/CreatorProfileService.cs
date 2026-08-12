@@ -14,7 +14,6 @@ public sealed class CreatorProfileService
     private readonly DemoCatalogService _demos;
     private readonly DemoUpvoteService _upvotes;
     private readonly ProjectStore _projects;
-    private readonly ILogger<CreatorProfileService> _logger;
 
     public CreatorProfileService(
         UserDatabaseService users,
@@ -27,7 +26,6 @@ public sealed class CreatorProfileService
         _demos = demos;
         _upvotes = upvotes;
         _projects = projects;
-        _logger = logger;
     }
 
     public async Task<CreatorProfileDto?> GetProfileAsync(string handleOrId, CancellationToken ct = default)

@@ -14,9 +14,9 @@ public partial class AdminLogin
     private string _username = "admin";
     private string _password = "admin";
     private bool _showPassword;
-    private string? _error;
-    private string _status = "Checking session…";
-    private bool _busy;
+    internal string? _error;
+    internal string _status = "Checking session…";
+    internal bool _busy;
     private bool _started;
 
     private void ToggleShowPassword() => _showPassword = !_showPassword;

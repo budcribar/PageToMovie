@@ -248,7 +248,7 @@ public static class AdaptationSessionPilot
         }
         else
         {
-            Console.WriteLine("🧑‍🎤 Stage 2: cast, wardrobe, and locations...");
+            Console.WriteLine("\uD83E\uDDD1\u200D\uD83C\uDFA4 Stage 2: cast, wardrobe, and locations...");
             var instruction = BuildCastLocationsInstruction(beatPlanJson);
             var result = await client.ContinueSessionAsync(model, lastResponseId, instruction, ct, temperature).ConfigureAwait(false);
             totalRequestBytes += result.RequestBytesSent;
@@ -744,7 +744,7 @@ public static class AdaptationSessionPilot
         }
         else
         {
-            Console.WriteLine("🧑‍🎤 [full experiment] Stage 2: cast, wardrobe, and locations...");
+            Console.WriteLine("\uD83E\uDDD1\u200D\uD83C\uDFA4 [full experiment] Stage 2: cast, wardrobe, and locations...");
             var instruction = BuildCastLocationsInstruction(beatPlanJson);
             var result = await client.CompleteWithFilesAsync(model, new[] { session.FileId }, instruction, ct, temperature).ConfigureAwait(false);
             Track(result, model);

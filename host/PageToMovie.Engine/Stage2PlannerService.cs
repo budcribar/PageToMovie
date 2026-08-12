@@ -46,7 +46,6 @@ public sealed class Stage2PlannerService
     };
 
     private readonly ProjectStore _projects;
-    private readonly ILogger<Stage2PlannerService> _log;
     private readonly SilentBeatActionClassifier? _silentBeatClassifier;
     private readonly AmbientSfxClassifier? _ambientSfxClassifier;
     private readonly OnScreenCastClassifier? _onScreenCastClassifier;
@@ -85,7 +84,6 @@ public sealed class Stage2PlannerService
         GenerationErrorLogger? errorLog = null)
     {
         _projects = projects;
-        _log = log;
         _silentBeatClassifier = silentBeatClassifier;
         _ambientSfxClassifier = ambientSfxClassifier;
         _onScreenCastClassifier = onScreenCastClassifier;

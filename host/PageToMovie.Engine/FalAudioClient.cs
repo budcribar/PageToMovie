@@ -24,7 +24,6 @@ public sealed class FalAudioClient : IAudioClient
     public const int MaxSegmentDurationSecondsConst = 47;
 
     private readonly HttpClient _http;
-    private readonly PageToMovieOptions _opts;
     private readonly ILogger<FalAudioClient> _log;
 
     public FalAudioClient(
@@ -33,7 +32,6 @@ public sealed class FalAudioClient : IAudioClient
         ILogger<FalAudioClient> log)
     {
         _http = http;
-        _opts = opts.Value;
         _log = log;
         if (_http.BaseAddress is null)
             _http.BaseAddress = new Uri(ApiBase);

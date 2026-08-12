@@ -20,7 +20,6 @@ public sealed class VoicePreviewService
 
     private readonly ProjectStore _projects;
     private readonly IVideoClient _video;
-    private readonly PageToMovieOptions _opts;
     private readonly ILogger<VoicePreviewService> _log;
 
     public VoicePreviewService(
@@ -31,7 +30,6 @@ public sealed class VoicePreviewService
     {
         _projects = projects;
         _video = video;
-        _opts = opts.Value;
         _log = log;
     }
 

@@ -24,7 +24,7 @@ public partial class Cost : IAsyncDisposable
 
     private bool _disposed;
     private CancellationTokenSource _pageCts = new();
-    private bool _busy;
+    internal bool _busy;
     private string? _error;
     private string _projectId = "";
     private CostReport? _report;
@@ -37,15 +37,15 @@ public partial class Cost : IAsyncDisposable
     /// <summary>cost | duration | both | craft — last edit focus (session + per-user prefs).</summary>
     private string? _editFocus;
     /// <summary>generate | edit — preferred DecisionCard emphasis.</summary>
-    private string _preferPath = "generate";
+    internal string _preferPath = "generate";
     private bool _prefsLoaded;
     /// <summary>G2 — skip EditFocus when true and a remembered focus exists.</summary>
     private bool _skipEditFocus;
     /// <summary>G4 — project production_mode draft|full.</summary>
     private string _productionMode = ProductionModes.Full;
-    private string? _shapeMessage;
-    private string? _shapeError;
-    private int? _maxSpeakingCast;
+    internal string? _shapeMessage;
+    internal string? _shapeError;
+    internal int? _maxSpeakingCast;
     private string _castCapInput = "";
 
     // I1–I4 multi-user / job guards
@@ -53,9 +53,9 @@ public partial class Cost : IAsyncDisposable
     private CollabRole _collabRole = CollabRole.Unknown;
     private string? _scriptLeaseHolder;
     private string? _blockingJobKind;
-    private string? _blockingJobId;
-    private string? _collabNote;
-    private double? _confirmEstimateSnapshot;
+    internal string? _blockingJobId;
+    internal string? _collabNote;
+    internal double? _confirmEstimateSnapshot;
     private long? _lastPlanRev;
     private bool _collabHubHooked;
     /// <summary>Checkpoint created right before last prune — enables Undo prune.</summary>

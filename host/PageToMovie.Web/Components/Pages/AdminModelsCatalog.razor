@@ -195,7 +195,7 @@
                     <div class="col-md-2">
                         <select class="form-select form-select-sm bg-dark text-light border-secondary" @bind="List._filterProvider">
                             <option value="">All Providers</option>
-                            @foreach (var p in List.AvailableProviders)
+                            @foreach (var p in List.GetAvailableProviders())
                             {
                                 <option value="@p">@p</option>
                             }

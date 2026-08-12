@@ -24,7 +24,6 @@ public sealed class MovieAutoReviewService
 
     private readonly ProjectStore _projects;
     private readonly IVisionClient _vision;
-    private readonly IChatClient? _chat;
     private readonly ProjectTelemetryService _telemetry;
     private readonly ILogger<MovieAutoReviewService> _log;
 
@@ -38,7 +37,6 @@ public sealed class MovieAutoReviewService
         _projects = projects;
         _vision = vision;
         _telemetry = telemetry;
-        _chat = chat;
         _log = log ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<MovieAutoReviewService>.Instance;
     }
 

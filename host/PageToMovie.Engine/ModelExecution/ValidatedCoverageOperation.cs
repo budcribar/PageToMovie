@@ -50,71 +50,71 @@ public static class ValidatedCoverageOperation
         };
         return (lifecycle, compatibility);
     }
+}
 
-    private sealed record CoverageInput(IReadOnlyList<string> RequestedIds);
+file sealed record CoverageInput(IReadOnlyList<string> RequestedIds);
 
-    private sealed class CoverageOperation<T>(
-        string operationName,
-        string promptVersion,
-        Func<ModelAttemptContext<string>, IReadOnlyList<string>, Task<ModelResponse<string>>> call)
-        : IModelOperation<CoverageInput, string>
+file sealed class CoverageOperation<T>(
+    string operationName,
+    string promptVersion,
+    Func<ModelAttemptContext<string>, IReadOnlyList<string>, Task<ModelResponse<string>>> call)
+    : IModelOperation<CoverageInput, string>
+{
+    public string OperationName => operationName;
+    public string PromptVersion => promptVersion;
+
+    public Task<ModelResponse<string>> ExecuteAsync(
+        CoverageInput input, ModelAttemptContext<string> context, CancellationToken ct)
     {
-        public string OperationName => operationName;
-        public string PromptVersion => promptVersion;
-
-        public Task<ModelResponse<string>> ExecuteAsync(
-            CoverageInput input, ModelAttemptContext<string> context, CancellationToken ct)
-        {
-            var missing = context.Kind == ModelAttemptKind.Primary
-                ? input.RequestedIds
-                : context.ValidationIssues
-                    .Where(issue => issue.Code == "missing_id" && !string.IsNullOrWhiteSpace(issue.Path))
-                    .Select(issue => issue.Path![2..])
-                    .ToArray();
-            return call(context, missing.Count > 0 ? missing : input.RequestedIds);
-        }
-    }
-
-    private sealed class MergingParser<T>(Func<string, Dictionary<string, T>?> parse)
-        : IModelResponseParser<string, Dictionary<string, T>>
-    {
-        private readonly Dictionary<string, T> _merged = new(StringComparer.OrdinalIgnoreCase);
-        public string? LastRaw { get; private set; }
-        public IReadOnlyDictionary<string, T> Merged => _merged;
-
-        public ModelParseResult<Dictionary<string, T>> Parse(string response)
-        {
-            LastRaw = response;
-            Dictionary<string, T>? parsed;
-            try { parsed = parse(response); }
-            catch (Exception ex)
-            {
-                return ModelParseResult<Dictionary<string, T>>.Failure(
-                    new ModelValidationIssue("invalid_json", ex.Message, "$"));
-            }
-            if (parsed is null)
-                return ModelParseResult<Dictionary<string, T>>.Failure(
-                    new ModelValidationIssue("invalid_json", "The response did not contain a usable id map.", "$"));
-            foreach (var pair in parsed) _merged[pair.Key] = pair.Value;
-            return ModelParseResult<Dictionary<string, T>>.Success(
-                new Dictionary<string, T>(_merged, StringComparer.OrdinalIgnoreCase));
-        }
-    }
-
-    private sealed class CoverageValidator<T>(IReadOnlyList<string> requestedIds)
-        : IModelResultValidator<Dictionary<string, T>>
-    {
-        public IReadOnlyList<ModelValidationIssue> Validate(Dictionary<string, T> result) =>
-            requestedIds
-                .Where(id => !result.ContainsKey(id))
-                .Select(id => new ModelValidationIssue("missing_id", $"Required id '{id}' is missing.", "$." + id))
+        var missing = context.Kind == ModelAttemptKind.Primary
+            ? input.RequestedIds
+            : context.ValidationIssues
+                .Where(issue => issue.Code == "missing_id" && !string.IsNullOrWhiteSpace(issue.Path))
+                .Select(issue => issue.Path![2..])
                 .ToArray();
+        return call(context, missing.Count > 0 ? missing : input.RequestedIds);
     }
+}
 
-    private sealed class PartialCoverageFallback<T>(MergingParser<T> parser)
-        : IDeterministicFallback<CoverageInput, Dictionary<string, T>>
+file sealed class MergingParser<T>(Func<string, Dictionary<string, T>?> parse)
+    : IModelResponseParser<string, Dictionary<string, T>>
+{
+    private readonly Dictionary<string, T> _merged = new(StringComparer.OrdinalIgnoreCase);
+    public string? LastRaw { get; private set; }
+    public IReadOnlyDictionary<string, T> Merged => _merged;
+
+    public ModelParseResult<Dictionary<string, T>> Parse(string response)
     {
-        public Dictionary<string, T> Create(CoverageInput input, IReadOnlyList<ModelValidationIssue> unresolvedIssues) =>
-            new(parser.Merged, StringComparer.OrdinalIgnoreCase);
+        LastRaw = response;
+        Dictionary<string, T>? parsed;
+        try { parsed = parse(response); }
+        catch (Exception ex)
+        {
+            return ModelParseResult<Dictionary<string, T>>.Failure(
+                new ModelValidationIssue("invalid_json", ex.Message, "$"));
+        }
+        if (parsed is null)
+            return ModelParseResult<Dictionary<string, T>>.Failure(
+                new ModelValidationIssue("invalid_json", "The response did not contain a usable id map.", "$"));
+        foreach (var pair in parsed) _merged[pair.Key] = pair.Value;
+        return ModelParseResult<Dictionary<string, T>>.Success(
+            new Dictionary<string, T>(_merged, StringComparer.OrdinalIgnoreCase));
     }
+}
+
+file sealed class CoverageValidator<T>(IReadOnlyList<string> requestedIds)
+    : IModelResultValidator<Dictionary<string, T>>
+{
+    public IReadOnlyList<ModelValidationIssue> Validate(Dictionary<string, T> result) =>
+        requestedIds
+            .Where(id => !result.ContainsKey(id))
+            .Select(id => new ModelValidationIssue("missing_id", $"Required id '{id}' is missing.", "$." + id))
+            .ToArray();
+}
+
+file sealed class PartialCoverageFallback<T>(MergingParser<T> parser)
+    : IDeterministicFallback<CoverageInput, Dictionary<string, T>>
+{
+    public Dictionary<string, T> Create(CoverageInput input, IReadOnlyList<ModelValidationIssue> unresolvedIssues) =>
+        new(parser.Merged, StringComparer.OrdinalIgnoreCase);
 }

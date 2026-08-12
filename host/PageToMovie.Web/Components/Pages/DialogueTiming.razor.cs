@@ -18,10 +18,10 @@ public partial class DialogueTiming
 
     private string? _projectId;
     private List<ProjectInfo> _projects = new();
-    private bool _loading = true;
-    private bool _busy;
+    internal bool _loading = true;
+    internal bool _busy;
     private string? _error;
-    private string? _status;
+    internal string? _status;
 
     private List<EngineApiClient.DialogueSceneLinesDto> _sceneLines = new();
     private int _scene;
@@ -29,7 +29,7 @@ public partial class DialogueTiming
     private DialogueTimingScene? _current;
 
     private readonly HashSet<DialogueTimingRow> _editing = new();
-    private bool _dirty;
+    internal bool _dirty;
 
     private readonly Dictionary<int, string> _sceneUrls = new();
 
@@ -114,7 +114,7 @@ public partial class DialogueTiming
         if (!_editing.Add(row)) _editing.Remove(row);
     }
 
-    private void MarkDirty() => _dirty = true;
+    internal void MarkDirty() => _dirty = true;
 
     // Recompute the match % live as the script/heard text or window is edited.
     private void OnRowChanged(DialogueTimingRow row)

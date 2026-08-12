@@ -20,7 +20,7 @@ public sealed class FakeGrokVisionClient : IVisionClient
     public async Task<string> TranscribePageAsync(
         string imagePath,
         int page,
-        string model = "grok-4.5",
+        string model = "",
         CancellationToken ct = default)
     {
         _log.LogInformation("Fake vision transcribe page={Page}", page);
@@ -45,7 +45,7 @@ public sealed class FakeGrokVisionClient : IVisionClient
         string imagePath,
         int page,
         IReadOnlyList<CharacterClassifyHint> cast,
-        string model = "grok-4.5",
+        string model = "",
         CancellationToken ct = default)
     {
         _log.LogInformation("Fake vision classify page={Page} cast={N}", page, cast.Count);
@@ -72,7 +72,7 @@ public sealed class FakeGrokVisionClient : IVisionClient
     public async Task<string> CompleteWithImagesAsync(
         string prompt,
         IReadOnlyList<string> imagePaths,
-        string model = "grok-4.5",
+        string model = "",
         string detail = "low",
         CancellationToken ct = default)
     {

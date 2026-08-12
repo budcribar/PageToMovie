@@ -23,7 +23,6 @@ public sealed class GeminiChatClient : IChatClient, IVisionClient, IGeminiVideoA
     private const string PartsKey = "parts";
     private readonly HttpClient _http;
     private readonly ProjectTelemetryService _telemetry;
-    private readonly ILogger<GeminiChatClient> _log;
     private readonly GenerationErrorLogger? _errorLogger;
 
     public GeminiChatClient(
@@ -36,7 +35,6 @@ public sealed class GeminiChatClient : IChatClient, IVisionClient, IGeminiVideoA
         _ = opts; // reserved — no Gemini-specific options today
         _http = http;
         _telemetry = telemetry;
-        _log = log;
         _errorLogger = errorLogger;
         if (_http.BaseAddress is null)
             _http.BaseAddress = new Uri(ApiBase + "/");

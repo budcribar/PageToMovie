@@ -80,50 +80,47 @@ public partial class Scenes : IAsyncDisposable
 
 
 
-    internal List<string> CharacterOptions
+    internal List<string> GetCharacterOptions()
     {
-        get
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (List._scenes is not null)
         {
-            var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            if (List._scenes is not null)
+            foreach (var s in List._scenes)
             {
-                foreach (var s in List._scenes)
+                foreach (var c in s.CharactersOnScreen)
+                    if (!string.IsNullOrWhiteSpace(c)) set.Add(c);
+            }
+        }
+        if (List._detail is not null)
+        {
+            foreach (var c in List._detail.CharactersOnScreen)
+                if (!string.IsNullOrWhiteSpace(c)) set.Add(c);
+
+            if (List._detail.Clips is not null)
+            {
+                foreach (var cl in List._detail.Clips)
                 {
-                    foreach (var c in s.CharactersOnScreen)
+                    foreach (var c in cl.CharactersOnScreen)
                         if (!string.IsNullOrWhiteSpace(c)) set.Add(c);
                 }
             }
-            if (List._detail is not null)
-            {
-                foreach (var c in List._detail.CharactersOnScreen)
-                    if (!string.IsNullOrWhiteSpace(c)) set.Add(c);
-
-                if (List._detail.Clips is not null)
-                {
-                    foreach (var cl in List._detail.Clips)
-                    {
-                        foreach (var c in cl.CharactersOnScreen)
-                            if (!string.IsNullOrWhiteSpace(c)) set.Add(c);
-                    }
-                }
-            }
-            if (ClipForm._clipEditorCast is not null)
-            {
-                foreach (var c in ClipForm._clipEditorCast)
-                    if (!string.IsNullOrWhiteSpace(c)) set.Add(c);
-            }
-            if (List._castMissing is not null)
-            {
-                foreach (var c in List._castMissing)
-                    if (!string.IsNullOrWhiteSpace(c)) set.Add(c);
-            }
-            return set.OrderBy(c => ShortChar(c), StringComparer.OrdinalIgnoreCase).ToList();
         }
+        if (ClipForm._clipEditorCast is not null)
+        {
+            foreach (var c in ClipForm._clipEditorCast)
+                if (!string.IsNullOrWhiteSpace(c)) set.Add(c);
+        }
+        if (List._castMissing is not null)
+        {
+            foreach (var c in List._castMissing)
+                if (!string.IsNullOrWhiteSpace(c)) set.Add(c);
+        }
+        return set.OrderBy(c => ShortChar(c), StringComparer.OrdinalIgnoreCase).ToList();
     }
 
 
 
-    internal List<string> LocationOptions =>
+    internal List<string> GetLocationOptions() =>
         List._scenes is null
             ? new List<string>()
             : List._scenes

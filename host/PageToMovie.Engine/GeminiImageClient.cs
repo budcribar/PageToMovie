@@ -22,9 +22,7 @@ public sealed class GeminiImageClient : IImageClient
     public const string ApiBase = SupportedModelCatalog.GoogleApiBase;
 
     private readonly HttpClient _http;
-    private readonly PageToMovieOptions _opts;
     private readonly ProjectTelemetryService _telemetry;
-    private readonly ILogger<GeminiImageClient> _log;
 
     public GeminiImageClient(
         HttpClient http,
@@ -33,9 +31,7 @@ public sealed class GeminiImageClient : IImageClient
         ILogger<GeminiImageClient> log)
     {
         _http = http;
-        _opts = opts.Value;
         _telemetry = telemetry;
-        _log = log;
         if (_http.BaseAddress is null)
             _http.BaseAddress = new Uri(ApiBase + "/");
     }

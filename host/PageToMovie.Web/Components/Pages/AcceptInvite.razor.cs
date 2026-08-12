@@ -15,8 +15,8 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class AcceptInvite
 {
     [Parameter] public string Token { get; set; } = "";
-    private bool _loading = true, _busy, _accepted;
-    private string? _error, _status;
+    internal bool _loading = true, _busy, _accepted;
+    internal string? _error, _status;
     private PreviewDto? _preview;
 
     protected override async Task OnInitializedAsync()

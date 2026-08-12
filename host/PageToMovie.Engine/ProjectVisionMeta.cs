@@ -14,7 +14,7 @@ namespace PageToMovie.Engine;
 public static class ProjectVisionMeta
 {
     public const string FileName = "vision_meta.json";
-    public const string SchemaVersion = "vision_meta.v1";
+    public const string CurrentSchemaVersion = "vision_meta.v1";
 
     public const string MediumAuto = "auto";
     public const string MediumPhotoreal = VisualMediumStyles.MediumPhotoreal;
@@ -25,7 +25,7 @@ public static class ProjectVisionMeta
     public sealed class Document
     {
         [JsonPropertyName("schema_version")]
-        public string SchemaVersion { get; set; } = ProjectVisionMeta.SchemaVersion;
+        public string SchemaVersion { get; set; } = ProjectVisionMeta.CurrentSchemaVersion;
 
         /// <summary>Machine enum: photoreal_live_action | illustrated_picture_book | stylized_3d_animated | other</summary>
         [JsonPropertyName("visual_medium")]
@@ -152,7 +152,7 @@ public static class ProjectVisionMeta
     public static void Write(string projectDir, Document doc)
     {
         Directory.CreateDirectory(Path.Combine(projectDir, "source"));
-        doc.SchemaVersion = SchemaVersion;
+        doc.SchemaVersion = CurrentSchemaVersion;
         doc.VisualMedium = NormalizeMedium(doc.VisualMedium);
         doc.DecidedAt = DateTimeOffset.UtcNow.ToString("o");
         if (string.IsNullOrWhiteSpace(doc.RenderStyleLock))
@@ -232,7 +232,7 @@ public static class ProjectVisionMeta
         var med = NormalizeMedium(medium);
         var doc = TryRead(projectDir) ?? new Document
         {
-            SchemaVersion = SchemaVersion,
+            SchemaVersion = CurrentSchemaVersion,
             DecidedAt = DateTime.UtcNow.ToString("o"),
         };
         doc.VisualMedium = med;

@@ -515,7 +515,7 @@ public static class Program
                 title = Path.GetFileNameWithoutExtension(bookPath),
                 author = "Author",
                 totalRuntimeMinutes = generationRuntimeMinutes,
-                visionMetaSchema = ProjectVisionMeta.SchemaVersion,
+                visionMetaSchema = ProjectVisionMeta.CurrentSchemaVersion,
                 reasoningEffort,
                 cachePackageSchema = "adaptation-conversion.v1",
             });

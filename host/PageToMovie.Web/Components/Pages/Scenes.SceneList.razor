@@ -91,7 +91,7 @@
                     </button>
                     </CapabilityLockedControl>
 
-                    @if (ListState!._scenes is not null && ListState!.VisibleScenes.Any(s => !s.ClipsComplete || s.ClipsOnDisk < s.ClipCount))
+                    @if (ListState!._scenes is not null && ListState!.GetVisibleScenes().Any(s => !s.ClipsComplete || s.ClipsOnDisk < s.ClipCount))
                     {
                         <button type="button"
                                 class="btn btn-sm btn-outline-secondary ms-2"
@@ -214,8 +214,8 @@
                             <input class="form-check-input" type="checkbox"
                                    data-testid="scenes-select-all"
                                    title="Select all shown scenes"
-                                   checked="@ListState!.AllShownScenesSelected"
-                                   disabled="@(Host._busy || ListState!.VisibleScenes.Count == 0)"
+                                   checked="@ListState!.AreAllVisibleSelected()"
+                                   disabled="@(Host._busy || ListState!.GetVisibleScenes().Count == 0)"
                                    @onchange="e => ListState!.ToggleSelectAllShown((bool)(e.Value ?? false))" />
                         </th>
                         <th style="width:7rem; cursor:pointer; user-select:none;" @onclick='() => ListState!.ToggleSort("number")' title="Click to sort by Scene Number">

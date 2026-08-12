@@ -28,7 +28,6 @@ public sealed class BookPrepareService
 
     private readonly ProjectStore _projects;
     private readonly IVisionClient _vision;
-    private readonly PageToMovieOptions _opts;
     private readonly ILogger<BookPrepareService> _log;
 
     private static readonly Regex HtmlEntryExtRegex = new(@"\.(xhtml|html|htm)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -46,7 +45,6 @@ public sealed class BookPrepareService
     {
         _projects = projects;
         _vision = vision;
-        _opts = opts.Value;
         _log = log;
     }
 
