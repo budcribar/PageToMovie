@@ -2404,7 +2404,7 @@ public sealed class FilmJobService
             ProjectId = projectId,
             Message = "Enriching screenplay…",
             Index = 0,
-            Total = 4,
+            Total = 0,
             StartedAt = DateTimeOffset.UtcNow,
             Log = new List<string>(),
         };
@@ -2414,7 +2414,7 @@ public sealed class FilmJobService
         try
         {
             await AppendLogAsync($"Enrich screenplay for {projectId} (visual detail from the book; dialogue unchanged)");
-            await UpdateAsync(s => { s.Index = 1; s.Message = "Loading draft + book text…"; });
+            await UpdateAsync(s => { s.Index = 0; s.Message = "Loading draft + book text…"; });
 
             string? medium = null;
             try
@@ -2476,11 +2476,13 @@ public sealed class FilmJobService
                 return;
             }
 
-            await UpdateAsync(s => { s.Index = 3; s.Message = "Saving enriched draft…"; });
+            await UpdateAsync(s =>
+            {
+                if (s.Total > 0) s.Index = s.Total;
+                s.Message = "Saving enriched draft…";
+            });
             if (result.Applied)
                 _projects.TriggerAutoGitCommit(projectId, "ptm:stage=embellish");
-
-            await UpdateAsync(s => s.Index = 4);
             await FinishAsync(
                 "done",
                 result.Message

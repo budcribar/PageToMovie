@@ -402,7 +402,7 @@ public partial class Admin
                 ProjectId = _enrichProjectId,
                 Message = "Queuing enrich…",
                 Index = 0,
-                Total = 4,
+                Total = 0,
                 StartedAt = _enrichStarted,
                 Log = new List<string> { "Queued — waiting for the worker." },
             };
@@ -419,7 +419,7 @@ public partial class Admin
                     if (string.IsNullOrWhiteSpace(started.Message))
                         started.Message = "Enrich running…";
                 }
-                _archiveMsg = "Enrich is running. One rewrite of the full screenplay — 10–20 minutes is normal.";
+                _archiveMsg = "Enrich is running scene-by-scene. Watch 1/28 in the log — not a mid-bar.";
                 StartEnrichPoll();
             }
             catch (Exception ex)
@@ -500,6 +500,7 @@ public partial class Admin
             try
             {
                 // ~90 minutes — Odyssey-scale rewrite can sit in one model call that long.
+                var misses = 0;
                 for (var i = 0; i < 2700 && !token.IsCancellationRequested; i++)
                 {
                     JobSnapshot? j = null;
@@ -517,6 +518,7 @@ public partial class Admin
                     }
                     if (j is not null)
                     {
+                        misses = 0;
                         if (string.IsNullOrWhiteSpace(_enrichJobId) && !string.IsNullOrWhiteSpace(j.JobId))
                             _enrichJobId = j.JobId;
                         _enrichJob = j;
@@ -537,6 +539,26 @@ public partial class Admin
                             }
                             _archiveBusy = false;
                             _archiveAction = null;
+                            await S.NotifyChangedAsync();
+                            return;
+                        }
+                    }
+                    else
+                    {
+                        // Job id gone and no running embellish = process restart or already finished.
+                        // Don't keep a fake 45% card for 90 minutes.
+                        misses++;
+                        if (i >= 8 && misses >= 3)
+                        {
+                            _archiveError = "No enrich job on the server (restarted or already finished). Original screenplay is unchanged unless a success line is in the log.";
+                            _archiveMsg = null;
+                            _archiveBusy = false;
+                            _archiveAction = null;
+                            if (_enrichJob is not null && !_enrichJob.IsFinished)
+                            {
+                                _enrichJob.Status = "error";
+                                _enrichJob.Message = _archiveError;
+                            }
                             await S.NotifyChangedAsync();
                             return;
                         }
