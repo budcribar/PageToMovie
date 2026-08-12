@@ -33,6 +33,33 @@
                                     @(Archive!._archiveBusy && Archive!._archiveAction == "export" ? "Exporting…" : "Download full project + media")
                                 </button>
                             </div>
+                            @if (Archive!._archiveBusy && Archive!._archiveAction == "export")
+                            {
+                                <div class="mt-2" data-testid="admin-export-progress" style="max-width: 28rem;">
+                                    <div class="d-flex justify-content-between small text-muted mb-1">
+                                        <span class="text-truncate pe-2">@(Archive!._exportPhaseLabel ?? Archive!._archiveMsg ?? "Exporting…")</span>
+                                        @if (Archive!._exportPercent is { } ep)
+                                        {
+                                            <span class="flex-shrink-0">@($"{ep:0}%")</span>
+                                        }
+                                    </div>
+                                    <div class="progress" style="height: 0.5rem;" role="progressbar"
+                                         aria-valuemin="0" aria-valuemax="100"
+                                         aria-valuenow="@(Archive!._exportPercent is { } v ? (int)v : 0)"
+                                         aria-label="Export progress">
+                                        @if (Archive!._exportIndeterminate || Archive!._exportPercent is null)
+                                        {
+                                            <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
+                                                 style="width: 100%"></div>
+                                        }
+                                        else
+                                        {
+                                            <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
+                                                 style="width: @(Math.Clamp(Archive!._exportPercent.Value, 0, 100).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%"></div>
+                                        }
+                                    </div>
+                                </div>
+                            }
                             <p class="form-text mb-0 mt-1">
                                 Includes <code>source/</code>, <code>assets/</code>, scenes, cast, book page PNGs, clips.
                             </p>

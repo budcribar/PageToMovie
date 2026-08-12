@@ -7,13 +7,27 @@
 window.PageToMovieExport = {
     _directoryHandle: null,
 
+    async _reportProgress(progressRef, phase, percent, message) {
+        if (!progressRef) return;
+        try {
+            await progressRef.invokeMethodAsync(
+                "ReportAsync",
+                phase || "",
+                typeof percent === "number" && !Number.isNaN(percent) ? percent : null,
+                message || null);
+        } catch (_) { /* component disposed */ }
+    },
+
     /**
      * Download a binary stream from Blazor (DotNetStreamReference) as a file.
      * Used for admin full-project zip export.
+     * Optional 3rd arg: DotNetObjectReference to ExportProgressSink.
      */
-    downloadStreamAsync: async function (fileName, contentStreamReference) {
+    downloadStreamAsync: async function (fileName, contentStreamReference, progressRef) {
         try {
+            await this._reportProgress(progressRef, "download", null, "Receiving zip…");
             const arrayBuffer = await contentStreamReference.arrayBuffer();
+            await this._reportProgress(progressRef, "pack", 100, "Saving download…");
             const blob = new Blob([arrayBuffer], { type: "application/zip" });
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
@@ -23,6 +37,7 @@ window.PageToMovieExport = {
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
+            await this._reportProgress(progressRef, "done", 100, "Download complete");
             return { success: true };
         } catch (err) {
             console.error("downloadStreamAsync failed:", err);
@@ -265,10 +280,13 @@ window.PageToMovieExport = {
      * Stage 2 of full-project export: take the server zip (ArrayBuffer), merge in
      * client media-folder files (MP4/MP3/etc. under {projectId}/…), download one zip.
      * Server entries win only when local is missing; local media always overwrites empty/missing.
+     * Optional progressRef: ExportProgressSink ReportAsync(phase, percent, message).
      */
-    mergeServerZipWithLocalMediaAsync: async function (fileName, contentStreamReference, projectId) {
+    mergeServerZipWithLocalMediaAsync: async function (fileName, contentStreamReference, projectId, progressRef) {
         try {
+            await this._reportProgress(progressRef, "download", null, "Reading server zip…");
             const serverBuf = await contentStreamReference.arrayBuffer();
+            await this._reportProgress(progressRef, "merge", 0, "Unpacking server zip…");
             const entries = await this._zipReadAllAsync(new Uint8Array(serverBuf));
             const byPath = new Map();
             for (const e of entries) {
@@ -286,11 +304,23 @@ window.PageToMovieExport = {
                 if (!listed.success) {
                     mediaError = listed.error || "Could not list local media";
                 } else {
-                    for (const f of listed.files || []) {
+                    const files = listed.files || [];
+                    const total = files.length;
+                    let i = 0;
+                    for (const f of files) {
+                        i++;
                         // f.relativePath is like "owner/slug/assets/video/x.mp4"
                         const rel = (f.relativePath || "").replace(/\\/g, "/");
                         if (!rel) continue;
                         const zipPath = rel; // matches server zip layout {projectId}/…
+                        if (i === 1 || i === total || i % 3 === 0) {
+                            const pct = total > 0 ? Math.min(100, (i / total) * 100) : 0;
+                            await this._reportProgress(
+                                progressRef,
+                                "merge",
+                                pct,
+                                `Merging local media ${i}/${total}…`);
+                        }
                         try {
                             const got = await window.PageToMovieMedia.getBytesAsync(rel, 0);
                             if (!got.success || !got.bytes) {
@@ -330,7 +360,9 @@ window.PageToMovieExport = {
                 } catch (_) { /* keep original meta */ }
             }
 
+            await this._reportProgress(progressRef, "pack", 50, "Packing final zip…");
             const out = this._zipWriteAll(byPath);
+            await this._reportProgress(progressRef, "pack", 90, "Starting download…");
             const blob = new Blob([out], { type: "application/zip" });
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
@@ -350,6 +382,7 @@ window.PageToMovieExport = {
             else
                 msgParts.push("no local media files found under project folder");
 
+            await this._reportProgress(progressRef, "done", 100, msgParts.join(" · "));
             return {
                 success: true,
                 clientMediaAdded: clientAdded,

@@ -118,6 +118,33 @@
                                             @onclick="Host.Import.BackupProjectAsync">
                                         @(Host.Import._backingUp ? "Backing up…" : "Download backup")
                                     </button>
+                                    @if (Host.Import._backingUp)
+                                    {
+                                        <div class="w-100 mt-2" data-testid="home-backup-progress" style="min-width: 12rem; max-width: 24rem;">
+                                            <div class="d-flex justify-content-between small text-muted mb-1">
+                                                <span class="text-truncate pe-2">@(Host.Import._backupPhaseLabel ?? "Backing up…")</span>
+                                                @if (Host.Import._backupPercent is { } backupPct)
+                                                {
+                                                    <span class="flex-shrink-0">@($"{backupPct:0}%")</span>
+                                                }
+                                            </div>
+                                            <div class="progress" style="height: 0.5rem;" role="progressbar"
+                                                 aria-valuemin="0" aria-valuemax="100"
+                                                 aria-valuenow="@(Host.Import._backupPercent is { } v ? (int)v : 0)"
+                                                 aria-label="Backup progress">
+                                                @if (Host.Import._backupIndeterminate || Host.Import._backupPercent is null)
+                                                {
+                                                    <div class="progress-bar progress-bar-striped progress-bar-animated"
+                                                         style="width: 100%"></div>
+                                                }
+                                                else
+                                                {
+                                                    <div class="progress-bar progress-bar-striped progress-bar-animated"
+                                                         style="width: @(Math.Clamp(Host.Import._backupPercent.Value, 0, 100).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))%"></div>
+                                                }
+                                            </div>
+                                        </div>
+                                    }
                                     <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@Host._busy"
                                             @onclick="() => Host.Projects.OpenCollaboratorsModal(id)">
                                         Collaborate
