@@ -507,6 +507,11 @@ public sealed class StartCharacterVariantsRequest
     public bool PersistDescription { get; set; } = true;
     /// <summary>After gen, vision ranks variants and locks the best (operator can override later).</summary>
     public bool AutoLockBest { get; set; }
+    /// <summary>
+    /// Voice/text tweak of the locked portrait: force one result and lock it immediately
+    /// (no 3-way pick). Description/visual lock are not rewritten when PersistDescription is false.
+    /// </summary>
+    public bool IterativeEdit { get; set; }
 }
 
 /// <summary>

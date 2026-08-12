@@ -2254,9 +2254,11 @@ public sealed class FilmJobService
             Kind = "character",
             ProjectId = projectId,
             CharKey = req.CharKey,
-            Message = $"Generating portraits for {req.CharKey}…",
+            Message = req.IterativeEdit
+                ? $"Tweaking portrait for {req.CharKey}…"
+                : $"Generating portraits for {req.CharKey}…",
             Index = 0,
-            Total = 3,
+            Total = req.Count > 0 ? req.Count : (req.IterativeEdit ? 1 : 3),
             StartedAt = DateTimeOffset.UtcNow,
             Log = new List<string>(),
         };
@@ -2311,11 +2313,17 @@ public sealed class FilmJobService
                     ? $" · book refs: {string.Join(", ", result.BookRefs)}"
                     : ""));
 
-            if (req.AutoLockBest && result.Paths.Count > 0)
+            if (result.LockedAsPreferred)
+            {
+                await FinishAsync(
+                    "done",
+                    $"Portrait tweaked for {req.CharKey} — new look is locked. Tweak again with words if needed.");
+            }
+            else if (req.AutoLockBest && result.Paths.Count > 0)
             {
                 await UpdateAsync(s => s.Message = $"AI picking best look for {req.CharKey}…");
                 var (best, _) = await _characters.AutoLockBestVariantAsync(
-                    projectId, req.CharKey, maxVariants: 3,
+                    projectId, req.CharKey, maxVariants: Math.Max(3, result.Paths.Count),
                     onProgress: line =>
                     {
                         _ = AppendLogAsync(line);

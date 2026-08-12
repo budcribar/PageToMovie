@@ -137,9 +137,11 @@ public partial class Characters
                     return;
             }
 
-            if (S.LookBook.SelectedSeedCount == 0 && string.IsNullOrWhiteSpace(S.LookEdit._editDescription))
+            if (S.LookBook.SelectedSeedCount == 0
+                && string.IsNullOrWhiteSpace(S.LookEdit._editDescription)
+                && string.IsNullOrWhiteSpace(S.LookEdit._imageEditInstruction))
             {
-                S._error = "Select book pictures (or another reference) or enter a description.";
+                S._error = "Select book pictures (or another reference), enter a description, or type a face tweak.";
                 return;
             }
 
@@ -156,8 +158,7 @@ public partial class Characters
                     books.Add(bi);
             }
 
-            // Always 3 options so the pick grid is useful on first and later generates
-            // (engine otherwise uses 1 when the character is already locked).
+            // First gen / full regen: 3 options + AI pick. Voice/text plate tweak: one edit, lock immediately.
             var hasImageEdit = !string.IsNullOrWhiteSpace(S.LookEdit._imageEditInstruction)
                                && S.List.PreferredImageUrl is { Length: > 0 };
             var descForGen = hasImageEdit
@@ -167,7 +168,7 @@ public partial class Characters
             {
                 ProjectId = S._projectId,
                 CharKey = S.List._selected.Key,
-                Count = 3,
+                Count = hasImageEdit ? 1 : 3,
                 // Voice/text image edit always anchors on the preferred plate.
                 SeedMode = hasImageEdit
                     ? "preferred_only"
@@ -182,6 +183,7 @@ public partial class Characters
                 VisualLockOverride = S.LookEdit._editVisualLock,
                 PersistDescription = !hasImageEdit, // don't overwrite seed with ephemeral edit instruction
                 AutoLockBest = true,
+                IterativeEdit = hasImageEdit,
             });
             if (hasImageEdit)
                 S.LookEdit._imageEditInstruction = "";

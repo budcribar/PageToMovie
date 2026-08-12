@@ -109,6 +109,9 @@ public sealed class CharacterDesignService
         if (n <= 0)
             n = opts.Count > 0 ? opts.Count : (alreadyLocked ? 1 : 3);
         n = Math.Clamp(n, 1, 6);
+        // Iterative face tweak: one edit at a time (user longer / remove beard), not a 3-way bake-off.
+        if (opts.IterativeEdit)
+            n = 1;
 
         var allBookRefs = ResolveBookRefPaths(projectDir, seeds, maxRefs: 12);
         var editRefs = ResolveEditRefs(
@@ -364,6 +367,16 @@ public sealed class CharacterDesignService
             if (paths.Count < 1)
                 throw new InvalidOperationException($"No variants generated for {charKey}");
 
+            var lockedAsPreferred = false;
+            if (opts.IterativeEdit && paths.Count > 0)
+            {
+                onProgress?.Invoke($"Locking edited portrait for {charKey}…");
+                await LockVariantAsync(projectId, charKey, 1, allowStyleOverride: true, ct)
+                    .ConfigureAwait(false);
+                lockedAsPreferred = true;
+                onProgress?.Invoke($"Locked edited portrait → preferred for {charKey}");
+            }
+
             return new CharacterDesignResult
             {
                 CharKey = charKey,
@@ -371,6 +384,7 @@ public sealed class CharacterDesignService
                 Paths = paths,
                 BookRefs = editRefs.Select(Path.GetFileName).Where(s => s is not null).Cast<string>().ToList(),
                 EditError = editError,
+                LockedAsPreferred = lockedAsPreferred,
             };
         }
         finally
@@ -1586,4 +1600,6 @@ public sealed class CharacterDesignResult
     public List<string> Paths { get; set; } = new();
     public List<string> BookRefs { get; set; } = new();
     public string? EditError { get; set; }
+    /// <summary>True when an iterative plate tweak was locked as preferred (no multi-variant pick).</summary>
+    public bool LockedAsPreferred { get; set; }
 }
