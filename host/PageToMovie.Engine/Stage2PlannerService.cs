@@ -218,71 +218,103 @@ public sealed class Stage2PlannerService
 
         onProgress?.Invoke($"Planning {scenesIn.Count} scene(s) @ {resolution}…");
         var styleLock = CoerceString(gpv.TryGetValue("render_style_lock", out var rsl) ? rsl : null);
-        var planned = new List<Dictionary<string, object?>>();
-        foreach (var s in scenesIn)
+
+        // Fan out scenes with a small concurrency cap. Within each scene the 9 classifiers
+        // already run via Task.WhenAll; without a scene-level cap that would be 9×N concurrent
+        // chat calls (provider throttling + noisy progress). Degree 2 ≈ 18 peak chat calls.
+        const int maxParallelScenes = 2;
+        var totalScenes = scenesIn.Count;
+        var completedScenes = 0;
+        var plannedBag = new System.Collections.Concurrent.ConcurrentBag<(int SceneNumber, Dictionary<string, object?> Scene)>();
+        using var sceneGate = new SemaphoreSlim(maxParallelScenes);
+        var progressGate = new object();
+
+        void Report(string line)
+        {
+            lock (progressGate)
+                onProgress?.Invoke(line);
+        }
+
+        var sceneTasks = scenesIn.Select(async s =>
         {
             ct.ThrowIfCancellationRequested();
             var sn = ToInt(s.TryGetValue("scene_number", out var n) ? n : 0);
-            onProgress?.Invoke($"  Scene {sn}…");
-            // All 9 read only from `s` / their own independently-built sceneBeats clone and
-            // return a fresh result — none mutate shared state — so they run concurrently
-            // instead of one round-trip at a time. Each classifier's underlying IChatClient
-            // sets auth per-request now (not on shared HttpClient.DefaultRequestHeaders), so
-            // this fan-out is safe there too.
-            var pacingTask = _beatPacingClassifier is not null
-                ? _beatPacingClassifier.ClassifyScenePacingAsync(s, BuildSceneBeats(s, durMinSeconds, durMaxSeconds, durAbsMaxSeconds), onProgress, ct, model: planningModel)
-                : Task.FromResult<Dictionary<string, int>?>(null);
-            var lightingTask = _lightingClassifier is not null
-                ? _lightingClassifier.ClassifySceneLightingAsync(s, onProgress, ct, model: planningModel)
-                : Task.FromResult<string?>(null);
-            var cameraTask = _cameraClassifier is not null
-                ? _cameraClassifier.ClassifySceneCameraAsync(s, BuildSceneBeats(s, durMinSeconds, durMaxSeconds, durAbsMaxSeconds), onProgress, ct, model: planningModel)
-                : Task.FromResult<Dictionary<string, CameraDirective>?>(null);
-            var negativeTask = _negativeClassifier is not null
-                ? _negativeClassifier.ClassifySceneNegativeAsync(s, onProgress, ct, model: planningModel)
-                : Task.FromResult<string?>(null);
-            var wardrobeTask = _wardrobeClassifier is not null
-                ? _wardrobeClassifier.ClassifySceneWardrobeAsync(s, UnionCharactersOnScreen(s), onProgress, ct, model: planningModel)
-                : Task.FromResult<Dictionary<string, string>?>(null);
-            var emotionTask = _emotionClassifier is not null
-                ? _emotionClassifier.ClassifySceneEmotionAsync(s, BuildSceneBeats(s, durMinSeconds, durMaxSeconds, durAbsMaxSeconds), onProgress, ct, model: planningModel)
-                : Task.FromResult<Dictionary<string, EmotionDirective>?>(null);
-            var soundTask = _soundComposerClassifier is not null
-                ? _soundComposerClassifier.ClassifySceneSoundDesignAsync(s, BuildSceneBeats(s, durMinSeconds, durMaxSeconds, durAbsMaxSeconds), onProgress, ct, model: planningModel)
-                : Task.FromResult<Dictionary<string, SoundDesignDirective>?>(null);
-            var dofTask = _dofClassifier is not null
-                ? _dofClassifier.ClassifySceneDepthOfFieldAsync(s, BuildSceneBeats(s, durMinSeconds, durMaxSeconds, durAbsMaxSeconds), onProgress, ct, model: planningModel)
-                : Task.FromResult<Dictionary<string, DepthOfFieldDirective>?>(null);
-            var colorTask = _colorGradingClassifier is not null
-                ? _colorGradingClassifier.ClassifySceneColorGradingAsync(s, onProgress, ct, model: planningModel)
-                : Task.FromResult<ColorGradingDirective?>(null);
-
-            await Task.WhenAll(
-                pacingTask, lightingTask, cameraTask, negativeTask, wardrobeTask,
-                emotionTask, soundTask, dofTask, colorTask).ConfigureAwait(false);
-
-            var aiPacing = pacingTask.Result;
-            var aiLighting = lightingTask.Result;
-            var aiCamera = cameraTask.Result;
-            var aiNegative = negativeTask.Result;
-            var aiWardrobe = wardrobeTask.Result;
-            var aiEmotion = emotionTask.Result;
-            var aiSound = soundTask.Result;
-            var aiDof = dofTask.Result;
-            var aiColor = colorTask.Result;
-            var plannedScene = PlanScene(s, resolution, locSeeds, charSeeds, styleLock, aiPacing, aiLighting, aiCamera, aiNegative, aiWardrobe, aiEmotion, aiSound, aiDof, aiColor, durMinSeconds, durMaxSeconds, durAbsMaxSeconds, durExtensionMaxSeconds, maxSpeakersPerClip);
-            // Skip transition-only phantoms (e.g. FADE IN before first heading)
-            if (plannedScene is null)
+            await sceneGate.WaitAsync(ct).ConfigureAwait(false);
+            try
             {
-                onProgress?.Invoke($"  Scene {sn}: skipped (no filmable content)");
-                continue;
+                Report($"Scene {sn} of {totalScenes}…");
+                // All 9 read only from `s` / their own independently-built sceneBeats clone and
+                // return a fresh result — none mutate shared state — so they run concurrently
+                // instead of one round-trip at a time. Each classifier's underlying IChatClient
+                // sets auth per-request now (not on shared HttpClient.DefaultRequestHeaders), so
+                // this fan-out is safe there too.
+                var pacingTask = _beatPacingClassifier is not null
+                    ? _beatPacingClassifier.ClassifyScenePacingAsync(s, BuildSceneBeats(s, durMinSeconds, durMaxSeconds, durAbsMaxSeconds), line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
+                    : Task.FromResult<Dictionary<string, int>?>(null);
+                var lightingTask = _lightingClassifier is not null
+                    ? _lightingClassifier.ClassifySceneLightingAsync(s, line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
+                    : Task.FromResult<string?>(null);
+                var cameraTask = _cameraClassifier is not null
+                    ? _cameraClassifier.ClassifySceneCameraAsync(s, BuildSceneBeats(s, durMinSeconds, durMaxSeconds, durAbsMaxSeconds), line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
+                    : Task.FromResult<Dictionary<string, CameraDirective>?>(null);
+                var negativeTask = _negativeClassifier is not null
+                    ? _negativeClassifier.ClassifySceneNegativeAsync(s, line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
+                    : Task.FromResult<string?>(null);
+                var wardrobeTask = _wardrobeClassifier is not null
+                    ? _wardrobeClassifier.ClassifySceneWardrobeAsync(s, UnionCharactersOnScreen(s), line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
+                    : Task.FromResult<Dictionary<string, string>?>(null);
+                var emotionTask = _emotionClassifier is not null
+                    ? _emotionClassifier.ClassifySceneEmotionAsync(s, BuildSceneBeats(s, durMinSeconds, durMaxSeconds, durAbsMaxSeconds), line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
+                    : Task.FromResult<Dictionary<string, EmotionDirective>?>(null);
+                var soundTask = _soundComposerClassifier is not null
+                    ? _soundComposerClassifier.ClassifySceneSoundDesignAsync(s, BuildSceneBeats(s, durMinSeconds, durMaxSeconds, durAbsMaxSeconds), line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
+                    : Task.FromResult<Dictionary<string, SoundDesignDirective>?>(null);
+                var dofTask = _dofClassifier is not null
+                    ? _dofClassifier.ClassifySceneDepthOfFieldAsync(s, BuildSceneBeats(s, durMinSeconds, durMaxSeconds, durAbsMaxSeconds), line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
+                    : Task.FromResult<Dictionary<string, DepthOfFieldDirective>?>(null);
+                var colorTask = _colorGradingClassifier is not null
+                    ? _colorGradingClassifier.ClassifySceneColorGradingAsync(s, line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
+                    : Task.FromResult<ColorGradingDirective?>(null);
+
+                await Task.WhenAll(
+                    pacingTask, lightingTask, cameraTask, negativeTask, wardrobeTask,
+                    emotionTask, soundTask, dofTask, colorTask).ConfigureAwait(false);
+
+                var plannedScene = PlanScene(
+                    s, resolution, locSeeds, charSeeds, styleLock,
+                    pacingTask.Result, lightingTask.Result, cameraTask.Result, negativeTask.Result,
+                    wardrobeTask.Result, emotionTask.Result, soundTask.Result, dofTask.Result, colorTask.Result,
+                    durMinSeconds, durMaxSeconds, durAbsMaxSeconds, durExtensionMaxSeconds, maxSpeakersPerClip);
+                // Skip transition-only phantoms (e.g. FADE IN before first heading)
+                if (plannedScene is null)
+                {
+                    Report($"Scene {sn} of {totalScenes}: skipped (no filmable content)");
+                    return;
+                }
+                if (_shotPlanRefiner is not null)
+                {
+                    await _shotPlanRefiner.RefinePlannedSceneAsync(
+                        plannedScene,
+                        line => Report($"  Scene {sn}: {line}"),
+                        ct,
+                        model: planningModel).ConfigureAwait(false);
+                }
+                plannedBag.Add((sn, plannedScene));
             }
-            if (_shotPlanRefiner is not null)
+            finally
             {
-                await _shotPlanRefiner.RefinePlannedSceneAsync(plannedScene, onProgress, ct, model: planningModel).ConfigureAwait(false);
+                var done = Interlocked.Increment(ref completedScenes);
+                Report($"Planning scenes: {done}/{totalScenes} complete");
+                sceneGate.Release();
             }
-            planned.Add(plannedScene);
-        }
+        }).ToArray();
+
+        await Task.WhenAll(sceneTasks).ConfigureAwait(false);
+
+        var planned = plannedBag
+            .OrderBy(x => x.SceneNumber)
+            .Select(x => x.Scene)
+            .ToList();
 
         if (planned.Count == 0)
             throw new InvalidOperationException("Screenplay has no filmable scenes to plan.");

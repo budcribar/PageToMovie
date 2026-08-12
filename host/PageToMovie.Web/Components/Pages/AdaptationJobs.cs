@@ -508,10 +508,45 @@ public abstract partial class AdaptationPageBase
             if (chunk.Success)
                 return $"Writing screenplay — part {chunk.Groups[1].Value} of {chunk.Groups[2].Value}";
 
+            var sceneOf = System.Text.RegularExpressions.Regex.Match(
+                msg, @"Scene\s+(\d+)\s+of\s+(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (sceneOf.Success && kind is "stage2")
+            {
+                var a = sceneOf.Groups[1].Value;
+                var b = sceneOf.Groups[2].Value;
+                if (int.TryParse(a, out var sa) && int.TryParse(b, out var sb) && sb > 0)
+                {
+                    var pct = (int)Math.Round(100.0 * Math.Max(0, sa - 1) / sb);
+                    return $"Planning shots — scene {a} of {b} ({pct}%)";
+                }
+                return $"Planning shots — scene {a} of {b}";
+            }
+
+            var scenesDone = System.Text.RegularExpressions.Regex.Match(
+                msg, @"Planning scenes:\s*(\d+)\s*/\s*(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (scenesDone.Success && kind is "stage2")
+            {
+                var a = scenesDone.Groups[1].Value;
+                var b = scenesDone.Groups[2].Value;
+                if (int.TryParse(a, out var da) && int.TryParse(b, out var db) && db > 0)
+                {
+                    var pct = (int)Math.Round(100.0 * da / db);
+                    return $"Planning shots — {a} of {b} scenes done ({pct}%)";
+                }
+            }
+
             var scene = System.Text.RegularExpressions.Regex.Match(
                 msg, @"Scene\s+(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             if (scene.Success && kind is "stage2")
+            {
+                if (snap.Total > 0)
+                {
+                    var idx = Math.Max(snap.Index, 0);
+                    var pct = (int)Math.Round(100.0 * idx / snap.Total);
+                    return $"Planning shots — scene {scene.Groups[1].Value} of {snap.Total} ({pct}%)";
+                }
                 return $"Planning shots — scene {scene.Groups[1].Value}";
+            }
 
             if (msg.Contains("Merge", StringComparison.OrdinalIgnoreCase) ||
                 msg.Contains("Stitch", StringComparison.OrdinalIgnoreCase) ||

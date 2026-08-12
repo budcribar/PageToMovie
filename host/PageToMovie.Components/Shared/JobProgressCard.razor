@@ -47,14 +47,26 @@
                         : string.Equals(Status, "done", StringComparison.OrdinalIgnoreCase)
                             ? "progress-bar bg-success"
                             : "progress-bar bg-secondary";
-                <div class="progress mt-2" style="height: @barHeight;">
-                    <div class="@barClasses"
-                         role="progressbar"
-                         style="width: @(pct)%"
-                         aria-valuenow="@pct"
-                         aria-valuemin="0"
-                         aria-valuemax="100"></div>
+                <div class="d-flex align-items-center gap-2 mt-2">
+                    <div class="progress flex-grow-1 mb-0" style="height: @barHeight;">
+                        <div class="@barClasses"
+                             role="progressbar"
+                             style="width: @(pct)%"
+                             aria-valuenow="@pct"
+                             aria-valuemin="0"
+                             aria-valuemax="100"></div>
+                    </div>
+                    @if (IsActive || Indeterminate)
+                    {
+                        <span class="small text-muted text-nowrap" data-testid="@(TestId)-percent">@pct%</span>
+                    }
                 </div>
+                @if (IsActive && Total > 0)
+                {
+                    <div class="small text-muted mt-1" data-testid="@(TestId)-fraction">
+                        @Index of @Total
+                    </div>
+                }
             }
             @if (!string.IsNullOrEmpty(DetailMessage))
             {

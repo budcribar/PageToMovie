@@ -2432,29 +2432,51 @@ public sealed class FilmJobService
                     _ = UpdateAsync(s =>
                     {
                         s.Message = line;
-                        s.Total = Math.Max(s.Total, 10);
-                        // "Planning N scene(s)" / "Scene N…" — map into 1–9
+                        // "Planning N scene(s) @ …"
                         var mPlan = System.Text.RegularExpressions.Regex.Match(
                             line, @"Planning\s+(\d+)\s+scene", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
                         if (mPlan.Success && int.TryParse(mPlan.Groups[1].Value, out var nScenes) && nScenes > 0)
                         {
-                            s.Index = Math.Max(s.Index, 1);
+                            s.Total = Math.Max(s.Total, nScenes);
+                            s.Index = Math.Max(s.Index, 0);
                             return;
                         }
-                        var mSc = System.Text.RegularExpressions.Regex.Match(
-                            line, @"Scene\s+(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-                        if (mSc.Success && int.TryParse(mSc.Groups[1].Value, out var sn) && sn > 0)
+                        // "Planning scenes: 3/29 complete"
+                        var mDone = System.Text.RegularExpressions.Regex.Match(
+                            line, @"Planning scenes:\s*(\d+)\s*/\s*(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                        if (mDone.Success
+                            && int.TryParse(mDone.Groups[1].Value, out var doneN)
+                            && int.TryParse(mDone.Groups[2].Value, out var totN)
+                            && totN > 0)
                         {
-                            // Approximate: scene numbers climb; keep under 9 until merge/done
-                            s.Index = Math.Max(s.Index, Math.Min(8, 1 + sn));
+                            s.Total = Math.Max(s.Total, totN);
+                            s.Index = Math.Max(s.Index, Math.Min(doneN, totN));
+                            return;
+                        }
+                        // "Scene 12 of 29…"
+                        var mOf = System.Text.RegularExpressions.Regex.Match(
+                            line, @"Scene\s+(\d+)\s+of\s+(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                        if (mOf.Success
+                            && int.TryParse(mOf.Groups[1].Value, out var snOf)
+                            && int.TryParse(mOf.Groups[2].Value, out var totOf)
+                            && totOf > 0)
+                        {
+                            s.Total = Math.Max(s.Total, totOf);
+                            // Don't jump Index past completed count — keep "of" as context in Message.
+                            if (s.Index < snOf - 1)
+                                s.Index = Math.Max(s.Index, Math.Min(snOf - 1, totOf));
                             return;
                         }
                         if (line.Contains("Merged", StringComparison.OrdinalIgnoreCase) ||
                             line.Contains("Backed up", StringComparison.OrdinalIgnoreCase) ||
-                            line.Contains("complete", StringComparison.OrdinalIgnoreCase))
-                            s.Index = Math.Max(s.Index, 9);
-                        else
-                            s.Index = Math.Max(s.Index, 1);
+                            line.Contains("complete", StringComparison.OrdinalIgnoreCase) &&
+                            !line.Contains("Planning scenes", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (s.Total > 0)
+                                s.Index = s.Total;
+                            else
+                                s.Index = Math.Max(s.Index, 9);
+                        }
                     });
                 },
                 ct: ct);
