@@ -7,6 +7,8 @@ namespace PageToMovie.Web.Components;
 /// Mic control that fills a text field via the browser Web Speech API (no server STT required).
 /// Parent binds <see cref="Text"/> / <see cref="TextChanged"/> like a two-way string.
 /// When <see cref="Suggestions"/> is set, opens a coach popover (try-saying chips + waveform).
+/// <see cref="OnCommitted"/> fires when the user applies a chip or closes with spoken/typed text
+/// so the parent can start the one-shot plate tweak.
 /// </summary>
 public partial class VoiceDictationButton : ComponentBase, IAsyncDisposable
 {
@@ -43,6 +45,9 @@ public partial class VoiceDictationButton : ComponentBase, IAsyncDisposable
     /// </summary>
     [Parameter] public IReadOnlyList<string>? Suggestions { get; set; }
 
+    /// <summary>Fired with the final instruction when the user applies a chip or closes the coach.</summary>
+    [Parameter] public EventCallback<string> OnCommitted { get; set; }
+
     private bool CoachMode => Suggestions is { Count: > 0 };
 
     private bool Supported { get; set; } = true;
@@ -62,7 +67,6 @@ public partial class VoiceDictationButton : ComponentBase, IAsyncDisposable
         }
         catch
         {
-            // Script not loaded yet or old browser
             try
             {
                 Supported = await Js.InvokeAsync<bool>("isDictationSupported");
@@ -84,6 +88,7 @@ public partial class VoiceDictationButton : ComponentBase, IAsyncDisposable
             return;
         }
 
+        // Open coach first so hints are visible even if the mic fails.
         if (CoachMode)
             _popoverOpen = true;
 
@@ -98,8 +103,6 @@ public partial class VoiceDictationButton : ComponentBase, IAsyncDisposable
             if (result is null || !result.Ok)
             {
                 _error = result?.Error ?? "Could not start microphone.";
-                if (!CoachMode)
-                    _popoverOpen = false;
                 return;
             }
             _listening = true;
@@ -118,23 +121,27 @@ public partial class VoiceDictationButton : ComponentBase, IAsyncDisposable
         _level = 0;
     }
 
-    private async Task ClosePopoverAsync()
-    {
-        if (_listening)
-            await StopAsync();
-        _popoverOpen = false;
-    }
+    private Task ClosePopoverAsync() => FinishAsync(commit: true);
 
-    private async Task ApplySuggestionAsync(string tip)
+    private Task ApplySuggestionAsync(string tip) => FinishAsync(commit: true, overrideText: tip);
+
+    private async Task FinishAsync(bool commit, string? overrideText = null)
     {
-        tip = (tip ?? "").Trim();
-        if (string.IsNullOrEmpty(tip)) return;
         if (_listening)
             await StopAsync();
-        Text = tip;
-        await TextChanged.InvokeAsync(tip);
-        // Keep popover open so they can pick another, or close — close feels cleaner after pick
+
+        var text = (overrideText ?? Text ?? "").Trim();
         _popoverOpen = false;
+        if (!commit || string.IsNullOrEmpty(text))
+        {
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        Text = text;
+        await TextChanged.InvokeAsync(text);
+        if (OnCommitted.HasDelegate)
+            await OnCommitted.InvokeAsync(text);
         await InvokeAsync(StateHasChanged);
     }
 
@@ -160,7 +167,6 @@ public partial class VoiceDictationButton : ComponentBase, IAsyncDisposable
             Text = merged;
             await TextChanged.InvokeAsync(merged);
         }
-        // Coach: leave popover open so user still sees tips / transcript after auto end
         await InvokeAsync(StateHasChanged);
     }
 
@@ -185,7 +191,6 @@ public partial class VoiceDictationButton : ComponentBase, IAsyncDisposable
     {
         if (!string.Equals(fieldId, FieldId, StringComparison.Ordinal)) return Task.CompletedTask;
         if (!CoachMode || !_listening) return Task.CompletedTask;
-        // Throttle re-renders: ignore tiny changes
         var clamped = Math.Clamp(level, 0, 1);
         if (Math.Abs(clamped - _level) < 0.04) return Task.CompletedTask;
         _level = clamped;
@@ -194,15 +199,12 @@ public partial class VoiceDictationButton : ComponentBase, IAsyncDisposable
 
     private double WaveHeight(int index)
     {
-        // Spread level across bars with slight stagger so it reads as a waveform
         if (!_listening)
             return 18 + (index % 3) * 4;
 
         var phase = (index / (double)(WaveBarCount - 1)) * Math.PI;
         var envelope = 0.35 + 0.65 * Math.Sin(phase);
-        // Idle floor + live boost
         var live = 18 + _level * 82 * envelope;
-        // Gentle center-weighted pulse when level is near zero so it still “breathes”
         if (_level < 0.05)
             live = 22 + (index % 2 == 0 ? 10 : 4);
         return Math.Clamp(live, 12, 100);

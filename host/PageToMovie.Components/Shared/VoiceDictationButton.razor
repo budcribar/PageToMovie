@@ -33,7 +33,7 @@
                         class="btn btn-link btn-sm text-muted p-0"
                         @onclick="ClosePopoverAsync"
                         data-testid="@(TestId)-close">
-                    Close
+                    @(string.IsNullOrWhiteSpace(Text) ? "Close" : "Apply tweak")
                 </button>
             </div>
 
@@ -72,10 +72,6 @@
                         </button>
                     }
                 </div>
-            </div>
-
-            <div class="voice-dictation-popover__foot small text-muted">
-                Or keep talking — text fills the tweak box. Then run <strong>Tweak</strong>.
             </div>
         </div>
     }

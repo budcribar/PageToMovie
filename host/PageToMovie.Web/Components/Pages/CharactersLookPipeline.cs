@@ -124,6 +124,13 @@ public partial class Characters
         }
 
 
+        internal Task StartTweakFromCoachAsync(string instruction)
+        {
+            if (!string.IsNullOrWhiteSpace(instruction))
+                S.LookEdit._imageEditInstruction = instruction.Trim();
+            return StartRegenerateAsync();
+        }
+
         internal async Task StartRegenerateAsync()
         {
             if (S.List._selected is null) return;

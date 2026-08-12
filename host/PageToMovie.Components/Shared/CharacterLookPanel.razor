@@ -1,57 +1,57 @@
 @namespace PageToMovie.Web.Components
 
 <div class="character-look-panel" data-testid="@TestId">
-    <div class="mb-3">
-        <div class="d-flex justify-content-between align-items-center mb-1">
-            <label class="form-label small mb-0">Description</label>
-            <VoiceDictationButton Text="@Description"
-                                  TextChanged="OnDescriptionVoice"
-                                  FieldId="@DescFieldId"
-                                  Disabled="@Busy"
-                                  Label="Dictate"
-                                  Title="Speak the character description (seed for Generate 3 looks)"
-                                  TestId="@DescVoiceTestId" />
+    @if (ShowDescription)
+    {
+        <div class="mb-3">
+            <label class="form-label small mb-1">Description</label>
+            <textarea class="form-control form-control-sm"
+                      rows="3"
+                      disabled="@Busy"
+                      value="@Description"
+                      @oninput="OnDescriptionInput"
+                      placeholder="Age, build, face, hair, wardrobe…"></textarea>
         </div>
-        <textarea class="form-control form-control-sm"
-                  rows="3"
-                  disabled="@Busy"
-                  value="@Description"
-                  @oninput="OnDescriptionInput"
-                  placeholder="Age, build, face, hair, wardrobe…"></textarea>
-        <div class="form-text">
-            Written seed for <strong>Generate 3 looks</strong>. Tweaking the locked face (below) does
-            <em>not</em> change this text.
-        </div>
-    </div>
+    }
 
     @if (ShowImageEditInstruction)
     {
         <div class="mb-3 border border-info border-opacity-50 rounded p-2 bg-body-secondary bg-opacity-25"
              data-testid="char-tweak-plate">
             <div class="d-flex justify-content-between align-items-center mb-1 gap-2">
-                <label class="form-label small mb-0 fw-semibold">
-                    Tweak locked face
-                    <span class="text-muted fw-normal">— picture only</span>
-                </label>
+                <label class="form-label small mb-0 fw-semibold">Tweak locked face</label>
                 <VoiceDictationButton Text="@ImageEditInstruction"
                                       TextChanged="OnImageEditVoice"
                                       FieldId="@ImgEditFieldId"
                                       Replace="true"
                                       Disabled="@Busy"
                                       Label="Dictate edit"
-                                      Title="Speak a change to the locked portrait only — does not change description"
+                                      Title="Speak a change to the locked portrait"
                                       TestId="@ImgEditVoiceTestId"
-                                      Suggestions="@FaceTweakSuggestions" />
+                                      Suggestions="@FaceTweakSuggestions"
+                                      OnCommitted="OnTweakCommittedAsync" />
             </div>
             <textarea class="form-control form-control-sm"
                       rows="2"
                       disabled="@Busy"
                       value="@ImageEditInstruction"
                       @oninput="OnImageEditInput"
-                      placeholder="e.g. make his beard longer, remove the beard, shorter hair…"></textarea>
-            <div class="form-text mb-0">
-                You like the locked look — say how to adjust it. Produces <strong>one</strong> new picture and locks it.
-                Description stays as-is. Not happy? Dictate another edit and run again.
+                      placeholder="e.g. make his beard longer…"></textarea>
+            <div class="voice-dictation-tips mt-2">
+                <div class="voice-dictation-tips__label">Try saying</div>
+                <div class="voice-dictation-tips__chips">
+                    @foreach (var tip in FaceTweakSuggestions)
+                    {
+                        var chip = tip;
+                        <button type="button"
+                                class="btn btn-sm btn-outline-secondary voice-dictation-chip"
+                                disabled="@Busy"
+                                @onclick="() => OnTweakCommittedAsync(chip)"
+                                data-testid="char-tweak-chip">
+                            @chip
+                        </button>
+                    }
+                </div>
             </div>
         </div>
     }
@@ -67,10 +67,7 @@
                       disabled="@Busy"
                       value="@VisualLock"
                       @oninput="OnVisualLockInput"
-                      placeholder="Optional sticky traits, e.g. same scar, same gray cloak…"></textarea>
-            <div class="form-text">
-                Extra “must not drift” lines for gen and video. Most of the time the description is enough.
-            </div>
+                      placeholder="Optional sticky traits, e.g. same scar…"></textarea>
         </div>
     </details>
 

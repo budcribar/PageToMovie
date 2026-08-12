@@ -345,6 +345,12 @@ public partial class Locations : IDisposable
         return Task.CompletedTask;
     }
 
+    private Task OnTweakRequestedAsync(string instruction)
+    {
+        _imageEditInstruction = instruction ?? "";
+        return StartGenerateAsync();
+    }
+
     private void ScheduleSave()
     {
         _saveCts?.Cancel();

@@ -2262,11 +2262,19 @@ h1:focus {
 }
 
 /* ── Voice dictation coach popover (plate / face tweak mic) ── */
+.location-look-panel,
+.character-look-panel,
 .voice-dictation {
-  position: relative;
-  display: inline-block;
-  vertical-align: middle;
+  overflow: visible;
 }
+.voice-dictation--open {
+  z-index: 30;
+}
+.card:has(.voice-dictation),
+.card-body:has(.voice-dictation) {
+  overflow: visible;
+}
+
 .voice-dictation-popover {
   position: absolute;
   right: 0;

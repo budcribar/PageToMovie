@@ -107,8 +107,8 @@
                                         }
                                         <div class="flex-grow-1">
                                             <div class="small fw-semibold mb-1">Preferred look saved</div>
-                                            <p class="small text-muted mb-2">This picture is used for film. Change it anytime.</p>
-                                            <div class="d-flex flex-wrap gap-2">
+                                            <p class="small text-muted mb-2">This picture is used for film. Tweak it with words, or generate new looks.</p>
+                                            <div class="d-flex flex-wrap gap-2 mb-2">
                                                 <button type="button" class="btn btn-sm btn-outline-primary"
                                                         disabled="@(Host._busy || Jobs!.JobRunning)"
                                                         @onclick="() => LookPipe!.ChoosePictureRoute(Characters.PictureRoute.Generate)">
@@ -135,6 +135,17 @@
                                                     Remove
                                                 </button>
                                             </div>
+                                            <CharacterLookPanel Description="@LookEdit!._editDescription"
+                                                               DescriptionChanged="LookEdit!.OnLookDescriptionChanged"
+                                                               VisualLock="@LookEdit!._editVisualLock"
+                                                               VisualLockChanged="LookEdit!.OnLookVisualLockChanged"
+                                                               ImageEditInstruction="@LookEdit!._imageEditInstruction"
+                                                               ImageEditInstructionChanged="LookEdit!.OnImageEditInstructionChanged"
+                                                               ShowDescription="false"
+                                                               ShowImageEditInstruction="true"
+                                                               Busy="@(Host._busy || Jobs!.JobRunning)"
+                                                               OnTweakRequested="LookPipe!.StartTweakFromCoachAsync"
+                                                               TestId="char-tweak-preferred" />
                                         </div>
                                     </div>
                                 }
@@ -188,6 +199,7 @@
                                                        ShowImageEditInstruction="@(List!.PreferredImageUrl is { Length: > 0 })"
                                                        Busy="@(Host._busy || Jobs!.JobRunning)"
                                                        Hint="@(LookEdit!._lookSaveHint ?? "Description saves automatically.")"
+                                                       OnTweakRequested="LookPipe!.StartTweakFromCoachAsync"
                                                        TestId="char-look-panel">
                                         <Actions>
                                             <CapabilityLockedControl Enabled="Caps.ImageReady"

@@ -232,7 +232,7 @@
                                                ShowImageEditInstruction="@(_selected.HasPreferred || _selected.Locked)"
                                                Busy="@_busy"
                                                Hint="@(_saveHint ?? "Description saves automatically.")"
-
+                                               OnTweakRequested="OnTweakRequestedAsync"
                                                TestId="loc-look-panel">
                                 <Actions>
                                     <button type="button" class="btn btn-sm btn-primary"

@@ -22,17 +22,16 @@ public partial class LocationLookPanel
     [Parameter] public string ImageEditInstruction { get; set; } = "";
     [Parameter] public EventCallback<string> ImageEditInstructionChanged { get; set; }
     [Parameter] public bool ShowImageEditInstruction { get; set; }
+    [Parameter] public bool ShowDescription { get; set; } = true;
     [Parameter] public string? Hint { get; set; }
     [Parameter] public bool Busy { get; set; }
     [Parameter] public string? TestId { get; set; }
     [Parameter] public RenderFragment? Actions { get; set; }
+    /// <summary>Fired after a chip or Dictate-edit apply — parent should start the one-shot tweak.</summary>
+    [Parameter] public EventCallback<string> OnTweakRequested { get; set; }
 
     private string Prefix => string.IsNullOrWhiteSpace(TestId) ? "loc" : TestId!;
-    private string DescFieldId => Prefix + "-desc";
-    private string VlockFieldId => Prefix + "-vlock";
     private string ImgEditFieldId => Prefix + "-imgedit";
-    private string DescVoiceTestId => Prefix + "-desc-voice";
-    private string VlockVoiceTestId => Prefix + "-vlock-voice";
     private string ImgEditVoiceTestId => Prefix + "-imgedit-voice";
 
     Task OnDescriptionInput(ChangeEventArgs e) =>
@@ -44,9 +43,14 @@ public partial class LocationLookPanel
     Task OnImageEditInput(ChangeEventArgs e) =>
         ImageEditInstructionChanged.InvokeAsync(e.Value?.ToString() ?? "");
 
-    Task OnDescriptionVoice(string value) => DescriptionChanged.InvokeAsync(value ?? "");
-
-    Task OnVisualLockVoice(string value) => VisualLockChanged.InvokeAsync(value ?? "");
-
     Task OnImageEditVoice(string value) => ImageEditInstructionChanged.InvokeAsync(value ?? "");
+
+    async Task OnTweakCommittedAsync(string instruction)
+    {
+        instruction = (instruction ?? "").Trim();
+        if (string.IsNullOrEmpty(instruction)) return;
+        await ImageEditInstructionChanged.InvokeAsync(instruction);
+        if (OnTweakRequested.HasDelegate)
+            await OnTweakRequested.InvokeAsync(instruction);
+    }
 }
