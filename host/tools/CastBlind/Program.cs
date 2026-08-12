@@ -61,7 +61,7 @@ foreach (var sItem in scenes)
     }
 }
 var rng = new Random(seed);
-bool ActionLike(string v) => v.Length >= 40 && !Regex.IsMatch(v, @"^\w[\w\s']+\s+speaks\.?\s*$", RegexOptions.IgnoreCase);
+bool ActionLike(string v) => v.Length >= 40 && !CommonRegex.IsMatch(v, @"^\w[\w\s']+\s+speaks\.?\s*$", RegexOptions.IgnoreCase);
 var action = beats.Where(b => ActionLike(b.Visual)).OrderBy(_ => rng.Next()).ToList();
 var dial = beats.Where(b => !ActionLike(b.Visual)).OrderBy(_ => rng.Next()).ToList();
 var nA = Math.Min(action.Count, 15);
@@ -100,6 +100,7 @@ var resp = await http.PostAsync("chat/completions", new StringContent(JsonSerial
 var text = await resp.Content.ReadAsStringAsync();
 if (!resp.IsSuccessStatusCode) { await Console.Error.WriteLineAsync(text[..Math.Min(600,text.Length)]); return 1; }
 using var rdoc = JsonDocument.Parse(text);
+using PageToMovie.Core.Utils;
 var content = rdoc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? "";
 var ai = OnScreenCastClassifier.ParseLabels(content, castKeys);
 

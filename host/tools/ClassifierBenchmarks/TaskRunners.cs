@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using PageToMovie.Engine;
 
+using PageToMovie.Core.Utils;
 namespace ClassifierBenchmarks;
 
 public static class TaskRunners
@@ -514,9 +515,9 @@ public static class TaskRunners
             return isFirstBeatInScene ? "establishing" : "hold";
 
         var lower = t.ToLowerInvariant();
-        var words = Regex.Split(lower, @"\s+").Count(w => w.Length > 0);
+        var words = CommonRegex.Split(lower, @"\s+").Count(w => w.Length > 0);
 
-        if (Regex.IsMatch(lower,
+        if (CommonRegex.IsMatch(lower,
                 @"\b(chase|races?|sprints?|explodes?|crashes?|fights?|attacks?|leaps?|bounds?|lunges?|slams?)\b"))
             return "big_action";
 
@@ -524,7 +525,7 @@ public static class TaskRunners
             return "establishing";
 
         if (words <= 24 &&
-            Regex.IsMatch(lower,
+            CommonRegex.IsMatch(lower,
                 @"\b(smile|smiles|smiling|nods?|turns?|looks?|gazes?|freezes?|waits?|steadies|thin smile|hands on|sits still|leans?|pauses?|watches?|listens?)\b"))
             return "hold";
 
@@ -787,9 +788,9 @@ public static class TaskRunners
 
     static int? TryPageNumber(string name)
     {
-        var m = Regex.Match(name ?? "", @"page_(\d+)", RegexOptions.IgnoreCase);
+        var m = CommonRegex.Match(name ?? "", @"page_(\d+)", RegexOptions.IgnoreCase);
         if (m.Success && int.TryParse(m.Groups[1].Value, out var p)) return p;
-        m = Regex.Match(name ?? "", @"_p(\d+)", RegexOptions.IgnoreCase);
+        m = CommonRegex.Match(name ?? "", @"_p(\d+)", RegexOptions.IgnoreCase);
         if (m.Success && int.TryParse(m.Groups[1].Value, out p)) return p;
         return null;
     }

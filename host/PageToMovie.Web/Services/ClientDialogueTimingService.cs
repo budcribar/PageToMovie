@@ -1,6 +1,7 @@
 using Microsoft.JSInterop;
 using PageToMovie.Core.Models;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Web.Services;
 
 /// <summary>
@@ -179,7 +180,7 @@ public sealed class ClientDialogueTimingService
     {
         if (string.IsNullOrWhiteSpace(text)) return "";
         var stripped = SoundEffectTagRegex.Replace(text, " ");
-        return System.Text.RegularExpressions.Regex.Replace(stripped, @"\s+", " ").Trim();
+        return CommonRegex.Replace(stripped, @"\s+", " ").Trim();
     }
 
     private sealed record HeardWindow(double StartSec, double EndSec, string Heard, List<VoiceCaptureWord> Words);

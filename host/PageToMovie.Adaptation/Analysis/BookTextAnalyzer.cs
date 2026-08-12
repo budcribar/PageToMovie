@@ -6,32 +6,22 @@ namespace PageToMovie.Adaptation;
 /// <summary>Port of extract_book_source.analyze_book_text — quality + Stage 1 defaults.</summary>
 public static class BookTextAnalyzer
 {
-    private static readonly Regex PageMarker = new(
-        @"---\s*PAGE\s+(\d+)\s*---",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex PageMarker = new(@"---\s*PAGE\s+(\d+)\s*---", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
 
     /// <summary>Line-anchored page markers (matches Engine BookContextService.ParseBookPages).</summary>
-    public static readonly Regex PageMarkerLine = new(
-        @"^---\s*PAGE\s+(\d+)\s*---\s*$",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Multiline);
+    public static readonly Regex PageMarkerLine = new(@"^---\s*PAGE\s+(\d+)\s*---\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Multiline, CommonRegex.Timeout);
 
-    private static readonly Regex WeirdChars = new(
-        @"[^\w\s'.,!?;:\-""()…°]",
-        RegexOptions.Compiled);
+    private static readonly Regex WeirdChars = new(@"[^\w\s'.,!?;:\-""()…°]", RegexOptions.Compiled, CommonRegex.Timeout);
 
-    private static readonly Regex BadTokens = new(
-        @"\b\w*[0-9]\w*\b",
-        RegexOptions.Compiled);
+    private static readonly Regex BadTokens = new(@"\b\w*[0-9]\w*\b", RegexOptions.Compiled, CommonRegex.Timeout);
 
-    private static readonly Regex GarbleHits = new(
-        @"\b(?:[A-Za-z]*[0-9][A-Za-z0-9]*|[A-Za-z]{1,2}[;:][A-Za-z]{2,})\b",
-        RegexOptions.Compiled);
+    private static readonly Regex GarbleHits = new(@"\b(?:[A-Za-z]*[0-9][A-Za-z0-9]*|[A-Za-z]{1,2}[;:][A-Za-z]{2,})\b", RegexOptions.Compiled, CommonRegex.Timeout);
 
-    private static readonly Regex IllustrationParenRegex = new(@"\(\s*illustration only\s*\)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex WhitespaceSplitRegex = new(@"\s+", RegexOptions.Compiled);
+    private static readonly Regex IllustrationParenRegex = new(@"\(\s*illustration only\s*\)", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex WhitespaceSplitRegex = new(@"\s+", RegexOptions.Compiled, CommonRegex.Timeout);
     // IgnoreCase to match IllustrationParenRegex above — OCR/Gutenberg captions like
     // "(Illustration)" or "(ILLUSTRATION ONLY)" should be caught the same way "(illustration only)" is.
-    private static readonly Regex IllustrationExactMatchRegex = new(@"^\(.*illustration.*\)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex IllustrationExactMatchRegex = new(@"^\(.*illustration.*\)$", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
 
     public static BookTextAnalysis Analyze(string text, int? pagesHint = null)
     {
@@ -202,7 +192,7 @@ public static class BookTextAnalyzer
             return bodies;
         }
 
-        var paras = Regex.Split(text.Trim(), @"\n\s*\n+")
+        var paras = CommonRegex.Split(text.Trim(), @"\n\s*\n+")
             .Select(p => p.Trim())
             .Where(p => p.Length > 0)
             .ToList();

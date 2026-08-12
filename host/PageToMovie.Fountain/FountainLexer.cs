@@ -13,24 +13,16 @@ public static class FountainLexer
 {
     // INT / EXT / EST / INT./EXT / INT/EXT / I/E / I./E followed by . or space
     // (I./E is used in the nyousefi Fountain reference fixtures)
-    private static readonly Regex SceneHeadingStartRegex = new(
-        @"^(INT\./EXT|INT/EXT|I\./E|I/E|INT\.?|EXT\.?|EST\.?)(\s|\.|$)",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex SceneHeadingStartRegex = new(@"^(INT\./EXT|INT/EXT|I\./E|I/E|INT\.?|EXT\.?|EST\.?)(\s|\.|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled, FountainRegex.Timeout);
 
-    private static readonly Regex TransitionEnd = new(
-        @"TO:$",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex TransitionEnd = new(@"TO:$", RegexOptions.IgnoreCase | RegexOptions.Compiled, FountainRegex.Timeout);
 
     /// <summary>
     /// Common standalone transitions that do not end in TO: (FADE IN / FADE OUT / …).
     /// </summary>
-    private static readonly Regex StandaloneFadeTransition = new(
-        @"^(FADE\s+IN|FADE\s+OUT|FADE\s+TO\s+BLACK|FADE\s+TO\s+WHITE|CUT\s+TO\s+BLACK|BLACK\s+OUT)[\.:]?$",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex StandaloneFadeTransition = new(@"^(FADE\s+IN|FADE\s+OUT|FADE\s+TO\s+BLACK|FADE\s+TO\s+WHITE|CUT\s+TO\s+BLACK|BLACK\s+OUT)[\.:]?$", RegexOptions.IgnoreCase | RegexOptions.Compiled, FountainRegex.Timeout);
 
-    private static readonly Regex VoExtensionRegex = new(
-        @"\(?\s*V\s*\.?\s*O\s*\.?\s*\)?",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex VoExtensionRegex = new(@"\(?\s*V\s*\.?\s*O\s*\.?\s*\)?", RegexOptions.IgnoreCase | RegexOptions.Compiled, FountainRegex.Timeout);
 
     /// <summary>True when a line starts with a Fountain scene-heading prefix (INT./EXT./EST./…).</summary>
     public static bool IsSceneHeadingStart(string? line) =>
@@ -51,10 +43,10 @@ public static class FountainLexer
         // Content must start and end with non-whitespace (Markdown/Fountain spacing rules).
         // Single non-space char is allowed: *a*, **b**, etc.
         // ***bold italic*** then **bold** then *italic* then _underline_
-        text = Regex.Replace(text, @"\*\*\*(\S(?:[^*]*\S)?)\*\*\*", "$1");
-        text = Regex.Replace(text, @"\*\*(\S(?:[^*]*\S)?)\*\*", "$1");
-        text = Regex.Replace(text, @"\*(\S(?:[^*]*\S)?)\*", "$1");
-        text = Regex.Replace(text, @"_(\S(?:[^_]*\S)?)_", "$1");
+        text = FountainRegex.Replace(text, @"\*\*\*(\S(?:[^*]*\S)?)\*\*\*", "$1");
+        text = FountainRegex.Replace(text, @"\*\*(\S(?:[^*]*\S)?)\*\*", "$1");
+        text = FountainRegex.Replace(text, @"\*(\S(?:[^*]*\S)?)\*", "$1");
+        text = FountainRegex.Replace(text, @"_(\S(?:[^_]*\S)?)_", "$1");
         return text.Replace("\u0001", "*").Replace("\u0002", "_");
     }
 
@@ -172,7 +164,7 @@ public static class FountainLexer
     /// break that CONTINUES a dialogue block, whereas a truly-empty line ends it.
     /// </summary>
     public static bool IsTwoSpaceContinue(string raw) =>
-        string.IsNullOrWhiteSpace(raw) && raw.Contains("  ", StringComparison.Ordinal);
+        raw is not null && string.IsNullOrWhiteSpace(raw) && raw.Contains("  ", StringComparison.Ordinal);
 
     /// <summary>
     /// Pure text check: does a character-cue extension say voice-over (V.O.)? Beat-level
@@ -194,12 +186,12 @@ public static class FountainLexer
     {
         if (string.IsNullOrEmpty(fountain)) return fountain ?? "";
 
-        fountain = Regex.Replace(
+        fountain = FountainRegex.Replace(
             fountain,
             @"(?m)^[ \t]*={3,}[ \t]*(?:\d+[ \t]*=+[ \t]*)?$\r?\n?",
             "");
 
-        fountain = Regex.Replace(fountain, @"\n{3,}", "\n\n");
+        fountain = FountainRegex.Replace(fountain, @"\n{3,}", "\n\n");
         var trimmed = fountain.TrimEnd();
         return trimmed.Length == 0 ? "" : trimmed + "\n";
     }

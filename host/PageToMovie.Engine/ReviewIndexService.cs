@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using PageToMovie.Core.Models;
 using Microsoft.Extensions.Logging;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Engine;
 
 /// <summary>
@@ -330,9 +331,7 @@ public sealed class ReviewIndexService
         }
     }
 
-    private static readonly Regex ExactClipClientJsonRe = new(
-        @"^scene_(\d{2})_clip_(\d{2})\.mp4\.client\.json$",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex ExactClipClientJsonRe = new(@"^scene_(\d{2})_clip_(\d{2})\.mp4\.client\.json$", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
 
     private static List<(int Scene, int Clip)> ListOnDiskClips(string projectDir, int? sceneFilter)
     {

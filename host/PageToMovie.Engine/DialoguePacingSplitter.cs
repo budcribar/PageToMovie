@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Engine;
 
 public sealed record DialogueSpeechBeat(
@@ -10,10 +11,10 @@ public sealed record DialogueSpeechBeat(
 
 public static class DialoguePacingSplitter
 {
-    private static readonly Regex TerminalPunctuationRegex = new(@"[.!?](?=\s|$)", RegexOptions.Compiled);
-    private static readonly Regex ProsodicPunctuationRegex = new(@"[—;:](?=\s|$)|—", RegexOptions.Compiled);
-    private static readonly Regex ConjunctionCommaRegex = new(@",\s+(?:and|but|or|so|yet|because|when|as|while|since)\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex AnyCommaRegex = new(@",(?=\s)", RegexOptions.Compiled);
+    private static readonly Regex TerminalPunctuationRegex = new(@"[.!?](?=\s|$)", RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex ProsodicPunctuationRegex = new(@"[—;:](?=\s|$)|—", RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex ConjunctionCommaRegex = new(@",\s+(?:and|but|or|so|yet|because|when|as|while|since)\b", RegexOptions.Compiled | RegexOptions.IgnoreCase, CommonRegex.Timeout);
+    private static readonly Regex AnyCommaRegex = new(@",(?=\s)", RegexOptions.Compiled, CommonRegex.Timeout);
 
     /// <summary>
     /// Splits a dialogue turn into speech beats sized to fit the target video model's real clip-

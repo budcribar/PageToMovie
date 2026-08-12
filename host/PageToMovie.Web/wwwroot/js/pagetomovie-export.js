@@ -202,41 +202,41 @@ window.PageToMovieExport = {
      * @param {string|null} accessToken JWT for Authorization header
      * @param {{ title?: string, description?: string, projectId?: string, fileName?: string, acceptedGuidelines?: boolean }} meta
      */
-    uploadDemoMovieAsync: function (mediaUrl, uploadUrl, accessToken, meta, dotNetRef) {
-        return new Promise(async (resolve) => {
-            try {
-                if (!mediaUrl) return resolve({ success: false, error: "No media URL" });
-                meta = meta || {};
-                if (dotNetRef) {
-                    try { dotNetRef.invokeMethodAsync("ReportPublishProgress", 5, "Preparing movie cut for upload..."); } catch (_) {}
-                }
-                const res = await fetch(mediaUrl);
-                if (!res.ok) {
-                    return resolve({ success: false, error: "Could not read video (" + res.status + ")" });
-                }
-                const blob = await res.blob();
-                if (!blob || blob.size < 1024) {
-                    return resolve({ success: false, error: "Video is empty or too small" });
-                }
-                const form = this._buildUploadDemoFormData(blob, meta);
+    uploadDemoMovieAsync: async function (mediaUrl, uploadUrl, accessToken, meta, dotNetRef) {
+        try {
+            if (!mediaUrl) return { success: false, error: "No media URL" };
+            meta = meta || {};
+            if (dotNetRef) {
+                try { dotNetRef.invokeMethodAsync("ReportPublishProgress", 5, "Preparing movie cut for upload..."); } catch (_) {}
+            }
+            const res = await fetch(mediaUrl);
+            if (!res.ok) {
+                return { success: false, error: "Could not read video (" + res.status + ")" };
+            }
+            const blob = await res.blob();
+            if (!blob || blob.size < 1024) {
+                return { success: false, error: "Video is empty or too small" };
+            }
+            const form = this._buildUploadDemoFormData(blob, meta);
 
-                const xhr = new XMLHttpRequest();
-                xhr.open("POST", uploadUrl, true);
-                if (accessToken) xhr.setRequestHeader("Authorization", "Bearer " + accessToken);
+            const xhr = new XMLHttpRequest();
+            xhr.open("POST", uploadUrl, true);
+            if (accessToken) xhr.setRequestHeader("Authorization", "Bearer " + accessToken);
 
-                if (xhr.upload && dotNetRef) {
-                    xhr.upload.onprogress = (e) => {
-                        if (e.lengthComputable && e.total > 0) {
-                            const pct = Math.round(10 + (e.loaded / e.total) * 85);
-                            const loadedMb = (e.loaded / (1024 * 1024)).toFixed(1);
-                            const totalMb = (e.total / (1024 * 1024)).toFixed(1);
-                            try {
-                                dotNetRef.invokeMethodAsync("ReportPublishProgress", pct, `Uploading cut to server (${loadedMb} MB / ${totalMb} MB)...`);
-                            } catch (_) {}
-                        }
-                    };
-                }
+            if (xhr.upload && dotNetRef) {
+                xhr.upload.onprogress = (e) => {
+                    if (e.lengthComputable && e.total > 0) {
+                        const pct = Math.round(10 + (e.loaded / e.total) * 85);
+                        const loadedMb = (e.loaded / (1024 * 1024)).toFixed(1);
+                        const totalMb = (e.total / (1024 * 1024)).toFixed(1);
+                        try {
+                            dotNetRef.invokeMethodAsync("ReportPublishProgress", pct, `Uploading cut to server (${loadedMb} MB / ${totalMb} MB)...`);
+                        } catch (_) {}
+                    }
+                };
+            }
 
+            return await new Promise((resolve) => {
                 xhr.onload = () => {
                     let json = null;
                     try { json = xhr.responseText ? JSON.parse(xhr.responseText) : null; } catch (_) {}
@@ -256,14 +256,13 @@ window.PageToMovieExport = {
                         });
                     }
                 };
-
                 xhr.onerror = () => resolve({ success: false, error: "Network connection lost during upload" });
                 xhr.send(form);
-            } catch (err) {
-                console.error("uploadDemoMovieAsync failed:", err);
-                resolve({ success: false, error: err.message || String(err) });
-            }
-        });
+            });
+        } catch (err) {
+            console.error("uploadDemoMovieAsync failed:", err);
+            return { success: false, error: err.message || String(err) };
+        }
     },
 
     _buildUploadDemoFormData: function (blob, meta) {

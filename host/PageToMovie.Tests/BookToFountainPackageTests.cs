@@ -4,6 +4,7 @@ using PageToMovie.Adaptation.Conversion;
 using AdaptationFountain = PageToMovie.Adaptation.Conversion.BookToFountainConverter;
 using Xunit;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Tests;
 
 /// <summary>
@@ -114,7 +115,7 @@ public class BookToFountainPackageTests
         Assert.True(File.Exists(path));
         var text = File.ReadAllText(path);
         Assert.True(
-            System.Text.RegularExpressions.Regex.Matches(text, "Nevermore",
+            CommonRegex.Matches(text, "Nevermore",
                 System.Text.RegularExpressions.RegexOptions.IgnoreCase).Count >= 3,
             "Raven adaptation should keep the Nevermore refrain");
         // Package notes paraphrase of verse — product prompt should still prefer book lines

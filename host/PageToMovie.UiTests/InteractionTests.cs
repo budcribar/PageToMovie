@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using Microsoft.Playwright;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.UiTests;
 
 /// <summary>
@@ -25,7 +26,7 @@ public class InteractionTests
             await Assertions.Expect(generate).ToContainTextAsync("Batch");
 
             await page.GetByTestId("scenes-select-all").CheckAsync();
-            await Assertions.Expect(generate).ToContainTextAsync(new Regex(@"Generate \d+ scene"));
+            await Assertions.Expect(generate).ToContainTextAsync(new Regex(@"Generate \d+ scene", RegexOptions.None, CommonRegex.Timeout));
 
             await page.GetByTestId("scenes-select-all").UncheckAsync();
             await Assertions.Expect(generate).ToContainTextAsync("Batch");

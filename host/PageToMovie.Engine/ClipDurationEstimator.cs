@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using PageToMovie.Adaptation;
 using PageToMovie.Core.Models;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Engine;
 
 /// <summary>
@@ -639,7 +640,6 @@ public static class ClipDurationEstimator
             return new List<int>();
         // Null list entries are treated as empty action beats (not skipped — preserve index alignment)
         var durs = beats.Select(b => EstimateForBeat(b!, minSeconds, maxSeconds, absMaxSeconds)).ToList();
-        if (durs.Count == 0) return durs;
 
         if (sceneTargetSeconds is int target && target > durs.Sum() + 2)
         {
@@ -697,12 +697,12 @@ public static class ClipDurationEstimator
     /// </summary>
     internal static List<string> SegmentDialogueUnits(string text)
     {
-        text = Regex.Replace(text.Trim(), @"\s+", " ");
+        text = CommonRegex.Replace(text.Trim(), @"\s+", " ");
         if (text.Length == 0)
             return new List<string>();
 
         // Split after . ! ? or ; or em/en dash phrases, keep delimiter on left piece.
-        var parts = Regex.Split(
+        var parts = CommonRegex.Split(
             text,
             @"(?<=[.!?;])\s+|(?<=\u2014|\u2013|--)\s+");
         var list = parts
@@ -714,7 +714,7 @@ public static class ClipDurationEstimator
 
     private static List<string> PackByWords(string text, string delivery, double budgetSeconds)
     {
-        var words = Regex.Matches(text, @"[\p{L}\p{N}']+|[^\s\p{L}\p{N}]+")
+        var words = CommonRegex.Matches(text, @"[\p{L}\p{N}']+|[^\s\p{L}\p{N}]+")
             .Select(m => m.Value)
             .Where(w => !string.IsNullOrWhiteSpace(w))
             .ToList();
@@ -734,8 +734,8 @@ public static class ClipDurationEstimator
                 // no surrounding space, e.g. "nights—every") — unlike trailing punctuation (.!?;,:),
                 // which only suppresses its OWN leading space, a dash also suppresses the space
                 // before the word that follows it.
-                var isDash = Regex.IsMatch(w, @"^[—–-]+$");
-                var noLeadingSpace = suppressNextSpace || isDash || Regex.IsMatch(w, @"^[.!?;,:]+$");
+                var isDash = CommonRegex.IsMatch(w, @"^[—–-]+$");
+                var noLeadingSpace = suppressNextSpace || isDash || CommonRegex.IsMatch(w, @"^[.!?;,:]+$");
                 if (sb.Length == 0 || noLeadingSpace)
                     sb.Append(w);
                 else

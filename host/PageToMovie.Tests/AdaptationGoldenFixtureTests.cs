@@ -3,6 +3,7 @@ using PageToMovie.Adaptation;
 using PageToMovie.Adaptation.Validation;
 using Xunit;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Tests;
 
 /// <summary>
@@ -71,7 +72,7 @@ public sealed class AdaptationGoldenFixtureTests
 
         Assert.False(string.IsNullOrWhiteSpace(fountain));
         Assert.True(svc.LooksLikeGoodFountain(fountain), "LooksLikeGoodFountain failed");
-        Assert.Matches(new Regex(@"(?im)^(INT|EXT|EST)", RegexOptions.Multiline), fountain);
+        Assert.Matches(new Regex(@"(?im)^(INT|EXT|EST)", RegexOptions.Multiline, CommonRegex.Timeout), fountain);
         Assert.Contains("Title:", fountain, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("NARRATOR", fountain, StringComparison.OrdinalIgnoreCase);
         // No book page dump markers in operator-facing draft
@@ -88,7 +89,7 @@ public sealed class AdaptationGoldenFixtureTests
         Assert.True(svc.LooksLikeGoodFountain(fountain));
 
         // Scene headings + dialogue shape (line scan — no Engine FountainParser)
-        var headings = Regex.Matches(fountain, @"(?im)^(INT|EXT)\.\s+\S+").Count;
+        var headings = CommonRegex.Matches(fountain, @"(?im)^(INT|EXT)\.\s+\S+").Count;
         Assert.True(headings >= 2, $"headings={headings}");
         Assert.Contains("NARRATOR", fountain, StringComparison.Ordinal);
         Assert.Contains("CHILDREN", fountain, StringComparison.Ordinal);

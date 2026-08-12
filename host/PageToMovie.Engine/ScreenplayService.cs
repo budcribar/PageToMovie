@@ -382,10 +382,10 @@ public static string NormalizeText(string text)
         foreach (var f in Directory.EnumerateFiles(projectDir, "*.fountain"))
             Consider(f);
 
-        if (best is null)
+        if (best is not { } recoveredPath)
             return false;
 
-        var text = NormalizeText(File.ReadAllText(best));
+        var text = NormalizeText(File.ReadAllText(recoveredPath));
         File.WriteAllText(draftPath, text);
         var meta = ReadMeta(store, projectId);
         // Hash the bytes we actually wrote (normalized), not the pre-normalize source.

@@ -8,6 +8,7 @@ using PageToMovie.Core.Models;
 using PageToMovie.Core.Localization;
 using PageToMovie.Web.Services;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Web.Components.Pages;
 
 public partial class Review
@@ -205,7 +206,7 @@ public partial class Review
                     var movieUrl = await S.Share.EnsureShareableMovieUrlAsync();
                     if (!string.IsNullOrEmpty(movieUrl))
                     {
-                        var cleanPid = System.Text.RegularExpressions.Regex.Replace(S._projectId, @"[^\w\.-]", "_");
+                        var cleanPid = CommonRegex.Replace(S._projectId, @"[^\w\.-]", "_");
                         var fileName = $"{cleanPid}_full.mp4";
                         S._message = $"🎬 Downloaded movie to your PC — opening in {res.Editor ?? _preferredVideoEditor}." +
                             (S.Share._lastExportMissingMusic ? " (No local media folder connected — background music not included.)" : "");

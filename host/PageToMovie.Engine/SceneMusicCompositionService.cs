@@ -5,6 +5,7 @@ using PageToMovie.Core.Models;
 using PageToMovie.Engine.Abstractions;
 using Microsoft.Extensions.Logging;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Engine;
 
 /// <summary>
@@ -121,7 +122,7 @@ public sealed class SceneMusicCompositionService
         var cleanedJson = responseText.Trim();
         if (cleanedJson.StartsWith("```"))
         {
-            var match = Regex.Match(cleanedJson, @"```(?:json)?\s*([\s\S]*?)\s*```", RegexOptions.IgnoreCase);
+            var match = CommonRegex.Match(cleanedJson, @"```(?:json)?\s*([\s\S]*?)\s*```", RegexOptions.IgnoreCase);
             if (match.Success)
             {
                 cleanedJson = match.Groups[1].Value.Trim();

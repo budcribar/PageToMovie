@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using PageToMovie.Engine.Abstractions;
 using Microsoft.Extensions.Logging;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Engine;
 
 /// <summary>
@@ -103,7 +104,7 @@ public static class LookVariantPicker
         }
         catch { /* fall through */ }
 
-        var m = Regex.Match(raw, @"""best""\s*:\s*(\d+)");
+        var m = CommonRegex.Match(raw, @"""best""\s*:\s*(\d+)");
         if (m.Success && int.TryParse(m.Groups[1].Value, out var g) && g is >= 1 && g <= count)
             return g;
         return null;

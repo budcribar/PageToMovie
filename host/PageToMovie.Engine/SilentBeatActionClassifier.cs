@@ -6,6 +6,7 @@ using PageToMovie.Engine.Abstractions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Engine.ModelBacked;
 
 /// <summary>
@@ -504,7 +505,7 @@ Use only the four class strings above.
         raw = raw.Trim();
         if (raw.StartsWith("```", StringComparison.Ordinal))
         {
-            raw = Regex.Replace(raw, @"^```(?:json)?\s*", "", RegexOptions.IgnoreCase);
+            raw = CommonRegex.Replace(raw, @"^```(?:json)?\s*", "", RegexOptions.IgnoreCase);
             // Truncate at the closing fence wherever it falls — some models append prose
             // (e.g. a "Reasoning:" section) after the fenced JSON instead of ending on it.
             var fenceEnd = raw.IndexOf("```", StringComparison.Ordinal);
@@ -580,10 +581,10 @@ Use only the four class strings above.
     {
         var lower = (visualEvent ?? "").ToLowerInvariant();
         if (lower.Length == 0) return false;
-        if (Regex.IsMatch(lower, @"\bthen\b"))
+        if (CommonRegex.IsMatch(lower, @"\bthen\b"))
             return true;
         // Strong business / locomotion verbs (not mere looks/smiles)
-        var n = Regex.Matches(
+        var n = CommonRegex.Matches(
             lower,
             @"\b(enters?|stands?|pulls?|flops?|howls?|sobs?|tucks?|locks?|whirls?|hurries?|ransacks?|" +
             @"crosses?|walks?|goes?|moves?|attends?|embraces?|sinks?|leaps?|jogs?|shakes?|scrambles?|" +
@@ -596,10 +597,10 @@ Use only the four class strings above.
     {
         var lower = (visualEvent ?? "").ToLowerInvariant();
         if (lower.Length == 0) return false;
-        if (Regex.IsMatch(lower,
+        if (CommonRegex.IsMatch(lower,
                 @"\b(chase|crash|fight|stampede|vault|explod|sprint|stampede)\b"))
             return false;
-        return Regex.IsMatch(lower,
+        return CommonRegex.IsMatch(lower,
             @"\b(store after store|ransacks?|shopping|searching|counters|trays of|shop after shop)\b");
     }
 

@@ -69,7 +69,9 @@ public static class CastKindClassifier
     {
         if (string.IsNullOrWhiteSpace(rawKey)) return "";
         var k = rawKey.Trim();
-        return k.StartsWith("Character_", StringComparison.OrdinalIgnoreCase) ? k[10..] : k;
+        return k.StartsWith(PageToMovie.Core.Utils.JsonKeys.CharacterPrefix, StringComparison.OrdinalIgnoreCase)
+            ? k[PageToMovie.Core.Utils.JsonKeys.CharacterPrefix.Length..]
+            : k;
     }
 
     /// <summary>

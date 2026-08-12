@@ -7,6 +7,7 @@ using AdaptationFountain = PageToMovie.Adaptation.Conversion.BookToFountainConve
 using Microsoft.Extensions.Options;
 using Xunit;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Tests;
 
 public class ScreenplayServiceTests : IDisposable
@@ -340,7 +341,7 @@ public class ScreenplayServiceTests : IDisposable
             THE END
             """;
         var stitched = AdaptationFountain.StitchFountainParts(new[] { p1, p2 });
-        Assert.Single(Regex.Matches(stitched, @"(?im)^Title:"));
+        Assert.Single(CommonRegex.Matches(stitched, @"(?im)^Title:"));
         Assert.Contains("INT. CASTLE", stitched, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("EXT. FOREST", stitched, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("THE END", stitched, StringComparison.OrdinalIgnoreCase);
@@ -571,7 +572,7 @@ public class ScreenplayServiceTests : IDisposable
             Inside.
             """;
         var norm = AdaptationFountain.NormalizeSceneHeadingWording(fountain);
-        var halls = Regex.Matches(norm, @"(?im)^(INT\..*HALL OUTSIDE CHAMBER.*)$")
+        var halls = CommonRegex.Matches(norm, @"(?im)^(INT\..*HALL OUTSIDE CHAMBER.*)$")
             .Select(m => m.Groups[1].Value.Trim())
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();

@@ -8,6 +8,7 @@ using PageToMovie.Core.Models;
 using PageToMovie.Core.Localization;
 using PageToMovie.Web.Services;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Web.Components.Pages;
 
 public partial class Home
@@ -232,7 +233,7 @@ public partial class Home
             if (slash >= 0 && slash < name.Length - 1) name = name[(slash + 1)..];
             if (name.StartsWith("PageToMovie_", StringComparison.OrdinalIgnoreCase))
                 name = name["PageToMovie_".Length..];
-            name = System.Text.RegularExpressions.Regex.Replace(name, @"_\d{8}_\d{6}$", "");
+            name = CommonRegex.Replace(name, @"_\d{8}_\d{6}$", "");
             if (name.EndsWith("_export", StringComparison.OrdinalIgnoreCase))
                 name = name[..^"_export".Length];
             name = name.Trim(' ', '_', '-');

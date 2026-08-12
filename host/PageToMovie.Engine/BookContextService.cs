@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using PageToMovie.Core.Models;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Engine;
 
 /// <summary>
@@ -12,25 +13,15 @@ public static class BookContextService
 {
     private static readonly Regex PageMarker = PageToMovie.Adaptation.BookTextAnalyzer.PageMarkerLine;
 
-    private static readonly Regex HeadingPage = new(
-        @"\bPAGE\s+(\d+)\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex HeadingPage = new(@"\bPAGE\s+(\d+)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
 
-    private static readonly Regex SynopsisPage = new(
-        @"(?im)^=\s*pages?\s+(\d+)(?:\s*[-–]\s*(\d+))?\s*$",
-        RegexOptions.Compiled);
+    private static readonly Regex SynopsisPage = new(@"(?im)^=\s*pages?\s+(\d+)(?:\s*[-–]\s*(\d+))?\s*$", RegexOptions.Compiled, CommonRegex.Timeout);
 
-    private static readonly Regex NotePage = new(
-        @"\[\[\s*page\s+(\d+)\s*\]\]",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex NotePage = new(@"\[\[\s*page\s+(\d+)\s*\]\]", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
 
-    private static readonly Regex SceneStartRegex = new(
-        @"^(INT\.?\/EXT\.?|INT\/EXT|I\.?\/E\.?|INT\.?|EXT\.?|EST\.?)(\s|\.|$)",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex SceneStartRegex = new(@"^(INT\.?\/EXT\.?|INT\/EXT|I\.?\/E\.?|INT\.?|EXT\.?|EST\.?)(\s|\.|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
 
-    private static readonly Regex WordTokenRegex = new(
-        @"[a-z]{3,}",
-        RegexOptions.Compiled);
+    private static readonly Regex WordTokenRegex = new(@"[a-z]{3,}", RegexOptions.Compiled, CommonRegex.Timeout);
 
     public sealed class BookPage
     {
@@ -80,7 +71,7 @@ public static class BookContextService
         }
 
         // No page markers: split into ~paragraph chunks as synthetic pages
-        var paras = Regex.Split(bookText.Trim(), @"\n\s*\n+")
+        var paras = CommonRegex.Split(bookText.Trim(), @"\n\s*\n+")
             .Select(p => p.Trim())
             .Where(p => p.Length > 0)
             .ToList();

@@ -5,6 +5,7 @@ using PageToMovie.Engine.Abstractions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Engine.ModelBacked;
 
 /// <summary>
@@ -20,9 +21,7 @@ public sealed class OnScreenCastClassifier
     /// Matches "voiceover" / "voice-over" / "voice over" or the abbreviation "V.O." / "VO" as a
     /// whole word — NOT a bare "vo" substring, which false-positives on "voice", "avoid", "provoke", etc.
     /// </summary>
-    private static readonly Regex VoiceoverPattern = new(
-        @"\bvoice[\s-]?over\b|\bv\.?\s*o\.?\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex VoiceoverPattern = new(@"\bvoice[\s-]?over\b|\bv\.?\s*o\.?\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
 
     private readonly IChatClient _chat;
     private readonly PageToMovieOptions _opts;

@@ -123,7 +123,6 @@ public static class Mp4DurationReader
         }
         else
         {
-            if (payloadLen < 20) return null;
             var buf = new byte[16];
             if (stream.Read(buf, 0, 16) != 16) return null;
             // creation(4) + modification(4) + timescale(4) + duration(4)

@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Engine;
 
 public sealed record ActionConcurrencyResult(
@@ -15,27 +16,23 @@ public sealed record ActionConcurrencyResult(
 /// </summary>
 public static class ActionConcurrencyAnalyzer
 {
-    private static readonly Regex WhipPanRegex = new(@"\b(whip|pan|fast pan)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex TrackingDollyRegex = new(@"\b(tracking|dolly|follow|pan alongside|chase)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex CraneCanopyRegex = new(@"\b(crane|canopy|overhead|high angle|top down)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex WhipPanRegex = new(@"\b(whip|pan|fast pan)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex TrackingDollyRegex = new(@"\b(tracking|dolly|follow|pan alongside|chase)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex CraneCanopyRegex = new(@"\b(crane|canopy|overhead|high angle|top down)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
 
-    private static readonly Regex KnifePullRegex = new(@"\b(knife|blade|switchblade|pulls out|unsheathes|clicks open)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex PillsSortingRegex = new(@"\b(pills|bottle|sorting|medicine|prescription|counter)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex StabbingRegex = new(@"\b(stab|stabbing|lunge|spear|thrusts|plunges)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex ChokeWallRegex = new(@"\b(choke|strangle|pin against wall|grabs throat)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex RunningPanicRegex = new(@"\b(running|run|panic|flee|sprints|dashes)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex CreepingStepRegex = new(@"\b(creeping|creep|stealth|tiptoe|slow step|sneaks)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex HeavyCarryRegex = new(@"\b(carry|heavy|lifting|weights|deadlift|hoists)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex VineSwingRegex = new(@"\b(vine|swing|canopy swing|jungle)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex MuscleDriveRegex = new(@"\b(drive|driving|car|steering|vehicle|muscle car)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex KnifePullRegex = new(@"\b(knife|blade|switchblade|pulls out|unsheathes|clicks open)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex PillsSortingRegex = new(@"\b(pills|bottle|sorting|medicine|prescription|counter)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex StabbingRegex = new(@"\b(stab|stabbing|lunge|spear|thrusts|plunges)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex ChokeWallRegex = new(@"\b(choke|strangle|pin against wall|grabs throat)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex RunningPanicRegex = new(@"\b(running|run|panic|flee|sprints|dashes)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex CreepingStepRegex = new(@"\b(creeping|creep|stealth|tiptoe|slow step|sneaks)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex HeavyCarryRegex = new(@"\b(carry|heavy|lifting|weights|deadlift|hoists)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex VineSwingRegex = new(@"\b(vine|swing|canopy swing|jungle)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex MuscleDriveRegex = new(@"\b(drive|driving|car|steering|vehicle|muscle car)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
 
-    private static readonly Regex ConcurrentKeywordsRegex = new(
-        @"\b(while|as he|as she|as they|simultaneously|during|pacing|driving|riding|holding|sorting|walking|eating|drinking)\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex ConcurrentKeywordsRegex = new(@"\b(while|as he|as she|as they|simultaneously|during|pacing|driving|riding|holding|sorting|walking|eating|drinking)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
 
-    private static readonly Regex SerialKeywordsRegex = new(
-        @"\b(pauses|stops|then|after|first|clicks open|drops|pulls out|launches|slaps|hits|stabs)\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex SerialKeywordsRegex = new(@"\b(pauses|stops|then|after|first|clicks open|drops|pulls out|launches|slaps|hits|stabs)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
 
     public static ActionConcurrencyResult AnalyzeBeat(string? actionDescription, string? parenthetical)
     {

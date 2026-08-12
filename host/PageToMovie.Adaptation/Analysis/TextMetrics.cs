@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Adaptation;
 
 /// <summary>
@@ -12,7 +13,7 @@ public static class TextMetrics
     /// <remarks>Matches <c>ClipDurationEstimator.DialogueWordsPerSecond</c> in Engine.</remarks>
     public const double DialogueWordsPerSecond = 2.6;
 
-    private static readonly Regex WordCountRegex = new(@"[\p{L}\p{N}']+", RegexOptions.Compiled);
+    private static readonly Regex WordCountRegex = new(@"[\p{L}\p{N}']+", RegexOptions.Compiled, CommonRegex.Timeout);
 
     public static int CountWords(string text)
     {

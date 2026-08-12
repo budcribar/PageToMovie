@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PageToMovie.Core.Options;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Engine;
 
 /// <summary>
@@ -169,7 +170,7 @@ public sealed class MediaDurationProbe
     public static double? TryParseFfmpegDurationLine(string? ffmpegStderrOrLine)
     {
         if (string.IsNullOrWhiteSpace(ffmpegStderrOrLine)) return null;
-        var m = System.Text.RegularExpressions.Regex.Match(
+        var m = CommonRegex.Match(
             ffmpegStderrOrLine,
             @"Duration:\s*(\d{1,2}):(\d{2}):(\d{2}(?:\.\d+)?)",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);

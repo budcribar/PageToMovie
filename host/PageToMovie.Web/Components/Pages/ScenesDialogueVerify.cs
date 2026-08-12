@@ -8,6 +8,7 @@ using PageToMovie.Core.Models;
 using PageToMovie.Core.Localization;
 using PageToMovie.Web.Services;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Web.Components.Pages;
 
 public partial class Scenes
@@ -68,10 +69,10 @@ public partial class Scenes
         if (string.IsNullOrWhiteSpace(expStr) && string.IsNullOrWhiteSpace(heardStr))
             return new MarkupString("—");
 
-        var expWords = System.Text.RegularExpressions.Regex.Split(expStr.Trim(), @"\s+").Where(w => !string.IsNullOrWhiteSpace(w)).ToList();
-        var heardWords = System.Text.RegularExpressions.Regex.Split(heardStr.Trim(), @"\s+").Where(w => !string.IsNullOrWhiteSpace(w)).ToList();
+        var expWords = CommonRegex.Split(expStr.Trim(), @"\s+").Where(w => !string.IsNullOrWhiteSpace(w)).ToList();
+        var heardWords = CommonRegex.Split(heardStr.Trim(), @"\s+").Where(w => !string.IsNullOrWhiteSpace(w)).ToList();
 
-        static string Clean(string w) => System.Text.RegularExpressions.Regex.Replace(w.ToLowerInvariant(), @"[^\w]", "");
+        static string Clean(string w) => CommonRegex.Replace(w.ToLowerInvariant(), @"[^\w]", "");
 
         var expClean = expWords.Select(Clean).ToList();
         var heardClean = heardWords.Select(Clean).ToList();

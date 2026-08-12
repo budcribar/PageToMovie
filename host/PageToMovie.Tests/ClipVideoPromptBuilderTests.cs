@@ -2,6 +2,7 @@ using System.Text.Json;
 using PageToMovie.Engine;
 using Xunit;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Tests;
 
 public class ClipVideoPromptBuilderTests
@@ -434,7 +435,7 @@ public class ClipVideoPromptBuilderTests
         Assert.DoesNotContain("Character_Mom", compressed);
         Assert.DoesNotContain("_Assistant", compressed);
         // Both characters must end up with their own clean, distinct alias.
-        var aliases = System.Text.RegularExpressions.Regex.Matches(compressed, @"\bC\d+\b")
+        var aliases = CommonRegex.Matches(compressed, @"\bC\d+\b")
             .Select(m => m.Value).Distinct().ToList();
         Assert.Equal(2, aliases.Count);
     }
@@ -689,7 +690,7 @@ public class ClipVideoPromptBuilderTests
         Assert.Equal(2, built.CastCount);
         Assert.Equal(2, built.OnScreenKeys.Count);
         Assert.Contains("<CastCount>exactly 2", built.Prompt);
-        Assert.Single(System.Text.RegularExpressions.Regex.Matches(built.Prompt, "<CastCount>"));
+        Assert.Single(CommonRegex.Matches(built.Prompt, "<CastCount>"));
         Assert.DoesNotContain("CAST COUNT: exactly 1", built.Prompt);
         Assert.True(built.Prompt.IndexOf("<CastCount", StringComparison.OrdinalIgnoreCase) <
                     built.Prompt.IndexOf("<Clip", StringComparison.OrdinalIgnoreCase));

@@ -60,9 +60,7 @@ public static class AdaptationDensity
     public const double DeltaPictureBookPages = 12.0; // only when not using speech path
     public const double DeltaNovel = 2.0;
 
-    private static readonly Regex QuotedSpan = new(
-        "[\"“]([^\"”]{2,})[\"”]",
-        RegexOptions.Compiled);
+    private static readonly Regex QuotedSpan = new("[\"“]([^\"”]{2,})[\"”]", RegexOptions.Compiled, CommonRegex.Timeout);
 
     public sealed class Estimate
     {

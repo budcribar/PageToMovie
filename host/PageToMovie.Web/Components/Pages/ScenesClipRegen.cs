@@ -8,6 +8,7 @@ using PageToMovie.Core.Models;
 using PageToMovie.Core.Localization;
 using PageToMovie.Web.Services;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Web.Components.Pages;
 
 public partial class Scenes
@@ -38,7 +39,7 @@ public partial class Scenes
                 }
                 else if (!string.IsNullOrWhiteSpace(res.VideoUrl))
                 {
-                    var cleanPid = System.Text.RegularExpressions.Regex.Replace(S._projectId, @"[^\w\.-]", "_");
+                    var cleanPid = CommonRegex.Replace(S._projectId, @"[^\w\.-]", "_");
                     var fileName = sceneNumber is int sn
                         ? (clipNumber is int cn ? $"{cleanPid}_S{sn:D2}C{cn:D2}.mp4" : $"{cleanPid}_S{sn:D2}_composite.mp4")
                         : $"{cleanPid}_full.mp4";

@@ -21,6 +21,7 @@ using PageToMovie.Engine.Collaboration;
 
 using PageToMovie.Core.Localization;
 
+using PageToMovie.Core.Utils;
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddAppLocalization();
 builder.Services.AddSingleton<PageToMovie.Engine.Collaboration.IProjectInviteMailer, PageToMovie.Engine.LoggingEmailSender>();
@@ -3107,14 +3108,14 @@ app.MapGet("/api/models/catalog-json", (IUserContext user) =>
         var raw = SupportedModelCatalog.GetEmbeddedCatalogJson();
 
         if (user.IsAdmin)
-            return Results.Text(raw, "application/json");
+            return Results.Text(raw, JsonKeys.ApplicationJson);
 
         // Non-admin: strip labMode models so WASM bootstrap cannot offer them.
         using var doc = System.Text.Json.JsonDocument.Parse(raw);
         if (doc.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object
             || !doc.RootElement.TryGetProperty("models", out var modelsEl)
             || modelsEl.ValueKind != System.Text.Json.JsonValueKind.Array)
-            return Results.Text(raw, "application/json");
+            return Results.Text(raw, JsonKeys.ApplicationJson);
 
         using var streamOut = new MemoryStream();
         using (var writer = new System.Text.Json.Utf8JsonWriter(streamOut, new System.Text.Json.JsonWriterOptions { Indented = true }))
@@ -3143,7 +3144,7 @@ app.MapGet("/api/models/catalog-json", (IUserContext user) =>
             }
             writer.WriteEndObject();
         }
-        return Results.Text(System.Text.Encoding.UTF8.GetString(streamOut.ToArray()), "application/json");
+        return Results.Text(System.Text.Encoding.UTF8.GetString(streamOut.ToArray()), JsonKeys.ApplicationJson);
     }
     catch (Exception ex)
     {
@@ -7674,7 +7675,7 @@ app.MapGet("/api/projects/{id}/media/file", async (
         var contentType = ext switch
         {
             ".mp4" => "video/mp4",
-            ".json" => "application/json",
+            ".json" => JsonKeys.ApplicationJson,
             ".png" => "image/png",
             ".jpg" or ".jpeg" => "image/jpeg",
             ".mp3" => "audio/mpeg",
@@ -9457,28 +9458,31 @@ namespace PageToMovie.Api
 
 
 
-file sealed record TakeReasonBody(int Scene, int Clip, string? Reason, int? TakeIndex);
-
-file sealed class FilmBuildRegisterRequest
+namespace PageToMovie.Api
 {
-    public string? StudioSha256 { get; set; }
-    public double DurationSeconds { get; set; }
-    public long? ByteLength { get; set; }
-    public string? StudioPath { get; set; }
-    public string? AssemblyWhere { get; set; }
-    public bool? HashFromServerWip { get; set; }
-    public List<FilmBuildSegmentDto>? Segments { get; set; }
-}
+    file sealed record TakeReasonBody(int Scene, int Clip, string? Reason, int? TakeIndex);
 
-file sealed class FilmBuildSegmentDto
-{
-    public int Index { get; set; } = -1;
-    public int? Scene { get; set; }
-    public int? Clip { get; set; }
-    public int? Take { get; set; }
-    public double TStart { get; set; }
-    public double TEnd { get; set; }
-    public string? Src { get; set; }
-    public string? SrcSha256 { get; set; }
-    public string? Sidecar { get; set; }
+    file sealed class FilmBuildRegisterRequest
+    {
+        public string? StudioSha256 { get; set; }
+        public double DurationSeconds { get; set; }
+        public long? ByteLength { get; set; }
+        public string? StudioPath { get; set; }
+        public string? AssemblyWhere { get; set; }
+        public bool? HashFromServerWip { get; set; }
+        public List<FilmBuildSegmentDto>? Segments { get; set; }
+    }
+
+    file sealed class FilmBuildSegmentDto
+    {
+        public int Index { get; set; } = -1;
+        public int? Scene { get; set; }
+        public int? Clip { get; set; }
+        public int? Take { get; set; }
+        public double TStart { get; set; }
+        public double TEnd { get; set; }
+        public string? Src { get; set; }
+        public string? SrcSha256 { get; set; }
+        public string? Sidecar { get; set; }
+    }
 }

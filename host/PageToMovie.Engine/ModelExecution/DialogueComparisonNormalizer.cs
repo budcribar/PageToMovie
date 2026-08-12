@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Engine.ModelExecution;
 
 public sealed record DialogueNormalizationChange(
@@ -23,7 +24,7 @@ public sealed record DialogueNormalizationOptions
 /// </summary>
 public static class DialogueComparisonNormalizer
 {
-    private static readonly Regex Words = new(@"[\p{L}\p{N}]+(?:['’][\p{L}]+)?", RegexOptions.Compiled);
+    private static readonly Regex Words = new(@"[\p{L}\p{N}]+(?:['’][\p{L}]+)?", RegexOptions.Compiled, CommonRegex.Timeout);
     private static readonly IReadOnlyDictionary<string, string> HistoricalForms =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {

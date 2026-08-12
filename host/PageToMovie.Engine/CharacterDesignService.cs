@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 
 using SkiaSharp;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Engine;
 
 /// <summary>
@@ -935,9 +936,9 @@ public sealed class CharacterDesignService
     {
         if (string.IsNullOrWhiteSpace(raw)) return null;
         var text = raw.Trim();
-        text = System.Text.RegularExpressions.Regex.Replace(
+        text = CommonRegex.Replace(
             text, @"^```(?:json)?\s*", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        text = System.Text.RegularExpressions.Regex.Replace(text, @"\s*```$", "").Trim();
+        text = CommonRegex.Replace(text, @"\s*```$", "").Trim();
         try
         {
             using var doc = JsonDocument.Parse(text);
@@ -1299,7 +1300,7 @@ public sealed class CharacterDesignService
 
 
     private static bool RegexContains(string text, string pattern) =>
-        System.Text.RegularExpressions.Regex.IsMatch(
+        CommonRegex.IsMatch(
             text, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
     private static (string Prompt, bool Illustrated) BuildDesignPrompt(

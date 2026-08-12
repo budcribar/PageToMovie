@@ -1,6 +1,7 @@
 using PageToMovie.Engine;
 using Xunit;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Tests;
 
 public class PromptTagsTests
@@ -63,8 +64,8 @@ public class PromptTagsTests
         // Wrapping the sanitized value keeps exactly one real Voice tag pair — the hostile
         // content can no longer inject a premature close or a forged sibling tag.
         var wrapped = PromptTags.Wrap("Voice", sanitized);
-        Assert.Single(System.Text.RegularExpressions.Regex.Matches(wrapped, "<Voice>"));
-        Assert.Single(System.Text.RegularExpressions.Regex.Matches(wrapped, "</Voice>"));
+        Assert.Single(CommonRegex.Matches(wrapped, "<Voice>"));
+        Assert.Single(CommonRegex.Matches(wrapped, "</Voice>"));
         Assert.DoesNotContain("<Negative>", wrapped);
     }
 

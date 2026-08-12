@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using PageToMovie.Core.Models;
 using Microsoft.Extensions.Logging;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Engine;
 
 /// <summary>
@@ -246,7 +247,7 @@ public sealed class ProposalChecklistService
                 list.Add(line[2..].Trim());
                 continue;
             }
-            var m = Regex.Match(line, @"^\d+[\.\)]\s+(.+)$");
+            var m = CommonRegex.Match(line, @"^\d+[\.\)]\s+(.+)$");
             if (m.Success)
                 list.Add(m.Groups[1].Value.Trim());
         }
@@ -355,7 +356,7 @@ public sealed class ProposalChecklistService
     internal static HashSet<string> SignificantTokens(string text)
     {
         var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (Match m in Regex.Matches(text ?? "", @"[a-zA-Z]{3,}"))
+        foreach (Match m in CommonRegex.Matches(text ?? "", @"[a-zA-Z]{3,}"))
         {
             var w = m.Value.ToLowerInvariant();
             if (Stop.Contains(w)) continue;
@@ -370,21 +371,21 @@ public sealed class ProposalChecklistService
         var t = (text ?? "").ToLowerInvariant();
         var themes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        if (Regex.IsMatch(t, @"\b(photoreal|live-?action|period|illustrated|anime|cartoon|painted|cgi|medium|style lock|render)\b"))
+        if (CommonRegex.IsMatch(t, @"\b(photoreal|live-?action|period|illustrated|anime|cartoon|painted|cgi|medium|style lock|render)\b"))
             themes.Add("style");
-        if (Regex.IsMatch(t, @"\b(cast count|extras|background|crowd|unlisted|named identit)\b"))
+        if (CommonRegex.IsMatch(t, @"\b(cast count|extras|background|crowd|unlisted|named identit)\b"))
             themes.Add("cast_count");
-        if (Regex.IsMatch(t, @"\b(identity|face|wardrobe|grooming|visual_?lock|character|narrator|swap|drift)\b"))
+        if (CommonRegex.IsMatch(t, @"\b(identity|face|wardrobe|grooming|visual_?lock|character|narrator|swap|drift)\b"))
             themes.Add("identity");
-        if (Regex.IsMatch(t, @"\b(silent|no-dialogue|closed mouth|shout|speaking|agitation|audio|parity)\b"))
+        if (CommonRegex.IsMatch(t, @"\b(silent|no-dialogue|closed mouth|shout|speaking|agitation|audio|parity)\b"))
             themes.Add("silent_audio");
-        if (Regex.IsMatch(t, @"\b(eye|gaze|eye-line|downcast|expression|skin|vampiric)\b"))
+        if (CommonRegex.IsMatch(t, @"\b(eye|gaze|eye-line|downcast|expression|skin|vampiric)\b"))
             themes.Add("face_expression");
-        if (Regex.IsMatch(t, @"\b(prompt|truncat|complete|ungarbled|who acts|who speaks)\b"))
+        if (CommonRegex.IsMatch(t, @"\b(prompt|truncat|complete|ungarbled|who acts|who speaks)\b"))
             themes.Add("prompt_quality");
-        if (Regex.IsMatch(t, @"\b(auto-?review|fail any clip|verifier)\b"))
+        if (CommonRegex.IsMatch(t, @"\b(auto-?review|fail any clip|verifier)\b"))
             themes.Add("auto_review");
-        if (Regex.IsMatch(t, @"\b(negative|ban|forbid|constraint)\b") && themes.Contains("style"))
+        if (CommonRegex.IsMatch(t, @"\b(negative|ban|forbid|constraint)\b") && themes.Contains("style"))
             themes.Add("style_negative");
 
         return themes;
@@ -450,7 +451,7 @@ public sealed class ProposalChecklistService
     }
 
     private static string NormalizeKey(string text) =>
-        Regex.Replace((text ?? "").Trim().ToLowerInvariant(), @"\s+", " ");
+        CommonRegex.Replace((text ?? "").Trim().ToLowerInvariant(), @"\s+", " ");
 
     private static string ShortId(string text)
     {

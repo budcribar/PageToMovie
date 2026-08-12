@@ -166,10 +166,24 @@ public sealed class JitBenchmarkService
                     {
                         if (videoUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
                         {
-                            using var ownedHttp = _httpFactory is null ? new HttpClient() : null;
-                            var http = _httpFactory?.CreateClient("media-proxy") ?? ownedHttp!;
-                            var mp4Bytes = await http.GetByteArrayAsync(videoUrl, ct).ConfigureAwait(false);
-                            await File.WriteAllBytesAsync(tempMp4Path, mp4Bytes, ct).ConfigureAwait(false);
+                            HttpClient http;
+                            HttpClient? ownedHttp = null;
+                            if (_httpFactory is not null)
+                                http = _httpFactory.CreateClient("media-proxy");
+                            else
+                            {
+                                ownedHttp = new HttpClient();
+                                http = ownedHttp;
+                            }
+                            try
+                            {
+                                var mp4Bytes = await http.GetByteArrayAsync(videoUrl, ct).ConfigureAwait(false);
+                                await File.WriteAllBytesAsync(tempMp4Path, mp4Bytes, ct).ConfigureAwait(false);
+                            }
+                            finally
+                            {
+                                ownedHttp?.Dispose();
+                            }
                         }
                         else if (File.Exists(videoUrl))
                         {

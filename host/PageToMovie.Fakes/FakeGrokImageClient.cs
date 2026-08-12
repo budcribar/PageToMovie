@@ -63,7 +63,7 @@ public sealed class FakeGrokImageClient : IImageClient
             {
                 Kind = kind,
                 Model = model,
-                PromptChars = prompt?.Length ?? 0,
+                PromptChars = prompt.Length,
                 ImageCount = n,
                 Fakes = true,
                 Ok = true,

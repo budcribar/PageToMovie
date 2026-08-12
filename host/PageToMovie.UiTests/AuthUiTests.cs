@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using Microsoft.Playwright;
 using Xunit;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.UiTests;
 
 [Collection("ui")]
@@ -50,7 +51,7 @@ public class AuthUiTests
             await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
 
             // 6. Verify URL clean replace and confirmed message
-            await Assertions.Expect(page).ToHaveURLAsync(new Regex("emailConfirmed=1"));
+            await Assertions.Expect(page).ToHaveURLAsync(new Regex("emailConfirmed=1", RegexOptions.None, CommonRegex.Timeout));
             await Assertions.Expect(page.GetByText("Email confirmed. You can sign in now.")).ToBeVisibleAsync();
 
             // 7. Login with confirmed credentials

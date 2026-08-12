@@ -5,6 +5,7 @@ using PageToMovie.Engine.Abstractions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Engine.ModelBacked;
 
 /// <summary>
@@ -22,7 +23,7 @@ public sealed class AmbientSfxClassifier
     private readonly PageToMovieOptions _opts;
     private readonly ILogger<AmbientSfxClassifier> _log;
 
-    private static readonly Regex TokenSplitRegex = new(@"[,;/|]+|\s{2,}", RegexOptions.Compiled);
+    private static readonly Regex TokenSplitRegex = new(@"[,;/|]+|\s{2,}", RegexOptions.Compiled, CommonRegex.Timeout);
 
     public AmbientSfxClassifier(
         IChatClient chat,

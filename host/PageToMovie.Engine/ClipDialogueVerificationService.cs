@@ -343,7 +343,7 @@ Status options: 'verified' (dialogue & speaker match), 'mismatch' (dialogue inco
                     .Replace("character", "")
                     .Replace("_", " ")
                     .Replace("the ", "");
-                return System.Text.RegularExpressions.Regex.Replace(clean, @"\s+", " ").Trim();
+                return CommonRegex.Replace(clean, @"\s+", " ").Trim();
             }
 
             var cleanDetected = CleanSpkName(detected);
@@ -516,7 +516,7 @@ Status options: 'verified' (dialogue & speaker match), 'mismatch' (dialogue inco
     private static string ExtractJson(string input)
     {
         if (string.IsNullOrWhiteSpace(input)) return "{}";
-        var match = Regex.Match(input, @"\{[\s\S]*\}");
+        var match = CommonRegex.Match(input, @"\{[\s\S]*\}");
         return match.Success ? match.Value : input;
     }
 

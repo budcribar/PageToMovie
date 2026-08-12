@@ -5,6 +5,7 @@ using PageToMovie.Core.Billing;
 using PageToMovie.Core.Models;
 using PageToMovie.Core.Options;
 
+using PageToMovie.Core.Utils;
 // Lets tests exercise the internal rate-table/pricing math (BuildVideoRateTable,
 // BuildVideoBaseRateTable, RatesFromModels) directly, rather than only through the full
 // ProjectStore-backed public API — pure calculation logic is worth unit-testing in isolation.
@@ -1364,7 +1365,7 @@ public sealed class CostReportService
 
         foreach (var s in scenes.EnumerateArray())
         {
-            var sn = s.TryGetProperty("scene_number", out var sne) && sne.TryGetInt32(out var n) ? n : 0;
+            var sn = s.TryGetProperty(JsonKeys.SceneNumber, out var sne) && sne.TryGetInt32(out var n) ? n : 0;
             var setting = s.TryGetProperty("setting", out var set) ? set.GetString() ?? "" : "";
             var clips = new List<BlueprintClip>();
             if (s.TryGetProperty("veo_clips", out var vc) && vc.ValueKind == JsonValueKind.Array)
@@ -1966,7 +1967,7 @@ public sealed class CostReportService
 
             list.Add(new BlueprintSceneClips
             {
-                SceneNumber = s.TryGetValue("scene_number", out var snObj) && snObj is not null
+                SceneNumber = s.TryGetValue(JsonKeys.SceneNumber, out var snObj) && snObj is not null
                     && int.TryParse(snObj.ToString(), out var snParsed) ? snParsed : sn,
                 Setting = setting ?? "",
                 Clips = clips,
@@ -2496,18 +2497,18 @@ public sealed class CostReportService
     private static int CountClipDialogueChars(JsonElement c)
     {
         var dialogue = "";
-        if (c.TryGetProperty("audio_payload", out var ap) && ap.ValueKind == JsonValueKind.Object &&
+        if (c.TryGetProperty(JsonKeys.AudioPayload, out var ap) && ap.ValueKind == JsonValueKind.Object &&
             ap.TryGetProperty("dialogue", out var d))
             dialogue = d.GetString() ?? "";
         if (string.IsNullOrWhiteSpace(dialogue) && c.TryGetProperty("dialogue", out var rootD))
             dialogue = rootD.GetString() ?? "";
-        dialogue = (dialogue ?? "").Trim();
+        dialogue = dialogue.Trim();
         return dialogue.Length;
     }
 
     private static string? ReadClipSpeaker(JsonElement c)
     {
-        if (c.TryGetProperty("audio_payload", out var ap) && ap.ValueKind == JsonValueKind.Object &&
+        if (c.TryGetProperty(JsonKeys.AudioPayload, out var ap) && ap.ValueKind == JsonValueKind.Object &&
             ap.TryGetProperty("speaker", out var sp))
         {
             var s = sp.GetString();

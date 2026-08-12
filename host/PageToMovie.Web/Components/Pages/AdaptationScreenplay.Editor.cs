@@ -3,6 +3,7 @@ using Microsoft.JSInterop;
 using PageToMovie.Core.Models;
 using PageToMovie.ScreenplayEditor.Models;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Web.Components.Pages;
 
 public partial class AdaptationScreenplay
@@ -151,7 +152,7 @@ public partial class AdaptationScreenplay
                     if (string.IsNullOrWhiteSpace(name)) continue;
                     name = name.Replace('_', ' ').Trim().ToUpperInvariant();
                     // Drop env junk the model put in display names ("AND INT. PALACE").
-                    name = System.Text.RegularExpressions.Regex.Replace(
+                    name = CommonRegex.Replace(
                         name, @"^(AND\s+)?(INT\.?|EXT\.?)\s+", "",
                         System.Text.RegularExpressions.RegexOptions.IgnoreCase).Trim();
                     if (string.IsNullOrWhiteSpace(name)) continue;
@@ -180,7 +181,7 @@ public partial class AdaptationScreenplay
                 {
                     if (string.IsNullOrWhiteSpace(scene.Location)) continue;
                     // Normalize broken scene location names in-memory for display/edit.
-                    var cleaned = System.Text.RegularExpressions.Regex.Replace(
+                    var cleaned = CommonRegex.Replace(
                         scene.Location, @"^(AND\s+)?(INT\.?|EXT\.?)\s+", "",
                         System.Text.RegularExpressions.RegexOptions.IgnoreCase).Trim();
                     if (!string.IsNullOrWhiteSpace(cleaned)

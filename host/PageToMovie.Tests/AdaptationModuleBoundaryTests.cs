@@ -5,6 +5,7 @@ using PageToMovie.Adaptation;
 using PageToMovie.Adaptation.Validation;
 using Xunit;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Tests;
 
 /// <summary>
@@ -61,9 +62,7 @@ public sealed class AdaptationModuleBoundaryTests
         Assert.True(Directory.Exists(root), $"Missing Adaptation sources at {root}");
 
         // Forbidden product I/O symbols (plan A6.2). Allow the words only in comments that say "no …".
-        var forbidden = new Regex(
-            @"\b(ProjectStore|IProjectStore|SQLite|YouTubeAuth|FilmJobService)\b",
-            RegexOptions.Compiled);
+        var forbidden = new Regex(@"\b(ProjectStore|IProjectStore|SQLite|YouTubeAuth|FilmJobService)\b", RegexOptions.Compiled, CommonRegex.Timeout);
 
         var offenders = new List<string>();
         foreach (var file in Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories))

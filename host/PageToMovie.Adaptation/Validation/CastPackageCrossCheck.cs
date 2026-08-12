@@ -3,6 +3,7 @@ using PageToMovie.Core.Models;
 using System.Text.RegularExpressions;
 using PageToMovie.Adaptation.Conversion;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Adaptation.Validation;
 
 /// <summary>
@@ -13,13 +14,9 @@ namespace PageToMovie.Adaptation.Validation;
 /// </summary>
 public static class CastPackageCrossCheck
 {
-    private static readonly Regex ExtensionStrip = new(
-        @"\s*(\(.*\)|V\.?O\.?|O\.?S\.?|O\.?C\.?|CONT'D|CONTINUED)\s*$",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex ExtensionStrip = new(@"\s*(\(.*\)|V\.?O\.?|O\.?S\.?|O\.?C\.?|CONT'D|CONTINUED)\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
 
-    private static readonly Regex WordToken = new(
-        @"[A-Za-z][A-Za-z']+",
-        RegexOptions.Compiled);
+    private static readonly Regex WordToken = new(@"[A-Za-z][A-Za-z']+", RegexOptions.Compiled, CommonRegex.Timeout);
 
     /// <summary>Speakers that never need cast plates (optional packaging).</summary>
     private static readonly HashSet<string> OptionalSpeakers = new(StringComparer.OrdinalIgnoreCase)
@@ -284,7 +281,7 @@ public static class CastPackageCrossCheck
         if (t.StartsWith('@')) t = t[1..].Trim();
         t = ExtensionStrip.Replace(t, "").Trim();
         // Collapse internal whitespace
-        t = Regex.Replace(t, @"\s+", " ");
+        t = CommonRegex.Replace(t, @"\s+", " ");
         return t.ToUpperInvariant();
     }
 
@@ -328,7 +325,7 @@ public static class CastPackageCrossCheck
     }
 
     private static string SanitizeKey(string speaker) =>
-        Regex.Replace(speaker, @"[^A-Za-z0-9]+", "_").Trim('_');
+        CommonRegex.Replace(speaker, @"[^A-Za-z0-9]+", "_").Trim('_');
 
     /// <summary>
     /// Resolve a Fountain speaker cue to a cast_seeds key.
@@ -433,12 +430,12 @@ public static class CastPackageCrossCheck
         if (string.IsNullOrWhiteSpace(s)) return null;
 
         // FIRST/SECOND/… STEM
-        var m = Regex.Match(s, @"^(FIRST|SECOND|THIRD|FOURTH|FIFTH|SIXTH|SEVENTH|EIGHTH|NINTH|TENTH|1ST|2ND|3RD|4TH|5TH)\s+(.+)$");
+        var m = CommonRegex.Match(s, @"^(FIRST|SECOND|THIRD|FOURTH|FIFTH|SIXTH|SEVENTH|EIGHTH|NINTH|TENTH|1ST|2ND|3RD|4TH|5TH)\s+(.+)$");
         if (m.Success)
             return m.Groups[2].Value.Trim();
 
         // STEM #? N  or  STEM ONE/TWO…
-        m = Regex.Match(s, @"^(.+?)\s*[#]?\s*(\d{1,2}|ONE|TWO|THREE|FOUR|FIVE|SIX|SEVEN|EIGHT|NINE|TEN)$");
+        m = CommonRegex.Match(s, @"^(.+?)\s*[#]?\s*(\d{1,2}|ONE|TWO|THREE|FOUR|FIVE|SIX|SEVEN|EIGHT|NINE|TEN)$");
         if (m.Success)
         {
             var stem = m.Groups[1].Value.Trim();

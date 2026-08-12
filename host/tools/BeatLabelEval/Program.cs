@@ -119,6 +119,7 @@ Console.WriteLine($"Mode: {(exportAnnotate ? "export-annotate" : scoreGt ? "scor
 Console.WriteLine($"Books: {selected.Count}  prompt={promptVer}  aiFrom={aiFrom ?? "(chat)"}  fresh={fresh}");
 
 using var http = new HttpClient { BaseAddress = new Uri("https://api.x.ai/v1/") };
+using PageToMovie.Core.Utils;
 if (!string.IsNullOrWhiteSpace(key))
     http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", key);
 http.Timeout = TimeSpan.FromMinutes(4);
@@ -706,7 +707,7 @@ static string BaselineInferActionClass(string actionText, bool isFirstBeatInScen
     var lower = t.ToLowerInvariant();
     var words = ClipDurationEstimator.CountWords(t);
 
-    if (Regex.IsMatch(lower,
+    if (CommonRegex.IsMatch(lower,
             @"\b(chase|races?|sprints?|explodes?|crashes?|fights?|attacks?|leaps?|bounds?|lunges?|slams?)\b"))
         return "big_action";
 
@@ -714,7 +715,7 @@ static string BaselineInferActionClass(string actionText, bool isFirstBeatInScen
         return EstablishingClass;
 
     if (words <= 24 &&
-        Regex.IsMatch(lower,
+        CommonRegex.IsMatch(lower,
             @"\b(smile|smiles|smiling|nods?|turns?|looks?|gazes?|freezes?|waits?|steadies|thin smile|hands on|sits still|leans?|pauses?|watches?|listens?)\b"))
         return "hold";
 
@@ -783,8 +784,8 @@ static Dictionary<string, string> ParseLabels(string raw)
     raw = raw.Trim();
     if (raw.StartsWith("```"))
     {
-        raw = Regex.Replace(raw, @"^```(?:json)?\s*", "", RegexOptions.IgnoreCase);
-        raw = Regex.Replace(raw, @"\s*```\s*$", "");
+        raw = CommonRegex.Replace(raw, @"^```(?:json)?\s*", "", RegexOptions.IgnoreCase);
+        raw = CommonRegex.Replace(raw, @"\s*```\s*$", "");
     }
 
     try

@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text.RegularExpressions;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Adaptation.Conversion;
 
 /// <summary>
@@ -31,7 +32,7 @@ public static class AdaptationPromptPack
         "filler; do NOT collapse a long book into a short montage by summarizing major episodes";
 
     private static readonly Assembly ThisAssembly = typeof(AdaptationPromptPack).Assembly;
-    private static readonly Regex TokenPattern = new(@"\{\{([A-Z0-9_]+)\}\}", RegexOptions.Compiled);
+    private static readonly Regex TokenPattern = new(@"\{\{([A-Z0-9_]+)\}\}", RegexOptions.Compiled, CommonRegex.Timeout);
 
     /// <summary>Optional directory of loose prompt files (overrides embed).</summary>
     public static string? PromptsDirOverride { get; set; }
@@ -132,17 +133,17 @@ public static class AdaptationPromptPack
         // Legacy prose that assumed a pure numeric TOTAL_RUNTIME_MINUTES.
         if (unlimited)
         {
-            body = Regex.Replace(
+            body = CommonRegex.Replace(
                 body,
                 @"in roughly \{\{TOTAL_RUNTIME_MINUTES\}\} minutes\s+of finished film",
                 "at natural length with no artificial minute target",
                 RegexOptions.IgnoreCase);
-            body = Regex.Replace(
+            body = CommonRegex.Replace(
                 body,
                 @"Target about \{\{TOTAL_RUNTIME_MINUTES\}\} minutes of finished film\.?",
                 "Runtime target: " + UnlimitedRuntimeDirective + ".",
                 RegexOptions.IgnoreCase);
-            body = Regex.Replace(
+            body = CommonRegex.Replace(
                 body,
                 @"Target ~\{\{TOTAL_RUNTIME_MINUTES\}\} minutes of finished film\.?",
                 "Runtime target: " + UnlimitedRuntimeDirective + ".",

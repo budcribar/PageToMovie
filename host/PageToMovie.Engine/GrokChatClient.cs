@@ -10,6 +10,7 @@ using Microsoft.Extensions.Options;
 
 using PageToMovie.Engine.Abstractions;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Engine;
 
 /// <summary>Dynamic OpenAI-compatible chat/completions client (xAI Grok, OpenAI, Gemini OpenAI endpoint, etc.).</summary>
@@ -238,8 +239,8 @@ public sealed class GrokChatClient : IChatClient
         text = text.Trim();
         if (text.StartsWith("```", StringComparison.Ordinal))
         {
-            text = Regex.Replace(text, @"^```(?:json)?\s*", "", RegexOptions.IgnoreCase);
-            text = Regex.Replace(text, @"\s*```\s*$", "");
+            text = CommonRegex.Replace(text, @"^```(?:json)?\s*", "", RegexOptions.IgnoreCase);
+            text = CommonRegex.Replace(text, @"\s*```\s*$", "");
         }
         // Prefer first balanced/parseable object — avoid matching braces in preamble like "{high}".
         for (var i = 0; i < text.Length; i++)
@@ -321,7 +322,7 @@ public sealed class GrokChatClient : IChatClient
         return raw.Length <= 2000 ? raw : raw[..2000];
     }
 
-    private static readonly Regex OpenAiReasoningModelRegex = new(@"^o\d", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex OpenAiReasoningModelRegex = new(@"^o\d", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
 
     /// <summary>True for OpenAI o-series reasoning model ids (o1, o1-mini, o3-mini, o4-mini, ...).</summary>
     private static bool IsOpenAiReasoningModel(string model) =>

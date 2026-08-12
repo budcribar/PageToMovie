@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using Microsoft.Playwright;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.UiTests;
 
 /// <summary>
@@ -38,7 +39,7 @@ public class ClipGenerationTests
 
             // The first scene's badge is the success (generated) style, and the Play control is present.
             var badge = page.GetByTestId("scene-row").First.Locator("span.badge").First;
-            await Assertions.Expect(badge).ToHaveClassAsync(new Regex("bg-success"), new() { Timeout = 30_000 });
+            await Assertions.Expect(badge).ToHaveClassAsync(new Regex("bg-success", RegexOptions.None, CommonRegex.Timeout), new() { Timeout = 30_000 });
             await Assertions.Expect(page.GetByTestId("scenes-play-selected")).ToBeVisibleAsync(new() { Timeout = 30_000 });
         }
         finally { await ctx.CloseAsync(); }

@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using Microsoft.Playwright;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.UiTests;
 
 /// <summary>
@@ -38,7 +39,7 @@ public class ScreenplayTitleAuthorChipTests
 
     private static int CountLinesStartingWith(string text, string prefix)
     {
-        var re = new Regex($"^\\s*{Regex.Escape(prefix)}", RegexOptions.IgnoreCase | RegexOptions.Multiline);
+        var re = new Regex($"^\\s*{Regex.Escape(prefix)}", RegexOptions.IgnoreCase | RegexOptions.Multiline, CommonRegex.Timeout);
         return re.Matches(text).Count;
     }
 
@@ -98,7 +99,7 @@ public class ScreenplayTitleAuthorChipTests
             // Persists: sign off (screenplay text, including both new lines, is saved first), then
             // reload the screenplay page fresh and confirm both lines survived the round trip.
             await PipelineFlow.SignOffScreenplayAsync(page);
-            await page.WaitForURLAsync(new Regex("characters", RegexOptions.IgnoreCase), new() { Timeout = 90_000 });
+            await page.WaitForURLAsync(new Regex("characters", RegexOptions.IgnoreCase, CommonRegex.Timeout), new() { Timeout = 90_000 });
 
             // Not Ui.GotoAppAsync: its readiness marker (a[href='/scenes']) only renders as a real
             // link once a shot plan (Stage2) exists — this test never builds one, so that nav item

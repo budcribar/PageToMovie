@@ -5,6 +5,7 @@ using PageToMovie.Core.Abstractions;
 using PageToMovie.Core.Models;
 using PageToMovie.Fountain;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Adaptation.Conversion;
 
 /// <summary>
@@ -121,14 +122,12 @@ public static class BookToFountainConverter
         into generic modern dialogue (classics, verse, first-person monologues especially).
         """;
 
-    private static readonly Regex VagueHeadingRegex = new(
-        @"\b(VARIOUS|MULTIPLE|SEVERAL|ELSEWHERE)\b"
+    private static readonly Regex VagueHeadingRegex = new(@"\b(VARIOUS|MULTIPLE|SEVERAL|ELSEWHERE)\b"
         + @"|\bDIFFERENT\s+(ROOMS?|PLACES?|LOCATIONS?)\b"
         + @"|\b(AROUND|THROUGHOUT)\s+THE\s+(HOUSE|HOME|BUILDING)\b"
-        + @"|\b(VARIOUS|MULTIPLE|SEVERAL)\s+(ROOMS?|PLACES?|LOCATIONS?|AREAS?)\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        + @"|\b(VARIOUS|MULTIPLE|SEVERAL)\s+(ROOMS?|PLACES?|LOCATIONS?|AREAS?)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
 
-    private static readonly Regex CharacterNameSpaceRegex = new(@"\s+", RegexOptions.Compiled);
+    private static readonly Regex CharacterNameSpaceRegex = new(@"\s+", RegexOptions.Compiled, CommonRegex.Timeout);
 
     /// <summary>
     /// Generate Fountain from prepared book text and return its visual metadata as one explicit
@@ -886,8 +885,7 @@ public static class BookToFountainConverter
             .ToList();
     }
 
-    private static readonly Regex TrailingLocationNumberRegex = new(
-        @"\s*#?\d+\s*$", RegexOptions.Compiled);
+    private static readonly Regex TrailingLocationNumberRegex = new(@"\s*#?\d+\s*$", RegexOptions.Compiled, CommonRegex.Timeout);
 
     private static string StripTrailingLocationNumber(string locName) =>
         TrailingLocationNumberRegex.Replace(locName, "").Trim();
@@ -1001,34 +999,22 @@ public static class BookToFountainConverter
             .ToList();
     }
 
-    private static readonly Regex RoleNounPrefixRegex = new(
-        @"^(FIRST|SECOND|THIRD|FOURTH|FIFTH|SIXTH|SEVENTH|EIGHTH|NINTH|TENTH|1ST|2ND|3RD|4TH|5TH)\s+\S+",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex RoleNumberRegex = new(
-        @"^(OFFICER|POLICE|POLICEMAN|POLICE\s+OFFICER|GUARD|SOLDIER|DETECTIVE|AGENT|COP|DEPUTY|TROOPER|"
+    private static readonly Regex RoleNounPrefixRegex = new(@"^(FIRST|SECOND|THIRD|FOURTH|FIFTH|SIXTH|SEVENTH|EIGHTH|NINTH|TENTH|1ST|2ND|3RD|4TH|5TH)\s+\S+", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex RoleNumberRegex = new(@"^(OFFICER|POLICE|POLICEMAN|POLICE\s+OFFICER|GUARD|SOLDIER|DETECTIVE|AGENT|COP|DEPUTY|TROOPER|"
         + @"BUSINESSMAN|BUSINESS\s*MAN|MERCHANT|GENTLEMAN|GENTLEMEN|LADY|GUEST|SERVANT|CLERK|PORTER|"
         + @"WAITER|MAID|NURSE|DOCTOR|LAWYER|SAILOR|CREWMAN|SOLDIER|CITIZEN|MAN|WOMAN|BOY|GIRL|"
         + @"ATTENDANT|MESSENGER|COURIER|DRIVER|COACHMAN|FOOTMAN|BUTLER|COOK|WORKMAN|LABORER|"
         + @"VILLAGER|TOWNSMAN|SHOPKEEPER|CUSTOMER|PATIENT|PRISONER|INMATE|SOLDIER|SAILOR|"
-        + @"SUITOR|SUITORS|CREW|SAILORS|SOLDIERS|GUARDS|ELDER|ELDERS|MAIDEN|MAIDS)\s*[#]?\s*\d+\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex RoleWordNumberRegex = new(
-        @"^(OFFICER|POLICE|POLICE\s+OFFICER|GUARD|SOLDIER|DETECTIVE|AGENT|DEPUTY|BUSINESSMAN|"
+        + @"SUITOR|SUITORS|CREW|SAILORS|SOLDIERS|GUARDS|ELDER|ELDERS|MAIDEN|MAIDS)\s*[#]?\s*\d+\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex RoleWordNumberRegex = new(@"^(OFFICER|POLICE|POLICE\s+OFFICER|GUARD|SOLDIER|DETECTIVE|AGENT|DEPUTY|BUSINESSMAN|"
         + @"MERCHANT|GENTLEMAN|GUEST|SERVANT|CLERK|MAN|WOMAN|SUITOR|CREW|SAILOR)\s+"
-        + @"(ONE|TWO|THREE|FOUR|FIVE|SIX|SEVEN|EIGHT|NINE|TEN)\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex TrailingDigitRegex = new(@"\b\d{1,2}$", RegexOptions.Compiled);
-    private static readonly Regex RoleNounMatchRegex = new(
-        @"\b(OFFICER|MERCHANT|BUSINESS|GENTLEMAN|GUEST|SERVANT|MAN|WOMAN|CLERK)\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex ScenePrefixRegex = new(
-        @"^(INT\./EXT|INT/EXT|I\./E|I/E|INT\.?|EXT\.?|EST\.?)\s*",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex DraftDateRegex = new(@"(?im)^(Draft date:)\s*.*$", RegexOptions.Compiled);
-    private static readonly Regex TruncatMarkerRegex = new(
-        @"\[\[.*(truncat|omitted for length|cut off|excerpted).*\]\]",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex FadeOutEndingRegex = new(@"(?im)(FADE OUT|THE END)\b", RegexOptions.Compiled);
+        + @"(ONE|TWO|THREE|FOUR|FIVE|SIX|SEVEN|EIGHT|NINE|TEN)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex TrailingDigitRegex = new(@"\b\d{1,2}$", RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex RoleNounMatchRegex = new(@"\b(OFFICER|MERCHANT|BUSINESS|GENTLEMAN|GUEST|SERVANT|MAN|WOMAN|CLERK)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex ScenePrefixRegex = new(@"^(INT\./EXT|INT/EXT|I\./E|I/E|INT\.?|EXT\.?|EST\.?)\s*", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex DraftDateRegex = new(@"(?im)^(Draft date:)\s*.*$", RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex TruncatMarkerRegex = new(@"\[\[.*(truncat|omitted for length|cut off|excerpted).*\]\]", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex FadeOutEndingRegex = new(@"(?im)(FADE OUT|THE END)\b", RegexOptions.Compiled, CommonRegex.Timeout);
 
     /// <summary>
     /// True for ordinal/numbered role placeholders: FIRST BUSINESSMAN, SECOND MERCHANT,
@@ -1179,7 +1165,7 @@ public static class BookToFountainConverter
     // from RepairGenericNumberedSpeakersAsync above, which only names *unnamed* placeholders
     // like "MAN 2" and has no concept of an already-named person's spelling drifting) ───────
 
-    private static readonly Regex ProperNounWordRegex = new(@"\b[A-Z][a-z]{2,}\b", RegexOptions.Compiled);
+    private static readonly Regex ProperNounWordRegex = new(@"\b[A-Z][a-z]{2,}\b", RegexOptions.Compiled, CommonRegex.Timeout);
 
     // Common capitalized sentence-openers/pronouns — excluded so the prose scan below isn't
     // dominated by ordinary sentence-initial words that aren't anyone's name.
@@ -1371,11 +1357,9 @@ public static class BookToFountainConverter
 
     // Camera / transition / structural words that must NOT appear in a verse-shaped Action block —
     // these mark real staging, not orphaned narration, so their presence blocks a false merge.
-    private static readonly Regex CameraOrTransitionLineRegex = new(
-        @"\b(ANGLE|CLOSE|WIDE|WIDER|PAN|TILT|ZOOM|DOLLY|CRANE|TRACK(?:ING)?|POV|INSERT|"
+    private static readonly Regex CameraOrTransitionLineRegex = new(@"\b(ANGLE|CLOSE|WIDE|WIDER|PAN|TILT|ZOOM|DOLLY|CRANE|TRACK(?:ING)?|POV|INSERT|"
         + @"MATCH\s+CUT|SMASH\s+CUT|CUT\s+TO|DISSOLVE|FADE|CAMERA|MONTAGE|INTERCUT|"
-        + @"SUPER|TITLE\s+CARD|EST\.)\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        + @"SUPER|TITLE\s+CARD|EST\.)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
 
     /// <summary>
     /// A verse/V.O. narration block that a real blank line has split so its later stanzas parse as
@@ -2105,15 +2089,15 @@ public static class BookToFountainConverter
                 || t.StartsWith("Draft date:", StringComparison.OrdinalIgnoreCase)
                 || t.StartsWith("Notes:", StringComparison.OrdinalIgnoreCase))
                 continue;
-            if (Regex.IsMatch(t, @"^(INT\.|EXT\.|INT\./EXT\.|EST\.)", RegexOptions.IgnoreCase))
+            if (CommonRegex.IsMatch(t, @"^(INT\.|EXT\.|INT\./EXT\.|EST\.)", RegexOptions.IgnoreCase))
                 continue;
-            if (Regex.IsMatch(t, @"^(FADE (IN|OUT)|CUT TO|DISSOLVE TO|SMASH CUT|THE END)\b", RegexOptions.IgnoreCase))
+            if (CommonRegex.IsMatch(t, @"^(FADE (IN|OUT)|CUT TO|DISSOLVE TO|SMASH CUT|THE END)\b", RegexOptions.IgnoreCase))
                 continue;
             if (t.StartsWith('(') && t.EndsWith(')'))
                 continue; // parentheticals / (SOUND:…)
             // Character cues: short ALL-CAPS lines
             if (t.Length <= 40
-                && Regex.IsMatch(t, @"^[A-Z0-9][A-Z0-9 \.'\-]{0,38}(\s*\([^)]+\))?$")
+                && CommonRegex.IsMatch(t, @"^[A-Z0-9][A-Z0-9 \.'\-]{0,38}(\s*\([^)]+\))?$")
                 && !t.Contains('.') // avoid "Mr. Smith" edge — still ok as dialogue body later
                 && t == t.ToUpperInvariant())
                 continue;
@@ -2135,26 +2119,26 @@ public static class BookToFountainConverter
         if (string.IsNullOrEmpty(fountain)) return fountain ?? "";
 
         // Whole-line synopsis tags: = page 2  /  = pages 2-4
-        fountain = Regex.Replace(
+        fountain = CommonRegex.Replace(
             fountain,
             @"(?im)^[ \t]*=\s*pages?\s+\d+(?:\s*[-–]\s*\d+)?\s*\r?\n?",
             "");
 
         // Standalone note lines: [[page 2]] or [[pages 2-3]]
-        fountain = Regex.Replace(
+        fountain = CommonRegex.Replace(
             fountain,
             @"(?im)^[ \t]*\[\[\s*pages?\s+\d+(?:\s*[-–]\s*\d+)?\s*\]\]\s*\r?\n?",
             "");
 
         // Inline notes left in a line of other text
-        fountain = Regex.Replace(
+        fountain = CommonRegex.Replace(
             fountain,
             @"\[\[\s*pages?\s+\d+(?:\s*[-–]\s*\d+)?\s*\]\]",
             "",
             RegexOptions.IgnoreCase);
 
         // Collapse excess blank lines left behind
-        fountain = Regex.Replace(fountain, @"\n{3,}", "\n\n");
+        fountain = CommonRegex.Replace(fountain, @"\n{3,}", "\n\n");
         return fountain.TrimEnd() + (fountain.EndsWith('\n') || fountain.Length == 0 ? "" : "\n");
     }
 
@@ -2271,7 +2255,6 @@ public static class BookToFountainConverter
         if (parts is null || parts.Count == 0)
             return "";
 
-        if (parts.Count == 0) return "";
         if (parts.Count == 1) return NormalizeFountainText(parts[0]);
 
         var sb = new StringBuilder();
@@ -2298,7 +2281,7 @@ public static class BookToFountainConverter
         }
 
         var merged = sb.ToString().Trim();
-        if (!Regex.IsMatch(merged, @"(?im)^(FADE OUT\.|THE END)\s*$"))
+        if (!CommonRegex.IsMatch(merged, @"(?im)^(FADE OUT\.|THE END)\s*$"))
             merged += "\n\nFADE OUT.\n\nTHE END\n";
         return NormalizeFountainText(merged);
     }
@@ -2328,11 +2311,11 @@ public static class BookToFountainConverter
         {
             var body = (page.Text ?? "").Trim();
             if (body.Length < 12) continue;
-            if (Regex.IsMatch(body, @"^\(illustration", RegexOptions.IgnoreCase)) continue;
+            if (CommonRegex.IsMatch(body, @"^\(illustration", RegexOptions.IgnoreCase)) continue;
 
             sb.Append("INT. ROOM - DAY\n\n");
             sb.Append("NARRATOR\n");
-            var line = Regex.Replace(body, @"\s+", " ").Trim();
+            var line = CommonRegex.Replace(body, @"\s+", " ").Trim();
             if (line.Length > 400) line = line[..400] + "…";
             sb.Append(line).Append("\n\n");
         }
@@ -2349,16 +2332,16 @@ public static class BookToFountainConverter
         text = StripBookPageTags(text ?? "");
         if (string.IsNullOrWhiteSpace(text) || text.Length < 80) return false;
 
-        var hasScene = Regex.IsMatch(text, @"(?im)^(INT|EXT|EST|I/E)[\./ ]");
-        var dumpCount = Regex.Matches(text, @"(?im)^INT\.\s+STORY\s+-\s+PAGE\s+\d+").Count;
+        var hasScene = CommonRegex.IsMatch(text, @"(?im)^(INT|EXT|EST|I/E)[\./ ]");
+        var dumpCount = CommonRegex.Matches(text, @"(?im)^INT\.\s+STORY\s+-\s+PAGE\s+\d+").Count;
         if (dumpCount >= 2) return false;
 
         // Prefer real locations; INT. SCENE is ok if there is dialogue/narration body
-        var realLoc = Regex.IsMatch(text, @"(?im)^(INT|EXT)\.\s+(?!SCENE\b)[A-Z0-9]");
+        var realLoc = CommonRegex.IsMatch(text, @"(?im)^(INT|EXT)\.\s+(?!SCENE\b)[A-Z0-9]");
         var hasNarratorOrDialogue =
-            Regex.IsMatch(text, @"(?im)^NARRATOR\s*$") ||
-            Regex.IsMatch(text, @"(?m)^[A-Z][A-Z0-9 &'.\-]{1,40}\s*$");
-        var hasActionBody = Regex.IsMatch(text, @"(?m)^[a-zA-Z].{20,}");
+            CommonRegex.IsMatch(text, @"(?im)^NARRATOR\s*$") ||
+            CommonRegex.IsMatch(text, @"(?m)^[A-Z][A-Z0-9 &'.\-]{1,40}\s*$");
+        var hasActionBody = CommonRegex.IsMatch(text, @"(?m)^[a-zA-Z].{20,}");
 
         if (!hasScene) return false;
         return realLoc || hasNarratorOrDialogue || hasActionBody;
@@ -2734,13 +2717,13 @@ public static class BookToFountainConverter
 
     private static string BuildContinuityBrief(string fountainPart, int chunkDone, int chunkTotal)
     {
-        var heads = Regex.Matches(fountainPart, @"(?im)^(INT|EXT|EST|I/E)[^\n]+")
+        var heads = CommonRegex.Matches(fountainPart, @"(?im)^(INT|EXT|EST|I/E)[^\n]+")
             .Select(m => m.Value.Trim())
             .Where(h => h.Length > 0)
             .ToList();
-        var chars = Regex.Matches(fountainPart, @"(?m)^([A-Z][A-Z0-9 &'.\-]{1,40})\s*$")
+        var chars = CommonRegex.Matches(fountainPart, @"(?m)^([A-Z][A-Z0-9 &'.\-]{1,40})\s*$")
             .Select(m => m.Groups[1].Value.Trim())
-            .Where(c => !Regex.IsMatch(c, @"^(INT|EXT|EST|I/E|FADE|CUT|TITLE|THE)\b", RegexOptions.IgnoreCase))
+            .Where(c => !CommonRegex.IsMatch(c, @"^(INT|EXT|EST|I/E|FADE|CUT|TITLE|THE)\b", RegexOptions.IgnoreCase))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Take(24)
             .ToList();
@@ -2789,13 +2772,13 @@ public static class BookToFountainConverter
     private static List<string> SplitIntoUnits(string bookText)
     {
         // 1) Page markers
-        var pageParts = Regex.Split(bookText, @"(?=---\s*PAGE\s+\d+\s*---)", RegexOptions.IgnoreCase)
+        var pageParts = CommonRegex.Split(bookText, @"(?=---\s*PAGE\s+\d+\s*---)", RegexOptions.IgnoreCase)
             .Where(p => !string.IsNullOrWhiteSpace(p)).Select(p => p.Trim()).ToList();
         if (pageParts.Count >= 3)
             return pageParts;
 
         // 2) Chapters
-        var chapterParts = Regex.Split(
+        var chapterParts = CommonRegex.Split(
                 bookText,
                 @"(?m)(?=^(?:CHAPTER|Chapter|BOOK|Book|PART|Part)\s+([IVXLCDM\d]+|[A-Z][A-Z\s]{0,40})\b)",
                 RegexOptions.Multiline)
@@ -2804,7 +2787,7 @@ public static class BookToFountainConverter
             return chapterParts;
 
         // 3) Double-newline paragraphs packed later
-        var paras = Regex.Split(bookText, @"\n\s*\n+")
+        var paras = CommonRegex.Split(bookText, @"\n\s*\n+")
             .Where(p => !string.IsNullOrWhiteSpace(p)).Select(p => p.Trim()).ToList();
         if (paras.Count >= 4)
             return paras;
@@ -2851,10 +2834,10 @@ public static class BookToFountainConverter
     }
 
     private static int CountPageMarkers(string bookText) =>
-        Regex.Matches(bookText, @"---\s*PAGE\s+\d+\s*---", RegexOptions.IgnoreCase).Count;
+        CommonRegex.Matches(bookText, @"---\s*PAGE\s+\d+\s*---", RegexOptions.IgnoreCase).Count;
 
     public static int CountSceneHeadings(string? fountain) =>
-        Regex.Matches(fountain ?? "", @"(?im)^(INT|EXT|EST|I/E)[\./ ]").Count;
+        CommonRegex.Matches(fountain ?? "", @"(?im)^(INT|EXT|EST|I/E)[\./ ]").Count;
 
     // ── fountain text surgery ────────────────────────────────────────────
 
@@ -2868,7 +2851,7 @@ public static class BookToFountainConverter
         {
             var t = lines[i].Trim();
             if (t.Length == 0) { i++; continue; }
-            if (Regex.IsMatch(t, @"^(Title|Credit|Author|Authors|Source|Draft date|Contact|Notes)\s*:", RegexOptions.IgnoreCase))
+            if (CommonRegex.IsMatch(t, @"^(Title|Credit|Author|Authors|Source|Draft date|Contact|Notes)\s*:", RegexOptions.IgnoreCase))
             {
                 i++;
                 continue;
@@ -2883,7 +2866,7 @@ public static class BookToFountainConverter
 
         // If no scene heading yet, scan forward to first INT./EXT.
         var rest = string.Join("\n", lines.Skip(i));
-        var m = Regex.Match(rest, @"(?im)^(INT|EXT|EST|I/E)[\./ ]");
+        var m = CommonRegex.Match(rest, @"(?im)^(INT|EXT|EST|I/E)[\./ ]");
         if (m.Success && m.Index > 0)
             rest = rest[m.Index..];
         return rest.Trim();
@@ -2892,12 +2875,12 @@ public static class BookToFountainConverter
     private static string StripTrailingEndMarkers(string fountain)
     {
         fountain = fountain.TrimEnd();
-        fountain = Regex.Replace(
+        fountain = CommonRegex.Replace(
             fountain,
             @"\n(?:FADE OUT\.?\s*\n+)?THE END\s*$",
             "",
             RegexOptions.IgnoreCase);
-        fountain = Regex.Replace(
+        fountain = CommonRegex.Replace(
             fountain,
             @"\nFADE OUT\.?\s*$",
             "",
@@ -2907,9 +2890,9 @@ public static class BookToFountainConverter
 
     private static string EnsureDraftDate(string text)
     {
-        if (Regex.IsMatch(text, @"(?im)^Draft date:"))
+        if (CommonRegex.IsMatch(text, @"(?im)^Draft date:"))
             return text;
-        var m = Regex.Match(text, @"(?im)^Title:\s*.+$");
+        var m = CommonRegex.Match(text, @"(?im)^Title:\s*.+$");
         if (m.Success)
         {
             return text.Insert(
@@ -2929,9 +2912,9 @@ public static class BookToFountainConverter
     /// </summary>
     public static string EnsureFadeIn(string text)
     {
-        if (Regex.IsMatch(text, @"(?im)^FADE IN\s*:"))
+        if (CommonRegex.IsMatch(text, @"(?im)^FADE IN\s*:"))
             return text;
-        var m = Regex.Match(text, @"(?im)^(INT\.|EXT\.|INT\./EXT\.|I/E\.|EST\.)");
+        var m = CommonRegex.Match(text, @"(?im)^(INT\.|EXT\.|INT\./EXT\.|I/E\.|EST\.)");
         return m.Success ? text.Insert(m.Index, "FADE IN:\n\n") : text;
     }
 
@@ -2945,7 +2928,7 @@ public static class BookToFountainConverter
         var max = Math.Clamp(maxChars, 4_000, AbsoluteSingleShotCeiling);
         if (bookText.Length <= max) return bookText;
 
-        var pages = Regex.Split(bookText, @"(?=---\s*PAGE\s+\d+\s*---)", RegexOptions.IgnoreCase)
+        var pages = CommonRegex.Split(bookText, @"(?=---\s*PAGE\s+\d+\s*---)", RegexOptions.IgnoreCase)
             .Where(p => !string.IsNullOrWhiteSpace(p)).ToList();
         if (pages.Count >= 6)
         {
@@ -2996,9 +2979,7 @@ public static class BookToFountainConverter
         return text;
     }
 
-    private static readonly Regex SceneHeadingLineRegex = new(
-        @"^(INT\./EXT|INT/EXT|I\./E|I/E|INT\.?|EXT\.?|EST\.?)[\./\s]",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex SceneHeadingLineRegex = new(@"^(INT\./EXT|INT/EXT|I\./E|I/E|INT\.?|EXT\.?|EST\.?)[\./\s]", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
 
     private static readonly Regex BookPageMarkerLine = BookTextAnalyzer.PageMarkerLine;
 
@@ -3031,7 +3012,7 @@ public static class BookToFountainConverter
             if (!prevBlank || nextBlank) continue;
             if (SceneHeadingLineRegex.IsMatch(t)) continue;
             if (t.StartsWith('(') || t.StartsWith('!') || t.StartsWith('>')) continue;
-            if (Regex.IsMatch(t, @"^(FADE |CUT TO|DISSOLVE|THE END|SMASH CUT)", RegexOptions.IgnoreCase))
+            if (CommonRegex.IsMatch(t, @"^(FADE |CUT TO|DISSOLVE|THE END|SMASH CUT)", RegexOptions.IgnoreCase))
                 continue;
 
             var core = t.TrimEnd('^', ' ', '\t');
@@ -3077,7 +3058,7 @@ public static class BookToFountainConverter
             return pages;
         }
 
-        var paras = Regex.Split(bookText.Trim(), @"\n\s*\n+")
+        var paras = CommonRegex.Split(bookText.Trim(), @"\n\s*\n+")
             .Select(p => p.Trim())
             .Where(p => p.Length > 0)
             .ToList();
@@ -3094,8 +3075,8 @@ public static class BookToFountainConverter
         text = (text ?? "").Trim();
         if (text.StartsWith("```", StringComparison.Ordinal))
         {
-            text = Regex.Replace(text, @"^```(?:fountain|text|markdown)?\s*", "", RegexOptions.IgnoreCase);
-            text = Regex.Replace(text, @"\s*```\s*$", "");
+            text = CommonRegex.Replace(text, @"^```(?:fountain|text|markdown)?\s*", "", RegexOptions.IgnoreCase);
+            text = CommonRegex.Replace(text, @"\s*```\s*$", "");
         }
         return text.Trim();
     }

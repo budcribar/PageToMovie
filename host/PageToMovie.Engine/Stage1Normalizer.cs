@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using PageToMovie.Core.Models;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Engine;
 
 /// <summary>Coerce Stage 1 JSON after LLM generation (schema cleanup).</summary>
@@ -67,7 +68,7 @@ public static class Stage1Normalizer
             gpv.TryGetValue("render_style_lock", out var r1) ? r1
             : gpv.TryGetValue("style_lock", out var r2) ? r2 : null) ?? "";
         if (string.IsNullOrWhiteSpace(rsl) &&
-            Regex.IsMatch(treat, @"styliz|animated|picture-book|cartoon|pixar|dreamworks|illustration|2d\b|3d\b",
+            CommonRegex.IsMatch(treat, @"styliz|animated|picture-book|cartoon|pixar|dreamworks|illustration|2d\b|3d\b",
                 RegexOptions.IgnoreCase))
         {
             gpv["render_style_lock"] =
@@ -349,7 +350,7 @@ public static class Stage1Normalizer
         if (val is null) return raw;
         if (val is string s)
         {
-            raw.AddRange(Regex.Split(s, @"\s+and\s+|[,;|/]")
+            raw.AddRange(CommonRegex.Split(s, @"\s+and\s+|[,;|/]")
                 .Select(p => p.Trim())
                 .Where(p => p.Length > 0));
         }
@@ -365,7 +366,7 @@ public static class Stage1Normalizer
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var item in raw)
         {
-            var cleaned = Regex.Replace(item, @"\s+", " ").Trim(' ', '.', ',', ';', ':');
+            var cleaned = CommonRegex.Replace(item, @"\s+", " ").Trim(' ', '.', ',', ';', ':');
             if (cleaned.Length < 2) continue;
             if (!seen.Add(cleaned.ToLowerInvariant())) continue;
             outList.Add(cleaned.Length > 80 ? cleaned[..80] : cleaned);
@@ -423,7 +424,7 @@ public static class Stage1Normalizer
         if (fr is long l) return (int)l;
         if (fr is double db) return (int)db;
         var s = CoerceString(fr) ?? "24";
-        var m = Regex.Match(s, @"\d+");
+        var m = CommonRegex.Match(s, @"\d+");
         return m.Success ? int.Parse(m.Value) : 24;
     }
 

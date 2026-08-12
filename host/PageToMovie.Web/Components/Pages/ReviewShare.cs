@@ -8,6 +8,7 @@ using PageToMovie.Core.Models;
 using PageToMovie.Core.Localization;
 using PageToMovie.Web.Services;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Web.Components.Pages;
 
 public partial class Review
@@ -86,9 +87,9 @@ public partial class Review
             if (name.StartsWith("TellTaleHeart", StringComparison.OrdinalIgnoreCase))
                 return "The Tell-Tale Heart";
 
-            name = System.Text.RegularExpressions.Regex.Replace(name, @"V\d+$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            name = CommonRegex.Replace(name, @"V\d+$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             if (!name.Contains(' '))
-                name = System.Text.RegularExpressions.Regex.Replace(name, @"(?<=[a-z])(?=[A-Z])", " ");
+                name = CommonRegex.Replace(name, @"(?<=[a-z])(?=[A-Z])", " ");
 
             return name.Trim();
         }

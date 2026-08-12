@@ -2,6 +2,7 @@ using System;
 using System.Text;
 using System.Text.RegularExpressions;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Core.Utils;
 
 /// <summary>
@@ -10,17 +11,11 @@ namespace PageToMovie.Core.Utils;
 /// </summary>
 public static class GutenbergCleaner
 {
-    private static readonly Regex StartHeaderRegex = new(
-        @"\*\*\*\s*START OF (?:THE|THIS) PROJECT GUTENBERG[^\*\r\n]*\*\*\*",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex StartHeaderRegex = new(@"\*\*\*\s*START OF (?:THE|THIS) PROJECT GUTENBERG[^\*\r\n]*\*\*\*", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
 
-    private static readonly Regex EndFooterRegex = new(
-        @"(?:\*\*\*\s*END OF (?:THE|THIS) PROJECT GUTENBERG[^\*\r\n]*\*\*\*|End of (?:the|this|The|This) Project Gutenberg)",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex EndFooterRegex = new(@"(?:\*\*\*\s*END OF (?:THE|THIS) PROJECT GUTENBERG[^\*\r\n]*\*\*\*|End of (?:the|this|The|This) Project Gutenberg)", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
 
-    private static readonly Regex GutenbergHeaderMarkerRegex = new(
-        @"^The Project Gutenberg (?:eBook|EBook|eText|EText)",
-        RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.Compiled);
+    private static readonly Regex GutenbergHeaderMarkerRegex = new(@"^The Project Gutenberg (?:eBook|EBook|eText|EText)", RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.Compiled, CommonRegex.Timeout);
 
     /// <summary>
     /// Checks whether the text contains a Project Gutenberg header or license block.

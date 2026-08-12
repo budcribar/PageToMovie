@@ -418,8 +418,8 @@ public partial class Cost : IAsyncDisposable
         get
         {
             var target = _filmRuntime?.TargetMinutes ?? 0;
-            if (target <= 0) return false;
-            var natural = _filmRuntime?.NaturalMinutes ?? 0;
+            if (target <= 0 || _filmRuntime is null) return false;
+            var natural = _filmRuntime.NaturalMinutes;
             var planMin = _report?.DurationMinutes ?? 0;
             if (planMin > 0 && Math.Abs(target - planMin) >= 1) return true;
             if (natural > 0 && Math.Abs(target - natural) >= 1) return true;

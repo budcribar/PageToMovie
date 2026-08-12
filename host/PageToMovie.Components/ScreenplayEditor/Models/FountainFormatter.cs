@@ -1,6 +1,7 @@
 using System.Text;
 using PageToMovie.Fountain;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.ScreenplayEditor.Models;
 
 public static class FountainFormatter
@@ -305,7 +306,7 @@ public static class FountainFormatter
             || location.StartsWith("INT.", StringComparison.OrdinalIgnoreCase)
             || location.StartsWith("EXT.", StringComparison.OrdinalIgnoreCase))
         {
-            location = System.Text.RegularExpressions.Regex.Replace(
+            location = CommonRegex.Replace(
                 location,
                 @"^(AND\s+)?(INT\.?|EXT\.?)\s+",
                 "",
@@ -495,7 +496,7 @@ public static class FountainFormatter
         }
 
         // Embedded cues: (SOUND: …) / (SFX: …) anywhere in the line
-        var embedded = System.Text.RegularExpressions.Regex.Matches(
+        var embedded = CommonRegex.Matches(
             raw,
             @"\(\s*(?:SOUND|SOUNDS|SFX)\s*:\s*([^)]+)\)",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
@@ -515,7 +516,7 @@ public static class FountainFormatter
                 sounds.Add(body);
             visual = visual.Replace(m.Value, " ");
         }
-        visual = System.Text.RegularExpressions.Regex.Replace(visual, @"\s{2,}", " ").Trim();
+        visual = CommonRegex.Replace(visual, @"\s{2,}", " ").Trim();
         visual = visual.TrimEnd(' ', ',', ';', '-');
 
         if (!string.IsNullOrWhiteSpace(visual))

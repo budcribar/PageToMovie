@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using PageToMovie.Core.Models;
 using PageToMovie.Engine;
 
+using PageToMovie.Core.Utils;
 namespace ScreenplayBenchmark;
 
 /// <summary>
@@ -1216,7 +1217,7 @@ public static class AdaptationSessionPilot
     private static List<string> SplitBookIntoParagraphs(string bookText)
     {
         var normalized = bookText.Replace("\r\n", "\n").Replace('\r', '\n');
-        var blocks = Regex.Split(normalized, @"\n\s*\n+");
+        var blocks = CommonRegex.Split(normalized, @"\n\s*\n+");
         return blocks.Select(b => b.Trim()).Where(b => b.Length > 0).ToList();
     }
 
@@ -1250,7 +1251,7 @@ public static class AdaptationSessionPilot
         return sb.ToString();
     }
 
-    private static readonly Regex ParagraphCitationRegex = new(@"^P(\d+)$", RegexOptions.Compiled);
+    private static readonly Regex ParagraphCitationRegex = new(@"^P(\d+)$", RegexOptions.Compiled, CommonRegex.Timeout);
 
     /// <summary>Checks every EDL scene's source_paragraphs cite an id that actually exists in the
     /// indexed book — catches a hallucinated citation a text-search approach could never detect.</summary>
@@ -1287,8 +1288,7 @@ public static class AdaptationSessionPilot
         return warnings;
     }
 
-    private static readonly Regex SceneHeadingLineRegex = new(
-        @"^\s*(INT\.|EXT\.|INT/EXT\.|I/E\.|EST\.)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex SceneHeadingLineRegex = new(@"^\s*(INT\.|EXT\.|INT/EXT\.|I/E\.|EST\.)", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
 
     /// <summary>Splits raw Fountain text into per-scene chunks (heading line + body), in order — used
     /// to hand the clip-planning stage only the text relevant to its current batch, not the whole

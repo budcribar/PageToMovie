@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Components;
 using PageToMovie.Core.Models;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Web.Components.Pages;
 
 public partial class Scenes_VerificationReport
@@ -18,12 +19,12 @@ public partial class Scenes_VerificationReport
         if (string.IsNullOrWhiteSpace(expStr) && string.IsNullOrWhiteSpace(heardStr))
             return new MarkupString("—");
 
-        var expWords = System.Text.RegularExpressions.Regex.Split(expStr.Trim(), @"\s+")
+        var expWords = CommonRegex.Split(expStr.Trim(), @"\s+")
             .Where(w => !string.IsNullOrWhiteSpace(w)).ToList();
-        var heardWords = System.Text.RegularExpressions.Regex.Split(heardStr.Trim(), @"\s+")
+        var heardWords = CommonRegex.Split(heardStr.Trim(), @"\s+")
             .Where(w => !string.IsNullOrWhiteSpace(w)).ToList();
 
-        static string Clean(string w) => System.Text.RegularExpressions.Regex.Replace(w.ToLowerInvariant(), @"[^\w]", "");
+        static string Clean(string w) => CommonRegex.Replace(w.ToLowerInvariant(), @"[^\w]", "");
 
         var expClean = expWords.Select(Clean).ToList();
         var heardClean = heardWords.Select(Clean).ToList();

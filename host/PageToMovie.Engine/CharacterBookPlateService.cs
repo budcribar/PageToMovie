@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using PageToMovie.Engine.Abstractions;
 using Microsoft.Extensions.Logging;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Engine;
 
 /// <summary>
@@ -842,7 +843,7 @@ public sealed class CharacterBookPlateService
     private static bool IsHumanishSeed(string key, string desc)
     {
         var blob = $"{key} {desc}";
-        return Regex.IsMatch(
+        return CommonRegex.IsMatch(
             blob,
             @"\b(man|woman|mother|father|mom|dad|daddy|mum|parent|boy|girl|human|adult)\b",
             RegexOptions.IgnoreCase);
@@ -924,7 +925,7 @@ public sealed class CharacterBookPlateService
             var name = fi.Name;
             if (!name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
             // character_x_bookref_2.png → index 2
-            var m = Regex.Match(name, @"_bookref_(\d+)\.", RegexOptions.IgnoreCase);
+            var m = CommonRegex.Match(name, @"_bookref_(\d+)\.", RegexOptions.IgnoreCase);
             if (!m.Success || !int.TryParse(m.Groups[1].Value, out var idx)) continue;
             if (idx > keepCount)
             {
@@ -1070,7 +1071,7 @@ public sealed class CharacterBookPlateService
                 outList.Add(one);
             else if (jv.TryGetValue<string>(out var s))
             {
-                foreach (Match m in Regex.Matches(s, @"\d+"))
+                foreach (Match m in CommonRegex.Matches(s, @"\d+"))
                     if (int.TryParse(m.Value, out var n)) outList.Add(n);
             }
         }
@@ -1352,12 +1353,12 @@ public sealed class CharacterBookPlateService
         if (rows.Count == 0 && Directory.Exists(imgDir))
         {
             foreach (var fi in new DirectoryInfo(imgDir).EnumerateFiles()
-                         .Where(f => Regex.IsMatch(f.Extension, @"\.(png|jpe?g|webp)$", RegexOptions.IgnoreCase))
+                         .Where(f => CommonRegex.IsMatch(f.Extension, @"\.(png|jpe?g|webp)$", RegexOptions.IgnoreCase))
                          .OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase))
             {
                 var name = fi.Name;
                 var f = fi.FullName;
-                var m = Regex.Match(name, @"(?:page|p|embedded_p)0*(\d+)", RegexOptions.IgnoreCase);
+                var m = CommonRegex.Match(name, @"(?:page|p|embedded_p)0*(\d+)", RegexOptions.IgnoreCase);
                 var page = m.Success && int.TryParse(m.Groups[1].Value, out var pn) ? pn : 0;
                 var pathRel = Path.GetRelativePath(projectDir, f).Replace('\\', '/');
                 rows.Add(new BookImageRow(pathRel, f, page, "file", name.ToLowerInvariant()));

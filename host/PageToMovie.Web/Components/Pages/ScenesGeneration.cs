@@ -144,26 +144,40 @@ public partial class Scenes
     /// One compact progress card while video work runs — operators and admin.
     /// No badges, provider names, raw engine message, or live log.
     /// </summary>
-    internal bool ShowLiveGenProgress =>
-        _job is not null &&
-        IsScenesWorkflowJob(_job.Kind) &&
-        (_job.Status is "running" or "queued");
+    internal bool ShowLiveGenProgress
+    {
+        get
+        {
+            var job = _job;
+            return job is not null &&
+                   IsScenesWorkflowJob(job.Kind) &&
+                   (job.Status is "running" or "queued");
+        }
+    }
 
+    internal bool ShowOperatorGenError
+    {
+        get
+        {
+            var job = _job;
+            return !S.Session.IsAdmin &&
+                   job is not null &&
+                   IsScenesWorkflowJob(job.Kind) &&
+                   string.Equals(job.Status, "error", StringComparison.OrdinalIgnoreCase);
+        }
+    }
 
-
-    internal bool ShowOperatorGenError =>
-        !S.Session.IsAdmin &&
-        _job is not null &&
-        IsScenesWorkflowJob(_job.Kind) &&
-        string.Equals(_job.Status, "error", StringComparison.OrdinalIgnoreCase);
-
-
-
-    internal bool ShowOperatorGenPartial =>
-        !S.Session.IsAdmin &&
-        _job is not null &&
-        IsScenesWorkflowJob(_job.Kind) &&
-        string.Equals(_job.Status, "partial", StringComparison.OrdinalIgnoreCase);
+    internal bool ShowOperatorGenPartial
+    {
+        get
+        {
+            var job = _job;
+            return !S.Session.IsAdmin &&
+                   job is not null &&
+                   IsScenesWorkflowJob(job.Kind) &&
+                   string.Equals(job.Status, "partial", StringComparison.OrdinalIgnoreCase);
+        }
+    }
 
 
 

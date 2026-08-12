@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using PageToMovie.Core.Models;
 using PageToMovie.Engine.Abstractions;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Engine;
 
 /// <summary>
@@ -324,10 +325,10 @@ public sealed class CatalogUpdateProbeService
         if (entry.Capability is ModelCapability.Chat or ModelCapability.Vision)
         {
             // Prefer "Input … $X" / "Output … $Y" style; fallback to first two $ amounts near "1M"
-            var inMatch = Regex.Match(html,
+            var inMatch = CommonRegex.Match(html,
                 @"Input[^$]{0,80}\$([0-9]+(?:\.[0-9]+)?)\s*(?:/\s*1M|/1M|per\s*1M|/\s*million)?",
                 RegexOptions.IgnoreCase | RegexOptions.Singleline);
-            var outMatch = Regex.Match(html,
+            var outMatch = CommonRegex.Match(html,
                 @"Output[^$]{0,80}\$([0-9]+(?:\.[0-9]+)?)\s*(?:/\s*1M|/1M|per\s*1M|/\s*million)?",
                 RegexOptions.IgnoreCase | RegexOptions.Singleline);
 
@@ -347,11 +348,11 @@ public sealed class CatalogUpdateProbeService
 
         if (entry.Capability == ModelCapability.Image)
         {
-            var m = Regex.Match(html,
+            var m = CommonRegex.Match(html,
                 @"\$([0-9]+(?:\.[0-9]+)?)\s*(?:/\s*image|per\s*image)",
                 RegexOptions.IgnoreCase);
             if (!m.Success)
-                m = Regex.Match(html, @"Pricing[^$]{0,40}\$([0-9]+(?:\.[0-9]+)?)", RegexOptions.IgnoreCase);
+                m = CommonRegex.Match(html, @"Pricing[^$]{0,40}\$([0-9]+(?:\.[0-9]+)?)", RegexOptions.IgnoreCase);
             if (m.Success && double.TryParse(m.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var imgLive))
                 row.Fields.Add(CompareDouble("imageCostPerImage", entry.ImageCostPerImage, imgLive, docUrl, "parsed $/image"));
             else
@@ -363,7 +364,7 @@ public sealed class CatalogUpdateProbeService
         if (entry.Capability == ModelCapability.Video)
         {
             // Resolution-tiered: 480p $0.05, 720p $0.07, or flat $0.05 per second
-            var tierMatches = Regex.Matches(html,
+            var tierMatches = CommonRegex.Matches(html,
                 @"(480p|720p|1080p)[^$]{0,40}\$([0-9]+(?:\.[0-9]+)?)",
                 RegexOptions.IgnoreCase);
             var foundTier = false;
@@ -393,7 +394,7 @@ public sealed class CatalogUpdateProbeService
 
             if (!foundTier)
             {
-                var m = Regex.Match(html,
+                var m = CommonRegex.Match(html,
                     @"\$([0-9]+(?:\.[0-9]+)?)\s*(?:per\s*second|/\s*sec|/\s*second)",
                     RegexOptions.IgnoreCase);
                 if (m.Success && double.TryParse(m.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var secLive))
@@ -473,10 +474,10 @@ public sealed class CatalogUpdateProbeService
         // Extension max: docs say 2–10 seconds
         if (!string.IsNullOrEmpty(extHtml))
         {
-            var m = Regex.Match(extHtml, @"extension duration range is\s+\*?\*?(\d+)\s*[–-]\s*(\d+)\s*seconds",
+            var m = CommonRegex.Match(extHtml, @"extension duration range is\s+\*?\*?(\d+)\s*[–-]\s*(\d+)\s*seconds",
                 RegexOptions.IgnoreCase);
             if (!m.Success)
-                m = Regex.Match(extHtml, @"(\d+)\s*[–-]\s*(\d+)\s*seconds", RegexOptions.IgnoreCase);
+                m = CommonRegex.Match(extHtml, @"(\d+)\s*[–-]\s*(\d+)\s*seconds", RegexOptions.IgnoreCase);
             if (m.Success && int.TryParse(m.Groups[2].Value, out var liveExtMax))
             {
                 var catalog = entry.MaxExtensionSeconds;
@@ -493,10 +494,10 @@ public sealed class CatalogUpdateProbeService
 
         if (!string.IsNullOrEmpty(genHtml))
         {
-            var m = Regex.Match(genHtml, @"allowed range is\s+(\d+)\s*[–-]\s*(\d+)\s*seconds",
+            var m = CommonRegex.Match(genHtml, @"allowed range is\s+(\d+)\s*[–-]\s*(\d+)\s*seconds",
                 RegexOptions.IgnoreCase);
             if (!m.Success)
-                m = Regex.Match(genHtml, @"(\d+)\s*[–-]\s*(\d+)\s*seconds", RegexOptions.IgnoreCase);
+                m = CommonRegex.Match(genHtml, @"(\d+)\s*[–-]\s*(\d+)\s*seconds", RegexOptions.IgnoreCase);
             if (m.Success && int.TryParse(m.Groups[2].Value, out var liveMax))
             {
                 row.Fields.Add(CompareInt("maxClipDurationSeconds", entry.MaxClipDurationSeconds, liveMax,
@@ -517,7 +518,7 @@ public sealed class CatalogUpdateProbeService
         {
             var refHtml = await client.GetStringAsync(
                 "https://docs.x.ai/developers/model-capabilities/video/reference-to-video", ct).ConfigureAwait(false);
-            var rm = Regex.Match(refHtml, @"maximum of\s+\*?\*?(\d+)\s+reference images", RegexOptions.IgnoreCase);
+            var rm = CommonRegex.Match(refHtml, @"maximum of\s+\*?\*?(\d+)\s+reference images", RegexOptions.IgnoreCase);
             if (rm.Success && int.TryParse(rm.Groups[1].Value, out var liveRefs))
             {
                 row.Fields.Add(CompareInt("maxReferenceImages", entry.MaxReferenceImages, liveRefs,

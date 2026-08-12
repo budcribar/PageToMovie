@@ -84,6 +84,7 @@ if (!resp.IsSuccessStatusCode)
     return 1;
 }
 using var doc = JsonDocument.Parse(respText);
+using PageToMovie.Core.Utils;
 var content = doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? "";
 var ai = AmbientSfxClassifier.ParseLabels(content);
 
@@ -136,8 +137,8 @@ static bool IsActionLike(string visual)
 {
     var v = (visual ?? "").Trim();
     if (v.Length < 24) return false;
-    if (Regex.IsMatch(v, @"^\w[\w\s']+\s+speaks\.?\s*$", RegexOptions.IgnoreCase)) return false;
-    if (Regex.IsMatch(v, @"^[\w\s']+\s*\([^)]+\)\.?\s*$", RegexOptions.IgnoreCase) && v.Length < 40)
+    if (CommonRegex.IsMatch(v, @"^\w[\w\s']+\s+speaks\.?\s*$", RegexOptions.IgnoreCase)) return false;
+    if (CommonRegex.IsMatch(v, @"^[\w\s']+\s*\([^)]+\)\.?\s*$", RegexOptions.IgnoreCase) && v.Length < 40)
         return false;
     return true;
 }

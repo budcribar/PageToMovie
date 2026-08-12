@@ -38,7 +38,8 @@ public partial class CopyToClipboardButton : IAsyncDisposable, IDisposable
             oldCts.Dispose();
         }
         _resetCts = new CancellationTokenSource();
-        var ct = _resetCts.Token;
+        var cts = _resetCts;
+        var ct = cts.Token;
         _copied = true;
         try
         {
@@ -48,6 +49,14 @@ public partial class CopyToClipboardButton : IAsyncDisposable, IDisposable
         catch (OperationCanceledException)
         {
             /* superseded by another copy */
+        }
+        finally
+        {
+            if (ReferenceEquals(_resetCts, cts))
+            {
+                cts.Dispose();
+                _resetCts = null;
+            }
         }
     }
 

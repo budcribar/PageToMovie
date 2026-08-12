@@ -312,9 +312,9 @@ public partial class Admin
             await RunArchiveActionAsync(async () =>
             {
                 // Buffer once — server import + client media extract both need the bytes.
-                await using var upload = _importFile.OpenReadStream(MaxImportBytes);
+                await using var upload = _importFile.OpenReadStream(MaxImportBytes, CancellationToken.None);
                 using var ms = new MemoryStream();
-                await upload.CopyToAsync(ms);
+                await upload.CopyToAsync(ms, CancellationToken.None);
                 ms.Position = 0;
 
                 var result = await S.Api.ImportProjectZipAsync(
@@ -698,7 +698,7 @@ public partial class Admin
                                         confirmed = true;
                                         break;
                                     }
-                                    await Task.Delay(1000);
+                                    await Task.Delay(1000, CancellationToken.None);
                                 }
                                 if (!confirmed)
                                 {

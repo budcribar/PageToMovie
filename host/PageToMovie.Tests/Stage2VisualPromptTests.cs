@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Xunit;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Tests;
 
 /// <summary>
@@ -127,7 +128,7 @@ public class Stage2VisualPromptTests : IDisposable
         string rawCue, string? paren, string expected)
     {
         // Simulate importer: clean name then build visual
-        var name = Regex.Replace(rawCue, @"\s*\([^)]*\)\s*", " ").Trim();
+        var name = CommonRegex.Replace(rawCue, @"\s*\([^)]*\)\s*", " ").Trim();
         if (name.Length > 0 && name.All(c => !char.IsLetter(c) || char.IsUpper(c)))
         {
             var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -158,7 +159,7 @@ public class Stage2VisualPromptTests : IDisposable
         Assert.DoesNotContain("no legible text", neg, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("no watermarks", neg, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("no crowd extras", neg, StringComparison.OrdinalIgnoreCase);
-        Assert.Single(Regex.Matches(neg, "no watermarks", RegexOptions.IgnoreCase));
+        Assert.Single(CommonRegex.Matches(neg, "no watermarks", RegexOptions.IgnoreCase));
         Assert.Contains("no extra unmentioned hats", neg, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -187,7 +188,7 @@ public class Stage2VisualPromptTests : IDisposable
         // Resolution/fps are real, separate API request fields (GrokVideoClient), not prompt text —
         // the accidental "/ 480p, 24fps" in the input visual_prompt is stripped and nothing is
         // re-appended in its place.
-        Assert.Empty(Regex.Matches(built.Prompt, @"/\s*\d+p\s*,\s*\d+fps", RegexOptions.IgnoreCase));
+        Assert.Empty(CommonRegex.Matches(built.Prompt, @"/\s*\d+p\s*,\s*\d+fps", RegexOptions.IgnoreCase));
     }
 
     [Fact]
@@ -226,7 +227,7 @@ public class Stage2VisualPromptTests : IDisposable
                     anyClip = true;
                     var text = vp.GetString() ?? "";
                     Assert.DoesNotContain("24fps", text, StringComparison.OrdinalIgnoreCase);
-                    Assert.DoesNotMatch(new Regex(@"/\s*\d{3,4}p\s*$", RegexOptions.IgnoreCase), text);
+                    Assert.DoesNotMatch(new Regex(@"/\s*\d{3,4}p\s*$", RegexOptions.IgnoreCase, CommonRegex.Timeout), text);
                 }
                 foreach (var p in el.EnumerateObject())
                     Walk(p.Value);

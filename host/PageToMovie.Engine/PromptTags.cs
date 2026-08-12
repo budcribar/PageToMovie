@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Engine;
 
 /// <summary>
@@ -44,12 +45,12 @@ public static class PromptTags
     /// text — used to fully drop non-essential tagged content during compression (e.g. Voice,
     /// VoiceLock: visual video models don't use voice-tuning text).</summary>
     public static string Strip(string text, string name) =>
-        Regex.Replace(text, $@"\s*<{name}>.*?</{name}>", "", RegexOptions.Singleline);
+        CommonRegex.Replace(text, $@"\s*<{name}>.*?</{name}>", "", RegexOptions.Singleline);
 
     /// <summary>Drop every tag's "note" attribute — the full instructional wording is only needed
     /// in the uncompressed prompt; the bare tag name is enough once budget is tight.</summary>
     public static string StripNotes(string text) =>
-        Regex.Replace(text, @"\s+note=""[^""]*""", "");
+        CommonRegex.Replace(text, @"\s+note=""[^""]*""", "");
 
     /// <summary>
     /// Strip literal '&lt;'/'&gt;' from an untrusted LEAF value (an AI classifier's text, a cast

@@ -5,6 +5,7 @@ using PageToMovie.Engine.Abstractions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Engine.ModelBacked;
 
 /// <summary>
@@ -186,7 +187,7 @@ JSON: {"labels":[{"id":"s1_b3","class":"extend"}]}
         var ac = (actionClass ?? "").ToLowerInvariant();
         if (ac is "big_action" or "establishing") return true;
         var ve = (visual ?? "").ToLowerInvariant();
-        if (Regex.IsMatch(ve,
+        if (CommonRegex.IsMatch(ve,
                 @"\b(kick|smash|punch|sprint|crash|explod|slam|throw|rocket|wide shot|establishing|flashback|back to present|cut to)\b"))
             return true;
         return false;

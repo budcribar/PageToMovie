@@ -13,11 +13,11 @@ public static class MarkdownHelper
         .UseListExtras()
         .Build();
 
-    private static readonly Regex LeadingTagRe = new(@"^<(p|div)>\s*", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex TrailingTagRe = new(@"\s*</(p|div)>$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex OpenTagRe = new(@"<(p|div)>\s*", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex CloseTagRe = new(@"\s*</(p|div)>", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex BrTagRe = new(@"<br\s*/?>", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex LeadingTagRe = new(@"^<(p|div)>\s*", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex TrailingTagRe = new(@"\s*</(p|div)>$", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex OpenTagRe = new(@"<(p|div)>\s*", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex CloseTagRe = new(@"\s*</(p|div)>", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex BrTagRe = new(@"<br\s*/?>", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
 
     /// <summary>
     /// Render Markdown or AI text payload to MarkupString.

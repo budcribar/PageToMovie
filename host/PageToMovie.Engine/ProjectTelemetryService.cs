@@ -29,9 +29,7 @@ public sealed class ProjectTelemetryService
         WriteIndented = false,
     };
 
-    private static readonly Regex ProgressFluff = new(
-        @"^(frame=|fps=|bitrate=|total_size=|out_time|dup=|drop=|speed=|progress=)",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex ProgressFluff = new(@"^(frame=|fps=|bitrate=|total_size=|out_time|dup=|drop=|speed=|progress=)", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
 
     private readonly ProjectStore _projects;
     private readonly UserDatabaseService? _userDb;

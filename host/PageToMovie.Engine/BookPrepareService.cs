@@ -30,12 +30,12 @@ public sealed class BookPrepareService
     private readonly IVisionClient _vision;
     private readonly ILogger<BookPrepareService> _log;
 
-    private static readonly Regex HtmlEntryExtRegex = new(@"\.(xhtml|html|htm)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex HtmlTagsRegex = new(@"<[^>]+>", RegexOptions.Compiled);
-    private static readonly Regex WhitespaceNormalizeRegex = new(@"\s+", RegexOptions.Compiled);
-    private static readonly Regex ImageFileExtRegex = new(@"\.(png|jpe?g|webp)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex EmbeddedPageNumRegex = new(@"embedded_p(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex RenderedPageNumRegex = new(@"page_(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex HtmlEntryExtRegex = new(@"\.(xhtml|html|htm)$", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex HtmlTagsRegex = new(@"<[^>]+>", RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex WhitespaceNormalizeRegex = new(@"\s+", RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex ImageFileExtRegex = new(@"\.(png|jpe?g|webp)$", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex EmbeddedPageNumRegex = new(@"embedded_p(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex RenderedPageNumRegex = new(@"page_(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
 
     public BookPrepareService(
         ProjectStore projects,
@@ -451,7 +451,7 @@ public sealed class BookPrepareService
 
         // 1. Extract image files
         var imageEntries = archive.Entries
-            .Where(e => Regex.IsMatch(e.FullName, @"\.(png|jpe?g|webp)$", RegexOptions.IgnoreCase))
+            .Where(e => CommonRegex.IsMatch(e.FullName, @"\.(png|jpe?g|webp)$", RegexOptions.IgnoreCase))
             .OrderBy(e => e.FullName, StringComparer.OrdinalIgnoreCase)
             .ToList();
 

@@ -7,6 +7,7 @@ using PageToMovie.Fountain;
 using PageToMovie.Adaptation.Conversion;
 using AdaptationFountain = PageToMovie.Adaptation.Conversion.BookToFountainConverter;
 
+using PageToMovie.Core.Utils;
 namespace ScreenplayBenchmark;
 
 public sealed class DeterministicSyntaxResult
@@ -31,16 +32,11 @@ public sealed class DeterministicSyntaxResult
 
 public static class DeterministicSyntaxScorer
 {
-    private static readonly Regex AgeQualifierRegex = new(
-        @"\b(YOUNG|OLD|ADULT|BOY|GIRL|CHILD|ELDER|TINY|BABY|SENIOR|TEEN|TEENAGER)\b|\bAGE\s*\d+\b|\b\d{1,2}s\b|\(\d{1,2}\)",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex AgeQualifierRegex = new(@"\b(YOUNG|OLD|ADULT|BOY|GIRL|CHILD|ELDER|TINY|BABY|SENIOR|TEEN|TEENAGER)\b|\bAGE\s*\d+\b|\b\d{1,2}s\b|\(\d{1,2}\)", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
 
-    private static readonly Regex GenericMusicPlaceholderRegex = new(
-        @"\b(some music|background music|music plays|play music|generic music|music sound)\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex GenericMusicPlaceholderRegex = new(@"\b(some music|background music|music plays|play music|generic music|music sound)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
 
-    private static readonly Regex TitlePageKeyRegex = new(
-        @"^(Title|Credit|Author|Authors|Source|Contact|Notes)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex TitlePageKeyRegex = new(@"^(Title|Credit|Author|Authors|Source|Contact|Notes)$", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
 
     public static DeterministicSyntaxResult Evaluate(string fountainText, List<string>? musicBedPrompts = null)
     {
@@ -59,7 +55,7 @@ public static class DeterministicSyntaxScorer
         var trimmedStart = fountainText.TrimStart();
 
         // Title Page Audit
-        bool hasTitleHeader = Regex.IsMatch(fountainText, @"^(Title|Title:|Credit:|Author:|Draft date:)", RegexOptions.IgnoreCase | RegexOptions.Multiline);
+        bool hasTitleHeader = CommonRegex.IsMatch(fountainText, @"^(Title|Title:|Credit:|Author:|Draft date:)", RegexOptions.IgnoreCase | RegexOptions.Multiline);
         bool hasFadeIn = trimmedStart.StartsWith("FADE IN:", StringComparison.OrdinalIgnoreCase);
 
         if (!hasFadeIn && !hasTitleHeader)
@@ -73,12 +69,12 @@ public static class DeterministicSyntaxScorer
         }
 
         // Markdown Pollution Audit
-        if (Regex.IsMatch(fountainText, @"^\s*#{1,3}\s+", RegexOptions.Multiline))
+        if (CommonRegex.IsMatch(fountainText, @"^\s*#{1,3}\s+", RegexOptions.Multiline))
         {
             formatScore -= 15.0;
             result.DiagnosticWarnings.Add("Markdown header syntax (# Scene) detected instead of clean Fountain headings.");
         }
-        if (Regex.IsMatch(fountainText, @"\*\*(INT\.|EXT\.)", RegexOptions.IgnoreCase))
+        if (CommonRegex.IsMatch(fountainText, @"\*\*(INT\.|EXT\.)", RegexOptions.IgnoreCase))
         {
             formatScore -= 10.0;
             result.DiagnosticWarnings.Add("Bolded markdown scene headings (**INT...**) detected.");
@@ -89,7 +85,7 @@ public static class DeterministicSyntaxScorer
         // standard Fountain title-page keys (Title:, Credit:, Author:, Source:, Notes:, ...) —
         // those are correct, required syntax, not a colon-dialogue formatting mistake. Confirmed
         // via real benchmark runs: every model's title page was previously being miscounted here.
-        var colonCharacterMatches = Regex.Matches(fountainText, @"^([A-Z][a-z0-9_]{1,15}):\s*\S+", RegexOptions.Multiline)
+        var colonCharacterMatches = CommonRegex.Matches(fountainText, @"^([A-Z][a-z0-9_]{1,15}):\s*\S+", RegexOptions.Multiline)
             .Where(m => !TitlePageKeyRegex.IsMatch(m.Groups[1].Value))
             .ToList();
         if (colonCharacterMatches.Count > 2)
@@ -132,10 +128,10 @@ public static class DeterministicSyntaxScorer
         var lastElement = elements.LastOrDefault();
         bool hasClosingTransition = lastElement is not null &&
             ((lastElement.Type == FountainParser.ElementType.Transition &&
-              Regex.IsMatch(lastElement.Text, @"^FADE\s+OUT\.?$", RegexOptions.IgnoreCase)) ||
+              CommonRegex.IsMatch(lastElement.Text, @"^FADE\s+OUT\.?$", RegexOptions.IgnoreCase)) ||
              (lastElement.Type == FountainParser.ElementType.Centered &&
-              Regex.IsMatch(lastElement.Text, @"^THE\s+END$", RegexOptions.IgnoreCase)) ||
-             Regex.IsMatch(lastElement.Text, @"^THE\s+END$", RegexOptions.IgnoreCase));
+              CommonRegex.IsMatch(lastElement.Text, @"^THE\s+END$", RegexOptions.IgnoreCase)) ||
+             CommonRegex.IsMatch(lastElement.Text, @"^THE\s+END$", RegexOptions.IgnoreCase));
         if (!hasClosingTransition)
         {
             formatScore -= 5.0;
@@ -226,10 +222,10 @@ public static class DeterministicSyntaxScorer
 
         // 5. Music Specification Audit Score
         double musicScore = 100.0;
-        var musicRegex = new Regex(@"\[\[(MUSIC|SOUND):\s*(.*?)\]\]|\((MUSIC|SOUND):\s*(.*?)\)|\b(MUSIC|SOUND):\s*(.*)", RegexOptions.IgnoreCase);
+        var musicRegex = new Regex(@"\[\[(MUSIC|SOUND):\s*(.*?)\]\]|\((MUSIC|SOUND):\s*(.*?)\)|\b(MUSIC|SOUND):\s*(.*)", RegexOptions.IgnoreCase, CommonRegex.Timeout);
         var matches = musicRegex.Matches(fountainText);
 
-        var instrumentalRegex = new Regex(@"\b(instrumental|no vocals|piano|orchestral|strings|acoustic|synth|percussion|ambient|melancholic|tempo|score|soundtrack|waltz|lullaby|cello|violin|horn|drums)\b", RegexOptions.IgnoreCase);
+        var instrumentalRegex = new Regex(@"\b(instrumental|no vocals|piano|orchestral|strings|acoustic|synth|percussion|ambient|melancholic|tempo|score|soundtrack|waltz|lullaby|cello|violin|horn|drums)\b", RegexOptions.IgnoreCase, CommonRegex.Timeout);
 
         if (matches.Count > 0)
         {

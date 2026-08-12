@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Engine;
 
 /// <summary>
@@ -19,9 +20,7 @@ namespace PageToMovie.Engine;
 /// </summary>
 internal static class ClipDuration
 {
-    private static readonly Regex TimestampSpan = new(
-        @"^\s*(\d+):(\d{2})\s*-\s*(\d+):(\d{2})\s*$",
-        RegexOptions.Compiled);
+    private static readonly Regex TimestampSpan = new(@"^\s*(\d+):(\d{2})\s*-\s*(\d+):(\d{2})\s*$", RegexOptions.Compiled, CommonRegex.Timeout);
 
     /// <summary>
     /// True when the clip carries a positive <c>duration_seconds</c> — a JSON number (int or

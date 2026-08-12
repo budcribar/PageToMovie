@@ -10,6 +10,7 @@ using Microsoft.Extensions.Options;
 
 using PageToMovie.Engine.Abstractions;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Engine;
 
 /// <summary>xAI /responses vision transcription for book page images.</summary>
@@ -134,8 +135,8 @@ public sealed class GrokVisionClient : IVisionClient
 
             using var doc = JsonDocument.Parse(body);
             var t = ExtractResponseText(doc.RootElement);
-            t = Regex.Replace(t.Trim(), @"^```(?:\w+)?\s*", "");
-            t = Regex.Replace(t, @"\s*```$", "").Trim();
+            t = CommonRegex.Replace(t.Trim(), @"^```(?:\w+)?\s*", "");
+            t = CommonRegex.Replace(t, @"\s*```$", "").Trim();
             await _telemetry.LogApiCallAsync(new ApiCallTelemetry
             {
                 Kind = "vision",
@@ -276,8 +277,8 @@ public sealed class GrokVisionClient : IVisionClient
 
             using var doc = JsonDocument.Parse(body);
             var t = ExtractResponseText(doc.RootElement);
-            t = Regex.Replace(t.Trim(), @"^```(?:json)?\s*", "", RegexOptions.IgnoreCase);
-            t = Regex.Replace(t, @"\s*```$", "").Trim();
+            t = CommonRegex.Replace(t.Trim(), @"^```(?:json)?\s*", "", RegexOptions.IgnoreCase);
+            t = CommonRegex.Replace(t, @"\s*```$", "").Trim();
             await _telemetry.LogApiCallAsync(new ApiCallTelemetry
             {
                 Kind = "vision",
@@ -579,8 +580,8 @@ public sealed class GrokVisionClient : IVisionClient
 
             using var doc = JsonDocument.Parse(body);
             var text = ExtractResponseText(doc.RootElement);
-            text = Regex.Replace(text.Trim(), @"^```(?:\w+)?\s*", "", RegexOptions.IgnoreCase);
-            text = Regex.Replace(text, @"\s*```$", "").Trim();
+            text = CommonRegex.Replace(text.Trim(), @"^```(?:\w+)?\s*", "", RegexOptions.IgnoreCase);
+            text = CommonRegex.Replace(text, @"\s*```$", "").Trim();
             await _telemetry.LogApiCallAsync(new ApiCallTelemetry
             {
                 Kind = "vision",

@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
 using PageToMovie.Core.Models;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Engine;
 
 /// <summary>
@@ -199,7 +200,7 @@ public sealed class ClipSidecarService
             var name = Path.GetFileName(file);
             var cleanName = name.EndsWith(".client.json", StringComparison.OrdinalIgnoreCase) ? name[..^12] : name;
 
-            var match = System.Text.RegularExpressions.Regex.Match(
+            var match = CommonRegex.Match(
                 cleanName, @"scene_?(\d+)(?:_clip_?(\d+))?", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             var scene = match.Success && int.TryParse(match.Groups[1].Value, out var s) ? s : 1;
             var clip = match.Success && match.Groups[2].Success && int.TryParse(match.Groups[2].Value, out var c) ? c : 1;

@@ -206,7 +206,7 @@ public sealed class Stage2PlannerService
             .Where(s =>
             {
                 if (want is null) return true;
-                var n = ToInt(s.TryGetValue("scene_number", out var sn) ? sn : 0);
+                var n = ToInt(s.TryGetValue(JsonKeys.SceneNumber, out var sn) ? sn : 0);
                 return want.Contains(n);
             })
             .ToList();
@@ -236,7 +236,7 @@ public sealed class Stage2PlannerService
         var sceneTasks = scenesIn.Select(async s =>
         {
             ct.ThrowIfCancellationRequested();
-            var sn = ToInt(s.TryGetValue("scene_number", out var n) ? n : 0);
+            var sn = ToInt(s.TryGetValue(JsonKeys.SceneNumber, out var n) ? n : 0);
             await sceneGate.WaitAsync(ct).ConfigureAwait(false);
             try
             {
@@ -458,7 +458,7 @@ public sealed class Stage2PlannerService
         return new()
         {
             ["schema_version"] = "stage2.v1",
-            ["movie_title"] = stage1.TryGetValue("movie_title", out var mt) ? mt : null,
+            [JsonKeys.MovieTitle] = stage1.TryGetValue(JsonKeys.MovieTitle, out var mt) ? mt : null,
             ["source_book_title"] = stage1.TryGetValue("source_book_title", out var sbt) ? sbt : null,
             ["video_provider_profile"] = ResolveVideoProviderProfile(stage1),
             ["global_production_variables"] = gpv,
@@ -482,19 +482,19 @@ public sealed class Stage2PlannerService
         var byN = new Dictionary<int, Dictionary<string, object?>>();
         foreach (var s in GetList(existing, "scenes").OfType<Dictionary<string, object?>>())
         {
-            var n = ToInt(s.TryGetValue("scene_number", out var sn) ? sn : 0);
+            var n = ToInt(s.TryGetValue(JsonKeys.SceneNumber, out var sn) ? sn : 0);
             if (n > 0) byN[n] = s;
         }
         foreach (var s in planned)
         {
-            var n = ToInt(s.TryGetValue("scene_number", out var sn) ? sn : 0);
+            var n = ToInt(s.TryGetValue(JsonKeys.SceneNumber, out var sn) ? sn : 0);
             if (n > 0) byN[n] = s;
         }
         var all = byN.OrderBy(kv => kv.Key).Select(kv => kv.Value).ToList();
         EnsureEndCreditsScene(all, creditsVisualPrompt);
         existing["schema_version"] = "stage2.v1";
-        existing["movie_title"] = stage1.TryGetValue("movie_title", out var mt) ? mt
-            : existing.TryGetValue("movie_title", out var emt) ? emt : null;
+        existing[JsonKeys.MovieTitle] = stage1.TryGetValue(JsonKeys.MovieTitle, out var mt) ? mt
+            : existing.TryGetValue(JsonKeys.MovieTitle, out var emt) ? emt : null;
         existing["source_book_title"] = stage1.TryGetValue("source_book_title", out var sbt) ? sbt
             : existing.TryGetValue("source_book_title", out var esbt) ? esbt : null;
         existing["video_provider_profile"] = ResolveVideoProviderProfile(stage1);
@@ -514,7 +514,7 @@ public sealed class Stage2PlannerService
         if (scenes.Any(ProjectStore.IsCreditsScene))
             return;
 
-        var maxSn = scenes.Select(s => ToInt(s.TryGetValue("scene_number", out var sn) ? sn : 0)).DefaultIfEmpty(0).Max();
+        var maxSn = scenes.Select(s => ToInt(s.TryGetValue(JsonKeys.SceneNumber, out var sn) ? sn : 0)).DefaultIfEmpty(0).Max();
         var creditsSceneNumber = maxSn + 1;
 
         // Content comes from the single credits-card builder (ProjectStore.BuildCreditsVisualPrompt) so this
@@ -529,7 +529,7 @@ public sealed class Stage2PlannerService
         // which the editor keys off clip_number couldn't load: the scene showed "no details / can't edit".)
         var creditsClip = new Dictionary<string, object?>
         {
-            ["clip_number"] = 1,
+            [JsonKeys.ClipNumber] = 1,
             ["clip_index"] = 1,
             ["timestamp"] = "",
             ["veo_continuation_source"] = "none",
@@ -540,7 +540,7 @@ public sealed class Stage2PlannerService
             ["duration_seconds"] = 6,
             ["is_credits"] = true,
             ["visual_prompt"] = visualPrompt,
-            ["audio_payload"] = new Dictionary<string, object?>
+            [JsonKeys.AudioPayload] = new Dictionary<string, object?>
             {
                 ["delivery"] = "none",
                 ["speaker"] = "",
@@ -550,7 +550,7 @@ public sealed class Stage2PlannerService
 
         var creditsScene = new Dictionary<string, object?>
         {
-            ["scene_number"] = creditsSceneNumber,
+            [JsonKeys.SceneNumber] = creditsSceneNumber,
             ["scene_heading"] = "FADE OUT. END CREDITS",
             ["is_credits"] = true,
             ["total_estimated_duration_seconds"] = 6,
@@ -648,8 +648,8 @@ public sealed class Stage2PlannerService
     {
         if (string.IsNullOrWhiteSpace(key)) return "";
         var s = key.Trim();
-        if (s.StartsWith("Character_", StringComparison.OrdinalIgnoreCase))
-            s = s["Character_".Length..];
+        if (s.StartsWith(JsonKeys.CharacterPrefix, StringComparison.OrdinalIgnoreCase))
+            s = s[JsonKeys.CharacterPrefix.Length..];
         if (s.StartsWith("The_", StringComparison.OrdinalIgnoreCase))
             s = s["The_".Length..];
         s = s.Replace("_", "");
@@ -789,7 +789,7 @@ public sealed class Stage2PlannerService
 
             var clipCast = ClipCastTokens(sceneWork, beat, charSeeds);
             var ps = CoerceString(beat.TryGetValue("primary_subject", out var psv) ? psv : null) ?? "";
-            if (ps.StartsWith("Character_", StringComparison.Ordinal) && !clipCast.Contains(ps))
+            if (ps.StartsWith(JsonKeys.CharacterPrefix, StringComparison.Ordinal) && !clipCast.Contains(ps))
                 clipCast.Insert(0, ps);
 
             UpdateWardrobeFromBeat(wardrobe, beat, clipCast);
@@ -886,13 +886,13 @@ public sealed class Stage2PlannerService
 
             var clipDict = new Dictionary<string, object?>
             {
-                ["clip_number"] = i + 1,
+                [JsonKeys.ClipNumber] = i + 1,
                 ["timestamp"] = FormatTs(t, t + dur),
                 ["veo_continuation_source"] = cont,
                 ["location_id"] = lid,
                 ["visual_prompt"] = vp,
                 ["negative_prompt"] = neg,
-                ["audio_payload"] = audioPayload,
+                [JsonKeys.AudioPayload] = audioPayload,
                 ["stage1_beat_id"] = beatIdStr,
                 ["stage1_beat_ids"] = sourceBeatIds.Cast<object?>().ToList(),
                 ["primary_subject"] = primaryVal,
@@ -953,7 +953,7 @@ public sealed class Stage2PlannerService
         List<object?> clips,
         List<object?> beatMap) => new()
     {
-        ["scene_number"] = scene.TryGetValue("scene_number", out var sn) ? sn : null,
+        [JsonKeys.SceneNumber] = scene.TryGetValue(JsonKeys.SceneNumber, out var sn) ? sn : null,
         ["setting"] = scene.TryGetValue("setting", out var set) ? set : null,
         ["location_ids"] = lids.Cast<object?>().ToList(),
         ["primary_location_id"] = primary,
@@ -965,7 +965,7 @@ public sealed class Stage2PlannerService
         ["total_estimated_duration_seconds"] = total,
         ["music_bed"] = MusicBed(scene, total),
         ["veo_clips"] = clips,
-        ["stage1_scene_number"] = scene.TryGetValue("scene_number", out var s1) ? s1 : null,
+        ["stage1_scene_number"] = scene.TryGetValue(JsonKeys.SceneNumber, out var s1) ? s1 : null,
         ["stage1_beat_map"] = beatMap,
         ["video_provider_profile"] = ResolveVideoProviderProfile(null),
         ["spoiler_constraints"] = scene.TryGetValue("spoiler_constraints", out var sp) ? sp : new List<object?>(),
@@ -1329,7 +1329,7 @@ public sealed class Stage2PlannerService
     {
         var ve = CoerceString(beat.TryGetValue("visual_event", out var vev) ? vev : null) ?? "";
         // Strip accidental technical suffix from beat text (res/fps owned at gen time)
-        ve = Regex.Replace(ve, @"\s*/\s*\d+p.*$", "", RegexOptions.IgnoreCase).Trim();
+        ve = CommonRegex.Replace(ve, @"\s*/\s*\d+p.*$", "", RegexOptions.IgnoreCase).Trim();
         var cast = ClipCastTokens(scene, beat, charSeeds);
         var primary = CoerceString(beat.TryGetValue("primary_subject", out var ps) ? ps : null)
                       ?? (cast.Count > 0 ? cast[0] : "");
@@ -1411,8 +1411,8 @@ public sealed class Stage2PlannerService
             return false;
         if (visual.Contains(primaryKey, StringComparison.OrdinalIgnoreCase))
             return true;
-        var bare = primaryKey.StartsWith("Character_", StringComparison.OrdinalIgnoreCase)
-            ? primaryKey["Character_".Length..]
+        var bare = primaryKey.StartsWith(JsonKeys.CharacterPrefix, StringComparison.OrdinalIgnoreCase)
+            ? primaryKey[JsonKeys.CharacterPrefix.Length..]
             : primaryKey;
         if (string.IsNullOrWhiteSpace(bare)) return false;
         // Character_Old_Man → "Old Man", "Old_Man", "OLDMAN"
@@ -1421,9 +1421,9 @@ public sealed class Stage2PlannerService
             return true;
         if (visual.Contains(bare, StringComparison.OrdinalIgnoreCase))
             return true;
-        var compact = Regex.Replace(bare, @"[_ ]+", "");
+        var compact = CommonRegex.Replace(bare, @"[_ ]+", "");
         if (compact.Length >= 3 &&
-            Regex.IsMatch(visual, $@"\b{Regex.Escape(compact)}\b", RegexOptions.IgnoreCase))
+            CommonRegex.IsMatch(visual, $@"\b{Regex.Escape(compact)}\b", RegexOptions.IgnoreCase))
             return true;
         return false;
     }
@@ -1448,8 +1448,8 @@ public sealed class Stage2PlannerService
         var name = (displayName ?? "").Trim();
         if (name.Length == 0)
         {
-            var bare = primaryKey.StartsWith("Character_", StringComparison.OrdinalIgnoreCase)
-                ? primaryKey["Character_".Length..]
+            var bare = primaryKey.StartsWith(JsonKeys.CharacterPrefix, StringComparison.OrdinalIgnoreCase)
+                ? primaryKey[JsonKeys.CharacterPrefix.Length..]
                 : primaryKey;
             name = bare.Replace('_', ' ').Trim();
         }
@@ -1457,7 +1457,7 @@ public sealed class Stage2PlannerService
             return ve;
 
         // He steadies… / She turns… / They wait…
-        var m = Regex.Match(
+        var m = CommonRegex.Match(
             ve,
             @"^(He|She|They|Him|Her|Them)\b(\s+)(?<rest>.+)$",
             RegexOptions.IgnoreCase | RegexOptions.Singleline);
@@ -1465,7 +1465,7 @@ public sealed class Stage2PlannerService
             return $"{name} {m.Groups["rest"].Value.Trim()}".Trim();
 
         // His hands… / Her eyes…
-        m = Regex.Match(
+        m = CommonRegex.Match(
             ve,
             @"^(His|Her|Their)\b(\s+)(?<rest>.+)$",
             RegexOptions.IgnoreCase | RegexOptions.Singleline);
@@ -1490,8 +1490,8 @@ public sealed class Stage2PlannerService
             if (!string.IsNullOrWhiteSpace(vl))
                 return vl!.Replace('_', ' ');
         }
-        var bare = primaryKey.StartsWith("Character_", StringComparison.OrdinalIgnoreCase)
-            ? primaryKey["Character_".Length..]
+        var bare = primaryKey.StartsWith(JsonKeys.CharacterPrefix, StringComparison.OrdinalIgnoreCase)
+            ? primaryKey[JsonKeys.CharacterPrefix.Length..]
             : primaryKey;
         return bare.Replace('_', ' ').Trim();
     }
@@ -1509,7 +1509,7 @@ public sealed class Stage2PlannerService
         return body.TrimEnd('.', ' ', '\t');
     }
 
-    private static readonly Regex CharacterTokenRegex = new(@"Character_[A-Za-z0-9_]+", RegexOptions.Compiled);
+    private static readonly Regex CharacterTokenRegex = new(@"Character_[A-Za-z0-9_]+", RegexOptions.Compiled, CommonRegex.Timeout);
 
     private static string NormalizeSentencePart(string? text)
     {
@@ -1553,7 +1553,7 @@ public sealed class Stage2PlannerService
         var ve = CoerceString(beat.TryGetValue("visual_event", out var v) ? v : null) ?? "";
         if (string.IsNullOrWhiteSpace(ve)) return true;
         if (FountainParser.IsStandaloneTransitionLine(ve)) return true;
-        return Regex.IsMatch(
+        return CommonRegex.IsMatch(
             ve.Trim(),
             @"^(FADE\s+IN|FADE\s+OUT|FADE\s+TO\s+BLACK|FADE\s+TO\s+WHITE|CUT\s+TO(\s+BLACK)?|DISSOLVE\s+TO|SMASH\s+CUT\s+TO|BLACK\s+OUT|THE\s+END)[\s\.:]*$",
             RegexOptions.IgnoreCase);
@@ -1588,7 +1588,7 @@ public sealed class Stage2PlannerService
         if (IsVoBeat(beat))
             return cont != "continuous_from_previous_beat";
         var ve = (CoerceString(beat.TryGetValue("visual_event", out var vev) ? vev : null) ?? "").ToLowerInvariant();
-        if (Regex.IsMatch(ve,
+        if (CommonRegex.IsMatch(ve,
                 @"\b(kick|smash|punch|sprint|crash|explod|slam|throw|rocket|wide shot|establishing|flashback|back to present|cut to)\b"))
             return true;
         return false;
@@ -1751,7 +1751,7 @@ public sealed class Stage2PlannerService
         void Add(string? key)
         {
             if (string.IsNullOrWhiteSpace(key)) return;
-            if (!key.StartsWith("Character_", StringComparison.Ordinal)) return;
+            if (!key.StartsWith(JsonKeys.CharacterPrefix, StringComparison.Ordinal)) return;
             if (!found.Contains(key)) found.Add(key);
         }
 
@@ -1797,7 +1797,7 @@ public sealed class Stage2PlannerService
                     Key = k,
                     DisplayName = CoerceString(d.TryGetValue("canonical_given_name", out var cn) ? cn : null)
                         ?? CoerceString(d.TryGetValue("voice_label", out var vl) ? vl : null)
-                        ?? k.Replace("Character_", "").Replace('_', ' '),
+                        ?? k.Replace(JsonKeys.CharacterPrefix, "").Replace('_', ' '),
                 };
             }
             var prose = string.Join(" ", new[]
@@ -1820,7 +1820,7 @@ public sealed class Stage2PlannerService
         void Add(string? t)
         {
             if (string.IsNullOrWhiteSpace(t)) return;
-            if (!t.StartsWith("Character_", StringComparison.Ordinal)) return;
+            if (!t.StartsWith(JsonKeys.CharacterPrefix, StringComparison.Ordinal)) return;
             if (!set.Contains(t)) set.Add(t);
         }
         foreach (var x in GetList(scene, "characters_on_screen"))
@@ -1830,7 +1830,7 @@ public sealed class Stage2PlannerService
             Add(CoerceString(b.TryGetValue("primary_subject", out var ps) ? ps : null));
             Add(CoerceString(b.TryGetValue("speaker", out var sp) ? sp : null));
             var ve = CoerceString(b.TryGetValue("visual_event", out var vev) ? vev : null) ?? "";
-            foreach (Match m in Regex.Matches(ve, @"Character_[A-Za-z0-9_]+"))
+            foreach (Match m in CommonRegex.Matches(ve, @"Character_[A-Za-z0-9_]+"))
                 Add(m.Value);
         }
         return set;
@@ -1875,7 +1875,7 @@ public sealed class Stage2PlannerService
     {
         if (string.IsNullOrWhiteSpace(text)) return false;
         var t = text.Trim();
-        return Regex.IsMatch(
+        return CommonRegex.IsMatch(
             t,
             @"^(INT\.?|EXT\.?|EST\.?|I/?E\.?|INT\.?\s*/\s*EXT\.?)\b",
             RegexOptions.IgnoreCase);
@@ -1917,7 +1917,7 @@ public sealed class Stage2PlannerService
         if (t.Contains("as described in the scr", StringComparison.OrdinalIgnoreCase))
             return true;
         // "Match Name as cast for this production." — old EnsureCharacter visual_lock
-        if (Regex.IsMatch(t, @"^Match\s+.+\s+as cast for this production\.?$", RegexOptions.IgnoreCase))
+        if (CommonRegex.IsMatch(t, @"^Match\s+.+\s+as cast for this production\.?$", RegexOptions.IgnoreCase))
             return true;
         // Bare name-only or "Name (voice only…)" without real appearance detail is OK to skip for visual
         if (t.Contains("voice only", StringComparison.OrdinalIgnoreCase) &&
@@ -2030,13 +2030,13 @@ public sealed class Stage2PlannerService
         var t = (item ?? "").ToLowerInvariant();
         if (t.Length == 0) return 9;
         // Face / silhouette / signature props — highest continuity value
-        if (Regex.IsMatch(t,
+        if (CommonRegex.IsMatch(t,
                 @"\b(hat|cap|bonnet|hood|wig|glasses|spectacles|monocle|mask|veil|" +
                 @"badge|collar|leash|nightshirt|nightgown|robe|uniform|armor|" +
                 @"scarf|cravat|tie|eyepatch)\b"))
             return 0;
         // Core clothing body
-        if (Regex.IsMatch(t,
+        if (CommonRegex.IsMatch(t,
                 @"\b(coat|cloak|jacket|dress|gown|suit|shirt|blouse|vest|waistcoat|" +
                 @"trousers|pants|skirt|boots|shoes|slippers|pajamas|pyjamas|" +
                 @"sweater|jumper|overalls|apron)\b"))
@@ -2091,7 +2091,7 @@ public sealed class Stage2PlannerService
         {
             scenes = GetScenes(stage1).Select(s => new
             {
-                n = s.TryGetValue("scene_number", out var sn) ? sn : null,
+                n = s.TryGetValue(JsonKeys.SceneNumber, out var sn) ? sn : null,
                 b = GetList(s, "story_beats").Count,
                 d = s.TryGetValue("duration_target_seconds", out var d) ? d : null,
             }),

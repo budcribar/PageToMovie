@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using PageToMovie.Engine.Deterministic.Pronunciation;
 using PageToMovie.Core.Models;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Engine;
 
 /// <summary>
@@ -497,7 +498,7 @@ public static class ClipVideoPromptBuilder
 
         // Mask short-left compounds only (to-day, age-old, mid-*). Do NOT mask short-right
         // (healthily-how is a crushed pause; good-bye is on the protected list).
-        masked = Regex.Replace(
+        masked = CommonRegex.Replace(
             masked,
             @"\b(\p{L}{1,3})-(\p{L}+)\b",
             m =>
@@ -508,7 +509,7 @@ public static class ClipVideoPromptBuilder
             });
 
         // Remaining letter-letter hyphens → pause (nervous-very, unhappy-to)
-        masked = Regex.Replace(masked, @"(?<=\p{L})-(?=\p{L})", " — ");
+        masked = CommonRegex.Replace(masked, @"(?<=\p{L})-(?=\p{L})", " — ");
 
         // Unmask
         for (var i = 0; i < masks.Count; i++)
@@ -540,38 +541,38 @@ public static class ClipVideoPromptBuilder
         @")\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
-    private static readonly Regex ResFpsSuffixRegex1 = new(@"\s*/\s*\d{3,4}p\s*,\s*\d{2}fps\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex ResFpsSuffixRegex2 = new(@"\s*/\s*\d+p[^/]*24fps\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex ResFpsSuffixRegex3 = new(@"\s*/\s*\d{3,4}p\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex CastCountRegex = new(@"\bCAST COUNT:\s*exactly\s+\d+[^.]*\.\s*(?:No extra people\.\s*)?", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex NoExtraPeopleRegex = new(@"\bNo extra people\.\s*", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex UnicodeDashesRegex = new(@"\s*[\u2012\u2013\u2014\u2015]\s*", RegexOptions.Compiled);
-    private static readonly Regex DoubleHyphenRegex = new(@"\s*--\s*", RegexOptions.Compiled);
-    private static readonly Regex PunctuationDashRegex = new(@"([!?.;:])\s*-+\s*", RegexOptions.Compiled);
-    private static readonly Regex WhitespaceSingleRegex = new(@"\s+", RegexOptions.Compiled);
-    private static readonly Regex DashCapitalizationRegex = new(@"([.!?])\s+—\s+(\p{L})", RegexOptions.Compiled);
-    private static readonly Regex PunctuationCapitalizationRegex = new(@"([.!?])\s+(\p{Ll})", RegexOptions.Compiled);
-    private static readonly Regex FirstWordMatchRegex = new(@"^[\p{L}\p{N}']+[!?]?", RegexOptions.Compiled);
-    private static readonly Regex ContdRegex = new(@"\s*\(\s*CONT'?D\s*\)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex ContinuedRegex = new(@"\s*\(\s*CONTINUED\s*\)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex VoRegex = new(@"\s*\(\s*V\s*\.?\s*O\s*\.?\s*\)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex OsRegex = new(@"\s*\(\s*O\s*\.?\s*S\s*\.?\s*\)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex OcRegex = new(@"\s*\(\s*O\s*\.?\s*C\s*\.?\s*\)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex PronounGlueRegex1 = new(@"\b(Character_[A-Za-z0-9_]+)\s+(He|She|They)\s+", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex PronounGlueRegex2 = new(@"\b(Character_[A-Za-z0-9_]+)\s+(His|Her|Their)\s+", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex DuplicateCharacterKeyRegex = new(@"\b(Character_[A-Za-z0-9_]+)(\s+\1)+\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex DoubleSpacesRegex = new(@"\s{2,}", RegexOptions.Compiled);
-    private static readonly Regex DotSpaceRegex = new(@"\s+\.", RegexOptions.Compiled);
-    private static readonly Regex DoubleDotsRegex = new(@"\.\s*\.", RegexOptions.Compiled);
-    private static readonly Regex DismemberingRegex = new(@"\bdismember(?:ing|ed|s)?\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex DismembermentRegex = new(@"\bdismemberment\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex SeverLimbsRegex = new(@"\bsever(?:ing|ed|s)?\s+(?:head|arms?|legs?|limbs?)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex CutOffLimbsRegex = new(@"\bcut\s+off\s+the\s+(?:head|arms?|legs?|limbs?)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex CorpseRegex = new(@"\bcorpse\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex HumanRemainsRegex = new(@"\bhuman\s+remains\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex DepositsRemainsRegex = new(@"\bdeposits?\s+the\s+remains\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex GhastlyGoryRegex = new(@"\bghastly\s+gory\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex BloodyRemainsRegex = new(@"\bbloody\s+remains\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex ResFpsSuffixRegex1 = new(@"\s*/\s*\d{3,4}p\s*,\s*\d{2}fps\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex ResFpsSuffixRegex2 = new(@"\s*/\s*\d+p[^/]*24fps\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex ResFpsSuffixRegex3 = new(@"\s*/\s*\d{3,4}p\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex CastCountRegex = new(@"\bCAST COUNT:\s*exactly\s+\d+[^.]*\.\s*(?:No extra people\.\s*)?", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex NoExtraPeopleRegex = new(@"\bNo extra people\.\s*", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex UnicodeDashesRegex = new(@"\s*[\u2012\u2013\u2014\u2015]\s*", RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex DoubleHyphenRegex = new(@"\s*--\s*", RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex PunctuationDashRegex = new(@"([!?.;:])\s*-+\s*", RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex WhitespaceSingleRegex = new(@"\s+", RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex DashCapitalizationRegex = new(@"([.!?])\s+—\s+(\p{L})", RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex PunctuationCapitalizationRegex = new(@"([.!?])\s+(\p{Ll})", RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex FirstWordMatchRegex = new(@"^[\p{L}\p{N}']+[!?]?", RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex ContdRegex = new(@"\s*\(\s*CONT'?D\s*\)", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex ContinuedRegex = new(@"\s*\(\s*CONTINUED\s*\)", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex VoRegex = new(@"\s*\(\s*V\s*\.?\s*O\s*\.?\s*\)", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex OsRegex = new(@"\s*\(\s*O\s*\.?\s*S\s*\.?\s*\)", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex OcRegex = new(@"\s*\(\s*O\s*\.?\s*C\s*\.?\s*\)", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex PronounGlueRegex1 = new(@"\b(Character_[A-Za-z0-9_]+)\s+(He|She|They)\s+", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex PronounGlueRegex2 = new(@"\b(Character_[A-Za-z0-9_]+)\s+(His|Her|Their)\s+", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex DuplicateCharacterKeyRegex = new(@"\b(Character_[A-Za-z0-9_]+)(\s+\1)+\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex DoubleSpacesRegex = new(@"\s{2,}", RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex DotSpaceRegex = new(@"\s+\.", RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex DoubleDotsRegex = new(@"\.\s*\.", RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex DismemberingRegex = new(@"\bdismember(?:ing|ed|s)?\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex DismembermentRegex = new(@"\bdismemberment\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex SeverLimbsRegex = new(@"\bsever(?:ing|ed|s)?\s+(?:head|arms?|legs?|limbs?)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex CutOffLimbsRegex = new(@"\bcut\s+off\s+the\s+(?:head|arms?|legs?|limbs?)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex CorpseRegex = new(@"\bcorpse\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex HumanRemainsRegex = new(@"\bhuman\s+remains\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex DepositsRemainsRegex = new(@"\bdeposits?\s+the\s+remains\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex GhastlyGoryRegex = new(@"\bghastly\s+gory\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex BloodyRemainsRegex = new(@"\bbloody\s+remains\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
 
     /// <summary>
     /// Apply <see cref="SanitizeSpokenDialogue"/> to quoted lines after lip-syncs / says / narrates
@@ -582,7 +583,7 @@ public static class ClipVideoPromptBuilder
         if (string.IsNullOrWhiteSpace(visual))
             return visual ?? "";
 
-        return Regex.Replace(
+        return CommonRegex.Replace(
             visual,
             @"(?<=(?:lip-syncs|says|narrates(?:\s+exactly)?)\s+)""([^""]*)""",
             m => "\"" + SanitizeSpokenDialogue(m.Groups[1].Value) + "\"",
@@ -758,7 +759,7 @@ public static class ClipVideoPromptBuilder
         // "Character_Mom" vs "Character_Mom_Assistant") would otherwise mangle the longer key's
         // occurrences into "C1_Assistant" before it ever got its own turn to alias, silently
         // corrupting that character's identity references for the rest of the prompt.
-        var matches = Regex.Matches(p, @"\bCharacter_([A-Za-z0-9_]+)\b");
+        var matches = CommonRegex.Matches(p, @"\bCharacter_([A-Za-z0-9_]+)\b");
         var distinctKeys = matches.Select(m => m.Value).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         var aliasByKey = distinctKeys
             .Select((key, i) => (key, alias: $"C{i + 1}"))
@@ -768,7 +769,7 @@ public static class ClipVideoPromptBuilder
             p = p.Replace(key, aliasByKey[key]);
 
         // 3. Compress image reference tags (<IMAGE_1> -> I1, <IMAGE_2> -> I2)
-        p = Regex.Replace(p, @"<IMAGE_(\d+)>", "I$1");
+        p = CommonRegex.Replace(p, @"<IMAGE_(\d+)>", "I$1");
 
         // 4. Compress technical camera/stock text. Camera/Performance/Optics/VisualLock/Audio/
         // Score/Ambient/Foley/Pronunciation/Negative/CastCount are already emitted as
@@ -784,10 +785,10 @@ public static class ClipVideoPromptBuilder
         p = p.Replace("ON CAMERA lip-syncs", "lip-syncs");
 
         // Strip [Display Name] bracketed titles in character lines (C1/C2 alias is sufficient)
-        p = Regex.Replace(p, @"(-\s*C\d+(?:\s+I\d+)?)\s*\[[^\]]+\]:", "$1:");
+        p = CommonRegex.Replace(p, @"(-\s*C\d+(?:\s+I\d+)?)\s*\[[^\]]+\]:", "$1:");
 
         // Strip resolution/fps suffix (e.g. " / 480p, 24fps" -> "") since resolution/fps is configured via API payload
-        p = Regex.Replace(p, @"\s*/\s*\d+p,\s*\d+fps$", "");
+        p = CommonRegex.Replace(p, @"\s*/\s*\d+p,\s*\d+fps$", "");
 
         // Strip voice descriptions/locks (visual video models do not use voice tuning text).
         // Delimited by explicit <Voice>/<VoiceLock> tags rather than a bare "Voice:"/"VOICE LOCK"
@@ -801,14 +802,14 @@ public static class ClipVideoPromptBuilder
         // just shortening the wording) left only the bare "I1" tag with no instruction attached,
         // exactly the failure mode most likely on busy multi-character prompts (the ones long
         // enough to trigger compression in the first place).
-        p = Regex.Replace(p, @"\s*Match appearance of reference\s+(I\d+)\s+exactly\.?", " Match $1 exactly.");
+        p = CommonRegex.Replace(p, @"\s*Match appearance of reference\s+(I\d+)\s+exactly\.?", " Match $1 exactly.");
         p = p.Replace("Start speaking immediately with ", "Start speaking: ");
         p = p.Replace(" — do not skip, delay, or swallow the opening word. After the last word, hold a brief natural pause with a closed mouth (about half a second); do not freeze mid-syllable or trail into empty staring. Other mouths closed. Speech intelligible; never silent.", ".");
         p = p.Replace("End cleanly when the spoken line and primary action finish — do not hold a frozen pose or empty silence after dialogue.", "");
 
         // 5. Collapse multiple blank lines & consecutive spaces
-        p = Regex.Replace(p, @"\n\s*\n+", "\n");
-        p = Regex.Replace(p, @"[ \t]+", " ");
+        p = CommonRegex.Replace(p, @"\n\s*\n+", "\n");
+        p = CommonRegex.Replace(p, @"[ \t]+", " ");
 
         return p.Trim();
     }
@@ -842,7 +843,7 @@ public static class ClipVideoPromptBuilder
             .OrderBy(k => k, StringComparer.OrdinalIgnoreCase)
             .ToList();
         if (officerKeys.Count > 0 &&
-            Regex.IsMatch(text, @"\b(three|3)\s+officers?\b|\bofficers?\s+sit\b|\bthe officers\b"))
+            CommonRegex.IsMatch(text, @"\b(three|3)\s+officers?\b|\bofficers?\s+sit\b|\bthe officers\b"))
         {
             foreach (var k in officerKeys)
             {
@@ -884,7 +885,7 @@ public static class ClipVideoPromptBuilder
     public static string? ExtractStyleHead(string visual)
     {
         if (string.IsNullOrWhiteSpace(visual)) return null;
-        var m = Regex.Match(
+        var m = CommonRegex.Match(
             visual,
             @"STYLE LOCK:\s*([^.]+\.)",
             RegexOptions.IgnoreCase);
@@ -996,7 +997,7 @@ public static class ClipVideoPromptBuilder
         void Scan(string? text)
         {
             if (string.IsNullOrEmpty(text)) return;
-            foreach (Match m in Regex.Matches(text, @"Character_[A-Za-z0-9_]+"))
+            foreach (Match m in CommonRegex.Matches(text, @"Character_[A-Za-z0-9_]+"))
                 found.Add(m.Value);
         }
         if (clipEl.TryGetProperty("visual_prompt", out var vp))
@@ -1403,15 +1404,16 @@ public static class ClipVideoPromptBuilder
         }
         if (global.Length > 0) AddCsv(global);
         if (story.Length > 0) AddCsv(story);
-        if (items.Count == 0) return "";
-        return PromptTags.Wrap("Negative", string.Join(", ", items));
+        return items.Count == 0
+            ? ""
+            : PromptTags.Wrap("Negative", string.Join(", ", items));
     }
 
     private static string SimplifyVisual(string visual)
     {
         visual = StripFountainLeakage(visual);
         visual = ScrubContentSafetyTriggers(visual);
-        visual = Regex.Replace(visual, @"\s+", " ").Trim();
+        visual = CommonRegex.Replace(visual, @"\s+", " ").Trim();
         return visual;
     }
 
@@ -1451,16 +1453,16 @@ public static class ClipVideoPromptBuilder
         if (r is "480" or "480p") return "480p";
         if (r is "720" or "720p") return "720p";
         if (r is "1080" or "1080p") return "1080p";
-        if (Regex.IsMatch(r, @"^\d{3,4}p$")) return r;
+        if (CommonRegex.IsMatch(r, @"^\d{3,4}p$")) return r;
         return r.EndsWith('p') ? r : r + "p";
     }
 
     private static int CharacterRefPriority(string key)
     {
         var k = key.ToLowerInvariant();
-        if (Regex.IsMatch(k, @"(^|_)(dog|cat|bear|fox|rabbit|bunny|mouse|bird|horse|pig|wolf|owl)(s|es)?($|_)"))
+        if (CommonRegex.IsMatch(k, @"(^|_)(dog|cat|bear|fox|rabbit|bunny|mouse|bird|horse|pig|wolf|owl)(s|es)?($|_)"))
             return 0;
-        if (Regex.IsMatch(k, @"(mom|mum|mother|dad|daddy|father|parent|human)"))
+        if (CommonRegex.IsMatch(k, @"(mom|mum|mother|dad|daddy|father|parent|human)"))
             return 2;
         return 1;
     }
@@ -1514,7 +1516,7 @@ public static class ClipVideoPromptBuilder
         // xAI video often returns 4096 char hard cap in the error body
         if (m.Contains("4096", StringComparison.Ordinal) &&
             m.Contains("length", StringComparison.OrdinalIgnoreCase)) return true;
-        if (Regex.IsMatch(m, @"\b413\b") &&
+        if (CommonRegex.IsMatch(m, @"\b413\b") &&
             (m.Contains("large", StringComparison.OrdinalIgnoreCase) ||
              m.Contains("size", StringComparison.OrdinalIgnoreCase)))
             return true;

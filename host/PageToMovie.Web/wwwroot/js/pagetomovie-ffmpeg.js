@@ -263,7 +263,7 @@ window.PageToMovieFfmpeg = {
 
                 reportProgress(onProgress, 92, "Preparing player…");
                 const out = await ffmpeg.readFile("out.mp4");
-                const blob = new Blob([out.buffer], { type: "video/mp4" });
+                let blob = new Blob([out.buffer], { type: "video/mp4" });
                 // Do NOT auto-revoke the previous _blobUrl here — CollectAndMixSceneSegmentsAsync
                 // (C#) calls this function once per scene to build several *simultaneous*
                 // intermediate segments before combining them in one final call. Auto-revoking on
@@ -716,8 +716,8 @@ window.PageToMovieFfmpeg = {
                 const a = new Audio(url);
                 a.onended = function () { resolve(true); };
                 a.onerror = function () { resolve(false); };
-                const p = a.play();
-                if (p && typeof p.catch === "function") p.catch(function () { resolve(false); });
+                const playResult = a.play();
+                Promise.resolve(playResult).catch(function () { resolve(false); });
             } catch (_) { resolve(false); }
         });
     },
@@ -1170,8 +1170,8 @@ window.PageToMovieFfmpeg = {
 
         // Speech = complement of silence within [0,total].
         if (total <= 0) {
-            // Unknown duration: fall back to a single open window if any speech implied.
-            return silences.length === 0 ? [] : [];
+            // Unknown duration: no speech windows we can measure.
+            return [];
         }
         const speech = [];
         let cursor = 0;
@@ -1481,7 +1481,7 @@ window.PageToMovieFfmpeg = {
         opts = opts || {};
         if (!url) return { success: false, error: "No URL" };
         const mode = (opts.mode || "span").toLowerCase();
-        const count = Math.max(1, Math.min(6, opts.count != null ? opts.count : (mode === "tail" ? 3 : 3)));
+        const count = Math.max(1, Math.min(6, opts.count != null ? opts.count : 3));
         const maxWidth = opts.maxWidth != null ? opts.maxWidth : 640;
         const quality = opts.quality != null ? opts.quality : 5;
         return this._runExclusiveAsync(async () => {

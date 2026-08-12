@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using Microsoft.Playwright;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.UiTests;
 
 /// <summary>
@@ -14,15 +15,15 @@ public class UserModeJargonTests
 {
     private static readonly (string Label, Regex Rx)[] Banned =
     {
-        ("Grok", new Regex(@"\bGrok\b", RegexOptions.IgnoreCase)),
-        ("Gemini", new Regex(@"\bGemini\b", RegexOptions.IgnoreCase)),
-        ("xAI", new Regex(@"\bxAI\b")),
-        ("Veo", new Regex(@"\bVeo\b")),
-        ("Anthropic", new Regex(@"\bAnthropic\b", RegexOptions.IgnoreCase)),
-        ("Suno", new Regex(@"\bSuno\b", RegexOptions.IgnoreCase)),
-        ("ElevenLabs", new Regex(@"ElevenLabs", RegexOptions.IgnoreCase)),
-        ("blueprint.clips", new Regex(@"blueprint\.clips", RegexOptions.IgnoreCase)),
-        ("scenes.json", new Regex(@"scenes\.json", RegexOptions.IgnoreCase)),
+        ("Grok", new Regex(@"\bGrok\b", RegexOptions.IgnoreCase, CommonRegex.Timeout)),
+        ("Gemini", new Regex(@"\bGemini\b", RegexOptions.IgnoreCase, CommonRegex.Timeout)),
+        ("xAI", new Regex(@"\bxAI\b", RegexOptions.None, CommonRegex.Timeout)),
+        ("Veo", new Regex(@"\bVeo\b", RegexOptions.None, CommonRegex.Timeout)),
+        ("Anthropic", new Regex(@"\bAnthropic\b", RegexOptions.IgnoreCase, CommonRegex.Timeout)),
+        ("Suno", new Regex(@"\bSuno\b", RegexOptions.IgnoreCase, CommonRegex.Timeout)),
+        ("ElevenLabs", new Regex(@"ElevenLabs", RegexOptions.IgnoreCase, CommonRegex.Timeout)),
+        ("blueprint.clips", new Regex(@"blueprint\.clips", RegexOptions.IgnoreCase, CommonRegex.Timeout)),
+        ("scenes.json", new Regex(@"scenes\.json", RegexOptions.IgnoreCase, CommonRegex.Timeout)),
     };
 
     private readonly AppFixture _fx;
@@ -45,7 +46,7 @@ public class UserModeJargonTests
             if (route != "/")
             {
                 await page.Locator($"a[href='{route}']").First.ClickAsync();
-                await Assertions.Expect(page).ToHaveURLAsync(new Regex(Regex.Escape(route)));
+                await Assertions.Expect(page).ToHaveURLAsync(new Regex(Regex.Escape(route), RegexOptions.None, CommonRegex.Timeout));
             }
             await page.WaitForTimeoutAsync(1000);
 

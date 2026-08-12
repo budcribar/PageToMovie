@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Core.Utils;
 
 /// <summary>
@@ -16,13 +17,9 @@ public static class ClipSilenceTrimmer
     /// <summary>Shortest a trimmed clip may end up — matches ClipDurationEstimator.MinSeconds.</summary>
     public const double MinClipSeconds = 3;
 
-    private static readonly Regex SilenceEndRe = new(
-        @"silence_end:\s*([0-9]+(?:\.[0-9]+)?)",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex SilenceEndRe = new(@"silence_end:\s*([0-9]+(?:\.[0-9]+)?)", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
 
-    private static readonly Regex SilenceStartRe = new(
-        @"silence_start:\s*([0-9]+(?:\.[0-9]+)?)",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex SilenceStartRe = new(@"silence_start:\s*([0-9]+(?:\.[0-9]+)?)", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
 
     /// <summary>
     /// If file starts with silence, return the timestamp to start decode (after silence + keepHead).

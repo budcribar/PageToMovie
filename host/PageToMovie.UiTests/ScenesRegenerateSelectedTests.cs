@@ -6,6 +6,7 @@ using Microsoft.Playwright;
 using PageToMovie.Core.Options;
 using PageToMovie.Engine;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.UiTests;
 
 /// <summary>
@@ -69,7 +70,7 @@ public class ScenesRegenerateSelectedTests
             await Assertions.Expect(regenBtn).ToBeVisibleAsync(new() { Timeout = 15_000 });
             // Tooltip must reflect the scoped selection before we click (wired to _selected.Count).
             await Assertions.Expect(regenBtn).ToHaveAttributeAsync(
-                "title", new Regex("only the 1 checked scene"), new() { Timeout = 10_000 });
+                "title", new Regex("only the 1 checked scene", RegexOptions.None, CommonRegex.Timeout), new() { Timeout = 10_000 });
             await regenBtn.ClickAsync();
 
             await WaitForNewStage2JobDoneAsync(page, activeId!, beforeJobIds);
@@ -112,7 +113,7 @@ public class ScenesRegenerateSelectedTests
             var regenBtn = page.GetByRole(AriaRole.Button, new() { Name = "Regenerate Selected Scenes" });
             await Assertions.Expect(regenBtn).ToBeVisibleAsync(new() { Timeout = 15_000 });
             await Assertions.Expect(regenBtn).ToHaveAttributeAsync(
-                "title", new Regex("nothing checked, this rebuilds every scene"), new() { Timeout = 10_000 });
+                "title", new Regex("nothing checked, this rebuilds every scene", RegexOptions.None, CommonRegex.Timeout), new() { Timeout = 10_000 });
             await regenBtn.ClickAsync();
 
             await WaitForNewStage2JobDoneAsync(page, activeId!, beforeJobIds);

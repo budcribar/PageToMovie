@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using PageToMovie.Core.Models;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Engine;
 
 /// <summary>
@@ -185,13 +186,13 @@ public sealed class ProjectMigrationService
     /// </summary>
     private static string MigrateVisualPromptLabelText(string text)
     {
-        text = Regex.Replace(
+        text = CommonRegex.Replace(
             text, @"Camera directive:\s*(.+?)(?=\s+Performance:|\s+Optics:|\s+Color grading:|$)",
             m => PromptTags.Wrap("Camera", m.Groups[1].Value), RegexOptions.Singleline);
-        text = Regex.Replace(
+        text = CommonRegex.Replace(
             text, @"Performance:\s*(.+?)(?=\s+Optics:|\s+Color grading:|$)",
             m => PromptTags.Wrap("Performance", m.Groups[1].Value), RegexOptions.Singleline);
-        text = Regex.Replace(
+        text = CommonRegex.Replace(
             text, @"Optics:\s*(.+?)(?=\s+Color grading:|$)",
             m => PromptTags.Wrap("Optics", m.Groups[1].Value), RegexOptions.Singleline);
         return text;

@@ -3,6 +3,7 @@ using PageToMovie.Engine;
 using PageToMovie.Engine.Abstractions;
 using Microsoft.Extensions.Logging;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Fakes;
 
 /// <summary>
@@ -159,7 +160,7 @@ public sealed class FakeGrokChatClient : IChatClient
         {
             // key-based payload
             var labels = new List<string>();
-            foreach (Match m in Regex.Matches(user, @"""key""\s*:\s*""([^""]+)"""))
+            foreach (Match m in CommonRegex.Matches(user, @"""key""\s*:\s*""([^""]+)"""))
             {
                 var key = m.Groups[1].Value;
                 var cls = key.Contains("Narrator", StringComparison.OrdinalIgnoreCase) ||
@@ -177,7 +178,7 @@ public sealed class FakeGrokChatClient : IChatClient
         if (mode == ChatCallModes.PlateRankClassify ||
             sys.Contains("book image basenames", StringComparison.OrdinalIgnoreCase))
         {
-            var names = Regex.Matches(user, @"""([^""]+\.(?:png|jpe?g|webp))""", RegexOptions.IgnoreCase)
+            var names = CommonRegex.Matches(user, @"""([^""]+\.(?:png|jpe?g|webp))""", RegexOptions.IgnoreCase)
                 .Select(m => m.Groups[1].Value)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Take(3)
@@ -268,14 +269,14 @@ public sealed class FakeGrokChatClient : IChatClient
     private static string BuildSilentBeatLabelsJson(string user) =>
         BuildIdLabels(user, id =>
         {
-            var cls = Regex.IsMatch(id, @"_b1$") ? "establishing" : "action";
+            var cls = CommonRegex.IsMatch(id, @"_b1$") ? "establishing" : "action";
             return $$"""{"id":"{{id}}","class":"{{cls}}","reason":"fake"}""";
         });
 
     private static string BuildIdLabels(string user, Func<string, string> labelForId)
     {
         var labels = new List<string>();
-        foreach (Match m in Regex.Matches(user, @"""id""\s*:\s*""([^""]+)"""))
+        foreach (Match m in CommonRegex.Matches(user, @"""id""\s*:\s*""([^""]+)"""))
             labels.Add(labelForId(m.Groups[1].Value));
         return """{"labels":[""" + string.Join(",", labels) + "]}";
     }
@@ -499,7 +500,7 @@ public sealed class FakeGrokChatClient : IChatClient
 
     private static bool ContainsWord(string upperName, string[] words)
     {
-        var tokens = Regex.Split(upperName, "[^A-Z]+");
+        var tokens = CommonRegex.Split(upperName, "[^A-Z]+");
         foreach (var w in words)
             if (Array.IndexOf(tokens, w) >= 0)
                 return true;
@@ -528,7 +529,7 @@ public sealed class FakeGrokChatClient : IChatClient
         }
 
         bool IsSceneOrTransition(string t) =>
-            Regex.IsMatch(t, @"^(INT|EXT|EST|INT\.?/EXT|I/E)[\. ]", RegexOptions.IgnoreCase)
+            CommonRegex.IsMatch(t, @"^(INT|EXT|EST|INT\.?/EXT|I/E)[\. ]", RegexOptions.IgnoreCase)
             || t.EndsWith("TO:", StringComparison.OrdinalIgnoreCase)
             || t.StartsWith("FADE", StringComparison.OrdinalIgnoreCase)
             || t.StartsWith("CUT", StringComparison.OrdinalIgnoreCase);
@@ -541,11 +542,11 @@ public sealed class FakeGrokChatClient : IChatClient
 
             // Character cue: an UPPERCASE line (optionally with a "(V.O.)"-style extension) that is
             // preceded by a blank line and followed by dialogue (a non-blank next line).
-            var cueMatch = Regex.Match(t, @"^([A-Z][A-Z0-9 .'’\-]*?)(\s*\([^)]*\))?$");
+            var cueMatch = CommonRegex.Match(t, @"^([A-Z][A-Z0-9 .'’\-]*?)(\s*\([^)]*\))?$");
             var prevBlank = i == 0 || lines[i - 1].Trim().Length == 0;
             var nextNonBlank = i + 1 < lines.Length && lines[i + 1].Trim().Length > 0;
             if (cueMatch.Success && prevBlank && nextNonBlank && !IsSceneOrTransition(t)
-                && Regex.IsMatch(t, "[A-Z]"))
+                && CommonRegex.IsMatch(t, "[A-Z]"))
             {
                 var name = cueMatch.Groups[1].Value.Trim();
                 if (!CueStopWords.Contains(name) && name.Length >= 2)
@@ -557,7 +558,7 @@ public sealed class FakeGrokChatClient : IChatClient
 
             // Action line: pick up inline UPPERCASE animal/creature/group names (e.g. a silent "LAMB")
             // so non-speaking cast still appear. Keyword-gated to avoid matching FADE/INT/etc.
-            foreach (Match m in Regex.Matches(t, @"\b[A-Z][A-Z'’\-]{1,}\b"))
+            foreach (Match m in CommonRegex.Matches(t, @"\b[A-Z][A-Z'’\-]{1,}\b"))
             {
                 var w = m.Value;
                 if (CueStopWords.Contains(w)) continue;
@@ -587,7 +588,7 @@ public sealed class FakeGrokChatClient : IChatClient
                 : ContainsWord(upper, CreatureWords) ? "creature" : "human";
             var isGroup = ContainsWord(upper, GroupWords);
             var display = TitleCase(name);
-            var key = "Character_" + Regex.Replace(display, @"\s+", "_");
+            var key = "Character_" + CommonRegex.Replace(display, @"\s+", "_");
             var castKind = isGroup ? "group" : "individual";
             sb.AppendLine("    \"" + key + "\": {");
             sb.AppendLine("      \"canonical_given_name\": \"" + display + "\",");

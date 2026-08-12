@@ -1,6 +1,7 @@
 using Microsoft.JSInterop;
 using PageToMovie.Core.Models;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Web.Components.Pages;
 
 public partial class AdaptationScreenplay
@@ -70,7 +71,7 @@ public partial class AdaptationScreenplay
             {
                 if (text.Trim().Length < 40) codes.Add("very_short");
                 // crude scene check until JS reports
-                if (!System.Text.RegularExpressions.Regex.IsMatch(text, @"(?im)^(INT|EXT|EST|I/E|\.)"))
+                if (!CommonRegex.IsMatch(text, @"(?im)^(INT|EXT|EST|I/E|\.)"))
                     codes.Add("no_scenes");
             }
             MapWarnings(codes.ToArray());

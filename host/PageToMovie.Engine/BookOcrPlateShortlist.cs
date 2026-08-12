@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 
 using PageToMovie.Core.Models;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Engine;
 
 /// <summary>
@@ -22,11 +23,11 @@ public static class BookOcrPlateShortlist
         return File.Exists(b) ? b : null;
     }
 
-    private static readonly Regex PageHeaderRegex = new(@"---\s*PAGE\s+(\d+)\s*---", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex AliasSplitRegex = new(@"[\s_\-]+", RegexOptions.Compiled);
-    private static readonly Regex SpeciesTokensRegex = new(@"\b(bunnies|bunny|rabbits?|mice|mouse|frogs?|owls?|kittens?|puppies?)\b", RegexOptions.Compiled);
-    private static readonly Regex ZzzPatternRegex = new(@"^z+\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex WhitespaceSplitRegex = new(@"\s+", RegexOptions.Compiled);
+    private static readonly Regex PageHeaderRegex = new(@"---\s*PAGE\s+(\d+)\s*---", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex AliasSplitRegex = new(@"[\s_\-]+", RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex SpeciesTokensRegex = new(@"\b(bunnies|bunny|rabbits?|mice|mouse|frogs?|owls?|kittens?|puppies?)\b", RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex ZzzPatternRegex = new(@"^z+\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex WhitespaceSplitRegex = new(@"\s+", RegexOptions.Compiled, CommonRegex.Timeout);
 
     public static List<PageText> ParseBookFull(string raw)
     {
@@ -105,7 +106,7 @@ public static class BookOcrPlateShortlist
             foreach (var a in aliases)
             {
                 if (a.Length < 3) continue;
-                if (Regex.IsMatch(text, $@"\b{Regex.Escape(a)}\b", RegexOptions.IgnoreCase))
+                if (CommonRegex.IsMatch(text, $@"\b{Regex.Escape(a)}\b", RegexOptions.IgnoreCase))
                 {
                     hits.Add(p.Page);
                     break;

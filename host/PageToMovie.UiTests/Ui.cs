@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Playwright;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.UiTests;
 
 /// <summary>Shared page-driving helpers for the UI suite.</summary>
@@ -90,7 +91,7 @@ public sealed class ConsoleErrors
 
     /// <summary>Errors excluding the documented baseline (the /cost 400 and its aborted fetch).</summary>
     public IReadOnlyList<string> Unexpected => _errors
-        .Where(e => !Regex.IsMatch(e, "status of 400", RegexOptions.IgnoreCase)
+        .Where(e => !CommonRegex.IsMatch(e, "status of 400", RegexOptions.IgnoreCase)
                     && !e.Contains("ERR_ABORTED")
                     && !e.Contains("Failed to load resource"))
         .ToList();

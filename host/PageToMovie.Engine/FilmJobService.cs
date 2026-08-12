@@ -8,6 +8,7 @@ using Google.Apis.Upload;
 using Google.Apis.YouTube.v3.Data;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using PageToMovie.Core.Utils;
 
 namespace PageToMovie.Engine;
 
@@ -1160,7 +1161,7 @@ public sealed class FilmJobService
                         // Map adapt progress into 5–9
                         if (line.Contains("chunk", StringComparison.OrdinalIgnoreCase))
                         {
-                            var m = System.Text.RegularExpressions.Regex.Match(
+                            var m = CommonRegex.Match(
                                 line, @"(\d+)\s*/\s*(\d+)");
                             if (m.Success &&
                                 int.TryParse(m.Groups[1].Value, out var cur) &&
@@ -1938,7 +1939,7 @@ public sealed class FilmJobService
                 {
                     _ = AppendLogAsync(line);
                     // "Grok vision 3/20: …"
-                    var m = System.Text.RegularExpressions.Regex.Match(
+                    var m = CommonRegex.Match(
                         line, @"Grok vision\s+(\d+)/(\d+)",
                         System.Text.RegularExpressions.RegexOptions.IgnoreCase);
                     if (m.Success &&
@@ -2209,12 +2210,12 @@ public sealed class FilmJobService
                 onProgress: line =>
                 {
                     _ = AppendLogAsync(line);
-                    var m = System.Text.RegularExpressions.Regex.Match(line, @"saved variant (\d+)/(\d+)");
+                    var m = CommonRegex.Match(line, @"saved variant (\d+)/(\d+)");
                     if (m.Success && int.TryParse(m.Groups[1].Value, out var idx))
                         _ = UpdateAsync(s => { s.Index = idx; s.Message = line; });
                     else if (line.Contains("generating", StringComparison.OrdinalIgnoreCase))
                     {
-                        var g = System.Text.RegularExpressions.Regex.Match(line, @"generating\s+(\d+)");
+                        var g = CommonRegex.Match(line, @"generating\s+(\d+)");
                         if (g.Success && int.TryParse(g.Groups[1].Value, out var total) && total > 0)
                             _ = UpdateAsync(s => { s.Total = total; s.Message = line; });
                         else
@@ -2317,7 +2318,7 @@ public sealed class FilmJobService
                     else if (line.Contains("generating", StringComparison.OrdinalIgnoreCase))
                     {
                         // "generating 1 variant(s)" / "generating 3 variants"
-                        var m = System.Text.RegularExpressions.Regex.Match(line, @"generating\s+(\d+)");
+                        var m = CommonRegex.Match(line, @"generating\s+(\d+)");
                         if (m.Success && int.TryParse(m.Groups[1].Value, out var total) && total > 0)
                             _ = UpdateAsync(s => { s.Total = total; s.Message = line; });
                         else
@@ -2434,7 +2435,7 @@ public sealed class FilmJobService
             var started = DateTimeOffset.UtcNow;
             var heartbeat = HeartbeatEnrichAsync(started, hbCts.Token);
 
-            DraftEditResult result;
+            ScreenplayService.DraftEditResult result;
             try
             {
                 result = await ScreenplayService.EmbellishDraftAsync(
@@ -2679,14 +2680,14 @@ public sealed class FilmJobService
 
     private static int TryParseVariantProgress(string line)
     {
-        var m = System.Text.RegularExpressions.Regex.Match(
+        var m = CommonRegex.Match(
             line, @"variant[_\s-]*0*([1-3])", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         if (m.Success && int.TryParse(m.Groups[1].Value, out var n))
             return n;
-        m = System.Text.RegularExpressions.Regex.Match(line, @"\b([1-3])\s*/\s*3\b");
+        m = CommonRegex.Match(line, @"\b([1-3])\s*/\s*3\b");
         if (m.Success && int.TryParse(m.Groups[1].Value, out n))
             return n;
-        m = System.Text.RegularExpressions.Regex.Match(
+        m = CommonRegex.Match(
             line, @"saved variant\s+([1-3])", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         if (m.Success && int.TryParse(m.Groups[1].Value, out n))
             return n;
@@ -2804,7 +2805,7 @@ public sealed class FilmJobService
                     {
                         s.Message = line;
                         // "Planning N scene(s) @ …"
-                        var mPlan = System.Text.RegularExpressions.Regex.Match(
+                        var mPlan = CommonRegex.Match(
                             line, @"Planning\s+(\d+)\s+scene", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
                         if (mPlan.Success && int.TryParse(mPlan.Groups[1].Value, out var nScenes) && nScenes > 0)
                         {
@@ -2813,7 +2814,7 @@ public sealed class FilmJobService
                             return;
                         }
                         // "Planning scenes: 3/29 complete"
-                        var mDone = System.Text.RegularExpressions.Regex.Match(
+                        var mDone = CommonRegex.Match(
                             line, @"Planning scenes:\s*(\d+)\s*/\s*(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
                         if (mDone.Success
                             && int.TryParse(mDone.Groups[1].Value, out var doneN)
@@ -2825,7 +2826,7 @@ public sealed class FilmJobService
                             return;
                         }
                         // "Scene 12 of 29…"
-                        var mOf = System.Text.RegularExpressions.Regex.Match(
+                        var mOf = CommonRegex.Match(
                             line, @"Scene\s+(\d+)\s+of\s+(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
                         if (mOf.Success
                             && int.TryParse(mOf.Groups[1].Value, out var snOf)
@@ -3278,15 +3279,16 @@ public sealed class FilmJobService
             var tasks = work.Select(ProcessOneAsync).ToArray();
             await Task.WhenAll(tasks).ConfigureAwait(false);
 
-            if (failed == 0)
+            var failCount = Volatile.Read(ref failed);
+            if (failCount == 0)
                 await FinishAsync("done", $"Speak-batch complete — {work.Count} line(s)").ConfigureAwait(false);
-            else if (failed >= work.Count)
-                await FinishAsync("error", $"Speak-batch failed — all {failed} line(s) failed", "all failed")
+            else if (failCount >= work.Count)
+                await FinishAsync("error", $"Speak-batch failed — all {failCount} line(s) failed", "all failed")
                     .ConfigureAwait(false);
             else
                 await FinishAsync(
                         "partial",
-                        $"Speak-batch partial — {work.Count - failed} ok, {failed} failed")
+                        $"Speak-batch partial — {work.Count - failCount} ok, {failCount} failed")
                     .ConfigureAwait(false);
         }
         catch (OperationCanceledException)
@@ -3350,7 +3352,7 @@ public sealed class FilmJobService
 
         foreach (var s in scenesEl.EnumerateArray())
         {
-            var sn = s.TryGetProperty("scene_number", out var snEl) && snEl.TryGetInt32(out var n) ? n : 0;
+            var sn = s.TryGetProperty(JsonKeys.SceneNumber, out var snEl) && snEl.TryGetInt32(out var n) ? n : 0;
             if (sn <= 0) continue;
             if (!s.TryGetProperty("veo_clips", out var clipsEl) || clipsEl.ValueKind != JsonValueKind.Array)
                 continue;
@@ -3361,7 +3363,7 @@ public sealed class FilmJobService
 
                 string? speaker = null;
                 var dialogue = "";
-                if (c.TryGetProperty("audio_payload", out var ap) && ap.ValueKind == JsonValueKind.Object)
+                if (c.TryGetProperty(JsonKeys.AudioPayload, out var ap) && ap.ValueKind == JsonValueKind.Object)
                 {
                     if (ap.TryGetProperty("dialogue", out var d))
                         dialogue = d.GetString() ?? "";
@@ -3400,7 +3402,7 @@ public sealed class FilmJobService
             return "";
         foreach (var s in scenes.EnumerateArray())
         {
-            var sn = s.TryGetProperty("scene_number", out var snEl) && snEl.TryGetInt32(out var n) ? n : 0;
+            var sn = s.TryGetProperty(JsonKeys.SceneNumber, out var snEl) && snEl.TryGetInt32(out var n) ? n : 0;
             if (sn != scene) continue;
             if (!s.TryGetProperty("veo_clips", out var clips) || clips.ValueKind != JsonValueKind.Array)
                 return "";
@@ -3408,7 +3410,7 @@ public sealed class FilmJobService
             {
                 var cn = ClipKeying.ClipNumber(c);
                 if (cn != clip) continue;
-                if (c.TryGetProperty("audio_payload", out var ap) && ap.ValueKind == JsonValueKind.Object &&
+                if (c.TryGetProperty(JsonKeys.AudioPayload, out var ap) && ap.ValueKind == JsonValueKind.Object &&
                     ap.TryGetProperty("dialogue", out var d))
                     return d.GetString() ?? "";
                 if (c.TryGetProperty("dialogue", out var rootD))
@@ -3492,6 +3494,11 @@ public sealed class FilmJobService
                ?? SupportedModelCatalog.Find("fal-ai/minimax/speech-02-hd", ModelCapability.Voice)?.Id
                ?? model ?? "");
 
+        if (entry?.MaxPromptLength is not int maxLen)
+        {
+            return (null, $"Model '{entry?.Id ?? "(null)"}' has no maxPromptLength in models_catalog.json.");
+        }
+
         return (new SpeakContext
         {
             VoiceId = voiceId!,
@@ -3499,9 +3506,7 @@ public sealed class FilmJobService
             ProviderId = providerId,
             UseEleven = useEleven,
             SpeakModelId = speakModelId ?? "",
-            MaxLen = entry?.MaxPromptLength
-                ?? throw new InvalidOperationException(
-                    $"Model '{entry?.Id ?? "(null)"}' has no maxPromptLength in models_catalog.json."),
+            MaxLen = maxLen,
         }, null);
     }
 
@@ -4567,7 +4572,7 @@ public sealed class FilmJobService
                 var rules = await _projectRules.GetActiveRulesBlockAsync(projectId, ct).ConfigureAwait(false);
                 if (!string.IsNullOrWhiteSpace(rules))
                 {
-                    var m = System.Text.RegularExpressions.Regex.Match(
+                    var m = CommonRegex.Match(
                         rules, @"STYLE LOCK:\s*([^\n]+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
                     if (m.Success)
                         styleHead = "STYLE LOCK: " + m.Groups[1].Value.Trim().TrimEnd('.', ' ');
@@ -4787,7 +4792,7 @@ public sealed class FilmJobService
 
                         // 1. Extract dialogue text & word count from clip blueprint
                         string dialogueText = "";
-                        if (clipEl.TryGetProperty("audio_payload", out var ap) && ap.ValueKind == JsonValueKind.Object &&
+                        if (clipEl.TryGetProperty(JsonKeys.AudioPayload, out var ap) && ap.ValueKind == JsonValueKind.Object &&
                             ap.TryGetProperty("dialogue", out var dEl))
                         {
                             dialogueText = dEl.GetString() ?? "";
@@ -5270,7 +5275,7 @@ public sealed class FilmJobService
                 return null;
             foreach (var s in scenes.EnumerateArray())
             {
-                if (!s.TryGetProperty("scene_number", out var sn) || !sn.TryGetInt32(out var n) || n != scene)
+                if (!s.TryGetProperty(JsonKeys.SceneNumber, out var sn) || !sn.TryGetInt32(out var n) || n != scene)
                     continue;
                 return FindClipInScene(s, clipNum);
             }
@@ -5300,7 +5305,7 @@ public sealed class FilmJobService
     /// </summary>
     internal static bool ClipHasSpokenAudio(JsonElement clipEl)
     {
-        if (!clipEl.TryGetProperty("audio_payload", out var ap) ||
+        if (!clipEl.TryGetProperty(JsonKeys.AudioPayload, out var ap) ||
             ap.ValueKind != JsonValueKind.Object)
             return false;
         var dialogue = ap.TryGetProperty("dialogue", out var d) ? d.GetString() ?? "" : "";
@@ -5335,7 +5340,7 @@ public sealed class FilmJobService
             return null;
         foreach (var s in scenes.EnumerateArray())
         {
-            if (s.TryGetProperty("scene_number", out var n) && n.TryGetInt32(out var sn) && sn == sceneNum)
+            if (s.TryGetProperty(JsonKeys.SceneNumber, out var n) && n.TryGetInt32(out var sn) && sn == sceneNum)
                 return s;
         }
         return null;
@@ -5621,7 +5626,7 @@ public sealed class FilmJobService
             s.Total = Math.Max(s.Total, 10);
 
             // Multi-chunk adapt: map chunk i/N into phases 4–8
-            var m = System.Text.RegularExpressions.Regex.Match(
+            var m = CommonRegex.Match(
                 line, @"chunk\s+(\d+)\s*/\s*(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             if (m.Success &&
                 int.TryParse(m.Groups[1].Value, out var idx) &&
@@ -5637,7 +5642,7 @@ public sealed class FilmJobService
             }
 
             // Vision prepare: page i/N → phases 1–3
-            var mVis = System.Text.RegularExpressions.Regex.Match(
+            var mVis = CommonRegex.Match(
                 line, @"(?:Grok vision|Reading page|page)\s+(\d+)\s*/\s*(\d+)",
                 System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             if (mVis.Success &&

@@ -79,7 +79,7 @@ public static class FountainStage1Importer
             SceneCount = scenes?.Count ?? 0,
             CharacterCount = chars?.Count ?? 0,
             LocationCount = locs?.Count ?? 0,
-            Title = doc.TryGetValue("movie_title", out var t) ? t?.ToString() : null,
+            Title = doc.TryGetValue(JsonKeys.MovieTitle, out var t) ? t?.ToString() : null,
         };
     }
 
@@ -134,7 +134,7 @@ public static class FountainStage1Importer
         {
             if (curScene is not null && curScene.TryGetValue("setting", out var st) && st is string s && s.Length > 0)
                 return s;
-            if (curScene is not null && curScene.TryGetValue("scene_number", out var sn))
+            if (curScene is not null && curScene.TryGetValue(JsonKeys.SceneNumber, out var sn))
                 return $"scene:{sn}";
             return sceneNum > 0 ? $"scene:{sceneNum}" : "scene:0";
         }
@@ -369,7 +369,7 @@ public static class FountainStage1Importer
             pendingParen = null;
             curScene = new Dictionary<string, object?>
             {
-                ["scene_number"] = sceneNum,
+                [JsonKeys.SceneNumber] = sceneNum,
                 ["scene_filename"] = $"sc{sceneNum:D2}_{Slug(locName)}",
                 ["setting"] = setting,
                 ["location_type"] = locType,
@@ -482,7 +482,7 @@ public static class FountainStage1Importer
         return new Dictionary<string, object?>
         {
             ["schema_version"] = "stage1.v1",
-            ["movie_title"] = title,
+            [JsonKeys.MovieTitle] = title,
             ["source_book_title"] = title,
             ["generation"] = new Dictionary<string, object?>
             {
@@ -509,8 +509,7 @@ public static class FountainStage1Importer
     private static string? FirstTitle(FountainParser.ParseResult p, string key) =>
         p.TitlePage.TryGetValue(key, out var v) ? v : null;
 
-    private static readonly Regex AmbientCueRe = new(
-        @"\b(" +
+    private static readonly Regex AmbientCueRe = new(@"\b(" +
         @"rain|raining|rainfall|drizzle|storm|thunder|wind|winds|breeze|" +
         @"hum(?:ming)?|murmur(?:ing)?|buzz(?:ing)?|drone|" +
         @"room\s+tone|ambience|ambient|" +
@@ -518,11 +517,9 @@ public static class FountainStage1Importer
         @"distant\s+traffic|traffic\s+noise|waves?|ocean|surf|" +
         @"birds?(?:\s+chirp(?:ing)?)?|crickets?|cicadas?|" +
         @"crowd\s+noise|soft\s+music|underscore" +
-        @")\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        @")\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
 
-    private static readonly Regex SfxCueRe = new(
-        @"\b(" +
+    private static readonly Regex SfxCueRe = new(@"\b(" +
         @"knock(?:s|ing)?|slam(?:s|med|ming)?|bang(?:s|ed|ing)?|crash(?:es|ed|ing)?|" +
         @"thud(?:s|ded)?|creak(?:s|ed|ing)?|click(?:s|ed|ing)?|snap(?:s|ped|ping)?|" +
         @"shatter(?:s|ed|ing)?|gunshot(?:s)?|explosion(?:s)?|blast(?:s)?|" +
@@ -530,8 +527,7 @@ public static class FountainStage1Importer
         @"phone\s+rings?|glass\s+breaks?|splash(?:es|ed|ing)?|" +
         @"screech(?:es|ed|ing)?|roar(?:s|ed|ing)?|beep(?:s|ed|ing)?|" +
         @"alarm|siren|whistle|clap(?:s|ped|ping)?|thump(?:s|ed|ing)?" +
-        @")\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        @")\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
 
     /// <summary>
     /// Split action prose into continuous <c>ambient</c> bed vs transient <c>sfx</c> hits.
@@ -557,49 +553,33 @@ public static class FountainStage1Importer
         return (string.Join(", ", ambient), string.Join(", ", sfx));
     }
 
-    private static readonly Regex HeadingPrefixRe = new(
-        // Longest-first: compound INT/EXT forms including the model-typo "EXT. AND INT."
+    private static readonly Regex HeadingPrefixRe = new(// Longest-first: compound INT/EXT forms including the model-typo "EXT. AND INT."
         @"^(INT\.?\s*/\s*EXT\.?|EXT\.?\s*/\s*INT\.?|INT\s*/\s*EXT|EXT\s*/\s*INT|I\s*/\s*E|"
         + @"EXT\.?\s+AND\s+INT\.?|INT\.?\s+AND\s+EXT\.?|"
-        + @"INT\.?/EXT|INT/EXT|I/E|INT\.?|EXT\.?|EST\.?)\s*",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        + @"INT\.?/EXT|INT/EXT|I/E|INT\.?|EXT\.?|EST\.?)\s*", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
     /// <summary>Leftover after a partial strip (e.g. "AND INT. PALACE").</summary>
-    private static readonly Regex LeftoverCompoundEnvRe = new(
-        @"^(AND\s+)?(INT\.?|EXT\.?|EST\.?)\s+",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex DashSplitRe = new(@"\s+[-–]\s+", RegexOptions.Compiled);
-    private static readonly Regex WhitespaceCollapseRe = new(@"\s+", RegexOptions.Compiled);
-    private static readonly Regex VagueLocationRe = new(
-        @"^(VARIOUS|MULTIPLE|SEVERAL|ELSEWHERE|DIFFERENT|AROUND|THROUGHOUT|"
+    private static readonly Regex LeftoverCompoundEnvRe = new(@"^(AND\s+)?(INT\.?|EXT\.?|EST\.?)\s+", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex DashSplitRe = new(@"\s+[-–]\s+", RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex WhitespaceCollapseRe = new(@"\s+", RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex VagueLocationRe = new(@"^(VARIOUS|MULTIPLE|SEVERAL|ELSEWHERE|DIFFERENT|AROUND|THROUGHOUT|"
         + @"MULTIPLE\s+LOCATIONS?|VARIOUS\s+LOCATIONS?|DIFFERENT\s+ROOMS?|"
         + @"DIFFERENT\s+PLACES?|SEVERAL\s+ROOMS?|VARIOUS\s+ROOMS?|"
-        + @"AROUND\s+THE\s+HOUSE|THROUGHOUT\s+THE\s+HOUSE)$",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex VagueFillerWordsRe = new(
-        @"\b(VARIOUS|MULTIPLE|SEVERAL|ELSEWHERE|DIFFERENT|LOCATIONS?|ROOMS?|PLACES?|AREAS?)\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex PunctuationCleanRe = new(@"[\s\-/&,]+", RegexOptions.Compiled);
-    private static readonly Regex TransitionEndingRe = new(
-        @"^(FADE\s+IN|FADE\s+OUT|FADE\s+TO\s+BLACK|FADE\s+TO\s+WHITE|CUT\s+TO(\s+BLACK)?|DISSOLVE\s+TO|SMASH\s+CUT\s+TO|BLACK\s+OUT|THE\s+END)[\s\.:]*$",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex SlugNonAlphaNumericRe = new(@"[^A-Za-z0-9]+", RegexOptions.Compiled);
-    private static readonly Regex CharacterParenRe = new(@"\s*\([^)]*\)\s*", RegexOptions.Compiled);
-    private static readonly Regex BigActionWordsRe = new(
-        @"\b(chase|races?|sprints?|explodes?|crashes?|fights?|attacks?|leaps?|bounds?|lunges?|slams?)\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex HoldWordsRe = new(
-        @"\b(smile|smiles|smiling|nods?|turns?|looks?|gazes?|freezes?|waits?|steadies|thin smile|hands on|sits still|leans?|pauses?|watches?|listens?)\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex ContMatchRe = new(@"\bCONT", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex ExtensionPureTokenRe = new(
-        @"^(CONT|CONTINUED|V\.?\s*O\.?|O\.?\s*S\.?|O\.?\s*C\.?)$",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex VoTokenRe = new(@"\bV\s*\.?\s*O\s*\.?\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex OsTokenRe = new(@"\bO\s*\.?\s*S\s*\.?\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex OcTokenRe = new(@"\bO\s*\.?\s*C\s*\.?\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex SlugLowerRe = new(@"[^a-z0-9]+", RegexOptions.Compiled);
-    private static readonly Regex AsterisksEmphasisRe = new(@"\*{1,3}([^*]+)\*{1,3}", RegexOptions.Compiled);
-    private static readonly Regex UnderscoreEmphasisRe = new(@"_([^_]+)_", RegexOptions.Compiled);
+        + @"AROUND\s+THE\s+HOUSE|THROUGHOUT\s+THE\s+HOUSE)$", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex VagueFillerWordsRe = new(@"\b(VARIOUS|MULTIPLE|SEVERAL|ELSEWHERE|DIFFERENT|LOCATIONS?|ROOMS?|PLACES?|AREAS?)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex PunctuationCleanRe = new(@"[\s\-/&,]+", RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex TransitionEndingRe = new(@"^(FADE\s+IN|FADE\s+OUT|FADE\s+TO\s+BLACK|FADE\s+TO\s+WHITE|CUT\s+TO(\s+BLACK)?|DISSOLVE\s+TO|SMASH\s+CUT\s+TO|BLACK\s+OUT|THE\s+END)[\s\.:]*$", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex SlugNonAlphaNumericRe = new(@"[^A-Za-z0-9]+", RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex CharacterParenRe = new(@"\s*\([^)]*\)\s*", RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex BigActionWordsRe = new(@"\b(chase|races?|sprints?|explodes?|crashes?|fights?|attacks?|leaps?|bounds?|lunges?|slams?)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex HoldWordsRe = new(@"\b(smile|smiles|smiling|nods?|turns?|looks?|gazes?|freezes?|waits?|steadies|thin smile|hands on|sits still|leans?|pauses?|watches?|listens?)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex ContMatchRe = new(@"\bCONT", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex ExtensionPureTokenRe = new(@"^(CONT|CONTINUED|V\.?\s*O\.?|O\.?\s*S\.?|O\.?\s*C\.?)$", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex VoTokenRe = new(@"\bV\s*\.?\s*O\s*\.?\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex OsTokenRe = new(@"\bO\s*\.?\s*S\s*\.?\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex OcTokenRe = new(@"\bO\s*\.?\s*C\s*\.?\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex SlugLowerRe = new(@"[^a-z0-9]+", RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex AsterisksEmphasisRe = new(@"\*{1,3}([^*]+)\*{1,3}", RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex UnderscoreEmphasisRe = new(@"_([^_]+)_", RegexOptions.Compiled, CommonRegex.Timeout);
 
     /// <summary>
     /// Parse scene heading into type + filmable location name.
@@ -615,7 +595,7 @@ public static class FountainStage1Importer
         // Compound env before plain EXT/INT so "EXT. AND INT. PALACE" is mixed, not ext.
         if (u.Contains("INT./EXT") || u.Contains("INT/EXT") || u.Contains("EXT./INT") || u.Contains("EXT/INT")
             || u.StartsWith("I/E")
-            || Regex.IsMatch(u, @"^(EXT\.?\s+AND\s+INT|INT\.?\s+AND\s+EXT)"))
+            || CommonRegex.IsMatch(u, @"^(EXT\.?\s+AND\s+INT|INT\.?\s+AND\s+EXT)"))
             locType = "mixed";
         else if (u.StartsWith("EXT") || (u.Contains("EXT.") && !u.StartsWith("INT")))
             locType = "ext";
@@ -703,7 +683,7 @@ public static class FountainStage1Importer
         string locType,
         string setting)
     {
-        var id = "Loc_" + SlugKey(locName);
+        var id = JsonKeys.LocationPrefix + SlugKey(locName);
         if (!seeds.ContainsKey(id))
         {
             // Place identity only — filmable set text comes from cast-extract or action enrich.
@@ -869,7 +849,7 @@ public static class FountainStage1Importer
         var core = CleanCharacterName(name);
         var slug = SlugNonAlphaNumericRe.Replace(core, "_").Trim('_');
         if (slug.Length == 0) slug = "Unknown";
-        return "Character_" + slug;
+        return JsonKeys.CharacterPrefix + slug;
     }
 
     private static string CleanCharacterName(string name)
@@ -989,7 +969,7 @@ public static class FountainStage1Importer
         {
             var s = x?.ToString();
             if (!string.IsNullOrWhiteSpace(s) &&
-                s.StartsWith("Character_", StringComparison.Ordinal))
+                s.StartsWith(JsonKeys.CharacterPrefix, StringComparison.Ordinal))
                 return s;
         }
         return null;

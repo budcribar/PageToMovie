@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Engine;
 
 /// <summary>
@@ -10,7 +11,7 @@ namespace PageToMovie.Engine;
 /// </summary>
 public static class ClassifierJsonParser
 {
-    private static readonly Regex FencePrefixRegex = new(@"^```(?:json)?\s*", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex FencePrefixRegex = new(@"^```(?:json)?\s*", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
 
     /// <summary>Strips markdown code fences (```json ... ```) from raw LLM text responses.</summary>
     public static string StripFences(string raw)

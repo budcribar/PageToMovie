@@ -13,6 +13,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PageToMovie.Core.Abstractions;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Engine;
 
 /// <summary>
@@ -139,7 +140,7 @@ public sealed class CastFromScreenplayService
                         OutPath = outPath,
                         CharacterCount = existingKeys.Count,
                         CharacterKeys = existingKeys,
-                        MovieTitle = existing.RootElement.TryGetProperty("movie_title", out var mt)
+                        MovieTitle = existing.RootElement.TryGetProperty(JsonKeys.MovieTitle, out var mt)
                             ? mt.GetString()
                             : null,
                     };
@@ -383,7 +384,7 @@ public sealed class CastFromScreenplayService
             OutPath = outPath,
             CharacterCount = keys.Count,
             CharacterKeys = keys,
-            MovieTitle = normalized.TryGetValue("movie_title", out var movieTitleObj) ? movieTitleObj?.ToString() : null,
+            MovieTitle = normalized.TryGetValue(JsonKeys.MovieTitle, out var movieTitleObj) ? movieTitleObj?.ToString() : null,
             SpeakersMissingFromCast = missingFromCast,
             MembershipScore = membershipScore,
             MembershipOk = membershipOk,
@@ -745,7 +746,7 @@ public sealed class CastFromScreenplayService
         var body = string.Join("_", tokens.Select(Pascal));
         if (string.IsNullOrWhiteSpace(body))
             body = "Unknown";
-        return "Character_" + body;
+        return JsonKeys.CharacterPrefix + body;
     }
 
     /// <summary>
@@ -777,7 +778,7 @@ public sealed class CastFromScreenplayService
         {
             var escaped = Regex.Escape(n.Trim());
             // Allow multi-word names; avoid matching inside longer tokens
-            nameRes.Add((n.Trim(), new Regex($@"\b{escaped}\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)));
+            nameRes.Add((n.Trim(), new Regex($@"\b{escaped}\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, CommonRegex.Timeout)));
         }
 
         // Cap per-name so one lead doesn't consume the whole budget
@@ -849,21 +850,19 @@ public sealed class CastFromScreenplayService
         return sb.ToString().TrimEnd();
     }
 
-    private static readonly Regex LookLanguage = new(
-        @"\b(hair|eyes?|wore|wearing|dressed|dress|coat|cloak|hat|beard|mustache|face|skin|pale|dark|"
+    private static readonly Regex LookLanguage = new(@"\b(hair|eyes?|wore|wearing|dressed|dress|coat|cloak|hat|beard|mustache|face|skin|pale|dark|"
         + @"fair|tall|short|thin|stout|slender|young|old|aged|years?\s+old|beautiful|handsome|"
         + @"blonde|blond|brunette|redhead|curly|bald|scar|freckle|wardrobe|gown|suit|boots?|"
         + @"complexion|features|figure|build|shoulder|cheek|lip|brow|forehead|chin|nose|"
-        + @"species|fur|mane|paw|tail|whisker|feather|scale)\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        + @"species|fur|mane|paw|tail|whisker|feather|scale)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
 
-    private static readonly Regex NonAlphaNumericRegex = new(@"[^A-Za-z0-9]+", RegexOptions.Compiled);
-    private static readonly Regex ParagraphSplitRegex = new(@"\n\s*\n+", RegexOptions.Compiled);
-    private static readonly Regex WhitespaceRegex = new(@"\s+", RegexOptions.Compiled);
-    private static readonly Regex MatchConsistentlyRegex = new(@"^Match\s+.+\s+consistently", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex MarkdownCodePrefixRegex = new(@"^```(?:json|text)?\s*", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex MarkdownCodeSuffixRegex = new(@"\s*```\s*$", RegexOptions.Compiled);
-    private static readonly Regex PhotorealMediumRegex = new(@"\b(photoreal|photo-?real|live[- ]?action)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex NonAlphaNumericRegex = new(@"[^A-Za-z0-9]+", RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex ParagraphSplitRegex = new(@"\n\s*\n+", RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex WhitespaceRegex = new(@"\s+", RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex MatchConsistentlyRegex = new(@"^Match\s+.+\s+consistently", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex MarkdownCodePrefixRegex = new(@"^```(?:json|text)?\s*", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex MarkdownCodeSuffixRegex = new(@"\s*```\s*$", RegexOptions.Compiled, CommonRegex.Timeout);
+    private static readonly Regex PhotorealMediumRegex = new(@"\b(photoreal|photo-?real|live[- ]?action)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
 
     private static string SelectSpineWindows(string text, int maxChars, int windowCount)
     {
@@ -983,10 +982,10 @@ public sealed class CastFromScreenplayService
             },
         };
 
-        if (parsed.TryGetValue("movie_title", out var mt) && mt is not null)
-            outDoc["movie_title"] = mt.ToString();
+        if (parsed.TryGetValue(JsonKeys.MovieTitle, out var mt) && mt is not null)
+            outDoc[JsonKeys.MovieTitle] = mt.ToString();
         else
-            outDoc["movie_title"] = projectId;
+            outDoc[JsonKeys.MovieTitle] = projectId;
 
         if (parsed.TryGetValue("render_style_lock", out var rsl) && rsl is not null && !string.IsNullOrWhiteSpace(rsl.ToString()))
         {
@@ -1005,10 +1004,10 @@ public sealed class CastFromScreenplayService
         foreach (var (key, val) in seedsIn)
         {
             if (val is not Dictionary<string, object?> seed) continue;
-            var k = key.StartsWith("Character_", StringComparison.OrdinalIgnoreCase)
+            var k = key.StartsWith(JsonKeys.CharacterPrefix, StringComparison.OrdinalIgnoreCase)
                 ? key
-                : "Character_" + NonAlphaNumericRegex.Replace(key, "_").Trim('_');
-            if (string.IsNullOrWhiteSpace(k) || k == "Character_") continue;
+                : JsonKeys.CharacterPrefix + NonAlphaNumericRegex.Replace(key, "_").Trim('_');
+            if (string.IsNullOrWhiteSpace(k) || k == JsonKeys.CharacterPrefix) continue;
 
             var name = seed.TryGetValue("canonical_given_name", out var cn) && cn is not null
                 ? cn.ToString()!
@@ -1076,9 +1075,9 @@ public sealed class CastFromScreenplayService
             var variantOfRaw = CoerceString(seed, "variant_of");
             if (!string.IsNullOrWhiteSpace(variantOfRaw))
             {
-                var variantOfKey = variantOfRaw.StartsWith("Character_", StringComparison.OrdinalIgnoreCase)
+                var variantOfKey = variantOfRaw.StartsWith(JsonKeys.CharacterPrefix, StringComparison.OrdinalIgnoreCase)
                     ? variantOfRaw
-                    : "Character_" + NonAlphaNumericRegex.Replace(variantOfRaw, "_").Trim('_');
+                    : JsonKeys.CharacterPrefix + NonAlphaNumericRegex.Replace(variantOfRaw, "_").Trim('_');
                 if (!string.Equals(variantOfKey, k, StringComparison.OrdinalIgnoreCase))
                     clean["variant_of"] = variantOfKey;
             }
@@ -1132,11 +1131,11 @@ public sealed class CastFromScreenplayService
             {
                 if (rawVal is not Dictionary<string, object?> entry) continue;
                 var k = NormalizeLocationKey(rawKey);
-                if (string.IsNullOrWhiteSpace(k) || k == "Loc_") continue;
+                if (string.IsNullOrWhiteSpace(k) || k == JsonKeys.LocationPrefix) continue;
 
                 var display = CoerceString(entry, "display_name")
                               ?? CoerceString(entry, "canonical_given_name")
-                              ?? k.Replace("Loc_", "").Replace('_', ' ');
+                              ?? k.Replace(JsonKeys.LocationPrefix, "").Replace('_', ' ');
                 var desc = CoerceString(entry, "description") ?? "";
                 if (IsStubLook(desc) || desc.Equals(display, StringComparison.OrdinalIgnoreCase))
                     desc = "";
@@ -1168,9 +1167,9 @@ public sealed class CastFromScreenplayService
 
     /// <summary>Foreign-key-safe location key, e.g. "kirk street" → "Loc_Kirk_Street".</summary>
     private static string NormalizeLocationKey(string raw) =>
-        raw.StartsWith("Loc_", StringComparison.OrdinalIgnoreCase)
+        raw.StartsWith(JsonKeys.LocationPrefix, StringComparison.OrdinalIgnoreCase)
             ? raw
-            : "Loc_" + NonAlphaNumericRegex.Replace(raw, "_").Trim('_');
+            : JsonKeys.LocationPrefix + NonAlphaNumericRegex.Replace(raw, "_").Trim('_');
 
     /// <summary>Foreign-key-safe wardrobe group key, e.g. "police officer" → "Wardrobe_Police_Officer".</summary>
     private static string NormalizeWardrobeKey(string raw) =>

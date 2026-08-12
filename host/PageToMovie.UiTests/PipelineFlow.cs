@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using Microsoft.Playwright;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.UiTests;
 
 /// <summary>
@@ -36,7 +37,7 @@ public static class PipelineFlow
         await page.GetByTestId("home-new-project").First.ClickAsync(new() { Timeout = 30_000 });
         await page.GetByTestId("home-new-project-name").FillAsync(name);
         await page.GetByTestId("home-create-project").ClickAsync();
-        await page.WaitForURLAsync(new Regex("adaptation/import", RegexOptions.IgnoreCase), new() { Timeout = 60_000 });
+        await page.WaitForURLAsync(new Regex("adaptation/import", RegexOptions.IgnoreCase, CommonRegex.Timeout), new() { Timeout = 60_000 });
     }
 
     /// <summary>Point every studio job at the key-free fake test vendor for the active project, via
@@ -81,7 +82,7 @@ public static class PipelineFlow
         await input.SetInputFilesAsync(fountain);
         try
         {
-            await page.WaitForURLAsync(new Regex("adaptation/screenplay", RegexOptions.IgnoreCase), new() { Timeout = 30_000 });
+            await page.WaitForURLAsync(new Regex("adaptation/screenplay", RegexOptions.IgnoreCase, CommonRegex.Timeout), new() { Timeout = 30_000 });
         }
         catch (TimeoutException)
         {
@@ -112,7 +113,7 @@ public static class PipelineFlow
         await SelectFakeModelsAsync(page);
         await ImportFountainAsync(page, baseUrl, fixtureFile);
         await SignOffScreenplayAsync(page);
-        await page.WaitForURLAsync(new Regex("characters", RegexOptions.IgnoreCase), new() { Timeout = 90_000 });
+        await page.WaitForURLAsync(new Regex("characters", RegexOptions.IgnoreCase, CommonRegex.Timeout), new() { Timeout = 90_000 });
     }
 
     /// <summary>Build the shot plan (Stage 2) for the active project and wait for the job to finish.

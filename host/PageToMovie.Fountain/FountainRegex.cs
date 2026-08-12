@@ -1,24 +1,11 @@
 using System.Text.RegularExpressions;
 
-namespace PageToMovie.Core.Utils;
+namespace PageToMovie.Fountain;
 
-/// <summary>
-/// Shared Regex catalog and timeout-safe static helpers. Sonar S6444 requires a match timeout
-/// on every Regex construction / static call so a crafted input cannot hang the process.
-/// </summary>
-public static class CommonRegex
+/// <summary>Fountain stays dependency-free — local timeout twin of <c>CommonRegex.Timeout</c>.</summary>
+internal static class FountainRegex
 {
-    /// <summary>Default match budget for every helper and compiled pattern here.</summary>
     public static readonly TimeSpan Timeout = TimeSpan.FromSeconds(5);
-
-    /// <summary>Matches consecutive whitespace characters (\s+).</summary>
-    public static readonly Regex WhitespaceCollapse = new(@"\s+", RegexOptions.Compiled, Timeout);
-
-    /// <summary>Matches consecutive dots or dots with surrounding spaces (\s*\.\s*\.+).</summary>
-    public static readonly Regex DotCollapse = new(@"\s*\.\s*\.+", RegexOptions.Compiled, Timeout);
-
-    /// <summary>Matches standard HTML tags (<[^>]+>).</summary>
-    public static readonly Regex HtmlTags = new(@"<[^>]+>", RegexOptions.Compiled, Timeout);
 
     public static Regex Create(string pattern, RegexOptions options = RegexOptions.None) =>
         new(pattern, options, Timeout);
@@ -46,12 +33,6 @@ public static class CommonRegex
 
     public static string Replace(string input, string pattern, string replacement, RegexOptions options) =>
         Regex.Replace(input ?? "", pattern, replacement ?? "", options, Timeout);
-
-    public static string Replace(string input, string pattern, MatchEvaluator evaluator) =>
-        Regex.Replace(input ?? "", pattern, evaluator, RegexOptions.None, Timeout);
-
-    public static string Replace(string input, string pattern, MatchEvaluator evaluator, RegexOptions options) =>
-        Regex.Replace(input ?? "", pattern, evaluator, options, Timeout);
 
     public static string[] Split(string input, string pattern) =>
         Regex.Split(input ?? "", pattern, RegexOptions.None, Timeout);

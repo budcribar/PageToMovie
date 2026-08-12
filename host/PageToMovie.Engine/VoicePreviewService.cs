@@ -7,6 +7,7 @@ using PageToMovie.Engine.Abstractions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Engine;
 
 /// <summary>
@@ -338,7 +339,7 @@ public sealed class VoicePreviewService
     {
         if (string.IsNullOrWhiteSpace(msg)) return null;
         // status=pending (42%) or (42%)
-        var m = System.Text.RegularExpressions.Regex.Match(msg, @"\((\d+(?:\.\d+)?)\s*%\)");
+        var m = CommonRegex.Match(msg, @"\((\d+(?:\.\d+)?)\s*%\)");
         if (m.Success &&
             double.TryParse(
                 m.Groups[1].Value,

@@ -3,6 +3,7 @@ using PageToMovie.Web.Services;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Web.Components.Pages;
 
 public abstract partial class AdaptationPageBase
@@ -120,7 +121,7 @@ public abstract partial class AdaptationPageBase
             // moves on phase messages even when there are no "chunk i/N" lines (single-pass).
             ProgressTotal = Math.Max(ProgressTotal, 10);
 
-            var mChunk = System.Text.RegularExpressions.Regex.Match(
+            var mChunk = CommonRegex.Match(
                 line, @"chunk\s+(\d+)\s*/\s*(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             if (mChunk.Success &&
                 int.TryParse(mChunk.Groups[1].Value, out var cIdx) &&
@@ -135,7 +136,7 @@ public abstract partial class AdaptationPageBase
                 return;
             }
 
-            var mVis = System.Text.RegularExpressions.Regex.Match(
+            var mVis = CommonRegex.Match(
                 line, @"(?:Grok vision|Reading page|page)\s+(\d+)\s*/\s*(\d+)",
                 System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             if (mVis.Success &&
@@ -505,17 +506,17 @@ public abstract partial class AdaptationPageBase
             var msg = snap.Message ?? "";
             var kind = snap.Kind ?? "";
 
-            var page = System.Text.RegularExpressions.Regex.Match(
+            var page = CommonRegex.Match(
                 msg, @"page\s+(\d+)\s*/\s*(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             if (page.Success)
                 return $"Reading book — page {page.Groups[1].Value} of {page.Groups[2].Value}";
 
-            var chunk = System.Text.RegularExpressions.Regex.Match(
+            var chunk = CommonRegex.Match(
                 msg, @"chunk\s+(\d+)\s*/\s*(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             if (chunk.Success)
                 return $"Writing screenplay — part {chunk.Groups[1].Value} of {chunk.Groups[2].Value}";
 
-            var sceneOf = System.Text.RegularExpressions.Regex.Match(
+            var sceneOf = CommonRegex.Match(
                 msg, @"Scene\s+(\d+)\s+of\s+(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             if (sceneOf.Success && kind is "stage2")
             {
@@ -529,7 +530,7 @@ public abstract partial class AdaptationPageBase
                 return $"Planning shots — scene {a} of {b}";
             }
 
-            var scenesDone = System.Text.RegularExpressions.Regex.Match(
+            var scenesDone = CommonRegex.Match(
                 msg, @"Planning scenes:\s*(\d+)\s*/\s*(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             if (scenesDone.Success && kind is "stage2")
             {
@@ -542,7 +543,7 @@ public abstract partial class AdaptationPageBase
                 }
             }
 
-            var scene = System.Text.RegularExpressions.Regex.Match(
+            var scene = CommonRegex.Match(
                 msg, @"Scene\s+(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             if (scene.Success && kind is "stage2")
             {

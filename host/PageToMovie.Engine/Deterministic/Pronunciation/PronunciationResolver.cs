@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Engine.Deterministic.Pronunciation;
 
 public sealed record PronunciationAnnotation(
@@ -28,7 +29,7 @@ public sealed record PronunciationResolution(
 public sealed class PronunciationResolver
 {
     private const string ResourceName = "PageToMovie.Pronunciation.heteronyms.en-US.json";
-    private static readonly Regex TokenRegex = new(@"\b[\p{L}']+\b", RegexOptions.Compiled);
+    private static readonly Regex TokenRegex = new(@"\b[\p{L}']+\b", RegexOptions.Compiled, CommonRegex.Timeout);
     private static readonly HashSet<string> VerbCues = new(StringComparer.OrdinalIgnoreCase)
     {
         "to", "will", "would", "shall", "should", "can", "could", "may", "might",
@@ -110,7 +111,7 @@ public sealed class PronunciationResolver
             $"Pronounce '{annotation.Token}' as /{annotation.Ipa}/ ({annotation.Meaning})"));
     }
 
-    private static readonly Regex HintTargetRegex = new(@"'([\p{L}][\p{L}']*)'", RegexOptions.Compiled);
+    private static readonly Regex HintTargetRegex = new(@"'([\p{L}][\p{L}']*)'", RegexOptions.Compiled, CommonRegex.Timeout);
 
     /// <summary>
     /// True when a pre-baked pronunciation hint is relevant to a spoken line — i.e. a word the hint
@@ -131,7 +132,7 @@ public sealed class PronunciationResolver
             return true; // no identifiable target word, but there is dialogue
 
         return targets.Any(w =>
-            Regex.IsMatch(dialogue, $@"\b{Regex.Escape(w)}\b", RegexOptions.IgnoreCase));
+            CommonRegex.IsMatch(dialogue, $@"\b{Regex.Escape(w)}\b", RegexOptions.IgnoreCase));
     }
 
     private static int Score(PronunciationSense sense, string context, string? inferredPart)
@@ -141,7 +142,7 @@ public sealed class PronunciationResolver
             score += 4;
         foreach (var cue in sense.Cues.Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            if (Regex.IsMatch(context, $@"\b{Regex.Escape(cue)}\b", RegexOptions.IgnoreCase))
+            if (CommonRegex.IsMatch(context, $@"\b{Regex.Escape(cue)}\b", RegexOptions.IgnoreCase))
                 score += 2;
         }
         return score;

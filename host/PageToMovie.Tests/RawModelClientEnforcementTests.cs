@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using Xunit;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Tests;
 
 /// <summary>
@@ -76,9 +77,7 @@ public sealed class RawModelClientEnforcementTests
         "LookVariantPicker.cs",                 // look variant picker vision call
     };
 
-    private static readonly Regex RawCallPattern = new(
-        @"\.(CompleteAsync|CompleteWithImagesAsync|ClassifyCharactersOnImageAsync|TranscribePageAsync)\(",
-        RegexOptions.Compiled);
+    private static readonly Regex RawCallPattern = new(@"\.(CompleteAsync|CompleteWithImagesAsync|ClassifyCharactersOnImageAsync|TranscribePageAsync)\(", RegexOptions.Compiled, CommonRegex.Timeout);
 
     [Fact]
     public void Every_raw_model_client_call_site_is_wrapped_or_documented_debt()

@@ -7,6 +7,7 @@ using PageToMovie.Engine;
 using PageToMovie.Engine.Abstractions;
 using Xunit;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Tests;
 
 /// <summary>
@@ -169,7 +170,7 @@ public class BookToFountainPathTests
         var fountain = "Title: Test\nAuthor: Unit\n\nINT. ROOM - DAY\n\nSomething happens.\n";
         var fixed_ = AdaptationFountain.EnsureFadeIn(fountain);
         Assert.Contains("FADE IN:\n\nINT. ROOM - DAY", fixed_, StringComparison.Ordinal);
-        Assert.Single(Regex.Matches(fixed_, "FADE IN:", RegexOptions.IgnoreCase));
+        Assert.Single(CommonRegex.Matches(fixed_, "FADE IN:", RegexOptions.IgnoreCase));
     }
 
     [Fact]

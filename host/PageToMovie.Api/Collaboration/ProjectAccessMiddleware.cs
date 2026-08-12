@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using PageToMovie.Engine.Abstractions;
 using PageToMovie.Engine.Collaboration;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Api.Collaboration;
 
 /// <summary>
@@ -11,9 +12,7 @@ namespace PageToMovie.Api.Collaboration;
 /// </summary>
 public sealed class ProjectAccessMiddleware
 {
-    private static readonly Regex ProjectPath = new(
-        @"^/api/projects/(?<id>[^/]+)(?<rest>/.*)?$",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex ProjectPath = new(@"^/api/projects/(?<id>[^/]+)(?<rest>/.*)?$", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
 
     private static readonly HashSet<string> CollectionOnly = new(StringComparer.OrdinalIgnoreCase)
     {

@@ -2,6 +2,7 @@ using System.Text.Json;
 using PageToMovie.Engine;
 using PageToMovie.Fountain;
 
+using PageToMovie.Core.Utils;
 namespace ScreenplayBenchmark;
 
 /// <summary>
@@ -216,7 +217,7 @@ public static class AdaptationPackageValidator
         var totalClips = 0;
         var unresolved = 0;
         var longDialogue = 0;
-        var normalizedFountain = System.Text.RegularExpressions.Regex.Replace(fountainText, @"\s+", " ").ToLowerInvariant();
+        var normalizedFountain = CommonRegex.Replace(fountainText, @"\s+", " ").ToLowerInvariant();
         foreach (var scene in scenesEl.EnumerateArray())
         {
             var sceneId = GetString(scene, "scene_id") ?? GetString(scene, "id") ?? "";
@@ -229,7 +230,7 @@ public static class AdaptationPackageValidator
                 if (string.IsNullOrWhiteSpace(dialogue)) continue;
                 if (dialogue.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length > 35)
                     longDialogue++;
-                var normalizedDialogue = System.Text.RegularExpressions.Regex.Replace(dialogue, @"\s+", " ").ToLowerInvariant().Trim();
+                var normalizedDialogue = CommonRegex.Replace(dialogue, @"\s+", " ").ToLowerInvariant().Trim();
                 if (normalizedDialogue.Length > 0 && !normalizedFountain.Contains(normalizedDialogue))
                     unresolved++;
             }

@@ -46,29 +46,17 @@ public static class FountainParser
     }
 
     // Parser-internal disambiguation for title-page Key: lines ("CUT TO:" is a transition, not a key).
-    private static readonly Regex TransitionEnd = new(
-        @"TO:$",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex TransitionEnd = new(@"TO:$", RegexOptions.IgnoreCase | RegexOptions.Compiled, FountainRegex.Timeout);
 
-    private static readonly Regex SceneNumberSuffix = new(
-        @"\s+#([^#]+)#\s*$",
-        RegexOptions.Compiled);
+    private static readonly Regex SceneNumberSuffix = new(@"\s+#([^#]+)#\s*$", RegexOptions.Compiled, FountainRegex.Timeout);
 
-    private static readonly Regex TitleKeyLine = new(
-        @"^([A-Za-z][A-Za-z0-9 ]*):\s*(.*)$",
-        RegexOptions.Compiled);
+    private static readonly Regex TitleKeyLine = new(@"^([A-Za-z][A-Za-z0-9 ]*):\s*(.*)$", RegexOptions.Compiled, FountainRegex.Timeout);
 
-    private static readonly Regex BoneyardRegex = new(
-        @"/\*.*?\*/",
-        RegexOptions.Singleline | RegexOptions.Compiled);
+    private static readonly Regex BoneyardRegex = new(@"/\*.*?\*/", RegexOptions.Singleline | RegexOptions.Compiled, FountainRegex.Timeout);
 
-    private static readonly Regex NoteRegex = new(
-        @"\[\[(.*?)\]\]",
-        RegexOptions.Singleline | RegexOptions.Compiled);
+    private static readonly Regex NoteRegex = new(@"\[\[(.*?)\]\]", RegexOptions.Singleline | RegexOptions.Compiled, FountainRegex.Timeout);
 
-    private static readonly Regex PageTagRegex = new(
-        @"^\[\[\s*pages?\s+\d+",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex PageTagRegex = new(@"^\[\[\s*pages?\s+\d+", RegexOptions.IgnoreCase | RegexOptions.Compiled, FountainRegex.Timeout);
 
     public static ParseResult Parse(string text)
     {
@@ -124,7 +112,7 @@ public static class FountainParser
             }
 
             // Page break: ===
-            if (Regex.IsMatch(trimmed, @"^={3,}\s*$"))
+            if (FountainRegex.IsMatch(trimmed, @"^={3,}\s*$"))
             {
                 result.Elements.Add(new Element { Type = ElementType.PageBreak, Text = trimmed });
                 i++;
@@ -488,7 +476,7 @@ public static class FountainParser
 
         if (trimmed.StartsWith('#')) return true;
         if (trimmed.StartsWith('=') && !trimmed.StartsWith("===")) return true;
-        if (Regex.IsMatch(trimmed, @"^={3,}\s*$")) return true;
+        if (FountainRegex.IsMatch(trimmed, @"^={3,}\s*$")) return true;
         if (trimmed.StartsWith('.') && trimmed.Length > 1 && char.IsLetterOrDigit(trimmed[1])) return true;
         if (trimmed.StartsWith('@')) return true;
         if (trimmed.StartsWith('!')) return true;

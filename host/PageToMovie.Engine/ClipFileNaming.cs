@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Engine;
 
 /// <summary>
@@ -8,9 +9,7 @@ namespace PageToMovie.Engine;
 public static class ClipFileNaming
 {
     /// <summary>Matches clip video files formatted with scene, clip, and take numbers (rejecting .native.mp4).</summary>
-    public static readonly Regex ExactClipNameRe = new(
-        @"^scene_(\d{2})_clip_(\d{2})(?:_take_\d+.*)?\.mp4$",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    public static readonly Regex ExactClipNameRe = new(@"^scene_(\d{2})_clip_(\d{2})(?:_take_\d+.*)?\.mp4$", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
 
     public static string SceneSourcesManifestPath(string compositePath) =>
         compositePath + ".sources.json";
@@ -22,7 +21,7 @@ public static class ClipFileNaming
         !string.IsNullOrEmpty(fileName) && ExactClipNameRe.IsMatch(fileName);
 
     private static bool RegexSceneOnly(string name) =>
-        Regex.IsMatch(name, @"^scene_\d{2}\.mp4$", RegexOptions.IgnoreCase);
+        CommonRegex.IsMatch(name, @"^scene_\d{2}\.mp4$", RegexOptions.IgnoreCase);
 
     /// <summary>
     /// Ordered inputs for freshness checks: scene composites first, else exact clip files.

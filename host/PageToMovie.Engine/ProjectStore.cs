@@ -279,7 +279,7 @@ public sealed partial class ProjectStore
             System.Text.Json.Nodes.JsonObject? targetHistSceneNode = null;
             foreach (var hNode in historicalScenes)
             {
-                if (hNode is System.Text.Json.Nodes.JsonObject hObj && ReadJsonNodeInt(hObj["scene_number"]) == sceneNumber)
+                if (hNode is System.Text.Json.Nodes.JsonObject hObj && ReadJsonNodeInt(hObj[JsonKeys.SceneNumber]) == sceneNumber)
                 {
                     targetHistSceneNode = hObj.DeepClone() as System.Text.Json.Nodes.JsonObject;
                     break;
@@ -291,7 +291,7 @@ public sealed partial class ProjectStore
             int targetIndex = -1;
             for (int i = 0; i < currentScenes.Count; i++)
             {
-                if (currentScenes[i] is System.Text.Json.Nodes.JsonObject cObj && ReadJsonNodeInt(cObj["scene_number"]) == sceneNumber)
+                if (currentScenes[i] is System.Text.Json.Nodes.JsonObject cObj && ReadJsonNodeInt(cObj[JsonKeys.SceneNumber]) == sceneNumber)
                 {
                     targetIndex = i;
                     break;
@@ -359,7 +359,7 @@ public sealed partial class ProjectStore
 
         foreach (var f in files)
         {
-            var m = System.Text.RegularExpressions.Regex.Match(f, @"scene_?(\d+)(?:_clip_?(\d+))?", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            var m = CommonRegex.Match(f, @"scene_?(\d+)(?:_clip_?(\d+))?", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             if (m.Success && int.TryParse(m.Groups[1].Value, out var s))
             {
                 modScenes.Add(s);
@@ -991,7 +991,7 @@ public sealed partial class ProjectStore
             System.Text.Json.Nodes.JsonObject? curScene = null;
             foreach (var s in curScenes)
             {
-                if (s is System.Text.Json.Nodes.JsonObject sObj && ReadJsonNodeInt(sObj["scene_number"]) == sceneNumber)
+                if (s is System.Text.Json.Nodes.JsonObject sObj && ReadJsonNodeInt(sObj[JsonKeys.SceneNumber]) == sceneNumber)
                 {
                     curScene = sObj;
                     break;
@@ -1013,7 +1013,7 @@ public sealed partial class ProjectStore
             {
                 foreach (var s in parScenes)
                 {
-                    if (s is System.Text.Json.Nodes.JsonObject sObj && ReadJsonNodeInt(sObj["scene_number"]) == sceneNumber)
+                    if (s is System.Text.Json.Nodes.JsonObject sObj && ReadJsonNodeInt(sObj[JsonKeys.SceneNumber]) == sceneNumber)
                     {
                         parScene = sObj;
                         break;
@@ -2282,7 +2282,7 @@ public sealed partial class ProjectStore
                 ? cname
                 : (info.TryGetProperty("voice_label", out var vl) && vl.GetString() is { Length: > 0 } lab
                     ? lab
-                    : key.Replace("Character_", "").Replace("_", " "));
+                    : key.Replace(JsonKeys.CharacterPrefix, "").Replace("_", " "));
             var descPreview = info.TryGetProperty("description", out var d0) ? d0.GetString() ?? "" : "";
             var castKindRaw = info.TryGetProperty("cast_kind", out var ck0) ? ck0.GetString() : null;
             var isGroup = !voiceOnly && CastKindClassifier.IsGroup(key, display, castKindRaw, descPreview);
@@ -2587,7 +2587,7 @@ public sealed partial class ProjectStore
                 // when a merge rewrote locations-only JSON after a successful cast extract.
                 preservedCharacters = root["character_seed_tokens"]?.DeepClone();
                 preservedWardrobe = root["wardrobe_lock_tokens"]?.DeepClone();
-                preservedMovieTitle = root["movie_title"]?.DeepClone();
+                preservedMovieTitle = root[JsonKeys.MovieTitle]?.DeepClone();
                 preservedRender = root["render_style_lock"]?.DeepClone();
                 preservedPerf = root["performance_lock"]?.DeepClone();
                 preservedSchema = root["schema_version"]?.DeepClone();
@@ -2659,7 +2659,7 @@ public sealed partial class ProjectStore
             if (preservedWardrobe is not null)
                 root["wardrobe_lock_tokens"] = preservedWardrobe;
             if (preservedMovieTitle is not null)
-                root["movie_title"] = preservedMovieTitle;
+                root[JsonKeys.MovieTitle] = preservedMovieTitle;
             if (preservedRender is not null)
                 root["render_style_lock"] = preservedRender;
             if (preservedPerf is not null)
@@ -2776,12 +2776,12 @@ public sealed partial class ProjectStore
                         {
                             var text = vp.GetString() ?? "";
                             foreach (System.Text.RegularExpressions.Match m in
-                                     System.Text.RegularExpressions.Regex.Matches(text, @"Character_[A-Za-z0-9_]+"))
+                                     CommonRegex.Matches(text, @"Character_[A-Za-z0-9_]+"))
                             {
                                 if (m.Success) cast.Add(m.Value);
                             }
                             foreach (System.Text.RegularExpressions.Match m in
-                                     System.Text.RegularExpressions.Regex.Matches(text, @"Loc_[A-Za-z0-9_]+"))
+                                     CommonRegex.Matches(text, @"Loc_[A-Za-z0-9_]+"))
                             {
                                 if (m.Success) locs.Add(m.Value);
                             }
@@ -2825,7 +2825,7 @@ public sealed partial class ProjectStore
         {
             foreach (var s in scenes.EnumerateArray())
             {
-                if (s.TryGetProperty("scene_number", out var sn) && sn.TryGetInt32(out var n) && n == sceneNumber)
+                if (s.TryGetProperty(JsonKeys.SceneNumber, out var sn) && sn.TryGetInt32(out var n) && n == sceneNumber)
                 {
                     sceneEl = s.Clone();
                     break;
@@ -2858,7 +2858,7 @@ public sealed partial class ProjectStore
                     continue;
                 var text = vp.GetString() ?? "";
                 foreach (System.Text.RegularExpressions.Match m in
-                         System.Text.RegularExpressions.Regex.Matches(text, @"Character_[A-Za-z0-9_]+"))
+                         CommonRegex.Matches(text, @"Character_[A-Za-z0-9_]+"))
                 {
                     if (m.Success)
                         cast.Add(m.Value);
@@ -2938,9 +2938,9 @@ public sealed partial class ProjectStore
             return full;
         // Alias: Loc_Foo → foo_ref.png without Loc_
         var raw = (locKey ?? "").Trim();
-        if (raw.StartsWith("Loc_", StringComparison.OrdinalIgnoreCase))
+        if (raw.StartsWith(JsonKeys.LocationPrefix, StringComparison.OrdinalIgnoreCase))
         {
-            var bare = raw["Loc_".Length..];
+            var bare = raw[JsonKeys.LocationPrefix.Length..];
             var alt = Path.Combine(dir, LocationRefFileName(bare));
             if (File.Exists(alt) && new FileInfo(alt).Length >= 64)
                 return alt;
@@ -3002,8 +3002,8 @@ public sealed partial class ProjectStore
             var entry = locs[locKey] as System.Text.Json.Nodes.JsonObject
                         ?? new System.Text.Json.Nodes.JsonObject
                         {
-                            ["display_name"] = locKey.StartsWith("Loc_", StringComparison.OrdinalIgnoreCase)
-                                ? locKey["Loc_".Length..].Replace('_', ' ')
+                            ["display_name"] = locKey.StartsWith(JsonKeys.LocationPrefix, StringComparison.OrdinalIgnoreCase)
+                                ? locKey[JsonKeys.LocationPrefix.Length..].Replace('_', ' ')
                                 : locKey.Replace('_', ' '),
                         };
             if (description is not null)
@@ -3068,8 +3068,8 @@ public sealed partial class ProjectStore
 
         Add(CharacterRefFileName(charKey));
         var raw = (charKey ?? "").Trim();
-        var bare = raw.StartsWith("Character_", StringComparison.OrdinalIgnoreCase)
-            ? raw["Character_".Length..]
+        var bare = raw.StartsWith(JsonKeys.CharacterPrefix, StringComparison.OrdinalIgnoreCase)
+            ? raw[JsonKeys.CharacterPrefix.Length..]
             : raw;
         Add($"{bare}_ref.png");
         Add(bare);
@@ -3596,7 +3596,7 @@ public sealed partial class ProjectStore
                     ? (cn.GetString() ?? "").Trim()
                     : "";
                 if (display.Length == 0)
-                    display = key.Replace("Character_", "", StringComparison.OrdinalIgnoreCase).Replace('_', ' ');
+                    display = key.Replace(JsonKeys.CharacterPrefix, "", StringComparison.OrdinalIgnoreCase).Replace('_', ' ');
                 // Prefer cast seed policy only — never force VOICE ONLY because key is "Narrator"
                 // (on-camera confessor / POV roles are common and need locked face refs).
                 // Shared mechanism: CastKindClassifier.IsVoiceOnlyPolicy.
@@ -3722,7 +3722,7 @@ public sealed partial class ProjectStore
         foreach (var sNode in scenes)
         {
             if (sNode is not System.Text.Json.Nodes.JsonObject s) continue;
-            var sn = ReadJsonNodeInt(s["scene_number"]);
+            var sn = ReadJsonNodeInt(s[JsonKeys.SceneNumber]);
             if (sn != scene) continue;
             // Stage 2 blueprint uses veo_clips (canonical)
             var clips = s["veo_clips"] as System.Text.Json.Nodes.JsonArray
@@ -3755,7 +3755,7 @@ public sealed partial class ProjectStore
         foreach (var sNode in scenes)
         {
             if (sNode is not System.Text.Json.Nodes.JsonObject s) continue;
-            if (ReadJsonNodeInt(s["scene_number"]) != scene) continue;
+            if (ReadJsonNodeInt(s[JsonKeys.SceneNumber]) != scene) continue;
             return s["veo_clips"] as System.Text.Json.Nodes.JsonArray
                    ?? s["clips"] as System.Text.Json.Nodes.JsonArray;
         }
@@ -3810,9 +3810,7 @@ public sealed partial class ProjectStore
         "vo",
     };
 
-    private static readonly Regex CharacterKeyRx = new(
-        @"^Character_[A-Za-z][A-Za-z0-9_]{0,80}$",
-        RegexOptions.CultureInvariant | RegexOptions.Compiled);
+    private static readonly Regex CharacterKeyRx = new(@"^Character_[A-Za-z][A-Za-z0-9_]{0,80}$", RegexOptions.CultureInvariant | RegexOptions.Compiled, CommonRegex.Timeout);
 
     /// <summary>
     /// Full validation + normalize for Scenes clip editor fields.
@@ -4034,10 +4032,10 @@ public sealed partial class ProjectStore
         clipObj["color_palette"] = fields.ColorPalette;
         clipObj["film_stock"] = fields.FilmStock;
 
-        if (clipObj["audio_payload"] is not System.Text.Json.Nodes.JsonObject audio)
+        if (clipObj[JsonKeys.AudioPayload] is not System.Text.Json.Nodes.JsonObject audio)
         {
             audio = new System.Text.Json.Nodes.JsonObject();
-            clipObj["audio_payload"] = audio;
+            clipObj[JsonKeys.AudioPayload] = audio;
         }
         audio["dialogue"] = fields.Dialogue;
         audio["speaker"] = string.IsNullOrWhiteSpace(fields.Speaker) ? null : fields.Speaker;
@@ -4077,7 +4075,7 @@ public sealed partial class ProjectStore
 
         // Self-heal legacy clips keyed on `clip_index` only: stamp the canonical `clip_number` so
         // future reads/finds no longer depend on the fallback above.
-        clipObj["clip_number"] = clip;
+        clipObj[JsonKeys.ClipNumber] = clip;
 
         ApplyClipFields(clipObj, fields, projectId);
 
@@ -4110,7 +4108,7 @@ public sealed partial class ProjectStore
 
         var clipObj = new System.Text.Json.Nodes.JsonObject
         {
-            ["clip_number"] = fields.Clip,
+            [JsonKeys.ClipNumber] = fields.Clip,
             ["timestamp"] = "",
             ["veo_continuation_source"] = "none",
         };
@@ -4151,7 +4149,7 @@ public sealed partial class ProjectStore
             foreach (var sNode in scenes)
             {
                 if (sNode is not System.Text.Json.Nodes.JsonObject s) continue;
-                if (ReadJsonNodeInt(s["scene_number"]) != scene) continue;
+                if (ReadJsonNodeInt(s[JsonKeys.SceneNumber]) != scene) continue;
                 var clips = s["veo_clips"] as System.Text.Json.Nodes.JsonArray
                             ?? s["clips"] as System.Text.Json.Nodes.JsonArray;
                 if (clips is null) break;
@@ -4215,7 +4213,7 @@ public sealed partial class ProjectStore
             for (var i = 0; i < scenes.Count; i++)
             {
                 if (scenes[i] is not System.Text.Json.Nodes.JsonObject s) continue;
-                if (ReadJsonNodeInt(s["scene_number"]) != scene) continue;
+                if (ReadJsonNodeInt(s[JsonKeys.SceneNumber]) != scene) continue;
                 scenes.RemoveAt(i);
                 removed = true;
                 break;
@@ -4268,10 +4266,10 @@ public sealed partial class ProjectStore
         if (creditsIndex >= 0)
         {
             var creditsObj = (System.Text.Json.Nodes.JsonObject)scenes[creditsIndex]!;
-            next = ReadJsonNodeInt(creditsObj["scene_number"]);
+            next = ReadJsonNodeInt(creditsObj[JsonKeys.SceneNumber]);
             for (var i = creditsIndex; i < scenes.Count; i++)
                 if (scenes[i] is System.Text.Json.Nodes.JsonObject so)
-                    so["scene_number"] = ReadJsonNodeInt(so["scene_number"]) + 1;
+                    so[JsonKeys.SceneNumber] = ReadJsonNodeInt(so[JsonKeys.SceneNumber]) + 1;
         }
         else
         {
@@ -4280,7 +4278,7 @@ public sealed partial class ProjectStore
 
         var sceneObj = new System.Text.Json.Nodes.JsonObject
         {
-            ["scene_number"] = next,
+            [JsonKeys.SceneNumber] = next,
             ["setting"] = string.IsNullOrWhiteSpace(setting) ? "INT. NEW SCENE - DAY" : setting.Trim(),
             ["veo_clips"] = new System.Text.Json.Nodes.JsonArray(),
         };
@@ -4306,16 +4304,16 @@ public sealed partial class ProjectStore
         var next = NextSceneNumber(scenes);
         var clip = new System.Text.Json.Nodes.JsonObject
         {
-            ["clip_number"] = 1,
+            [JsonKeys.ClipNumber] = 1,
             ["timestamp"] = "",
             ["veo_continuation_source"] = "none",
             ["is_credits"] = true,
             ["visual_prompt"] = BuildCreditsVisualPrompt(projectId),
-            ["audio_payload"] = new System.Text.Json.Nodes.JsonObject { ["speaker"] = "", ["dialogue"] = "" },
+            [JsonKeys.AudioPayload] = new System.Text.Json.Nodes.JsonObject { ["speaker"] = "", ["dialogue"] = "" },
         };
         var sceneObj = new System.Text.Json.Nodes.JsonObject
         {
-            ["scene_number"] = next,
+            [JsonKeys.SceneNumber] = next,
             ["setting"] = "END CREDITS",
             ["is_credits"] = true,
             ["veo_clips"] = new System.Text.Json.Nodes.JsonArray { clip },
@@ -4402,7 +4400,7 @@ public sealed partial class ProjectStore
             if (bpPath is not null)
             {
                 using var doc = JsonDocument.Parse(File.ReadAllText(bpPath));
-                if (doc.RootElement.TryGetProperty("movie_title", out var mt) &&
+                if (doc.RootElement.TryGetProperty(JsonKeys.MovieTitle, out var mt) &&
                     mt.ValueKind == JsonValueKind.String && mt.GetString() is { Length: > 0 } m)
                     return m.Trim();
             }
@@ -4463,7 +4461,7 @@ public sealed partial class ProjectStore
         var next = 1;
         foreach (var s in scenes)
             if (s is System.Text.Json.Nodes.JsonObject so)
-                next = Math.Max(next, ReadJsonNodeInt(so["scene_number"]) + 1);
+                next = Math.Max(next, ReadJsonNodeInt(so[JsonKeys.SceneNumber]) + 1);
         return next;
     }
 
@@ -5064,7 +5062,7 @@ public sealed partial class ProjectStore
         var rows = new List<SceneSummary>();
         foreach (var s in scenesEl.EnumerateArray())
         {
-            if (!s.TryGetProperty("scene_number", out var snEl) || !snEl.TryGetInt32(out var sn))
+            if (!s.TryGetProperty(JsonKeys.SceneNumber, out var snEl) || !snEl.TryGetInt32(out var sn))
                 continue;
 
             var clips = s.TryGetProperty("veo_clips", out var vc) && vc.ValueKind == JsonValueKind.Array
@@ -5167,7 +5165,7 @@ public sealed partial class ProjectStore
                     var bpM = File.GetLastWriteTimeUtc(bpPathForStale);
                     foreach (var cEl in clipsElStale.EnumerateArray())
                     {
-                        if (!cEl.TryGetProperty("clip_number", out var cnEl) || !cnEl.TryGetInt32(out var cn2))
+                        if (!cEl.TryGetProperty(JsonKeys.ClipNumber, out var cnEl) || !cnEl.TryGetInt32(out var cn2))
                             continue;
                         if (!ClipOnDisk(videoIndex, sn, cn2)) continue;
                         var path = ResolveClipVideoPath(projectId, sn, cn2);
@@ -5234,7 +5232,7 @@ public sealed partial class ProjectStore
         {
             foreach (var s in scenesEl.EnumerateArray())
             {
-                if (s.TryGetProperty("scene_number", out var snEl) &&
+                if (s.TryGetProperty(JsonKeys.SceneNumber, out var snEl) &&
                     snEl.TryGetInt32(out var sn) &&
                     sn == sceneNumber)
                 {
@@ -5296,7 +5294,7 @@ public sealed partial class ProjectStore
                 string? pronunciationHint = null;
                 string? secondarySpeaker = null;
                 string? secondaryDialogue = null;
-                var hasAp = c.TryGetProperty("audio_payload", out var ap) && ap.ValueKind == JsonValueKind.Object;
+                var hasAp = c.TryGetProperty(JsonKeys.AudioPayload, out var ap) && ap.ValueKind == JsonValueKind.Object;
                 if (hasAp)
                 {
                     if (ap.TryGetProperty("dialogue", out var d))
@@ -6615,7 +6613,7 @@ public sealed partial class ProjectStore
                 return null;
             foreach (var s in scenes.EnumerateArray())
             {
-                var sn = s.TryGetProperty("scene_number", out var snEl) && snEl.TryGetInt32(out var v) ? v : 0;
+                var sn = s.TryGetProperty(JsonKeys.SceneNumber, out var snEl) && snEl.TryGetInt32(out var v) ? v : 0;
                 if (sn != sceneNum) continue;
                 if (!s.TryGetProperty("veo_clips", out var clips) || clips.ValueKind != JsonValueKind.Array)
                     return null;
@@ -6646,7 +6644,7 @@ public sealed partial class ProjectStore
             var list = new List<int>();
             foreach (var s in scenes.EnumerateArray())
             {
-                if (s.TryGetProperty("scene_number", out var sn) && sn.TryGetInt32(out var n) && n > 0)
+                if (s.TryGetProperty(JsonKeys.SceneNumber, out var sn) && sn.TryGetInt32(out var n) && n > 0)
                     list.Add(n);
             }
             return list.Count > 0 ? list.Distinct().OrderBy(x => x).ToList() : null;
