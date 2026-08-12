@@ -18,6 +18,34 @@ public partial class Locations : IDisposable
 
     private int UnusedInPlanCount =>
         _locations.Count(l => !l.UsedInPlan);
+
+    private int UsedInPlanCount =>
+        _locations.Count(l => l.UsedInPlan);
+
+    private int LockedPlateCount =>
+        LocationsForUi.Count(l => l.Locked || l.HasPreferred);
+
+    private int NeedPlateCount =>
+        LocationsForUi.Count(l => !l.Locked && !l.HasPreferred);
+
+    private string? ListThumbUrl(LocationSummary loc)
+    {
+        if (loc.HasPreferred || loc.Locked)
+        {
+            if (loc.PreferredUrl is { Length: > 0 } u)
+                return KeyFormatting.CacheBust(Engine.AbsolutizeMediaUrl(u) ?? u);
+            return KeyFormatting.CacheBust(Engine.LocationRefUrl(_projectId, loc.Key));
+        }
+        var v = loc.Variants.Where(x => x.Exists).OrderBy(x => x.Index).FirstOrDefault();
+        if (v is not null)
+        {
+            if (v.Url is { Length: > 0 } vu)
+                return KeyFormatting.CacheBust(Engine.AbsolutizeMediaUrl(vu) ?? vu);
+            if (v.Index is int vi)
+                return KeyFormatting.CacheBust(Engine.LocationVariantUrl(_projectId, loc.Key, vi));
+        }
+        return null;
+    }
     private LocationSummary? _selected;
     private string _editDescription = "";
     private string _editVisualLock = "";
@@ -113,9 +141,17 @@ public partial class Locations : IDisposable
     {
         _editDescription = loc.Description ?? "";
         _editVisualLock = loc.VisualLock ?? "";
-        _plateUrl = loc.HasPreferred
-            ? KeyFormatting.CacheBust(Engine.LocationRefUrl(_projectId, loc.Key))
-            : null;
+        if (loc.HasPreferred || loc.Locked)
+        {
+            if (loc.PreferredUrl is { Length: > 0 } u)
+                _plateUrl = KeyFormatting.CacheBust(Engine.AbsolutizeMediaUrl(u) ?? u);
+            else
+                _plateUrl = KeyFormatting.CacheBust(Engine.LocationRefUrl(_projectId, loc.Key));
+        }
+        else
+        {
+            _plateUrl = null;
+        }
         _saveHint = null;
     }
 
@@ -201,7 +237,7 @@ public partial class Locations : IDisposable
             });
             if (hasEdit)
                 _imageEditInstruction = "";
-            _message = "Generating set plates…";
+            _message = "Generating 3 set looks — AI will lock the best…";
             StartJobPoll();
         }
         catch (Exception ex)
@@ -231,7 +267,7 @@ public partial class Locations : IDisposable
                 IncludeCast = true,
                 IncludeLocations = true,
             });
-            _message = "Generating looks for plan cast + places…";
+            _message = "Plan looks: cast faces + places · 3 each · AI auto-locks best…";
             StartJobPoll();
         }
         catch (Exception ex)

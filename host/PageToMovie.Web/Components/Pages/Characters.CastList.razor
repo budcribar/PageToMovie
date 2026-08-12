@@ -1,4 +1,4 @@
-@* Page-local to Characters — cast list sidebar *@
+@* Page-local to Characters — cast index (sidebar) *@
 @inject StudioCapabilityState Caps
 @inject AdminSessionService Session
 @inject IAppLocalizer L
@@ -10,9 +10,9 @@
 @using PageToMovie.Web.Services
 
 
-        <div class="col-md-3">
+        <div class="col-md-3" data-testid="cast-index">
             <div class="d-flex align-items-center justify-content-between gap-1 mb-1 px-1">
-                <span class="small text-muted">Cast</span>
+                <span class="small fw-semibold">Cast index</span>
                 @if (List!.UnusedInPlanCount > 0)
                 {
                     <button type="button"
@@ -26,7 +26,16 @@
                     </button>
                 }
             </div>
-            <div class="list-group">
+            <div class="small text-muted mb-2 px-1" data-testid="cast-index-summary">
+                <span title="In the current shot plan">@List!.UsedInPlanCount used</span>
+                <span class="mx-1">·</span>
+                <span title="Locked preferred look">@List!.LockedLookCount locked</span>
+                <span class="mx-1">·</span>
+                <span class="@(List!.NeedLookCount > 0 ? "text-warning" : "")"
+                      title="Faces still missing a preferred look">@List!.NeedLookCount need look</span>
+            </div>
+            <div class="list-group list-group-flush border rounded bg-dark-subtle cast-index-list"
+                 style="max-height: 70vh; overflow: auto;">
                 @foreach (var c in List!.CharactersForUiGrouped())
                 {
                     var active = c.Key == List!._selectedKey;
@@ -64,9 +73,6 @@
                         }
                         else if (thumb is { Length: > 0 })
                         {
-                            @* Stable @key so a cache-bust (LookPipe!._imgBust) from saving ANOTHER character updates
-                               this src in place instead of remounting the <img> (which blanked it and, with
-                               lazy loading, often didn't re-fetch — the §3 "look drops on switch" bug). *@
                             <img @key="c.Key" src="@thumb" alt="" class="char-list-thumb" />
                         }
                         else
@@ -101,6 +107,10 @@
                             <span class="char-list-voice-miss" title="No voice profile" aria-label="No voice profile">♪</span>
                         }
                     </button>
+                }
+                @if (!List!.CharactersForUiGrouped().Any())
+                {
+                    <div class="p-3 small text-muted">No cast in this list. Build cast from the screenplay, or show unused.</div>
                 }
             </div>
         </div>

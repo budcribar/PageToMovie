@@ -171,6 +171,18 @@ public partial class Characters
         internal int UnusedInPlanCount =>
             _chars?.Count(c => !c.IsGroup && !c.UsedInPlan) ?? 0;
 
+        /// <summary>Faces in the current plan (operator list, groups excluded).</summary>
+        internal int UsedInPlanCount =>
+            _chars?.Count(c => !c.IsGroup && c.UsedInPlan) ?? 0;
+
+        /// <summary>Used faces with a locked or preferred look.</summary>
+        internal int LockedLookCount =>
+            CharactersForUi.Count(c => !c.VoiceOnly && (c.Locked || c.HasPreferred));
+
+        /// <summary>Used individual faces still missing a preferred look.</summary>
+        internal int NeedLookCount =>
+            CharactersForUi.Count(c => !c.VoiceOnly && !c.Locked && !c.HasPreferred);
+
 
         internal int OperatorCastCount => CharactersForUi.Count();
 

@@ -14,14 +14,14 @@
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <div>
             <h1 class="h4 mb-0">Locations</h1>
-            <p class="small text-muted mb-0">Set plates — text or voice, generate 3 looks, lock one for video refs.</p>
+            <p class="small text-muted mb-0">Set plates for every place in the plan — same flow as Cast: 3 looks, AI picks best, override anytime.</p>
         </div>
         <div class="d-flex flex-wrap gap-2">
             <button type="button"
                     class="btn btn-sm btn-primary"
                     data-testid="locations-plan-looks"
                     disabled="@(_busy || string.IsNullOrWhiteSpace(_projectId) || (_job is { Status: "running" or "queued" }))"
-                    title="Generate 3 set plates for each used-in-plan place (and cast faces). AI locks the best."
+                    title="Generate 3 set plates for each used place (and cast faces). AI locks the best."
                     @onclick="StartPlanLooksAsync">
                 Generate looks for plan
             </button>
@@ -70,9 +70,9 @@
     else
     {
         <div class="row g-3">
-            <div class="col-12 col-md-4 col-lg-3">
+            <div class="col-12 col-md-4 col-lg-3" data-testid="loc-index">
                 <div class="d-flex align-items-center justify-content-between gap-1 mb-1 px-1">
-                    <span class="small text-muted">Places</span>
+                    <span class="small fw-semibold">Places index</span>
                     @if (UnusedInPlanCount > 0)
                     {
                         <button type="button"
@@ -86,25 +86,48 @@
                         </button>
                     }
                 </div>
+                <div class="small text-muted mb-2 px-1" data-testid="loc-index-summary">
+                    <span>@UsedInPlanCount used</span>
+                    <span class="mx-1">·</span>
+                    <span>@LockedPlateCount locked</span>
+                    <span class="mx-1">·</span>
+                    <span class="@(NeedPlateCount > 0 ? "text-warning" : "")">@NeedPlateCount need plate</span>
+                </div>
                 <div class="list-group list-group-flush border rounded bg-dark-subtle" style="max-height: 70vh; overflow: auto;">
                     @foreach (var loc in LocationsForUi)
                     {
                         var key = loc.Key;
                         var active = string.Equals(key, _selectedKey, StringComparison.OrdinalIgnoreCase);
+                        var thumb = ListThumbUrl(loc);
                         <button type="button"
-                                class="list-group-item list-group-item-action bg-transparent text-start @(active ? "active" : "") @(!loc.UsedInPlan ? "opacity-75" : "")"
+                                class="list-group-item list-group-item-action bg-transparent text-start d-flex align-items-center gap-2 @(active ? "active" : "") @(!loc.UsedInPlan ? "opacity-75" : "")"
                                 data-loc-used="@(loc.UsedInPlan ? "true" : "false")"
+                                data-testid="loc-list-item"
                                 title="@(!loc.UsedInPlan ? "Not in current shot plan — kept for later" : null)"
                                 @onclick="() => SelectAsync(key)">
-                            <div class="fw-semibold text-uppercase small">
-                                @loc.DisplayName
-                                @if (!loc.UsedInPlan)
-                                {
-                                    <span class="badge text-bg-secondary ms-1">unused</span>
-                                }
-                            </div>
-                            <div class="small opacity-75">
-                                @(loc.Locked ? "Locked plate" : loc.Variants.Any(v => v.Exists) ? "Has variants" : "No plate yet")
+                            @if (thumb is { Length: > 0 })
+                            {
+                                <img src="@thumb" alt="" class="loc-list-thumb" />
+                            }
+                            else
+                            {
+                                <span class="loc-list-thumb loc-list-thumb--empty" title="No plate yet" aria-hidden="true">⌂</span>
+                            }
+                            <div class="min-w-0 flex-grow-1">
+                                <div class="fw-semibold text-uppercase small text-truncate">
+                                    @loc.DisplayName
+                                    @if (!loc.UsedInPlan)
+                                    {
+                                        <span class="badge text-bg-secondary ms-1">unused</span>
+                                    }
+                                </div>
+                                <div class="small opacity-75">
+                                    @(loc.Locked || loc.HasPreferred
+                                        ? "Plate locked"
+                                        : loc.Variants.Any(v => v.Exists)
+                                            ? $"{loc.Variants.Count(v => v.Exists)} looks — pick one"
+                                            : "No plate yet")
+                                </div>
                             </div>
                         </button>
                     }
@@ -117,38 +140,45 @@
             <div class="col-12 col-md-8 col-lg-9">
                 @if (_selected is null)
                 {
-                    <div class="text-muted border rounded p-4">Select a location to edit its look.</div>
+                    <div class="text-muted border rounded p-4">Select a place from the index to edit its look.</div>
                 }
                 else
                 {
                     <div class="card bg-dark border-secondary">
-                        <div class="card-header d-flex justify-content-between align-items-center">
+                        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                             <span class="fw-bold text-info text-uppercase">@_selected.DisplayName</span>
-                            <span class="badge @(_selected.Locked ? "text-bg-success" : "text-bg-secondary")">
-                                @(_selected.Locked ? "Plate locked" : "Text only")
+                            <span class="badge @(_selected.Locked || _selected.HasPreferred ? "text-bg-success" : "text-bg-secondary")">
+                                @(_selected.Locked || _selected.HasPreferred ? "Plate locked" : "Text only")
                             </span>
                         </div>
                         <div class="card-body">
-                            @if (_selected.HasPreferred && !string.IsNullOrWhiteSpace(_plateUrl))
+                            @if (!string.IsNullOrWhiteSpace(_plateUrl))
                             {
-                                <div class="mb-3">
-                                    <div class="small text-muted mb-1">Locked plate</div>
-                                    <img src="@_plateUrl" alt="Location plate" class="img-fluid rounded border border-secondary"
-                                         style="max-height: 160px; object-fit: contain;" />
+                                <div class="mb-3" data-testid="loc-locked-plate">
+                                    <div class="small text-muted mb-1">Preferred plate</div>
+                                    <img src="@_plateUrl" alt="Location plate" class="rounded border border-secondary loc-preferred-preview" />
+                                </div>
+                            }
+                            else if (!_selected.Variants.Any(v => v.Exists))
+                            {
+                                <div class="alert alert-secondary py-2 small mb-3" data-testid="loc-no-plate-yet">
+                                    No set plate yet. Use <strong>Generate looks for plan</strong> (all places + cast) or
+                                    <strong>Generate 3 looks</strong> for this place — AI auto-locks the best; you can re-lock anytime.
                                 </div>
                             }
 
                             @if (_selected.Variants.Any(v => v.Exists))
                             {
-                                <div class="mb-3">
-                                    <div class="small text-muted mb-1">Pick a variant to lock</div>
+                                <div class="mb-3" data-testid="loc-variants">
+                                    <div class="small fw-semibold mb-1">Pick a set look</div>
+                                    <p class="small text-muted mb-2">Three options. Lock one, or re-run generate (auto-locks best).</p>
                                     <div class="d-flex flex-wrap gap-2">
                                         @foreach (var v in _selected.Variants.Where(x => x.Exists).OrderBy(x => x.Index))
                                         {
                                             var vi = v.Index ?? 1;
                                             var src = KeyFormatting.CacheBust(Engine.LocationVariantUrl(_projectId, _selected.Key, vi));
-                                            <div class="border border-secondary rounded p-1 text-center" style="width: 140px;">
-                                                <img src="@src" alt="Variant @vi" class="img-fluid rounded mb-1" style="height: 80px; object-fit: cover; width: 100%;" />
+                                            <div class="border border-secondary rounded p-1 text-center loc-variant-tile">
+                                                <img src="@src" alt="Variant @vi" class="rounded mb-1 loc-variant-img" />
                                                 <button type="button" class="btn btn-sm btn-primary w-100"
                                                         disabled="@_busy"
                                                         data-testid="@($"loc-lock-v{vi}")"
@@ -167,7 +197,7 @@
                                                VisualLockChanged="OnVisualLockChanged"
                                                ImageEditInstruction="@_imageEditInstruction"
                                                ImageEditInstructionChanged="OnImageEditChanged"
-                                               ShowImageEditInstruction="@_selected.HasPreferred"
+                                               ShowImageEditInstruction="@(_selected.HasPreferred || _selected.Locked)"
                                                Busy="@_busy"
                                                Hint="@(_saveHint ?? "Text saves automatically · use Voice to dictate")"
                                                TestId="loc-look-panel">
@@ -193,3 +223,46 @@
         </div>
     }
 </div>
+
+<style>
+    .loc-list-thumb {
+        width: 40px;
+        height: 28px;
+        border-radius: 0.3rem;
+        object-fit: cover;
+        background: #0b0f14;
+        border: 1px solid rgba(255,255,255,0.08);
+        flex-shrink: 0;
+    }
+    .loc-list-thumb--empty {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.85rem;
+        color: #842029;
+        background: #f8d7da;
+        border-color: #dc3545;
+    }
+    .list-group-item.active .loc-list-thumb--empty {
+        background: rgba(255,255,255,0.2);
+        border-color: rgba(255,255,255,0.35);
+        color: #fff;
+    }
+    .loc-preferred-preview {
+        max-height: 160px;
+        max-width: min(100%, 320px);
+        object-fit: contain;
+        background: #0b0f14;
+        display: block;
+    }
+    .loc-variant-tile {
+        width: 148px;
+    }
+    .loc-variant-img {
+        width: 100%;
+        height: 84px;
+        object-fit: cover;
+        display: block;
+        background: #0b0f14;
+    }
+</style>
