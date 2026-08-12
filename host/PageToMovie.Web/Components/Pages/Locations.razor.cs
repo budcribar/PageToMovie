@@ -100,6 +100,19 @@ public partial class Locations : IDisposable
         {
             var dto = await Engine.GetLocationsAsync(_projectId);
             _locations = dto?.Locations ?? new List<LocationSummary>();
+
+            // Server may have lost plates after deploy/import while the browser media folder still has them.
+            if (NeedPlateCount > 0 && MediaFolder.IsConnected)
+            {
+                var restored = await TryRestorePlatesFromMediaFolderCoreAsync(silent: true);
+                if (restored > 0)
+                {
+                    dto = await Engine.GetLocationsAsync(_projectId);
+                    _locations = dto?.Locations ?? new List<LocationSummary>();
+                    _message = $"Restored {restored} set plate(s) from your media folder.";
+                }
+            }
+
             if (TrySelectFromQuery())
             {
                 // focused from Film/Script deep link
@@ -125,6 +138,149 @@ public partial class Locations : IDisposable
         {
             _loading = false;
         }
+    }
+
+    /// <summary>User-clicked restore — always reports result.</summary>
+    private async Task RestorePlatesFromMediaFolderAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_projectId)) return;
+        _busy = true;
+        _error = null;
+        _message = null;
+        try
+        {
+            if (!MediaFolder.IsConnected)
+            {
+                var ok = await MediaFolder.ConnectFolderAsync();
+                if (!ok)
+                {
+                    _error = "Connect your media folder (the Videos/PageToMovie folder) to restore plates.";
+                    return;
+                }
+            }
+
+            var restored = await TryRestorePlatesFromMediaFolderCoreAsync(silent: false);
+            var dto = await Engine.GetLocationsAsync(_projectId);
+            _locations = dto?.Locations ?? new List<LocationSummary>();
+            if (!string.IsNullOrWhiteSpace(_selectedKey))
+                await SelectAsync(_selectedKey);
+            else if (_locations.Count > 0)
+                await SelectAsync(_locations[0].Key);
+
+            if (restored > 0)
+                _message = $"Restored {restored} set plate(s) from your media folder onto the server.";
+            else if (string.IsNullOrWhiteSpace(_error))
+                _message = "No matching *_ref.png files found under assets/locations in the media folder (or all plates already on server).";
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    /// <summary>
+    /// Upload local media-folder plates for locations that have no server preferred image.
+    /// Paths match server naming: assets/locations/{key_lower}_ref.png
+    /// </summary>
+    private async Task<int> TryRestorePlatesFromMediaFolderCoreAsync(bool silent)
+    {
+        var need = _locations.Where(l => !l.Locked && !l.HasPreferred).ToList();
+        if (need.Count == 0) return 0;
+
+        var restored = 0;
+        var missingLocal = 0;
+        foreach (var loc in need)
+        {
+            var rel = await FindLocalLocationRefRelativeAsync(loc.Key);
+            if (rel is null)
+            {
+                missingLocal++;
+                continue;
+            }
+
+            var bytes = await MediaFolder.ReadLocalBytesAsync($"{_projectId}/{rel}", minBytes: 64);
+            if (bytes is null || bytes.Length < 64)
+            {
+                missingLocal++;
+                continue;
+            }
+
+            await using var ms = new MemoryStream(bytes);
+            var fileName = Path.GetFileName(rel);
+            await Engine.UploadLocationRefAsync(_projectId, loc.Key, ms, fileName);
+            restored++;
+        }
+
+        if (!silent && restored == 0 && missingLocal > 0 && string.IsNullOrWhiteSpace(_error))
+        {
+            // leave message to caller
+        }
+
+        return restored;
+    }
+
+    /// <summary>Relative path under project (assets/locations/…) if a ref file exists locally.</summary>
+    private async Task<string?> FindLocalLocationRefRelativeAsync(string locKey)
+    {
+        foreach (var name in LocationRefFileNameCandidates(locKey))
+        {
+            var rel = $"assets/locations/{name}";
+            var (found, size) = await MediaFolder.StatLocalFileAsync(_projectId, rel);
+            if (found && size >= 64)
+                return rel;
+        }
+
+        // Fall back to first variant if preferred was never written but variants remain.
+        foreach (var name in LocationVariantFileNameCandidates(locKey))
+        {
+            var rel = $"assets/locations/{name}";
+            var (found, size) = await MediaFolder.StatLocalFileAsync(_projectId, rel);
+            if (found && size >= 64)
+                return rel;
+        }
+        return null;
+    }
+
+    /// <summary>Same naming rules as server ProjectStore.LocationRefFileName (+ Loc_ alias).</summary>
+    private static IEnumerable<string> LocationRefFileNameCandidates(string locKey)
+    {
+        foreach (var stem in LocationKeyStems(locKey))
+        {
+            yield return $"{stem}_ref.png";
+            yield return $"{stem}_ref.jpg";
+            yield return $"{stem}_ref.webp";
+        }
+    }
+
+    private static IEnumerable<string> LocationVariantFileNameCandidates(string locKey)
+    {
+        foreach (var stem in LocationKeyStems(locKey))
+        {
+            for (var i = 1; i <= 3; i++)
+                yield return $"{stem}_variant_{i:D2}.png";
+        }
+    }
+
+    private static IEnumerable<string> LocationKeyStems(string locKey)
+    {
+        var raw = (locKey ?? "").Trim().Replace(' ', '_').Replace('\\', '/');
+        raw = Path.GetFileName(raw);
+        var k = raw.ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(k) || k is "." or "..")
+            yield break;
+
+        if (k.EndsWith("_ref.png", StringComparison.OrdinalIgnoreCase))
+            k = k[..^"_ref.png".Length];
+
+        yield return k;
+        if (k.StartsWith("loc_", StringComparison.Ordinal))
+            yield return k["loc_".Length..];
+        else
+            yield return "loc_" + k;
     }
 
     private bool TrySelectFromQuery()

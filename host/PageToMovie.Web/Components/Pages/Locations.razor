@@ -6,6 +6,7 @@
 @inject ActiveProjectState ActiveProject
 @inject NavigationManager Nav
 @inject IJSRuntime Js
+@inject ClientMediaFolderService MediaFolder
 @implements IDisposable
 
 <PageTitle>Locations — PageToMovie</PageTitle>
@@ -17,6 +18,17 @@
             <p class="small text-muted mb-0">Set plates for every place in the plan — same flow as Cast: 3 looks, AI picks best, override anytime.</p>
         </div>
         <div class="d-flex flex-wrap gap-2">
+            @if (NeedPlateCount > 0)
+            {
+                <button type="button"
+                        class="btn btn-sm btn-outline-primary"
+                        data-testid="locations-restore-media"
+                        disabled="@(_busy || _loading || string.IsNullOrWhiteSpace(_projectId))"
+                        title="Re-upload locked plates from your connected media folder (assets/locations/*_ref.png) when the server lost them"
+                        @onclick="RestorePlatesFromMediaFolderAsync">
+                    Restore plates from media folder
+                </button>
+            }
             <button type="button"
                     class="btn btn-sm btn-primary"
                     data-testid="locations-plan-looks"
