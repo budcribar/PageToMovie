@@ -33,6 +33,11 @@ public partial class Admin
         internal int _synthesizeCurrent;
         internal int _synthesizeTotal;
 
+        /// <summary>0–100 export progress; null when idle/indeterminate server wait.</summary>
+        internal double? _exportPercent;
+        internal bool _exportIndeterminate;
+        internal string? _exportPhaseLabel;
+
         internal async Task RefreshProjectOptionsAsync()
         {
             try
@@ -117,60 +122,129 @@ public partial class Admin
             _archiveBusy = true;
             _archiveAction = "export";
             _archiveError = null;
+            _exportPercent = null;
+            _exportIndeterminate = true;
+            _exportPhaseLabel = "Building server zip…";
             _archiveMsg = S.MediaFolder.IsConnected
                 ? "Building server zip, then merging local media…"
                 : "Building server zip (media folder not connected — MP4/MP3 may be missing)…";
             await RunArchiveActionAsync(async () =>
             {
-                // Soft prompt: still export server files if media disconnected
                 if (!S.MediaFolder.IsConnected)
                 {
                     _archiveMsg = "Media folder not connected — exporting server files only. Connect media folder for MP4/MP3.";
                 }
 
-                var (resp, fileName) = await S.Api.ExportProjectZipAsync(_exportProjectId);
-                using (resp)
+                DotNetObjectReference<ExportProgressSink>? progressRef = null;
+                try
                 {
-                    await using var stream = await resp.Content.ReadAsStreamAsync();
-                    using var streamRef = new DotNetStreamReference(stream);
-                    // Two-stage: server zip stream → browser merges client media → download
-                    var result = await S.Js.InvokeAsync<JsonElement>(
-                        "PageToMovieExport.mergeServerZipWithLocalMediaAsync",
-                        fileName,
-                        streamRef,
-                        _exportProjectId);
-                    if (result.TryGetProperty("success", out var ok) && ok.GetBoolean())
-                    {
-                        _archiveMsg = result.TryGetProperty("message", out var m) && m.ValueKind == JsonValueKind.String
-                            ? m.GetString()
-                            : $"Downloaded {fileName}";
-                    }
-                    else
-                    {
-                        var err = result.TryGetProperty("error", out var e) ? e.GetString() : "download failed";
-                        // Fallback: plain server zip if merge fails
-                        _archiveMsg = "Merge failed — downloading server zip only…";
-                        S.StateHasChanged();
-                        var (resp2, fileName2) = await S.Api.ExportProjectZipAsync(_exportProjectId);
-                        using (resp2)
+                    SetExportProgress(null, "Building zip on server (images + project files)…", true);
+                    var (body, fileName) = await S.Api.ExportProjectZipBodyAdminWithProgressAsync(
+                        _exportProjectId,
+                        async (loaded, total) =>
                         {
-                            await using var stream2 = await resp2.Content.ReadAsStreamAsync();
-                            using var streamRef2 = new DotNetStreamReference(stream2);
-                            var plain = await S.Js.InvokeAsync<JsonElement>(
-                                "PageToMovieExport.downloadStreamAsync",
-                                fileName2,
-                                streamRef2);
-                            if (plain.TryGetProperty("success", out var ok2) && ok2.GetBoolean())
-                                _archiveMsg = $"Downloaded {fileName2} (server only). Merge error: {err}";
+                            if (total is > 0)
+                                SetExportProgress(
+                                    5 + 60.0 * loaded / total.Value,
+                                    $"Downloading… {FormatExportBytes(loaded)} / {FormatExportBytes(total.Value)}");
                             else
+                                SetExportProgress(null, $"Downloading… {FormatExportBytes(loaded)}", true);
+                            await Task.CompletedTask;
+                        });
+
+                    await using (body)
+                    {
+                        SetExportProgress(65, "Merging local media…");
+                        progressRef = DotNetObjectReference.Create(new ExportProgressSink(OnExportMergeProgressAsync));
+                        using var streamRef = new DotNetStreamReference(body);
+                        var result = await S.Js.InvokeAsync<JsonElement>(
+                            "PageToMovieExport.mergeServerZipWithLocalMediaAsync",
+                            fileName,
+                            streamRef,
+                            _exportProjectId,
+                            progressRef);
+                        if (result.TryGetProperty("success", out var ok) && ok.GetBoolean())
+                        {
+                            SetExportProgress(
+                                100,
+                                result.TryGetProperty("message", out var m) && m.ValueKind == JsonValueKind.String
+                                    ? m.GetString()
+                                    : $"Downloaded {fileName}");
+                        }
+                        else
+                        {
+                            var err = result.TryGetProperty("error", out var e) ? e.GetString() : "download failed";
+                            SetExportProgress(null, "Merge failed — downloading server zip only…", true);
+                            var (body2, fileName2) = await S.Api.ExportProjectZipBodyAdminWithProgressAsync(
+                                _exportProjectId,
+                                async (loaded, total) =>
+                                {
+                                    if (total is > 0)
+                                        SetExportProgress(10 + 80.0 * loaded / total.Value,
+                                            $"Downloading server zip… {FormatExportBytes(loaded)} / {FormatExportBytes(total.Value)}");
+                                    else
+                                        SetExportProgress(null, $"Downloading… {FormatExportBytes(loaded)}", true);
+                                    await Task.CompletedTask;
+                                });
+                            await using (body2)
                             {
-                                _archiveError = err;
-                                _archiveMsg = null;
+                                using var streamRef2 = new DotNetStreamReference(body2);
+                                var plain = await S.Js.InvokeAsync<JsonElement>(
+                                    "PageToMovieExport.downloadStreamAsync",
+                                    fileName2,
+                                    streamRef2,
+                                    progressRef);
+                                if (plain.TryGetProperty("success", out var ok2) && ok2.GetBoolean())
+                                    SetExportProgress(100, $"Downloaded {fileName2} (server only). Merge error: {err}");
+                                else
+                                {
+                                    _archiveError = err;
+                                    _archiveMsg = null;
+                                    _exportPhaseLabel = null;
+                                }
                             }
                         }
                     }
                 }
+                finally
+                {
+                    progressRef?.Dispose();
+                    _exportIndeterminate = false;
+                    if (_exportPercent is not 100)
+                        _exportPercent = null;
+                }
             });
+        }
+
+        private static string FormatExportBytes(long n)
+        {
+            if (n < 1024) return $"{n} B";
+            if (n < 1024 * 1024) return $"{n / 1024.0:0.#} KB";
+            if (n < 1024L * 1024 * 1024) return $"{n / (1024.0 * 1024):0.#} MB";
+            return $"{n / (1024.0 * 1024 * 1024):0.##} GB";
+        }
+
+        private void SetExportProgress(double? overallPercent, string? label, bool indeterminate = false)
+        {
+            _exportPercent = overallPercent;
+            _exportIndeterminate = indeterminate;
+            _exportPhaseLabel = label;
+            _archiveMsg = label;
+            S.StateHasChanged();
+        }
+
+        private Task OnExportMergeProgressAsync(string phase, double? phasePct, string? message)
+        {
+            double overall = phase switch
+            {
+                "merge" => 65 + Math.Clamp(phasePct ?? 0, 0, 100) * 0.25,
+                "pack" => 90 + Math.Clamp(phasePct ?? 0, 0, 100) * 0.09,
+                "done" => 100,
+                "download" => 62,
+                _ => _exportPercent ?? 65,
+            };
+            SetExportProgress(phase is "done" ? 100 : overall, message ?? phase);
+            return Task.CompletedTask;
         }
 
         internal async Task ExportLogsAsync()

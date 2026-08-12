@@ -507,6 +507,81 @@ public sealed class EngineApiClient
         return (resp, fileName);
     }
 
+    /// <summary>
+    /// Download a zip fully into memory with byte-level progress (for large project backups).
+    /// Caller disposes the returned stream. Progress is throttled (~8×/sec).
+    /// </summary>
+    /// <param name="onProgress">loaded bytes, total bytes (null if Content-Length unknown)</param>
+    public async Task<(Stream Stream, string FileName)> DownloadZipBodyWithProgressAsync(
+        string url,
+        string fallbackFileName,
+        string failMessage,
+        Func<long, long?, Task>? onProgress,
+        CancellationToken ct = default)
+    {
+        SyncIdentityHeaders();
+        using var req = new HttpRequestMessage(HttpMethod.Get, url);
+        using var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            var err = await resp.Content.ReadAsStringAsync(ct);
+            throw new InvalidOperationException(TryError(err) ?? resp.ReasonPhrase ?? failMessage);
+        }
+
+        var fileName = resp.Content.Headers.ContentDisposition?.FileName?.Trim('"')
+                       ?? resp.Content.Headers.ContentDisposition?.FileNameStar?.Trim('"')
+                       ?? fallbackFileName;
+        var total = resp.Content.Headers.ContentLength;
+
+        await using var net = await resp.Content.ReadAsStreamAsync(ct);
+        // Pre-size when we know length so large image-heavy backups avoid MemoryStream growth copies.
+        var ms = total is > 0 and <= int.MaxValue
+            ? new MemoryStream((int)total.Value)
+            : new MemoryStream();
+        var buffer = new byte[256 * 1024];
+        long loaded = 0;
+        var lastReport = DateTime.UtcNow.AddSeconds(-1);
+        int n;
+        while ((n = await net.ReadAsync(buffer.AsMemory(0, buffer.Length), ct)) > 0)
+        {
+            ms.Write(buffer, 0, n);
+            loaded += n;
+            if (onProgress is null) continue;
+            var now = DateTime.UtcNow;
+            if ((now - lastReport).TotalMilliseconds < 120) continue;
+            lastReport = now;
+            await onProgress(loaded, total).ConfigureAwait(false);
+        }
+
+        if (onProgress is not null)
+            await onProgress(loaded, total ?? loaded).ConfigureAwait(false);
+
+        ms.Position = 0;
+        return (ms, fileName);
+    }
+
+    public async Task<(Stream Stream, string FileName)> ExportProjectZipBodyAsUserWithProgressAsync(
+        string projectId,
+        Func<long, long?, Task>? onProgress,
+        CancellationToken ct = default)
+        => await DownloadZipBodyWithProgressAsync(
+            $"/api/projects/{Uri.EscapeDataString(projectId)}/export",
+            $"PageToMovie_{projectId}.zip",
+            "export failed",
+            onProgress,
+            ct);
+
+    public async Task<(Stream Stream, string FileName)> ExportProjectZipBodyAdminWithProgressAsync(
+        string projectId,
+        Func<long, long?, Task>? onProgress,
+        CancellationToken ct = default)
+        => await DownloadZipBodyWithProgressAsync(
+            $"/api/admin/projects/{Uri.EscapeDataString(projectId)}/export",
+            $"PageToMovie_{projectId}.zip",
+            "export failed",
+            onProgress,
+            ct);
+
     public async Task<(HttpResponseMessage Response, string FileName)> ExportProjectZipAsync(
         string projectId,
         CancellationToken ct = default)

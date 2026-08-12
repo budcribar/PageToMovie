@@ -20,7 +20,15 @@ public partial class Home
 
         internal bool _backingUp;
 
+        /// <summary>0–100 overall backup progress; null when idle or indeterminate server wait.</summary>
+        internal double? _backupPercent;
+
+        internal bool _backupIndeterminate;
+
+        internal string? _backupPhaseLabel;
+
         internal IBrowserFile? _importFile;
+
 
         internal string _importName = "";
 
@@ -39,8 +47,12 @@ public partial class Home
             var id = S.Projects._projects?.Active?.Id ?? S.ActiveProject.ProjectId;
             if (string.IsNullOrWhiteSpace(id)) return;
             _backingUp = true;
+            _backupPercent = null;
+            _backupIndeterminate = true;
+            _backupPhaseLabel = "Starting backup…";
             S._busy = true;
             S._error = null;
+            DotNetObjectReference<ExportProgressSink>? progressRef = null;
             try
             {
                 // Offloaded video/audio lives in the browser media folder. If it isn't connected, prompt
@@ -48,55 +60,84 @@ public partial class Home
                 // any network await), then sync so the folder is complete before the merge.
                 if (!S.MediaFolder.IsConnected)
                 {
-                    S._message = "Connect your media folder to include all video in the backup…";
+                    SetBackupProgress(null, "Connect your media folder to include all video in the backup…", indeterminate: true);
                     var connected = await S.MediaFolder.ConnectFolderAsync();
                     if (connected)
                     {
-                        S._message = "Syncing media into the folder…";
-                        S.StateHasChanged();
+                        SetBackupProgress(null, "Syncing media into the folder…", indeterminate: true);
                         try { await S.MediaFolder.SyncProjectMediaToClientAsync(id); }
                         catch { /* best effort — merge takes whatever is present */ }
                     }
                     else
                     {
-                        S._message = "Media folder not connected — backing up project files only.";
-                        S.StateHasChanged();
+                        SetBackupProgress(null, "Media folder not connected — backing up project files only.", indeterminate: true);
                     }
                 }
 
-                S._message = "Building backup (project files + all media)…";
-                S.StateHasChanged();
-                var (resp, fileName) = await S.Engine.ExportProjectZipAsUserAsync(id);
-                using (resp)
+                SetBackupProgress(null, "Building backup on server (images + project files)…", indeterminate: true);
+                var (body, fileName) = await S.Engine.ExportProjectZipBodyAsUserWithProgressAsync(
+                    id,
+                    async (loaded, total) =>
+                    {
+                        if (total is > 0)
+                        {
+                            SetBackupProgress(
+                                5 + 60.0 * loaded / total.Value,
+                                $"Downloading backup… {FormatBytes(loaded)} / {FormatBytes(total.Value)}");
+                        }
+                        else
+                        {
+                            SetBackupProgress(null, $"Downloading backup… {FormatBytes(loaded)}", indeterminate: true);
+                        }
+                        await Task.CompletedTask;
+                    });
+
+                await using (body)
                 {
-                    await using var stream = await resp.Content.ReadAsStreamAsync();
-                    using var streamRef = new Microsoft.JSInterop.DotNetStreamReference(stream);
-                    var result = await S.Js.InvokeAsync<System.Text.Json.JsonElement>(
-                        "PageToMovieExport.mergeServerZipWithLocalMediaAsync", fileName, streamRef, id);
+                    SetBackupProgress(65, "Merging local media into backup…");
+                    progressRef = DotNetObjectReference.Create(new ExportProgressSink(OnMergeProgressAsync));
+                    using var streamRef = new DotNetStreamReference(body);
+                    var result = await S.Js.InvokeAsync<JsonElement>(
+                        "PageToMovieExport.mergeServerZipWithLocalMediaAsync",
+                        fileName, streamRef, id, progressRef);
                     if (result.TryGetProperty("success", out var ok) && ok.GetBoolean())
                     {
-                        S._message = result.TryGetProperty("message", out var m) && m.ValueKind == System.Text.Json.JsonValueKind.String
-                            ? m.GetString()
-                            : $"Backed up {fileName}";
+                        SetBackupProgress(
+                            100,
+                            result.TryGetProperty("message", out var m) && m.ValueKind == JsonValueKind.String
+                                ? m.GetString() ?? $"Backed up {fileName}"
+                                : $"Backed up {fileName}");
                     }
                     else
                     {
                         var err = result.TryGetProperty("error", out var e) ? e.GetString() : "media merge failed";
-                        S._message = "Media merge unavailable — downloading project files only…";
-                        S.StateHasChanged();
-                        var (resp2, fileName2) = await S.Engine.ExportProjectZipAsUserAsync(id);
-                        using (resp2)
+                        SetBackupProgress(null, "Media merge unavailable — downloading project files only…", indeterminate: true);
+                        var (body2, fileName2) = await S.Engine.ExportProjectZipBodyAsUserWithProgressAsync(
+                            id,
+                            async (loaded, total) =>
+                            {
+                                if (total is > 0)
+                                    SetBackupProgress(
+                                        10 + 80.0 * loaded / total.Value,
+                                        $"Downloading project files… {FormatBytes(loaded)} / {FormatBytes(total.Value)}");
+                                else
+                                    SetBackupProgress(null, $"Downloading… {FormatBytes(loaded)}", true);
+                                await Task.CompletedTask;
+                            });
+                        await using (body2)
                         {
-                            await using var stream2 = await resp2.Content.ReadAsStreamAsync();
-                            using var streamRef2 = new Microsoft.JSInterop.DotNetStreamReference(stream2);
-                            var plain = await S.Js.InvokeAsync<System.Text.Json.JsonElement>(
-                                "PageToMovieExport.downloadStreamAsync", fileName2, streamRef2);
+                            using var streamRef2 = new DotNetStreamReference(body2);
+                            var plain = await S.Js.InvokeAsync<JsonElement>(
+                                "PageToMovieExport.downloadStreamAsync", fileName2, streamRef2, progressRef);
                             if (plain.TryGetProperty("success", out var ok2) && ok2.GetBoolean())
-                                S._message = $"Backed up {fileName2} (project files only — connect your media folder to include video). Note: {err}";
+                                SetBackupProgress(
+                                    100,
+                                    $"Backed up {fileName2} (project files only — connect your media folder to include video). Note: {err}");
                             else
                             {
                                 S._error = err;
                                 S._message = null;
+                                _backupPhaseLabel = null;
                             }
                         }
                     }
@@ -106,12 +147,48 @@ public partial class Home
             {
                 S._error = ex.Message;
                 S._message = null;
+                _backupPhaseLabel = null;
             }
             finally
             {
+                progressRef?.Dispose();
                 _backingUp = false;
+                _backupIndeterminate = false;
+                if (_backupPercent is not 100)
+                    _backupPercent = null;
                 S._busy = false;
             }
+        }
+
+        private static string FormatBytes(long n)
+        {
+            if (n < 1024) return $"{n} B";
+            if (n < 1024 * 1024) return $"{n / 1024.0:0.#} KB";
+            if (n < 1024L * 1024 * 1024) return $"{n / (1024.0 * 1024):0.#} MB";
+            return $"{n / (1024.0 * 1024 * 1024):0.##} GB";
+        }
+
+        private void SetBackupProgress(double? overallPercent, string label, bool indeterminate = false)
+        {
+            _backupPercent = overallPercent;
+            _backupIndeterminate = indeterminate;
+            _backupPhaseLabel = label;
+            S._message = label;
+            S.StateHasChanged();
+        }
+
+        private Task OnMergeProgressAsync(string phase, double? phasePct, string? message)
+        {
+            double overall = phase switch
+            {
+                "merge" => 65 + Math.Clamp(phasePct ?? 0, 0, 100) * 0.25,
+                "pack" => 90 + Math.Clamp(phasePct ?? 0, 0, 100) * 0.09,
+                "done" => 100,
+                "download" => 62,
+                _ => _backupPercent ?? 65,
+            };
+            SetBackupProgress(phase is "done" ? 100 : overall, message ?? phase);
+            return Task.CompletedTask;
         }
 
 
