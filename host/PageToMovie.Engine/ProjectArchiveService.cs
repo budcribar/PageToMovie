@@ -122,6 +122,12 @@ public sealed class ProjectArchiveService
                             JsonOpts));
                     }
 
+                    // ZipArchiveMode.Create does not support GetEntry — track names ourselves.
+                    var seenEntries = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        $"{id}/_export_meta.json",
+                    };
+
                     foreach (var file in Directory.EnumerateFiles(projectDir, "*", SearchOption.AllDirectories))
                     {
                         ct.ThrowIfCancellationRequested();
@@ -151,7 +157,7 @@ public sealed class ProjectArchiveService
                             continue;
                         var entryName = $"{id}/{safeRel}";
                         // Avoid duplicate entries if two disk paths collapse to the same safe name.
-                        if (zip.GetEntry(entryName) is not null)
+                        if (!seenEntries.Add(entryName))
                             continue;
                         zip.CreateEntryFromFile(file, entryName, CompressionLevel.Fastest);
                     }
