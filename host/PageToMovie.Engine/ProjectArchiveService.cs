@@ -137,7 +137,22 @@ public sealed class ProjectArchiveService
                         if (name is "Thumbs.db" or ".DS_Store" or "_export_meta.json")
                             continue;
 
-                        var entryName = $"{id}/{rel.Replace('\\', '/')}";
+                        // Ephemeral collab locks — not project content; filenames used colons
+                        // (loc:Hall.json) that break Windows Explorer extract (0x80070057).
+                        var relNorm = rel.Replace('\\', '/');
+                        if (relNorm.StartsWith("leases/", StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(relNorm, "leases", StringComparison.OrdinalIgnoreCase))
+                            continue;
+
+                        // Portable zip entry names (no ':' etc.) so Windows extract works even if
+                        // something on the Linux host still uses an OS-allowed-but-not-Windows name.
+                        var safeRel = PageToMovie.Core.Utils.FileNameSanitizer.SanitizeRelativePath(relNorm);
+                        if (string.IsNullOrEmpty(safeRel))
+                            continue;
+                        var entryName = $"{id}/{safeRel}";
+                        // Avoid duplicate entries if two disk paths collapse to the same safe name.
+                        if (zip.GetEntry(entryName) is not null)
+                            continue;
                         zip.CreateEntryFromFile(file, entryName, CompressionLevel.Fastest);
                     }
                 }
@@ -447,8 +462,12 @@ public sealed class ProjectArchiveService
             }
 
             // Directory entries end with / or \
-            var name = entry.FullName.Replace('\\', '/');
-            if (string.IsNullOrWhiteSpace(name) || name.EndsWith('/'))
+            var rawName = entry.FullName.Replace('\\', '/');
+            // Portable extract: map loc:Foo.json → loc_Foo.json so Linux-authored zips
+            // with colon lease names still extract on Windows (and on our Linux import host
+            // when running under a Windows-style invalid-char policy).
+            var name = PageToMovie.Core.Utils.FileNameSanitizer.SanitizeRelativePath(rawName);
+            if (string.IsNullOrWhiteSpace(rawName) || rawName.EndsWith('/'))
             {
                 // Ensure directory exists (still count toward bomb limits via empty path only).
                 if (!string.IsNullOrWhiteSpace(name))
@@ -459,6 +478,15 @@ public sealed class ProjectArchiveService
                 }
                 continue;
             }
+
+            if (string.IsNullOrWhiteSpace(name))
+                continue;
+
+            // Ephemeral leases are not needed on import; skip if present in old zips.
+            if (name.Contains("/leases/", StringComparison.OrdinalIgnoreCase)
+                || name.StartsWith("leases/", StringComparison.OrdinalIgnoreCase)
+                || name.EndsWith("/leases", StringComparison.OrdinalIgnoreCase))
+                continue;
 
             if (entry.Length < 0 || entry.Length > MaxSingleEntryUncompressedBytes)
             {
