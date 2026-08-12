@@ -194,7 +194,10 @@
                             {
                                 <div class="mb-3" data-testid="loc-variants">
                                     <div class="small fw-semibold mb-1">Pick a set look</div>
-                                    <p class="small text-muted mb-2">Click the lock on a look to make it preferred. AI auto-picks on generate; override anytime.</p>
+                                    <p class="small text-muted mb-2">
+                                        Click the lock on a look to make it preferred. AI auto-picks on generate; switch anytime.
+                                        To tweak the locked one without rewriting the description, use <strong>Tweak locked plate</strong> below.
+                                    </p>
                                     <div class="d-flex flex-wrap gap-2">
                                         @foreach (var v in _selected.Variants.Where(x => x.Exists).OrderBy(x => x.Index))
                                         {
@@ -228,17 +231,17 @@
                                                ImageEditInstructionChanged="OnImageEditChanged"
                                                ShowImageEditInstruction="@(_selected.HasPreferred || _selected.Locked)"
                                                Busy="@_busy"
-                                               Hint="@(_saveHint ?? "Description & visual lock save automatically.")"
+                                               Hint="@(_saveHint ?? "Description saves automatically.")"
 
                                                TestId="loc-look-panel">
                                 <Actions>
                                     <button type="button" class="btn btn-sm btn-primary"
-                                            disabled="@(_busy || string.IsNullOrWhiteSpace(_editDescription) && string.IsNullOrWhiteSpace(_editVisualLock))"
+                                            disabled="@(_busy || (string.IsNullOrWhiteSpace(_editDescription) && string.IsNullOrWhiteSpace(_editVisualLock) && string.IsNullOrWhiteSpace(_imageEditInstruction)))"
                                             data-testid="loc-generate-looks"
                                             @onclick="StartGenerateAsync">
-                                        @(string.IsNullOrWhiteSpace(_imageEditInstruction)
+                                        @(string.IsNullOrWhiteSpace(_imageEditInstruction) || !(_selected.HasPreferred || _selected.Locked)
                                             ? "Generate 3 looks"
-                                            : "Apply edit → 3 looks")
+                                            : "Tweak plate → 3 looks")
                                     </button>
                                     <label class="btn btn-sm btn-outline-primary mb-0">
                                         Upload & lock plate

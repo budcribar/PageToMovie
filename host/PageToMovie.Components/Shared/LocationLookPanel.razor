@@ -1,24 +1,16 @@
 @namespace PageToMovie.Web.Components
 
 <div class="location-look-panel" data-testid="@TestId">
-    <p class="small text-muted mb-3">
-        Three different jobs: <strong>describe</strong> the place for new looks,
-        <strong>lock</strong> traits that must not drift, and optionally
-        <strong>edit the locked picture</strong> with a short instruction.
-    </p>
-
+    @* ── Description: stable seed for new looks (not rewritten when you tweak the plate) ── *@
     <div class="mb-3">
         <div class="d-flex justify-content-between align-items-center mb-1">
-            <label class="form-label small mb-0">
-                1 · Set description
-                <span class="text-muted fw-normal">— seed for Generate 3 looks</span>
-            </label>
+            <label class="form-label small mb-0">Description</label>
             <VoiceDictationButton Text="@Description"
                                   TextChanged="OnDescriptionVoice"
                                   FieldId="@DescFieldId"
                                   Disabled="@Busy"
                                   Label="Dictate"
-                                  Title="Speak the set description used when generating new plates"
+                                  Title="Speak the set description (seed for new looks from text)"
                                   TestId="@DescVoiceTestId" />
         </div>
         <textarea class="form-control form-control-sm"
@@ -27,47 +19,29 @@
                   value="@Description"
                   @oninput="OnDescriptionInput"
                   placeholder="Architecture, materials, era, signature props, light…"></textarea>
-        <div class="form-text">Written description of the place. Feeds image generation when you create new looks.</div>
-    </div>
-
-    <div class="mb-3">
-        <div class="d-flex justify-content-between align-items-center mb-1">
-            <label class="form-label small mb-0">
-                2 · Visual lock
-                <span class="text-muted fw-normal">— must stay true in every clip</span>
-            </label>
-            <VoiceDictationButton Text="@VisualLock"
-                                  TextChanged="OnVisualLockVoice"
-                                  FieldId="@VlockFieldId"
-                                  Disabled="@Busy"
-                                  Label="Dictate"
-                                  Title="Speak constraints that must stay the same across every shot of this place"
-                                  TestId="@VlockVoiceTestId" />
+        <div class="form-text">
+            Written once from the book / extract. Used when you <strong>Generate 3 looks</strong> from text.
+            Tweaking a locked plate (below) does <em>not</em> change this text.
         </div>
-        <textarea class="form-control form-control-sm"
-                  rows="2"
-                  disabled="@Busy"
-                  value="@VisualLock"
-                  @oninput="OnVisualLockInput"
-                  placeholder="e.g. same stone courtyard, olive trees left, warm late-day light…"></textarea>
-        <div class="form-text">Short consistency rules. Used when generating looks and when the video model frames this set.</div>
     </div>
 
+    @* ── Plate tweak: image-only, only when a preferred plate exists ── *@
     @if (ShowImageEditInstruction)
     {
-        <div class="mb-2 border border-secondary-subtle rounded p-2">
+        <div class="mb-3 border border-info border-opacity-50 rounded p-2 bg-body-secondary bg-opacity-25"
+             data-testid="loc-tweak-plate">
             <div class="d-flex justify-content-between align-items-center mb-1 gap-2">
-                <label class="form-label small mb-0">
-                    3 · Edit locked plate
-                    <span class="text-muted fw-normal">— change the current picture</span>
+                <label class="form-label small mb-0 fw-semibold">
+                    Tweak locked plate
+                    <span class="text-muted fw-normal">— picture only</span>
                 </label>
                 <VoiceDictationButton Text="@ImageEditInstruction"
                                       TextChanged="OnImageEditVoice"
                                       FieldId="@ImgEditFieldId"
                                       Replace="true"
                                       Disabled="@Busy"
-                                      Label="Dictate"
-                                      Title="Speak how to change the locked set picture, then Apply edit → 3 looks"
+                                      Label="Dictate edit"
+                                      Title="Speak a change to the locked picture only (does not change description)"
                                       TestId="@ImgEditVoiceTestId" />
             </div>
             <textarea class="form-control form-control-sm"
@@ -75,13 +49,34 @@
                       disabled="@Busy"
                       value="@ImageEditInstruction"
                       @oninput="OnImageEditInput"
-                      placeholder="e.g. night torches, wider courtyard, rainy wet stone…"></textarea>
-            <div class="form-text">
-                Only when a plate is already locked. Type or dictate a change, then
-                <strong>Apply edit → 3 looks</strong> (does not rewrite description or visual lock).
+                      placeholder="e.g. make the trees a little taller, warmer late-day light…"></textarea>
+            <div class="form-text mb-0">
+                You already like the locked look — say how to adjust it. Creates <strong>3 new variants</strong> from the
+                current picture. Description stays as-is. Then pick (or re-lock) one of the three.
             </div>
         </div>
     }
+
+    @* ── Visual lock: advanced, rarely edited by voice ── *@
+    <details class="mb-2 small" data-testid="loc-visual-lock-advanced">
+        <summary class="text-muted" style="cursor: pointer;">
+            Advanced · consistency notes (optional)
+        </summary>
+        <div class="mt-2 ps-1">
+            <label class="form-label small mb-1">Visual lock</label>
+            <textarea class="form-control form-control-sm"
+                      rows="2"
+                      disabled="@Busy"
+                      value="@VisualLock"
+                      @oninput="OnVisualLockInput"
+                      placeholder="Optional sticky rules, e.g. same courtyard layout, olive trees on the left…"></textarea>
+            <div class="form-text">
+                Extra “must not drift” lines for gen and video. Most of the time the description is enough —
+                leave blank unless you need hard constraints.
+            </div>
+        </div>
+    </details>
+
     @if (!string.IsNullOrWhiteSpace(Hint))
     {
         <div class="form-text">@Hint</div>

@@ -382,16 +382,19 @@ public partial class Locations : IDisposable
     private async Task StartGenerateAsync()
     {
         if (_selected is null) return;
-        if (string.IsNullOrWhiteSpace(_editDescription) && string.IsNullOrWhiteSpace(_editVisualLock))
+        var hasEdit = !string.IsNullOrWhiteSpace(_imageEditInstruction)
+                      && (_selected.HasPreferred || _selected.Locked);
+        if (!hasEdit
+            && string.IsNullOrWhiteSpace(_editDescription)
+            && string.IsNullOrWhiteSpace(_editVisualLock))
         {
-            _error = "Add a description or visual lock first.";
+            _error = "Add a description first (or type a plate tweak if a plate is already locked).";
             return;
         }
 
         _busy = true;
         _error = null;
         _message = null;
-        var hasEdit = !string.IsNullOrWhiteSpace(_imageEditInstruction) && _selected.HasPreferred;
         try
         {
             await Engine.StartLocationVariantsAsync(new StartLocationVariantsRequest
@@ -402,12 +405,15 @@ public partial class Locations : IDisposable
                 DescriptionOverride = _editDescription,
                 VisualLockOverride = _editVisualLock,
                 ImageEditInstruction = hasEdit ? _imageEditInstruction : null,
+                // Tweak path must not overwrite description with an empty edit instruction side-effect.
                 PersistDescription = !hasEdit,
                 AutoLockBest = true,
             });
             if (hasEdit)
                 _imageEditInstruction = "";
-            _message = "Generating 3 set looks — AI will lock the best…";
+            _message = hasEdit
+                ? "Tweaking locked plate into 3 looks — AI will lock the best…"
+                : "Generating 3 set looks — AI will lock the best…";
             StartJobPoll();
         }
         catch (Exception ex)
