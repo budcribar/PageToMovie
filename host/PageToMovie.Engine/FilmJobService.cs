@@ -2205,7 +2205,13 @@ public sealed class FilmJobService
             });
             await AppendLogAsync($"mode={result.Mode} · {result.Paths.Count} file(s)");
 
-            if (req.AutoLockBest && result.Paths.Count > 0)
+            if (result.LockedAsPreferred)
+            {
+                await FinishAsync(
+                    "done",
+                    $"Plate tweaked for {req.LocKey} — new look is locked. Tweak again with words if needed.");
+            }
+            else if (req.AutoLockBest && result.Paths.Count > 0)
             {
                 await UpdateAsync(s => s.Message = $"AI picking best set for {req.LocKey}…");
                 var (best, _) = await _locations.AutoLockBestVariantAsync(

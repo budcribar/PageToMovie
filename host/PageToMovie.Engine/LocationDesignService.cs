@@ -65,6 +65,9 @@ public sealed class LocationDesignService
         n = Math.Clamp(n <= 0 ? 3 : n, 1, 6);
         var preferred = _projects.ResolveLocationRefPath(projectId, locKey);
         var hasEdit = !string.IsNullOrWhiteSpace(imageEditInstruction) && preferred is not null;
+        // Iterative plate tweaks: one edit at a time (user → re-tweak), not a 3-way bake-off.
+        if (hasEdit)
+            n = 1;
         var imageModel = ProjectModelSelection.RequireImage(
             await _projects.GetConfigAsync(projectId, ct).ConfigureAwait(false),
             "Location plate generation");
@@ -143,11 +146,19 @@ public sealed class LocationDesignService
             onProgress?.Invoke($"saved variant {idx}/{n} → {fileName}");
         }
 
+        // Image-edit tweak: immediately become the locked preferred plate (no pick among three).
+        if (hasEdit && blobs.Count > 0)
+        {
+            var locked = _projects.LockLocationRefFromBytes(projectId, locKey, blobs[0]);
+            onProgress?.Invoke($"Locked edited plate → {Path.GetFileName(locked)}");
+        }
+
         return new LocationDesignResult
         {
             Mode = mode,
             Paths = paths,
             LocKey = locKey,
+            LockedAsPreferred = hasEdit && blobs.Count > 0,
         };
     }
 
@@ -249,4 +260,6 @@ public sealed class LocationDesignResult
     public string Mode { get; init; } = "";
     public string LocKey { get; init; } = "";
     public IReadOnlyList<string> Paths { get; init; } = Array.Empty<string>();
+    /// <summary>True when an image-edit tweak was applied and locked as preferred (no multi-variant pick).</summary>
+    public bool LockedAsPreferred { get; init; }
 }

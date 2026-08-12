@@ -401,7 +401,7 @@ public partial class Locations : IDisposable
             {
                 ProjectId = _projectId,
                 LocKey = _selected.Key,
-                Count = 3,
+                Count = hasEdit ? 1 : 3,
                 DescriptionOverride = _editDescription,
                 VisualLockOverride = _editVisualLock,
                 ImageEditInstruction = hasEdit ? _imageEditInstruction : null,
@@ -412,7 +412,7 @@ public partial class Locations : IDisposable
             if (hasEdit)
                 _imageEditInstruction = "";
             _message = hasEdit
-                ? "Tweaking locked plate into 3 looks — AI will lock the best…"
+                ? "Tweaking locked plate (one look) — will replace preferred. Say another edit if you want more change…"
                 : "Generating 3 set looks — AI will lock the best…";
             StartJobPoll();
         }
