@@ -102,13 +102,13 @@
       "id": "chat",
       "displayName": "Script & Planning",
       "description": "Screenplay reasoning, shot planning, and cast analysis.",
-      "defaultModelId": "grok-4.5"
+      "defaultModelId": "grok-4.6"
     },
     {
       "id": "vision",
       "displayName": "Image Vision & OCR",
       "description": "Book page OCR, cast-on-image classification, and frame inspection.",
-      "defaultModelId": "grok-4.5"
+      "defaultModelId": "grok-4.6"
     },
     {
       "id": "video-review",

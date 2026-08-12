@@ -139,6 +139,15 @@ public class SupportedModelCatalogTests
             "grok-imagine-image-quality", ModelCapability.Image));
         Assert.Equal("grok", SupportedModelCatalog.ProviderIdFor(
             "grok-4.5", ModelCapability.Chat));
+        Assert.Equal("grok", SupportedModelCatalog.ProviderIdFor(
+            "grok-4.6", ModelCapability.Chat));
+    }
+
+    [Fact]
+    public void Chat_and_vision_default_to_grok_4_6()
+    {
+        Assert.Equal("grok-4.6", SupportedModelCatalog.DefaultModelIdForCapability(ModelCapability.Chat));
+        Assert.Equal("grok-4.6", SupportedModelCatalog.DefaultModelIdForCapability(ModelCapability.Vision));
     }
 
     [Fact]
