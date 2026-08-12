@@ -194,6 +194,9 @@ public partial class Cost : IAsyncDisposable
             _preferPath = UserPrefs.PreferPath;
             _editFocus = UserPrefs.EditFocus;
             _skipEditFocus = UserPrefs.SkipEditFocus;
+            if (_skipEditFocus && _phase == DecisionPhase.EditFocus &&
+                _editFocus is "cost" or "duration" or "both")
+                _phase = DecisionPhase.Shaping;
             StateHasChanged();
         }
         catch

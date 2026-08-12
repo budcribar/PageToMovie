@@ -42,7 +42,7 @@ dotnet sonarscanner begin \
   /d:sonar.token="${SONAR_TOKEN}" \
   /d:sonar.host.url="${HOST_URL}" \
   /d:sonar.cs.analyzeGeneratedCode=false \
-  /d:sonar.exclusions="**/bin/**,**/obj/**,**/node_modules/**,**/playwright/**,**/*.min.js,**/wwwroot/lib/**,**/PageToMovie.Fakes/**/Generated/**" \
+  /d:sonar.exclusions="**/bin/**,**/obj/**,**/node_modules/**,**/playwright/**,**/*.min.js,**/wwwroot/lib/**,**/PageToMovie.Fakes/**/Generated/**,**/PageToMovie.Tests/**,**/PageToMovie.UiTests/**,**/PageToMovie.LoadSim/**,**/tools/**,**/evals/**,books/**,**/books/**,**/scripts/**" \
   /d:sonar.cpd.exclusions="**/PageToMovie.Tests/**,**/PageToMovie.UiTests/**,**/PageToMovie.LoadSim/**,**/tools/**" \
   /d:sonar.cpd.cs.minimumTokens=50 \
   /d:sonar.cpd.cs.minimumLines=4 \

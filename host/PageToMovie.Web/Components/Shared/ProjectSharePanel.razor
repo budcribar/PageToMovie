@@ -17,20 +17,20 @@
     {
         <p class="share-panel__id"><code>@ActiveProject.ProjectId</code></p>
 
-        @if (!string.IsNullOrEmpty(_error))
+        @if (!string.IsNullOrEmpty(ErrorText))
         {
-            <div class="share-panel__error">@_error</div>
+            <div class="share-panel__error">@ErrorText</div>
         }
-        @if (!string.IsNullOrEmpty(_info))
+        @if (!string.IsNullOrEmpty(InfoText))
         {
-            <div class="share-panel__info">@_info</div>
+            <div class="share-panel__info">@InfoText</div>
         }
 
         <section class="share-panel__section">
             <h4>Access list</h4>
             @if (_acl is null)
             {
-                <button class="btn btn-secondary" disabled="@_busy" @onclick="LoadAclAsync">Load ACL</button>
+                <button class="btn btn-secondary" disabled="@IsBusy" @onclick="LoadAclAsync">Load ACL</button>
             }
             else
             {
@@ -53,16 +53,16 @@
                 <strong>shared</strong> — gen uses Owner's keys · <strong>personal</strong> — each Editor uses their own.
             </p>
             <div class="share-panel__row">
-                <select class="form-input" @bind="_keyMode" disabled="@(_busy || !_isOwner)">
+                <select class="form-input" @bind="_keyMode" disabled="@(IsBusy || !IsOwner)">
                     <option value="personal">personal</option>
                     <option value="shared">shared</option>
                 </select>
-                <button class="btn btn-primary" disabled="@(_busy || !_isOwner)" @onclick="SaveKeyModeAsync"
+                <button class="btn btn-primary" disabled="@(IsBusy || !IsOwner)" @onclick="SaveKeyModeAsync"
                         data-testid="key-mode-save">
                     Save key mode
                 </button>
             </div>
-            @if (!_isOwner)
+            @if (!IsOwner)
             {
                 <p class="share-panel__muted small">Only the Owner can change key mode.</p>
             }
@@ -76,7 +76,7 @@
                     <option value="editor">Editor</option>
                     <option value="viewer">Viewer</option>
                 </select>
-                <button class="btn btn-primary" disabled="@(_busy || string.IsNullOrWhiteSpace(_inviteUserId))" @onclick="InviteAsync">Invite</button>
+                <button class="btn btn-primary" disabled="@(IsBusy || string.IsNullOrWhiteSpace(_inviteUserId))" @onclick="InviteAsync">Invite</button>
             </div>
         </section>
 
@@ -84,29 +84,29 @@
             <h4>Scene lock</h4>
             <div class="share-panel__row">
                 <input class="form-input" type="number" min="1" @bind="_sceneNumber" />
-                <button class="btn btn-secondary" disabled="@_busy" @onclick="AcquireLeaseAsync">Acquire</button>
-                <button class="btn btn-secondary" disabled="@_busy" @onclick="ReleaseLeaseAsync">Release</button>
-                <button class="btn btn-secondary" disabled="@_busy" @onclick="RefreshLeaseAsync">Status</button>
+                <button class="btn btn-secondary" disabled="@IsBusy" @onclick="AcquireLeaseAsync">Acquire</button>
+                <button class="btn btn-secondary" disabled="@IsBusy" @onclick="ReleaseLeaseAsync">Release</button>
+                <button class="btn btn-secondary" disabled="@IsBusy" @onclick="RefreshLeaseAsync">Status</button>
             </div>
-            @if (_leaseStatus is not null)
+            @if (LeaseStatus is not null)
             {
-                <p class="share-panel__muted">@_leaseStatus</p>
+                <p class="share-panel__muted">@LeaseStatus</p>
             }
         </section>
 
         <section class="share-panel__section" data-testid="presence-section">
             <h4>Presence</h4>
-            <button class="btn btn-secondary" disabled="@_busy" @onclick="LoadPresenceAsync">Refresh</button>
-            @if (_presence is { Count: > 0 })
+            <button class="btn btn-secondary" disabled="@IsBusy" @onclick="LoadPresenceAsync">Refresh</button>
+            @if (Presence is { Count: > 0 })
             {
                 <ul>
-                    @foreach (var p in _presence)
+                    @foreach (var p in Presence)
                     {
                         <li><code>@p.UserId</code> · @p.LastSeenUtc.ToString("u")</li>
                     }
                 </ul>
             }
-            else if (_presence is not null)
+            else if (Presence is not null)
             {
                 <p class="share-panel__muted">No active presence.</p>
             }

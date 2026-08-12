@@ -361,38 +361,36 @@ window.PageToMovieExport = {
         let clientAdded = 0;
         let clientSkipped = 0;
         let mediaError = null;
-        if (window.PageToMovieMedia && window.PageToMovieMedia._root && pid) {
-            const listed = await window.PageToMovieMedia.listMediaTreeAsync(pid);
-            if (!listed.success) {
-                mediaError = listed.error || "Could not list local media";
-            } else {
-                const files = listed.files || [];
-                const total = files.length;
-                let i = 0;
-                for (const f of files) {
-                    i++;
-                    const rel = (f.relativePath || "").replace(/\\/g, "/");
-                    if (!rel) continue;
-                    if (i === 1 || i === total || i % 3 === 0) {
-                        const pct = total > 0 ? Math.min(100, (i / total) * 100) : 0;
-                        await this._reportProgress(progressRef, "merge", pct, `Merging local media ${i}/${total}…`);
-                    }
-                    try {
-                        const got = await window.PageToMovieMedia.getBytesAsync(rel, 0);
-                        if (!got.success || !got.bytes) {
-                            clientSkipped++;
-                            continue;
-                        }
-                        const bytes = got.bytes instanceof Uint8Array ? got.bytes : new Uint8Array(got.bytes);
-                        byPath.set(rel, bytes);
-                        clientAdded++;
-                    } catch (_) {
-                        clientSkipped++;
-                    }
-                }
+        if (!window.PageToMovieMedia || !window.PageToMovieMedia._root || !pid)
+            return { clientAdded, clientSkipped, mediaError };
+        const listed = await window.PageToMovieMedia.listMediaTreeAsync(pid);
+        if (!listed.success)
+            return { clientAdded, clientSkipped, mediaError: listed.error || "Could not list local media" };
+        const files = listed.files || [];
+        for (let i = 0; i < files.length; i++) {
+            const rel = (files[i].relativePath || "").replace(/\\/g, "/");
+            if (!rel) continue;
+            if (i === 0 || i === files.length - 1 || (i + 1) % 3 === 0) {
+                const pct = files.length > 0 ? Math.min(100, ((i + 1) / files.length) * 100) : 0;
+                await this._reportProgress(progressRef, "merge", pct, `Merging local media ${i + 1}/${files.length}…`);
             }
+            const added = await this._mergeOneLocalFileAsync(byPath, rel);
+            if (added) clientAdded++;
+            else clientSkipped++;
         }
         return { clientAdded, clientSkipped, mediaError };
+    },
+
+    _mergeOneLocalFileAsync: async function (byPath, rel) {
+        try {
+            const got = await window.PageToMovieMedia.getBytesAsync(rel, 0);
+            if (!got.success || !got.bytes) return false;
+            const bytes = got.bytes instanceof Uint8Array ? got.bytes : new Uint8Array(got.bytes);
+            byPath.set(rel, bytes);
+            return true;
+        } catch (_) {
+            return false;
+        }
     },
 
     /**

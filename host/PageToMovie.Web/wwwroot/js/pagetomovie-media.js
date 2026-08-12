@@ -38,36 +38,35 @@ window.PageToMovieMedia = {
             return { success: false, error: "This browser does not support folder access (use Chrome or Edge)." };
         }
         try {
-            // Always show the OS folder picker (Change/Select must open a chooser).
             this._root = await window.showDirectoryPicker({ mode: "readwrite" });
             if (window.PageToMovieExport)
                 window.PageToMovieExport._directoryHandle = this._root;
-            const name = this._root.name;
-            // Prefer any real path the host exposes (non-standard); else keep stored path if leaf matches.
-            let fullPath = null;
-            try {
-                if (typeof this._root.path === "string" && this._root.path)
-                    fullPath = this._root.path;
-                else if (typeof this._root.fullPath === "string" && this._root.fullPath)
-                    fullPath = this._root.fullPath;
-            } catch (_) { /* ignore */ }
-            const prev = this.getFullPath();
-            if (!fullPath && prev) {
-                const leaf = prev.replace(/[\\/]+$/, "").split(/[\\/]/).pop();
-                if (leaf && leaf.toLowerCase() === String(name).toLowerCase())
-                    fullPath = prev;
-                else
-                    try { localStorage.removeItem("ptm-media-fullpath"); } catch (_) { /* ignore */ }
-            }
+            const fullPath = this._resolvePickerFullPath(this._root);
             if (fullPath)
                 this.setFullPath(fullPath);
             await this._saveHandleToDbAsync(this._root);
-            return { success: true, folderName: name, fullPath: fullPath || this.getFullPath() || null };
+            return { success: true, folderName: this._root.name, fullPath: fullPath || this.getFullPath() || null };
         } catch (err) {
             if (err && err.name === "AbortError")
                 return { success: false, error: "Folder selection cancelled." };
             return { success: false, error: (err && err.message) || "Folder selection failed." };
         }
+    },
+
+    _resolvePickerFullPath: function (handle) {
+        try {
+            if (typeof handle.path === "string" && handle.path)
+                return handle.path;
+            if (typeof handle.fullPath === "string" && handle.fullPath)
+                return handle.fullPath;
+        } catch (_) { /* ignore */ }
+        const prev = this.getFullPath();
+        if (!prev) return null;
+        const leaf = prev.replace(/[\\/]+$/, "").split(/[\\/]/).pop();
+        if (leaf && leaf.toLowerCase() === String(handle.name).toLowerCase())
+            return prev;
+        try { localStorage.removeItem("ptm-media-fullpath"); } catch (_) { /* ignore */ }
+        return null;
     },
 
     /**
@@ -401,26 +400,30 @@ window.PageToMovieMedia = {
         try {
             return await dir.getFileHandle(fileName, { create: false });
         } catch (_) {
-            const m = fileName.match(/^(scene_\d+_clip_\d+)/i);
-            if (!m) return null;
-            const prefix = m[1].toLowerCase();
-            const ext = (fileName.match(/\.[a-z0-9]+$/i) || [".mp4"])[0].toLowerCase();
-            let bestFh = null;
-            let bestMtime = 0;
-            for await (const entry of dir.values()) {
-                const nameLower = entry.name.toLowerCase();
-                if (entry.kind === "file" && nameLower.startsWith(prefix) && nameLower.endsWith(ext)) {
-                    try {
-                        const f = await entry.getFile();
-                        if (f && f.size >= 1024 && f.lastModified > bestMtime) {
-                            bestMtime = f.lastModified;
-                            bestFh = entry;
-                        }
-                    } catch (_) { /* skip unreadable entry */ }
-                }
-            }
-            return bestFh;
+            return await this._bestPrefixFileHandleAsync(dir, fileName);
         }
+    },
+
+    _bestPrefixFileHandleAsync: async function (dir, fileName) {
+        const m = fileName.match(/^(scene_\d+_clip_\d+)/i);
+        if (!m) return null;
+        const prefix = m[1].toLowerCase();
+        const ext = (fileName.match(/\.[a-z0-9]+$/i) || [".mp4"])[0].toLowerCase();
+        let bestFh = null;
+        let bestMtime = 0;
+        for await (const entry of dir.values()) {
+            const nameLower = entry.name.toLowerCase();
+            if (entry.kind !== "file" || !nameLower.startsWith(prefix) || !nameLower.endsWith(ext))
+                continue;
+            try {
+                const f = await entry.getFile();
+                if (f && f.size >= 1024 && f.lastModified > bestMtime) {
+                    bestMtime = f.lastModified;
+                    bestFh = entry;
+                }
+            } catch (_) { /* skip unreadable entry */ }
+        }
+        return bestFh;
     },
 
     /**
@@ -683,36 +686,9 @@ window.PageToMovieMedia = {
     listAudioFilesAsync: async function (prefix) {
         if (!this._root) return { success: false, error: "Media folder not connected", files: [] };
         const audioExt = new Set([".webm", ".mp3", ".wav", ".m4a", ".ogg", ".aac", ".flac"]);
-        const files = [];
-        const walk = async (dir, relBase) => {
-            for await (const [name, handle] of dir.entries()) {
-                const rel = relBase ? `${relBase}/${name}` : name;
-                if (handle.kind === "directory") {
-                    if (name.startsWith(".") || name === "node_modules") continue;
-                    await walk(handle, rel);
-                } else if (handle.kind === "file") {
-                    const lower = name.toLowerCase();
-                    const dot = lower.lastIndexOf(".");
-                    const ext = dot >= 0 ? lower.slice(dot) : "";
-                    if (!audioExt.has(ext)) continue;
-                    try {
-                        const f = await handle.getFile();
-                        files.push({ relativePath: rel.replace(/\\/g, "/"), name, sizeBytes: f.size });
-                    } catch (_) { /* skip */ }
-                }
-            }
-        };
         try {
-            let startDir = this._root;
-            let base = "";
-            if (prefix && String(prefix).trim()) {
-                const parts = String(prefix).replace(/\\/g, "/").split("/").filter(Boolean);
-                for (const part of parts) {
-                    startDir = await startDir.getDirectoryHandle(part, { create: false });
-                    base = base ? `${base}/${part}` : part;
-                }
-            }
-            await walk(startDir, base);
+            const { dir, base } = await this._descendPrefixAsync(prefix);
+            const files = await this._collectFilesByExtAsync(dir, base, audioExt, false);
             files.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
             return { success: true, files };
         } catch (err) {
@@ -733,41 +709,52 @@ window.PageToMovieMedia = {
             ".mp3", ".wav", ".m4a", ".ogg", ".aac", ".flac", ".opus",
             ".png", ".jpg", ".jpeg", ".webp", ".gif",
         ]);
-        const files = [];
-        const walk = async (dir, relBase) => {
-            for await (const [name, handle] of dir.entries()) {
-                if (name.startsWith(".") || name === "node_modules") continue;
-                const rel = relBase ? `${relBase}/${name}` : name;
-                if (handle.kind === "directory") {
-                    await walk(handle, rel);
-                } else if (handle.kind === "file") {
-                    const lower = name.toLowerCase();
-                    const dot = lower.lastIndexOf(".");
-                    const ext = dot >= 0 ? lower.slice(dot) : "";
-                    if (!mediaExt.has(ext)) continue;
-                    try {
-                        const f = await handle.getFile();
-                        if (f && f.size > 0)
-                            files.push({ relativePath: rel.replace(/\\/g, "/"), sizeBytes: f.size });
-                    } catch (_) { /* skip */ }
-                }
-            }
-        };
         try {
-            let startDir = this._root;
-            let base = "";
-            if (prefix && String(prefix).trim()) {
-                const parts = String(prefix).replace(/\\/g, "/").split("/").filter(Boolean);
-                for (const part of parts) {
-                    startDir = await startDir.getDirectoryHandle(part, { create: false });
-                    base = base ? `${base}/${part}` : part;
-                }
-            }
-            await walk(startDir, base);
+            const { dir, base } = await this._descendPrefixAsync(prefix);
+            const files = await this._collectFilesByExtAsync(dir, base, mediaExt, true);
             files.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
             return { success: true, files };
         } catch (err) {
             return { success: false, error: err.message || String(err), files: [] };
         }
+    },
+
+    _descendPrefixAsync: async function (prefix) {
+        let dir = this._root;
+        let base = "";
+        if (prefix && String(prefix).trim()) {
+            const parts = String(prefix).replace(/\\/g, "/").split("/").filter(Boolean);
+            for (const part of parts) {
+                dir = await dir.getDirectoryHandle(part, { create: false });
+                base = base ? `${base}/${part}` : part;
+            }
+        }
+        return { dir, base };
+    },
+
+    _collectFilesByExtAsync: async function (dir, relBase, extSet, requireSize) {
+        const files = [];
+        const walk = async (cur, base) => {
+            for await (const [name, handle] of cur.entries()) {
+                if (name.startsWith(".") || name === "node_modules") continue;
+                const rel = base ? `${base}/${name}` : name;
+                if (handle.kind === "directory") {
+                    await walk(handle, rel);
+                    continue;
+                }
+                if (handle.kind !== "file") continue;
+                const lower = name.toLowerCase();
+                const dot = lower.lastIndexOf(".");
+                const ext = dot >= 0 ? lower.slice(dot) : "";
+                if (!extSet.has(ext)) continue;
+                try {
+                    const f = await handle.getFile();
+                    if (requireSize && (!f || f.size <= 0)) continue;
+                    files.push({ relativePath: rel.replace(/\\/g, "/"), name, sizeBytes: f.size });
+                } catch (_) { /* skip */ }
+            }
+        };
+        await walk(dir, relBase);
+        return files;
     },
 };

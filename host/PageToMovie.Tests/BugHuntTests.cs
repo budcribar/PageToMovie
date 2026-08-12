@@ -307,7 +307,7 @@ public class BugHuntTests
             """;
         var d = GrokChatClient.ParseJsonObject(text);
         Assert.True(d.ContainsKey("ok"));
-        Assert.Equal(true, d["ok"]);
+        Assert.True(Convert.ToBoolean(d["ok"]));
         Assert.Equal(2L, Convert.ToInt64(d["count"]));
     }
 

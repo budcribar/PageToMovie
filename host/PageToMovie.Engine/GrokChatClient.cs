@@ -134,7 +134,7 @@ public sealed class GrokChatClient : IChatClient
             // both, or neither — rather than hardcoding a capability matrix per model id, self-heal
             // by stripping whichever param the API just told us is unsupported and retrying, same
             // pattern as the single-param retries elsewhere in this client and AnthropicChatClient.
-            for (var attempt = 0; ; attempt++)
+            for (var attempt = 0; attempt < 3; attempt++)
             {
                 var payload = BuildPayload(includeTemperature, includeReasoningEffort);
                 using var req = new HttpRequestMessage(HttpMethod.Post, targetUrl)
@@ -168,6 +168,8 @@ public sealed class GrokChatClient : IChatClient
 
                 return await FinishAsync(resp, body, attemptNum);
             }
+
+            throw new InvalidOperationException("Chat parameter retry loop exhausted.");
         }
 
         async Task LogTransientRetryAsync(int attemptNum, Exception ex)

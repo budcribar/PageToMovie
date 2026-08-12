@@ -18,6 +18,13 @@ public partial class ProjectSharePanel
     string _keyMode = "personal";
     bool _isOwner;
 
+    internal List<ProjectPresenceClientDto>? Presence => _presence;
+    internal string? LeaseStatus => _leaseStatus;
+    internal string? ErrorText => _error;
+    internal string? InfoText => _info;
+    internal bool IsBusy => _busy;
+    internal bool IsOwner => _isOwner;
+
     string EncodedId => Uri.EscapeDataString(ActiveProject.ProjectId ?? "");
 
     protected override async Task OnParametersSetAsync()

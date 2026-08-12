@@ -215,97 +215,77 @@ window.PageToMovieFfmpeg = {
             reportProgress(onProgress, 100, "Ready");
             return { success: true, url: list[0], count: 1, single: true };
         }
-        return this._runExclusiveAsync(async () => {
-            const load = await this.ensureLoadedAsync(onProgress);
-            if (!load.success) return load;
+        return this._runExclusiveAsync(() => this._concatVideosWorkAsync(list, onProgress));
+    },
 
-            const ffmpeg = this._ffmpeg;
-            const util = window.FFmpegUtil || {};
-            const fetchFile = util.fetchFile;
-            if (typeof fetchFile !== "function") {
-                return { success: false, error: "ffmpeg util fetchFile missing" };
+    _concatVideosWorkAsync: async function (list, onProgress) {
+        const load = await this.ensureLoadedAsync(onProgress);
+        if (!load.success) return load;
+        const ffmpeg = this._ffmpeg;
+        const util = window.FFmpegUtil || {};
+        if (typeof util.fetchFile !== "function")
+            return { success: false, error: "ffmpeg util fetchFile missing" };
+        let written = [];
+        try {
+            reportProgress(onProgress, 12, "Downloading clips…");
+            written = await this._writeSequentialInputsAsync(ffmpeg, list, "mp4", onProgress, 12, 52);
+            await ffmpeg.writeFile("list.txt", written.map(n => "file '" + n + "'").join("\n"));
+            reportProgress(onProgress, 55, "Stitching…");
+            await this._execConcatDemuxerAsync(ffmpeg);
+            reportProgress(onProgress, 92, "Preparing player…");
+            const hashed = await this._hashStitchedBlobAsync(await ffmpeg.readFile("out.mp4"));
+            this._blobUrl = URL.createObjectURL(hashed.blob);
+            for (const n of written) {
+                try { await ffmpeg.deleteFile(n); } catch (_) { /* */ }
             }
+            try { await ffmpeg.deleteFile("list.txt"); } catch (_) { /* */ }
+            try { await ffmpeg.deleteFile("out.mp4"); } catch (_) { /* */ }
+            reportProgress(onProgress, 100, "Ready");
+            return { success: true, url: this._blobUrl, count: list.length, sha256: hashed.sha256, byteLength: hashed.byteLength };
+        } catch (err) {
+            console.error("concatVideosAsync failed:", err);
+            return { success: false, error: err.message || String(err) };
+        }
+    },
 
-            let written = [];
-            try {
-                reportProgress(onProgress, 12, "Downloading clips…");
-                written = await this._writeSequentialInputsAsync(ffmpeg, list, "mp4", onProgress, 12, 52);
+    _execConcatDemuxerAsync: async function (ffmpeg) {
+        try {
+            await ffmpeg.exec([
+                "-f", "concat", "-safe", "0", "-i", "list.txt",
+                "-c", "copy",
+                "-movflags", "+faststart",
+                "out.mp4",
+            ]);
+        } catch (copyErr) {
+            this._log("copy concat failed, re-encoding: " + (copyErr && copyErr.message));
+            try { await ffmpeg.deleteFile("out.mp4"); } catch (_) { /* */ }
+            await ffmpeg.exec([
+                "-f", "concat", "-safe", "0", "-i", "list.txt",
+                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
+                "-c:a", "aac", "-b:a", "128k",
+                "-movflags", "+faststart",
+                "out.mp4",
+            ]);
+        }
+    },
 
-                // concat demuxer list
-                const listBody = written.map(n => "file '" + n + "'").join("\n");
-                await ffmpeg.writeFile("list.txt", listBody);
-
-                reportProgress(onProgress, 55, "Stitching…");
-                let ok = false;
-                try {
-                    await ffmpeg.exec([
-                        "-f", "concat", "-safe", "0", "-i", "list.txt",
-                        "-c", "copy",
-                        "-movflags", "+faststart",
-                        "out.mp4",
-                    ]);
-                    ok = true;
-                } catch (copyErr) {
-                    this._log("copy concat failed, re-encoding: " + (copyErr && copyErr.message));
-                    try { await ffmpeg.deleteFile("out.mp4"); } catch (_) { /* */ }
-                    await ffmpeg.exec([
-                        "-f", "concat", "-safe", "0", "-i", "list.txt",
-                        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
-                        "-c:a", "aac", "-b:a", "128k",
-                        "-movflags", "+faststart",
-                        "out.mp4",
-                    ]);
-                    ok = true;
-                }
-
-                if (!ok) return { success: false, error: "Stitch failed" };
-                console.log("[concat] stitched " + written.length + " clips");
-
-                reportProgress(onProgress, 92, "Preparing player…");
-                const out = await ffmpeg.readFile("out.mp4");
-                let blob = new Blob([out.buffer], { type: "video/mp4" });
-                // Do NOT auto-revoke the previous _blobUrl here — CollectAndMixSceneSegmentsAsync
-                // (C#) calls this function once per scene to build several *simultaneous*
-                // intermediate segments before combining them in one final call. Auto-revoking on
-                // every call was yanking the URL out from under an earlier scene's still-in-use
-                // blob the moment a later scene's concat ran, so the final combine's fetch() on
-                // that now-revoked blob: URL failed with a bare "Failed to fetch". Explicit
-                // top-level preview replacement already calls revokePreviewUrl() itself (see
-                // RevokePreviewUrlAsync callers) before requesting a new preview, so nothing here
-                // relied on this implicit revoke for correctness — only for eager cleanup.
-                // Hash the stitched bytes for film_build.studio.sha256 before handing out the URL.
-                let sha256 = null;
-                let byteLength = null;
-                try {
-                    const ab = await blob.arrayBuffer();
-                    byteLength = ab.byteLength;
-                    const dig = await crypto.subtle.digest("SHA-256", ab);
-                    const bytes = new Uint8Array(dig);
-                    sha256 = "";
-                    for (let i = 0; i < bytes.length; i++)
-                        sha256 += bytes[i].toString(16).padStart(2, "0");
-                    // Re-wrap so the blob URL still works after arrayBuffer()
-                    blob = new Blob([ab], { type: blob.type || "video/mp4" });
-                } catch (hashErr) {
-                    this._log("stitch sha256 skipped: " + (hashErr && hashErr.message));
-                }
-
-                this._blobUrl = URL.createObjectURL(blob);
-
-                // Cleanup MEMFS
-                for (const n of written) {
-                    try { await ffmpeg.deleteFile(n); } catch (_) { /* */ }
-                }
-                try { await ffmpeg.deleteFile("list.txt"); } catch (_) { /* */ }
-                try { await ffmpeg.deleteFile("out.mp4"); } catch (_) { /* */ }
-
-                reportProgress(onProgress, 100, "Ready");
-                return { success: true, url: this._blobUrl, count: list.length, sha256: sha256, byteLength: byteLength };
-            } catch (err) {
-                console.error("concatVideosAsync failed:", err);
-                return { success: false, error: err.message || String(err) };
-            }
-        });
+    _hashStitchedBlobAsync: async function (out) {
+        let blob = new Blob([out.buffer], { type: "video/mp4" });
+        let sha256 = null;
+        let byteLength = null;
+        try {
+            const ab = await blob.arrayBuffer();
+            byteLength = ab.byteLength;
+            const dig = await crypto.subtle.digest("SHA-256", ab);
+            const bytes = new Uint8Array(dig);
+            sha256 = "";
+            for (let i = 0; i < bytes.length; i++)
+                sha256 += bytes[i].toString(16).padStart(2, "0");
+            blob = new Blob([ab], { type: blob.type || "video/mp4" });
+        } catch (hashErr) {
+            this._log("stitch sha256 skipped: " + (hashErr && hashErr.message));
+        }
+        return { blob, sha256, byteLength };
     },
 
     /** Load an image URL into an HTMLImageElement (for compositing the logo onto the credits card). */
@@ -549,7 +529,8 @@ window.PageToMovieFfmpeg = {
                 }
 
                 reportProgress(onProgress, 30, "Detecting silence…");
-                const det = await this._silenceDetectMemfsAsync(inName, opts.noiseDb, opts.minSilenceSec);
+                const det = await Promise.resolve(this._silenceDetectMemfsAsync(inName, opts.noiseDb, opts.minSilenceSec));
+
                 if (!det.success) {
                     try { await ffmpeg.deleteFile(inName); } catch (_) { /* */ }
                     return {
@@ -627,7 +608,8 @@ window.PageToMovieFfmpeg = {
                 const totalSec = probe.success && probe.seconds > 0 ? probe.seconds : 0;
 
                 reportProgress(onProgress, 55, "Detecting speech…");
-                const det = await this._silenceDetectMemfsAsync(inName, opts.noiseDb, opts.minSilenceSec);
+                const det = await Promise.resolve(this._silenceDetectMemfsAsync(inName, opts.noiseDb, opts.minSilenceSec));
+
                 if (!det.success) {
                     return { success: false, error: det.error || "silence detect failed" };
                 }
@@ -870,44 +852,47 @@ window.PageToMovieFfmpeg = {
             const centers = [];
             for (let i = 0; i < n; i++) centers.push(spans[i].offsetLeft + spans[i].offsetWidth / 2);
 
-            // Two keyframes per word (park it CENTRED on the cursor from start→end), then slide to the next.
-            const frames = [{ transform: "translateX(" + (-centers[0]) + "px)", offset: 0 }];
-            for (let i = 0; i < n; i++) {
-                let s = starts[i] / D, e = (ends && ends[i] != null ? ends[i] : starts[i]) / D;
-                if (!(s >= 0)) s = 0; if (s > 1) s = 1;
-                if (!(e >= s)) e = s; if (e > 1) e = 1;
-                const tx = "translateX(" + (-centers[i]) + "px)";
-                frames.push({ transform: tx, offset: s });
-                frames.push({ transform: tx, offset: e });
-            }
-            frames.push({ transform: "translateX(" + (-centers[n - 1]) + "px)", offset: 1 });
-            // Offsets must be non-decreasing for the Web Animations API; nudge any that regress.
-            for (let i = 1; i < frames.length; i++)
-                if (frames[i].offset <= frames[i - 1].offset)
-                    frames[i].offset = Math.min(1, frames[i - 1].offset + 0.0001);
+            const frames = this._teleprompterKeyframes(centers, starts, ends, D, n);
             el.getAnimations().forEach(function (a) { a.cancel(); });
             el.animate(frames, { duration: D * 1000, easing: "linear", fill: "forwards" });
-
-            // Highlight the word at the marker ONLY while it's actually spoken [start,end], then unlight
-            // it — so a pause (e.g. after a comma) is an unlit breath, not a highlight stuck on the last
-            // word. Light-on timers are scheduled before light-off so back-to-back words don't cancel.
-            if (el._teleTimers) el._teleTimers.forEach(function (t) { clearTimeout(t); });
-            el._teleTimers = [];
-            const clearAll = function () { for (let k = 0; k < n; k++) spans[k].classList.remove("tele-active"); };
-            for (let i = 0; i < n; i++) {
-                el._teleTimers.push(setTimeout((function (idx) {
-                    return function () { clearAll(); spans[idx].classList.add("tele-active"); };
-                })(i), Math.max(0, starts[i] * 1000)));
-            }
-            for (let i = 0; i < n; i++) {
-                const endMs = Math.max(0, (ends && ends[i] != null ? ends[i] : starts[i]) * 1000);
-                el._teleTimers.push(setTimeout((function (idx) {
-                    return function () { spans[idx].classList.remove("tele-active"); };
-                })(i), endMs));
-            }
-            el._teleTimers.push(setTimeout(clearAll, Math.max(0, D * 1000)));
+            this._armTeleprompterHighlights(el, spans, starts, ends, D, n);
             return true;
         } catch (_) { return false; }
+    },
+
+    _teleprompterKeyframes: function (centers, starts, ends, D, n) {
+        const frames = [{ transform: "translateX(" + (-centers[0]) + "px)", offset: 0 }];
+        for (let i = 0; i < n; i++) {
+            let s = starts[i] / D, e = (ends && ends[i] != null ? ends[i] : starts[i]) / D;
+            if (!(s >= 0)) s = 0; if (s > 1) s = 1;
+            if (!(e >= s)) e = s; if (e > 1) e = 1;
+            const tx = "translateX(" + (-centers[i]) + "px)";
+            frames.push({ transform: tx, offset: s });
+            frames.push({ transform: tx, offset: e });
+        }
+        frames.push({ transform: "translateX(" + (-centers[n - 1]) + "px)", offset: 1 });
+        for (let i = 1; i < frames.length; i++)
+            if (frames[i].offset <= frames[i - 1].offset)
+                frames[i].offset = Math.min(1, frames[i - 1].offset + 0.0001);
+        return frames;
+    },
+
+    _armTeleprompterHighlights: function (el, spans, starts, ends, D, n) {
+        if (el._teleTimers) el._teleTimers.forEach(function (t) { clearTimeout(t); });
+        el._teleTimers = [];
+        const clearAll = function () { for (let k = 0; k < n; k++) spans[k].classList.remove("tele-active"); };
+        for (let i = 0; i < n; i++) {
+            el._teleTimers.push(setTimeout((function (idx) {
+                return function () { clearAll(); spans[idx].classList.add("tele-active"); };
+            })(i), Math.max(0, starts[i] * 1000)));
+        }
+        for (let i = 0; i < n; i++) {
+            const endMs = Math.max(0, (ends && ends[i] != null ? ends[i] : starts[i]) * 1000);
+            el._teleTimers.push(setTimeout((function (idx) {
+                return function () { spans[idx].classList.remove("tele-active"); };
+            })(i), endMs));
+        }
+        el._teleTimers.push(setTimeout(clearAll, Math.max(0, D * 1000)));
     },
 
     /**
@@ -1153,26 +1138,29 @@ window.PageToMovieFfmpeg = {
     _invertSilenceToSpeech: function (log, totalSec, minSilenceSec) {
         const total = totalSec > 0 ? totalSec : 0;
         const minGap = (typeof minSilenceSec === "number" && minSilenceSec > 0) ? minSilenceSec : 0.3;
-        // Collect (start,end) silence intervals from the log.
+        const silences = this._parseSilenceIntervals(log, total);
+        if (total <= 0) return [];
+        const speech = this._silenceComplement(silences, total);
+        return this._mergeCloseWindows(speech, minGap);
+    },
+
+    _parseSilenceIntervals: function (log, total) {
         const silences = [];
         let curStart = null;
-        const lines = String(log).split("\n");
-        for (const line of lines) {
+        for (const line of String(log).split("\n")) {
             let m = line.match(/silence_start:\s*(-?\d+(?:\.\d+)?)/);
             if (m) { curStart = Math.max(0, parseFloat(m[1])); continue; }
             m = line.match(/silence_end:\s*(-?\d+(?:\.\d+)?)/);
-            if (m) {
-                const end = parseFloat(m[1]);
-                if (curStart !== null) { silences.push([curStart, end]); curStart = null; }
+            if (m && curStart !== null) {
+                silences.push([curStart, parseFloat(m[1])]);
+                curStart = null;
             }
         }
         if (curStart !== null && total > 0) silences.push([curStart, total]);
+        return silences;
+    },
 
-        // Speech = complement of silence within [0,total].
-        if (total <= 0) {
-            // Unknown duration: no speech windows we can measure.
-            return [];
-        }
+    _silenceComplement: function (silences, total) {
         const speech = [];
         let cursor = 0;
         for (const [s, e] of silences) {
@@ -1181,17 +1169,102 @@ window.PageToMovieFfmpeg = {
             cursor = Math.max(cursor, Math.min(total, e));
         }
         if (total - cursor > 0.05) speech.push({ startSec: cursor, endSec: total });
+        return speech;
+    },
 
-        // Merge windows separated by less than minGap (avoids chopping one line into fragments).
+    _mergeCloseWindows: function (speech, minGap) {
         const merged = [];
         for (const w of speech) {
-            if (merged.length > 0 && w.startSec - merged[merged.length - 1].endSec < minGap) {
+            if (merged.length > 0 && w.startSec - merged[merged.length - 1].endSec < minGap)
                 merged[merged.length - 1].endSec = w.endSec;
-            } else {
+            else
                 merged.push({ startSec: w.startSec, endSec: w.endSec });
-            }
         }
         return merged;
+    },
+
+    _overlayVoiceExt: function (url) {
+        if (/\.wav(\?|$)/i.test(url) || (url.indexOf("audio/wav") >= 0)) return ".wav";
+        if (/\.m4a(\?|$)/i.test(url) || (url.indexOf("audio/mp4") >= 0)) return ".m4a";
+        return ".mp3";
+    },
+
+    _writeOverlayVoicesAsync: async function (ffmpeg, list, audioNames, onProgress) {
+        for (let i = 0; i < list.length; i++) {
+            reportProgress(onProgress, 8 + Math.round((i / list.length) * 22),
+                "Loading voice " + (i + 1) + "/" + list.length + "…");
+            const seg = list[i];
+            console.log("[dub] seg " + i + ": start=" + seg.startSec + "s end=" + seg.endSec + "s");
+            const rawName = "ov_voice_raw_" + i + this._overlayVoiceExt(seg.audioUrl);
+            const wavName = "ov_voice_" + i + ".wav";
+            const bytes = await this._safeFetchFile(seg.audioUrl);
+            console.log("[dub] voice " + i + ": " + (bytes ? bytes.length : 0) + " bytes");
+            if (!bytes || bytes.length < 512)
+                console.warn("[dub] voice " + i + " suspiciously small — TTS likely returned silence/empty.");
+            await ffmpeg.writeFile(rawName, bytes);
+            try {
+                await ffmpeg.exec(["-hide_banner", "-y", "-i", rawName, "-ar", "48000", "-ac", "2", wavName]);
+            } catch (decErr) {
+                console.error("[dub] voice " + i + " decode→wav FAILED:", decErr && decErr.message);
+                try { await ffmpeg.deleteFile(rawName); } catch (_) { /* */ }
+                throw new Error("Cloned voice audio could not be decoded (segment " + i + ")");
+            }
+            try { await ffmpeg.deleteFile(rawName); } catch (_) { /* */ }
+            audioNames.push(wavName);
+        }
+    },
+
+    _buildDuckFilter: function (list) {
+        const fmt = "aformat=sample_rates=48000:channel_layouts=stereo";
+        const parts = ["[0:a]" + fmt + ",volume=0.30[base]"];
+        const mixLabels = ["[base]"];
+        for (let i = 0; i < list.length; i++) {
+            parts.push("[" + (i + 1) + ":a]" + fmt + ",volume=2.2[v" + i + "]");
+            mixLabels.push("[v" + i + "]");
+        }
+        parts.push(mixLabels.join("") + "amix=inputs=" + mixLabels.length + ":duration=first:normalize=0[a]");
+        return parts.join(";");
+    },
+
+    _buildMuteBaseFilterAsync: async function (list, audioNames) {
+        const fmt = "aformat=sample_rates=48000:channel_layouts=stereo";
+        const segInfo = [];
+        for (let i = 0; i < list.length; i++) {
+            const seg = list[i];
+            const startSec = Math.max(0, +seg.startSec || 0);
+            const targetDur = Math.max(0.2, (+seg.endSec || 0) - startSec);
+            const probe = await this._probeDurationMemfsAsync(audioNames[i]);
+            const natSec = probe && probe.success && probe.seconds > 0 ? probe.seconds : targetDur;
+            segInfo.push({ i: i, startSec: startSec, natSec: natSec, ratio: natSec / targetDur });
+        }
+        const sample = segInfo.length <= 3
+            ? segInfo.slice()
+            : [segInfo[0], segInfo[Math.floor(segInfo.length / 2)], segInfo[segInfo.length - 1]];
+        const ratios = sample.map(s => s.ratio).sort((a, b) => a - b);
+        let tempo = ratios.length ? ratios[Math.floor(ratios.length / 2)] : 1.0;
+        tempo = Math.max(0.8, Math.min(1.25, tempo));
+        console.log("[dub] calibrated stretch factor: " + tempo.toFixed(3) +
+            " (from " + sample.length + " of " + segInfo.length + " line(s))");
+        const parts = [];
+        const vl = [];
+        for (const s of segInfo) {
+            const voice = "[" + (s.i + 1) + ":a]" + fmt + ",atempo=" + tempo.toFixed(4) +
+                ",volume=1.3,asetpts=PTS-STARTPTS";
+            if (s.startSec >= 0.05) {
+                parts.push("anullsrc=channel_layout=stereo:sample_rate=48000,atrim=duration=" +
+                    s.startSec.toFixed(3) + ",asetpts=PTS-STARTPTS[sil" + s.i + "]");
+                parts.push(voice + "[sv" + s.i + "]");
+                parts.push("[sil" + s.i + "][sv" + s.i + "]concat=n=2:v=0:a=1[v" + s.i + "]");
+            } else {
+                parts.push(voice + "[v" + s.i + "]");
+            }
+            vl.push("[v" + s.i + "]");
+        }
+        if (vl.length === 1)
+            parts.push(vl[0] + "apad[a]");
+        else
+            parts.push(vl.join("") + "amix=inputs=" + vl.length + ":duration=longest:normalize=0,apad[a]");
+        return parts.join(";");
     },
 
     /**
@@ -1233,119 +1306,13 @@ window.PageToMovieFfmpeg = {
                 await ffmpeg.writeFile(inVideo, await this._safeFetchFile(videoUrl));
 
                 console.log("[dub] overlay: " + list.length + " voice segment(s)");
+                await this._writeOverlayVoicesAsync(ffmpeg, list, audioNames, onProgress);
 
-                // Write + PRE-DECODE each cloned-voice clip to a clean 48 kHz stereo WAV. Feeding the
-                // raw TTS mp3 straight into amix was unreliable: if ffmpeg.wasm couldn't decode that
-                // particular mp3 the mix silently fell back to just the (ducked) base — "background,
-                // no voice". Transcoding first makes decode failures loud and hands amix known-good PCM.
-                for (let i = 0; i < list.length; i++) {
-                    reportProgress(onProgress, 8 + Math.round((i / list.length) * 22),
-                        "Loading voice " + (i + 1) + "/" + list.length + "…");
-                    const seg = list[i];
-                    // Flat log (survives console export) so bad timing is visible: start/end vs clip.
-                    console.log("[dub] seg " + i + ": start=" + seg.startSec + "s end=" + seg.endSec + "s");
-                    let ext = ".mp3";
-                    if (/\.wav(\?|$)/i.test(seg.audioUrl) || (seg.audioUrl.indexOf("audio/wav") >= 0)) ext = ".wav";
-                    else if (/\.m4a(\?|$)/i.test(seg.audioUrl) || (seg.audioUrl.indexOf("audio/mp4") >= 0)) ext = ".m4a";
-                    const rawName = "ov_voice_raw_" + i + ext;
-                    const wavName = "ov_voice_" + i + ".wav";
-                    const bytes = await this._safeFetchFile(seg.audioUrl);
-                    console.log("[dub] voice " + i + ": " + (bytes ? bytes.length : 0) + " bytes");
-                    if (!bytes || bytes.length < 512) {
-                        console.warn("[dub] voice " + i + " suspiciously small — TTS likely returned silence/empty.");
-                    }
-                    await ffmpeg.writeFile(rawName, bytes);
-                    try {
-                        await ffmpeg.exec(["-hide_banner", "-y", "-i", rawName,
-                            "-ar", "48000", "-ac", "2", wavName]);
-                    } catch (decErr) {
-                        console.error("[dub] voice " + i + " decode→wav FAILED:", decErr && decErr.message);
-                        try { await ffmpeg.deleteFile(rawName); } catch (_) { /* */ }
-                        throw new Error("Cloned voice audio could not be decoded (segment " + i + ")");
-                    }
-                    try { await ffmpeg.deleteFile(rawName); } catch (_) { /* */ }
-                    audioNames.push(wavName);
-                }
-
-                // Build filter_complex — deliberately simple. The earlier version used a per-frame
-                // volume='if(between(t,…))' envelope on the bed plus an un-padded, short second input;
-                // in ffmpeg.wasm that combination produced a mix where the (verified ~-28 dB) voice was
-                // absent while the bed survived. This version drops both fragile pieces:
-                //  - bed: constant gentle duck (no per-frame expression).
-                //  - voice: format-normalized, delayed on ALL channels, boosted, and apad-ed to full
-                //    length so amix never drops it partway.
                 const inputs = ["-i", inVideo];
                 for (const n of audioNames) inputs.push("-i", n);
-
-                // aformat first — amix does not resample, so a rate/layout mismatch silences an input.
-                const fmt = "aformat=sample_rates=48000:channel_layouts=stereo";
-
-                const parts = [];
-                let filter;
-                if (muteBase) {
-                    // Narrator-only scene: original clip audio is dropped; the cloned narration is the
-                    // whole soundtrack. Rather than warp each line to its own window (varying pace), we
-                    // calibrate ONE stretch factor from up to 3 sample points (median of natural ÷ window
-                    // ratios) so the voice keeps a single consistent pace matched to the original speaker,
-                    // then place each line at its window start via a leading silence and mix.
-                    const segInfo = [];
-                    for (let i = 0; i < list.length; i++) {
-                        const seg = list[i];
-                        const startSec = Math.max(0, +seg.startSec || 0);
-                        const targetDur = Math.max(0.2, (+seg.endSec || 0) - startSec);
-                        const probe = await this._probeDurationMemfsAsync(audioNames[i]);
-                        const natSec = probe && probe.success && probe.seconds > 0 ? probe.seconds : targetDur;
-                        segInfo.push({ i: i, startSec: startSec, natSec: natSec, ratio: natSec / targetDur });
-                    }
-
-                    // Sample up to 3 points (first / middle / last for a representative spread), take the
-                    // median ratio → one calibrated stretch factor (atempo). Clamp so we never warble.
-                    const sample = segInfo.length <= 3
-                        ? segInfo.slice()
-                        : [segInfo[0], segInfo[Math.floor(segInfo.length / 2)], segInfo[segInfo.length - 1]];
-                    const ratios = sample.map(s => s.ratio).sort((a, b) => a - b);
-                    let tempo = ratios.length ? ratios[Math.floor(ratios.length / 2)] : 1.0;
-                    // Cap the stretch to a natural range: beyond ~±25% atempo starts to warble, so we
-                    // prefer a natural-sounding voice (with gaps if the window is longer) over filling
-                    // the window at any cost. Record close to the original pace and this barely engages.
-                    tempo = Math.max(0.8, Math.min(1.25, tempo));
-                    console.log("[dub] calibrated stretch factor: " + tempo.toFixed(3) +
-                        " (from " + sample.length + " of " + segInfo.length + " line(s))");
-
-                    const vl = [];
-                    for (const s of segInfo) {
-                        const voice = "[" + (s.i + 1) + ":a]" + fmt + ",atempo=" + tempo.toFixed(4) +
-                            ",volume=1.3,asetpts=PTS-STARTPTS";
-                        if (s.startSec >= 0.05) {
-                            parts.push("anullsrc=channel_layout=stereo:sample_rate=48000,atrim=duration=" +
-                                s.startSec.toFixed(3) + ",asetpts=PTS-STARTPTS[sil" + s.i + "]");
-                            parts.push(voice + "[sv" + s.i + "]");
-                            parts.push("[sil" + s.i + "][sv" + s.i + "]concat=n=2:v=0:a=1[v" + s.i + "]");
-                        } else {
-                            parts.push(voice + "[v" + s.i + "]");
-                        }
-                        vl.push("[v" + s.i + "]");
-                    }
-                    if (vl.length === 1)
-                        parts.push(vl[0] + "apad[a]");
-                    else
-                        parts.push(vl.join("") + "amix=inputs=" + vl.length +
-                            ":duration=longest:normalize=0,apad[a]");
-                    filter = parts.join(";");
-                } else {
-                    // Duck the bed to ~0.30 so the narrator sits on top (ambience/music still audible).
-                    parts.push("[0:a]" + fmt + ",volume=0.30[base]");
-                    const mixLabels = ["[base]"];
-                    for (let i = 0; i < list.length; i++) {
-                        // No adelay (it zeroes the voice in this ffmpeg.wasm build); the narrator plays
-                        // from the clip start, amix silence-pads the tail. Boost ~2.2× to sit over the bed.
-                        parts.push("[" + (i + 1) + ":a]" + fmt + ",volume=2.2[v" + i + "]");
-                        mixLabels.push("[v" + i + "]");
-                    }
-                    parts.push(mixLabels.join("") + "amix=inputs=" + mixLabels.length +
-                        ":duration=first:normalize=0[a]");
-                    filter = parts.join(";");
-                }
+                const filter = muteBase
+                    ? await this._buildMuteBaseFilterAsync(list, audioNames)
+                    : this._buildDuckFilter(list);
                 console.log("[dub] filter" + (muteBase ? " (muteBase)" : "") + ": " + filter);
 
                 reportProgress(onProgress, 45, "Overlaying voice…");
@@ -1477,6 +1444,29 @@ window.PageToMovieFfmpeg = {
         });
     },
 
+    _execExtractFramesAsync: async function (ffmpeg, inName, mode, count, scale, quality, pattern) {
+        if (mode === "tail") {
+            await ffmpeg.exec([
+                "-hide_banner", "-y",
+                "-sseof", "-1.5",
+                "-i", inName,
+                "-vf", scale + ",fps=2",
+                "-frames:v", String(count),
+                "-q:v", String(quality),
+                pattern,
+            ]);
+            return;
+        }
+        await ffmpeg.exec([
+            "-hide_banner", "-y",
+            "-i", inName,
+            "-vf", scale + ",fps=1/2",
+            "-frames:v", String(count),
+            "-q:v", String(quality),
+            pattern,
+        ]);
+    },
+
     extractFramesAsync: async function (url, opts, onProgress) {
         opts = opts || {};
         if (!url) return { success: false, error: "No URL" };
@@ -1502,26 +1492,7 @@ window.PageToMovieFfmpeg = {
                 reportProgress(onProgress, 40, mode === "tail" ? "Sampling clip end…" : "Sampling clip…");
 
                 try {
-                    if (mode === "tail") {
-                        await ffmpeg.exec([
-                            "-hide_banner", "-y",
-                            "-sseof", "-1.5",
-                            "-i", inName,
-                            "-vf", scale + ",fps=2",
-                            "-frames:v", String(count),
-                            "-q:v", String(quality),
-                            pattern,
-                        ]);
-                    } else {
-                        await ffmpeg.exec([
-                            "-hide_banner", "-y",
-                            "-i", inName,
-                            "-vf", scale + ",fps=1/2",
-                            "-frames:v", String(count),
-                            "-q:v", String(quality),
-                            pattern,
-                        ]);
-                    }
+                    await this._execExtractFramesAsync(ffmpeg, inName, mode, count, scale, quality, pattern);
                 } catch (execErr) {
                     this._log("frame extract primary failed: " + (execErr && execErr.message));
                     try {
