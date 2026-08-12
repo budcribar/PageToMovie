@@ -2672,6 +2672,10 @@ public sealed class FilmJobService
             await FinishAsync(
                 "done",
                 $"Stage 2 complete: {result.SceneCount} scenes · {result.ClipCount} clips · ~{result.DurationSeconds}s");
+
+            // North Star: after shot plan, auto-generate looks for used cast + places
+            // (3 variants, AI lock best; skip already locked). Operator can override anytime.
+            await TryEnqueuePlanLooksAfterStage2Async(projectId).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -2681,6 +2685,58 @@ public sealed class FilmJobService
         {
             _log.LogError(ex, "Stage 2 failed");
             await FinishAsync("error", ex.Message, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// After a successful Stage‑2, queue plan_looks when any used face/place still needs a plate.
+    /// Deferred so Stage locks / CurrentRun clear first; no-op when nothing missing.
+    /// </summary>
+    private async Task TryEnqueuePlanLooksAfterStage2Async(string projectId)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(projectId)) return;
+
+            var castNeed = _projects.ListCharacters(projectId)
+                .Count(c => c.UsedInPlan && !c.IsGroup && !c.VoiceOnly && !c.Locked);
+            var locNeed = _projects.ListLocations(projectId)
+                .Count(l => l.UsedInPlan && !l.Locked);
+            if (castNeed + locNeed == 0)
+            {
+                await AppendLogAsync("Plan looks: all used cast/places already locked — skip auto looks");
+                return;
+            }
+
+            await AppendLogAsync(
+                $"Plan looks: will auto-queue after shot plan ({castNeed} cast · {locNeed} places need plates)");
+
+            // Defer until RunStage2Async + StartBackgroundJobAsync finally releases CurrentRun/locks.
+            var pid = projectId;
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(500).ConfigureAwait(false);
+                    await StartPlanLooksAsync(new StartPlanLooksRequest
+                    {
+                        ProjectId = pid,
+                        Count = 3,
+                        SkipAlreadyLocked = true,
+                        IncludeCast = true,
+                        IncludeLocations = true,
+                    }).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _log.LogWarning(ex, "Auto plan_looks after Stage 2 failed for {ProjectId}", pid);
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Auto plan_looks after Stage 2 failed to schedule for {ProjectId}", projectId);
+            try { await AppendLogAsync("Plan looks auto-queue failed: " + ex.Message); } catch { /* best effort */ }
         }
     }
 

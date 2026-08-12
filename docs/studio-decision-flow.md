@@ -700,6 +700,7 @@ Use this as the build/acceptance tracker. Check items off in PRs; leave dates/no
 | Done | Item | Notes |
 |:----:|------|-------|
 | [ ] | **J1** Shared **chat semaphore** (max ~4–8 in flight per process and/or per user) | Stage 2 already one job + scene gate (2); classifiers still fan out. `ApiWorkerPool` only caps **jobs**, not chat HTTP. Add gate used by `IChatClient` (and maybe vision) so plan/cast/classify peaks stay provider-friendly; keep 429 retry as safety net. **Do not** split Stage 2 into per-scene jobs just for throttle. |
+| [x] | **J2** Auto **plan_looks** after Stage 2 + Generate chain | Stage 2 success → queue looks for used cast/places (3 + AI lock, skip locked). Generate autoGen waits for `plan_looks` then fill-holes. Manual button remains override path. |
 
 ---
 

@@ -108,7 +108,7 @@ public abstract partial class AdaptationPageBase
                 ProgressIndex = Math.Max(ProgressIndex, snap.Index);
             // Never let a live adapt job report Total=0 after we have phase scale.
             if (JobRunning && ProgressTotal <= 0 &&
-                snap.Kind is "stage1" or "stage2" or "book_import" or "book_prepare")
+                snap.Kind is "stage1" or "stage2" or "book_import" or "book_prepare" or "plan_looks")
                 ProgressTotal = 10;
         }
 
@@ -291,6 +291,13 @@ public abstract partial class AdaptationPageBase
                                             // CreateFromBookAsync loop will SoftLoad; still drop Busy if orphaned.
                                         }
                                         await S.SoftLoadAsync();
+                                        if (snap.Status == "done")
+                                        {
+                                            try { await S.OnAdaptationJobTerminalAsync(snap); }
+                                            catch (Exception ex) { S.Error ??= ex.Message; }
+                                        }
+                                        else if (snap.Status == "error")
+                                            S.Error = snap.Error ?? snap.Message ?? "Job failed";
                                         S.StateHasChanged();
                                     });
                                 break;

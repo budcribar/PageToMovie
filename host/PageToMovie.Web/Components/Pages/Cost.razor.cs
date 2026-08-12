@@ -661,27 +661,37 @@ public partial class Cost : IAsyncDisposable
             _preferPath = "generate";
             await PersistPrefAsync("preferPath", "generate");
 
-            // F1/F4: when shot plan ready, start resumable fill-holes batch then open Film (F2 watch)
+            // F1/F4: when shot plan ready, ensure looks then resumable fill-holes + Film
             if (ActiveProject.CanScenes && !GeneratingBusy)
             {
                 try
                 {
-                    var scenesDto = await Engine.GetScenesAsync(_projectId);
-                    var nums = scenesDto?.Scenes?
-                        .Where(s => !s.IsCredits && s.ClipCount > 0)
-                        .Select(s => s.SceneNumber)
-                        .OrderBy(n => n)
-                        .ToList() ?? new List<int>();
-                    if (nums.Count > 0)
+                    // North Star: used cast/place plates before video spend (skip already locked).
+                    try
                     {
-                        await Engine.StartBatchGenAsync(_projectId, nums, onlyMissing: true, resolution: _draftRes, takeTrigger: VideoTakeKinds.FillHoles);
-                        Nav.NavigateTo(ActiveProject.IsSimpleVoice ? "scenes?simple=1&watch=1" : "scenes?watch=1");
-                        return;
+                        await Engine.StartPlanLooksAsync(new StartPlanLooksRequest
+                        {
+                            ProjectId = _projectId,
+                            Count = 3,
+                            SkipAlreadyLocked = true,
+                            IncludeCast = true,
+                            IncludeLocations = true,
+                        });
                     }
+                    catch
+                    {
+                        // Best-effort — still generate clips if looks queue fails
+                    }
+
+                    // Chain through shots page so we wait for plan_looks (if running) then fill-holes.
+                    var resQ = string.IsNullOrWhiteSpace(_draftRes)
+                        ? ""
+                        : $"&res={Uri.EscapeDataString(_draftRes)}";
+                    Nav.NavigateTo($"adaptation/shots?from=decision&autoGen=1{resQ}");
+                    return;
                 }
                 catch (Exception ex)
                 {
-                    // Fall through to navigate without auto-start
                     _collabNote = "Could not auto-start generate: " + ex.Message + " — open Film to generate.";
                 }
             }
