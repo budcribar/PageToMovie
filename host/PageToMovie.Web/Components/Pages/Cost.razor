@@ -42,42 +42,45 @@ else
 
     <div class="card cost-hub mb-2" data-testid="decision-forecast-card">
         <div class="card-body py-2 px-3">
+            @* Two money numbers only: estimate + spent *@
             <div class="row g-2 text-center cost-hub-metrics">
-                <div class="@(ShowToFinish ? "col-6 col-md-3" : "col-4")">
+                <div class="col-4">
                     <div class="text-muted cost-hub-label">Duration</div>
                     <div class="cost-hero-num cost-hub-value" data-testid="cost-duration">@DurationLabel</div>
                 </div>
-                <div class="@(ShowToFinish ? "col-6 col-md-3" : "col-4")">
-                    <div class="text-muted cost-hub-label" title="Forecast for a full first-pass at current settings">Movie cost</div>
+                <div class="col-4">
+                    <div class="text-muted cost-hub-label" title="Forecast for a full first-pass at current settings">Estimate</div>
                     <div class="cost-hero-num cost-hub-value" data-testid="cost-estimate">@CostLabel</div>
                     <div class="cost-hub-meta">
-                        @_report.DraftResolution · <span data-testid="cost-basis">@EstimateBasisLabel</span>
+                        @_report.DraftResolution
+                        <span class="visually-hidden" data-testid="cost-basis">@EstimateBasisLabel</span>
                         @if (EstimateIsScaledForTarget)
                         {
-                            <span data-testid="cost-scaled"> · scaled to target</span>
+                            <span data-testid="cost-scaled"> · to target</span>
                         }
                     </div>
                 </div>
-                <div class="@(ShowToFinish ? "col-6 col-md-3" : "col-4")">
+                <div class="col-4">
                     <div class="text-muted cost-hub-label" title="Already billed on this project">Spent</div>
                     <div class="cost-hero-num cost-hub-value" data-testid="cost-spent">@Usd(s.ActualUsd)</div>
                 </div>
-                @if (ShowToFinish)
-                {
-                    <div class="col-6 col-md-3">
-                        <div class="text-muted cost-hub-label" title="Cost of clips still missing">To finish</div>
-                        <div class="cost-hero-num cost-hub-value" data-testid="cost-remaining">@Usd(DisplayRemainingUsd)</div>
-                        @if (!string.IsNullOrWhiteSpace(_report.RemainingLabel))
-                        {
-                            <div class="cost-hub-meta" data-testid="cost-remaining-label">@_report.RemainingLabel</div>
-                        }
-                    </div>
-                }
             </div>
 
             @if (!string.IsNullOrWhiteSpace(_shapeMessage))
             {
-                <div class="alert alert-success py-1 px-2 small mt-2 mb-0" data-testid="decision-shape-done">@_shapeMessage</div>
+                <div class="alert alert-success py-1 px-2 small mt-2 mb-0 d-flex flex-wrap align-items-center gap-2" data-testid="decision-shape-done">
+                    <span>@_shapeMessage</span>
+                    @if (!string.IsNullOrWhiteSpace(_prePruneCheckpointHash))
+                    {
+                        <button type="button"
+                                class="btn btn-sm btn-outline-secondary"
+                                data-testid="cost-revert-prune"
+                                disabled="@_busy"
+                                @onclick="RevertPruneAsync">
+                            Undo prune
+                        </button>
+                    }
+                </div>
             }
             @if (!string.IsNullOrWhiteSpace(_shapeError))
             {
@@ -88,9 +91,9 @@ else
                 <div class="alert alert-warning py-1 px-2 small mt-2 mb-0" data-testid="decision-collab-note">@_collabNote</div>
             }
 
-            @* Settings that move the forecast *@
+            @* Settings row: resolution + mode *@
             <div class="row g-2 align-items-end mt-2 cost-hub-controls">
-                <div class="col-sm-6 col-md-4">
+                <div class="col-sm-6 col-md-5">
                     <label class="form-label cost-hub-label mb-1">@L["CostPage.VideoResolution"]</label>
                     <div class="btn-group d-flex" role="group" aria-label="Video resolution">
                         @foreach (var res in new[] { "480p", "720p", "1080p" })
@@ -105,7 +108,7 @@ else
                         }
                     </div>
                 </div>
-                <div class="col-sm-6 col-md-4">
+                <div class="col-sm-6 col-md-5">
                     <label class="form-label cost-hub-label mb-1">Production</label>
                     <div class="btn-group d-flex" role="group" aria-label="Production mode" data-testid="cost-production-mode">
                         <button type="button"
@@ -129,24 +132,28 @@ else
                         @(ProductionModes.IsDraft(_productionMode) ? "Draft" : "Full")
                     </div>
                 </div>
-                <div class="col-md-4">
-                    @if (!string.IsNullOrWhiteSpace(_projectId))
-                    {
+            </div>
+
+            @* Target length + prune on one line *@
+            @if (!string.IsNullOrWhiteSpace(_projectId))
+            {
+                <div class="d-flex flex-wrap align-items-end gap-2 mt-2 cost-hub-length" data-testid="cost-length-row">
+                    <div class="flex-grow-1" style="min-width: 12rem; max-width: 22rem;">
                         <FilmLengthCard Embedded="true" ProjectId="@_projectId" Disabled="@_busy" OnChanged="OnFilmLengthChangedAsync" />
-                        @if (NeedsFitForTarget)
-                        {
-                            <button type="button"
-                                    class="btn btn-sm btn-outline-warning mt-1"
-                                    data-testid="cost-fit-target"
-                                    disabled="@_busy"
-                                    title="Rewrite screenplay density for the new length"
-                                    @onclick="RunFitTrimAsync">
-                                Fit screenplay to target
-                            </button>
-                        }
+                    </div>
+                    @if (NeedsFitForTarget)
+                    {
+                        <button type="button"
+                                class="btn btn-sm btn-outline-warning"
+                                data-testid="cost-fit-target"
+                                disabled="@_busy"
+                                title="Shorten the screenplay to hit target length. A checkpoint is saved first so you can undo."
+                                @onclick="RunFitTrimAsync">
+                            Prune script
+                        </button>
                     }
                 </div>
-            </div>
+            }
 
             @if (_phase == DecisionPhase.ConfirmGenerate)
             {
@@ -154,8 +161,8 @@ else
                      data-testid="decision-confirm-generate">
                     <div class="fw-semibold mb-1">Start generating?</div>
                     <p class="small mb-2 mb-md-2">
-                        About <strong>@DurationLabel</strong> · <strong>@CostLabel</strong>
-                        (@_report.DraftResolution@(EstimateIsScaledForTarget ? ", scaled to target" : "")).
+                        About <strong>@DurationLabel</strong> · estimate <strong>@CostLabel</strong>
+                        (@_report.DraftResolution).
                         @if (_confirmEstimateSnapshot is double snap && Math.Abs(snap - estimate) > 0.5)
                         {
                             <span class="text-warning"> Updated from @Usd(snap).</span>
@@ -215,9 +222,6 @@ else
                             </span>
                         }
                     </div>
-                    <p class="cost-hub-meta mt-1 mb-0">
-                        Generate shows the cost, then starts the movie. Fill missing clips anytime on Film.
-                    </p>
                 </div>
             }
             else if (IsViewerOnly)

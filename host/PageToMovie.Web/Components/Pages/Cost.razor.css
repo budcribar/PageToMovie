@@ -1,22 +1,22 @@
 /* Estimate hub — compact so DecisionCard fits without page scroll on laptop viewports */
 .cost-page .ptm-step-strip--studio {
-    margin-bottom: 0.5rem !important;
+    margin-bottom: 0.35rem !important;
 }
 .cost-page .ptm-step {
-    min-height: 2.65rem;
-    padding: 0.4rem 0.55rem;
+    min-height: 2.4rem;
+    padding: 0.3rem 0.5rem;
 }
 .cost-page .ptm-step__hint {
     display: none;
 }
 .cost-page .ptm-step__label {
-    font-size: 0.85rem;
+    font-size: 0.8rem;
 }
 .cost-page .ptm-step__num {
-    width: 1.35rem;
-    height: 1.35rem;
-    flex-basis: 1.35rem;
-    font-size: 0.7rem;
+    width: 1.25rem;
+    height: 1.25rem;
+    flex-basis: 1.25rem;
+    font-size: 0.65rem;
 }
 
 .cost-hub {
@@ -24,28 +24,42 @@
     background: var(--fs-bg-card, #1a222d);
 }
 
+.cost-hub .card-body {
+    padding-top: 0.55rem !important;
+    padding-bottom: 0.55rem !important;
+}
+
 .cost-hub-label {
-    font-size: 0.65rem;
+    font-size: 0.62rem;
     font-weight: 600;
     letter-spacing: 0.04em;
     text-transform: uppercase;
-    margin-bottom: 0.1rem;
+    margin-bottom: 0.05rem;
 }
 
 .cost-hub-value {
-    font-size: 1.35rem;
-    line-height: 1.15;
+    font-size: 1.15rem;
+    line-height: 1.1;
 }
 
 .cost-hub-meta {
-    font-size: 0.7rem;
+    font-size: 0.65rem;
     color: var(--fs-text-muted, #94a3b8);
-    line-height: 1.25;
+    line-height: 1.2;
 }
 
 .cost-hub-footer {
-    margin-top: 0.35rem;
-    margin-bottom: 0.25rem;
+    margin-top: 0.25rem;
+    margin-bottom: 0.15rem;
+}
+
+.cost-hub-length {
+    padding-top: 0.15rem;
+}
+
+.cost-hub-decision .btn {
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
 }
 
 .cost-edit-focus-list .list-group-item {
@@ -63,74 +77,14 @@
     color: var(--fs-text-primary, #e8eef6);
 }
 
-.cost-pie {
-    display: block;
-    transform: rotate(-90deg);
-}
-
-.cost-pie-hole {
-    fill: var(--fs-bg-card, #1a222d);
-}
-
-.cost-pie-center-label,
-.cost-pie-center-value {
-    fill: var(--fs-text-primary, #e8eef6);
-    font-size: 2.2px;
-    transform: rotate(90deg);
-    transform-origin: 21px 21px;
-}
-
-.cost-pie-center-label {
-    fill: var(--fs-text-muted, #94a3b8);
-    font-size: 1.8px;
-}
-
-.cost-pie-center-value {
-    font-weight: 700;
-    font-size: 2.6px;
-}
-
-.cost-pie-placeholder {
-    width: 160px;
-    height: 160px;
-    margin: 0 auto;
-    border-radius: 50%;
-    border: 14px solid rgba(148, 163, 184, 0.15);
-}
-
-.cost-swatch {
-    width: 0.7rem;
-    height: 0.7rem;
-    border-radius: 0.2rem;
-    flex-shrink: 0;
-}
-
-.cost-cat-card {
-    border-color: rgba(148, 163, 184, 0.2);
-    overflow: hidden;
-}
-
-.cost-cat-toggle {
-    color: inherit;
-}
-
-.cost-cat-toggle:hover {
-    background: rgba(148, 163, 184, 0.06);
-}
-
-.cost-legend li + li {
-    border-top: 1px solid rgba(148, 163, 184, 0.08);
-}
-
 /* Film length on Estimate: keep the embedded control short */
 .cost-page ::deep .form-label {
-    margin-bottom: 0.2rem;
+    margin-bottom: 0;
 }
-.cost-page ::deep .fw-semibold.mb-2 {
-    font-size: 0.65rem;
+.cost-page ::deep .cost-hub-label {
+    font-size: 0.62rem;
     font-weight: 600;
     letter-spacing: 0.04em;
     text-transform: uppercase;
     color: var(--fs-text-muted, #94a3b8);
-    margin-bottom: 0.15rem !important;
 }

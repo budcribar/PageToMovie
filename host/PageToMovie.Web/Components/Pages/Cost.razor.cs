@@ -58,6 +58,9 @@ public partial class Cost : IAsyncDisposable
     private double? _confirmEstimateSnapshot;
     private long? _lastPlanRev;
     private bool _collabHubHooked;
+    /// <summary>Checkpoint created right before last prune — enables Undo prune.</summary>
+    private string? _prePruneCheckpointHash;
+    private string? _prePruneCheckpointLabel;
 
     [Inject] private IJSRuntime Js { get; set; } = null!;
     [Inject] private ProjectCollabHubClient CollabHub { get; set; } = null!;
@@ -424,7 +427,7 @@ public partial class Cost : IAsyncDisposable
         }
     }
 
-    /// <summary>A5 — remaining $ to finish missing clips (only meaningful once gen has started).</summary>
+    /// <summary>A5 — remaining $ still available for Film strip / breakdown; not shown on Estimate hub.</summary>
     private double DisplayRemainingUsd
     {
         get
@@ -435,13 +438,6 @@ public partial class Cost : IAsyncDisposable
             return Math.Max(0, DisplayEstimateUsd - _report.Summary.ActualUsd);
         }
     }
-
-    /// <summary>Hide "To finish" until there is real progress — avoids Estimate vs Remaining confusion pre-gen.</summary>
-    private bool ShowToFinish =>
-        _report is not null
-        && (_report.Summary.ClipsOnDisk > 0
-            || _report.Summary.ActualUsd > 0.009
-            || string.Equals(_report.EstimateBasis, "remaining", StringComparison.OrdinalIgnoreCase));
 
     private string DurationLabel
     {
@@ -782,12 +778,69 @@ public partial class Cost : IAsyncDisposable
         _busy = true;
         _shapeError = null;
         _shapeMessage = null;
+        _prePruneCheckpointHash = null;
+        _prePruneCheckpointLabel = null;
         try
         {
+            var target = _filmRuntime?.TargetMinutes ?? 0;
+            var stamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm");
+            var ckName = target > 0
+                ? $"Before prune to {target} min ({stamp})"
+                : $"Before prune script ({stamp})";
+
+            // Snapshot first so Undo prune can restore screenplay / plan.
+            var (ok, ckErr) = await Engine.CreateCheckpointAsync(_projectId, ckName);
+            if (!ok)
+            {
+                _shapeError = "Could not save a checkpoint before prune — aborted. " + (ckErr ?? "");
+                return;
+            }
+
+            // Resolve the commit we just made (newest matching message).
+            var history = await Engine.ListCheckpointsAsync(_projectId, limit: 8);
+            var hit = history.FirstOrDefault(h =>
+                string.Equals(h.Message, ckName, StringComparison.Ordinal)
+                || (h.Message?.Contains("Before prune", StringComparison.OrdinalIgnoreCase) ?? false));
+            if (hit is not null && !string.IsNullOrWhiteSpace(hit.CommitHash))
+            {
+                _prePruneCheckpointHash = hit.CommitHash;
+                _prePruneCheckpointLabel = hit.Message ?? ckName;
+            }
+
             var result = await Engine.TrimScreenplayAsync(_projectId);
-            _shapeMessage = result?.Message ?? "Screenplay fitted to target length.";
-            if ((_filmRuntime?.TargetMinutes ?? 0) > 0)
-                await PersistPrefAsync("lastRuntimeTargetMin", _filmRuntime!.TargetMinutes.ToString());
+            var msg = result?.Message ?? "Script pruned to target length.";
+            if (!string.IsNullOrWhiteSpace(_prePruneCheckpointHash))
+                msg += " Snapshot saved — Undo prune if you want the previous script.";
+            _shapeMessage = msg;
+            if (target > 0)
+                await PersistPrefAsync("lastRuntimeTargetMin", target.ToString());
+            await LoadAsync();
+            try { await ActiveProject.RefreshReadinessAsync(Engine); } catch { /* */ }
+        }
+        catch (Exception ex)
+        {
+            _shapeError = ex.Message;
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task RevertPruneAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_projectId) || string.IsNullOrWhiteSpace(_prePruneCheckpointHash))
+            return;
+        _busy = true;
+        _shapeError = null;
+        try
+        {
+            var (ok, message, error) = await Engine.RevertToCheckpointAsync(_projectId, _prePruneCheckpointHash);
+            if (!ok)
+            {
+                _shapeError = error ?? "Could not undo prune.";
+                return;
+            }
+            _shapeMessage = message ?? "Reverted to snapshot before prune.";
+            _prePruneCheckpointHash = null;
+            _prePruneCheckpointLabel = null;
             await LoadAsync();
             try { await ActiveProject.RefreshReadinessAsync(Engine); } catch { /* */ }
         }

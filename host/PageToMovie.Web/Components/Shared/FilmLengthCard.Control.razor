@@ -1,24 +1,27 @@
 @namespace PageToMovie.Web.Components
 @inject IAppLocalizer L
 
-<div class="fw-semibold mb-2">@L["FilmLength.Title"]</div>
-<label class="form-label small mb-1" for="@Host._inputId">@L["FilmLength.TargetLength"]</label>
-<div class="d-flex flex-wrap gap-2 align-items-center">
+@* Compact: label + input + "use natural" on one row (prune sits beside this on Estimate) *@
+<div class="d-flex flex-wrap gap-2 align-items-center" data-testid="film-length-control">
+    <label class="form-label cost-hub-label mb-0 me-1" for="@Host._inputId">Target length</label>
     <input id="@Host._inputId"
            type="number"
            class="form-control form-control-sm"
-           style="max-width: 7rem;"
+           style="max-width: 5.5rem;"
            min="1"
            max="180"
            @bind="Host._edit"
            @bind:event="oninput"
            @bind:after="Host.ScheduleAutosave"
            disabled="@Host.Disabled"
-           data-testid="film-length-input" />
+           data-testid="film-length-input"
+           aria-label="Target length in minutes" />
+    <span class="small text-muted">min</span>
     <button type="button"
             class="btn btn-sm btn-outline-secondary"
             disabled="@(Host._saving || Host.Disabled)"
             data-testid="film-length-estimate"
+            title="Reset target to the current plan length"
             @onclick="Host.UseEstimateAsync">
         @L.Format("FilmLength.UseEstimate", Host._natural)
     </button>
@@ -29,5 +32,5 @@
 </div>
 @if (!string.IsNullOrWhiteSpace(Host._error))
 {
-    <div class="small text-danger mt-2" data-testid="film-length-error">@Host._error</div>
+    <div class="small text-danger mt-1" data-testid="film-length-error">@Host._error</div>
 }
