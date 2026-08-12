@@ -175,7 +175,7 @@
             </div>
         </div>
 
-        @* Row 2 — Look / Enrich / Fit (tools that shape the draft) *@
+        @* Row 2 — Look / Fit (tools that shape the draft). Enrich runs automatically after draft-from-book. *@
         @if (!string.IsNullOrWhiteSpace(ProjectId) && Tools.DraftExists)
         {
             <div class="fe-sp-bar fe-sp-bar--tools" data-testid="screenplay-tools" role="toolbar" aria-label="Screenplay tools">
@@ -186,17 +186,6 @@
                         @onclick='() => Tools.Toggle("look")'>
                     @L["Adaptation.Look"]
                     @if (Tools.LookDone)
-                    {
-                        <span class="fe-sp-tools__done" title="Done">✓</span>
-                    }
-                </button>
-                <button type="button"
-                        class="fe-sp-tools__tab @(Tools.OpenPanel == "enrich" ? "is-active" : "")"
-                        data-testid="screenplay-tool-enrich"
-                        disabled="@(Busy || Jobs.JobRunning)"
-                        @onclick='() => Tools.Toggle("enrich")'>
-                    @L["Adaptation.Enrich"]
-                    @if (Tools.EnrichDone)
                     {
                         <span class="fe-sp-tools__done" title="Done">✓</span>
                     }
@@ -273,40 +262,9 @@
                                       SaveLabel="Save & apply to screenplay"
                                       OnChanged="Tools.OnLookChangedAsync" />
                     <p class="small text-body-secondary mb-0 mt-2">
-                        Saving re-applies the look — dialogue, scenes, and story stay the same. Re-approve afterward.
+                        Look = visual style of the movie (live-action, anime, illustrated…). Saving rewrites
+                        description language to match that style — dialogue, scenes, and story stay the same. Re-approve afterward.
                     </p>
-                </div>
-            }
-            else if (Tools.OpenPanel == "enrich" && Tools.DraftExists)
-            {
-                <div class="fe-sp-tools__panel mb-2" data-testid="screenplay-panel-enrich">
-                    @if (!Tools.EnrichDone)
-                    {
-                        <p class="small text-body-secondary mb-2">
-                            New drafts enrich automatically after Create from book. Run again only if you want more visual detail
-                            (setting, lighting, small action). Dialogue and story stay the same.
-                        </p>
-                        <button type="button"
-                                class="btn btn-primary btn-sm"
-                                data-testid="embellish-run"
-                                disabled="@(Busy || Jobs.JobRunning)"
-                                @onclick="Tools.EmbellishAsync">
-                            Enrich the screenplay
-                        </button>
-                    }
-                    else
-                    {
-                        <p class="small text-body-secondary mb-2">
-                            Already enriched (usually right after the draft). Enrich again to add more, or re-approve when you’re happy.
-                        </p>
-                        <button type="button"
-                                class="btn btn-outline-secondary btn-sm"
-                                data-testid="embellish-run"
-                                disabled="@(Busy || Jobs.JobRunning)"
-                                @onclick="Tools.EmbellishAsync">
-                            Enrich again
-                        </button>
-                    }
                 </div>
             }
             else if (Tools.OpenPanel == "fit" && Tools.DraftExists)
