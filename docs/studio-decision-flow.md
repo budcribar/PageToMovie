@@ -695,7 +695,11 @@ Use this as the build/acceptance tracker. Check items off in PRs; leave dates/no
 | [x] | **I13** Take events + key scope + user_id under concurrent editors | H1 key_mode + take_kind on cost events |
 | [x] | **I14** QA matrix: two Editors + Owner full-film + logout handoff + delete locked scene | PhaseICollabTests + MultiUserLeaseUiTests I14 |
 
+### Backlog (not scheduled)
 
+| Done | Item | Notes |
+|:----:|------|-------|
+| [ ] | **J1** Shared **chat semaphore** (max ~4–8 in flight per process and/or per user) | Stage 2 already one job + scene gate (2); classifiers still fan out. `ApiWorkerPool` only caps **jobs**, not chat HTTP. Add gate used by `IChatClient` (and maybe vision) so plan/cast/classify peaks stay provider-friendly; keep 429 retry as safety net. **Do not** split Stage 2 into per-scene jobs just for throttle. |
 
 ---
 
