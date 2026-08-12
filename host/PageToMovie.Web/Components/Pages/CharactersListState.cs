@@ -157,9 +157,19 @@ public partial class Characters
         }
 
 
-        /// <summary>Operator-facing cast: hide group/chorus seeds (too abstract for average users).</summary>
+        /// <summary>When false (default), hide cast seeds that never appear in the shot plan.</summary>
+        internal bool _showUnusedInPlan;
+
+        /// <summary>Operator-facing cast: hide group/chorus seeds (too abstract for average users)
+        /// and unused-in-plan seeds unless the operator opts in.</summary>
         internal IEnumerable<CharacterSummary> CharactersForUi =>
-            _chars?.Where(c => !c.IsGroup) ?? Enumerable.Empty<CharacterSummary>();
+            _chars?.Where(c =>
+                !c.IsGroup
+                && (_showUnusedInPlan || c.UsedInPlan))
+            ?? Enumerable.Empty<CharacterSummary>();
+
+        internal int UnusedInPlanCount =>
+            _chars?.Count(c => !c.IsGroup && !c.UsedInPlan) ?? 0;
 
 
         internal int OperatorCastCount => CharactersForUi.Count();

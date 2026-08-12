@@ -2422,7 +2422,29 @@ public sealed partial class ProjectStore
                 Variants = variants,
                 AgeBand = info.TryGetProperty("age_band", out var ab) && Enum.TryParse<VoiceAgeBand>(ab.GetString(), true, out var parsedAb) ? parsedAb : null,
                 VariantOf = info.TryGetProperty("variant_of", out var vo) ? vo.GetString() : null,
+                UsedInPlan = true, // filled below from shot plan
             });
+        }
+
+        // Mark which seeds appear in the current plan (hide unused in UI; keep seeds on disk).
+        var (planCast, _) = CollectPlanUsageKeys(projectId);
+        if (planCast.Count > 0)
+        {
+            foreach (var r in rows)
+            {
+                r.UsedInPlan = planCast.Contains(r.Key)
+                    || (!string.IsNullOrWhiteSpace(r.VariantOf) && planCast.Contains(r.VariantOf!));
+            }
+            var usedBases = new HashSet<string>(
+                rows.Where(r => r.UsedInPlan).Select(r => r.Key),
+                StringComparer.OrdinalIgnoreCase);
+            foreach (var r in rows)
+            {
+                if (!r.UsedInPlan
+                    && !string.IsNullOrWhiteSpace(r.VariantOf)
+                    && usedBases.Contains(r.VariantOf!))
+                    r.UsedInPlan = true;
+            }
         }
 
         return rows
@@ -2459,6 +2481,7 @@ public sealed partial class ProjectStore
                 DisplayName = display,
                 Description = desc,
                 VisualLock = vlock,
+                UsedInPlan = true,
             };
             FillLocationPlateStatus(projectId, row);
             rows.Add(row);
@@ -2489,6 +2512,13 @@ public sealed partial class ProjectStore
                 if (el.TryGetProperty("visual_lock", out var v) && v.GetString() is { Length: > 0 } vl2)
                     row.VisualLock = vl2;
             }
+        }
+
+        var (_, planLocs) = CollectPlanUsageKeys(projectId);
+        if (planLocs.Count > 0)
+        {
+            foreach (var row in rows)
+                row.UsedInPlan = planLocs.Contains(row.Key);
         }
 
         return rows
@@ -2702,6 +2732,81 @@ public sealed partial class ProjectStore
 
         return ClipVideoPromptBuilder.ResolveCharacterRefPathPublic(
             GetProjectDir(projectId), charKey, allowNormalizedFallback);
+    }
+
+    /// <summary>
+    /// Cast / location keys referenced by the current Stage‑2 shot plan (scene + clip on-screen lists,
+    /// location_ids, primary_location_id). Empty when no blueprint — callers treat all seeds as used.
+    /// Seeds not in this set stay on disk but are hidden from default Cast / Locs UI.
+    /// </summary>
+    public (HashSet<string> CastKeys, HashSet<string> LocationKeys) CollectPlanUsageKeys(string projectId)
+    {
+        var cast = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var locs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            using var bp = LoadBlueprintSync(projectId);
+            if (bp is null)
+                return (cast, locs);
+
+            if (!bp.RootElement.TryGetProperty("scenes", out var scenes)
+                || scenes.ValueKind != JsonValueKind.Array)
+                return (cast, locs);
+
+            foreach (var s in scenes.EnumerateArray())
+            {
+                AddStringArray(s, "characters_on_screen", cast);
+                if (s.TryGetProperty("primary_location_id", out var pl)
+                    && pl.GetString() is { Length: > 0 } pLoc)
+                    locs.Add(pLoc);
+                AddStringArray(s, "location_ids", locs);
+
+                if (s.TryGetProperty("veo_clips", out var clips) && clips.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var c in clips.EnumerateArray())
+                    {
+                        AddStringArray(c, "characters_on_screen", cast);
+                        if (c.TryGetProperty("primary_location_id", out var cl)
+                            && cl.GetString() is { Length: > 0 } cLoc)
+                            locs.Add(cLoc);
+                        AddStringArray(c, "location_ids", locs);
+                        // Prompt mentions (clip-local cast not always listed on the scene)
+                        if (c.TryGetProperty("visual_prompt", out var vp))
+                        {
+                            var text = vp.GetString() ?? "";
+                            foreach (System.Text.RegularExpressions.Match m in
+                                     System.Text.RegularExpressions.Regex.Matches(text, @"Character_[A-Za-z0-9_]+"))
+                            {
+                                if (m.Success) cast.Add(m.Value);
+                            }
+                            foreach (System.Text.RegularExpressions.Match m in
+                                     System.Text.RegularExpressions.Regex.Matches(text, @"Loc_[A-Za-z0-9_]+"))
+                            {
+                                if (m.Success) locs.Add(m.Value);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // soft — no plan filter
+        }
+
+        return (cast, locs);
+
+        static void AddStringArray(JsonElement el, string prop, HashSet<string> into)
+        {
+            if (!el.TryGetProperty(prop, out var arr) || arr.ValueKind != JsonValueKind.Array)
+                return;
+            foreach (var x in arr.EnumerateArray())
+            {
+                var k = x.GetString();
+                if (!string.IsNullOrWhiteSpace(k))
+                    into.Add(k!);
+            }
+        }
     }
 
     /// <summary>
@@ -5698,6 +5803,9 @@ public sealed partial class ProjectStore
             var missing = new List<string>();
             foreach (var c in rows)
             {
+                // Unused-in-plan seeds don't block readiness (they're hidden from Cast UI by default).
+                if (!c.UsedInPlan)
+                    continue;
                 var hasVoice = !string.IsNullOrWhiteSpace(c.VoiceProfile);
                 // Voice-only: need voice profile, no portrait.
                 // Group/chorus: production extras — not shown on Characters UI; never block readiness.
@@ -5747,8 +5855,11 @@ public sealed partial class ProjectStore
             }
 
             status.Ready = ready;
-            status.ReadyForShots = ready == rows.Count && rows.Count > 0;
             status.Missing = missing;
+            var usedCount = rows.Count(c => c.UsedInPlan);
+            if (usedCount > 0 && usedCount < rows.Count)
+                status.Total = usedCount;
+            status.ReadyForShots = missing.Count == 0 && status.Total > 0;
         }
         catch
         {
@@ -5804,6 +5915,9 @@ public sealed partial class ProjectStore
 
         foreach (var c in rows)
         {
+            // Don't require plates/voice for seeds that never appear in the shot plan.
+            if (!c.UsedInPlan)
+                continue;
             var hasVoice = !string.IsNullOrWhiteSpace(c.VoiceProfile);
             // Groups are not operator-pinned; never block video gen.
             if (c.IsGroup)

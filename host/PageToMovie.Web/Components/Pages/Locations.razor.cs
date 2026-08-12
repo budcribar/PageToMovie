@@ -10,7 +10,14 @@ public partial class Locations : IDisposable
 
     private string _projectId = "";
     private List<LocationSummary> _locations = new();
+    private bool _showUnusedInPlan;
     private string? _selectedKey;
+
+    private IEnumerable<LocationSummary> LocationsForUi =>
+        _locations.Where(l => _showUnusedInPlan || l.UsedInPlan);
+
+    private int UnusedInPlanCount =>
+        _locations.Count(l => !l.UsedInPlan);
     private LocationSummary? _selected;
     private string _editDescription = "";
     private string _editVisualLock = "";

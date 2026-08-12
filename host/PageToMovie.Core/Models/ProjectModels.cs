@@ -407,6 +407,11 @@ public sealed class CharacterSummary
     public VoiceCloneStatus VoiceCloneStatus { get; set; } = VoiceCloneStatus.Ready;
     /// <summary>Base character's Key when this entry is an age-variant seed (child/teen/etc. of another character) — see cast_seeds.json's <c>variant_of</c>.</summary>
     public string? VariantOf { get; set; }
+    /// <summary>
+    /// True when this character appears in the current shot plan / scenes (on-screen cast).
+    /// Unused seeds are kept in cast_seeds but hidden from the default Characters list.
+    /// </summary>
+    public bool UsedInPlan { get; set; } = true;
 }
 
 /// <summary>Location seed from Stage‑1 / classifier (location_seed_tokens).</summary>
@@ -426,6 +431,11 @@ public sealed class LocationSummary
     public string? PreferredRelativePath { get; set; }
     /// <summary>Generated set plate options (variant_01..).</summary>
     public List<CharacterImageRef> Variants { get; set; } = new();
+    /// <summary>
+    /// True when this location is referenced by the current shot plan / scenes.
+    /// Unused seeds stay in cast_seeds but are hidden from the default Locations list.
+    /// </summary>
+    public bool UsedInPlan { get; set; } = true;
 }
 
 /// <summary>Save location description / visual_lock (Locations look panel).</summary>

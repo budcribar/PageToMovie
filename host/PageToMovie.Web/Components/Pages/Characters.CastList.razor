@@ -11,6 +11,21 @@
 
 
         <div class="col-md-3">
+            <div class="d-flex align-items-center justify-content-between gap-1 mb-1 px-1">
+                <span class="small text-muted">Cast</span>
+                @if (List!.UnusedInPlanCount > 0)
+                {
+                    <button type="button"
+                            class="btn btn-link btn-sm py-0 px-1"
+                            data-testid="char-toggle-unused"
+                            title="Seeds kept on disk but not in any scene of the current plan"
+                            @onclick="() => List!._showUnusedInPlan = !List!._showUnusedInPlan">
+                        @(List!._showUnusedInPlan
+                            ? "Hide unused"
+                            : $"Show unused ({List!.UnusedInPlanCount})")
+                    </button>
+                }
+            </div>
             <div class="list-group">
                 @foreach (var c in List!.CharactersForUiGrouped())
                 {
@@ -25,10 +40,11 @@
                             data-char-group="@(c.IsGroup ? "true" : "false")"
                             data-char-voice-only="@(c.VoiceOnly ? "true" : "false")"
                             data-char-age-variant="@(isAgeVariant ? "true" : "false")"
-                            class="list-group-item list-group-item-action char-list-item @(active ? "active" : "") @(isAgeVariant ? "char-list-item--variant" : "")"
+                            data-char-used="@(c.UsedInPlan ? "true" : "false")"
+                            class="list-group-item list-group-item-action char-list-item @(active ? "active" : "") @(isAgeVariant ? "char-list-item--variant" : "") @(!c.UsedInPlan ? "opacity-75" : "")"
                             style="@(isAgeVariant ? "padding-left: 2rem;" : null)"
                             disabled="@List!.CastListLocked"
-                            title="@(List!.CastListLocked ? "Wait until the current action finishes" : null)"
+                            title="@(List!.CastListLocked ? "Wait until the current action finishes" : (!c.UsedInPlan ? "Not in current shot plan — kept for later" : null))"
                             @onclick="() => List!.SelectAsync(c.Key)">
                         @if (c.VoiceOnly)
                         {
@@ -75,6 +91,10 @@
                         @if (c.IsGroup)
                         {
                             <span class="badge text-bg-info ms-1" title="Group / chorus cast">group</span>
+                        }
+                        @if (!c.UsedInPlan)
+                        {
+                            <span class="badge text-bg-secondary ms-1" title="Not in current shot plan">unused</span>
                         }
                         @if (!c.VoiceOnly && !hasVoice)
                         {

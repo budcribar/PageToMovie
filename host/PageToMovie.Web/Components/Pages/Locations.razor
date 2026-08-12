@@ -61,23 +61,47 @@
     {
         <div class="row g-3">
             <div class="col-12 col-md-4 col-lg-3">
+                <div class="d-flex align-items-center justify-content-between gap-1 mb-1 px-1">
+                    <span class="small text-muted">Places</span>
+                    @if (UnusedInPlanCount > 0)
+                    {
+                        <button type="button"
+                                class="btn btn-link btn-sm py-0 px-1"
+                                data-testid="loc-toggle-unused"
+                                title="Seeds kept on disk but not used in the current shot plan"
+                                @onclick="() => _showUnusedInPlan = !_showUnusedInPlan">
+                            @(_showUnusedInPlan
+                                ? "Hide unused"
+                                : $"Show unused ({UnusedInPlanCount})")
+                        </button>
+                    }
+                </div>
                 <div class="list-group list-group-flush border rounded bg-dark-subtle" style="max-height: 70vh; overflow: auto;">
-                    @foreach (var loc in _locations)
+                    @foreach (var loc in LocationsForUi)
                     {
                         var key = loc.Key;
                         var active = string.Equals(key, _selectedKey, StringComparison.OrdinalIgnoreCase);
                         <button type="button"
-                                class="list-group-item list-group-item-action bg-transparent text-start @(active ? "active" : "")"
+                                class="list-group-item list-group-item-action bg-transparent text-start @(active ? "active" : "") @(!loc.UsedInPlan ? "opacity-75" : "")"
+                                data-loc-used="@(loc.UsedInPlan ? "true" : "false")"
+                                title="@(!loc.UsedInPlan ? "Not in current shot plan — kept for later" : null)"
                                 @onclick="() => SelectAsync(key)">
-                            <div class="fw-semibold text-uppercase small">@loc.DisplayName</div>
+                            <div class="fw-semibold text-uppercase small">
+                                @loc.DisplayName
+                                @if (!loc.UsedInPlan)
+                                {
+                                    <span class="badge text-bg-secondary ms-1">unused</span>
+                                }
+                            </div>
                             <div class="small opacity-75">
                                 @(loc.Locked ? "Locked plate" : loc.Variants.Any(v => v.Exists) ? "Has variants" : "No plate yet")
                             </div>
                         </button>
                     }
-                    @if (_locations.Count == 0)
+                    @if (!LocationsForUi.Any())
                     {
                         <div class="p-3 small text-muted">No locations yet. Approve a screenplay / rebuild cast so places are seeded.</div>
+                    }
                     }
                 </div>
             </div>
