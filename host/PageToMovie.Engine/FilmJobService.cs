@@ -73,6 +73,7 @@ public sealed class FilmJobService
     private readonly IVoiceCloneClient _voiceClone;
     private readonly BookTextRegistryService? _bookRegistry;
     private readonly PageToMovie.Core.Abstractions.IBookFileSessionFactory? _bookFileSessionFactory;
+    private readonly XaiResponsesClient? _xaiResponses;
     private readonly VoiceAlignmentStore? _voiceAlignment;
     private readonly IVideoEditClient? _videoEdit;
     private readonly CastFromScreenplayService? _castExtract;
@@ -120,6 +121,7 @@ public sealed class FilmJobService
         GenerationErrorLogger? errorLogger = null,
         BookTextRegistryService? bookRegistry = null,
         PageToMovie.Core.Abstractions.IBookFileSessionFactory? bookFileSessionFactory = null,
+        XaiResponsesClient? xaiResponses = null,
         VoiceAlignmentStore? voiceAlignment = null,
         IVideoEditClient? videoEdit = null,
         CastFromScreenplayService? castExtract = null,
@@ -167,6 +169,7 @@ public sealed class FilmJobService
         _errorLogger = errorLogger;
         _bookRegistry = bookRegistry;
         _bookFileSessionFactory = bookFileSessionFactory;
+        _xaiResponses = xaiResponses;
         _voiceAlignment = voiceAlignment;
         _videoEdit = videoEdit;
         _castExtract = castExtract;
@@ -1184,7 +1187,9 @@ public sealed class FilmJobService
                 jobId: Snapshot.JobId,
                 bookRegistry: _bookRegistry,
                 cacheUserId: _user.UserId,
-                bookFileSessionFactory: _bookFileSessionFactory).ConfigureAwait(false);
+                bookFileSessionFactory: _bookFileSessionFactory,
+                responses: _xaiResponses,
+                useFakes: _opts.UseFakes).ConfigureAwait(false);
 
             if (!save.Ok)
             {
@@ -2431,7 +2436,11 @@ public sealed class FilmJobService
                     _ = AppendLogAsync(line);
                     _ = UpdateAsync(s => s.Message = line);
                 },
-                ct: ct);
+                ct: ct,
+                responses: _xaiResponses,
+                bookRegistry: _bookRegistry,
+                bookFileSessions: _bookFileSessionFactory,
+                useFakes: _opts.UseFakes);
 
             if (!result.Ok)
             {

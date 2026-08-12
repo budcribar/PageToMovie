@@ -6116,6 +6116,9 @@ app.MapPost("/api/projects/{id}/adaptation/reskin", async (
     PageToMovie.Core.Abstractions.IChatClient chat,
     IUserContext user,
     IOptions<PageToMovieOptions> opts,
+    XaiResponsesClient? responses,
+    BookTextRegistryService? books,
+    PageToMovie.Core.Abstractions.IBookFileSessionFactory? bookFileSessions,
     CancellationToken ct) =>
 {
     if (AuthGate.RequireLogin(user, opts) is { } denied)
@@ -6142,7 +6145,10 @@ app.MapPost("/api/projects/{id}/adaptation/reskin", async (
         if (string.IsNullOrWhiteSpace(medium))
             medium = ProjectVisionMeta.GetAdaptationMediumPreference(dir);
 
-        var result = await ScreenplayService.ReskinDraftAsync(store, id, medium, chat, ct: ct);
+        var result = await ScreenplayService.ReskinDraftAsync(
+            store, id, medium, chat, ct: ct,
+            responses: responses, bookRegistry: books, bookFileSessions: bookFileSessions,
+            useFakes: opts.Value.UseFakes);
         return await DraftEditResponseAsync(result, id, $"ptm:stage=reskin medium={medium}", store, user, ct);
     }
     catch (Exception ex)
@@ -6162,6 +6168,9 @@ app.MapPost("/api/projects/{id}/adaptation/embellish", async (
     PageToMovie.Core.Abstractions.IChatClient chat,
     IUserContext user,
     IOptions<PageToMovieOptions> opts,
+    XaiResponsesClient? responses,
+    BookTextRegistryService? books,
+    PageToMovie.Core.Abstractions.IBookFileSessionFactory? bookFileSessions,
     CancellationToken ct) =>
 {
     if (AuthGate.RequireLogin(user, opts) is { } denied)
@@ -6171,7 +6180,10 @@ app.MapPost("/api/projects/{id}/adaptation/embellish", async (
         await store.RequireProjectAsync(id, ct);
         var medium = ProjectVisionMeta.GetAdaptationMediumPreference(await store.GetProjectDirAsync(id, ct));
 
-        var result = await ScreenplayService.EmbellishDraftAsync(store, id, medium, chat, ct: ct);
+        var result = await ScreenplayService.EmbellishDraftAsync(
+            store, id, medium, chat, ct: ct,
+            responses: responses, bookRegistry: books, bookFileSessions: bookFileSessions,
+            useFakes: opts.Value.UseFakes);
         return await DraftEditResponseAsync(result, id, "ptm:stage=embellish", store, user, ct);
     }
     catch (Exception ex)
@@ -6191,6 +6203,9 @@ app.MapPost("/api/projects/{id}/adaptation/trim", async (
     PageToMovie.Core.Abstractions.IChatClient chat,
     IUserContext user,
     IOptions<PageToMovieOptions> opts,
+    XaiResponsesClient? responses,
+    BookTextRegistryService? books,
+    PageToMovie.Core.Abstractions.IBookFileSessionFactory? bookFileSessions,
     CancellationToken ct) =>
 {
     if (AuthGate.RequireLogin(user, opts) is { } denied)
@@ -6199,7 +6214,10 @@ app.MapPost("/api/projects/{id}/adaptation/trim", async (
     {
         await store.RequireProjectAsync(id, ct);
 
-        var result = await ScreenplayService.TrimDraftAsync(store, id, chat, ct: ct);
+        var result = await ScreenplayService.TrimDraftAsync(
+            store, id, chat, ct: ct,
+            responses: responses, bookRegistry: books, bookFileSessions: bookFileSessions,
+            useFakes: opts.Value.UseFakes);
         return await DraftEditResponseAsync(result, id, "ptm:stage=trim", store, user, ct);
     }
     catch (Exception ex)
@@ -6292,6 +6310,7 @@ app.MapPost("/api/projects/{id}/screenplay/from-book", async (
     IUserApiKeyProvider keys,
     IOptions<PageToMovieOptions> opts,
     PageToMovie.Core.Abstractions.IBookFileSessionFactory? bookFileSessions,
+    XaiResponsesClient? responses,
     CancellationToken ct) =>
 {
     if (await AuthGate.RequirePersonalGrokKeyAsync(user, userDb, opts, useFakes, keys) is { } denied)
@@ -6300,7 +6319,9 @@ app.MapPost("/api/projects/{id}/screenplay/from-book", async (
     {
         var result = await ScreenplayService.CreateDraftFromBookAsync(
             store, id, chat, ct: ct, bookRegistry: books, cacheUserId: user.UserId,
-            bookFileSessionFactory: bookFileSessions);
+            bookFileSessionFactory: bookFileSessions,
+            responses: responses,
+            useFakes: opts.Value.UseFakes);
         if (!result.Ok)
             return Results.BadRequest(new { ok = false, error = result.Error });
 

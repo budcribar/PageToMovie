@@ -263,6 +263,24 @@ public sealed class BookTextRegistryService
 
     // ── Provider file handles (xAI file_id, etc.) ─────────────────────────
 
+    public async Task<string?> FindBookIdForProjectAsync(string projectId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(projectId)) return null;
+        await using var conn = new SqliteConnection(_connectionString);
+        await conn.OpenAsync(ct).ConfigureAwait(false);
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT book_id FROM book_text_access
+            WHERE project_id=@p AND IFNULL(project_id,'') != ''
+            ORDER BY linked_at DESC
+            LIMIT 1;
+            """;
+        cmd.Parameters.AddWithValue("@p", projectId);
+        var val = await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false);
+        var id = val as string;
+        return string.IsNullOrWhiteSpace(id) ? null : id;
+    }
+
     public async Task<ProviderBookFile?> GetProviderFileAsync(
         string bookId, string provider = "xai", CancellationToken ct = default)
     {

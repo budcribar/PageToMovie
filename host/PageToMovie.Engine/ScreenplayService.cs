@@ -454,7 +454,11 @@ public static string NormalizeText(string text)
         PageToMovie.Core.Abstractions.IChatClient chat,
         string model = "",
         Action<string>? onProgress = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        XaiResponsesClient? responses = null,
+        BookTextRegistryService? bookRegistry = null,
+        PageToMovie.Core.Abstractions.IBookFileSessionFactory? bookFileSessions = null,
+        bool useFakes = false)
     {
         // Re-skin is a full-length edit — run it on the full-length base so it doesn't operate on an
         // already-trimmed draft, and update the base so Fit length trims from the re-skinned version.
@@ -462,10 +466,15 @@ public static string NormalizeText(string text)
         if (string.IsNullOrWhiteSpace(current))
             return new DraftEditResult { Ok = false, Error = "No screenplay draft to re-skin yet." };
 
+        var projectDir = await store.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         model = await ResolvePlanningModelAsync(store, projectId, model, "Re-skin screenplay", ct).ConfigureAwait(false);
         var progress = onProgress is null ? null : new Progress<string>(onProgress);
+        var viaFiles = FilesCompleter(
+            responses, bookRegistry, bookFileSessions, useFakes,
+            projectId, projectDir, current, bookText: null, model, onProgress,
+            ScreenplayEnrichFiles.ReskinInstruction, attachBook: false, label: "Look");
         var result = await new AdaptationService()
-            .ReskinAsync(current, visualMedium, chat, model, progress, ct)
+            .ReskinAsync(current, visualMedium, chat, model, progress, ct, viaFiles)
             .ConfigureAwait(false);
 
         return ApplyDraftEdit(store, projectId, result,
@@ -485,7 +494,11 @@ public static string NormalizeText(string text)
         PageToMovie.Core.Abstractions.IChatClient chat,
         string model = "",
         Action<string>? onProgress = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        XaiResponsesClient? responses = null,
+        BookTextRegistryService? bookRegistry = null,
+        PageToMovie.Core.Abstractions.IBookFileSessionFactory? bookFileSessions = null,
+        bool useFakes = false)
     {
         // Enrich is a full-length edit — run it on the full-length base and update the base so Fit length
         // trims from the enriched version (otherwise trimming would discard the enrichment).
@@ -504,8 +517,13 @@ public static string NormalizeText(string text)
 
         model = await ResolvePlanningModelAsync(store, projectId, model, "Enrich screenplay", ct).ConfigureAwait(false);
         var progress = onProgress is null ? null : new Progress<string>(onProgress);
+        var viaFiles = FilesCompleter(
+            responses, bookRegistry, bookFileSessions, useFakes,
+            projectId, projectDir, current, bookText, model, onProgress,
+            ScreenplayEnrichFiles.EnrichInstruction, attachBook: true, label: "Enrich");
+
         var result = await new AdaptationService()
-            .EmbellishAsync(current, visualMedium, chat, bookText, model, progress, ct)
+            .EmbellishAsync(current, visualMedium, chat, bookText, model, progress, ct, viaFiles)
             .ConfigureAwait(false);
 
         return ApplyDraftEdit(store, projectId, result,
@@ -559,7 +577,11 @@ public static string NormalizeText(string text)
         PageToMovie.Core.Abstractions.IChatClient chat,
         string model = "",
         Action<string>? onProgress = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        XaiResponsesClient? responses = null,
+        BookTextRegistryService? bookRegistry = null,
+        PageToMovie.Core.Abstractions.IBookFileSessionFactory? bookFileSessions = null,
+        bool useFakes = false)
     {
         // Establish / read the full-length base to trim from (never the already-trimmed working draft).
         var basePath = GetMaxBasePath(store, projectId);
@@ -581,15 +603,56 @@ public static string NormalizeText(string text)
         var target = runtime.TargetMinutes > 0 ? runtime.TargetMinutes : runtime.NaturalMinutes;
         var natural = runtime.NaturalMinutes > 0 ? runtime.NaturalMinutes : target;
 
+        var projectDir = await store.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         model = await ResolvePlanningModelAsync(store, projectId, model, "Fit screenplay to length", ct).ConfigureAwait(false);
         var progress = onProgress is null ? null : new Progress<string>(onProgress);
+        var viaFiles = FilesCompleter(
+            responses, bookRegistry, bookFileSessions, useFakes,
+            projectId, projectDir, baseFountain, bookText: null, model, onProgress,
+            ScreenplayEnrichFiles.TrimInstruction(target, natural), attachBook: false, label: "Fit length");
         var result = await new AdaptationService()
-            .TrimAsync(baseFountain, target, natural, chat, model, progress, ct)
+            .TrimAsync(baseFountain, target, natural, chat, model, progress, ct, viaFiles)
             .ConfigureAwait(false);
 
         return ApplyDraftEdit(store, projectId, result,
             appliedMessage: $"Trimmed the screenplay toward ~{target} min ({result.SceneCountAfter} scenes).",
             substep: ProjectStore.BookSubstepKeys.FitLength, substepTargetMinutes: target);
+    }
+
+    static Func<string, string, CancellationToken, Task<string?>>? FilesCompleter(
+        XaiResponsesClient? responses,
+        BookTextRegistryService? bookRegistry,
+        PageToMovie.Core.Abstractions.IBookFileSessionFactory? bookFileSessions,
+        bool useFakes,
+        string projectId,
+        string projectDir,
+        string screenplay,
+        string? bookText,
+        string model,
+        Action<string>? onProgress,
+        string instruction,
+        bool attachBook,
+        string label,
+        string screenplayKind = ProjectXaiArtifactFiles.KindScreenplayMax,
+        string screenplayFilename = "screenplay.max.fountain")
+    {
+        if (responses is null) return null;
+        var deps = new ScreenplayEnrichFiles.Deps(responses, bookRegistry, bookFileSessions, useFakes);
+        return async (system, _, token) =>
+        {
+            try
+            {
+                return await ScreenplayEnrichFiles.TryCompleteAsync(
+                    deps, projectId, projectDir, screenplay, bookText, system, instruction, model,
+                    onProgress, token, attachBook, requireScreenplay: true, screenplayKind, screenplayFilename, label)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                onProgress?.Invoke($"{label} via files failed, falling back to inlined chat: " + ex.Message);
+                return null;
+            }
+        };
     }
 
     /// <summary>
@@ -734,7 +797,9 @@ public static string NormalizeText(string text)
         string? cacheUserId = null,
         int? totalRuntimeMinutes = null,
         PageToMovie.Core.Abstractions.IBookFileSessionFactory? bookFileSessionFactory = null,
-        AdaptationDefaultsOptions? adaptationDefaults = null)
+        AdaptationDefaultsOptions? adaptationDefaults = null,
+        XaiResponsesClient? responses = null,
+        bool useFakes = false)
     {
         var projectDir = await store.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         var bookPath = Path.Combine(projectDir, "source", "book_full.txt");
@@ -1020,7 +1085,8 @@ public static string NormalizeText(string text)
             }
 
             await TryAutoEnrichAfterDraftAsync(
-                store, projectId, chat, model, onProgress, ct).ConfigureAwait(false);
+                store, projectId, chat, model, onProgress, ct,
+                responses, bookRegistry, bookFileSessionFactory, useFakes).ConfigureAwait(false);
 
             save.Message = "Screenplay draft ready — review and approve";
             return save;
@@ -1041,7 +1107,11 @@ public static string NormalizeText(string text)
         PageToMovie.Core.Abstractions.IChatClient? chat,
         string model,
         Action<string>? onProgress,
-        CancellationToken ct)
+        CancellationToken ct,
+        XaiResponsesClient? responses = null,
+        BookTextRegistryService? bookRegistry = null,
+        PageToMovie.Core.Abstractions.IBookFileSessionFactory? bookFileSessions = null,
+        bool useFakes = false)
     {
         if (chat is null || !chat.IsConfigured) return;
         try
@@ -1056,7 +1126,8 @@ public static string NormalizeText(string text)
             catch { /* enrich without medium */ }
 
             var enrich = await EmbellishDraftAsync(
-                store, projectId, medium, chat, model, onProgress, ct).ConfigureAwait(false);
+                store, projectId, medium, chat, model, onProgress, ct,
+                responses, bookRegistry, bookFileSessions, useFakes).ConfigureAwait(false);
             if (enrich.Ok)
                 onProgress?.Invoke(enrich.Message ?? "Screenplay enriched.");
             else if (!string.IsNullOrWhiteSpace(enrich.Error))

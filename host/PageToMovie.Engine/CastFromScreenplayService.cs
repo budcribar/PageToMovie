@@ -1,4 +1,5 @@
 using PageToMovie.Core.Models;
+using PageToMovie.Core.Options;
 using PageToMovie.Adaptation.Validation;
 using System.Text;
 using System.Text.Json;
@@ -9,6 +10,8 @@ using PageToMovie.Engine.ModelExecution;
 using PageToMovie.Engine.ModelBacked;
 using PageToMovie.Fountain;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using PageToMovie.Core.Abstractions;
 
 namespace PageToMovie.Engine;
 
@@ -42,6 +45,10 @@ public sealed class CastFromScreenplayService
     private readonly ProjectRulesService _projectRules;
     private readonly CharacterBookPlateService? _plateService;
     private readonly ILogger<CastFromScreenplayService> _log;
+    private readonly XaiResponsesClient? _responses;
+    private readonly BookTextRegistryService? _bookRegistry;
+    private readonly IBookFileSessionFactory? _bookFileSessions;
+    private readonly bool _useFakes;
 
     public CastFromScreenplayService(
         ProjectStore projects,
@@ -49,7 +56,11 @@ public sealed class CastFromScreenplayService
         CastVisualLiteralizeService literalize,
         ProjectRulesService projectRules,
         ILogger<CastFromScreenplayService> log,
-        CharacterBookPlateService? plateService = null)
+        CharacterBookPlateService? plateService = null,
+        XaiResponsesClient? responses = null,
+        BookTextRegistryService? bookRegistry = null,
+        IBookFileSessionFactory? bookFileSessions = null,
+        IOptions<PageToMovieOptions>? opts = null)
     {
         _projects = projects;
         _chat = chat;
@@ -57,6 +68,10 @@ public sealed class CastFromScreenplayService
         _projectRules = projectRules;
         _log = log;
         _plateService = plateService;
+        _responses = responses;
+        _bookRegistry = bookRegistry;
+        _bookFileSessions = bookFileSessions;
+        _useFakes = opts?.Value.UseFakes ?? false;
     }
 
     public sealed class ExtractResult
@@ -146,21 +161,26 @@ public sealed class CastFromScreenplayService
         var user = BuildUserPrompt(fountain, book, locationHints);
 
         onProgress?.Invoke("Calling Grok for closed cast + locations (book-aware looks)…");
-        var pipeline = new ValidatedModelOperation<CastModelInput, string, Dictionary<string, object?>>(
-            new CastChatOperation(_chat, "cast_extraction", "1", ChatCallModes.CastFromScreenplay, 0.2),
-            new CastJsonObjectParser(),
-            new CastExtractionValidator(),
-            new TerminalCastFallback(),
-            new ModelOperationOptions { CorrectiveMaxAttempts = 1 });
-        var lifecycle = await pipeline.ExecuteAsync(new CastModelInput(system, user, model), ct).ConfigureAwait(false);
-        await WriteLifecycleManifestAsync(projectId, "cast_extraction", lifecycle, ct).ConfigureAwait(false);
-        if (!lifecycle.Success || lifecycle.Value is null)
-            return new ExtractResult
-            {
-                Ok = false,
-                Error = lifecycle.Error ?? string.Join(" ", lifecycle.ValidationIssues.Select(i => i.Message)),
-            };
-        var parsed = lifecycle.Value;
+        Dictionary<string, object?>? parsed = await TryParseViaFilesAsync(
+            projectId, fountain, book, system, locationHints, model, onProgress, ct).ConfigureAwait(false);
+        if (parsed is null)
+        {
+            var pipeline = new ValidatedModelOperation<CastModelInput, string, Dictionary<string, object?>>(
+                new CastChatOperation(_chat, "cast_extraction", "1", ChatCallModes.CastFromScreenplay, 0.2),
+                new CastJsonObjectParser(),
+                new CastExtractionValidator(),
+                new TerminalCastFallback(),
+                new ModelOperationOptions { CorrectiveMaxAttempts = 1 });
+            var lifecycle = await pipeline.ExecuteAsync(new CastModelInput(system, user, model), ct).ConfigureAwait(false);
+            await WriteLifecycleManifestAsync(projectId, "cast_extraction", lifecycle, ct).ConfigureAwait(false);
+            if (!lifecycle.Success || lifecycle.Value is null)
+                return new ExtractResult
+                {
+                    Ok = false,
+                    Error = lifecycle.Error ?? string.Join(" ", lifecycle.ValidationIssues.Select(i => i.Message)),
+                };
+            parsed = lifecycle.Value;
+        }
 
         var normalized = NormalizeCastDoc(parsed, projectId, book);
 
@@ -424,6 +444,53 @@ public sealed class CastFromScreenplayService
                 return text;
         }
         return null;
+    }
+
+    private async Task<Dictionary<string, object?>?> TryParseViaFilesAsync(
+        string projectId,
+        string fountain,
+        string? book,
+        string system,
+        string? locationHints,
+        string model,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
+        if (_responses is null) return null;
+        try
+        {
+            var dir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
+            var deps = new ScreenplayEnrichFiles.Deps(_responses, _bookRegistry, _bookFileSessions, _useFakes);
+            var raw = await ScreenplayEnrichFiles.TryCompleteAsync(
+                deps, projectId, dir, fountain, book, system,
+                ScreenplayEnrichFiles.CastInstruction(locationHints),
+                model, onProgress, ct,
+                attachBook: !string.IsNullOrWhiteSpace(book),
+                requireScreenplay: true,
+                screenplayKind: ProjectXaiArtifactFiles.KindScreenplayDraft,
+                screenplayFilename: "screenplay.fountain",
+                label: "Cast extract").ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(raw)) return null;
+
+            var parse = new CastJsonObjectParser().Parse(raw);
+            if (parse.Value is null || parse.Issues.Count > 0)
+            {
+                onProgress?.Invoke("File-id cast response was not valid JSON — falling back to inlined chat.");
+                return null;
+            }
+            var issues = new CastExtractionValidator().Validate(parse.Value);
+            if (issues.Count > 0)
+            {
+                onProgress?.Invoke("File-id cast failed validation — falling back to inlined chat.");
+                return null;
+            }
+            return parse.Value;
+        }
+        catch (Exception ex)
+        {
+            onProgress?.Invoke("File-id cast failed, falling back to inlined chat: " + ex.Message);
+            return null;
+        }
     }
 
     private static string BuildUserPrompt(string fountain, string? book, string? locationHints = null)

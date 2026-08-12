@@ -69,6 +69,9 @@ When debugging or implementing against a sample project (e.g. Buster / Buster2 /
    - **Do not** reimplement Stage‑1 heuristics or prompts in Engine/Web/Api. Engine may only **orchestrate** (load book, inject `IChatClient` / `IBookFileSession`, save fountain / vision_meta, jobs).
    - Call sites should prefer **`AdaptationService`** (façade). Thin Engine wrappers that forward to Adaptation are temporary compatibility only.
    - Module **must not** reference `ProjectStore`, project paths, SQLite, YouTube, Stage2, or media folders. Architecture tests enforce the boundary.
+11. **Cache provider data files — never resend a large artifact you already uploaded.**
+   - Books, screenplays, locked plates, and clip videos that go to a Files / Responses / edit API must ride a **stable `file_id`** (content SHA-256 + expiry), not be pasted or base64'd on every call.
+   - See **Provider file cache** below. A new chat/image/video path that inlines `book_full.txt`, `screenplay*.fountain`, or image bytes is a bug unless Files is unavailable (then fall back and log).
 
 Buster (and other fixtures) are **eval / demo projects**, not product requirements.
 
@@ -98,6 +101,44 @@ Buster (and other fixtures) are **eval / demo projects**, not product requiremen
 Loader: `SupportedModelCatalog.TryLoadFromJson` / `EnsureLoaded`. WASM hydrates via `GetModelsCatalogJsonAsync` before relying on static catalog APIs.
 
 See also: `host/docs/supported-models.md`.
+
+---
+
+## Provider file cache (cheaper, faster API runs)
+
+**Rule:** if an artifact is large and reused, **upload once, attach by id**. Do not paste the book, the full screenplay, or re-base64 a plate/clip on every call.
+
+Our `book_id` is **internal** (SHA of the text). Providers do not know it. The thing they reuse is their **`file_id`** (xAI Files, clip `source_file_id`, etc.). Persist that handle next to the content hash and expiry; skip upload when the hash still matches and the handle is unexpired (~1h safety margin).
+
+### How to do it
+
+| Artifact | Canonical handle | Implementation |
+|----------|------------------|----------------|
+| Book text | xAI `file_id` on `book_id` | `BookTextRegistryService` + `XaiBookFileSession` / `IBookFileSession` |
+| Screenplay (full-length / draft) | project `file_id` keyed by SHA | `ProjectXaiArtifactFiles` (`source/xai_artifact_files.json`) |
+| Clip video (for edit / extend) | `source_file_id` on the take | `GrokVideoClient` storage + `ClipSidecarService` |
+| Exact-repeat chat (classifiers, same prompt) | on-disk completion cache | `CachingChatClient` (hash of model + prompts; skip if temperature > 0) |
+| Book → Fountain conversion | derived artifact on `book_id` | `BookTextRegistryService` adaptation_conversion cache |
+
+**Call shape:** short instruction + `input_file` ids (Responses / Files). `chat/completions` has **no** file slot — if the model is xAI/Grok, prefer Responses. If Files is down, fakes mode, or a non-file provider, fall back to inline and **log** it.
+
+**Do not** invent a second cache beside these tables. Extend `ProjectXaiArtifactFiles` or the book registry.
+
+### Audit — still inlining (fix when you touch the path)
+
+| Call | Today | Cache it as |
+|------|--------|-------------|
+| Enrich | Files path (book + `screenplay.max`); fallback still pastes 40k book + full fountain | Done for Grok; keep fallback last-resort |
+| Stage 1 book → Fountain | Book `file_id` + `previous_response_id` | Done |
+| Look / reskin | Files path (`screenplay.max` file_id); fallback inlines | Done for Grok |
+| Fit length / trim | Files path (`screenplay.max` file_id); fallback inlines | Done for Grok |
+| Cast extract | Files path (book + `screenplay.fountain` file_ids); fallback inlines | Done for Grok |
+| Stage 2 + beat classifiers | Scene/beat snippets only — **do not** attach the full screenplay (would re-bill 200k tokens per classifier) | `CachingChatClient` for exact repeats |
+| Scene music scoring | Scene setting snippet, not the full fountain | Leave inline |
+| Character / location look gen | Locked plates as local bytes / data-URI | Image API has no `file_id` slot — leave bytes; never re-upload an unchanged plate when a handle exists |
+| Video edit / extend | Clip `source_file_id` when present | Done — do not regress to base64 |
+
+When adding a new chat/image/video call: **grep for an existing file handle first.** If the body would include `book_full.txt`, `screenplay*.fountain`, or a previously generated image/video, attach the stored id.
 
 ---
 
@@ -378,7 +419,7 @@ When debugging runtime behavior on the live Railway server across coding agent s
 
 ---
 
-*Last updated: 2026-07-30 — product north star; auto-run long-term; general solutions; UI copy principles; ephemeral migration cleanup; server diagnostics; platform architecture & pipeline integrity rules; strict client-side media ownership enforcement; strict operator control for paid AI tests.*
+*Last updated: 2026-08-12 — provider file cache (don't resend artifacts); product north star; auto-run long-term; general solutions; UI copy principles; ephemeral migration cleanup; server diagnostics; platform architecture & pipeline integrity rules; strict client-side media ownership enforcement; strict operator control for paid AI tests.*
 
 
 ## Stage‑1 prompt tokens (book → Fountain)

@@ -270,7 +270,8 @@ public sealed class AdaptationService
         IChatClient chat,
         string? model = null,
         IProgress<string>? progress = null,
-        CancellationToken ct = default) =>
+        CancellationToken ct = default,
+        Func<string, string, CancellationToken, Task<string?>>? completeViaFiles = null) =>
         await ApplyDescriptiveEditAsync(
             fountain,
             await AdaptationPromptPack.BuildReskinSystemPromptAsync(visualMedium, ct).ConfigureAwait(false),
@@ -281,7 +282,8 @@ public sealed class AdaptationService
             model: model,
             progress: progress,
             progressMessage: "Applying look to the screenplay…",
-            ct: ct).ConfigureAwait(false);
+            ct: ct,
+            completeViaFiles: completeViaFiles).ConfigureAwait(false);
 
     /// <summary>
     /// Enrich an existing Fountain screenplay's descriptive layer for the target medium — incorporating
@@ -295,11 +297,12 @@ public sealed class AdaptationService
         string? bookText = null,
         string? model = null,
         IProgress<string>? progress = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        Func<string, string, CancellationToken, Task<string?>>? completeViaFiles = null)
     {
         // Ground enrichment in the source when we have it (kept bounded to protect the prompt budget).
         string? userContent = null;
-        if (!string.IsNullOrWhiteSpace(bookText))
+        if (completeViaFiles is null && !string.IsNullOrWhiteSpace(bookText))
         {
             const int maxBookChars = 40_000;
             var book = bookText.Length <= maxBookChars ? bookText : bookText[..maxBookChars];
@@ -318,7 +321,8 @@ public sealed class AdaptationService
             model: model,
             progress: progress,
             progressMessage: "Enriching the screenplay…",
-            ct: ct).ConfigureAwait(false);
+            ct: ct,
+            completeViaFiles: completeViaFiles).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -335,7 +339,8 @@ public sealed class AdaptationService
         string? model,
         IProgress<string>? progress,
         string progressMessage,
-        CancellationToken ct)
+        CancellationToken ct,
+        Func<string, string, CancellationToken, Task<string?>>? completeViaFiles = null)
     {
         ArgumentNullException.ThrowIfNull(chat);
         fountain ??= "";
@@ -343,18 +348,25 @@ public sealed class AdaptationService
 
         if (string.IsNullOrWhiteSpace(fountain))
             return new FountainEditResult(false, fountain, before, before, true, $"No screenplay to {operation}.");
-        if (!chat.IsConfigured)
+        if (!chat.IsConfigured && completeViaFiles is null)
             return new FountainEditResult(false, fountain, before, before, true, "AI service not configured.");
 
         progress?.Report(progressMessage);
-        var userPrompt = userContent is null ? fountain : userContent + fountain;
-
-        var raw = await chat.CompleteAsync(
-            system,
-            userPrompt,
-            model ?? "",
-            mode: mode,
-            ct: ct).ConfigureAwait(false);
+        string? raw = null;
+        if (completeViaFiles is not null)
+        {
+            raw = await completeViaFiles(system, fountain, ct).ConfigureAwait(false);
+        }
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            var userPrompt = userContent is null ? fountain : userContent + fountain;
+            raw = await chat.CompleteAsync(
+                system,
+                userPrompt,
+                model ?? "",
+                mode: mode,
+                ct: ct).ConfigureAwait(false);
+        }
 
         var cleaned = BookToFountainConverter.StripFences(raw ?? "");
         if (string.IsNullOrWhiteSpace(cleaned))
@@ -389,7 +401,8 @@ public sealed class AdaptationService
         IChatClient chat,
         string? model = null,
         IProgress<string>? progress = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        Func<string, string, CancellationToken, Task<string?>>? completeViaFiles = null)
     {
         ArgumentNullException.ThrowIfNull(chat);
         fountain ??= "";
@@ -397,14 +410,20 @@ public sealed class AdaptationService
 
         if (string.IsNullOrWhiteSpace(fountain))
             return new FountainEditResult(false, fountain, before, before, true, "No screenplay to trim.");
-        if (!chat.IsConfigured)
+        if (!chat.IsConfigured && completeViaFiles is null)
             return new FountainEditResult(false, fountain, before, before, true, "AI service not configured.");
 
         progress?.Report($"Trimming the screenplay toward ~{Math.Max(1, targetMinutes)} min…");
         var system = await AdaptationPromptPack.BuildTrimSystemPromptAsync(targetMinutes, naturalMinutes, ct).ConfigureAwait(false);
 
-        var raw = await chat.CompleteAsync(
-            system, fountain, model ?? "", mode: "fountain_trim", ct: ct).ConfigureAwait(false);
+        string? raw = null;
+        if (completeViaFiles is not null)
+            raw = await completeViaFiles(system, fountain, ct).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            raw = await chat.CompleteAsync(
+                system, fountain, model ?? "", mode: "fountain_trim", ct: ct).ConfigureAwait(false);
+        }
 
         var cleaned = BookToFountainConverter.StripFences(raw ?? "");
         if (string.IsNullOrWhiteSpace(cleaned))

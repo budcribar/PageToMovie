@@ -218,6 +218,41 @@ public sealed class XaiResponsesClient
         return SendResponsesRequestAsync(payload, ct);
     }
 
+    /// <summary>
+    /// Same as <see cref="CompleteWithFilesAsync"/> plus a system <c>instructions</c> field
+    /// (enrich: book + screenplay attached by file_id, no bodies inlined).
+    /// </summary>
+    public Task<SessionTurnResult> CompleteWithFilesAndSystemAsync(
+        string model,
+        IReadOnlyList<string> fileIds,
+        string systemPrompt,
+        string instructionText,
+        CancellationToken ct = default,
+        double? temperature = null)
+    {
+        var content = new List<object>
+        {
+            new Dictionary<string, object?> { ["type"] = "input_text", ["text"] = instructionText },
+        };
+        foreach (var fileId in fileIds)
+        {
+            if (string.IsNullOrWhiteSpace(fileId)) continue;
+            content.Add(new Dictionary<string, object?> { ["type"] = "input_file", ["file_id"] = fileId });
+        }
+
+        var payload = new Dictionary<string, object?>
+        {
+            ["model"] = model,
+            ["instructions"] = systemPrompt,
+            ["input"] = new object[]
+            {
+                new Dictionary<string, object?> { ["role"] = "user", ["content"] = content },
+            },
+        };
+        if (temperature is not null) payload["temperature"] = temperature.Value;
+        return SendResponsesRequestAsync(payload, ct);
+    }
+
     private async Task<SessionTurnResult> SendResponsesRequestAsync(
         Dictionary<string, object?> payload,
         CancellationToken ct)
