@@ -206,9 +206,12 @@ public partial class FilmLengthCard : IDisposable
         _edit = Math.Clamp(_natural > 0 ? _natural : 1, 1, 180);
         _error = null;
         // Cancel any debounced autosave so a pending 120-min save can't win the race.
-        _saveCts?.Cancel();
-        _saveCts?.Dispose();
-        _saveCts = null;
+        if (_saveCts is not null)
+        {
+            await _saveCts.CancelAsync();
+            _saveCts.Dispose();
+            _saveCts = null;
+        }
         // Wait out an in-flight save (previous keystrokes) before forcing natural length.
         var spin = 0;
         while (_saving && spin++ < 40)

@@ -544,7 +544,7 @@ public sealed class EngineApiClient
         int n;
         while ((n = await net.ReadAsync(buffer.AsMemory(0, buffer.Length), ct)) > 0)
         {
-            ms.Write(buffer, 0, n);
+            await ms.WriteAsync(buffer.AsMemory(0, n), ct);
             loaded += n;
             if (onProgress is null) continue;
             var now = DateTime.UtcNow;

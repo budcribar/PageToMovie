@@ -47,7 +47,7 @@ static async Task<int> RunAsync(SimOptions opts)
             var workspace = ProjectSandbox.FindWorkspaceRoot(opts.WorkspaceRoot);
             if (workspace is null)
             {
-                Console.Error.WriteLine(
+                await Console.Error.WriteLineAsync(
                     "Setup: could not find workspace root (folder with projects/). Pass --workspace PATH.");
                 return 2;
             }
@@ -62,7 +62,7 @@ static async Task<int> RunAsync(SimOptions opts)
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"Setup: sandbox prepare failed: {ex.Message}");
+            await Console.Error.WriteLineAsync($"Setup: sandbox prepare failed: {ex.Message}");
             return 2;
         }
     }
@@ -115,7 +115,7 @@ static async Task<int> RunAsync(SimOptions opts)
 
     if (!healthOk)
     {
-        Console.Error.WriteLine(
+        await Console.Error.WriteLineAsync(
             $"Setup: API not reachable at {opts.BaseUrl} after {opts.WaitForApiSec}s. " +
             $"Last error: {lastErr?.Message ?? "unknown"}. " +
             "Start PageToMovie.Api first (profile 'http (fakes)'), or increase --waitForApiSec.");
@@ -128,7 +128,7 @@ static async Task<int> RunAsync(SimOptions opts)
         var genWeight = opts.Scenario == LoadSimScenario.Mixed ? opts.GenWeight : opts.Scenario == LoadSimScenario.Gen ? 1.0 : 0;
         if (genWeight > 0)
         {
-            Console.Error.WriteLine(
+            await Console.Error.WriteLineAsync(
                 "Setup: API UseFakes=false but scenario includes gen. " +
                 "Start Api with profile 'http (fakes)' or set PageToMovie_USE_FAKES=true.");
             return 2;
@@ -159,7 +159,7 @@ static async Task<int> RunAsync(SimOptions opts)
 
         if (!found)
         {
-            Console.Error.WriteLine(
+            await Console.Error.WriteLineAsync(
                 $"Setup: project '{opts.ProjectId}' not listed by API. " +
                 $"Ensure folder projects/{opts.ProjectId} exists under the API workspace. " +
                 "Restart Api after adding the project.");
@@ -176,7 +176,7 @@ static async Task<int> RunAsync(SimOptions opts)
     }
     catch (Exception ex)
     {
-        Console.Error.WriteLine($"Setup: project check failed: {ex.Message}");
+        await Console.Error.WriteLineAsync($"Setup: project check failed: {ex.Message}");
         return 2;
     }
 
@@ -272,13 +272,13 @@ static async Task<int> RunAsync(SimOptions opts)
         if (fail > 0 || pending > 0 || ok < opts.Users)
         {
             go.TrySetResult(); // unblock any waiters
-            Console.Error.WriteLine(
+            await Console.Error.WriteLineAsync(
                 $"Setup: ready barrier failed — ready={ok}/{opts.Users} fail={fail} pending={pending} " +
                 $"(timeout {opts.ReadyTimeoutSec}s).");
             foreach (var e in readyErrors.Take(10))
-                Console.Error.WriteLine($"  {e}");
+                await Console.Error.WriteLineAsync($"  {e}");
             if (readyErrors.Count > 10)
-                Console.Error.WriteLine($"  … +{readyErrors.Count - 10} more");
+                await Console.Error.WriteLineAsync($"  … +{readyErrors.Count - 10} more");
             // Cancel stress for anyone who might still run
             stressCts = new CancellationTokenSource();
             await stressCts.CancelAsync();
@@ -303,7 +303,7 @@ static async Task<int> RunAsync(SimOptions opts)
     }
     catch (Exception ex)
     {
-        Console.Error.WriteLine($"Run error: {ex.Message}");
+        await Console.Error.WriteLineAsync($"Run error: {ex.Message}");
     }
 
     await reportCts.CancelAsync();
@@ -355,7 +355,7 @@ static async Task<int> RunAsync(SimOptions opts)
 
     if (results.Http.Total == 0)
     {
-        Console.Error.WriteLine("WARN: zero actions recorded — VUs never completed requests.");
+        await Console.Error.WriteLineAsync("WARN: zero actions recorded — VUs never completed requests.");
         return 2;
     }
 

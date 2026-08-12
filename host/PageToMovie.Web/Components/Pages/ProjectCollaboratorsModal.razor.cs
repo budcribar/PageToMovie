@@ -113,8 +113,11 @@ public partial class ProjectCollaboratorsModal : IDisposable
             return;
         }
 
-        _searchCts?.Cancel();
-        _searchCts?.Dispose();
+        if (_searchCts is not null)
+        {
+            await _searchCts.CancelAsync();
+            _searchCts.Dispose();
+        }
         var cts = new CancellationTokenSource();
         _searchCts = cts;
         var seq = ++_searchSeq;

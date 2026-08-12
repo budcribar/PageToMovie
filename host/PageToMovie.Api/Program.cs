@@ -3023,7 +3023,7 @@ app.MapPost("/api/jobs/cancel", async (
         cancelled,
         scope = cancelAllUsers ? "all" : "user",
         userId = cancelAllUsers ? null : user.UserId,
-        job = jobService.GetSnapshot(),
+        job = await jobService.GetSnapshotAsync(),
     });
 });
 
@@ -6849,7 +6849,7 @@ app.MapGet("/api/projects/{id}/artifacts/index", async (
             return Results.Ok(new { ok = true, index = doc });
         }
 
-        var path = artifacts.IndexJsonPath(id);
+        var path = await artifacts.IndexJsonPathAsync(id, ct);
         if (!File.Exists(path))
         {
             var doc = await artifacts.RebuildAsync(id, ct);
@@ -9437,7 +9437,7 @@ app.MapPost("/api/projects/{projectId}/scenes/{sceneKey}/versions/{versionId}/re
 
 
 app.MapInviteEndpoints();
-app.Run();
+await app.RunAsync();
 
 namespace PageToMovie.Api
 {

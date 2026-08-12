@@ -466,8 +466,8 @@ public sealed class BookPrepareService
                 var name = $"embedded_epub_x{imgIndex:D3}.{ext}";
                 var fullPath = Path.Combine(imgDir, name);
 
-                using (var stream = entry.Open())
-                using (var outStream = File.Create(fullPath))
+                await using (var stream = entry.Open())
+                await using (var outStream = new FileStream(fullPath, FileMode.Create, FileAccess.Write, FileShare.None, 4096, useAsync: true))
                 {
                     await stream.CopyToAsync(outStream, ct).ConfigureAwait(false);
                 }
@@ -497,7 +497,8 @@ public sealed class BookPrepareService
             ct.ThrowIfCancellationRequested();
             try
             {
-                using var reader = new StreamReader(entry.Open(), Encoding.UTF8, true);
+                await using var stream = entry.Open();
+                using var reader = new StreamReader(stream, Encoding.UTF8, true);
                 var html = await reader.ReadToEndAsync(ct).ConfigureAwait(false);
                 var rawText = HtmlTagsRegex.Replace(html, " ");
                 var clean = System.Net.WebUtility.HtmlDecode(rawText);

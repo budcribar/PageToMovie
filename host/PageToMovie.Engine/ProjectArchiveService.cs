@@ -115,7 +115,8 @@ public sealed class ProjectArchiveService
                     var projectSchema = await ProjectFormatVersions.TryReadProjectSchemaVersionAsync(projectDir, ct).ConfigureAwait(false)
                                         ?? ProjectFormatVersions.ProjectSchemaVersion;
                     var metaEntry = zip.CreateEntry($"{id}/_export_meta.json", CompressionLevel.Fastest);
-                    using (var w = new StreamWriter(metaEntry.Open(), Encoding.UTF8))
+                    await using (var metaStream = metaEntry.Open())
+                    using (var w = new StreamWriter(metaStream, Encoding.UTF8))
                     {
                         await w.WriteAsync(JsonSerializer.Serialize(
                             ProjectFormatVersions.BuildExportMeta(id, projectSchema),
@@ -159,7 +160,13 @@ public sealed class ProjectArchiveService
                         // Avoid duplicate entries if two disk paths collapse to the same safe name.
                         if (!seenEntries.Add(entryName))
                             continue;
-                        zip.CreateEntryFromFile(file, entryName, CompressionLevel.Fastest);
+
+                        var entry = zip.CreateEntry(entryName, CompressionLevel.Fastest);
+                        await using (var sourceStream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, useAsync: true))
+                        await using (var entryStream = entry.Open())
+                        {
+                            await sourceStream.CopyToAsync(entryStream, ct).ConfigureAwait(false);
+                        }
                     }
                 }
             }, ct).ConfigureAwait(false);

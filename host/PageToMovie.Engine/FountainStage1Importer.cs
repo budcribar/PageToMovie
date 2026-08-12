@@ -41,7 +41,7 @@ public static class FountainStage1Importer
         var parsed = FountainParser.Parse(fountainText);
         var doc = Stage1Normalizer.Normalize(BuildStage1(parsed));
 
-        var projectDir = projects.GetProjectDir(projectId);
+        var projectDir = await projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         var sourceDir = Path.Combine(projectDir, "source");
         Directory.CreateDirectory(sourceDir);
 
