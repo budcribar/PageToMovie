@@ -21,10 +21,15 @@
 
     @if (_popoverOpen && CoachMode)
     {
-        <div class="voice-dictation-popover shadow"
+        <div class="voice-dictation-scrim"
+             data-testid="@(TestId)-scrim"
+             @onclick="ClosePopoverAsync"></div>
+        <div class="voice-dictation-popover voice-dictation-popover--modal shadow"
              role="dialog"
+             aria-modal="true"
              aria-label="Voice edit coach"
-             data-testid="@(TestId)-popover">
+             data-testid="@(TestId)-popover"
+             @onclick:stopPropagation="true">
             <div class="voice-dictation-popover__head">
                 <span class="voice-dictation-popover__status @(_listening ? "is-live" : "")">
                     @(_listening ? "Listening…" : "Ready")

@@ -2275,17 +2275,30 @@ h1:focus {
   overflow: visible;
 }
 
+.voice-dictation-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 10800;
+  background: rgba(2, 6, 23, 0.55);
+}
 .voice-dictation-popover {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 0.35rem);
-  z-index: 1080;
-  width: min(20rem, 92vw);
-  padding: 0.65rem 0.75rem 0.7rem;
-  border-radius: 0.65rem;
+  z-index: 10801;
+  width: min(22rem, 92vw);
+  padding: 0.85rem 0.95rem 0.95rem;
+  border-radius: 0.75rem;
   border: 1px solid rgba(148, 163, 184, 0.35);
   background: var(--bs-body-bg, #111827);
   color: var(--bs-body-color, #e5e7eb);
+}
+/* Always in the viewport — never a dropdown that falls off the long Locations/Cast page. */
+.voice-dictation-popover--modal {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  right: auto;
+  transform: translate(-50%, -50%);
+  max-height: min(90vh, 32rem);
+  overflow: auto;
 }
 .voice-dictation-popover__head {
   display: flex;
