@@ -229,75 +229,95 @@ public sealed class ProjectTelemetryService
             var model = rec.Model ?? "";
             var kind = (rec.Kind ?? "").ToLowerInvariant();
             if (kind is "image" or "image_edit")
-            {
-                var entry = SupportedModelCatalog.ResolveForLogging(model, kind);
-                if (entry?.ImageCostPerImage is not { } unit)
-                    return null;
-                var n = Math.Max(1, rec.ImageCount ?? 1);
-                return Math.Round(unit * n, 6);
-            }
+                return EstimateImageListRateUsd(rec, model, kind);
             if (kind is "video" or "video_extend")
-            {
-                var entry = SupportedModelCatalog.ResolveForLogging(model, kind);
-                if (entry is null) return null;
-                var res = rec.Resolution ?? "480p";
-                double? rate = null;
-                if (entry.VideoCostPerSecondByResolution is { Count: > 0 } table)
-                {
-                    if (table.TryGetValue(res, out var r))
-                        rate = r;
-                    else
-                        rate = table.Values.FirstOrDefault();
-                }
-                if (rate is null or <= 0)
-                    return null;
-                var sec = rec.DurationSec ?? 6;
-                return Math.Round(rate.Value * sec, 6);
-            }
+                return EstimateVideoListRateUsd(rec, model, kind);
             if (kind is "voice" or "tts" or "voice_clone")
-            {
-                var entry = SupportedModelCatalog.ResolveForLogging(model, kind);
-                if (entry is null) return null;
-                if (kind is "voice_clone" && entry.CostPerCloneUsd is { } cloneUsd)
-                    return Math.Round(cloneUsd, 6);
-                if (kind is "tts" && entry.CostPerThousandCharsUsd is { } perK)
-                {
-                    var chars = Math.Max(0, rec.PromptChars ?? 0);
-                    return Math.Round((chars / 1000.0) * perK, 6);
-                }
-                if (entry.CostPerMinuteUsd is { } perMin && rec.DurationSec is { } sec)
-                    return Math.Round((sec / 60.0) * perMin, 6);
-                if (entry.CostPerCloneUsd is { } anyVoice)
-                    return Math.Round(anyVoice, 6);
-                return null;
-            }
+                return EstimateVoiceListRateUsd(rec, model, kind);
             if (kind is "audio" or "music")
             {
                 // Music models price differently; without a catalog unit, leave null (ledger may set explicitly).
                 _ = SupportedModelCatalog.ResolveForLogging(model, kind);
                 return null;
             }
-            // chat / vision / other text: token rates only from catalog entry (no invent).
-            var chat = SupportedModelCatalog.ResolveForLogging(model, kind)
-                       ?? SupportedModelCatalog.ResolveForLogging(model, "chat")
-                       ?? SupportedModelCatalog.ResolveForLogging(model, "vision");
-            if (chat is null) return null;
-            var inPerM = chat.InputCostPerMillionTokens ?? 0;
-            var outPerM = chat.OutputCostPerMillionTokens ?? 0;
-            if (inPerM <= 0 && outPerM <= 0)
-                return null;
-            var inTok = rec.InputTokens
-                        ?? Math.Max(0, (rec.PromptChars ?? ((rec.SystemPrompt?.Length ?? 0) + (rec.UserPrompt?.Length ?? 0))) / 4);
-            var outTok = rec.OutputTokens
-                         ?? Math.Max(0, (rec.ResponseChars ?? (rec.ResponsePreview?.Length ?? 0)) / 4);
-            var usd = (inTok / 1_000_000.0) * inPerM + (outTok / 1_000_000.0) * outPerM;
-            return usd > 0 ? Math.Round(usd, 6) : null;
+            return EstimateChatListRateUsd(rec, model, kind);
         }
         catch
         {
             return null;
         }
     }
+
+    private static double? EstimateImageListRateUsd(ApiCallTelemetry rec, string model, string kind)
+    {
+        var entry = SupportedModelCatalog.ResolveForLogging(model, kind);
+        if (entry?.ImageCostPerImage is not { } unit)
+            return null;
+        var n = Math.Max(1, rec.ImageCount ?? 1);
+        return Math.Round(unit * n, 6);
+    }
+
+    private static double? EstimateVideoListRateUsd(ApiCallTelemetry rec, string model, string kind)
+    {
+        var entry = SupportedModelCatalog.ResolveForLogging(model, kind);
+        if (entry is null) return null;
+        var res = rec.Resolution ?? "480p";
+        double? rate = null;
+        if (entry.VideoCostPerSecondByResolution is { Count: > 0 } table)
+        {
+            if (table.TryGetValue(res, out var r))
+                rate = r;
+            else
+                rate = table.Values.FirstOrDefault();
+        }
+        if (rate is null or <= 0)
+            return null;
+        var sec = rec.DurationSec ?? 6;
+        return Math.Round(rate.Value * sec, 6);
+    }
+
+    private static double? EstimateVoiceListRateUsd(ApiCallTelemetry rec, string model, string kind)
+    {
+        var entry = SupportedModelCatalog.ResolveForLogging(model, kind);
+        if (entry is null) return null;
+        if (kind is "voice_clone" && entry.CostPerCloneUsd is { } cloneUsd)
+            return Math.Round(cloneUsd, 6);
+        if (kind is "tts" && entry.CostPerThousandCharsUsd is { } perK)
+        {
+            var chars = Math.Max(0, rec.PromptChars ?? 0);
+            return Math.Round((chars / 1000.0) * perK, 6);
+        }
+        if (entry.CostPerMinuteUsd is { } perMin && rec.DurationSec is { } sec)
+            return Math.Round((sec / 60.0) * perMin, 6);
+        if (entry.CostPerCloneUsd is { } anyVoice)
+            return Math.Round(anyVoice, 6);
+        return null;
+    }
+
+    private static double? EstimateChatListRateUsd(ApiCallTelemetry rec, string model, string kind)
+    {
+        // chat / vision / other text: token rates only from catalog entry (no invent).
+        var chat = SupportedModelCatalog.ResolveForLogging(model, kind)
+                   ?? SupportedModelCatalog.ResolveForLogging(model, "chat")
+                   ?? SupportedModelCatalog.ResolveForLogging(model, "vision");
+        if (chat is null) return null;
+        var inPerM = chat.InputCostPerMillionTokens ?? 0;
+        var outPerM = chat.OutputCostPerMillionTokens ?? 0;
+        if (inPerM <= 0 && outPerM <= 0)
+            return null;
+        var inTok = EstimateInputTokens(rec);
+        var outTok = EstimateOutputTokens(rec);
+        var usd = (inTok / 1_000_000.0) * inPerM + (outTok / 1_000_000.0) * outPerM;
+        return usd > 0 ? Math.Round(usd, 6) : null;
+    }
+
+    private static int EstimateInputTokens(ApiCallTelemetry rec) =>
+        rec.InputTokens
+        ?? Math.Max(0, (rec.PromptChars ?? ((rec.SystemPrompt?.Length ?? 0) + (rec.UserPrompt?.Length ?? 0))) / 4);
+
+    private static int EstimateOutputTokens(ApiCallTelemetry rec) =>
+        rec.OutputTokens
+        ?? Math.Max(0, (rec.ResponseChars ?? (rec.ResponsePreview?.Length ?? 0)) / 4);
 
     /// <summary>Append a condensed local media op.</summary>
     public async Task LogMediaOpAsync(FfmpegOpTelemetry rec, CancellationToken ct = default)
@@ -343,49 +363,7 @@ public sealed class ProjectTelemetryService
         string? fallback = null,
         string? projectId = null)
     {
-        var interesting = new List<string>();
-        var progressSamples = new List<string>();
-        string? lastTime = null;
-        string? lastSpeed = null;
-
-        if (!string.IsNullOrEmpty(rawLog))
-        {
-            foreach (var line in rawLog.Split('\n'))
-            {
-                var t = line.Trim();
-                if (t.Length == 0) continue;
-
-                if (t.StartsWith("out_time=", StringComparison.OrdinalIgnoreCase) ||
-                    t.Contains("time=", StringComparison.OrdinalIgnoreCase))
-                {
-                    lastTime = t.Length > 120 ? t[..120] : t;
-                    // Sample sparsely: keep first, then every ~8th-ish by counting
-                    if ((progressSamples.Count == 0 ||
-                         (progressSamples.Count < 8 && progressSamples.Count % 2 == 0)) &&
-                        (progressSamples.Count == 0 ||
-                         !string.Equals(progressSamples[^1], lastTime, StringComparison.Ordinal)))
-                    {
-                        progressSamples.Add(lastTime);
-                    }
-                    continue;
-                }
-
-                if (t.StartsWith("speed=", StringComparison.OrdinalIgnoreCase))
-                {
-                    lastSpeed = t;
-                    continue;
-                }
-
-                if (ProgressFluff.IsMatch(t) && !IsInterestingLogLine(t))
-                    continue;
-
-                if (IsInterestingLogLine(t))
-                {
-                    interesting.Add(t.Length > 300 ? t[..300] : t);
-                    if (interesting.Count >= 40) break;
-                }
-            }
-        }
+        var (interesting, progressSamples, lastTime, lastSpeed) = ParseMediaOpLog(rawLog);
 
         // Cap progress samples
         if (progressSamples.Count > 8)
@@ -422,13 +400,82 @@ public sealed class ProjectTelemetryService
             Fallback = fallback,
             Progress = progressSamples.Count > 0 ? progressSamples : null,
             StderrInteresting = interesting.Count > 0 ? interesting : null,
-            Stats = lastTime is not null || lastSpeed is not null
-                ? new Dictionary<string, object?>
-                {
-                    ["lastTime"] = lastTime,
-                    ["lastSpeed"] = lastSpeed,
-                }
-                : null,
+            Stats = BuildMediaOpStats(lastTime, lastSpeed),
+        };
+    }
+
+    private static (List<string> Interesting, List<string> ProgressSamples, string? LastTime, string? LastSpeed)
+        ParseMediaOpLog(string? rawLog)
+    {
+        var interesting = new List<string>();
+        var progressSamples = new List<string>();
+        string? lastTime = null;
+        string? lastSpeed = null;
+
+        if (string.IsNullOrEmpty(rawLog))
+            return (interesting, progressSamples, lastTime, lastSpeed);
+
+        foreach (var line in rawLog.Split('\n'))
+        {
+            var t = line.Trim();
+            if (t.Length == 0) continue;
+
+            if (TryCaptureProgressLine(t, ref lastTime, progressSamples))
+                continue;
+            if (TryCaptureSpeedLine(t, ref lastSpeed))
+                continue;
+            if (TryAddInterestingMediaLine(t, interesting))
+                break;
+        }
+
+        return (interesting, progressSamples, lastTime, lastSpeed);
+    }
+
+    private static bool TryCaptureProgressLine(string t, ref string? lastTime, List<string> progressSamples)
+    {
+        if (!t.StartsWith("out_time=", StringComparison.OrdinalIgnoreCase) &&
+            !t.Contains("time=", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        lastTime = t.Length > 120 ? t[..120] : t;
+        // Sample sparsely: keep first, then every ~8th-ish by counting
+        if (ShouldSampleProgress(progressSamples, lastTime))
+            progressSamples.Add(lastTime);
+        return true;
+    }
+
+    private static bool TryCaptureSpeedLine(string t, ref string? lastSpeed)
+    {
+        if (!t.StartsWith("speed=", StringComparison.OrdinalIgnoreCase))
+            return false;
+        lastSpeed = t;
+        return true;
+    }
+
+    private static bool ShouldSampleProgress(List<string> progressSamples, string lastTime) =>
+        (progressSamples.Count == 0 ||
+         (progressSamples.Count < 8 && progressSamples.Count % 2 == 0)) &&
+        (progressSamples.Count == 0 ||
+         !string.Equals(progressSamples[^1], lastTime, StringComparison.Ordinal));
+
+    private static bool TryAddInterestingMediaLine(string t, List<string> interesting)
+    {
+        if (ProgressFluff.IsMatch(t) && !IsInterestingLogLine(t))
+            return false;
+        if (!IsInterestingLogLine(t))
+            return false;
+        interesting.Add(t.Length > 300 ? t[..300] : t);
+        return interesting.Count >= 40;
+    }
+
+    private static Dictionary<string, object?>? BuildMediaOpStats(string? lastTime, string? lastSpeed)
+    {
+        if (lastTime is null && lastSpeed is null)
+            return null;
+        return new Dictionary<string, object?>
+        {
+            ["lastTime"] = lastTime,
+            ["lastSpeed"] = lastSpeed,
         };
     }
 
