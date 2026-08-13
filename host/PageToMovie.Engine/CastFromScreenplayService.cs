@@ -135,6 +135,98 @@ public sealed class CastFromScreenplayService
             return new ExtractResult { Ok = false, Error = "Screenplay draft is empty." };
 
         var outPath = ScreenplayService.GetCastSeedsPath(_projects, projectId);
+        var existing = await TryLoadExistingCastAsync(outPath, force, onProgress, ct).ConfigureAwait(false);
+        if (existing is not null)
+            return existing;
+
+        var book = await LoadBookTextAsync(projectId, ct).ConfigureAwait(false);
+        ReportBookContext(book, onProgress);
+
+        // Closed cast is model-decided only (no name-discovery / verb / kinship heuristic lists).
+        onProgress?.Invoke("Loading cast prompt…");
+        var system = await LoadSystemPromptAsync(_projects.WorkspaceRoot, ct).ConfigureAwait(false);
+        var locationHints = BuildLocationHintsFromFountain(fountain);
+        var user = BuildUserPrompt(fountain, book, locationHints);
+
+        onProgress?.Invoke("Calling Grok for closed cast + locations (book-aware looks)…");
+        var (parsed, parseError) = await ParseCastDocumentAsync(
+            projectId, fountain, book, system, locationHints, user, model, onProgress, ct).ConfigureAwait(false);
+        if (parseError is not null)
+            return parseError;
+
+        var normalized = NormalizeCastDoc(parsed!, projectId, book);
+
+        var seedsObj = GetSeedsDict(normalized);
+
+        if (seedsObj.Count == 0)
+            return new ExtractResult { Ok = false, Error = "Model returned no character_seed_tokens." };
+
+        seedsObj = await LiteralizeCastLooksAsync(
+            normalized, seedsObj, book, fountain, model, onProgress, ct).ConfigureAwait(false);
+
+        // Location AI pass: model filmable set locks; fallback to Stage‑1 heading+action seeds.
+        // Do NOT run CastVisualLiteralize on locations — that prompt is character-portrait
+        // only and was wiping/mangling set-design text.
+        var locSeeds = ResolveLocationSeeds(normalized, projectId, onProgress);
+        if (locSeeds.Count > 0)
+            normalized[KeyLocationSeedTokens] = locSeeds;
+
+        onProgress?.Invoke(
+            $"Writing {seedsObj.Count} character seed(s)" +
+            (locSeeds.Count > 0 ? $" · {locSeeds.Count} location(s)" : "") +
+            "…");
+            Directory.CreateDirectory(Path.GetDirectoryName(outPath));
+        await BackupExistingCastFileAsync(outPath, ct).ConfigureAwait(false);
+
+        var castIssues = StructuredOperationArtifacts.RequireJsonProperties(
+            normalized, "schema_version", KeyCharacterSeedTokens);
+        await StructuredOperationArtifacts.WriteAsync(
+            await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false), "cast_extraction", model,
+            new { projectId, fountain, book }, normalized, castIssues, ct).ConfigureAwait(false);
+        if (castIssues.Any(i => i.Severity == ModelValidationSeverity.Error))
+            return new ExtractResult
+            {
+                Ok = false,
+                Error = string.Join(" ", castIssues.Select(i => i.Message)),
+            };
+
+        var json = JsonSerializer.Serialize(normalized, JsonDefaults.Indented);
+        await File.WriteAllTextAsync(outPath, json + "\n", ct).ConfigureAwait(false);
+
+        TryMergeLocationSeedsFromHeadings(normalized, projectId, onProgress);
+        await TryAttachBookPicturesAsync(projectId, onProgress, ct).ConfigureAwait(false);
+        await TryApplyProjectStyleRulesAsync(normalized, projectId, onProgress, ct).ConfigureAwait(false);
+
+        var keys = seedsObj.Keys.OrderBy(k => k, StringComparer.OrdinalIgnoreCase).ToList();
+
+        var (packageCheckPath, membershipOk, missingFromCast, membershipScore) =
+            await EvaluateCastMembershipAsync(projectId, fountain, json, book, onProgress, ct).ConfigureAwait(false);
+
+        onProgress?.Invoke($"Cast ready · {keys.Count} character(s)");
+        _log.LogInformation(
+            "Cast extract {Project}: {Count} character(s) → {Keys}",
+            projectId, keys.Count, string.Join(", ", keys));
+        _projects.TriggerAutoGitCommit(projectId, ProjectStageCommits.CastBuilt);
+        return new ExtractResult
+        {
+            Ok = true,
+            OutPath = outPath,
+            CharacterCount = keys.Count,
+            CharacterKeys = keys,
+            MovieTitle = normalized.TryGetValue(JsonKeys.MovieTitle, out var movieTitleObj) ? movieTitleObj?.ToString() : null,
+            SpeakersMissingFromCast = missingFromCast,
+            MembershipScore = membershipScore,
+            MembershipOk = membershipOk,
+            PackageCheckPath = packageCheckPath,
+        };
+    }
+
+    private async Task<ExtractResult?> TryLoadExistingCastAsync(
+        string outPath,
+        bool force,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
         if (!force && File.Exists(outPath))
         {
             try
@@ -160,47 +252,59 @@ public sealed class CastFromScreenplayService
             catch { /* rebuild */ }
         }
 
-        var book = await LoadBookTextAsync(projectId, ct).ConfigureAwait(false);
+        return null;
+    }
+
+    private static void ReportBookContext(string? book, Action<string>? onProgress)
+    {
         if (!string.IsNullOrWhiteSpace(book))
             onProgress?.Invoke($"Book context loaded ({book.Length:N0} chars) for look extraction…");
         else
             onProgress?.Invoke("No book_full.txt — looks will come from screenplay action only.");
+    }
 
-        // Closed cast is model-decided only (no name-discovery / verb / kinship heuristic lists).
-        onProgress?.Invoke("Loading cast prompt…");
-        var system = await LoadSystemPromptAsync(_projects.WorkspaceRoot, ct).ConfigureAwait(false);
-        var locationHints = BuildLocationHintsFromFountain(fountain);
-        var user = BuildUserPrompt(fountain, book, locationHints);
-
-        onProgress?.Invoke("Calling Grok for closed cast + locations (book-aware looks)…");
-        Dictionary<string, object?>? parsed = await TryParseViaFilesAsync(
+    private async Task<(Dictionary<string, object?>? Parsed, ExtractResult? Error)> ParseCastDocumentAsync(
+        string projectId,
+        string fountain,
+        string? book,
+        string system,
+        string? locationHints,
+        string user,
+        string model,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
+        var parsed = await TryParseViaFilesAsync(
             projectId, fountain, book, system, locationHints, model, onProgress, ct).ConfigureAwait(false);
-        if (parsed is null)
-        {
-            var pipeline = new ValidatedModelOperation<CastModelInput, string, Dictionary<string, object?>>(
-                new CastChatOperation(_chat, "cast_extraction", "1", ChatCallModes.CastFromScreenplay, 0.2),
-                new CastJsonObjectParser(),
-                new CastExtractionValidator(),
-                new TerminalCastFallback(),
-                new ModelOperationOptions { CorrectiveMaxAttempts = 1 });
-            var lifecycle = await pipeline.ExecuteAsync(new CastModelInput(system, user, model), ct).ConfigureAwait(false);
-            await WriteLifecycleManifestAsync(projectId, "cast_extraction", lifecycle, ct).ConfigureAwait(false);
-            if (!lifecycle.Success || lifecycle.Value is null)
-                return new ExtractResult
-                {
-                    Ok = false,
-                    Error = lifecycle.Error ?? string.Join(" ", lifecycle.ValidationIssues.Select(i => i.Message)),
-                };
-            parsed = lifecycle.Value;
-        }
+        if (parsed is not null)
+            return (parsed, null);
 
-        var normalized = NormalizeCastDoc(parsed, projectId, book);
+        var pipeline = new ValidatedModelOperation<CastModelInput, string, Dictionary<string, object?>>(
+            new CastChatOperation(_chat, "cast_extraction", "1", ChatCallModes.CastFromScreenplay, 0.2),
+            new CastJsonObjectParser(),
+            new CastExtractionValidator(),
+            new TerminalCastFallback(),
+            new ModelOperationOptions { CorrectiveMaxAttempts = 1 });
+        var lifecycle = await pipeline.ExecuteAsync(new CastModelInput(system, user, model), ct).ConfigureAwait(false);
+        await WriteLifecycleManifestAsync(projectId, "cast_extraction", lifecycle, ct).ConfigureAwait(false);
+        if (!lifecycle.Success || lifecycle.Value is null)
+            return (null, new ExtractResult
+            {
+                Ok = false,
+                Error = lifecycle.Error ?? string.Join(" ", lifecycle.ValidationIssues.Select(i => i.Message)),
+            });
+        return (lifecycle.Value, null);
+    }
 
-        var seedsObj = GetSeedsDict(normalized);
-
-        if (seedsObj.Count == 0)
-            return new ExtractResult { Ok = false, Error = "Model returned no character_seed_tokens." };
-
+    private async Task<Dictionary<string, object?>> LiteralizeCastLooksAsync(
+        Dictionary<string, object?> normalized,
+        Dictionary<string, object?> seedsObj,
+        string? book,
+        string fountain,
+        string model,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
         // Looks only: for seeds the model already chose, pull book paragraphs that mention
         // those names when description/visual_lock is empty or a stub.
         if (!string.IsNullOrWhiteSpace(book))
@@ -213,12 +317,10 @@ public sealed class CastFromScreenplayService
             }
         }
 
-
         // Second AI pass: figurative / idiomatic visual language → literal filmable prose
         var literalSeeds = await _literalize.LiteralizeSeedsAsync(
             seedsObj, model, onProgress, ct).ConfigureAwait(false);
         normalized[KeyCharacterSeedTokens] = literalSeeds;
-        seedsObj = literalSeeds;
 
         // Same figurative→literal / base-look scrub pass, applied once to the shared wardrobe
         // group text instead of per-character (there may be several members pointing at it).
@@ -229,9 +331,14 @@ public sealed class CastFromScreenplayService
                 wlDict, model, onProgress, ct).ConfigureAwait(false);
         }
 
-        // Location AI pass: model filmable set locks; fallback to Stage‑1 heading+action seeds.
-        // Do NOT run CastVisualLiteralize on locations — that prompt is character-portrait
-        // only and was wiping/mangling set-design text.
+        return literalSeeds;
+    }
+
+    private Dictionary<string, object?> ResolveLocationSeeds(
+        Dictionary<string, object?> normalized,
+        string projectId,
+        Action<string>? onProgress)
+    {
         var locSeeds = GetLocationSeedsDict(normalized);
         if (locSeeds.Count == 0)
         {
@@ -243,24 +350,27 @@ public sealed class CastFromScreenplayService
         {
             onProgress?.Invoke($"Keeping {locSeeds.Count} AI location seed(s) (set-design locks)…");
             // Fill any heading places the model missed
-            var fountainLocs = _projects.ExtractLocationSeedObjects(projectId);
-            if (fountainLocs is not null)
-            {
-                foreach (var (k, v) in fountainLocs)
-                {
-                    if (!locSeeds.ContainsKey(k))
-                        locSeeds[k] = v;
-                }
-            }
+            MergeMissingLocationSeeds(locSeeds, _projects.ExtractLocationSeedObjects(projectId));
         }
-        if (locSeeds.Count > 0)
-            normalized[KeyLocationSeedTokens] = locSeeds;
 
-        onProgress?.Invoke(
-            $"Writing {seedsObj.Count} character seed(s)" +
-            (locSeeds.Count > 0 ? $" · {locSeeds.Count} location(s)" : "") +
-            "…");
-            Directory.CreateDirectory(Path.GetDirectoryName(outPath));
+        return locSeeds;
+    }
+
+    private static void MergeMissingLocationSeeds(
+        Dictionary<string, object?> locSeeds,
+        Dictionary<string, object?>? fountainLocs)
+    {
+        if (fountainLocs is null)
+            return;
+        foreach (var (k, v) in fountainLocs)
+        {
+            if (!locSeeds.ContainsKey(k))
+                locSeeds[k] = v;
+        }
+    }
+
+    private static async Task BackupExistingCastFileAsync(string outPath, CancellationToken ct)
+    {
         if (File.Exists(outPath))
         {
             try
@@ -271,22 +381,13 @@ public sealed class CastFromScreenplayService
             }
             catch { /* ignore */ }
         }
+    }
 
-        var castIssues = StructuredOperationArtifacts.RequireJsonProperties(
-            normalized, "schema_version", KeyCharacterSeedTokens);
-        await StructuredOperationArtifacts.WriteAsync(
-            await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false), "cast_extraction", model,
-            new { projectId, fountain, book }, normalized, castIssues, ct).ConfigureAwait(false);
-        if (castIssues.Any(i => i.Severity == ModelValidationSeverity.Error))
-            return new ExtractResult
-            {
-                Ok = false,
-                Error = string.Join(" ", castIssues.Select(i => i.Message)),
-            };
-
-        var json = JsonSerializer.Serialize(normalized, JsonDefaults.Indented);
-        await File.WriteAllTextAsync(outPath, json + "\n", ct).ConfigureAwait(false);
-
+    private void TryMergeLocationSeedsFromHeadings(
+        Dictionary<string, object?> normalized,
+        string projectId,
+        Action<string>? onProgress)
+    {
         // Locations are already in the write above. Only merge when the model returned none
         // and we need Stage‑1 heading seeds — never re-merge over a full cast write (that path
         // previously produced locations-only cast_seeds.json and dropped 45 characters).
@@ -302,7 +403,13 @@ public sealed class CastFromScreenplayService
         {
             _log.LogWarning(ex, "Location seed merge failed for {Project}", projectId);
         }
+    }
 
+    private async Task TryAttachBookPicturesAsync(
+        string projectId,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
         if (_plateService is not null)
         {
             try
@@ -315,7 +422,14 @@ public sealed class CastFromScreenplayService
                 _log.LogWarning(ex, "Automated book picture matching failed for {Project}", projectId);
             }
         }
+    }
 
+    private async Task TryApplyProjectStyleRulesAsync(
+        Dictionary<string, object?> normalized,
+        string projectId,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
         // Project style + performance rules from book/screenplay (medium + audience address)
         try
         {
@@ -338,9 +452,17 @@ public sealed class CastFromScreenplayService
         {
             _log.LogWarning(ex, "Could not write style/performance project rules for {Project}", projectId);
         }
+    }
 
-        var keys = seedsObj.Keys.OrderBy(k => k, StringComparer.OrdinalIgnoreCase).ToList();
-
+    private async Task<(string? PackageCheckPath, bool MembershipOk, List<string> MissingFromCast, double MembershipScore)>
+        EvaluateCastMembershipAsync(
+            string projectId,
+            string fountain,
+            string json,
+            string? book,
+            Action<string>? onProgress,
+            CancellationToken ct)
+    {
         // Deterministic: every dialogue speaker must have a cast seed (catch ELI/CLARA-style inventions).
         string? packageCheckPath = null;
         var membershipOk = true;
@@ -384,23 +506,7 @@ public sealed class CastFromScreenplayService
             _log.LogWarning(ex, "Cast membership check failed for {Project}", projectId);
         }
 
-        onProgress?.Invoke($"Cast ready · {keys.Count} character(s)");
-        _log.LogInformation(
-            "Cast extract {Project}: {Count} character(s) → {Keys}",
-            projectId, keys.Count, string.Join(", ", keys));
-        _projects.TriggerAutoGitCommit(projectId, ProjectStageCommits.CastBuilt);
-        return new ExtractResult
-        {
-            Ok = true,
-            OutPath = outPath,
-            CharacterCount = keys.Count,
-            CharacterKeys = keys,
-            MovieTitle = normalized.TryGetValue(JsonKeys.MovieTitle, out var movieTitleObj) ? movieTitleObj?.ToString() : null,
-            SpeakersMissingFromCast = missingFromCast,
-            MembershipScore = membershipScore,
-            MembershipOk = membershipOk,
-            PackageCheckPath = packageCheckPath,
-        };
+        return (packageCheckPath, membershipOk, missingFromCast, membershipScore);
     }
 
 
@@ -780,6 +886,17 @@ public sealed class CastFromScreenplayService
         if (paras.Count == 0)
             paras.Add(bookText.Trim());
 
+        var nameRes = BuildNameMatchers(nameHints);
+
+        // Cap per-name so one lead doesn't consume the whole budget
+        var perNameCap = Math.Max(800, maxChars / Math.Max(3, Math.Min(nameRes.Count, 12)));
+        var candidates = CollectLookCandidates(paras, nameRes);
+        var selectedIdx = SelectLookExcerptIndices(candidates, maxChars, perNameCap);
+        return EmitLookExcerptsInBookOrder(candidates, selectedIdx, maxChars);
+    }
+
+    private static List<(string Name, Regex Rx)> BuildNameMatchers(IReadOnlyList<string> nameHints)
+    {
         // Build name matchers (word-boundary, case-insensitive)
         var nameRes = new List<(string Name, Regex Rx)>();
         foreach (var n in nameHints
@@ -791,35 +908,54 @@ public sealed class CastFromScreenplayService
             // Allow multi-word names; avoid matching inside longer tokens
             nameRes.Add((n.Trim(), new Regex($@"\b{escaped}\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, CommonRegex.Timeout)));
         }
+        return nameRes;
+    }
 
-        // Cap per-name so one lead doesn't consume the whole budget
-        var perNameCap = Math.Max(800, maxChars / Math.Max(3, Math.Min(nameRes.Count, 12)));
-        var perNameUsed = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+    private static List<(int Score, int Index, string Name, string Para)> CollectLookCandidates(
+        List<string> paras,
+        List<(string Name, Regex Rx)> nameRes)
+    {
         var candidates = new List<(int Score, int Index, string Name, string Para)>();
-        var selectedIdx = new HashSet<int>();
-        var totalUsed = 0;
-
         for (var i = 0; i < paras.Count; i++)
         {
             var para = paras[i];
             if (para.Length < 24) continue;
-            string? hitName = null;
-            foreach (var (name, rx) in nameRes)
-            {
-                if (!rx.IsMatch(para)) continue;
-                hitName = name;
-                break;
-            }
+            var hitName = FindFirstMatchingName(para, nameRes);
             if (hitName is null) continue;
 
-            var score = 1;
-            if (LookLanguage.IsMatch(para)) score += 5;
-            if (para.Length is >= 80 and <= 1_200) score += 1;
-            // Prefer later paragraphs slightly (wardrobe reveals often come mid/late)
-            score += Math.Min(3, i * 3 / Math.Max(1, paras.Count));
-
-            candidates.Add((score, i, hitName, para));
+            candidates.Add((ScoreLookParagraph(para, i, paras.Count), i, hitName, para));
         }
+        return candidates;
+    }
+
+    private static string? FindFirstMatchingName(string para, List<(string Name, Regex Rx)> nameRes)
+    {
+        foreach (var (name, rx) in nameRes)
+        {
+            if (!rx.IsMatch(para)) continue;
+            return name;
+        }
+        return null;
+    }
+
+    private static int ScoreLookParagraph(string para, int index, int paraCount)
+    {
+        var score = 1;
+        if (LookLanguage.IsMatch(para)) score += 5;
+        if (para.Length is >= 80 and <= 1_200) score += 1;
+        // Prefer later paragraphs slightly (wardrobe reveals often come mid/late)
+        score += Math.Min(3, index * 3 / Math.Max(1, paraCount));
+        return score;
+    }
+
+    private static HashSet<int> SelectLookExcerptIndices(
+        List<(int Score, int Index, string Name, string Para)> candidates,
+        int maxChars,
+        int perNameCap)
+    {
+        var perNameUsed = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var selectedIdx = new HashSet<int>();
+        var totalUsed = 0;
 
         // Best paragraphs first; keep total under maxChars
         foreach (var item in candidates.OrderByDescending(c => c.Score).ThenBy(c => c.Index))
@@ -827,7 +963,7 @@ public sealed class CastFromScreenplayService
             if (selectedIdx.Contains(item.Index)) continue;
             perNameUsed.TryGetValue(item.Name, out var usedForName);
 
-            var slice = item.Para.Length > 1_600 ? item.Para[..1_600] + "…" : item.Para;
+            var slice = SliceLookParagraph(item.Para);
             var addCost = slice.Length + item.Name.Length + 32;
             if (usedForName > 0 && usedForName + addCost > perNameCap) continue;
             if (usedForName == 0 && addCost > perNameCap * 2) continue; // pathological mega-para
@@ -838,6 +974,14 @@ public sealed class CastFromScreenplayService
             totalUsed += addCost;
         }
 
+        return selectedIdx;
+    }
+
+    private static string EmitLookExcerptsInBookOrder(
+        List<(int Score, int Index, string Name, string Para)> candidates,
+        HashSet<int> selectedIdx,
+        int maxChars)
+    {
         // Emit in book order for readability
         var sb = new StringBuilder();
         foreach (var item in candidates
@@ -846,7 +990,7 @@ public sealed class CastFromScreenplayService
                      .Select(g => g.First())
                      .OrderBy(c => c.Index))
         {
-            var slice = item.Para.Length > 1_600 ? item.Para[..1_600] + "…" : item.Para;
+            var slice = SliceLookParagraph(item.Para);
             var block = $"[{item.Name}] {slice}\n\n";
             if (sb.Length + block.Length > maxChars)
             {
@@ -860,6 +1004,9 @@ public sealed class CastFromScreenplayService
 
         return sb.ToString().TrimEnd();
     }
+
+    private static string SliceLookParagraph(string para) =>
+        para.Length > 1_600 ? para[..1_600] + "…" : para;
 
     private static readonly Regex LookLanguage = new(@"\b(hair|eyes?|wore|wearing|dressed|dress|coat|cloak|hat|beard|mustache|face|skin|pale|dark|"
         + @"fair|tall|short|thin|stout|slender|young|old|aged|years?\s+old|beautiful|handsome|"
@@ -993,6 +1140,19 @@ public sealed class CastFromScreenplayService
             },
         };
 
+        CopyTitleAndLocks(parsed, projectId, outDoc);
+        outDoc[KeyCharacterSeedTokens] = NormalizeCharacterSeeds(GetSeedsDict(parsed));
+        CopyNormalizedWardrobeLocks(parsed, outDoc);
+        CopyNormalizedLocationSeeds(parsed, outDoc);
+
+        return outDoc;
+    }
+
+    private static void CopyTitleAndLocks(
+        Dictionary<string, object?> parsed,
+        string projectId,
+        Dictionary<string, object?> outDoc)
+    {
         if (parsed.TryGetValue(JsonKeys.MovieTitle, out var mt) && mt is not null)
             outDoc[JsonKeys.MovieTitle] = mt.ToString();
         else
@@ -1009,96 +1169,145 @@ public sealed class CastFromScreenplayService
         if (parsed.TryGetValue(KeyPerformanceLock, out var pl) && pl is not null &&
             !string.IsNullOrWhiteSpace(pl.ToString()))
             outDoc[KeyPerformanceLock] = pl.ToString().Trim();
+    }
 
-        var seedsIn = GetSeedsDict(parsed);
+    private static Dictionary<string, object?> NormalizeCharacterSeeds(Dictionary<string, object?> seedsIn)
+    {
         var seedsOut = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
         foreach (var (key, val) in seedsIn)
         {
-            if (val is not Dictionary<string, object?> seed) continue;
-            var k = key.StartsWith(JsonKeys.CharacterPrefix, StringComparison.OrdinalIgnoreCase)
-                ? key
-                : JsonKeys.CharacterPrefix + NonAlphaNumericRegex.Replace(key, "_").Trim('_');
-            if (string.IsNullOrWhiteSpace(k) || k == JsonKeys.CharacterPrefix) continue;
-
-            var name = seed.TryGetValue(KeyCanonicalGivenName, out var cn) && cn is not null
-                ? cn.ToString()
-                : CastKindClassifier.StripPrefix(k).Replace('_', ' ');
-
-            var off = string.Equals(
-                seed.TryGetValue("display_name_policy", out var pol) ? pol?.ToString() : null,
-                "never_on_screen",
-                StringComparison.OrdinalIgnoreCase);
-
-            // Prefer real model looks; never invent "as in the screenplay" stubs.
-            var desc = CoerceString(seed, JsonKeys.Description) ?? "";
-            if (IsStubLook(desc))
-                desc = off ? $"{name} (voice only; not on screen)." : "";
-            else if (off && string.IsNullOrWhiteSpace(desc))
-                desc = $"{name} (voice only; not on screen).";
-
-            var clean = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
-            {
-                [JsonKeys.Description] = desc,
-                [KeyCanonicalGivenName] = name,
-                ["display_name_policy"] = off ? "never_on_screen" : "ok_anytime",
-                ["species_kind"] = CoerceString(seed, "species_kind"),
-                ["voice_label"] = CoerceString(seed, "voice_label") ?? name.Replace(' ', '_'),
-                ["voice_profile"] = CoerceString(seed, "voice_profile")
-                    ?? "Consistent character voice every scene.",
-                [KeyReferenceImagePlaceholder] = CoerceString(seed, KeyReferenceImagePlaceholder)
-                    ?? ProjectStore.CharacterRefFileName(k),
-            };
-
-            var vlock = CoerceString(seed, KeyVisualLock) ?? "";
-            if (!off)
-            {
-                clean[KeyVisualLock] = IsStubLook(vlock) ? "" : vlock;
-            }
-
-            if (seed.TryGetValue(KeyWardrobeAlways, out var wa) && wa is List<object?> list)
-                clean[KeyWardrobeAlways] = list;
-            // Common model aliases
-            if (!clean.ContainsKey(KeyWardrobeAlways) &&
-                seed.TryGetValue("wardrobe", out var w2) && w2 is List<object?> list2)
-                clean[KeyWardrobeAlways] = list2;
-            if (seed.TryGetValue("source_image_pages", out var sip) && sip is List<object?> pages)
-                clean["source_image_pages"] = pages;
-
-            var perfNotes = CoerceString(seed, "performance_notes");
-            if (!string.IsNullOrWhiteSpace(perfNotes))
-                clean["performance_notes"] = perfNotes;
-
-            // Shared uniform group (e.g. several police officers): the group's own
-            // wardrobe_lock_tokens entry is the wardrobe source of truth, not this character's
-            // own description/wardrobe_always — see EnsureWardrobeReferenceAsync.
-            var wardrobeLock = CoerceString(seed, "wardrobe_lock");
-            if (!string.IsNullOrWhiteSpace(wardrobeLock))
-                clean["wardrobe_lock"] = NormalizeWardrobeKey(wardrobeLock);
-
-            // cast_kind: prefer model output; else classify so pin gates skip group portraits.
-            clean["cast_kind"] = ResolveCastKind(k, name, CoerceString(seed, "cast_kind"), desc);
-
-            // Age-variant linking (see AGE-VARIANT CUES rule, fountain_to_cast.txt) — most
-            // characters appear at one life stage and have neither field set.
-            var ageBand = CoerceString(seed, "age_band");
-            if (!string.IsNullOrWhiteSpace(ageBand))
-                clean["age_band"] = ageBand.Trim();
-            var variantOfRaw = CoerceString(seed, KeyVariantOf);
-            if (!string.IsNullOrWhiteSpace(variantOfRaw))
-            {
-                var variantOfKey = variantOfRaw.StartsWith(JsonKeys.CharacterPrefix, StringComparison.OrdinalIgnoreCase)
-                    ? variantOfRaw
-                    : JsonKeys.CharacterPrefix + NonAlphaNumericRegex.Replace(variantOfRaw, "_").Trim('_');
-                if (!string.Equals(variantOfKey, k, StringComparison.OrdinalIgnoreCase))
-                    clean[KeyVariantOf] = variantOfKey;
-            }
-
-            seedsOut[k] = clean;
+            var one = NormalizeOneCharacterSeed(key, val);
+            if (one is null) continue;
+            seedsOut[one.Value.Key] = one.Value.Seed;
         }
 
         // Drop any variant_of that doesn't point at a real seed in this same cast (a
         // hallucinated or since-renamed base key) — a dangling pointer is worse than none:
         // the Characters UI would show a "sibling" that doesn't exist.
+        DropDanglingVariantOf(seedsOut);
+        return seedsOut;
+    }
+
+    private static (string Key, Dictionary<string, object?> Seed)? NormalizeOneCharacterSeed(string key, object? val)
+    {
+        if (val is not Dictionary<string, object?> seed) return null;
+        var k = ResolveCharacterSeedKey(key);
+        if (k is null) return null;
+
+        var name = ResolveCanonicalName(seed, k);
+        var off = IsVoiceOnlyPolicy(seed);
+        var desc = ResolveSeedDescription(seed, name, off);
+
+        var clean = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            [JsonKeys.Description] = desc,
+            [KeyCanonicalGivenName] = name,
+            ["display_name_policy"] = off ? "never_on_screen" : "ok_anytime",
+            ["species_kind"] = CoerceString(seed, "species_kind"),
+            ["voice_label"] = CoerceString(seed, "voice_label") ?? name.Replace(' ', '_'),
+            ["voice_profile"] = CoerceString(seed, "voice_profile")
+                ?? "Consistent character voice every scene.",
+            [KeyReferenceImagePlaceholder] = CoerceString(seed, KeyReferenceImagePlaceholder)
+                ?? ProjectStore.CharacterRefFileName(k),
+        };
+
+        ApplyVisualLock(clean, seed, off);
+        CopyOptionalSeedLists(clean, seed);
+
+        var perfNotes = CoerceString(seed, "performance_notes");
+        if (!string.IsNullOrWhiteSpace(perfNotes))
+            clean["performance_notes"] = perfNotes;
+
+        // Shared uniform group (e.g. several police officers): the group's own
+        // wardrobe_lock_tokens entry is the wardrobe source of truth, not this character's
+        // own description/wardrobe_always — see EnsureWardrobeReferenceAsync.
+        var wardrobeLock = CoerceString(seed, "wardrobe_lock");
+        if (!string.IsNullOrWhiteSpace(wardrobeLock))
+            clean["wardrobe_lock"] = NormalizeWardrobeKey(wardrobeLock);
+
+        // cast_kind: prefer model output; else classify so pin gates skip group portraits.
+        clean["cast_kind"] = ResolveCastKind(k, name, CoerceString(seed, "cast_kind"), desc);
+
+        // Age-variant linking (see AGE-VARIANT CUES rule, fountain_to_cast.txt) — most
+        // characters appear at one life stage and have neither field set.
+        CopyAgeVariantFields(clean, seed, k);
+
+        return (k, clean);
+    }
+
+    private static string? ResolveCharacterSeedKey(string key)
+    {
+        var k = key.StartsWith(JsonKeys.CharacterPrefix, StringComparison.OrdinalIgnoreCase)
+            ? key
+            : JsonKeys.CharacterPrefix + NonAlphaNumericRegex.Replace(key, "_").Trim('_');
+        if (string.IsNullOrWhiteSpace(k) || k == JsonKeys.CharacterPrefix) return null;
+        return k;
+    }
+
+    private static string? ResolveCanonicalName(Dictionary<string, object?> seed, string k) =>
+        seed.TryGetValue(KeyCanonicalGivenName, out var cn) && cn is not null
+            ? cn.ToString()
+            : CastKindClassifier.StripPrefix(k).Replace('_', ' ');
+
+    private static bool IsVoiceOnlyPolicy(Dictionary<string, object?> seed) =>
+        string.Equals(
+            seed.TryGetValue("display_name_policy", out var pol) ? pol?.ToString() : null,
+            "never_on_screen",
+            StringComparison.OrdinalIgnoreCase);
+
+    private static string ResolveSeedDescription(Dictionary<string, object?> seed, string? name, bool off)
+    {
+        // Prefer real model looks; never invent "as in the screenplay" stubs.
+        var desc = CoerceString(seed, JsonKeys.Description) ?? "";
+        if (IsStubLook(desc))
+            desc = off ? $"{name} (voice only; not on screen)." : "";
+        else if (off && string.IsNullOrWhiteSpace(desc))
+            desc = $"{name} (voice only; not on screen).";
+        return desc;
+    }
+
+    private static void ApplyVisualLock(Dictionary<string, object?> clean, Dictionary<string, object?> seed, bool off)
+    {
+        var vlock = CoerceString(seed, KeyVisualLock) ?? "";
+        if (!off)
+        {
+            clean[KeyVisualLock] = IsStubLook(vlock) ? "" : vlock;
+        }
+    }
+
+    private static void CopyOptionalSeedLists(Dictionary<string, object?> clean, Dictionary<string, object?> seed)
+    {
+        if (seed.TryGetValue(KeyWardrobeAlways, out var wa) && wa is List<object?> list)
+            clean[KeyWardrobeAlways] = list;
+        // Common model aliases
+        if (!clean.ContainsKey(KeyWardrobeAlways) &&
+            seed.TryGetValue("wardrobe", out var w2) && w2 is List<object?> list2)
+            clean[KeyWardrobeAlways] = list2;
+        if (seed.TryGetValue("source_image_pages", out var sip) && sip is List<object?> pages)
+            clean["source_image_pages"] = pages;
+    }
+
+    private static void CopyAgeVariantFields(
+        Dictionary<string, object?> clean,
+        Dictionary<string, object?> seed,
+        string k)
+    {
+        var ageBand = CoerceString(seed, "age_band");
+        if (!string.IsNullOrWhiteSpace(ageBand))
+            clean["age_band"] = ageBand.Trim();
+        var variantOfRaw = CoerceString(seed, KeyVariantOf);
+        if (!string.IsNullOrWhiteSpace(variantOfRaw))
+        {
+            var variantOfKey = variantOfRaw.StartsWith(JsonKeys.CharacterPrefix, StringComparison.OrdinalIgnoreCase)
+                ? variantOfRaw
+                : JsonKeys.CharacterPrefix + NonAlphaNumericRegex.Replace(variantOfRaw, "_").Trim('_');
+            if (!string.Equals(variantOfKey, k, StringComparison.OrdinalIgnoreCase))
+                clean[KeyVariantOf] = variantOfKey;
+        }
+    }
+
+    private static void DropDanglingVariantOf(Dictionary<string, object?> seedsOut)
+    {
         foreach (var entry in seedsOut.Values)
         {
             if (entry is not Dictionary<string, object?> clean) continue;
@@ -1106,74 +1315,94 @@ public sealed class CastFromScreenplayService
                 !seedsOut.ContainsKey(voKey))
                 clean.Remove(KeyVariantOf);
         }
+    }
 
-        outDoc[KeyCharacterSeedTokens] = seedsOut;
-
+    private static void CopyNormalizedWardrobeLocks(
+        Dictionary<string, object?> parsed,
+        Dictionary<string, object?> outDoc)
+    {
         var wardrobeIn = GetWardrobeLockDict(parsed);
-        if (wardrobeIn.Count > 0)
-        {
-            var wardrobeOut = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-            foreach (var (rawKey, rawVal) in wardrobeIn)
-            {
-                if (rawVal is not Dictionary<string, object?> entry) continue;
-                var desc = CoerceString(entry, JsonKeys.Description) ?? "";
-                if (string.IsNullOrWhiteSpace(desc)) continue;
-                var k = NormalizeWardrobeKey(rawKey);
-                var clean = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
-                {
-                    [JsonKeys.Description] = desc,
-                    [KeyReferenceImagePlaceholder] = CoerceString(entry, KeyReferenceImagePlaceholder)
-                        ?? ProjectStore.WardrobeRefFileName(k),
-                };
-                var vlock = CoerceString(entry, KeyVisualLock);
-                if (!string.IsNullOrWhiteSpace(vlock))
-                    clean[KeyVisualLock] = vlock;
-                wardrobeOut[k] = clean;
-            }
-            if (wardrobeOut.Count > 0)
-                outDoc[KeyWardrobeLockTokens] = wardrobeOut;
-        }
+        if (wardrobeIn.Count == 0)
+            return;
 
+        var wardrobeOut = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (rawKey, rawVal) in wardrobeIn)
+        {
+            var one = NormalizeOneWardrobeEntry(rawKey, rawVal);
+            if (one is null) continue;
+            wardrobeOut[one.Value.Key] = one.Value.Entry;
+        }
+        if (wardrobeOut.Count > 0)
+            outDoc[KeyWardrobeLockTokens] = wardrobeOut;
+    }
+
+    private static (string Key, Dictionary<string, object?> Entry)? NormalizeOneWardrobeEntry(string rawKey, object? rawVal)
+    {
+        if (rawVal is not Dictionary<string, object?> entry) return null;
+        var desc = CoerceString(entry, JsonKeys.Description) ?? "";
+        if (string.IsNullOrWhiteSpace(desc)) return null;
+        var k = NormalizeWardrobeKey(rawKey);
+        var clean = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            [JsonKeys.Description] = desc,
+            [KeyReferenceImagePlaceholder] = CoerceString(entry, KeyReferenceImagePlaceholder)
+                ?? ProjectStore.WardrobeRefFileName(k),
+        };
+        var vlock = CoerceString(entry, KeyVisualLock);
+        if (!string.IsNullOrWhiteSpace(vlock))
+            clean[KeyVisualLock] = vlock;
+        return (k, clean);
+    }
+
+    private static void CopyNormalizedLocationSeeds(
+        Dictionary<string, object?> parsed,
+        Dictionary<string, object?> outDoc)
+    {
         var locIn = GetLocationSeedsDict(parsed);
-        if (locIn.Count > 0)
+        if (locIn.Count == 0)
+            return;
+
+        var locOut = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (rawKey, rawVal) in locIn)
         {
-            var locOut = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-            foreach (var (rawKey, rawVal) in locIn)
-            {
-                if (rawVal is not Dictionary<string, object?> entry) continue;
-                var k = NormalizeLocationKey(rawKey);
-                if (string.IsNullOrWhiteSpace(k) || k == JsonKeys.LocationPrefix) continue;
-
-                var display = CoerceString(entry, KeyDisplayName)
-                              ?? CoerceString(entry, KeyCanonicalGivenName)
-                              ?? k.Replace(JsonKeys.LocationPrefix, "").Replace('_', ' ');
-                var desc = CoerceString(entry, JsonKeys.Description) ?? "";
-                if (IsStubLook(desc) || desc.Equals(display, StringComparison.OrdinalIgnoreCase))
-                    desc = "";
-                var vlock = CoerceString(entry, KeyVisualLock) ?? "";
-                if (IsStubLook(vlock) || vlock.Equals(display, StringComparison.OrdinalIgnoreCase))
-                    vlock = "";
-
-                var clean = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
-                {
-                    [KeyDisplayName] = display,
-                    [JsonKeys.Description] = desc,
-                    [KeyVisualLock] = string.IsNullOrWhiteSpace(vlock) ? desc : vlock,
-                    ["location_type"] = CoerceString(entry, "location_type") ?? "",
-                    [KeyReferenceImagePlaceholder] = CoerceString(entry, KeyReferenceImagePlaceholder)
-                        ?? (k.ToLowerInvariant() + "_ref.png"),
-                };
-                // Skip empty AI stubs — Stage‑1 merge will fill later.
-                if (string.IsNullOrWhiteSpace(clean[JsonKeys.Description]?.ToString())
-                    && string.IsNullOrWhiteSpace(clean[KeyVisualLock]?.ToString()))
-                    continue;
-                locOut[k] = clean;
-            }
-            if (locOut.Count > 0)
-                outDoc[KeyLocationSeedTokens] = locOut;
+            var one = NormalizeOneLocationSeed(rawKey, rawVal);
+            if (one is null) continue;
+            locOut[one.Value.Key] = one.Value.Entry;
         }
+        if (locOut.Count > 0)
+            outDoc[KeyLocationSeedTokens] = locOut;
+    }
 
-        return outDoc;
+    private static (string Key, Dictionary<string, object?> Entry)? NormalizeOneLocationSeed(string rawKey, object? rawVal)
+    {
+        if (rawVal is not Dictionary<string, object?> entry) return null;
+        var k = NormalizeLocationKey(rawKey);
+        if (string.IsNullOrWhiteSpace(k) || k == JsonKeys.LocationPrefix) return null;
+
+        var display = CoerceString(entry, KeyDisplayName)
+                      ?? CoerceString(entry, KeyCanonicalGivenName)
+                      ?? k.Replace(JsonKeys.LocationPrefix, "").Replace('_', ' ');
+        var desc = CoerceString(entry, JsonKeys.Description) ?? "";
+        if (IsStubLook(desc) || desc.Equals(display, StringComparison.OrdinalIgnoreCase))
+            desc = "";
+        var vlock = CoerceString(entry, KeyVisualLock) ?? "";
+        if (IsStubLook(vlock) || vlock.Equals(display, StringComparison.OrdinalIgnoreCase))
+            vlock = "";
+
+        var clean = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            [KeyDisplayName] = display,
+            [JsonKeys.Description] = desc,
+            [KeyVisualLock] = string.IsNullOrWhiteSpace(vlock) ? desc : vlock,
+            ["location_type"] = CoerceString(entry, "location_type") ?? "",
+            [KeyReferenceImagePlaceholder] = CoerceString(entry, KeyReferenceImagePlaceholder)
+                ?? (k.ToLowerInvariant() + "_ref.png"),
+        };
+        // Skip empty AI stubs — Stage‑1 merge will fill later.
+        if (string.IsNullOrWhiteSpace(clean[JsonKeys.Description]?.ToString())
+            && string.IsNullOrWhiteSpace(clean[KeyVisualLock]?.ToString()))
+            return null;
+        return (k, clean);
     }
 
     /// <summary>Foreign-key-safe location key, e.g. "kirk street" → "Loc_Kirk_Street".</summary>
