@@ -1,5 +1,3 @@
-using System.Text.Json;
-using System.Text.RegularExpressions;
 using PageToMovie.Core.Options;
 using PageToMovie.Engine.Abstractions;
 using Microsoft.Extensions.Logging;
@@ -69,24 +67,15 @@ public sealed class SoundDesignComposerClassifier : BeatChatClassifierBase<Sound
         }
         """;
 
-    public Task<Dictionary<string, SoundDesignDirective>?> ClassifySceneSoundDesignAsync(
-        Dictionary<string, object?> scene,
-        List<Dictionary<string, object?>> beats,
-        Action<string>? onProgress = null,
-        CancellationToken ct = default,
-        string? model = null) => ClassifyAsync(scene, beats, onProgress, ct, model);
+    public Task<Dictionary<string, SoundDesignDirective>?> ClassifySceneSoundDesignAsync(Dictionary<string, object?> scene, List<Dictionary<string, object?>> beats, Action<string>? onProgress = null, CancellationToken ct = default, string? model = null) => ClassifyAsync(scene, beats, onProgress, ct, model);
 
     protected override string BeatsHeading => "BEATS TO COMPOSE SOUND FOR:";
 
     protected override void AppendBeat(System.Text.StringBuilder sb, Dictionary<string, object?> b)
     {
-        var id = b.GetValueOrDefault("beat_id") ?? "b";
-        var action = b.GetValueOrDefault("visual_event") ?? "";
-        var spk = b.GetValueOrDefault("speaker") ?? "";
-        var dlg = b.GetValueOrDefault("dialogue") ?? "";
+        var (id, action, spk, dlg) = ReadBeatCore(b);
         var amb = b.GetValueOrDefault("ambient") ?? "";
         var sfx = b.GetValueOrDefault("sfx") ?? "";
-
         sb.AppendLine($"Beat '{id}':");
         AppendSpoken(sb, spk, dlg);
         AppendActionProse(sb, action);
@@ -96,44 +85,6 @@ public sealed class SoundDesignComposerClassifier : BeatChatClassifierBase<Sound
             sb.AppendLine($"  Base SFX: {sfx}");
     }
 
-    protected override Dictionary<string, SoundDesignDirective>? ParseResponse(string rawJson)
-    {
-        try
-        {
-            var cleaned = ClassifierJsonParser.StripFences(rawJson);
-            using var doc = JsonDocument.Parse(cleaned);
-            if (!doc.RootElement.TryGetProperty("sound_design", out var sdArray) ||
-                sdArray.ValueKind != JsonValueKind.Array)
-            {
-                return null;
-            }
-
-            var result = new Dictionary<string, SoundDesignDirective>(StringComparer.OrdinalIgnoreCase);
-            foreach (var item in sdArray.EnumerateArray())
-                TryAddSoundItem(result, item);
-
-            return result.Count > 0 ? result : null;
-        }
-        catch (Exception ex)
-        {
-            _log.LogWarning(ex, "Failed to parse AI sound design response JSON: {RawJson}", rawJson);
-            return null;
-        }
-    }
-
-    private static void TryAddSoundItem(Dictionary<string, SoundDesignDirective> result, JsonElement item)
-    {
-        if (!item.TryGetProperty("beat_id", out var bid))
-            return;
-        var id = bid.GetString() ?? "";
-        if (string.IsNullOrWhiteSpace(id))
-            return;
-        result[id] = new SoundDesignDirective(
-            ReadJsonString(item, "ambient_layer"),
-            ReadJsonString(item, "foley_layer"),
-            ReadJsonString(item, "score_layer"));
-    }
-
-    private static string ReadJsonString(JsonElement item, string name) =>
-        item.TryGetProperty(name, out var el) ? el.GetString() ?? "" : "";
+    protected override Dictionary<string, SoundDesignDirective>? ParseResponse(string rawJson) =>
+        ClassifierDirectiveJson.ParseKeyedArray(rawJson, "sound_design", item => ClassifierDirectiveJson.MapThreeStringFields(item, "ambient_layer", "foley_layer", "score_layer", static (a, f, s) => new SoundDesignDirective(a, f, s)), _log, "sound design");
 }

@@ -1,5 +1,4 @@
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using PageToMovie.Core.Options;
 using PageToMovie.Core.Utils;
 using PageToMovie.Engine;
@@ -99,25 +98,16 @@ public sealed class CameraDirectorClassifier : BeatChatClassifierBase<CameraDire
         }
         """;
 
-    public Task<Dictionary<string, CameraDirective>?> ClassifySceneCameraAsync(
-        Dictionary<string, object?> scene,
-        List<Dictionary<string, object?>> beats,
-        Action<string>? onProgress = null,
-        CancellationToken ct = default,
-        string? model = null) => ClassifyAsync(scene, beats, onProgress, ct, model);
+    public Task<Dictionary<string, CameraDirective>?> ClassifySceneCameraAsync(Dictionary<string, object?> scene, List<Dictionary<string, object?>> beats, Action<string>? onProgress = null, CancellationToken ct = default, string? model = null) => ClassifyAsync(scene, beats, onProgress, ct, model);
 
     protected override string BeatsHeading => "BEATS TO DIRECT:";
 
     protected override void AppendBeat(System.Text.StringBuilder sb, Dictionary<string, object?> b)
     {
-        var id = b.GetValueOrDefault("beat_id") ?? "b";
-        var action = b.GetValueOrDefault("visual_event") ?? "";
-        var spk = b.GetValueOrDefault("speaker") ?? "";
-        var dlg = b.GetValueOrDefault("dialogue") ?? "";
+        var (id, action, spk, dlg) = ReadBeatCore(b);
         var ac = b.GetValueOrDefault("action_class") ?? "";
         var spk2 = b.GetValueOrDefault("secondary_speaker") ?? "";
         var dlg2 = b.GetValueOrDefault("secondary_dialogue") ?? "";
-
         sb.AppendLine($"Beat '{id}' (class: {ac}):");
         AppendSpoken(sb, spk, dlg);
         if (!string.IsNullOrWhiteSpace(spk2.ToString()) || !string.IsNullOrWhiteSpace(dlg2.ToString()))
@@ -125,47 +115,23 @@ public sealed class CameraDirectorClassifier : BeatChatClassifierBase<CameraDire
         AppendActionProse(sb, action);
     }
 
-    protected override Dictionary<string, CameraDirective>? ParseResponse(string rawJson)
+    protected override Dictionary<string, CameraDirective>? ParseResponse(string rawJson) =>
+        ClassifierDirectiveJson.ParseKeyedArray(rawJson, "directives", MapCameraItem, _log, "camera director");
+
+    private static (string? Id, CameraDirective Value)? MapCameraItem(JsonElement item)
     {
-        try
-        {
-            var cleaned = ClassifierJsonParser.StripFences(rawJson);
-            using var doc = JsonDocument.Parse(cleaned);
-            if (!doc.RootElement.TryGetProperty("directives", out var dirArray) ||
-                dirArray.ValueKind != JsonValueKind.Array)
-            {
-                return null;
-            }
-
-            var result = new Dictionary<string, CameraDirective>(StringComparer.OrdinalIgnoreCase);
-            foreach (var item in dirArray.EnumerateArray())
-            {
-                var id = item.GetStringProp("beat_id");
-                var scaleStr = item.GetStringProp("shot_scale", ShotScale.Medium.ToSnakeCase());
-                var scale = ShotScaleExtensions.ParseShotScale(scaleStr, ShotScale.Medium);
-                var lensStr = item.GetStringProp("lens_spec", "35mm lens");
-                var moveStr = item.GetStringProp("camera_movement", "locked tripod");
-                var framing = item.GetStringProp("framing_prompt");
-                var lensEnum = MediaEngineEnumExtensions.ParseCameraLens(lensStr);
-                var moveEnum = MediaEngineEnumExtensions.ParseCameraMovementKind(moveStr);
-                var angleStr = item.GetStringProp("camera_angle", "eye_level");
-                var lightingStr = item.GetStringProp("lighting_condition", "daylight");
-                var angleEnum = ParseCameraAngle(angleStr);
-                var lightingEnum = ParseLightingCondition(lightingStr);
-
-                if (!string.IsNullOrWhiteSpace(id))
-                {
-                    result[id] = new CameraDirective(scale, lensStr, moveStr, framing, lensEnum, moveEnum, angleEnum, lightingEnum);
-                }
-            }
-
-            return result.Count > 0 ? result : null;
-        }
-        catch (Exception ex)
-        {
-            _log.LogWarning(ex, "Failed to parse AI camera director response JSON: {RawJson}", rawJson);
-            return null;
-        }
+        var id = item.GetStringProp("beat_id");
+        if (string.IsNullOrWhiteSpace(id)) return null;
+        var scaleStr = item.GetStringProp("shot_scale", ShotScale.Medium.ToSnakeCase());
+        var lensStr = item.GetStringProp("lens_spec", "35mm lens");
+        var moveStr = item.GetStringProp("camera_movement", "locked tripod");
+        return (id, new CameraDirective(
+            ShotScaleExtensions.ParseShotScale(scaleStr, ShotScale.Medium),
+            lensStr, moveStr, item.GetStringProp("framing_prompt"),
+            MediaEngineEnumExtensions.ParseCameraLens(lensStr),
+            MediaEngineEnumExtensions.ParseCameraMovementKind(moveStr),
+            ParseCameraAngle(item.GetStringProp("camera_angle", "eye_level")),
+            ParseLightingCondition(item.GetStringProp("lighting_condition", "daylight"))));
     }
 
     public static CameraAngle ParseCameraAngle(string? input) => input?.ToLowerInvariant() switch
