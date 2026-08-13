@@ -1477,7 +1477,7 @@ public class UserDatabaseService
         await conn.OpenAsync(ct).ConfigureAwait(false);
 
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = UserSelectSql + " WHERE user_id = @id LIMIT 1";
+        cmd.CommandText = UserSelectByIdSql;
         cmd.Parameters.AddWithValue("@id", userId.Trim());
 
         using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
@@ -1495,7 +1495,7 @@ public class UserDatabaseService
         await conn.OpenAsync(ct).ConfigureAwait(false);
 
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = UserSelectSql + $" WHERE LOWER(username) = LOWER({SqlLit.ParamName}) LIMIT 1";
+        cmd.CommandText = UserSelectByUsernameSql;
         cmd.Parameters.AddWithValue(SqlLit.ParamName, username.Trim());
 
         using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
@@ -1566,7 +1566,7 @@ public class UserDatabaseService
     public const string AuthPurposeEmailConfirm = "email_confirm";
     public const string AuthPurposePasswordReset = "password_reset";
 
-    private static readonly string UserSelectSql = $@"
+    private const string UserSelectSql = $@"
             SELECT user_id, username, password_hash,
                    encrypted_xai_api_key, encrypted_gemini_api_key, encrypted_anthropic_api_key, encrypted_fal_api_key,
                    role, created_at, last_login_at,
@@ -1577,6 +1577,11 @@ public class UserDatabaseService
                    email,
                    email_confirmed_at
             FROM {SqlLit.Users}";
+
+    private const string UserSelectByIdSql = UserSelectSql + " WHERE user_id = @id LIMIT 1";
+    private const string UserSelectByUsernameSql = UserSelectSql + " WHERE LOWER(username) = LOWER(@name) LIMIT 1";
+    private const string UserSelectOrderedByUsernameSql = UserSelectSql + " ORDER BY LOWER(username)";
+    private const string UserSelectByEmailSql = UserSelectSql + " WHERE LOWER(email) = @e LIMIT 1";
 
     /// <summary>Saves or updates a user's encrypted xAI API key in SQLite.</summary>
     public Task SaveXaiApiKeyAsync(string userId, string? apiKey, CancellationToken ct = default) =>
@@ -2942,7 +2947,7 @@ public class UserDatabaseService
         await conn.OpenAsync(ct).ConfigureAwait(false);
 
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = UserSelectSql + " ORDER BY LOWER(username)";
+        cmd.CommandText = UserSelectOrderedByUsernameSql;
 
         var list = new List<UserCreditSummaryDto>();
         using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
@@ -3111,7 +3116,7 @@ public class UserDatabaseService
         using (var reload = conn.CreateCommand())
         {
             reload.Transaction = tx;
-            reload.CommandText = UserSelectSql + " WHERE user_id = @id LIMIT 1";
+            reload.CommandText = UserSelectByIdSql;
             reload.Parameters.AddWithValue("@id", resolvedUserId);
             using var reader = await reload.ExecuteReaderAsync(ct).ConfigureAwait(false);
             if (!await reader.ReadAsync(ct).ConfigureAwait(false))
@@ -3369,7 +3374,7 @@ public class UserDatabaseService
         using var conn = new SqliteConnection(ConnectionString);
         await conn.OpenAsync(ct).ConfigureAwait(false);
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = UserSelectSql + " WHERE LOWER(email) = @e LIMIT 1";
+        cmd.CommandText = UserSelectByEmailSql;
         cmd.Parameters.AddWithValue("@e", e);
         using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
         if (await reader.ReadAsync(ct).ConfigureAwait(false))
