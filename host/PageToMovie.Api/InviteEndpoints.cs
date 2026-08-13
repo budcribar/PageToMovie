@@ -28,7 +28,7 @@ public static class InviteEndpoints
             if (string.IsNullOrWhiteSpace(username))
                 return Results.BadRequest(new { ok = false, error = "username or email required" });
             var publicBase = config["PublicBaseUrl"] ?? $"{req.Scheme}://{req.Host.Value}";
-            var result = await acl.InviteByUsernameAsync(id, username!, role, user.UserId ?? "", publicBase, ct);
+            var result = await acl.InviteByUsernameAsync(id, username, role, user.UserId ?? "", publicBase, ct);
             if (!result.Ok) return Results.BadRequest(new { ok = false, error = result.Error });
             return Results.Ok(new {
                 ok = true, status = result.Status, userId = result.UserId, role = result.Role,
@@ -53,7 +53,7 @@ public static class InviteEndpoints
             if (string.IsNullOrWhiteSpace(key))
                 return Results.BadRequest(new { ok = false, error = "username, email, or token required" });
             var publicBase = config["PublicBaseUrl"] ?? $"{req.Scheme}://{req.Host.Value}";
-            var result = await acl.ResendInviteAsync(id, key!, user.UserId ?? "", publicBase, ct);
+            var result = await acl.ResendInviteAsync(id, key, user.UserId ?? "", publicBase, ct);
             if (!result.Ok) return Results.BadRequest(new { ok = false, error = result.Error });
             return Results.Ok(new {
                 ok = true, status = result.Status, inviteLink = result.InviteLink,

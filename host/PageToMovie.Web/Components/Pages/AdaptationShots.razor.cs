@@ -148,7 +148,7 @@ public partial class AdaptationShots
         Busy = true;
         try
         {
-            try { await ActiveProject.RefreshReadinessAsync(Engine); } catch { /* */ }
+            try { await ActiveProject.RefreshReadinessAsync(Engine); } catch { /* readiness refresh is best-effort */ }
             var res = AutoGenResolution;
             if (string.IsNullOrWhiteSpace(res))
             {

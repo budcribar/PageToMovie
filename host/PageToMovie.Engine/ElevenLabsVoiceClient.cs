@@ -26,7 +26,7 @@ public sealed class ElevenLabsVoiceClient : IVoiceClient
         _log = log;
         _allowMock = allowMockFallback;
         if (_http.BaseAddress is null)
-            _http.BaseAddress = new Uri(SupportedModelCatalog.ElevenLabsApiBase.TrimEnd('/') + "/");
+            _http.BaseAddress = new Uri(SupportedModelCatalog.ElevenLabsApiBase.TrimEnd(Path.AltDirectorySeparatorChar) + Path.AltDirectorySeparatorChar);
     }
 
     public string ProviderId => "elevenlabs";
@@ -236,8 +236,8 @@ public sealed class ElevenLabsVoiceClient : IVoiceClient
                         preview = pEl.GetString();
                     list.Add(new VoiceCatalogEntry
                     {
-                        ProviderVoiceId = id!,
-                        Name = name ?? id!,
+                        ProviderVoiceId = id,
+                        Name = name ?? id,
                         Category = cat,
                         PreviewUrl = preview,
                         IsCloned = string.Equals(cat, "cloned", StringComparison.OrdinalIgnoreCase),

@@ -56,8 +56,9 @@ internal static class ScenePlaybackSupport
         else
         {
             var stitched = await stitch.ConcatAsync(clipUrls);
-            if (!stitched.Success || string.IsNullOrWhiteSpace(stitched.Url)) return null;
-            url = stitched.Url!;
+            var stitchedUrl = stitched.Url;
+            if (!stitched.Success || string.IsNullOrWhiteSpace(stitchedUrl)) return null;
+            url = stitchedUrl;
         }
         cache[scene] = url;
         return url;

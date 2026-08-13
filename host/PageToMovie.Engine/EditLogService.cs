@@ -57,7 +57,7 @@ public sealed class EditLogService
     public async Task SaveAsync(string projectId, EditLogDocument doc, CancellationToken ct = default)
     {
         var path = await LogPathAsync(projectId, ct).ConfigureAwait(false);
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(path) ?? ".");
         // Write to a temp file then atomically rename — a crash/cancellation mid-write must never
         // leave edit_feedback_log.json truncated, since LoadAsync silently returns an empty
         // document on any parse failure (losing the whole project's edit history with no error).
@@ -574,7 +574,7 @@ public sealed class EditLogService
         Dictionary<string, object?> state,
         CancellationToken ct)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(path) ?? ".");
         var json = JsonSerializer.Serialize(state, JsonOpts) + "\n";
         await File.WriteAllTextAsync(path, json, ct).ConfigureAwait(false);
     }

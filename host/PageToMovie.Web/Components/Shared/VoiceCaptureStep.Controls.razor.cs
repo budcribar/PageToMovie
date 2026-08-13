@@ -14,5 +14,5 @@ namespace PageToMovie.Web.Components.Shared;
 
 public partial class VoiceCaptureStep_Controls
 {
-    [CascadingParameter] public VoiceCaptureStep Host { get; set; } = default!;
+    [CascadingParameter] public required VoiceCaptureStep Host { get; set; }
 }

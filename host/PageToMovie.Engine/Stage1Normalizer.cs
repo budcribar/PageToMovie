@@ -24,10 +24,10 @@ public static class Stage1Normalizer
     {
         ["interior"] = "int", ["int"] = "int", ["interior_only"] = "int",
         ["exterior"] = "ext", ["ext"] = "ext", ["exterior_only"] = "ext",
-        ["mixed"] = MixedMode, ["interior_exterior_mix"] = MixedMode,
+        [MixedMode] = MixedMode, ["interior_exterior_mix"] = MixedMode,
         ["interior/exterior"] = MixedMode, ["int/ext"] = MixedMode,
-        ["montage_mix"] = MontageMode, ["montage"] = MontageMode,
-        ["flashback"] = "flashback", ["dream"] = DreamMode, ["dreamscape"] = DreamMode,
+        ["montage_mix"] = MontageMode, [MontageMode] = MontageMode,
+        ["flashback"] = "flashback", [DreamMode] = DreamMode, ["dreamscape"] = DreamMode,
     };
 
     public static Dictionary<string, object?> Normalize(Dictionary<string, object?> data)
@@ -160,12 +160,12 @@ public static class Stage1Normalizer
             if (val is not Dictionary<string, object?> seed) continue;
             seed["display_name"] =
                 CoerceString(seed.TryGetValue("display_name", out var dn) ? dn : null) ?? key;
-            seed["description"] =
-                CoerceString(seed.TryGetValue("description", out var d) ? d : null)
+            seed[DescriptionKey] =
+                CoerceString(seed.TryGetValue(DescriptionKey, out var d) ? d : null)
                 ?? seed["display_name"];
             seed["visual_lock"] =
                 CoerceString(seed.TryGetValue("visual_lock", out var v) ? v : null)
-                ?? seed["description"];
+                ?? seed[DescriptionKey];
             seeds[key] = seed;
         }
         gpv["location_seed_tokens"] = seeds;
@@ -200,7 +200,7 @@ public static class Stage1Normalizer
         var lidList = new List<string>();
         if (lids is string one) lidList.Add(one);
         else if (lids is List<object?> list)
-            lidList.AddRange(list.Select(x => CoerceString(x)).Where(x => !string.IsNullOrEmpty(x))!);
+            lidList.AddRange(list.Select(x => CoerceString(x) ?? "").Where(x => !string.IsNullOrEmpty(x)));
         s["location_ids"] = lidList;
         if (lidList.Count > 0 &&
             string.IsNullOrEmpty(CoerceString(s.TryGetValue("primary_location_id", out var pl) ? pl : null)))
@@ -266,11 +266,18 @@ public static class Stage1Normalizer
         string Get(string key)
         {
             if (nested is not null &&
-                nested.TryGetValue(key, out var nv) &&
-                !string.IsNullOrWhiteSpace(CoerceString(nv)))
-                return CoerceString(nv)!.Trim();
-            if (beat.TryGetValue(key, out var rv) && !string.IsNullOrWhiteSpace(CoerceString(rv)))
-                return CoerceString(rv)!.Trim();
+                nested.TryGetValue(key, out var nv))
+            {
+                var nestedVal = CoerceString(nv);
+                if (!string.IsNullOrWhiteSpace(nestedVal))
+                    return nestedVal.Trim();
+            }
+            if (beat.TryGetValue(key, out var rv))
+            {
+                var beatVal = CoerceString(rv);
+                if (!string.IsNullOrWhiteSpace(beatVal))
+                    return beatVal.Trim();
+            }
             return "";
         }
 
@@ -306,15 +313,15 @@ public static class Stage1Normalizer
 
     private static string NormLocationType(object? v)
     {
-        var s = (CoerceString(v) ?? "mixed").Trim().ToLowerInvariant().Replace(' ', '_');
+        var s = (CoerceString(v) ?? MixedMode).Trim().ToLowerInvariant().Replace(' ', '_');
         if (LocTypeMap.TryGetValue(s, out var mapped)) return mapped;
         if (s.Contains("flash")) return "flashback";
-        if (s.Contains("dream")) return "dream";
-        if (s.Contains("montage")) return "montage";
-        if (s.Contains("ext") && s.Contains("int")) return "mixed";
+        if (s.Contains(DreamMode)) return DreamMode;
+        if (s.Contains(MontageMode)) return MontageMode;
+        if (s.Contains("ext") && s.Contains("int")) return MixedMode;
         if (s.StartsWith("ext")) return "ext";
         if (s.StartsWith("int")) return "int";
-        return "mixed";
+        return MixedMode;
     }
 
     private static string NormStoryDay(object? v)
@@ -326,7 +333,7 @@ public static class Stage1Normalizer
             return n <= 0 ? "Flashback / unspecified day" : $"Day {n}";
         }
         var s = CoerceString(v);
-        return string.IsNullOrWhiteSpace(s) ? "unspecified" : s!;
+        return string.IsNullOrWhiteSpace(s) ? "unspecified" : s;
     }
 
     private static Dictionary<string, object?> NormMusic(object? raw)
@@ -337,7 +344,7 @@ public static class Stage1Normalizer
         {
             d["style_description"] =
                 CoerceString(d.TryGetValue("style", out var st) ? st : null)
-                ?? CoerceString(d.TryGetValue("description", out var desc) ? desc : null)
+                ?? CoerceString(d.TryGetValue(DescriptionKey, out var desc) ? desc : null)
                 ?? CoerceString(d.TryGetValue("genre", out var g) ? g : null)
                 ?? "cinematic underscore";
         }
@@ -359,7 +366,7 @@ public static class Stage1Normalizer
             foreach (var x in list)
             {
                 var t = CoerceString(x);
-                if (!string.IsNullOrWhiteSpace(t)) raw.Add(t!);
+                if (!string.IsNullOrWhiteSpace(t)) raw.Add(t);
             }
         }
         var outList = new List<string>();

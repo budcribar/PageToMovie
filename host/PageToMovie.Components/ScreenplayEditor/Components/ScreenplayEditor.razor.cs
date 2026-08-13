@@ -32,7 +32,9 @@ public partial class ScreenplayEditor : ComponentBase
     public bool ShowLocationModal { get; set; } = false;
     public bool ShowCharacterModal { get; set; } = false;
 
-    public string ActiveViewMode { get; set; } = "scene";
+    private const string ViewModeScene = "scene";
+
+    public string ActiveViewMode { get; set; } = ViewModeScene;
     public int SelectedSceneIndex { get; set; } = 0;
     public bool IsSidebarCompact { get; set; } = false;
 
@@ -63,7 +65,7 @@ public partial class ScreenplayEditor : ComponentBase
 
     public void OnSelectionChanged()
     {
-        ActiveViewMode = "scene";
+        ActiveViewMode = ViewModeScene;
         StateHasChanged();
     }
 
@@ -106,7 +108,7 @@ public partial class ScreenplayEditor : ComponentBase
         if (index >= 0 && index < Model.Scenes.Count)
         {
             SelectedSceneIndex = index;
-            ActiveViewMode = "scene";
+            ActiveViewMode = ViewModeScene;
         }
     }
 
@@ -131,7 +133,7 @@ public partial class ScreenplayEditor : ComponentBase
         if (SelectedSceneIndex > 0)
         {
             SelectedSceneIndex--;
-            ActiveViewMode = "scene";
+            ActiveViewMode = ViewModeScene;
         }
     }
 
@@ -140,13 +142,13 @@ public partial class ScreenplayEditor : ComponentBase
         if (SelectedSceneIndex < Model.Scenes.Count - 1)
         {
             SelectedSceneIndex++;
-            ActiveViewMode = "scene";
+            ActiveViewMode = ViewModeScene;
         }
     }
 
     public void ShowAllScenesView()
     {
-        ActiveViewMode = ActiveViewMode == "all" ? "scene" : "all";
+        ActiveViewMode = ActiveViewMode == "all" ? ViewModeScene : "all";
     }
 
     public async Task ReorderScenes((int from, int to) args)
@@ -222,7 +224,7 @@ public partial class ScreenplayEditor : ComponentBase
         Model.Scenes.Insert(insertAt, newScene);
         ReindexSceneNumbers();
         SelectedSceneIndex = insertAt;
-        ActiveViewMode = "scene";
+        ActiveViewMode = ViewModeScene;
         await OnChanged();
     }
 
@@ -301,7 +303,7 @@ public partial class ScreenplayEditor : ComponentBase
             if (Model.Scenes.Count > 0)
             {
                 SelectedSceneIndex = 0;
-                ActiveViewMode = "scene";
+                ActiveViewMode = ViewModeScene;
                 EnsureSceneSelection();
             }
             else

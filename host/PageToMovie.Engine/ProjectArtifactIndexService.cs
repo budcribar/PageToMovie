@@ -73,7 +73,7 @@ public sealed class ProjectArtifactIndexService
             int? fileCount = null;
             if (File.Exists(abs))
             {
-                try { bytes = new FileInfo(abs).Length; } catch { /* */ }
+                try { bytes = new FileInfo(abs).Length; } catch { /* file may vanish between Exists and Length */ }
             }
             else if (Directory.Exists(abs))
             {
@@ -83,7 +83,7 @@ public sealed class ProjectArtifactIndexService
                     fileCount = fileInfos.Count;
                     bytes = fileInfos.Sum(fi => { try { return fi.Length; } catch { return 0L; } });
                 }
-                catch { /* */ }
+                catch { /* directory listing is best-effort */ }
             }
 
             entries.Add(new ArtifactIndexEntry
@@ -242,7 +242,7 @@ public sealed class ProjectArtifactIndexService
                     using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(cfgPath, ct));
                     models["pipelineConfig"] = JsonSerializer.Deserialize<object>(doc.RootElement.GetRawText());
                 }
-                catch { /* */ }
+                catch { /* pipeline_config overlay is optional */ }
             }
 
             await File.WriteAllTextAsync(

@@ -102,11 +102,13 @@ public enum ProjectSortDirection
 
 public static class WebLayerEnumExtensions
 {
+    private const string ApiSystem = "system";
+
     public static UiThemeMode ParseUiThemeMode(string? value) =>
             value?.ToLowerInvariant() switch
             {
                 "light" => UiThemeMode.Light,
-                "system" => UiThemeMode.System,
+                ApiSystem => UiThemeMode.System,
                 _ => UiThemeMode.Dark
             };
 
@@ -178,7 +180,7 @@ public static class WebLayerEnumExtensions
         {
             UiThemeMode.Dark => "dark",
             UiThemeMode.Light => "light",
-            UiThemeMode.System => "system",
+            UiThemeMode.System => ApiSystem,
             _ => "dark"
         };
 
@@ -198,14 +200,14 @@ public static class WebLayerEnumExtensions
 
     public static string ToTabId(this AdminSectionTab tab) => tab switch
         {
-            AdminSectionTab.SystemInfo => "system",
+            AdminSectionTab.SystemInfo => ApiSystem,
             AdminSectionTab.Jobs => "jobs",
             AdminSectionTab.Logs => "logs",
             AdminSectionTab.Storage => "storage",
             AdminSectionTab.LoadSim => "loadsim",
             AdminSectionTab.Settings => "settings",
             AdminSectionTab.Diagnostics => "diagnostics",
-            _ => "system"
+            _ => ApiSystem
         };
 
 }

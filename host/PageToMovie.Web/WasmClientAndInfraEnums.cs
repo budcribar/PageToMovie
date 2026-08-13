@@ -449,6 +449,13 @@ public enum ClientFilePickerMode
 /// </summary>
 public static class WasmClientAndInfraEnumExtensions
 {
+    private const string ApiGranted = "granted";
+    private const string ApiDenied = "denied";
+    private const string ApiUnsupported = "unsupported";
+    private const string ApiInstalling = "installing";
+    private const string ApiInstalled = "installed";
+    private const string ApiUnknown = "unknown";
+
     public static AudioOutputDeviceType ParseAudioOutputDeviceType(string? value) =>
             (value ?? "").Trim().ToLowerInvariant() switch
             {
@@ -518,9 +525,9 @@ public static class WasmClientAndInfraEnumExtensions
             (value ?? "").Trim().ToLowerInvariant() switch
             {
                 "default" => ClientNotificationPermission.Default,
-                "granted" or "allow" => ClientNotificationPermission.Granted,
-                "denied" or "block" => ClientNotificationPermission.Denied,
-                "unsupported" => ClientNotificationPermission.Unsupported,
+                ApiGranted or "allow" => ClientNotificationPermission.Granted,
+                ApiDenied or "block" => ClientNotificationPermission.Denied,
+                ApiUnsupported => ClientNotificationPermission.Unsupported,
                 _ => ClientNotificationPermission.Default
             };
 
@@ -540,8 +547,8 @@ public static class WasmClientAndInfraEnumExtensions
             (value ?? "").Trim().ToLowerInvariant() switch
             {
                 "prompt" => ClipboardPermission.Prompt,
-                "granted" or "allow" => ClipboardPermission.Granted,
-                "denied" or "block" => ClipboardPermission.Denied,
+                ApiGranted or "allow" => ClipboardPermission.Granted,
+                ApiDenied or "block" => ClipboardPermission.Denied,
                 "read_text_only" or "readtextonly" or "read" => ClipboardPermission.ReadTextOnly,
                 "write_text_only" or "writetextonly" or "write" => ClipboardPermission.WriteTextOnly,
                 _ => ClipboardPermission.Prompt
@@ -684,10 +691,10 @@ public static class WasmClientAndInfraEnumExtensions
             {
                 "not_installed" or "notinstalled" => PwaInstallState.NotInstalled,
                 "install_prompt_available" or "installpromptavailable" => PwaInstallState.InstallPromptAvailable,
-                "installing" => PwaInstallState.Installing,
-                "installed" => PwaInstallState.Installed,
+                ApiInstalling => PwaInstallState.Installing,
+                ApiInstalled => PwaInstallState.Installed,
                 "dismissed" => PwaInstallState.Dismissed,
-                "unsupported" => PwaInstallState.Unsupported,
+                ApiUnsupported => PwaInstallState.Unsupported,
                 _ => PwaInstallState.NotInstalled
             };
 
@@ -718,8 +725,8 @@ public static class WasmClientAndInfraEnumExtensions
     public static ServiceWorkerState ParseServiceWorkerState(string? value) =>
             (value ?? "").Trim().ToLowerInvariant() switch
             {
-                "installing" => ServiceWorkerState.Installing,
-                "installed" => ServiceWorkerState.Installed,
+                ApiInstalling => ServiceWorkerState.Installing,
+                ApiInstalled => ServiceWorkerState.Installed,
                 "activating" => ServiceWorkerState.Activating,
                 "activated" => ServiceWorkerState.Activated,
                 "redundant" => ServiceWorkerState.Redundant,
@@ -812,7 +819,7 @@ public static class WasmClientAndInfraEnumExtensions
             DnsRecordType.Srv => "srv",
             DnsRecordType.Ptr => "ptr",
             DnsRecordType.Caa => "caa",
-            _ => "unknown"
+            _ => ApiUnknown
         };
 
     public static string ToApiString(this StorageVolumeType value) => value switch
@@ -823,7 +830,7 @@ public static class WasmClientAndInfraEnumExtensions
             StorageVolumeType.EphemeralLocal => "ephemeral_local",
             StorageVolumeType.NetworkFileShare => "network_file_share",
             StorageVolumeType.ColdArchive => "cold_archive",
-            _ => "unknown"
+            _ => ApiUnknown
         };
 
     public static string ToApiString(this ServerlessTriggerKind value) => value switch
@@ -835,7 +842,7 @@ public static class WasmClientAndInfraEnumExtensions
             ServerlessTriggerKind.PubSubEvent => "pubsub_event",
             ServerlessTriggerKind.DatabaseStream => "database_stream",
             ServerlessTriggerKind.Webhook => "webhook",
-            _ => "unknown"
+            _ => ApiUnknown
         };
 
     public static string ToApiString(this NetworkSecurityGroupRule value) => value switch
@@ -846,7 +853,7 @@ public static class WasmClientAndInfraEnumExtensions
             NetworkSecurityGroupRule.DenyOutbound => "deny_outbound",
             NetworkSecurityGroupRule.StatefulInspection => "stateful_inspection",
             NetworkSecurityGroupRule.RateLimitRule => "rate_limit_rule",
-            _ => "unknown"
+            _ => ApiUnknown
         };
 
     public static string ToApiString(this InstanceLifeCycle value) => value switch
@@ -856,7 +863,7 @@ public static class WasmClientAndInfraEnumExtensions
             InstanceLifeCycle.Reserved => "reserved",
             InstanceLifeCycle.DedicatedHost => "dedicated_host",
             InstanceLifeCycle.Preemptible => "preemptible",
-            _ => "unknown"
+            _ => ApiUnknown
         };
 
     public static string ToApiString(this ContainerRestartPolicy value) => value switch
@@ -865,7 +872,7 @@ public static class WasmClientAndInfraEnumExtensions
             ContainerRestartPolicy.OnFailure => "on_failure",
             ContainerRestartPolicy.Never => "never",
             ContainerRestartPolicy.UnlessStopped => "unless_stopped",
-            _ => "unknown"
+            _ => ApiUnknown
         };
 
     public static string ToApiString(this LogRetentionPolicy value) => value switch
@@ -876,7 +883,7 @@ public static class WasmClientAndInfraEnumExtensions
             LogRetentionPolicy.NinetyDays => "ninety_days",
             LogRetentionPolicy.OneYear => "one_year",
             LogRetentionPolicy.Indefinite => "indefinite",
-            _ => "unknown"
+            _ => ApiUnknown
         };
 
     public static string ToApiString(this BackupStorageLocation value) => value switch
@@ -886,7 +893,7 @@ public static class WasmClientAndInfraEnumExtensions
             BackupStorageLocation.CrossRegionReplica => "cross_region_replica",
             BackupStorageLocation.TapeArchive => "tape_archive",
             BackupStorageLocation.MultiCloudVault => "multi_cloud_vault",
-            _ => "unknown"
+            _ => ApiUnknown
         };
 
     public static string ToApiString(this DisasterRecoveryRpoRto value) => value switch
@@ -897,7 +904,7 @@ public static class WasmClientAndInfraEnumExtensions
             DisasterRecoveryRpoRto.FourHours => "four_hours",
             DisasterRecoveryRpoRto.TwentyFourHours => "twenty_four_hours",
             DisasterRecoveryRpoRto.BestEffort => "best_effort",
-            _ => "unknown"
+            _ => ApiUnknown
         };
 
     public static string ToApiString(this InfraProvisionerTool value) => value switch
@@ -910,7 +917,7 @@ public static class WasmClientAndInfraEnumExtensions
             InfraProvisionerTool.Bicep => "bicep",
             InfraProvisionerTool.Helm => "helm",
             InfraProvisionerTool.Kubectl => "kubectl",
-            _ => "unknown"
+            _ => ApiUnknown
         };
 
     public static string ToApiString(this WasmRuntimeKind value) => value switch
@@ -921,7 +928,7 @@ public static class WasmClientAndInfraEnumExtensions
             WasmRuntimeKind.WasmEdge => "wasmedge",
             WasmRuntimeKind.NodeJs => "nodejs",
             WasmRuntimeKind.Bun => "bun",
-            _ => "unknown"
+            _ => ApiUnknown
         };
 
     public static string ToApiString(this ClientStorageType value) => value switch
@@ -932,7 +939,7 @@ public static class WasmClientAndInfraEnumExtensions
             ClientStorageType.CacheApi => "cache_api",
             ClientStorageType.Cookies => "cookies",
             ClientStorageType.MemoryOnly => "memory_only",
-            _ => "unknown"
+            _ => ApiUnknown
         };
 
     public static string ToApiString(this WebGlRendererBackend value) => value switch
@@ -943,18 +950,18 @@ public static class WasmClientAndInfraEnumExtensions
             WebGlRendererBackend.SoftwareRasterizer => "software_rasterizer",
             WebGlRendererBackend.DirectXBinding => "directx_binding",
             WebGlRendererBackend.VulkanBinding => "vulkan_binding",
-            _ => "unknown"
+            _ => ApiUnknown
         };
 
     public static string ToApiString(this PwaInstallState value) => value switch
         {
             PwaInstallState.NotInstalled => "not_installed",
             PwaInstallState.InstallPromptAvailable => "install_prompt_available",
-            PwaInstallState.Installing => "installing",
-            PwaInstallState.Installed => "installed",
+            PwaInstallState.Installing => ApiInstalling,
+            PwaInstallState.Installed => ApiInstalled,
             PwaInstallState.Dismissed => "dismissed",
-            PwaInstallState.Unsupported => "unsupported",
-            _ => "unknown"
+            PwaInstallState.Unsupported => ApiUnsupported,
+            _ => ApiUnknown
         };
 
     public static string ToApiString(this TouchGestureType value) => value switch
@@ -968,7 +975,7 @@ public static class WasmClientAndInfraEnumExtensions
             TouchGestureType.SwipeDown => "swipe_down",
             TouchGestureType.PinchZoom => "pinch_zoom",
             TouchGestureType.Rotate => "rotate",
-            _ => "unknown"
+            _ => ApiUnknown
         };
 
     public static string ToApiString(this ScreenOrientationMode value) => value switch
@@ -978,7 +985,7 @@ public static class WasmClientAndInfraEnumExtensions
             ScreenOrientationMode.LandscapePrimary => "landscape_primary",
             ScreenOrientationMode.LandscapeSecondary => "landscape_secondary",
             ScreenOrientationMode.AutoRotate => "auto_rotate",
-            _ => "unknown"
+            _ => ApiUnknown
         };
 
     public static string ToApiString(this NetworkConnectivityState value) => value switch
@@ -988,16 +995,16 @@ public static class WasmClientAndInfraEnumExtensions
             NetworkConnectivityState.SlowDownlink => "slow_downlink",
             NetworkConnectivityState.CellularMetered => "cellular_metered",
             NetworkConnectivityState.WiFiUnmetered => "wifi_unmetered",
-            _ => "unknown"
+            _ => ApiUnknown
         };
 
     public static string ToApiString(this ClientNotificationPermission value) => value switch
         {
             ClientNotificationPermission.Default => "default",
-            ClientNotificationPermission.Granted => "granted",
-            ClientNotificationPermission.Denied => "denied",
-            ClientNotificationPermission.Unsupported => "unsupported",
-            _ => "unknown"
+            ClientNotificationPermission.Granted => ApiGranted,
+            ClientNotificationPermission.Denied => ApiDenied,
+            ClientNotificationPermission.Unsupported => ApiUnsupported,
+            _ => ApiUnknown
         };
 
     public static string ToApiString(this HardwareKeyCombo value) => value switch
@@ -1009,17 +1016,17 @@ public static class WasmClientAndInfraEnumExtensions
             HardwareKeyCombo.ControlShift => "control_shift",
             HardwareKeyCombo.ControlAlt => "control_alt",
             HardwareKeyCombo.MetaShift => "meta_shift",
-            _ => "unknown"
+            _ => ApiUnknown
         };
 
     public static string ToApiString(this ClipboardPermission value) => value switch
         {
             ClipboardPermission.Prompt => "prompt",
-            ClipboardPermission.Granted => "granted",
-            ClipboardPermission.Denied => "denied",
+            ClipboardPermission.Granted => ApiGranted,
+            ClipboardPermission.Denied => ApiDenied,
             ClipboardPermission.ReadTextOnly => "read_text_only",
             ClipboardPermission.WriteTextOnly => "write_text_only",
-            _ => "unknown"
+            _ => ApiUnknown
         };
 
     public static string ToApiString(this AudioOutputDeviceType value) => value switch
@@ -1029,7 +1036,7 @@ public static class WasmClientAndInfraEnumExtensions
             AudioOutputDeviceType.BluetoothAudio => "bluetooth_audio",
             AudioOutputDeviceType.HdmiOutput => "hdmi_output",
             AudioOutputDeviceType.VirtualAudioCable => "virtual_audio_cable",
-            _ => "unknown"
+            _ => ApiUnknown
         };
 
     public static string ToApiString(this VideoRenderingQuality value) => value switch
@@ -1040,7 +1047,7 @@ public static class WasmClientAndInfraEnumExtensions
             VideoRenderingQuality.FullHd1080p => "full_hd_1080p",
             VideoRenderingQuality.UltraHd4k => "ultra_hd_4k",
             VideoRenderingQuality.AutoAdaptive => "auto_adaptive",
-            _ => "unknown"
+            _ => ApiUnknown
         };
 
     public static string ToApiString(this ClientAppTheme value) => value switch
@@ -1050,7 +1057,7 @@ public static class WasmClientAndInfraEnumExtensions
             ClientAppTheme.HighContrast => "high_contrast",
             ClientAppTheme.SystemDefault => "system_default",
             ClientAppTheme.CustomAccent => "custom_accent",
-            _ => "unknown"
+            _ => ApiUnknown
         };
 
     public static string ToApiString(this BrowserVendorEngine value) => value switch
@@ -1060,7 +1067,7 @@ public static class WasmClientAndInfraEnumExtensions
             BrowserVendorEngine.WebKitSafari => "webkit_safari",
             BrowserVendorEngine.EdgeHTML => "edge_html",
             BrowserVendorEngine.Servo => "servo",
-            _ => "unknown"
+            _ => ApiUnknown
         };
 
     public static string ToApiString(this WebAssemblyMemoryMode value) => value switch
@@ -1070,18 +1077,18 @@ public static class WasmClientAndInfraEnumExtensions
             WebAssemblyMemoryMode.SharedArrayBuffer => "shared_array_buffer",
             WebAssemblyMemoryMode.DynamicGrowth => "dynamic_growth",
             WebAssemblyMemoryMode.FixedAllocation => "fixed_allocation",
-            _ => "unknown"
+            _ => ApiUnknown
         };
 
     public static string ToApiString(this ServiceWorkerState value) => value switch
         {
-            ServiceWorkerState.Installing => "installing",
-            ServiceWorkerState.Installed => "installed",
+            ServiceWorkerState.Installing => ApiInstalling,
+            ServiceWorkerState.Installed => ApiInstalled,
             ServiceWorkerState.Activating => "activating",
             ServiceWorkerState.Activated => "activated",
             ServiceWorkerState.Redundant => "redundant",
             ServiceWorkerState.Stopped => "stopped",
-            _ => "unknown"
+            _ => ApiUnknown
         };
 
     public static string ToApiString(this PushSubscriptionState value) => value switch
@@ -1091,7 +1098,7 @@ public static class WasmClientAndInfraEnumExtensions
             PushSubscriptionState.Subscribed => "subscribed",
             PushSubscriptionState.Expired => "expired",
             PushSubscriptionState.PermissionDenied => "permission_denied",
-            _ => "unknown"
+            _ => ApiUnknown
         };
 
     public static string ToApiString(this ClientAnalyticsConsent value) => value switch
@@ -1101,7 +1108,7 @@ public static class WasmClientAndInfraEnumExtensions
             ClientAnalyticsConsent.EssentialOnly => "essential_only",
             ClientAnalyticsConsent.Pending => "pending",
             ClientAnalyticsConsent.NotRequired => "not_required",
-            _ => "unknown"
+            _ => ApiUnknown
         };
 
     public static string ToApiString(this DragDropEffect value) => value switch
@@ -1111,7 +1118,7 @@ public static class WasmClientAndInfraEnumExtensions
             DragDropEffect.Move => "move",
             DragDropEffect.Link => "link",
             DragDropEffect.All => "all",
-            _ => "unknown"
+            _ => ApiUnknown
         };
 
     public static string ToApiString(this ClientFilePickerMode value) => value switch
@@ -1120,7 +1127,7 @@ public static class WasmClientAndInfraEnumExtensions
             ClientFilePickerMode.OpenMultipleFiles => "open_multiple_files",
             ClientFilePickerMode.OpenFolder => "open_folder",
             ClientFilePickerMode.SaveFile => "save_file",
-            _ => "unknown"
+            _ => ApiUnknown
         };
 
 }

@@ -29,7 +29,8 @@ RUN dotnet restore host/PageToMovie.Api/PageToMovie.Api.csproj
 
 # Publish Api host. Core prompts are embedded in PageToMovie.Engine (not /data).
 # Fail the image build if framework JS is missing — blank UI on Railway.
-RUN dotnet publish host/PageToMovie.Api/PageToMovie.Api.csproj -c Release --no-restore -o /app/publish /p:UseAppHost=false \
+RUN dotnet publish host/PageToMovie.Api/PageToMovie.Api.csproj \
+    -c Release --no-restore -o /app/publish /p:UseAppHost=false \
     && test -f /app/publish/wwwroot/_framework/blazor.web.js \
     && test -f /app/publish/PageToMovie.Api.staticwebassets.endpoints.json \
     || (echo "ERROR: blazor.web.js or staticwebassets endpoints missing from publish" \

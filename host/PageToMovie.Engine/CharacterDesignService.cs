@@ -46,8 +46,14 @@ public sealed class CharacterDesignService
         _user = user;
     }
 
-    private string? CurrentUserId =>
-        string.IsNullOrWhiteSpace(_user?.UserId) ? null : _user!.UserId;
+    private string? CurrentUserId
+    {
+        get
+        {
+            var id = _user?.UserId;
+            return string.IsNullOrWhiteSpace(id) ? null : id;
+        }
+    }
 
     /// <param name="n">Variant count. Pass 0 (default) for auto: 1 if locked, else 3.</param>
     /// <param name="seedOptions">Flexible seed policy (auto / preferred / book / explicit multi-select).</param>
@@ -70,7 +76,7 @@ public sealed class CharacterDesignService
 
         var wardrobeLockKey = ProjectStore.GetWardrobeLockKey(seeds);
         var wardrobeLock = !string.IsNullOrWhiteSpace(wardrobeLockKey)
-            ? _projects.GetWardrobeLock(projectId, wardrobeLockKey!)
+            ? _projects.GetWardrobeLock(projectId, wardrobeLockKey)
             : null;
 
         var charDir = _projects.GetCharactersDir(projectId);
@@ -86,7 +92,6 @@ public sealed class CharacterDesignService
             "Character portrait generation");
         var imageProvider = await GetConfigStringAsync(projectId, "image_provider", _opts.ImageProvider, ct)
             .ConfigureAwait(false);
-        var providerId = ImageApiLimits.ResolveProvider(imageProvider, imageModel);
         // Catalog maxReferenceImages only (ClampMaxRefs → ImageApiLimits fail-fast).
         var maxRefs = ImageApiLimits.ClampMaxRefs(opts.MaxRefs, imageProvider, imageModel);
         var maxBook = Math.Clamp(opts.MaxBookHints < 0 ? Math.Max(0, maxRefs - 1) : opts.MaxBookHints, 0, maxRefs);
@@ -150,7 +155,8 @@ public sealed class CharacterDesignService
                 ProjectStore.CharacterRefFileCandidates(charKey), StringComparer.OrdinalIgnoreCase);
             var variantPattern = new System.Text.RegularExpressions.Regex(
                 $@"^{System.Text.RegularExpressions.Regex.Escape(charKey.ToLowerInvariant())}_variant_\d+\.",
-                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase,
+                CommonRegex.Timeout);
             var removed = editRefs.RemoveAll(p =>
             {
                 var name = Path.GetFileName(p);
@@ -181,15 +187,8 @@ public sealed class CharacterDesignService
             visForGen = v0.GetString();
 
         string? planningModel = null;
-        try
-        {
-            var cfg = await _projects.GetConfigAsync(projectId, ct).ConfigureAwait(false);
-            planningModel = ProjectModelSelection.RequirePlanning(cfg, "Character design look scrub");
-        }
-        catch (InvalidOperationException)
-        {
-            throw;
-        }
+        var cfg = await _projects.GetConfigAsync(projectId, ct).ConfigureAwait(false);
+        planningModel = ProjectModelSelection.RequirePlanning(cfg, "Character design look scrub");
 
         try
         {
@@ -197,7 +196,7 @@ public sealed class CharacterDesignService
                 charKey,
                 description: descForGen,
                 visualLock: visForGen,
-                model: planningModel!,
+                model: planningModel ?? "",
                 onProgress: onProgress,
                 ct: ct).ConfigureAwait(false);
             if (usedAi)
@@ -382,7 +381,7 @@ public sealed class CharacterDesignService
                 CharKey = charKey,
                 Mode = mode,
                 Paths = paths,
-                BookRefs = editRefs.Select(Path.GetFileName).Where(s => s is not null).Cast<string>().ToList(),
+                BookRefs = editRefs.Select(Path.GetFileName).OfType<string>().ToList(),
                 EditError = editError,
                 LockedAsPreferred = false,
                 PreviousVariantIndex = tweakSlots?.Previous,
@@ -610,7 +609,7 @@ public sealed class CharacterDesignService
         var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         var refName = ProjectStore.CharacterRefFileName(charKey);
         var dest = Path.Combine(projectDir, "assets", "characters", refName);
-        Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(dest) ?? ".");
 
         // Always store real PNG bytes under *_ref.png (JPEG/WebP uploaded as .png break browsers).
         WritePortraitPng(sourcePath, dest);
@@ -639,7 +638,6 @@ public sealed class CharacterDesignService
         if (content is null || !content.CanRead)
             throw new InvalidOperationException("Empty upload stream");
 
-        var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         var charDir = _projects.GetCharactersDir(projectId);
         Directory.CreateDirectory(charDir);
         var staging = Path.Combine(charDir, $"{charKey.ToLowerInvariant()}_upload_staging_{Guid.NewGuid():N}.bin");
@@ -751,15 +749,8 @@ public sealed class CharacterDesignService
                 "{\"pass\":true|false,\"medium\":\"photoreal|illustration|sketch|other\",\"reason\":\"short\"}\n";
 
             string? visionModel = null;
-            try
-            {
-                var cfg = await _projects.GetConfigAsync(projectId, ct).ConfigureAwait(false);
-                visionModel = ProjectModelSelection.RequireVision(cfg, "Portrait style gate");
-            }
-            catch (InvalidOperationException)
-            {
-                throw;
-            }
+            var cfg = await _projects.GetConfigAsync(projectId, ct).ConfigureAwait(false);
+            visionModel = ProjectModelSelection.RequireVision(cfg, "Portrait style gate");
 
             var gate = await RunPortraitStyleGateAsync(
                 prompt, visionPath, visionModel, detail: "low", ct).ConfigureAwait(false);
@@ -999,7 +990,7 @@ public sealed class CharacterDesignService
         if (string.IsNullOrWhiteSpace(sourcePath) || !File.Exists(sourcePath))
             throw new InvalidOperationException("Portrait image file is missing.");
 
-        Directory.CreateDirectory(Path.GetDirectoryName(destPngPath)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(destPngPath) ?? ".");
 
         using var bitmap = SKBitmap.Decode(sourcePath);
         if (bitmap is null)
@@ -1025,7 +1016,7 @@ public sealed class CharacterDesignService
         }
         finally
         {
-            try { if (File.Exists(tmp)) File.Delete(tmp); } catch { /* */ }
+            try { if (File.Exists(tmp)) File.Delete(tmp); } catch { /* temp file cleanup is best-effort */ }
         }
     }
 
@@ -1040,7 +1031,6 @@ public sealed class CharacterDesignService
         if (IsVoiceOnly(seeds))
             throw new InvalidOperationException($"{charKey} is voice-only — no image to delete.");
 
-        var projectDir = _projects.GetProjectDir(projectId);
         var charDir = _projects.GetCharactersDir(projectId);
         var k = (kind ?? "").Trim().ToLowerInvariant();
 
@@ -1101,7 +1091,6 @@ public sealed class CharacterDesignService
         if (IsVoiceOnly(seeds.Value))
             throw new InvalidOperationException($"{charKey} is voice-only — nothing to unlock.");
 
-        var projectDir = _projects.GetProjectDir(projectId);
         var existing = _projects.ResolveCharacterRefPath(projectId, charKey);
         if (existing is null)
             return false;
@@ -1182,7 +1171,7 @@ public sealed class CharacterDesignService
         var descSafe = CharacterVisualTextScrubber.ScrubVisualProse(description).Trim().TrimEnd('.');
         var projectStyle = ReadProjectRenderStyleLock(projectDir);
         var styleClause = !string.IsNullOrWhiteSpace(projectStyle)
-            ? projectStyle!.Trim()
+            ? projectStyle.Trim()
             : "Photoreal live-action continuity reference.";
 
         var prompt =
@@ -1229,7 +1218,7 @@ public sealed class CharacterDesignService
         // Structured metadata from adaptation (or cast) — never regex over Fountain prose.
         var vision = ProjectVisionMeta.TryRead(projectDir);
         if (!string.IsNullOrWhiteSpace(vision?.RenderStyleLock))
-            return vision!.RenderStyleLock!.Trim();
+            return vision?.RenderStyleLock?.Trim();
 
         try
         {
@@ -1292,10 +1281,10 @@ public sealed class CharacterDesignService
         bool hasCostumeRef = false)
     {
         var description = !string.IsNullOrWhiteSpace(descriptionOverride)
-            ? descriptionOverride!
+            ? descriptionOverride
             : seedInfo.TryGetProperty(DescriptionKey, out var d) ? d.GetString() ?? "" : "";
         var visualLock = !string.IsNullOrWhiteSpace(visualLockOverride)
-            ? visualLockOverride!
+            ? visualLockOverride
             : seedInfo.TryGetProperty("visual_lock", out var vlck) ? vlck.GetString() ?? "" : "";
         var ageBand = seedInfo.TryGetProperty("age_band", out var ab) ? ab.GetString() ?? "" : "";
         var variantOf = seedInfo.TryGetProperty("variant_of", out var vo) ? vo.GetString() ?? "" : "";
@@ -1523,9 +1512,9 @@ public sealed class CharacterDesignService
             {
                 var s = x.GetString();
                 if (string.IsNullOrWhiteSpace(s)) continue;
-                if (ProjectStore.IsTextOnlyPlatePath(s!)) continue;
-                if (!rels.Contains(s!, StringComparer.OrdinalIgnoreCase))
-                    rels.Add(s!);
+                if (ProjectStore.IsTextOnlyPlatePath(s)) continue;
+                if (!rels.Contains(s, StringComparer.OrdinalIgnoreCase))
+                    rels.Add(s);
             }
             if (rels.Count > 0)
                 break;

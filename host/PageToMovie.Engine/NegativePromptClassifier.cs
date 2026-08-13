@@ -33,7 +33,7 @@ public sealed class NegativePromptClassifier
 
     public bool IsEnabled => _opts.ClassifyNegativePromptWithChat && _chat.IsConfigured;
 
-    public static string SystemPrompt() => """
+    public const string SystemPrompt = """
         You are an expert film historian and Period Visual Continuity Guard preventing anachronisms in video generation.
 
         Your task: Given a scene's setting, period style, and location, generate a comma-separated list of 5–15 era-specific negative prompt tokens preventing period violations and visual glitches.
@@ -71,7 +71,7 @@ public sealed class NegativePromptClassifier
                 new Stage2DirectiveOperation(_chat, "negative_prompt", PromptVersion),
                 new JsonTextDirectiveParser("negative_tokens"), new TextDirectiveValidator("negative_tokens"),
                 new DirectiveTerminalFallback<Stage2DirectiveInput, TextDirective>(), new ModelOperationOptions { CorrectiveMaxAttempts = 1 });
-            var result = await pipeline.ExecuteAsync(new(SystemPrompt(), userPrompt, effectiveModel, ChatCallModes.NegativePromptClassify), ct).ConfigureAwait(false);
+            var result = await pipeline.ExecuteAsync(new(SystemPrompt, userPrompt, effectiveModel, ChatCallModes.NegativePromptClassify), ct).ConfigureAwait(false);
             return result.Value?.Value;
         }
         catch (Exception ex)

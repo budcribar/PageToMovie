@@ -43,14 +43,16 @@
                     </div>
                 </div>
 
+                @if (Host._report is { } report)
+                {
                 <div class="small text-muted mb-2">
-                    Clips @Host._report!.Summary.ClipsOnDisk / @Host._report.Summary.ClipsTotal · Scenes with media @Host._report.Summary.ScenesWithMedia / @Host._report.Summary.ScenesTotal
+                    Clips @report.Summary.ClipsOnDisk / @report.Summary.ClipsTotal · Scenes with media @report.Summary.ScenesWithMedia / @report.Summary.ScenesTotal
                 </div>
                 <div class="progress mb-3" style="height: 0.65rem;">
-                    <div class="progress-bar" role="progressbar" style="width: @(ProjectCosts.ProgressPct(Host._report.Summary))%"></div>
+                    <div class="progress-bar" role="progressbar" style="width: @(ProjectCosts.ProgressPct(report.Summary))%"></div>
                 </div>
 
-                @if (Host._report.Scenarios.Count > 0)
+                @if (report.Scenarios.Count > 0)
                 {
                     <div class="fw-semibold small mb-2">Resolution scenarios</div>
                     <div class="table-responsive">
@@ -63,7 +65,7 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach (var r in Host._report.Scenarios)
+                                @foreach (var r in report.Scenarios)
                                 {
                                     <tr>
                                         <td>@r.Label</td>
@@ -74,6 +76,7 @@
                             </tbody>
                         </table>
                     </div>
+                }
                 }
 
                 @if (Host._byProvider is { ByProvider.Count: > 0 })
