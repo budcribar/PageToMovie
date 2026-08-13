@@ -197,7 +197,7 @@ public static class AdaptationSessionPilot
 
         using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(20) };
         var client = new XaiResponsesClient(http);
-        if (!client.IsConfigured)
+        if (!XaiResponsesClient.IsConfigured)
         {
             Console.WriteLine("❌ Error: XAI_API_KEY is not set. This pilot makes real, paid xAI calls — no fake mode.");
             return 1;

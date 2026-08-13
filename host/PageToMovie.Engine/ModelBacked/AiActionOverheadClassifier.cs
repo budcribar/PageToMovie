@@ -23,14 +23,15 @@ public sealed class AiActionOverheadClassifier
         ILogger<AiActionOverheadClassifier>? log = null,
         string? modelOverride = null)
     {
-        _heuristic = new ActionOverheadHeuristic(ledger);
+        _ = ledger;
+        _heuristic = new ActionOverheadHeuristic();
         if (chat is null || !chat.IsConfigured)
             return;
 
         _pipeline = new ValidatedModelOperation<ActionInput, string, ActionClassifierEstimation>(
             new ActionModelOperation(chat, router, log, modelOverride),
             new ActionResponseParser(),
-            new ActionResultValidator(ledger),
+            new ActionResultValidator(),
             new ActionFallback(_heuristic),
             new ModelOperationOptions
             {
@@ -156,15 +157,14 @@ public sealed class AiActionOverheadClassifier
         }
     }
 
-    private sealed class ActionResultValidator(ActionCameraOverheadLedger ledger)
-        : IModelResultValidator<ActionClassifierEstimation>
+    private sealed class ActionResultValidator : IModelResultValidator<ActionClassifierEstimation>
     {
         public IReadOnlyList<ModelValidationIssue> Validate(ActionClassifierEstimation result)
         {
             var issues = new List<ModelValidationIssue>();
             if (string.IsNullOrWhiteSpace(result.MatchCategoryId))
                 issues.Add(new("missing_category", "matchCategoryId is required.", "$.matchCategoryId"));
-            else if (ledger.GetOverheadSec(result.MatchCategoryId.Trim(), -1) <= 0)
+            else if (ActionCameraOverheadLedger.GetOverheadSec(result.MatchCategoryId.Trim(), -1) <= 0)
                 issues.Add(new("unknown_category", "matchCategoryId is not in the calibrated ledger.", "$.matchCategoryId"));
             if (double.IsNaN(result.ConfidenceScore) || result.ConfidenceScore < 0 || result.ConfidenceScore > 1)
                 issues.Add(new("invalid_confidence", "confidenceScore must be between 0 and 1.", "$.confidenceScore"));

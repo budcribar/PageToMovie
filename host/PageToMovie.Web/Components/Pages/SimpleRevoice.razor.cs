@@ -464,17 +464,17 @@ public partial class SimpleRevoice : IAsyncDisposable
 
     private sealed class FfmpegResult
     {
-        public bool Success { get; set; }
-        public string? Url { get; set; }
-        public string? Error { get; set; }
+        public bool Success { get; set; } = false;
+        public string? Url { get; set; } = null;
+        public string? Error { get; set; } = null;
     }
 
     private sealed class SaveBlobResult
     {
-        public bool Success { get; set; }
-        public string? Sha256 { get; set; }
-        public long SizeBytes { get; set; }
-        public string? RelativePath { get; set; }
-        public string? Error { get; set; }
+        public bool Success { get; set; } = false;
+        public string? Sha256 { get; set; } = null;
+        public long SizeBytes { get; set; } = 0;
+        public string? RelativePath { get; set; } = null;
+        public string? Error { get; set; } = null;
     }
 }

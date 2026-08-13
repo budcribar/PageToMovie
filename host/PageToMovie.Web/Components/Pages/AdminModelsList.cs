@@ -171,7 +171,7 @@ public partial class AdminModelsCatalog
             _ => "bg-secondary",
         };
 
-        internal string GetCapBadgeClass(string cap) => cap switch
+        internal static string GetCapBadgeClass(string cap) => cap switch
         {
             "Chat" => "bg-primary",
             "Video" => "bg-purple",

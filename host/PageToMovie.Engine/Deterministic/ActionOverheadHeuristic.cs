@@ -1,7 +1,7 @@
 namespace PageToMovie.Engine.Deterministic;
 
 /// <summary>Local, no-network fallback for action timing classification.</summary>
-public sealed class ActionOverheadHeuristic(ActionCameraOverheadLedger ledger)
+public sealed class ActionOverheadHeuristic
 {
     public ActionClassifierEstimation Classify(string actionDescription, string? parenthetical = null)
     {
@@ -25,7 +25,7 @@ public sealed class ActionOverheadHeuristic(ActionCameraOverheadLedger ledger)
     }
 
     private ActionClassifierEstimation Result(string category, double fallback, double confidence, string explanation) =>
-        new(category, ledger.GetOverheadSec(category, fallback), confidence, explanation);
+        new(category, ActionCameraOverheadLedger.GetOverheadSec(category, fallback), confidence, explanation);
 
     private static bool ContainsAny(string text, params string[] values) =>
         values.Any(value => text.Contains(value, StringComparison.Ordinal));

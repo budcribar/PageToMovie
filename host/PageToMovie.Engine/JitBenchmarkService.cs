@@ -43,7 +43,6 @@ public sealed class JitBenchmarkService
     /// </summary>
     private const double ConfidentMatchThreshold = 0.80;
 
-    private readonly ActionCameraOverheadLedger _ledger;
     private readonly AiActionOverheadClassifier _classifier;
     private readonly IVideoClient? _videoClient;
     private readonly IVisionClient? _visionClient;
@@ -66,7 +65,7 @@ public sealed class JitBenchmarkService
         ILogger<JitBenchmarkService>? log = null,
         IHttpClientFactory? httpFactory = null)
     {
-        _ledger = ledger;
+        _ = ledger;
         _classifier = classifier;
         _videoClient = videoClient;
         _visionClient = visionClient;
@@ -83,7 +82,7 @@ public sealed class JitBenchmarkService
         CancellationToken ct = default)
     {
         var concurrency = ActionConcurrencyAnalyzer.AnalyzeBeat(actionDescription, parenthetical);
-        double camOverhead = _ledger.GetOverheadSec(concurrency.CameraId, 1.6);
+        double camOverhead = ActionCameraOverheadLedger.GetOverheadSec(concurrency.CameraId, 1.6);
         // Video model is optional for index-only matches; required only when live JIT renders.
         string? targetModel = string.IsNullOrWhiteSpace(modelId) ? null : modelId.Trim();
         // Evaluator attribution for telemetry — never invent Grok/Gemini ids.

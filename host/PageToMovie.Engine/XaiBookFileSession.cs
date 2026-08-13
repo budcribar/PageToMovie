@@ -34,7 +34,7 @@ public sealed class XaiBookFileSession : IBookFileSession
         _onProgress = onProgress;
     }
 
-    public bool IsAvailable => _client.IsConfigured && !string.IsNullOrWhiteSpace(_bookId);
+    public bool IsAvailable => XaiResponsesClient.IsConfigured && !string.IsNullOrWhiteSpace(_bookId);
     public string? Provider => ProviderName;
     public string? FileId { get; private set; }
     public string? LastResponseId { get; private set; }
@@ -166,7 +166,7 @@ public sealed class BookFileSessionFactory : IBookFileSessionFactory
             return Task.FromResult<IBookFileSession?>(null);
         if (string.IsNullOrWhiteSpace(bookId) || string.IsNullOrWhiteSpace(bookText))
             return Task.FromResult<IBookFileSession?>(null);
-        if (!_xai.IsConfigured)
+        if (!XaiResponsesClient.IsConfigured)
             return Task.FromResult<IBookFileSession?>(null);
 
         // Prefer xAI/Grok models for Responses path.

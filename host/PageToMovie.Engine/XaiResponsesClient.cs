@@ -33,7 +33,7 @@ public sealed class XaiResponsesClient
         _keyProvider = keyProvider;
     }
 
-    public bool IsConfigured => !string.IsNullOrWhiteSpace(ApiKeyScope.Current ?? Environment.GetEnvironmentVariable("XAI_API_KEY"));
+    public static bool IsConfigured => !string.IsNullOrWhiteSpace(ApiKeyScope.Current ?? Environment.GetEnvironmentVariable("XAI_API_KEY"));
 
     public sealed record UploadResult(string FileId, string Filename, long Bytes, long? ExpiresAtUnixSeconds);
 

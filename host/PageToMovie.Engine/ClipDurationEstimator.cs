@@ -327,9 +327,8 @@ public static class ClipDurationEstimator
         if (!cameraDetected && !actionDetected)
             return flatFallback;
 
-        var ledger = new ActionCameraOverheadLedger();
-        var camOverhead = cameraDetected ? ledger.GetOverheadSec(concurrency.CameraId, 0.0) : 0.0;
-        var actOverhead = actionDetected ? ledger.GetOverheadSec(concurrency.ActionId, 0.0) : 0.0;
+        var camOverhead = cameraDetected ? ActionCameraOverheadLedger.GetOverheadSec(concurrency.CameraId, 0.0) : 0.0;
+        var actOverhead = actionDetected ? ActionCameraOverheadLedger.GetOverheadSec(concurrency.ActionId, 0.0) : 0.0;
         var netActionOverhead = (1.0 - concurrency.OverlapRatioGamma) * actOverhead;
         return camOverhead + netActionOverhead;
     }

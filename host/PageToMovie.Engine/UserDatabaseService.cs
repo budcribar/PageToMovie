@@ -29,6 +29,28 @@ public class UserDatabaseService
     private const string DefaultOperatorUserId = "budcribar";
     private const string ProviderGemini = "gemini";
     private const string ProviderAnthropic = "anthropic";
+
+    /// <summary>Repeated SQL table / parameter / type literals (S1192).</summary>
+    private static class SqlLit
+    {
+        public const string Users = "users";
+        public const string UserApiCalls = "user_api_calls";
+        public const string Projects = "projects";
+        public const string RealNotNullDefault0 = "REAL NOT NULL DEFAULT 0";
+        public const string ParamCreated = "@created";
+        public const string ParamName = "@name";
+        public const string ParamOwner = "@owner";
+        public const string ParamProject = "@project";
+        public const string ParamEmail = "@email";
+        public const string ParamAlias = "@alias";
+        public const string ParamPrimary = "@primary";
+        public const string ParamTake = "@take";
+        public const string ParamUserId = "@userId";
+        public const string ParamProjectId = "@projectId";
+        public const string ParamScene = "@scene";
+        public const string ParamClip = "@clip";
+    }
+
     private readonly string _dbPath;
     private readonly IDataProtector? _protector;
     private readonly ILogger<UserDatabaseService> _logger;
@@ -220,9 +242,9 @@ public class UserDatabaseService
                     var curVer = Convert.ToInt32(vCmd.ExecuteScalar() ?? 0);
 
                     // Migration v1 -> v2: Ensure provider key columns including Fal.ai
-                    EnsureColumn(conn, "users", "encrypted_gemini_api_key", "TEXT");
-                    EnsureColumn(conn, "users", "encrypted_anthropic_api_key", "TEXT");
-                    EnsureColumn(conn, "users", "encrypted_fal_api_key", "TEXT");
+                    EnsureColumn(conn, SqlLit.Users, "encrypted_gemini_api_key", "TEXT");
+                    EnsureColumn(conn, SqlLit.Users, "encrypted_anthropic_api_key", "TEXT");
+                    EnsureColumn(conn, SqlLit.Users, "encrypted_fal_api_key", "TEXT");
 
                     if (curVer < 2)
                     {
@@ -272,22 +294,22 @@ public class UserDatabaseService
                 }
 
                 // User billing credits (list-rate USD; 1 credit = $0.01).
-                EnsureColumn(conn, "users", "credits_balance_usd", "REAL NOT NULL DEFAULT 0");
-                EnsureColumn(conn, "users", "credits_lifetime_granted_usd", "REAL NOT NULL DEFAULT 0");
-                EnsureColumn(conn, "users", "credits_lifetime_used_usd", "REAL NOT NULL DEFAULT 0");
+                EnsureColumn(conn, SqlLit.Users, "credits_balance_usd", SqlLit.RealNotNullDefault0);
+                EnsureColumn(conn, SqlLit.Users, "credits_lifetime_granted_usd", SqlLit.RealNotNullDefault0);
+                EnsureColumn(conn, SqlLit.Users, "credits_lifetime_used_usd", SqlLit.RealNotNullDefault0);
 
                 // User Terms of Service acceptance tracking
-                EnsureColumn(conn, "users", "terms_accepted_at", "TEXT");
-                EnsureColumn(conn, "users", "terms_version", "TEXT");
+                EnsureColumn(conn, SqlLit.Users, "terms_accepted_at", "TEXT");
+                EnsureColumn(conn, SqlLit.Users, "terms_version", "TEXT");
 
                 // Admin disable (soft ban) — blocks login / API without deleting ledger.
-                EnsureColumn(conn, "users", "is_disabled", "INTEGER NOT NULL DEFAULT 0");
+                EnsureColumn(conn, SqlLit.Users, "is_disabled", "INTEGER NOT NULL DEFAULT 0");
 
                 // Forgot-password request marker (legacy admin path; email reset preferred).
-                EnsureColumn(conn, "users", "password_reset_requested_at", "TEXT");
-                EnsureColumn(conn, "users", "email", "TEXT");
-                EnsureColumn(conn, "users", "email_confirmed_at", "TEXT");
-                EnsureColumn(conn, "users", "active_project_id", "TEXT");
+                EnsureColumn(conn, SqlLit.Users, "password_reset_requested_at", "TEXT");
+                EnsureColumn(conn, SqlLit.Users, "email", "TEXT");
+                EnsureColumn(conn, SqlLit.Users, "email_confirmed_at", "TEXT");
+                EnsureColumn(conn, SqlLit.Users, "active_project_id", "TEXT");
 
                 using (var cmd = conn.CreateCommand())
                 {
@@ -375,16 +397,16 @@ public class UserDatabaseService
                 }
 
                 // User-facing cost bucket (screenplay / characters / video / voice / music / other).
-                EnsureColumn(conn, "user_api_calls", "category", "TEXT");
+                EnsureColumn(conn, SqlLit.UserApiCalls, "category", "TEXT");
                 // Customer charge (list × admin multiplier) — per-user actual charges.
-                EnsureColumn(conn, "user_api_calls", "charge_usd", "REAL");
-                EnsureColumn(conn, "user_api_calls", "charge_multiplier", "REAL");
+                EnsureColumn(conn, SqlLit.UserApiCalls, "charge_usd", "REAL");
+                EnsureColumn(conn, SqlLit.UserApiCalls, "charge_multiplier", "REAL");
                 // Retry attempt number (ApiCallTelemetry.Attempt) — needed to derive "succeeded after retry"
                 // in the AI-call analytics rollup (see GetAiCallRawDataAsync).
-                EnsureColumn(conn, "user_api_calls", "attempt", "INTEGER");
+                EnsureColumn(conn, SqlLit.UserApiCalls, "attempt", "INTEGER");
                 // Canonical outcome (AiCallOutcome, stored as its string name) — set once at write time
                 // in ProjectTelemetryService.LogApiCallAsync; replaces read-time string-guessing.
-                EnsureColumn(conn, "user_api_calls", "outcome", "TEXT");
+                EnsureColumn(conn, SqlLit.UserApiCalls, "outcome", "TEXT");
                 try
                 {
                     using var idxCmd = conn.CreateCommand();
@@ -535,7 +557,7 @@ public class UserDatabaseService
                             email_confirmed_at = COALESCE(users.email_confirmed_at, @created);
                     ";
                     cmd.Parameters.AddWithValue("@hash", HashPassword("admin"));
-                    cmd.Parameters.AddWithValue("@created", DateTime.UtcNow.ToString("o"));
+                    cmd.Parameters.AddWithValue(SqlLit.ParamCreated, DateTime.UtcNow.ToString("o"));
                     cmd.ExecuteNonQuery();
                 }
 
@@ -580,8 +602,8 @@ public class UserDatabaseService
                         ELSE users.username
                     END;";
             ensureUser.Parameters.AddWithValue("@id", ownerId);
-            ensureUser.Parameters.AddWithValue("@name", ownerName);
-            ensureUser.Parameters.AddWithValue("@created", DateTime.UtcNow.ToString("o"));
+            ensureUser.Parameters.AddWithValue(SqlLit.ParamName, ownerName);
+            ensureUser.Parameters.AddWithValue(SqlLit.ParamCreated, DateTime.UtcNow.ToString("o"));
             ensureUser.ExecuteNonQuery();
         }
 
@@ -600,7 +622,7 @@ public class UserDatabaseService
                 UPDATE user_api_calls
                 SET user_id = @owner
                 WHERE {orphanUserSql};";
-            cmd.Parameters.AddWithValue("@owner", ownerId);
+            cmd.Parameters.AddWithValue(SqlLit.ParamOwner, ownerId);
             apiUser = cmd.ExecuteNonQuery();
         }
 
@@ -610,7 +632,7 @@ public class UserDatabaseService
                 UPDATE user_api_calls
                 SET project_id = @project
                 WHERE project_id IS NULL OR TRIM(project_id) = '';";
-            cmd.Parameters.AddWithValue("@project", projectId);
+            cmd.Parameters.AddWithValue(SqlLit.ParamProject, projectId);
             apiProj = cmd.ExecuteNonQuery();
         }
 
@@ -633,7 +655,7 @@ public class UserDatabaseService
                 UPDATE generation_errors
                 SET user_id = @owner
                 WHERE {orphanUserSql};";
-            cmd.Parameters.AddWithValue("@owner", ownerId);
+            cmd.Parameters.AddWithValue(SqlLit.ParamOwner, ownerId);
             genUser = cmd.ExecuteNonQuery();
         }
 
@@ -643,7 +665,7 @@ public class UserDatabaseService
                 UPDATE generation_errors
                 SET project_id = @project
                 WHERE project_id IS NULL OR TRIM(project_id) = '';";
-            cmd.Parameters.AddWithValue("@project", projectId);
+            cmd.Parameters.AddWithValue(SqlLit.ParamProject, projectId);
             genProj = cmd.ExecuteNonQuery();
         }
 
@@ -653,7 +675,7 @@ public class UserDatabaseService
                 UPDATE credit_ledger
                 SET user_id = @owner
                 WHERE {orphanUserSql};";
-            cmd.Parameters.AddWithValue("@owner", ownerId);
+            cmd.Parameters.AddWithValue(SqlLit.ParamOwner, ownerId);
             creditUser = cmd.ExecuteNonQuery();
         }
 
@@ -663,7 +685,7 @@ public class UserDatabaseService
                 UPDATE credit_ledger
                 SET project_id = @project
                 WHERE project_id IS NULL OR TRIM(project_id) = '';";
-            cmd.Parameters.AddWithValue("@project", projectId);
+            cmd.Parameters.AddWithValue(SqlLit.ParamProject, projectId);
             creditProj = cmd.ExecuteNonQuery();
         }
 
@@ -680,9 +702,9 @@ public class UserDatabaseService
                     @project,
                     @note,
                     'legacy_cost_attribution_v5');";
-            cmd.Parameters.AddWithValue("@owner", ownerId);
+            cmd.Parameters.AddWithValue(SqlLit.ParamOwner, ownerId);
             cmd.Parameters.AddWithValue("@ts", DateTime.UtcNow.ToString("o"));
-            cmd.Parameters.AddWithValue("@project", projectId);
+            cmd.Parameters.AddWithValue(SqlLit.ParamProject, projectId);
             cmd.Parameters.AddWithValue("@note",
                 $"v5 migrate: api_user={apiUser} api_project={apiProj} api_charge={apiCharge} " +
                 $"gen_user={genUser} gen_project={genProj} credit_user={creditUser} credit_project={creditProj}");
@@ -790,7 +812,7 @@ public class UserDatabaseService
         findByEmail.CommandText = @"
                 SELECT user_id, username, email FROM users
                 WHERE email IS NOT NULL AND LOWER(TRIM(email)) = LOWER(@email);";
-        findByEmail.Parameters.AddWithValue("@email", primaryEmail);
+        findByEmail.Parameters.AddWithValue(SqlLit.ParamEmail, primaryEmail);
         using var r = findByEmail.ExecuteReader();
         while (r.Read())
         {
@@ -894,7 +916,7 @@ public class UserDatabaseService
                     email = NULL,
                     username = 'merged_' || user_id || '_' || substr(hex(randomblob(3)), 1, 6)
                 WHERE user_id = @alias;";
-            free.Parameters.AddWithValue("@alias", aliasId);
+            free.Parameters.AddWithValue(SqlLit.ParamAlias, aliasId);
             free.ExecuteNonQuery();
         }
     }
@@ -913,8 +935,8 @@ public class UserDatabaseService
                 ON CONFLICT(user_id) DO NOTHING;";
         ensure.Parameters.AddWithValue("@id", primaryId);
         ensure.Parameters.AddWithValue("@handle", primaryHandle);
-        ensure.Parameters.AddWithValue("@email", primaryEmail);
-        ensure.Parameters.AddWithValue("@created", DateTime.UtcNow.ToString("o"));
+        ensure.Parameters.AddWithValue(SqlLit.ParamEmail, primaryEmail);
+        ensure.Parameters.AddWithValue(SqlLit.ParamCreated, DateTime.UtcNow.ToString("o"));
         ensure.ExecuteNonQuery();
     }
 
@@ -944,14 +966,14 @@ public class UserDatabaseService
                             ELSE user_api_keys.encrypted_api_key
                         END,
                         updated_at = excluded.updated_at;";
-            keys.Parameters.AddWithValue("@primary", primaryId);
-            keys.Parameters.AddWithValue("@alias", aliasId);
+            keys.Parameters.AddWithValue(SqlLit.ParamPrimary, primaryId);
+            keys.Parameters.AddWithValue(SqlLit.ParamAlias, aliasId);
             keysMoved += keys.ExecuteNonQuery();
         }
         using (var delKeys = conn.CreateCommand())
         {
             delKeys.CommandText = "DELETE FROM user_api_keys WHERE user_id = @alias;";
-            delKeys.Parameters.AddWithValue("@alias", aliasId);
+            delKeys.Parameters.AddWithValue(SqlLit.ParamAlias, aliasId);
             delKeys.ExecuteNonQuery();
         }
 
@@ -959,8 +981,8 @@ public class UserDatabaseService
         using (var api = conn.CreateCommand())
         {
             api.CommandText = "UPDATE user_api_calls SET user_id = @primary WHERE user_id = @alias;";
-            api.Parameters.AddWithValue("@primary", primaryId);
-            api.Parameters.AddWithValue("@alias", aliasId);
+            api.Parameters.AddWithValue(SqlLit.ParamPrimary, primaryId);
+            api.Parameters.AddWithValue(SqlLit.ParamAlias, aliasId);
             spendMoved += api.ExecuteNonQuery();
         }
 
@@ -968,8 +990,8 @@ public class UserDatabaseService
         using (var gen = conn.CreateCommand())
         {
             gen.CommandText = "UPDATE generation_errors SET user_id = @primary WHERE user_id = @alias;";
-            gen.Parameters.AddWithValue("@primary", primaryId);
-            gen.Parameters.AddWithValue("@alias", aliasId);
+            gen.Parameters.AddWithValue(SqlLit.ParamPrimary, primaryId);
+            gen.Parameters.AddWithValue(SqlLit.ParamAlias, aliasId);
             gen.ExecuteNonQuery();
         }
 
@@ -977,8 +999,8 @@ public class UserDatabaseService
         using (var led = conn.CreateCommand())
         {
             led.CommandText = "UPDATE credit_ledger SET user_id = @primary WHERE user_id = @alias;";
-            led.Parameters.AddWithValue("@primary", primaryId);
-            led.Parameters.AddWithValue("@alias", aliasId);
+            led.Parameters.AddWithValue(SqlLit.ParamPrimary, primaryId);
+            led.Parameters.AddWithValue(SqlLit.ParamAlias, aliasId);
             creditsMoved += led.ExecuteNonQuery();
         }
 
@@ -986,8 +1008,8 @@ public class UserDatabaseService
         using (var tok = conn.CreateCommand())
         {
             tok.CommandText = "UPDATE auth_tokens SET user_id = @primary WHERE user_id = @alias;";
-            tok.Parameters.AddWithValue("@primary", primaryId);
-            tok.Parameters.AddWithValue("@alias", aliasId);
+            tok.Parameters.AddWithValue(SqlLit.ParamPrimary, primaryId);
+            tok.Parameters.AddWithValue(SqlLit.ParamAlias, aliasId);
             tok.ExecuteNonQuery();
         }
 
@@ -1004,7 +1026,7 @@ public class UserDatabaseService
                            COALESCE(credits_lifetime_granted_usd, 0),
                            COALESCE(credits_lifetime_used_usd, 0)
                     FROM users WHERE user_id = @alias LIMIT 1;";
-            read.Parameters.AddWithValue("@alias", aliasId);
+            read.Parameters.AddWithValue(SqlLit.ParamAlias, aliasId);
             using var r = read.ExecuteReader();
             if (r.Read())
             {
@@ -1037,14 +1059,14 @@ public class UserDatabaseService
                         credits_lifetime_used_usd = COALESCE(credits_lifetime_used_usd, 0) + @aliasUsed
                     WHERE user_id = @primary;";
             mergeUser.Parameters.AddWithValue("@handle", primaryHandle);
-            mergeUser.Parameters.AddWithValue("@email", primaryEmail);
+            mergeUser.Parameters.AddWithValue(SqlLit.ParamEmail, primaryEmail);
             mergeUser.Parameters.AddWithValue("@aliasConfirmed", (object?)aliasEmailConfirmed ?? DBNull.Value);
             mergeUser.Parameters.AddWithValue("@aliasPass", (object?)aliasPass ?? DBNull.Value);
             mergeUser.Parameters.AddWithValue("@aliasRole", (object?)aliasRole ?? DBNull.Value);
             mergeUser.Parameters.AddWithValue("@aliasBal", aliasBal);
             mergeUser.Parameters.AddWithValue("@aliasGranted", aliasGranted);
             mergeUser.Parameters.AddWithValue("@aliasUsed", aliasUsed);
-            mergeUser.Parameters.AddWithValue("@primary", primaryId);
+            mergeUser.Parameters.AddWithValue(SqlLit.ParamPrimary, primaryId);
             mergeUser.ExecuteNonQuery();
         }
 
@@ -1052,7 +1074,7 @@ public class UserDatabaseService
         using (var del = conn.CreateCommand())
         {
             del.CommandText = "DELETE FROM users WHERE user_id = @alias;";
-            del.Parameters.AddWithValue("@alias", aliasId);
+            del.Parameters.AddWithValue(SqlLit.ParamAlias, aliasId);
             aliasesRemoved += del.ExecuteNonQuery();
         }
     }
@@ -1073,9 +1095,9 @@ public class UserDatabaseService
                     email_confirmed_at = COALESCE(email_confirmed_at, @confirmed)
                 WHERE user_id = @primary;";
         finalize.Parameters.AddWithValue("@handle", primaryHandle);
-        finalize.Parameters.AddWithValue("@email", primaryEmail);
+        finalize.Parameters.AddWithValue(SqlLit.ParamEmail, primaryEmail);
         finalize.Parameters.AddWithValue("@confirmed", DateTime.UtcNow.ToString("o"));
-        finalize.Parameters.AddWithValue("@primary", primaryId);
+        finalize.Parameters.AddWithValue(SqlLit.ParamPrimary, primaryId);
         try { finalize.ExecuteNonQuery(); }
         catch (SqliteException ex)
         {
@@ -1100,7 +1122,7 @@ public class UserDatabaseService
                 continue;
             var oldPrefix = oldSeg + "/";
             var newPrefix = newSeg + "/";
-            foreach (var table in new[] { "user_api_calls", "generation_errors", "credit_ledger", "video_take_events" })
+            foreach (var table in new[] { SqlLit.UserApiCalls, "generation_errors", "credit_ledger", "video_take_events" })
             {
                 using var up = conn.CreateCommand();
                 up.CommandText = RewriteProjectIdPrefixSql(table);
@@ -1271,12 +1293,7 @@ public class UserDatabaseService
 
     private static bool JsonContainsAnyAlias(string json, IEnumerable<string> aliasUserIds)
     {
-        foreach (var a in aliasUserIds)
-        {
-            if (json.Contains(a, StringComparison.OrdinalIgnoreCase))
-                return true;
-        }
-        return false;
+        return aliasUserIds.Any(a => json.Contains(a, StringComparison.OrdinalIgnoreCase));
     }
 
     private static void PatchProjectOwnerFile(string projectDir, string ownerUserId)
@@ -1333,12 +1350,12 @@ public class UserDatabaseService
                  })
         {
             if (string.IsNullOrWhiteSpace(candidate)) continue;
-            var projects = Path.Combine(candidate.Trim(), "projects");
+            var projects = Path.Combine(candidate.Trim(), SqlLit.Projects);
             if (Directory.Exists(projects))
                 return projects;
             // Workspace may be repo root with projects/ beside host/
-            if (Directory.Exists(Path.Combine(candidate.Trim(), "projects")))
-                return Path.Combine(candidate.Trim(), "projects");
+            if (Directory.Exists(Path.Combine(candidate.Trim(), SqlLit.Projects)))
+                return Path.Combine(candidate.Trim(), SqlLit.Projects);
         }
 
         // Walk up from app base
@@ -1347,7 +1364,7 @@ public class UserDatabaseService
             var dir = new DirectoryInfo(AppContext.BaseDirectory);
             for (var i = 0; i < 8 && dir is not null; i++, dir = dir.Parent)
             {
-                var projects = Path.Combine(dir.FullName, "projects");
+                var projects = Path.Combine(dir.FullName, SqlLit.Projects);
                 if (Directory.Exists(projects))
                     return projects;
             }
@@ -1359,7 +1376,7 @@ public class UserDatabaseService
 
     private static string RewriteProjectIdPrefixSql(string table) => table switch
     {
-        "user_api_calls" =>
+        SqlLit.UserApiCalls =>
             """
             UPDATE user_api_calls
             SET project_id = @newPrefix || SUBSTR(project_id, @oldLen + 1)
@@ -1424,31 +1441,31 @@ public class UserDatabaseService
 
     private static string PragmaTableInfoSql(string table) => table switch
     {
-        "users" => "PRAGMA table_info(users)",
-        "user_api_calls" => "PRAGMA table_info(user_api_calls)",
+        SqlLit.Users => "PRAGMA table_info(users)",
+        SqlLit.UserApiCalls => "PRAGMA table_info(user_api_calls)",
         _ => throw new ArgumentOutOfRangeException(nameof(table), table, "Unsupported table.")
     };
 
     private static string AlterAddColumnSql(string table, string column, string typeSql) => (table, column, typeSql) switch
     {
-        ("users", "encrypted_gemini_api_key", "TEXT") => "ALTER TABLE users ADD COLUMN encrypted_gemini_api_key TEXT",
-        ("users", "encrypted_anthropic_api_key", "TEXT") => "ALTER TABLE users ADD COLUMN encrypted_anthropic_api_key TEXT",
-        ("users", "encrypted_fal_api_key", "TEXT") => "ALTER TABLE users ADD COLUMN encrypted_fal_api_key TEXT",
-        ("users", "credits_balance_usd", "REAL NOT NULL DEFAULT 0") => "ALTER TABLE users ADD COLUMN credits_balance_usd REAL NOT NULL DEFAULT 0",
-        ("users", "credits_lifetime_granted_usd", "REAL NOT NULL DEFAULT 0") => "ALTER TABLE users ADD COLUMN credits_lifetime_granted_usd REAL NOT NULL DEFAULT 0",
-        ("users", "credits_lifetime_used_usd", "REAL NOT NULL DEFAULT 0") => "ALTER TABLE users ADD COLUMN credits_lifetime_used_usd REAL NOT NULL DEFAULT 0",
-        ("users", "terms_accepted_at", "TEXT") => "ALTER TABLE users ADD COLUMN terms_accepted_at TEXT",
-        ("users", "terms_version", "TEXT") => "ALTER TABLE users ADD COLUMN terms_version TEXT",
-        ("users", "is_disabled", "INTEGER NOT NULL DEFAULT 0") => "ALTER TABLE users ADD COLUMN is_disabled INTEGER NOT NULL DEFAULT 0",
-        ("users", "password_reset_requested_at", "TEXT") => "ALTER TABLE users ADD COLUMN password_reset_requested_at TEXT",
-        ("users", "email", "TEXT") => "ALTER TABLE users ADD COLUMN email TEXT",
-        ("users", "email_confirmed_at", "TEXT") => "ALTER TABLE users ADD COLUMN email_confirmed_at TEXT",
-        ("users", "active_project_id", "TEXT") => "ALTER TABLE users ADD COLUMN active_project_id TEXT",
-        ("user_api_calls", "category", "TEXT") => "ALTER TABLE user_api_calls ADD COLUMN category TEXT",
-        ("user_api_calls", "charge_usd", "REAL") => "ALTER TABLE user_api_calls ADD COLUMN charge_usd REAL",
-        ("user_api_calls", "charge_multiplier", "REAL") => "ALTER TABLE user_api_calls ADD COLUMN charge_multiplier REAL",
-        ("user_api_calls", "attempt", "INTEGER") => "ALTER TABLE user_api_calls ADD COLUMN attempt INTEGER",
-        ("user_api_calls", "outcome", "TEXT") => "ALTER TABLE user_api_calls ADD COLUMN outcome TEXT",
+        (SqlLit.Users, "encrypted_gemini_api_key", "TEXT") => "ALTER TABLE users ADD COLUMN encrypted_gemini_api_key TEXT",
+        (SqlLit.Users, "encrypted_anthropic_api_key", "TEXT") => "ALTER TABLE users ADD COLUMN encrypted_anthropic_api_key TEXT",
+        (SqlLit.Users, "encrypted_fal_api_key", "TEXT") => "ALTER TABLE users ADD COLUMN encrypted_fal_api_key TEXT",
+        (SqlLit.Users, "credits_balance_usd", SqlLit.RealNotNullDefault0) => "ALTER TABLE users ADD COLUMN credits_balance_usd REAL NOT NULL DEFAULT 0",
+        (SqlLit.Users, "credits_lifetime_granted_usd", SqlLit.RealNotNullDefault0) => "ALTER TABLE users ADD COLUMN credits_lifetime_granted_usd REAL NOT NULL DEFAULT 0",
+        (SqlLit.Users, "credits_lifetime_used_usd", SqlLit.RealNotNullDefault0) => "ALTER TABLE users ADD COLUMN credits_lifetime_used_usd REAL NOT NULL DEFAULT 0",
+        (SqlLit.Users, "terms_accepted_at", "TEXT") => "ALTER TABLE users ADD COLUMN terms_accepted_at TEXT",
+        (SqlLit.Users, "terms_version", "TEXT") => "ALTER TABLE users ADD COLUMN terms_version TEXT",
+        (SqlLit.Users, "is_disabled", "INTEGER NOT NULL DEFAULT 0") => "ALTER TABLE users ADD COLUMN is_disabled INTEGER NOT NULL DEFAULT 0",
+        (SqlLit.Users, "password_reset_requested_at", "TEXT") => "ALTER TABLE users ADD COLUMN password_reset_requested_at TEXT",
+        (SqlLit.Users, "email", "TEXT") => "ALTER TABLE users ADD COLUMN email TEXT",
+        (SqlLit.Users, "email_confirmed_at", "TEXT") => "ALTER TABLE users ADD COLUMN email_confirmed_at TEXT",
+        (SqlLit.Users, "active_project_id", "TEXT") => "ALTER TABLE users ADD COLUMN active_project_id TEXT",
+        (SqlLit.UserApiCalls, "category", "TEXT") => "ALTER TABLE user_api_calls ADD COLUMN category TEXT",
+        (SqlLit.UserApiCalls, "charge_usd", "REAL") => "ALTER TABLE user_api_calls ADD COLUMN charge_usd REAL",
+        (SqlLit.UserApiCalls, "charge_multiplier", "REAL") => "ALTER TABLE user_api_calls ADD COLUMN charge_multiplier REAL",
+        (SqlLit.UserApiCalls, "attempt", "INTEGER") => "ALTER TABLE user_api_calls ADD COLUMN attempt INTEGER",
+        (SqlLit.UserApiCalls, "outcome", "TEXT") => "ALTER TABLE user_api_calls ADD COLUMN outcome TEXT",
         _ => throw new ArgumentOutOfRangeException(nameof(column), column, "Unsupported column migration.")
     };
 
@@ -1479,7 +1496,7 @@ public class UserDatabaseService
 
         using var cmd = conn.CreateCommand();
         cmd.CommandText = UserSelectSql + " WHERE LOWER(username) = LOWER(@name) LIMIT 1";
-        cmd.Parameters.AddWithValue("@name", username.Trim());
+        cmd.Parameters.AddWithValue(SqlLit.ParamName, username.Trim());
 
         using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
         if (await reader.ReadAsync(ct).ConfigureAwait(false))
@@ -1522,7 +1539,7 @@ public class UserDatabaseService
             """;
         cmd.Parameters.AddWithValue("@exact", q);
         cmd.Parameters.AddWithValue("@prefix", q + "%");
-        cmd.Parameters.AddWithValue("@take", take);
+        cmd.Parameters.AddWithValue(SqlLit.ParamTake, take);
 
         var list = new List<string>();
         using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
@@ -1581,7 +1598,7 @@ public class UserDatabaseService
         {
             using var delCmd = conn.CreateCommand();
             delCmd.CommandText = "DELETE FROM user_api_keys WHERE user_id = @userId AND provider_id = @providerId";
-            delCmd.Parameters.AddWithValue("@userId", userId.Trim());
+            delCmd.Parameters.AddWithValue(SqlLit.ParamUserId, userId.Trim());
             delCmd.Parameters.AddWithValue("@providerId", normId);
             await delCmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
             return;
@@ -1595,7 +1612,7 @@ public class UserDatabaseService
             ON CONFLICT(user_id, provider_id) DO UPDATE SET
                 encrypted_api_key = excluded.encrypted_api_key,
                 updated_at = excluded.updated_at;";
-        upsertCmd.Parameters.AddWithValue("@userId", userId.Trim());
+        upsertCmd.Parameters.AddWithValue(SqlLit.ParamUserId, userId.Trim());
         upsertCmd.Parameters.AddWithValue("@providerId", normId);
         upsertCmd.Parameters.AddWithValue("@key", encrypted);
         upsertCmd.Parameters.AddWithValue("@updated", DateTime.UtcNow.ToString("o"));
@@ -1641,8 +1658,8 @@ public class UserDatabaseService
             WHERE user_id = @userId
             ORDER BY id DESC
             LIMIT @take";
-        cmd.Parameters.AddWithValue("@userId", userId.Trim());
-        cmd.Parameters.AddWithValue("@take", take);
+        cmd.Parameters.AddWithValue(SqlLit.ParamUserId, userId.Trim());
+        cmd.Parameters.AddWithValue(SqlLit.ParamTake, take);
         using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
         while (await r.ReadAsync(ct).ConfigureAwait(false))
             list.Add(ReadUserApiCallRow(r));
@@ -1721,10 +1738,10 @@ public class UserDatabaseService
                 ? DateTimeOffset.UtcNow.ToString("o")
                 : rec.Ts;
             cmd.Parameters.AddWithValue("@ts", ts);
-            cmd.Parameters.AddWithValue("@projectId", rec.ProjectId.Trim());
-            cmd.Parameters.AddWithValue("@userId", (object?)rec.UserId ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@scene", rec.Scene);
-            cmd.Parameters.AddWithValue("@clip", rec.Clip);
+            cmd.Parameters.AddWithValue(SqlLit.ParamProjectId, rec.ProjectId.Trim());
+            cmd.Parameters.AddWithValue(SqlLit.ParamUserId, (object?)rec.UserId ?? DBNull.Value);
+            cmd.Parameters.AddWithValue(SqlLit.ParamScene, rec.Scene);
+            cmd.Parameters.AddWithValue(SqlLit.ParamClip, rec.Clip);
             cmd.Parameters.AddWithValue("@takeIndex", Math.Max(1, rec.TakeIndex));
             cmd.Parameters.AddWithValue("@takeKind",
                 VideoTakeKinds.Normalize(rec.TakeKind, VideoTakeKinds.Initial));
@@ -1794,9 +1811,9 @@ public class UserDatabaseService
                     """;
             }
             cmd.Parameters.AddWithValue("@reason", r);
-            cmd.Parameters.AddWithValue("@projectId", projectId.Trim());
-            cmd.Parameters.AddWithValue("@scene", scene);
-            cmd.Parameters.AddWithValue("@clip", clip);
+            cmd.Parameters.AddWithValue(SqlLit.ParamProjectId, projectId.Trim());
+            cmd.Parameters.AddWithValue(SqlLit.ParamScene, scene);
+            cmd.Parameters.AddWithValue(SqlLit.ParamClip, clip);
             var n = await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
             return n > 0;
         }
@@ -1853,7 +1870,7 @@ public class UserDatabaseService
     }
 
     private static void BindTakesProjectId(SqliteCommand cmd, string projectId) =>
-        cmd.Parameters.AddWithValue("@projectId", projectId);
+        cmd.Parameters.AddWithValue(SqlLit.ParamProjectId, projectId);
 
     private static async Task FillClipTakeStatsAsync(
         SqliteConnection conn, string projectId, TakesTelemetryStats stats, CancellationToken ct)
@@ -2021,8 +2038,8 @@ public class UserDatabaseService
                   AND (@projectId = '' OR project_id = @projectId)
                 GROUP BY cat
                 """;
-            cmd.Parameters.AddWithValue("@userId", string.IsNullOrWhiteSpace(userId) ? "" : userId.Trim());
-            cmd.Parameters.AddWithValue("@projectId", string.IsNullOrWhiteSpace(projectId) ? "" : projectId.Trim());
+            cmd.Parameters.AddWithValue(SqlLit.ParamUserId, string.IsNullOrWhiteSpace(userId) ? "" : userId.Trim());
+            cmd.Parameters.AddWithValue(SqlLit.ParamProjectId, string.IsNullOrWhiteSpace(projectId) ? "" : projectId.Trim());
             using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
             while (await r.ReadAsync(ct).ConfigureAwait(false))
             {
@@ -2083,8 +2100,8 @@ public class UserDatabaseService
                   AND (@projectId = '' OR project_id = @projectId)
                 GROUP BY prov, cat
                 """;
-            cmd.Parameters.AddWithValue("@userId", string.IsNullOrWhiteSpace(userId) ? "" : userId.Trim());
-            cmd.Parameters.AddWithValue("@projectId", string.IsNullOrWhiteSpace(projectId) ? "" : projectId.Trim());
+            cmd.Parameters.AddWithValue(SqlLit.ParamUserId, string.IsNullOrWhiteSpace(userId) ? "" : userId.Trim());
+            cmd.Parameters.AddWithValue(SqlLit.ParamProjectId, string.IsNullOrWhiteSpace(projectId) ? "" : projectId.Trim());
             cmd.Parameters.AddWithValue("@chargeMult", PageToMovie.Core.Billing.ChargePricing.ClampMultiplier(_billing.ChargeMultiplier));
             using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
             while (await r.ReadAsync(ct).ConfigureAwait(false))
@@ -2168,8 +2185,8 @@ public class UserDatabaseService
                     GROUP BY proj
                     ORDER BY 4 DESC
                     """;
-                cmd.Parameters.AddWithValue("@userId", summary.UserId);
-                cmd.Parameters.AddWithValue("@projectId", string.IsNullOrWhiteSpace(projectId) ? "" : projectId.Trim());
+                cmd.Parameters.AddWithValue(SqlLit.ParamUserId, summary.UserId);
+                cmd.Parameters.AddWithValue(SqlLit.ParamProjectId, string.IsNullOrWhiteSpace(projectId) ? "" : projectId.Trim());
             cmd.Parameters.AddWithValue("@chargeMult", PageToMovie.Core.Billing.ChargePricing.ClampMultiplier(_billing.ChargeMultiplier));
                 using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
                 while (await r.ReadAsync(ct).ConfigureAwait(false))
@@ -2217,8 +2234,8 @@ public class UserDatabaseService
                       AND (@projectId = '' OR project_id = @projectId)
                     GROUP BY cat
                     """;
-                cmd.Parameters.AddWithValue("@userId", summary.UserId);
-                cmd.Parameters.AddWithValue("@projectId", string.IsNullOrWhiteSpace(projectId) ? "" : projectId.Trim());
+                cmd.Parameters.AddWithValue(SqlLit.ParamUserId, summary.UserId);
+                cmd.Parameters.AddWithValue(SqlLit.ParamProjectId, string.IsNullOrWhiteSpace(projectId) ? "" : projectId.Trim());
             cmd.Parameters.AddWithValue("@chargeMult", PageToMovie.Core.Billing.ChargePricing.ClampMultiplier(_billing.ChargeMultiplier));
                 using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
                 while (await r.ReadAsync(ct).ConfigureAwait(false))
@@ -2275,9 +2292,9 @@ public class UserDatabaseService
             var purpose = CostCategories.Resolve(rec.Kind, rec.Mode, rec.Category);
             if (!string.IsNullOrWhiteSpace(rec.Mode))
                 purpose = $"{purpose}:{rec.Mode}";
-            cmd.Parameters.AddWithValue("@userId", rec.UserId.Trim());
+            cmd.Parameters.AddWithValue(SqlLit.ParamUserId, rec.UserId.Trim());
             cmd.Parameters.AddWithValue("@ts", ts);
-            cmd.Parameters.AddWithValue("@projectId", (object?)rec.ProjectId ?? DBNull.Value);
+            cmd.Parameters.AddWithValue(SqlLit.ParamProjectId, (object?)rec.ProjectId ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@jobId", (object?)rec.JobId ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@kind", rec.Kind ?? "");
             cmd.Parameters.AddWithValue("@mode", (object?)rec.Mode ?? DBNull.Value);
@@ -2294,8 +2311,8 @@ public class UserDatabaseService
             cmd.Parameters.AddWithValue("@chargeUsd", DBNull.Value);
             cmd.Parameters.AddWithValue("@chargeMultiplier", DBNull.Value);
             cmd.Parameters.AddWithValue("@currency", "USD");
-            cmd.Parameters.AddWithValue("@scene", (object?)rec.Scene ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@clip", (object?)rec.Clip ?? DBNull.Value);
+            cmd.Parameters.AddWithValue(SqlLit.ParamScene, (object?)rec.Scene ?? DBNull.Value);
+            cmd.Parameters.AddWithValue(SqlLit.ParamClip, (object?)rec.Clip ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@charKey", (object?)rec.CharKey ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@resolution", (object?)rec.Resolution ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@durationSec", (object?)rec.DurationSec ?? DBNull.Value);
@@ -2509,11 +2526,11 @@ public class UserDatabaseService
             var ts = (rec.Ts ?? DateTimeOffset.UtcNow).ToString("o");
             static string? Trunc500(string? s) => string.IsNullOrEmpty(s) ? s : (s.Length > 500 ? s[..500] : s);
             cmd.Parameters.AddWithValue("@ts", ts);
-            cmd.Parameters.AddWithValue("@userId", (object?)rec.UserId ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@projectId", (object?)rec.ProjectId ?? DBNull.Value);
+            cmd.Parameters.AddWithValue(SqlLit.ParamUserId, (object?)rec.UserId ?? DBNull.Value);
+            cmd.Parameters.AddWithValue(SqlLit.ParamProjectId, (object?)rec.ProjectId ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@jobId", (object?)rec.JobId ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@scene", (object?)rec.Scene ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@clip", (object?)rec.Clip ?? DBNull.Value);
+            cmd.Parameters.AddWithValue(SqlLit.ParamScene, (object?)rec.Scene ?? DBNull.Value);
+            cmd.Parameters.AddWithValue(SqlLit.ParamClip, (object?)rec.Clip ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@stage", rec.Stage ?? "");
             cmd.Parameters.AddWithValue("@provider", (object?)rec.Provider ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@model", (object?)rec.Model ?? DBNull.Value);
@@ -2561,8 +2578,8 @@ public class UserDatabaseService
                 ORDER BY id DESC
                 LIMIT @take";
             cmd.Parameters.AddWithValue("@errorType", string.IsNullOrWhiteSpace(errorType) ? "" : errorType.Trim());
-            cmd.Parameters.AddWithValue("@projectId", string.IsNullOrWhiteSpace(projectId) ? "" : projectId.Trim());
-            cmd.Parameters.AddWithValue("@take", take);
+            cmd.Parameters.AddWithValue(SqlLit.ParamProjectId, string.IsNullOrWhiteSpace(projectId) ? "" : projectId.Trim());
+            cmd.Parameters.AddWithValue(SqlLit.ParamTake, take);
             using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
             while (await r.ReadAsync(ct).ConfigureAwait(false))
                 list.Add(ReadGenerationErrorRow(r));
@@ -2611,7 +2628,7 @@ public class UserDatabaseService
 
         using var cmd = conn.CreateCommand();
         cmd.CommandText = "SELECT encrypted_api_key FROM user_api_keys WHERE user_id = @userId AND provider_id = @providerId";
-        cmd.Parameters.AddWithValue("@userId", userId.Trim());
+        cmd.Parameters.AddWithValue(SqlLit.ParamUserId, userId.Trim());
         cmd.Parameters.AddWithValue("@providerId", normId);
 
         var result = await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false);
@@ -2658,7 +2675,7 @@ public class UserDatabaseService
             await conn.OpenAsync(ct).ConfigureAwait(false);
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "SELECT provider_id, encrypted_api_key FROM user_api_keys WHERE user_id = @userId";
-            cmd.Parameters.AddWithValue("@userId", userId.Trim());
+            cmd.Parameters.AddWithValue(SqlLit.ParamUserId, userId.Trim());
             using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
             while (await reader.ReadAsync(ct).ConfigureAwait(false))
             {
@@ -2738,20 +2755,20 @@ public class UserDatabaseService
                 encrypted_fal_api_key = COALESCE(excluded.encrypted_fal_api_key, users.encrypted_fal_api_key);
         ";
         cmd.Parameters.AddWithValue("@id", user.UserId);
-        cmd.Parameters.AddWithValue("@name", user.Username);
+        cmd.Parameters.AddWithValue(SqlLit.ParamName, user.Username);
         cmd.Parameters.AddWithValue("@hash", user.PasswordHash);
         cmd.Parameters.AddWithValue("@xai", (object?)user.EncryptedXaiApiKey ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@gemini", (object?)user.EncryptedGeminiApiKey ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@anthropic", (object?)user.EncryptedAnthropicApiKey ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@fal", (object?)user.EncryptedFalApiKey ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@role", user.Role);
-        cmd.Parameters.AddWithValue("@created", user.CreatedAt.ToString("o"));
+        cmd.Parameters.AddWithValue(SqlLit.ParamCreated, user.CreatedAt.ToString("o"));
         cmd.Parameters.AddWithValue("@login", (object?)user.LastLoginAt?.ToString("o") ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@bal", user.CreditsBalanceUsd);
         cmd.Parameters.AddWithValue("@granted", user.CreditsLifetimeGrantedUsd);
         cmd.Parameters.AddWithValue("@used", user.CreditsLifetimeUsedUsd);
         cmd.Parameters.AddWithValue("@disabled", user.IsDisabled ? 1 : 0);
-        cmd.Parameters.AddWithValue("@email", (object?)NormalizeEmail(user.Email) ?? DBNull.Value);
+        cmd.Parameters.AddWithValue(SqlLit.ParamEmail, (object?)NormalizeEmail(user.Email) ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@email_confirmed",
             (object?)user.EmailConfirmedAt?.ToString("o") ?? DBNull.Value);
 
@@ -2979,7 +2996,7 @@ public class UserDatabaseService
             FROM credit_ledger
             ORDER BY id DESC
             LIMIT @take";
-        cmd.Parameters.AddWithValue("@take", Math.Clamp(take, 1, 500));
+        cmd.Parameters.AddWithValue(SqlLit.ParamTake, Math.Clamp(take, 1, 500));
 
         var list = new List<CreditLedgerEntryDto>();
         using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
@@ -3520,7 +3537,7 @@ public class UserDatabaseService
             VALUES (@id, @name, '', @t, @t, @v)
             ON CONFLICT(user_id) DO UPDATE SET terms_accepted_at = @t, terms_version = @v;";
         cmd.Parameters.AddWithValue("@id", trimmed);
-        cmd.Parameters.AddWithValue("@name", trimmed);
+        cmd.Parameters.AddWithValue(SqlLit.ParamName, trimmed);
         cmd.Parameters.AddWithValue("@t", DateTimeOffset.UtcNow.ToString("o"));
         cmd.Parameters.AddWithValue("@v", termsVersion);
         return await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false) > 0;
