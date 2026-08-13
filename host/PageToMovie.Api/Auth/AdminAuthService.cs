@@ -167,29 +167,18 @@ public sealed class AdminAuthService : IAdminAuthService
         var raw = await _userDb.CreateAuthTokenAsync(
             user.UserId, UserDatabaseService.AuthPurposeEmailConfirm, TimeSpan.FromDays(2), ct).ConfigureAwait(false);
         var link = BuildAppLink($"/login?confirmEmail={Uri.EscapeDataString(raw)}");
-        _logger?.LogInformation("EMAIL CONFIRMATION LINK generated to={Email} userId={UserId}: {Link}", user.Email, user.UserId, link);
-
         var subject = "Confirm your PageToMovie email";
         var text = $"Hi {user.Username},\n\nConfirm your email:\n{link}\n\nThis link expires in 48 hours.\n";
         var html = $"<p>Hi {System.Net.WebUtility.HtmlEncode(user.Username)},</p>" +
                    $"<p><a href=\"{System.Net.WebUtility.HtmlEncode(link)}\">Confirm your email</a></p>" +
                    "<p>This link expires in 48 hours.</p>";
-        if (_email is not null)
-        {
-            try
-            {
-                await _email.SendAsync(user.Email, subject, html, text, ct);
-                _logger?.LogInformation("EMAIL CONFIRMATION SENT successfully to {Email}", user.Email);
-            }
-            catch (Exception ex)
-            {
-                throw new InvalidOperationException($"Failed to send email confirmation to {user.Email}.", ex);
-            }
-        }
-        else
-        {
-            _logger?.LogWarning("No IEmailSender instance present in AdminAuthService. Skipping email send for {Email}.", user.Email);
-        }
+        await DeliverAuthEmailAsync(
+            user, link, subject, text, html,
+            generatedLog: "EMAIL CONFIRMATION LINK generated to={Email} userId={UserId}: {Link}",
+            sentLog: "EMAIL CONFIRMATION SENT successfully to {Email}",
+            sendFailureNoun: "email confirmation",
+            skipWarning: "No IEmailSender instance present in AdminAuthService. Skipping email send for {Email}.",
+            ct).ConfigureAwait(false);
     }
 
     public async Task SendPasswordResetEmailAsync(UserEntity user, CancellationToken ct = default)
@@ -198,28 +187,48 @@ public sealed class AdminAuthService : IAdminAuthService
         var raw = await _userDb.CreateAuthTokenAsync(
             user.UserId, UserDatabaseService.AuthPurposePasswordReset, TimeSpan.FromHours(1), ct).ConfigureAwait(false);
         var link = BuildAppLink($"/login?resetToken={Uri.EscapeDataString(raw)}");
-        _logger?.LogInformation("PASSWORD RESET LINK generated to={Email} userId={UserId}: {Link}", user.Email, user.UserId, link);
-
         var subject = "Reset your PageToMovie password";
         var text = $"Hi {user.Username},\n\nReset your password:\n{link}\n\nThis link expires in 1 hour.\n";
         var html = $"<p>Hi {System.Net.WebUtility.HtmlEncode(user.Username)},</p>" +
                    $"<p><a href=\"{System.Net.WebUtility.HtmlEncode(link)}\">Reset your password</a></p>" +
                    "<p>This link expires in 1 hour. If you did not request this, ignore this email.</p>";
+        await DeliverAuthEmailAsync(
+            user, link, subject, text, html,
+            generatedLog: "PASSWORD RESET LINK generated to={Email} userId={UserId}: {Link}",
+            sentLog: "PASSWORD RESET EMAIL SENT successfully to {Email}",
+            sendFailureNoun: "password reset email",
+            skipWarning: "No IEmailSender instance present in AdminAuthService. Skipping password reset email for {Email}.",
+            ct).ConfigureAwait(false);
+    }
+
+    private async Task DeliverAuthEmailAsync(
+        UserEntity user,
+        string link,
+        string subject,
+        string text,
+        string html,
+        string generatedLog,
+        string sentLog,
+        string sendFailureNoun,
+        string skipWarning,
+        CancellationToken ct)
+    {
+        _logger?.LogInformation(generatedLog, user.Email, user.UserId, link);
         if (_email is not null)
         {
             try
             {
-                await _email.SendAsync(user.Email, subject, html, text, ct);
-                _logger?.LogInformation("PASSWORD RESET EMAIL SENT successfully to {Email}", user.Email);
+                await _email.SendAsync(user.Email!, subject, html, text, ct);
+                _logger?.LogInformation(sentLog, user.Email);
             }
             catch (Exception ex)
             {
-                throw new InvalidOperationException($"Failed to send password reset email to {user.Email}.", ex);
+                throw new InvalidOperationException($"Failed to send {sendFailureNoun} to {user.Email}.", ex);
             }
         }
         else
         {
-            _logger?.LogWarning("No IEmailSender instance present in AdminAuthService. Skipping password reset email for {Email}.", user.Email);
+            _logger?.LogWarning(skipWarning, user.Email);
         }
     }
 

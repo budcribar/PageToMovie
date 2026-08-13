@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 using PageToMovie.Core.Models;
 using PageToMovie.Core.Localization;
+using PageToMovie.Web.Components;
 using PageToMovie.Web.Services;
 
 namespace PageToMovie.Web.Components.Pages;
@@ -179,26 +180,10 @@ public partial class Scenes : IAsyncDisposable
         MediaFolder.Changed += OnMediaFolderChanged;
         try
         {
-            try { await Session.EnsureHydratedAsync(); } catch { /* optional */ }
-
-            var projs = await Engine.GetProjectsAsync();
-            _projectIds = projs?.Projects.Select(p => p.Id ?? "").Where(s => s.Length > 0).ToList()
-                          ?? new List<string>();
-            if (projs?.Active?.Id is { Length: > 0 } aid &&
-                _projectIds.Exists(id => string.Equals(id, aid, StringComparison.OrdinalIgnoreCase)))
-            {
-                _projectId = aid;
-                ActiveProject.Set(aid, projs.Active?.Label ?? projs.Active?.Title ?? aid);
-            }
-            else if (_projectIds.Count > 0)
-                _projectId = _projectIds[0];
-            else
-                _projectId = "";
-
-            await ActiveProject.RefreshReadinessAsync(Engine);
-            _gateChecked = true;
-            if (!string.IsNullOrEmpty(_projectId))
-                await Caps.RefreshAsync(Engine);
+            var loaded = await StudioPageBootstrap.LoadActiveProjectAsync(
+                Engine, Session, ActiveProject, Caps, () => _gateChecked = true);
+            _projectId = loaded.ProjectId;
+            _projectIds = loaded.ProjectIds;
 
             if (string.IsNullOrEmpty(_projectId) || !ActiveProject.CanScenes)
                 return;

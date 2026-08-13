@@ -254,10 +254,8 @@ window.PageToMovieMedia = {
      * @param {string} [takeId] for scene music segments — see _archiveMusicSegmentAsync.
      */
     saveFromUrlAsync: async function (url, relativePath, onProgress, takeId) {
-        if (!this._root) {
-            const c = await this.connectFolderAsync();
-            if (!c.success) return c;
-        }
+        const denied = await this._ensureRootConnectedAsync();
+        if (denied) return denied;
         try {
             await this._archiveClipHistoryAsync(relativePath);
             await this._archiveMusicSegmentAsync(relativePath, takeId);
@@ -270,23 +268,13 @@ window.PageToMovieMedia = {
             report(60, "Hashing…");
             const sha = await this._sha256Hex(buf);
             report(85, "Writing folder…");
-            const { dir, fileName } = await this._ensurePathAsync(relativePath);
-            const fh = await dir.getFileHandle(fileName, { create: true });
-            const w = await fh.createWritable();
-            await w.write(buf);
-            await w.close();
-            // Invalidate cached blob URL for this path
-            const key = relativePath.replaceAll("\\", "/");
-            if (this._blobUrls[key]) {
-                try { URL.revokeObjectURL(this._blobUrls[key]); } catch (_) { /* */ }
-                delete this._blobUrls[key];
-            }
+            const key = await this._writeFileAndRevokeBlobAsync(relativePath, buf);
             report(100, "Saved");
             return {
                 success: true,
                 sha256: sha,
                 sizeBytes: buf.byteLength,
-                relativePath: relativePath.replaceAll("\\", "/"),
+                relativePath: key,
                 folderName: this._root.name,
             };
         } catch (err) {
@@ -606,9 +594,47 @@ window.PageToMovieMedia = {
     },
 
     /**
-     * Write raw bytes (base64) into the media folder at relativePath.
-     * Used for voice-clone samples (same client-first storage as MP3/MP4).
+     * Write bytes into the media folder and drop any cached blob URL for that path.
+     * @returns {Promise<string>} normalized relative path
      */
+    _writeFileAndRevokeBlobAsync: async function (relativePath, buf) {
+        const { dir, fileName } = await this._ensurePathAsync(relativePath);
+        const fh = await dir.getFileHandle(fileName, { create: true });
+        const w = await fh.createWritable();
+        await w.write(buf);
+        await w.close();
+        const key = relativePath.replaceAll("\\", "/");
+        if (this._blobUrls[key]) {
+            try { URL.revokeObjectURL(this._blobUrls[key]); } catch (_) { /* */ }
+            delete this._blobUrls[key];
+        }
+        return key;
+    },
+
+    _ensureRootConnectedAsync: async function () {
+        if (!this._root) {
+            const c = await this.connectFolderAsync();
+            if (!c.success) return c;
+        }
+        return null;
+    },
+
+    /**
+     * Hash + write a buffer, returning the same success shape as saveBytesAsync.
+     * @param {ArrayBuffer|Uint8Array} buf
+     * @param {string} relativePath
+     * @param {ArrayBuffer} shaSource
+     */
+    _commitBufferAsync: async function (buf, relativePath, shaSource) {
+        const sha = await this._sha256Hex(shaSource);
+        const key = await this._writeFileAndRevokeBlobAsync(relativePath, buf);
+        return {
+            success: true,
+            sha256: sha,
+            sizeBytes: buf.byteLength,
+            relativePath: key,
+        };
+    },
 
     /**
      * Write raw bytes into the media folder (preferred for large MP4/MP3 from zip import).
@@ -616,62 +642,32 @@ window.PageToMovieMedia = {
      * @param {string} relativePath e.g. "owner/slug/assets/video/scene_01_clip_01.mp4"
      */
     saveBytesAsync: async function (bytes, relativePath) {
-        if (!this._root) {
-            const c = await this.connectFolderAsync();
-            if (!c.success) return c;
-        }
+        const denied = await this._ensureRootConnectedAsync();
+        if (denied) return denied;
         try {
             const buf = bytes instanceof Uint8Array
                 ? bytes
                 : new Uint8Array(bytes);
-            const sha = await this._sha256Hex(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
-            const { dir, fileName } = await this._ensurePathAsync(relativePath);
-            const fh = await dir.getFileHandle(fileName, { create: true });
-            const w = await fh.createWritable();
-            await w.write(buf);
-            await w.close();
-            const key = relativePath.replaceAll("\\", "/");
-            if (this._blobUrls[key]) {
-                try { URL.revokeObjectURL(this._blobUrls[key]); } catch (_) { /* */ }
-                delete this._blobUrls[key];
-            }
-            return {
-                success: true,
-                sha256: sha,
-                sizeBytes: buf.byteLength,
-                relativePath: key,
-            };
+            return await this._commitBufferAsync(
+                buf, relativePath,
+                buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
         } catch (err) {
             return { success: false, error: err.message || String(err) };
         }
     },
 
+    /**
+     * Write raw bytes (base64) into the media folder at relativePath.
+     * Used for voice-clone samples (same client-first storage as MP3/MP4).
+     */
     saveBytesBase64Async: async function (base64, relativePath) {
-        if (!this._root) {
-            const c = await this.connectFolderAsync();
-            if (!c.success) return c;
-        }
+        const denied = await this._ensureRootConnectedAsync();
+        if (denied) return denied;
         try {
             const bin = atob(base64);
             const buf = new Uint8Array(bin.length);
             for (let i = 0; i < bin.length; i++) buf[i] = bin.codePointAt(i);
-            const sha = await this._sha256Hex(buf.buffer);
-            const { dir, fileName } = await this._ensurePathAsync(relativePath);
-            const fh = await dir.getFileHandle(fileName, { create: true });
-            const w = await fh.createWritable();
-            await w.write(buf);
-            await w.close();
-            const key = relativePath.replaceAll("\\", "/");
-            if (this._blobUrls[key]) {
-                try { URL.revokeObjectURL(this._blobUrls[key]); } catch (_) { /* */ }
-                delete this._blobUrls[key];
-            }
-            return {
-                success: true,
-                sha256: sha,
-                sizeBytes: buf.byteLength,
-                relativePath: key,
-            };
+            return await this._commitBufferAsync(buf, relativePath, buf.buffer);
         } catch (err) {
             return { success: false, error: err.message || String(err) };
         }

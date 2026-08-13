@@ -204,68 +204,22 @@ public abstract partial class AdaptationPageBase
 
         private void TryAbsorbKeywordProgress(string line)
         {
-            if (TryAbsorbLateKeywordProgress(line)) return;
-            TryAbsorbEarlyKeywordProgress(line);
+            if (AbsorbProgressIfContains(line, 10, "Screenplay ready", "Stage 2 complete", "shot plan ready")) return;
+            if (AbsorbProgressIfContains(line, 9, "approving", "Fountain draft saved", "plate", "Attaching", "Merged")) return;
+            if (AbsorbProgressIfContains(line, 8, "Merge", "Stitch")) return;
+            if (AbsorbProgressIfContains(line, 7, "repair", "retry")) return;
+            if (AbsorbProgressIfContains(line, 5, "single pass", "Adapting", "Book split", "Writing screenplay", "Drafting")) return;
+            if (AbsorbProgressIfContains(line, 3, "Target runtime", "Planning", "building")) return;
+            AbsorbProgressIfContains(line, 1, "prepare", "Extract", "Checking book", "book text", "Loading screenplay");
         }
 
-        private bool TryAbsorbLateKeywordProgress(string line)
+        private bool AbsorbProgressIfContains(string line, int index, params string[] needles)
         {
-            if (line.Contains("Screenplay ready", StringComparison.OrdinalIgnoreCase) ||
-                line.Contains("Stage 2 complete", StringComparison.OrdinalIgnoreCase) ||
-                line.Contains("shot plan ready", StringComparison.OrdinalIgnoreCase))
+            foreach (var needle in needles)
             {
-                ProgressIndex = Math.Max(ProgressIndex, 10);
-                return true;
-            }
-            if (line.Contains("approving", StringComparison.OrdinalIgnoreCase) ||
-                line.Contains("Fountain draft saved", StringComparison.OrdinalIgnoreCase) ||
-                line.Contains("plate", StringComparison.OrdinalIgnoreCase) ||
-                line.Contains("Attaching", StringComparison.OrdinalIgnoreCase) ||
-                line.Contains("Merged", StringComparison.OrdinalIgnoreCase))
-            {
-                ProgressIndex = Math.Max(ProgressIndex, 9);
-                return true;
-            }
-            if (line.Contains("Merge", StringComparison.OrdinalIgnoreCase) ||
-                line.Contains("Stitch", StringComparison.OrdinalIgnoreCase))
-            {
-                ProgressIndex = Math.Max(ProgressIndex, 8);
-                return true;
-            }
-            if (line.Contains("repair", StringComparison.OrdinalIgnoreCase) ||
-                line.Contains("retry", StringComparison.OrdinalIgnoreCase))
-            {
-                ProgressIndex = Math.Max(ProgressIndex, 7);
-                return true;
-            }
-            return false;
-        }
-
-        private bool TryAbsorbEarlyKeywordProgress(string line)
-        {
-            if (line.Contains("single pass", StringComparison.OrdinalIgnoreCase) ||
-                line.Contains("Adapting", StringComparison.OrdinalIgnoreCase) ||
-                line.Contains("Book split", StringComparison.OrdinalIgnoreCase) ||
-                line.Contains("Writing screenplay", StringComparison.OrdinalIgnoreCase) ||
-                line.Contains("Drafting", StringComparison.OrdinalIgnoreCase))
-            {
-                ProgressIndex = Math.Max(ProgressIndex, 5);
-                return true;
-            }
-            if (line.Contains("Target runtime", StringComparison.OrdinalIgnoreCase) ||
-                line.Contains("Planning", StringComparison.OrdinalIgnoreCase) ||
-                line.Contains("building", StringComparison.OrdinalIgnoreCase))
-            {
-                ProgressIndex = Math.Max(ProgressIndex, 3);
-                return true;
-            }
-            if (line.Contains("prepare", StringComparison.OrdinalIgnoreCase) ||
-                line.Contains("Extract", StringComparison.OrdinalIgnoreCase) ||
-                line.Contains("Checking book", StringComparison.OrdinalIgnoreCase) ||
-                line.Contains("book text", StringComparison.OrdinalIgnoreCase) ||
-                line.Contains("Loading screenplay", StringComparison.OrdinalIgnoreCase))
-            {
-                ProgressIndex = Math.Max(ProgressIndex, 1);
+                if (!line.Contains(needle, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                ProgressIndex = Math.Max(ProgressIndex, index);
                 return true;
             }
             return false;
