@@ -469,7 +469,7 @@ public sealed class GrokImageClient : IImageClient
             .ConfigureAwait(false);
     }
 
-    private JsonObject BuildImageEditPayload(string modelName, string variantPrompt, AspectRatio aspectRatio) => new()
+    private static JsonObject BuildImageEditPayload(string modelName, string variantPrompt, AspectRatio aspectRatio) => new()
     {
         ["model"] = modelName,
         ["prompt"] = variantPrompt,

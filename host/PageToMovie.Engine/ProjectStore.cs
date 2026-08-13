@@ -272,13 +272,13 @@ public sealed partial class ProjectStore
         for (int i = 0; i < commits.Count; i++)
         {
             var c = commits[i];
-            var historicalBp = git.GetFileContentAtCommit(dir, c.CommitHash, bpName);
+            var historicalBp = ProjectGitRepositoryService.GetFileContentAtCommit(dir, c.CommitHash, bpName);
             if (string.IsNullOrWhiteSpace(historicalBp)) continue;
 
             string? parentBp = null;
             if (i + 1 < commits.Count)
             {
-                parentBp = git.GetFileContentAtCommit(dir, commits[i + 1].CommitHash, bpName);
+                parentBp = ProjectGitRepositoryService.GetFileContentAtCommit(dir, commits[i + 1].CommitHash, bpName);
             }
 
             var changes = CompareSceneInBlueprints(historicalBp, parentBp, sceneNumber);
@@ -305,8 +305,7 @@ public sealed partial class ProjectStore
         string projectId,
         int sceneNumber,
         string commitHash,
-        string? author = null,
-        ProjectGitRepositoryService? gitRepo = null)
+        string? author = null)
     {
         if (string.IsNullOrWhiteSpace(projectId) || string.IsNullOrWhiteSpace(commitHash)) return false;
         var dir = await GetProjectDirAsync(projectId).ConfigureAwait(false);
@@ -316,9 +315,8 @@ public sealed partial class ProjectStore
         if (bpPath is null || !File.Exists(bpPath)) return false;
 
         var bpName = Path.GetFileName(bpPath);
-        var git = gitRepo ?? new ProjectGitRepositoryService(Microsoft.Extensions.Logging.Abstractions.NullLogger<ProjectGitRepositoryService>.Instance);
 
-        var historicalBpStr = git.GetFileContentAtCommit(dir, commitHash, bpName);
+        var historicalBpStr = ProjectGitRepositoryService.GetFileContentAtCommit(dir, commitHash, bpName);
         if (string.IsNullOrWhiteSpace(historicalBpStr)) return false;
 
         try
@@ -408,7 +406,7 @@ public sealed partial class ProjectStore
             return dto;
         }
 
-        var (_, files) = git.GetUncommittedStatus(dir);
+        var (_, files) = ProjectGitRepositoryService.GetUncommittedStatus(dir);
         var modScenes = new HashSet<int>();
         var modClips = new HashSet<string>();
 

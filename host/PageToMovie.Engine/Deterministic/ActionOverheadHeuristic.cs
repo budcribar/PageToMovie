@@ -24,7 +24,7 @@ public sealed class ActionOverheadHeuristic
         return Result("act_generic_action", 2.2, .75, "Default calibrated action category.");
     }
 
-    private ActionClassifierEstimation Result(string category, double fallback, double confidence, string explanation) =>
+    private static ActionClassifierEstimation Result(string category, double fallback, double confidence, string explanation) =>
         new(category, ActionCameraOverheadLedger.GetOverheadSec(category, fallback), confidence, explanation);
 
     private static bool ContainsAny(string text, params string[] values) =>

@@ -30,7 +30,7 @@ public class ProjectTelemetryServiceTests : IDisposable
     [Fact]
     public async Task LogApiCall_writes_full_prompt_jsonl()
     {
-        using (_tel.UseProject("P"))
+        using (ProjectTelemetryService.UseProject("P"))
         {
             await _tel.LogApiCallAsync(new ApiCallTelemetry
             {
@@ -80,7 +80,7 @@ public class ProjectTelemetryServiceTests : IDisposable
         Assert.DoesNotContain(rec.StderrInteresting!, s => s.StartsWith("frame=", StringComparison.OrdinalIgnoreCase));
         Assert.NotNull(rec.Progress);
 
-        using (_tel.UseProject("P"))
+        using (ProjectTelemetryService.UseProject("P"))
             await _tel.LogMediaOpAsync(rec);
 
         var path = _tel.MediaOpsPath("P");

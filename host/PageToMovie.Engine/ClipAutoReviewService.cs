@@ -117,7 +117,7 @@ public sealed class ClipAutoReviewService
         if (!_vision.IsConfigured)
             throw new InvalidOperationException("Connect service (XAI_API_KEY) for clip review.");
 
-        using var _telScope = _telemetry.UseProject(projectId);
+        using var _telScope = ProjectTelemetryService.UseProject(projectId);
         var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
 
         onProgress?.Invoke(5, 100, "Loading clip plan…");
