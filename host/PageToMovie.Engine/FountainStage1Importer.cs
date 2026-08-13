@@ -629,30 +629,318 @@ public static class FountainStage1Importer
 
         private static int SceneDurationOrDefault(Dictionary<string, object?> s) =>
             ToInt(s.TryGetValue("duration_target_seconds", out var d) ? d : 30);
-    }
 
-    private static void ImportHeadinglessFileAsSingleScene(
-        FountainParser.ParseResult parsed,
-        StringBuilder actionBuf,
-        Func<string, Dictionary<string, object?>> openScene,
-        Func<Dictionary<string, object?>?> closeScene,
-        ICollection<object?> scenes)
-    {
-        // Entire file was action without headings — one scene
-        openScene(UnspecifiedIntDay);
-        foreach (var el in parsed.Elements.Where(e =>
-                     e.Type is FountainParser.ElementType.Action or FountainParser.ElementType.Dialogue))
+        private static void ImportHeadinglessFileAsSingleScene(
+            FountainParser.ParseResult parsed,
+            StringBuilder actionBuf,
+            Func<string, Dictionary<string, object?>> openScene,
+            Func<Dictionary<string, object?>?> closeScene,
+            ICollection<object?> scenes)
         {
-            if (actionBuf.Length > 0) actionBuf.Append(' ');
-            actionBuf.Append(CleanEmphasis(el.Text));
+            // Entire file was action without headings — one scene
+            openScene(UnspecifiedIntDay);
+            foreach (var el in parsed.Elements.Where(e =>
+                         e.Type is FountainParser.ElementType.Action or FountainParser.ElementType.Dialogue))
+            {
+                if (actionBuf.Length > 0) actionBuf.Append(' ');
+                actionBuf.Append(CleanEmphasis(el.Text));
+            }
+            var fallback = closeScene();
+            if (fallback is not null)
+                scenes.Add(fallback);
         }
-        var fallback = closeScene();
-        if (fallback is not null)
-            scenes.Add(fallback);
-    }
 
-    private static string? FirstTitle(FountainParser.ParseResult p, string key) =>
-        p.TitlePage.TryGetValue(key, out var v) ? v : null;
+        private static string? FirstTitle(FountainParser.ParseResult p, string key) =>
+            p.TitlePage.TryGetValue(key, out var v) ? v : null;
+
+        /// <summary>Transition-only lines that must not become filmable beats/clips.</summary>
+        private static bool IsNoopTransitionText(string? text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return true;
+            if (FountainParser.IsStandaloneTransitionLine(text)) return true;
+            var t = WhitespaceCollapseRe.Replace(text.Trim(), " ");
+            return TransitionEndingRe.IsMatch(t);
+        }
+
+        private static bool IsNoopBeatDict(Dictionary<string, object?> beat)
+        {
+            var ve = beat.TryGetValue(VisualEvent, out var v) ? v?.ToString() ?? "" : "";
+            var dlg = beat.TryGetValue(JsonKeys.Dialogue, out var d) ? d?.ToString() ?? "" : "";
+            if (!string.IsNullOrWhiteSpace(dlg)) return false;
+            return IsNoopTransitionText(ve);
+        }
+
+        private static string EnsureLocation(
+            Dictionary<string, object?> seeds,
+            string locName,
+            string locType,
+            string setting)
+        {
+            var id = JsonKeys.LocationPrefix + SlugKey(locName);
+            if (!seeds.ContainsKey(id))
+            {
+                // Place identity only — filmable set text comes from cast-extract or action enrich.
+                // Do not seed description as "ext PALACE" (looked broken in the location modal).
+                seeds[id] = new Dictionary<string, object?>
+                {
+                    ["display_name"] = locName,
+                    [JsonKeys.Description] = "",
+                    [VisualLock] = "",
+                    ["location_type"] = locType,
+                    ["reference_image_placeholder"] = id.ToLowerInvariant() + "_ref.png",
+                };
+            }
+            // setting retained only for callers that still pass it; seed stays time-agnostic
+            _ = setting;
+            return id;
+        }
+
+        /// <summary>
+        /// Fold scene action prose into the location seed so ListLocations has usable description
+        /// without a separate AI location classifier. Strips heading echoes; keeps a short set sketch.
+        /// </summary>
+        private static void EnrichLocationSeedFromScene(
+            Dictionary<string, object?> locSeeds,
+            Dictionary<string, object?> scene,
+            List<object?> beats)
+        {
+            var locId = scene.TryGetValue("primary_location_id", out var pl) ? pl?.ToString() : null;
+            if (string.IsNullOrWhiteSpace(locId) ||
+                !locSeeds.TryGetValue(locId, out var raw) ||
+                raw is not Dictionary<string, object?> seed)
+                return;
+
+            var display = seed.TryGetValue("display_name", out var dn) ? dn?.ToString() ?? locId : locId;
+            var snippets = CollectLocationSnippets(beats, display);
+            ApplyLocationSketch(seed, display, locId, snippets);
+        }
+
+        private static List<string> CollectLocationSnippets(List<object?> beats, string display)
+        {
+            var snippets = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var b in beats.OfType<Dictionary<string, object?>>())
+            {
+                if (!TryGetLocationSnippet(b, display, out var ve))
+                    continue;
+                if (seen.Add(ve))
+                    snippets.Add(ve);
+                if (snippets.Count >= 3) break;
+            }
+            return snippets;
+        }
+
+        private static bool TryGetLocationSnippet(Dictionary<string, object?> beat, string display, out string snippet)
+        {
+            snippet = "";
+            var dlg = beat.TryGetValue(JsonKeys.Dialogue, out var d) ? d?.ToString() : null;
+            if (!string.IsNullOrWhiteSpace(dlg)) return false;
+            var ve = beat.TryGetValue(VisualEvent, out var v) ? v?.ToString()?.Trim() : null;
+            if (string.IsNullOrWhiteSpace(ve)) return false;
+            ve = CleanActionSnippetForLocation(ve, display);
+            if (string.IsNullOrWhiteSpace(ve)) return false;
+            snippet = ve.Length > 160 ? ve[..157] + "…" : ve;
+            return true;
+        }
+
+        private static bool IsLocationStubDescription(string existing, string display, string locId) =>
+            string.IsNullOrWhiteSpace(existing)
+            || existing.Equals(display, StringComparison.OrdinalIgnoreCase)
+            || existing.Equals(locId, StringComparison.OrdinalIgnoreCase)
+            || LooksLikeHeadingEcho(existing, display);
+
+        private static void ApplyLocationSketch(
+            Dictionary<string, object?> seed,
+            string display,
+            string locId,
+            List<string> snippets)
+        {
+            if (snippets.Count == 0) return;
+
+            var existing = seed.TryGetValue(JsonKeys.Description, out var ed) ? ed?.ToString()?.Trim() ?? "" : "";
+            var isStub = IsLocationStubDescription(existing, display, locId);
+            var sketch = isStub
+                ? $"{display}. {snippets[0]}"
+                : AppendNewSnippets(existing, snippets);
+            if (sketch.Length > 480) sketch = sketch[..477] + "…";
+            seed[JsonKeys.Description] = sketch;
+
+            ApplyLocationVisualLockIfStub(seed, display, locId, snippets[0]);
+        }
+
+        private static string AppendNewSnippets(string sketch, List<string> snippets)
+        {
+            foreach (var snippet in snippets.Where(s => !sketch.Contains(s, StringComparison.OrdinalIgnoreCase)))
+                sketch = $"{sketch} {snippet}".Trim();
+            return sketch;
+        }
+
+        private static void ApplyLocationVisualLockIfStub(
+            Dictionary<string, object?> seed,
+            string display,
+            string locId,
+            string snippet)
+        {
+            var vl = seed.TryGetValue(VisualLock, out var vlo) ? vlo?.ToString()?.Trim() ?? "" : "";
+            if (!IsLocationStubDescription(vl, display, locId))
+                return;
+            seed[VisualLock] = snippet.Length <= 120
+                ? $"{display}: {snippet}"
+                : snippet;
+        }
+
+        private static bool LooksLikeHeadingEcho(string text, string display)
+        {
+            var t = (text ?? "").Trim();
+            if (t.StartsWith("ext ", StringComparison.OrdinalIgnoreCase)
+                || t.StartsWith("int ", StringComparison.OrdinalIgnoreCase)
+                || t.StartsWith("ext.", StringComparison.OrdinalIgnoreCase)
+                || t.StartsWith("int.", StringComparison.OrdinalIgnoreCase)
+                || t.StartsWith("and int", StringComparison.OrdinalIgnoreCase)
+                || t.StartsWith("and ext", StringComparison.OrdinalIgnoreCase))
+                return true;
+            if (!string.IsNullOrWhiteSpace(display)
+                && t.StartsWith(display, StringComparison.OrdinalIgnoreCase)
+                && t.Length < display.Length + 8)
+                return true;
+            return false;
+        }
+
+        private static string CleanActionSnippetForLocation(string ve, string? display)
+        {
+            ve = (ve ?? "").Trim();
+            ve = HeadingPrefixRe.Replace(ve, "").Trim();
+            ve = LeftoverCompoundEnvRe.Replace(ve, "").Trim();
+            if (!string.IsNullOrWhiteSpace(display)
+                && ve.StartsWith(display, StringComparison.OrdinalIgnoreCase))
+            {
+                ve = ve[display.Length..].TrimStart(' ', '.', '-', '–', ':');
+            }
+            return ve.Trim();
+        }
+
+        private static string EnsureCharacter(
+            Dictionary<string, object?> seeds,
+            string displayName,
+            string? cueMeta = null)
+        {
+            var key = CharacterKey(displayName);
+            var off = IsOffScreenCue(displayName, cueMeta);
+            if (!seeds.ContainsKey(key))
+            {
+                var name = CleanCharacterName(displayName);
+                // Do not invent looks from Fountain. Leave description/visual_lock empty for on-screen
+                // cast so Stage 2 cannot embed "as described in the screenplay" stubs into visual prompts.
+                // Characters UI / cast extract / locked refs supply real identity later (gen-time CHARACTER VARIABLES).
+                var seed = new Dictionary<string, object?>
+                {
+                    [JsonKeys.Description] = off
+                        ? $"{name} (voice only; not on screen)."
+                        : "",
+                    ["canonical_given_name"] = name,
+                    [DisplayNamePolicy] = off ? "never_on_screen" : "ok_anytime",
+                    ["voice_profile"] = "Consistent character voice every scene.",
+                    ["voice_label"] = name.Replace(' ', '_'),
+                    ["reference_image_placeholder"] = ProjectStore.CharacterRefFileName(key),
+                };
+                if (!off)
+                    seed[VisualLock] = "";
+                seeds[key] = seed;
+            }
+            else if (!off &&
+                     seeds[key] is Dictionary<string, object?> existing &&
+                     string.Equals(
+                         CoerceSeedString(existing, DisplayNamePolicy),
+                         "never_on_screen",
+                         StringComparison.OrdinalIgnoreCase))
+            {
+                // Later on-camera appearance upgrades a V.O.-only first seed
+                existing[DisplayNamePolicy] = "ok_anytime";
+                if (string.IsNullOrWhiteSpace(CoerceSeedString(existing, JsonKeys.Description)) ||
+                    (CoerceSeedString(existing, JsonKeys.Description)?.Contains("voice only", StringComparison.OrdinalIgnoreCase) ?? false))
+                    existing[JsonKeys.Description] = "";
+                if (!existing.ContainsKey(VisualLock))
+                    existing[VisualLock] = "";
+            }
+            return key;
+        }
+
+        private static string? CoerceSeedString(Dictionary<string, object?> seed, string key) =>
+            seed.TryGetValue(key, out var v) ? v?.ToString() : null;
+
+        private static string CharacterKey(string name)
+        {
+            var core = CleanCharacterName(name);
+            var slug = SlugNonAlphaNumericRe.Replace(core, "_").Trim('_');
+            if (slug.Length == 0) slug = "Unknown";
+            return JsonKeys.CharacterPrefix + slug;
+        }
+
+        private static string? FirstCharacterKey(List<object?> cast)
+        {
+            foreach (var x in cast)
+            {
+                var s = x?.ToString();
+                if (!string.IsNullOrWhiteSpace(s) &&
+                    s.StartsWith(JsonKeys.CharacterPrefix, StringComparison.Ordinal))
+                    return s;
+            }
+            return null;
+        }
+
+        private static void EnsureOnScreen(Dictionary<string, object?>? scene, string charKey)
+        {
+            if (scene is null) return;
+            if (!scene.TryGetValue(CharactersOnScreen, out var cos) || cos is not List<object?> list)
+            {
+                list = new List<object?>();
+                scene[CharactersOnScreen] = list;
+            }
+            if (!list.Any(x => string.Equals(x?.ToString(), charKey, StringComparison.OrdinalIgnoreCase)))
+                list.Add(charKey);
+        }
+
+        private static List<object?> CurrentOnScreen(Dictionary<string, object?>? scene)
+        {
+            if (scene?.TryGetValue(CharactersOnScreen, out var cos) == true && cos is List<object?> list)
+                return list.ToList();
+            return new List<object?>();
+        }
+
+        private static string Slug(string s) =>
+            SlugLowerRe.Replace(s.ToLowerInvariant(), "_").Trim('_');
+
+        private static string SlugKey(string s)
+        {
+            // Drop apostrophes before splitting so possessives ("Man's") merge into one token
+            // ("Mans") instead of the trailing "s" splitting off into its own capitalized part.
+            var withoutApostrophes = s.Replace("'", "").Replace("’", "");
+            var parts = SlugNonAlphaNumericRe.Split(withoutApostrophes)
+                .Where(p => p.Length > 0)
+                .Select(p => char.ToUpperInvariant(p[0]) + (p.Length > 1 ? p[1..].ToLowerInvariant() : ""));
+            var joined = string.Join('_', parts);
+            return string.IsNullOrEmpty(joined) ? Unspecified : joined;
+        }
+
+        private static string CleanEmphasis(string s)
+        {
+            s = AsterisksEmphasisRe.Replace(s, "$1");
+            s = UnderscoreEmphasisRe.Replace(s, "$1");
+            return s.Trim();
+        }
+
+        private static string Trunc(string s, int n) =>
+            s.Length <= n ? s : s[..n] + "…";
+
+        private static int ToInt(object? o) => o switch
+        {
+            int i => i,
+            long l => (int)l,
+            double d => (int)d,
+            string s when int.TryParse(s, out var i) => i,
+            _ => 0,
+        };
+    }
 
     private static readonly Regex AmbientCueRe = new(@"\b(" +
         @"rain|raining|rainfall|drizzle|storm|thunder|wind|winds|breeze|" +
@@ -805,232 +1093,6 @@ public static class FountainStage1Importer
         return stripped.Length == 0;
     }
 
-    /// <summary>Transition-only lines that must not become filmable beats/clips.</summary>
-    private static bool IsNoopTransitionText(string? text)
-    {
-        if (string.IsNullOrWhiteSpace(text)) return true;
-        if (FountainParser.IsStandaloneTransitionLine(text)) return true;
-        var t = WhitespaceCollapseRe.Replace(text.Trim(), " ");
-        return TransitionEndingRe.IsMatch(t);
-    }
-
-    private static bool IsNoopBeatDict(Dictionary<string, object?> beat)
-    {
-        var ve = beat.TryGetValue(VisualEvent, out var v) ? v?.ToString() ?? "" : "";
-        var dlg = beat.TryGetValue(JsonKeys.Dialogue, out var d) ? d?.ToString() ?? "" : "";
-        if (!string.IsNullOrWhiteSpace(dlg)) return false;
-        return IsNoopTransitionText(ve);
-    }
-
-    private static string EnsureLocation(
-        Dictionary<string, object?> seeds,
-        string locName,
-        string locType,
-        string setting)
-    {
-        var id = JsonKeys.LocationPrefix + SlugKey(locName);
-        if (!seeds.ContainsKey(id))
-        {
-            // Place identity only — filmable set text comes from cast-extract or action enrich.
-            // Do not seed description as "ext PALACE" (looked broken in the location modal).
-            seeds[id] = new Dictionary<string, object?>
-            {
-                ["display_name"] = locName,
-                [JsonKeys.Description] = "",
-                [VisualLock] = "",
-                ["location_type"] = locType,
-                ["reference_image_placeholder"] = id.ToLowerInvariant() + "_ref.png",
-            };
-        }
-        // setting retained only for callers that still pass it; seed stays time-agnostic
-        _ = setting;
-        return id;
-    }
-
-    /// <summary>
-    /// Fold scene action prose into the location seed so ListLocations has usable description
-    /// without a separate AI location classifier. Strips heading echoes; keeps a short set sketch.
-    /// </summary>
-    private static void EnrichLocationSeedFromScene(
-        Dictionary<string, object?> locSeeds,
-        Dictionary<string, object?> scene,
-        List<object?> beats)
-    {
-        var locId = scene.TryGetValue("primary_location_id", out var pl) ? pl?.ToString() : null;
-        if (string.IsNullOrWhiteSpace(locId) ||
-            !locSeeds.TryGetValue(locId, out var raw) ||
-            raw is not Dictionary<string, object?> seed)
-            return;
-
-        var display = seed.TryGetValue("display_name", out var dn) ? dn?.ToString() ?? locId : locId;
-        var snippets = CollectLocationSnippets(beats, display);
-        ApplyLocationSketch(seed, display, locId, snippets);
-    }
-
-    private static List<string> CollectLocationSnippets(List<object?> beats, string display)
-    {
-        var snippets = new List<string>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var b in beats.OfType<Dictionary<string, object?>>())
-        {
-            if (!TryGetLocationSnippet(b, display, out var ve))
-                continue;
-            if (seen.Add(ve))
-                snippets.Add(ve);
-            if (snippets.Count >= 3) break;
-        }
-        return snippets;
-    }
-
-    private static bool TryGetLocationSnippet(Dictionary<string, object?> beat, string display, out string snippet)
-    {
-        snippet = "";
-        var dlg = beat.TryGetValue(JsonKeys.Dialogue, out var d) ? d?.ToString() : null;
-        if (!string.IsNullOrWhiteSpace(dlg)) return false;
-        var ve = beat.TryGetValue(VisualEvent, out var v) ? v?.ToString()?.Trim() : null;
-        if (string.IsNullOrWhiteSpace(ve)) return false;
-        ve = CleanActionSnippetForLocation(ve, display);
-        if (string.IsNullOrWhiteSpace(ve)) return false;
-        snippet = ve.Length > 160 ? ve[..157] + "…" : ve;
-        return true;
-    }
-
-    private static bool IsLocationStubDescription(string existing, string display, string locId) =>
-        string.IsNullOrWhiteSpace(existing)
-        || existing.Equals(display, StringComparison.OrdinalIgnoreCase)
-        || existing.Equals(locId, StringComparison.OrdinalIgnoreCase)
-        || LooksLikeHeadingEcho(existing, display);
-
-    private static void ApplyLocationSketch(
-        Dictionary<string, object?> seed,
-        string display,
-        string locId,
-        List<string> snippets)
-    {
-        if (snippets.Count == 0) return;
-
-        var existing = seed.TryGetValue(JsonKeys.Description, out var ed) ? ed?.ToString()?.Trim() ?? "" : "";
-        var isStub = IsLocationStubDescription(existing, display, locId);
-        var sketch = isStub
-            ? $"{display}. {snippets[0]}"
-            : AppendNewSnippets(existing, snippets);
-        if (sketch.Length > 480) sketch = sketch[..477] + "…";
-        seed[JsonKeys.Description] = sketch;
-
-        ApplyLocationVisualLockIfStub(seed, display, locId, snippets[0]);
-    }
-
-    private static string AppendNewSnippets(string sketch, List<string> snippets)
-    {
-        foreach (var s in snippets)
-        {
-            if (!sketch.Contains(s, StringComparison.OrdinalIgnoreCase))
-                sketch = $"{sketch} {s}".Trim();
-        }
-        return sketch;
-    }
-
-    private static void ApplyLocationVisualLockIfStub(
-        Dictionary<string, object?> seed,
-        string display,
-        string locId,
-        string snippet)
-    {
-        var vl = seed.TryGetValue(VisualLock, out var vlo) ? vlo?.ToString()?.Trim() ?? "" : "";
-        if (!IsLocationStubDescription(vl, display, locId))
-            return;
-        seed[VisualLock] = snippet.Length <= 120
-            ? $"{display}: {snippet}"
-            : snippet;
-    }
-
-    private static bool LooksLikeHeadingEcho(string text, string display)
-    {
-        var t = (text ?? "").Trim();
-        if (t.StartsWith("ext ", StringComparison.OrdinalIgnoreCase)
-            || t.StartsWith("int ", StringComparison.OrdinalIgnoreCase)
-            || t.StartsWith("ext.", StringComparison.OrdinalIgnoreCase)
-            || t.StartsWith("int.", StringComparison.OrdinalIgnoreCase)
-            || t.StartsWith("and int", StringComparison.OrdinalIgnoreCase)
-            || t.StartsWith("and ext", StringComparison.OrdinalIgnoreCase))
-            return true;
-        if (!string.IsNullOrWhiteSpace(display)
-            && t.StartsWith(display, StringComparison.OrdinalIgnoreCase)
-            && t.Length < display.Length + 8)
-            return true;
-        return false;
-    }
-
-    private static string CleanActionSnippetForLocation(string ve, string? display)
-    {
-        ve = (ve ?? "").Trim();
-        ve = HeadingPrefixRe.Replace(ve, "").Trim();
-        ve = LeftoverCompoundEnvRe.Replace(ve, "").Trim();
-        if (!string.IsNullOrWhiteSpace(display)
-            && ve.StartsWith(display, StringComparison.OrdinalIgnoreCase))
-        {
-            ve = ve[display.Length..].TrimStart(' ', '.', '-', '–', ':');
-        }
-        return ve.Trim();
-    }
-
-    private static string EnsureCharacter(
-        Dictionary<string, object?> seeds,
-        string displayName,
-        string? cueMeta = null)
-    {
-        var key = CharacterKey(displayName);
-        var off = IsOffScreenCue(displayName, cueMeta);
-        if (!seeds.ContainsKey(key))
-        {
-            var name = CleanCharacterName(displayName);
-            // Do not invent looks from Fountain. Leave description/visual_lock empty for on-screen
-            // cast so Stage 2 cannot embed "as described in the screenplay" stubs into visual prompts.
-            // Characters UI / cast extract / locked refs supply real identity later (gen-time CHARACTER VARIABLES).
-            var seed = new Dictionary<string, object?>
-            {
-                [JsonKeys.Description] = off
-                    ? $"{name} (voice only; not on screen)."
-                    : "",
-                ["canonical_given_name"] = name,
-                [DisplayNamePolicy] = off ? "never_on_screen" : "ok_anytime",
-                ["voice_profile"] = "Consistent character voice every scene.",
-                ["voice_label"] = name.Replace(' ', '_'),
-                ["reference_image_placeholder"] = ProjectStore.CharacterRefFileName(key),
-            };
-            if (!off)
-                seed[VisualLock] = "";
-            seeds[key] = seed;
-        }
-        else if (!off &&
-                 seeds[key] is Dictionary<string, object?> existing &&
-                 string.Equals(
-                     CoerceSeedString(existing, DisplayNamePolicy),
-                     "never_on_screen",
-                     StringComparison.OrdinalIgnoreCase))
-        {
-            // Later on-camera appearance upgrades a V.O.-only first seed
-            existing[DisplayNamePolicy] = "ok_anytime";
-            if (string.IsNullOrWhiteSpace(CoerceSeedString(existing, JsonKeys.Description)) ||
-                (CoerceSeedString(existing, JsonKeys.Description)?.Contains("voice only", StringComparison.OrdinalIgnoreCase) ?? false))
-                existing[JsonKeys.Description] = "";
-            if (!existing.ContainsKey(VisualLock))
-                existing[VisualLock] = "";
-        }
-        return key;
-    }
-
-    private static string? CoerceSeedString(Dictionary<string, object?> seed, string key) =>
-        seed.TryGetValue(key, out var v) ? v?.ToString() : null;
-
-    private static string CharacterKey(string name)
-    {
-        var core = CleanCharacterName(name);
-        var slug = SlugNonAlphaNumericRe.Replace(core, "_").Trim('_');
-        if (slug.Length == 0) slug = "Unknown";
-        return JsonKeys.CharacterPrefix + slug;
-    }
-
     private static string CleanCharacterName(string name)
     {
         name = CharacterParenRe.Replace(name, " ").Trim();
@@ -1142,68 +1204,4 @@ public static class FountainStage1Importer
         return false;
     }
 
-    private static string? FirstCharacterKey(List<object?> cast)
-    {
-        foreach (var x in cast)
-        {
-            var s = x?.ToString();
-            if (!string.IsNullOrWhiteSpace(s) &&
-                s.StartsWith(JsonKeys.CharacterPrefix, StringComparison.Ordinal))
-                return s;
-        }
-        return null;
-    }
-
-    private static void EnsureOnScreen(Dictionary<string, object?>? scene, string charKey)
-    {
-        if (scene is null) return;
-        if (!scene.TryGetValue(CharactersOnScreen, out var cos) || cos is not List<object?> list)
-        {
-            list = new List<object?>();
-            scene[CharactersOnScreen] = list;
-        }
-        if (!list.Any(x => string.Equals(x?.ToString(), charKey, StringComparison.OrdinalIgnoreCase)))
-            list.Add(charKey);
-    }
-
-    private static List<object?> CurrentOnScreen(Dictionary<string, object?>? scene)
-    {
-        if (scene?.TryGetValue(CharactersOnScreen, out var cos) == true && cos is List<object?> list)
-            return list.ToList();
-        return new List<object?>();
-    }
-
-    private static string Slug(string s) =>
-        SlugLowerRe.Replace(s.ToLowerInvariant(), "_").Trim('_');
-
-    private static string SlugKey(string s)
-    {
-        // Drop apostrophes before splitting so possessives ("Man's") merge into one token
-        // ("Mans") instead of the trailing "s" splitting off into its own capitalized part.
-        var withoutApostrophes = s.Replace("'", "").Replace("’", "");
-        var parts = SlugNonAlphaNumericRe.Split(withoutApostrophes)
-            .Where(p => p.Length > 0)
-            .Select(p => char.ToUpperInvariant(p[0]) + (p.Length > 1 ? p[1..].ToLowerInvariant() : ""));
-        var joined = string.Join('_', parts);
-        return string.IsNullOrEmpty(joined) ? Unspecified : joined;
-    }
-
-    private static string CleanEmphasis(string s)
-    {
-        s = AsterisksEmphasisRe.Replace(s, "$1");
-        s = UnderscoreEmphasisRe.Replace(s, "$1");
-        return s.Trim();
-    }
-
-    private static string Trunc(string s, int n) =>
-        s.Length <= n ? s : s[..n] + "…";
-
-    private static int ToInt(object? o) => o switch
-    {
-        int i => i,
-        long l => (int)l,
-        double d => (int)d,
-        string s when int.TryParse(s, out var i) => i,
-        _ => 0,
-    };
 }
