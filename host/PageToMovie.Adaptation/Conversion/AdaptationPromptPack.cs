@@ -152,19 +152,11 @@ public static class AdaptationPromptPack
         foreach (var (key, value) in map)
             body = body.Replace("{{" + key + "}}", value, StringComparison.Ordinal);
 
-        var leftovers = TokenPattern.Matches(body)
-            .Select(m => m.Groups[1].Value)
-            .Distinct(StringComparer.Ordinal)
-            .OrderBy(s => s, StringComparer.Ordinal)
-            .ToList();
-        if (leftovers.Count > 0)
-        {
-            throw new InvalidOperationException(
-                "book_to_fountain prompt still has unresolved tokens after substitution: " +
-                string.Join(", ", leftovers.Select(t => "{{" + t + "}}")) +
-                ". Add them to AdaptationPromptTokens / ApplyPromptTokens, or remove them from the prompt.");
-        }
-
+        ThrowIfUnresolvedTokens(
+            body,
+            "book_to_fountain prompt still has unresolved tokens after substitution",
+            extraSuffix: ". Add them to AdaptationPromptTokens / ApplyPromptTokens, or remove them from the prompt.",
+            sort: true);
         return body;
     }
 
@@ -175,49 +167,27 @@ public static class AdaptationPromptPack
     /// Fountain → Fountain "re-skin" system prompt with the target medium resolved.
     /// Descriptive layer only; dialogue / cues / scene count preserved.
     /// </summary>
-    public static async Task<string> BuildReskinSystemPromptAsync(string? visualMedium, CancellationToken ct = default)
-    {
-        var body = await ReadPromptBodyAsync(ReskinRelativePath, ReskinEmbeddedLogicalName, ct).ConfigureAwait(false);
-        var medium = string.IsNullOrWhiteSpace(visualMedium) ? "auto" : visualMedium.Trim();
-        var directive = string.Equals(medium, "auto", StringComparison.OrdinalIgnoreCase)
-            ? "auto — keep the medium the source already implies; do not switch styles"
-            : medium;
-        body = body.Replace("{{VISUAL_MEDIUM}}", directive, StringComparison.Ordinal);
-
-        var leftovers = TokenPattern.Matches(body)
-            .Select(m => m.Groups[1].Value)
-            .Distinct(StringComparer.Ordinal)
-            .ToList();
-        if (leftovers.Count > 0)
-            throw new InvalidOperationException(
-                "fountain_reskin prompt still has unresolved tokens: " +
-                string.Join(", ", leftovers.Select(t => "{{" + t + "}}")) + ".");
-        return body;
-    }
+    public static async Task<string> BuildReskinSystemPromptAsync(string? visualMedium, CancellationToken ct = default) =>
+        await BuildVisualMediumPromptAsync(
+            ReskinRelativePath,
+            ReskinEmbeddedLogicalName,
+            visualMedium,
+            autoDirective: "auto — keep the medium the source already implies; do not switch styles",
+            leftoverPromptName: "fountain_reskin",
+            ct).ConfigureAwait(false);
 
     /// <summary>
     /// Fountain → Fountain "embellish" system prompt with the target medium resolved.
     /// Enriches the descriptive layer only; dialogue / cues / scene count preserved.
     /// </summary>
-    public static async Task<string> BuildEmbellishSystemPromptAsync(string? visualMedium, CancellationToken ct = default)
-    {
-        var body = await ReadPromptBodyAsync(EmbellishRelativePath, EmbellishEmbeddedLogicalName, ct).ConfigureAwait(false);
-        var medium = string.IsNullOrWhiteSpace(visualMedium) ? "auto" : visualMedium.Trim();
-        var directive = string.Equals(medium, "auto", StringComparison.OrdinalIgnoreCase)
-            ? "auto — enrich in the medium the source already implies; do not switch styles"
-            : medium;
-        body = body.Replace("{{VISUAL_MEDIUM}}", directive, StringComparison.Ordinal);
-
-        var leftovers = TokenPattern.Matches(body)
-            .Select(m => m.Groups[1].Value)
-            .Distinct(StringComparer.Ordinal)
-            .ToList();
-        if (leftovers.Count > 0)
-            throw new InvalidOperationException(
-                "embellish_scene prompt still has unresolved tokens: " +
-                string.Join(", ", leftovers.Select(t => "{{" + t + "}}")) + ".");
-        return body;
-    }
+    public static async Task<string> BuildEmbellishSystemPromptAsync(string? visualMedium, CancellationToken ct = default) =>
+        await BuildVisualMediumPromptAsync(
+            EmbellishRelativePath,
+            EmbellishEmbeddedLogicalName,
+            visualMedium,
+            autoDirective: "auto — enrich in the medium the source already implies; do not switch styles",
+            leftoverPromptName: "embellish_scene",
+            ct).ConfigureAwait(false);
 
     /// <summary>
     /// Fountain → Fountain "trim" system prompt with the runtime targets resolved. Structure may shrink
@@ -228,16 +198,46 @@ public static class AdaptationPromptPack
         var body = await ReadPromptBodyAsync(TrimRelativePath, TrimEmbeddedLogicalName, ct).ConfigureAwait(false);
         body = body.Replace("{{TARGET_MINUTES}}", Math.Max(1, targetMinutes).ToString(), StringComparison.Ordinal);
         body = body.Replace("{{NATURAL_MINUTES}}", Math.Max(1, naturalMinutes).ToString(), StringComparison.Ordinal);
-
-        var leftovers = TokenPattern.Matches(body)
-            .Select(m => m.Groups[1].Value)
-            .Distinct(StringComparer.Ordinal)
-            .ToList();
-        if (leftovers.Count > 0)
-            throw new InvalidOperationException(
-                "trim_scene prompt still has unresolved tokens: " +
-                string.Join(", ", leftovers.Select(t => "{{" + t + "}}")) + ".");
+        ThrowIfUnresolvedTokens(body, "trim_scene prompt still has unresolved tokens");
         return body;
+    }
+
+    private static async Task<string> BuildVisualMediumPromptAsync(
+        string relativePath,
+        string logicalName,
+        string? visualMedium,
+        string autoDirective,
+        string leftoverPromptName,
+        CancellationToken ct)
+    {
+        var body = await ReadPromptBodyAsync(relativePath, logicalName, ct).ConfigureAwait(false);
+        var medium = string.IsNullOrWhiteSpace(visualMedium) ? "auto" : visualMedium.Trim();
+        var directive = string.Equals(medium, "auto", StringComparison.OrdinalIgnoreCase)
+            ? autoDirective
+            : medium;
+        body = body.Replace("{{VISUAL_MEDIUM}}", directive, StringComparison.Ordinal);
+        ThrowIfUnresolvedTokens(body, leftoverPromptName + " prompt still has unresolved tokens");
+        return body;
+    }
+
+    private static void ThrowIfUnresolvedTokens(
+        string body,
+        string messagePrefix,
+        string extraSuffix = ".",
+        bool sort = false)
+    {
+        IEnumerable<string> tokens = TokenPattern.Matches(body)
+            .Select(m => m.Groups[1].Value)
+            .Distinct(StringComparer.Ordinal);
+        if (sort)
+            tokens = tokens.OrderBy(s => s, StringComparer.Ordinal);
+        var leftovers = tokens.ToList();
+        if (leftovers.Count == 0)
+            return;
+        throw new InvalidOperationException(
+            messagePrefix + ": " +
+            string.Join(", ", leftovers.Select(t => "{{" + t + "}}")) +
+            extraSuffix);
     }
 
     private static async Task<string> ReadPromptBodyAsync(string relativePath, string logicalName, CancellationToken ct = default)

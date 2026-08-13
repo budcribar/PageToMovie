@@ -1,11 +1,30 @@
 using System.Text.RegularExpressions;
 
+#if PAGETOMOVIE_FOUNTAIN
 namespace PageToMovie.Fountain;
 
-/// <summary>Fountain stays dependency-free — local timeout twin of <c>CommonRegex.Timeout</c>.</summary>
+/// <summary>
+/// Timeout-safe Regex helpers for Fountain parsing. Same source as
+/// <c>PageToMovie.Core.Utils.CommonRegex</c> — compiled into this leaf assembly so Fountain
+/// stays dependency-free (no PageToMovie.* references).
+/// </summary>
 internal static class FountainRegex
+#else
+namespace PageToMovie.Core.Utils;
+
+/// <summary>
+/// Timeout-safe Regex helpers (Sonar S6444). Shared source with Fountain's <c>FountainRegex</c>
+/// via a linked compile; do not clone these wrappers.
+/// </summary>
+public static partial class CommonRegex
+#endif
 {
-    public static readonly TimeSpan Timeout = TimeSpan.FromSeconds(5);
+    private const int MatchTimeoutSeconds = 5;
+
+#if PAGETOMOVIE_FOUNTAIN
+    /// <summary>Default match budget for every helper and compiled pattern here.</summary>
+    public static readonly TimeSpan Timeout = TimeSpan.FromSeconds(MatchTimeoutSeconds);
+#endif
 
     public static Regex Create(string pattern, RegexOptions options = RegexOptions.None) =>
         new(pattern, options, Timeout);
@@ -33,6 +52,14 @@ internal static class FountainRegex
 
     public static string Replace(string input, string pattern, string replacement, RegexOptions options) =>
         Regex.Replace(input ?? "", pattern, replacement ?? "", options, Timeout);
+
+#if !PAGETOMOVIE_FOUNTAIN
+    public static string Replace(string input, string pattern, MatchEvaluator evaluator) =>
+        Regex.Replace(input ?? "", pattern, evaluator, RegexOptions.None, Timeout);
+
+    public static string Replace(string input, string pattern, MatchEvaluator evaluator, RegexOptions options) =>
+        Regex.Replace(input ?? "", pattern, evaluator, options, Timeout);
+#endif
 
     public static string[] Split(string input, string pattern) =>
         Regex.Split(input ?? "", pattern, RegexOptions.None, Timeout);

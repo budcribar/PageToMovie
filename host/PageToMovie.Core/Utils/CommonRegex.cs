@@ -5,57 +5,20 @@ namespace PageToMovie.Core.Utils;
 /// <summary>
 /// Shared Regex catalog and timeout-safe static helpers. Sonar S6444 requires a match timeout
 /// on every Regex construction / static call so a crafted input cannot hang the process.
+/// Timeout wrappers live in TimeoutSafeRegex.cs (this partial) and compile into Fountain as
+/// FountainRegex so that leaf module has no PageToMovie.* references.
 /// </summary>
-public static class CommonRegex
+public static partial class CommonRegex
 {
     /// <summary>Default match budget for every helper and compiled pattern here.</summary>
-    public static readonly TimeSpan Timeout = TimeSpan.FromSeconds(5);
+    public static readonly TimeSpan Timeout = TimeSpan.FromSeconds(MatchTimeoutSeconds);
 
     /// <summary>Matches consecutive whitespace characters (\s+).</summary>
-    public static readonly Regex WhitespaceCollapse = new(@"\s+", RegexOptions.Compiled, Timeout);
+    public static readonly Regex WhitespaceCollapse = new(@"\s+", RegexOptions.Compiled, TimeSpan.FromSeconds(MatchTimeoutSeconds));
 
     /// <summary>Matches consecutive dots or dots with surrounding spaces (\s*\.\s*\.+).</summary>
-    public static readonly Regex DotCollapse = new(@"\s*\.\s*\.+", RegexOptions.Compiled, Timeout);
+    public static readonly Regex DotCollapse = new(@"\s*\.\s*\.+", RegexOptions.Compiled, TimeSpan.FromSeconds(MatchTimeoutSeconds));
 
     /// <summary>Matches standard HTML tags (<[^>]+>).</summary>
-    public static readonly Regex HtmlTags = new(@"<[^>]+>", RegexOptions.Compiled, Timeout);
-
-    public static Regex Create(string pattern, RegexOptions options = RegexOptions.None) =>
-        new(pattern, options, Timeout);
-
-    public static bool IsMatch(string input, string pattern) =>
-        Regex.IsMatch(input ?? "", pattern, RegexOptions.None, Timeout);
-
-    public static bool IsMatch(string input, string pattern, RegexOptions options) =>
-        Regex.IsMatch(input ?? "", pattern, options, Timeout);
-
-    public static Match Match(string input, string pattern) =>
-        Regex.Match(input ?? "", pattern, RegexOptions.None, Timeout);
-
-    public static Match Match(string input, string pattern, RegexOptions options) =>
-        Regex.Match(input ?? "", pattern, options, Timeout);
-
-    public static MatchCollection Matches(string input, string pattern) =>
-        Regex.Matches(input ?? "", pattern, RegexOptions.None, Timeout);
-
-    public static MatchCollection Matches(string input, string pattern, RegexOptions options) =>
-        Regex.Matches(input ?? "", pattern, options, Timeout);
-
-    public static string Replace(string input, string pattern, string replacement) =>
-        Regex.Replace(input ?? "", pattern, replacement ?? "", RegexOptions.None, Timeout);
-
-    public static string Replace(string input, string pattern, string replacement, RegexOptions options) =>
-        Regex.Replace(input ?? "", pattern, replacement ?? "", options, Timeout);
-
-    public static string Replace(string input, string pattern, MatchEvaluator evaluator) =>
-        Regex.Replace(input ?? "", pattern, evaluator, RegexOptions.None, Timeout);
-
-    public static string Replace(string input, string pattern, MatchEvaluator evaluator, RegexOptions options) =>
-        Regex.Replace(input ?? "", pattern, evaluator, options, Timeout);
-
-    public static string[] Split(string input, string pattern) =>
-        Regex.Split(input ?? "", pattern, RegexOptions.None, Timeout);
-
-    public static string[] Split(string input, string pattern, RegexOptions options) =>
-        Regex.Split(input ?? "", pattern, options, Timeout);
+    public static readonly Regex HtmlTags = new(@"<[^>]+>", RegexOptions.Compiled, TimeSpan.FromSeconds(MatchTimeoutSeconds));
 }
