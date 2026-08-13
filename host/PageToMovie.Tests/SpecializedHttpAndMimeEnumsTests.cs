@@ -57,6 +57,8 @@ public class SpecializedHttpAndMimeEnumsTests
     {
         Assert.False("invalid-header-xyz".TryParseSpecializedHttpHeader(out _));
         Assert.False(((string?)null).TryParseSpecializedHttpHeader(out _));
+        Assert.Equal(SpecializedHttpHeader.Authorization, "invalid-header-xyz".ParseSpecializedHttpHeader());
+        Assert.Equal(SpecializedHttpHeader.Authorization, ((string?)null).ParseSpecializedHttpHeader());
     }
 
     [Theory]
@@ -109,6 +111,8 @@ public class SpecializedHttpAndMimeEnumsTests
     {
         Assert.False("unknown/mime".TryParseSpecializedMimeType(out _));
         Assert.False(((string?)null).TryParseSpecializedMimeType(out _));
+        Assert.Equal(SpecializedMimeType.ApplicationJson, "unknown/mime".ParseSpecializedMimeType());
+        Assert.Equal(SpecializedMimeType.ApplicationJson, ((string?)null).ParseSpecializedMimeType());
     }
 
     [Fact]
