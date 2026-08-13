@@ -194,10 +194,25 @@ public partial class VoiceCaptureStep
         var words = CurrentPhrase.Words;
         if (words is null || words.Count == 0)
         {
-            for (var i = 0; i < n; i++) { starts[i] = durSec * i / n; ends[i] = durSec * (i + 1) / n; }
+            EqualSplitTimeline(starts, ends, n, durSec);
             return (starts, ends);
         }
 
+        var (knownStart, knownEnd) = MapKnownTimes(disp, words, n);
+        InterpolateStarts(starts, knownStart, n, durSec);
+        ClampStarts(starts, n, durSec);
+        ComputeEnds(starts, ends, knownEnd, n, durSec);
+        return (starts, ends);
+    }
+
+    static void EqualSplitTimeline(double[] starts, double[] ends, int n, double durSec)
+    {
+        for (var i = 0; i < n; i++) { starts[i] = durSec * i / n; ends[i] = durSec * (i + 1) / n; }
+    }
+
+    static (double?[] knownStart, double?[] knownEnd) MapKnownTimes(
+        List<string> disp, List<VoiceCaptureWord> words, int n)
+    {
         var knownStart = new double?[n];
         var knownEnd = new double?[n];
         var si = 0;
@@ -216,7 +231,11 @@ public partial class VoiceCaptureStep
                 }
             }
         }
+        return (knownStart, knownEnd);
+    }
 
+    static void InterpolateStarts(double[] starts, double?[] knownStart, int n, double durSec)
+    {
         int prevIdx = -1; double prevTime = 0;
         for (var di = 0; di < n; di++)
         {
@@ -227,7 +246,10 @@ public partial class VoiceCaptureStep
         }
         for (var g = prevIdx + 1; g < n; g++)
             starts[g] = prevTime + (durSec - prevTime) * (g - prevIdx) / (n - prevIdx);
+    }
 
+    static void ClampStarts(double[] starts, int n, double durSec)
+    {
         double last = 0;
         for (var i = 0; i < n; i++)
         {
@@ -235,7 +257,10 @@ public partial class VoiceCaptureStep
             if (starts[i] > durSec) starts[i] = durSec;
             last = starts[i];
         }
+    }
 
+    static void ComputeEnds(double[] starts, double[] ends, double?[] knownEnd, int n, double durSec)
+    {
         for (var i = 0; i < n; i++)
         {
             var cap = i + 1 < n ? starts[i + 1] : durSec;
@@ -244,7 +269,6 @@ public partial class VoiceCaptureStep
             if (e > cap) e = cap;
             ends[i] = e;
         }
-        return (starts, ends);
     }
 
     internal static string NormTok(string? s)

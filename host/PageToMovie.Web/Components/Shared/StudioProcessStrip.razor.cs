@@ -91,37 +91,50 @@ public partial class StudioProcessStrip
     {
         get
         {
-            if (UseSimple)
-            {
-                return ActiveKey switch
-                {
-                    "book" or "setup" => ("simple-voice", "Your voice", null),
-                    "cast" => (ActiveProject.CanScenes ? "scenes?simple=1" : null, "Movie",
-                        ActiveProject.CanScenes ? null : ActiveProject.ScenesBlockedReason),
-                    "film" => (ActiveProject.CanReview ? ReviewStep : null, "Review",
-                        ActiveProject.CanReview ? null : "Review unlocks after you have a cut"),
-                    _ => (null, "Next", null),
-                };
-            }
-
-            return ActiveKey switch
-            {
-                "setup" => (BookLocked ? null : "adaptation", "Book", BookLocked ? "Connect API keys first" : null),
-                "book" => (ActiveProject.CanEstimate ? "cost" : null, "Estimate",
-                    ActiveProject.CanEstimate ? null : ActiveProject.EstimateBlockedReason),
-                "estimate" or "cast" or "characters" or "locations" =>
-                    (ActiveProject.CanScenes ? "scenes" : null, "Film",
-                        ActiveProject.CanScenes
-                            ? null
-                            : (ActiveProject.CanEstimate
-                                ? "Generate movie on Estimate first"
-                                : ActiveProject.ScenesBlockedReason)),
-                "film" => (ActiveProject.CanReview ? ReviewStep : null, "Review",
-                    ActiveProject.CanReview ? null : "Review unlocks after you have a cut"),
-                _ => (null, "Next", null),
-            };
+            if (UseSimple) return NextStepSimple();
+            return NextStepFull();
         }
     }
+
+    private (string? Href, string Label, string? BlockedReason) NextStepSimple() => ActiveKey switch
+    {
+        "book" or "setup" => ("simple-voice", "Your voice", null),
+        "cast" => NextSimpleFromCast(),
+        "film" => NextFromFilm(),
+        _ => (null, "Next", null),
+    };
+
+    private (string? Href, string Label, string? BlockedReason) NextSimpleFromCast() =>
+        (ActiveProject.CanScenes ? "scenes?simple=1" : null, "Movie",
+            ActiveProject.CanScenes ? null : ActiveProject.ScenesBlockedReason);
+
+    private (string? Href, string Label, string? BlockedReason) NextStepFull() => ActiveKey switch
+    {
+        "setup" => NextFromSetup(),
+        "book" => NextFromBook(),
+        "estimate" or "cast" or "characters" or "locations" => NextFromEstimateOrCast(),
+        "film" => NextFromFilm(),
+        _ => (null, "Next", null),
+    };
+
+    private (string? Href, string Label, string? BlockedReason) NextFromSetup() =>
+        (BookLocked ? null : "adaptation", "Book", BookLocked ? "Connect API keys first" : null);
+
+    private (string? Href, string Label, string? BlockedReason) NextFromBook() =>
+        (ActiveProject.CanEstimate ? "cost" : null, "Estimate",
+            ActiveProject.CanEstimate ? null : ActiveProject.EstimateBlockedReason);
+
+    private (string? Href, string Label, string? BlockedReason) NextFromEstimateOrCast() =>
+        (ActiveProject.CanScenes ? "scenes" : null, "Film",
+            ActiveProject.CanScenes
+                ? null
+                : (ActiveProject.CanEstimate
+                    ? "Generate movie on Estimate first"
+                    : ActiveProject.ScenesBlockedReason));
+
+    private (string? Href, string Label, string? BlockedReason) NextFromFilm() =>
+        (ActiveProject.CanReview ? ReviewStep : null, "Review",
+            ActiveProject.CanReview ? null : "Review unlocks after you have a cut");
 
     private bool CanGoBack => !string.IsNullOrWhiteSpace(PrevStep.Href);
     private bool CanGoNext => !string.IsNullOrWhiteSpace(NextStep.Href);

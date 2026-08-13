@@ -151,43 +151,7 @@ public partial class Review
             S.StateHasChanged();
             try
             {
-                var keyframes = new List<MovieAutoReviewKeyframe>();
-                var scenesToReview = S.List._scenes.OrderBy(x => x.SceneNumber).ToList();
-
-                for (var i = 0; i < scenesToReview.Count; i++)
-                {
-                    var s = scenesToReview[i];
-                    _reviewProgressPct = 5 + (int)(55.0 * (i + 1) / Math.Max(1, scenesToReview.Count));
-                    _reviewProgressStatus = $"Sampling visual frames for Scene {s.SceneNumber} ({i + 1}/{scenesToReview.Count})…";
-                    S.StateHasChanged();
-
-                    var urls = await ResolveSceneUrlsForReviewAsync(s.SceneNumber);
-                    if (urls is { Count: > 0 })
-                    {
-                        foreach (var url in urls.Take(2))
-                        {
-                            try
-                            {
-                                var framesResult = await S.Stitch.ExtractFramesRawAsync(url, mode: "span", count: 2);
-                                if (framesResult.Success && framesResult.Frames is { Count: > 0 })
-                                {
-                                    foreach (var f in framesResult.Frames)
-                                    {
-                                        if (string.IsNullOrWhiteSpace(f.Base64)) continue;
-                                        keyframes.Add(new MovieAutoReviewKeyframe
-                                        {
-                                            SceneNumber = s.SceneNumber,
-                                            Label = $"SCENE_{s.SceneNumber:D2}",
-                                            Base64 = f.Base64,
-                                            Mime = string.IsNullOrWhiteSpace(f.Mime) ? "image/jpeg" : f.Mime
-                                        });
-                                    }
-                                }
-                            }
-                            catch { /* fall through */ }
-                        }
-                    }
-                }
+                var keyframes = await SampleSceneKeyframesAsync();
 
                 if (keyframes.Count == 0)
                 {
@@ -224,6 +188,57 @@ public partial class Review
             }
         }
 
+        private async Task<List<MovieAutoReviewKeyframe>> SampleSceneKeyframesAsync()
+        {
+            var keyframes = new List<MovieAutoReviewKeyframe>();
+            var scenesToReview = S.List._scenes.OrderBy(x => x.SceneNumber).ToList();
+
+            for (var i = 0; i < scenesToReview.Count; i++)
+            {
+                var s = scenesToReview[i];
+                _reviewProgressPct = 5 + (int)(55.0 * (i + 1) / Math.Max(1, scenesToReview.Count));
+                _reviewProgressStatus = $"Sampling visual frames for Scene {s.SceneNumber} ({i + 1}/{scenesToReview.Count})…";
+                S.StateHasChanged();
+
+                var urls = await ResolveSceneUrlsForReviewAsync(s.SceneNumber);
+                if (urls is { Count: > 0 })
+                    await SampleSceneUrlsAsync(s.SceneNumber, urls, keyframes);
+            }
+
+            return keyframes;
+        }
+
+        private async Task SampleSceneUrlsAsync(
+            int sceneNumber, IReadOnlyList<string> urls, List<MovieAutoReviewKeyframe> keyframes)
+        {
+            foreach (var url in urls.Take(2))
+            {
+                try
+                {
+                    var framesResult = await S.Stitch.ExtractFramesRawAsync(url, mode: "span", count: 2);
+                    if (framesResult.Success && framesResult.Frames is { Count: > 0 })
+                        AddKeyframes(sceneNumber, framesResult.Frames, keyframes);
+                }
+                catch { /* fall through */ }
+            }
+        }
+
+        private static void AddKeyframes(
+            int sceneNumber, List<ClientVideoStitchService.JsFrameItem> frames, List<MovieAutoReviewKeyframe> keyframes)
+        {
+            foreach (var f in frames)
+            {
+                if (string.IsNullOrWhiteSpace(f.Base64)) continue;
+                keyframes.Add(new MovieAutoReviewKeyframe
+                {
+                    SceneNumber = sceneNumber,
+                    Label = $"SCENE_{sceneNumber:D2}",
+                    Base64 = f.Base64,
+                    Mime = string.IsNullOrWhiteSpace(f.Mime) ? "image/jpeg" : f.Mime
+                });
+            }
+        }
+
 
         internal async Task StartBatchAutoReviewAsync()
         {
@@ -235,56 +250,8 @@ public partial class Review
             {
                 await S.Jobs.EnsureHubAsync();
                 // Client-orchestrated: sample frames per clip, then single authenticated review job.
-                var targets = new List<(int Scene, int Clip)>();
-                foreach (var s in S.List._scenes.OrderBy(x => x.SceneNumber))
-                {
-                    if (s.ClipsOnDisk <= 0 && s.ClipCount <= 0) continue;
-                    // Prefer detail when selected; otherwise use summary counts
-                    SceneDetail? detail = null;
-                    if (S.List._selectedScene == s.SceneNumber)
-                        detail = S.List._selectedDetail;
-                    else
-                    {
-                        try
-                        {
-                            detail = (await S.Engine.GetSceneDetailAsync(S._projectId, s.SceneNumber))?.Scene;
-                        }
-                        catch { /* fall through */ }
-                    }
-
-                    if (detail?.Clips is { Count: > 0 })
-                    {
-                        foreach (var c in detail.Clips.Where(c => c.OnDisk).OrderBy(c => c.ClipNumber))
-                            targets.Add((s.SceneNumber, c.ClipNumber));
-                    }
-                    else if (s.ClipsOnDisk > 0)
-                    {
-                        for (var c = 1; c <= Math.Max(s.ClipCount, s.ClipsOnDisk); c++)
-                        {
-                            if (S.List.ClipOnDisk(s.SceneNumber, c))
-                                targets.Add((s.SceneNumber, c));
-                        }
-                    }
-                }
-
-                // onlyMissing: skip clips that already have a draft
-                var todo = new List<(int Scene, int Clip)>();
-                foreach (var (scene, clip) in targets)
-                {
-                    if (_drafts.ContainsKey(ClipKey(scene, clip)))
-                        continue;
-                    try
-                    {
-                        var existing = await S.Engine.GetClipAutoReviewDraftAsync(S._projectId, scene, clip);
-                        if (existing is not null)
-                        {
-                            _drafts[ClipKey(scene, clip)] = existing;
-                            continue;
-                        }
-                    }
-                    catch { /* treat as missing */ }
-                    todo.Add((scene, clip));
-                }
+                var targets = await CollectReviewTargetsAsync();
+                var todo = await FilterMissingDraftsAsync(targets);
 
                 if (todo.Count == 0)
                 {
@@ -297,46 +264,10 @@ public partial class Review
                 for (var i = 0; i < todo.Count; i++)
                 {
                     var (scene, clip) = todo[i];
-                    S._message = $"Auto-review {i + 1}/{todo.Count}: sampling S{scene:D2}C{clip:D2}…";
-                    S.StateHasChanged();
-                    try
-                    {
-                        var (frames, sampleErr) = await S.Stitch.SampleAutoReviewFramesAsync(S._projectId, scene, clip);
-                        if (!string.IsNullOrWhiteSpace(sampleErr) || frames.Count == 0)
-                            throw new InvalidOperationException(sampleErr ?? "No frames");
-
-                        S._message = $"Auto-review {i + 1}/{todo.Count}: reviewing S{scene:D2}C{clip:D2} ({frames.Count} frames)…";
-                        S.StateHasChanged();
-                        var started = await S.Engine.StartClipAutoReviewAsync(S._projectId, scene, clip, frames);
-                        S.Jobs._job = started;
-                        var snap = await S.Engine.WaitForJobTerminalAsync(
-                            jobId: started?.JobId,
-                            timeout: TimeSpan.FromMinutes(6));
-                        S.Jobs._job = snap ?? started;
-                        if (snap is not null &&
-                            string.Equals(snap.Status, "done", StringComparison.OrdinalIgnoreCase))
-                        {
-                            ok++;
-                            try
-                            {
-                                var d = await S.Engine.GetClipAutoReviewDraftAsync(S._projectId, scene, clip);
-                                if (d is not null)
-                                    _drafts[ClipKey(scene, clip)] = d;
-                            }
-                            catch { /* optional */ }
-                        }
-                        else
-                        {
-                            failed++;
-                            var err = snap?.Error ?? snap?.Message ?? "job failed";
-                            S._error = $"S{scene:D2}C{clip:D2}: {err}";
-                        }
-                    }
-                    catch (Exception ex)
-                    {
+                    if (await ReviewOneClipAsync(scene, clip, i, todo.Count))
+                        ok++;
+                    else
                         failed++;
-                        S._error = $"S{scene:D2}C{clip:D2}: {ex.Message}";
-                    }
                 }
 
                 try { await S.Engine.GetReviewIndexAsync(S._projectId, rebuild: true); } catch { /* optional */ }
@@ -345,6 +276,114 @@ public partial class Review
             }
             catch (Exception ex) { S._error = ex.Message; }
             finally { S._busy = false; }
+        }
+
+        private async Task<List<(int Scene, int Clip)>> CollectReviewTargetsAsync()
+        {
+            var targets = new List<(int Scene, int Clip)>();
+            foreach (var s in S.List._scenes.OrderBy(x => x.SceneNumber))
+            {
+                if (s.ClipsOnDisk <= 0 && s.ClipCount <= 0) continue;
+                var detail = await ResolveSceneDetailAsync(s);
+                if (detail?.Clips is { Count: > 0 })
+                    AddTargetsFromDetail(targets, s.SceneNumber, detail);
+                else if (s.ClipsOnDisk > 0)
+                    AddTargetsFromSummary(targets, s);
+            }
+            return targets;
+        }
+
+        private async Task<SceneDetail?> ResolveSceneDetailAsync(SceneSummary s)
+        {
+            if (S.List._selectedScene == s.SceneNumber)
+                return S.List._selectedDetail;
+            try
+            {
+                return (await S.Engine.GetSceneDetailAsync(S._projectId, s.SceneNumber))?.Scene;
+            }
+            catch { /* fall through */ }
+            return null;
+        }
+
+        private static void AddTargetsFromDetail(
+            List<(int Scene, int Clip)> targets, int sceneNumber, SceneDetail detail)
+        {
+            foreach (var c in detail.Clips.Where(c => c.OnDisk).OrderBy(c => c.ClipNumber))
+                targets.Add((sceneNumber, c.ClipNumber));
+        }
+
+        private void AddTargetsFromSummary(List<(int Scene, int Clip)> targets, SceneSummary s)
+        {
+            for (var c = 1; c <= Math.Max(s.ClipCount, s.ClipsOnDisk); c++)
+            {
+                if (S.List.ClipOnDisk(s.SceneNumber, c))
+                    targets.Add((s.SceneNumber, c));
+            }
+        }
+
+        private async Task<List<(int Scene, int Clip)>> FilterMissingDraftsAsync(
+            List<(int Scene, int Clip)> targets)
+        {
+            var todo = new List<(int Scene, int Clip)>();
+            foreach (var (scene, clip) in targets)
+            {
+                if (_drafts.ContainsKey(ClipKey(scene, clip)))
+                    continue;
+                try
+                {
+                    var existing = await S.Engine.GetClipAutoReviewDraftAsync(S._projectId, scene, clip);
+                    if (existing is not null)
+                    {
+                        _drafts[ClipKey(scene, clip)] = existing;
+                        continue;
+                    }
+                }
+                catch { /* treat as missing */ }
+                todo.Add((scene, clip));
+            }
+            return todo;
+        }
+
+        private async Task<bool> ReviewOneClipAsync(int scene, int clip, int index, int total)
+        {
+            S._message = $"Auto-review {index + 1}/{total}: sampling S{scene:D2}C{clip:D2}…";
+            S.StateHasChanged();
+            try
+            {
+                var (frames, sampleErr) = await S.Stitch.SampleAutoReviewFramesAsync(S._projectId, scene, clip);
+                if (!string.IsNullOrWhiteSpace(sampleErr) || frames.Count == 0)
+                    throw new InvalidOperationException(sampleErr ?? "No frames");
+
+                S._message = $"Auto-review {index + 1}/{total}: reviewing S{scene:D2}C{clip:D2} ({frames.Count} frames)…";
+                S.StateHasChanged();
+                var started = await S.Engine.StartClipAutoReviewAsync(S._projectId, scene, clip, frames);
+                S.Jobs._job = started;
+                var snap = await S.Engine.WaitForJobTerminalAsync(
+                    jobId: started?.JobId,
+                    timeout: TimeSpan.FromMinutes(6));
+                S.Jobs._job = snap ?? started;
+                if (snap is not null &&
+                    string.Equals(snap.Status, "done", StringComparison.OrdinalIgnoreCase))
+                {
+                    try
+                    {
+                        var d = await S.Engine.GetClipAutoReviewDraftAsync(S._projectId, scene, clip);
+                        if (d is not null)
+                            _drafts[ClipKey(scene, clip)] = d;
+                    }
+                    catch { /* optional */ }
+                    return true;
+                }
+
+                var err = snap?.Error ?? snap?.Message ?? "job failed";
+                S._error = $"S{scene:D2}C{clip:D2}: {err}";
+                return false;
+            }
+            catch (Exception ex)
+            {
+                S._error = $"S{scene:D2}C{clip:D2}: {ex.Message}";
+                return false;
+            }
         }
 
 

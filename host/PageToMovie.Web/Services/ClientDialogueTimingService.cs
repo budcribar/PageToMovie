@@ -36,15 +36,8 @@ public sealed class ClientDialogueTimingService
         var clipUrls = await _stitch.CollectClipUrlsAsync(projectId, scene, ct: ct);
         if (clipUrls.Count == 0) return null;
 
-        string sceneVideoUrl;
-        if (clipUrls.Count == 1) sceneVideoUrl = clipUrls[0];
-        else
-        {
-            var stitched = await _stitch.ConcatAsync(clipUrls, ct);
-            var stitchedUrl = stitched.Url;
-            if (!stitched.Success || string.IsNullOrWhiteSpace(stitchedUrl)) return null;
-            sceneVideoUrl = stitchedUrl;
-        }
+        var sceneVideoUrl = await ResolveSceneVideoUrl(clipUrls, ct);
+        if (sceneVideoUrl is null) return null;
 
         onProgress?.Invoke($"Detecting speech in scene {scene:D2}…");
         var detect = await _js.InvokeAsync<JsSpeechDetectResult>(
@@ -54,7 +47,36 @@ public sealed class ClientDialogueTimingService
             .OrderBy(w => w.StartSec)
             .ToList();
 
-        // STT each window.
+        var heardWindows = await TranscribeSpeechWindows(sceneVideoUrl, windows, scene, onProgress, ct);
+
+        // Align: each script line takes its BEST-overlap unused window anywhere in the scene (order and
+        // duplicates don't break it). Ties/no-overlap leave the line unmatched. Leftover windows are
+        // surfaced as "heard but not in script" so extra/misheard speech is visible too.
+        var used = new bool[heardWindows.Count];
+        var rows = AlignScriptLines(lines, heardWindows, used);
+        AppendUnmatchedWindows(rows, heardWindows, used);
+
+        return new DialogueTimingScene
+        {
+            Scene = scene,
+            SceneDurationSec = detect?.TotalSec ?? 0,
+            Rows = rows,
+        };
+    }
+
+    private async Task<string?> ResolveSceneVideoUrl(IReadOnlyList<string> clipUrls, CancellationToken ct)
+    {
+        if (clipUrls.Count == 1) return clipUrls[0];
+        var stitched = await _stitch.ConcatAsync(clipUrls, ct);
+        var stitchedUrl = stitched.Url;
+        if (!stitched.Success || string.IsNullOrWhiteSpace(stitchedUrl)) return null;
+        return stitchedUrl;
+    }
+
+    private async Task<List<HeardWindow>> TranscribeSpeechWindows(
+        string sceneVideoUrl, List<JsSpeechWindow> windows, int scene,
+        Action<string>? onProgress, CancellationToken ct)
+    {
         var heardWindows = new List<HeardWindow>();
         for (var wi = 0; wi < windows.Count; wi++)
         {
@@ -73,34 +95,30 @@ public sealed class ClientDialogueTimingService
 
             var transcript = await _engine.TranscribeSegmentAsync(audio, "segment.wav", ct);
             var heard = StripSoundEffectTags((transcript?.Text ?? "").Trim());
-            var words = (transcript?.Words ?? new())
-                .Where(tw => !string.IsNullOrWhiteSpace(tw.Text) &&
-                             !string.Equals(tw.Type, "spacing", StringComparison.OrdinalIgnoreCase) &&
-                             !SoundEffectTagRegex.IsMatch(tw.Text))
-                .Select(tw => new VoiceCaptureWord { Text = tw.Text.Trim(), StartSec = Math.Max(0, tw.Start), EndSec = Math.Max(0, tw.End) })
-                .ToList();
+            var words = FilterHeardWords(transcript);
             // A window that was ONLY a sound-effect tag ("[outro jingle]") has nothing left to review —
             // drop it rather than surfacing an empty "heard but not in script" row.
             if (heard.Length == 0 && words.Count == 0) continue;
             heardWindows.Add(new HeardWindow(w.StartSec, w.EndSec, heard, words));
         }
+        return heardWindows;
+    }
 
-        // Align: each script line takes its BEST-overlap unused window anywhere in the scene (order and
-        // duplicates don't break it). Ties/no-overlap leave the line unmatched. Leftover windows are
-        // surfaced as "heard but not in script" so extra/misheard speech is visible too.
+    private static List<VoiceCaptureWord> FilterHeardWords(EngineApiClient.TranscriptDto? transcript) =>
+        (transcript?.Words ?? new())
+            .Where(tw => !string.IsNullOrWhiteSpace(tw.Text) &&
+                         !string.Equals(tw.Type, "spacing", StringComparison.OrdinalIgnoreCase) &&
+                         !SoundEffectTagRegex.IsMatch(tw.Text))
+            .Select(tw => new VoiceCaptureWord { Text = tw.Text.Trim(), StartSec = Math.Max(0, tw.Start), EndSec = Math.Max(0, tw.End) })
+            .ToList();
+
+    private static List<DialogueTimingRow> AlignScriptLines(
+        IReadOnlyList<EngineApiClient.DialogueLineDto> lines, List<HeardWindow> heardWindows, bool[] used)
+    {
         var rows = new List<DialogueTimingRow>();
-        var used = new bool[heardWindows.Count];
         foreach (var line in lines)
         {
-            var bestIdx = -1;
-            var bestScore = 0.0;
-            for (var j = 0; j < heardWindows.Count; j++)
-            {
-                if (used[j]) continue;
-                var s = WordOverlap(line.Text, heardWindows[j].Heard);
-                if (s > bestScore) { bestScore = s; bestIdx = j; }
-            }
-
+            var (bestIdx, bestScore) = FindBestWindow(line.Text, heardWindows, used);
             if (bestIdx >= 0 && bestScore > 0)
             {
                 used[bestIdx] = true;
@@ -130,7 +148,25 @@ public sealed class ClientDialogueTimingService
                 });
             }
         }
+        return rows;
+    }
 
+    private static (int BestIdx, double BestScore) FindBestWindow(
+        string scriptText, List<HeardWindow> heardWindows, bool[] used)
+    {
+        var bestIdx = -1;
+        var bestScore = 0.0;
+        for (var j = 0; j < heardWindows.Count; j++)
+        {
+            if (used[j]) continue;
+            var s = WordOverlap(scriptText, heardWindows[j].Heard);
+            if (s > bestScore) { bestScore = s; bestIdx = j; }
+        }
+        return (bestIdx, bestScore);
+    }
+
+    private static void AppendUnmatchedWindows(List<DialogueTimingRow> rows, List<HeardWindow> heardWindows, bool[] used)
+    {
         // Leftover heard windows never matched to a script line — extra/misheard speech.
         for (var j = 0; j < heardWindows.Count; j++)
         {
@@ -148,13 +184,6 @@ public sealed class ClientDialogueTimingService
                 Words = hw.Words,
             });
         }
-
-        return new DialogueTimingScene
-        {
-            Scene = scene,
-            SceneDurationSec = detect?.TotalSec ?? 0,
-            Rows = rows,
-        };
     }
 
     /// <summary>Fraction of the script line's words that appear in the heard transcript (0..1).</summary>
