@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Components;
+using PageToMovie.Core.Models;
 using PageToMovie.Web.Services;
 
 namespace PageToMovie.Web.Components.Pages;
@@ -15,7 +16,7 @@ public partial class AdminGenerationErrors : ComponentBase
     [Inject] private EngineApiClient Api { get; set; } = default;
     [Inject] private AdminSessionService Session { get; set; } = default;
 
-    internal List<EngineApiClient.GenerationErrorRowDto> _rows = new();
+    internal List<GenerationErrorRow> _rows = new();
     internal bool _loading;
     internal string? _error;
 
@@ -33,7 +34,7 @@ public partial class AdminGenerationErrors : ComponentBase
         try
         {
             var dto = await Api.GetAdminGenerationErrorsAsync();
-            _rows = dto?.Rows ?? new List<EngineApiClient.GenerationErrorRowDto>();
+            _rows = dto?.Rows ?? new List<GenerationErrorRow>();
         }
         catch (Exception ex)
         {

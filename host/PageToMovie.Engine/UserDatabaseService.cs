@@ -49,6 +49,17 @@ public class UserDatabaseService
         public const string ParamProjectId = "@projectId";
         public const string ParamScene = "@scene";
         public const string ParamClip = "@clip";
+        public const string ParamChargeMult = "@chargeMult";
+        public const string CategoryCoalesce =
+            "COALESCE(NULLIF(TRIM(category), ''), NULLIF(TRIM(kind), ''), 'other')";
+        public const string ApiCostFromWhere = $"""
+            FROM {UserApiCalls}
+            WHERE ok = 1
+              AND estimated_usd IS NOT NULL
+              AND estimated_usd > 0
+              AND ({ParamUserId} = '' OR user_id = {ParamUserId})
+              AND ({ParamProjectId} = '' OR project_id = {ParamProjectId})
+            """;
     }
 
     private readonly string _dbPath;
@@ -606,7 +617,7 @@ public class UserDatabaseService
             ? "budcribar@msn.com"
             : _billing.CanonicalAccountEmail.Trim();
 
-    private void EnsureDefaultAdminUser(SqliteConnection conn)
+    private static void EnsureDefaultAdminUser(SqliteConnection conn)
     {
         using var cmd = conn.CreateCommand();
         cmd.CommandText = $@"
@@ -2078,44 +2089,21 @@ public class UserDatabaseService
         var stats = new ApiCostHistoryStats();
         try
         {
-            using var conn = new SqliteConnection(ConnectionString);
-            await conn.OpenAsync(ct).ConfigureAwait(false);
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = $"""
+            await ForEachApiCostRowAsync(
+                $"""
                 SELECT
-                    COALESCE(NULLIF(TRIM(category), ''), NULLIF(TRIM(kind), ''), 'other') AS cat,
+                    {SqlLit.CategoryCoalesce} AS cat,
                     COUNT(*),
                     COALESCE(SUM(estimated_usd), 0),
                     COALESCE(AVG(estimated_usd), 0)
-                FROM {SqlLit.UserApiCalls}
-                WHERE ok = 1
-                  AND estimated_usd IS NOT NULL
-                  AND estimated_usd > 0
-                  AND ({SqlLit.ParamUserId} = '' OR user_id = {SqlLit.ParamUserId})
-                  AND ({SqlLit.ParamProjectId} = '' OR project_id = {SqlLit.ParamProjectId})
+                {SqlLit.ApiCostFromWhere}
                 GROUP BY cat
-                """;
-            cmd.Parameters.AddWithValue(SqlLit.ParamUserId, string.IsNullOrWhiteSpace(userId) ? "" : userId.Trim());
-            cmd.Parameters.AddWithValue(SqlLit.ParamProjectId, string.IsNullOrWhiteSpace(projectId) ? "" : projectId.Trim());
-            using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
-            while (await r.ReadAsync(ct).ConfigureAwait(false))
-            {
-                var cat = CostCategories.Resolve(r.GetString(0), null, r.GetString(0));
-                var count = r.GetInt32(1);
-                var sum = r.GetDouble(2);
-                var avg = r.GetDouble(3);
-                stats.TotalCalls += count;
-                stats.TotalUsd += sum;
-                if (!stats.ByCategory.TryGetValue(cat, out var row))
-                {
-                    row = new CategoryCostStats { Category = cat };
-                    stats.ByCategory[cat] = row;
-                }
-                row.Count += count;
-                row.TotalUsd += sum;
-                row.AvgUsd = row.Count > 0 ? row.TotalUsd / row.Count : 0;
-                _ = avg;
-            }
+                """,
+                userId,
+                projectId,
+                bindExtra: null,
+                onRow: r => AccumulateCostHistoryRow(stats, r),
+                ct).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -2138,62 +2126,25 @@ public class UserDatabaseService
         var stats = new ApiCostByProviderStats();
         try
         {
-            using var conn = new SqliteConnection(ConnectionString);
-            await conn.OpenAsync(ct).ConfigureAwait(false);
-            using var cmd = conn.CreateCommand();
             // Display charge = list (estimated_usd) × current admin multiplier; DB stores list only.
-            cmd.CommandText = $"""
+            await ForEachApiCostRowAsync(
+                $"""
                 SELECT
                     COALESCE(NULLIF(TRIM(provider), ''), 'unknown') AS prov,
-                    COALESCE(NULLIF(TRIM(category), ''), NULLIF(TRIM(kind), ''), 'other') AS cat,
+                    {SqlLit.CategoryCoalesce} AS cat,
                     COUNT(*),
                     COALESCE(SUM(estimated_usd), 0),
-                    COALESCE(SUM(estimated_usd), 0) * @chargeMult
-                FROM {SqlLit.UserApiCalls}
-                WHERE ok = 1
-                  AND estimated_usd IS NOT NULL
-                  AND estimated_usd > 0
-                  AND ({SqlLit.ParamUserId} = '' OR user_id = {SqlLit.ParamUserId})
-                  AND ({SqlLit.ParamProjectId} = '' OR project_id = {SqlLit.ParamProjectId})
+                    COALESCE(SUM(estimated_usd), 0) * {SqlLit.ParamChargeMult}
+                {SqlLit.ApiCostFromWhere}
                 GROUP BY prov, cat
-                """;
-            cmd.Parameters.AddWithValue(SqlLit.ParamUserId, string.IsNullOrWhiteSpace(userId) ? "" : userId.Trim());
-            cmd.Parameters.AddWithValue(SqlLit.ParamProjectId, string.IsNullOrWhiteSpace(projectId) ? "" : projectId.Trim());
-            cmd.Parameters.AddWithValue("@chargeMult", PageToMovie.Core.Billing.ChargePricing.ClampMultiplier(_billing.ChargeMultiplier));
-            using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
-            while (await r.ReadAsync(ct).ConfigureAwait(false))
-            {
-                var provider = r.GetString(0);
-                var cat = CostCategories.Resolve(r.GetString(1), null, r.GetString(1));
-                var count = r.GetInt32(2);
-                var listSum = r.GetDouble(3);
-                var chargeSum = r.GetDouble(4);
-
-                if (!stats.ByProvider.TryGetValue(provider, out var prow))
-                {
-                    prow = new ProviderCostStats { Provider = provider };
-                    stats.ByProvider[provider] = prow;
-                }
-                prow.Count += count;
-                prow.TotalListUsd += listSum;
-                prow.TotalChargeUsd += chargeSum;
-                prow.TotalUsd += chargeSum; // customer-facing default
-                if (!prow.ByCategory.TryGetValue(cat, out var crow))
-                {
-                    crow = new CategoryCostStats { Category = cat };
-                    prow.ByCategory[cat] = crow;
-                }
-                crow.Count += count;
-                crow.TotalListUsd += listSum;
-                crow.TotalChargeUsd += chargeSum;
-                crow.TotalUsd += chargeSum;
-                crow.AvgUsd = crow.Count > 0 ? crow.TotalChargeUsd / crow.Count : 0;
-
-                stats.TotalCalls += count;
-                stats.TotalListUsd += listSum;
-                stats.TotalChargeUsd += chargeSum;
-                stats.TotalUsd += chargeSum;
-            }
+                """,
+                userId,
+                projectId,
+                bindExtra: cmd => cmd.Parameters.AddWithValue(
+                    SqlLit.ParamChargeMult,
+                    PageToMovie.Core.Billing.ChargePricing.ClampMultiplier(_billing.ChargeMultiplier)),
+                onRow: r => AccumulateCostByProviderRow(stats, r),
+                ct).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -2248,82 +2199,168 @@ public class UserDatabaseService
     private static async Task FillSpendByProjectAsync(
         SqliteConnection conn, UserSpendSummary summary, string pidFilter, double chargeMult, CancellationToken ct)
     {
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = $"""
-                    SELECT
-                        COALESCE(NULLIF(TRIM(project_id), ''), '(no project)') AS proj,
-                        COUNT(*),
-                        COALESCE(SUM(estimated_usd), 0),
-                        COALESCE(SUM(estimated_usd), 0) * @chargeMult
-                    FROM {SqlLit.UserApiCalls}
-                    WHERE ok = 1
-                      AND user_id = {SqlLit.ParamUserId}
-                      AND estimated_usd IS NOT NULL
-                      AND estimated_usd > 0
-                      AND ({SqlLit.ParamProjectId} = '' OR project_id = {SqlLit.ParamProjectId})
-                    GROUP BY proj
-                    ORDER BY 4 DESC
-                    """;
-        cmd.Parameters.AddWithValue(SqlLit.ParamUserId, summary.UserId);
-        cmd.Parameters.AddWithValue(SqlLit.ParamProjectId, pidFilter);
-        cmd.Parameters.AddWithValue("@chargeMult", chargeMult);
-        using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
-        while (await r.ReadAsync(ct).ConfigureAwait(false))
-        {
-            var count = r.GetInt32(1);
-            var listSum = r.GetDouble(2);
-            var chargeSum = r.GetDouble(3);
-            summary.ByProject.Add(new ProjectSpendRow
+        await QuerySpendGroupsAsync(
+            conn,
+            "COALESCE(NULLIF(TRIM(project_id), ''), '(no project)')",
+            "proj",
+            summary.UserId,
+            pidFilter,
+            chargeMult,
+            "ORDER BY 4 DESC",
+            (key, count, listSum, chargeSum) =>
             {
-                ProjectId = r.GetString(0),
-                Calls = count,
-                ListUsd = Math.Round(listSum, 4),
-                ChargeUsd = Math.Round(chargeSum, 4),
-            });
-            summary.TotalCalls += count;
-            summary.TotalListUsd += listSum;
-            summary.TotalChargeUsd += chargeSum;
-        }
+                summary.ByProject.Add(new ProjectSpendRow
+                {
+                    ProjectId = key,
+                    Calls = count,
+                    ListUsd = Math.Round(listSum, 4),
+                    ChargeUsd = Math.Round(chargeSum, 4),
+                });
+                summary.TotalCalls += count;
+                summary.TotalListUsd += listSum;
+                summary.TotalChargeUsd += chargeSum;
+            },
+            ct).ConfigureAwait(false);
     }
 
     private static async Task FillSpendByCategoryAsync(
         SqliteConnection conn, UserSpendSummary summary, string pidFilter, double chargeMult, CancellationToken ct)
     {
+        await QuerySpendGroupsAsync(
+            conn,
+            SqlLit.CategoryCoalesce,
+            "cat",
+            summary.UserId,
+            pidFilter,
+            chargeMult,
+            orderBy: "",
+            (key, count, listSum, chargeSum) =>
+            {
+                var cat = CostCategories.Resolve(key, null, key);
+                summary.ByCategory[cat] = new CategoryCostStats
+                {
+                    Category = cat,
+                    Count = count,
+                    TotalListUsd = Math.Round(listSum, 4),
+                    TotalChargeUsd = Math.Round(chargeSum, 4),
+                    TotalUsd = Math.Round(chargeSum, 4),
+                    AvgUsd = count > 0 ? Math.Round(chargeSum / count, 4) : 0,
+                };
+            },
+            ct).ConfigureAwait(false);
+    }
+
+    private static void BindUserProjectFilters(SqliteCommand cmd, string? userId, string? projectId)
+    {
+        cmd.Parameters.AddWithValue(SqlLit.ParamUserId, string.IsNullOrWhiteSpace(userId) ? "" : userId.Trim());
+        cmd.Parameters.AddWithValue(SqlLit.ParamProjectId, string.IsNullOrWhiteSpace(projectId) ? "" : projectId.Trim());
+    }
+
+    private async Task ForEachApiCostRowAsync(
+        string sql,
+        string? userId,
+        string? projectId,
+        Action<SqliteCommand>? bindExtra,
+        Action<SqliteDataReader> onRow,
+        CancellationToken ct)
+    {
+        using var conn = new SqliteConnection(ConnectionString);
+        await conn.OpenAsync(ct).ConfigureAwait(false);
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = $"""
-                    SELECT
-                        COALESCE(NULLIF(TRIM(category), ''), NULLIF(TRIM(kind), ''), 'other') AS cat,
-                        COUNT(*),
-                        COALESCE(SUM(estimated_usd), 0),
-                        COALESCE(SUM(estimated_usd), 0) * @chargeMult
-                    FROM {SqlLit.UserApiCalls}
-                    WHERE ok = 1
-                      AND user_id = {SqlLit.ParamUserId}
-                      AND estimated_usd IS NOT NULL
-                      AND estimated_usd > 0
-                      AND ({SqlLit.ParamProjectId} = '' OR project_id = {SqlLit.ParamProjectId})
-                    GROUP BY cat
-                    """;
-        cmd.Parameters.AddWithValue(SqlLit.ParamUserId, summary.UserId);
-        cmd.Parameters.AddWithValue(SqlLit.ParamProjectId, pidFilter);
-        cmd.Parameters.AddWithValue("@chargeMult", chargeMult);
+        cmd.CommandText = sql;
+        BindUserProjectFilters(cmd, userId, projectId);
+        bindExtra?.Invoke(cmd);
         using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
         while (await r.ReadAsync(ct).ConfigureAwait(false))
+            onRow(r);
+    }
+
+    private static void AccumulateCostHistoryRow(ApiCostHistoryStats stats, SqliteDataReader r)
+    {
+        var cat = CostCategories.Resolve(r.GetString(0), null, r.GetString(0));
+        var count = r.GetInt32(1);
+        var sum = r.GetDouble(2);
+        var avg = r.GetDouble(3);
+        stats.TotalCalls += count;
+        stats.TotalUsd += sum;
+        if (!stats.ByCategory.TryGetValue(cat, out var row))
         {
-            var cat = CostCategories.Resolve(r.GetString(0), null, r.GetString(0));
-            var count = r.GetInt32(1);
-            var listSum = r.GetDouble(2);
-            var chargeSum = r.GetDouble(3);
-            summary.ByCategory[cat] = new CategoryCostStats
-            {
-                Category = cat,
-                Count = count,
-                TotalListUsd = Math.Round(listSum, 4),
-                TotalChargeUsd = Math.Round(chargeSum, 4),
-                TotalUsd = Math.Round(chargeSum, 4),
-                AvgUsd = count > 0 ? Math.Round(chargeSum / count, 4) : 0,
-            };
+            row = new CategoryCostStats { Category = cat };
+            stats.ByCategory[cat] = row;
         }
+        row.Count += count;
+        row.TotalUsd += sum;
+        row.AvgUsd = row.Count > 0 ? row.TotalUsd / row.Count : 0;
+        _ = avg;
+    }
+
+    private static void AccumulateCostByProviderRow(ApiCostByProviderStats stats, SqliteDataReader r)
+    {
+        var provider = r.GetString(0);
+        var cat = CostCategories.Resolve(r.GetString(1), null, r.GetString(1));
+        var count = r.GetInt32(2);
+        var listSum = r.GetDouble(3);
+        var chargeSum = r.GetDouble(4);
+
+        if (!stats.ByProvider.TryGetValue(provider, out var prow))
+        {
+            prow = new ProviderCostStats { Provider = provider };
+            stats.ByProvider[provider] = prow;
+        }
+        prow.Count += count;
+        prow.TotalListUsd += listSum;
+        prow.TotalChargeUsd += chargeSum;
+        prow.TotalUsd += chargeSum; // customer-facing default
+        if (!prow.ByCategory.TryGetValue(cat, out var crow))
+        {
+            crow = new CategoryCostStats { Category = cat };
+            prow.ByCategory[cat] = crow;
+        }
+        crow.Count += count;
+        crow.TotalListUsd += listSum;
+        crow.TotalChargeUsd += chargeSum;
+        crow.TotalUsd += chargeSum;
+        crow.AvgUsd = crow.Count > 0 ? crow.TotalChargeUsd / crow.Count : 0;
+
+        stats.TotalCalls += count;
+        stats.TotalListUsd += listSum;
+        stats.TotalChargeUsd += chargeSum;
+        stats.TotalUsd += chargeSum;
+    }
+
+    private static async Task QuerySpendGroupsAsync(
+        SqliteConnection conn,
+        string groupExpr,
+        string groupAlias,
+        string userId,
+        string pidFilter,
+        double chargeMult,
+        string orderBy,
+        Action<string, int, double, double> onRow,
+        CancellationToken ct)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $"""
+            SELECT
+                {groupExpr} AS {groupAlias},
+                COUNT(*),
+                COALESCE(SUM(estimated_usd), 0),
+                COALESCE(SUM(estimated_usd), 0) * {SqlLit.ParamChargeMult}
+            FROM {SqlLit.UserApiCalls}
+            WHERE ok = 1
+              AND user_id = {SqlLit.ParamUserId}
+              AND estimated_usd IS NOT NULL
+              AND estimated_usd > 0
+              AND ({SqlLit.ParamProjectId} = '' OR project_id = {SqlLit.ParamProjectId})
+            GROUP BY {groupAlias}
+            {orderBy}
+            """;
+        cmd.Parameters.AddWithValue(SqlLit.ParamUserId, userId);
+        cmd.Parameters.AddWithValue(SqlLit.ParamProjectId, pidFilter);
+        cmd.Parameters.AddWithValue(SqlLit.ParamChargeMult, chargeMult);
+        using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await r.ReadAsync(ct).ConfigureAwait(false))
+            onRow(r.GetString(0), r.GetInt32(1), r.GetDouble(2), r.GetDouble(3));
     }
 
     public async Task InsertUserApiCallAsync(ApiCallTelemetry rec, CancellationToken ct = default)
@@ -3717,32 +3754,6 @@ public sealed class UserApiCallRow
     public string? Error { get; set; }
     public bool Fakes { get; set; }
 }
-
-/// <summary>One row from generation_errors (admin panel read model). See <see cref="GenerationErrorRecord"/> for the write side.</summary>
-public sealed class GenerationErrorRow
-{
-    public long Id { get; set; }
-    public string Ts { get; set; } = "";
-    public string? UserId { get; set; }
-    public string? ProjectId { get; set; }
-    public string? JobId { get; set; }
-    public int? Scene { get; set; }
-    public int? Clip { get; set; }
-    public string Stage { get; set; } = "";
-    public string? Provider { get; set; }
-    public string? Model { get; set; }
-    public string ErrorType { get; set; } = "";
-    public string? ErrorMessage { get; set; }
-    public int? HttpStatus { get; set; }
-    public int? RequestedCount { get; set; }
-    public int? ReturnedCount { get; set; }
-    public string? MissingIdsJson { get; set; }
-    public int Attempt { get; set; }
-    public bool Resolved { get; set; }
-    public string? RequestSummary { get; set; }
-    public string? ResponseSummary { get; set; }
-}
-
 
 /// <summary>Portfolio / user API spend aggregates for cost estimate refinement (list rates).</summary>
 public sealed class ApiCostHistoryStats
