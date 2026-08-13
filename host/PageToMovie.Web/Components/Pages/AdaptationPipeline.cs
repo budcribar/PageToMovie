@@ -113,7 +113,7 @@ public abstract partial class AdaptationPageBase
                 await S.Jobs.EnsureHubAsync();
                 S.Jobs.ProgressIndex = 0;
                 S.Jobs.ProgressTotal = 10;
-                await S.Engine.StartStage2Async(new StartStage2Request)
+                await S.Engine.StartStage2Async(new StartStage2Request
                 {
                     ProjectId = S.ProjectId,
                     Scenes = "all",
