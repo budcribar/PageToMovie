@@ -1,6 +1,3 @@
-using System.Diagnostics;
-using System.Net.Http.Headers;
-using System.Net.Http.Json;
 using System.Text.Json;
 using PageToMovie.Core.Models;
 using PageToMovie.Engine.Abstractions;
@@ -75,25 +72,14 @@ public sealed class FalLipSyncClient : ILipSyncClient
             ["sync_mode"] = string.IsNullOrWhiteSpace(syncMode) ? "cut_off" : syncMode,
         };
 
-        using var req = new HttpRequestMessage(HttpMethod.Post, endpoint);
-        req.Headers.Authorization = new AuthenticationHeaderValue("Key", apiKey);
-        req.Content = JsonContent.Create(payload);
+        using var posted = await FalHttp.TryPostJsonAsync(
+            _http, _log, endpoint, apiKey, payload, "lip-sync submit", ct).ConfigureAwait(false);
+        if (posted is null) return null;
 
-        var sw = Stopwatch.StartNew();
-        using var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
-        var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-
-        if (!resp.IsSuccessStatusCode)
-        {
-            _log.LogError("Fal.ai lip-sync submit failed HTTP {Status} ({Elapsed}ms): {Body}", resp.StatusCode, sw.ElapsedMilliseconds, body);
-            return null;
-        }
-
-        using var doc = JsonDocument.Parse(body);
-        if (!doc.RootElement.TryGetProperty("request_id", out var reqIdEl) ||
+        if (!posted.Root.TryGetProperty("request_id", out var reqIdEl) ||
             reqIdEl.GetString() is not { Length: > 0 } requestId)
         {
-            _log.LogError("Fal.ai lip-sync response missing request_id: {Body}", body);
+            _log.LogError("Fal.ai lip-sync response missing request_id: {Body}", posted.Body);
             return null;
         }
 
@@ -144,40 +130,28 @@ public sealed class FalLipSyncClient : ILipSyncClient
     private async Task<(bool HardFail, string? Body)> ReadStatusBodyAsync(
         string statusUrl, string apiKey, Action<string>? onProgress, CancellationToken ct)
     {
-        using var req = new HttpRequestMessage(HttpMethod.Get, statusUrl);
-        req.Headers.Authorization = new AuthenticationHeaderValue("Key", apiKey);
-        using var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
-        var statusBody = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-
-        if (resp.IsSuccessStatusCode)
-            return (false, statusBody);
-        if (await FalPollingHelpers.HandleRateLimitAsync(resp, onProgress, ct).ConfigureAwait(false))
+        var raw = await FalHttp.GetAsync(_http, statusUrl, apiKey, ct).ConfigureAwait(false);
+        if (raw.IsSuccess)
+            return (false, raw.Body);
+        if (await FalPollingHelpers.HandleRateLimitAsync(raw.StatusCode, onProgress, ct).ConfigureAwait(false))
             return (false, null);
-        _log.LogError("Fal.ai lip-sync status query failed HTTP {Status}: {Body}", resp.StatusCode, statusBody);
+        _log.LogError("Fal.ai lip-sync status query failed HTTP {Status}: {Body}", raw.StatusCode, raw.Body);
         return (true, null);
     }
 
     private async Task<string?> FetchCompletedVideoUrlAsync(string resultUrl, string apiKey, CancellationToken ct)
     {
-        using var resultReq = new HttpRequestMessage(HttpMethod.Get, resultUrl);
-        resultReq.Headers.Authorization = new AuthenticationHeaderValue("Key", apiKey);
-        using var resultResp = await _http.SendAsync(resultReq, ct).ConfigureAwait(false);
-        var resultBody = await resultResp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-
-        if (!resultResp.IsSuccessStatusCode)
+        var raw = await FalHttp.GetAsync(_http, resultUrl, apiKey, ct).ConfigureAwait(false);
+        if (!raw.IsSuccess)
         {
-            _log.LogError("Fal.ai lip-sync result fetch failed HTTP {Status}: {Body}", resultResp.StatusCode, resultBody);
+            _log.LogError("Fal.ai lip-sync result fetch failed HTTP {Status}: {Body}", raw.StatusCode, raw.Body);
             return null;
         }
 
-        using var resultDoc = JsonDocument.Parse(resultBody);
-        if (resultDoc.RootElement.TryGetProperty("video", out var vEl) &&
-            vEl.TryGetProperty("url", out var urlEl) &&
-            urlEl.GetString() is { Length: > 0 } videoUrl)
-        {
+        using var resultDoc = JsonDocument.Parse(raw.Body);
+        if (FalHttp.TryGetObjectUrl(resultDoc.RootElement, "video") is { } videoUrl)
             return videoUrl;
-        }
-        _log.LogError("Fal.ai lip-sync result payload missing video.url: {Body}", resultBody);
+        _log.LogError("Fal.ai lip-sync result payload missing video.url: {Body}", raw.Body);
         return null;
     }
 

@@ -1,6 +1,3 @@
-using System.Diagnostics;
-using System.Net.Http.Headers;
-using System.Net.Http.Json;
 using System.Text.Json;
 using PageToMovie.Core.Models;
 using PageToMovie.Core.Options;
@@ -82,25 +79,14 @@ public sealed class FalVideoClient : IVideoClient
         if (!string.IsNullOrWhiteSpace(imagePath))
             endpoint = await AttachInitImageAsync(payload, catalogEntry, endpoint, imagePath, ct).ConfigureAwait(false);
 
-        using var req = new HttpRequestMessage(HttpMethod.Post, endpoint);
-        req.Headers.Authorization = new AuthenticationHeaderValue("Key", apiKey);
-        req.Content = JsonContent.Create(payload);
+        using var posted = await FalHttp.PostJsonOrThrowAsync(
+            _http, _log, endpoint, apiKey, payload,
+            "HunyuanVideo submit", "Fal.ai HunyuanVideo error", ct).ConfigureAwait(false);
 
-        var sw = Stopwatch.StartNew();
-        using var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
-        var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-
-        if (!resp.IsSuccessStatusCode)
-        {
-            _log.LogError("Fal.ai HunyuanVideo submit failed HTTP {Status} ({Elapsed}ms): {Body}", resp.StatusCode, sw.ElapsedMilliseconds, body);
-            throw new InvalidOperationException($"Fal.ai HunyuanVideo error {resp.StatusCode}: {body}");
-        }
-
-        using var doc = JsonDocument.Parse(body);
-        if (!doc.RootElement.TryGetProperty("request_id", out var reqIdEl) ||
+        if (!posted.Root.TryGetProperty("request_id", out var reqIdEl) ||
             reqIdEl.GetString() is not { Length: > 0 } reqId)
         {
-            throw new InvalidOperationException($"Fal.ai response missing request_id: {body}");
+            throw new InvalidOperationException($"Fal.ai response missing request_id: {posted.Body}");
         }
 
         _log.LogInformation("Fal.ai HunyuanVideo job submitted to {Endpoint}: {RequestId}", endpoint, reqId);
@@ -193,34 +179,24 @@ public sealed class FalVideoClient : IVideoClient
     private async Task<string?> GetStatusBodyAsync(
         string statusUrl, string apiKey, string requestId, Action<string>? onProgress, CancellationToken ct)
     {
-        using var req = new HttpRequestMessage(HttpMethod.Get, statusUrl);
-        req.Headers.Authorization = new AuthenticationHeaderValue("Key", apiKey);
-
-        using var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
-        var statusBody = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-        if (resp.IsSuccessStatusCode) return statusBody;
-        if (await FalPollingHelpers.HandleRateLimitAsync(resp, onProgress, ct).ConfigureAwait(false))
+        var raw = await FalHttp.GetAsync(_http, statusUrl, apiKey, ct).ConfigureAwait(false);
+        if (raw.IsSuccess) return raw.Body;
+        if (await FalPollingHelpers.HandleRateLimitAsync(raw.StatusCode, onProgress, ct).ConfigureAwait(false))
             return null;
-        _log.LogError("Fal.ai status query failed HTTP {Status} for request {RequestId}: {Body}", resp.StatusCode, requestId, statusBody);
-        throw new InvalidOperationException($"Fal.ai status query error HTTP {resp.StatusCode}: {statusBody}");
+        _log.LogError("Fal.ai status query failed HTTP {Status} for request {RequestId}: {Body}", raw.StatusCode, requestId, raw.Body);
+        throw new InvalidOperationException($"Fal.ai status query error HTTP {raw.StatusCode}: {raw.Body}");
     }
 
     private async Task<string> FetchCompletedVideoUrlAsync(string resultUrl, string apiKey, CancellationToken ct)
     {
-        using var resultReq = new HttpRequestMessage(HttpMethod.Get, resultUrl);
-        resultReq.Headers.Authorization = new AuthenticationHeaderValue("Key", apiKey);
-        using var resultResp = await _http.SendAsync(resultReq, ct).ConfigureAwait(false);
-        var resultBody = await resultResp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+        var raw = await FalHttp.GetAsync(_http, resultUrl, apiKey, ct).ConfigureAwait(false);
+        if (!raw.IsSuccess)
+            throw new InvalidOperationException($"Fal.ai result fetch failed HTTP {raw.StatusCode}: {raw.Body}");
 
-        if (!resultResp.IsSuccessStatusCode)
-            throw new InvalidOperationException($"Fal.ai result fetch failed HTTP {resultResp.StatusCode}: {resultBody}");
-
-        using var resultDoc = JsonDocument.Parse(resultBody);
-        if (resultDoc.RootElement.TryGetProperty("video", out var vEl) &&
-            vEl.TryGetProperty("url", out var urlEl) &&
-            urlEl.GetString() is { Length: > 0 } videoUrl)
+        using var resultDoc = JsonDocument.Parse(raw.Body);
+        if (FalHttp.TryGetObjectUrl(resultDoc.RootElement, "video") is { } videoUrl)
             return videoUrl;
-        throw new InvalidOperationException($"Fal.ai result payload missing video.url: {resultBody}");
+        throw new InvalidOperationException($"Fal.ai result payload missing video.url: {raw.Body}");
     }
 
     private static void ThrowIfFalFailed(string status, JsonElement root)
