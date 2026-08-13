@@ -49,7 +49,7 @@ public sealed class ProjectTelemetryService
     }
 
     /// <summary>Bind telemetry writes to a project for the current async flow.</summary>
-    public static IDisposable UseProject(string projectId)
+    public IDisposable UseProject(string projectId)
     {
         var prev = ScopedProjectId.Value;
         ScopedProjectId.Value = string.IsNullOrWhiteSpace(projectId) ? null : projectId.Trim();
