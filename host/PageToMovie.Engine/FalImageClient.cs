@@ -1,6 +1,3 @@
-using System.Diagnostics;
-using System.Net.Http.Headers;
-using System.Net.Http.Json;
 using System.Text.Json;
 using PageToMovie.Core.Models;
 using PageToMovie.Core.Options;
@@ -65,24 +62,13 @@ public sealed class FalImageClient : IImageClient
             ["enable_safety_checker"] = false,
         };
 
-        using var req = new HttpRequestMessage(HttpMethod.Post, model.TrimStart('/'));
-        req.Headers.Authorization = new AuthenticationHeaderValue("Key", apiKey);
-        req.Content = JsonContent.Create(payload);
+        using var posted = await FalHttp.PostJsonOrThrowAsync(
+            _http, _log, model.TrimStart('/'), apiKey, payload,
+            "Flux image gen", "Fal.ai error", ct).ConfigureAwait(false);
 
-        var sw = Stopwatch.StartNew();
-        using var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
-        var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-
-        if (!resp.IsSuccessStatusCode)
-        {
-            _log.LogError("Fal.ai Flux image gen failed HTTP {Status} ({Elapsed}ms): {Body}", resp.StatusCode, sw.ElapsedMilliseconds, body);
-            throw new InvalidOperationException($"Fal.ai error {resp.StatusCode}: {body}");
-        }
-
-        using var doc = JsonDocument.Parse(body);
         var results = new List<byte[]>();
 
-        if (doc.RootElement.TryGetProperty("images", out var imagesArr) && imagesArr.ValueKind == JsonValueKind.Array)
+        if (posted.Root.TryGetProperty("images", out var imagesArr) && imagesArr.ValueKind == JsonValueKind.Array)
         {
             foreach (var imgEl in imagesArr.EnumerateArray())
             {
@@ -96,7 +82,7 @@ public sealed class FalImageClient : IImageClient
 
         if (results.Count == 0)
         {
-            throw new InvalidOperationException($"Fal.ai returned zero images: {body}");
+            throw new InvalidOperationException($"Fal.ai returned zero images: {posted.Body}");
         }
 
         return results;

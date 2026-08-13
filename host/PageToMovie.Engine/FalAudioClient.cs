@@ -1,7 +1,3 @@
-using System.Diagnostics;
-using System.Net.Http.Headers;
-using System.Net.Http.Json;
-using System.Text.Json;
 using PageToMovie.Core.Models;
 using PageToMovie.Core.Options;
 using PageToMovie.Engine.Abstractions;
@@ -79,44 +75,22 @@ public sealed class FalAudioClient : IAudioClient
             ["seconds_start"] = 0,
         };
 
-        using var req = new HttpRequestMessage(HttpMethod.Post, model.TrimStart('/'));
-        req.Headers.Authorization = new AuthenticationHeaderValue("Key", apiKey);
-        req.Content = JsonContent.Create(payload);
-
-        var sw = Stopwatch.StartNew();
-        using var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
-        var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-
-        if (!resp.IsSuccessStatusCode)
-        {
-            _log.LogError("Fal.ai audio gen failed HTTP {Status} ({Elapsed}ms): {Body}", resp.StatusCode, sw.ElapsedMilliseconds, body);
-            return null;
-        }
-
-        using var doc = JsonDocument.Parse(body);
-        string? audioUrl = null;
+        using var posted = await FalHttp.TryPostJsonAsync(
+            _http, _log, model.TrimStart('/'), apiKey, payload, "audio gen", ct).ConfigureAwait(false);
+        if (posted is null) return null;
 
         // Parse standard Fal audio response shapes: audio_file.url, audio.url, or a bare url.
-        if (doc.RootElement.TryGetProperty("audio_file", out var audioFileEl) && audioFileEl.TryGetProperty("url", out var urlEl1))
-        {
-            audioUrl = urlEl1.GetString();
-        }
-        else if (doc.RootElement.TryGetProperty("audio", out var audioEl) && audioEl.TryGetProperty("url", out var urlEl2))
-        {
-            audioUrl = urlEl2.GetString();
-        }
-        else if (doc.RootElement.TryGetProperty("url", out var urlEl3))
-        {
-            audioUrl = urlEl3.GetString();
-        }
+        var audioUrl = FalHttp.TryGetObjectUrl(posted.Root, "audio_file")
+            ?? FalHttp.TryGetObjectUrl(posted.Root, "audio")
+            ?? (posted.Root.TryGetProperty("url", out var urlEl) ? urlEl.GetString() : null);
 
         if (string.IsNullOrWhiteSpace(audioUrl))
         {
-            _log.LogError("Fal.ai returned no audio URL: {Body}", body);
+            _log.LogError("Fal.ai returned no audio URL: {Body}", posted.Body);
             return null;
         }
 
-        _log.LogInformation("Fal.ai audio generated successfully ({Elapsed}ms): {Url}", sw.ElapsedMilliseconds, audioUrl);
+        _log.LogInformation("Fal.ai audio generated successfully ({Elapsed}ms): {Url}", posted.ElapsedMs, audioUrl);
         // Return the provider URL directly — the caller proxies it to the client (same as
         // video); the server never downloads generated media bytes into its own memory/disk.
         return audioUrl;
