@@ -189,7 +189,7 @@ public partial class Login : IDisposable
 
     protected override void OnInitialized()
     {
-        _onCultureChanged = _ => _ = InvokeAsync(StateHasChanged);
+        _onCultureChanged = _ => { InvokeAsync(StateHasChanged); };
         L.CultureChanged += _onCultureChanged;
         var relative = Nav.ToBaseRelativePath(Nav.Uri);
         _isSignup = relative.StartsWith("signup", StringComparison.OrdinalIgnoreCase);
