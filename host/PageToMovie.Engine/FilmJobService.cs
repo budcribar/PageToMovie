@@ -271,18 +271,21 @@ public sealed class FilmJobService
         bool cancelAllUsers = false)
     {
         if (!string.IsNullOrWhiteSpace(jobId))
-        {
-            var n = CancelOneJob(jobId) ? 1 : 0;
-            return Task.FromResult(n);
-        }
+            return Task.FromResult(CancelOneJob(jobId) ? 1 : 0);
 
         // Refuse unscoped bulk cancel — callers must pass userId or cancelAllUsers.
         if (!cancelAllUsers && string.IsNullOrWhiteSpace(userId))
             return Task.FromResult(0);
 
-        var cancelled = 0;
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var cancelled = CancelActiveStoreJobs(cancelAllUsers, userId, seen);
+        cancelled += CancelOrphanCtsJobs(userId, cancelAllUsers, seen);
+        return Task.FromResult(cancelled);
+    }
 
+    private int CancelActiveStoreJobs(bool cancelAllUsers, string? userId, HashSet<string> seen)
+    {
+        var cancelled = 0;
         // Prefer store records (have UserId) over bare CTS keys.
         var records = cancelAllUsers
             ? _jobs.List(userId: null, take: 200)
@@ -297,7 +300,12 @@ public sealed class FilmJobService
             if (CancelOneJob(rec.JobId))
                 cancelled++;
         }
+        return cancelled;
+    }
 
+    private int CancelOrphanCtsJobs(string? userId, bool cancelAllUsers, HashSet<string> seen)
+    {
+        var cancelled = 0;
         // CTS entries that might lack a store row (edge case)
         foreach (var key in _jobCts.Keys.ToArray())
         {
@@ -309,8 +317,7 @@ public sealed class FilmJobService
             if (CancelOneJob(key))
                 cancelled++;
         }
-
-        return Task.FromResult(cancelled);
+        return cancelled;
     }
 
     /// <summary>Whether a job owner matches bulk-cancel scope (unit-tested).</summary>
@@ -818,58 +825,86 @@ public sealed class FilmJobService
 
         while (!ct.IsCancellationRequested)
         {
-            // Cancelled while queued?
-            var job = !string.IsNullOrEmpty(run.ActiveJobId) ? _jobs.Get(run.ActiveJobId) : null;
-            if (job is not null &&
-                string.Equals(job.Status, StatusCancelled, StringComparison.OrdinalIgnoreCase))
-            {
-                throw new OperationCanceledException("Job cancelled");
-            }
+            ThrowIfQueuedJobCancelled(run);
 
-            var acquired = new List<string>();
-            string? blockedResource = null;
-            string? blockedOwner = null;
-            foreach (var res in resources)
-            {
-                if (_locks.TryAcquire(res, run.UserId, DefaultLockTtl, run.LockReason, run.ActiveJobId))
-                {
-                    acquired.Add(res);
-                    continue;
-                }
-
-                var holder = _locks.Get(res);
-                if (holder is not null &&
-                    string.Equals(holder.UserId, run.UserId, StringComparison.OrdinalIgnoreCase))
-                {
-                    // Already ours
-                    acquired.Add(res);
-                    continue;
-                }
-
-                blockedResource = res;
-                blockedOwner = holder?.UserId;
-                break;
-            }
-
-            if (blockedResource is null)
+            if (TryAcquireAllPendingLocks(run, resources, out var acquired, out var blockedResource, out var blockedOwner))
             {
                 run.HeldLocks = acquired;
                 await UpdateQueuedMessageAsync(run, "Lock acquired — waiting for worker…");
                 return;
             }
 
-            foreach (var a in acquired)
-                _locks.Release(a, run.UserId);
-
-            var msg = string.IsNullOrEmpty(blockedOwner)
-                ? $"Waiting for lock {blockedResource}…"
-                : $"Waiting for lock (held by {blockedOwner})…";
-            await UpdateQueuedMessageAsync(run, msg);
+            ReleaseAcquiredLocks(acquired, run.UserId);
+            await UpdateQueuedMessageAsync(run, FormatLockWaitMessage(blockedResource, blockedOwner));
             await Task.Delay(300, ct);
         }
 
         throw new OperationCanceledException("Cancelled while waiting for lock");
     }
+
+    private void ThrowIfQueuedJobCancelled(JobRunState run)
+    {
+        var job = !string.IsNullOrEmpty(run.ActiveJobId) ? _jobs.Get(run.ActiveJobId) : null;
+        if (job is not null &&
+            string.Equals(job.Status, StatusCancelled, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new OperationCanceledException("Job cancelled");
+        }
+    }
+
+    private bool TryAcquireAllPendingLocks(
+        JobRunState run,
+        List<string> resources,
+        out List<string> acquired,
+        out string? blockedResource,
+        out string? blockedOwner)
+    {
+        acquired = new List<string>();
+        blockedResource = null;
+        blockedOwner = null;
+        foreach (var res in resources)
+        {
+            if (TryAcquireOnePendingLock(run, res, acquired, out var holderUserId))
+                continue;
+            blockedResource = res;
+            blockedOwner = holderUserId;
+            return false;
+        }
+        return true;
+    }
+
+    private bool TryAcquireOnePendingLock(JobRunState run, string res, List<string> acquired, out string? holderUserId)
+    {
+        holderUserId = null;
+        if (_locks.TryAcquire(res, run.UserId, DefaultLockTtl, run.LockReason, run.ActiveJobId))
+        {
+            acquired.Add(res);
+            return true;
+        }
+
+        var holder = _locks.Get(res);
+        holderUserId = holder?.UserId;
+        if (holder is not null &&
+            string.Equals(holder.UserId, run.UserId, StringComparison.OrdinalIgnoreCase))
+        {
+            // Already ours
+            acquired.Add(res);
+            return true;
+        }
+
+        return false;
+    }
+
+    private void ReleaseAcquiredLocks(List<string> acquired, string userId)
+    {
+        foreach (var a in acquired)
+            _locks.Release(a, userId);
+    }
+
+    private static string FormatLockWaitMessage(string? blockedResource, string? blockedOwner) =>
+        string.IsNullOrEmpty(blockedOwner)
+            ? $"Waiting for lock {blockedResource}…"
+            : $"Waiting for lock (held by {blockedOwner})…";
 
     private async Task UpdateQueuedMessageAsync(JobRunState run, string message)
     {
@@ -1507,6 +1542,20 @@ public sealed class FilmJobService
             lockReason: $"scene {scene} music gen");
     }
 
+    private sealed class SceneMusicGenRun
+    {
+        public required string ProjectDir { get; init; }
+        public required int Scene { get; init; }
+        public required SupportedModelEntry Entry { get; init; }
+        public required string Prompt { get; init; }
+        public required string? Lyrics { get; init; }
+        public required bool EffectiveIsVocal { get; init; }
+        public required string TakeId { get; init; }
+        public required int TotalDuration { get; init; }
+        public required int SegLen { get; init; }
+        public required int SegmentCount { get; init; }
+    }
+
     private async Task RunSceneMusicGenAsync(string projectId, int scene, string? modelOverride, bool isVocal, CancellationToken ct)
     {
         await _projects.RequireProjectAsync(projectId, ct);
@@ -1519,140 +1568,23 @@ public sealed class FilmJobService
         });
         try
         {
-            if (!_audio.IsConfigured)
-            {
-                await FinishAsync(StatusError, "Audio synthesis API key missing.", "Audio synthesis API key missing.");
+            var run = await TryPrepareSceneMusicGenAsync(projectId, scene, modelOverride, isVocal, ct)
+                .ConfigureAwait(false);
+            if (run is null)
                 return;
-            }
 
-            var pDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
-            var cfg = await _projects.GetConfigAsync(projectId, ct).ConfigureAwait(false);
-            EnsureLabModelsAllowed(cfg);
-
-            var enableMusic = SceneMusicScoringService.GetConfigBool(cfg, "enable_background_music", true);
-            var configuredModel = SceneMusicScoringService.GetConfigStr(cfg, "audio_model_name", "");
-            // Per-run override wins when given; otherwise fall back to the project's configured
-            // default (itself blank-safe — SupportedModelCatalog.ResolveOrDefault below resolves an
-            // empty/unset model to the catalog's own dynamic default) — the Configuration page's
-            // global picker is unaffected either way.
-            var audioModel = string.IsNullOrWhiteSpace(modelOverride) ? configuredModel : modelOverride;
-            if (!enableMusic || string.Equals(audioModel, "none", StringComparison.OrdinalIgnoreCase))
-            {
-                await FinishAsync(StatusDone, "Background music disabled in settings.");
-                return;
-            }
-
-            var detail = await _projects.GetSceneDetailAsync(projectId, scene, probeDurations: false, ct: ct).ConfigureAwait(false);
-            var totalDuration = Math.Max(1, (int)Math.Ceiling(detail?.DurationSeconds ?? 10));
-            var screenplay = detail?.Setting ?? "";
-            var planningModel = ProjectModelSelection.RequirePlanning(cfg, "Scene music composition");
-
-            var prompt = await _musicScoring.GetOrComposeMusicPromptAsync(
-                pDir, scene, screenplay, totalDuration, planningModel, ct).ConfigureAwait(false);
-            await AppendLogAsync($"Music prompt: {prompt}");
-
-            var entry = SupportedModelCatalog.ResolveOrDefault(audioModel, ModelCapability.Audio);
-
-            // Catalog SupportsVocals only — never infer from provider family.
-            var canSing = entry.SupportsVocals;
-            var effectiveIsVocal = isVocal && canSing;
-            if (isVocal && !canSing)
-                await AppendLogAsync($"  [{entry.DisplayName}] has no vocal capability (supportsVocals=false) — generating instrumental instead.");
-
-            string? lyrics = null;
-            if (effectiveIsVocal)
-            {
-                lyrics = await _musicScoring.ComposeSceneLyricsAsync(screenplay, totalDuration, planningModel, ct).ConfigureAwait(false);
-                await AppendLogAsync($"Lyrics: {lyrics}");
-            }
-
-            // Ties every segment of this run together in take history — minted once, not per segment
-            // (segments are generated minutes apart via real provider polling, so each computing its
-            // own timestamp would scatter one take's files across unrelated-looking history entries).
-            var takeId = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString();
-
-            // Catalog maxAudioDurationSeconds only — never invent full-scene length as a segment cap.
-            if (entry.MaxAudioDurationSeconds is not { } maxAudio || maxAudio <= 0)
-                throw new InvalidOperationException(
-                    $"Audio model '{entry.Id}' has no maxAudioDurationSeconds in models_catalog.json. " +
-                    "Add the real API limit — do not invent a default.");
-            var segLen = Math.Max(1, maxAudio);
-            var segmentCount = (int)Math.Ceiling(totalDuration / (double)segLen);
-            var savedSegments = 0;
-            var segmentFileNames = new List<string>();
-            string? lastProviderNote = null;
-
-            for (var seg = 1; seg <= segmentCount; seg++)
-            {
-                ct.ThrowIfCancellationRequested();
-                var remaining = totalDuration - (seg - 1) * segLen;
-                var segDuration = Math.Clamp(remaining, 1, segLen);
-
-                await AppendLogAsync($"  [{entry.DisplayName}] generating segment {seg}/{segmentCount} ({segDuration}s)…");
-                var url = await _audio.GenerateMusicTrackAsync(
-                    prompt, segDuration, entry.Id, ct,
-                    onProgress: msg => { lastProviderNote = msg; _ = AppendLogAsync("  " + msg); },
-                    isVocal: effectiveIsVocal, lyrics: lyrics).ConfigureAwait(false);
-                if (string.IsNullOrWhiteSpace(url))
-                {
-                    await AppendLogAsync($"  [{entry.DisplayName}] segment {seg} failed — stopping.");
-                    break;
-                }
-
-                var relPath = MediaRegistryService.MusicSegmentRelativePath(scene, seg);
-                var ticket = _mediaProxy.Issue(url, TimeSpan.FromMinutes(45));
-                var clientUrl = $"/api/media/proxy/{ticket}";
-                await UpdateAsync(s =>
-                {
-                    s.ClientMediaUrl = clientUrl;
-                    s.ClientRelativePath = relPath;
-                    s.MusicTakeId = takeId;
-                    s.Scene = scene;
-                    s.Index = (int)Math.Round(seg * 100.0 / segmentCount);
-                });
-                await AppendLogAsync($"  segment {seg} ready for client save → {relPath}");
-                segmentFileNames.Add(Path.GetFileName(relPath));
-                savedSegments++;
-            }
-
+            var (savedSegments, lastProviderNote, segmentFileNames) =
+                await GenerateMusicSegmentsAsync(run, ct).ConfigureAwait(false);
             if (savedSegments == 0)
             {
-                // Name the resolved provider — the top-level _audio.IsConfigured gate only checks
-                // that *some* audio provider has a key, not that the one audio_model_name actually
-                // routes to (MultiProviderAudioClient) does. A key set for a different provider than
-                // the configured audio_model_name fails every scene this way, silently otherwise.
-                // Surface the provider's real reason instead of a generic "synthesis failed": the
-                // audio client sends its HTTP error via onProgress before returning null.
-                var providerDetail = !string.IsNullOrWhiteSpace(lastProviderNote)
-                    && (lastProviderNote.Contains("fail", StringComparison.OrdinalIgnoreCase)
-                        || lastProviderNote.Contains(StatusError, StringComparison.OrdinalIgnoreCase)
-                        || lastProviderNote.Contains("HTTP", StringComparison.OrdinalIgnoreCase)
-                        || lastProviderNote.Contains("key", StringComparison.OrdinalIgnoreCase))
-                    ? $" {entry.DisplayName} said: “{lastProviderNote.Trim()}”."
-                    : "";
-                await FinishAsync(StatusError,
-                    $"No music came back from {entry.DisplayName}.{providerDetail} " +
-                    "Most likely its API key isn’t configured — the audio gate only checks that some " +
-                    "provider has a key, not the one this model uses. Add its key in Configuration, or pick a different audio model.",
-                    $"Music synthesis failed for all segments via {entry.DisplayName} ({entry.Id}).{providerDetail}");
+                await FinishSceneMusicNoSegmentsAsync(run.Entry, lastProviderNote).ConfigureAwait(false);
                 return;
             }
 
-            if (_musicSidecars is not null)
-            {
-                try
-                {
-                    await _musicSidecars.WriteActiveSidecarAsync(
-                        pDir, scene, takeId, entry.Id, effectiveIsVocal, prompt, lyrics, segmentFileNames, ct).ConfigureAwait(false);
-                }
-                catch (Exception ex)
-                {
-                    _log.LogWarning(ex, "Failed writing music take sidecar for scene {Scene}", scene);
-                }
-            }
-
+            await TryWriteMusicSidecarAsync(run, segmentFileNames, ct).ConfigureAwait(false);
             await UpdateAsync(s => s.Index = 100);
-            await FinishAsync(StatusDone, $"{(effectiveIsVocal ? "Singing" : "Background music")} ready ({savedSegments} segment(s)) — save to media folder");
+            await FinishAsync(StatusDone,
+                $"{(run.EffectiveIsVocal ? "Singing" : "Background music")} ready ({savedSegments} segment(s)) — save to media folder");
         }
         catch (OperationCanceledException)
         {
@@ -1662,6 +1594,173 @@ public sealed class FilmJobService
         {
             _log.LogError(ex, "Scene music gen failed");
             await FinishAsync(StatusError, ex.Message, ex.Message);
+        }
+    }
+
+    private async Task<SceneMusicGenRun?> TryPrepareSceneMusicGenAsync(
+        string projectId, int scene, string? modelOverride, bool isVocal, CancellationToken ct)
+    {
+        if (!_audio.IsConfigured)
+        {
+            await FinishAsync(StatusError, "Audio synthesis API key missing.", "Audio synthesis API key missing.");
+            return null;
+        }
+
+        var pDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
+        var cfg = await _projects.GetConfigAsync(projectId, ct).ConfigureAwait(false);
+        EnsureLabModelsAllowed(cfg);
+
+        var enableMusic = SceneMusicScoringService.GetConfigBool(cfg, "enable_background_music", true);
+        var configuredModel = SceneMusicScoringService.GetConfigStr(cfg, "audio_model_name", "");
+        // Per-run override wins when given; otherwise fall back to the project's configured
+        // default (itself blank-safe — SupportedModelCatalog.ResolveOrDefault below resolves an
+        // empty/unset model to the catalog's own dynamic default) — the Configuration page's
+        // global picker is unaffected either way.
+        var audioModel = string.IsNullOrWhiteSpace(modelOverride) ? configuredModel : modelOverride;
+        if (!enableMusic || string.Equals(audioModel, "none", StringComparison.OrdinalIgnoreCase))
+        {
+            await FinishAsync(StatusDone, "Background music disabled in settings.");
+            return null;
+        }
+
+        var detail = await _projects.GetSceneDetailAsync(projectId, scene, probeDurations: false, ct: ct).ConfigureAwait(false);
+        var totalDuration = Math.Max(1, (int)Math.Ceiling(detail?.DurationSeconds ?? 10));
+        var screenplay = detail?.Setting ?? "";
+        var planningModel = ProjectModelSelection.RequirePlanning(cfg, "Scene music composition");
+
+        var prompt = await _musicScoring.GetOrComposeMusicPromptAsync(
+            pDir, scene, screenplay, totalDuration, planningModel, ct).ConfigureAwait(false);
+        await AppendLogAsync($"Music prompt: {prompt}");
+
+        var entry = SupportedModelCatalog.ResolveOrDefault(audioModel, ModelCapability.Audio);
+
+        // Catalog SupportsVocals only — never infer from provider family.
+        var canSing = entry.SupportsVocals;
+        var effectiveIsVocal = isVocal && canSing;
+        if (isVocal && !canSing)
+            await AppendLogAsync($"  [{entry.DisplayName}] has no vocal capability (supportsVocals=false) — generating instrumental instead.");
+
+        string? lyrics = null;
+        if (effectiveIsVocal)
+        {
+            lyrics = await _musicScoring.ComposeSceneLyricsAsync(screenplay, totalDuration, planningModel, ct).ConfigureAwait(false);
+            await AppendLogAsync($"Lyrics: {lyrics}");
+        }
+
+        // Ties every segment of this run together in take history — minted once, not per segment
+        // (segments are generated minutes apart via real provider polling, so each computing its
+        // own timestamp would scatter one take's files across unrelated-looking history entries).
+        var takeId = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString();
+
+        // Catalog maxAudioDurationSeconds only — never invent full-scene length as a segment cap.
+        if (entry.MaxAudioDurationSeconds is not { } maxAudio || maxAudio <= 0)
+            throw new InvalidOperationException(
+                $"Audio model '{entry.Id}' has no maxAudioDurationSeconds in models_catalog.json. " +
+                "Add the real API limit — do not invent a default.");
+        var segLen = Math.Max(1, maxAudio);
+        return new SceneMusicGenRun
+        {
+            ProjectDir = pDir,
+            Scene = scene,
+            Entry = entry,
+            Prompt = prompt,
+            Lyrics = lyrics,
+            EffectiveIsVocal = effectiveIsVocal,
+            TakeId = takeId,
+            TotalDuration = totalDuration,
+            SegLen = segLen,
+            SegmentCount = (int)Math.Ceiling(totalDuration / (double)segLen),
+        };
+    }
+
+    private async Task<(int Saved, string? LastProviderNote, List<string> FileNames)> GenerateMusicSegmentsAsync(
+        SceneMusicGenRun run, CancellationToken ct)
+    {
+        var savedSegments = 0;
+        var segmentFileNames = new List<string>();
+        string? lastProviderNote = null;
+        var entry = run.Entry;
+
+        for (var seg = 1; seg <= run.SegmentCount; seg++)
+        {
+            ct.ThrowIfCancellationRequested();
+            var remaining = run.TotalDuration - (seg - 1) * run.SegLen;
+            var segDuration = Math.Clamp(remaining, 1, run.SegLen);
+
+            await AppendLogAsync($"  [{entry.DisplayName}] generating segment {seg}/{run.SegmentCount} ({segDuration}s)…");
+            var url = await _audio.GenerateMusicTrackAsync(
+                run.Prompt, segDuration, entry.Id, ct,
+                onProgress: msg => { lastProviderNote = msg; _ = AppendLogAsync("  " + msg); },
+                isVocal: run.EffectiveIsVocal, lyrics: run.Lyrics).ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                await AppendLogAsync($"  [{entry.DisplayName}] segment {seg} failed — stopping.");
+                break;
+            }
+
+            var relPath = MediaRegistryService.MusicSegmentRelativePath(run.Scene, seg);
+            var ticket = _mediaProxy.Issue(url, TimeSpan.FromMinutes(45));
+            var clientUrl = $"/api/media/proxy/{ticket}";
+            var takeId = run.TakeId;
+            var scene = run.Scene;
+            var segmentCount = run.SegmentCount;
+            await UpdateAsync(s =>
+            {
+                s.ClientMediaUrl = clientUrl;
+                s.ClientRelativePath = relPath;
+                s.MusicTakeId = takeId;
+                s.Scene = scene;
+                s.Index = (int)Math.Round(seg * 100.0 / segmentCount);
+            });
+            await AppendLogAsync($"  segment {seg} ready for client save → {relPath}");
+            segmentFileNames.Add(Path.GetFileName(relPath));
+            savedSegments++;
+        }
+
+        return (savedSegments, lastProviderNote, segmentFileNames);
+    }
+
+    private async Task FinishSceneMusicNoSegmentsAsync(SupportedModelEntry entry, string? lastProviderNote)
+    {
+        // Name the resolved provider — the top-level _audio.IsConfigured gate only checks
+        // that *some* audio provider has a key, not that the one audio_model_name actually
+        // routes to (MultiProviderAudioClient) does. A key set for a different provider than
+        // the configured audio_model_name fails every scene this way, silently otherwise.
+        // Surface the provider's real reason instead of a generic "synthesis failed": the
+        // audio client sends its HTTP error via onProgress before returning null.
+        var providerDetail = FormatMusicProviderDetail(entry.DisplayName, lastProviderNote);
+        await FinishAsync(StatusError,
+            $"No music came back from {entry.DisplayName}.{providerDetail} " +
+            "Most likely its API key isn’t configured — the audio gate only checks that some " +
+            "provider has a key, not the one this model uses. Add its key in Configuration, or pick a different audio model.",
+            $"Music synthesis failed for all segments via {entry.DisplayName} ({entry.Id}).{providerDetail}");
+    }
+
+    private static string FormatMusicProviderDetail(string displayName, string? lastProviderNote)
+    {
+        if (string.IsNullOrWhiteSpace(lastProviderNote))
+            return "";
+        if (!lastProviderNote.Contains("fail", StringComparison.OrdinalIgnoreCase)
+            && !lastProviderNote.Contains(StatusError, StringComparison.OrdinalIgnoreCase)
+            && !lastProviderNote.Contains("HTTP", StringComparison.OrdinalIgnoreCase)
+            && !lastProviderNote.Contains("key", StringComparison.OrdinalIgnoreCase))
+            return "";
+        return $" {displayName} said: “{lastProviderNote.Trim()}”.";
+    }
+
+    private async Task TryWriteMusicSidecarAsync(SceneMusicGenRun run, List<string> segmentFileNames, CancellationToken ct)
+    {
+        if (_musicSidecars is null)
+            return;
+        try
+        {
+            await _musicSidecars.WriteActiveSidecarAsync(
+                run.ProjectDir, run.Scene, run.TakeId, run.Entry.Id, run.EffectiveIsVocal,
+                run.Prompt, run.Lyrics, segmentFileNames, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Failed writing music take sidecar for scene {Scene}", run.Scene);
         }
     }
 
@@ -1788,19 +1887,15 @@ public sealed class FilmJobService
     {
         await _projects.RequireProjectAsync(projectId, ct);
 
-        var coords = _reviewIndex.ListOnDiskClipCoords(projectId, req.Scene)
-            .Where(c => !req.OnlyMissing || !_reviewIndex.HasDraft(projectId, c.Scene, c.Clip))
-            .ToList();
+        var coords = ListAutoReviewBatchCoords(req, projectId);
 
         Snapshot = new JobSnapshot
         {
             Status = StatusRunning,
             Kind = "clip-auto-review-batch",
             ProjectId = projectId,
-            Scene = req.Scene is int s0 && s0 > 0 ? s0 : null,
-            Message = coords.Count == 0
-                ? "No clips to auto-review"
-                : $"Batch reviewing {coords.Count} clip(s)…",
+            Scene = AutoReviewBatchScene(req.Scene),
+            Message = AutoReviewBatchMessage(coords.Count),
             Index = 0,
             Total = Math.Max(1, coords.Count),
             StartedAt = DateTimeOffset.UtcNow,
@@ -1813,67 +1908,13 @@ public sealed class FilmJobService
         {
             if (coords.Count == 0)
             {
-                try { await _reviewIndex.RebuildAsync(projectId, req.Scene, ct); } catch { /* non-fatal */ }
-                await FinishAsync(StatusDone, "Batch auto-review: nothing to do (no missing drafts)");
+                await FinishEmptyAutoReviewBatchAsync(req, projectId, ct).ConfigureAwait(false);
                 return;
             }
 
-            await AppendLogAsync(
-                $"Batch auto-review: {coords.Count} clip(s)" +
-                (req.OnlyMissing ? " (only missing drafts)" : " (all)") +
-                (req.Scene is int sn && sn > 0 ? $" scene S{sn:D2}" : ""));
-
-            var ok = 0;
-            var failed = 0;
-            for (var i = 0; i < coords.Count; i++)
-            {
-                ct.ThrowIfCancellationRequested();
-                var (scene, clip) = coords[i];
-                await UpdateAsync(s =>
-                {
-                    s.Index = i;
-                    s.Total = coords.Count;
-                    s.Scene = scene;
-                    s.Clip = clip;
-                    s.Message = $"Reviewing S{scene:D2}C{clip:D2} ({i + 1}/{coords.Count})…";
-                });
-                await AppendLogAsync($"--- S{scene:D2}C{clip:D2} ({i + 1}/{coords.Count}) ---");
-
-                try
-                {
-                    var draft = await _clipAutoReview.ReviewAsync(
-                        projectId,
-                        scene,
-                        clip,
-                        onProgress: (index, total, line) =>
-                        {
-                            _ = AppendLogAsync($"  {line}");
-                        },
-                        ct: ct);
-                    ok++;
-                    await AppendLogAsync(
-                        $"  → {draft.Suggestion}/{draft.Category} · {draft.Suggestions.Count} suggestion(s)");
-                }
-                catch (OperationCanceledException) { throw; }
-                catch (Exception ex)
-                {
-                    failed++;
-                    _log.LogWarning(ex, "Batch auto-review failed S{Scene}C{Clip}", scene, clip);
-                    await AppendLogAsync($"  → ERROR: {ex.Message}");
-                }
-            }
-
-            try
-            {
-                var index = await _reviewIndex.RebuildAsync(projectId, req.Scene, ct: ct);
-                await AppendLogAsync(
-                    $"Review index rebuilt: {index.Clips.Count} row(s) → assets/review/index.json");
-            }
-            catch (Exception ex)
-            {
-                await AppendLogAsync($"Review index rebuild skipped: {ex.Message}");
-            }
-
+            await AppendLogAsync(FormatAutoReviewBatchLog(req, coords.Count));
+            var (ok, failed) = await ReviewBatchClipsAsync(coords, projectId, ct).ConfigureAwait(false);
+            await TryRebuildReviewIndexAsync(projectId, req.Scene, ct).ConfigureAwait(false);
             await FinishAsync(
                 StatusDone,
                 $"Batch auto-review done: {ok} ok, {failed} failed of {coords.Count}");
@@ -1886,6 +1927,98 @@ public sealed class FilmJobService
         {
             _log.LogError(ex, "Batch auto-review failed for {ProjectId}", projectId);
             await FinishAsync(StatusError, ex.Message, ex.Message);
+        }
+    }
+
+    private List<(int Scene, int Clip)> ListAutoReviewBatchCoords(StartClipAutoReviewBatchRequest req, string projectId) =>
+        _reviewIndex.ListOnDiskClipCoords(projectId, req.Scene)
+            .Where(c => !req.OnlyMissing || !_reviewIndex.HasDraft(projectId, c.Scene, c.Clip))
+            .ToList();
+
+    private static int? AutoReviewBatchScene(int? scene) =>
+        scene is int s0 && s0 > 0 ? s0 : null;
+
+    private static string AutoReviewBatchMessage(int coordCount) =>
+        coordCount == 0
+            ? "No clips to auto-review"
+            : $"Batch reviewing {coordCount} clip(s)…";
+
+    private static string FormatAutoReviewBatchLog(StartClipAutoReviewBatchRequest req, int count) =>
+        $"Batch auto-review: {count} clip(s)" +
+        (req.OnlyMissing ? " (only missing drafts)" : " (all)") +
+        (req.Scene is int sn && sn > 0 ? $" scene S{sn:D2}" : "");
+
+    private async Task FinishEmptyAutoReviewBatchAsync(
+        StartClipAutoReviewBatchRequest req, string projectId, CancellationToken ct)
+    {
+        try { await _reviewIndex.RebuildAsync(projectId, req.Scene, ct); } catch { /* non-fatal */ }
+        await FinishAsync(StatusDone, "Batch auto-review: nothing to do (no missing drafts)");
+    }
+
+    private async Task<(int Ok, int Failed)> ReviewBatchClipsAsync(
+        List<(int Scene, int Clip)> coords, string projectId, CancellationToken ct)
+    {
+        var ok = 0;
+        var failed = 0;
+        for (var i = 0; i < coords.Count; i++)
+        {
+            ct.ThrowIfCancellationRequested();
+            var (scene, clip) = coords[i];
+            await UpdateAsync(s =>
+            {
+                s.Index = i;
+                s.Total = coords.Count;
+                s.Scene = scene;
+                s.Clip = clip;
+                s.Message = $"Reviewing S{scene:D2}C{clip:D2} ({i + 1}/{coords.Count})…";
+            });
+            await AppendLogAsync($"--- S{scene:D2}C{clip:D2} ({i + 1}/{coords.Count}) ---");
+
+            if (await TryReviewOneBatchClipAsync(projectId, scene, clip, ct).ConfigureAwait(false))
+                ok++;
+            else
+                failed++;
+        }
+        return (ok, failed);
+    }
+
+    private async Task<bool> TryReviewOneBatchClipAsync(string projectId, int scene, int clip, CancellationToken ct)
+    {
+        try
+        {
+            var draft = await _clipAutoReview.ReviewAsync(
+                projectId,
+                scene,
+                clip,
+                onProgress: (index, total, line) =>
+                {
+                    _ = AppendLogAsync($"  {line}");
+                },
+                ct: ct);
+            await AppendLogAsync(
+                $"  → {draft.Suggestion}/{draft.Category} · {draft.Suggestions.Count} suggestion(s)");
+            return true;
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Batch auto-review failed S{Scene}C{Clip}", scene, clip);
+            await AppendLogAsync($"  → ERROR: {ex.Message}");
+            return false;
+        }
+    }
+
+    private async Task TryRebuildReviewIndexAsync(string projectId, int? scene, CancellationToken ct)
+    {
+        try
+        {
+            var index = await _reviewIndex.RebuildAsync(projectId, scene, ct: ct);
+            await AppendLogAsync(
+                $"Review index rebuilt: {index.Clips.Count} row(s) → assets/review/index.json");
+        }
+        catch (Exception ex)
+        {
+            await AppendLogAsync($"Review index rebuild skipped: {ex.Message}");
         }
     }
 
@@ -2361,23 +2494,7 @@ public sealed class FilmJobService
                 visualLockOverride: req.VisualLockOverride,
                 imageEditInstruction: req.ImageEditInstruction,
                 persistDescription: req.PersistDescription,
-                onProgress: line =>
-                {
-                    _ = AppendLogAsync(line);
-                    var m = CommonRegex.Match(line, @"saved variant (\d+)/(\d+)");
-                    if (m.Success && int.TryParse(m.Groups[1].Value, out var idx))
-                        _ = UpdateAsync(s => { s.Index = idx; s.Message = line; });
-                    else if (line.Contains("generating", StringComparison.OrdinalIgnoreCase))
-                    {
-                        var g = CommonRegex.Match(line, @"generating\s+(\d+)");
-                        if (g.Success && int.TryParse(g.Groups[1].Value, out var total) && total > 0)
-                            _ = UpdateAsync(s => { s.Total = total; s.Message = line; });
-                        else
-                            _ = UpdateAsync(s => s.Message = line);
-                    }
-                    else
-                        _ = UpdateAsync(s => s.Message = line);
-                },
+                onProgress: ApplyLocationVariantProgress,
                 ct: ct);
 
             await UpdateAsync(s =>
@@ -2387,39 +2504,7 @@ public sealed class FilmJobService
             });
             await AppendLogAsync($"mode={result.Mode} · {result.Paths.Count} file(s)");
 
-            if (result.PreviousVariantIndex is int prevLoc && result.NewVariantIndex is int nextLoc)
-            {
-                await FinishAsync(
-                    StatusDone,
-                    $"New look is #{nextLoc} — current lock is still #{prevLoc}. Click a lock to keep old or switch.");
-            }
-            else if (result.LockedAsPreferred)
-            {
-                await FinishAsync(
-                    StatusDone,
-                    $"Plate tweaked for {req.LocKey} — new look is locked. Tweak again with words if needed.");
-            }
-            else if (req.AutoLockBest && string.IsNullOrWhiteSpace(req.ImageEditInstruction) && result.Paths.Count > 0)
-            {
-                await UpdateAsync(s => s.Message = $"AI picking best set for {req.LocKey}…");
-                var (best, _) = await _locations.AutoLockBestVariantAsync(
-                    projectId, req.LocKey, maxVariants: Math.Max(req.Count, result.Paths.Count),
-                    onProgress: line =>
-                    {
-                        _ = AppendLogAsync(line);
-                        _ = UpdateAsync(s => s.Message = line);
-                    },
-                    ct: ct);
-                await FinishAsync(
-                    StatusDone,
-                    $"Set plates ready for {req.LocKey} — auto-locked variant {best}");
-            }
-            else
-            {
-                await FinishAsync(
-                    StatusDone,
-                    $"Set plates ready for {req.LocKey} ({result.Mode}, {result.Paths.Count} image(s))");
-            }
+            await FinishLocationVariantsAsync(req, projectId, result, ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -2432,6 +2517,80 @@ public sealed class FilmJobService
         }
     }
 
+    private void ApplyLocationVariantProgress(string line)
+    {
+        _ = AppendLogAsync(line);
+        var m = CommonRegex.Match(line, @"saved variant (\d+)/(\d+)");
+        if (m.Success && int.TryParse(m.Groups[1].Value, out var idx))
+            _ = UpdateAsync(s => { s.Index = idx; s.Message = line; });
+        else if (line.Contains("generating", StringComparison.OrdinalIgnoreCase))
+            ApplyLocationGeneratingProgress(line);
+        else
+            _ = UpdateAsync(s => s.Message = line);
+    }
+
+    private void ApplyLocationGeneratingProgress(string line)
+    {
+        var g = CommonRegex.Match(line, @"generating\s+(\d+)");
+        if (g.Success && int.TryParse(g.Groups[1].Value, out var total) && total > 0)
+            _ = UpdateAsync(s => { s.Total = total; s.Message = line; });
+        else
+            _ = UpdateAsync(s => s.Message = line);
+    }
+
+    private async Task FinishLocationVariantsAsync(
+        StartLocationVariantsRequest req,
+        string projectId,
+        LocationDesignResult result,
+        CancellationToken ct)
+    {
+        if (result.PreviousVariantIndex is int prevLoc && result.NewVariantIndex is int nextLoc)
+        {
+            await FinishAsync(
+                StatusDone,
+                $"New look is #{nextLoc} — current lock is still #{prevLoc}. Click a lock to keep old or switch.");
+            return;
+        }
+
+        if (result.LockedAsPreferred)
+        {
+            await FinishAsync(
+                StatusDone,
+                $"Plate tweaked for {req.LocKey} — new look is locked. Tweak again with words if needed.");
+            return;
+        }
+
+        if (req.AutoLockBest && string.IsNullOrWhiteSpace(req.ImageEditInstruction) && result.Paths.Count > 0)
+        {
+            await AutoLockLocationBestAsync(req, projectId, result, ct).ConfigureAwait(false);
+            return;
+        }
+
+        await FinishAsync(
+            StatusDone,
+            $"Set plates ready for {req.LocKey} ({result.Mode}, {result.Paths.Count} image(s))");
+    }
+
+    private async Task AutoLockLocationBestAsync(
+        StartLocationVariantsRequest req,
+        string projectId,
+        LocationDesignResult result,
+        CancellationToken ct)
+    {
+        await UpdateAsync(s => s.Message = $"AI picking best set for {req.LocKey}…");
+        var (best, _) = await _locations.AutoLockBestVariantAsync(
+            projectId, req.LocKey, maxVariants: Math.Max(req.Count, result.Paths.Count),
+            onProgress: line =>
+            {
+                _ = AppendLogAsync(line);
+                _ = UpdateAsync(s => s.Message = line);
+            },
+            ct: ct);
+        await FinishAsync(
+            StatusDone,
+            $"Set plates ready for {req.LocKey} — auto-locked variant {best}");
+    }
+
     private async Task RunCharacterVariantsAsync(StartCharacterVariantsRequest req, string projectId, CancellationToken ct)
     {
         await _projects.RequireProjectAsync(projectId, ct);
@@ -2442,15 +2601,13 @@ public sealed class FilmJobService
             Kind = "character",
             ProjectId = projectId,
             CharKey = req.CharKey,
-            Message = req.IterativeEdit
-                ? $"Tweaking portrait for {req.CharKey}…"
-                : $"Generating portraits for {req.CharKey}…",
+            Message = CharacterVariantJobMessage(req),
             Index = 0,
-            Total = req.Count > 0 ? req.Count : (req.IterativeEdit ? 1 : 3),
+            Total = CharacterVariantJobTotal(req),
             StartedAt = DateTimeOffset.UtcNow,
             Log = new List<string>(),
         };
-                RegisterActiveJob();
+        RegisterActiveJob();
         await PublishAsync();
 
         try
@@ -2463,31 +2620,7 @@ public sealed class FilmJobService
                 req.CharKey,
                 n: req.Count,
                 seedOptions: req,
-                onProgress: line =>
-                {
-                    _ = AppendLogAsync(line);
-                    var idx = TryParseVariantProgress(line);
-                    if (idx > 0)
-                        _ = UpdateAsync(s => { s.Index = idx; s.Message = line; });
-                    else if (line.Contains("generating", StringComparison.OrdinalIgnoreCase))
-                    {
-                        // "generating 1 variant(s)" / "generating 3 variants"
-                        var m = CommonRegex.Match(line, @"generating\s+(\d+)");
-                        if (m.Success && int.TryParse(m.Groups[1].Value, out var total) && total > 0)
-                            _ = UpdateAsync(s => { s.Total = total; s.Message = line; });
-                        else
-                            _ = UpdateAsync(s => s.Message = line);
-                    }
-                    else if (line.Contains("edit variant", StringComparison.OrdinalIgnoreCase) ||
-                             line.Contains("Grok", StringComparison.OrdinalIgnoreCase) ||
-                             line.Contains("book ref", StringComparison.OrdinalIgnoreCase) ||
-                             line.Contains("ref image", StringComparison.OrdinalIgnoreCase))
-                        _ = UpdateAsync(s =>
-                        {
-                            s.Index = Math.Max(s.Index, 1);
-                            s.Message = line;
-                        });
-                },
+                onProgress: ApplyCharacterVariantProgress,
                 ct: ct);
 
             await UpdateAsync(s =>
@@ -2495,45 +2628,9 @@ public sealed class FilmJobService
                 s.Index = result.Paths.Count;
                 s.Total = Math.Max(s.Total, result.Paths.Count);
             });
-            await AppendLogAsync(
-                $"mode={result.Mode} · {result.Paths.Count} file(s)" +
-                (result.BookRefs.Count > 0
-                    ? $" · book refs: {string.Join(", ", result.BookRefs)}"
-                    : ""));
+            await AppendLogAsync(FormatCharacterVariantFilesLog(result));
 
-            if (result.PreviousVariantIndex is int prevChar && result.NewVariantIndex is int nextChar)
-            {
-                await FinishAsync(
-                    StatusDone,
-                    $"New look is #{nextChar} — current lock is still #{prevChar}. Pick one.");
-            }
-            else if (result.LockedAsPreferred)
-            {
-                await FinishAsync(
-                    StatusDone,
-                    $"Portrait tweaked for {req.CharKey} — new look is locked. Tweak again with words if needed.");
-            }
-            else if (req.AutoLockBest && !req.IterativeEdit && result.Paths.Count > 0)
-            {
-                await UpdateAsync(s => s.Message = $"AI picking best look for {req.CharKey}…");
-                var (best, _) = await _characters.AutoLockBestVariantAsync(
-                    projectId, req.CharKey, maxVariants: Math.Max(3, result.Paths.Count),
-                    onProgress: line =>
-                    {
-                        _ = AppendLogAsync(line);
-                        _ = UpdateAsync(s => s.Message = line);
-                    },
-                    ct: ct);
-                await FinishAsync(
-                    StatusDone,
-                    $"Portraits ready for {req.CharKey} — auto-locked variant {best}");
-            }
-            else
-            {
-                await FinishAsync(
-                    StatusDone,
-                    $"Variants ready for {req.CharKey} ({result.Mode}, {result.Paths.Count} image(s))");
-            }
+            await FinishCharacterVariantsAsync(req, projectId, result, ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -2544,6 +2641,105 @@ public sealed class FilmJobService
             _log.LogError(ex, "Character variants failed");
             await FinishAsync(StatusError, ex.Message, ex.Message);
         }
+    }
+
+    private static string CharacterVariantJobMessage(StartCharacterVariantsRequest req) =>
+        req.IterativeEdit
+            ? $"Tweaking portrait for {req.CharKey}…"
+            : $"Generating portraits for {req.CharKey}…";
+
+    private static int CharacterVariantJobTotal(StartCharacterVariantsRequest req) =>
+        req.Count > 0 ? req.Count : (req.IterativeEdit ? 1 : 3);
+
+    private static string FormatCharacterVariantFilesLog(CharacterDesignResult result) =>
+        $"mode={result.Mode} · {result.Paths.Count} file(s)" +
+        (result.BookRefs.Count > 0
+            ? $" · book refs: {string.Join(", ", result.BookRefs)}"
+            : "");
+
+    private void ApplyCharacterVariantProgress(string line)
+    {
+        _ = AppendLogAsync(line);
+        var idx = TryParseVariantProgress(line);
+        if (idx > 0)
+            _ = UpdateAsync(s => { s.Index = idx; s.Message = line; });
+        else if (line.Contains("generating", StringComparison.OrdinalIgnoreCase))
+            ApplyCharacterGeneratingProgress(line);
+        else if (IsCharacterVariantStatusLine(line))
+            _ = UpdateAsync(s =>
+            {
+                s.Index = Math.Max(s.Index, 1);
+                s.Message = line;
+            });
+    }
+
+    private void ApplyCharacterGeneratingProgress(string line)
+    {
+        // "generating 1 variant(s)" / "generating 3 variants"
+        var m = CommonRegex.Match(line, @"generating\s+(\d+)");
+        if (m.Success && int.TryParse(m.Groups[1].Value, out var total) && total > 0)
+            _ = UpdateAsync(s => { s.Total = total; s.Message = line; });
+        else
+            _ = UpdateAsync(s => s.Message = line);
+    }
+
+    private static bool IsCharacterVariantStatusLine(string line) =>
+        line.Contains("edit variant", StringComparison.OrdinalIgnoreCase) ||
+        line.Contains("Grok", StringComparison.OrdinalIgnoreCase) ||
+        line.Contains("book ref", StringComparison.OrdinalIgnoreCase) ||
+        line.Contains("ref image", StringComparison.OrdinalIgnoreCase);
+
+    private async Task FinishCharacterVariantsAsync(
+        StartCharacterVariantsRequest req,
+        string projectId,
+        CharacterDesignResult result,
+        CancellationToken ct)
+    {
+        if (result.PreviousVariantIndex is int prevChar && result.NewVariantIndex is int nextChar)
+        {
+            await FinishAsync(
+                StatusDone,
+                $"New look is #{nextChar} — current lock is still #{prevChar}. Pick one.");
+            return;
+        }
+
+        if (result.LockedAsPreferred)
+        {
+            await FinishAsync(
+                StatusDone,
+                $"Portrait tweaked for {req.CharKey} — new look is locked. Tweak again with words if needed.");
+            return;
+        }
+
+        if (req.AutoLockBest && !req.IterativeEdit && result.Paths.Count > 0)
+        {
+            await AutoLockCharacterBestAsync(req, projectId, result, ct).ConfigureAwait(false);
+            return;
+        }
+
+        await FinishAsync(
+            StatusDone,
+            $"Variants ready for {req.CharKey} ({result.Mode}, {result.Paths.Count} image(s))");
+    }
+
+    private async Task AutoLockCharacterBestAsync(
+        StartCharacterVariantsRequest req,
+        string projectId,
+        CharacterDesignResult result,
+        CancellationToken ct)
+    {
+        await UpdateAsync(s => s.Message = $"AI picking best look for {req.CharKey}…");
+        var (best, _) = await _characters.AutoLockBestVariantAsync(
+            projectId, req.CharKey, maxVariants: Math.Max(3, result.Paths.Count),
+            onProgress: line =>
+            {
+                _ = AppendLogAsync(line);
+                _ = UpdateAsync(s => s.Message = line);
+            },
+            ct: ct);
+        await FinishAsync(
+            StatusDone,
+            $"Portraits ready for {req.CharKey} — auto-locked variant {best}");
     }
 
     private async Task RunEmbellishAsync(string projectId, CancellationToken ct)
@@ -3423,7 +3619,6 @@ public sealed class FilmJobService
             }
 
             var maxParallel = Math.Clamp(req.MaxParallel <= 0 ? 3 : req.MaxParallel, 1, 8);
-            var maxLen = ctx.MaxLen;
 
             await UpdateAsync(s =>
             {
@@ -3433,122 +3628,28 @@ public sealed class FilmJobService
             }).ConfigureAwait(false);
             await AppendLogAsync(Snapshot.Message ?? "").ConfigureAwait(false);
 
-            var done = 0;
-            var failed = 0;
-            var handoffGate = new SemaphoreSlim(1, 1);
-            var gate = new SemaphoreSlim(maxParallel, maxParallel);
-
-            async Task ProcessOneAsync(SpeakWorkItem item)
+            var state = new SpeakBatchRunState
             {
-                await gate.WaitAsync(ct).ConfigureAwait(false);
-                try
-                {
-                    ct.ThrowIfCancellationRequested();
-                    var text = item.Text.Trim();
-                    if (text.Length == 0)
-                    {
-                        Interlocked.Increment(ref done);
-                        return;
-                    }
-                    if (text.Length > maxLen)
-                    {
-                        await handoffGate.WaitAsync(ct).ConfigureAwait(false);
-                        try
-                        {
-                            await AppendLogAsync(
-                                    $"  S{item.Scene:D2}C{item.Clip:D2}: text {text.Length} chars exceeds model limit {maxLen} — skip")
-                                .ConfigureAwait(false);
-                        }
-                        finally { handoffGate.Release(); }
-                        Interlocked.Increment(ref failed);
-                        Interlocked.Increment(ref done);
-                        return;
-                    }
-
-                    var (audioBytes, ext, err) = await SynthesizeLineAsync(
-                        ctx, projectId, charKey, text, "speak_batch", ct).ConfigureAwait(false);
-
-                    if (audioBytes is not { Length: > 0 })
-                    {
-                        await handoffGate.WaitAsync(ct).ConfigureAwait(false);
-                        try
-                        {
-                            await AppendLogAsync(
-                                    $"  S{item.Scene:D2}C{item.Clip:D2}: fail — {err ?? "no audio"}")
-                                .ConfigureAwait(false);
-                        }
-                        finally { handoffGate.Release(); }
-                        Interlocked.Increment(ref failed);
-                        Interlocked.Increment(ref done);
-                        return;
-                    }
-
-                    var relPath = MediaRegistryService.RevoiceAudioRelativePath(item.Scene, item.Clip, ext);
-                    var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
-                    var absPath = Path.Combine(
-                        projectDir,
-                        relPath.Replace('/', Path.DirectorySeparatorChar));
-                    Directory.CreateDirectory(Path.GetDirectoryName(absPath) ?? ".");
-                    await File.WriteAllBytesAsync(absPath, audioBytes, ct).ConfigureAwait(false);
-
-                    // Ticket form used by GET /api/projects/{id}/media/file
-                    var ticket = _mediaProxy.Issue($"{projectId}:{relPath}", TimeSpan.FromMinutes(45));
-                    var clientUrl =
-                        $"/api/projects/{Uri.EscapeDataString(projectId)}/media/file" +
-                        $"?path={Uri.EscapeDataString(relPath)}&ticket={ticket}";
-
-                    await handoffGate.WaitAsync(ct).ConfigureAwait(false);
-                    try
-                    {
-                        var idx = Interlocked.Increment(ref done);
-                        await UpdateAsync(s =>
-                        {
-                            s.Index = idx;
-                            s.Scene = item.Scene;
-                            s.Clip = item.Clip;
-                            s.ClientMediaUrl = clientUrl;
-                            s.ClientRelativePath = relPath;
-                            s.Message = $"Speak-batch: S{item.Scene:D2} C{item.Clip} ({idx}/{work.Count})…";
-                        }).ConfigureAwait(false);
-                        await AppendLogAsync(
-                                $"  S{item.Scene:D2}C{item.Clip:D2}: ready → {relPath} ({audioBytes.Length / 1024} KB)")
-                            .ConfigureAwait(false);
-                    }
-                    finally { handoffGate.Release(); }
-                }
-                catch (OperationCanceledException) { throw; }
-                catch (Exception ex)
-                {
-                    await handoffGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
-                    try
-                    {
-                        await AppendLogAsync($"  S{item.Scene:D2}C{item.Clip:D2}: exception — {ex.Message}")
-                            .ConfigureAwait(false);
-                    }
-                    finally { handoffGate.Release(); }
-                    Interlocked.Increment(ref failed);
-                    Interlocked.Increment(ref done);
-                }
-                finally
-                {
-                    gate.Release();
-                }
+                Ctx = ctx,
+                ProjectId = projectId,
+                CharKey = charKey,
+                WorkCount = work.Count,
+                MaxLen = ctx.MaxLen,
+                Gate = new SemaphoreSlim(maxParallel, maxParallel),
+                HandoffGate = new SemaphoreSlim(1, 1),
+            };
+            try
+            {
+                var tasks = work.Select(item => ProcessSpeakBatchItemAsync(state, item, ct)).ToArray();
+                await Task.WhenAll(tasks).ConfigureAwait(false);
+            }
+            finally
+            {
+                state.Gate.Dispose();
+                state.HandoffGate.Dispose();
             }
 
-            var tasks = work.Select(ProcessOneAsync).ToArray();
-            await Task.WhenAll(tasks).ConfigureAwait(false);
-
-            var failCount = Volatile.Read(ref failed);
-            if (failCount == 0)
-                await FinishAsync(StatusDone, $"Speak-batch complete — {work.Count} line(s)").ConfigureAwait(false);
-            else if (failCount >= work.Count)
-                await FinishAsync(StatusError, $"Speak-batch failed — all {failCount} line(s) failed", "all failed")
-                    .ConfigureAwait(false);
-            else
-                await FinishAsync(
-                        StatusPartial,
-                        $"Speak-batch partial — {work.Count - failCount} ok, {failCount} failed")
-                    .ConfigureAwait(false);
+            await FinishSpeakBatchAsync(Volatile.Read(ref state.Failed), work.Count).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -3559,6 +3660,142 @@ public sealed class FilmJobService
             _log.LogError(ex, "Speak-batch failed for {ProjectId}", projectId);
             await FinishAsync(StatusError, ex.Message, ex.Message).ConfigureAwait(false);
         }
+    }
+
+    private sealed class SpeakBatchRunState
+    {
+        public required SpeakContext Ctx { get; init; }
+        public required string ProjectId { get; init; }
+        public required string CharKey { get; init; }
+        public required int WorkCount { get; init; }
+        public required int MaxLen { get; init; }
+        public required SemaphoreSlim Gate { get; init; }
+        public required SemaphoreSlim HandoffGate { get; init; }
+        public int Done;
+        public int Failed;
+    }
+
+    private async Task ProcessSpeakBatchItemAsync(SpeakBatchRunState state, SpeakWorkItem item, CancellationToken ct)
+    {
+        await state.Gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            ct.ThrowIfCancellationRequested();
+            var text = item.Text.Trim();
+            if (text.Length == 0)
+            {
+                Interlocked.Increment(ref state.Done);
+                return;
+            }
+            if (text.Length > state.MaxLen)
+            {
+                await LogSpeakBatchHandoffAsync(
+                        state,
+                        $"  S{item.Scene:D2}C{item.Clip:D2}: text {text.Length} chars exceeds model limit {state.MaxLen} — skip",
+                        ct)
+                    .ConfigureAwait(false);
+                Interlocked.Increment(ref state.Failed);
+                Interlocked.Increment(ref state.Done);
+                return;
+            }
+
+            var (audioBytes, ext, err) = await SynthesizeLineAsync(
+                state.Ctx, state.ProjectId, state.CharKey, text, "speak_batch", ct).ConfigureAwait(false);
+
+            if (audioBytes is not { Length: > 0 })
+            {
+                await LogSpeakBatchHandoffAsync(
+                        state,
+                        $"  S{item.Scene:D2}C{item.Clip:D2}: fail — {err ?? "no audio"}",
+                        ct)
+                    .ConfigureAwait(false);
+                Interlocked.Increment(ref state.Failed);
+                Interlocked.Increment(ref state.Done);
+                return;
+            }
+
+            await SaveSpeakBatchAudioAsync(state, item, audioBytes, ext, ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            await LogSpeakBatchHandoffAsync(
+                    state,
+                    $"  S{item.Scene:D2}C{item.Clip:D2}: exception — {ex.Message}",
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+            Interlocked.Increment(ref state.Failed);
+            Interlocked.Increment(ref state.Done);
+        }
+        finally
+        {
+            state.Gate.Release();
+        }
+    }
+
+    private async Task LogSpeakBatchHandoffAsync(SpeakBatchRunState state, string message, CancellationToken ct)
+    {
+        await state.HandoffGate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            await AppendLogAsync(message).ConfigureAwait(false);
+        }
+        finally { state.HandoffGate.Release(); }
+    }
+
+    private async Task SaveSpeakBatchAudioAsync(
+        SpeakBatchRunState state,
+        SpeakWorkItem item,
+        byte[] audioBytes,
+        string ext,
+        CancellationToken ct)
+    {
+        var relPath = MediaRegistryService.RevoiceAudioRelativePath(item.Scene, item.Clip, ext);
+        var projectDir = await _projects.GetProjectDirAsync(state.ProjectId, ct).ConfigureAwait(false);
+        var absPath = Path.Combine(
+            projectDir,
+            relPath.Replace('/', Path.DirectorySeparatorChar));
+        Directory.CreateDirectory(Path.GetDirectoryName(absPath) ?? ".");
+        await File.WriteAllBytesAsync(absPath, audioBytes, ct).ConfigureAwait(false);
+
+        // Ticket form used by GET /api/projects/{id}/media/file
+        var ticket = _mediaProxy.Issue($"{state.ProjectId}:{relPath}", TimeSpan.FromMinutes(45));
+        var clientUrl =
+            $"/api/projects/{Uri.EscapeDataString(state.ProjectId)}/media/file" +
+            $"?path={Uri.EscapeDataString(relPath)}&ticket={ticket}";
+
+        await state.HandoffGate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var idx = Interlocked.Increment(ref state.Done);
+            await UpdateAsync(s =>
+            {
+                s.Index = idx;
+                s.Scene = item.Scene;
+                s.Clip = item.Clip;
+                s.ClientMediaUrl = clientUrl;
+                s.ClientRelativePath = relPath;
+                s.Message = $"Speak-batch: S{item.Scene:D2} C{item.Clip} ({idx}/{state.WorkCount})…";
+            }).ConfigureAwait(false);
+            await AppendLogAsync(
+                    $"  S{item.Scene:D2}C{item.Clip:D2}: ready → {relPath} ({audioBytes.Length / 1024} KB)")
+                .ConfigureAwait(false);
+        }
+        finally { state.HandoffGate.Release(); }
+    }
+
+    private async Task FinishSpeakBatchAsync(int failCount, int workCount)
+    {
+        if (failCount == 0)
+            await FinishAsync(StatusDone, $"Speak-batch complete — {workCount} line(s)").ConfigureAwait(false);
+        else if (failCount >= workCount)
+            await FinishAsync(StatusError, $"Speak-batch failed — all {failCount} line(s) failed", "all failed")
+                .ConfigureAwait(false);
+        else
+            await FinishAsync(
+                    StatusPartial,
+                    $"Speak-batch partial — {workCount - failCount} ok, {failCount} failed")
+                .ConfigureAwait(false);
     }
 
     private sealed class SpeakWorkItem
@@ -3712,22 +3949,36 @@ public sealed class FilmJobService
             return "";
         foreach (var s in scenes.EnumerateArray())
         {
-            var sn = s.TryGetProperty(JsonKeys.SceneNumber, out var snEl) && snEl.TryGetInt32(out var n) ? n : 0;
-            if (sn != scene) continue;
-            if (!s.TryGetProperty(VeoClipsKey, out var clips) || clips.ValueKind != JsonValueKind.Array)
-                return "";
-            foreach (var c in clips.EnumerateArray())
-            {
-                var cn = ClipKeying.ClipNumber(c);
-                if (cn != clip) continue;
-                if (c.TryGetProperty(JsonKeys.AudioPayload, out var ap) && ap.ValueKind == JsonValueKind.Object &&
-                    ap.TryGetProperty(JsonKeys.Dialogue, out var d))
-                    return d.GetString() ?? "";
-                if (c.TryGetProperty(JsonKeys.Dialogue, out var rootD))
-                    return rootD.GetString() ?? "";
-            }
+            if (ReadSceneNumber(s) != scene)
+                continue;
+            return FindClipDialogueInScene(s, clip);
         }
         return "";
+    }
+
+    private static string FindClipDialogueInScene(JsonElement sceneEl, int clip)
+    {
+        if (!sceneEl.TryGetProperty(VeoClipsKey, out var clips) || clips.ValueKind != JsonValueKind.Array)
+            return "";
+        foreach (var c in clips.EnumerateArray())
+        {
+            if (ClipKeying.ClipNumber(c) != clip)
+                continue;
+            var text = TryReadClipDialogueText(c);
+            if (text is not null)
+                return text;
+        }
+        return "";
+    }
+
+    private static string? TryReadClipDialogueText(JsonElement c)
+    {
+        if (c.TryGetProperty(JsonKeys.AudioPayload, out var ap) && ap.ValueKind == JsonValueKind.Object &&
+            ap.TryGetProperty(JsonKeys.Dialogue, out var d))
+            return d.GetString() ?? "";
+        if (c.TryGetProperty(JsonKeys.Dialogue, out var rootD))
+            return rootD.GetString() ?? "";
+        return null;
     }
 
     // ── Shared cloned-voice TTS helpers (used by speak-batch and movie-wide voice substitution) ──
@@ -3756,34 +4007,56 @@ public sealed class FilmJobService
             return (null, "No cloned voice on this character — record and apply a sample first.");
 
         var seedProvider = _projects.GetVoiceProviderId(projectId, charKey) ?? "";
-        if (string.IsNullOrWhiteSpace(model))
-        {
-            var cfg = await _projects.GetConfigAsync(projectId, ct).ConfigureAwait(false);
-            EnsureLabModelsAllowed(cfg);
-            if (cfg.TryGetValue("voice_model_name", out var vm) && vm.ValueKind == JsonValueKind.String)
-                model = vm.GetString();
-        }
+        model = await LoadConfiguredVoiceModelIfMissingAsync(projectId, model, ct).ConfigureAwait(false);
+        var entry = ResolveVoiceCatalogEntry(ref model, seedProvider);
+        return TryBuildSpeakContext(voiceId, entry, seedProvider, model);
+    }
 
+    private async Task<string?> LoadConfiguredVoiceModelIfMissingAsync(
+        string projectId, string? model, CancellationToken ct)
+    {
+        if (!string.IsNullOrWhiteSpace(model))
+            return model;
+        var cfg = await _projects.GetConfigAsync(projectId, ct).ConfigureAwait(false);
+        EnsureLabModelsAllowed(cfg);
+        if (cfg.TryGetValue("voice_model_name", out var vm) && vm.ValueKind == JsonValueKind.String)
+            return vm.GetString();
+        return model;
+    }
+
+    private static SupportedModelEntry? ResolveVoiceCatalogEntry(ref string? model, string seedProvider)
+    {
         SupportedModelEntry? entry = null;
         if (!string.IsNullOrWhiteSpace(model))
             entry = SupportedModelCatalog.Find(model, ModelCapability.Voice)
                     ?? SupportedModelCatalog.Find(model);
         if (entry is { IsVoiceCloneStep: true })
         {
-            entry = SupportedModelCatalog.ForCapability(ModelCapability.Voice)
-                .FirstOrDefault(m => !m.IsVoiceCloneStep && m.Enabled &&
-                    string.Equals(m.ProviderId, entry.ProviderId, StringComparison.OrdinalIgnoreCase));
+            entry = FirstEnabledSpeakModelForProvider(entry.ProviderId);
             model = entry?.Id;
         }
         if (entry is null)
         {
-            entry = SupportedModelCatalog.ForCapability(ModelCapability.Voice)
-                .FirstOrDefault(m => !m.IsVoiceCloneStep && m.Enabled &&
-                    (string.IsNullOrWhiteSpace(seedProvider) ||
-                     string.Equals(m.ProviderId, seedProvider, StringComparison.OrdinalIgnoreCase)));
+            entry = FirstEnabledSpeakModelForSeed(seedProvider);
             model = entry?.Id ?? model;
         }
+        return entry;
+    }
 
+    private static SupportedModelEntry? FirstEnabledSpeakModelForProvider(string? providerId) =>
+        SupportedModelCatalog.ForCapability(ModelCapability.Voice)
+            .FirstOrDefault(m => !m.IsVoiceCloneStep && m.Enabled &&
+                string.Equals(m.ProviderId, providerId, StringComparison.OrdinalIgnoreCase));
+
+    private static SupportedModelEntry? FirstEnabledSpeakModelForSeed(string seedProvider) =>
+        SupportedModelCatalog.ForCapability(ModelCapability.Voice)
+            .FirstOrDefault(m => !m.IsVoiceCloneStep && m.Enabled &&
+                (string.IsNullOrWhiteSpace(seedProvider) ||
+                 string.Equals(m.ProviderId, seedProvider, StringComparison.OrdinalIgnoreCase)));
+
+    private (SpeakContext? Ctx, string? Error) TryBuildSpeakContext(
+        string voiceId, SupportedModelEntry? entry, string seedProvider, string? model)
+    {
         var providerId = entry?.ProviderId
                          ?? (string.IsNullOrWhiteSpace(seedProvider) ? null : seedProvider)
                          ?? "unknown";
@@ -3791,23 +4064,13 @@ public sealed class FilmJobService
                         || entry?.Provider == ModelProviderFamily.ElevenLabs
                         || voiceId.StartsWith("mock_", StringComparison.OrdinalIgnoreCase);
 
-        if (useEleven && !_voiceClient.IsConfigured && !voiceId.StartsWith("mock_", StringComparison.OrdinalIgnoreCase))
-            return (null, "ElevenLabs key is not configured.");
-        if (!useEleven && !_voiceClone.IsConfigured)
-            return (null, "Voice provider (Fal) is not configured.");
+        var configError = SpeakProviderConfigError(useEleven, voiceId);
+        if (configError is not null)
+            return (null, configError);
 
-        var speakModelId = useEleven
-            ? (entry?.Id
-               ?? SupportedModelCatalog.Find("eleven_multilingual_v2", ModelCapability.Voice)?.Id
-               ?? model ?? "eleven_multilingual_v2")
-            : (entry?.Id
-               ?? SupportedModelCatalog.Find("fal-ai/minimax/speech-02-hd", ModelCapability.Voice)?.Id
-               ?? model ?? "");
-
+        var speakModelId = ResolveSpeakModelId(useEleven, entry, model);
         if (entry?.MaxPromptLength is not int maxLen)
-        {
             return (null, $"Model '{entry?.Id ?? "(null)"}' has no maxPromptLength in models_catalog.json.");
-        }
 
         return (new SpeakContext
         {
@@ -3819,6 +4082,24 @@ public sealed class FilmJobService
             MaxLen = maxLen,
         }, null);
     }
+
+    private string? SpeakProviderConfigError(bool useEleven, string voiceId)
+    {
+        if (useEleven && !_voiceClient.IsConfigured && !voiceId.StartsWith("mock_", StringComparison.OrdinalIgnoreCase))
+            return "ElevenLabs key is not configured.";
+        if (!useEleven && !_voiceClone.IsConfigured)
+            return "Voice provider (Fal) is not configured.";
+        return null;
+    }
+
+    private static string ResolveSpeakModelId(bool useEleven, SupportedModelEntry? entry, string? model) =>
+        useEleven
+            ? (entry?.Id
+               ?? SupportedModelCatalog.Find("eleven_multilingual_v2", ModelCapability.Voice)?.Id
+               ?? model ?? "eleven_multilingual_v2")
+            : (entry?.Id
+               ?? SupportedModelCatalog.Find("fal-ai/minimax/speech-02-hd", ModelCapability.Voice)?.Id
+               ?? model ?? "");
 
     /// <summary>
     /// Synthesize one line of cloned-voice speech (ElevenLabs bytes or Fal url→download) and log the
@@ -6236,38 +6517,9 @@ public sealed class FilmJobService
         string? requested,
         CancellationToken ct)
     {
-        string? resolution;
-        if (!string.IsNullOrWhiteSpace(requested))
-        {
-            resolution = NormalizeResolution(requested);
-        }
-        else
-        {
-            resolution = null;
-            try
-            {
-                var cfg = await _projects.GetConfigAsync(projectId, ct).ConfigureAwait(false);
-            EnsureLabModelsAllowed(cfg);
-                if (cfg.TryGetValue("resolution", out var el))
-                {
-                    var fromCfg = el.ValueKind switch
-                    {
-                        JsonValueKind.String => el.GetString(),
-                        JsonValueKind.Number => el.ToString(),
-                        _ => null,
-                    };
-                    if (!string.IsNullOrWhiteSpace(fromCfg))
-                        resolution = NormalizeResolution(fromCfg);
-                }
-            }
-            catch
-            {
-                // fall through to app default
-            }
-
-            resolution ??= NormalizeResolution(
-                string.IsNullOrWhiteSpace(_opts.DefaultResolution) ? "480p" : _opts.DefaultResolution);
-        }
+        var resolution = string.IsNullOrWhiteSpace(requested)
+            ? await ReadConfiguredOrDefaultResolutionAsync(projectId, ct).ConfigureAwait(false)
+            : NormalizeResolution(requested);
 
         var locked = await GetLockedResolutionAsync(projectId, ct).ConfigureAwait(false);
         if (locked is not null && !string.Equals(locked, resolution, StringComparison.OrdinalIgnoreCase))
@@ -6278,6 +6530,37 @@ public sealed class FilmJobService
         }
 
         return resolution ?? "480p";
+    }
+
+    private async Task<string> ReadConfiguredOrDefaultResolutionAsync(string projectId, CancellationToken ct)
+    {
+        string? resolution = null;
+        try
+        {
+            var cfg = await _projects.GetConfigAsync(projectId, ct).ConfigureAwait(false);
+            EnsureLabModelsAllowed(cfg);
+            resolution = TryReadResolutionFromConfig(cfg);
+        }
+        catch
+        {
+            // fall through to app default
+        }
+
+        return NormalizeResolution(
+            resolution ?? (string.IsNullOrWhiteSpace(_opts.DefaultResolution) ? "480p" : _opts.DefaultResolution));
+    }
+
+    private static string? TryReadResolutionFromConfig(IReadOnlyDictionary<string, JsonElement> cfg)
+    {
+        if (!cfg.TryGetValue("resolution", out var el))
+            return null;
+        var fromCfg = el.ValueKind switch
+        {
+            JsonValueKind.String => el.GetString(),
+            JsonValueKind.Number => el.ToString(),
+            _ => null,
+        };
+        return string.IsNullOrWhiteSpace(fromCfg) ? null : NormalizeResolution(fromCfg);
     }
 
     /// <summary>
