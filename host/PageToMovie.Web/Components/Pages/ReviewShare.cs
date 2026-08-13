@@ -81,7 +81,7 @@ public partial class Review
             if (string.IsNullOrWhiteSpace(rawProjectId))
                 return "Untitled Short Film";
 
-            var parts = rawProjectId.Trim().Split('/', '\\');
+            var parts = rawProjectId.Trim().Split(new[] { '/', '\\' }, StringSplitOptions.None);
             var name = parts[parts.Length - 1].Trim();
 
             if (name.StartsWith("TellTaleHeart", StringComparison.OrdinalIgnoreCase))

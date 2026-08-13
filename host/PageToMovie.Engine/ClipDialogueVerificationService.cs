@@ -607,12 +607,14 @@ Status options: 'verified' (dialogue & speaker match), 'mismatch' (dialogue inco
         }
         if (root.ValueKind == JsonValueKind.Object)
         {
-            foreach (var prop in root.EnumerateObject().Where(p => JsonPropertyNameMatches(p.Name, names)))
+            foreach (var val in root.EnumerateObject()
+                         .Where(p => JsonPropertyNameMatches(p.Name, names))
+                         .Select(p => p.Value))
             {
-                if (prop.Value.ValueKind == JsonValueKind.String)
+                if (val.ValueKind == JsonValueKind.String)
                 {
-                    var val = prop.Value.GetString();
-                    if (!string.IsNullOrWhiteSpace(val)) return val.Trim();
+                    var s = val.GetString();
+                    if (!string.IsNullOrWhiteSpace(s)) return s.Trim();
                 }
             }
         }

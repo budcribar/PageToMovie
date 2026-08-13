@@ -92,7 +92,10 @@ public sealed class GeminiImageClient : IImageClient
         // Catalog-backed cap, no silent fallback (same "fail loud" principle as Veo's MaxReferenceImages=0).
         var cap = ProviderMediaHelpers.ResolveReferenceImageCap(modelName, maxRefs);
 
-        var hasCostumeRef = !string.IsNullOrWhiteSpace(costumeRefPath) && File.Exists(costumeRefPath);
+        var costumeRef = !string.IsNullOrWhiteSpace(costumeRefPath) && File.Exists(costumeRefPath)
+            ? costumeRefPath
+            : null;
+        var hasCostumeRef = costumeRef is not null;
         var identityCap = hasCostumeRef ? Math.Max(1, cap - 1) : cap;
 
         var refs = referenceImagePaths
@@ -102,7 +105,7 @@ public sealed class GeminiImageClient : IImageClient
         if (refs.Count == 0 && !hasCostumeRef)
             throw new InvalidOperationException("No usable reference images for character edit.");
 
-        var allRefs = hasCostumeRef && costumeRefPath is not null ? refs.Append(costumeRefPath).ToList() : refs;
+        var allRefs = costumeRef is not null ? refs.Append(costumeRef).ToList() : refs;
         var costumeClause = hasCostumeRef
             ? " The LAST reference image is a COSTUME REFERENCE ONLY (shared wardrobe design) — " +
               "copy its coat, hat, and badge exactly; completely ignore any face or person in it; " +

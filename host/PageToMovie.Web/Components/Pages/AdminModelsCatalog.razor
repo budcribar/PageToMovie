@@ -453,7 +453,7 @@
                                             {
                                                 <span class="badge bg-danger text-light ms-1" title="Deprecated model — hidden from pickers & ignored by update scan">DEPRECATED</span>
                                             }
-                                            @if (m.TryGetPropertyValue("labMode", out var labNode) && labNode?.GetValue<bool>() == true)
+                                            @if (m.TryGetPropertyValue("labMode", out var labNode) && labNode?.GetValue<bool>() is true)
                                             {
                                                 <span class="badge bg-warning text-dark ms-1" title="@(m["labNotes"]?.ToString() ?? "lab")">LAB</span>
                                             }

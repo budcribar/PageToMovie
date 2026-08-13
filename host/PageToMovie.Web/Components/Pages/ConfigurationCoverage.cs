@@ -427,11 +427,8 @@ public partial class Configuration
 
         private void AddFallbackCoverageProviderIds(string coverageId, HashSet<string> ids)
         {
-            foreach (var pr in S.Keys.ProviderRows)
-            {
-                if (ProviderSupportsCoverage(pr, coverageId))
-                    ids.Add(pr.ProviderId);
-            }
+            foreach (var pr in S.Keys.ProviderRows.Where(p => ProviderSupportsCoverage(p, coverageId)))
+                ids.Add(pr.ProviderId);
         }
 
         private static bool ProviderSupportsCoverage(ProviderKeyStatusDto pr, string coverageId) =>

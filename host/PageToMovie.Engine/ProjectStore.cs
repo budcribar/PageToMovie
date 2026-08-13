@@ -3113,8 +3113,8 @@ public sealed partial class ProjectStore
     private List<string> FilterUnlockedOnScreenCharacters(string projectId, HashSet<string> cast)
     {
         return cast
-            .OrderBy(k => k, StringComparer.OrdinalIgnoreCase)
             .Where(key => OnScreenCharacterNeedsLock(projectId, key))
+            .OrderBy(k => k, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
 

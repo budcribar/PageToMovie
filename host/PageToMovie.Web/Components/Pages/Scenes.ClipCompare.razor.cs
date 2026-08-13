@@ -23,7 +23,7 @@ public partial class Scenes_ClipCompare
     private bool GridView { get; set; } = true;
     private bool ShowTrashBin;
     private bool ShowEmptyTrashConfirm;
-    private string? SelectedCompareVersionId { get; set; }
+    private string? SelectedCompareVersionId;
 
     private ClipVersionItem? SelectedCompareVersion =>
         Versions?.FirstOrDefault(v => string.Equals(v.VersionId, SelectedCompareVersionId, StringComparison.OrdinalIgnoreCase));
