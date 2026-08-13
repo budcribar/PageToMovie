@@ -14,7 +14,7 @@ namespace PageToMovie.Web.Components.Pages;
 
 public partial class Configuration_CoverageCard
 {
-    [CascadingParameter] public Configuration Host { get; set; } = default!;
+    [CascadingParameter] public required Configuration Host { get; set; }
     [CascadingParameter] public Configuration.ConfigurationCatalog? Catalog { get; set; }
     [CascadingParameter] public Configuration.ConfigurationKeys? Keys { get; set; }
     [CascadingParameter] public Configuration.ConfigurationCoverage? Coverage { get; set; }

@@ -21,6 +21,8 @@ namespace PageToMovie.Engine;
 public sealed class XaiResponsesClient
 {
     private const string ApiBase = SupportedModelCatalog.XaiApiBase;
+    private const string InputKey = "input";
+    private const string ContentKey = "content";
 
     private readonly HttpClient _http;
     private readonly IUserApiKeyProvider? _keyProvider;
@@ -120,7 +122,7 @@ public sealed class XaiResponsesClient
         var payload = new Dictionary<string, object?>
         {
             ["model"] = model,
-            ["input"] = BuildFileInput(instructionText, fileId),
+            [InputKey] = BuildFileInput(instructionText, fileId),
             ["instructions"] = systemPrompt,
         };
         if (temperature is not null) payload["temperature"] = temperature.Value;
@@ -138,7 +140,7 @@ public sealed class XaiResponsesClient
         var payload = new Dictionary<string, object?>
         {
             ["model"] = model,
-            ["input"] = BuildFileInput(instructionText, fileId),
+            [InputKey] = BuildFileInput(instructionText, fileId),
         };
         if (temperature is not null) payload["temperature"] = temperature.Value;
         return SendResponsesRequestAsync(payload, ct);
@@ -151,7 +153,7 @@ public sealed class XaiResponsesClient
         new Dictionary<string, object?>
         {
             ["role"] = "user",
-            ["content"] = new object[]
+            [ContentKey] = new object[]
             {
                 new Dictionary<string, object?> { ["type"] = "input_text", ["text"] = instructionText },
                 new Dictionary<string, object?> { ["type"] = "input_file", ["file_id"] = fileId },
@@ -175,9 +177,9 @@ public sealed class XaiResponsesClient
         {
             ["model"] = model,
             ["previous_response_id"] = previousResponseId,
-            ["input"] = new object[]
+            [InputKey] = new object[]
             {
-                new Dictionary<string, object?> { ["role"] = "user", ["content"] = instructionText },
+                new Dictionary<string, object?> { ["role"] = "user", [ContentKey] = instructionText },
             },
         };
         if (temperature is not null) payload["temperature"] = temperature.Value;
@@ -209,9 +211,9 @@ public sealed class XaiResponsesClient
         var payload = new Dictionary<string, object?>
         {
             ["model"] = model,
-            ["input"] = new object[]
+            [InputKey] = new object[]
             {
-                new Dictionary<string, object?> { ["role"] = "user", ["content"] = content },
+                new Dictionary<string, object?> { ["role"] = "user", [ContentKey] = content },
             },
         };
         if (temperature is not null) payload["temperature"] = temperature.Value;
@@ -244,9 +246,9 @@ public sealed class XaiResponsesClient
         {
             ["model"] = model,
             ["instructions"] = systemPrompt,
-            ["input"] = new object[]
+            [InputKey] = new object[]
             {
-                new Dictionary<string, object?> { ["role"] = "user", ["content"] = content },
+                new Dictionary<string, object?> { ["role"] = "user", [ContentKey] = content },
             },
         };
         if (temperature is not null) payload["temperature"] = temperature.Value;
@@ -298,7 +300,7 @@ public sealed class XaiResponsesClient
             foreach (var item in output.EnumerateArray())
             {
                 if (item.ValueKind != JsonValueKind.Object) continue;
-                if (!item.TryGetProperty("content", out var content) || content.ValueKind != JsonValueKind.Array)
+                if (!item.TryGetProperty(ContentKey, out var content) || content.ValueKind != JsonValueKind.Array)
                     continue;
                 foreach (var c in content.EnumerateArray())
                 {

@@ -27,8 +27,9 @@ public sealed class ActiveProjectState
     public bool CanEstimate { get; private set; }
 
     public string CharactersBlockedReason { get; private set; } = "Approve the screenplay first";
-    public string ScenesBlockedReason { get; private set; } = "Finish the shot plan first";
-    public string ReviewBlockedReason { get; private set; } = "Finish the shot plan first";
+    private const string ShotPlanBlockedReason = "Finish the shot plan first";
+    public string ScenesBlockedReason { get; private set; } = ShotPlanBlockedReason;
+    public string ReviewBlockedReason { get; private set; } = ShotPlanBlockedReason;
     public string EstimateBlockedReason { get; private set; } = "Finish importing the book and approve the screenplay first";
 
     public event Action? Changed;
@@ -269,7 +270,7 @@ public sealed class ActiveProjectState
             else if (!castReady)
                 ScenesBlockedReason = "Finish characters (voice + locked image), then the shot plan";
             else
-                ScenesBlockedReason = "Finish the shot plan first";
+                ScenesBlockedReason = ShotPlanBlockedReason;
             ReviewBlockedReason = ScenesBlockedReason;
         }
         catch
@@ -286,8 +287,8 @@ public sealed class ActiveProjectState
         CanReview = false;
         CanEstimate = false;
         CharactersBlockedReason = "Approve the screenplay first";
-        ScenesBlockedReason = "Finish the shot plan first";
-        ReviewBlockedReason = "Finish the shot plan first";
+        ScenesBlockedReason = ShotPlanBlockedReason;
+        ReviewBlockedReason = ShotPlanBlockedReason;
         EstimateBlockedReason = "Finish importing the book and approve the screenplay first";
     }
 }

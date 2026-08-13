@@ -22,6 +22,8 @@ public sealed class DemoCatalogService
 
     public const long MaxUploadBytes = 512L * 1024 * 1024;
     public const long MinUploadBytes = 1024;
+    private const string MovieFileName = "movie.mp4";
+    private const string MetaFileName = "meta.json";
     /// <summary>Max demos a user may submit per rolling 24h window.</summary>
     public const int MaxPublishesPerUserPerDay = 20;
     /// <summary>Legacy cap (no longer used for admin review queues).</summary>
@@ -51,7 +53,7 @@ public sealed class DemoCatalogService
             var subdirs = Directory.GetDirectories(DemosDir);
             foreach (var dir in subdirs)
             {
-                var movieFile = Path.Combine(dir, "movie.mp4");
+                var movieFile = Path.Combine(dir, MovieFileName);
                 if (File.Exists(movieFile))
                 {
                     try
@@ -82,7 +84,7 @@ public sealed class DemoCatalogService
             || string.Equals(s, Removed, StringComparison.OrdinalIgnoreCase);
 
         public static string Normalize(string? s) =>
-            IsKnown(s) ? s!.Trim().ToLowerInvariant() : Public; // legacy metas without status → public
+            s is not null && IsKnown(s) ? s.Trim().ToLowerInvariant() : Public;
     }
 
     public sealed class DemoEntry
@@ -108,7 +110,7 @@ public sealed class DemoCatalogService
         // whether that's immediate auto-approval or a later admin approval).
         public bool MadeForKids { get; set; }
         public bool IsAiSyntheticContent { get; set; } = true;
-        public string PrivacyStatus { get; set; } = "public";
+        public string PrivacyStatus { get; set; } = DemoStatuses.Public;
         public List<string>? Tags { get; set; }
 
         /// <summary>Studio-only taxonomy (e.g. storybook, horror). Not from YouTube — kept across channel sync.</summary>
@@ -207,7 +209,7 @@ public sealed class DemoCatalogService
     public string? ResolveMoviePath(string id)
     {
         if (!IsValidId(id)) return null;
-        var path = Path.Combine(DemosDir, id, "movie.mp4");
+        var path = Path.Combine(DemosDir, id, MovieFileName);
         return File.Exists(path) ? path : null;
     }
 
@@ -281,7 +283,7 @@ public sealed class DemoCatalogService
                         ?? throw new InvalidOperationException("Demo not found");
             var dir = Path.Combine(DemosDir, entry.Id);
             Directory.CreateDirectory(dir);
-            var moviePath = Path.Combine(dir, "movie.mp4");
+            var moviePath = Path.Combine(dir, MovieFileName);
             File.Copy(sourceMp4Path, moviePath, overwrite: true);
             var fi = new FileInfo(moviePath);
             if (fi.Length < MinUploadBytes)
@@ -297,7 +299,7 @@ public sealed class DemoCatalogService
                 entry.MadeForKids = mfk;
             if (isAiSyntheticContent is bool ai)
                 entry.IsAiSyntheticContent = ai;
-            if (privacyStatus is "public" or "unlisted" or "private")
+            if (privacyStatus is DemoStatuses.Public or "unlisted" or "private")
                 entry.PrivacyStatus = privacyStatus;
             if (tags is not null)
                 entry.Tags = tags.Count > 0 ? tags : null;
@@ -364,7 +366,7 @@ public sealed class DemoCatalogService
     /// Pending/rejected/removed are not world-readable.
     /// </summary>
     /// <summary>World-visible: not removed/rejected and has a YouTube id (gallery SoT).</summary>
-    public bool IsPubliclyStreamable(DemoEntry? e) =>
+    public static bool IsPubliclyStreamable(DemoEntry? e) =>
         e is not null
         && !string.Equals(e.Status, DemoStatuses.Removed, StringComparison.OrdinalIgnoreCase)
         && !string.Equals(e.Status, DemoStatuses.Rejected, StringComparison.OrdinalIgnoreCase)
@@ -420,7 +422,7 @@ public sealed class DemoCatalogService
         bool acceptedGuidelines,
         bool madeForKids = false,
         bool isAiSyntheticContent = true,
-        string privacyStatus = "public",
+        string privacyStatus = DemoStatuses.Public,
         List<string>? tags = null,
         CancellationToken ct = default)
     {
@@ -440,7 +442,7 @@ public sealed class DemoCatalogService
         bool acceptedGuidelines,
         bool madeForKids = false,
         bool isAiSyntheticContent = true,
-        string privacyStatus = "public",
+        string privacyStatus = DemoStatuses.Public,
         List<string>? tags = null,
         CancellationToken ct = default)
     {
@@ -452,7 +454,7 @@ public sealed class DemoCatalogService
         var id = GenerateId();
         var dir = Path.Combine(DemosDir, id);
         Directory.CreateDirectory(dir);
-        var moviePath = Path.Combine(dir, "movie.mp4");
+        var moviePath = Path.Combine(dir, MovieFileName);
         try
         {
             await using (var fs = new FileStream(
@@ -500,7 +502,7 @@ public sealed class DemoCatalogService
         bool acceptedGuidelines,
         bool madeForKids = false,
         bool isAiSyntheticContent = true,
-        string privacyStatus = "public",
+        string privacyStatus = DemoStatuses.Public,
         List<string>? tags = null,
         CancellationToken ct = default)
     {
@@ -512,7 +514,7 @@ public sealed class DemoCatalogService
         var id = GenerateId();
         var dir = Path.Combine(DemosDir, id);
         Directory.CreateDirectory(dir);
-        var moviePath = Path.Combine(dir, "movie.mp4");
+        var moviePath = Path.Combine(dir, MovieFileName);
         try
         {
             File.Copy(sourceMp4Path, moviePath, overwrite: false);
@@ -526,7 +528,7 @@ public sealed class DemoCatalogService
                 id, title, description, projectId, createdBy, fi.Length, acceptedGuidelines,
                 madeForKids, isAiSyntheticContent, privacyStatus, tags);
             await File.WriteAllTextAsync(
-                Path.Combine(dir, "meta.json"),
+                Path.Combine(dir, MetaFileName),
                 JsonSerializer.Serialize(entry, JsonOpts) + "\n",
                 ct).ConfigureAwait(false);
 
@@ -716,7 +718,7 @@ public sealed class DemoCatalogService
         bool acceptedGuidelines,
         bool madeForKids = false,
         bool isAiSyntheticContent = true,
-        string privacyStatus = "public",
+        string privacyStatus = DemoStatuses.Public,
         List<string>? tags = null) =>
         new()
         {
@@ -733,7 +735,7 @@ public sealed class DemoCatalogService
             AcceptedGuidelines = acceptedGuidelines,
             MadeForKids = madeForKids,
             IsAiSyntheticContent = isAiSyntheticContent,
-            PrivacyStatus = privacyStatus is "public" or "unlisted" or "private" ? privacyStatus : "public",
+            PrivacyStatus = privacyStatus is DemoStatuses.Public or "unlisted" or "private" ? privacyStatus : DemoStatuses.Public,
             Tags = tags is { Count: > 0 } ? tags : null,
         };
 
@@ -776,7 +778,7 @@ public sealed class DemoCatalogService
             {
                 try
                 {
-                    var moviePath = Path.Combine(DemosDir, entry.Id, "movie.mp4");
+                    var moviePath = Path.Combine(DemosDir, entry.Id, MovieFileName);
                     if (File.Exists(moviePath))
                     {
                         File.Delete(moviePath);
@@ -1024,7 +1026,7 @@ public sealed class DemoCatalogService
             var fixedCount = 0;
             foreach (var dir in Directory.EnumerateDirectories(DemosDir))
             {
-                var metaPath = Path.Combine(dir, "meta.json");
+                var metaPath = Path.Combine(dir, MetaFileName);
                 if (!File.Exists(metaPath)) continue;
                 try
                 {
@@ -1089,8 +1091,8 @@ public sealed class DemoCatalogService
     private async Task<DemoEntry?> ReadUnlockedAsync(string id, CancellationToken ct = default)
     {
         if (!IsValidId(id)) return null;
-        var metaPath = Path.Combine(DemosDir, id, "meta.json");
-        var moviePath = Path.Combine(DemosDir, id, "movie.mp4");
+        var metaPath = Path.Combine(DemosDir, id, MetaFileName);
+        var moviePath = Path.Combine(DemosDir, id, MovieFileName);
         if (!File.Exists(metaPath))
             return null;
         try
@@ -1125,14 +1127,14 @@ public sealed class DemoCatalogService
         var dir = Path.Combine(DemosDir, entry.Id);
         Directory.CreateDirectory(dir);
         await File.WriteAllTextAsync(
-            Path.Combine(dir, "meta.json"),
+            Path.Combine(dir, MetaFileName),
             JsonSerializer.Serialize(entry, JsonOpts) + "\n",
             ct).ConfigureAwait(false);
     }
 
     private static async Task WriteMetaAsync(string dir, DemoEntry entry, CancellationToken ct) =>
         await File.WriteAllTextAsync(
-                Path.Combine(dir, "meta.json"),
+                Path.Combine(dir, MetaFileName),
                 JsonSerializer.Serialize(entry, JsonOpts) + "\n",
                 ct)
             .ConfigureAwait(false);

@@ -130,7 +130,7 @@ public partial class SimpleVoice
                             ?? list.FirstOrDefault(c => c.VoiceOnly);
             if (!string.IsNullOrEmpty(confident?.Key))
             {
-                _narratorKey = confident!.Key;
+                _narratorKey = confident.Key;
                 return;
             }
 

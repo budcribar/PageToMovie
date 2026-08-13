@@ -55,7 +55,7 @@ public sealed class LearningProposalService
         }
 
         var cats = fails
-            .Select(f => string.IsNullOrWhiteSpace(f.Category) ? "other" : f.Category!)
+            .Select(f => string.IsNullOrWhiteSpace(f.Category) ? "other" : f.Category)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(c => c)
             .ToList();

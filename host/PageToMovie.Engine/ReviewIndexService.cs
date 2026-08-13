@@ -19,6 +19,8 @@ public sealed class ReviewIndexService
         WriteIndented = true,
     };
 
+    private const string AssetsFolder = "assets";
+    private const string ReviewFolder = "review";
     private static Regex ExactClipNameRe => ClipFileNaming.ExactClipNameRe;
 
     private readonly ProjectStore _projects;
@@ -36,16 +38,16 @@ public sealed class ReviewIndexService
     }
 
     public async Task<string> IndexPathAsync(string projectId, CancellationToken ct = default) =>
-        Path.Combine(await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false), "assets", "review", "index.json");
+        Path.Combine(await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false), AssetsFolder, ReviewFolder, "index.json");
 
     public string IndexPath(string projectId) =>
-        Path.Combine(_projects.GetProjectDir(projectId), "assets", "review", "index.json");
+        Path.Combine(_projects.GetProjectDir(projectId), AssetsFolder, ReviewFolder, "index.json");
 
     public async Task<string> FramesDirAsync(string projectId, CancellationToken ct = default) =>
-        Path.Combine(await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false), "assets", "review", "frames");
+        Path.Combine(await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false), AssetsFolder, ReviewFolder, "frames");
 
     public string FramesDir(string projectId) =>
-        Path.Combine(_projects.GetProjectDir(projectId), "assets", "review", "frames");
+        Path.Combine(_projects.GetProjectDir(projectId), AssetsFolder, ReviewFolder, "frames");
 
     public static string DraftRelPath(int scene, int clip) =>
         $"assets/review/S{scene:D2}C{clip:D2}.auto_review.json";
@@ -74,7 +76,7 @@ public sealed class ReviewIndexService
         if (string.IsNullOrWhiteSpace(doc.ProjectId))
             throw new ArgumentException("projectId required", nameof(doc));
         var path = await IndexPathAsync(doc.ProjectId, ct).ConfigureAwait(false);
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(path) ?? ".");
         doc.BuiltAtUtc = DateTimeOffset.UtcNow;
         var json = JsonSerializer.Serialize(doc, JsonOpts) + "\n";
         await File.WriteAllTextAsync(path, json, ct).ConfigureAwait(false);
@@ -183,7 +185,7 @@ public sealed class ReviewIndexService
     {
         var path = Path.Combine(
             _projects.GetProjectDir(projectId),
-            "assets", "review",
+            AssetsFolder, ReviewFolder,
             $"S{scene:D2}C{clip:D2}.auto_review.json");
         return File.Exists(path);
     }
@@ -215,7 +217,7 @@ public sealed class ReviewIndexService
                 try { File.Delete(old); } catch { /* best effort */ }
             }
         }
-        catch { /* */ }
+        catch { /* directory listing is best-effort */ }
 
         var rel = new List<string>();
         var n = 0;
@@ -226,7 +228,7 @@ public sealed class ReviewIndexService
             var relPath = FrameRelPath(scene, clip, n);
             var dest = Path.Combine(await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false),
                 relPath.Replace('/', Path.DirectorySeparatorChar));
-            Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+            Directory.CreateDirectory(Path.GetDirectoryName(dest) ?? ".");
             File.Copy(src, dest, overwrite: true);
             rel.Add(relPath.Replace('\\', '/'));
         }
@@ -256,7 +258,7 @@ public sealed class ReviewIndexService
     {
         var key = $"S{scene:D2}C{clip:D2}";
         var videoRel = $"assets/video/scene_{scene:D2}_clip_{clip:D2}.mp4";
-        var videoAbs = Path.Combine(projectDir, "assets", "video",
+        var videoAbs = Path.Combine(projectDir, AssetsFolder, "video",
             $"scene_{scene:D2}_clip_{clip:D2}.mp4");
         var videoExists = File.Exists(videoAbs) && new FileInfo(videoAbs).Length >= 512;
 
@@ -295,7 +297,7 @@ public sealed class ReviewIndexService
 
     private static ClipAutoReviewDraft? TryLoadDraft(string projectDir, int scene, int clip)
     {
-        var path = Path.Combine(projectDir, "assets", "review",
+        var path = Path.Combine(projectDir, AssetsFolder, ReviewFolder,
             $"S{scene:D2}C{clip:D2}.auto_review.json");
         if (!File.Exists(path)) return null;
         try
@@ -335,7 +337,7 @@ public sealed class ReviewIndexService
 
     private static List<(int Scene, int Clip)> ListOnDiskClips(string projectDir, int? sceneFilter)
     {
-        var videoDir = Path.Combine(projectDir, "assets", "video");
+        var videoDir = Path.Combine(projectDir, AssetsFolder, "video");
         var set = new HashSet<(int, int)>();
         if (!Directory.Exists(videoDir)) return new List<(int, int)>();
 

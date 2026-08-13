@@ -170,7 +170,7 @@ public sealed class AdaptationService
         }
 
         var conversion = await BookToFountainConverter.ConvertWithMetadataAsync(
-            title: string.IsNullOrWhiteSpace(request.Title) ? "Untitled" : request.Title!,
+            title: string.IsNullOrWhiteSpace(request.Title) ? "Untitled" : request.Title,
             bookText: request.BookText,
             author: request.Author,
             totalRuntimeMinutes: promptMinutes,

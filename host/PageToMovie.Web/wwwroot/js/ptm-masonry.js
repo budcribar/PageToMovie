@@ -11,7 +11,8 @@ window.ptmMasonry = {
     if (this._loading) return this._loading;
     this._loading = new Promise(function (resolve, reject) {
       var s = document.createElement("script");
-      s.src = "https://cdn.jsdelivr.net/npm/masonry-layout@4.2.2/dist/masonry.bundle.min.js";
+      s.src = "https://cdn.jsdelivr.net/npm/masonry-layout@4.2.2/dist/masonry.pkgd.min.js";
+      s.integrity = "sha384-GNFwBvfVxBkLMJpYMOABq3c+d3KnQxudP/mGPkzpZSTYykLBNsZEnG2D9G/X/+7D";
       s.crossOrigin = "anonymous";
       s.onload = function () {
         resolve();

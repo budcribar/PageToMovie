@@ -55,10 +55,13 @@ public enum UserAccountStatus
 /// </summary>
 public static class CoreLayerEnumExtensions
 {
+    private const string ActiveToken = "active";
+    private const string DisabledToken = "disabled";
+
     public static ModelEnablementState ParseModelEnablementState(string? value) =>
             (value ?? "").Trim().ToLowerInvariant() switch
             {
-                "enabled" or "active" => ModelEnablementState.Enabled,
+                "enabled" or ActiveToken => ModelEnablementState.Enabled,
                 "deprecated" or "archived" => ModelEnablementState.Deprecated,
                 "experimental" or "beta" => ModelEnablementState.Experimental,
                 "preview" => ModelEnablementState.Preview,
@@ -68,7 +71,7 @@ public static class CoreLayerEnumExtensions
     public static ProjectStateName ParseProjectStateName(string? value) =>
             (value ?? "").Trim().ToLowerInvariant() switch
             {
-                "active" => ProjectStateName.Active,
+                ActiveToken => ProjectStateName.Active,
                 "archived" => ProjectStateName.Archived,
                 "completed" => ProjectStateName.Completed,
                 "deleted" => ProjectStateName.Deleted,
@@ -86,10 +89,10 @@ public static class CoreLayerEnumExtensions
     public static UserAccountStatus ParseUserAccountStatus(string? value) =>
             (value ?? "").Trim().ToLowerInvariant() switch
             {
-                "active" => UserAccountStatus.Active,
+                ActiveToken => UserAccountStatus.Active,
                 "pending_confirmation" or "pendingconfirmation" or "pending" => UserAccountStatus.PendingConfirmation,
                 "unconfirmed" => UserAccountStatus.Unconfirmed,
-                "disabled" => UserAccountStatus.Disabled,
+                DisabledToken => UserAccountStatus.Disabled,
                 "suspended" => UserAccountStatus.Suspended,
                 "locked" => UserAccountStatus.Locked,
                 _ => UserAccountStatus.Active
@@ -98,17 +101,17 @@ public static class CoreLayerEnumExtensions
     public static string ToApiString(this ModelEnablementState state) => state switch
         {
             ModelEnablementState.Enabled => "enabled",
-            ModelEnablementState.Disabled => "disabled",
+            ModelEnablementState.Disabled => DisabledToken,
             ModelEnablementState.Deprecated => "deprecated",
             ModelEnablementState.Experimental => "experimental",
             ModelEnablementState.Preview => "preview",
-            _ => "disabled"
+            _ => DisabledToken,
         };
 
     public static string ToApiString(this ProjectStateName state) => state switch
         {
             ProjectStateName.Draft => "draft",
-            ProjectStateName.Active => "active",
+            ProjectStateName.Active => ActiveToken,
             ProjectStateName.Archived => "archived",
             ProjectStateName.Completed => "completed",
             ProjectStateName.Deleted => "deleted",
@@ -125,13 +128,13 @@ public static class CoreLayerEnumExtensions
 
     public static string ToApiString(this UserAccountStatus status) => status switch
         {
-            UserAccountStatus.Active => "active",
+            UserAccountStatus.Active => ActiveToken,
             UserAccountStatus.PendingConfirmation => "pending_confirmation",
             UserAccountStatus.Unconfirmed => "unconfirmed",
-            UserAccountStatus.Disabled => "disabled",
+            UserAccountStatus.Disabled => DisabledToken,
             UserAccountStatus.Suspended => "suspended",
             UserAccountStatus.Locked => "locked",
-            _ => "active"
+            _ => ActiveToken,
         };
 
 }

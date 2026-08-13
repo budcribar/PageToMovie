@@ -14,17 +14,23 @@ public abstract partial class AdaptationPageBase
         private readonly AdaptationPageBase S;
         public AdaptationJobs(AdaptationPageBase host) => S = host;
 
-        public JobSnapshot? Job;
-        public int ProgressIndex;
-        public int ProgressTotal;
+        private const string JobStatusError = "error";
+        private const string JobStatusCancelled = "cancelled";
+        private const string JobStatusQueued = "queued";
+        private const string JobStatusRunning = "running";
+        private const string JobKindStage2 = "stage2";
+
+        public JobSnapshot? Job { get; set; }
+        public int ProgressIndex { get; set; }
+        public int ProgressTotal { get; set; }
         private CancellationTokenSource? _pollCts;
         /// <summary>True after user hits Cancel — waiters should exit even if the API is dead.</summary>
         public bool ClientCancelRequested { get; private set; }
 
         public bool JobRunning =>
             !ClientCancelRequested &&
-            (string.Equals(Job?.Status, "running", StringComparison.OrdinalIgnoreCase) ||
-             string.Equals(Job?.Status, "queued", StringComparison.OrdinalIgnoreCase));
+            (string.Equals(Job?.Status, JobStatusRunning, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(Job?.Status, JobStatusQueued, StringComparison.OrdinalIgnoreCase));
 
         public void OnJobUpdated(JobSnapshot snap)
         {
@@ -32,7 +38,7 @@ public abstract partial class AdaptationPageBase
             Job = snap;
             AbsorbProgressFromSnapshot(snap);
             AbsorbProgressFromLine(snap.Message);
-            if (snap.Status is "done" or "error" or "cancelled")
+            if (snap.Status is "done" or JobStatusError or JobStatusCancelled)
             {
                 _pollCts?.Cancel();
                 _pollCts?.Dispose();
@@ -52,7 +58,7 @@ public abstract partial class AdaptationPageBase
                         try { await S.OnAdaptationJobTerminalAsync(snap); }
                         catch (Exception ex) { S.Error ??= ex.Message; }
                     }
-                    else if (snap.Status == "error")
+                    else if (snap.Status == JobStatusError)
                         S.Error = snap.Error ?? snap.Message ?? "Job failed";
                     S.StateHasChanged();
                 });
@@ -70,7 +76,7 @@ public abstract partial class AdaptationPageBase
                 // Preserve phase Total when log arrives before full snapshot (avoid Total=0 → 35% bar).
                 Job = new JobSnapshot
                 {
-                    Status = "running",
+                    Status = JobStatusRunning,
                     Message = line,
                     Log = new List<string> { line },
                     Index = ProgressIndex,
@@ -109,7 +115,7 @@ public abstract partial class AdaptationPageBase
                 ProgressIndex = Math.Max(ProgressIndex, snap.Index);
             // Never let a live adapt job report Total=0 after we have phase scale.
             if (JobRunning && ProgressTotal <= 0 &&
-                snap.Kind is "stage1" or "stage2" or "book_import" or "book_prepare" or "plan_looks")
+                snap.Kind is "stage1" or JobKindStage2 or "book_import" or "book_prepare" or "plan_looks")
                 ProgressTotal = 10;
         }
 
@@ -272,7 +278,7 @@ public abstract partial class AdaptationPageBase
                             });
                             if (snap.IsFinished)
                             {
-                                if (snap.Status is "done" or "error" or "cancelled" or "partial")
+                                if (snap.Status is "done" or JobStatusError or JobStatusCancelled or "partial")
                                     await S.InvokeAsync(async () =>
                                     {
                                         if (S is AdaptationImport importPage)
@@ -281,7 +287,7 @@ public abstract partial class AdaptationPageBase
                                             importPage.Drop._importPct = null;
                                         }
                                         // Unstick Create-from-book waiters that key off Busy.
-                                        if (S.Busy && snap.Status is "error" or "cancelled")
+                                        if (S.Busy && snap.Status is JobStatusError or JobStatusCancelled)
                                         {
                                             S.Busy = false;
                                             S.BusyMessage = null;
@@ -297,7 +303,7 @@ public abstract partial class AdaptationPageBase
                                             try { await S.OnAdaptationJobTerminalAsync(snap); }
                                             catch (Exception ex) { S.Error ??= ex.Message; }
                                         }
-                                        else if (snap.Status == "error")
+                                        else if (snap.Status == JobStatusError)
                                             S.Error = snap.Error ?? snap.Message ?? "Job failed";
                                         S.StateHasChanged();
                                     });
@@ -328,7 +334,7 @@ public abstract partial class AdaptationPageBase
             Job = new JobSnapshot
             {
                 JobId = Job?.JobId,
-                Status = "error",
+                Status = JobStatusError,
                 Kind = Job?.Kind,
                 Message = message,
                 Error = message,
@@ -385,7 +391,7 @@ public abstract partial class AdaptationPageBase
                     await S.InvokeAsync(() =>
                     {
                         if (live is null || live.IsFinished
-                            || (live.Status is not ("running" or "queued")))
+                            || (live.Status is not (JobStatusRunning or JobStatusQueued)))
                         {
                             // Stale client snapshot after server restart — do not show Writing 6/10.
                             if (JobRunning)
@@ -443,7 +449,7 @@ public abstract partial class AdaptationPageBase
 
             Job = new JobSnapshot
             {
-                Status = "cancelled",
+                Status = JobStatusCancelled,
                 Kind = Job?.Kind,
                 Message = "Cancelled",
                 ProjectId = Job?.ProjectId,
@@ -500,7 +506,7 @@ public abstract partial class AdaptationPageBase
         /// </summary>
         public static string OperatorJobRunningMessage(JobSnapshot snap)
         {
-            if (string.Equals(snap.Status, "queued", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(snap.Status, JobStatusQueued, StringComparison.OrdinalIgnoreCase))
                 return "Waiting…";
 
             var msg = snap.Message ?? "";
@@ -518,7 +524,7 @@ public abstract partial class AdaptationPageBase
 
             var sceneOf = CommonRegex.Match(
                 msg, @"Scene\s+(\d+)\s+of\s+(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-            if (sceneOf.Success && kind is "stage2")
+            if (sceneOf.Success && kind is JobKindStage2)
             {
                 var a = sceneOf.Groups[1].Value;
                 var b = sceneOf.Groups[2].Value;
@@ -532,7 +538,7 @@ public abstract partial class AdaptationPageBase
 
             var scenesDone = CommonRegex.Match(
                 msg, @"Planning scenes:\s*(\d+)\s*/\s*(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-            if (scenesDone.Success && kind is "stage2")
+            if (scenesDone.Success && kind is JobKindStage2)
             {
                 var a = scenesDone.Groups[1].Value;
                 var b = scenesDone.Groups[2].Value;
@@ -545,7 +551,7 @@ public abstract partial class AdaptationPageBase
 
             var scene = CommonRegex.Match(
                 msg, @"Scene\s+(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-            if (scene.Success && kind is "stage2")
+            if (scene.Success && kind is JobKindStage2)
             {
                 if (snap.Total > 0)
                 {
@@ -578,11 +584,11 @@ public abstract partial class AdaptationPageBase
                 msg.Contains("Drafting", StringComparison.OrdinalIgnoreCase) ||
                 kind is "stage1" or "book_import")
             {
-                if (kind is "stage2")
+                if (kind is JobKindStage2)
                     return "Building shot plan…";
                 return "Writing screenplay…";
             }
-            if (msg.Contains("Planning", StringComparison.OrdinalIgnoreCase) || kind is "stage2")
+            if (msg.Contains("Planning", StringComparison.OrdinalIgnoreCase) || kind is JobKindStage2)
                 return "Building shot plan…";
             if (msg.Contains("extract", StringComparison.OrdinalIgnoreCase))
                 return "Extracting text from the book…";
@@ -596,7 +602,7 @@ public abstract partial class AdaptationPageBase
             if (string.IsNullOrWhiteSpace(msg))
                 return kind switch
                 {
-                    "stage2" => "Building shot plan…",
+                    JobKindStage2 => "Building shot plan…",
                     "stage1" or "book_import" => "Writing screenplay…",
                     _ => "Working…",
                 };

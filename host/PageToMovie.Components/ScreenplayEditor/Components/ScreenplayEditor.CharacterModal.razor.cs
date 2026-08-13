@@ -7,7 +7,7 @@ namespace PageToMovie.ScreenplayEditor.Components;
 
 public partial class ScreenplayEditor_CharacterModal : ComponentBase
 {
-    [Inject] private IJSRuntime Js { get; set; } = null!;
+    [Inject] public required IJSRuntime Js { get; set; }
 
     [Parameter]
     public bool IsOpen { get; set; }
