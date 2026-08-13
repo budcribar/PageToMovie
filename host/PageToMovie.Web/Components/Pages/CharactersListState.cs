@@ -223,7 +223,7 @@ public partial class Characters
             {
                 try { await S.Hub.StartAsync(); } catch (Exception hex) { S._error = $"SignalR: {hex.Message}"; }
                 var result = await S.Engine.ExtractCastFromScreenplayAsync(S._projectId, force: true);
-                if (result is null || result.Ok is not true)
+                if (result is null || !result.Ok)
                 {
                     S._error = result?.Error ?? "Could not start cast extract.";
                     _extractingCast = false;

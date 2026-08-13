@@ -27,9 +27,9 @@ public static class Stage1PromptPack
             body = await PromptFiles.ReadAsync(BookToFountainRelativePath, workspaceRoot, ct)
                 .ConfigureAwait(false);
         }
-        catch (InvalidOperationException) when (!string.IsNullOrWhiteSpace(fallbackBody))
+        catch (InvalidOperationException) when (fallbackBody is string fb && !string.IsNullOrWhiteSpace(fb))
         {
-            body = fallbackBody ?? string.Empty;
+            body = fb;
         }
 
         return body.Replace("{{TOTAL_RUNTIME_MINUTES}}", totalRuntimeMinutes.ToString());

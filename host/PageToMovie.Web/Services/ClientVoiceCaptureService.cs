@@ -348,16 +348,8 @@ public sealed class ClientVoiceCaptureService
         return (double)hit / e.Count;
     }
 
-    private static int CountHits(List<string> expected, HashSet<string> heard)
-    {
-        var hit = 0;
-        foreach (var w in expected)
-        {
-            if (heard.Contains(w))
-                hit++;
-        }
-        return hit;
-    }
+    private static int CountHits(List<string> expected, HashSet<string> heard) =>
+        expected.Count(heard.Contains);
 
     private static List<string> Tokenize(string s)
     {

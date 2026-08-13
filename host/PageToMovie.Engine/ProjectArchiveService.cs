@@ -153,7 +153,7 @@ public sealed class ProjectArchiveService
         var projectSchema = await ProjectFormatVersions.TryReadProjectSchemaVersionAsync(projectDir, ct).ConfigureAwait(false)
                             ?? ProjectFormatVersions.ProjectSchemaVersion;
         var metaEntry = zip.CreateEntry($"{id}/_export_meta.json", CompressionLevel.Fastest);
-        await using (var metaStream = metaEntry.Open())
+        await using (var metaStream = await metaEntry.OpenAsync(ct).ConfigureAwait(false))
         using (var w = new StreamWriter(metaStream, Encoding.UTF8))
         {
             await w.WriteAsync(JsonSerializer.Serialize(
@@ -188,7 +188,7 @@ public sealed class ProjectArchiveService
 
             var entry = zip.CreateEntry(entryName, CompressionLevel.Fastest);
             await using (var sourceStream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, useAsync: true))
-            await using (var entryStream = entry.Open())
+            await using (var entryStream = await entry.OpenAsync(ct).ConfigureAwait(false))
             {
                 await sourceStream.CopyToAsync(entryStream, ct).ConfigureAwait(false);
             }

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Components;
@@ -28,6 +29,7 @@ public partial class Login : IDisposable
     internal bool _needsResend;
     internal string? _error;
     internal string? _info;
+    private Action<CultureInfo>? _onCultureChanged;
     internal string _status = "Checking session…";
     internal bool _busy;
     private bool _started;
@@ -188,12 +190,11 @@ public partial class Login : IDisposable
 
     protected override void OnInitialized()
     {
-        L.CultureChanged += OnCultureChanged;
+        _onCultureChanged = _ => _ = InvokeAsync(StateHasChanged);
+        L.CultureChanged += _onCultureChanged;
         var relative = Nav.ToBaseRelativePath(Nav.Uri);
         _isSignup = relative.StartsWith("signup", StringComparison.OrdinalIgnoreCase);
     }
-
-    private void OnCultureChanged(System.Globalization.CultureInfo _culture) => _ = InvokeAsync(StateHasChanged);
 
     public void Dispose()
     {
@@ -203,8 +204,8 @@ public partial class Login : IDisposable
 
     protected virtual void Dispose(bool disposing)
     {
-        if (disposing)
-            L.CultureChanged -= OnCultureChanged;
+        if (disposing && _onCultureChanged is not null)
+            L.CultureChanged -= _onCultureChanged;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -330,7 +331,7 @@ public partial class Login : IDisposable
             {
                 var path = Uri.UnescapeDataString(ret.ToString());
                 if (path.StartsWith('/') && !path.StartsWith("//", StringComparison.Ordinal))
-                    return path.Split(['?', '#'])[0]; // never re-open with me= in returnUrl
+                    return path.Split('?', '#')[0]; // never re-open with me= in returnUrl
             }
         }
         catch { /* home */ }
