@@ -696,6 +696,7 @@ public static class AdaptationEndpoints
     IUserApiKeyProvider keys,
     IOptions<PageToMovieOptions> opts,
     PageToMovie.Core.Abstractions.IBookFileSessionFactory? bookFileSessions,
+    PageToMovie.Core.Abstractions.IFountainFileSessionFactory? fountainFileSessions,
     XaiResponsesClient? responses,
     CancellationToken ct)
     {
@@ -707,7 +708,8 @@ public static class AdaptationEndpoints
             store, id, chat, ct: ct, bookRegistry: books, cacheUserId: user.UserId,
             bookFileSessionFactory: bookFileSessions,
             responses: responses,
-            useFakes: opts.Value.UseFakes);
+            useFakes: opts.Value.UseFakes,
+            fountainFileSessionFactory: fountainFileSessions);
         if (!result.Ok)
             return Results.BadRequest(new { ok = false, error = result.Error });
 

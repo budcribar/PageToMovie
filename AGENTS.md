@@ -145,7 +145,7 @@ Our `book_id` is **internal** (SHA of the text). Providers do not know it. The t
 |------|--------|-------------|
 | Enrich | Files path (book + `screenplay.max`); fallback still pastes 40k book + full fountain | Done for Grok; keep fallback last-resort |
 | Stage 1 book → Fountain (primary) | Book `file_id` + `previous_response_id` | Done for Grok when book does not fit inline |
-| Stage 1 merge / loc / name / narration repairs | **Still inlines the full Fountain** | Upload stitch as artifact `file_id`; attach for merge + repairs (see max-master plan) |
+| Stage 1 merge / loc / name / narration repairs | Fountain `file_id` (`screenplay.stitch`) via `IFountainFileSession`; fallback inlines | Done for Grok |
 | Look / reskin | Files path (`screenplay.max` file_id); fallback inlines | Done for Grok |
 | Fit length / trim | Files path (`screenplay.max` file_id); fallback inlines | Done for Grok |
 | Cast extract | Files path (book + `screenplay.fountain` file_ids); fallback inlines | Done for Grok |
@@ -435,7 +435,7 @@ When debugging runtime behavior on the live Railway server across coding agent s
 
 ---
 
-*Last updated: 2026-08-13 — max-master (full screenplay, cut later); provider file cache; product north star; auto-run long-term; general solutions; UI copy principles; ephemeral migration cleanup; server diagnostics; platform architecture & pipeline integrity rules; strict client-side media ownership enforcement; strict operator control for paid AI tests.*
+*Last updated: 2026-08-13 — P0 honest runtime + P1 fountain file_id; max-master; provider file cache; product north star.*
 
 
 ## Stage‑1 prompt tokens (book → Fountain)

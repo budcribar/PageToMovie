@@ -90,6 +90,7 @@ public sealed class FilmJobService
     private readonly IVoiceCloneClient _voiceClone;
     private readonly BookTextRegistryService? _bookRegistry;
     private readonly PageToMovie.Core.Abstractions.IBookFileSessionFactory? _bookFileSessionFactory;
+    private readonly PageToMovie.Core.Abstractions.IFountainFileSessionFactory? _fountainFileSessionFactory;
     private readonly XaiResponsesClient? _xaiResponses;
     private readonly VoiceAlignmentStore? _voiceAlignment;
     private readonly IVideoEditClient? _videoEdit;
@@ -142,7 +143,8 @@ public sealed class FilmJobService
         VoiceAlignmentStore? voiceAlignment = null,
         IVideoEditClient? videoEdit = null,
         CastFromScreenplayService? castExtract = null,
-        PageToMovie.Engine.Collaboration.IProjectAclService? acl = null)
+        PageToMovie.Engine.Collaboration.IProjectAclService? acl = null,
+        PageToMovie.Core.Abstractions.IFountainFileSessionFactory? fountainFileSessionFactory = null)
     {
         _httpFactory = httpFactory;
         _projects = projects;
@@ -186,6 +188,7 @@ public sealed class FilmJobService
         _errorLogger = errorLogger;
         _bookRegistry = bookRegistry;
         _bookFileSessionFactory = bookFileSessionFactory;
+        _fountainFileSessionFactory = fountainFileSessionFactory;
         _xaiResponses = xaiResponses;
         _voiceAlignment = voiceAlignment;
         _videoEdit = videoEdit;
@@ -1394,7 +1397,8 @@ public sealed class FilmJobService
             cacheUserId: _user.UserId,
             bookFileSessionFactory: _bookFileSessionFactory,
             responses: _xaiResponses,
-            useFakes: _opts.UseFakes).ConfigureAwait(false);
+            useFakes: _opts.UseFakes,
+            fountainFileSessionFactory: _fountainFileSessionFactory).ConfigureAwait(false);
 
         if (save.Ok)
             return save;

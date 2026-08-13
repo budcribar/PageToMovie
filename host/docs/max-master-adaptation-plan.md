@@ -143,16 +143,16 @@ Non-admin: short outcome only (existing UI copy rules). Admin: the lines above.
 ### P0 — Law + estimate honesty (docs + small code)
 
 - [x] North star in `AGENTS.md` + this plan.
-- [ ] `EstimateDraftRuntimeMinutes`: if trailer `est_runtime_min` disagrees with body-word estimate by >2×, **use the word count** and log the sidecar as suspect.
+- [x] `EstimateDraftRuntimeMinutes`: if trailer `est_runtime_min` disagrees with body-word estimate by >2×, **use the word count** and log the sidecar as suspect.
 - [x] Heartbeat on merge + loc/name/narration (15s ticks via `Stage1ProgressHeartbeat`); live elapsed on the job card; operator phase lines.
 
 ### P1 — Fountain `file_id` on extra passes
 
 After stitch (and after each repair that changes SHA):
 
-- Upload / reuse via `ProjectXaiArtifactFiles` (`screenplay.max` or a `screenplay.stitch` kind).
-- Merge + repairs: instruction + `input_file`, same shape as enrich (`ScreenplayEnrichFiles`).
-- Fallback inline + log if Files is down.
+- [x] Upload / reuse via `ProjectXaiArtifactFiles` (`screenplay.stitch`).
+- [x] Merge + repairs: instruction + `input_file` (`IFountainFileSession`).
+- [x] Fallback inline + log if Files is down.
 
 This is the cheapest win on today’s 20-chunk path.
 

@@ -902,7 +902,8 @@ public static string NormalizeText(string text)
         PageToMovie.Core.Abstractions.IBookFileSessionFactory? bookFileSessionFactory = null,
         AdaptationDefaultsOptions? adaptationDefaults = null,
         XaiResponsesClient? responses = null,
-        bool useFakes = false)
+        bool useFakes = false,
+        PageToMovie.Core.Abstractions.IFountainFileSessionFactory? fountainFileSessionFactory = null)
     {
         var projectDir = await store.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         var bookPath = Path.Combine(projectDir, SourceDir, "book_full.txt");
@@ -942,7 +943,7 @@ public static string NormalizeText(string text)
                 store, projectId, projectDir, book, title, author, minutes, generationTemperature,
                 chat, model, cfg, cache, onProgress, ct, errorLogger, jobId,
                 bookRegistry, cacheUserId, bookFileSessionFactory, adaptationDefaults,
-                responses, useFakes).ConfigureAwait(false);
+                responses, useFakes, fountainFileSessionFactory).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -1085,7 +1086,8 @@ public static string NormalizeText(string text)
         PageToMovie.Core.Abstractions.IBookFileSessionFactory? bookFileSessionFactory,
         AdaptationDefaultsOptions? adaptationDefaults,
         XaiResponsesClient? responses,
-        bool useFakes)
+        bool useFakes,
+        PageToMovie.Core.Abstractions.IFountainFileSessionFactory? fountainFileSessionFactory)
     {
         // Stage‑1 generation goes through Adaptation façade (not a reimplementation).
         var onGate = BindStructuralGateLogger(errorLogger, projectId, jobId);
@@ -1099,6 +1101,8 @@ public static string NormalizeText(string text)
         var bookSession = await TryCreateBookFileSessionAsync(
             bookFileSessionFactory, cache.BookIdentity, book, model, onProgress, ct)
             .ConfigureAwait(false);
+
+        var fountainSession = fountainFileSessionFactory?.TryCreate(projectDir, model);
 
         var result = await AdaptationService.ConvertAsync(
             new AdaptationRequest
@@ -1123,7 +1127,8 @@ public static string NormalizeText(string text)
             progressAdapter,
             ct,
             onStructuralGateFailure: onGate,
-            bookSession: bookSession).ConfigureAwait(false);
+            bookSession: bookSession,
+            fountainSession: fountainSession).ConfigureAwait(false);
 
         var fountain = result.Fountain;
         var visionFromScript = ProjectVisionMeta.MapVision(result.VisionMeta);

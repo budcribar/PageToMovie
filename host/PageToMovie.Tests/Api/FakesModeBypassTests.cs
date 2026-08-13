@@ -52,4 +52,12 @@ public class FakesModeBypassTests : IClassFixture<PageToMovieApiFactory>
         var session = await factory.TryCreateAsync("book-1", "Once upon a time.", "grok-4-fast-reasoning");
         Assert.Null(session);
     }
+
+    [Fact]
+    public void FountainFileSession_factory_is_disabled_in_fakes_mode()
+    {
+        var factory = _factory.Services.GetRequiredService<IFountainFileSessionFactory>();
+        var session = factory.TryCreate(Path.GetTempPath(), "grok-4.6");
+        Assert.Null(session);
+    }
 }

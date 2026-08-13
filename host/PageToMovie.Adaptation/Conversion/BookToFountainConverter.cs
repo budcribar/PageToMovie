@@ -157,6 +157,7 @@ public static class BookToFountainConverter
         Func<StructuralGateFailure, CancellationToken, Task>? onStructuralGateFailure = null,
         double temperature = 0.2,
         IBookFileSession? bookSession = null,
+        IFountainFileSession? fountainSession = null,
         string? visualMedium = null,
         AdaptationPromptTokens? promptTokens = null)
     {
@@ -183,12 +184,16 @@ public static class BookToFountainConverter
         // file_id is meant to avoid re-billing huge novels, not short texts.
         var bookFitsInline = FitsSingleShot(bookText, budget);
 
-        var prevSession = Stage1BookSessionScope.Current;
+        var prevBook = Stage1BookSessionScope.Current;
+        var prevFountain = Stage1FountainSessionScope.Current;
         Stage1BookSessionScope.Current = BeginBookFileSession(bookSession, bookFitsInline);
+        Stage1FountainSessionScope.Current = fountainSession is { IsAvailable: true } ? fountainSession : null;
         try
         {
             await AnnounceBookSessionAsync(bookSession, bookFitsInline, onProgress, ct)
                 .ConfigureAwait(false);
+            if (Stage1FountainSessionScope.Current is not null)
+                onProgress?.Invoke("Stage‑1 can attach the draft by file_id for merge and repairs.");
 
             var text = await AdaptFountainBodyAsync(
                 system, title, author, pageCount, totalRuntimeMinutes, bookText,
@@ -211,7 +216,8 @@ public static class BookToFountainConverter
         }
         finally
         {
-            Stage1BookSessionScope.Current = prevSession;
+            Stage1BookSessionScope.Current = prevBook;
+            Stage1FountainSessionScope.Current = prevFountain;
         }
     }
 
@@ -526,9 +532,12 @@ public static class BookToFountainConverter
             onProgress?.Invoke($"Visual medium from screenplay: {vision.VisualMedium}");
         }
         if (report is not null)
+        {
+            ReconcileReportRuntime(report, fountainOnly, onProgress);
             onProgress?.Invoke(
                 $"Adaptation report: source_complete={report.SourceComplete}, " +
                 $"issues={report.Issues.Count}, est_runtime={report.Metrics.EstRuntimeMin:0.#} min");
+        }
 
         var visionMarkers = early.VisionMarkers.Merge(lateVision);
         var reportMarkers = early.ReportMarkers.Merge(lateReport);
@@ -943,20 +952,50 @@ public static class BookToFountainConverter
         string correctionInstruction = "Fix the reported structural problems without changing book-faithful story content.",
         Func<string, IReadOnlyList<Stage1ValidationIssue>>? validate = null,
         string? deterministicFallback = null,
-        string operationName = "stage1_book_to_fountain")
+        string operationName = "stage1_book_to_fountain",
+        string? fountainForFile = null)
     {
         validate ??= static value => string.IsNullOrWhiteSpace(value)
             ? [new Stage1ValidationIssue("empty_response", "The response was empty.")]
             : Array.Empty<Stage1ValidationIssue>();
+
+        IFountainFileSession? fountainSession = null;
+        var userToSend = user;
+        if (!string.IsNullOrWhiteSpace(fountainForFile))
+        {
+            fountainSession = Stage1FountainSessionScope.Current;
+            if (fountainSession is { IsAvailable: true })
+            {
+                try
+                {
+                    await fountainSession.EnsureUploadedAsync(fountainForFile, ct).ConfigureAwait(false);
+                    onProgress?.Invoke("Screenplay attached by file_id (no body resend).");
+                    userToSend = user.TrimEnd() +
+                        "\n\nThe attached file is the Fountain draft. Return the complete Fountain only.";
+                }
+                catch (Exception ex)
+                {
+                    onProgress?.Invoke("Fountain file_id unavailable — inlining draft: " + ex.Message);
+                    fountainSession = null;
+                }
+            }
+            if (fountainSession is null)
+            {
+                userToSend = user.TrimEnd() +
+                    "\n\n--- BEGIN FOUNTAIN ---\n" + fountainForFile + "\n--- END FOUNTAIN ---\n";
+            }
+        }
+
         using var heartbeat = Stage1ProgressHeartbeat.Start(onProgress, retryLabel);
         var result = await Stage1ChatExecutor.ExecuteAsync(
             chat,
             new Stage1ChatExecutor.Request(
-                system, user, model, temperature, mode, promptVersion,
+                system, userToSend, model, temperature, mode, promptVersion,
                 correctionInstruction, reasoningEffort, deterministicFallback, operationName),
             validate,
             ct,
-            Stage1BookSessionScope.Current).ConfigureAwait(false);
+            Stage1BookSessionScope.Current,
+            fountainSession).ConfigureAwait(false);
         if (result.Source == Stage1ResultSource.CorrectiveResponse)
             onProgress?.Invoke($"{retryLabel} corrected after validation.");
         else if (!result.Success)
@@ -1003,10 +1042,6 @@ public static class BookToFountainConverter
               Or drop the heading and fold a brief walk into the Action of the following scene.
             - Do not change plot, cast tokens, or dialogue wording except as needed for heading fixes.
             - No markdown fences. Fountain only.
-
-            --- BEGIN FOUNTAIN ---
-            {fountain}
-            --- END FOUNTAIN ---
             """;
 
         try
@@ -1019,7 +1054,8 @@ public static class BookToFountainConverter
                     correctionInstruction: "Rewrite every remaining vague scene heading as one or two concrete filmable locations.",
                     validate: value => ValidateFountainRepair(value, FindVagueLocationHeadings, "vague_heading"),
                     deterministicFallback: fountain,
-                    operationName: "stage1_location_heading_repair").ConfigureAwait(false);
+                    operationName: "stage1_location_heading_repair",
+                    fountainForFile: fountain).ConfigureAwait(false);
             if (raw is null)
             {
                 onProgress?.Invoke("Location repair failed twice — keeping prior draft.");
@@ -1132,10 +1168,6 @@ public static class BookToFountainConverter
             - Do not change plot, cast tokens, dialogue wording, or any heading outside these
               groups.
             - No markdown fences. Fountain only.
-
-            --- BEGIN FOUNTAIN ---
-            {fountain}
-            --- END FOUNTAIN ---
             """;
 
         return await ExecuteNormalizationPassAsync(new(
@@ -1179,7 +1211,8 @@ public static class BookToFountainConverter
                     correctionInstruction: "Return the complete Fountain screenplay again — valid Fountain formatting throughout.",
                     validate: ValidateNormalizationRepair,
                     deterministicFallback: pass.Fountain,
-                    operationName: pass.OperationName).ConfigureAwait(false);
+                    operationName: pass.OperationName,
+                    fountainForFile: pass.Fountain).ConfigureAwait(false);
             if (raw is null)
             {
                 pass.OnProgress?.Invoke($"{pass.RetryLabel} failed twice — keeping prior draft.");
@@ -1330,10 +1363,6 @@ public static class BookToFountainConverter
             - Do not leave FIRST/SECOND/THIRD, OFFICER 1, BUSINESSMAN 2, MERCHANT #1, etc.
             - Do not change plot, locations, or book-faithful dialogue wording except the cue names.
             - No markdown fences. Fountain only.
-
-            --- BEGIN FOUNTAIN ---
-            {fountain}
-            --- END FOUNTAIN ---
             """;
 
         try
@@ -1346,7 +1375,8 @@ public static class BookToFountainConverter
                     correctionInstruction: "Replace every remaining generic numbered or ordinal character cue with stable proper-name tokens.",
                     validate: value => ValidateFountainRepair(value, FindGenericNumberedSpeakers, "generic_speaker"),
                     deterministicFallback: fountain,
-                    operationName: "stage1_generic_speaker_repair")
+                    operationName: "stage1_generic_speaker_repair",
+                    fountainForFile: fountain)
                 .ConfigureAwait(false);
             if (raw is null)
             {
@@ -1568,10 +1598,6 @@ public static class BookToFountainConverter
               written.
             - Do not change plot, locations, or dialogue wording except the spelling itself.
             - No markdown fences. Fountain only.
-
-            --- BEGIN FOUNTAIN ---
-            {fountain}
-            --- END FOUNTAIN ---
             """;
 
         return await ExecuteNormalizationPassAsync(new(
@@ -1929,10 +1955,6 @@ public static class BookToFountainConverter
             - Do not change plot, cast tokens, locations, or book-faithful wording — only re-join
               the split narration and attribute bare narration.
             - No markdown fences. Fountain only.
-
-            --- BEGIN FOUNTAIN ---
-            {fountain}
-            --- END FOUNTAIN ---
             """;
 
         try
@@ -1954,7 +1976,8 @@ public static class BookToFountainConverter
                         f => FindSplitNarrationBlocks(f).Select(s => s.CueDisplay).ToList(),
                         "split_narration"),
                     deterministicFallback: RemergeSplitNarration(fountain),
-                    operationName: operationName)
+                    operationName: operationName,
+                    fountainForFile: fountain)
                 .ConfigureAwait(false);
             if (raw is null)
             {
@@ -2359,18 +2382,50 @@ public static class BookToFountainConverter
     }
 
     /// <summary>
-    /// Rough finished-film minutes from draft body words (or adaptation_report est when present).
-    /// Used only as a soft quality floor — not a hard production duration.
+    /// Finished-film minutes from draft body words. Trailer <c>est_runtime_min</c> is used only
+    /// when it agrees with the word count within 2× — last-chunk sidecars often lie (e.g. 17 min
+    /// on a 400-minute draft).
     /// </summary>
     public static double EstimateDraftRuntimeMinutes(string? fountain)
     {
         if (string.IsNullOrWhiteSpace(fountain)) return 0;
-        if (TryReadReportedRuntime(fountain, out var reported, out fountain))
+        TryReadReportedRuntime(fountain, out var reported, out var body);
+        var fromWords = EstimateMinutesFromBodyWords(body);
+        if (reported > 0 && fromWords > 0 && IsRuntimeSidecarSuspect(reported, fromWords))
+            return fromWords;
+        if (reported > 0)
             return reported;
+        return fromWords;
+    }
 
+    /// <summary>True when the model's runtime trailer disagrees with body-word minutes by more than 2×.</summary>
+    public static bool IsRuntimeSidecarSuspect(double reportedMinutes, double bodyWordMinutes) =>
+        reportedMinutes > 0
+        && bodyWordMinutes > 0
+        && (reportedMinutes / bodyWordMinutes > 2.0 || bodyWordMinutes / reportedMinutes > 2.0);
+
+    internal static void ReconcileReportRuntime(
+        AdaptationReport? report, string fountain, Action<string>? onProgress)
+    {
+        if (report?.Metrics is null) return;
+        TryReadReportedRuntime(fountain, out _, out var body);
+        var fromWords = EstimateMinutesFromBodyWords(string.IsNullOrWhiteSpace(body) ? fountain : body);
+        if (fromWords <= 0) return;
+        var reported = report.Metrics.EstRuntimeMin;
+        if (reported <= 0 || IsRuntimeSidecarSuspect(reported, fromWords))
+        {
+            if (reported > 0)
+                onProgress?.Invoke(
+                    $"Runtime sidecar looked wrong ({reported:0.#} vs {fromWords:0.#} min from pages) — using page count.");
+            report.Metrics.EstRuntimeMin = Math.Round(fromWords, 1);
+        }
+    }
+
+    private static double EstimateMinutesFromBodyWords(string? fountain)
+    {
+        if (string.IsNullOrWhiteSpace(fountain)) return 0;
         var words = CountDraftBodyWords(fountain);
         if (words <= 0) return 0;
-        // Match BODY_WORDS_PER_MINUTE default (155).
         return words / 155.0;
     }
 
@@ -2867,7 +2922,8 @@ public static class BookToFountainConverter
             try
             {
                 var merged = StripBookPageTags(await MergeFountainPartsAsync(
-                    system, title, author, totalMinutes, parts, chat, model, ct, reasoningEffort)
+                    system, title, author, totalMinutes, parts, stitched, chat, model,
+                    onProgress, ct, reasoningEffort)
                     .ConfigureAwait(false));
                 if (LooksLikeGoodFountain(merged) &&
                     CountSceneHeadings(merged) >= Math.Max(2, CountSceneHeadings(stitched) / 3))
@@ -2896,47 +2952,63 @@ public static class BookToFountainConverter
         string? author,
         int? totalMinutes,
         IReadOnlyList<string> parts,
+        string stitched,
         IChatClient chat,
         string model,
+        Action<string>? onProgress,
         CancellationToken ct,
         string? reasoningEffort = null)
     {
-        var sb = new StringBuilder();
-        sb.AppendLine("MULTI-CHUNK MERGE TASK");
-        sb.AppendLine($"Project title hint: {title}");
-        sb.AppendLine($"Author hint: {author ?? "(unknown)"}");
-        sb.AppendLine(totalMinutes is > 0
+        var header = new StringBuilder();
+        header.AppendLine("MULTI-CHUNK MERGE TASK");
+        header.AppendLine($"Project title hint: {title}");
+        header.AppendLine($"Author hint: {author ?? "(unknown)"}");
+        header.AppendLine(totalMinutes is > 0
             ? $"TOTAL_RUNTIME_MINUTES = {totalMinutes}"
             : "TOTAL_RUNTIME_MINUTES = unlimited (natural length — do not pad)");
-        sb.AppendLine();
-        sb.AppendLine("You are given ordered Fountain partials adapted from successive book chunks.");
-        sb.AppendLine("Merge them into ONE complete Fountain 1.1 screenplay:");
-        sb.AppendLine("- Single title page only (start of file).");
-        sb.AppendLine("- Consistent CHARACTER tokens (same person = same ALL-CAPS name).");
-        sb.AppendLine("- Real INT./EXT. locations; no INT. STORY / PAGE headings.");
-        sb.AppendLine("- Full story arc across all parts (do not drop the ending).");
-        sb.AppendLine("- Remove duplicate cold opens / repeated setups when chunks overlap.");
-        sb.AppendLine("- One FADE OUT / THE END at the finish.");
-        sb.AppendLine("- Preserve book-faithful dialogue from the parts; do not re-paraphrase iconic lines.");
-        sb.AppendLine("- No markdown fences, no JSON, no commentary.");
-        sb.AppendLine("- Do not include = page N or [[page N]] tags — strip them if present in parts.");
-        sb.AppendLine();
+        header.AppendLine();
+        header.AppendLine("Merge into ONE complete Fountain 1.1 screenplay:");
+        header.AppendLine("- Single title page only (start of file).");
+        header.AppendLine("- Consistent CHARACTER tokens (same person = same ALL-CAPS name).");
+        header.AppendLine("- Real INT./EXT. locations; no INT. STORY / PAGE headings.");
+        header.AppendLine("- Full story arc (do not drop the ending).");
+        header.AppendLine("- Remove duplicate cold opens / repeated setups when chunks overlap.");
+        header.AppendLine("- One FADE OUT / THE END at the finish.");
+        header.AppendLine("- Preserve book-faithful dialogue; do not re-paraphrase iconic lines.");
+        header.AppendLine("- No markdown fences, no JSON, no commentary.");
+        header.AppendLine("- Do not include = page N or [[page N]] tags.");
 
-        // Budget merge input (~60k total for parts)
-        const int budget = 60_000;
-        var per = Math.Max(4_000, budget / Math.Max(1, parts.Count));
-        for (var i = 0; i < parts.Count; i++)
+        var useFile = Stage1FountainSessionScope.Current is { IsAvailable: true };
+        string user;
+        string? fountainForFile = null;
+        if (useFile)
         {
-            var p = parts[i] ?? "";
-            if (p.Length > per)
-                p = p[..per] + "\n\n[[… partial truncated for merge prompt …]]\n";
-            sb.AppendLine($"===== FOUNTAIN_PART {i + 1}/{parts.Count} =====");
-            sb.AppendLine(p.Trim());
-            sb.AppendLine();
+            header.AppendLine();
+            header.AppendLine(
+                "The attached file is the full stitched Fountain (all chunks concatenated). Unify it.");
+            header.AppendLine("Return the merged Fountain screenplay only.");
+            user = header.ToString();
+            fountainForFile = stitched;
         }
-
-        sb.AppendLine("===== END PARTS =====");
-        sb.AppendLine("Return the merged Fountain screenplay only.");
+        else
+        {
+            header.AppendLine();
+            header.AppendLine("You are given ordered Fountain partials adapted from successive book chunks.");
+            const int budget = 60_000;
+            var per = Math.Max(4_000, budget / Math.Max(1, parts.Count));
+            for (var i = 0; i < parts.Count; i++)
+            {
+                var p = parts[i] ?? "";
+                if (p.Length > per)
+                    p = p[..per] + "\n\n[[… partial truncated for merge prompt …]]\n";
+                header.AppendLine($"===== FOUNTAIN_PART {i + 1}/{parts.Count} =====");
+                header.AppendLine(p.Trim());
+                header.AppendLine();
+            }
+            header.AppendLine("===== END PARTS =====");
+            header.AppendLine("Return the merged Fountain screenplay only.");
+            user = header.ToString();
+        }
 
         var mergeSystem = system + """
 
@@ -2949,12 +3021,13 @@ public static class BookToFountainConverter
             """;
 
         var text = await ExecuteStage1OperationAsync(
-                chat, mergeSystem, sb.ToString(), model, temperature: 0.15,
+                chat, mergeSystem, user, model, temperature: 0.15,
                 mode: ChatCallModes.BookToFountainMerge,
-                retryLabel: "Merge pass", onProgress: null, ct, reasoningEffort,
+                retryLabel: "Merge pass", onProgress, ct, reasoningEffort,
                 promptVersion: "stage1-multi-chunk-merge-v1",
                 correctionInstruction: "Return one complete, structurally valid Fountain screenplay with a single ending.",
-                validate: ValidateChunk).ConfigureAwait(false);
+                validate: ValidateChunk,
+                fountainForFile: fountainForFile).ConfigureAwait(false);
         return text ?? throw new InvalidOperationException("The multi-chunk merge did not produce usable Fountain.");
     }
 

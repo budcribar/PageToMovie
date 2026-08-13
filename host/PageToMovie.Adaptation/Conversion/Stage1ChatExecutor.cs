@@ -17,6 +17,19 @@ internal static class Stage1BookSessionScope
 }
 
 /// <summary>
+/// Ambient Fountain file session for Stage‑1 merge / repairs (set by <c>ConvertWithMetadataAsync</c>).
+/// </summary>
+internal static class Stage1FountainSessionScope
+{
+    private static readonly AsyncLocal<IFountainFileSession?> Holder = new();
+    public static IFountainFileSession? Current
+    {
+        get => Holder.Value;
+        set => Holder.Value = value;
+    }
+}
+
+/// <summary>
 /// Stage‑1 chat loop: primary → optional validation correction → deterministic fallback.
 /// Mirrors Engine Stage1FountainLifecycle behavior without ModelExecution dependencies.
 /// When an <see cref="IBookFileSession"/> is available, the book rides on file_id /
@@ -49,13 +62,22 @@ internal static class Stage1ChatExecutor
         Request request,
         Func<string, IReadOnlyList<Stage1ValidationIssue>> validate,
         CancellationToken ct,
-        IBookFileSession? bookSession = null)
+        IBookFileSession? bookSession = null,
+        IFountainFileSession? fountainSession = null)
     {
+        fountainSession ??= Stage1FountainSessionScope.Current;
         bookSession ??= Stage1BookSessionScope.Current;
 
-        // Primary — file session avoids re-billing full book tokens on follow-ups.
+        // Fountain file (merge/repairs) wins over book chain — do not paste 60k words
+        // into a book follow-up.
         string? primaryRaw;
-        if (bookSession is { IsAvailable: true })
+        if (fountainSession is { IsAvailable: true })
+        {
+            primaryRaw = await fountainSession.CompleteAsync(
+                request.SystemPrompt, request.UserPrompt, request.Model,
+                request.Temperature, ct).ConfigureAwait(false);
+        }
+        else if (bookSession is { IsAvailable: true })
         {
             // Later Stage‑1 ops (chunk 2+, merge, repair) reuse previous_response_id.
             if (!string.IsNullOrWhiteSpace(bookSession.LastResponseId))
@@ -108,7 +130,19 @@ internal static class Stage1ChatExecutor
         string? correctiveRaw = null;
         try
         {
-            if (bookSession is { IsAvailable: true })
+            if (fountainSession is { IsAvailable: true })
+            {
+                var findings = string.Join("\n", primaryIssues.Select(i => $"- {i.Path ?? "$"}: {i.Message}"));
+                var shortCorrection =
+                    $"CORRECTIVE ATTEMPT ({request.PromptVersion})\n" +
+                    $"{request.CorrectionInstruction}\n" +
+                    $"Validation findings:\n{findings}\n" +
+                    "The Fountain is still attached. Return the complete corrected Fountain only.";
+                correctiveRaw = await fountainSession.CompleteAsync(
+                    request.SystemPrompt, shortCorrection, request.Model, corrTemp, ct)
+                    .ConfigureAwait(false);
+            }
+            else if (bookSession is { IsAvailable: true })
             {
                 // Follow-up: only correction instructions — no book body re-send.
                 var findings = string.Join("\n", primaryIssues.Select(i => $"- {i.Path ?? "$"}: {i.Message}"));

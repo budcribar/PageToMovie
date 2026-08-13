@@ -122,6 +122,7 @@ public sealed class AdaptationService
         CancellationToken ct = default,
         Func<StructuralGateFailure, CancellationToken, Task>? onStructuralGateFailure = null,
         IBookFileSession? bookSession = null,
+        IFountainFileSession? fountainSession = null,
         BookToFountainConverter.PromptBudget? budgetOverride = null)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -184,6 +185,7 @@ public sealed class AdaptationService
             onStructuralGateFailure: onStructuralGateFailure,
             temperature: request.Temperature,
             bookSession: bookSession,
+            fountainSession: fountainSession,
             visualMedium: request.VisualMedium,
             promptTokens: tokens).ConfigureAwait(false);
 

@@ -262,6 +262,7 @@ internal static class ApiServiceConfiguration
             c.Timeout = TimeSpan.FromMinutes(20);
         }));
         builder.Services.AddSingleton<PageToMovie.Core.Abstractions.IBookFileSessionFactory, BookFileSessionFactory>();
+        builder.Services.AddSingleton<PageToMovie.Core.Abstractions.IFountainFileSessionFactory, FountainFileSessionFactory>();
 
         // Provider-agnostic telemetry/scoring services — registered regardless of PageToMovie:UseFakes
         // so admin route handlers that take them as parameters resolve as DI services rather than

@@ -311,6 +311,46 @@ public class BookToFountainPathTests
     }
 
     [Fact]
+    public void EstimateDraftRuntimeMinutes_ignores_sidecar_when_it_disagrees_2x()
+    {
+        var longBody = string.Join(' ', Enumerable.Repeat("action dialogue visual beat", 8000));
+        var report = """{"source_complete":"yes","metrics":{"scenes":175,"speaking_cast":20,"body_words":12,"est_runtime_min":17.3},"issues":[],"spec_feedback":[]}""";
+        var draft =
+            "Title: Epic\nAuthor: H\n\nINT. HALL - DAY\n\n"
+            + longBody
+            + "\n\nFADE OUT.\n\nTHE END\n\n---ADAPTATION_REPORT---\n"
+            + report
+            + "\n---END_ADAPTATION_REPORT---\n";
+        var minutes = AdaptationFountain.EstimateDraftRuntimeMinutes(draft);
+        Assert.True(minutes > 40, $"expected word-count minutes, got {minutes}");
+        Assert.True(AdaptationFountain.IsRuntimeSidecarSuspect(17.3, minutes));
+    }
+
+    [Fact]
+    public void EstimateDraftRuntimeMinutes_keeps_sidecar_when_close()
+    {
+        var draft = """
+            Title: Short
+            Author: A
+
+            INT. ROOM - DAY
+
+            HERO
+            Hello there friend.
+
+            FADE OUT.
+
+            THE END
+
+            ---ADAPTATION_REPORT---
+            {"source_complete":"yes","metrics":{"scenes":1,"speaking_cast":1,"body_words":3,"est_runtime_min":0.1},"issues":[],"spec_feedback":[]}
+            ---END_ADAPTATION_REPORT---
+            """;
+        var minutes = AdaptationFountain.EstimateDraftRuntimeMinutes(draft);
+        Assert.InRange(minutes, 0.05, 0.3);
+    }
+
+    [Fact]
     public void EvaluateQuality_multi_accepts_soft_scene_shortfall_if_structure_ok()
     {
         var book = BuildChapteredBook(chapters: 20, bodyChars: 4_000);
