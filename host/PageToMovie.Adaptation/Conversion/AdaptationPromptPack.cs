@@ -74,10 +74,9 @@ public static class AdaptationPromptPack
         ArgumentNullException.ThrowIfNull(tokens);
         body ??= "";
 
-        var unlimited = tokens.TotalRuntimeMinutes is null or <= 0;
-        var minutes = unlimited
-            ? 0
-            : Math.Clamp(tokens.TotalRuntimeMinutes.Value, 1, 180);
+        var rtm = tokens.TotalRuntimeMinutes;
+        var unlimited = rtm is null or <= 0;
+        var minutes = unlimited ? 0 : Math.Clamp(rtm.GetValueOrDefault(), 1, 180);
 
         var directive = unlimited
             ? UnlimitedRuntimeDirective

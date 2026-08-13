@@ -102,7 +102,7 @@ public sealed class GeminiImageClient : IImageClient
         if (refs.Count == 0 && !hasCostumeRef)
             throw new InvalidOperationException("No usable reference images for character edit.");
 
-        var allRefs = hasCostumeRef ? refs.Append(costumeRefPath).ToList() : refs;
+        var allRefs = hasCostumeRef && costumeRefPath is not null ? refs.Append(costumeRefPath).ToList() : refs;
         var costumeClause = hasCostumeRef
             ? " The LAST reference image is a COSTUME REFERENCE ONLY (shared wardrobe design) — " +
               "copy its coat, hat, and badge exactly; completely ignore any face or person in it; " +

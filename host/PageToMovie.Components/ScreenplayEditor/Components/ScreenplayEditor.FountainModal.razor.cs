@@ -7,7 +7,7 @@ namespace PageToMovie.ScreenplayEditor.Components;
 public partial class ScreenplayEditor_FountainModal
 {
     [Inject]
-    public IJSRuntime Js { get; set; } = default;
+    public IJSRuntime Js { get; set; } = default!;
 
     [Parameter]
     public bool IsOpen { get; set; }

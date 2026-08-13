@@ -312,8 +312,6 @@ public sealed class YouTubeAuthService
             var prop = sn?.GetType().GetProperty("PublishedAtDateTimeOffset");
             if (prop?.GetValue(sn) is DateTimeOffset dto)
                 return dto;
-            if (sn?.PublishedAt is DateTime dt)
-                return new DateTimeOffset(DateTime.SpecifyKind(dt, DateTimeKind.Utc));
         }
         catch { /* optional */ }
         return null;
@@ -342,13 +340,7 @@ public sealed class YouTubeAuthService
                     ?? sn?.Thumbnails?.High?.Url
                     ?? sn?.Thumbnails?.Default__?.Url
                     ?? byId[v.Id].ThumbnailUrl;
-                DateTimeOffset? published = byId[v.Id].PublishedAt;
-                try
-                {
-                    if (sn?.PublishedAt is DateTime dt)
-                        published = new DateTimeOffset(DateTime.SpecifyKind(dt, DateTimeKind.Utc));
-                }
-                catch { /* keep prior */ }
+                DateTimeOffset? published = sn?.PublishedAtDateTimeOffset ?? byId[v.Id].PublishedAt;
                 byId[v.Id] = new ChannelUploadVideo(
                     v.Id,
                     title,
@@ -448,7 +440,7 @@ public sealed class SqliteDataStore : IDataStore
 
     public Task<T> GetAsync<T>(string key)
     {
-        if (string.IsNullOrWhiteSpace(key)) return Task.FromResult(default(T));
+        if (string.IsNullOrWhiteSpace(key)) return Task.FromResult<T>(default!);
         try
         {
             using var conn = new Microsoft.Data.Sqlite.SqliteConnection(_connectionString);
@@ -458,7 +450,7 @@ public sealed class SqliteDataStore : IDataStore
             cmd.Parameters.AddWithValue("@key", key);
             var result = cmd.ExecuteScalar() as string;
             if (string.IsNullOrWhiteSpace(result))
-                return Task.FromResult(default(T));
+                return Task.FromResult<T>(default!);
 
             // Prefer Newtonsoft (Google.Apis FileDataStore compatible). Fallback STJ for older rows.
             try
@@ -470,13 +462,13 @@ public sealed class SqliteDataStore : IDataStore
             catch { /* try STJ */ }
 
             var stj = System.Text.Json.JsonSerializer.Deserialize<T>(result);
-            return Task.FromResult(stj);
+            return Task.FromResult<T>(stj!);
         }
         catch (Exception ex)
         {
             System.Diagnostics.Trace.TraceError(
                 "SqliteDataStore.GetAsync failed key={0}: {1}", key, ex.Message);
-            return Task.FromResult(default(T));
+            return Task.FromResult<T>(default!);
         }
     }
 

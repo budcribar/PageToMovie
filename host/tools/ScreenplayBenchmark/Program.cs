@@ -638,7 +638,7 @@ Uncle Nick turned, offering a small, reassuring nod. ""She always holds when the
             SingleShotBookMaxChars = 50_000,
             ChunkSoftMaxChars = 25_000,
             MaxChunks = AdaptationFountain.MaxAdaptChunks,
-            ReservedOverheadChars = AdaptationFountain.ReservedOverheadChars,
+            ReservedOverheadChars = AdaptationFountain.DefaultReservedOverheadChars,
         };
     }
 

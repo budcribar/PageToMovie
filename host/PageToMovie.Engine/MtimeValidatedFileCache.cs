@@ -162,6 +162,6 @@ public sealed class MtimeValidatedFileCache<T, S>
     {
         public long Ticks { get; init; }
         public long Length { get; init; }
-        public T Value { get; init; } = default;
+        public T Value { get; init; } = default!;
     }
 }

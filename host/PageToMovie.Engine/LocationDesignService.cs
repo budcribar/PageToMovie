@@ -83,12 +83,12 @@ public sealed class LocationDesignService
 
         if (hasEdit)
         {
-            prompt = BuildEditPrompt(locKey, desc, vlock, imageEditInstruction);
-            onProgress?.Invoke($"Grok image edit of locked set plate ({Path.GetFileName(preferred)})…");
+            prompt = BuildEditPrompt(locKey, desc, vlock, imageEditInstruction ?? "");
+            onProgress?.Invoke($"Grok image edit of locked set plate ({Path.GetFileName(preferred ?? "")})…");
             mode = "preferred_edit";
             blobs = await _images.EditVariantsAsync(
                 prompt,
-                new[] { preferred },
+                preferred != null ? new[] { preferred } : Array.Empty<string>(),
                 n,
                 aspectRatio: "16:9",
                 model: imageModel,

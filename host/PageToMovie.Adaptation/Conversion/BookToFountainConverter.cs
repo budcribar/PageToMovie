@@ -2198,8 +2198,8 @@ public static class BookToFountainConverter
     {
         fountain = StripBookPageTags(fountain ?? "");
         bookText = NormalizeBookText(bookText ?? "");
-        var hasTarget = totalRuntimeMinutes is > 0;
-        var minutes = hasTarget ? Math.Clamp(totalRuntimeMinutes.Value, 1, 180) : 0;
+        var minutes = totalRuntimeMinutes is > 0 ? Math.Clamp(totalRuntimeMinutes.Value, 1, 180) : 0;
+        var hasTarget = minutes > 0;
 
         var fails = CollectQualityFailures(fountain, bookText, hasTarget, minutes, path);
         var hard = fails.Contains("structure") || fails.Contains("excerpt_marker");
