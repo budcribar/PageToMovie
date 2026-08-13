@@ -146,25 +146,8 @@ public static class CharacterEndpoints
 
         var desc = body.Description;
         var vis = body.VisualLock;
-        var scrubbed = false;
-
-        // Skip AI scrub when posted text matches what is already stored
-        string? storedDesc = null;
-        string? storedVis = null;
-        var existing = store.GetCharacterSeed(id, charKey);
-        if (existing is not null)
-        {
-            if (existing.Value.TryGetProperty(ApiText.DescriptionKey, out var d0))
-                storedDesc = d0.GetString();
-            if (existing.Value.TryGetProperty("visual_lock", out var v0))
-                storedVis = v0.GetString();
-        }
-
-        var lookUnchanged =
-            string.Equals(desc ?? "", storedDesc ?? "", StringComparison.Ordinal) &&
-            string.Equals(vis ?? "", storedVis ?? "", StringComparison.Ordinal);
-
-        if (lookUnchanged)
+        var (storedDesc, storedVis) = ReadSeedLookFields(store.GetCharacterSeed(id, charKey));
+        if (LooksUnchanged(desc, vis, storedDesc, storedVis))
         {
             return Results.Ok(new
             {
@@ -178,43 +161,10 @@ public static class CharacterEndpoints
             });
         }
 
-        if (body.ScrubWithAi && (desc is not null || vis is not null))
-        {
-            var (d2, v2, usedAi) = await literalize.ScrubLookFieldsAsync(
-                charKey,
-                description: desc ?? "",
-                visualLock: vis ?? "",
-                model: string.IsNullOrWhiteSpace(body.Model)
-                    ? ProjectModelSelection.RequirePlanning(
-                        await store.GetConfigAsync(id, ct).ConfigureAwait(false),
-                        "Character look scrub")
-                    : ProjectModelSelection.RequireExplicit(body.Model, ModelCapability.Chat, "Character look scrub"),
-                ct: ct).ConfigureAwait(false);
-            if (usedAi)
-            {
-                if (desc is not null) desc = d2;
-                if (vis is not null) vis = v2;
-                scrubbed = true;
-            }
-        }
-
-        store.UpdateCharacterSeedText(
-            id,
-            charKey,
-            description: desc,
-            visualLock: vis);
-
-        // Return cleaned text so the UI can refresh editors without a second guess
-        var seed = store.GetCharacterSeed(id, charKey);
-        string? savedDesc = null;
-        string? savedVis = null;
-        if (seed is not null)
-        {
-            if (seed.Value.TryGetProperty(ApiText.DescriptionKey, out var dEl))
-                savedDesc = dEl.GetString();
-            if (seed.Value.TryGetProperty("visual_lock", out var vEl))
-                savedVis = vEl.GetString();
-        }
+        var scrubbed = false;
+        (desc, vis, scrubbed) = await MaybeScrubLookAsync(id, charKey, body, desc, vis, store, literalize, ct);
+        store.UpdateCharacterSeedText(id, charKey, description: desc, visualLock: vis);
+        var (savedDesc, savedVis) = ReadSeedLookFields(store.GetCharacterSeed(id, charKey));
 
         return Results.Ok(new
         {
@@ -234,6 +184,54 @@ public static class CharacterEndpoints
         return Results.BadRequest(new { ok = false, error = ex.Message });
     }
 }
+
+    private static (string? Desc, string? Vis) ReadSeedLookFields(System.Text.Json.JsonElement? seed)
+    {
+        string? desc = null;
+        string? vis = null;
+        if (seed is null)
+            return (desc, vis);
+        var existing = seed.Value;
+        if (existing.TryGetProperty(ApiText.DescriptionKey, out var d0))
+            desc = d0.GetString();
+        if (existing.TryGetProperty("visual_lock", out var v0))
+            vis = v0.GetString();
+        return (desc, vis);
+    }
+
+    private static bool LooksUnchanged(string? desc, string? vis, string? storedDesc, string? storedVis) =>
+        string.Equals(desc ?? "", storedDesc ?? "", StringComparison.Ordinal) &&
+        string.Equals(vis ?? "", storedVis ?? "", StringComparison.Ordinal);
+
+    private static async Task<(string? Desc, string? Vis, bool Scrubbed)> MaybeScrubLookAsync(
+        string id,
+        string charKey,
+        UpdateCharacterLookRequest body,
+        string? desc,
+        string? vis,
+        ProjectStore store,
+        CastVisualLiteralizeService literalize,
+        CancellationToken ct)
+    {
+        if (!body.ScrubWithAi || (desc is null && vis is null))
+            return (desc, vis, false);
+
+        var (d2, v2, usedAi) = await literalize.ScrubLookFieldsAsync(
+            charKey,
+            description: desc ?? "",
+            visualLock: vis ?? "",
+            model: string.IsNullOrWhiteSpace(body.Model)
+                ? ProjectModelSelection.RequirePlanning(
+                    await store.GetConfigAsync(id, ct).ConfigureAwait(false),
+                    "Character look scrub")
+                : ProjectModelSelection.RequireExplicit(body.Model, ModelCapability.Chat, "Character look scrub"),
+            ct: ct).ConfigureAwait(false);
+        if (!usedAi)
+            return (desc, vis, false);
+        if (desc is not null) desc = d2;
+        if (vis is not null) vis = v2;
+        return (desc, vis, true);
+    }
 
     private static async Task<IResult> PostProjectsIdCharactersExtractCast(string id,
     ExtractCastRequest? body,

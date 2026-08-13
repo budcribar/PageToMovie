@@ -299,72 +299,115 @@ public static class DemoEndpoints
     // Creators never need YouTube Studio; admins alone connect the channel.
     try
     {
-        string? title = null;
-        string? description = null;
-        string? projectId = null;
-        var acceptedGuidelines = false;
-        var madeForKids = false;
-        var isAiSynthetic = true;
-        string? privacyStatus = null;
-        string? tagsRaw = null;
-        // When true and a public demo already exists for this project/user, replace its movie
-        // and re-upload to YouTube (V2 pointer replace) instead of creating a new demo entry.
-        var replaceExisting = true;
-        IFormFile? file = null;
+        var parsed = await ParsePublishDemoRequestAsync(request, ct);
+        if (ValidatePublishDemoRequest(parsed, out var projectId) is { } invalid)
+            return invalid;
+        if (await AuthorizePublishDemoAsync(projectId, user, store, demos, ct) is { } forbidden)
+            return forbidden;
+        return await PublishDemoAsync(parsed, projectId, user, demos, store, media, youTubePublisher, ct);
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { ok = false, error = ex.Message });
+    }
+}
 
-        if (request.HasFormContentType)
-        {
-            var form = await request.ReadFormAsync(ct);
-            title = form["title"].ToString();
-            description = form[ApiText.DescriptionKey].ToString();
-            projectId = form[ApiText.ProjectIdKey].ToString();
-            acceptedGuidelines = string.Equals(form[ApiText.AcceptedGuidelinesKey].ToString(), "true", StringComparison.OrdinalIgnoreCase)
-                                 || form[ApiText.AcceptedGuidelinesKey] == "1"
-                                 || form[ApiText.AcceptedGuidelinesKey] == "on";
-            madeForKids = string.Equals(form["madeForKids"].ToString(), "true", StringComparison.OrdinalIgnoreCase);
-            if (bool.TryParse(form["isAiSynthetic"].ToString(), out var aiForm)) isAiSynthetic = aiForm;
-            privacyStatus = form["privacyStatus"].ToString();
-            tagsRaw = form["tags"].ToString();
-            if (bool.TryParse(form[ApiText.ReplaceExistingKey].ToString(), out var reForm))
-                replaceExisting = reForm;
-            else if (string.Equals(form[ApiText.ReplaceExistingKey].ToString(), "0", StringComparison.OrdinalIgnoreCase) ||
-                     string.Equals(form[ApiText.ReplaceExistingKey].ToString(), "false", StringComparison.OrdinalIgnoreCase))
-                replaceExisting = false;
-            file = form.Files.GetFile("file") ?? form.Files.FirstOrDefault();
-        }
-        else
-        {
-            using var doc = await JsonDocument.ParseAsync(request.Body, cancellationToken: ct);
-            var root = doc.RootElement;
-            if (root.TryGetProperty("title", out var t)) title = t.GetString();
-            if (root.TryGetProperty(ApiText.DescriptionKey, out var d)) description = d.GetString();
-            if (root.TryGetProperty(ApiText.ProjectIdKey, out var p)) projectId = p.GetString();
-            if (root.TryGetProperty(ApiText.AcceptedGuidelinesKey, out var ag))
-                acceptedGuidelines = ag.ValueKind == JsonValueKind.True
-                                     || (ag.ValueKind == JsonValueKind.String
-                                         && bool.TryParse(ag.GetString(), out var b) && b);
-            if (root.TryGetProperty("madeForKids", out var mfk))
-                madeForKids = mfk.ValueKind == JsonValueKind.True;
-            if (root.TryGetProperty("isAiSynthetic", out var ai))
-                isAiSynthetic = ai.ValueKind != JsonValueKind.False;
-            if (root.TryGetProperty("privacyStatus", out var ps)) privacyStatus = ps.GetString();
-            if (root.TryGetProperty("tags", out var tg) && tg.ValueKind == JsonValueKind.String)
-                tagsRaw = tg.GetString();
-            if (root.TryGetProperty(ApiText.ReplaceExistingKey, out var re) && re.ValueKind == JsonValueKind.False)
-                replaceExisting = false;
-        }
+    private sealed class PublishDemoRequest
+    {
+        public string? Title { get; set; }
+        public string? Description { get; set; }
+        public string? ProjectId { get; set; }
+        public bool AcceptedGuidelines { get; set; }
+        public bool MadeForKids { get; set; }
+        public bool IsAiSynthetic { get; set; } = true;
+        public string PrivacyStatus { get; set; } = "unlisted";
+        public List<string>? Tags { get; set; }
+        public bool ReplaceExisting { get; set; } = true;
+        public IFormFile? File { get; set; }
+    }
 
-        title = string.IsNullOrWhiteSpace(title) ? null : title.Trim();
-        description = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
-        projectId = string.IsNullOrWhiteSpace(projectId) ? null : projectId.Trim();
+    private static async Task<PublishDemoRequest> ParsePublishDemoRequestAsync(HttpRequest request, CancellationToken ct)
+    {
+        var parsed = request.HasFormContentType
+            ? await ParsePublishDemoFormAsync(request, ct)
+            : await ParsePublishDemoJsonAsync(request, ct);
+        parsed.Title = string.IsNullOrWhiteSpace(parsed.Title) ? null : parsed.Title.Trim();
+        parsed.Description = string.IsNullOrWhiteSpace(parsed.Description) ? null : parsed.Description.Trim();
+        parsed.ProjectId = string.IsNullOrWhiteSpace(parsed.ProjectId) ? null : parsed.ProjectId.Trim();
         // Default unlisted: channel is operated privately; gallery embeds still work.
         // true "private" would hide films from everyone except the channel owner.
-        privacyStatus = privacyStatus is "public" or "unlisted" or "private" ? privacyStatus : "unlisted";
-        var tags = string.IsNullOrWhiteSpace(tagsRaw)
+        parsed.PrivacyStatus = parsed.PrivacyStatus is "public" or "unlisted" or "private"
+            ? parsed.PrivacyStatus
+            : "unlisted";
+        return parsed;
+    }
+
+    private static async Task<PublishDemoRequest> ParsePublishDemoFormAsync(HttpRequest request, CancellationToken ct)
+    {
+        var form = await request.ReadFormAsync(ct);
+        var parsed = new PublishDemoRequest
+        {
+            Title = form["title"].ToString(),
+            Description = form[ApiText.DescriptionKey].ToString(),
+            ProjectId = form[ApiText.ProjectIdKey].ToString(),
+            AcceptedGuidelines = string.Equals(form[ApiText.AcceptedGuidelinesKey].ToString(), "true", StringComparison.OrdinalIgnoreCase)
+                                 || form[ApiText.AcceptedGuidelinesKey] == "1"
+                                 || form[ApiText.AcceptedGuidelinesKey] == "on",
+            MadeForKids = string.Equals(form["madeForKids"].ToString(), "true", StringComparison.OrdinalIgnoreCase),
+            PrivacyStatus = form["privacyStatus"].ToString(),
+            File = form.Files.GetFile("file") ?? form.Files.FirstOrDefault(),
+        };
+        if (bool.TryParse(form["isAiSynthetic"].ToString(), out var aiForm))
+            parsed.IsAiSynthetic = aiForm;
+        parsed.ReplaceExisting = ParseReplaceExistingFormFlag(form[ApiText.ReplaceExistingKey].ToString());
+        parsed.Tags = SplitDemoTags(form["tags"].ToString());
+        return parsed;
+    }
+
+    private static bool ParseReplaceExistingFormFlag(string raw)
+    {
+        if (bool.TryParse(raw, out var parsed))
+            return parsed;
+        if (string.Equals(raw, "0", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(raw, "false", StringComparison.OrdinalIgnoreCase))
+            return false;
+        return true;
+    }
+
+    private static async Task<PublishDemoRequest> ParsePublishDemoJsonAsync(HttpRequest request, CancellationToken ct)
+    {
+        using var doc = await JsonDocument.ParseAsync(request.Body, cancellationToken: ct);
+        var root = doc.RootElement;
+        var parsed = new PublishDemoRequest();
+        if (root.TryGetProperty("title", out var t)) parsed.Title = t.GetString();
+        if (root.TryGetProperty(ApiText.DescriptionKey, out var d)) parsed.Description = d.GetString();
+        if (root.TryGetProperty(ApiText.ProjectIdKey, out var p)) parsed.ProjectId = p.GetString();
+        if (root.TryGetProperty(ApiText.AcceptedGuidelinesKey, out var ag))
+            parsed.AcceptedGuidelines = ag.ValueKind == JsonValueKind.True
+                                 || (ag.ValueKind == JsonValueKind.String
+                                     && bool.TryParse(ag.GetString(), out var b) && b);
+        if (root.TryGetProperty("madeForKids", out var mfk))
+            parsed.MadeForKids = mfk.ValueKind == JsonValueKind.True;
+        if (root.TryGetProperty("isAiSynthetic", out var ai))
+            parsed.IsAiSynthetic = ai.ValueKind != JsonValueKind.False;
+        if (root.TryGetProperty("privacyStatus", out var ps) && ps.GetString() is { } privacy)
+            parsed.PrivacyStatus = privacy;
+        if (root.TryGetProperty("tags", out var tg) && tg.ValueKind == JsonValueKind.String)
+            parsed.Tags = SplitDemoTags(tg.GetString());
+        if (root.TryGetProperty(ApiText.ReplaceExistingKey, out var re) && re.ValueKind == JsonValueKind.False)
+            parsed.ReplaceExisting = false;
+        return parsed;
+    }
+
+    private static List<string>? SplitDemoTags(string? tagsRaw) =>
+        string.IsNullOrWhiteSpace(tagsRaw)
             ? null
             : tagsRaw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
 
-        if (!acceptedGuidelines)
+    private static IResult? ValidatePublishDemoRequest(PublishDemoRequest parsed, out string projectId)
+    {
+        projectId = parsed.ProjectId ?? "";
+        if (!parsed.AcceptedGuidelines)
         {
             return Results.BadRequest(new
             {
@@ -384,6 +427,12 @@ public static class DemoEndpoints
             });
         }
 
+        return null;
+    }
+
+    private static async Task<IResult?> AuthorizePublishDemoAsync(
+        string projectId, IUserContext user, ProjectStore store, DemoCatalogService demos, CancellationToken ct)
+    {
         await store.RequireProjectAsync(projectId, CancellationToken.None);
         if (!await store.CanUserPublishDemoAsync(projectId, user.UserId, user.IsAdmin, CancellationToken.None))
         {
@@ -398,179 +447,246 @@ public static class DemoEndpoints
         }
 
         await demos.EnsureUserMayPublishAsync(user.UserId, user.IsAdmin, ct);
+        return null;
+    }
 
-        DemoCatalogService.DemoEntry entry;
-        var replacedExisting = false;
-
+    private static async Task<IResult> PublishDemoAsync(
+        PublishDemoRequest parsed,
+        string projectId,
+        IUserContext user,
+        DemoCatalogService demos,
+        ProjectStore store,
+        MediaRegistryService media,
+        DemoYouTubePublisherService youTubePublisher,
+        CancellationToken ct)
+    {
         // Item 11: re-publish → attach new movie to existing public demo and V2 YouTube replace.
-        var existingPublic = replaceExisting
+        var existingPublic = parsed.ReplaceExisting
             ? await demos.FindPublicDemoForProjectAsync(projectId, user.UserId, ct)
             : null;
         var canReplace = existingPublic is not null
                          && !string.IsNullOrWhiteSpace(existingPublic.YoutubeId);
 
-        if (file is not null && file.Length > 0)
+        if (parsed.File is not null && parsed.File.Length > 0)
+            return await PublishDemoFromUploadAsync(
+                parsed, projectId, existingPublic, canReplace, user, demos, store, media, youTubePublisher, ct);
+        if (canReplace && existingPublic is not null)
+            return await RepublishDemoFromWipAsync(parsed, projectId, existingPublic, user, demos, youTubePublisher, ct);
+        return await PublishNewDemoFromWipAsync(parsed, projectId, user, demos, youTubePublisher, ct);
+    }
+
+    private static async Task<IResult> PublishDemoFromUploadAsync(
+        PublishDemoRequest parsed,
+        string projectId,
+        DemoCatalogService.DemoEntry? existingPublic,
+        bool canReplace,
+        IUserContext user,
+        DemoCatalogService demos,
+        ProjectStore store,
+        MediaRegistryService media,
+        DemoYouTubePublisherService youTubePublisher,
+        CancellationToken ct)
+    {
+        var file = parsed.File;
+        if (file is null)
+            return Results.BadRequest(new { ok = false, error = "file required" });
+
+        var ctHeader = file.ContentType ?? "";
+        if (!string.IsNullOrWhiteSpace(ctHeader) &&
+            !ctHeader.Contains(ApiText.VideoFolder, StringComparison.OrdinalIgnoreCase) &&
+            !ctHeader.Contains("octet-stream", StringComparison.OrdinalIgnoreCase) &&
+            !ctHeader.Contains("mp4", StringComparison.OrdinalIgnoreCase))
         {
-            var ctHeader = file.ContentType ?? "";
-            if (!string.IsNullOrWhiteSpace(ctHeader) &&
-                !ctHeader.Contains(ApiText.VideoFolder, StringComparison.OrdinalIgnoreCase) &&
-                !ctHeader.Contains("octet-stream", StringComparison.OrdinalIgnoreCase) &&
-                !ctHeader.Contains("mp4", StringComparison.OrdinalIgnoreCase))
+            return Results.BadRequest(new
             {
-                return Results.BadRequest(new
-                {
-                    ok = false,
-                    error = $"Unsupported content type for demo upload: {ctHeader}",
-                    code = "invalid_media_type",
-                });
-            }
+                ok = false,
+                error = $"Unsupported content type for demo upload: {ctHeader}",
+                code = "invalid_media_type",
+            });
+        }
 
-            await using var ms = new MemoryStream();
-            await file.CopyToAsync(ms, ct);
-            var bytes = ms.ToArray();
-            var sha = MediaRegistryService.HashBytes(bytes);
+        await using var ms = new MemoryStream();
+        await file.CopyToAsync(ms, ct);
+        var bytes = ms.ToArray();
+        var sha = MediaRegistryService.HashBytes(bytes);
 
-            await using var stream = new MemoryStream(bytes);
-            if (canReplace)
+        await using var stream = new MemoryStream(bytes);
+        if (canReplace && existingPublic is not null)
+            return await ReplaceDemoFromStreamAsync(
+                parsed, projectId, existingPublic, bytes, stream, user, demos, store, youTubePublisher, ct);
+        return await PublishNewDemoFromStreamAsync(
+            parsed, projectId, file, bytes, sha, stream, user, demos, store, media, youTubePublisher, ct);
+    }
+
+    private static async Task<IResult> ReplaceDemoFromStreamAsync(
+        PublishDemoRequest parsed,
+        string projectId,
+        DemoCatalogService.DemoEntry existingPublic,
+        byte[] bytes,
+        Stream stream,
+        IUserContext user,
+        DemoCatalogService demos,
+        ProjectStore store,
+        DemoYouTubePublisherService youTubePublisher,
+        CancellationToken ct)
+    {
+        var entry = await demos.AttachMovieFromStreamAsync(
+            existingPublic.Id,
+            stream,
+            parsed.Title ?? existingPublic.Title,
+            parsed.Description,
+            parsed.MadeForKids,
+            parsed.IsAiSynthetic,
+            parsed.PrivacyStatus,
+            parsed.Tags,
+            ct);
+        await TryWriteWipMovieAsync(store, projectId, bytes, ct);
+        entry = await EnsureDemoPublicAsync(demos, entry, user.UserId, "Re-publish: YouTube V2 replace", ct);
+        QueueYouTubePublish(youTubePublisher, entry.Id);
+        return BuildPublishDemoResult(entry, replacedExisting: true);
+    }
+
+    private static async Task<IResult> PublishNewDemoFromStreamAsync(
+        PublishDemoRequest parsed,
+        string projectId,
+        IFormFile file,
+        byte[] bytes,
+        string sha,
+        Stream stream,
+        IUserContext user,
+        DemoCatalogService demos,
+        ProjectStore store,
+        MediaRegistryService media,
+        DemoYouTubePublisherService youTubePublisher,
+        CancellationToken ct)
+    {
+        var entry = await demos.PublishFromStreamAsync(
+            stream,
+            parsed.Title ?? projectId ?? file.FileName ?? "Demo",
+            parsed.Description,
+            projectId,
+            user.UserId,
+            acceptedGuidelines: true,
+            madeForKids: parsed.MadeForKids,
+            isAiSyntheticContent: parsed.IsAiSynthetic,
+            privacyStatus: parsed.PrivacyStatus,
+            tags: parsed.Tags,
+            ct: ct);
+
+        await demos.SetStatusAsync(entry.Id, DemoCatalogService.DemoStatuses.Public, user.UserId,
+            "Auto-public: creator publish", ct);
+        entry = await demos.TryGetAsync(entry.Id, ct) ?? entry;
+        await TryWriteWipMovieAsync(store, projectId ?? "", bytes, ct);
+        await TryRegisterDemoMediaAsync(media, projectId ?? "", entry.Id, sha, bytes.LongLength, user.UserId, ct);
+        QueueYouTubePublish(youTubePublisher, entry.Id);
+        return BuildPublishDemoResult(entry, replacedExisting: false);
+    }
+
+    private static async Task<IResult> RepublishDemoFromWipAsync(
+        PublishDemoRequest parsed,
+        string projectId,
+        DemoCatalogService.DemoEntry existingPublic,
+        IUserContext user,
+        DemoCatalogService demos,
+        DemoYouTubePublisherService youTubePublisher,
+        CancellationToken ct)
+    {
+        var entry = await demos.AttachMovieFromWipAsync(
+            existingPublic.Id,
+            projectId,
+            parsed.Title ?? existingPublic.Title,
+            parsed.Description,
+            parsed.MadeForKids,
+            parsed.IsAiSynthetic,
+            parsed.PrivacyStatus,
+            parsed.Tags,
+            ct);
+        entry = await EnsureDemoPublicAsync(demos, entry, user.UserId, "Re-publish: YouTube V2 replace", ct);
+        QueueYouTubePublish(youTubePublisher, entry.Id);
+        return BuildPublishDemoResult(entry, replacedExisting: true);
+    }
+
+    private static async Task<IResult> PublishNewDemoFromWipAsync(
+        PublishDemoRequest parsed,
+        string projectId,
+        IUserContext user,
+        DemoCatalogService demos,
+        DemoYouTubePublisherService youTubePublisher,
+        CancellationToken ct)
+    {
+        var entry = await demos.PublishFromWipAsync(
+            projectId,
+            parsed.Title ?? projectId,
+            parsed.Description,
+            user.UserId,
+            acceptedGuidelines: true,
+            madeForKids: parsed.MadeForKids,
+            isAiSyntheticContent: parsed.IsAiSynthetic,
+            privacyStatus: parsed.PrivacyStatus,
+            tags: parsed.Tags,
+            ct: ct);
+        // Always push to YouTube — gallery only lists films with a YouTube id.
+        QueueYouTubePublish(youTubePublisher, entry.Id);
+        return BuildPublishDemoResult(entry, replacedExisting: false);
+    }
+
+    private static async Task TryWriteWipMovieAsync(ProjectStore store, string projectId, byte[] bytes, CancellationToken ct)
+    {
+        // Always overwrite assets/movie_wip.mp4 on server disk so WIP movie matches the fresh cut!
+        try
+        {
+            var wipPath = Path.Combine(await store.GetProjectDirAsync(projectId, ct), ApiText.AssetsFolder, "movie_wip.mp4");
+            Directory.CreateDirectory(Path.GetDirectoryName(wipPath) ?? ".");
+            await File.WriteAllBytesAsync(wipPath, bytes, ct);
+            try
             {
-                entry = await demos.AttachMovieFromStreamAsync(
-                    existingPublic!.Id,
-                    stream,
-                    title ?? existingPublic.Title,
-                    description,
-                    madeForKids,
-                    isAiSynthetic,
-                    privacyStatus,
-                    tags,
-                    ct);
-                replacedExisting = true;
-                // Always overwrite assets/movie_wip.mp4 on server disk so WIP movie matches the fresh cut!
-                try
-                {
-                    var wipPath = Path.Combine(await store.GetProjectDirAsync(projectId, ct), ApiText.AssetsFolder, "movie_wip.mp4");
-                    Directory.CreateDirectory(Path.GetDirectoryName(wipPath) ?? ".");
-                    await File.WriteAllBytesAsync(wipPath, bytes, ct);
-                    try
-                    {
-                        await FilmBuildService.RegisterAsync(
-                            store,
-                            projectId,
-                            FilmBuildService.HashBytes(bytes),
-                            durationSeconds: 0,
-                            segments: null,
-                            byteLength: bytes.Length,
-                            assemblyWhere: "server",
-                            ct: ct);
-                    }
-                    catch { /* non-fatal film_build */ }
-                }
-                catch { /* non-fatal */ }
-
-                // Keep public; re-upload to YouTube in background (V2 replace).
-                if (!string.Equals(entry.Status, DemoCatalogService.DemoStatuses.Public, StringComparison.OrdinalIgnoreCase))
-                    await demos.SetStatusAsync(entry.Id, DemoCatalogService.DemoStatuses.Public, user.UserId, "Re-publish: YouTube V2 replace", ct);
-                entry = await demos.TryGetAsync(entry.Id, ct) ?? entry;
-                var demoIdForUpload = entry.Id;
-                _ = Task.Run(() => youTubePublisher.PublishAsync(demoIdForUpload, CancellationToken.None));
-            }
-            else
-            {
-                entry = await demos.PublishFromStreamAsync(
-                    stream,
-                    title ?? projectId ?? file.FileName ?? "Demo",
-                    description,
+                await FilmBuildService.RegisterAsync(
+                    store,
                     projectId,
-                    user.UserId,
-                    acceptedGuidelines: true,
-                    madeForKids: madeForKids,
-                    isAiSyntheticContent: isAiSynthetic,
-                    privacyStatus: privacyStatus,
-                    tags: tags,
+                    FilmBuildService.HashBytes(bytes),
+                    durationSeconds: 0,
+                    segments: null,
+                    byteLength: bytes.Length,
+                    assemblyWhere: "server",
                     ct: ct);
-
-                await demos.SetStatusAsync(entry.Id, DemoCatalogService.DemoStatuses.Public, user.UserId,
-                    "Auto-public: creator publish", ct);
-                entry = await demos.TryGetAsync(entry.Id, ct) ?? entry;
-
-                // Always overwrite assets/movie_wip.mp4 on server disk so WIP movie matches the fresh cut!
-                try
-                {
-                    var wipPath = Path.Combine(await store.GetProjectDirAsync(projectId ?? "", ct), ApiText.AssetsFolder, "movie_wip.mp4");
-                    Directory.CreateDirectory(Path.GetDirectoryName(wipPath) ?? ".");
-                    await File.WriteAllBytesAsync(wipPath, bytes, ct);
-                    try
-                    {
-                        await FilmBuildService.RegisterAsync(
-                            store,
-                            projectId ?? "",
-                            FilmBuildService.HashBytes(bytes),
-                            durationSeconds: 0,
-                            segments: null,
-                            byteLength: bytes.Length,
-                            assemblyWhere: "server",
-                            ct: ct);
-                    }
-                    catch { /* non-fatal film_build */ }
-                }
-                catch { /* non-fatal */ }
-
-                try
-                {
-                    await media.UpsertAsync(
-                        projectId ?? "",
-                        $"_demos/{entry.Id}/movie.mp4",
-                        sha,
-                        bytes.LongLength,
-                        "demo",
-                        scene: null,
-                        clip: null,
-                        user.UserId,
-                        ct);
-                }
-                catch { /* non-fatal */ }
-
-                var demoIdForUpload = entry.Id;
-                _ = Task.Run(() => youTubePublisher.PublishAsync(demoIdForUpload, CancellationToken.None));
             }
+            catch { /* non-fatal film_build */ }
         }
-        else if (canReplace)
-        {
-            entry = await demos.AttachMovieFromWipAsync(
-                existingPublic!.Id,
-                projectId,
-                title ?? existingPublic.Title,
-                description,
-                madeForKids,
-                isAiSynthetic,
-                privacyStatus,
-                tags,
-                ct);
-            replacedExisting = true;
-            if (!string.Equals(entry.Status, DemoCatalogService.DemoStatuses.Public, StringComparison.OrdinalIgnoreCase))
-                await demos.SetStatusAsync(entry.Id, DemoCatalogService.DemoStatuses.Public, user.UserId, "Re-publish: YouTube V2 replace", ct);
-            entry = await demos.TryGetAsync(entry.Id, ct) ?? entry;
-            var demoIdForUpload = entry.Id;
-            _ = Task.Run(() => youTubePublisher.PublishAsync(demoIdForUpload, CancellationToken.None));
-        }
-        else
-        {
-            entry = await demos.PublishFromWipAsync(
-                projectId,
-                title ?? projectId,
-                description,
-                user.UserId,
-                acceptedGuidelines: true,
-                madeForKids: madeForKids,
-                isAiSyntheticContent: isAiSynthetic,
-                privacyStatus: privacyStatus,
-                tags: tags,
-                ct: ct);
-            // Always push to YouTube — gallery only lists films with a YouTube id.
-            var demoIdForUpload = entry.Id;
-            _ = Task.Run(() => youTubePublisher.PublishAsync(demoIdForUpload, CancellationToken.None));
-        }
+        catch { /* non-fatal */ }
+    }
 
-        return Results.Ok(new
+    private static async Task TryRegisterDemoMediaAsync(
+        MediaRegistryService media, string projectId, string demoId, string sha, long sizeBytes, string? userId, CancellationToken ct)
+    {
+        try
+        {
+            await media.UpsertAsync(
+                projectId,
+                $"_demos/{demoId}/movie.mp4",
+                sha,
+                sizeBytes,
+                "demo",
+                scene: null,
+                clip: null,
+                userId,
+                ct);
+        }
+        catch { /* non-fatal */ }
+    }
+
+    private static async Task<DemoCatalogService.DemoEntry> EnsureDemoPublicAsync(
+        DemoCatalogService demos, DemoCatalogService.DemoEntry entry, string? userId, string note, CancellationToken ct)
+    {
+        if (!string.Equals(entry.Status, DemoCatalogService.DemoStatuses.Public, StringComparison.OrdinalIgnoreCase))
+            await demos.SetStatusAsync(entry.Id, DemoCatalogService.DemoStatuses.Public, userId, note, ct);
+        return await demos.TryGetAsync(entry.Id, ct) ?? entry;
+    }
+
+    private static void QueueYouTubePublish(DemoYouTubePublisherService youTubePublisher, string demoId) =>
+        _ = Task.Run(() => youTubePublisher.PublishAsync(demoId, CancellationToken.None));
+
+    private static IResult BuildPublishDemoResult(DemoCatalogService.DemoEntry entry, bool replacedExisting) =>
+        Results.Ok(new
         {
             ok = true,
             // No admin review queue — YouTube upload is the gate for the public wall.
@@ -586,12 +702,6 @@ public static class DemoEndpoints
             demo = ApiEndpointHelpers.DemoPublicDto(entry),
             pagePath = "/demo",
         });
-    }
-    catch (Exception ex)
-    {
-        return Results.BadRequest(new { ok = false, error = ex.Message });
-    }
-}
 
     private static async Task<IResult> PostDemosDemoIdReport(string demoId,
     DemoReportRequest? body,

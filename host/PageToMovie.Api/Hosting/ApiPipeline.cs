@@ -59,6 +59,129 @@ internal static class ApiPipeline
 
     public static async Task RunFilmStudioStartupAsync(this WebApplication app)
     {
+        await MigrateProjectSchemasAtStartupAsync(app);
+        CleanupStagedDemoMoviesAtStartup(app);
+        await MigrateDemoCreatedByAtStartupAsync(app);
+    }
+
+    static void UsePerRequestApiKeyScope(WebApplication app)
+    {
+        app.Use(ApplyPerRequestApiKeyScopeAsync);
+    }
+
+    static async Task ApplyPerRequestApiKeyScopeAsync(HttpContext context, Func<Task> next)
+    {
+        var keys = await ResolveScopedApiKeysAsync(context);
+        var uid = context.RequestServices.GetService<IUserContext>()?.UserId;
+        using (ApiKeyScope.Push(keys))
+        using (UserApiCallScope.Push(uid))
+        {
+            await next();
+        }
+    }
+
+    static async Task<Dictionary<string, string?>> ResolveScopedApiKeysAsync(HttpContext context)
+    {
+        var keyProvider = context.RequestServices.GetService<IUserApiKeyProvider>();
+        var user = context.RequestServices.GetService<IUserContext>();
+        var uid = user?.UserId;
+        var xai = await ResolveXaiKeyAsync(user, keyProvider, uid);
+        return new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["grok"] = xai,
+            ["gemini"] = await GetProviderKeyAsync(keyProvider, uid, "gemini"),
+            ["anthropic"] = await GetProviderKeyAsync(keyProvider, uid, "anthropic"),
+            ["fal"] = await GetProviderKeyAsync(keyProvider, uid, "fal"),
+            ["suno"] = await GetProviderKeyAsync(keyProvider, uid, "suno"),
+            ["aimusicapi"] = await GetProviderKeyAsync(keyProvider, uid, "aimusicapi"),
+            [ApiText.ElevenLabsClient] = await GetProviderKeyAsync(keyProvider, uid, ApiText.ElevenLabsClient),
+        };
+    }
+
+    static async Task<string?> ResolveXaiKeyAsync(IUserContext? user, IUserApiKeyProvider? keyProvider, string? uid)
+    {
+        // Request header override is treated as xAI/Grok (legacy X-Api-Key).
+        if (!string.IsNullOrWhiteSpace(user?.RequestApiKey))
+            return user.RequestApiKey;
+        return await GetProviderKeyAsync(keyProvider, uid, "grok");
+    }
+
+    static Task<string?> GetProviderKeyAsync(IUserApiKeyProvider? keyProvider, string? uid, string provider) =>
+        keyProvider is not null ? keyProvider.GetKeyAsync(uid, provider) : Task.FromResult<string?>(null);
+
+    static async Task SeedBundledDemosAsync(WebApplication app)
+    {
+        // Copy any bundled seed_demos/* entries into /data/_demos/ if not already present.
+        // This ensures public demos are available for new deployments without manual admin steps.
+        try
+        {
+            var store = app.Services.GetRequiredService<ProjectStore>();
+            var demoCatalog = app.Services.GetRequiredService<DemoCatalogService>();
+            var demosDir = demoCatalog.DemosDir;
+            Directory.CreateDirectory(demosDir);
+
+            var seedRoot = Path.Combine(AppContext.BaseDirectory, "seed_demos");
+            if (!Directory.Exists(seedRoot))
+                return;
+
+            foreach (var seedDir in Directory.EnumerateDirectories(seedRoot))
+                await TrySeedOneDemoAsync(app, store, seedDir, demosDir);
+        }
+        catch (Exception ex)
+        {
+            app.Logger.LogWarning(ex, "Demo seeding failed (non-fatal)");
+        }
+    }
+
+    static async Task TrySeedOneDemoAsync(WebApplication app, ProjectStore store, string seedDir, string demosDir)
+    {
+        var id = Path.GetFileName(seedDir);
+        var targetDir = Path.Combine(demosDir, id);
+        var targetMeta = Path.Combine(targetDir, "meta.json");
+        var targetMovie = Path.Combine(targetDir, "movie.mp4");
+
+        if (File.Exists(targetMeta) && File.Exists(targetMovie))
+            return; // already seeded — never overwrite user data
+
+        Directory.CreateDirectory(targetDir);
+
+        var srcMeta = Path.Combine(seedDir, "meta.json");
+        if (File.Exists(srcMeta))
+            File.Copy(srcMeta, targetMeta, overwrite: true);
+
+        var srcMovie = await ResolveSeedMoviePathAsync(store, seedDir, srcMeta);
+        if (File.Exists(srcMovie))
+            File.Copy(srcMovie, targetMovie, overwrite: true);
+
+        if (File.Exists(targetMeta) && File.Exists(targetMovie))
+            app.Logger.LogInformation("Seeded demo {Id} into {TargetDir}", id, targetDir);
+        else
+            app.Logger.LogWarning("Demo seed {Id} skipped — movie not found at {Src}", id, srcMovie);
+    }
+
+    static async Task<string> ResolveSeedMoviePathAsync(ProjectStore store, string seedDir, string srcMeta)
+    {
+        var srcMovie = Path.Combine(seedDir, "movie.mp4");
+        if (File.Exists(srcMovie))
+            return srcMovie;
+        try
+        {
+            var meta = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(
+                await File.ReadAllTextAsync(srcMeta));
+            if (meta.TryGetProperty(ApiText.ProjectIdKey, out var pidEl) &&
+                pidEl.GetString() is { Length: > 0 } pid)
+            {
+                var wipPath = store.ResolveWipMoviePath(pid);
+                if (wipPath is not null && File.Exists(wipPath))
+                    return wipPath;
+            }
+        }
+        catch { /* ignore — seed gracefully skipped if movie unavailable */ }
+        return srcMovie;
+    }
+
+    static async Task MigrateProjectSchemasAtStartupAsync(WebApplication app)
+    {
         // ── One-Time Startup Migration: catch up every project's schema_version ───────────────────
         // ProjectMigrationService already versions each project via a "schema_version" field in
         // project.json (mirrors UserDatabaseService's PRAGMA user_version approach for the SQL DB) —
@@ -74,32 +197,42 @@ internal static class ApiPipeline
             var projectsDir = Path.Combine(workspaceRoot, ApiText.ProjectsFolder);
             var projectMigrations = app.Services.GetRequiredService<ProjectMigrationService>();
 
-            if (Directory.Exists(projectsDir))
+            if (!Directory.Exists(projectsDir))
+                return;
+
+            var migratedCount = 0;
+            foreach (var projectJsonPath in Directory.EnumerateFiles(projectsDir, "project.json", SearchOption.AllDirectories))
             {
-                var migratedCount = 0;
-                foreach (var projectJsonPath in Directory.EnumerateFiles(projectsDir, "project.json", SearchOption.AllDirectories))
-                {
-                    var projectDir = Path.GetDirectoryName(projectJsonPath);
-                    if (string.IsNullOrWhiteSpace(projectDir)) continue;
-                    try
-                    {
-                        if (await projectMigrations.MigrateIfNeededAsync(projectDir))
-                            migratedCount++;
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"Project migration skipped for {projectDir}: {ex.Message}");
-                    }
-                }
-                if (migratedCount > 0)
-                    Console.WriteLine($"Startup schema migration: upgraded {migratedCount} project(s) to {ProjectMigrationService.CurrentSchemaVersion}.");
+                if (await TryMigrateOneProjectAsync(projectMigrations, projectJsonPath))
+                    migratedCount++;
             }
+            if (migratedCount > 0)
+                Console.WriteLine($"Startup schema migration: upgraded {migratedCount} project(s) to {ProjectMigrationService.CurrentSchemaVersion}.");
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Project schema migration error: {ex.Message}");
         }
+    }
 
+    static async Task<bool> TryMigrateOneProjectAsync(ProjectMigrationService projectMigrations, string projectJsonPath)
+    {
+        var projectDir = Path.GetDirectoryName(projectJsonPath);
+        if (string.IsNullOrWhiteSpace(projectDir))
+            return false;
+        try
+        {
+            return await projectMigrations.MigrateIfNeededAsync(projectDir);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Project migration skipped for {projectDir}: {ex.Message}");
+            return false;
+        }
+    }
+
+    static void CleanupStagedDemoMoviesAtStartup(WebApplication app)
+    {
         // Clean up any leftover staged demo movie files under _demos to reclaim server volume space
         try
         {
@@ -107,7 +240,10 @@ internal static class ApiPipeline
             demosService.CleanupStagedDemoMovies();
         }
         catch { /* non-fatal */ }
+    }
 
+    static async Task MigrateDemoCreatedByAtStartupAsync(WebApplication app)
+    {
         // One-time self-heal: legacy demo records may store an email in CreatedBy (before ownership ids
         // were normalized to a non-email UserId). Rewrite each to the account's canonical id so the public
         // byline shows a handle and ownership checks line up. Idempotent — no-ops once records are clean.
@@ -115,14 +251,8 @@ internal static class ApiPipeline
         {
             var demosService = app.Services.GetRequiredService<DemoCatalogService>();
             var userDb = app.Services.GetRequiredService<UserDatabaseService>();
-            var migrated = await demosService.MigrateEmailCreatedByAsync(async (email, ct) =>
-            {
-                var u = await userDb.GetUserByEmailAsync(email, ct).ConfigureAwait(false);
-                if (u is null) return null;
-                return string.IsNullOrWhiteSpace(u.UserId)
-                    ? (string.IsNullOrWhiteSpace(u.Username) ? null : u.Username.Trim())
-                    : u.UserId.Trim();
-            });
+            var migrated = await demosService.MigrateEmailCreatedByAsync(
+                (email, ct) => ResolveCanonicalUserIdFromEmailAsync(userDb, email, ct));
             if (migrated > 0)
                 Console.WriteLine($"Startup demo migration: healed CreatedBy on {migrated} demo record(s).");
         }
@@ -132,101 +262,15 @@ internal static class ApiPipeline
         }
     }
 
-    static void UsePerRequestApiKeyScope(WebApplication app)
+    static async Task<string?> ResolveCanonicalUserIdFromEmailAsync(UserDatabaseService userDb, string email, CancellationToken ct)
     {
-        app.Use(async (context, next) =>
-        {
-            var keyProvider = context.RequestServices.GetService<IUserApiKeyProvider>();
-            var user = context.RequestServices.GetService<IUserContext>();
-            var uid = user?.UserId;
-            // Request header override is treated as xAI/Grok (legacy X-Api-Key).
-            var xai = !string.IsNullOrWhiteSpace(user?.RequestApiKey)
-                ? user.RequestApiKey
-                : (keyProvider is not null ? await keyProvider.GetKeyAsync(uid, "grok") : null);
-            var gemini = keyProvider is not null ? await keyProvider.GetKeyAsync(uid, "gemini") : null;
-            var anthropic = keyProvider is not null ? await keyProvider.GetKeyAsync(uid, "anthropic") : null;
-            var fal = keyProvider is not null ? await keyProvider.GetKeyAsync(uid, "fal") : null;
-            var suno = keyProvider is not null ? await keyProvider.GetKeyAsync(uid, "suno") : null;
-            var aimusicapi = keyProvider is not null ? await keyProvider.GetKeyAsync(uid, "aimusicapi") : null;
-            var elevenlabs = keyProvider is not null ? await keyProvider.GetKeyAsync(uid, ApiText.ElevenLabsClient) : null;
-            using (ApiKeyScope.Push(new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["grok"] = xai,
-                ["gemini"] = gemini,
-                ["anthropic"] = anthropic,
-                ["fal"] = fal,
-                ["suno"] = suno,
-                ["aimusicapi"] = aimusicapi,
-                [ApiText.ElevenLabsClient] = elevenlabs,
-            }))
-            using (UserApiCallScope.Push(uid))
-            {
-                await next();
-            }
-        });
-    }
-
-    static async Task SeedBundledDemosAsync(WebApplication app)
-    {
-        // Copy any bundled seed_demos/* entries into /data/_demos/ if not already present.
-        // This ensures public demos are available for new deployments without manual admin steps.
-        try
-        {
-            var store = app.Services.GetRequiredService<ProjectStore>();
-            var demoCatalog = app.Services.GetRequiredService<DemoCatalogService>();
-            var demosDir = demoCatalog.DemosDir;
-            Directory.CreateDirectory(demosDir);
-
-            var seedRoot = Path.Combine(AppContext.BaseDirectory, "seed_demos");
-            if (Directory.Exists(seedRoot))
-            {
-                foreach (var seedDir in Directory.EnumerateDirectories(seedRoot))
-                {
-                    var id = Path.GetFileName(seedDir);
-                    var targetDir = Path.Combine(demosDir, id);
-                    var targetMeta = Path.Combine(targetDir, "meta.json");
-                    var targetMovie = Path.Combine(targetDir, "movie.mp4");
-
-                    if (File.Exists(targetMeta) && File.Exists(targetMovie))
-                        continue; // already seeded — never overwrite user data
-
-                    Directory.CreateDirectory(targetDir);
-
-                    var srcMeta = Path.Combine(seedDir, "meta.json");
-                    if (File.Exists(srcMeta))
-                        File.Copy(srcMeta, targetMeta, overwrite: true);
-
-                    var srcMovie = Path.Combine(seedDir, "movie.mp4");
-                    if (!File.Exists(srcMovie))
-                    {
-                        try
-                        {
-                            var meta = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(
-                                await File.ReadAllTextAsync(srcMeta));
-                            if (meta.TryGetProperty(ApiText.ProjectIdKey, out var pidEl) &&
-                                pidEl.GetString() is { Length: > 0 } pid)
-                            {
-                                var wipPath = store.ResolveWipMoviePath(pid);
-                                if (wipPath is not null && File.Exists(wipPath))
-                                    srcMovie = wipPath;
-                            }
-                        }
-                        catch { /* ignore — seed gracefully skipped if movie unavailable */ }
-                    }
-
-                    if (File.Exists(srcMovie))
-                        File.Copy(srcMovie, targetMovie, overwrite: true);
-
-                    if (File.Exists(targetMeta) && File.Exists(targetMovie))
-                        app.Logger.LogInformation("Seeded demo {Id} into {TargetDir}", id, targetDir);
-                    else
-                        app.Logger.LogWarning("Demo seed {Id} skipped — movie not found at {Src}", id, srcMovie);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            app.Logger.LogWarning(ex, "Demo seeding failed (non-fatal)");
-        }
+        var u = await userDb.GetUserByEmailAsync(email, ct).ConfigureAwait(false);
+        if (u is null)
+            return null;
+        if (!string.IsNullOrWhiteSpace(u.UserId))
+            return u.UserId.Trim();
+        if (string.IsNullOrWhiteSpace(u.Username))
+            return null;
+        return u.Username.Trim();
     }
 }

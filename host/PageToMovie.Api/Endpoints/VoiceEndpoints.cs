@@ -289,19 +289,109 @@ public static class VoiceEndpoints
         var text = body?.Text?.Trim();
         if (string.IsNullOrWhiteSpace(text))
             return Results.BadRequest(new { ok = false, error = "text required" });
+        return await ExecuteSpeakAsync(
+            id, charKey, text, body, store, voiceClone, voiceClient, httpFactory, tickets, telemetry, ct);
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { ok = false, error = ex.Message });
+    }
+}
 
+    private sealed class SpeakSynthResult
+    {
+        public byte[]? AudioBytes { get; set; }
+        public string ContentType { get; set; } = SpecializedMimeType.AudioMpeg.ToMimeTypeString();
+        public string FileExt { get; set; } = ".mp3";
+        public string? ClientUrl { get; set; }
+        public string? Error { get; set; }
+        public bool UsedMock { get; set; }
+        public IResult? EarlyError { get; set; }
+    }
+
+    private static async Task<IResult> ExecuteSpeakAsync(
+        string id,
+        string charKey,
+        string text,
+        SpeakVoiceApiRequest? body,
+        ProjectStore store,
+        IVoiceCloneClient voiceClone,
+        IVoiceClient voiceClient,
+        IHttpClientFactory httpFactory,
+        MediaProxyTicketStore tickets,
+        ProjectTelemetryService telemetry,
+        CancellationToken ct)
+    {
         var voiceId = body?.VoiceId;
         if (string.IsNullOrWhiteSpace(voiceId))
             voiceId = store.GetVoiceCloneProviderId(id, charKey);
         if (string.IsNullOrWhiteSpace(voiceId))
             return Results.BadRequest(new { ok = false, error = "No cloned voice yet — record and apply a voice sample first." });
 
-        // Prefer seed provider (who created the clone) so we don't TTS with the wrong stack.
         var seedProvider = store.GetVoiceProviderId(id, charKey) ?? "";
-        var model = body?.Model;
+        var (entry, model) = await ResolveSpeakCatalogEntryAsync(id, body?.Model, seedProvider, store, ct);
+        var maxLen = entry?.MaxPromptLength ?? 5000;
+        if (text.Length > maxLen)
+            return Results.BadRequest(new { ok = false, error = $"Text is {text.Length} characters — this voice model's limit is {maxLen} per call. Split into multiple calls." });
+
+        var providerId = entry?.ProviderId
+                         ?? (string.IsNullOrWhiteSpace(seedProvider) ? null : seedProvider)
+                         ?? "unknown";
+        var useEleven = providerId.Equals(ApiText.ElevenLabsClient, StringComparison.OrdinalIgnoreCase)
+                        || (entry?.Provider == ModelProviderFamily.ElevenLabs)
+                        || voiceId.StartsWith("mock_", StringComparison.OrdinalIgnoreCase);
+
+        var synth = useEleven
+            ? await SpeakWithElevenLabsAsync(voiceClient, voiceId, text, entry, model, ct)
+            : await SpeakWithFalAsync(voiceClone, httpFactory, tickets, voiceId, text, entry, model, ct);
+        if (synth.EarlyError is not null)
+            return synth.EarlyError;
+
+        var estimatedUsd = entry?.CostPerThousandCharsUsd is { } rate
+            ? Math.Round(rate * text.Length / 1000.0, 4)
+            : (double?)null;
+        var ok = synth.AudioBytes is { Length: > 0 } || !string.IsNullOrWhiteSpace(synth.ClientUrl);
+        await telemetry.LogApiCallAsync(new ApiCallTelemetry
+        {
+            ProjectId = id,
+            Kind = "tts",
+            Mode = "dialogue_tts",
+            Model = entry?.Id ?? model,
+            Provider = providerId,
+            CharKey = charKey,
+            PromptChars = text.Length,
+            EstimatedUsd = estimatedUsd,
+            Ok = ok,
+            Error = ok ? null : synth.Error ?? "Speech synthesis failed",
+        }, ct);
+
+        if (!ok)
+            return Results.BadRequest(new { ok = false, error = synth.Error ?? "Speech synthesis failed" });
+
+        return Results.Ok(new
+        {
+            ok = true,
+            projectId = id,
+            charKey,
+            voiceId,
+            clientUrl = synth.ClientUrl,
+            audioBase64 = synth.AudioBytes is { Length: > 0 } ? Convert.ToBase64String(synth.AudioBytes) : null,
+            contentType = synth.ContentType,
+            fileExtension = synth.FileExt,
+            characterCount = text.Length,
+            estimatedUsd,
+            usedMock = synth.UsedMock,
+            message = "Narration audio ready.",
+        });
+    }
+
+    private static async Task<(SupportedModelEntry? Entry, string? Model)> ResolveSpeakCatalogEntryAsync(
+        string projectId, string? model, string seedProvider, ProjectStore store, CancellationToken ct)
+    {
+        // Prefer seed provider (who created the clone) so we don't TTS with the wrong stack.
         if (string.IsNullOrWhiteSpace(model))
         {
-            var cfg = await store.GetConfigAsync(id, ct);
+            var cfg = await store.GetConfigAsync(projectId, ct);
             if (cfg.TryGetValue("voice_model_name", out var vm) && vm.ValueKind == JsonValueKind.String)
                 model = vm.GetString();
         }
@@ -314,140 +404,102 @@ public static class VoiceEndpoints
         if (entry is { IsVoiceCloneStep: true })
         {
             // User selected the clone model — pair to same-provider speak model.
-            entry = SupportedModelCatalog.ForCapability(ModelCapability.Voice)
-                .FirstOrDefault(m => !m.IsVoiceCloneStep && m.Enabled &&
-                    string.Equals(m.ProviderId, entry.ProviderId, StringComparison.OrdinalIgnoreCase));
+            entry = FindEnabledSpeakModel(entry.ProviderId);
             model = entry?.Id;
         }
         if (entry is null)
         {
             // Infer from seed provider id.
-            entry = SupportedModelCatalog.ForCapability(ModelCapability.Voice)
-                .FirstOrDefault(m => !m.IsVoiceCloneStep && m.Enabled &&
-                    (string.IsNullOrWhiteSpace(seedProvider) ||
-                     string.Equals(m.ProviderId, seedProvider, StringComparison.OrdinalIgnoreCase)));
+            entry = FindEnabledSpeakModel(string.IsNullOrWhiteSpace(seedProvider) ? null : seedProvider, matchAnyIfNoProvider: true);
             model = entry?.Id ?? model;
         }
-
-        var maxLen = entry?.MaxPromptLength ?? 5000;
-        if (text.Length > maxLen)
-            return Results.BadRequest(new { ok = false, error = $"Text is {text.Length} characters — this voice model's limit is {maxLen} per call. Split into multiple calls." });
-
-        var providerId = entry?.ProviderId
-                         ?? (string.IsNullOrWhiteSpace(seedProvider) ? null : seedProvider)
-                         ?? "unknown";
-        var useEleven = providerId.Equals(ApiText.ElevenLabsClient, StringComparison.OrdinalIgnoreCase)
-                        || (entry?.Provider == ModelProviderFamily.ElevenLabs)
-                        || voiceId.StartsWith("mock_", StringComparison.OrdinalIgnoreCase);
-
-        byte[]? audioBytes = null;
-        string contentType = SpecializedMimeType.AudioMpeg.ToMimeTypeString();
-        string fileExt = ".mp3";
-        string? clientUrl = null;
-        string? error = null;
-        var usedMock = false;
-
-        if (useEleven)
-        {
-            if (!voiceClient.IsConfigured && !voiceId.StartsWith("mock_", StringComparison.OrdinalIgnoreCase))
-                return Results.BadRequest(new { ok = false, error = "ElevenLabs key is not configured. Open Settings → Voice." });
-            var speakModelId = entry?.Id
-                               ?? SupportedModelCatalog.Find("eleven_multilingual_v2", ModelCapability.Voice)?.Id
-                               ?? model
-                               ?? "eleven_multilingual_v2";
-            var tts = await voiceClient.TextToSpeechAsync(voiceId, text, speakModelId, ct);
-            if (!tts.Ok || tts.AudioBytes is not { Length: > 0 })
-            {
-                error = tts.Error ?? "Speech synthesis failed";
-            }
-            else
-            {
-                audioBytes = tts.AudioBytes;
-                contentType = tts.ContentType ?? SpecializedMimeType.AudioMpeg.ToMimeTypeString();
-                fileExt = tts.FileExtension ?? ".mp3";
-                usedMock = tts.UsedMock;
-            }
-        }
-        else
-        {
-            if (!voiceClone.IsConfigured)
-                return Results.BadRequest(new { ok = false, error = "Connect a voice service (Fal) in Settings for MiniMax speech." });
-            var speakModelId = entry?.Id
-                               ?? SupportedModelCatalog.Find("fal-ai/minimax/speech-02-hd", ModelCapability.Voice)?.Id
-                               ?? model;
-            var audioUrl = await voiceClone.SynthesizeSpeechAsync(text, voiceId, speakModelId, ct);
-            if (string.IsNullOrWhiteSpace(audioUrl))
-            {
-                error = "Speech synthesis failed — see server logs.";
-            }
-            else
-            {
-                try
-                {
-                    var http = httpFactory.CreateClient();
-                    using var resp = await http.GetAsync(audioUrl, ct);
-                    if (resp.IsSuccessStatusCode)
-                    {
-                        audioBytes = await resp.Content.ReadAsByteArrayAsync(ct);
-                        contentType = resp.Content.Headers.ContentType?.MediaType ?? SpecializedMimeType.AudioMpeg.ToMimeTypeString();
-                    }
-                    else
-                    {
-                        // Fall back to proxy URL if download fails
-                        var ticket = tickets.Issue(audioUrl, TimeSpan.FromMinutes(45));
-                        clientUrl = $"/api/media/proxy/{ticket}";
-                    }
-                }
-                catch
-                {
-                    var ticket = tickets.Issue(audioUrl, TimeSpan.FromMinutes(45));
-                    clientUrl = $"/api/media/proxy/{ticket}";
-                }
-            }
-        }
-
-        var estimatedUsd = entry?.CostPerThousandCharsUsd is { } rate
-            ? Math.Round(rate * text.Length / 1000.0, 4)
-            : (double?)null;
-        var ok = audioBytes is { Length: > 0 } || !string.IsNullOrWhiteSpace(clientUrl);
-        await telemetry.LogApiCallAsync(new ApiCallTelemetry
-        {
-            ProjectId = id,
-            Kind = "tts",
-            Mode = "dialogue_tts",
-            Model = entry?.Id ?? model,
-            Provider = providerId,
-            CharKey = charKey,
-            PromptChars = text.Length,
-            EstimatedUsd = estimatedUsd,
-            Ok = ok,
-            Error = ok ? null : error ?? "Speech synthesis failed",
-        }, ct);
-
-        if (!ok)
-            return Results.BadRequest(new { ok = false, error = error ?? "Speech synthesis failed" });
-
-        return Results.Ok(new
-        {
-            ok = true,
-            projectId = id,
-            charKey,
-            voiceId,
-            clientUrl,
-            audioBase64 = audioBytes is { Length: > 0 } ? Convert.ToBase64String(audioBytes) : null,
-            contentType,
-            fileExtension = fileExt,
-            characterCount = text.Length,
-            estimatedUsd,
-            usedMock,
-            message = "Narration audio ready.",
-        });
+        return (entry, model);
     }
-    catch (Exception ex)
+
+    private static SupportedModelEntry? FindEnabledSpeakModel(string? providerId, bool matchAnyIfNoProvider = false) =>
+        SupportedModelCatalog.ForCapability(ModelCapability.Voice)
+            .FirstOrDefault(m => !m.IsVoiceCloneStep && m.Enabled &&
+                (matchAnyIfNoProvider
+                    ? string.IsNullOrWhiteSpace(providerId) ||
+                      string.Equals(m.ProviderId, providerId, StringComparison.OrdinalIgnoreCase)
+                    : string.Equals(m.ProviderId, providerId, StringComparison.OrdinalIgnoreCase)));
+
+    private static async Task<SpeakSynthResult> SpeakWithElevenLabsAsync(
+        IVoiceClient voiceClient, string voiceId, string text, SupportedModelEntry? entry, string? model, CancellationToken ct)
     {
-        return Results.BadRequest(new { ok = false, error = ex.Message });
+        var result = new SpeakSynthResult();
+        if (!voiceClient.IsConfigured && !voiceId.StartsWith("mock_", StringComparison.OrdinalIgnoreCase))
+        {
+            result.EarlyError = Results.BadRequest(new { ok = false, error = "ElevenLabs key is not configured. Open Settings → Voice." });
+            return result;
+        }
+        var speakModelId = entry?.Id
+                           ?? SupportedModelCatalog.Find("eleven_multilingual_v2", ModelCapability.Voice)?.Id
+                           ?? model
+                           ?? "eleven_multilingual_v2";
+        var tts = await voiceClient.TextToSpeechAsync(voiceId, text, speakModelId, ct);
+        if (!tts.Ok || tts.AudioBytes is not { Length: > 0 })
+        {
+            result.Error = tts.Error ?? "Speech synthesis failed";
+            return result;
+        }
+        result.AudioBytes = tts.AudioBytes;
+        result.ContentType = tts.ContentType ?? SpecializedMimeType.AudioMpeg.ToMimeTypeString();
+        result.FileExt = tts.FileExtension ?? ".mp3";
+        result.UsedMock = tts.UsedMock;
+        return result;
     }
-}
+
+    private static async Task<SpeakSynthResult> SpeakWithFalAsync(
+        IVoiceCloneClient voiceClone,
+        IHttpClientFactory httpFactory,
+        MediaProxyTicketStore tickets,
+        string voiceId,
+        string text,
+        SupportedModelEntry? entry,
+        string? model,
+        CancellationToken ct)
+    {
+        var result = new SpeakSynthResult();
+        if (!voiceClone.IsConfigured)
+        {
+            result.EarlyError = Results.BadRequest(new { ok = false, error = "Connect a voice service (Fal) in Settings for MiniMax speech." });
+            return result;
+        }
+        var speakModelId = entry?.Id
+                           ?? SupportedModelCatalog.Find("fal-ai/minimax/speech-02-hd", ModelCapability.Voice)?.Id
+                           ?? model;
+        var audioUrl = await voiceClone.SynthesizeSpeechAsync(text, voiceId, speakModelId, ct);
+        if (string.IsNullOrWhiteSpace(audioUrl))
+        {
+            result.Error = "Speech synthesis failed — see server logs.";
+            return result;
+        }
+        await TryDownloadOrProxySpeechAsync(httpFactory, tickets, audioUrl, result, ct);
+        return result;
+    }
+
+    private static async Task TryDownloadOrProxySpeechAsync(
+        IHttpClientFactory httpFactory, MediaProxyTicketStore tickets, string audioUrl, SpeakSynthResult result, CancellationToken ct)
+    {
+        try
+        {
+            var http = httpFactory.CreateClient();
+            using var resp = await http.GetAsync(audioUrl, ct);
+            if (resp.IsSuccessStatusCode)
+            {
+                result.AudioBytes = await resp.Content.ReadAsByteArrayAsync(ct);
+                result.ContentType = resp.Content.Headers.ContentType?.MediaType ?? SpecializedMimeType.AudioMpeg.ToMimeTypeString();
+                return;
+            }
+            // Fall back to proxy URL if download fails
+            result.ClientUrl = $"/api/media/proxy/{tickets.Issue(audioUrl, TimeSpan.FromMinutes(45))}";
+        }
+        catch
+        {
+            result.ClientUrl = $"/api/media/proxy/{tickets.Issue(audioUrl, TimeSpan.FromMinutes(45))}";
+        }
+    }
 
     private static async Task<IResult> PostProjectsIdMediaLipSync(string id,
     HttpRequest req,
@@ -468,6 +520,30 @@ public static class VoiceEndpoints
     string? audioTemp = null;
     try
     {
+        return await RunLipSyncAsync(id, req, store, lipSync, tickets, telemetry, ct,
+            v => videoTemp = v, a => audioTemp = a);
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { ok = false, error = ex.Message });
+    }
+    finally
+    {
+        DeleteTempFiles(videoTemp, audioTemp);
+    }
+}
+
+    private static async Task<IResult> RunLipSyncAsync(
+        string id,
+        HttpRequest req,
+        ProjectStore store,
+        ILipSyncClient lipSync,
+        MediaProxyTicketStore tickets,
+        ProjectTelemetryService telemetry,
+        CancellationToken ct,
+        Action<string> setVideoTemp,
+        Action<string> setAudioTemp)
+    {
         await store.RequireProjectAsync(id, ct);
         if (!lipSync.IsConfigured)
             return Results.BadRequest(new { ok = false, error = "Connect a lip-sync service (FAL_API_KEY) in Configuration." });
@@ -484,8 +560,10 @@ public static class VoiceEndpoints
         var syncMode = form["syncMode"].FirstOrDefault();
         var entry = SupportedModelCatalog.ResolveOrDefault(model, ModelCapability.LipSync);
 
-        videoTemp = Path.Combine(Path.GetTempPath(), $"lipsync_video_{Guid.NewGuid():N}{Path.GetExtension(videoFile.FileName)}");
-        audioTemp = Path.Combine(Path.GetTempPath(), $"lipsync_audio_{Guid.NewGuid():N}{Path.GetExtension(audioFile.FileName)}");
+        var videoTemp = Path.Combine(Path.GetTempPath(), $"lipsync_video_{Guid.NewGuid():N}{Path.GetExtension(videoFile.FileName)}");
+        var audioTemp = Path.Combine(Path.GetTempPath(), $"lipsync_audio_{Guid.NewGuid():N}{Path.GetExtension(audioFile.FileName)}");
+        setVideoTemp(videoTemp);
+        setAudioTemp(audioTemp);
         await using (var vfs = File.Create(videoTemp))
             await videoFile.CopyToAsync(vfs, ct);
         await using (var afs = File.Create(audioTemp))
@@ -520,19 +598,15 @@ public static class VoiceEndpoints
             message = "Lip-synced clip ready.",
         });
     }
-    catch (Exception ex)
+
+    private static void DeleteTempFiles(params string?[] paths)
     {
-        return Results.BadRequest(new { ok = false, error = ex.Message });
-    }
-    finally
-    {
-        foreach (var tmp in new[] { videoTemp, audioTemp })
+        foreach (var tmp in paths)
         {
             if (tmp is null) continue;
             try { if (File.Exists(tmp)) File.Delete(tmp); } catch { /* best effort */ }
         }
     }
-}
 
     private static async Task<IResult> GetVoices(IVoiceClient voices, CancellationToken ct)
     {

@@ -187,64 +187,82 @@ public static class ProjectEndpoints
     if (AuthGate.RequireLogin(user, opts) is { } denied)
         return denied;
     var all = await store.ListProjectsAsync(ct);
+    var list = await FilterProjectsForUserAsync(all, user, userDb, store, ct);
+    var userActiveId = await userDb.GetUserActiveProjectAsync(user.UserId, ct);
+    // Per-user active only — never fall back to process-wide store.ActiveProjectId
+    // (that is the last project any account activated and leaks across logins).
+    var active = ProjectOwnership.PickActiveInList(list, userActiveId);
+    await ReconcileActiveProjectAsync(user, userDb, userActiveId, active, ct);
+    return Results.Ok(new { ok = true, active, projects = list });
+}
 
-    IReadOnlyList<ProjectInfo> list;
-    if (user.IsAdmin)
+    private static async Task<IReadOnlyList<ProjectInfo>> FilterProjectsForUserAsync(
+        IReadOnlyList<ProjectInfo> all,
+        IUserContext user,
+        UserDatabaseService userDb,
+        ProjectStore store,
+        CancellationToken ct)
     {
-        list = all;
-    }
-    else
-    {
+        if (user.IsAdmin)
+            return all;
+
         // Resolve all known identities for this account so projects created under a
         // previous handle / email-shaped id (folder budcribarmsn_com vs budcribar) still appear.
-        UserEntity? me = null;
-        try
-        {
-            me = await userDb.GetUserByIdAsync(user.UserId, ct).ConfigureAwait(false)
-                 ?? await userDb.GetUserByUsernameAsync(user.UserId, ct).ConfigureAwait(false);
-        }
-        catch { /* offline */ }
-
+        var me = await TryLoadCurrentUserAsync(userDb, user.UserId, ct);
         var aliases = ProjectOwnership.CollectAliases(
             user.UserId,
             canonicalUserId: me?.UserId,
             username: me?.Username,
             email: me?.Email);
-        list = all.Where(p => ProjectOwnership.IsOwnedBy(p, aliases)).ToList();
+        var list = all.Where(p => ProjectOwnership.IsOwnedBy(p, aliases)).ToList();
+        await HealStaleProjectOwnersAsync(list, me, user.UserId, store, ct);
+        return list;
+    }
 
+    private static async Task<UserEntity?> TryLoadCurrentUserAsync(UserDatabaseService userDb, string userId, CancellationToken ct)
+    {
+        try
+        {
+            return await userDb.GetUserByIdAsync(userId, ct).ConfigureAwait(false)
+                 ?? await userDb.GetUserByUsernameAsync(userId, ct).ConfigureAwait(false);
+        }
+        catch { /* offline */ }
+        return null;
+    }
+
+    private static async Task HealStaleProjectOwnersAsync(
+        List<ProjectInfo> list, UserEntity? me, string userId, ProjectStore store, CancellationToken ct)
+    {
         // Self-heal: if folder/owner field used a stale alias, rewrite ownerUserId to canonical id
         // so future filters and admin tools stay consistent. Best-effort; never delete.
-        var canonical = !string.IsNullOrWhiteSpace(me?.UserId) ? me.UserId.Trim() : user.UserId.Trim();
-        if (!string.IsNullOrWhiteSpace(canonical))
+        var canonical = !string.IsNullOrWhiteSpace(me?.UserId) ? me.UserId.Trim() : userId.Trim();
+        if (string.IsNullOrWhiteSpace(canonical))
+            return;
+        foreach (var p in list)
         {
-            foreach (var p in list)
+            if (string.Equals(p.OwnerUserId, canonical, StringComparison.OrdinalIgnoreCase))
+                continue;
+            try
             {
-                if (string.Equals(p.OwnerUserId, canonical, StringComparison.OrdinalIgnoreCase))
-                    continue;
-                try
-                {
-                    await store.RepairProjectOwnerAsync(p.Id, canonical, ct).ConfigureAwait(false);
-                    p.OwnerUserId = canonical;
-                }
-                catch { /* non-fatal */ }
+                await store.RepairProjectOwnerAsync(p.Id, canonical, ct).ConfigureAwait(false);
+                p.OwnerUserId = canonical;
             }
+            catch { /* non-fatal */ }
         }
     }
 
-    var userActiveId = await userDb.GetUserActiveProjectAsync(user.UserId, ct);
-    // Per-user active only — never fall back to process-wide store.ActiveProjectId
-    // (that is the last project any account activated and leaks across logins).
-    var active = ProjectOwnership.PickActiveInList(list, userActiveId);
-    if (!string.IsNullOrWhiteSpace(userActiveId)
-        && (active is null
-            || !string.Equals(active.Id, userActiveId, StringComparison.OrdinalIgnoreCase)))
+    private static async Task ReconcileActiveProjectAsync(
+        IUserContext user, UserDatabaseService userDb, string? userActiveId, ProjectInfo? active, CancellationToken ct)
     {
+        if (string.IsNullOrWhiteSpace(userActiveId)
+            || (active is not null
+                && string.Equals(active.Id, userActiveId, StringComparison.OrdinalIgnoreCase)))
+            return;
+
         // Stale pointer (deleted project or another account's id) — clear so next login is clean.
         try { await userDb.SetUserActiveProjectAsync(user.UserId, active?.Id, ct); }
         catch { /* non-fatal */ }
     }
-    return Results.Ok(new { ok = true, active, projects = list });
-}
 
     private static async Task<IResult> PostProjectsIdActivate(string id,
     ProjectStore store,
