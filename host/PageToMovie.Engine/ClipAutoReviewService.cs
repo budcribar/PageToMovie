@@ -124,117 +124,194 @@ public sealed class ClipAutoReviewService
         var workDir = Path.Combine(projectDir, "assets", "review", $"_frames_S{scene:D2}C{clip:D2}");
         try
         {
-            if (Directory.Exists(workDir))
-            {
-                try { Directory.Delete(workDir, recursive: true); } catch { /* best-effort stale frame cleanup */ }
-            }
-            Directory.CreateDirectory(workDir);
-
-            var images = new List<(string Path, string Label)>();
-            var curFramePaths = new List<string>();
-            var hasPrev = false;
-
-            if (clientFrames is { Count: > 0 })
-            {
-                onProgress?.Invoke(20, 100, "Receiving browser sample frames…");
-                (images, curFramePaths, hasPrev) = await MaterializeClientFramesAsync(workDir, clientFrames, ct).ConfigureAwait(false);
-            }
-            else
-            {
-                // No native ffmpeg on server — browser must sample via ffmpeg.wasm.
-                throw new InvalidOperationException(
-                    "Browser frame samples required for auto-review (no server ffmpeg). " +
-                    "Use Review → Auto-review in the app so the client can sample frames first.");
-            }
-
-            if (images.Count == 0)
-                throw new InvalidOperationException("No usable sample frames (upload empty or invalid).");
-
-            // PR3: keep 2–4 current-clip frames for humans/export (before temp workDir is deleted)
-            IReadOnlyList<string> durableFrames = Array.Empty<string>();
-            try
-            {
-                durableFrames = await _reviewIndex.PersistDurableFramesAsync(
-                    projectId, scene, clip, curFramePaths, maxFrames: 4, ct: ct).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                _log.LogDebug(ex, "Persist durable frames skipped S{Scene}C{Clip}", scene, clip);
-            }
-
-            onProgress?.Invoke(55, 100, "AI reviewing continuity and quality…");
-            var prompt = await BuildReviewPromptAsync(scene, clip, plan, profiles, images, hasPrev).ConfigureAwait(false);
-            // Project-scoped rules only (checklist lives in embedded clip_auto_review.txt).
-            try
-            {
-                var rules = await _projectRules.GetActiveRulesBlockAsync(projectId, ct).ConfigureAwait(false);
-                if (!string.IsNullOrWhiteSpace(rules))
-                    prompt += "\n\n" + rules.Trim();
-            }
-            catch { /* non-fatal */ }
-            var imagePaths = images.Select(i => i.Path).ToList();
-            var qualityModel = await GetConfigStringAsync(projectId, "quality_model_name", "", ct);
-            // legacy next line may fill vision — we re-resolve below
-            if (string.IsNullOrWhiteSpace(qualityModel))
-                qualityModel = await GetConfigStringAsync(projectId, "vision_model_name", "", ct);
-            if (string.IsNullOrWhiteSpace(qualityModel))
-            {
-                var cfgMap = await _projects.GetConfigAsync(projectId, ct).ConfigureAwait(false);
-                qualityModel = ProjectModelSelection.RequireVideoReview(cfgMap, "Clip auto-review");
-            }
-            else
-            {
-                qualityModel = ProjectModelSelection.RequireExplicit(qualityModel, ModelCapability.Chat, "Clip auto-review");
-            }
-
-
-            onProgress?.Invoke(85, 100, "Parsing suggestions…");
-            var operation = new MultimodalReviewOperation<ClipAutoReviewDraft>(
-                _vision, imagePaths, qualityModel, "clip_multimodal_review", "clip-auto-review.v1",
-                raw => ParseDraft(raw, projectId, scene, clip, plan, profiles, hasPrev),
-                ValidateDraft);
-            var observation = new MultimodalReviewObservation(
-                $"Clip S{scene:D2}C{clip:D2}", images.Select(i => i.Label).ToArray(), prompt);
-            var execution = await operation.ExecuteAsync(observation, ct).ConfigureAwait(false);
-            if (!execution.Success || execution.Value is null)
-                throw new InvalidOperationException(execution.Error ?? string.Join(" ", execution.ValidationIssues.Select(i => i.Message)));
-            var draft = execution.Value;
-            draft.GeneratedAt = DateTimeOffset.UtcNow;
-            await SaveDraftAsync(draft, ct).ConfigureAwait(false);
-            await SaveExecutionManifestAsync(projectDir, "clip_multimodal_review", execution, ct).ConfigureAwait(false);
-
-            await TryLogAsync(projectId, scene, clip, draft, ct);
-            try
-            {
-                await _logs.RecordAutoReviewAsync(
-                    projectId, scene, clip,
-                    draft.Suggestion, draft.Category, draft.Note, ct).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                _log.LogDebug(ex, "RecordAutoReview for assembly gate skipped");
-            }
-
-            try
-            {
-                await _reviewIndex.UpsertClipAsync(projectId, scene, clip, durableFrames, draft, ct);
-            }
-            catch (Exception ex)
-            {
-                _log.LogDebug(ex, "Review index upsert skipped S{Scene}C{Clip}", scene, clip);
-            }
-
-            onProgress?.Invoke(100, 100, "Review draft ready");
-            return draft;
+            ResetWorkDir(workDir);
+            return await ReviewWithClientFramesAsync(
+                projectId, scene, clip, projectDir, workDir, plan, profiles, onProgress, ct, clientFrames)
+                .ConfigureAwait(false);
         }
         finally
         {
-            try
-            {
-                if (Directory.Exists(workDir))
-                    Directory.Delete(workDir, recursive: true);
-            }
-            catch { /* best effort */ }
+            TryDeleteDirectory(workDir);
+        }
+    }
+
+    private static void ResetWorkDir(string workDir)
+    {
+        if (Directory.Exists(workDir))
+        {
+            try { Directory.Delete(workDir, recursive: true); } catch { /* best-effort stale frame cleanup */ }
+        }
+        Directory.CreateDirectory(workDir);
+    }
+
+    private static void TryDeleteDirectory(string workDir)
+    {
+        try
+        {
+            if (Directory.Exists(workDir))
+                Directory.Delete(workDir, recursive: true);
+        }
+        catch { /* best effort */ }
+    }
+
+    private async Task<ClipAutoReviewDraft> ReviewWithClientFramesAsync(
+        string projectId,
+        int scene,
+        int clip,
+        string projectDir,
+        string workDir,
+        ClipPlan plan,
+        IReadOnlyDictionary<string, ClipVideoPromptBuilder.CharacterProfile> profiles,
+        Action<int, int, string>? onProgress,
+        CancellationToken ct,
+        IReadOnlyList<ClipAutoReviewClientFrame>? clientFrames)
+    {
+        var (images, curFramePaths, hasPrev) = await RequireClientFramesAsync(workDir, clientFrames, onProgress, ct)
+            .ConfigureAwait(false);
+
+        var durableFrames = await TryPersistDurableFramesAsync(projectId, scene, clip, curFramePaths, ct)
+            .ConfigureAwait(false);
+
+        onProgress?.Invoke(55, 100, "AI reviewing continuity and quality…");
+        var prompt = await BuildReviewPromptAsync(scene, clip, plan, profiles, images, hasPrev).ConfigureAwait(false);
+        prompt = await AppendActiveProjectRulesAsync(projectId, prompt, ct).ConfigureAwait(false);
+        var qualityModel = await ResolveReviewModelAsync(projectId, ct).ConfigureAwait(false);
+
+        onProgress?.Invoke(85, 100, "Parsing suggestions…");
+        var draft = await ExecuteReviewOperationAsync(
+            projectId, scene, clip, projectDir, plan, profiles, hasPrev, images, prompt, qualityModel, ct)
+            .ConfigureAwait(false);
+
+        await TryLogAsync(projectId, scene, clip, draft, ct);
+        await TryRecordAutoReviewAsync(projectId, scene, clip, draft, ct).ConfigureAwait(false);
+        await TryUpsertReviewIndexAsync(projectId, scene, clip, durableFrames, draft, ct).ConfigureAwait(false);
+
+        onProgress?.Invoke(100, 100, "Review draft ready");
+        return draft;
+    }
+
+    private static async Task<(List<(string Path, string Label)> Images, List<string> CurrentClipPaths, bool HasPrev)>
+        RequireClientFramesAsync(
+            string workDir,
+            IReadOnlyList<ClipAutoReviewClientFrame>? clientFrames,
+            Action<int, int, string>? onProgress,
+            CancellationToken ct)
+    {
+        if (clientFrames is { Count: > 0 })
+        {
+            onProgress?.Invoke(20, 100, "Receiving browser sample frames…");
+            var materialized = await MaterializeClientFramesAsync(workDir, clientFrames, ct).ConfigureAwait(false);
+            if (materialized.Images.Count == 0)
+                throw new InvalidOperationException("No usable sample frames (upload empty or invalid).");
+            return materialized;
+        }
+
+        // No native ffmpeg on server — browser must sample via ffmpeg.wasm.
+        throw new InvalidOperationException(
+            "Browser frame samples required for auto-review (no server ffmpeg). " +
+            "Use Review → Auto-review in the app so the client can sample frames first.");
+    }
+
+    private async Task<IReadOnlyList<string>> TryPersistDurableFramesAsync(
+        string projectId, int scene, int clip, List<string> curFramePaths, CancellationToken ct)
+    {
+        // PR3: keep 2–4 current-clip frames for humans/export (before temp workDir is deleted)
+        try
+        {
+            return await _reviewIndex.PersistDurableFramesAsync(
+                projectId, scene, clip, curFramePaths, maxFrames: 4, ct: ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _log.LogDebug(ex, "Persist durable frames skipped S{Scene}C{Clip}", scene, clip);
+            return Array.Empty<string>();
+        }
+    }
+
+    private async Task<string> AppendActiveProjectRulesAsync(string projectId, string prompt, CancellationToken ct)
+    {
+        // Project-scoped rules only (checklist lives in embedded clip_auto_review.txt).
+        try
+        {
+            var rules = await _projectRules.GetActiveRulesBlockAsync(projectId, ct).ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(rules))
+                return prompt + "\n\n" + rules.Trim();
+        }
+        catch { /* non-fatal */ }
+        return prompt;
+    }
+
+    private async Task<string> ResolveReviewModelAsync(string projectId, CancellationToken ct)
+    {
+        var qualityModel = await GetConfigStringAsync(projectId, "quality_model_name", "", ct);
+        // legacy next line may fill vision — we re-resolve below
+        if (string.IsNullOrWhiteSpace(qualityModel))
+            qualityModel = await GetConfigStringAsync(projectId, "vision_model_name", "", ct);
+        if (string.IsNullOrWhiteSpace(qualityModel))
+        {
+            var cfgMap = await _projects.GetConfigAsync(projectId, ct).ConfigureAwait(false);
+            return ProjectModelSelection.RequireVideoReview(cfgMap, "Clip auto-review");
+        }
+
+        return ProjectModelSelection.RequireExplicit(qualityModel, ModelCapability.Chat, "Clip auto-review");
+    }
+
+    private async Task<ClipAutoReviewDraft> ExecuteReviewOperationAsync(
+        string projectId,
+        int scene,
+        int clip,
+        string projectDir,
+        ClipPlan plan,
+        IReadOnlyDictionary<string, ClipVideoPromptBuilder.CharacterProfile> profiles,
+        bool hasPrev,
+        List<(string Path, string Label)> images,
+        string prompt,
+        string qualityModel,
+        CancellationToken ct)
+    {
+        var imagePaths = images.Select(i => i.Path).ToList();
+        var operation = new MultimodalReviewOperation<ClipAutoReviewDraft>(
+            _vision, imagePaths, qualityModel, "clip_multimodal_review", "clip-auto-review.v1",
+            raw => ParseDraft(raw, projectId, scene, clip, plan, profiles, hasPrev),
+            ValidateDraft);
+        var observation = new MultimodalReviewObservation(
+            $"Clip S{scene:D2}C{clip:D2}", images.Select(i => i.Label).ToArray(), prompt);
+        var execution = await operation.ExecuteAsync(observation, ct).ConfigureAwait(false);
+        if (!execution.Success || execution.Value is null)
+            throw new InvalidOperationException(execution.Error ?? string.Join(" ", execution.ValidationIssues.Select(i => i.Message)));
+        var draft = execution.Value;
+        draft.GeneratedAt = DateTimeOffset.UtcNow;
+        await SaveDraftAsync(draft, ct).ConfigureAwait(false);
+        await SaveExecutionManifestAsync(projectDir, "clip_multimodal_review", execution, ct).ConfigureAwait(false);
+        return draft;
+    }
+
+    private async Task TryRecordAutoReviewAsync(
+        string projectId, int scene, int clip, ClipAutoReviewDraft draft, CancellationToken ct)
+    {
+        try
+        {
+            await _logs.RecordAutoReviewAsync(
+                projectId, scene, clip,
+                draft.Suggestion, draft.Category, draft.Note, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _log.LogDebug(ex, "RecordAutoReview for assembly gate skipped");
+        }
+    }
+
+    private async Task TryUpsertReviewIndexAsync(
+        string projectId, int scene, int clip, IReadOnlyList<string> durableFrames,
+        ClipAutoReviewDraft draft, CancellationToken ct)
+    {
+        try
+        {
+            await _reviewIndex.UpsertClipAsync(projectId, scene, clip, durableFrames, draft, ct);
+        }
+        catch (Exception ex)
+        {
+            _log.LogDebug(ex, "Review index upsert skipped S{Scene}C{Clip}", scene, clip);
         }
     }
 
@@ -255,70 +332,127 @@ public sealed class ClipAutoReviewService
         var afterParts = new List<string>();
 
         foreach (var item in items)
+            ApplySuggestionItem(projectId, scene, clip, item, plan, profiles, beforeParts, afterParts);
+
+        var draft = await StampDraftAppliedAsync(projectId, scene, clip, ct).ConfigureAwait(false);
+        await TryLogApplyAsync(projectId, scene, clip, items.Count, beforeParts, afterParts, draft, ct)
+            .ConfigureAwait(false);
+    }
+
+    private void ApplySuggestionItem(
+        string projectId,
+        int scene,
+        int clip,
+        ClipAutoReviewApplyItem item,
+        ClipPlan plan,
+        IReadOnlyDictionary<string, ClipVideoPromptBuilder.CharacterProfile> profiles,
+        List<string> beforeParts,
+        List<string> afterParts)
+    {
+        var layer = (item.Layer ?? "clip").Trim().ToLowerInvariant();
+        var field = (item.Field ?? "").Trim().ToLowerInvariant();
+        var value = item.Value ?? "";
+
+        if (layer == CharacterLayer && !string.IsNullOrWhiteSpace(item.CharKey))
+            ApplyCharacterSuggestion(projectId, item.CharKey, field, value, profiles, beforeParts, afterParts);
+        else if (layer == "clip" && field is VisualPromptKey or "prompt")
+            ApplyClipVisualSuggestion(projectId, scene, clip, value, plan, beforeParts, afterParts);
+    }
+
+    private void ApplyCharacterSuggestion(
+        string projectId,
+        string charKey,
+        string field,
+        string value,
+        IReadOnlyDictionary<string, ClipVideoPromptBuilder.CharacterProfile> profiles,
+        List<string> beforeParts,
+        List<string> afterParts)
+    {
+        profiles.TryGetValue(charKey, out var p);
+        var before = ReadCharacterField(p, field);
+        WriteCharacterField(projectId, charKey, field, value);
+        beforeParts.Add($"{charKey}.{field}: {Trim(before, 400)}");
+        afterParts.Add($"{charKey}.{field}: {Trim(value, 400)}");
+    }
+
+    private static string ReadCharacterField(ClipVideoPromptBuilder.CharacterProfile? p, string field) =>
+        field switch
         {
-            var layer = (item.Layer ?? "clip").Trim().ToLowerInvariant();
-            var field = (item.Field ?? "").Trim().ToLowerInvariant();
-            var value = item.Value ?? "";
-            var before = "";
+            "description" => p?.Description ?? "",
+            "visual_lock" => p?.VisualLock ?? "",
+            VoiceProfileKey => p?.VoiceProfile ?? "",
+            _ => "",
+        };
 
-            if (layer == CharacterLayer && !string.IsNullOrWhiteSpace(item.CharKey))
-            {
-                profiles.TryGetValue(item.CharKey, out var p);
-                before = field switch
-                {
-                    "description" => p?.Description ?? "",
-                    "visual_lock" => p?.VisualLock ?? "",
-                    VoiceProfileKey => p?.VoiceProfile ?? "",
-                    _ => "",
-                };
-                switch (field)
-                {
-                    case VoiceProfileKey:
-                        _projects.UpdateCharacterSeedText(projectId, item.CharKey, voiceProfile: value);
-                        break;
-                    case "description":
-                        _projects.UpdateCharacterSeedText(projectId, item.CharKey, description: value);
-                        break;
-                    case "visual_lock":
-                        _projects.UpdateCharacterSeedText(projectId, item.CharKey, visualLock: value);
-                        break;
-                    default:
-                        _log.LogWarning("Unknown character field {Field}", field);
-                        break;
-                }
-                beforeParts.Add($"{item.CharKey}.{field}: {Trim(before, 400)}");
-                afterParts.Add($"{item.CharKey}.{field}: {Trim(value, 400)}");
-            }
-            else if (layer == "clip" && field is VisualPromptKey or "prompt")
-            {
-                before = plan.VisualPrompt;
-                _projects.UpdateClipVisualPrompt(projectId, scene, clip, value);
-                beforeParts.Add($"clip.visual_prompt: {Trim(before, 600)}");
-                afterParts.Add($"clip.visual_prompt: {Trim(value, 600)}");
-                plan.VisualPrompt = value;
-            }
+    private void WriteCharacterField(string projectId, string charKey, string field, string value)
+    {
+        switch (field)
+        {
+            case VoiceProfileKey:
+                _projects.UpdateCharacterSeedText(projectId, charKey, voiceProfile: value);
+                break;
+            case "description":
+                _projects.UpdateCharacterSeedText(projectId, charKey, description: value);
+                break;
+            case "visual_lock":
+                _projects.UpdateCharacterSeedText(projectId, charKey, visualLock: value);
+                break;
+            default:
+                _log.LogWarning("Unknown character field {Field}", field);
+                break;
         }
+    }
 
+    private void ApplyClipVisualSuggestion(
+        string projectId,
+        int scene,
+        int clip,
+        string value,
+        ClipPlan plan,
+        List<string> beforeParts,
+        List<string> afterParts)
+    {
+        var before = plan.VisualPrompt;
+        _projects.UpdateClipVisualPrompt(projectId, scene, clip, value);
+        beforeParts.Add($"clip.visual_prompt: {Trim(before, 600)}");
+        afterParts.Add($"clip.visual_prompt: {Trim(value, 600)}");
+        plan.VisualPrompt = value;
+    }
+
+    private async Task<ClipAutoReviewDraft?> StampDraftAppliedAsync(
+        string projectId, int scene, int clip, CancellationToken ct)
+    {
         var draft = await LoadDraftAsync(projectId, scene, clip, ct).ConfigureAwait(false);
-        if (draft is not null)
-        {
-            draft.RawSummary = (draft.RawSummary ?? "") + "\n[applied " + DateTimeOffset.UtcNow.ToString("O") + "]";
-            await SaveDraftAsync(draft, ct).ConfigureAwait(false);
-        }
+        if (draft is null)
+            return null;
+        draft.RawSummary = (draft.RawSummary ?? "") + "\n[applied " + DateTimeOffset.UtcNow.ToString("O") + "]";
+        await SaveDraftAsync(draft, ct).ConfigureAwait(false);
+        return draft;
+    }
 
+    private async Task TryLogApplyAsync(
+        string projectId,
+        int scene,
+        int clip,
+        int suggestionCount,
+        List<string> beforeParts,
+        List<string> afterParts,
+        ClipAutoReviewDraft? draft,
+        CancellationToken ct)
+    {
         try
         {
             await _logs.AddAsync(
                 projectId,
                 "auto_review_apply",
-                $"Applied {items.Count} suggestion(s) to S{scene:D2}C{clip:D2}",
+                $"Applied {suggestionCount} suggestion(s) to S{scene:D2}C{clip:D2}",
                 scene: scene,
                 clip: clip,
                 actionTaken: "apply_suggestions",
                 before: string.Join("\n---\n", beforeParts),
                 after: string.Join("\n---\n", afterParts),
                 category: draft?.Category,
-                suggestionCount: items.Count,
+                suggestionCount: suggestionCount,
                 ct: ct).ConfigureAwait(false);
         }
         catch { /* non-fatal */ }
@@ -730,34 +864,8 @@ public sealed class ClipAutoReviewService
         var i = 0;
         foreach (var frame in clientFrames.Take(maxFrames))
         {
-            if (frame is null || string.IsNullOrWhiteSpace(frame.Base64))
+            if (!TryDecodeClientFrame(frame, maxBytesEach, out var bytes, out var label, out var ext))
                 continue;
-            var b64 = frame.Base64.Trim();
-            // Allow accidental data-URL paste
-            var comma = b64.IndexOf(',');
-            if (b64.StartsWith("data:", StringComparison.OrdinalIgnoreCase) && comma > 0)
-                b64 = b64[(comma + 1)..];
-
-            byte[] bytes;
-            try
-            {
-                bytes = Convert.FromBase64String(b64);
-            }
-            catch
-            {
-                continue;
-            }
-
-            if (bytes.Length < 32 || bytes.Length > maxBytesEach)
-                continue;
-
-            var mime = (frame.Mime ?? "image/jpeg").Trim().ToLowerInvariant();
-            var ext = mime.Contains("png", StringComparison.Ordinal) ? "png" : "jpg";
-            var label = string.IsNullOrWhiteSpace(frame.Label)
-                ? "CURRENT_CLIP"
-                : frame.Label.Trim().ToUpperInvariant();
-            if (label is not ("PREVIOUS_CLIP_TAIL" or "CURRENT_CLIP"))
-                label = "CURRENT_CLIP";
 
             i++;
             var path = Path.Combine(workDir, $"f{i:D2}_{label.ToLowerInvariant()}.{ext}");
@@ -770,6 +878,65 @@ public sealed class ClipAutoReviewService
         }
 
         return (images, currentClipPaths, hasPrev);
+    }
+
+    private static bool TryDecodeClientFrame(
+        ClipAutoReviewClientFrame? frame,
+        int maxBytesEach,
+        out byte[] bytes,
+        out string label,
+        out string ext)
+    {
+        bytes = Array.Empty<byte>();
+        label = "CURRENT_CLIP";
+        ext = "jpg";
+        if (frame is null || string.IsNullOrWhiteSpace(frame.Base64))
+            return false;
+
+        if (!TryDecodeFrameBytes(frame.Base64, maxBytesEach, out bytes))
+            return false;
+
+        var mime = (frame.Mime ?? "image/jpeg").Trim().ToLowerInvariant();
+        ext = mime.Contains("png", StringComparison.Ordinal) ? "png" : "jpg";
+        label = NormalizeClientFrameLabel(frame.Label);
+        return true;
+    }
+
+    private static bool TryDecodeFrameBytes(string base64, int maxBytesEach, out byte[] bytes)
+    {
+        bytes = Array.Empty<byte>();
+        var b64 = StripDataUrlPrefix(base64.Trim());
+        try
+        {
+            bytes = Convert.FromBase64String(b64);
+        }
+        catch
+        {
+            return false;
+        }
+
+        if (bytes.Length < 32 || bytes.Length > maxBytesEach)
+            return false;
+        return true;
+    }
+
+    private static string StripDataUrlPrefix(string b64)
+    {
+        // Allow accidental data-URL paste
+        var comma = b64.IndexOf(',');
+        if (b64.StartsWith("data:", StringComparison.OrdinalIgnoreCase) && comma > 0)
+            return b64[(comma + 1)..];
+        return b64;
+    }
+
+    private static string NormalizeClientFrameLabel(string? raw)
+    {
+        var label = string.IsNullOrWhiteSpace(raw)
+            ? "CURRENT_CLIP"
+            : raw.Trim().ToUpperInvariant();
+        if (label is not ("PREVIOUS_CLIP_TAIL" or "CURRENT_CLIP"))
+            return "CURRENT_CLIP";
+        return label;
     }
 
     private static string GetStr(JsonElement el, string name, string fallback)

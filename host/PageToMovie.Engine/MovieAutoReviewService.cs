@@ -218,30 +218,89 @@ public sealed class MovieAutoReviewService
         try
         {
             Directory.CreateDirectory(tempWorkDir);
-            var imageFiles = new List<(string Path, string Label)>();
-            var idx = 0;
-            foreach (var f in frames.Take(12))
-            {
-                if (string.IsNullOrWhiteSpace(f.Base64)) continue;
-                var b64 = f.Base64.Trim();
-                var comma = b64.IndexOf(',');
-                if (b64.StartsWith("data:", StringComparison.OrdinalIgnoreCase) && comma > 0)
-                    b64 = b64[(comma + 1)..];
+            var imageFiles = await WriteChunkFrameFilesAsync(tempWorkDir, frames, ct).ConfigureAwait(false);
+            if (imageFiles.Count == 0 || !_vision.IsConfigured)
+                throw new InvalidOperationException($"{rangeStr} has no valid visual observations to review.");
+            feedback = await RunChunkVisionAsync(projectId, rangeStr, sceneNumbers, imageFiles, reviewModel, ct)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException($"Error evaluating scene chunk {rangeStr}. {ex.Message}", ex);
+        }
+        finally
+        {
+            try { if (Directory.Exists(tempWorkDir)) Directory.Delete(tempWorkDir, true); } catch { /* best-effort temp cleanup */ }
+        }
 
-                byte[] bytes;
-                try { bytes = Convert.FromBase64String(b64); } catch { continue; }
-                if (bytes.Length < 32) continue;
+        return feedback;
+    }
 
-                idx++;
-                var ext = f.Mime.Contains("png", StringComparison.OrdinalIgnoreCase) ? "png" : "jpg";
-                var p = Path.Combine(tempWorkDir, $"f{idx:D2}_S{f.SceneNumber:D2}.{ext}");
-                await File.WriteAllBytesAsync(p, bytes, ct).ConfigureAwait(false);
-                imageFiles.Add((p, $"SCENE_{f.SceneNumber:D2}"));
-            }
+    private static async Task<List<(string Path, string Label)>> WriteChunkFrameFilesAsync(
+        string tempWorkDir,
+        List<MovieAutoReviewKeyframe> frames,
+        CancellationToken ct)
+    {
+        var imageFiles = new List<(string Path, string Label)>();
+        var idx = 0;
+        foreach (var f in frames.Take(12))
+        {
+            if (!TryDecodeChunkFrame(f, out var bytes, out var ext))
+                continue;
+            idx++;
+            var p = Path.Combine(tempWorkDir, $"f{idx:D2}_S{f.SceneNumber:D2}.{ext}");
+            await File.WriteAllBytesAsync(p, bytes, ct).ConfigureAwait(false);
+            imageFiles.Add((p, $"SCENE_{f.SceneNumber:D2}"));
+        }
+        return imageFiles;
+    }
 
-            if (imageFiles.Count > 0 && _vision.IsConfigured)
-            {
-                var prompt = $@"You are a professional film director reviewing visual keyframe sequence {rangeStr} of a movie cut.
+    private static bool TryDecodeChunkFrame(MovieAutoReviewKeyframe f, out byte[] bytes, out string ext)
+    {
+        bytes = Array.Empty<byte>();
+        ext = "jpg";
+        if (string.IsNullOrWhiteSpace(f.Base64))
+            return false;
+        var b64 = StripMovieFrameDataUrl(f.Base64.Trim());
+        try { bytes = Convert.FromBase64String(b64); } catch { return false; }
+        if (bytes.Length < 32)
+            return false;
+        ext = f.Mime.Contains("png", StringComparison.OrdinalIgnoreCase) ? "png" : "jpg";
+        return true;
+    }
+
+    private static string StripMovieFrameDataUrl(string b64)
+    {
+        var comma = b64.IndexOf(',');
+        if (b64.StartsWith("data:", StringComparison.OrdinalIgnoreCase) && comma > 0)
+            return b64[(comma + 1)..];
+        return b64;
+    }
+
+    private async Task<MovieSceneGroupFeedback> RunChunkVisionAsync(
+        string projectId,
+        string rangeStr,
+        List<int> sceneNumbers,
+        List<(string Path, string Label)> imageFiles,
+        string reviewModel,
+        CancellationToken ct)
+    {
+        var prompt = BuildSceneChunkPrompt(rangeStr);
+        var imagePaths = imageFiles.Select(x => x.Path).ToList();
+        var operation = new MultimodalReviewOperation<MovieSceneGroupFeedback>(
+            _vision, imagePaths, reviewModel, "movie_scene_group_review", "movie-scene-review.v1",
+            raw => ParseSceneGroupFeedback(raw, rangeStr, sceneNumbers), ValidateSceneGroupFeedback);
+        var observation = new MultimodalReviewObservation(
+            rangeStr, imageFiles.Select(x => x.Label).ToArray(), prompt);
+        var execution = await operation.ExecuteAsync(observation, ct).ConfigureAwait(false);
+        if (!execution.Success || execution.Value is null)
+            throw new InvalidOperationException(execution.Error ?? string.Join(" ", execution.ValidationIssues.Select(i => i.Message)));
+        await SaveExecutionManifestAsync(await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false), $"movie_scene_group_review_{sceneNumbers.Min():D2}_{sceneNumbers.Max():D2}", execution, ct).ConfigureAwait(false);
+        return execution.Value;
+    }
+
+    private static string BuildSceneChunkPrompt(string rangeStr) =>
+        $@"You are a professional film director reviewing visual keyframe sequence {rangeStr} of a movie cut.
 Critically evaluate these 6 key filmmaking categories and assign an independent score (1-10) for each:
 1. Continuity & Transitions (shot-to-shot spatial alignment, character position, camera movement flow)
 2. Character Consistency & Wardrobe (facial structure lock, outfit drift, visual identity retention)
@@ -265,34 +324,6 @@ Return valid JSON with non-generic, specific observations:
   ""dialogueNotes"": ""Specific observations on spoken dialogue delivery and lip movement alignment"",
   ""audioNotes"": ""Specific observations on music cue transitions, fade-outs, and audio ending smoothness""
 }}";
-                var imagePaths = imageFiles.Select(x => x.Path).ToList();
-                var operation = new MultimodalReviewOperation<MovieSceneGroupFeedback>(
-                    _vision, imagePaths, reviewModel, "movie_scene_group_review", "movie-scene-review.v1",
-                    raw => ParseSceneGroupFeedback(raw, rangeStr, sceneNumbers), ValidateSceneGroupFeedback);
-                var observation = new MultimodalReviewObservation(
-                    rangeStr, imageFiles.Select(x => x.Label).ToArray(), prompt);
-                var execution = await operation.ExecuteAsync(observation, ct).ConfigureAwait(false);
-                if (!execution.Success || execution.Value is null)
-                    throw new InvalidOperationException(execution.Error ?? string.Join(" ", execution.ValidationIssues.Select(i => i.Message)));
-                feedback = execution.Value;
-                await SaveExecutionManifestAsync(await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false), $"movie_scene_group_review_{sceneNumbers.Min():D2}_{sceneNumbers.Max():D2}", execution, ct).ConfigureAwait(false);
-            }
-            else
-            {
-                throw new InvalidOperationException($"{rangeStr} has no valid visual observations to review.");
-            }
-        }
-        catch (Exception ex)
-        {
-            throw new InvalidOperationException($"Error evaluating scene chunk {rangeStr}. {ex.Message}", ex);
-        }
-        finally
-        {
-            try { if (Directory.Exists(tempWorkDir)) Directory.Delete(tempWorkDir, true); } catch { /* best-effort temp cleanup */ }
-        }
-
-        return feedback;
-    }
 
     private async Task<string> SynthesizeExecutiveSummaryAsync(
         MovieAutoReviewReport report,
@@ -303,34 +334,10 @@ Return valid JSON with non-generic, specific observations:
         var sysPrompt = "You are an Executive Film Director and Post-Production Supervisor writing a high-level Executive Director Summary Report for a complete movie. " +
                         "Do NOT list or repeat each scene block-by-block. Instead, synthesize a unified, insightful executive overview (3-5 well-structured sections) evaluating overall visual narrative continuity, character lock consistency, lighting mood, dialogue & lip-sync delivery, background music transitions, and final recommendations.";
 
-        var promptSb = new System.Text.StringBuilder();
-        promptSb.AppendLine($"Project ID: {report.ProjectId}");
-        promptSb.AppendLine($"Overall Score: {report.OverallScore}/10 — Verdict: {report.Verdict}");
-        promptSb.AppendLine("\nCategory Scores:");
-        foreach (var (cat, score) in report.CategoryScores)
-        {
-            promptSb.AppendLine($"- {cat}: {score}/10");
-        }
-        promptSb.AppendLine("\nEvaluated Sequence Feedbacks (for synthesis input):");
-        foreach (var gf in groupFeedbacks)
-        {
-            promptSb.AppendLine($"[{gf.SceneRange} - Score {gf.Score}/10]");
-            if (!string.IsNullOrWhiteSpace(gf.ContinuityNotes)) promptSb.AppendLine($"  Continuity: {gf.ContinuityNotes}");
-            if (!string.IsNullOrWhiteSpace(gf.VisualConsistencyNotes)) promptSb.AppendLine($"  Character Lock: {gf.VisualConsistencyNotes}");
-            if (!string.IsNullOrWhiteSpace(gf.LightingNotes)) promptSb.AppendLine($"  Lighting/Tone: {gf.LightingNotes}");
-            if (!string.IsNullOrWhiteSpace(gf.DialogueNotes)) promptSb.AppendLine($"  Dialogue: {gf.DialogueNotes}");
-            if (!string.IsNullOrWhiteSpace(gf.AudioNotes)) promptSb.AppendLine($"  Audio/Music: {gf.AudioNotes}");
-        }
-
-        var fullPrompt = $"{sysPrompt}\n\nReview Data:\n{promptSb}";
+        var fullPrompt = $"{sysPrompt}\n\nReview Data:\n{BuildExecutiveReviewPromptBody(report, groupFeedbacks)}";
         var operation = new MultimodalReviewOperation<ExecutiveReviewSummary>(
             _vision, Array.Empty<string>(), reviewModel, "movie_review_synthesis", "movie-review-synthesis.v1",
-            raw => string.IsNullOrWhiteSpace(raw)
-                ? ModelParseResult<ExecutiveReviewSummary>.Failure(new ModelValidationIssue("missing_summary", "Executive summary is empty.", "$"))
-                : ModelParseResult<ExecutiveReviewSummary>.Success(new(raw.Trim())),
-            summary => string.IsNullOrWhiteSpace(summary.Text)
-                ? [new ModelValidationIssue("missing_summary", "Executive summary is empty.", "$.text")]
-                : Array.Empty<ModelValidationIssue>());
+            ParseExecutiveSummary, ValidateExecutiveSummary);
         var execution = await operation.ExecuteAsync(
             new MultimodalReviewObservation("Full movie synthesis", Array.Empty<string>(), fullPrompt), ct).ConfigureAwait(false);
         if (execution.Success && execution.Value is not null)
@@ -342,6 +349,48 @@ Return valid JSON with non-generic, specific observations:
         _log.LogWarning("Executive summary lifecycle failed; using structured deterministic summary. {Error}", execution.Error);
         return BuildFallbackExecutiveSummary(report, groupFeedbacks);
     }
+
+    private static string BuildExecutiveReviewPromptBody(
+        MovieAutoReviewReport report,
+        IReadOnlyList<MovieSceneGroupFeedback> groupFeedbacks)
+    {
+        var promptSb = new System.Text.StringBuilder();
+        promptSb.AppendLine($"Project ID: {report.ProjectId}");
+        promptSb.AppendLine($"Overall Score: {report.OverallScore}/10 — Verdict: {report.Verdict}");
+        promptSb.AppendLine("\nCategory Scores:");
+        foreach (var (cat, score) in report.CategoryScores)
+            promptSb.AppendLine($"- {cat}: {score}/10");
+        promptSb.AppendLine("\nEvaluated Sequence Feedbacks (for synthesis input):");
+        foreach (var gf in groupFeedbacks)
+            AppendGroupFeedbackLines(promptSb, gf);
+        return promptSb.ToString();
+    }
+
+    private static void AppendGroupFeedbackLines(System.Text.StringBuilder promptSb, MovieSceneGroupFeedback gf)
+    {
+        promptSb.AppendLine($"[{gf.SceneRange} - Score {gf.Score}/10]");
+        AppendNoteLine(promptSb, "  Continuity: ", gf.ContinuityNotes);
+        AppendNoteLine(promptSb, "  Character Lock: ", gf.VisualConsistencyNotes);
+        AppendNoteLine(promptSb, "  Lighting/Tone: ", gf.LightingNotes);
+        AppendNoteLine(promptSb, "  Dialogue: ", gf.DialogueNotes);
+        AppendNoteLine(promptSb, "  Audio/Music: ", gf.AudioNotes);
+    }
+
+    private static void AppendNoteLine(System.Text.StringBuilder sb, string prefix, string? note)
+    {
+        if (!string.IsNullOrWhiteSpace(note))
+            sb.AppendLine($"{prefix}{note}");
+    }
+
+    private static ModelParseResult<ExecutiveReviewSummary> ParseExecutiveSummary(string raw) =>
+        string.IsNullOrWhiteSpace(raw)
+            ? ModelParseResult<ExecutiveReviewSummary>.Failure(new ModelValidationIssue("missing_summary", "Executive summary is empty.", "$"))
+            : ModelParseResult<ExecutiveReviewSummary>.Success(new(raw.Trim()));
+
+    private static IReadOnlyList<ModelValidationIssue> ValidateExecutiveSummary(ExecutiveReviewSummary summary) =>
+        string.IsNullOrWhiteSpace(summary.Text)
+            ? [new ModelValidationIssue("missing_summary", "Executive summary is empty.", "$.text")]
+            : Array.Empty<ModelValidationIssue>();
 
     private sealed record ExecutiveReviewSummary(string Text);
 
@@ -358,29 +407,23 @@ Return valid JSON with non-generic, specific observations:
 
             using var doc = JsonDocument.Parse(raw[start..(end + 1)]);
             var root = doc.RootElement;
-            int Score(string name) => root.TryGetProperty(name, out var value) && value.TryGetInt32(out var score)
-                ? score
-                : 0;
-            string Note(string name) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
-                ? value.GetString() ?? ""
-                : "";
-
+            var overall = ReadScore(root, "overallScore");
             return ModelParseResult<MovieSceneGroupFeedback>.Success(new MovieSceneGroupFeedback
             {
                 SceneRange = rangeStr,
                 SceneNumbers = sceneNumbers.ToList(),
-                Score = Score("overallScore") is var overall && overall > 0 ? overall : Score("score"),
-                ContinuityScore = Score("continuityScore"),
-                CharacterScore = Score("characterScore"),
-                LightingScore = Score("lightingScore"),
-                PacingScore = Score("pacingScore"),
-                DialogueScore = Score("dialogueScore"),
-                MusicScore = Score("musicScore"),
-                ContinuityNotes = Note("continuityNotes"),
-                VisualConsistencyNotes = Note("visualConsistencyNotes"),
-                LightingNotes = Note("lightingNotes"),
-                DialogueNotes = Note("dialogueNotes"),
-                AudioNotes = Note("audioNotes"),
+                Score = overall > 0 ? overall : ReadScore(root, "score"),
+                ContinuityScore = ReadScore(root, "continuityScore"),
+                CharacterScore = ReadScore(root, "characterScore"),
+                LightingScore = ReadScore(root, "lightingScore"),
+                PacingScore = ReadScore(root, "pacingScore"),
+                DialogueScore = ReadScore(root, "dialogueScore"),
+                MusicScore = ReadScore(root, "musicScore"),
+                ContinuityNotes = ReadNote(root, "continuityNotes"),
+                VisualConsistencyNotes = ReadNote(root, "visualConsistencyNotes"),
+                LightingNotes = ReadNote(root, "lightingNotes"),
+                DialogueNotes = ReadNote(root, "dialogueNotes"),
+                AudioNotes = ReadNote(root, "audioNotes"),
             });
         }
         catch (Exception ex)
@@ -389,6 +432,16 @@ Return valid JSON with non-generic, specific observations:
                 new ModelValidationIssue("invalid_json", $"Scene review JSON could not be parsed: {ex.Message}"));
         }
     }
+
+    private static int ReadScore(JsonElement root, string name) =>
+        root.TryGetProperty(name, out var value) && value.TryGetInt32(out var score)
+            ? score
+            : 0;
+
+    private static string ReadNote(JsonElement root, string name) =>
+        root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString() ?? ""
+            : "";
 
     internal static IReadOnlyList<ModelValidationIssue> ValidateSceneGroupFeedback(MovieSceneGroupFeedback feedback)
     {
