@@ -1037,42 +1037,13 @@ public sealed class CastFromScreenplayService
         var sb = new StringBuilder(maxChars + 64);
         for (var w = 0; w < windowCount; w++)
         {
-            int start;
-            if (windowCount == 1)
-                start = 0;
-            else if (w == 0)
-                start = 0;
-            else if (w == windowCount - 1)
-                start = Math.Max(0, text.Length - winLen);
-            else
-            {
-                // Even interior anchors
-                var frac = w / (double)(windowCount - 1);
-                var center = (int)(frac * text.Length);
-                start = Math.Clamp(center - winLen / 2, 0, Math.Max(0, text.Length - winLen));
-            }
-
-            var len = Math.Min(winLen, text.Length - start);
-            // Snap to nearby newline to avoid mid-word cuts
-            if (start > 0 && start < text.Length)
-            {
-                var searchLen = Math.Min(200, text.Length - start);
-                var nl = text.IndexOf('\n', start, searchLen);
-                if (nl >= start && nl < start + searchLen)
-                {
-                    start = nl + 1;
-                    len = Math.Min(winLen, text.Length - start);
-                }
-            }
-
+            var start = SpineWindowStart(text, w, windowCount, winLen);
+            var (snappedStart, len) = SnapSpineWindowToNewline(text, start, winLen);
             if (len <= 0) continue;
-            var slice = text.Substring(start, len).Trim();
+            var slice = text.Substring(snappedStart, len).Trim();
             if (slice.Length == 0) continue;
 
-            if (sb.Length > 0)
-                sb.Append("\n\n[[… sample ").Append(w + 1).Append('/').Append(windowCount).Append(" …]]\n\n");
-            sb.Append(slice);
-
+            AppendSpineWindowSlice(sb, slice, w, windowCount);
             if (sb.Length >= maxChars)
                 break;
         }
@@ -1080,6 +1051,41 @@ public sealed class CastFromScreenplayService
         if (sb.Length > maxChars)
             return sb.ToString(0, maxChars);
         return sb.ToString();
+    }
+
+    private static int SpineWindowStart(string text, int w, int windowCount, int winLen)
+    {
+        if (windowCount == 1)
+            return 0;
+        if (w == 0)
+            return 0;
+        if (w == windowCount - 1)
+            return Math.Max(0, text.Length - winLen);
+        // Even interior anchors
+        var frac = w / (double)(windowCount - 1);
+        var center = (int)(frac * text.Length);
+        return Math.Clamp(center - winLen / 2, 0, Math.Max(0, text.Length - winLen));
+    }
+
+    private static (int Start, int Len) SnapSpineWindowToNewline(string text, int start, int winLen)
+    {
+        var len = Math.Min(winLen, text.Length - start);
+        if (start <= 0 || start >= text.Length)
+            return (start, len);
+        var searchLen = Math.Min(200, text.Length - start);
+        var nl = text.IndexOf('\n', start, searchLen);
+        if (nl < start || nl >= start + searchLen)
+            return (start, len);
+        start = nl + 1;
+        len = Math.Min(winLen, text.Length - start);
+        return (start, len);
+    }
+
+    private static void AppendSpineWindowSlice(StringBuilder sb, string slice, int w, int windowCount)
+    {
+        if (sb.Length > 0)
+            sb.Append("\n\n[[… sample ").Append(w + 1).Append('/').Append(windowCount).Append(" …]]\n\n");
+        sb.Append(slice);
     }
 
     private static string NormalizeNewlines(string? text) =>

@@ -1539,27 +1539,9 @@ public static string NormalizeText(string text)
 
     public static SignOffResult SignOff(ProjectStore store, string projectId, string? text = null)
     {
-        // Optional body text: save first
-        if (text is not null)
-        {
-            var save = SaveDraft(store, projectId, text);
-            if (!save.Ok)
-                return new SignOffResult { Ok = false, Error = save.Error };
-        }
-
-        // When no body was sent, still run SaveDraft so heading unify matches later saves.
-        if (text is null)
-        {
-            var draftPath0 = GetDraftPath(store, projectId);
-            if (!File.Exists(draftPath0))
-                return new SignOffResult { Ok = false, Error = "No screenplay draft to approve" };
-            var existing = File.ReadAllText(draftPath0);
-            if (string.IsNullOrWhiteSpace(existing))
-                return new SignOffResult { Ok = false, Error = "Screenplay draft is empty" };
-            var pre = SaveDraft(store, projectId, existing);
-            if (!pre.Ok)
-                return new SignOffResult { Ok = false, Error = pre.Error };
-        }
+        var saveFail = SaveDraftBeforeSignOff(store, projectId, text);
+        if (saveFail is not null)
+            return saveFail;
 
         var draftPath = GetDraftPath(store, projectId);
         if (!File.Exists(draftPath))
@@ -1589,12 +1571,7 @@ public static string NormalizeText(string text)
         if (summary.SceneCount <= 0)
             return new SignOffResult { Ok = false, Error = "Screenplay has no scenes (need INT./EXT. headings)." };
 
-        var meta = ReadMeta(store, projectId);
-        meta.SignedHash = hash;
-        meta.SignedAt = DateTime.UtcNow.ToString("o");
-        meta.LastSavedHash = hash;
-        meta.LastSavedAt = meta.SignedAt;
-        WriteMeta(store, projectId, meta);
+        WriteSignOffMeta(store, projectId, hash);
         store.TriggerAutoGitCommit(projectId, "Approve screenplay");
 
         // Keep location_seed_tokens on cast_seeds in sync so GET /locations works without Stage 2.
@@ -1617,6 +1594,40 @@ public static string NormalizeText(string text)
                 $"Screenplay approved · {summary.SceneCount} scenes · {summary.CharacterCount} cast" +
                 (hashChanged ? " · update shot plan if you already built one" : ""),
         };
+    }
+
+    private static SignOffResult? SaveDraftBeforeSignOff(ProjectStore store, string projectId, string? text)
+    {
+        // Optional body text: save first
+        if (text is not null)
+        {
+            var save = SaveDraft(store, projectId, text);
+            if (!save.Ok)
+                return new SignOffResult { Ok = false, Error = save.Error };
+            return null;
+        }
+
+        // When no body was sent, still run SaveDraft so heading unify matches later saves.
+        var draftPath0 = GetDraftPath(store, projectId);
+        if (!File.Exists(draftPath0))
+            return new SignOffResult { Ok = false, Error = "No screenplay draft to approve" };
+        var existing = File.ReadAllText(draftPath0);
+        if (string.IsNullOrWhiteSpace(existing))
+            return new SignOffResult { Ok = false, Error = "Screenplay draft is empty" };
+        var pre = SaveDraft(store, projectId, existing);
+        if (!pre.Ok)
+            return new SignOffResult { Ok = false, Error = pre.Error };
+        return null;
+    }
+
+    private static void WriteSignOffMeta(ProjectStore store, string projectId, string hash)
+    {
+        var meta = ReadMeta(store, projectId);
+        meta.SignedHash = hash;
+        meta.SignedAt = DateTime.UtcNow.ToString("o");
+        meta.LastSavedHash = hash;
+        meta.LastSavedAt = meta.SignedAt;
+        WriteMeta(store, projectId, meta);
     }
 
     /// <summary>Heuristic book text → Fountain draft (offline stub path).</summary>

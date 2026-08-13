@@ -1302,6 +1302,12 @@ public sealed class CharacterBookPlateService
     {
         if (!Directory.Exists(charsDir)) return;
         var prefix = key.ToLowerInvariant() + "_bookref_";
+        DeleteBookrefsAboveKeepCount(charsDir, prefix, keepCount);
+        DedupeBookrefAlternateExtensions(charsDir, prefix, keepCount);
+    }
+
+    private static void DeleteBookrefsAboveKeepCount(string charsDir, string prefix, int keepCount)
+    {
         foreach (var fi in new DirectoryInfo(charsDir).EnumerateFiles())
         {
             var name = fi.Name;
@@ -1314,6 +1320,10 @@ public sealed class CharacterBookPlateService
                 try { File.Delete(fi.FullName); } catch { /* ignore */ }
             }
         }
+    }
+
+    private static void DedupeBookrefAlternateExtensions(string charsDir, string prefix, int keepCount)
+    {
         // Also drop alternate extensions for slots we rewrote (e.g. keep .jpg, delete old .png)
         if (keepCount <= 0) return;
         for (var i = 1; i <= keepCount; i++)
@@ -1338,50 +1348,56 @@ public sealed class CharacterBookPlateService
         string castSeedsPath,
         CancellationToken ct)
     {
-        JsonObject? seeds = null;
-
-        // 1) cast_seeds.json (canonical cast)
         var castPath = File.Exists(castSeedsPath)
             ? castSeedsPath
             : Path.Combine(await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false), "source", ScreenplayService.CastSeedsFileName);
-        if (File.Exists(castPath))
-        {
-            try
-            {
-                var existing = JsonNode.Parse(await File.ReadAllTextAsync(castPath, ct).ConfigureAwait(false))
-                               as JsonObject;
-                var existingSeeds = existing?[CharacterSeedTokensKey] as JsonObject
-                    ?? existing?[GlobalProductionVariablesKey]?[CharacterSeedTokensKey] as JsonObject;
-                if (existingSeeds is not null && existingSeeds.Count > 0)
-                    seeds = existingSeeds.DeepClone().AsObject();
-            }
-            catch { /* try fountain */ }
-        }
+        var seeds = await TryReadExistingCastSeedTokensAsync(castPath, ct).ConfigureAwait(false);
+        MergeFountainCastSeeds(seeds, projectId);
+        return seeds;
+    }
 
-        // 2) Fountain-derived cast (dialogue cues) — merge only missing keys
-        var model = ScreenplayService.TryBuildModelFromProject(_projects, projectId);
-        if (model is not null &&
-            model.TryGetValue(GlobalProductionVariablesKey, out var gpvObj) &&
-            gpvObj is Dictionary<string, object?> gpv &&
-            gpv.TryGetValue(CharacterSeedTokensKey, out var charObj) &&
-            charObj is Dictionary<string, object?> charDict &&
-            charDict.Count > 0)
+    private static async Task<JsonObject> TryReadExistingCastSeedTokensAsync(string castPath, CancellationToken ct)
+    {
+        if (!File.Exists(castPath))
+            return new JsonObject();
+        try
         {
-            var json = JsonSerializer.Serialize(charDict, JsonDefaults.Indented);
-            var fromFountain = JsonNode.Parse(json) as JsonObject;
-            if (fromFountain is not null)
-            {
-                seeds ??= new JsonObject();
-                foreach (var (key, node) in fromFountain)
-                {
-                    if (node is null) continue;
-                    if (seeds.ContainsKey(key)) continue; // AI cast wins
-                    seeds[key] = node.DeepClone();
-                }
-            }
+            var existing = JsonNode.Parse(await File.ReadAllTextAsync(castPath, ct).ConfigureAwait(false))
+                           as JsonObject;
+            var existingSeeds = existing?[CharacterSeedTokensKey] as JsonObject
+                ?? existing?[GlobalProductionVariablesKey]?[CharacterSeedTokensKey] as JsonObject;
+            if (existingSeeds is not null && existingSeeds.Count > 0)
+                return existingSeeds.DeepClone().AsObject();
         }
+        catch { /* try fountain */ }
+        return new JsonObject();
+    }
 
-        return seeds ?? new JsonObject();
+    private void MergeFountainCastSeeds(JsonObject seeds, string projectId)
+    {
+        var fromFountain = FountainCharacterSeedTokens(_projects, projectId);
+        if (fromFountain is null)
+            return;
+        foreach (var (key, node) in fromFountain)
+        {
+            if (node is null) continue;
+            if (seeds.ContainsKey(key)) continue; // AI cast wins
+            seeds[key] = node.DeepClone();
+        }
+    }
+
+    private static JsonObject? FountainCharacterSeedTokens(ProjectStore projects, string projectId)
+    {
+        var model = ScreenplayService.TryBuildModelFromProject(projects, projectId);
+        if (model is null ||
+            !model.TryGetValue(GlobalProductionVariablesKey, out var gpvObj) ||
+            gpvObj is not Dictionary<string, object?> gpv ||
+            !gpv.TryGetValue(CharacterSeedTokensKey, out var charObj) ||
+            charObj is not Dictionary<string, object?> charDict ||
+            charDict.Count == 0)
+            return null;
+        var json = JsonSerializer.Serialize(charDict, JsonDefaults.Indented);
+        return JsonNode.Parse(json) as JsonObject;
     }
 
     private async Task TryMirrorBlueprintAsync(string projectDir, JsonObject stage1Seeds)
@@ -1448,27 +1464,38 @@ public sealed class CharacterBookPlateService
         var outList = new List<int>();
         var raw = seed[SourceImagePagesKey] ?? seed["image_pages"];
         if (raw is JsonValue jv)
-        {
-            if (jv.TryGetValue<int>(out var one))
-                outList.Add(one);
-            else if (jv.TryGetValue<string>(out var s))
-            {
-                foreach (Match m in CommonRegex.Matches(s, @"\d+"))
-                    if (int.TryParse(m.Value, out var n)) outList.Add(n);
-            }
-        }
+            AddPagesFromJsonValue(jv, outList);
         else if (raw is JsonArray arr)
-        {
-            foreach (var x in arr)
-            {
-                if (x is null) continue;
-                if (x is JsonValue v && v.TryGetValue<int>(out var n))
-                    outList.Add(n);
-                else if (int.TryParse(x.ToString(), out var n2))
-                    outList.Add(n2);
-            }
-        }
+            AddPagesFromJsonArray(arr, outList);
         return outList;
+    }
+
+    private static void AddPagesFromJsonValue(JsonValue jv, List<int> outList)
+    {
+        if (jv.TryGetValue<int>(out var one))
+        {
+            outList.Add(one);
+            return;
+        }
+        if (!jv.TryGetValue<string>(out var s))
+            return;
+        foreach (Match m in CommonRegex.Matches(s, @"\d+"))
+        {
+            if (int.TryParse(m.Value, out var n))
+                outList.Add(n);
+        }
+    }
+
+    private static void AddPagesFromJsonArray(JsonArray arr, List<int> outList)
+    {
+        foreach (var x in arr)
+        {
+            if (x is null) continue;
+            if (x is JsonValue v && v.TryGetValue<int>(out var n))
+                outList.Add(n);
+            else if (int.TryParse(x.ToString(), out var n2))
+                outList.Add(n2);
+        }
     }
 
     private static List<BookImageRow> RowsForPages(List<BookImageRow> inventory, List<int> pages)
@@ -1493,6 +1520,22 @@ public sealed class CharacterBookPlateService
         bool nameHitsOnly = false)
     {
         var ranked = RankIllustrationFirst(inventory.Where(r => !IsLikelyTextLayout(r)));
+        var early = EarlyHeuristicRows(ranked);
+        var token = key.Replace(CharacterPrefix, "", StringComparison.OrdinalIgnoreCase).ToLowerInvariant();
+        var given = (seed[CanonicalGivenNameKey]?.GetValue<string>() ?? "").ToLowerInvariant();
+        // "mom"/"dad" tokens are useless for filename matching and caused false plate attaches
+        var genericRoleToken = IsHeuristicGenericRoleToken(token);
+        var nameHits = RankIllustrationFirst(inventory.Where(r =>
+            RowNameHitsCharacter(r, token, given, genericRoleToken)).ToList());
+        var desc = seed[DescriptionKey]?.GetValue<string>() ?? "";
+        var baseline = SelectHeuristicBaseline(
+            nameHits, early, IsHeroHeuristicSeed(key, desc, index), nameHitsOnly);
+        // Optional chat re-rank of basenames (sync path keeps baseline; async attach uses RankHeuristicAsync)
+        return baseline.Take(3).ToList();
+    }
+
+    private static List<BookImageRow> EarlyHeuristicRows(List<BookImageRow> ranked)
+    {
         var early = ranked.Where(r =>
                 r.Page is > 0 and <= 8 ||
                 r.Name.Contains(CoverCategory, StringComparison.OrdinalIgnoreCase) ||
@@ -1500,38 +1543,41 @@ public sealed class CharacterBookPlateService
             .ToList();
         if (early.Count == 0)
             early = ranked.Take(6).ToList();
+        return early;
+    }
 
-        var token = key.Replace(CharacterPrefix, "", StringComparison.OrdinalIgnoreCase).ToLowerInvariant();
-        var given = (seed[CanonicalGivenNameKey]?.GetValue<string>() ?? "").ToLowerInvariant();
-        // "mom"/"dad" tokens are useless for filename matching and caused false plate attaches
-        var genericRoleToken = token is "mom" or "dad" or "daddy" or "mum" or "mother" or "father" or "parent";
-        var nameHits = RankIllustrationFirst(inventory.Where(r =>
-        {
-            if (IsLikelyTextLayout(r)) return false;
-            if (!genericRoleToken && token.Length >= 3 &&
-                r.Name.Contains(token, StringComparison.OrdinalIgnoreCase))
-                return true;
-            if (given.Length >= 3 && !genericRoleToken &&
-                r.Name.Contains(given, StringComparison.OrdinalIgnoreCase))
-                return true;
-            return false;
-        }).ToList());
+    // Filename matching only — do not reuse IsGenericRoleToken (that list includes narrator/boy/…).
+    private static bool IsHeuristicGenericRoleToken(string token) =>
+        token is "mom" or "dad" or "daddy" or "mum" or "mother" or "father" or "parent";
 
-        var desc = seed[DescriptionKey]?.GetValue<string>() ?? "";
-        var isHero = index == 0 ||
-                     CharacterVisualTextScrubber.IsPrimarilyAnimalCharacter(
-                         key, "", desc, "", "dog") ||
-                     CharacterVisualTextScrubber.IsPrimarilyAnimalCharacter(
-                         key, "", desc, "", "cat");
+    private static bool RowNameHitsCharacter(
+        BookImageRow r, string token, string given, bool genericRoleToken)
+    {
+        if (IsLikelyTextLayout(r)) return false;
+        if (!genericRoleToken && token.Length >= 3 &&
+            r.Name.Contains(token, StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (given.Length >= 3 && !genericRoleToken &&
+            r.Name.Contains(given, StringComparison.OrdinalIgnoreCase))
+            return true;
+        return false;
+    }
 
-        List<BookImageRow> baseline;
-        if (nameHits.Count > 0) baseline = nameHits.Take(8).ToList();
-        else if (nameHitsOnly) return new List<BookImageRow>(); // supporting cast: no plate is correct
-        else if (isHero) baseline = early.Take(8).ToList();
-        else return new List<BookImageRow>(); // never invent plates for supporting cast
+    private static bool IsHeroHeuristicSeed(string key, string desc, int index) =>
+        index == 0 ||
+        CharacterVisualTextScrubber.IsPrimarilyAnimalCharacter(key, "", desc, "", "dog") ||
+        CharacterVisualTextScrubber.IsPrimarilyAnimalCharacter(key, "", desc, "", "cat");
 
-        // Optional chat re-rank of basenames (sync path keeps baseline; async attach uses RankHeuristicAsync)
-        return baseline.Take(3).ToList();
+    private static List<BookImageRow> SelectHeuristicBaseline(
+        List<BookImageRow> nameHits,
+        List<BookImageRow> early,
+        bool isHero,
+        bool nameHitsOnly)
+    {
+        if (nameHits.Count > 0) return nameHits.Take(8).ToList();
+        if (nameHitsOnly) return new List<BookImageRow>(); // supporting cast: no plate is correct
+        if (isHero) return early.Take(8).ToList();
+        return new List<BookImageRow>(); // never invent plates for supporting cast
     }
 
     /// <summary>Async wrapper: heuristic candidates then optional chat re-rank.</summary>
