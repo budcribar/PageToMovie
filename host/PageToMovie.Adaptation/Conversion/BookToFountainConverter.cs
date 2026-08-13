@@ -639,26 +639,7 @@ public static class BookToFountainConverter
         if (!chat.IsConfigured)
             return fountain;
 
-        // Evidence only — not a full rewrite payload.
-        var bookContext = bookText.Length <= 6_000 ? bookText : bookText[..6_000];
-        var fountainSample = fountain.Length <= 4_000 ? fountain : fountain[..4_000];
-        var user = $$"""
-            VISION_META ONLY (do not rewrite the screenplay)
-            Return ONLY the sidecar block below — no Fountain body, no markdown fences.
-
-            {{VisionMetaBegin}}
-            {"visual_medium":"live_action|illustrated_picture_book|mixed","render_style_lock":"specific reusable style lock","notes":"brief evidence"}
-            {{VisionMetaEnd}}
-
-            Allowed visual_medium values: live_action, illustrated_picture_book, mixed.
-            Pick one based on the book excerpt and screenplay sample.
-
-            Source-book excerpt:
-            {{bookContext}}
-
-            Screenplay sample (title page + opening only):
-            {{fountainSample}}
-            """;
+        var user = BuildVisionMetaRepairUserPrompt(bookText, fountain);
 
         // Soft timeout — missing vision meta must not block draft save.
         const int softSeconds = 90;
@@ -677,71 +658,14 @@ public static class BookToFountainConverter
                 "VISION_META repair", onProgress, softCts.Token, reasoningEffort,
                 promptVersion: "stage1-vision-meta-repair-v2",
                 correctionInstruction: $"Return only {VisionMetaBegin} JSON {VisionMetaEnd} with an allowed visual_medium.",
-                validate: value =>
-                {
-                    var split = SplitVisionMetaTrailer(
-                        value.Contains(VisionMetaBegin, StringComparison.OrdinalIgnoreCase)
-                            ? value
-                            : VisionMetaBeginNl + value.Trim() + VisionMetaEndNl);
-                    var issues = new List<Stage1ValidationIssue>();
-                    if (split.Vision is null)
-                        issues.Add(new("missing_vision_meta", "A valid VISION_META sidecar is required.", "$.vision_meta"));
-                    return issues;
-                },
+                validate: ValidateVisionMetaRepair,
                 deterministicFallback: null,
                 operationName: "stage1_vision_meta_repair").ConfigureAwait(false);
 
             if (string.IsNullOrWhiteSpace(result))
                 return fountain;
 
-            // Model may return sidecar only — attach to the original fountain.
-            var normalized = result.Contains(VisionMetaBegin, StringComparison.OrdinalIgnoreCase)
-                ? result
-                : VisionMetaBeginNl + result.Trim() + VisionMetaEndNl;
-            var splitResult = SplitVisionMetaTrailer(
-                normalized.Contains(VisionMetaEnd, StringComparison.OrdinalIgnoreCase)
-                    ? (normalized.Contains("Title:", StringComparison.OrdinalIgnoreCase)
-                        ? normalized
-                        : fountain.TrimEnd() + "\n\n" + normalized)
-                    : fountain.TrimEnd() + "\n\n" + normalized);
-
-            // Keep the model's fountain-plus-meta output when that fountain still looks good.
-            // Otherwise append meta onto the original draft.
-            if (splitResult.Vision is not null && LooksLikeGoodFountain(splitResult.Fountain)
-                && CountSceneHeadings(splitResult.Fountain) >= Math.Max(1, CountSceneHeadings(fountain) / 2))
-            {
-                return splitResult.Fountain.TrimEnd() + "\n\n" + VisionMetaBeginNl
-                       + System.Text.Json.JsonSerializer.Serialize(new
-                       {
-                           visual_medium = splitResult.Vision.VisualMedium,
-                           render_style_lock = splitResult.Vision.RenderStyleLock,
-                           notes = splitResult.Vision.Notes,
-                       })
-                       + VisionMetaEndNl + "\n";
-            }
-
-            // Parse meta from sidecar-only response.
-            var metaOnly = SplitVisionMetaTrailer(
-                normalized.Contains(VisionMetaBegin, StringComparison.OrdinalIgnoreCase)
-                    ? normalized
-                    : VisionMetaBeginNl + normalized + VisionMetaEndNl);
-            if (metaOnly.Vision is null)
-            {
-                // Try treating whole result as JSON
-                var wrapped = VisionMetaBeginNl + result.Trim() + VisionMetaEndNl;
-                metaOnly = SplitVisionMetaTrailer(wrapped);
-            }
-            if (metaOnly.Vision is null)
-                return fountain;
-
-            return fountain.TrimEnd() + "\n\n" + VisionMetaBeginNl
-                   + System.Text.Json.JsonSerializer.Serialize(new
-                   {
-                       visual_medium = metaOnly.Vision.VisualMedium,
-                       render_style_lock = metaOnly.Vision.RenderStyleLock,
-                       notes = metaOnly.Vision.Notes,
-                   })
-                   + VisionMetaEndNl + "\n";
+            return AttachRepairedVisionMeta(fountain, result);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
@@ -753,6 +677,100 @@ public static class BookToFountainConverter
             onProgress?.Invoke("Visual medium skipped: " + ex.Message);
             return fountain;
         }
+    }
+
+    private static string BuildVisionMetaRepairUserPrompt(string bookText, string fountain)
+    {
+        // Evidence only — not a full rewrite payload.
+        var bookContext = bookText.Length <= 6_000 ? bookText : bookText[..6_000];
+        var fountainSample = fountain.Length <= 4_000 ? fountain : fountain[..4_000];
+        return $$"""
+            VISION_META ONLY (do not rewrite the screenplay)
+            Return ONLY the sidecar block below — no Fountain body, no markdown fences.
+
+            {{VisionMetaBegin}}
+            {"visual_medium":"live_action|illustrated_picture_book|mixed","render_style_lock":"specific reusable style lock","notes":"brief evidence"}
+            {{VisionMetaEnd}}
+
+            Allowed visual_medium values: live_action, illustrated_picture_book, mixed.
+            Pick one based on the book excerpt and screenplay sample.
+
+            Source-book excerpt:
+            {{bookContext}}
+
+            Screenplay sample (title page + opening only):
+            {{fountainSample}}
+            """;
+    }
+
+    private static IReadOnlyList<Stage1ValidationIssue> ValidateVisionMetaRepair(string value)
+    {
+        var split = SplitVisionMetaTrailer(
+            value.Contains(VisionMetaBegin, StringComparison.OrdinalIgnoreCase)
+                ? value
+                : VisionMetaBeginNl + value.Trim() + VisionMetaEndNl);
+        var issues = new List<Stage1ValidationIssue>();
+        if (split.Vision is null)
+            issues.Add(new("missing_vision_meta", "A valid VISION_META sidecar is required.", "$.vision_meta"));
+        return issues;
+    }
+
+    private static string WrapVisionSidecarIfNeeded(string result) =>
+        result.Contains(VisionMetaBegin, StringComparison.OrdinalIgnoreCase)
+            ? result
+            : VisionMetaBeginNl + result.Trim() + VisionMetaEndNl;
+
+    private static string ChooseVisionMetaPackage(string fountain, string normalized)
+    {
+        if (!normalized.Contains(VisionMetaEnd, StringComparison.OrdinalIgnoreCase))
+            return fountain.TrimEnd() + "\n\n" + normalized;
+        if (normalized.Contains("Title:", StringComparison.OrdinalIgnoreCase))
+            return normalized;
+        return fountain.TrimEnd() + "\n\n" + normalized;
+    }
+
+    private static bool VisionMetaPackageIsUsable(
+        string originalFountain,
+        AdaptationVisionMeta? vision,
+        string candidateFountain) =>
+        vision is not null
+        && LooksLikeGoodFountain(candidateFountain)
+        && CountSceneHeadings(candidateFountain) >= Math.Max(1, CountSceneHeadings(originalFountain) / 2);
+
+    private static string FormatVisionSidecar(string fountain, AdaptationVisionMeta vision) =>
+        fountain.TrimEnd() + "\n\n" + VisionMetaBeginNl
+        + System.Text.Json.JsonSerializer.Serialize(new
+        {
+            visual_medium = vision.VisualMedium,
+            render_style_lock = vision.RenderStyleLock,
+            notes = vision.Notes,
+        })
+        + VisionMetaEndNl + "\n";
+
+    private static AdaptationVisionMeta? ParseVisionMetaOnly(string normalized, string result)
+    {
+        var metaOnly = SplitVisionMetaTrailer(
+            normalized.Contains(VisionMetaBegin, StringComparison.OrdinalIgnoreCase)
+                ? normalized
+                : VisionMetaBeginNl + normalized + VisionMetaEndNl);
+        if (metaOnly.Vision is not null)
+            return metaOnly.Vision;
+        // Try treating whole result as JSON
+        var wrapped = VisionMetaBeginNl + result.Trim() + VisionMetaEndNl;
+        return SplitVisionMetaTrailer(wrapped).Vision;
+    }
+
+    private static string AttachRepairedVisionMeta(string fountain, string result)
+    {
+        var normalized = WrapVisionSidecarIfNeeded(result);
+        var splitResult = SplitVisionMetaTrailer(ChooseVisionMetaPackage(fountain, normalized));
+        if (VisionMetaPackageIsUsable(fountain, splitResult.Vision, splitResult.Fountain))
+            return FormatVisionSidecar(splitResult.Fountain, splitResult.Vision!);
+
+        var meta = ParseVisionMetaOnly(normalized, result);
+        if (meta is null)
+            return fountain;
+        return FormatVisionSidecar(fountain, meta);
     }
 
     /// <summary>Periodic progress while a long Stage‑1 model call is in flight.</summary>
@@ -1373,17 +1391,31 @@ public static class BookToFountainConverter
 
         foreach (var raw in (fountain ?? "").Replace("\r\n", "\n").Split('\n'))
         {
-            var line = raw.Trim();
-            if (line.Length == 0) continue;
-            if (headingSet.Contains(line) || cueSet.Contains(line)) continue;
-            if (SceneHeadingLineRegex.IsMatch(line)) continue;
+            if (!IsProseNarrativeLine(raw, headingSet, cueSet))
+                continue;
+            foreach (var word in ProperNounsOnLine(raw.Trim(), seen))
+                yield return word;
+        }
+    }
 
-            foreach (var word in ProperNounWordRegex.Matches(line).Select(m => m.Value))
-            {
-                if (ProseNameStopWords.Contains(word)) continue;
-                if (seen.Add(word))
-                    yield return word;
-            }
+    private static bool IsProseNarrativeLine(
+        string raw,
+        HashSet<string> headingSet,
+        HashSet<string> cueSet)
+    {
+        var line = raw.Trim();
+        if (line.Length == 0) return false;
+        if (headingSet.Contains(line) || cueSet.Contains(line)) return false;
+        return !SceneHeadingLineRegex.IsMatch(line);
+    }
+
+    private static IEnumerable<string> ProperNounsOnLine(string line, HashSet<string> seen)
+    {
+        foreach (var word in ProperNounWordRegex.Matches(line).Select(m => m.Value))
+        {
+            if (ProseNameStopWords.Contains(word)) continue;
+            if (seen.Add(word))
+                yield return word;
         }
     }
 
@@ -1632,54 +1664,77 @@ public static class BookToFountainConverter
         if (blocks.Count < 2)
             return fountain;
 
-        // Gap after block index b becomes a two-space continuation (absorb b+1 into b's dialogue).
+        var mergeGaps = CollectNarrationMergeGaps(lines, blocks);
+        if (mergeGaps.Count == 0)
+            return fountain;
+
+        return string.Join("\n", EmitMergedNarrationLines(lines, blocks, mergeGaps));
+    }
+
+    private static HashSet<int> CollectNarrationMergeGaps(string[] lines, List<FountainBlock> blocks)
+    {
         var mergeGaps = new HashSet<int>();
         for (var b = 0; b < blocks.Count - 1; b++)
         {
             if (!TryReadVoVerseDialogue(lines, blocks[b], out _, out _, out _))
                 continue;
-
-            var k = b;
-            while (k + 1 < blocks.Count)
-            {
-                var action = ContentLines(lines, blocks[k + 1]);
-                if (!IsVerseShaped(action) || action.Any(IsStructuralOrCameraLine))
-                    break;
-                mergeGaps.Add(k);
-                k++;
-            }
+            MarkFollowingVerseActionGaps(lines, blocks, b, mergeGaps);
         }
+        return mergeGaps;
+    }
 
-        if (mergeGaps.Count == 0)
-            return fountain;
+    private static void MarkFollowingVerseActionGaps(
+        string[] lines, List<FountainBlock> blocks, int startBlock, HashSet<int> mergeGaps)
+    {
+        var k = startBlock;
+        while (k + 1 < blocks.Count)
+        {
+            var action = ContentLines(lines, blocks[k + 1]);
+            if (!IsVerseShaped(action) || action.Any(IsStructuralOrCameraLine))
+                break;
+            mergeGaps.Add(k);
+            k++;
+        }
+    }
 
+    private static List<string> EmitMergedNarrationLines(
+        string[] lines, List<FountainBlock> blocks, HashSet<int> mergeGaps)
+    {
         var outLines = new List<string>();
         for (var k = 0; k < blocks[0].Start; k++)
             outLines.Add(lines[k]);
 
         for (var b = 0; b < blocks.Count; b++)
-        {
-            for (var k = blocks[b].Start; k <= blocks[b].End; k++)
-                outLines.Add(lines[k]);
-
-            if (b >= blocks.Count - 1)
-                continue;
-
-            if (mergeGaps.Contains(b))
-            {
-                outLines.Add("  "); // single Fountain two-space line = stanza break inside dialogue
-            }
-            else
-            {
-                for (var k = blocks[b].End + 1; k < blocks[b + 1].Start; k++)
-                    outLines.Add(lines[k]);
-            }
-        }
+            AppendBlockAndGap(outLines, lines, blocks, b, mergeGaps);
 
         for (var k = blocks[^1].End + 1; k < lines.Length; k++)
             outLines.Add(lines[k]);
 
-        return string.Join("\n", outLines);
+        return outLines;
+    }
+
+    private static void AppendBlockAndGap(
+        List<string> outLines,
+        string[] lines,
+        List<FountainBlock> blocks,
+        int b,
+        HashSet<int> mergeGaps)
+    {
+        for (var k = blocks[b].Start; k <= blocks[b].End; k++)
+            outLines.Add(lines[k]);
+
+        if (b >= blocks.Count - 1)
+            return;
+
+        if (mergeGaps.Contains(b))
+        {
+            outLines.Add("  "); // single Fountain two-space line = stanza break inside dialogue
+        }
+        else
+        {
+            for (var k = blocks[b].End + 1; k < blocks[b + 1].Start; k++)
+                outLines.Add(lines[k]);
+        }
     }
 
     private static string[] SplitPhysicalLines(string fountain) =>
@@ -2303,53 +2358,74 @@ public static class BookToFountainConverter
     public static double EstimateDraftRuntimeMinutes(string? fountain)
     {
         if (string.IsNullOrWhiteSpace(fountain)) return 0;
-        // Prefer model-reported estimate when the trailer is present.
+        if (TryReadReportedRuntime(fountain, out var reported, out fountain))
+            return reported;
+
+        var words = CountDraftBodyWords(fountain);
+        if (words <= 0) return 0;
+        // Match BODY_WORDS_PER_MINUTE default (155).
+        return words / 155.0;
+    }
+
+    private static bool TryReadReportedRuntime(string fountain, out double minutes, out string body)
+    {
+        minutes = 0;
+        body = fountain;
         try
         {
             var split = SplitAdaptationTrailers(fountain);
             if (split.Report?.Metrics?.EstRuntimeMin is > 0)
-                return split.Report.Metrics.EstRuntimeMin;
-            fountain = split.Fountain;
+            {
+                minutes = split.Report.Metrics.EstRuntimeMin;
+                return true;
+            }
+            body = split.Fountain;
         }
         catch
         {
             /* trailer parse optional */
         }
+        return false;
+    }
 
-        // Body words ≈ Action + dialogue: strip common non-body lines, then word-count.
+    private static int CountDraftBodyWords(string fountain)
+    {
         var body = new StringBuilder(fountain.Length);
         foreach (var raw in fountain.Replace("\r\n", "\n").Split('\n'))
         {
-            var line = raw.TrimEnd();
-            var t = line.Trim();
-            if (t.Length == 0) continue;
-            if (t.StartsWith("Title:", StringComparison.OrdinalIgnoreCase)
-                || t.StartsWith("Credit:", StringComparison.OrdinalIgnoreCase)
-                || t.StartsWith("Author:", StringComparison.OrdinalIgnoreCase)
-                || t.StartsWith("Source:", StringComparison.OrdinalIgnoreCase)
-                || t.StartsWith("Draft date:", StringComparison.OrdinalIgnoreCase)
-                || t.StartsWith("Notes:", StringComparison.OrdinalIgnoreCase))
-                continue;
-            if (CommonRegex.IsMatch(t, @"^(INT\.|EXT\.|INT\./EXT\.|EST\.)", RegexOptions.IgnoreCase))
-                continue;
-            if (CommonRegex.IsMatch(t, @"^(FADE (IN|OUT)|CUT TO|DISSOLVE TO|SMASH CUT|THE END)\b", RegexOptions.IgnoreCase))
-                continue;
-            if (t.StartsWith('(') && t.EndsWith(')'))
-                continue; // parentheticals / (SOUND:…)
-            // Character cues: short ALL-CAPS lines
-            if (t.Length <= 40
-                && CommonRegex.IsMatch(t, @"^[A-Z0-9][A-Z0-9 \.'\-]{0,38}(\s*\([^)]+\))?$")
-                && !t.Contains('.') // avoid "Mr. Smith" edge — still ok as dialogue body later
-                && t == t.ToUpperInvariant())
-                continue;
+            var t = raw.TrimEnd().Trim();
+            if (IsNonBodyFountainLine(t)) continue;
             body.Append(t).Append(' ');
         }
-
-        var words = TextMetrics.CountWords(body.ToString());
-        if (words <= 0) return 0;
-        // Match BODY_WORDS_PER_MINUTE default (155).
-        return words / 155.0;
+        return TextMetrics.CountWords(body.ToString());
     }
+
+    private static bool IsNonBodyFountainLine(string t)
+    {
+        if (t.Length == 0) return true;
+        if (IsTitlePageKeyLine(t)) return true;
+        if (CommonRegex.IsMatch(t, @"^(INT\.|EXT\.|INT\./EXT\.|EST\.)", RegexOptions.IgnoreCase))
+            return true;
+        if (CommonRegex.IsMatch(t, @"^(FADE (IN|OUT)|CUT TO|DISSOLVE TO|SMASH CUT|THE END)\b", RegexOptions.IgnoreCase))
+            return true;
+        if (t.StartsWith('(') && t.EndsWith(')'))
+            return true; // parentheticals / (SOUND:…)
+        return IsShortAllCapsCueLine(t);
+    }
+
+    private static bool IsTitlePageKeyLine(string t) =>
+        t.StartsWith("Title:", StringComparison.OrdinalIgnoreCase)
+        || t.StartsWith("Credit:", StringComparison.OrdinalIgnoreCase)
+        || t.StartsWith("Author:", StringComparison.OrdinalIgnoreCase)
+        || t.StartsWith("Source:", StringComparison.OrdinalIgnoreCase)
+        || t.StartsWith("Draft date:", StringComparison.OrdinalIgnoreCase)
+        || t.StartsWith("Notes:", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsShortAllCapsCueLine(string t) =>
+        t.Length <= 40
+        && CommonRegex.IsMatch(t, @"^[A-Z0-9][A-Z0-9 \.'\-]{0,38}(\s*\([^)]+\))?$")
+        && !t.Contains('.') // avoid "Mr. Smith" edge — still ok as dialogue body later
+        && t == t.ToUpperInvariant();
 
     /// <summary>
     /// Remove operator-facing book page tags from Fountain
@@ -2436,51 +2512,82 @@ public static class BookToFountainConverter
         var idealSize = Math.Max(softMaxChars / 2, bookText.Length / targetChunks);
 
         foreach (var unit in units)
-        {
-            if (current.Length > 0 &&
-                chunks.Count < maxChunks - 1 &&
-                (current.Length + unit.Length > softMaxChars ||
-                 (current.Length >= idealSize && chunks.Count < targetChunks - 1)))
-            {
-                chunks.Add(current.ToString().Trim());
-                current.Clear();
-            }
-
-            if (unit.Length > softMaxChars)
-            {
-                if (current.Length > 0)
-                {
-                    chunks.Add(current.ToString().Trim());
-                    current.Clear();
-                }
-                foreach (var slice in SliceLongUnit(unit, softMaxChars))
-                {
-                    if (chunks.Count >= maxChunks - 1)
-                    {
-                        current.AppendLine(slice);
-                    }
-                    else
-                        chunks.Add(slice);
-                }
-                continue;
-            }
-
-            if (current.Length > 0) current.Append("\n\n");
-            current.Append(unit);
-        }
+            PackUnitIntoChunks(unit, chunks, current, maxChunks, targetChunks, softMaxChars, idealSize);
 
         if (current.Length > 0)
             chunks.Add(current.ToString().Trim());
 
-        // If we still overshot maxChunks (shouldn't), merge tails
+        MergeOverflowChunks(chunks, maxChunks);
+        return chunks.Where(c => !string.IsNullOrWhiteSpace(c)).ToList();
+    }
+
+    private static bool ShouldFlushChunk(
+        StringBuilder current,
+        int chunkCount,
+        int unitLength,
+        int maxChunks,
+        int targetChunks,
+        int softMaxChars,
+        int idealSize) =>
+        current.Length > 0 &&
+        chunkCount < maxChunks - 1 &&
+        (current.Length + unitLength > softMaxChars ||
+         (current.Length >= idealSize && chunkCount < targetChunks - 1));
+
+    private static void PackUnitIntoChunks(
+        string unit,
+        List<string> chunks,
+        StringBuilder current,
+        int maxChunks,
+        int targetChunks,
+        int softMaxChars,
+        int idealSize)
+    {
+        if (ShouldFlushChunk(current, chunks.Count, unit.Length, maxChunks, targetChunks, softMaxChars, idealSize))
+        {
+            chunks.Add(current.ToString().Trim());
+            current.Clear();
+        }
+
+        if (unit.Length > softMaxChars)
+        {
+            PackLongUnit(unit, chunks, current, maxChunks, softMaxChars);
+            return;
+        }
+
+        if (current.Length > 0) current.Append("\n\n");
+        current.Append(unit);
+    }
+
+    private static void PackLongUnit(
+        string unit,
+        List<string> chunks,
+        StringBuilder current,
+        int maxChunks,
+        int softMaxChars)
+    {
+        if (current.Length > 0)
+        {
+            chunks.Add(current.ToString().Trim());
+            current.Clear();
+        }
+        foreach (var slice in SliceLongUnit(unit, softMaxChars))
+        {
+            if (chunks.Count >= maxChunks - 1)
+                current.AppendLine(slice);
+            else
+                chunks.Add(slice);
+        }
+    }
+
+    private static void MergeOverflowChunks(List<string> chunks, int maxChunks)
+    {
         while (chunks.Count > maxChunks)
         {
             var last = chunks[^1];
             chunks.RemoveAt(chunks.Count - 1);
             chunks[^1] = chunks[^1] + "\n\n" + last;
         }
-
-        return chunks.Where(c => !string.IsNullOrWhiteSpace(c)).ToList();
     }
 
     /// <summary>Stitch partial Fountain scripts (title page from first only). Public for tests.</summary>
@@ -2888,64 +2995,76 @@ public static class BookToFountainConverter
             "",
         };
 
+        AppendChunkRoleLines(lines, chunkIndex, chunkTotal, continuity);
+        lines.Add("");
+        AppendBookTextLines(lines, attachBookAsFile, chunkTotal, bookForPrompt);
+        return string.Join("\n", lines);
+    }
+
+    private static void AppendChunkRoleLines(
+        List<string> lines, int chunkIndex, int chunkTotal, string? continuity)
+    {
         if (chunkTotal <= 1)
         {
             lines.Add("Write the complete Fountain screenplay only (see system prompt).");
             lines.Add("Do not emit page numbers or page tags.");
+            return;
         }
-        else if (chunkIndex == 0)
+
+        if (chunkIndex == 0)
         {
             lines.Add("This is chunk 1 of a multi-chunk novel adaptation.");
             lines.Add("Write Fountain with a full title page + scenes for THIS chunk only.");
             lines.Add("Establish cast tokens and locations you will reuse later.");
             lines.Add("Do NOT write FADE OUT / THE END yet — more story follows.");
             lines.Add("Do not emit page numbers or page tags.");
-        }
-        else
-        {
-            lines.Add($"This is chunk {chunkIndex + 1} of {chunkTotal} of a multi-chunk novel adaptation.");
-            lines.Add("Continue the SAME screenplay — NO title page.");
-            lines.Add("Reuse established CHARACTER tokens and location heading wording.");
-            lines.Add("Output only new INT./EXT. scenes for this chunk's story.");
-            if (chunkIndex < chunkTotal - 1)
-                lines.Add("Do NOT write FADE OUT / THE END yet — more story follows.");
-            else
-                lines.Add("This is the FINAL chunk — include resolution and FADE OUT / THE END.");
-            lines.Add("Do not emit page numbers or page tags.");
-            if (!string.IsNullOrWhiteSpace(continuity))
-            {
-                lines.Add("");
-                lines.Add("CONTINUITY FROM PRIOR CHUNKS:");
-                lines.Add(continuity.Trim());
-            }
+            return;
         }
 
-        lines.Add("");
-        if (attachBookAsFile)
-        {
-            lines.Add("BOOK_TEXT: (attached as input_file by file_id — do not expect the full book inline below.)");
-            lines.Add("Use the complete attached book as the sole source of story, dialogue, and cast.");
-            if (chunkTotal > 1 && !string.IsNullOrWhiteSpace(bookForPrompt))
-            {
-                // Short anchors so multi-chunk knows which portion to adapt without re-billing full text.
-                var start = bookForPrompt.Length <= 360 ? bookForPrompt : bookForPrompt[..360];
-                var end = bookForPrompt.Length <= 360 ? "" : bookForPrompt[^Math.Min(360, bookForPrompt.Length)..];
-                lines.Add("");
-                lines.Add("PORTION ANCHOR (start of this chunk's source text):");
-                lines.Add(start.Trim());
-                if (!string.IsNullOrWhiteSpace(end))
-                {
-                    lines.Add("PORTION ANCHOR (end of this chunk's source text):");
-                    lines.Add(end.Trim());
-                }
-            }
-        }
+        lines.Add($"This is chunk {chunkIndex + 1} of {chunkTotal} of a multi-chunk novel adaptation.");
+        lines.Add("Continue the SAME screenplay — NO title page.");
+        lines.Add("Reuse established CHARACTER tokens and location heading wording.");
+        lines.Add("Output only new INT./EXT. scenes for this chunk's story.");
+        if (chunkIndex < chunkTotal - 1)
+            lines.Add("Do NOT write FADE OUT / THE END yet — more story follows.");
         else
+            lines.Add("This is the FINAL chunk — include resolution and FADE OUT / THE END.");
+        lines.Add("Do not emit page numbers or page tags.");
+        if (string.IsNullOrWhiteSpace(continuity))
+            return;
+        lines.Add("");
+        lines.Add("CONTINUITY FROM PRIOR CHUNKS:");
+        lines.Add(continuity.Trim());
+    }
+
+    private static void AppendBookTextLines(
+        List<string> lines, bool attachBookAsFile, int chunkTotal, string bookForPrompt)
+    {
+        if (!attachBookAsFile)
         {
             lines.Add("BOOK_TEXT:");
             lines.Add(bookForPrompt);
+            return;
         }
-        return string.Join("\n", lines);
+
+        lines.Add("BOOK_TEXT: (attached as input_file by file_id — do not expect the full book inline below.)");
+        lines.Add("Use the complete attached book as the sole source of story, dialogue, and cast.");
+        if (chunkTotal > 1 && !string.IsNullOrWhiteSpace(bookForPrompt))
+            AppendPortionAnchors(lines, bookForPrompt);
+    }
+
+    private static void AppendPortionAnchors(List<string> lines, string bookForPrompt)
+    {
+        // Short anchors so multi-chunk knows which portion to adapt without re-billing full text.
+        var start = bookForPrompt.Length <= 360 ? bookForPrompt : bookForPrompt[..360];
+        var end = bookForPrompt.Length <= 360 ? "" : bookForPrompt[^Math.Min(360, bookForPrompt.Length)..];
+        lines.Add("");
+        lines.Add("PORTION ANCHOR (start of this chunk's source text):");
+        lines.Add(start.Trim());
+        if (string.IsNullOrWhiteSpace(end))
+            return;
+        lines.Add("PORTION ANCHOR (end of this chunk's source text):");
+        lines.Add(end.Trim());
     }
 
     private static string BuildContinuityBrief(string fountainPart, int chunkDone, int chunkTotal)
@@ -3267,29 +3386,52 @@ public static class BookToFountainConverter
         var lines = (fountain ?? "").Replace("\r\n", "\n").Split('\n');
         for (var i = 0; i < lines.Length; i++)
         {
-            var t = lines[i].Trim();
-            if (t.Length == 0 || t.Length > 60) continue;
-            var prevBlank = i == 0 || string.IsNullOrWhiteSpace(lines[i - 1]);
-            var nextBlank = i + 1 >= lines.Length || string.IsNullOrWhiteSpace(lines[i + 1]);
-            if (!prevBlank || nextBlank) continue;
-            if (SceneHeadingLineRegex.IsMatch(t)) continue;
-            if (t.StartsWith('(') || t.StartsWith('!') || t.StartsWith('>')) continue;
-            if (CommonRegex.IsMatch(t, @"^(FADE |CUT TO|DISSOLVE|THE END|SMASH CUT)", RegexOptions.IgnoreCase))
-                continue;
-
-            var core = t.TrimEnd('^', ' ', '\t');
-            var paren = core.IndexOf('(');
-            if (paren > 0) core = core[..paren].Trim();
-            if (core.Length < 2) continue;
-
-            var letters = core.Where(char.IsLetter).ToArray();
-            if (letters.Length < 2) continue;
-            if (letters.Count(char.IsUpper) < letters.Length * 0.85) continue;
-            if (core.Any(char.IsLower) && letters.Count(char.IsLower) > letters.Length * 0.15)
-                continue;
-
-            yield return core;
+            if (TryReadCharacterCueName(lines, i, out var core))
+                yield return core;
         }
+    }
+
+    private static bool TryReadCharacterCueName(string[] lines, int i, out string core)
+    {
+        core = "";
+        var t = lines[i].Trim();
+        if (!IsCueLength(t) || !HasDialogueNeighbors(lines, i) || IsNonCueLeader(t))
+            return false;
+        if (!TryNormalizeCueCore(t, out core))
+            return false;
+        return IsMostlyUppercaseName(core);
+    }
+
+    private static bool IsCueLength(string t) => t.Length is > 0 and <= 60;
+
+    private static bool HasDialogueNeighbors(string[] lines, int i)
+    {
+        var prevBlank = i == 0 || string.IsNullOrWhiteSpace(lines[i - 1]);
+        var nextBlank = i + 1 >= lines.Length || string.IsNullOrWhiteSpace(lines[i + 1]);
+        return prevBlank && !nextBlank;
+    }
+
+    private static bool IsNonCueLeader(string t) =>
+        SceneHeadingLineRegex.IsMatch(t)
+        || t.StartsWith('(') || t.StartsWith('!') || t.StartsWith('>')
+        || CommonRegex.IsMatch(t, @"^(FADE |CUT TO|DISSOLVE|THE END|SMASH CUT)", RegexOptions.IgnoreCase);
+
+    private static bool TryNormalizeCueCore(string t, out string core)
+    {
+        core = t.TrimEnd('^', ' ', '\t');
+        var paren = core.IndexOf('(');
+        if (paren > 0) core = core[..paren].Trim();
+        return core.Length >= 2;
+    }
+
+    private static bool IsMostlyUppercaseName(string core)
+    {
+        var letters = core.Where(char.IsLetter).ToArray();
+        if (letters.Length < 2) return false;
+        if (letters.Count(char.IsUpper) < letters.Length * 0.85) return false;
+        if (core.Any(char.IsLower) && letters.Count(char.IsLower) > letters.Length * 0.15)
+            return false;
+        return true;
     }
 
     private sealed class HeuristicBookPage

@@ -33,40 +33,49 @@ public static class TextMetrics
         for (var i = 0; i < len; i++)
         {
             var ch = text[i];
-            if (char.IsLetter(ch) || char.IsDigit(ch) || ch == '\'')
+            if (IsSyllableWordChar(ch))
             {
                 wordLen++;
-                var lower = char.ToLowerInvariant(ch);
-                var isV = lower is 'a' or 'e' or 'i' or 'o' or 'u' or 'y';
-                if (isV && !inVowelGroup)
-                {
-                    syllables++;
-                    inVowelGroup = true;
-                }
-                else if (!isV)
-                {
-                    inVowelGroup = false;
-                }
+                NoteVowelGroup(ch, ref syllables, ref inVowelGroup);
             }
-            else
+            else if (wordLen > 0)
             {
-                if (wordLen > 0)
-                {
-                    if (wordLen <= 3) total += 1;
-                    else total += Math.Max(1, syllables);
-                    wordLen = 0;
-                    syllables = 0;
-                    inVowelGroup = false;
-                }
+                total += SyllablesForWord(wordLen, syllables);
+                wordLen = 0;
+                syllables = 0;
+                inVowelGroup = false;
             }
         }
 
         if (wordLen > 0)
-        {
-            if (wordLen <= 3) total += 1;
-            else total += Math.Max(1, syllables);
-        }
+            total += SyllablesForWord(wordLen, syllables);
 
         return total;
     }
+
+    private static bool IsSyllableWordChar(char ch) =>
+        char.IsLetter(ch) || char.IsDigit(ch) || ch == '\'';
+
+    private static bool IsEnglishVowel(char ch)
+    {
+        var lower = char.ToLowerInvariant(ch);
+        return lower is 'a' or 'e' or 'i' or 'o' or 'u' or 'y';
+    }
+
+    private static void NoteVowelGroup(char ch, ref int syllables, ref bool inVowelGroup)
+    {
+        var isV = IsEnglishVowel(ch);
+        if (isV && !inVowelGroup)
+        {
+            syllables++;
+            inVowelGroup = true;
+        }
+        else if (!isV)
+        {
+            inVowelGroup = false;
+        }
+    }
+
+    private static int SyllablesForWord(int wordLen, int syllables) =>
+        wordLen <= 3 ? 1 : Math.Max(1, syllables);
 }

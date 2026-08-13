@@ -301,15 +301,11 @@ public sealed class AdaptationService
         Func<string, string, CancellationToken, Task<string?>>? completeViaFiles = null)
     {
         // Ground enrichment in the source when we have it (kept bounded to protect the prompt budget).
-        string? userContent = null;
-        if (completeViaFiles is null && !string.IsNullOrWhiteSpace(bookText))
-        {
-            const int maxBookChars = 40_000;
-            var book = bookText.Length <= maxBookChars ? bookText : bookText[..maxBookChars];
-            userContent =
-                "ORIGINAL BOOK TEXT (for descriptive grounding — do not add plot from it):\n" +
-                book + "\n\n---\n\nSCREENPLAY TO ENRICH:\n";
-        }
+        var book = BoundBookExcerpt(bookText, maxChars: 40_000, skipBecauseFiles: completeViaFiles is not null);
+        string? userContent = book is null
+            ? null
+            : "ORIGINAL BOOK TEXT (for descriptive grounding — do not add plot from it):\n" +
+              book + "\n\n---\n\nSCREENPLAY TO ENRICH:\n";
 
         var system = await AdaptationPromptPack.BuildEmbellishSystemPromptAsync(visualMedium, ct).ConfigureAwait(false);
         var before = SafeSceneCount(fountain);
@@ -357,53 +353,99 @@ public sealed class AdaptationService
                 chat, model, progress, "Enriching the screenplay…", ct, completeViaFiles).ConfigureAwait(false);
 
         progress?.Report($"Enriching {before} scenes one at a time (keeps headings)…");
-        string? sceneBook = null;
-        if (completeViaFiles is null && !string.IsNullOrWhiteSpace(bookText))
-        {
-            const int maxBookChars = 12_000;
-            sceneBook = bookText.Length <= maxBookChars ? bookText : bookText[..maxBookChars];
-        }
+        var sceneBook = BoundBookExcerpt(bookText, maxChars: 12_000, skipBecauseFiles: completeViaFiles is not null);
+        var (outScenes, enriched, kept) = await EnrichScenesAsync(
+            scenes, system, sceneBook, chat, model, progress, ct, completeViaFiles).ConfigureAwait(false);
+        return FinishPerSceneEnrichment(fountain, preamble, outScenes, before, enriched, kept, progress);
+    }
 
+    static string? BoundBookExcerpt(string? bookText, int maxChars, bool skipBecauseFiles)
+    {
+        if (skipBecauseFiles || string.IsNullOrWhiteSpace(bookText))
+            return null;
+        return bookText.Length <= maxChars ? bookText : bookText[..maxChars];
+    }
+
+    static async Task<(List<string> Scenes, int Enriched, int Kept)> EnrichScenesAsync(
+        IReadOnlyList<string> scenes,
+        string system,
+        string? sceneBook,
+        IChatClient chat,
+        string? model,
+        IProgress<string>? progress,
+        CancellationToken ct,
+        Func<string, string, CancellationToken, Task<string?>>? completeViaFiles)
+    {
+        var before = scenes.Count;
         var outScenes = new List<string>(before);
         var enriched = 0;
         var kept = 0;
         for (var i = 0; i < before; i++)
         {
             ct.ThrowIfCancellationRequested();
-            var original = scenes[i];
             progress?.Report($"Enriching scene {i + 1}/{before}…");
-            var userContent = sceneBook is null
-                ? null
-                : "ORIGINAL BOOK TEXT (grounding only — do not add plot):\n" + sceneBook +
-                  "\n\n---\n\nONE SCENE TO ENRICH:\n";
-            var r = await ApplyDescriptiveEditAsync(
-                original,
-                system + PerSceneSystemSuffix,
-                userContent: userContent,
-                operation: "enrichment",
-                mode: "fountain_embellish",
-                chat: chat,
-                model: model,
-                progress: null,
-                progressMessage: $"Enriching scene {i + 1}/{before}…",
-                ct: ct,
-                completeViaFiles: completeViaFiles).ConfigureAwait(false);
-            var originalCount = SafeSceneCount(original);
-            if (r.Ok && r.StructurePreserved && r.SceneCountAfter == originalCount &&
-                !string.IsNullOrWhiteSpace(r.Fountain))
+            var (text, usedOriginal, warning) = await EnrichOneSceneAsync(
+                scenes[i], system, sceneBook, chat, model, i, before, ct, completeViaFiles)
+                .ConfigureAwait(false);
+            outScenes.Add(text);
+            if (usedOriginal)
             {
-                outScenes.Add(r.Fountain);
-                enriched++;
+                kept++;
+                if (!string.IsNullOrWhiteSpace(warning))
+                    progress?.Report($"Scene {i + 1}: kept original ({warning})");
             }
             else
             {
-                outScenes.Add(original);
-                kept++;
-                if (!string.IsNullOrWhiteSpace(r.Warning))
-                    progress?.Report($"Scene {i + 1}: kept original ({r.Warning})");
+                enriched++;
             }
         }
 
+        return (outScenes, enriched, kept);
+    }
+
+    static async Task<(string Fountain, bool UsedOriginal, string? Warning)> EnrichOneSceneAsync(
+        string original,
+        string system,
+        string? sceneBook,
+        IChatClient chat,
+        string? model,
+        int index,
+        int before,
+        CancellationToken ct,
+        Func<string, string, CancellationToken, Task<string?>>? completeViaFiles)
+    {
+        var userContent = sceneBook is null
+            ? null
+            : "ORIGINAL BOOK TEXT (grounding only — do not add plot):\n" + sceneBook +
+              "\n\n---\n\nONE SCENE TO ENRICH:\n";
+        var r = await ApplyDescriptiveEditAsync(
+            original,
+            system + PerSceneSystemSuffix,
+            userContent: userContent,
+            operation: "enrichment",
+            mode: "fountain_embellish",
+            chat: chat,
+            model: model,
+            progress: null,
+            progressMessage: $"Enriching scene {index + 1}/{before}…",
+            ct: ct,
+            completeViaFiles: completeViaFiles).ConfigureAwait(false);
+        var originalCount = SafeSceneCount(original);
+        if (r.Ok && r.StructurePreserved && r.SceneCountAfter == originalCount &&
+            !string.IsNullOrWhiteSpace(r.Fountain))
+            return (r.Fountain, false, null);
+        return (original, true, r.Warning);
+    }
+
+    static FountainEditResult FinishPerSceneEnrichment(
+        string fountain,
+        string preamble,
+        IReadOnlyList<string> outScenes,
+        int before,
+        int enriched,
+        int kept,
+        IProgress<string>? progress)
+    {
         var assembled = preamble + string.Concat(outScenes);
         var after = SafeSceneCount(assembled);
         if (before > 0 && after != before)

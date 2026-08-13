@@ -45,24 +45,46 @@ public static class VisualMediumStyles
     public static string NormalizeMedium(string? raw, bool allowAuto = false, bool mapMixedToPhotoreal = false)
     {
         var s = (raw ?? "").Trim().ToLowerInvariant().Replace(' ', '_').Replace('-', '_');
-        if (allowAuto && (string.IsNullOrEmpty(s) || s is "auto" or "infer" or "default"))
+        if (allowAuto && IsAutoToken(s))
             return "auto";
-        if (s is "photoreal" or "photo_real" or "live_action" or "liveaction" or "photoreal_live_action"
-            or "period_drama" or "gothic_live_action" || (mapMixedToPhotoreal && s == "mixed"))
+        if (IsPhotorealAlias(s, mapMixedToPhotoreal))
             return MediumPhotoreal;
-        if (s is "illustrated" or "picture_book" or "picturebook" or "illustration"
-            or "illustrated_picture_book" or "childrens_book" or "storybook")
+        if (IsIllustratedAlias(s))
             return MediumIllustrated;
-        if (s is "stylized_3d" or "stylized_3d_animated" or "cg_animated" or "pixar" or "3d_animated")
+        if (IsStylized3dAlias(s))
             return MediumStylized3d;
-        if (s is MediumPhotoreal or MediumIllustrated or MediumStylized3d or MediumOther)
+        if (IsCanonicalMediumToken(s))
             return s;
-        if (s.Contains("picture") || s.Contains("illustrat") || s.Contains("cartoon") || s.Contains("storybook"))
+        if (LooksIllustrated(s))
             return MediumIllustrated;
-        if (s.Contains("photoreal") || s.Contains("live_action") || s.Contains("live action") || s.Contains("period"))
+        if (LooksPhotoreal(s))
             return MediumPhotoreal;
         return MediumOther;
     }
+
+    private static bool IsAutoToken(string s) =>
+        string.IsNullOrEmpty(s) || s is "auto" or "infer" or "default";
+
+    private static bool IsPhotorealAlias(string s, bool mapMixedToPhotoreal) =>
+        s is "photoreal" or "photo_real" or "live_action" or "liveaction" or "photoreal_live_action"
+            or "period_drama" or "gothic_live_action"
+        || (mapMixedToPhotoreal && s == "mixed");
+
+    private static bool IsIllustratedAlias(string s) =>
+        s is "illustrated" or "picture_book" or "picturebook" or "illustration"
+            or "illustrated_picture_book" or "childrens_book" or "storybook";
+
+    private static bool IsStylized3dAlias(string s) =>
+        s is "stylized_3d" or "stylized_3d_animated" or "cg_animated" or "pixar" or "3d_animated";
+
+    private static bool IsCanonicalMediumToken(string s) =>
+        s is MediumPhotoreal or MediumIllustrated or MediumStylized3d or MediumOther;
+
+    private static bool LooksIllustrated(string s) =>
+        s.Contains("picture") || s.Contains("illustrat") || s.Contains("cartoon") || s.Contains("storybook");
+
+    private static bool LooksPhotoreal(string s) =>
+        s.Contains("photoreal") || s.Contains("live_action") || s.Contains("live action") || s.Contains("period");
 
     /// <summary>Strips a leading/trailing ``` (optionally ```json) code fence from a model reply.</summary>
     public static string StripJsonFence(string trimmed)
