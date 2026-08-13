@@ -30,10 +30,10 @@ public sealed class ClassifierDirectiveHelpersTests
     public void ParseKeyedArray_ReturnsNullWhenPropertyMissingOrNotArray()
     {
         var log = NullLogger.Instance;
-        Assert.Null(ClassifierDirectiveJson.ParseKeyedArray("{\"other\":[]}", "dof", _ => ("b", 1), log, "x"));
-        Assert.Null(ClassifierDirectiveJson.ParseKeyedArray("{\"dof\":\"nope\"}", "dof", _ => ("b", 1), log, "x"));
-        Assert.Null(ClassifierDirectiveJson.ParseKeyedArray("{\"dof\":[]}", "dof", _ => ("b", 1), log, "x"));
-        Assert.Null(ClassifierDirectiveJson.ParseKeyedArray("not-json", "dof", _ => ("b", 1), log, "x"));
+        Assert.Null(ClassifierDirectiveJson.ParseKeyedArray<int>("{\"other\":[]}", "dof", _ => ("b", 1), log, "x"));
+        Assert.Null(ClassifierDirectiveJson.ParseKeyedArray<int>("{\"dof\":\"nope\"}", "dof", _ => ("b", 1), log, "x"));
+        Assert.Null(ClassifierDirectiveJson.ParseKeyedArray<int>("{\"dof\":[]}", "dof", _ => ("b", 1), log, "x"));
+        Assert.Null(ClassifierDirectiveJson.ParseKeyedArray<int>("not-json", "dof", _ => ("b", 1), log, "x"));
     }
 
     [Fact]
