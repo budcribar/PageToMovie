@@ -444,17 +444,17 @@ public sealed class GrokImageClient : IImageClient
         // Single image: "image" as data-URI string, then { "url": ... }
         var p = BasePayload();
         p[KindImage] = imageUris[0];
-        var (ok, code, body, retryAfter) = await SendAsync(p).ConfigureAwait(false);
-        if (ok) return body;
+        var (okSingle, codeSingle, bodySingle, retryAfterSingle) = await SendAsync(p).ConfigureAwait(false);
+        if (okSingle) return bodySingle;
 
         var p2 = BasePayload();
         p2[KindImage] = new JsonObject { ["url"] = imageUris[0] };
-        var (ok2, code2, body2, retryAfter2) = await SendAsync(p2).ConfigureAwait(false);
-        if (ok2) return body2;
+        var (okSingle2, codeSingle2, bodySingle2, retryAfterSingle2) = await SendAsync(p2).ConfigureAwait(false);
+        if (okSingle2) return bodySingle2;
 
-        throw new ChatHttpStatusException(code2 != 0 ? code2 : code,
-            $"Image edit failed: {Trim(body2.Length > 0 ? body2 : body, 400)}",
-            retryAfter2 ?? retryAfter);
+        throw new ChatHttpStatusException(codeSingle2 != 0 ? codeSingle2 : codeSingle,
+            $"Image edit failed: {Trim(bodySingle2.Length > 0 ? bodySingle2 : bodySingle, 400)}",
+            retryAfterSingle2 ?? retryAfterSingle);
     }
 
     private static string BuildMultiImageOrderHint(int count)

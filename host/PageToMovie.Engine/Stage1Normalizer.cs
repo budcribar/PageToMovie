@@ -200,7 +200,7 @@ public static class Stage1Normalizer
         var lidList = new List<string>();
         if (lids is string one) lidList.Add(one);
         else if (lids is List<object?> list)
-            lidList.AddRange(list.Select(x => CoerceString(x)).Where(x => !string.IsNullOrEmpty(x)));
+            lidList.AddRange(list.Select(x => CoerceString(x) ?? "").Where(x => !string.IsNullOrEmpty(x)));
         s["location_ids"] = lidList;
         if (lidList.Count > 0 &&
             string.IsNullOrEmpty(CoerceString(s.TryGetValue("primary_location_id", out var pl) ? pl : null)))
@@ -266,11 +266,18 @@ public static class Stage1Normalizer
         string Get(string key)
         {
             if (nested is not null &&
-                nested.TryGetValue(key, out var nv) &&
-                !string.IsNullOrWhiteSpace(CoerceString(nv)))
-                return CoerceString(nv).Trim();
-            if (beat.TryGetValue(key, out var rv) && !string.IsNullOrWhiteSpace(CoerceString(rv)))
-                return CoerceString(rv).Trim();
+                nested.TryGetValue(key, out var nv))
+            {
+                var nestedVal = CoerceString(nv);
+                if (!string.IsNullOrWhiteSpace(nestedVal))
+                    return nestedVal.Trim();
+            }
+            if (beat.TryGetValue(key, out var rv))
+            {
+                var beatVal = CoerceString(rv);
+                if (!string.IsNullOrWhiteSpace(beatVal))
+                    return beatVal.Trim();
+            }
             return "";
         }
 

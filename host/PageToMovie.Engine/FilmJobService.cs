@@ -841,7 +841,7 @@ public sealed class FilmJobService
             .ToList();
         var queuedMsg = hasClips
             ? $"Queued batch gen ({(req.Clips ?? new List<ClipTarget>()).Count} clip(s))…"
-            : $"Queued batch gen ({req.Scenes.Count} scenes)…";
+            : $"Queued batch gen ({(req.Scenes ?? new List<int>()).Count} scenes)…";
         return StartBackgroundJobAsync(
             ct => RunBatchGenAsync(req, projectId, ct),
             new JobEnqueueMeta
