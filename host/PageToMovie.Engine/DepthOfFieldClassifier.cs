@@ -1,5 +1,3 @@
-using System.Text.Json;
-using System.Text.RegularExpressions;
 using PageToMovie.Core.Options;
 using PageToMovie.Engine.Abstractions;
 using Microsoft.Extensions.Logging;
@@ -65,66 +63,20 @@ public sealed class DepthOfFieldClassifier : BeatChatClassifierBase<DepthOfField
         }
         """;
 
-    public Task<Dictionary<string, DepthOfFieldDirective>?> ClassifySceneDepthOfFieldAsync(
-        Dictionary<string, object?> scene,
-        List<Dictionary<string, object?>> beats,
-        Action<string>? onProgress = null,
-        CancellationToken ct = default,
-        string? model = null) => ClassifyAsync(scene, beats, onProgress, ct, model);
+    public Task<Dictionary<string, DepthOfFieldDirective>?> ClassifySceneDepthOfFieldAsync(Dictionary<string, object?> scene, List<Dictionary<string, object?>> beats, Action<string>? onProgress = null, CancellationToken ct = default, string? model = null) => ClassifyAsync(scene, beats, onProgress, ct, model);
 
     protected override string BeatsHeading => "BEATS TO DIRECT OPTICALLY:";
 
     protected override void AppendBeat(System.Text.StringBuilder sb, Dictionary<string, object?> b)
     {
-        var id = b.GetValueOrDefault("beat_id") ?? "b";
-        var action = b.GetValueOrDefault("visual_event") ?? "";
+        var (id, action, _, dlg) = ReadBeatCore(b);
         var psub = b.GetValueOrDefault("primary_subject") ?? "";
-        var dlg = b.GetValueOrDefault("dialogue") ?? "";
-
         sb.AppendLine($"Beat '{id}' (subject: {psub}):");
         if (!string.IsNullOrWhiteSpace(dlg.ToString()))
             sb.AppendLine($"  Spoken: \"{dlg}\"");
         AppendActionProse(sb, action);
     }
 
-    protected override Dictionary<string, DepthOfFieldDirective>? ParseResponse(string rawJson)
-    {
-        try
-        {
-            var cleaned = ClassifierJsonParser.StripFences(rawJson);
-            using var doc = JsonDocument.Parse(cleaned);
-            if (!doc.RootElement.TryGetProperty("dof", out var dofArray) ||
-                dofArray.ValueKind != JsonValueKind.Array)
-            {
-                return null;
-            }
-
-            var result = new Dictionary<string, DepthOfFieldDirective>(StringComparer.OrdinalIgnoreCase);
-            foreach (var item in dofArray.EnumerateArray())
-                TryAddDofItem(result, item);
-
-            return result.Count > 0 ? result : null;
-        }
-        catch (Exception ex)
-        {
-            _log.LogWarning(ex, "Failed to parse AI depth of field response JSON: {RawJson}", rawJson);
-            return null;
-        }
-    }
-
-    private static void TryAddDofItem(Dictionary<string, DepthOfFieldDirective> result, JsonElement item)
-    {
-        if (!item.TryGetProperty("beat_id", out var bid))
-            return;
-        var id = bid.GetString() ?? "";
-        if (string.IsNullOrWhiteSpace(id))
-            return;
-        result[id] = new DepthOfFieldDirective(
-            ReadJsonString(item, "aperture"),
-            ReadJsonString(item, "focal_plane"),
-            ReadJsonString(item, "rack_focus"));
-    }
-
-    private static string ReadJsonString(JsonElement item, string name) =>
-        item.TryGetProperty(name, out var el) ? el.GetString() ?? "" : "";
+    protected override Dictionary<string, DepthOfFieldDirective>? ParseResponse(string rawJson) =>
+        ClassifierDirectiveJson.ParseKeyedArray(rawJson, "dof", item => ClassifierDirectiveJson.MapThreeStringFields(item, "aperture", "focal_plane", "rack_focus", static (a, fp, rf) => new DepthOfFieldDirective(a, fp, rf)), _log, "depth of field");
 }

@@ -1,10 +1,7 @@
-using System.Text.Json;
-using System.Text.RegularExpressions;
 using PageToMovie.Core.Options;
 using PageToMovie.Engine.Abstractions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using PageToMovie.Engine.ModelExecution;
 
 namespace PageToMovie.Engine.ModelBacked;
 
@@ -53,62 +50,6 @@ public sealed class NegativePromptClassifier
         }
         """;
 
-    public async Task<string?> ClassifySceneNegativeAsync(
-        Dictionary<string, object?> scene,
-        Action<string>? onProgress = null,
-        CancellationToken ct = default,
-        string? model = null)
-    {
-        if (!IsEnabled) return null;
-
-        onProgress?.Invoke($"AI Period Guard: Generating anachronism negatives for Scene {scene.GetValueOrDefault("scene_number")}…");
-
-        try
-        {
-            var userPrompt = BuildUserPrompt(scene);
-            var effectiveModel = !string.IsNullOrWhiteSpace(model) ? model : _opts.NegativePromptClassifyModel;
-            var pipeline = new ValidatedModelOperation<Stage2DirectiveInput, TextDirective>(
-                new Stage2DirectiveOperation(_chat, "negative_prompt", PromptVersion),
-                new JsonTextDirectiveParser("negative_tokens"), new TextDirectiveValidator("negative_tokens"),
-                new DirectiveTerminalFallback<Stage2DirectiveInput, TextDirective>(), new ModelOperationOptions { CorrectiveMaxAttempts = 1 });
-            var result = await pipeline.ExecuteAsync(new(SystemPrompt, userPrompt, effectiveModel, ChatCallModes.NegativePromptClassify), ct).ConfigureAwait(false);
-            return result.Value?.Value;
-        }
-        catch (Exception ex)
-        {
-            _log.LogWarning(ex, "Failed to run AI negative prompt classification for scene {Scene}", scene.GetValueOrDefault("scene_number"));
-            return null;
-        }
-    }
-
-    private static string BuildUserPrompt(Dictionary<string, object?> scene)
-    {
-        var sb = new System.Text.StringBuilder();
-        sb.AppendLine($"SCENE {scene.GetValueOrDefault("scene_number")}: {scene.GetValueOrDefault("setting")}");
-        if (scene.TryGetValue("render_style_lock", out var rsl) && !string.IsNullOrWhiteSpace(rsl?.ToString()))
-            sb.AppendLine($"RENDER STYLE / PERIOD LOCK: {rsl}");
-
-        return sb.ToString();
-    }
-
-    private string? ParseNegativeResponse(string rawJson)
-    {
-        try
-        {
-            var cleaned = ClassifierJsonParser.StripFences(rawJson);
-            using var doc = JsonDocument.Parse(cleaned);
-            if (doc.RootElement.TryGetProperty("negative_tokens", out var nt))
-            {
-                var tokens = nt.GetString()?.Trim();
-                if (!string.IsNullOrWhiteSpace(tokens))
-                    return tokens;
-            }
-            return null;
-        }
-        catch (Exception ex)
-        {
-            _log.LogWarning(ex, "Failed to parse AI negative prompt response JSON: {RawJson}", rawJson);
-            return null;
-        }
-    }
+    public Task<string?> ClassifySceneNegativeAsync(Dictionary<string, object?> scene, Action<string>? onProgress = null, CancellationToken ct = default, string? model = null) =>
+        ClassifierTextDirectiveRunner.ClassifyAsync(IsEnabled, onProgress, $"AI Period Guard: Generating anachronism negatives for Scene {scene.GetValueOrDefault("scene_number")}…", _chat, _log, scene, SystemPrompt, () => ClassifierPromptParts.BuildSceneUserPrompt(scene, "RENDER STYLE / PERIOD LOCK", includeSampleBeats: false), model, _opts.NegativePromptClassifyModel, "negative_prompt", PromptVersion, "negative_tokens", ChatCallModes.NegativePromptClassify, "negative prompt", ct);
 }

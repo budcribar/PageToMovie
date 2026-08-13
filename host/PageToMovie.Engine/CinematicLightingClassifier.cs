@@ -1,11 +1,7 @@
-using System.Text.Json;
-using System.Text.RegularExpressions;
 using PageToMovie.Core.Options;
-using PageToMovie.Core.Utils;
 using PageToMovie.Engine.Abstractions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using PageToMovie.Engine.ModelExecution;
 
 namespace PageToMovie.Engine.ModelBacked;
 
@@ -53,61 +49,6 @@ public sealed class CinematicLightingClassifier
         }
         """;
 
-    public async Task<string?> ClassifySceneLightingAsync(
-        Dictionary<string, object?> scene,
-        Action<string>? onProgress = null,
-        CancellationToken ct = default,
-        string? model = null)
-    {
-        if (!IsEnabled) return null;
-
-        onProgress?.Invoke($"AI Cinematic Lighting: Analyzing lighting & mood for Scene {scene.GetValueOrDefault("scene_number")}…");
-
-        try
-        {
-            var userPrompt = BuildUserPrompt(scene);
-            var effectiveModel = !string.IsNullOrWhiteSpace(model) ? model : _opts.CinematicLightingClassifyModel;
-            var pipeline = new ValidatedModelOperation<Stage2DirectiveInput, TextDirective>(
-                new Stage2DirectiveOperation(_chat, "cinematic_lighting", PromptVersion),
-                new JsonTextDirectiveParser("lighting_token"), new TextDirectiveValidator("lighting_token"),
-                new DirectiveTerminalFallback<Stage2DirectiveInput, TextDirective>(), new ModelOperationOptions { CorrectiveMaxAttempts = 1 });
-            var result = await pipeline.ExecuteAsync(new(SystemPrompt(), userPrompt, effectiveModel, ChatCallModes.CinematicLightingClassify), ct).ConfigureAwait(false);
-            return result.Value?.Value;
-        }
-        catch (Exception ex)
-        {
-            _log.LogWarning(ex, "Failed to run AI cinematic lighting classification for scene {Scene}", scene.GetValueOrDefault("scene_number"));
-            return null;
-        }
-    }
-
-    private static string BuildUserPrompt(Dictionary<string, object?> scene)
-    {
-        var sb = new System.Text.StringBuilder();
-        sb.AppendLine($"SCENE {scene.GetValueOrDefault("scene_number")}: {scene.GetValueOrDefault("setting")}");
-        if (scene.TryGetValue("render_style_lock", out var rsl) && !string.IsNullOrWhiteSpace(rsl?.ToString()))
-            sb.AppendLine($"RENDER STYLE LOCK: {rsl}");
-
-        ClassifierPromptParts.AppendSampleBeats(sb, scene);
-
-        return sb.ToString();
-    }
-
-    private string? ParseLightingResponse(string rawJson)
-    {
-        try
-        {
-            var cleaned = ClassifierJsonParser.StripFences(rawJson);
-            using var doc = JsonDocument.Parse(cleaned);
-            var token = doc.RootElement.GetStringProp("lighting_token").Trim();
-            if (!string.IsNullOrWhiteSpace(token))
-                return token;
-            return null;
-        }
-        catch (Exception ex)
-        {
-            _log.LogWarning(ex, "Failed to parse AI cinematic lighting response JSON: {RawJson}", rawJson);
-            return null;
-        }
-    }
+    public Task<string?> ClassifySceneLightingAsync(Dictionary<string, object?> scene, Action<string>? onProgress = null, CancellationToken ct = default, string? model = null) =>
+        ClassifierTextDirectiveRunner.ClassifyAsync(IsEnabled, onProgress, $"AI Cinematic Lighting: Analyzing lighting & mood for Scene {scene.GetValueOrDefault("scene_number")}…", _chat, _log, scene, SystemPrompt(), () => ClassifierPromptParts.BuildSceneUserPrompt(scene, "RENDER STYLE LOCK", includeSampleBeats: true), model, _opts.CinematicLightingClassifyModel, "cinematic_lighting", PromptVersion, "lighting_token", ChatCallModes.CinematicLightingClassify, "cinematic lighting", ct);
 }

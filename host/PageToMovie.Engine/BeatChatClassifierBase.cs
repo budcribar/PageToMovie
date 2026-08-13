@@ -81,6 +81,13 @@ public abstract class BeatChatClassifierBase<TItem>
         return sb.ToString();
     }
 
+    /// <summary>Id / action / speaker / dialogue — the fields every beat prompt reads.</summary>
+    protected static (object Id, object Action, object Speaker, object Dialogue) ReadBeatCore(Dictionary<string, object?> b) =>
+        (b.GetValueOrDefault("beat_id") ?? "b",
+         b.GetValueOrDefault("visual_event") ?? "",
+         b.GetValueOrDefault("speaker") ?? "",
+         b.GetValueOrDefault("dialogue") ?? "");
+
     /// <summary>
     /// Appends one beat's serialized block. The default emits the standard
     /// <c>Beat 'id' (class: …)</c> header plus the shared spoken/action-prose lines; classifiers with
@@ -88,10 +95,7 @@ public abstract class BeatChatClassifierBase<TItem>
     /// </summary>
     protected virtual void AppendBeat(StringBuilder sb, Dictionary<string, object?> b)
     {
-        var id = b.GetValueOrDefault("beat_id") ?? "b";
-        var action = b.GetValueOrDefault("visual_event") ?? "";
-        var spk = b.GetValueOrDefault("speaker") ?? "";
-        var dlg = b.GetValueOrDefault("dialogue") ?? "";
+        var (id, action, spk, dlg) = ReadBeatCore(b);
         var ac = b.GetValueOrDefault("action_class") ?? "";
 
         sb.AppendLine($"Beat '{id}' (class: {ac}):");
