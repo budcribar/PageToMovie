@@ -38,7 +38,7 @@
   }
 
   function startMeter(dotNetRef, fieldId) {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    if (!navigator.mediaDevices?.getUserMedia) {
       return Promise.resolve({ ok: false });
     }
     stopMeter();
@@ -59,8 +59,8 @@
           if (!_analyser || !_meterData) return;
           _analyser.getByteTimeDomainData(_meterData);
           var sum = 0;
-          for (var i = 0; i < _meterData.length; i++) {
-            var v = (_meterData[i] - 128) / 128;
+          for (const sample of _meterData) {
+            var v = (sample - 128) / 128;
             sum += v * v;
           }
           var rms = Math.sqrt(sum / _meterData.length);
@@ -116,7 +116,7 @@
           }
         };
         rec.onerror = function (ev) {
-          var err = (ev && ev.error) || "speech_error";
+          var err = ev?.error || "speech_error";
           if (_dotNet) {
             _dotNet.invokeMethodAsync("OnDictationError", _fieldId, err).catch(function () { });
           }
@@ -136,7 +136,7 @@
         return Promise.resolve({ ok: true });
       } catch (ex) {
         stopMeter();
-        return Promise.resolve({ ok: false, error: (ex && ex.message) || String(ex) });
+        return Promise.resolve({ ok: false, error: ex?.message || String(ex) });
       }
     },
 

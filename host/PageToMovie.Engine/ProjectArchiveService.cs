@@ -33,8 +33,8 @@ public sealed class ProjectArchiveService
 
     public ProjectArchiveService(
         ProjectStore projects,
-        ClipSidecarService sidecars,
-        ProjectMigrationService migrations,
+        ClipSidecarService? sidecars,
+        ProjectMigrationService? migrations,
         ILogger<ProjectArchiveService>? log = null)
     {
         _projects = projects;
@@ -47,12 +47,12 @@ public sealed class ProjectArchiveService
         ProjectStore projects,
         ClipSidecarService sidecars,
         ILogger<ProjectArchiveService>? log)
-        : this(projects, sidecars, null!, log)
+        : this(projects, sidecars, null, log)
     {
     }
 
     public ProjectArchiveService(ProjectStore projects, ILogger<ProjectArchiveService>? log)
-        : this(projects, null!, null!, log)
+        : this(projects, null, null, log)
     {
     }
 
@@ -239,7 +239,7 @@ public sealed class ProjectArchiveService
             var rawId = !string.IsNullOrWhiteSpace(preferredId)
                 ? preferredId.Trim()
                 : !string.IsNullOrWhiteSpace(idFromMeta)
-                    ? idFromMeta!
+                    ? idFromMeta
                     : idFromFolder;
 
             // User-mode / rename import: land the project in the importer's own namespace, taking only
@@ -576,12 +576,10 @@ public sealed class ProjectArchiveService
             return extractRoot;
 
         // Single top-level folder with project.json
-        var dirs = Directory.GetDirectories(extractRoot);
-        foreach (var d in dirs)
-        {
-            if (File.Exists(Path.Combine(d, ProjectJsonFile)))
-                return d;
-        }
+        var nestedDir = Directory.GetDirectories(extractRoot)
+            .FirstOrDefault(d => File.Exists(Path.Combine(d, ProjectJsonFile)));
+        if (nestedDir is not null)
+            return nestedDir;
 
         // Nested: projects/MyId/project.json
         var nested = Directory.GetFiles(extractRoot, ProjectJsonFile, SearchOption.AllDirectories)
@@ -661,7 +659,7 @@ public sealed class ProjectArchiveService
             if (rel.Contains("..", StringComparison.Ordinal))
                 throw new InvalidOperationException($"Unsafe path in archive: {rel}");
             var target = Path.Combine(destDir, rel);
-            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            Directory.CreateDirectory(Path.GetDirectoryName(target) ?? destDir);
             File.Copy(file, target, overwrite: true);
         }
     }

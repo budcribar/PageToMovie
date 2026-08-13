@@ -386,11 +386,9 @@ public sealed class ClipAutoReviewService
                 if (!s.TryGetProperty("scene_number", out var sn) || !sn.TryGetInt32(out var n) || n != scene)
                     continue;
                 // Canonical Stage 2 key is veo_clips
-                if (!s.TryGetProperty("veo_clips", out var clips) || clips.ValueKind != JsonValueKind.Array)
-                {
-                    if (!s.TryGetProperty("clips", out clips) || clips.ValueKind != JsonValueKind.Array)
-                        break;
-                }
+                if ((!s.TryGetProperty("veo_clips", out var clips) || clips.ValueKind != JsonValueKind.Array)
+                    && (!s.TryGetProperty("clips", out clips) || clips.ValueKind != JsonValueKind.Array))
+                    break;
                 foreach (var c in clips.EnumerateArray())
                 {
                     if (!c.TryGetProperty("clip_number", out var cn) || !cn.TryGetInt32(out var cnum) || cnum != clip)

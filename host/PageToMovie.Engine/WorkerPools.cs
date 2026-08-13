@@ -111,19 +111,16 @@ public sealed class ApiWorkerPool
 
         lock (_semGate)
         {
-            if (g != _configuredGlobal)
+            // Only replace when fully idle — disposing a SemaphoreSlim with waiters
+            // faults in-flight RunAsync (ObjectDisposedException on Wait/Release).
+            if (g != _configuredGlobal && _global.CurrentCount == _configuredGlobal)
             {
-                // Only replace when fully idle — disposing a SemaphoreSlim with waiters
-                // faults in-flight RunAsync (ObjectDisposedException on Wait/Release).
-                if (_global.CurrentCount == _configuredGlobal)
-                {
-                    var old = _global;
-                    _global = new SemaphoreSlim(g, g);
-                    _configuredGlobal = g;
-                    try { old.Dispose(); } catch { /* ignore */ }
-                }
-                // else: keep old cap; retry on next EnsureCaps when idle
+                var old = _global;
+                _global = new SemaphoreSlim(g, g);
+                _configuredGlobal = g;
+                try { old.Dispose(); } catch { /* ignore */ }
             }
+            // else: keep old cap; retry on next EnsureCaps when idle
 
             if (p != _configuredPerUser)
             {

@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.RegularExpressions;
 
 using PageToMovie.Core.Utils;
@@ -189,48 +190,50 @@ public static class DialoguePacingSplitter
             return rawChunks;
 
         var merged = new List<string>();
-        string? current = null;
+        var current = new StringBuilder();
 
         foreach (var chunk in rawChunks)
         {
-            if (current == null)
+            if (current.Length == 0)
             {
-                current = chunk;
+                current.Append(chunk);
                 continue;
             }
 
             var chunkWords = chunk.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
-            var currentWords = current.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
+            var currentWords = current.ToString().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
 
             // If chunk is an orphan (< 4 words) or combining them stays under maxWords
             if (chunkWords < 4 || (currentWords + chunkWords) <= maxWords)
             {
-                current = current + " " + chunk;
+                current.Append(' ').Append(chunk);
             }
             else
             {
-                merged.Add(current);
-                current = chunk;
+                merged.Add(current.ToString());
+                current.Clear();
+                current.Append(chunk);
             }
         }
 
-        if (current != null)
+        if (current.Length > 0)
         {
+            var currentText = current.ToString();
             if (merged.Count > 0)
             {
-                var currentWords = current.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
+                var currentWords = currentText.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
                 if (currentWords < 4)
                 {
-                    merged[merged.Count - 1] = merged[merged.Count - 1] + " " + current;
+                    merged[merged.Count - 1] = merged[merged.Count - 1] + " " + currentText;
                 }
                 else
                 {
-                    merged.Add(current);
+                    merged.Add(currentText);
                 }
             }
             else
             {
-                merged.Add(current);
+                merged.Add(currentText);
             }
         }
 

@@ -18,6 +18,60 @@ public sealed partial class ProjectStore
     /// <summary>CA1861: avoid allocating split separator arrays on every book-text sample.</summary>
     private static readonly char[] WordSplitChars = { ' ', '\n', '\r', '\t' };
 
+    /// <summary>Repeated path / JSON literals (S1192).</summary>
+    private static class StoreLit
+    {
+        public const string Projects = "projects";
+        public const string WorkspaceJson = "workspace.json";
+        public const string ProjectJson = "project.json";
+        public const string ScenesJson = "scenes.json";
+        public const string PipelineConfigJson = "pipeline_config.json";
+        public const string BlueprintClipsGrokJson = "blueprint.clips.grok.json";
+        public const string Assets = "assets";
+        public const string Video = "video";
+        public const string Source = "source";
+        public const string History = "history";
+        public const string Music = "music";
+        public const string Scenes = "scenes";
+        public const string Clips = "clips";
+        public const string Characters = "characters";
+        public const string VeoClips = "veo_clips";
+        public const string ClipJsonSuffix = ".clip.json";
+        public const string TrashDir = ".trash";
+        public const string RefPngSuffix = "_ref.png";
+        public const string CastSeedsV1 = "cast_seeds.v1";
+        public const string CharacterSeedTokens = "character_seed_tokens";
+        public const string LocationSeedTokens = "location_seed_tokens";
+        public const string WardrobeLockTokens = "wardrobe_lock_tokens";
+        public const string GlobalProductionVariables = "global_production_variables";
+        public const string SchemaVersion = "schema_version";
+        public const string DisplayName = "display_name";
+        public const string LocationType = "location_type";
+        public const string CharactersOnScreen = "characters_on_screen";
+        public const string PrimaryLocationId = "primary_location_id";
+        public const string LocationIds = "location_ids";
+        public const string VisualPrompt = "visual_prompt";
+        public const string VisualLock = "visual_lock";
+        public const string DurationSeconds = "duration_seconds";
+        public const string IsCredits = "is_credits";
+        public const string Setting = "setting";
+        public const string Credits = "CREDITS";
+        public const string BookSubsteps = "book_substeps";
+        public const string VisibilityMode = "visibilityMode";
+        public const string VoiceProvider = "voice_provider";
+        public const string VoiceProviderVoiceId = "voice_provider_voice_id";
+        public const string Title = "title";
+        public const string ParentProjectId = "parentProjectId";
+        public const string OwnerUserId = "ownerUserId";
+        public const string AudioScript = "audio_script";
+        public const string Delivery = "delivery";
+        public const string Operator = "Operator";
+        public const string VoiceLabel = "voice_label";
+        public const string VoiceProfile = "voice_profile";
+        public const string IsoDateTime = "yyyy-MM-ddTHH:mm:ss";
+    }
+
+
     /// <summary>
     /// Read a project meta json file (project.json) into a case-insensitive dictionary,
     /// returning an empty case-insensitive dictionary if the file is missing or unparseable.
@@ -73,10 +127,10 @@ public sealed partial class ProjectStore
                        as System.Text.Json.Nodes.JsonObject;
             if (root is null) return;
             System.Text.Json.Nodes.JsonObject? seeds = null;
-            if (root["character_seed_tokens"] is System.Text.Json.Nodes.JsonObject direct)
+            if (root[StoreLit.CharacterSeedTokens] is System.Text.Json.Nodes.JsonObject direct)
                 seeds = direct;
-            else if (root["global_production_variables"] is System.Text.Json.Nodes.JsonObject gpv &&
-                     gpv["character_seed_tokens"] is System.Text.Json.Nodes.JsonObject nested)
+            else if (root[StoreLit.GlobalProductionVariables] is System.Text.Json.Nodes.JsonObject gpv &&
+                     gpv[StoreLit.CharacterSeedTokens] is System.Text.Json.Nodes.JsonObject nested)
                 seeds = nested;
             if (seeds is null) return;
             patchSeeds(seeds);
@@ -118,7 +172,7 @@ public sealed partial class ProjectStore
         _readCache = readCache ?? new ProjectReadCache();
         _readCache.Enabled = _opts.EnableReadCaches;
         _workspaceRoot = ResolveWorkspaceRoot();
-        var ws = Path.Combine(_workspaceRoot, "projects", "workspace.json");
+        var ws = Path.Combine(_workspaceRoot, StoreLit.Projects, StoreLit.WorkspaceJson);
         if (File.Exists(ws))
         {
             try
@@ -150,7 +204,7 @@ public sealed partial class ProjectStore
         if (!Directory.Exists(dir)) return null;
 
         var git = gitRepo ?? new ProjectGitRepositoryService(Microsoft.Extensions.Logging.Abstractions.NullLogger<ProjectGitRepositoryService>.Instance);
-        var who = string.IsNullOrWhiteSpace(author) ? "Operator" : author;
+        var who = string.IsNullOrWhiteSpace(author) ? StoreLit.Operator : author;
         var result = await git.UndoLastCommitAsync(dir, who).ConfigureAwait(false);
         if (result is not null)
         {
@@ -167,7 +221,7 @@ public sealed partial class ProjectStore
         if (!Directory.Exists(dir)) return null;
 
         var git = gitRepo ?? new ProjectGitRepositoryService(Microsoft.Extensions.Logging.Abstractions.NullLogger<ProjectGitRepositoryService>.Instance);
-        var who = string.IsNullOrWhiteSpace(author) ? "Operator" : author;
+        var who = string.IsNullOrWhiteSpace(author) ? StoreLit.Operator : author;
         var result = await git.RevertToCommitAsync(dir, commitHash, who).ConfigureAwait(false);
         if (result is not null)
         {
@@ -212,7 +266,7 @@ public sealed partial class ProjectStore
         var commits = await git.GetCommitHistoryAsync(dir, limit).ConfigureAwait(false);
         if (commits.Count == 0) return Array.Empty<SceneCommitHistoryItem>();
 
-        var bpName = "blueprint.clips.grok.json";
+        var bpName = StoreLit.BlueprintClipsGrokJson;
         var result = new List<SceneCommitHistoryItem>();
 
         for (int i = 0; i < commits.Count; i++)
@@ -273,8 +327,8 @@ public sealed partial class ProjectStore
             var historicalRoot = System.Text.Json.Nodes.JsonNode.Parse(historicalBpStr) as System.Text.Json.Nodes.JsonObject;
             if (currentRoot is null || historicalRoot is null) return false;
 
-            var currentScenes = currentRoot["scenes"] as System.Text.Json.Nodes.JsonArray;
-            var historicalScenes = historicalRoot["scenes"] as System.Text.Json.Nodes.JsonArray;
+            var currentScenes = currentRoot[StoreLit.Scenes] as System.Text.Json.Nodes.JsonArray;
+            var historicalScenes = historicalRoot[StoreLit.Scenes] as System.Text.Json.Nodes.JsonArray;
             if (currentScenes is null || historicalScenes is null) return false;
 
             System.Text.Json.Nodes.JsonObject? targetHistSceneNode = null;
@@ -311,7 +365,7 @@ public sealed partial class ProjectStore
             await File.WriteAllTextAsync(bpPath, currentRoot.ToJsonString(JsonOpts)).ConfigureAwait(false);
             InvalidateSceneListCache(projectId);
 
-            var who = string.IsNullOrWhiteSpace(author) ? "Operator" : author;
+            var who = string.IsNullOrWhiteSpace(author) ? StoreLit.Operator : author;
             TriggerAutoGitCommit(projectId, $"Reverted Scene {sceneNumber} to commit {commitHash[..Math.Min(8, commitHash.Length)]}", who);
             return true;
         }
@@ -369,12 +423,12 @@ public sealed partial class ProjectStore
                     modClips.Add($"{s}-{c}");
                 }
             }
-            else if (f.EndsWith("blueprint.clips.grok.json", StringComparison.OrdinalIgnoreCase) ||
-                     f.EndsWith("scenes.json", StringComparison.OrdinalIgnoreCase) ||
+            else if (f.EndsWith(StoreLit.BlueprintClipsGrokJson, StringComparison.OrdinalIgnoreCase) ||
+                     f.EndsWith(StoreLit.ScenesJson, StringComparison.OrdinalIgnoreCase) ||
                      f.EndsWith("screenplay.fountain", StringComparison.OrdinalIgnoreCase) ||
                      f.EndsWith("cast_seeds.json", StringComparison.OrdinalIgnoreCase) ||
-                     f.EndsWith("project.json", StringComparison.OrdinalIgnoreCase) ||
-                     f.EndsWith("pipeline_config.json", StringComparison.OrdinalIgnoreCase))
+                     f.EndsWith(StoreLit.ProjectJson, StringComparison.OrdinalIgnoreCase) ||
+                     f.EndsWith(StoreLit.PipelineConfigJson, StringComparison.OrdinalIgnoreCase))
             {
                 // Text package change without scene token in path
             }
@@ -400,7 +454,7 @@ public sealed partial class ProjectStore
         if (!Directory.Exists(dir)) return null;
 
         var git = gitRepo ?? new ProjectGitRepositoryService(Microsoft.Extensions.Logging.Abstractions.NullLogger<ProjectGitRepositoryService>.Instance);
-        var who = string.IsNullOrWhiteSpace(author) ? "Operator" : author;
+        var who = string.IsNullOrWhiteSpace(author) ? StoreLit.Operator : author;
         var msg = string.IsNullOrWhiteSpace(message) ? "Manual scene/clip updates" : message.Trim();
         var result = await git.CommitProjectStateAsync(dir, who, msg, forceCommit).ConfigureAwait(false);
         InvalidateSceneListCache(projectId);
@@ -416,7 +470,7 @@ public sealed partial class ProjectStore
         var dir = await GetProjectDirAsync(projectId).ConfigureAwait(false);
         if (!Directory.Exists(dir)) return Array.Empty<ClipVersionItem>();
 
-        var videoDir = Path.Combine(dir, "assets", "video");
+        var videoDir = Path.Combine(dir, StoreLit.Assets, StoreLit.Video);
         if (!Directory.Exists(videoDir)) return Array.Empty<ClipVersionItem>();
 
         var result = new List<ClipVersionItem>();
@@ -431,14 +485,14 @@ public sealed partial class ProjectStore
             result.Add(item);
         }
 
-        var searchDirs = new[] { videoDir, Path.Combine(videoDir, "history") };
+        var searchDirs = new[] { videoDir, Path.Combine(videoDir, StoreLit.History) };
         foreach (var sDir in searchDirs)
         {
             if (!Directory.Exists(sDir)) continue;
             foreach (var mp4 in Directory.EnumerateFiles(sDir, $"{prefix}*.mp4"))
             {
                 if (string.Equals(mp4, activeMp4, StringComparison.OrdinalIgnoreCase)) continue;
-                var sidecar = Path.ChangeExtension(mp4, ".clip.json");
+                var sidecar = Path.ChangeExtension(mp4, StoreLit.ClipJsonSuffix);
                 if (!File.Exists(sidecar)) sidecar = Path.ChangeExtension(mp4, ".meta.json");
                 var fi = new FileInfo(mp4);
                 var item = ParseClipSidecarOrMeta(sidecar, mp4, scene, clip, take: result.Count + 1, isCurrent: false, fi.LastWriteTimeUtc);
@@ -507,11 +561,11 @@ public sealed partial class ProjectStore
         var target = versions.FirstOrDefault(v => string.Equals(v.VersionId, versionId, StringComparison.OrdinalIgnoreCase));
         if (target is null || target.IsCurrent) return false;
 
-        var videoDir = Path.Combine(dir, "assets", "video");
+        var videoDir = Path.Combine(dir, StoreLit.Assets, StoreLit.Video);
         var targetMp4Path = Path.Combine(videoDir, target.Mp4FileName);
         if (!File.Exists(targetMp4Path))
         {
-            targetMp4Path = Path.Combine(videoDir, "history", target.Mp4FileName);
+            targetMp4Path = Path.Combine(videoDir, StoreLit.History, target.Mp4FileName);
         }
 
         if (!File.Exists(targetMp4Path)) return false;
@@ -520,7 +574,7 @@ public sealed partial class ProjectStore
 
         if (File.Exists(activeMp4Path))
         {
-            var historyDir = Path.Combine(videoDir, "history");
+            var historyDir = Path.Combine(videoDir, StoreLit.History);
             Directory.CreateDirectory(historyDir);
             var archiveStamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             var archiveMp4 = Path.Combine(historyDir, $"scene_{scene:D2}_clip_{clip:D2}_{archiveStamp}.mp4");
@@ -535,7 +589,7 @@ public sealed partial class ProjectStore
         }
 
         InvalidateSceneListCache(projectId);
-        var who = string.IsNullOrWhiteSpace(author) ? "Operator" : author;
+        var who = string.IsNullOrWhiteSpace(author) ? StoreLit.Operator : author;
         TriggerAutoGitCommit(projectId, $"Restored clip S{scene:D2}C{clip:D2} to version {target.Mp4FileName}", who);
         return true;
     }
@@ -550,21 +604,21 @@ public sealed partial class ProjectStore
     public string ArchiveActiveAndReplaceClipBytesAsync(string projectId, int scene, int clip, byte[] newBytes)
     {
         var dir = GetProjectDir(projectId);
-        var videoDir = Path.Combine(dir, "assets", "video");
+        var videoDir = Path.Combine(dir, StoreLit.Assets, StoreLit.Video);
         Directory.CreateDirectory(videoDir);
         var activeMp4Path = Path.Combine(videoDir, $"scene_{scene:D2}_clip_{clip:D2}.mp4");
 
         if (File.Exists(activeMp4Path))
         {
-            var historyDir = Path.Combine(videoDir, "history");
+            var historyDir = Path.Combine(videoDir, StoreLit.History);
             Directory.CreateDirectory(historyDir);
             var archiveStamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             var archiveMp4 = Path.Combine(historyDir, $"scene_{scene:D2}_clip_{clip:D2}_{archiveStamp}.mp4");
             try { File.Copy(activeMp4Path, archiveMp4, overwrite: true); } catch { /* best effort, matches PromoteClipVersionAsync */ }
-            var activeSidecar = Path.ChangeExtension(activeMp4Path, ".clip.json");
+            var activeSidecar = Path.ChangeExtension(activeMp4Path, StoreLit.ClipJsonSuffix);
             if (File.Exists(activeSidecar))
             {
-                var archiveSidecar = Path.ChangeExtension(archiveMp4, ".clip.json");
+                var archiveSidecar = Path.ChangeExtension(archiveMp4, StoreLit.ClipJsonSuffix);
                 try { File.Copy(activeSidecar, archiveSidecar, overwrite: true); } catch { /* best effort */ }
             }
         }
@@ -593,11 +647,11 @@ public sealed partial class ProjectStore
             {
                 using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(sidecarPath));
                 var root = doc.RootElement;
-                item.VisualPrompt = root.TryGetProperty("visual_prompt", out var vp) ? vp.GetString() ?? "" : root.TryGetProperty("prompt", out var p) ? p.GetString() ?? "" : "";
+                item.VisualPrompt = root.TryGetProperty(StoreLit.VisualPrompt, out var vp) ? vp.GetString() ?? "" : root.TryGetProperty("prompt", out var p) ? p.GetString() ?? "" : "";
                 item.ScriptText = root.TryGetProperty("script_text", out var st) ? st.GetString() ?? "" : "";
                 item.Model = root.TryGetProperty("model", out var m) ? m.GetString() ?? "" : "";
                 item.Resolution = root.TryGetProperty("resolution", out var r) ? r.GetString() ?? "" : "";
-                if (root.TryGetProperty("duration_seconds", out var d) && d.TryGetDouble(out var dur)) item.DurationSeconds = dur;
+                if (root.TryGetProperty(StoreLit.DurationSeconds, out var d) && d.TryGetDouble(out var dur)) item.DurationSeconds = dur;
                 if (root.TryGetProperty("sha256", out var sha)) item.Sha256 = sha.GetString() ?? "";
                 if (root.TryGetProperty("edited_from_take", out var eft) && eft.TryGetInt32(out var eftVal)) item.EditedFromTake = eftVal;
                 if (root.TryGetProperty("source_file_id", out var sfid)) item.SourceFileId = sfid.GetString();
@@ -618,7 +672,7 @@ public sealed partial class ProjectStore
         var dir = await GetProjectDirAsync(projectId).ConfigureAwait(false);
         if (!Directory.Exists(dir)) return false;
 
-        var videoDir = Path.Combine(dir, "assets", "video");
+        var videoDir = Path.Combine(dir, StoreLit.Assets, StoreLit.Video);
         var versions = await GetClipVersionsAsync(projectId, scene, clip).ConfigureAwait(false);
         var target = versions.FirstOrDefault(v => string.Equals(v.VersionId, versionId, StringComparison.OrdinalIgnoreCase));
         if (target is null || target.IsCurrent) return false;
@@ -626,17 +680,17 @@ public sealed partial class ProjectStore
         var targetMp4 = Path.Combine(videoDir, target.Mp4FileName);
         if (!File.Exists(targetMp4))
         {
-            targetMp4 = Path.Combine(videoDir, "history", target.Mp4FileName);
+            targetMp4 = Path.Combine(videoDir, StoreLit.History, target.Mp4FileName);
         }
         if (!File.Exists(targetMp4)) return false;
 
-        var trashDir = Path.Combine(videoDir, ".trash");
+        var trashDir = Path.Combine(videoDir, StoreLit.TrashDir);
         Directory.CreateDirectory(trashDir);
 
         var trashMp4 = Path.Combine(trashDir, target.Mp4FileName);
         File.Move(targetMp4, trashMp4, overwrite: true);
 
-        var sidecar = Path.ChangeExtension(targetMp4, ".clip.json");
+        var sidecar = Path.ChangeExtension(targetMp4, StoreLit.ClipJsonSuffix);
         if (File.Exists(sidecar))
         {
             var trashSidecar = Path.Combine(trashDir, Path.GetFileName(sidecar));
@@ -663,7 +717,7 @@ public sealed partial class ProjectStore
         var dir = await GetProjectDirAsync(projectId).ConfigureAwait(false);
         if (!Directory.Exists(dir)) return Array.Empty<ClipVersionItem>();
 
-        var trashDir = Path.Combine(dir, "assets", "video", ".trash");
+        var trashDir = Path.Combine(dir, StoreLit.Assets, StoreLit.Video, StoreLit.TrashDir);
         if (!Directory.Exists(trashDir)) return Array.Empty<ClipVersionItem>();
 
         var result = new List<ClipVersionItem>();
@@ -671,7 +725,7 @@ public sealed partial class ProjectStore
 
         foreach (var mp4 in Directory.EnumerateFiles(trashDir, $"{prefix}*.mp4"))
         {
-            var sidecar = Path.ChangeExtension(mp4, ".clip.json");
+            var sidecar = Path.ChangeExtension(mp4, StoreLit.ClipJsonSuffix);
             if (!File.Exists(sidecar)) sidecar = Path.ChangeExtension(mp4, ".meta.json");
             var fi = new FileInfo(mp4);
             var item = ParseClipSidecarOrMeta(sidecar, mp4, scene, clip, take: 0, isCurrent: false, fi.LastWriteTimeUtc);
@@ -690,18 +744,18 @@ public sealed partial class ProjectStore
         var dir = await GetProjectDirAsync(projectId).ConfigureAwait(false);
         if (!Directory.Exists(dir)) return false;
 
-        var videoDir = Path.Combine(dir, "assets", "video");
-        var trashDir = Path.Combine(videoDir, ".trash");
+        var videoDir = Path.Combine(dir, StoreLit.Assets, StoreLit.Video);
+        var trashDir = Path.Combine(videoDir, StoreLit.TrashDir);
         var trashMp4 = Path.Combine(trashDir, versionId);
         if (!File.Exists(trashMp4)) return false;
 
-        var historyDir = Path.Combine(videoDir, "history");
+        var historyDir = Path.Combine(videoDir, StoreLit.History);
         Directory.CreateDirectory(historyDir);
 
         var restoredMp4 = Path.Combine(historyDir, versionId);
         File.Move(trashMp4, restoredMp4, overwrite: true);
 
-        var trashSidecar = Path.ChangeExtension(trashMp4, ".clip.json");
+        var trashSidecar = Path.ChangeExtension(trashMp4, StoreLit.ClipJsonSuffix);
         if (File.Exists(trashSidecar))
         {
             var restoredSidecar = Path.Combine(historyDir, Path.GetFileName(trashSidecar));
@@ -721,7 +775,7 @@ public sealed partial class ProjectStore
         var dir = await GetProjectDirAsync(projectId).ConfigureAwait(false);
         if (!Directory.Exists(dir)) return 0;
 
-        var trashDir = Path.Combine(dir, "assets", "video", ".trash");
+        var trashDir = Path.Combine(dir, StoreLit.Assets, StoreLit.Video, StoreLit.TrashDir);
         if (!Directory.Exists(trashDir)) return 0;
 
         var prefix = $"scene_{scene:D2}_clip_{clip:D2}";
@@ -756,7 +810,7 @@ public sealed partial class ProjectStore
         var dir = await GetProjectDirAsync(projectId).ConfigureAwait(false);
         if (!Directory.Exists(dir)) return Array.Empty<MusicVersionItem>();
 
-        var musicDir = Path.Combine(dir, "assets", "music");
+        var musicDir = Path.Combine(dir, StoreLit.Assets, StoreLit.Music);
         var result = new List<MusicVersionItem>();
         var activeSidecar = Path.Combine(musicDir, $"scene_{scene:D2}.meta.json");
         var hasActiveSidecar = File.Exists(activeSidecar);
@@ -766,7 +820,7 @@ public sealed partial class ProjectStore
             if (item is not null) result.Add(item);
         }
 
-        var historyDir = Path.Combine(musicDir, "history");
+        var historyDir = Path.Combine(musicDir, StoreLit.History);
         if (Directory.Exists(historyDir))
         {
             foreach (var sidecar in Directory.EnumerateFiles(historyDir, $"scene_{scene:D2}_take_*.meta.json"))
@@ -895,8 +949,8 @@ public sealed partial class ProjectStore
         if (resolved is null) return false;
         var dir = resolved.Value.Dir;
 
-        var musicDir = Path.Combine(dir, "assets", "music");
-        var historyDir = Path.Combine(musicDir, "history");
+        var musicDir = Path.Combine(dir, StoreLit.Assets, StoreLit.Music);
+        var historyDir = Path.Combine(musicDir, StoreLit.History);
         var activeSidecar = Path.Combine(musicDir, $"scene_{scene:D2}.meta.json");
 
         if (File.Exists(activeSidecar))
@@ -930,11 +984,11 @@ public sealed partial class ProjectStore
         if (resolved is null) return false;
         var dir = resolved.Value.Dir;
 
-        var musicDir = Path.Combine(dir, "assets", "music");
-        var historySidecar = Path.Combine(musicDir, "history", $"scene_{scene:D2}_take_{takeId}.meta.json");
+        var musicDir = Path.Combine(dir, StoreLit.Assets, StoreLit.Music);
+        var historySidecar = Path.Combine(musicDir, StoreLit.History, $"scene_{scene:D2}_take_{takeId}.meta.json");
         if (!File.Exists(historySidecar)) return false;
 
-        var trashDir = Path.Combine(musicDir, ".trash");
+        var trashDir = Path.Combine(musicDir, StoreLit.TrashDir);
         Directory.CreateDirectory(trashDir);
         var trashSidecar = Path.Combine(trashDir, $"scene_{scene:D2}_take_{takeId}.meta.json");
         File.Move(historySidecar, trashSidecar, overwrite: true);
@@ -948,7 +1002,7 @@ public sealed partial class ProjectStore
     {
         if (string.IsNullOrWhiteSpace(projectId)) return Array.Empty<MusicVersionItem>();
         var dir = await GetProjectDirAsync(projectId).ConfigureAwait(false);
-        var trashDir = Path.Combine(dir, "assets", "music", ".trash");
+        var trashDir = Path.Combine(dir, StoreLit.Assets, StoreLit.Music, StoreLit.TrashDir);
         if (!Directory.Exists(trashDir)) return Array.Empty<MusicVersionItem>();
 
         var result = new List<MusicVersionItem>();
@@ -966,11 +1020,11 @@ public sealed partial class ProjectStore
     {
         if (string.IsNullOrWhiteSpace(projectId) || string.IsNullOrWhiteSpace(takeId)) return false;
         var dir = await GetProjectDirAsync(projectId).ConfigureAwait(false);
-        var musicDir = Path.Combine(dir, "assets", "music");
-        var trashSidecar = Path.Combine(musicDir, ".trash", $"scene_{scene:D2}_take_{takeId}.meta.json");
+        var musicDir = Path.Combine(dir, StoreLit.Assets, StoreLit.Music);
+        var trashSidecar = Path.Combine(musicDir, StoreLit.TrashDir, $"scene_{scene:D2}_take_{takeId}.meta.json");
         if (!File.Exists(trashSidecar)) return false;
 
-        var historyDir = Path.Combine(musicDir, "history");
+        var historyDir = Path.Combine(musicDir, StoreLit.History);
         Directory.CreateDirectory(historyDir);
         var restoredSidecar = Path.Combine(historyDir, Path.GetFileName(trashSidecar));
         File.Move(trashSidecar, restoredSidecar, overwrite: true);
@@ -986,7 +1040,7 @@ public sealed partial class ProjectStore
         {
             var curRoot = System.Text.Json.Nodes.JsonNode.Parse(currentBpJson) as System.Text.Json.Nodes.JsonObject;
             if (curRoot is null) return changes;
-            var curScenes = curRoot["scenes"] as System.Text.Json.Nodes.JsonArray;
+            var curScenes = curRoot[StoreLit.Scenes] as System.Text.Json.Nodes.JsonArray;
             if (curScenes is null) return changes;
 
             System.Text.Json.Nodes.JsonObject? curScene = null;
@@ -1008,7 +1062,7 @@ public sealed partial class ProjectStore
             }
 
             var parRoot = System.Text.Json.Nodes.JsonNode.Parse(parentBpJson) as System.Text.Json.Nodes.JsonObject;
-            var parScenes = parRoot?["scenes"] as System.Text.Json.Nodes.JsonArray;
+            var parScenes = parRoot?[StoreLit.Scenes] as System.Text.Json.Nodes.JsonArray;
             System.Text.Json.Nodes.JsonObject? parScene = null;
             if (parScenes is not null)
             {
@@ -1035,8 +1089,8 @@ public sealed partial class ProjectStore
                 changes.Add($"Heading updated: \"{curHeading}\"");
             }
 
-            var curClips = curScene["veo_clips"] as System.Text.Json.Nodes.JsonArray ?? curScene["clips"] as System.Text.Json.Nodes.JsonArray;
-            var parClips = parScene["veo_clips"] as System.Text.Json.Nodes.JsonArray ?? parScene["clips"] as System.Text.Json.Nodes.JsonArray;
+            var curClips = curScene[StoreLit.VeoClips] as System.Text.Json.Nodes.JsonArray ?? curScene[StoreLit.Clips] as System.Text.Json.Nodes.JsonArray;
+            var parClips = parScene[StoreLit.VeoClips] as System.Text.Json.Nodes.JsonArray ?? parScene[StoreLit.Clips] as System.Text.Json.Nodes.JsonArray;
 
             var curClipDict = (curClips ?? new System.Text.Json.Nodes.JsonArray())
                 .OfType<System.Text.Json.Nodes.JsonObject>()
@@ -1053,22 +1107,22 @@ public sealed partial class ProjectStore
                     continue;
                 }
 
-                var curPrompt = curC["visual_prompt"]?.ToString() ?? "";
-                var parPrompt = parC["visual_prompt"]?.ToString() ?? "";
+                var curPrompt = curC[StoreLit.VisualPrompt]?.ToString() ?? "";
+                var parPrompt = parC[StoreLit.VisualPrompt]?.ToString() ?? "";
                 if (!string.Equals(curPrompt, parPrompt, StringComparison.Ordinal))
                 {
                     changes.Add($"Clip {cNum} prompt modified");
                 }
 
-                var curAudio = curC["audio_script"]?.ToString() ?? curC["dialogue"]?.ToString() ?? "";
-                var parAudio = parC["audio_script"]?.ToString() ?? parC["dialogue"]?.ToString() ?? "";
+                var curAudio = curC[StoreLit.AudioScript]?.ToString() ?? curC[JsonKeys.Dialogue]?.ToString() ?? "";
+                var parAudio = parC[StoreLit.AudioScript]?.ToString() ?? parC[JsonKeys.Dialogue]?.ToString() ?? "";
                 if (!string.Equals(curAudio, parAudio, StringComparison.Ordinal))
                 {
                     changes.Add($"Clip {cNum} dialogue modified");
                 }
 
-                var curDur = curC["duration_seconds"]?.ToString() ?? "";
-                var parDur = parC["duration_seconds"]?.ToString() ?? "";
+                var curDur = curC[StoreLit.DurationSeconds]?.ToString() ?? "";
+                var parDur = parC[StoreLit.DurationSeconds]?.ToString() ?? "";
                 if (!string.Equals(curDur, parDur, StringComparison.Ordinal))
                 {
                     changes.Add($"Clip {cNum} duration changed to {curDur}s");
@@ -1124,22 +1178,22 @@ public sealed partial class ProjectStore
             if (!string.IsNullOrWhiteSpace(_activeProjectId) && ProjectDirExists(_activeProjectId))
                 return _activeProjectId;
             // Prefer flat project.json; else first namespaced project found
-            var projectsDir = Path.Combine(WorkspaceRoot, "projects");
+            var projectsDir = Path.Combine(WorkspaceRoot, StoreLit.Projects);
             if (!Directory.Exists(projectsDir))
                 return "";
             foreach (var dir in Directory.GetDirectories(projectsDir)
                          .OrderBy(d => d, StringComparer.OrdinalIgnoreCase))
             {
                 var name = Path.GetFileName(dir);
-                if (string.Equals(name, "workspace.json", StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(name, StoreLit.WorkspaceJson, StringComparison.OrdinalIgnoreCase))
                     continue;
-                if (File.Exists(Path.Combine(dir, "project.json")))
+                if (File.Exists(Path.Combine(dir, StoreLit.ProjectJson)))
                     return name;
-                foreach (var child in Directory.GetDirectories(dir).OrderBy(d => d, StringComparer.OrdinalIgnoreCase))
-                {
-                    if (File.Exists(Path.Combine(child, "project.json")))
-                        return $"{name}/{Path.GetFileName(child)}";
-                }
+                var childHit = Directory.GetDirectories(dir)
+                    .OrderBy(d => d, StringComparer.OrdinalIgnoreCase)
+                    .FirstOrDefault(child => File.Exists(Path.Combine(child, StoreLit.ProjectJson)));
+                if (childHit is not null)
+                    return $"{name}/{Path.GetFileName(childHit)}";
             }
             return "";
         }
@@ -1151,7 +1205,7 @@ public sealed partial class ProjectStore
         {
             var id = NormalizeProjectId(projectId);
             var dir = ResolveProjectDirPath(id);
-            return File.Exists(Path.Combine(dir, "project.json"));
+            return File.Exists(Path.Combine(dir, StoreLit.ProjectJson));
         }
         catch { return false; }
     }
@@ -1161,7 +1215,7 @@ public sealed partial class ProjectStore
 
     private async Task<IReadOnlyList<ProjectInfo>> ListProjectsCoreAsync(CancellationToken ct)
     {
-        var projectsDir = Path.Combine(WorkspaceRoot, "projects");
+        var projectsDir = Path.Combine(WorkspaceRoot, StoreLit.Projects);
         if (!Directory.Exists(projectsDir))
             return Array.Empty<ProjectInfo>();
 
@@ -1171,10 +1225,10 @@ public sealed partial class ProjectStore
         {
             ct.ThrowIfCancellationRequested();
             var name = Path.GetFileName(dir);
-            if (string.Equals(name, "workspace.json", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(name, StoreLit.WorkspaceJson, StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            var metaPath = Path.Combine(dir, "project.json");
+            var metaPath = Path.Combine(dir, StoreLit.ProjectJson);
             if (File.Exists(metaPath))
             {
                 var info = await ReadProjectInfoFromDirAsync(dir, idOverride: name, ct).ConfigureAwait(false);
@@ -1188,7 +1242,7 @@ public sealed partial class ProjectStore
             {
                 ct.ThrowIfCancellationRequested();
                 var slug = Path.GetFileName(child);
-                var childMeta = Path.Combine(child, "project.json");
+                var childMeta = Path.Combine(child, StoreLit.ProjectJson);
                 if (!File.Exists(childMeta))
                     continue;
                 var compositeId = $"{name}/{slug}";
@@ -1204,7 +1258,7 @@ public sealed partial class ProjectStore
     private static async Task<ProjectInfo?> ReadProjectInfoFromDirAsync(
         string dir, string idOverride, CancellationToken ct)
     {
-        var metaPath = Path.Combine(dir, "project.json");
+        var metaPath = Path.Combine(dir, StoreLit.ProjectJson);
         if (!File.Exists(metaPath))
             return null;
         string? title = null;
@@ -1222,17 +1276,17 @@ public sealed partial class ProjectStore
             {
                 if (string.Equals(p.Name, "id", StringComparison.OrdinalIgnoreCase))
                     continue; // folder path id wins over any embedded project.json id
-                else if (string.Equals(p.Name, "title", StringComparison.OrdinalIgnoreCase))
+                else if (string.Equals(p.Name, StoreLit.Title, StringComparison.OrdinalIgnoreCase))
                     title = p.Value.GetString();
                 else if (string.Equals(p.Name, "label", StringComparison.OrdinalIgnoreCase))
                     label = p.Value.GetString();
-                else if (string.Equals(p.Name, "parentProjectId", StringComparison.OrdinalIgnoreCase) ||
+                else if (string.Equals(p.Name, StoreLit.ParentProjectId, StringComparison.OrdinalIgnoreCase) ||
                          string.Equals(p.Name, "parent_project_id", StringComparison.OrdinalIgnoreCase))
                     parentProjectId = p.Value.GetString();
-                else if (string.Equals(p.Name, "visibilityMode", StringComparison.OrdinalIgnoreCase) ||
+                else if (string.Equals(p.Name, StoreLit.VisibilityMode, StringComparison.OrdinalIgnoreCase) ||
                          string.Equals(p.Name, "visibility_mode", StringComparison.OrdinalIgnoreCase))
                     visibilityMode = p.Value.GetString();
-                else if (string.Equals(p.Name, "ownerUserId", StringComparison.OrdinalIgnoreCase) ||
+                else if (string.Equals(p.Name, StoreLit.OwnerUserId, StringComparison.OrdinalIgnoreCase) ||
                          string.Equals(p.Name, "owner_user_id", StringComparison.OrdinalIgnoreCase))
                     ownerUserId = p.Value.GetString();
                 else if (string.Equals(p.Name, "studioPath", StringComparison.OrdinalIgnoreCase) ||
@@ -1293,8 +1347,8 @@ public sealed partial class ProjectStore
     {
         var p = await RequireProjectAsync(projectId, ct).ConfigureAwait(false);
         _activeProjectId = p.Id;
-        var wsPath = Path.Combine(WorkspaceRoot, "projects", "workspace.json");
-        Directory.CreateDirectory(Path.GetDirectoryName(wsPath)!);
+        var wsPath = Path.Combine(WorkspaceRoot, StoreLit.Projects, StoreLit.WorkspaceJson);
+        Directory.CreateDirectory(Path.GetDirectoryName(wsPath));
         await File.WriteAllTextAsync(
             wsPath,
             JsonSerializer.Serialize(new WorkspaceState { ActiveProject = p.Id }, JsonOpts),
@@ -1327,11 +1381,11 @@ public sealed partial class ProjectStore
         var owner = string.IsNullOrWhiteSpace(ownerUserId) ? null : SanitizeUserSegment(ownerUserId);
         var id = string.IsNullOrEmpty(owner) ? slug : $"{owner}/{slug}";
         var dir = string.IsNullOrEmpty(owner)
-            ? Path.Combine(WorkspaceRoot, "projects", slug)
-            : Path.Combine(WorkspaceRoot, "projects", owner, slug);
+            ? Path.Combine(WorkspaceRoot, StoreLit.Projects, slug)
+            : Path.Combine(WorkspaceRoot, StoreLit.Projects, owner, slug);
         if (Directory.Exists(dir))
         {
-            var metaFile = Path.Combine(dir, "project.json");
+            var metaFile = Path.Combine(dir, StoreLit.ProjectJson);
             if (File.Exists(metaFile))
             {
                 try
@@ -1344,7 +1398,7 @@ public sealed partial class ProjectStore
                             var metaExisting = JsonSerializer.Deserialize<Dictionary<string, object?>>(
                                 await File.ReadAllTextAsync(metaFile, ct).ConfigureAwait(false), JsonOpts)
                                 ?? new Dictionary<string, object?>();
-                            metaExisting["ownerUserId"] = ownerUserId.Trim();
+                            metaExisting[StoreLit.OwnerUserId] = ownerUserId.Trim();
                             await File.WriteAllTextAsync(metaFile, JsonSerializer.Serialize(metaExisting, JsonOpts) + "\n", ct).ConfigureAwait(false);
                             InvalidateReadCaches(null);
                         }
@@ -1357,31 +1411,31 @@ public sealed partial class ProjectStore
         }
 
         Directory.CreateDirectory(dir);
-        Directory.CreateDirectory(Path.Combine(dir, "source"));
-        Directory.CreateDirectory(Path.Combine(dir, "assets", "characters"));
-        Directory.CreateDirectory(Path.Combine(dir, "assets", "scenes"));
-        Directory.CreateDirectory(Path.Combine(dir, "assets", "video"));
+        Directory.CreateDirectory(Path.Combine(dir, StoreLit.Source));
+        Directory.CreateDirectory(Path.Combine(dir, StoreLit.Assets, StoreLit.Characters));
+        Directory.CreateDirectory(Path.Combine(dir, StoreLit.Assets, StoreLit.Scenes));
+        Directory.CreateDirectory(Path.Combine(dir, StoreLit.Assets, StoreLit.Video));
 
         var displayTitle = string.IsNullOrWhiteSpace(title) ? raw : title.Trim();
         var meta = new Dictionary<string, object?>
         {
             ["id"] = id,
-            ["title"] = displayTitle,
-            ["blueprint_file"] = "blueprint.clips.grok.json",
-            ["scenes_file"] = "scenes.json",
-            ["config_file"] = "pipeline_config.json",
+            [StoreLit.Title] = displayTitle,
+            ["blueprint_file"] = StoreLit.BlueprintClipsGrokJson,
+            ["scenes_file"] = StoreLit.ScenesJson,
+            ["config_file"] = StoreLit.PipelineConfigJson,
             ["state_file"] = "pipeline_state.json",
-            ["description"] = "",
-            ["ownerUserId"] = string.IsNullOrWhiteSpace(ownerUserId)
+            [JsonKeys.Description] = "",
+            [StoreLit.OwnerUserId] = string.IsNullOrWhiteSpace(ownerUserId)
                 ? owner
                 : ownerUserId.Trim(),
             ["createdAt"] = DateTimeOffset.UtcNow.ToString("o"),
             ["studioPath"] = ProjectStudioPaths.ToSerializedString(studioPath),
             // Format version for export/import converters (ProjectMigrationService).
-            ["schema_version"] = ProjectFormatVersions.ProjectSchemaVersion,
+            [StoreLit.SchemaVersion] = ProjectFormatVersions.ProjectSchemaVersion,
         };
         await File.WriteAllTextAsync(
-            Path.Combine(dir, "project.json"),
+            Path.Combine(dir, StoreLit.ProjectJson),
             JsonSerializer.Serialize(meta, JsonOpts) + "\n",
             ct).ConfigureAwait(false);
 
@@ -1426,7 +1480,7 @@ public sealed partial class ProjectStore
         "model_name", "image_model_name",
         "audio_model_name", "voice_model_name",
         "planning_provider", "video_provider", "image_provider",
-        "vision_provider", "audio_provider", "voice_provider",
+        "vision_provider", "audio_provider", StoreLit.VoiceProvider,
         "providers", // nested map of capability → model id when present
     };
 
@@ -1490,7 +1544,7 @@ public sealed partial class ProjectStore
         if (string.IsNullOrWhiteSpace(projectId) || string.IsNullOrWhiteSpace(ownerUserId))
             return;
         var dir = await GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
-        var metaPath = Path.Combine(dir, "project.json");
+        var metaPath = Path.Combine(dir, StoreLit.ProjectJson);
         if (!File.Exists(metaPath))
             return;
 
@@ -1507,12 +1561,12 @@ public sealed partial class ProjectStore
         }
 
         var want = ownerUserId.Trim();
-        if (meta.TryGetValue("ownerUserId", out var existing) &&
+        if (meta.TryGetValue(StoreLit.OwnerUserId, out var existing) &&
             existing is string s &&
             string.Equals(s.Trim(), want, StringComparison.OrdinalIgnoreCase))
             return;
 
-        meta["ownerUserId"] = want;
+        meta[StoreLit.OwnerUserId] = want;
         await File.WriteAllTextAsync(
             metaPath,
             JsonSerializer.Serialize(meta, JsonOpts) + "\n",
@@ -1568,8 +1622,8 @@ public sealed partial class ProjectStore
         var ownerSeg = SanitizeUserSegment(newOwnerUserId);
         var newId = string.IsNullOrEmpty(ownerSeg) ? slug : $"{ownerSeg}/{slug}";
         var newDir = string.IsNullOrEmpty(ownerSeg)
-            ? Path.Combine(WorkspaceRoot, "projects", slug)
-            : Path.Combine(WorkspaceRoot, "projects", ownerSeg, slug);
+            ? Path.Combine(WorkspaceRoot, StoreLit.Projects, slug)
+            : Path.Combine(WorkspaceRoot, StoreLit.Projects, ownerSeg, slug);
         if (Directory.Exists(newDir))
             throw new InvalidOperationException($"Project already exists: {newId}");
 
@@ -1580,16 +1634,16 @@ public sealed partial class ProjectStore
             if (ForkSkipExtensions.Contains(Path.GetExtension(file), StringComparer.OrdinalIgnoreCase))
                 continue;
             var rel = Path.GetRelativePath(source.Path, file);
-            if (rel.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)[0] == ".git")
+            if (rel.Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }, 2)[0] == ".git")
                 continue; // never copy the source's own Git history into the fork
 
             var destPath = Path.Combine(newDir, rel);
-            Directory.CreateDirectory(Path.GetDirectoryName(destPath)!);
+            Directory.CreateDirectory(Path.GetDirectoryName(destPath));
             File.Copy(file, destPath, overwrite: true);
         }
 
         // Rewrite project.json for the new owner/id/parent link rather than keeping the source's copy.
-        var metaPath = Path.Combine(newDir, "project.json");
+        var metaPath = Path.Combine(newDir, StoreLit.ProjectJson);
         Dictionary<string, object?> meta;
         try
         {
@@ -1601,12 +1655,12 @@ public sealed partial class ProjectStore
             meta = new Dictionary<string, object?>();
         }
         meta["id"] = newId;
-        meta["title"] = $"{source.Title ?? source.Id} (fork)";
-        meta["ownerUserId"] = newOwnerUserId.Trim();
-        meta["parentProjectId"] = source.Id;
+        meta[StoreLit.Title] = $"{source.Title ?? source.Id} (fork)";
+        meta[StoreLit.OwnerUserId] = newOwnerUserId.Trim();
+        meta[StoreLit.ParentProjectId] = source.Id;
         // A fork is the user's private working copy — don't inherit the source's "Open" visibility,
         // or every fork would show up as its own pickable "story" in the forkable list.
-        meta["visibilityMode"] = ProjectVisibility.Private.ToString();
+        meta[StoreLit.VisibilityMode] = ProjectVisibility.Private.ToString();
         meta["createdAt"] = DateTimeOffset.UtcNow.ToString("o");
         await File.WriteAllTextAsync(
             metaPath, JsonSerializer.Serialize(meta, JsonOpts) + "\n", ct).ConfigureAwait(false);
@@ -1643,15 +1697,15 @@ public sealed partial class ProjectStore
             title = title[..80].Trim();
 
         var proj = await RequireProjectAsync(projectId, ct).ConfigureAwait(false);
-        var metaPath = Path.Combine(proj.Path, "project.json");
+        var metaPath = Path.Combine(proj.Path, StoreLit.ProjectJson);
         var meta = await ReadMetaOrEmptyAsync(metaPath, ct).ConfigureAwait(false);
 
         meta["id"] = proj.Id;
-        meta["title"] = title;
+        meta[StoreLit.Title] = title;
         meta["label"] = title;
-        if (!string.IsNullOrWhiteSpace(proj.OwnerUserId)) meta["ownerUserId"] = proj.OwnerUserId;
-        if (!string.IsNullOrWhiteSpace(proj.ParentProjectId)) meta["parentProjectId"] = proj.ParentProjectId;
-        meta["visibilityMode"] = proj.VisibilityMode.ToString();
+        if (!string.IsNullOrWhiteSpace(proj.OwnerUserId)) meta[StoreLit.OwnerUserId] = proj.OwnerUserId;
+        if (!string.IsNullOrWhiteSpace(proj.ParentProjectId)) meta[StoreLit.ParentProjectId] = proj.ParentProjectId;
+        meta[StoreLit.VisibilityMode] = proj.VisibilityMode.ToString();
 
         await File.WriteAllTextAsync(metaPath, JsonSerializer.Serialize(meta, JsonOpts) + "\n", ct).ConfigureAwait(false);
         InvalidateReadCaches(null);
@@ -1670,14 +1724,14 @@ public sealed partial class ProjectStore
     {
         var proj = await RequireProjectAsync(projectId, ct).ConfigureAwait(false);
 
-        var metaPath = Path.Combine(proj.Path, "project.json");
+        var metaPath = Path.Combine(proj.Path, StoreLit.ProjectJson);
         var meta = await ReadMetaOrEmptyAsync(metaPath, ct).ConfigureAwait(false);
 
-        meta["visibilityMode"] = visibilityMode.ToString();
+        meta[StoreLit.VisibilityMode] = visibilityMode.ToString();
         meta["id"] = proj.Id;
-        if (!string.IsNullOrWhiteSpace(proj.Title)) meta["title"] = proj.Title;
-        if (!string.IsNullOrWhiteSpace(proj.OwnerUserId)) meta["ownerUserId"] = proj.OwnerUserId;
-        if (!string.IsNullOrWhiteSpace(proj.ParentProjectId)) meta["parentProjectId"] = proj.ParentProjectId;
+        if (!string.IsNullOrWhiteSpace(proj.Title)) meta[StoreLit.Title] = proj.Title;
+        if (!string.IsNullOrWhiteSpace(proj.OwnerUserId)) meta[StoreLit.OwnerUserId] = proj.OwnerUserId;
+        if (!string.IsNullOrWhiteSpace(proj.ParentProjectId)) meta[StoreLit.ParentProjectId] = proj.ParentProjectId;
 
         var updatedJson = JsonSerializer.Serialize(meta, JsonOpts) + "\n";
         await File.WriteAllTextAsync(metaPath, updatedJson, ct).ConfigureAwait(false);
@@ -1704,15 +1758,15 @@ public sealed partial class ProjectStore
     {
         var path = ProjectStudioPaths.Normalize(studioPath);
         var proj = await RequireProjectAsync(projectId, ct).ConfigureAwait(false);
-        var metaPath = Path.Combine(proj.Path, "project.json");
+        var metaPath = Path.Combine(proj.Path, StoreLit.ProjectJson);
         var meta = await ReadMetaOrEmptyAsync(metaPath, ct).ConfigureAwait(false);
 
         meta["studioPath"] = ProjectStudioPaths.ToSerializedString(path);
         meta["id"] = proj.Id;
-        if (!string.IsNullOrWhiteSpace(proj.Title)) meta["title"] = proj.Title;
-        if (!string.IsNullOrWhiteSpace(proj.OwnerUserId)) meta["ownerUserId"] = proj.OwnerUserId;
-        if (!string.IsNullOrWhiteSpace(proj.ParentProjectId)) meta["parentProjectId"] = proj.ParentProjectId;
-        meta["visibilityMode"] = proj.VisibilityMode.ToString();
+        if (!string.IsNullOrWhiteSpace(proj.Title)) meta[StoreLit.Title] = proj.Title;
+        if (!string.IsNullOrWhiteSpace(proj.OwnerUserId)) meta[StoreLit.OwnerUserId] = proj.OwnerUserId;
+        if (!string.IsNullOrWhiteSpace(proj.ParentProjectId)) meta[StoreLit.ParentProjectId] = proj.ParentProjectId;
+        meta[StoreLit.VisibilityMode] = proj.VisibilityMode.ToString();
 
         await File.WriteAllTextAsync(metaPath, JsonSerializer.Serialize(meta, JsonOpts) + "\n", ct).ConfigureAwait(false);
         proj.StudioPath = path;
@@ -1778,7 +1832,7 @@ public sealed partial class ProjectStore
         var id = NormalizeProjectId(projectId);
         ValidateProjectId(id);
 
-        var projectsRoot = Path.GetFullPath(Path.Combine(WorkspaceRoot, "projects"));
+        var projectsRoot = Path.GetFullPath(Path.Combine(WorkspaceRoot, StoreLit.Projects));
         var dir = Path.GetFullPath(ResolveProjectDirPath(id));
         if (!dir.StartsWith(projectsRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) &&
             !string.Equals(dir, projectsRoot, StringComparison.OrdinalIgnoreCase))
@@ -1819,7 +1873,7 @@ public sealed partial class ProjectStore
             _activeProjectId = "";
 
         // Update workspace.json active pointer
-        var wsPath = Path.Combine(WorkspaceRoot, "projects", "workspace.json");
+        var wsPath = Path.Combine(WorkspaceRoot, StoreLit.Projects, StoreLit.WorkspaceJson);
         try
         {
             string? nextActive = null;
@@ -1926,7 +1980,7 @@ public sealed partial class ProjectStore
     private static void ValidateProjectId(string id)
     {
         if (string.IsNullOrWhiteSpace(id) ||
-            string.Equals(id, "workspace.json", StringComparison.OrdinalIgnoreCase))
+            string.Equals(id, StoreLit.WorkspaceJson, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException($"Invalid project id: {id}");
         if (id.Contains("..", StringComparison.Ordinal))
             throw new InvalidOperationException($"Invalid project id: {id}");
@@ -1949,7 +2003,7 @@ public sealed partial class ProjectStore
     /// <summary>Map id → disk path (does not require directory to exist).</summary>
     private string ResolveProjectDirPath(string normalizedId)
     {
-        var projects = Path.Combine(WorkspaceRoot, "projects");
+        var projects = Path.Combine(WorkspaceRoot, StoreLit.Projects);
         var parts = normalizedId.Split('/');
         if (parts.Length == 2)
             return Path.Combine(projects, parts[0], parts[1]);
@@ -1963,7 +2017,7 @@ public sealed partial class ProjectStore
             foreach (var ownerDir in Directory.GetDirectories(projects))
             {
                 var candidate = Path.Combine(ownerDir, parts[0]);
-                if (File.Exists(Path.Combine(candidate, "project.json")))
+                if (File.Exists(Path.Combine(candidate, StoreLit.ProjectJson)))
                     return candidate;
             }
         }
@@ -2017,8 +2071,8 @@ public sealed partial class ProjectStore
     private async Task<string?> FindBlueprintPathCoreAsync(string projectId, CancellationToken ct)
     {
         var dir = await GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
-        var configPath = Path.Combine(dir, "pipeline_config.json");
-        var name = "blueprint.clips.grok.json";
+        var configPath = Path.Combine(dir, StoreLit.PipelineConfigJson);
+        var name = StoreLit.BlueprintClipsGrokJson;
         if (File.Exists(configPath))
         {
             try
@@ -2045,8 +2099,8 @@ public sealed partial class ProjectStore
     private string? FindBlueprintPathSync(string projectId)
     {
         var dir = GetProjectDir(projectId);
-        var configPath = Path.Combine(dir, "pipeline_config.json");
-        var name = "blueprint.clips.grok.json";
+        var configPath = Path.Combine(dir, StoreLit.PipelineConfigJson);
+        var name = StoreLit.BlueprintClipsGrokJson;
         if (File.Exists(configPath))
         {
             try
@@ -2069,7 +2123,7 @@ public sealed partial class ProjectStore
         foreach (var candidate in new[]
                  {
                      preferredName,
-                     "blueprint.clips.grok.json",
+                     StoreLit.BlueprintClipsGrokJson,
                  })
         {
             var full = Path.Combine(dir, candidate);
@@ -2151,7 +2205,7 @@ public sealed partial class ProjectStore
     public ProjectReadCache ReadCache => _readCache;
 
     public string ConfigPath(string projectId) =>
-        Path.Combine(GetProjectDir(projectId), "pipeline_config.json");
+        Path.Combine(GetProjectDir(projectId), StoreLit.PipelineConfigJson);
 
     public string GetScreenplayPath(string projectId) =>
         ScreenplayService.GetDraftPath(this, projectId);
@@ -2255,7 +2309,7 @@ public sealed partial class ProjectStore
                         break;                                  // keeps the pending speaker
                     case FountainParser.ElementType.Dialogue:
                         if (!string.IsNullOrWhiteSpace(pending) && !string.IsNullOrWhiteSpace(el.Text))
-                            speakers.Add(pending!);
+                            speakers.Add(pending);
                         break;
                     default:
                         pending = null;
@@ -2279,10 +2333,10 @@ public sealed partial class ProjectStore
             var display = info.TryGetProperty("canonical_given_name", out var cn) &&
                           cn.GetString() is { Length: > 0 } cname
                 ? cname
-                : (info.TryGetProperty("voice_label", out var vl) && vl.GetString() is { Length: > 0 } lab
+                : (info.TryGetProperty(StoreLit.VoiceLabel, out var vl) && vl.GetString() is { Length: > 0 } lab
                     ? lab
                     : key.Replace(JsonKeys.CharacterPrefix, "").Replace("_", " "));
-            var descPreview = info.TryGetProperty("description", out var d0) ? d0.GetString() ?? "" : "";
+            var descPreview = info.TryGetProperty(JsonKeys.Description, out var d0) ? d0.GetString() ?? "" : "";
             var castKindRaw = info.TryGetProperty("cast_kind", out var ck0) ? ck0.GetString() : null;
             var isGroup = !voiceOnly && CastKindClassifier.IsGroup(key, display, castKindRaw, descPreview);
             var castKind = voiceOnly ? "voice_only" : (isGroup ? "group" : "individual");
@@ -2305,7 +2359,7 @@ public sealed partial class ProjectStore
                 {
                     var s = x.GetString();
                     if (!string.IsNullOrWhiteSpace(s))
-                        wardrobe.Add(s!);
+                        wardrobe.Add(s);
                 }
             }
 
@@ -2319,7 +2373,7 @@ public sealed partial class ProjectStore
                     // Same filename under assets/characters if seed path moved
                     if (full is null || !File.Exists(full))
                     {
-                        var byName = Path.Combine(projectDir, "assets", "characters", Path.GetFileName(rel));
+                        var byName = Path.Combine(projectDir, StoreLit.Assets, StoreLit.Characters, Path.GetFileName(rel));
                         if (File.Exists(byName))
                         {
                             full = byName;
@@ -2346,7 +2400,7 @@ public sealed partial class ProjectStore
                 for (var idx = 1; idx <= 3; idx++)
                 {
                     var fileName = $"{key.ToLowerInvariant()}_variant_0{idx}.png";
-                    var full = Path.Combine(projectDir, "assets", "characters", fileName);
+                    var full = Path.Combine(projectDir, StoreLit.Assets, StoreLit.Characters, fileName);
                     var exists = File.Exists(full) && new FileInfo(full).Length > 64;
                     variants.Add(new CharacterImageRef
                     {
@@ -2368,7 +2422,7 @@ public sealed partial class ProjectStore
                 : null;
             if (!hasPreferred && !voiceOnly)
             {
-                var v1 = Path.Combine(projectDir, "assets", "characters",
+                var v1 = Path.Combine(projectDir, StoreLit.Assets, StoreLit.Characters,
                     $"{key.ToLowerInvariant()}_variant_01.png");
                 if (File.Exists(v1) && new FileInfo(v1).Length >= 64)
                 {
@@ -2383,10 +2437,10 @@ public sealed partial class ProjectStore
             {
                 Key = key,
                 DisplayName = display,
-                Description = info.TryGetProperty("description", out var d) ? d.GetString() ?? "" : "",
-                VisualLock = info.TryGetProperty("visual_lock", out var v) ? v.GetString() ?? "" : "",
-                VoiceProfile = info.TryGetProperty("voice_profile", out var vp) ? vp.GetString() ?? "" : "",
-                VoiceLabel = info.TryGetProperty("voice_label", out var vlab) ? vlab.GetString() ?? "" : "",
+                Description = info.TryGetProperty(JsonKeys.Description, out var d) ? d.GetString() ?? "" : "",
+                VisualLock = info.TryGetProperty(StoreLit.VisualLock, out var v) ? v.GetString() ?? "" : "",
+                VoiceProfile = info.TryGetProperty(StoreLit.VoiceProfile, out var vp) ? vp.GetString() ?? "" : "",
+                VoiceLabel = info.TryGetProperty(StoreLit.VoiceLabel, out var vlab) ? vlab.GetString() ?? "" : "",
                 SpeciesKind = info.TryGetProperty("species_kind", out var spk) ? spk.GetString() : null,
                 Speaks = speakerTokens.Contains(CastKindClassifier.NormalizeToken(key))
                     || (!string.IsNullOrWhiteSpace(display) && speakerTokens.Contains(CastKindClassifier.NormalizeToken(display))),
@@ -2397,8 +2451,8 @@ public sealed partial class ProjectStore
                 VoiceCloneUrl = File.Exists(GetVoiceCloneSamplePath(projectId, key))
                     ? $"/api/projects/{Uri.EscapeDataString(projectId)}/characters/{Uri.EscapeDataString(key)}/voice/clone-sample"
                     : null,
-                VoiceProvider = info.TryGetProperty("voice_provider", out var vprov) ? vprov.GetString() : null,
-                VoiceProviderVoiceId = info.TryGetProperty("voice_provider_voice_id", out var vpid)
+                VoiceProvider = info.TryGetProperty(StoreLit.VoiceProvider, out var vprov) ? vprov.GetString() : null,
+                VoiceProviderVoiceId = info.TryGetProperty(StoreLit.VoiceProviderVoiceId, out var vpid)
                     ? vpid.GetString()
                     : null,
                 VoiceOnly = voiceOnly,
@@ -2406,7 +2460,7 @@ public sealed partial class ProjectStore
                 CastKind = castKind,
                 Locked = voiceOnly
                     ? !string.IsNullOrWhiteSpace(
-                        info.TryGetProperty("voice_profile", out var vpr) ? vpr.GetString() : null)
+                        info.TryGetProperty(StoreLit.VoiceProfile, out var vpr) ? vpr.GetString() : null)
                     : hasRef,
                 RefFileName = hasRef ? refName : null,
                 RefUrl = hasRef
@@ -2465,11 +2519,11 @@ public sealed partial class ProjectStore
         var rows = new List<LocationSummary>();
         foreach (var (key, info) in seeds)
         {
-            var display = info.TryGetProperty("display_name", out var dn) && dn.GetString() is { Length: > 0 } dname
+            var display = info.TryGetProperty(StoreLit.DisplayName, out var dn) && dn.GetString() is { Length: > 0 } dname
                 ? dname
                 : key.Replace('_', ' ').Trim();
-            var desc = info.TryGetProperty("description", out var d) ? d.GetString() ?? "" : "";
-            var vlock = info.TryGetProperty("visual_lock", out var v) ? v.GetString() ?? "" : "";
+            var desc = info.TryGetProperty(JsonKeys.Description, out var d) ? d.GetString() ?? "" : "";
+            var vlock = info.TryGetProperty(StoreLit.VisualLock, out var v) ? v.GetString() ?? "" : "";
             if (string.IsNullOrWhiteSpace(desc) && !string.IsNullOrWhiteSpace(vlock))
                 desc = vlock;
             if (string.IsNullOrWhiteSpace(vlock) && !string.IsNullOrWhiteSpace(desc))
@@ -2500,15 +2554,15 @@ public sealed partial class ProjectStore
                 {
                     // match by display name
                     var hit = derived.FirstOrDefault(kv =>
-                        kv.Value.TryGetProperty("display_name", out var dn)
+                        kv.Value.TryGetProperty(StoreLit.DisplayName, out var dn)
                         && string.Equals(dn.GetString(), row.DisplayName, StringComparison.OrdinalIgnoreCase));
                     if (hit.Key is null) continue;
                     el = hit.Value;
                 }
                 if (el.ValueKind != JsonValueKind.Object) continue;
-                if (el.TryGetProperty("description", out var d) && d.GetString() is { Length: > 0 } desc2)
+                if (el.TryGetProperty(JsonKeys.Description, out var d) && d.GetString() is { Length: > 0 } desc2)
                     row.Description = desc2;
-                if (el.TryGetProperty("visual_lock", out var v) && v.GetString() is { Length: > 0 } vl2)
+                if (el.TryGetProperty(StoreLit.VisualLock, out var v) && v.GetString() is { Length: > 0 } vl2)
                     row.VisualLock = vl2;
             }
         }
@@ -2536,9 +2590,9 @@ public sealed partial class ProjectStore
             var model = ScreenplayService.TryBuildModelFromProject(this, projectId);
             if (model is null) return new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
 
-            if (model.TryGetValue("global_production_variables", out var gpvObj)
+            if (model.TryGetValue(StoreLit.GlobalProductionVariables, out var gpvObj)
                 && gpvObj is Dictionary<string, object?> gpv
-                && gpv.TryGetValue("location_seed_tokens", out var locObj)
+                && gpv.TryGetValue(StoreLit.LocationSeedTokens, out var locObj)
                 && locObj is Dictionary<string, object?> locDict
                 && locDict.Count > 0)
             {
@@ -2567,7 +2621,7 @@ public sealed partial class ProjectStore
             locationSeeds ??= ExtractLocationSeedObjects(projectId);
             if (locationSeeds is null || locationSeeds.Count == 0) return false;
 
-            var castPath = Path.Combine(GetProjectDir(projectId), "source", ScreenplayService.CastSeedsFileName);
+            var castPath = Path.Combine(GetProjectDir(projectId), StoreLit.Source, ScreenplayService.CastSeedsFileName);
             System.Text.Json.Nodes.JsonObject root;
             System.Text.Json.Nodes.JsonNode? preservedCharacters = null;
             System.Text.Json.Nodes.JsonNode? preservedWardrobe = null;
@@ -2584,12 +2638,12 @@ public sealed partial class ProjectStore
                        ?? new System.Text.Json.Nodes.JsonObject();
                 // Explicitly clone cast fields before mutation — Odyssey2 export lost 45 characters
                 // when a merge rewrote locations-only JSON after a successful cast extract.
-                preservedCharacters = root["character_seed_tokens"]?.DeepClone();
-                preservedWardrobe = root["wardrobe_lock_tokens"]?.DeepClone();
+                preservedCharacters = root[StoreLit.CharacterSeedTokens]?.DeepClone();
+                preservedWardrobe = root[StoreLit.WardrobeLockTokens]?.DeepClone();
                 preservedMovieTitle = root[JsonKeys.MovieTitle]?.DeepClone();
                 preservedRender = root["render_style_lock"]?.DeepClone();
                 preservedPerf = root["performance_lock"]?.DeepClone();
-                preservedSchema = root["schema_version"]?.DeepClone();
+                preservedSchema = root[StoreLit.SchemaVersion]?.DeepClone();
                 if (preservedCharacters is System.Text.Json.Nodes.JsonObject co && co.Count > 0)
                     hadCharacters = true;
             }
@@ -2599,16 +2653,16 @@ public sealed partial class ProjectStore
                 if (dir != null) Directory.CreateDirectory(dir);
                 root = new System.Text.Json.Nodes.JsonObject
                 {
-                    ["schema_version"] = "cast_seeds.v1",
+                    [StoreLit.SchemaVersion] = StoreLit.CastSeedsV1,
                     ["generation"] = new System.Text.Json.Nodes.JsonObject
                     {
                         ["method"] = "MergeLocationSeedsIntoCastFile",
-                        ["ts"] = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss"),
+                        ["ts"] = DateTime.Now.ToString(StoreLit.IsoDateTime),
                     },
                 };
             }
 
-            var existing = root["location_seed_tokens"] as System.Text.Json.Nodes.JsonObject
+            var existing = root[StoreLit.LocationSeedTokens] as System.Text.Json.Nodes.JsonObject
                            ?? new System.Text.Json.Nodes.JsonObject();
 
             foreach (var (key, val) in locationSeeds)
@@ -2624,10 +2678,10 @@ public sealed partial class ProjectStore
                     continue;
                 }
 
-                var display = cur["display_name"]?.GetValue<string>()
-                              ?? incomingNode["display_name"]?.GetValue<string>()
+                var display = cur[StoreLit.DisplayName]?.GetValue<string>()
+                              ?? incomingNode[StoreLit.DisplayName]?.GetValue<string>()
                               ?? key;
-                foreach (var field in new[] { "description", "visual_lock" })
+                foreach (var field in new[] { JsonKeys.Description, StoreLit.VisualLock })
                 {
                     var curV = cur[field]?.GetValue<string>() ?? "";
                     var inV = incomingNode[field]?.GetValue<string>() ?? "";
@@ -2644,19 +2698,19 @@ public sealed partial class ProjectStore
                     else if (!curStub && !inStub && inV.Length > curV.Length + 40)
                         cur[field] = inV; // longer AI set design wins
                 }
-                if (cur["display_name"] is null && incomingNode["display_name"] is not null)
-                    cur["display_name"] = incomingNode["display_name"].DeepClone();
-                if (cur["location_type"] is null && incomingNode["location_type"] is not null)
-                    cur["location_type"] = incomingNode["location_type"].DeepClone();
+                if (cur[StoreLit.DisplayName] is null && incomingNode[StoreLit.DisplayName] is not null)
+                    cur[StoreLit.DisplayName] = incomingNode[StoreLit.DisplayName].DeepClone();
+                if (cur[StoreLit.LocationType] is null && incomingNode[StoreLit.LocationType] is not null)
+                    cur[StoreLit.LocationType] = incomingNode[StoreLit.LocationType].DeepClone();
             }
 
-            root["location_seed_tokens"] = existing;
+            root[StoreLit.LocationSeedTokens] = existing;
 
             // Re-apply preserved cast fields so a merge can never produce locations-only JSON.
             if (preservedCharacters is not null)
-                root["character_seed_tokens"] = preservedCharacters;
+                root[StoreLit.CharacterSeedTokens] = preservedCharacters;
             if (preservedWardrobe is not null)
-                root["wardrobe_lock_tokens"] = preservedWardrobe;
+                root[StoreLit.WardrobeLockTokens] = preservedWardrobe;
             if (preservedMovieTitle is not null)
                 root[JsonKeys.MovieTitle] = preservedMovieTitle;
             if (preservedRender is not null)
@@ -2664,13 +2718,13 @@ public sealed partial class ProjectStore
             if (preservedPerf is not null)
                 root["performance_lock"] = preservedPerf;
             if (preservedSchema is not null)
-                root["schema_version"] = preservedSchema;
-            else if (root["schema_version"] is null)
-                root["schema_version"] = "cast_seeds.v1";
+                root[StoreLit.SchemaVersion] = preservedSchema;
+            else if (root[StoreLit.SchemaVersion] is null)
+                root[StoreLit.SchemaVersion] = StoreLit.CastSeedsV1;
 
             // If we had characters going in, refuse to write a file without them.
             if (hadCharacters &&
-                (root["character_seed_tokens"] is not System.Text.Json.Nodes.JsonObject checkChars
+                (root[StoreLit.CharacterSeedTokens] is not System.Text.Json.Nodes.JsonObject checkChars
                  || checkChars.Count == 0))
             {
                     return false;
@@ -2708,9 +2762,9 @@ public sealed partial class ProjectStore
         {
             var model = ScreenplayService.TryBuildModelFromProject(this, projectId);
             if (model is null) return null;
-            if (model.TryGetValue("global_production_variables", out var gpvObj)
+            if (model.TryGetValue(StoreLit.GlobalProductionVariables, out var gpvObj)
                 && gpvObj is Dictionary<string, object?> gpv
-                && gpv.TryGetValue("location_seed_tokens", out var locObj)
+                && gpv.TryGetValue(StoreLit.LocationSeedTokens, out var locObj)
                 && locObj is Dictionary<string, object?> locDict
                 && locDict.Count > 0)
                 return locDict;
@@ -2749,29 +2803,29 @@ public sealed partial class ProjectStore
             if (bp is null)
                 return (cast, locs);
 
-            if (!bp.RootElement.TryGetProperty("scenes", out var scenes)
+            if (!bp.RootElement.TryGetProperty(StoreLit.Scenes, out var scenes)
                 || scenes.ValueKind != JsonValueKind.Array)
                 return (cast, locs);
 
             foreach (var s in scenes.EnumerateArray())
             {
-                AddStringArray(s, "characters_on_screen", cast);
-                if (s.TryGetProperty("primary_location_id", out var pl)
+                AddStringArray(s, StoreLit.CharactersOnScreen, cast);
+                if (s.TryGetProperty(StoreLit.PrimaryLocationId, out var pl)
                     && pl.GetString() is { Length: > 0 } pLoc)
                     locs.Add(pLoc);
-                AddStringArray(s, "location_ids", locs);
+                AddStringArray(s, StoreLit.LocationIds, locs);
 
-                if (s.TryGetProperty("veo_clips", out var clips) && clips.ValueKind == JsonValueKind.Array)
+                if (s.TryGetProperty(StoreLit.VeoClips, out var clips) && clips.ValueKind == JsonValueKind.Array)
                 {
                     foreach (var c in clips.EnumerateArray())
                     {
-                        AddStringArray(c, "characters_on_screen", cast);
-                        if (c.TryGetProperty("primary_location_id", out var cl)
+                        AddStringArray(c, StoreLit.CharactersOnScreen, cast);
+                        if (c.TryGetProperty(StoreLit.PrimaryLocationId, out var cl)
                             && cl.GetString() is { Length: > 0 } cLoc)
                             locs.Add(cLoc);
-                        AddStringArray(c, "location_ids", locs);
+                        AddStringArray(c, StoreLit.LocationIds, locs);
                         // Prompt mentions (clip-local cast not always listed on the scene)
-                        if (c.TryGetProperty("visual_prompt", out var vp))
+                        if (c.TryGetProperty(StoreLit.VisualPrompt, out var vp))
                         {
                             var text = vp.GetString() ?? "";
                             foreach (System.Text.RegularExpressions.Match m in
@@ -2804,7 +2858,7 @@ public sealed partial class ProjectStore
             {
                 var k = x.GetString();
                 if (!string.IsNullOrWhiteSpace(k))
-                    into.Add(k!);
+                    into.Add(k);
             }
         }
     }
@@ -2819,7 +2873,7 @@ public sealed partial class ProjectStore
             return Array.Empty<string>();
 
         JsonElement? sceneEl = null;
-        if (bp.RootElement.TryGetProperty("scenes", out var scenes) &&
+        if (bp.RootElement.TryGetProperty(StoreLit.Scenes, out var scenes) &&
             scenes.ValueKind == JsonValueKind.Array)
         {
             foreach (var s in scenes.EnumerateArray())
@@ -2836,24 +2890,24 @@ public sealed partial class ProjectStore
             return Array.Empty<string>();
 
         var cast = new HashSet<string>(StringComparer.Ordinal);
-        if (sceneEl.Value.TryGetProperty("characters_on_screen", out var cos) &&
+        if (sceneEl.Value.TryGetProperty(StoreLit.CharactersOnScreen, out var cos) &&
             cos.ValueKind == JsonValueKind.Array)
         {
             foreach (var x in cos.EnumerateArray())
             {
                 var k = x.GetString();
                 if (!string.IsNullOrWhiteSpace(k))
-                    cast.Add(k!);
+                    cast.Add(k);
             }
         }
 
         // Also scan prompts for Character_* mentions (clip-local cast)
-        if (sceneEl.Value.TryGetProperty("veo_clips", out var clips) &&
+        if (sceneEl.Value.TryGetProperty(StoreLit.VeoClips, out var clips) &&
             clips.ValueKind == JsonValueKind.Array)
         {
             foreach (var c in clips.EnumerateArray())
             {
-                if (!c.TryGetProperty("visual_prompt", out var vp))
+                if (!c.TryGetProperty(StoreLit.VisualPrompt, out var vp))
                     continue;
                 var text = vp.GetString() ?? "";
                 foreach (System.Text.RegularExpressions.Match m in
@@ -2897,7 +2951,7 @@ public sealed partial class ProjectStore
     // ── Location set plates (step 1: storage + lock; generate/edit later) ─────────
 
     /// <summary>Project-relative directory for location set plates.</summary>
-    public static string LocationAssetsRelativeDir => Path.Combine("assets", "locations");
+    public static string LocationAssetsRelativeDir => Path.Combine(StoreLit.Assets, "locations");
 
     public string GetLocationAssetsDir(string projectId)
     {
@@ -2913,7 +2967,7 @@ public sealed partial class ProjectStore
         k = Path.GetFileName(k).ToLowerInvariant();
         if (string.IsNullOrWhiteSpace(k) || k is "." or "..")
             k = "unknown_location";
-        if (k.EndsWith("_ref.png", StringComparison.OrdinalIgnoreCase))
+        if (k.EndsWith(StoreLit.RefPngSuffix, StringComparison.OrdinalIgnoreCase))
             return k;
         return $"{k}_ref.png";
     }
@@ -2983,7 +3037,7 @@ public sealed partial class ProjectStore
         if (string.IsNullOrWhiteSpace(locKey)) return false;
         try
         {
-            var castPath = Path.Combine(GetProjectDir(projectId), "source", ScreenplayService.CastSeedsFileName);
+            var castPath = Path.Combine(GetProjectDir(projectId), StoreLit.Source, ScreenplayService.CastSeedsFileName);
             System.Text.Json.Nodes.JsonObject root;
             if (File.Exists(castPath))
             {
@@ -2992,25 +3046,25 @@ public sealed partial class ProjectStore
             }
             else
             {
-                Directory.CreateDirectory(Path.GetDirectoryName(castPath)!);
-                root = new System.Text.Json.Nodes.JsonObject { ["schema_version"] = "cast_seeds.v1" };
+                Directory.CreateDirectory(Path.GetDirectoryName(castPath));
+                root = new System.Text.Json.Nodes.JsonObject { [StoreLit.SchemaVersion] = StoreLit.CastSeedsV1 };
             }
 
-            var locs = root["location_seed_tokens"] as System.Text.Json.Nodes.JsonObject
+            var locs = root[StoreLit.LocationSeedTokens] as System.Text.Json.Nodes.JsonObject
                        ?? new System.Text.Json.Nodes.JsonObject();
             var entry = locs[locKey] as System.Text.Json.Nodes.JsonObject
                         ?? new System.Text.Json.Nodes.JsonObject
                         {
-                            ["display_name"] = locKey.StartsWith(JsonKeys.LocationPrefix, StringComparison.OrdinalIgnoreCase)
+                            [StoreLit.DisplayName] = locKey.StartsWith(JsonKeys.LocationPrefix, StringComparison.OrdinalIgnoreCase)
                                 ? locKey[JsonKeys.LocationPrefix.Length..].Replace('_', ' ')
                                 : locKey.Replace('_', ' '),
                         };
             if (description is not null)
-                entry["description"] = description;
+                entry[JsonKeys.Description] = description;
             if (visualLock is not null)
-                entry["visual_lock"] = visualLock;
+                entry[StoreLit.VisualLock] = visualLock;
             locs[locKey] = entry;
-            root["location_seed_tokens"] = locs;
+            root[StoreLit.LocationSeedTokens] = locs;
             // Preserve character_seed_tokens if present
             File.WriteAllText(castPath, root.ToJsonString(JsonDefaults.Indented) + "\n");
             return true;
@@ -3043,7 +3097,7 @@ public sealed partial class ProjectStore
         k = Path.GetFileName(k).ToLowerInvariant();
         if (string.IsNullOrWhiteSpace(k) || k is "." or "..")
             k = "unknown_character";
-        if (k.EndsWith("_ref.png", StringComparison.OrdinalIgnoreCase))
+        if (k.EndsWith(StoreLit.RefPngSuffix, StringComparison.OrdinalIgnoreCase))
             return k;
         return $"{k}_ref.png";
     }
@@ -3060,7 +3114,7 @@ public sealed partial class ProjectStore
             if (string.IsNullOrWhiteSpace(name)) return;
             name = Path.GetFileName(name.Trim().Replace(' ', '_')).ToLowerInvariant();
             if (!name.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
-                name = name.EndsWith("_ref", StringComparison.OrdinalIgnoreCase) ? name + ".png" : name + "_ref.png";
+                name = name.EndsWith("_ref", StringComparison.OrdinalIgnoreCase) ? name + ".png" : name + StoreLit.RefPngSuffix;
             if (seen.Add(name))
                 list.Add(name);
         }
@@ -3134,7 +3188,7 @@ public sealed partial class ProjectStore
             wl.ValueKind != JsonValueKind.String)
             return null;
         var key = wl.GetString();
-        return string.IsNullOrWhiteSpace(key) ? null : GetWardrobeLock(projectId, key!);
+        return string.IsNullOrWhiteSpace(key) ? null : GetWardrobeLock(projectId, key);
     }
 
     /// <summary>Character's raw <c>wardrobe_lock</c> key (foreign key into wardrobe_lock_tokens), or null.</summary>
@@ -3154,14 +3208,14 @@ public sealed partial class ProjectStore
         k = k.StartsWith("wardrobe_", StringComparison.OrdinalIgnoreCase) ? k : $"wardrobe_{k}";
         if (string.IsNullOrWhiteSpace(k) || k is "." or "..")
             k = "wardrobe_unknown";
-        return k.EndsWith("_ref.png", StringComparison.OrdinalIgnoreCase) ? k : $"{k}_ref.png";
+        return k.EndsWith(StoreLit.RefPngSuffix, StringComparison.OrdinalIgnoreCase) ? k : $"{k}_ref.png";
     }
 
     /// <summary>Existing shared costume reference path for a wardrobe group, or null if not generated yet.</summary>
     public string? ResolveWardrobeRefPath(string projectId, string wardrobeKey)
     {
         var path = Path.Combine(
-            GetProjectDir(projectId), "assets", "characters", WardrobeRefFileName(wardrobeKey));
+            GetProjectDir(projectId), StoreLit.Assets, StoreLit.Characters, WardrobeRefFileName(wardrobeKey));
         return File.Exists(path) && new FileInfo(path).Length >= 64 ? path : null;
     }
 
@@ -3211,7 +3265,7 @@ public sealed partial class ProjectStore
                 idEl.GetString() is { Length: > 0 } id)
                 return id;
             // Interop with ElevenLabs apply-clone path (voice_provider_voice_id).
-            if (el.TryGetProperty("voice_provider_voice_id", out var altEl) &&
+            if (el.TryGetProperty(StoreLit.VoiceProviderVoiceId, out var altEl) &&
                 altEl.ValueKind == JsonValueKind.String &&
                 altEl.GetString() is { Length: > 0 } alt)
                 return alt;
@@ -3233,7 +3287,7 @@ public sealed partial class ProjectStore
         {
             var seed = GetCharacterSeed(projectId, charKey);
             if (seed is not { } el) return null;
-            if (el.TryGetProperty("voice_provider", out var pEl) &&
+            if (el.TryGetProperty(StoreLit.VoiceProvider, out var pEl) &&
                 pEl.ValueKind == JsonValueKind.String &&
                 pEl.GetString() is { Length: > 0 } p)
                 return p.Trim();
@@ -3246,7 +3300,7 @@ public sealed partial class ProjectStore
     }
 
     public string GetCharactersDir(string projectId) =>
-        Path.Combine(GetProjectDir(projectId), "assets", "characters");
+        Path.Combine(GetProjectDir(projectId), StoreLit.Assets, StoreLit.Characters);
 
     public string GetCharacterDir(string projectId, string charKey) =>
         Path.Combine(GetCharactersDir(projectId), SanitizeCharKey(charKey));
@@ -3353,13 +3407,13 @@ public sealed partial class ProjectStore
                 seeds[foundKey] = seed;
             }
             if (description is not null)
-                seed["description"] = CharacterVisualTextScrubber.ScrubVisualProse(description);
+                seed[JsonKeys.Description] = CharacterVisualTextScrubber.ScrubVisualProse(description);
             if (visualLock is not null)
-                seed["visual_lock"] = CharacterVisualTextScrubber.ScrubVisualProse(visualLock);
+                seed[StoreLit.VisualLock] = CharacterVisualTextScrubber.ScrubVisualProse(visualLock);
             if (voiceProfile is not null)
-                seed["voice_profile"] = voiceProfile.Trim();
+                seed[StoreLit.VoiceProfile] = voiceProfile.Trim();
             if (voiceLabel is not null)
-                seed["voice_label"] = voiceLabel.Trim();
+                seed[StoreLit.VoiceLabel] = voiceLabel.Trim();
             if (voiceCloneSample is not null)
             {
                 if (string.IsNullOrWhiteSpace(voiceCloneSample))
@@ -3370,16 +3424,16 @@ public sealed partial class ProjectStore
             if (voiceProvider is not null)
             {
                 if (string.IsNullOrWhiteSpace(voiceProvider))
-                    seed.Remove("voice_provider");
+                    seed.Remove(StoreLit.VoiceProvider);
                 else
-                    seed["voice_provider"] = voiceProvider.Trim();
+                    seed[StoreLit.VoiceProvider] = voiceProvider.Trim();
             }
             if (voiceProviderVoiceId is not null)
             {
                 if (string.IsNullOrWhiteSpace(voiceProviderVoiceId))
-                    seed.Remove("voice_provider_voice_id");
+                    seed.Remove(StoreLit.VoiceProviderVoiceId);
                 else
-                    seed["voice_provider_voice_id"] = voiceProviderVoiceId.Trim();
+                    seed[StoreLit.VoiceProviderVoiceId] = voiceProviderVoiceId.Trim();
             }
             if (voiceCloneProviderId is not null)
             {
@@ -3404,24 +3458,24 @@ public sealed partial class ProjectStore
                 }
                 else if (createCastShape)
                 {
-                    root = new System.Text.Json.Nodes.JsonObject { ["schema_version"] = "cast_seeds.v1" };
+                    root = new System.Text.Json.Nodes.JsonObject { [StoreLit.SchemaVersion] = StoreLit.CastSeedsV1 };
                 }
                 else return;
 
                 System.Text.Json.Nodes.JsonObject? seeds;
                 System.Text.Json.Nodes.JsonObject? gpv = null;
-                if (root["character_seed_tokens"] is System.Text.Json.Nodes.JsonObject direct)
+                if (root[StoreLit.CharacterSeedTokens] is System.Text.Json.Nodes.JsonObject direct)
                 {
                     seeds = direct;
                 }
                 else
                 {
-                    gpv = root["global_production_variables"] as System.Text.Json.Nodes.JsonObject
+                    gpv = root[StoreLit.GlobalProductionVariables] as System.Text.Json.Nodes.JsonObject
                           ?? new System.Text.Json.Nodes.JsonObject();
-                    root["global_production_variables"] = gpv;
-                    seeds = gpv["character_seed_tokens"] as System.Text.Json.Nodes.JsonObject
+                    root[StoreLit.GlobalProductionVariables] = gpv;
+                    seeds = gpv[StoreLit.CharacterSeedTokens] as System.Text.Json.Nodes.JsonObject
                             ?? new System.Text.Json.Nodes.JsonObject();
-                    gpv["character_seed_tokens"] = seeds;
+                    gpv[StoreLit.CharacterSeedTokens] = seeds;
                 }
 
                 PatchSeedsObject(seeds);
@@ -3434,8 +3488,8 @@ public sealed partial class ProjectStore
                 // which this method's catch-all silently swallowed, so the whole write was
                 // dropped with no visible error.
                 if (createCastShape && gpv is not null)
-                    root["character_seed_tokens"] = System.Text.Json.Nodes.JsonNode.Parse(seeds.ToJsonString());
-                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                    root[StoreLit.CharacterSeedTokens] = System.Text.Json.Nodes.JsonNode.Parse(seeds.ToJsonString());
+                Directory.CreateDirectory(Path.GetDirectoryName(path));
                 File.WriteAllText(path, root.ToJsonString(JsonDefaults.Indented) + "\n");
             }
             catch
@@ -3489,9 +3543,9 @@ public sealed partial class ProjectStore
                 locks[foundKey] = entry;
             }
             if (description is not null)
-                entry["description"] = CharacterVisualTextScrubber.ScrubVisualProse(description);
+                entry[JsonKeys.Description] = CharacterVisualTextScrubber.ScrubVisualProse(description);
             if (visualLock is not null)
-                entry["visual_lock"] = CharacterVisualTextScrubber.ScrubVisualProse(visualLock);
+                entry[StoreLit.VisualLock] = CharacterVisualTextScrubber.ScrubVisualProse(visualLock);
             locks[foundKey] = entry;
         }
 
@@ -3508,31 +3562,31 @@ public sealed partial class ProjectStore
                 }
                 else if (createCastShape)
                 {
-                    root = new System.Text.Json.Nodes.JsonObject { ["schema_version"] = "cast_seeds.v1" };
+                    root = new System.Text.Json.Nodes.JsonObject { [StoreLit.SchemaVersion] = StoreLit.CastSeedsV1 };
                 }
                 else return;
 
                 System.Text.Json.Nodes.JsonObject? locks;
-                if (root["wardrobe_lock_tokens"] is System.Text.Json.Nodes.JsonObject direct)
+                if (root[StoreLit.WardrobeLockTokens] is System.Text.Json.Nodes.JsonObject direct)
                 {
                     locks = direct;
                 }
                 else
                 {
-                    var gpv = root["global_production_variables"] as System.Text.Json.Nodes.JsonObject;
-                    if (gpv is not null && gpv["wardrobe_lock_tokens"] is System.Text.Json.Nodes.JsonObject gpvLocks)
+                    var gpv = root[StoreLit.GlobalProductionVariables] as System.Text.Json.Nodes.JsonObject;
+                    if (gpv is not null && gpv[StoreLit.WardrobeLockTokens] is System.Text.Json.Nodes.JsonObject gpvLocks)
                     {
                         locks = gpvLocks;
                     }
                     else
                     {
                         locks = new System.Text.Json.Nodes.JsonObject();
-                        root["wardrobe_lock_tokens"] = locks;
+                        root[StoreLit.WardrobeLockTokens] = locks;
                     }
                 }
 
                 PatchLockObject(locks);
-                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                Directory.CreateDirectory(Path.GetDirectoryName(path));
                 File.WriteAllText(path, root.ToJsonString(JsonDefaults.Indented) + "\n");
             }
             catch
@@ -3564,8 +3618,8 @@ public sealed partial class ProjectStore
                 continue;
             map[key] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
-                ["voice_profile"] = p.VoiceProfile,
-                ["voice_label"] = p.VoiceLabel,
+                [StoreLit.VoiceProfile] = p.VoiceProfile,
+                [StoreLit.VoiceLabel] = p.VoiceLabel,
             };
         }
         return map;
@@ -3586,11 +3640,11 @@ public sealed partial class ProjectStore
             foreach (var (key, info) in seeds)
             {
                 if (!overwrite && map.ContainsKey(key)) continue;
-                var desc = info.TryGetProperty("description", out var d) ? (d.GetString() ?? "").Trim() : "";
+                var desc = info.TryGetProperty(JsonKeys.Description, out var d) ? (d.GetString() ?? "").Trim() : "";
                 var castKind = info.TryGetProperty("cast_kind", out var ck) ? (ck.GetString() ?? "").Trim() : "";
-                var vlock = info.TryGetProperty("visual_lock", out var vl) ? (vl.GetString() ?? "").Trim() : "";
-                var profile = info.TryGetProperty("voice_profile", out var vp) ? (vp.GetString() ?? "").Trim() : "";
-                var label = info.TryGetProperty("voice_label", out var vlab) ? (vlab.GetString() ?? "").Trim() : "";
+                var vlock = info.TryGetProperty(StoreLit.VisualLock, out var vl) ? (vl.GetString() ?? "").Trim() : "";
+                var profile = info.TryGetProperty(StoreLit.VoiceProfile, out var vp) ? (vp.GetString() ?? "").Trim() : "";
+                var label = info.TryGetProperty(StoreLit.VoiceLabel, out var vlab) ? (vlab.GetString() ?? "").Trim() : "";
                 var display = info.TryGetProperty("canonical_given_name", out var cn)
                     ? (cn.GetString() ?? "").Trim()
                     : "";
@@ -3684,8 +3738,8 @@ public sealed partial class ProjectStore
         }
 
         var dir = GetProjectDir(projectId);
-        PatchCharacterSeedsFile(Path.Combine(dir, "source", ScreenplayService.CastSeedsFileName), PatchSeedsObject);
-        PatchCharacterSeedsFile(Path.Combine(dir, "scenes.json"), PatchSeedsObject);
+        PatchCharacterSeedsFile(Path.Combine(dir, StoreLit.Source, ScreenplayService.CastSeedsFileName), PatchSeedsObject);
+        PatchCharacterSeedsFile(Path.Combine(dir, StoreLit.ScenesJson), PatchSeedsObject);
         if (FindBlueprintPathSync(projectId) is { } bpPath)
             PatchCharacterSeedsFile(bpPath, PatchSeedsObject);
         InvalidateSceneListCache(projectId);
@@ -3724,8 +3778,8 @@ public sealed partial class ProjectStore
             var sn = ReadJsonNodeInt(s[JsonKeys.SceneNumber]);
             if (sn != scene) continue;
             // Stage 2 blueprint uses veo_clips (canonical)
-            var clips = s["veo_clips"] as System.Text.Json.Nodes.JsonArray
-                        ?? s["clips"] as System.Text.Json.Nodes.JsonArray;
+            var clips = s[StoreLit.VeoClips] as System.Text.Json.Nodes.JsonArray
+                        ?? s[StoreLit.Clips] as System.Text.Json.Nodes.JsonArray;
             if (clips is null) break;
             foreach (var cNode in clips)
             {
@@ -3741,7 +3795,7 @@ public sealed partial class ProjectStore
         if (clipObj is null)
             throw new InvalidOperationException($"Clip S{scene:D2}C{clip:D2} not found in shot plan.");
 
-        clipObj["visual_prompt"] = (visualPrompt ?? "").Trim();
+        clipObj[StoreLit.VisualPrompt] = (visualPrompt ?? "").Trim();
         File.WriteAllText(bpPath, root.ToJsonString(JsonDefaults.Indented) + "\n");
         InvalidateSceneListCache(projectId);
         InvalidateReadCaches(projectId);
@@ -3755,8 +3809,8 @@ public sealed partial class ProjectStore
         {
             if (sNode is not System.Text.Json.Nodes.JsonObject s) continue;
             if (ReadJsonNodeInt(s[JsonKeys.SceneNumber]) != scene) continue;
-            return s["veo_clips"] as System.Text.Json.Nodes.JsonArray
-                   ?? s["clips"] as System.Text.Json.Nodes.JsonArray;
+            return s[StoreLit.VeoClips] as System.Text.Json.Nodes.JsonArray
+                   ?? s[StoreLit.Clips] as System.Text.Json.Nodes.JsonArray;
         }
         return null;
     }
@@ -3782,7 +3836,7 @@ public sealed partial class ProjectStore
         var root = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(bpPath))
                    as System.Text.Json.Nodes.JsonObject
                    ?? throw new InvalidOperationException("Invalid blueprint JSON.");
-        var scenes = root["scenes"] as System.Text.Json.Nodes.JsonArray
+        var scenes = root[StoreLit.Scenes] as System.Text.Json.Nodes.JsonArray
                      ?? throw new InvalidOperationException("Blueprint has no scenes array.");
         return (root, scenes);
     }
@@ -3919,11 +3973,10 @@ public sealed partial class ProjectStore
             if (fields.PrimarySubject.Length > 0 && !cast.Contains(fields.PrimarySubject))
                 throw new InvalidOperationException(
                     $"Primary subject must be a cast member (unknown key: {fields.PrimarySubject}).");
-            foreach (var ck in fields.CharactersOnScreen)
+            foreach (var ck in fields.CharactersOnScreen.Where(ck => !cast.Contains(ck)))
             {
-                if (!cast.Contains(ck))
-                    throw new InvalidOperationException(
-                        $"On-screen list has unknown cast key: {ck}.");
+                throw new InvalidOperationException(
+                    $"On-screen list has unknown cast key: {ck}.");
             }
         }
 
@@ -4012,19 +4065,19 @@ public sealed partial class ProjectStore
 
         ValidateClipEditRequest(fields, castKeys, durMinSeconds, durAbsMaxSeconds);
 
-        clipObj["visual_prompt"] = fields.VisualPrompt;
+        clipObj[StoreLit.VisualPrompt] = fields.VisualPrompt;
         clipObj["negative_prompt"] = fields.NegativePrompt;
         // E3: keep or derive stable beat id so regen maps back to screenplay beat
         if (string.IsNullOrWhiteSpace(clipObj["stage1_beat_id"]?.ToString()))
         {
-            var kind = string.IsNullOrWhiteSpace(fields.Dialogue) ? "action" : "dialogue";
+            var kind = string.IsNullOrWhiteSpace(fields.Dialogue) ? "action" : JsonKeys.Dialogue;
             var body = string.IsNullOrWhiteSpace(fields.Dialogue) ? fields.VisualPrompt : fields.Dialogue;
             clipObj["stage1_beat_id"] = PageToMovie.Core.Utils.StableBeatId.ForContent(
                 $"S{fields.Scene:D2}", kind, fields.Speaker, body);
         }
         clipObj["primary_subject"] = fields.PrimarySubject;
-        clipObj["duration_seconds"] = fields.DurationSeconds;
-        clipObj["characters_on_screen"] = new System.Text.Json.Nodes.JsonArray(
+        clipObj[StoreLit.DurationSeconds] = fields.DurationSeconds;
+        clipObj[StoreLit.CharactersOnScreen] = new System.Text.Json.Nodes.JsonArray(
             fields.CharactersOnScreen
                 .Select(c => System.Text.Json.Nodes.JsonValue.Create(c) as System.Text.Json.Nodes.JsonNode)
                 .ToArray());
@@ -4036,21 +4089,21 @@ public sealed partial class ProjectStore
             audio = new System.Text.Json.Nodes.JsonObject();
             clipObj[JsonKeys.AudioPayload] = audio;
         }
-        audio["dialogue"] = fields.Dialogue;
-        audio["speaker"] = string.IsNullOrWhiteSpace(fields.Speaker) ? null : fields.Speaker;
-        audio["delivery"] = string.IsNullOrWhiteSpace(fields.Delivery) ? null : fields.Delivery;
+        audio[JsonKeys.Dialogue] = fields.Dialogue;
+        audio[JsonKeys.Speaker] = string.IsNullOrWhiteSpace(fields.Speaker) ? null : fields.Speaker;
+        audio[StoreLit.Delivery] = string.IsNullOrWhiteSpace(fields.Delivery) ? null : fields.Delivery;
         if (!string.IsNullOrWhiteSpace(fields.PronunciationHint))
             audio["pronunciation_hint"] = fields.PronunciationHint;
 
         // Keep root-level fields in sync if present in blueprint JSON
-        if (clipObj.ContainsKey("dialogue"))
-            clipObj["dialogue"] = fields.Dialogue;
-        if (clipObj.ContainsKey("speaker"))
-            clipObj["speaker"] = string.IsNullOrWhiteSpace(fields.Speaker) ? null : fields.Speaker;
-        if (clipObj.ContainsKey("delivery"))
-            clipObj["delivery"] = string.IsNullOrWhiteSpace(fields.Delivery) ? null : fields.Delivery;
-        if (clipObj.ContainsKey("audio_script"))
-            clipObj["audio_script"] = fields.Dialogue;
+        if (clipObj.ContainsKey(JsonKeys.Dialogue))
+            clipObj[JsonKeys.Dialogue] = fields.Dialogue;
+        if (clipObj.ContainsKey(JsonKeys.Speaker))
+            clipObj[JsonKeys.Speaker] = string.IsNullOrWhiteSpace(fields.Speaker) ? null : fields.Speaker;
+        if (clipObj.ContainsKey(StoreLit.Delivery))
+            clipObj[StoreLit.Delivery] = string.IsNullOrWhiteSpace(fields.Delivery) ? null : fields.Delivery;
+        if (clipObj.ContainsKey(StoreLit.AudioScript))
+            clipObj[StoreLit.AudioScript] = fields.Dialogue;
     }
 
     /// <summary>
@@ -4149,8 +4202,8 @@ public sealed partial class ProjectStore
             {
                 if (sNode is not System.Text.Json.Nodes.JsonObject s) continue;
                 if (ReadJsonNodeInt(s[JsonKeys.SceneNumber]) != scene) continue;
-                var clips = s["veo_clips"] as System.Text.Json.Nodes.JsonArray
-                            ?? s["clips"] as System.Text.Json.Nodes.JsonArray;
+                var clips = s[StoreLit.VeoClips] as System.Text.Json.Nodes.JsonArray
+                            ?? s[StoreLit.Clips] as System.Text.Json.Nodes.JsonArray;
                 if (clips is null) break;
                 for (var i = 0; i < clips.Count; i++)
                 {
@@ -4167,7 +4220,7 @@ public sealed partial class ProjectStore
                 File.WriteAllText(bpPath, root.ToJsonString(JsonDefaults.Indented) + "\n");
         }
 
-        var videoPath = Path.Combine(projectDir, "assets", "video", $"scene_{scene:D2}_clip_{clip:D2}.mp4");
+        var videoPath = Path.Combine(projectDir, StoreLit.Assets, StoreLit.Video, $"scene_{scene:D2}_clip_{clip:D2}.mp4");
         var deletedVideo = false;
         if (File.Exists(videoPath))
         {
@@ -4223,7 +4276,7 @@ public sealed partial class ProjectStore
         }
 
         // Remove this scene's on-disk media (clips, composite, sidecars, client markers).
-        var videoDir = Path.Combine(projectDir, "assets", "video");
+        var videoDir = Path.Combine(projectDir, StoreLit.Assets, StoreLit.Video);
         if (Directory.Exists(videoDir))
         {
             foreach (var f in Directory.EnumerateFiles(videoDir, $"scene_{scene:D2}*", SearchOption.TopDirectoryOnly))
@@ -4264,7 +4317,7 @@ public sealed partial class ProjectStore
         int next;
         if (creditsIndex >= 0)
         {
-            var creditsObj = (System.Text.Json.Nodes.JsonObject)scenes[creditsIndex]!;
+            var creditsObj = (System.Text.Json.Nodes.JsonObject)scenes[creditsIndex];
             next = ReadJsonNodeInt(creditsObj[JsonKeys.SceneNumber]);
             for (var i = creditsIndex; i < scenes.Count; i++)
                 if (scenes[i] is System.Text.Json.Nodes.JsonObject so)
@@ -4278,8 +4331,8 @@ public sealed partial class ProjectStore
         var sceneObj = new System.Text.Json.Nodes.JsonObject
         {
             [JsonKeys.SceneNumber] = next,
-            ["setting"] = string.IsNullOrWhiteSpace(setting) ? "INT. NEW SCENE - DAY" : setting.Trim(),
-            ["veo_clips"] = new System.Text.Json.Nodes.JsonArray(),
+            [StoreLit.Setting] = string.IsNullOrWhiteSpace(setting) ? "INT. NEW SCENE - DAY" : setting.Trim(),
+            [StoreLit.VeoClips] = new System.Text.Json.Nodes.JsonArray(),
         };
 
         if (creditsIndex >= 0)
@@ -4306,16 +4359,16 @@ public sealed partial class ProjectStore
             [JsonKeys.ClipNumber] = 1,
             ["timestamp"] = "",
             ["veo_continuation_source"] = "none",
-            ["is_credits"] = true,
-            ["visual_prompt"] = BuildCreditsVisualPrompt(projectId),
-            [JsonKeys.AudioPayload] = new System.Text.Json.Nodes.JsonObject { ["speaker"] = "", ["dialogue"] = "" },
+            [StoreLit.IsCredits] = true,
+            [StoreLit.VisualPrompt] = BuildCreditsVisualPrompt(projectId),
+            [JsonKeys.AudioPayload] = new System.Text.Json.Nodes.JsonObject { [JsonKeys.Speaker] = "", [JsonKeys.Dialogue] = "" },
         };
         var sceneObj = new System.Text.Json.Nodes.JsonObject
         {
             [JsonKeys.SceneNumber] = next,
-            ["setting"] = "END CREDITS",
-            ["is_credits"] = true,
-            ["veo_clips"] = new System.Text.Json.Nodes.JsonArray { clip },
+            [StoreLit.Setting] = "END CREDITS",
+            [StoreLit.IsCredits] = true,
+            [StoreLit.VeoClips] = new System.Text.Json.Nodes.JsonArray { clip },
         };
         scenes.Add(sceneObj);
         File.WriteAllText(bpPath, root.ToJsonString(JsonDefaults.Indented) + "\n");
@@ -4446,11 +4499,11 @@ public sealed partial class ProjectStore
         var root = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(bpPath))
                    as System.Text.Json.Nodes.JsonObject
                    ?? throw new InvalidOperationException("Invalid blueprint JSON.");
-        var scenes = root["scenes"] as System.Text.Json.Nodes.JsonArray;
+        var scenes = root[StoreLit.Scenes] as System.Text.Json.Nodes.JsonArray;
         if (scenes is null)
         {
             scenes = new System.Text.Json.Nodes.JsonArray();
-            root["scenes"] = scenes;
+            root[StoreLit.Scenes] = scenes;
         }
         return (root, scenes, bpPath);
     }
@@ -4518,42 +4571,35 @@ public sealed partial class ProjectStore
         Dictionary<string, object?>? seeds = null;
         Action? commit = null;
 
-        if (tree.TryGetValue("character_seed_tokens", out var direct) && direct is not null)
+        if (tree.TryGetValue(StoreLit.CharacterSeedTokens, out var direct) && direct is not null)
         {
             var seedsJson = JsonSerializer.Serialize(direct);
             seeds = JsonSerializer.Deserialize<Dictionary<string, object?>>(seedsJson)
                     ?? new Dictionary<string, object?>();
-            commit = () => tree["character_seed_tokens"] = seeds;
+            commit = () => tree[StoreLit.CharacterSeedTokens] = seeds;
         }
-        else if (tree.TryGetValue("global_production_variables", out var gpvObj) && gpvObj is not null)
+        else if (tree.TryGetValue(StoreLit.GlobalProductionVariables, out var gpvObj) && gpvObj is not null)
         {
             var gpvJson = JsonSerializer.Serialize(gpvObj);
             var gpv = JsonSerializer.Deserialize<Dictionary<string, object?>>(gpvJson)
                       ?? new Dictionary<string, object?>();
-            if (!gpv.TryGetValue("character_seed_tokens", out var seedsObj) || seedsObj is null)
+            if (!gpv.TryGetValue(StoreLit.CharacterSeedTokens, out var seedsObj) || seedsObj is null)
                 return;
             var seedsJson = JsonSerializer.Serialize(seedsObj);
             seeds = JsonSerializer.Deserialize<Dictionary<string, object?>>(seedsJson)
                     ?? new Dictionary<string, object?>();
             commit = () =>
             {
-                gpv["character_seed_tokens"] = seeds;
-                tree["global_production_variables"] = gpv;
+                gpv[StoreLit.CharacterSeedTokens] = seeds;
+                tree[StoreLit.GlobalProductionVariables] = gpv;
             };
         }
         else
             return;
 
         // Case-insensitive key match (Character_Narrator vs character_narrator)
-        string? matchKey = null;
-        foreach (var k in seeds!.Keys)
-        {
-            if (string.Equals(k, charKey, StringComparison.OrdinalIgnoreCase))
-            {
-                matchKey = k;
-                break;
-            }
-        }
+        string? matchKey = seeds.Keys.FirstOrDefault(k =>
+            string.Equals(k, charKey, StringComparison.OrdinalIgnoreCase));
         if (matchKey is null)
             return;
 
@@ -4573,7 +4619,7 @@ public sealed partial class ProjectStore
     {
         var dir = GetProjectDir(projectId);
         var stateName = "pipeline_state.json";
-        var metaPath = Path.Combine(dir, "project.json");
+        var metaPath = Path.Combine(dir, StoreLit.ProjectJson);
         if (File.Exists(metaPath))
         {
             try
@@ -4607,7 +4653,7 @@ public sealed partial class ProjectStore
                 state.SortedByCharacter = ReadJsonBool(cp, "sorted_by_character");
                 if (cp.TryGetProperty("sorted_at", out var at) && at.ValueKind == JsonValueKind.String)
                     state.SortedAt = at.GetString();
-                if (cp.TryGetProperty("source", out var src) && src.ValueKind == JsonValueKind.String &&
+                if (cp.TryGetProperty(StoreLit.Source, out var src) && src.ValueKind == JsonValueKind.String &&
                     src.GetString() is { Length: > 0 } ss)
                     state.Source = ss;
                 if (cp.TryGetProperty("characters_updated", out var cu) && cu.TryGetInt32(out var n))
@@ -4649,12 +4695,12 @@ public sealed partial class ProjectStore
     {
         var path = ResolvePipelineStatePath(projectId);
         var merged = LoadPipelineStateDict(path);
-        var now = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss");
+        var now = DateTime.Now.ToString(StoreLit.IsoDateTime);
         merged["character_plates"] = new Dictionary<string, object?>
         {
             ["sorted_by_character"] = true,
             ["sorted_at"] = now,
-            ["source"] = "scenes.json#character_seed_tokens.design_reference_images",
+            [StoreLit.Source] = "scenes.json#character_seed_tokens.design_reference_images",
             ["characters_updated"] = charactersUpdated,
             ["method"] = method,
         };
@@ -4676,7 +4722,7 @@ public sealed partial class ProjectStore
         {
             ["sorted_by_character"] = false,
             ["sorted_at"] = null,
-            ["source"] = "scenes.json#character_seed_tokens.design_reference_images",
+            [StoreLit.Source] = "scenes.json#character_seed_tokens.design_reference_images",
             ["characters_updated"] = 0,
             ["method"] = null,
         };
@@ -4710,7 +4756,7 @@ public sealed partial class ProjectStore
         var merged = LoadPipelineStateDict(path);
 
         var subs = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-        if (merged.TryGetValue("book_substeps", out var existing) && existing is not null)
+        if (merged.TryGetValue(StoreLit.BookSubsteps, out var existing) && existing is not null)
         {
             try
             {
@@ -4725,13 +4771,13 @@ public sealed partial class ProjectStore
         var entry = new Dictionary<string, object?>
         {
             ["done"] = true,
-            ["ts"] = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss"),
+            ["ts"] = DateTime.Now.ToString(StoreLit.IsoDateTime),
         };
         if (stage == BookSubstepKeys.FitLength && targetMinutes is > 0)
             entry["target_minutes"] = targetMinutes;
         subs[stage] = entry;
 
-        merged["book_substeps"] = subs;
+        merged[StoreLit.BookSubsteps] = subs;
         File.WriteAllText(path, JsonSerializer.Serialize(merged, JsonDefaults.Indented) + "\n");
     }
 
@@ -4744,7 +4790,7 @@ public sealed partial class ProjectStore
         var path = ResolvePipelineStatePath(projectId);
         if (!File.Exists(path)) return;
         var merged = LoadPipelineStateDict(path);
-        if (!merged.Remove("book_substeps")) return;
+        if (!merged.Remove(StoreLit.BookSubsteps)) return;
         File.WriteAllText(path, JsonSerializer.Serialize(merged, JsonDefaults.Indented) + "\n");
     }
 
@@ -4757,7 +4803,7 @@ public sealed partial class ProjectStore
             var path = ResolvePipelineStatePath(projectId);
             if (!File.Exists(path)) return status;
             using var doc = JsonDocument.Parse(File.ReadAllText(path));
-            if (!doc.RootElement.TryGetProperty("book_substeps", out var subs) ||
+            if (!doc.RootElement.TryGetProperty(StoreLit.BookSubsteps, out var subs) ||
                 subs.ValueKind != JsonValueKind.Object)
                 return status;
 
@@ -4824,7 +4870,7 @@ public sealed partial class ProjectStore
         revs[charKey] = new Dictionary<string, object?>
         {
             ["revision"] = prevRev + 1,
-            ["updated_at"] = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss"),
+            ["updated_at"] = DateTime.Now.ToString(StoreLit.IsoDateTime),
             ["reason"] = reason,
         };
         merged["character_revisions"] = revs;
@@ -4842,7 +4888,7 @@ public sealed partial class ProjectStore
         if (seeds.TryGetValue(charKey, out var info) && IsVoiceOnly(info))
             return null;
         var fileName = $"{charKey.ToLowerInvariant()}_variant_0{variantIndex}.png";
-        var full = Path.Combine(GetProjectDir(projectId), "assets", "characters", fileName);
+        var full = Path.Combine(GetProjectDir(projectId), StoreLit.Assets, StoreLit.Characters, fileName);
         return File.Exists(full) && new FileInfo(full).Length >= 64 ? full : null;
     }
 
@@ -4863,7 +4909,7 @@ public sealed partial class ProjectStore
         var rel = bookRefs[bookIndex];
         var full = ResolveProjectRelativePath(projectDir, rel);
         if (full is not null) return full;
-        var byName = Path.Combine(projectDir, "assets", "characters", Path.GetFileName(rel));
+        var byName = Path.Combine(projectDir, StoreLit.Assets, StoreLit.Characters, Path.GetFileName(rel));
         return File.Exists(byName) ? byName : null;
     }
 
@@ -4883,8 +4929,8 @@ public sealed partial class ProjectStore
                 var s = x.GetString();
                 if (string.IsNullOrWhiteSpace(s)) continue;
                 if (IsTextOnlyPlatePath(s)) continue;
-                if (!bookRefs.Contains(s!, StringComparer.OrdinalIgnoreCase))
-                    bookRefs.Add(s!);
+                if (!bookRefs.Contains(s, StringComparer.OrdinalIgnoreCase))
+                    bookRefs.Add(s);
             }
             if (bookRefs.Count > 0)
                 break; // prefer design_reference_images when present
@@ -4938,18 +4984,18 @@ public sealed partial class ProjectStore
     {
         if (sceneEl is not { ValueKind: JsonValueKind.Object } s)
             return false;
-        if (ReadJsonBool(s, "is_credits"))
+        if (ReadJsonBool(s, StoreLit.IsCredits))
             return true;
-        if (s.TryGetProperty("setting", out var set) &&
-            (set.GetString() ?? "").Contains("CREDITS", StringComparison.OrdinalIgnoreCase))
+        if (s.TryGetProperty(StoreLit.Setting, out var set) &&
+            (set.GetString() ?? "").Contains(StoreLit.Credits, StringComparison.OrdinalIgnoreCase))
             return true;
         if (s.TryGetProperty("scene_heading", out var sh) &&
-            (sh.GetString() ?? "").Contains("CREDITS", StringComparison.OrdinalIgnoreCase))
+            (sh.GetString() ?? "").Contains(StoreLit.Credits, StringComparison.OrdinalIgnoreCase))
             return true;
-        if (s.TryGetProperty("veo_clips", out var clips) && clips.ValueKind == JsonValueKind.Array)
+        if (s.TryGetProperty(StoreLit.VeoClips, out var clips) && clips.ValueKind == JsonValueKind.Array)
         {
             foreach (var c in clips.EnumerateArray())
-                if (c.ValueKind == JsonValueKind.Object && ReadJsonBool(c, "is_credits"))
+                if (c.ValueKind == JsonValueKind.Object && ReadJsonBool(c, StoreLit.IsCredits))
                     return true;
         }
         return false;
@@ -4965,13 +5011,13 @@ public sealed partial class ProjectStore
     internal static bool IsCreditsScene(IReadOnlyDictionary<string, object?>? scene)
     {
         if (scene is null) return false;
-        if (DictBoolTrue(scene, "is_credits")) return true;
-        if (DictContains(scene, "setting", "CREDITS")) return true;
-        if (DictContains(scene, "scene_heading", "CREDITS")) return true;
-        if (scene.TryGetValue("veo_clips", out var clipsObj) && clipsObj is IEnumerable<object?> clips)
+        if (DictBoolTrue(scene, StoreLit.IsCredits)) return true;
+        if (DictContains(scene, StoreLit.Setting, StoreLit.Credits)) return true;
+        if (DictContains(scene, "scene_heading", StoreLit.Credits)) return true;
+        if (scene.TryGetValue(StoreLit.VeoClips, out var clipsObj) && clipsObj is IEnumerable<object?> clips)
         {
             foreach (var c in clips)
-                if (c is IReadOnlyDictionary<string, object?> cd && DictBoolTrue(cd, "is_credits"))
+                if (c is IReadOnlyDictionary<string, object?> cd && DictBoolTrue(cd, StoreLit.IsCredits))
                     return true;
         }
         return false;
@@ -5010,15 +5056,15 @@ public sealed partial class ProjectStore
         try
         {
         if (bp is null ||
-            !bp.RootElement.TryGetProperty("scenes", out var scenesEl) ||
+            !bp.RootElement.TryGetProperty(StoreLit.Scenes, out var scenesEl) ||
             scenesEl.ValueKind != JsonValueKind.Array)
         {
             return Array.Empty<SceneSummary>();
         }
 
         var projectDir = await GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
-        var videoDir = Path.Combine(projectDir, "assets", "video");
-        var scenesDir = Path.Combine(projectDir, "assets", "scenes");
+        var videoDir = Path.Combine(projectDir, StoreLit.Assets, StoreLit.Video);
+        var scenesDir = Path.Combine(projectDir, StoreLit.Assets, StoreLit.Scenes);
         var videoIndex = await GetVideoIndexWithParentFallbackAsync(projectId, videoDir, ct).ConfigureAwait(false);
         var scenesIndex = await GetDirIndexAsync(scenesDir, ct).ConfigureAwait(false);
 
@@ -5054,7 +5100,7 @@ public sealed partial class ProjectStore
         if (_mediaRegistry is not null)
         {
             foreach (var mo in await _mediaRegistry.ListProjectAsync(projectId, ct).ConfigureAwait(false))
-                if (string.Equals(mo.Kind, "music", StringComparison.OrdinalIgnoreCase) && mo.Scene is int msc)
+                if (string.Equals(mo.Kind, StoreLit.Music, StringComparison.OrdinalIgnoreCase) && mo.Scene is int msc)
                     musicScenes.Add(msc);
         }
 
@@ -5064,7 +5110,7 @@ public sealed partial class ProjectStore
             if (!s.TryGetProperty(JsonKeys.SceneNumber, out var snEl) || !snEl.TryGetInt32(out var sn))
                 continue;
 
-            var clips = s.TryGetProperty("veo_clips", out var vc) && vc.ValueKind == JsonValueKind.Array
+            var clips = s.TryGetProperty(StoreLit.VeoClips, out var vc) && vc.ValueKind == JsonValueKind.Array
                 ? vc.EnumerateArray().ToList()
                 : new List<JsonElement>();
             var nClips = clips.Count;
@@ -5106,9 +5152,9 @@ public sealed partial class ProjectStore
             void AddChar(string? name)
             {
                 if (!string.IsNullOrWhiteSpace(name) && !chars.Contains(name, StringComparer.OrdinalIgnoreCase))
-                    chars.Add(name!);
+                    chars.Add(name);
             }
-            if (s.TryGetProperty("characters_on_screen", out var cos) && cos.ValueKind == JsonValueKind.Array)
+            if (s.TryGetProperty(StoreLit.CharactersOnScreen, out var cos) && cos.ValueKind == JsonValueKind.Array)
             {
                 foreach (var x in cos.EnumerateArray())
                     AddChar(x.GetString());
@@ -5117,7 +5163,7 @@ public sealed partial class ProjectStore
             // only appears mid-scene in specific clips) — union in each clip's own list too.
             foreach (var c in clips)
             {
-                if (c.TryGetProperty("characters_on_screen", out var clipCos) && clipCos.ValueKind == JsonValueKind.Array)
+                if (c.TryGetProperty(StoreLit.CharactersOnScreen, out var clipCos) && clipCos.ValueKind == JsonValueKind.Array)
                 {
                     foreach (var x in clipCos.EnumerateArray())
                         AddChar(x.GetString());
@@ -5125,18 +5171,18 @@ public sealed partial class ProjectStore
             }
 
             var locs = new List<string>();
-            if (s.TryGetProperty("location_ids", out var lids) && lids.ValueKind == JsonValueKind.Array)
+            if (s.TryGetProperty(StoreLit.LocationIds, out var lids) && lids.ValueKind == JsonValueKind.Array)
             {
                 foreach (var x in lids.EnumerateArray())
                 {
                     var name = x.GetString();
                     if (!string.IsNullOrWhiteSpace(name))
-                        locs.Add(name!);
+                        locs.Add(name);
                 }
             }
 
             string? primaryLoc = null;
-            if (s.TryGetProperty("primary_location_id", out var pl) &&
+            if (s.TryGetProperty(StoreLit.PrimaryLocationId, out var pl) &&
                 pl.GetString() is { Length: > 0 } plId)
             {
                 primaryLoc = plId;
@@ -5150,7 +5196,7 @@ public sealed partial class ProjectStore
                 : complete ? "complete" : "partial";
             var isApproved = approvedScenes?.Contains($"S{sn:D2}") == true;
 
-            var settingText = s.TryGetProperty("setting", out var set) ? set.GetString() ?? "" : "";
+            var settingText = s.TryGetProperty(StoreLit.Setting, out var set) ? set.GetString() ?? "" : "";
             var headingText = s.TryGetProperty("scene_heading", out var shd) ? shd.GetString() ?? "" : "";
             var isCredits = IsCreditsScene(s);
 
@@ -5159,7 +5205,7 @@ public sealed partial class ProjectStore
             {
                 var bpPathForStale = FindBlueprintPathSync(projectId);
                 if (onDisk > 0 && bpPathForStale is not null && File.Exists(bpPathForStale)
-                    && s.TryGetProperty("clips", out var clipsElStale) && clipsElStale.ValueKind == JsonValueKind.Array)
+                    && s.TryGetProperty(StoreLit.Clips, out var clipsElStale) && clipsElStale.ValueKind == JsonValueKind.Array)
                 {
                     var bpM = File.GetLastWriteTimeUtc(bpPathForStale);
                     foreach (var cEl in clipsElStale.EnumerateArray())
@@ -5226,7 +5272,7 @@ public sealed partial class ProjectStore
             return null;
 
         JsonElement? sceneEl = null;
-        if (bp.RootElement.TryGetProperty("scenes", out var scenesEl) &&
+        if (bp.RootElement.TryGetProperty(StoreLit.Scenes, out var scenesEl) &&
             scenesEl.ValueKind == JsonValueKind.Array)
         {
             foreach (var s in scenesEl.EnumerateArray())
@@ -5246,15 +5292,15 @@ public sealed partial class ProjectStore
 
         var sEl = sceneEl.Value;
         var projectDir = await GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
-        var videoDir = Path.Combine(projectDir, "assets", "video");
-        var scenesDir = Path.Combine(projectDir, "assets", "scenes");
+        var videoDir = Path.Combine(projectDir, StoreLit.Assets, StoreLit.Video);
+        var scenesDir = Path.Combine(projectDir, StoreLit.Assets, StoreLit.Scenes);
         var videoIndex = await GetVideoIndexWithParentFallbackAsync(projectId, videoDir, ct).ConfigureAwait(false);
         var scenesIndex = await GetDirIndexAsync(scenesDir, ct).ConfigureAwait(false);
 
         var clips = new List<ClipSummary>();
         var duplicateClipNumbers = new List<int>();
         var seenClipNumbers = new HashSet<int>();
-        if (sEl.TryGetProperty("veo_clips", out var vc) && vc.ValueKind == JsonValueKind.Array)
+        if (sEl.TryGetProperty(StoreLit.VeoClips, out var vc) && vc.ValueKind == JsonValueKind.Array)
         {
             foreach (var c in vc.EnumerateArray())
             {
@@ -5296,11 +5342,11 @@ public sealed partial class ProjectStore
                 var hasAp = c.TryGetProperty(JsonKeys.AudioPayload, out var ap) && ap.ValueKind == JsonValueKind.Object;
                 if (hasAp)
                 {
-                    if (ap.TryGetProperty("dialogue", out var d))
+                    if (ap.TryGetProperty(JsonKeys.Dialogue, out var d))
                         dialogue = d.GetString() ?? "";
-                    if (ap.TryGetProperty("speaker", out var sp))
+                    if (ap.TryGetProperty(JsonKeys.Speaker, out var sp))
                         speaker = sp.GetString();
-                    if (ap.TryGetProperty("delivery", out var del))
+                    if (ap.TryGetProperty(StoreLit.Delivery, out var del))
                         delivery = del.GetString();
                     if (ap.TryGetProperty("pronunciation_hint", out var ph))
                         pronunciationHint = ph.GetString();
@@ -5310,19 +5356,19 @@ public sealed partial class ProjectStore
                     if (ap.TryGetProperty("secondary_dialogue", out var sdlg))
                         secondaryDialogue = sdlg.GetString();
                 }
-                if (string.IsNullOrWhiteSpace(dialogue) && c.TryGetProperty("dialogue", out var rootD))
+                if (string.IsNullOrWhiteSpace(dialogue) && c.TryGetProperty(JsonKeys.Dialogue, out var rootD))
                 {
                     dialogue = rootD.GetString() ?? "";
                 }
-                if (string.IsNullOrWhiteSpace(dialogue) && c.TryGetProperty("audio_script", out var rootAS))
+                if (string.IsNullOrWhiteSpace(dialogue) && c.TryGetProperty(StoreLit.AudioScript, out var rootAS))
                 {
                     dialogue = rootAS.GetString() ?? "";
                 }
-                if (string.IsNullOrWhiteSpace(speaker) && c.TryGetProperty("speaker", out var rootSp))
+                if (string.IsNullOrWhiteSpace(speaker) && c.TryGetProperty(JsonKeys.Speaker, out var rootSp))
                 {
                     speaker = rootSp.GetString();
                 }
-                if (string.IsNullOrWhiteSpace(delivery) && c.TryGetProperty("delivery", out var rootDel))
+                if (string.IsNullOrWhiteSpace(delivery) && c.TryGetProperty(StoreLit.Delivery, out var rootDel))
                 {
                     delivery = rootDel.GetString();
                 }
@@ -5334,7 +5380,7 @@ public sealed partial class ProjectStore
                 dialogue = ClipVideoPromptBuilder.SanitizeSpokenDialogue(dialogue);
 
                 var dur = 0;
-                if (c.TryGetProperty("duration_seconds", out var dEl) && dEl.TryGetInt32(out var ds))
+                if (c.TryGetProperty(StoreLit.DurationSeconds, out var dEl) && dEl.TryGetInt32(out var ds))
                     dur = ds;
 
                 var clipPath = onDisk ? ResolveClipVideoPath(projectId, sceneNumber, cn) : null;
@@ -5346,7 +5392,7 @@ public sealed partial class ProjectStore
                     actualClip = await _duration.GetDurationSecondsAsync(clipPath, ct).ConfigureAwait(false);
                 }
 
-                var visualPrompt = c.TryGetProperty("visual_prompt", out var vp) ? vp.GetString() ?? "" : "";
+                var visualPrompt = c.TryGetProperty(StoreLit.VisualPrompt, out var vp) ? vp.GetString() ?? "" : "";
                 visualPrompt = ClipVideoPromptBuilder.SanitizeSpokenQuotesInVisual(visualPrompt);
 
                 var stage1BeatId = c.TryGetProperty("stage1_beat_id", out var s1b) ? s1b.GetString() : null;
@@ -5362,7 +5408,7 @@ public sealed partial class ProjectStore
                 if (string.IsNullOrWhiteSpace(stage1BeatId) &&
                     (!string.IsNullOrWhiteSpace(dialogue) || !string.IsNullOrWhiteSpace(visualPrompt)))
                 {
-                    var kind = string.IsNullOrWhiteSpace(dialogue) ? "action" : "dialogue";
+                    var kind = string.IsNullOrWhiteSpace(dialogue) ? "action" : JsonKeys.Dialogue;
                     stage1BeatId = PageToMovie.Core.Utils.StableBeatId.ForContent(
                         $"S{sceneNumber:D2}", kind, speaker, string.IsNullOrWhiteSpace(dialogue) ? visualPrompt : dialogue);
                 }
@@ -5395,12 +5441,12 @@ public sealed partial class ProjectStore
                         ? secondaryDialogue
                         : ClipVideoPromptBuilder.SanitizeSpokenDialogue(secondaryDialogue),
                     PronunciationHint = pronunciationHint,
-                    CharactersOnScreen = c.TryGetProperty("characters_on_screen", out var clipCos) &&
+                    CharactersOnScreen = c.TryGetProperty(StoreLit.CharactersOnScreen, out var clipCos) &&
                                          clipCos.ValueKind == JsonValueKind.Array
                         ? clipCos.EnumerateArray()
                             .Select(x => x.GetString())
                             .Where(x => !string.IsNullOrWhiteSpace(x))
-                            .Select(x => x!)
+                            .Select(x => x)
                             .ToList()
                         : new List<string>(),
                     ColorPalette = c.TryGetProperty("color_palette", out var cp) ? cp.GetString() : null,
@@ -5439,30 +5485,29 @@ public sealed partial class ProjectStore
             var clipPaths = clips
                 .Where(c => c.OnDisk)
                 .Select(c => ResolveClipVideoPath(projectId, sceneNumber, c.ClipNumber))
-                .Where(p => p is not null)
-                .Cast<string>();
+                .OfType<string>();
             actual = await _duration.GetSceneActualDurationSecondsAsync(compositePath, clipPaths, ct).ConfigureAwait(false);
         }
 
         var chars = new List<string>();
-        if (sEl.TryGetProperty("characters_on_screen", out var cos) && cos.ValueKind == JsonValueKind.Array)
+        if (sEl.TryGetProperty(StoreLit.CharactersOnScreen, out var cos) && cos.ValueKind == JsonValueKind.Array)
         {
             foreach (var x in cos.EnumerateArray())
             {
                 var name = x.GetString();
                 if (!string.IsNullOrWhiteSpace(name))
-                    chars.Add(name!);
+                    chars.Add(name);
             }
         }
 
         var locs = new List<string>();
-        if (sEl.TryGetProperty("location_ids", out var lids) && lids.ValueKind == JsonValueKind.Array)
+        if (sEl.TryGetProperty(StoreLit.LocationIds, out var lids) && lids.ValueKind == JsonValueKind.Array)
         {
             foreach (var x in lids.EnumerateArray())
             {
                 var name = x.GetString();
                 if (!string.IsNullOrWhiteSpace(name))
-                    locs.Add(name!);
+                    locs.Add(name);
             }
         }
 
@@ -5493,7 +5538,7 @@ public sealed partial class ProjectStore
         var detail = new SceneDetail
         {
             SceneNumber = sceneNumber,
-            Setting = sEl.TryGetProperty("setting", out var set) ? set.GetString() ?? "" : "",
+            Setting = sEl.TryGetProperty(StoreLit.Setting, out var set) ? set.GetString() ?? "" : "",
             PlannedDurationSeconds = planned,
             ActualDurationSeconds = actual,
             DurationSeconds = actual ?? planned,
@@ -5507,7 +5552,7 @@ public sealed partial class ProjectStore
                 : null,
             CharactersOnScreen = chars,
             LocationIds = locs,
-            PrimaryLocationId = sEl.TryGetProperty("primary_location_id", out var pl)
+            PrimaryLocationId = sEl.TryGetProperty(StoreLit.PrimaryLocationId, out var pl)
                 ? pl.GetString()
                 : null,
             PrimaryLocationLocked = false,
@@ -5551,8 +5596,8 @@ public sealed partial class ProjectStore
     {
         var videoDir = Path.Combine(
             GetProjectDir(projectId),
-            "assets",
-            "video");
+            StoreLit.Assets,
+            StoreLit.Video);
 
         if (!Directory.Exists(videoDir)) return null;
 
@@ -5560,7 +5605,7 @@ public sealed partial class ProjectStore
         var pattern = $"scene_{sceneNumber:D2}_clip_{clipNumber:D2}*.mp4";
         var latestTake = new DirectoryInfo(videoDir)
             .EnumerateFiles(pattern)
-            .Where(fi => fi.Length >= 1024 && !fi.Name.StartsWith("_"))
+            .Where(fi => fi.Length >= 1024 && !fi.Name.StartsWith('_'))
             .OrderByDescending(fi => fi.LastWriteTimeUtc)
             .FirstOrDefault();
 
@@ -5599,14 +5644,14 @@ public sealed partial class ProjectStore
     /// </summary>
     public string? ResolvePreviewMoviePath(string projectId)
     {
-        var path = Path.Combine(GetProjectDir(projectId), "assets", "movie_preview.mp4");
+        var path = Path.Combine(GetProjectDir(projectId), StoreLit.Assets, "movie_preview.mp4");
         return File.Exists(path) && new FileInfo(path).Length >= 1024 ? path : null;
     }
 
     /// <summary>Last successful YouTube upload for a project, or null if never uploaded.</summary>
     public async Task<YouTubeUploadInfo?> GetYouTubeUploadInfoAsync(string projectId, CancellationToken ct = default)
     {
-        var path = Path.Combine(await GetProjectDirAsync(projectId, ct).ConfigureAwait(false), "assets", "youtube_upload.json");
+        var path = Path.Combine(await GetProjectDirAsync(projectId, ct).ConfigureAwait(false), StoreLit.Assets, "youtube_upload.json");
         if (!File.Exists(path))
             return null;
         try
@@ -5623,7 +5668,7 @@ public sealed partial class ProjectStore
 
     public async Task SaveYouTubeUploadInfoAsync(string projectId, YouTubeUploadInfo info, CancellationToken ct = default)
     {
-        var dir = Path.Combine(await GetProjectDirAsync(projectId, ct).ConfigureAwait(false), "assets");
+        var dir = Path.Combine(await GetProjectDirAsync(projectId, ct).ConfigureAwait(false), StoreLit.Assets);
         Directory.CreateDirectory(dir);
         await File.WriteAllTextAsync(
             Path.Combine(dir, "youtube_upload.json"),
@@ -5634,8 +5679,8 @@ public sealed partial class ProjectStore
     public string ResolveScenesJsonPath(string projectId)
     {
         var dir = GetProjectDir(projectId);
-        var preferred = "scenes.json";
-        var metaPath = Path.Combine(dir, "project.json");
+        var preferred = StoreLit.ScenesJson;
+        var metaPath = Path.Combine(dir, StoreLit.ProjectJson);
         if (File.Exists(metaPath))
         {
             try
@@ -5645,7 +5690,7 @@ public sealed partial class ProjectStore
                 {
                     var n = sf.GetString();
                     if (!string.IsNullOrWhiteSpace(n))
-                        preferred = n!;
+                        preferred = n;
                 }
             }
             catch { /* ignore */ }
@@ -5654,9 +5699,9 @@ public sealed partial class ProjectStore
         var full = Path.Combine(dir, preferred);
         if (File.Exists(full))
             return full;
-        if (!string.Equals(preferred, "scenes.json", StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(preferred, StoreLit.ScenesJson, StringComparison.OrdinalIgnoreCase))
         {
-            var standard = Path.Combine(dir, "scenes.json");
+            var standard = Path.Combine(dir, StoreLit.ScenesJson);
             if (File.Exists(standard))
                 return standard;
         }
@@ -5968,7 +6013,7 @@ public sealed partial class ProjectStore
         CancellationToken ct = default)
     {
         var dir = await GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
-        var source = Path.Combine(dir, "source");
+        var source = Path.Combine(dir, StoreLit.Source);
         Directory.CreateDirectory(source);
 
         var safe = Path.GetFileName(fileName);
@@ -6016,7 +6061,7 @@ public sealed partial class ProjectStore
 
     private BookSourceStatus ReadBookSourceStatus(string projectId, string projectDir)
     {
-        var source = Path.Combine(projectDir, "source");
+        var source = Path.Combine(projectDir, StoreLit.Source);
         var bookPath = Path.Combine(source, "book_full.txt");
         var metaPath = Path.Combine(source, "extract_meta.json");
         var imgDir = Path.Combine(source, "book_images");
@@ -6105,7 +6150,7 @@ public sealed partial class ProjectStore
                     {
                         var s = n.GetString();
                         if (!string.IsNullOrWhiteSpace(s))
-                            status.Notes.Add(s!);
+                            status.Notes.Add(s);
                     }
                 }
             }
@@ -6184,7 +6229,7 @@ public sealed partial class ProjectStore
         // Re-run path: existing scenes.json + book text is enough even if prepare still flags "not ready"
         try
         {
-            var scenesPath = Path.Combine(projectDir, "scenes.json");
+            var scenesPath = Path.Combine(projectDir, StoreLit.ScenesJson);
             if (!status.ReadyForStage1 &&
                 status.BookTextExists &&
                 status.BookTextBytes > 200 &&
@@ -6218,7 +6263,7 @@ public sealed partial class ProjectStore
         }
         catch { /* ignore */ }
 
-        return new Stage1Status { Present = false, ScenesFile = "scenes.json" };
+        return new Stage1Status { Present = false, ScenesFile = StoreLit.ScenesJson };
     }
 
     private Stage2PlanStatus ReadStage2PlanStatus(string projectId, Stage1Status stage1)
@@ -6240,12 +6285,12 @@ public sealed partial class ProjectStore
         {
             using var doc = JsonDocument.Parse(File.ReadAllText(bpPath));
             var root = doc.RootElement;
-            if (root.TryGetProperty("scenes", out var scenes) && scenes.ValueKind == JsonValueKind.Array)
+            if (root.TryGetProperty(StoreLit.Scenes, out var scenes) && scenes.ValueKind == JsonValueKind.Array)
             {
                 status.Stage2Scenes = scenes.GetArrayLength();
                 foreach (var s in scenes.EnumerateArray())
                 {
-                    if (s.TryGetProperty("veo_clips", out var vc) && vc.ValueKind == JsonValueKind.Array)
+                    if (s.TryGetProperty(StoreLit.VeoClips, out var vc) && vc.ValueKind == JsonValueKind.Array)
                         status.Stage2Clips += vc.GetArrayLength();
                 }
             }
@@ -6268,7 +6313,7 @@ public sealed partial class ProjectStore
             {
                 try
                 {
-                    status.LastCompletedAt = File.GetLastWriteTime(bpPath).ToString("yyyy-MM-ddTHH:mm:ss");
+                    status.LastCompletedAt = File.GetLastWriteTime(bpPath).ToString(StoreLit.IsoDateTime);
                 }
                 catch { /* ignore */ }
             }
@@ -6297,10 +6342,10 @@ public sealed partial class ProjectStore
         // Remux writes scene_XX.mp4; older/python path used scene_XX_complete.mp4
         foreach (var candidate in new[]
                  {
-                     Path.Combine(dir, "assets", "video", $"scene_{sceneNumber:D2}.mp4"),
-                     Path.Combine(dir, "assets", "scenes", $"scene_{sceneNumber:D2}.mp4"),
-                     Path.Combine(dir, "assets", "video", $"scene_{sceneNumber:D2}_complete.mp4"),
-                     Path.Combine(dir, "assets", "scenes", $"scene_{sceneNumber:D2}_complete.mp4"),
+                     Path.Combine(dir, StoreLit.Assets, StoreLit.Video, $"scene_{sceneNumber:D2}.mp4"),
+                     Path.Combine(dir, StoreLit.Assets, StoreLit.Scenes, $"scene_{sceneNumber:D2}.mp4"),
+                     Path.Combine(dir, StoreLit.Assets, StoreLit.Video, $"scene_{sceneNumber:D2}_complete.mp4"),
+                     Path.Combine(dir, StoreLit.Assets, StoreLit.Scenes, $"scene_{sceneNumber:D2}_complete.mp4"),
                  })
         {
             if (File.Exists(candidate) && new FileInfo(candidate).Length >= 1024)
@@ -6317,7 +6362,7 @@ public sealed partial class ProjectStore
     {
         var result = new WipFreshness();
         var projectDir = GetProjectDir(projectId);
-        var videoDir = Path.Combine(projectDir, "assets", "video");
+        var videoDir = Path.Combine(projectDir, StoreLit.Assets, StoreLit.Video);
 
         // Physical path even when file missing (for manifest path)
         var wipFullPath = ResolveWipMovieFullPath(projectId);
@@ -6327,11 +6372,11 @@ public sealed partial class ProjectStore
 
         if (wipExists)
         {
-            var fi = new FileInfo(wipFullPath!);
+            var fi = new FileInfo(wipFullPath);
             result.Exists = true;
-            result.Path = Path.GetRelativePath(projectDir, wipFullPath!).Replace('\\', '/');
+            result.Path = Path.GetRelativePath(projectDir, wipFullPath).Replace('\\', '/');
             result.Bytes = fi.Length;
-            result.UpdatedAt = fi.LastWriteTime.ToString("yyyy-MM-ddTHH:mm:ss");
+            result.UpdatedAt = fi.LastWriteTime.ToString(StoreLit.IsoDateTime);
         }
         else
         {
@@ -6355,13 +6400,9 @@ public sealed partial class ProjectStore
 
         // Stale = missing composite, clips newer, no .sources.json,
         // or manifest clip set ≠ current exact/blueprint clips.
-        var staleScenes = new List<int>();
-        foreach (var sn in scenesToRemux)
-        {
-            if (IsSceneCompositeDirty(projectId, sn, videoDir, clipsByScene))
-                staleScenes.Add(sn);
-        }
-        result.StaleScenes = staleScenes;
+        result.StaleScenes = scenesToRemux
+            .Where(sn => IsSceneCompositeDirty(projectId, sn, videoDir, clipsByScene))
+            .ToList();
 
         // WIP sources = Stage 2 scene composites (blueprint-filtered when available)
         var currentSources = ListWipSourceFilesForProject(projectId, videoDir, blueprintScenes);
@@ -6380,11 +6421,11 @@ public sealed partial class ProjectStore
             ? new FileInfo(bpPath).LastWriteTimeUtc
             : null;
 
-        if (staleScenes.Count > 0)
+        if (result.StaleScenes.Count > 0)
         {
             result.Stale = true;
             result.Reason =
-                $"Scene composite(s) dirty (missing/out of date): {string.Join(", ", staleScenes.Select(n => $"S{n:D2}"))}";
+                $"Scene composite(s) dirty (missing/out of date): {string.Join(", ", result.StaleScenes.Select(n => $"S{n:D2}"))}";
             return result;
         }
 
@@ -6499,7 +6540,7 @@ public sealed partial class ProjectStore
         string? videoDir = null,
         Dictionary<int, List<FileInfo>>? clipsByScene = null)
     {
-        videoDir ??= Path.Combine(GetProjectDir(projectId), "assets", "video");
+        videoDir ??= Path.Combine(GetProjectDir(projectId), StoreLit.Assets, StoreLit.Video);
         clipsByScene ??= IndexExactClipsByScene(videoDir);
 
         var expectedNames = GetExpectedClipFileNames(projectId, sceneNum, videoDir, clipsByScene);
@@ -6533,7 +6574,7 @@ public sealed partial class ProjectStore
         try
         {
             using var doc = JsonDocument.Parse(File.ReadAllText(manifestPath));
-            if (!doc.RootElement.TryGetProperty("clips", out var clipsEl) ||
+            if (!doc.RootElement.TryGetProperty(StoreLit.Clips, out var clipsEl) ||
                 clipsEl.ValueKind != JsonValueKind.Array)
                 return true;
 
@@ -6568,9 +6609,8 @@ public sealed partial class ProjectStore
         var names = new List<string>();
         if (clipsByScene.TryGetValue(sceneNum, out var files))
         {
-            foreach (var fi in files.OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase))
+            foreach (var name in files.OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase).Select(fi => fi.Name))
             {
-                var name = fi.Name;
                 if (!ClipFileNaming.IsExactClipFileName(name)) continue;
                 if (allowed is { Count: > 0 } &&
                     (!int.TryParse(name.AsSpan(14, 2), out var cn) || !allowed.Contains(cn)))
@@ -6603,14 +6643,14 @@ public sealed partial class ProjectStore
         {
             using var bp = LoadBlueprintSync(projectId);
             if (bp is null) return null;
-            if (!bp.RootElement.TryGetProperty("scenes", out var scenes) ||
+            if (!bp.RootElement.TryGetProperty(StoreLit.Scenes, out var scenes) ||
                 scenes.ValueKind != JsonValueKind.Array)
                 return null;
             foreach (var s in scenes.EnumerateArray())
             {
                 var sn = s.TryGetProperty(JsonKeys.SceneNumber, out var snEl) && snEl.TryGetInt32(out var v) ? v : 0;
                 if (sn != sceneNum) continue;
-                if (!s.TryGetProperty("veo_clips", out var clips) || clips.ValueKind != JsonValueKind.Array)
+                if (!s.TryGetProperty(StoreLit.VeoClips, out var clips) || clips.ValueKind != JsonValueKind.Array)
                     return null;
                 var set = new HashSet<int>();
                 foreach (var c in clips.EnumerateArray())
@@ -6633,7 +6673,7 @@ public sealed partial class ProjectStore
         {
             using var bp = LoadBlueprintSync(projectId);
             if (bp is null) return null;
-            if (!bp.RootElement.TryGetProperty("scenes", out var scenes) ||
+            if (!bp.RootElement.TryGetProperty(StoreLit.Scenes, out var scenes) ||
                 scenes.ValueKind != JsonValueKind.Array)
                 return null;
             var list = new List<int>();
@@ -6652,7 +6692,7 @@ public sealed partial class ProjectStore
     /// </summary>
     public List<int> ListScenesToRemuxForWip(string projectId) =>
         ListScenesToRemuxForWip(
-            IndexExactClipsByScene(Path.Combine(GetProjectDir(projectId), "assets", "video")),
+            IndexExactClipsByScene(Path.Combine(GetProjectDir(projectId), StoreLit.Assets, StoreLit.Video)),
             GetBlueprintSceneNumbers(projectId));
 
     private static List<int> ListScenesToRemuxForWip(
@@ -6688,7 +6728,7 @@ public sealed partial class ProjectStore
     /// <summary>WIP concat inputs: scene composites for Stage 2 scenes only when blueprint exists.</summary>
     public List<string> ListWipSourceFilesForProject(string projectId)
     {
-        var videoDir = Path.Combine(GetProjectDir(projectId), "assets", "video");
+        var videoDir = Path.Combine(GetProjectDir(projectId), StoreLit.Assets, StoreLit.Video);
         return ListWipSourceFilesForProject(projectId, videoDir, GetBlueprintSceneNumbers(projectId));
     }
 
@@ -6738,7 +6778,7 @@ public sealed partial class ProjectStore
             wipRel = s.Replace('\\', '/').TrimStart('/');
 
         if (wipRel.Contains("..", StringComparison.Ordinal))
-            return Path.Combine(projectDir, "assets", "movie_wip.mp4");
+            return Path.Combine(projectDir, StoreLit.Assets, "movie_wip.mp4");
 
         return Path.IsPathRooted(wipRel)
             ? wipRel
@@ -6868,10 +6908,9 @@ public sealed partial class ProjectStore
             var parentId = (await GetProjectAsync(projectId, ct).ConfigureAwait(false))?.ParentProjectId;
             if (string.IsNullOrWhiteSpace(parentId)) return index;
             var parentDir = await GetProjectDirAsync(parentId, ct).ConfigureAwait(false);
-            var parentIndex = await GetDirIndexAsync(Path.Combine(parentDir, "assets", "video"), ct).ConfigureAwait(false);
-            foreach (var kv in parentIndex)
-                if (!index.ContainsKey(kv.Key))
-                    index[kv.Key] = kv.Value;
+            var parentIndex = await GetDirIndexAsync(Path.Combine(parentDir, StoreLit.Assets, StoreLit.Video), ct).ConfigureAwait(false);
+            foreach (var kv in parentIndex.Where(kv => !index.ContainsKey(kv.Key)))
+                index[kv.Key] = kv.Value;
         }
         catch { /* best effort — never block scene listing on a broken/missing parent link */ }
         return index;
@@ -6946,13 +6985,13 @@ public sealed partial class ProjectStore
             return true;
         if (videoIndex.ContainsKey(mp4Name + ".client.json"))
             return true;
-        if (videoIndex.ContainsKey(basePrefix + ".clip.json"))
+        if (videoIndex.ContainsKey(basePrefix + StoreLit.ClipJsonSuffix))
             return true;
 
         return videoIndex.Keys.Any(k =>
             k.StartsWith(basePrefix, StringComparison.OrdinalIgnoreCase) &&
             (k.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase) ||
-             k.EndsWith(".clip.json", StringComparison.OrdinalIgnoreCase) ||
+             k.EndsWith(StoreLit.ClipJsonSuffix, StringComparison.OrdinalIgnoreCase) ||
              k.EndsWith(".client.json", StringComparison.OrdinalIgnoreCase)));
     }
 
@@ -6963,15 +7002,15 @@ public sealed partial class ProjectStore
         {
             foreach (var name in new[] { ScreenplayService.CastSeedsFileName })
             {
-                var castPath = Path.Combine(GetProjectDir(projectId), "source", name);
+                var castPath = Path.Combine(GetProjectDir(projectId), StoreLit.Source, name);
                 if (!File.Exists(castPath)) continue;
                 using var doc = JsonDocument.Parse(File.ReadAllText(castPath));
                 var root = doc.RootElement;
                 JsonElement seedEl = default;
-                if (root.TryGetProperty("character_seed_tokens", out var s) && s.ValueKind == JsonValueKind.Object)
+                if (root.TryGetProperty(StoreLit.CharacterSeedTokens, out var s) && s.ValueKind == JsonValueKind.Object)
                     seedEl = s;
-                else if (root.TryGetProperty("global_production_variables", out var g) &&
-                         g.TryGetProperty("character_seed_tokens", out var s2) &&
+                else if (root.TryGetProperty(StoreLit.GlobalProductionVariables, out var g) &&
+                         g.TryGetProperty(StoreLit.CharacterSeedTokens, out var s2) &&
                          s2.ValueKind == JsonValueKind.Object)
                     seedEl = s2;
                 if (seedEl.ValueKind == JsonValueKind.Object)
@@ -6990,8 +7029,8 @@ public sealed partial class ProjectStore
         {
             using var bp = LoadBlueprintSync(projectId);
             if (bp is not null &&
-                bp.RootElement.TryGetProperty("global_production_variables", out var gpv) &&
-                gpv.TryGetProperty("character_seed_tokens", out var seeds) &&
+                bp.RootElement.TryGetProperty(StoreLit.GlobalProductionVariables, out var gpv) &&
+                gpv.TryGetProperty(StoreLit.CharacterSeedTokens, out var seeds) &&
                 seeds.ValueKind == JsonValueKind.Object)
             {
                 var dict = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
@@ -7007,9 +7046,9 @@ public sealed partial class ProjectStore
         {
             var model = ScreenplayService.TryBuildModelFromProject(this, projectId);
             if (model is not null &&
-                model.TryGetValue("global_production_variables", out var gpvObj) &&
+                model.TryGetValue(StoreLit.GlobalProductionVariables, out var gpvObj) &&
                 gpvObj is Dictionary<string, object?> gpv &&
-                gpv.TryGetValue("character_seed_tokens", out var charObj) &&
+                gpv.TryGetValue(StoreLit.CharacterSeedTokens, out var charObj) &&
                 charObj is Dictionary<string, object?> charDict &&
                 charDict.Count > 0)
             {
@@ -7029,8 +7068,8 @@ public sealed partial class ProjectStore
             return new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
 
         using var scenesDoc = JsonDocument.Parse(File.ReadAllText(scenesPath));
-        if (scenesDoc.RootElement.TryGetProperty("global_production_variables", out var g2) &&
-            g2.TryGetProperty("character_seed_tokens", out var s3) &&
+        if (scenesDoc.RootElement.TryGetProperty(StoreLit.GlobalProductionVariables, out var g2) &&
+            g2.TryGetProperty(StoreLit.CharacterSeedTokens, out var s3) &&
             s3.ValueKind == JsonValueKind.Object)
         {
             var dict = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
@@ -7050,15 +7089,15 @@ public sealed partial class ProjectStore
         {
             foreach (var name in new[] { ScreenplayService.CastSeedsFileName })
             {
-                var castPath = Path.Combine(GetProjectDir(projectId), "source", name);
+                var castPath = Path.Combine(GetProjectDir(projectId), StoreLit.Source, name);
                 if (!File.Exists(castPath)) continue;
                 using var doc = JsonDocument.Parse(File.ReadAllText(castPath));
                 var root = doc.RootElement;
                 JsonElement seedEl = default;
-                if (root.TryGetProperty("location_seed_tokens", out var s) && s.ValueKind == JsonValueKind.Object)
+                if (root.TryGetProperty(StoreLit.LocationSeedTokens, out var s) && s.ValueKind == JsonValueKind.Object)
                     seedEl = s;
-                else if (root.TryGetProperty("global_production_variables", out var g) &&
-                         g.TryGetProperty("location_seed_tokens", out var s2) &&
+                else if (root.TryGetProperty(StoreLit.GlobalProductionVariables, out var g) &&
+                         g.TryGetProperty(StoreLit.LocationSeedTokens, out var s2) &&
                          s2.ValueKind == JsonValueKind.Object)
                     seedEl = s2;
                 if (seedEl.ValueKind == JsonValueKind.Object)
@@ -7077,8 +7116,8 @@ public sealed partial class ProjectStore
         {
             using var bp = LoadBlueprintSync(projectId);
             if (bp is not null &&
-                bp.RootElement.TryGetProperty("global_production_variables", out var gpv) &&
-                gpv.TryGetProperty("location_seed_tokens", out var seeds) &&
+                bp.RootElement.TryGetProperty(StoreLit.GlobalProductionVariables, out var gpv) &&
+                gpv.TryGetProperty(StoreLit.LocationSeedTokens, out var seeds) &&
                 seeds.ValueKind == JsonValueKind.Object)
             {
                 var dict = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
@@ -7094,9 +7133,9 @@ public sealed partial class ProjectStore
         {
             var model = ScreenplayService.TryBuildModelFromProject(this, projectId);
             if (model is not null &&
-                model.TryGetValue("global_production_variables", out var gpvObj) &&
+                model.TryGetValue(StoreLit.GlobalProductionVariables, out var gpvObj) &&
                 gpvObj is Dictionary<string, object?> gpv &&
-                gpv.TryGetValue("location_seed_tokens", out var locObj) &&
+                gpv.TryGetValue(StoreLit.LocationSeedTokens, out var locObj) &&
                 locObj is Dictionary<string, object?> locDict &&
                 locDict.Count > 0)
             {
@@ -7118,8 +7157,8 @@ public sealed partial class ProjectStore
         try
         {
             using var scenesDoc = JsonDocument.Parse(File.ReadAllText(scenesPath));
-            if (scenesDoc.RootElement.TryGetProperty("global_production_variables", out var g2) &&
-                g2.TryGetProperty("location_seed_tokens", out var s3) &&
+            if (scenesDoc.RootElement.TryGetProperty(StoreLit.GlobalProductionVariables, out var g2) &&
+                g2.TryGetProperty(StoreLit.LocationSeedTokens, out var s3) &&
                 s3.ValueKind == JsonValueKind.Object)
             {
                 var dict = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
@@ -7140,10 +7179,10 @@ public sealed partial class ProjectStore
         static Dictionary<string, JsonElement>? TryRead(JsonElement root)
         {
             JsonElement el = default;
-            if (root.TryGetProperty("wardrobe_lock_tokens", out var s) && s.ValueKind == JsonValueKind.Object)
+            if (root.TryGetProperty(StoreLit.WardrobeLockTokens, out var s) && s.ValueKind == JsonValueKind.Object)
                 el = s;
-            else if (root.TryGetProperty("global_production_variables", out var g) &&
-                     g.TryGetProperty("wardrobe_lock_tokens", out var s2) &&
+            else if (root.TryGetProperty(StoreLit.GlobalProductionVariables, out var g) &&
+                     g.TryGetProperty(StoreLit.WardrobeLockTokens, out var s2) &&
                      s2.ValueKind == JsonValueKind.Object)
                 el = s2;
             if (el.ValueKind != JsonValueKind.Object) return null;
@@ -7217,8 +7256,8 @@ public sealed partial class ProjectStore
         if (seed is { ValueKind: JsonValueKind.Object } s)
         {
             if (s.TryGetProperty("cast_kind", out var ck)) castKind = ck.GetString();
-            if (s.TryGetProperty("display_name", out var dn)) display = dn.GetString();
-            if (s.TryGetProperty("description", out var d)) desc = d.GetString();
+            if (s.TryGetProperty(StoreLit.DisplayName, out var dn)) display = dn.GetString();
+            if (s.TryGetProperty(JsonKeys.Description, out var d)) desc = d.GetString();
         }
         return CastKindClassifier.IsGroup(key, display, castKind, desc);
     }
@@ -7278,7 +7317,7 @@ public sealed partial class ProjectStore
         for (var i = 0; i < 8 && dir is not null; i++, dir = dir.Parent)
         {
             // Repo root: projects/ + prompts/ (or host/ sibling of projects/)
-            if (Directory.Exists(Path.Combine(dir.FullName, "projects")) &&
+            if (Directory.Exists(Path.Combine(dir.FullName, StoreLit.Projects)) &&
                 (Directory.Exists(Path.Combine(dir.FullName, "prompts")) ||
                  Directory.Exists(Path.Combine(dir.FullName, "host"))))
             {
@@ -7287,7 +7326,7 @@ public sealed partial class ProjectStore
             // running from host/PageToMovie.Api/bin/...
             if (dir.Name.Equals("host", StringComparison.OrdinalIgnoreCase) &&
                 dir.Parent is not null &&
-                Directory.Exists(Path.Combine(dir.Parent.FullName, "projects")))
+                Directory.Exists(Path.Combine(dir.Parent.FullName, StoreLit.Projects)))
             {
                 return dir.Parent.FullName;
             }

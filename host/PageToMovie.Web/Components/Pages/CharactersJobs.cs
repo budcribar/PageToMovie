@@ -18,19 +18,24 @@ public partial class Characters
         private readonly Characters S;
         public CharactersJobs(Characters host) => S = host;
 
+        private const string JobStatusError = "error";
+        private const string JobStatusCancelled = "cancelled";
+        private const string JobStatusQueued = "queued";
+        private const string JobStatusRunning = "running";
+
         internal JobSnapshot? _job;
 
 
         internal bool VoiceJobRunning =>
             _job is not null &&
             string.Equals(_job.Kind, "voice-preview", StringComparison.OrdinalIgnoreCase) &&
-            (_job.Status is "running" or "queued") &&
+            (_job.Status is JobStatusRunning or JobStatusQueued) &&
             string.Equals(_job.CharKey, S.List._selectedKey, StringComparison.OrdinalIgnoreCase);
 
 
         internal bool JobRunning =>
             _job is not null &&
-            (_job.Status is "running" or "queued");
+            (_job.Status is JobStatusRunning or JobStatusQueued);
 
 
         internal bool PlateSortRunning =>
@@ -73,7 +78,7 @@ public partial class Characters
             // New job id → always take the snapshot (Index may be 0)
             // Same job → update as usual
             _job = snap;
-            if ((snap.Status is "done" or "error" or "cancelled") &&
+            if ((snap.Status is "done" or JobStatusError or JobStatusCancelled) &&
                 string.Equals(snap.Kind, "voice-preview", StringComparison.OrdinalIgnoreCase))
             {
                 _ = S.InvokeAsync(async () =>
@@ -86,19 +91,19 @@ public partial class Characters
                         S.Voice._voicePreviewError = null;
                         S.Voice._voiceAudioBust = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                         S.Voice._voicePreviewUrl = S.Engine.CharacterVoiceAudioUrl(
-                            S._projectId, snap.CharKey!, S.Voice._voiceAudioBust);
+                            S._projectId, snap.CharKey, S.Voice._voiceAudioBust);
                         S.Voice._voicePreviewStale = false;
                         S.Voice._voicePreviewHint = "Film voice sample ready.";
                         S._message = null;
                     }
-                    else if (snap.Status == "error")
+                    else if (snap.Status == JobStatusError)
                     {
                         S._message = null;
                         S.Voice._voicePreviewError = S.Session.IsAdmin
                             ? (snap.Error ?? snap.Message ?? "Voice sample failed.")
                             : "Could not generate voice sample. Try again.";
                     }
-                    else if (snap.Status == "cancelled")
+                    else if (snap.Status == JobStatusCancelled)
                     {
                         S.Voice._voicePreviewError = null;
                         S.Voice._voicePreviewHint = "Voice sample cancelled.";
@@ -107,7 +112,7 @@ public partial class Characters
                     await Task.CompletedTask;
                 });
             }
-            else if ((snap.Status is "done" or "error" or "cancelled") &&
+            else if ((snap.Status is "done" or JobStatusError or JobStatusCancelled) &&
                 string.Equals(snap.Kind, "cast-extract", StringComparison.OrdinalIgnoreCase))
             {
                 _ = S.InvokeAsync(async () =>
@@ -126,7 +131,7 @@ public partial class Characters
                             .Where(k => !string.IsNullOrWhiteSpace(k))
                             .ToList();
                     }
-                    else if (snap.Status == "error")
+                    else if (snap.Status == JobStatusError)
                     {
                         S._message = null;
                         S._error = S.Session.IsAdmin
@@ -141,7 +146,7 @@ public partial class Characters
                     S.StateHasChanged();
                 });
             }
-            else if ((snap.Status is "done" or "partial" or "error" or "cancelled") &&
+            else if ((snap.Status is "done" or "partial" or JobStatusError or JobStatusCancelled) &&
                 string.Equals(snap.Kind, "plan_looks", StringComparison.OrdinalIgnoreCase))
             {
                 _ = S.InvokeAsync(async () =>
@@ -152,7 +157,7 @@ public partial class Characters
                         S._error = null;
                         S._message = snap.Message ?? "Plan looks ready — AI locked best picks (override any plate anytime).";
                     }
-                    else if (snap.Status == "error")
+                    else if (snap.Status == JobStatusError)
                     {
                         S._message = null;
                         S._error = S.Session.IsAdmin
@@ -167,7 +172,7 @@ public partial class Characters
                     S.StateHasChanged();
                 });
             }
-            else if ((snap.Status is "done" or "error" or "cancelled") &&
+            else if ((snap.Status is "done" or JobStatusError or JobStatusCancelled) &&
                 string.Equals(snap.Kind, "character-plates", StringComparison.OrdinalIgnoreCase))
             {
                 _ = S.InvokeAsync(async () =>
@@ -178,14 +183,14 @@ public partial class Characters
                         S._error = null;
                         S._message = "Book pictures matched.";
                     }
-                    else if (snap.Status == "error")
+                    else if (snap.Status == JobStatusError)
                     {
                         S._message = null;
                         S._error = S.Session.IsAdmin
                             ? (snap.Error ?? snap.Message ?? "Could not match book pictures.")
                             : "Could not match book pictures. Try again.";
                     }
-                    else if (snap.Status == "cancelled")
+                    else if (snap.Status == JobStatusCancelled)
                     {
                         S._error = null;
                         S._message = "Matching cancelled.";
@@ -193,17 +198,14 @@ public partial class Characters
                     S.StateHasChanged();
                 });
             }
-            else if ((snap.Status is "done" or "error" or "cancelled") &&
+            else if ((snap.Status is "done" or JobStatusError or JobStatusCancelled) &&
                 string.Equals(snap.Kind, "character", StringComparison.OrdinalIgnoreCase))
             {
                 _ = S.InvokeAsync(async () =>
                 {
                     // Leave "Generating…" as soon as the job finishes (even if files need a moment)
-                    if (snap.Status is "done" or "error" or "cancelled")
-                    {
-                        if (S.LookPipe._mode == Mode.WaitingGenerate)
-                            S.LookPipe._mode = Mode.PickSource;
-                    }
+                    if (S.LookPipe._mode == Mode.WaitingGenerate)
+                        S.LookPipe._mode = Mode.PickSource;
 
                     await S.List.SoftReloadAsync();
                     if (snap.Status == "done" &&
@@ -216,7 +218,7 @@ public partial class Characters
                         await S.List.SoftReloadAsync();
                         S.LookPipe.BeginCompareFromVariants();
                     }
-                    else if (snap.Status == "error")
+                    else if (snap.Status == JobStatusError)
                     {
                         S._message = null;
                         S._error = S.Session.IsAdmin
@@ -224,7 +226,7 @@ public partial class Characters
                             : "Portrait generation failed. Try again.";
                         S.LookPipe._mode = Mode.PickSource;
                     }
-                    else if (snap.Status == "cancelled")
+                    else if (snap.Status == JobStatusCancelled)
                     {
                         S.LookPipe._mode = Mode.PickSource;
                     }
@@ -261,7 +263,7 @@ public partial class Characters
             var kind = _job?.Kind;
             _job = new JobSnapshot
             {
-                Status = "cancelled",
+                Status = JobStatusCancelled,
                 Kind = kind,
                 Message = "Cancelled",
                 CharKey = _job?.CharKey,

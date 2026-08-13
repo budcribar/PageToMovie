@@ -229,7 +229,7 @@ public sealed class ClipSidecarService
 
                 var newBaseName = $"scene_{item.Scene:D2}_clip_{item.Clip:D2}_take_{take:D2}_{stamp}";
                 var newMp4Name = $"{newBaseName}{ext}";
-                var dir = Path.GetDirectoryName(item.FullPath)!;
+                var dir = Path.GetDirectoryName(item.FullPath) ?? ".";
 
                 var newMp4Path = Path.Combine(dir, newMp4Name);
 

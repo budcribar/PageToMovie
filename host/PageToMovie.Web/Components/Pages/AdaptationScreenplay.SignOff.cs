@@ -17,19 +17,19 @@ public partial class AdaptationScreenplay
 
         /// <summary>User has approved at least once (signed hash recorded).</summary>
         internal bool WasEverSigned =>
-            _screenplayStatus?.Signed == true
+            (_screenplayStatus?.Signed ?? false)
             || !string.IsNullOrWhiteSpace(_screenplayStatus?.SignedHash);
 
         /// <summary>Approved and not edited since sign-off.</summary>
         internal bool IsApprovedClean =>
-            _screenplayStatus?.Signed == true
-            && _screenplayStatus.Dirty != true
+            (_screenplayStatus?.Signed ?? false)
+            && _screenplayStatus.Dirty is not true
             && !S.Save._dirtyLocal;
 
         /// <summary>Had an approval but draft changed (or local unsaved edits after sign-off).</summary>
         internal bool NeedsReapprove =>
             WasEverSigned
-            && (_screenplayStatus?.Dirty == true || S.Save._dirtyLocal)
+            && ((_screenplayStatus?.Dirty ?? false) || S.Save._dirtyLocal)
             && !string.IsNullOrWhiteSpace(S.Editor._text);
 
         internal string StatusTitle
@@ -135,7 +135,7 @@ public partial class AdaptationScreenplay
                 else
                     await S.SoftLoadAsync();
                 S.Message = result?.Message ?? "Screenplay approved";
-                if (result?.Ok == true)
+                if (result?.Ok ?? false)
                 {
                     S.BusyMessage = "Opening estimate…";
                     await S.InvokeAsync(S.StateHasChanged);

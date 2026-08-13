@@ -170,7 +170,7 @@ public sealed class AdminSessionService
                     else
                     {
                         Token = s.Token;
-                        UserId = string.IsNullOrWhiteSpace(s.UserId) ? "local" : s.UserId!;
+                        UserId = string.IsNullOrWhiteSpace(s.UserId) ? "local" : s.UserId;
                         Roles = s.Roles?.ToList() ?? new List<string>();
                         ExpiresAt = s.ExpiresAt;
                     }

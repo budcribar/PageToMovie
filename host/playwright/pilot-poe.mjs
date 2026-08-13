@@ -15,15 +15,15 @@
  *   ARTIFACTS=./artifacts
  */
 import { chromium } from "playwright";
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
-import { spawn } from "child_process";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { spawn } from "node:child_process";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_URL = (process.env.WEB_URL || "http://localhost:5079").replace(/\/$/, "");
 const API_URL = (process.env.API_URL || "http://127.0.0.1:5088").replace(/\/$/, "");
-const PROJECT_NAME = process.env.PROJECT_NAME || `PoePilot_${new Date().toISOString().slice(0, 10).replace(/-/g, "")}`;
+const PROJECT_NAME = process.env.PROJECT_NAME || `PoePilot_${new Date().toISOString().slice(0, 10).replaceAll("-", "")}`;
 const HEADED = process.env.HEADED === "1" || process.env.HEADED === "true";
 const REAL_SCENE1 = process.env.REAL_SCENE1 === "1" || process.env.REAL_SCENE1 === "true";
 const FAIL_RATE = Math.min(0.9, Math.max(0, Number(process.env.FAIL_RATE || "0.25")));
@@ -92,8 +92,8 @@ async function waitApiJobsIdle(projectId, timeoutMs = 600_000) {
     if (!active) {
       await new Promise((r) => setTimeout(r, 800));
       const j2 = await apiGet(`/api/jobs?projectId=${encodeURIComponent(projectId)}`);
-      const active2 = (j2.json?.jobs || []).find((x) => /queued|running/i.test(x.status || ""));
-      if (!active2) return;
+      const stillActive = (j2.json?.jobs || []).some((x) => /queued|running/i.test(x.status || ""));
+      if (!stillActive) return;
       continue;
     }
     const msg = `${active.kind}|${active.index}|${active.message || ""}`;
@@ -388,7 +388,6 @@ async function pickBestVariantAndLock(charKey) {
     // Style mismatch → try next variant; do not proceed to video
     if (/style|sketch|illustration|photoreal|medium/i.test(detail)) {
       log("cast QA style mismatch — will try next variant, will NOT start video gen");
-      continue;
     }
   }
 
@@ -695,7 +694,7 @@ async function autoReviewOneClip(page, btn, reviewState, failEvery) {
   const onDisk = findProjectVideos(PROJECT_NAME).some((v) =>
     path
       .basename(v)
-      .match(new RegExp(`scene_0*${scene}_clip_0*${clip}\\.mp4$`, "i"))
+      .match(new RegExp(String.raw`scene_0*${scene}_clip_0*${clip}\.mp4$`, "i"))
   );
   log("auto-review", testId, onDisk ? "on-disk" : "missing");
   if (!onDisk) return;
@@ -817,8 +816,6 @@ async function main() {
   page.on("console", (msg) => {
     if (msg.type() === "error") log("browser-console", msg.text());
   });
-
-  let projectId = PROJECT_NAME;
 
   try {
     await step("01_home_create_project", async () => {
@@ -1114,7 +1111,9 @@ async function main() {
   }
 }
 
-main().catch((e) => {
+try {
+  await main();
+} catch (e) {
   console.error(e);
   process.exit(1);
-});
+}

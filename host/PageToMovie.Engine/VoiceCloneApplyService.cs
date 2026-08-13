@@ -88,8 +88,8 @@ public sealed class VoiceCloneApplyService
             {
                 Ok = false,
                 ProviderId = strategy.ProviderId,
-                ModelId = cloneModel?.Id,
-                Error = NotConfiguredMessage(strategy.ProviderId, cloneModel?.Id),
+                ModelId = cloneModel.Id,
+                Error = NotConfiguredMessage(strategy.ProviderId, cloneModel.Id),
             };
         }
 
@@ -107,7 +107,7 @@ public sealed class VoiceCloneApplyService
 
         _log.LogInformation(
             "Apply voice {Project}/{Char} via {Provider} model={Model}",
-            projectId, charKey, strategy.ProviderId, cloneModel?.Id ?? "(default)");
+            projectId, charKey, strategy.ProviderId, cloneModel.Id);
 
         var result = await strategy.ApplyAsync(ctx, ct).ConfigureAwait(false);
         if (result.Ok)
@@ -118,7 +118,7 @@ public sealed class VoiceCloneApplyService
         {
             Ok = false,
             ProviderId = result.ProviderId ?? strategy.ProviderId,
-            ModelId = result.ModelId ?? cloneModel?.Id,
+            ModelId = result.ModelId ?? cloneModel.Id,
             Error = $"Voice clone failed with {strategy.ProviderId}. Check the key in Settings or choose another voice model yourself.",
         };
     }
@@ -212,7 +212,7 @@ public sealed class VoiceCloneApplyService
     {
         if (sampleOverride is { Length: > 0 })
         {
-            var fileName = string.IsNullOrWhiteSpace(sampleFileName) ? "voice_clone_sample.wav" : sampleFileName!;
+            var fileName = string.IsNullOrWhiteSpace(sampleFileName) ? "voice_clone_sample.wav" : sampleFileName;
             await using var ms = new MemoryStream(sampleOverride);
             return await _projects.SaveVoiceCloneSampleAsync(projectId, charKey, ms, fileName, ct)
                 .ConfigureAwait(false);

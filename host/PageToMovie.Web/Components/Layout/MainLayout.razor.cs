@@ -29,6 +29,10 @@ public partial class MainLayout : IDisposable
     internal string? _presenceProjectId;
     private bool _disposed;
 
+    private const string AdminToken = "admin";
+    private static readonly string UrlRoot = Path.AltDirectorySeparatorChar.ToString();
+    private static readonly string LoginRoute = UrlRoot + "login";
+
     protected override void OnInitialized()
     {
         ActiveProject.Changed += OnActiveProjectChanged;
@@ -195,7 +199,7 @@ public partial class MainLayout : IDisposable
                 return;
 
             // Never put ?me=SECRET into returnUrl (leaks override; also confuses login).
-            var returnPath = string.IsNullOrEmpty(path) ? "/" : "/" + path;
+            var returnPath = string.IsNullOrEmpty(path) ? UrlRoot : UrlRoot + path;
             var qs = new List<string> { "returnUrl=" + Uri.EscapeDataString(returnPath) };
 
             // Surface why operator override did not sign the user in (if they tried ?me=).
@@ -210,7 +214,7 @@ public partial class MainLayout : IDisposable
                     qs.Add("overrideError=" + Uri.EscapeDataString("failed"));
             }
 
-            Nav.NavigateTo("/login?" + string.Join("&", qs), forceLoad: false);
+            Nav.NavigateTo(LoginRoute + "?" + string.Join("&", qs), forceLoad: false);
         }
         catch
         {
@@ -225,7 +229,7 @@ public partial class MainLayout : IDisposable
     {
         if (string.IsNullOrWhiteSpace(path))
             return false; // home requires login
-        path = path.Split('?', '#')[0].Trim().TrimStart('/');
+        path = path.Split(new[] { '?', '#' }, 2)[0].Trim().TrimStart('/');
         // Tolerate trailing slash: "demo/" → "demo"
         path = path.TrimEnd('/');
         if (path.Equals("login", StringComparison.OrdinalIgnoreCase)
@@ -257,12 +261,12 @@ public partial class MainLayout : IDisposable
             if (!IsLocalHost(uri.Host) && !Env.IsDevelopment())
                 return;
 
-            if (!QueryHelpers.ParseQuery(uri.Query).TryGetValue("admin", out var vals))
+            if (!QueryHelpers.ParseQuery(uri.Query).TryGetValue(AdminToken, out var vals))
                 return;
             var raw = vals.FirstOrDefault()?.Trim() ?? "";
             if (raw.Length == 0) return;
 
-            string user = "admin", pass = "admin";
+            string user = AdminToken, pass = AdminToken;
             if (raw is "1" or "true" or "yes")
             {
                 // defaults
@@ -279,7 +283,7 @@ public partial class MainLayout : IDisposable
             }
 
             var login = await Engine.LoginAsync(user, pass);
-            if (login?.Ok == true && !string.IsNullOrWhiteSpace(login.Token))
+            if (login?.Ok is true && !string.IsNullOrWhiteSpace(login.Token))
                 await ApplyLoginAndStripQueryAsync(login, uri, user);
         }
         catch
@@ -303,8 +307,8 @@ public partial class MainLayout : IDisposable
             if (Session.IsLoggedIn) return;
 
             var login = await Engine.TryDevLoginAsync();
-            if (login?.Ok == true && !string.IsNullOrWhiteSpace(login.Token))
-                await Session.SetSessionAsync(login.Token!, login.UserId, login.Roles, login.ExpiresAt);
+            if (login?.Ok is true && !string.IsNullOrWhiteSpace(login.Token))
+                await Session.SetSessionAsync(login.Token, login.UserId, login.Roles, login.ExpiresAt);
         }
         catch
         {
@@ -336,8 +340,8 @@ public partial class MainLayout : IDisposable
                 await Session.ClearAsync();
 
             var login = await Engine.LoginWithOperatorOverrideAsync(secret);
-            if (login?.Ok == true && !string.IsNullOrWhiteSpace(login.Token))
-                await ApplyLoginAndStripQueryAsync(login, uri, login.UserId ?? "admin");
+            if (login?.Ok is true && !string.IsNullOrWhiteSpace(login.Token))
+                await ApplyLoginAndStripQueryAsync(login, uri, login.UserId ?? AdminToken);
         }
         catch
         {
@@ -348,7 +352,7 @@ public partial class MainLayout : IDisposable
     private async Task ApplyLoginAndStripQueryAsync(LoginResponse login, Uri uri, string fallbackUser)
     {
         await Session.SetSessionAsync(
-            login.Token!,
+            login.Token,
             login.UserId ?? fallbackUser,
             login.Roles,
             login.ExpiresAt);

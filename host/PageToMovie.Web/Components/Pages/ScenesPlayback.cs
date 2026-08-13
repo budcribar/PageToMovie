@@ -142,7 +142,7 @@ public partial class Scenes
                               || (S.List._detail is { SceneNumber: var dsn, CompositeExists: true } && dsn == sn);
             var clipsOnDisk = summary?.ClipsOnDisk
                               ?? (S.List._detail is { SceneNumber: var d2 } && d2 == sn ? S.List._detail.ClipsOnDisk : 0);
-            var stale = meta?.StaleScenes?.Contains(sn) == true;
+            var stale = meta?.StaleScenes?.Contains(sn) is true;
             var needsStitch = !compositeOk || stale;
 
             // Fresh composite on disk — stream it directly (no stitch).

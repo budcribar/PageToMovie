@@ -14,8 +14,8 @@
     var projectName = Host.ProjectLabel?.Trim();
     var pageTitle = Step == "shots"
         ? L["ScenesPage.RebuildShotPlan"]
-        : !string.IsNullOrEmpty(filmTitle) ? filmTitle!
-        : !string.IsNullOrEmpty(projectName) ? projectName!
+        : !string.IsNullOrEmpty(filmTitle) ? filmTitle
+        : !string.IsNullOrEmpty(projectName) ? projectName
         : L["Adaptation.BookAndScreenplay"];
     // Screenplay owns its own compact 2-row chrome — skip the page header stack there.
     var compactScreenplay = Step == "screenplay";
@@ -77,15 +77,15 @@
    Admin: keep a quiet completion card with log (no animated full bar). *@
 @if (ShowJobPanel)
 {
-    var (jobIdx, jobTot, waiting, displayIdx) = AdaptationPageBase.AdaptationStepUi.ComputeJobProgress(
-        Host.Jobs.Job!, Host.Jobs.ProgressIndex, Host.Jobs.ProgressTotal, Host.Jobs.JobRunning);
+    var (_, jobTot, waiting, displayIdx) = AdaptationPageBase.AdaptationStepUi.ComputeJobProgress(
+        Host.Jobs.Job, Host.Jobs.ProgressIndex, Host.Jobs.ProgressTotal, Host.Jobs.JobRunning);
     var runPct = Host.Jobs.JobRunning
         ? AdaptationPageBase.AdaptationStepUi.ComputeProgressPercent(
             displayIdx, jobTot, waiting, Host.Jobs.JobRunning, Host.Jobs.Job.StartedAt)
         : (int?)null;
     var jobMsg = Host.Jobs.JobRunning
-        ? AdaptationPageBase.AdaptationJobs.OperatorJobRunningMessage(Host.Jobs.Job!)
-        : AdaptationPageBase.AdaptationStepUi.OperatorJobDoneMessage(Host.Jobs.Job!);
+        ? AdaptationPageBase.AdaptationJobs.OperatorJobRunningMessage(Host.Jobs.Job)
+        : AdaptationPageBase.AdaptationStepUi.OperatorJobDoneMessage(Host.Jobs.Job);
     <JobProgressCard Visible="true"
                      Status="@Host.Jobs.Job.Status"
                      Message="@jobMsg"

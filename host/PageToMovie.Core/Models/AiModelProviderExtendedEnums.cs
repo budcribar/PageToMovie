@@ -372,9 +372,6 @@ public static class AiModelProviderExtendedEnumExtensions
         AiProviderIdKind.LocalOllama => "local_ollama",
         _ => val.ToString().ToLowerInvariant()
     };
-    public static AiProviderIdKind ParseAiProviderIdKind(string? s, AiProviderIdKind defaultValue = AiProviderIdKind.Grok) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<AiProviderIdKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
-    public static AiProviderIdKind ToAiProviderIdKind(this string? s, AiProviderIdKind defaultValue = AiProviderIdKind.Grok) => ParseAiProviderIdKind(s, defaultValue);
 
     public static string ToApiString(this ModelCapabilityCategoryKind val) => val switch
     {
@@ -390,9 +387,6 @@ public static class AiModelProviderExtendedEnumExtensions
         ModelCapabilityCategoryKind.DepthEstimation => "depth_estimation",
         _ => val.ToString().ToLowerInvariant()
     };
-    public static ModelCapabilityCategoryKind ParseModelCapabilityCategoryKind(string? s, ModelCapabilityCategoryKind defaultValue = ModelCapabilityCategoryKind.TextGeneration) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ModelCapabilityCategoryKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
-    public static ModelCapabilityCategoryKind ToModelCapabilityCategoryKind(this string? s, ModelCapabilityCategoryKind defaultValue = ModelCapabilityCategoryKind.TextGeneration) => ParseModelCapabilityCategoryKind(s, defaultValue);
 
     public static string ToApiString(this ModelPricingUnitKind val) => val switch
     {
@@ -405,9 +399,6 @@ public static class AiModelProviderExtendedEnumExtensions
         ModelPricingUnitKind.PerGigabyte => "per_gigabyte",
         _ => val.ToString().ToLowerInvariant()
     };
-    public static ModelPricingUnitKind ParseModelPricingUnitKind(string? s, ModelPricingUnitKind defaultValue = ModelPricingUnitKind.PerRequest) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ModelPricingUnitKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
-    public static ModelPricingUnitKind ToModelPricingUnitKind(this string? s, ModelPricingUnitKind defaultValue = ModelPricingUnitKind.PerRequest) => ParseModelPricingUnitKind(s, defaultValue);
 
     public static string ToApiString(this ModelConcurrencyBehavior val) => val switch
     {
@@ -415,9 +406,6 @@ public static class AiModelProviderExtendedEnumExtensions
         ModelConcurrencyBehavior.CircuitBreak => "circuit_break",
         _ => val.ToString().ToLowerInvariant()
     };
-    public static ModelConcurrencyBehavior ParseModelConcurrencyBehavior(string? s, ModelConcurrencyBehavior defaultValue = ModelConcurrencyBehavior.Queue) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ModelConcurrencyBehavior>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
-    public static ModelConcurrencyBehavior ToModelConcurrencyBehavior(this string? s, ModelConcurrencyBehavior defaultValue = ModelConcurrencyBehavior.Queue) => ParseModelConcurrencyBehavior(s, defaultValue);
 
     public static string ToApiString(this ModelEndpointTypeKind val) => val switch
     {
@@ -428,9 +416,6 @@ public static class AiModelProviderExtendedEnumExtensions
         ModelEndpointTypeKind.WebhookAsync => "webhook_async",
         _ => val.ToString().ToLowerInvariant()
     };
-    public static ModelEndpointTypeKind ParseModelEndpointTypeKind(string? s, ModelEndpointTypeKind defaultValue = ModelEndpointTypeKind.HttpJson) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ModelEndpointTypeKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
-    public static ModelEndpointTypeKind ToModelEndpointTypeKind(this string? s, ModelEndpointTypeKind defaultValue = ModelEndpointTypeKind.HttpJson) => ParseModelEndpointTypeKind(s, defaultValue);
 
     public static string ToApiString(this ModelResponseStatusCode val) => val switch
     {
@@ -442,9 +427,6 @@ public static class AiModelProviderExtendedEnumExtensions
         ModelResponseStatusCode.ServiceUnavailable => "service_unavailable",
         _ => val.ToString().ToLowerInvariant()
     };
-    public static ModelResponseStatusCode ParseModelResponseStatusCode(string? s, ModelResponseStatusCode defaultValue = ModelResponseStatusCode.Success) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ModelResponseStatusCode>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
-    public static ModelResponseStatusCode ToModelResponseStatusCode(this string? s, ModelResponseStatusCode defaultValue = ModelResponseStatusCode.Success) => ParseModelResponseStatusCode(s, defaultValue);
 
     public static string ToApiString(this AiSafetyRatingCategory val) => val switch
     {
@@ -454,9 +436,6 @@ public static class AiModelProviderExtendedEnumExtensions
         AiSafetyRatingCategory.CivicIntegrity => "civic_integrity",
         _ => val.ToString().ToLowerInvariant()
     };
-    public static AiSafetyRatingCategory ParseAiSafetyRatingCategory(string? s, AiSafetyRatingCategory defaultValue = AiSafetyRatingCategory.Safe) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<AiSafetyRatingCategory>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
-    public static AiSafetyRatingCategory ToAiSafetyRatingCategory(this string? s, AiSafetyRatingCategory defaultValue = AiSafetyRatingCategory.Safe) => ParseAiSafetyRatingCategory(s, defaultValue);
 
     public static string ToApiString(this AiCallOverrideReasonKind val) => val switch
     {
@@ -468,9 +447,6 @@ public static class AiModelProviderExtendedEnumExtensions
         AiCallOverrideReasonKind.PerformanceBenchmark => "performance_benchmark",
         _ => val.ToString().ToLowerInvariant()
     };
-    public static AiCallOverrideReasonKind ParseAiCallOverrideReasonKind(string? s, AiCallOverrideReasonKind defaultValue = AiCallOverrideReasonKind.OperatorChoice) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<AiCallOverrideReasonKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
-    public static AiCallOverrideReasonKind ToAiCallOverrideReasonKind(this string? s, AiCallOverrideReasonKind defaultValue = AiCallOverrideReasonKind.OperatorChoice) => ParseAiCallOverrideReasonKind(s, defaultValue);
 
     public static string ToApiString(this ModelParameterName val) => val switch
     {
@@ -489,9 +465,6 @@ public static class AiModelProviderExtendedEnumExtensions
         ModelParameterName.CustomParam => "custom_param",
         _ => val.ToString().ToLowerInvariant()
     };
-    public static ModelParameterName ParseModelParameterName(string? s, ModelParameterName defaultValue = ModelParameterName.Temperature) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ModelParameterName>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
-    public static ModelParameterName ToModelParameterName(this string? s, ModelParameterName defaultValue = ModelParameterName.Temperature) => ParseModelParameterName(s, defaultValue);
 
     public static string ToApiString(this StreamingChunkTypeKind val) => val switch
     {
@@ -503,9 +476,6 @@ public static class AiModelProviderExtendedEnumExtensions
         StreamingChunkTypeKind.FinalSummary => "final_summary",
         _ => val.ToString().ToLowerInvariant()
     };
-    public static StreamingChunkTypeKind ParseStreamingChunkTypeKind(string? s, StreamingChunkTypeKind defaultValue = StreamingChunkTypeKind.TextDelta) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<StreamingChunkTypeKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
-    public static StreamingChunkTypeKind ToStreamingChunkTypeKind(this string? s, StreamingChunkTypeKind defaultValue = StreamingChunkTypeKind.TextDelta) => ParseStreamingChunkTypeKind(s, defaultValue);
 
     public static string ToApiString(this FinishReasonKindType val) => val switch
     {
@@ -514,9 +484,6 @@ public static class AiModelProviderExtendedEnumExtensions
         FinishReasonKindType.ContextOverflow => "context_overflow",
         _ => val.ToString().ToLowerInvariant()
     };
-    public static FinishReasonKindType ParseFinishReasonKindType(string? s, FinishReasonKindType defaultValue = FinishReasonKindType.Stop) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<FinishReasonKindType>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
-    public static FinishReasonKindType ToFinishReasonKindType(this string? s, FinishReasonKindType defaultValue = FinishReasonKindType.Stop) => ParseFinishReasonKindType(s, defaultValue);
 
     public static string ToApiString(this TokenCountCategory val) => val switch
     {
@@ -527,9 +494,6 @@ public static class AiModelProviderExtendedEnumExtensions
         TokenCountCategory.ReasoningTokens => "reasoning_tokens",
         _ => val.ToString().ToLowerInvariant()
     };
-    public static TokenCountCategory ParseTokenCountCategory(string? s, TokenCountCategory defaultValue = TokenCountCategory.Total) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<TokenCountCategory>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
-    public static TokenCountCategory ToTokenCountCategory(this string? s, TokenCountCategory defaultValue = TokenCountCategory.Total) => ParseTokenCountCategory(s, defaultValue);
 
     public static string ToApiString(this ModelFamilyType val) => val switch
     {
@@ -537,14 +501,8 @@ public static class AiModelProviderExtendedEnumExtensions
         ModelFamilyType.RunwayGen => "runway_gen",
         _ => val.ToString().ToLowerInvariant()
     };
-    public static ModelFamilyType ParseModelFamilyType(string? s, ModelFamilyType defaultValue = ModelFamilyType.Grok) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ModelFamilyType>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
-    public static ModelFamilyType ToModelFamilyType(this string? s, ModelFamilyType defaultValue = ModelFamilyType.Grok) => ParseModelFamilyType(s, defaultValue);
 
     public static string ToApiString(this ModelTierLevelKind val) => val.ToString().ToLowerInvariant();
-    public static ModelTierLevelKind ParseModelTierLevelKind(string? s, ModelTierLevelKind defaultValue = ModelTierLevelKind.Standard) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ModelTierLevelKind>(s, true, out var r) ? r : defaultValue;
-    public static ModelTierLevelKind ToModelTierLevelKind(this string? s, ModelTierLevelKind defaultValue = ModelTierLevelKind.Standard) => ParseModelTierLevelKind(s, defaultValue);
 
     public static string ToApiString(this ModelBillingModeKind val) => val switch
     {
@@ -555,9 +513,6 @@ public static class AiModelProviderExtendedEnumExtensions
         ModelBillingModeKind.UsageTier => "usage_tier",
         _ => val.ToString().ToLowerInvariant()
     };
-    public static ModelBillingModeKind ParseModelBillingModeKind(string? s, ModelBillingModeKind defaultValue = ModelBillingModeKind.PayAsYouGo) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ModelBillingModeKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
-    public static ModelBillingModeKind ToModelBillingModeKind(this string? s, ModelBillingModeKind defaultValue = ModelBillingModeKind.PayAsYouGo) => ParseModelBillingModeKind(s, defaultValue);
 
     public static string ToApiString(this ProviderKeyStatusType val) => val switch
     {
@@ -566,9 +521,6 @@ public static class AiModelProviderExtendedEnumExtensions
         ProviderKeyStatusType.PendingVerification => "pending_verification",
         _ => val.ToString().ToLowerInvariant()
     };
-    public static ProviderKeyStatusType ParseProviderKeyStatusType(string? s, ProviderKeyStatusType defaultValue = ProviderKeyStatusType.Unconfigured) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ProviderKeyStatusType>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
-    public static ProviderKeyStatusType ToProviderKeyStatusType(this string? s, ProviderKeyStatusType defaultValue = ProviderKeyStatusType.Unconfigured) => ParseProviderKeyStatusType(s, defaultValue);
 
     public static string ToApiString(this ModelFeatureFlagType val) => val switch
     {
@@ -584,9 +536,6 @@ public static class AiModelProviderExtendedEnumExtensions
         ModelFeatureFlagType.SupportsLoRa => "supports_lora",
         _ => val.ToString().ToLowerInvariant()
     };
-    public static ModelFeatureFlagType ParseModelFeatureFlagType(string? s, ModelFeatureFlagType defaultValue = ModelFeatureFlagType.SupportsStreaming) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ModelFeatureFlagType>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
-    public static ModelFeatureFlagType ToModelFeatureFlagType(this string? s, ModelFeatureFlagType defaultValue = ModelFeatureFlagType.SupportsStreaming) => ParseModelFeatureFlagType(s, defaultValue);
 
     public static string ToApiString(this ModelCatalogSortOption val) => val switch
     {
@@ -596,9 +545,6 @@ public static class AiModelProviderExtendedEnumExtensions
         ModelCatalogSortOption.ContextWindowSize => "context_window_size",
         _ => val.ToString().ToLowerInvariant()
     };
-    public static ModelCatalogSortOption ParseModelCatalogSortOption(string? s, ModelCatalogSortOption defaultValue = ModelCatalogSortOption.DisplayName) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ModelCatalogSortOption>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
-    public static ModelCatalogSortOption ToModelCatalogSortOption(this string? s, ModelCatalogSortOption defaultValue = ModelCatalogSortOption.DisplayName) => ParseModelCatalogSortOption(s, defaultValue);
 
     public static string ToApiString(this ModelFilterStateOption val) => val switch
     {
@@ -610,18 +556,113 @@ public static class AiModelProviderExtendedEnumExtensions
         ModelFilterStateOption.ActiveOnly => "active_only",
         _ => val.ToString().ToLowerInvariant()
     };
-    public static ModelFilterStateOption ParseModelFilterStateOption(string? s, ModelFilterStateOption defaultValue = ModelFilterStateOption.All) =>
-        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ModelFilterStateOption>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
-    public static ModelFilterStateOption ToModelFilterStateOption(this string? s, ModelFilterStateOption defaultValue = ModelFilterStateOption.All) => ParseModelFilterStateOption(s, defaultValue);
 
     public static string ToApiString(this ModelClientRetryStrategy val) => val switch
     {
         ModelClientRetryStrategy.AdaptiveBackoff => "adaptive_backoff",
         _ => val.ToString().ToLowerInvariant()
     };
+
+    public static AiProviderIdKind ParseAiProviderIdKind(string? s, AiProviderIdKind defaultValue = AiProviderIdKind.Grok) =>
+        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<AiProviderIdKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+
+    public static AiProviderIdKind ToAiProviderIdKind(this string? s, AiProviderIdKind defaultValue = AiProviderIdKind.Grok) => ParseAiProviderIdKind(s, defaultValue);
+
+    public static ModelCapabilityCategoryKind ParseModelCapabilityCategoryKind(string? s, ModelCapabilityCategoryKind defaultValue = ModelCapabilityCategoryKind.TextGeneration) =>
+        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ModelCapabilityCategoryKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+
+    public static ModelCapabilityCategoryKind ToModelCapabilityCategoryKind(this string? s, ModelCapabilityCategoryKind defaultValue = ModelCapabilityCategoryKind.TextGeneration) => ParseModelCapabilityCategoryKind(s, defaultValue);
+
+    public static ModelPricingUnitKind ParseModelPricingUnitKind(string? s, ModelPricingUnitKind defaultValue = ModelPricingUnitKind.PerRequest) =>
+        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ModelPricingUnitKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+
+    public static ModelPricingUnitKind ToModelPricingUnitKind(this string? s, ModelPricingUnitKind defaultValue = ModelPricingUnitKind.PerRequest) => ParseModelPricingUnitKind(s, defaultValue);
+
+    public static ModelConcurrencyBehavior ParseModelConcurrencyBehavior(string? s, ModelConcurrencyBehavior defaultValue = ModelConcurrencyBehavior.Queue) =>
+        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ModelConcurrencyBehavior>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+
+    public static ModelConcurrencyBehavior ToModelConcurrencyBehavior(this string? s, ModelConcurrencyBehavior defaultValue = ModelConcurrencyBehavior.Queue) => ParseModelConcurrencyBehavior(s, defaultValue);
+
+    public static ModelEndpointTypeKind ParseModelEndpointTypeKind(string? s, ModelEndpointTypeKind defaultValue = ModelEndpointTypeKind.HttpJson) =>
+        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ModelEndpointTypeKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+
+    public static ModelEndpointTypeKind ToModelEndpointTypeKind(this string? s, ModelEndpointTypeKind defaultValue = ModelEndpointTypeKind.HttpJson) => ParseModelEndpointTypeKind(s, defaultValue);
+
+    public static ModelResponseStatusCode ParseModelResponseStatusCode(string? s, ModelResponseStatusCode defaultValue = ModelResponseStatusCode.Success) =>
+        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ModelResponseStatusCode>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+
+    public static ModelResponseStatusCode ToModelResponseStatusCode(this string? s, ModelResponseStatusCode defaultValue = ModelResponseStatusCode.Success) => ParseModelResponseStatusCode(s, defaultValue);
+
+    public static AiSafetyRatingCategory ParseAiSafetyRatingCategory(string? s, AiSafetyRatingCategory defaultValue = AiSafetyRatingCategory.Safe) =>
+        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<AiSafetyRatingCategory>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+
+    public static AiSafetyRatingCategory ToAiSafetyRatingCategory(this string? s, AiSafetyRatingCategory defaultValue = AiSafetyRatingCategory.Safe) => ParseAiSafetyRatingCategory(s, defaultValue);
+
+    public static AiCallOverrideReasonKind ParseAiCallOverrideReasonKind(string? s, AiCallOverrideReasonKind defaultValue = AiCallOverrideReasonKind.OperatorChoice) =>
+        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<AiCallOverrideReasonKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+
+    public static AiCallOverrideReasonKind ToAiCallOverrideReasonKind(this string? s, AiCallOverrideReasonKind defaultValue = AiCallOverrideReasonKind.OperatorChoice) => ParseAiCallOverrideReasonKind(s, defaultValue);
+
+    public static ModelParameterName ParseModelParameterName(string? s, ModelParameterName defaultValue = ModelParameterName.Temperature) =>
+        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ModelParameterName>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+
+    public static ModelParameterName ToModelParameterName(this string? s, ModelParameterName defaultValue = ModelParameterName.Temperature) => ParseModelParameterName(s, defaultValue);
+
+    public static StreamingChunkTypeKind ParseStreamingChunkTypeKind(string? s, StreamingChunkTypeKind defaultValue = StreamingChunkTypeKind.TextDelta) =>
+        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<StreamingChunkTypeKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+
+    public static StreamingChunkTypeKind ToStreamingChunkTypeKind(this string? s, StreamingChunkTypeKind defaultValue = StreamingChunkTypeKind.TextDelta) => ParseStreamingChunkTypeKind(s, defaultValue);
+
+    public static FinishReasonKindType ParseFinishReasonKindType(string? s, FinishReasonKindType defaultValue = FinishReasonKindType.Stop) =>
+        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<FinishReasonKindType>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+
+    public static FinishReasonKindType ToFinishReasonKindType(this string? s, FinishReasonKindType defaultValue = FinishReasonKindType.Stop) => ParseFinishReasonKindType(s, defaultValue);
+
+    public static TokenCountCategory ParseTokenCountCategory(string? s, TokenCountCategory defaultValue = TokenCountCategory.Total) =>
+        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<TokenCountCategory>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+
+    public static TokenCountCategory ToTokenCountCategory(this string? s, TokenCountCategory defaultValue = TokenCountCategory.Total) => ParseTokenCountCategory(s, defaultValue);
+
+    public static ModelFamilyType ParseModelFamilyType(string? s, ModelFamilyType defaultValue = ModelFamilyType.Grok) =>
+        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ModelFamilyType>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+
+    public static ModelFamilyType ToModelFamilyType(this string? s, ModelFamilyType defaultValue = ModelFamilyType.Grok) => ParseModelFamilyType(s, defaultValue);
+
+    public static ModelTierLevelKind ParseModelTierLevelKind(string? s, ModelTierLevelKind defaultValue = ModelTierLevelKind.Standard) =>
+        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ModelTierLevelKind>(s, true, out var r) ? r : defaultValue;
+
+    public static ModelTierLevelKind ToModelTierLevelKind(this string? s, ModelTierLevelKind defaultValue = ModelTierLevelKind.Standard) => ParseModelTierLevelKind(s, defaultValue);
+
+    public static ModelBillingModeKind ParseModelBillingModeKind(string? s, ModelBillingModeKind defaultValue = ModelBillingModeKind.PayAsYouGo) =>
+        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ModelBillingModeKind>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+
+    public static ModelBillingModeKind ToModelBillingModeKind(this string? s, ModelBillingModeKind defaultValue = ModelBillingModeKind.PayAsYouGo) => ParseModelBillingModeKind(s, defaultValue);
+
+    public static ProviderKeyStatusType ParseProviderKeyStatusType(string? s, ProviderKeyStatusType defaultValue = ProviderKeyStatusType.Unconfigured) =>
+        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ProviderKeyStatusType>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+
+    public static ProviderKeyStatusType ToProviderKeyStatusType(this string? s, ProviderKeyStatusType defaultValue = ProviderKeyStatusType.Unconfigured) => ParseProviderKeyStatusType(s, defaultValue);
+
+    public static ModelFeatureFlagType ParseModelFeatureFlagType(string? s, ModelFeatureFlagType defaultValue = ModelFeatureFlagType.SupportsStreaming) =>
+        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ModelFeatureFlagType>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+
+    public static ModelFeatureFlagType ToModelFeatureFlagType(this string? s, ModelFeatureFlagType defaultValue = ModelFeatureFlagType.SupportsStreaming) => ParseModelFeatureFlagType(s, defaultValue);
+
+    public static ModelCatalogSortOption ParseModelCatalogSortOption(string? s, ModelCatalogSortOption defaultValue = ModelCatalogSortOption.DisplayName) =>
+        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ModelCatalogSortOption>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+
+    public static ModelCatalogSortOption ToModelCatalogSortOption(this string? s, ModelCatalogSortOption defaultValue = ModelCatalogSortOption.DisplayName) => ParseModelCatalogSortOption(s, defaultValue);
+
+    public static ModelFilterStateOption ParseModelFilterStateOption(string? s, ModelFilterStateOption defaultValue = ModelFilterStateOption.All) =>
+        string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ModelFilterStateOption>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+
+    public static ModelFilterStateOption ToModelFilterStateOption(this string? s, ModelFilterStateOption defaultValue = ModelFilterStateOption.All) => ParseModelFilterStateOption(s, defaultValue);
+
     public static ModelClientRetryStrategy ParseModelClientRetryStrategy(string? s, ModelClientRetryStrategy defaultValue = ModelClientRetryStrategy.Exponential) =>
         string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ModelClientRetryStrategy>(s.Replace("_", ""), true, out var r) ? r : defaultValue;
+
     public static ModelClientRetryStrategy ToModelClientRetryStrategy(this string? s, ModelClientRetryStrategy defaultValue = ModelClientRetryStrategy.Exponential) => ParseModelClientRetryStrategy(s, defaultValue);
+
 }
 
 #endregion

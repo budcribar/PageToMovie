@@ -39,7 +39,7 @@ async function retry() {
                 reconnectModal.close();
             }
         }
-    } catch (err) {
+    } catch {
         // We got an exception, server is currently unavailable
         document.addEventListener("visibilitychange", retryWhenDocumentBecomesVisible);
     }

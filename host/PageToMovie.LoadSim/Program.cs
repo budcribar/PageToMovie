@@ -73,7 +73,7 @@ static async Task<int> RunAsync(SimOptions opts)
 
     using var http = new HttpClient
     {
-        BaseAddress = new Uri(opts.BaseUrl.TrimEnd('/') + "/"),
+        BaseAddress = new Uri(opts.BaseUrl.TrimEnd('/') + '/'),
         Timeout = TimeSpan.FromSeconds(15),
     };
 
@@ -206,7 +206,7 @@ static async Task<int> RunAsync(SimOptions opts)
         {
             var client = new HttpClient
             {
-                BaseAddress = new Uri(opts.BaseUrl.TrimEnd('/') + "/"),
+                BaseAddress = new Uri(opts.BaseUrl.TrimEnd('/') + '/'),
                 Timeout = TimeSpan.FromMinutes(2),
             };
             var vu = new VirtualUser(i, opts, metrics, client);
@@ -293,7 +293,7 @@ static async Task<int> RunAsync(SimOptions opts)
     }
 
     // Live telemetry → admin dashboard (only after stress clock)
-    using var reportCts = CancellationTokenSource.CreateLinkedTokenSource(stressCts!.Token);
+    using var reportCts = CancellationTokenSource.CreateLinkedTokenSource(stressCts?.Token ?? CancellationToken.None);
     var reportTask = ReportProgressLoopAsync(opts, metrics, runId, started, reportCts.Token);
 
     Console.WriteLine("  running… (admin /admin shows live LoadSim charts)");
@@ -424,7 +424,7 @@ static async Task PostProgressAsync(
 
         using var client = new HttpClient
         {
-            BaseAddress = new Uri(opts.BaseUrl.TrimEnd('/') + "/"),
+            BaseAddress = new Uri(opts.BaseUrl.TrimEnd('/') + '/'),
             Timeout = TimeSpan.FromSeconds(5),
         };
         using var resp = await client.PostAsJsonAsync("api/loadsim/progress", dto);

@@ -114,7 +114,7 @@ public partial class Home : IAsyncDisposable
     }
 
 
-    private void OnCultureChanged(System.Globalization.CultureInfo culture) => _ = InvokeAsync(StateHasChanged);
+    private void OnCultureChanged(System.Globalization.CultureInfo _culture) => _ = InvokeAsync(StateHasChanged);
 
 
     public async ValueTask DisposeAsync()

@@ -125,7 +125,7 @@ public sealed class ProjectContributionService
         var targetClips = await ExtractClipsFromBlueprintAsync(targetBlueprint, targetDir, ct).ConfigureAwait(false);
 
         using var clientOwned = httpClient is null ? new HttpClient() : null;
-        var http = httpClient ?? clientOwned!;
+        var http = httpClient ?? clientOwned;
 
         foreach (var clip in targetClips)
         {
@@ -140,16 +140,22 @@ public sealed class ProjectContributionService
             {
                 if (!string.IsNullOrWhiteSpace(clip.Sha256))
                 {
+                    var hashMatches = false;
                     try
                     {
                         var existingHash = await MediaRegistryService.HashFileAsync(originFilePath, ct).ConfigureAwait(false);
-                        if (string.Equals(existingHash, clip.Sha256, StringComparison.OrdinalIgnoreCase))
-                        {
-                            result.VerifiedCount++;
-                            continue;
-                        }
+                        hashMatches = string.Equals(existingHash, clip.Sha256, StringComparison.OrdinalIgnoreCase);
                     }
-                    catch { }
+                    catch (Exception)
+                    {
+                        // Unreadable origin file is treated as a mismatch so we re-copy.
+                        hashMatches = false;
+                    }
+                    if (hashMatches)
+                    {
+                        result.VerifiedCount++;
+                        continue;
+                    }
                 }
                 else
                 {
@@ -346,7 +352,7 @@ public sealed class ProjectContributionService
 
         string relPath = $"assets/video/scene_{scene:D2}_clip_{clipIdx:D2}.mp4";
         if (clip.TryGetProperty("relative_path", out var rp) && !string.IsNullOrWhiteSpace(rp.GetString()))
-            relPath = rp.GetString()!.Replace('\\', '/');
+            relPath = rp.GetString().Replace('\\', '/');
 
         string? cdnUrl = null;
         if (clip.TryGetProperty("video_url", out var vu)) cdnUrl = vu.GetString();
@@ -372,7 +378,11 @@ public sealed class ProjectContributionService
                     var hashBytes = System.Security.Cryptography.SHA256.HashData(fs);
                     sha = Convert.ToHexString(hashBytes).ToLowerInvariant();
                 }
-                catch { }
+                catch (Exception)
+                {
+                    // Hash is optional metadata; leave empty if the file cannot be read.
+                    sha = "";
+                }
             }
         }
 

@@ -21,6 +21,10 @@ public sealed class AnthropicChatClient : IChatClient, IVisionClient
 {
     public const string ApiBase = SupportedModelCatalog.AnthropicApiBase;
     public const string ApiVersion = "2023-06-01";
+    private const string MessagesKey = "messages";
+    private const string ThinkingKey = "thinking";
+    private const string OutputConfigKey = "output_config";
+    private const string TemperatureKey = "temperature";
     /// <summary>
     /// Resolves <c>max_tokens</c> from the catalog only. Missing model or maxOutputTokens → error.
     /// </summary>
@@ -52,7 +56,7 @@ public sealed class AnthropicChatClient : IChatClient, IVisionClient
         _telemetry = telemetry;
         _errorLogger = errorLogger;
         if (_http.BaseAddress is null)
-            _http.BaseAddress = new Uri(ApiBase + "/");
+            _http.BaseAddress = new Uri(ApiBase.TrimEnd(Path.AltDirectorySeparatorChar) + Path.AltDirectorySeparatorChar);
     }
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(ResolveApiKey());
@@ -81,7 +85,7 @@ public sealed class AnthropicChatClient : IChatClient, IVisionClient
             ["model"] = model,
             ["max_tokens"] = ResolveMaxTokens(model),
             ["system"] = systemPrompt,
-            ["messages"] = new object[]
+            [MessagesKey] = new object[]
             {
                 new Dictionary<string, object?> { ["role"] = "user", ["content"] = userPrompt },
             },
@@ -91,16 +95,16 @@ public sealed class AnthropicChatClient : IChatClient, IVisionClient
             // Extended/adaptive thinking requires temperature to stay at its implicit default
             // (confirmed live: "`temperature` may only be set to 1 when thinking is enabled or
             // in adaptive mode") — omit it up front rather than round-tripping a 400 first.
-            payload["thinking"] = new Dictionary<string, object?> { ["type"] = "adaptive" };
-            payload["output_config"] = new Dictionary<string, object?> { ["effort"] = mappedEffort };
+            payload[ThinkingKey] = new Dictionary<string, object?> { ["type"] = "adaptive" };
+            payload[OutputConfigKey] = new Dictionary<string, object?> { ["effort"] = mappedEffort };
         }
         else
         {
-            payload["temperature"] = temperature;
+            payload[TemperatureKey] = temperature;
         }
         return await SendWithTransientRetryAsync(
             attemptNum => SendAsync(
-                payload, model, "chat", "messages", mode,
+                payload, model, "chat", MessagesKey, mode,
                 systemPrompt, userPrompt,
                 (systemPrompt?.Length ?? 0) + (userPrompt?.Length ?? 0),
                 attemptNum, ct),
@@ -141,14 +145,14 @@ public sealed class AnthropicChatClient : IChatClient, IVisionClient
         {
             ["model"] = model,
             ["max_tokens"] = ResolveMaxTokens(model),
-            ["messages"] = new object[]
+            [MessagesKey] = new object[]
             {
                 new Dictionary<string, object?> { ["role"] = "user", ["content"] = content },
             },
         };
         return await SendWithTransientRetryAsync(
             attemptNum => SendAsync(
-                payload, model, "vision", "messages", "clip_auto_review",
+                payload, model, "vision", MessagesKey, "clip_auto_review",
                 prompt, string.Join(", ", imagePaths.Select(Path.GetFileName)),
                 prompt.Length, attemptNum, ct),
             model, "clip_auto_review", ct).ConfigureAwait(false);
@@ -218,12 +222,12 @@ public sealed class AnthropicChatClient : IChatClient, IVisionClient
                 // hardcoding a model-id list that would drift as Anthropic adds/retires models —
                 // the API itself is telling us definitively when this applies.
                 if (resp.StatusCode == System.Net.HttpStatusCode.BadRequest
-                    && payload.ContainsKey("temperature")
-                    && body.Contains("temperature", StringComparison.OrdinalIgnoreCase)
+                    && payload.ContainsKey(TemperatureKey)
+                    && body.Contains(TemperatureKey, StringComparison.OrdinalIgnoreCase)
                     && body.Contains("deprecated", StringComparison.OrdinalIgnoreCase))
                 {
                     var retryPayload = new Dictionary<string, object?>(payload);
-                    retryPayload.Remove("temperature");
+                    retryPayload.Remove(TemperatureKey);
                     return await SendAsync(
                         retryPayload, model, kind, endpoint, mode,
                         promptForLog, userPromptForLog, promptChars, attemptNum, ct).ConfigureAwait(false);
@@ -232,14 +236,14 @@ public sealed class AnthropicChatClient : IChatClient, IVisionClient
                 // Older/smaller Claude models don't support adaptive thinking or output_config.effort
                 // at all — self-heal the same way rather than maintaining a model-capability list.
                 if (resp.StatusCode == System.Net.HttpStatusCode.BadRequest
-                    && (payload.ContainsKey("thinking") || payload.ContainsKey("output_config"))
-                    && (body.Contains("thinking", StringComparison.OrdinalIgnoreCase)
-                        || body.Contains("output_config", StringComparison.OrdinalIgnoreCase)))
+                    && (payload.ContainsKey(ThinkingKey) || payload.ContainsKey(OutputConfigKey))
+                    && (body.Contains(ThinkingKey, StringComparison.OrdinalIgnoreCase)
+                        || body.Contains(OutputConfigKey, StringComparison.OrdinalIgnoreCase)))
                 {
                     var retryPayload = new Dictionary<string, object?>(payload);
-                    retryPayload.Remove("thinking");
-                    retryPayload.Remove("output_config");
-                    retryPayload["temperature"] = 0.2;
+                    retryPayload.Remove(ThinkingKey);
+                    retryPayload.Remove(OutputConfigKey);
+                    retryPayload[TemperatureKey] = 0.2;
                     return await SendAsync(
                         retryPayload, model, kind, endpoint, mode,
                         promptForLog, userPromptForLog, promptChars, attemptNum, ct).ConfigureAwait(false);

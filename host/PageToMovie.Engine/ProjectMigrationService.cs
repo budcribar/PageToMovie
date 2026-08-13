@@ -83,7 +83,6 @@ public sealed class ProjectMigrationService
         if (currentVersion == "v1")
         {
             await MigrateVisualPromptLabelsToTagsAsync(projectDir, ct).ConfigureAwait(false);
-            currentVersion = "v2";
         }
 
         // Update project.json with new schema version

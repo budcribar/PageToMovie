@@ -38,7 +38,7 @@ public partial class Join
         _error = null;
         try
         {
-            var res = await Engine.AcceptInviteAsync(_token!);
+            var res = await Engine.AcceptInviteAsync(_token);
             if (res is { Ok: true })
             {
                 _forkedProjectId = res.ProjectId;

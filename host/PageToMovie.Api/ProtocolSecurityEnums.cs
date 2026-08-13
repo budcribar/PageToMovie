@@ -224,6 +224,10 @@ public enum AuditTrailAction
 
 public static class ProtocolSecurityEnumExtensions
 {
+    private const string AdminToken = "admin";
+    private const string ExecuteToken = "execute";
+    private const string ExportToken = "export";
+    private const string SuccessToken = "success";
     public static ApiLoggingVerbosity ParseApiLoggingVerbosity(string? value) =>
             (value ?? "").Trim().ToLowerInvariant() switch
             {
@@ -253,7 +257,7 @@ public static class ProtocolSecurityEnumExtensions
                 "generation" => ApiResourceGroup.Generation,
                 "configuration" => ApiResourceGroup.Configuration,
                 "costs" => ApiResourceGroup.Costs,
-                "admin" => ApiResourceGroup.Admin,
+                AdminToken => ApiResourceGroup.Admin,
                 "system" => ApiResourceGroup.System,
                 _ => ApiResourceGroup.Projects
             };
@@ -264,8 +268,8 @@ public static class ProtocolSecurityEnumExtensions
                 "create" => AuditTrailAction.Create,
                 "update" => AuditTrailAction.Update,
                 "delete" => AuditTrailAction.Delete,
-                "execute" => AuditTrailAction.Execute,
-                "export" => AuditTrailAction.Export,
+                ExecuteToken => AuditTrailAction.Execute,
+                ExportToken => AuditTrailAction.Export,
                 "login" => AuditTrailAction.Login,
                 "logout" => AuditTrailAction.Logout,
                 _ => AuditTrailAction.Read
@@ -353,7 +357,7 @@ public static class ProtocolSecurityEnumExtensions
             (value ?? "").Trim().ToLowerInvariant() switch
             {
                 "informational" or "1xx" => HttpStatusCategory.Informational,
-                "success" or "2xx" => HttpStatusCategory.Success,
+                SuccessToken or "2xx" => HttpStatusCategory.Success,
                 "redirection" or "3xx" => HttpStatusCategory.Redirection,
                 "client_error" or "clienterror" or "4xx" => HttpStatusCategory.ClientError,
                 "server_error" or "servererror" or "5xx" => HttpStatusCategory.ServerError,
@@ -375,9 +379,9 @@ public static class ProtocolSecurityEnumExtensions
             (value ?? "").Trim().ToLowerInvariant() switch
             {
                 "write" => PermissionTokenScope.Write,
-                "admin" => PermissionTokenScope.Admin,
-                "execute" => PermissionTokenScope.Execute,
-                "export" => PermissionTokenScope.Export,
+                AdminToken => PermissionTokenScope.Admin,
+                ExecuteToken => PermissionTokenScope.Execute,
+                ExportToken => PermissionTokenScope.Export,
                 "full" => PermissionTokenScope.Full,
                 _ => PermissionTokenScope.Read
             };
@@ -416,7 +420,7 @@ public static class ProtocolSecurityEnumExtensions
     public static WebhookDeliveryResult ParseWebhookDeliveryResult(string? value) =>
             (value ?? "").Trim().ToLowerInvariant() switch
             {
-                "success" => WebhookDeliveryResult.Success,
+                SuccessToken => WebhookDeliveryResult.Success,
                 "transient_failure" or "transientfailure" => WebhookDeliveryResult.TransientFailure,
                 "permanent_failure" or "permanentfailure" => WebhookDeliveryResult.PermanentFailure,
                 "skipped" => WebhookDeliveryResult.Skipped,
@@ -460,7 +464,7 @@ public static class ProtocolSecurityEnumExtensions
     public static string ToApiString(this HttpStatusCategory category) => category switch
         {
             HttpStatusCategory.Informational => "informational",
-            HttpStatusCategory.Success => "success",
+            HttpStatusCategory.Success => SuccessToken,
             HttpStatusCategory.Redirection => "redirection",
             HttpStatusCategory.ClientError => "client_error",
             HttpStatusCategory.ServerError => "server_error",
@@ -560,7 +564,7 @@ public static class ProtocolSecurityEnumExtensions
             ApiResourceGroup.Generation => "generation",
             ApiResourceGroup.Configuration => "configuration",
             ApiResourceGroup.Costs => "costs",
-            ApiResourceGroup.Admin => "admin",
+            ApiResourceGroup.Admin => AdminToken,
             ApiResourceGroup.System => "system",
             _ => "projects"
         };
@@ -589,9 +593,9 @@ public static class ProtocolSecurityEnumExtensions
         {
             PermissionTokenScope.Read => "read",
             PermissionTokenScope.Write => "write",
-            PermissionTokenScope.Admin => "admin",
-            PermissionTokenScope.Execute => "execute",
-            PermissionTokenScope.Export => "export",
+            PermissionTokenScope.Admin => AdminToken,
+            PermissionTokenScope.Execute => ExecuteToken,
+            PermissionTokenScope.Export => ExportToken,
             PermissionTokenScope.Full => "full",
             _ => "read"
         };
@@ -638,7 +642,7 @@ public static class ProtocolSecurityEnumExtensions
 
     public static string ToApiString(this WebhookDeliveryResult result) => result switch
         {
-            WebhookDeliveryResult.Success => "success",
+            WebhookDeliveryResult.Success => SuccessToken,
             WebhookDeliveryResult.TransientFailure => "transient_failure",
             WebhookDeliveryResult.PermanentFailure => "permanent_failure",
             WebhookDeliveryResult.Skipped => "skipped",
@@ -652,8 +656,8 @@ public static class ProtocolSecurityEnumExtensions
             AuditTrailAction.Read => "read",
             AuditTrailAction.Update => "update",
             AuditTrailAction.Delete => "delete",
-            AuditTrailAction.Execute => "execute",
-            AuditTrailAction.Export => "export",
+            AuditTrailAction.Execute => ExecuteToken,
+            AuditTrailAction.Export => ExportToken,
             AuditTrailAction.Login => "login",
             AuditTrailAction.Logout => "logout",
             _ => "read"

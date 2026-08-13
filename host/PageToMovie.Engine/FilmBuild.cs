@@ -241,7 +241,7 @@ public static class FilmBuildService
     {
         ArgumentNullException.ThrowIfNull(doc);
         var path = GetPath(projectDir);
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(path));
         var json = JsonSerializer.Serialize(doc, JsonDefaults.Indented);
         await File.WriteAllTextAsync(path, json + "\n", ct).ConfigureAwait(false);
     }
@@ -299,7 +299,7 @@ public static class FilmBuildService
         CancellationToken ct = default)
     {
         var projectDir = await store.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
-        var rel = string.IsNullOrWhiteSpace(wipRelativePath) ? "assets/movie_wip.mp4" : wipRelativePath!;
+        var rel = string.IsNullOrWhiteSpace(wipRelativePath) ? "assets/movie_wip.mp4" : wipRelativePath;
         var full = Path.Combine(projectDir, rel.Replace('/', Path.DirectorySeparatorChar));
         if (!File.Exists(full)) return null;
         var bytes = await File.ReadAllBytesAsync(full, ct).ConfigureAwait(false);

@@ -48,11 +48,10 @@ public static class CastKindClassifier
             (desc.Contains("group of", StringComparison.OrdinalIgnoreCase) ||
              desc.Contains("several", StringComparison.OrdinalIgnoreCase) ||
              desc.Contains("mixed boys and girls", StringComparison.OrdinalIgnoreCase) ||
-             desc.Contains("small group", StringComparison.OrdinalIgnoreCase)))
+             desc.Contains("small group", StringComparison.OrdinalIgnoreCase)) &&
+            (TokenIsGroup(key) || TokenIsGroup(displayName) || LooksPluralToken(key) || LooksPluralToken(displayName)))
         {
-            // Only if key/display also looks plural-ish or empty of a single proper name
-            if (TokenIsGroup(key) || TokenIsGroup(displayName) || LooksPluralToken(key) || LooksPluralToken(displayName))
-                return true;
+            return true;
         }
 
         return false;
@@ -100,12 +99,7 @@ public static class CastKindClassifier
         if (string.IsNullOrWhiteSpace(t)) return false;
         if (GroupTokens.Contains(t)) return true;
         // Multi-word: any segment matches
-        foreach (var part in t.Split(' ', StringSplitOptions.RemoveEmptyEntries))
-        {
-            if (GroupTokens.Contains(part))
-                return true;
-        }
-        return false;
+        return t.Split(' ', StringSplitOptions.RemoveEmptyEntries).Any(GroupTokens.Contains);
     }
 
     private static bool LooksPluralToken(string? raw)

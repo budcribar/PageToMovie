@@ -234,9 +234,9 @@ public partial class Review
             try
             {
                 var meta = await S.Engine.GetWipMovieMetaAsync(S._projectId);
-                _wipExists = meta?.Exists == true;
-                _wipStale = meta?.Stale == true || !_wipExists;
-                _wipCanBuild = meta?.CanBuild == true;
+                _wipExists = meta?.Exists ?? false;
+                _wipStale = (meta?.Stale ?? false) || !_wipExists;
+                _wipCanBuild = meta?.CanBuild ?? false;
                 _wipReason = meta?.Reason;
                 _wipPath = meta?.Path;
                 _wipUpdatedAt = meta?.UpdatedAt;
@@ -397,11 +397,11 @@ public partial class Review
                 _showClipPlayer = false;
                 await RefreshWipMetaAsync();
                 var summary = S.List._scenes.FirstOrDefault(s => s.SceneNumber == scene);
-                var stale = (await S.Engine.GetWipMovieMetaAsync(S._projectId))?.StaleScenes?.Contains(scene) == true;
+                var stale = (await S.Engine.GetWipMovieMetaAsync(S._projectId))?.StaleScenes?.Contains(scene) ?? false;
                 var compositeOk = summary?.CompositeExists == true;
                 var needsStitch = !compositeOk || stale;
 
-                if (!needsStitch && compositeOk)
+                if (!needsStitch)
                 {
                     _clientSceneUrl = null;
                     _showWipPlayer = false;

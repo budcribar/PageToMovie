@@ -57,12 +57,7 @@ public sealed class BookPrepareService
         Action<string>? onProgress = null,
         CancellationToken ct = default)
     {
-        {
-            var cfg = await _projects.GetConfigAsync(projectId, ct).ConfigureAwait(false);
-            visionModel = string.IsNullOrWhiteSpace(visionModel)
-                ? ProjectModelSelection.RequireVision(cfg, "Book prepare")
-                : ProjectModelSelection.RequireExplicit(visionModel, ModelCapability.Vision, "Book prepare");
-        }
+        visionModel = await ResolveBookPrepareVisionModelAsync(projectId, visionModel, ct).ConfigureAwait(false);
 
         var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         var source = Path.Combine(projectDir, "source");
@@ -321,6 +316,15 @@ public sealed class BookPrepareService
         // Stage-end package history (text only; video ignored by project git).
         _projects.TriggerAutoGitCommit(projectId, ProjectStageCommits.BookPrepared);
         return result;
+    }
+
+    private async Task<string> ResolveBookPrepareVisionModelAsync(
+        string projectId, string? visionModel, CancellationToken ct)
+    {
+        var cfg = await _projects.GetConfigAsync(projectId, ct).ConfigureAwait(false);
+        return string.IsNullOrWhiteSpace(visionModel)
+            ? ProjectModelSelection.RequireVision(cfg, "Book prepare")
+            : ProjectModelSelection.RequireExplicit(visionModel, ModelCapability.Vision, "Book prepare");
     }
 
     private static BookStrategy DecideStrategy(BookTextAnalysis analysis, bool hasImages, bool hasXai)
@@ -732,7 +736,6 @@ public sealed class BookPrepareService
                      .OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase))
         {
             var name = fi.Name;
-            var f = fi.FullName;
             var m = EmbeddedPageNumRegex.Match(name);
             var kind = EmbeddedKind;
             int page = 0;
@@ -760,7 +763,7 @@ public sealed class BookPrepareService
         await WriteManifestAsync(
             imgDir,
             rows,
-            pages > 0 ? pages : rows.Max(r => (int)r["page"]!),
+            pages > 0 ? pages : rows.Max(r => r["page"] is int p ? p : 0),
             ct).ConfigureAwait(false);
     }
 
@@ -832,9 +835,9 @@ public sealed class BookPrepareService
         // Prefer full-page renders for vision OCR; fall back to embeds
         return byPage
             .OrderBy(kv => kv.Key)
-            .Select(kv => (kv.Key, kv.Value.Ren ?? kv.Value.Emb!))
+            .Select(kv => (kv.Key, kv.Value.Ren ?? kv.Value.Emb ?? string.Empty))
             .Where(t => !string.IsNullOrEmpty(t.Item2) && File.Exists(t.Item2))
-            .ToList()!;
+            .ToList();
     }
 
     private static async Task WriteExtractMetaAsync(

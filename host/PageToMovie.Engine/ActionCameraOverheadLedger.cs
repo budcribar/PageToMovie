@@ -27,12 +27,18 @@ public sealed record CompositeTimingEntry(
 /// </summary>
 public sealed class ActionCameraOverheadLedger
 {
+    private const string CamPushIn = "cam_push_in";
+    private const string CamWhipPan = "cam_whip_pan";
+    private const string CamTrackingDolly = "cam_tracking_dolly";
+    private const string Serial = "serial";
+    private const string Concurrent = "concurrent";
+
     private static readonly Dictionary<string, double> SingleKeyOverheads = new(StringComparer.OrdinalIgnoreCase)
     {
         // Camera Movements
-        ["cam_push_in"] = 1.6,
-        ["cam_whip_pan"] = 0.8,
-        ["cam_tracking_dolly"] = 2.4,
+        [CamPushIn] = 1.6,
+        [CamWhipPan] = 0.8,
+        [CamTrackingDolly] = 2.4,
         ["cam_crane_canopy"] = 2.7,
 
         // Reactions
@@ -84,17 +90,17 @@ public sealed class ActionCameraOverheadLedger
     private static readonly Dictionary<(string CameraId, string ActionId, string Mode), CompositeTimingEntry> CompositeLedger = new()
     {
         // Documented Examples (§2)
-        [("cam_push_in", "act_knife_pull", "serial")] = new CompositeTimingEntry("cam_push_in", "act_knife_pull", "serial", 2.0, 0.0),
-        [("cam_push_in", "act_pills_sorting", "concurrent")] = new CompositeTimingEntry("cam_push_in", "act_pills_sorting", "concurrent", 2.3, 0.85),
+        [(CamPushIn, "act_knife_pull", Serial)] = new CompositeTimingEntry(CamPushIn, "act_knife_pull", Serial, 2.0, 0.0),
+        [(CamPushIn, "act_pills_sorting", Concurrent)] = new CompositeTimingEntry(CamPushIn, "act_pills_sorting", Concurrent, 2.3, 0.85),
         
         // Extended Composite Dual-Key Entries (*Nick and Me*, *Tell-Tale Heart*, *Jungle Book*)
-        [("cam_whip_pan", "act_stabbing", "serial")] = new CompositeTimingEntry("cam_whip_pan", "act_stabbing", "serial", 2.8, 0.0),
-        [("cam_tracking_dolly", "act_running_panic", "concurrent")] = new CompositeTimingEntry("cam_tracking_dolly", "act_running_panic", "concurrent", 2.5, 0.80),
-        [("cam_crane_canopy", "act_vine_swing", "concurrent")] = new CompositeTimingEntry("cam_crane_canopy", "act_vine_swing", "concurrent", 2.7, 0.75),
-        [("cam_push_in", "act_creeping_step", "serial")] = new CompositeTimingEntry("cam_push_in", "act_creeping_step", "serial", 2.4, 0.0),
-        [("cam_tracking_dolly", "car_muscle_drive", "concurrent")] = new CompositeTimingEntry("cam_tracking_dolly", "car_muscle_drive", "concurrent", 2.2, 0.85),
-        [("cam_push_in", "act_heavy_carry", "serial")] = new CompositeTimingEntry("cam_push_in", "act_heavy_carry", "serial", 3.0, 0.0),
-        [("cam_whip_pan", "react_gasp_shock", "serial")] = new CompositeTimingEntry("cam_whip_pan", "react_gasp_shock", "serial", 1.2, 0.0),
+        [(CamWhipPan, "act_stabbing", Serial)] = new CompositeTimingEntry(CamWhipPan, "act_stabbing", Serial, 2.8, 0.0),
+        [(CamTrackingDolly, "act_running_panic", Concurrent)] = new CompositeTimingEntry(CamTrackingDolly, "act_running_panic", Concurrent, 2.5, 0.80),
+        [("cam_crane_canopy", "act_vine_swing", Concurrent)] = new CompositeTimingEntry("cam_crane_canopy", "act_vine_swing", Concurrent, 2.7, 0.75),
+        [(CamPushIn, "act_creeping_step", Serial)] = new CompositeTimingEntry(CamPushIn, "act_creeping_step", Serial, 2.4, 0.0),
+        [(CamTrackingDolly, "car_muscle_drive", Concurrent)] = new CompositeTimingEntry(CamTrackingDolly, "car_muscle_drive", Concurrent, 2.2, 0.85),
+        [(CamPushIn, "act_heavy_carry", Serial)] = new CompositeTimingEntry(CamPushIn, "act_heavy_carry", Serial, 3.0, 0.0),
+        [(CamWhipPan, "react_gasp_shock", Serial)] = new CompositeTimingEntry(CamWhipPan, "react_gasp_shock", Serial, 1.2, 0.0),
     };
 
     private readonly ILogger<ActionCameraOverheadLedger>? _log;
@@ -117,9 +123,9 @@ public sealed class ActionCameraOverheadLedger
     /// </summary>
     public CompositeTimingEntry GetCompositeEntry(string? cameraId, string? actionId, string? concurrencyMode)
     {
-        var cam = string.IsNullOrWhiteSpace(cameraId) ? "cam_push_in" : cameraId.Trim().ToLowerInvariant();
+        var cam = string.IsNullOrWhiteSpace(cameraId) ? CamPushIn : cameraId.Trim().ToLowerInvariant();
         var act = string.IsNullOrWhiteSpace(actionId) ? "act_generic_action" : actionId.Trim().ToLowerInvariant();
-        var mode = string.IsNullOrWhiteSpace(concurrencyMode) ? "serial" : concurrencyMode.Trim().ToLowerInvariant();
+        var mode = string.IsNullOrWhiteSpace(concurrencyMode) ? Serial : concurrencyMode.Trim().ToLowerInvariant();
 
         var key = (cam, act, mode);
         if (CompositeLedger.TryGetValue(key, out var entry))
@@ -131,7 +137,7 @@ public sealed class ActionCameraOverheadLedger
 
         // Interpolated fallback from single-key empirical overhead dictionary
         double baseOverhead = GetOverheadSec(act, GetOverheadSec(cam, 2.0));
-        double gamma = string.Equals(mode, "concurrent", StringComparison.OrdinalIgnoreCase) ? 0.85 : 0.0;
+        double gamma = string.Equals(mode, Concurrent, StringComparison.OrdinalIgnoreCase) ? 0.85 : 0.0;
 
         _log?.LogDebug("[TimingLedger] Composite dual-key MISS for ({Cam}, {Act}, {Mode}) -> Fallback Overhead={Overhead}s, Gamma={Gamma}",
             cam, act, mode, baseOverhead, gamma);
@@ -149,7 +155,7 @@ public sealed class ActionCameraOverheadLedger
         string? actionCategoryId = null,
         double concurrencyFactorGamma = 0.0)
     {
-        var mode = concurrencyFactorGamma > 0.0 ? "concurrent" : "serial";
+        var mode = concurrencyFactorGamma > 0.0 ? Concurrent : Serial;
         var entry = GetCompositeEntry(cameraCategoryId, actionCategoryId, mode);
 
         double camOverhead = GetOverheadSec(entry.CameraId, 1.6);

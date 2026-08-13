@@ -32,6 +32,8 @@ public partial class Admin
         internal string? _archiveMsg;
         internal string? _archiveError;
         internal const long MaxImportBytes = 512L * 1024 * 1024;
+        private const string JsonSuccessProperty = "success";
+        private const string JsonErrorProperty = "error";
         internal int _synthesizeCurrent;
         internal int _synthesizeTotal;
 
@@ -181,7 +183,7 @@ public partial class Admin
                             streamRef,
                             _exportProjectId,
                             progressRef);
-                        if (result.TryGetProperty("success", out var ok) && ok.GetBoolean())
+                        if (result.TryGetProperty(JsonSuccessProperty, out var ok) && ok.GetBoolean())
                         {
                             SetExportProgress(
                                 100,
@@ -191,7 +193,7 @@ public partial class Admin
                         }
                         else
                         {
-                            var err = result.TryGetProperty("error", out var e) ? e.GetString() : "download failed";
+                            var err = result.TryGetProperty(JsonErrorProperty, out var e) ? e.GetString() : "download failed";
                             SetExportProgress(null, "Merge failed — downloading server zip only…", true);
                             var (body2, fileName2) = await S.Api.ExportProjectZipBodyAdminWithProgressAsync(
                                 _exportProjectId,
@@ -212,7 +214,7 @@ public partial class Admin
                                     fileName2,
                                     streamRef2,
                                     progressRef);
-                                if (plain.TryGetProperty("success", out var ok2) && ok2.GetBoolean())
+                                if (plain.TryGetProperty(JsonSuccessProperty, out var ok2) && ok2.GetBoolean())
                                     SetExportProgress(100, $"Downloaded {fileName2} (server only). Merge error: {err}");
                                 else
                                 {
@@ -282,11 +284,11 @@ public partial class Admin
                         "PageToMovieExport.downloadStreamAsync",
                         fileName,
                         streamRef);
-                    if (result.TryGetProperty("success", out var ok) && ok.GetBoolean())
+                    if (result.TryGetProperty(JsonSuccessProperty, out var ok) && ok.GetBoolean())
                         _archiveMsg = $"Downloaded {fileName}";
                     else
                     {
-                        var err = result.TryGetProperty("error", out var e) ? e.GetString() : "download failed";
+                        var err = result.TryGetProperty(JsonErrorProperty, out var e) ? e.GetString() : "download failed";
                         _archiveError = err;
                         _archiveMsg = null;
                     }
@@ -327,7 +329,7 @@ public partial class Admin
                 var pid = result?.ProjectId?.Trim();
                 var parts = new List<string>();
                 if (!string.IsNullOrWhiteSpace(result?.Message))
-                    parts.Add(result!.Message!);
+                    parts.Add(result.Message);
                 else if (!string.IsNullOrWhiteSpace(pid))
                     parts.Add($"Imported {pid}");
 
@@ -344,20 +346,20 @@ public partial class Admin
                             "PageToMovieExport.importZipMediaToClientFolderAsync",
                             streamRef,
                             pid);
-                        if (media.TryGetProperty("success", out var ok) && ok.GetBoolean())
+                        if (media.TryGetProperty(JsonSuccessProperty, out var ok) && ok.GetBoolean())
                         {
                             var written = media.TryGetProperty("written", out var w) && w.ValueKind == JsonValueKind.Number
                                 ? w.GetInt32()
                                 : 0;
                             if (media.TryGetProperty("message", out var mm) && mm.ValueKind == JsonValueKind.String
                                 && !string.IsNullOrWhiteSpace(mm.GetString()))
-                                parts.Add(mm.GetString()!);
+                                parts.Add(mm.GetString());
                             else if (written > 0)
                                 parts.Add($"{written} media file(s) restored locally");
                         }
                         else
                         {
-                            var err = media.TryGetProperty("error", out var e) ? e.GetString() : "local media restore failed";
+                            var err = media.TryGetProperty(JsonErrorProperty, out var e) ? e.GetString() : "local media restore failed";
                             parts.Add($"Local media: {err}");
                             // Fallback: pull whatever landed on the server
                             await S.MediaFolder.SyncProjectMediaToClientAsync(pid);
@@ -492,7 +494,10 @@ public partial class Admin
                     await Task.Delay(1000, token);
                 }
             }
-            catch (TaskCanceledException) { }
+            catch (TaskCanceledException)
+            {
+                return;
+            }
         }
 
         private async Task PollEnrichJobAsync(CancellationToken token)
@@ -573,7 +578,10 @@ public partial class Admin
                     await S.NotifyChangedAsync();
                 }
             }
-            catch (TaskCanceledException) { }
+            catch (TaskCanceledException)
+            {
+                return;
+            }
             catch (Exception ex)
             {
                 _archiveError = ex.Message;
@@ -682,7 +690,7 @@ public partial class Admin
                         S.StateHasChanged();
                         try
                         {
-                            var final = await S.Api.WaitForJobTerminalAsync(started!.JobId, timeout: TimeSpan.FromMinutes(8));
+                            var final = await S.Api.WaitForJobTerminalAsync(started.JobId, timeout: TimeSpan.FromMinutes(8));
                             // The job "succeeding" server-side only means audio bytes were fetched from the
                             // provider — it says nothing about whether this browser tab actually wrote them
                             // to the local media folder (SaveJobMediaAsync runs off a SignalR JobUpdated
@@ -693,7 +701,7 @@ public partial class Admin
                             if (!string.Equals(final?.Status, "done", StringComparison.OrdinalIgnoreCase))
                             {
                                 failedCount++;
-                                var msg = string.IsNullOrWhiteSpace(final?.Error) ? (final?.Message ?? "Unknown error") : final!.Error!;
+                                var msg = string.IsNullOrWhiteSpace(final?.Error) ? (final?.Message ?? "Unknown error") : final.Error;
                                 failureMessages.Add(msg);
                             }
                             else

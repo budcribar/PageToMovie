@@ -19,6 +19,8 @@ public sealed class EngineApiClient
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
+    private const string ExportFailedMessage = "export failed";
+
     private readonly HttpClient _http;
     private readonly AdminSessionService? _session;
     private readonly EngineApiOptions _opts;
@@ -461,7 +463,7 @@ public sealed class EngineApiClient
     private sealed class AiCallAnalyticsEnvelope
     {
         public bool Ok { get; set; }
-        public AiCallAnalyticsDto? Data { get; set; }
+        public AiCallAnalyticsDto? Data { get; set; } = null;
     }
 
     public async Task<RuntimeConfigDto?> SaveAdminConfigAsync(
@@ -567,7 +569,7 @@ public sealed class EngineApiClient
         => await DownloadZipBodyWithProgressAsync(
             $"/api/projects/{Uri.EscapeDataString(projectId)}/export",
             $"PageToMovie_{projectId}.zip",
-            "export failed",
+            ExportFailedMessage,
             onProgress,
             ct);
 
@@ -578,7 +580,7 @@ public sealed class EngineApiClient
         => await DownloadZipBodyWithProgressAsync(
             $"/api/admin/projects/{Uri.EscapeDataString(projectId)}/export",
             $"PageToMovie_{projectId}.zip",
-            "export failed",
+            ExportFailedMessage,
             onProgress,
             ct);
 
@@ -587,7 +589,7 @@ public sealed class EngineApiClient
         CancellationToken ct = default)
         => await DownloadZipAsync(
             $"/api/admin/projects/{Uri.EscapeDataString(projectId)}/export",
-            $"PageToMovie_{projectId}.zip", "export failed", ct);
+            $"PageToMovie_{projectId}.zip", ExportFailedMessage, ct);
 
     /// <summary>User-mode project export (no admin) — same server zip as the admin export, gated on
     /// login rather than the admin role. Backs a user-facing full backup: caller merges local media
@@ -597,7 +599,7 @@ public sealed class EngineApiClient
         CancellationToken ct = default)
         => await DownloadZipAsync(
             $"/api/projects/{Uri.EscapeDataString(projectId)}/export",
-            $"PageToMovie_{projectId}.zip", "export failed", ct);
+            $"PageToMovie_{projectId}.zip", ExportFailedMessage, ct);
 
     /// <summary>
     /// Admin server diagnostic logs zip. Returns open response stream + suggested filename.
@@ -754,7 +756,7 @@ public sealed class EngineApiClient
     private sealed class ForkableStoriesEnvelope
     {
         public bool Ok { get; set; }
-        public List<ForkableStoryDto>? Projects { get; set; }
+        public List<ForkableStoryDto>? Projects { get; set; } = null;
     }
 
     /// <summary>Persistently delete a whole scene from the shot plan (blueprint + on-disk media).</summary>
@@ -857,7 +859,7 @@ public sealed class EngineApiClient
     private sealed class CheckpointHistoryEnvelope
     {
         public bool Ok { get; set; }
-        public List<CheckpointDto>? History { get; set; }
+        public List<CheckpointDto>? History { get; set; } = null;
     }
 
     public async Task<SyncOriginResultDto?> SyncOriginAsync(
@@ -1369,22 +1371,22 @@ public sealed class EngineApiClient
     private sealed class LearningInsightsEnvelope
     {
         public bool Ok { get; set; }
-        public LearningInsightsDto? Insights { get; set; }
+        public LearningInsightsDto? Insights { get; set; } = null;
     }
     private sealed class LearningEventsEnvelope
     {
         public bool Ok { get; set; }
-        public List<ReviewLearningEvent>? Events { get; set; }
+        public List<ReviewLearningEvent>? Events { get; set; } = null;
     }
     private sealed class ProposalChecklistEnvelope
     {
         public bool Ok { get; set; }
-        public ProposalChecklistDocument? Checklist { get; set; }
+        public ProposalChecklistDocument? Checklist { get; set; } = null;
     }
     private sealed class ProjectRulesEnvelope
     {
         public bool Ok { get; set; }
-        public ProjectRulesDocument? Rules { get; set; }
+        public ProjectRulesDocument? Rules { get; set; } = null;
     }
 
     public async Task AdminReleaseLockAsync(string resource, bool force = true, CancellationToken ct = default)
@@ -1573,9 +1575,9 @@ public sealed class EngineApiClient
     private sealed class RenameProjectResponse
     {
         public bool Ok { get; set; }
-        public string? ProjectId { get; set; }
-        public string? Title { get; set; }
-        public string? Label { get; set; }
+        public string? ProjectId { get; set; } = null;
+        public string? Title { get; set; } = null;
+        public string? Label { get; set; } = null;
         public string? Message { get; set; }
         public string? Error { get; set; }
     }
@@ -2034,10 +2036,10 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         catch { return false; }
     }
 
-    private class VoiceCapturePhrasesResponseDto
+    private sealed class VoiceCapturePhrasesResponseDto
     {
-        public bool Ok { get; set; }
-        public VoiceCapturePhrases? Phrases { get; set; }
+        public bool Ok { get; set; } = false;
+        public VoiceCapturePhrases? Phrases { get; set; } = null;
     }
 
     /// <summary>Per-scene narrator lines from the blueprint (no dub needed) — lets the capture page
@@ -2068,10 +2070,10 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         public List<string> Lines { get; set; } = new();
     }
 
-    private class NarratorLinesResponseDto
+    private sealed class NarratorLinesResponseDto
     {
-        public bool Ok { get; set; }
-        public List<NarratorSceneLinesDto>? Scenes { get; set; }
+        public bool Ok { get; set; } = false;
+        public List<NarratorSceneLinesDto>? Scenes { get; set; } = null;
     }
 
     // ── Dialogue-timing review (all speakers): script lines, cached STT comparison ──────────────
@@ -2132,28 +2134,28 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         public string Text { get; set; } = "";
     }
 
-    private class DialogueLinesResponseDto
+    private sealed class DialogueLinesResponseDto
     {
-        public bool Ok { get; set; }
-        public List<DialogueSceneLinesDto>? Scenes { get; set; }
+        public bool Ok { get; set; } = false;
+        public List<DialogueSceneLinesDto>? Scenes { get; set; } = null;
     }
 
-    private class DialogueTimingResponseDto
+    private sealed class DialogueTimingResponseDto
     {
-        public bool Ok { get; set; }
-        public DialogueTimingDoc? Timing { get; set; }
+        public bool Ok { get; set; } = false;
+        public DialogueTimingDoc? Timing { get; set; } = null;
     }
 
-    private class VoiceAlignmentResponseDto
+    private sealed class VoiceAlignmentResponseDto
     {
-        public bool Ok { get; set; }
-        public ProjectVoiceAlignment? Alignment { get; set; }
+        public bool Ok { get; set; } = false;
+        public ProjectVoiceAlignment? Alignment { get; set; } = null;
     }
 
-    private class GenBatchJobResponseDto
+    private sealed class GenBatchJobResponseDto
     {
-        public bool Ok { get; set; }
-        public JobSnapshot? Job { get; set; }
+        public bool Ok { get; set; } = false;
+        public JobSnapshot? Job { get; set; } = null;
     }
 
     public async Task CancelJobAsync(CancellationToken ct = default)
@@ -2678,8 +2680,8 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     private sealed class JobStartEnvelope
     {
         public bool Ok { get; set; }
-        public JobSnapshot? Job { get; set; }
-        public string? JobId { get; set; }
+        public JobSnapshot? Job { get; set; } = null;
+        public string? JobId { get; set; } = null;
         public string? Message { get; set; }
     }
 
@@ -2768,7 +2770,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     private sealed class ReviewIndexEnvelope
     {
         public bool Ok { get; set; }
-        public ReviewIndexDocument? Index { get; set; }
+        public ReviewIndexDocument? Index { get; set; } = null;
     }
 
     public async Task<ClipAutoReviewDraft?> GetClipAutoReviewDraftAsync(
@@ -2889,7 +2891,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     /// for the video-extend continuation-source upload (see
     /// ClientMediaFolderService.PrepareExtendSourceAsync) — the server writes that to a distinct,
     /// single-use path instead of replacing the clip's own official video.</summary>
-    public string ClipUploadUrl(string projectId, int scene, int clip, string? kind = null) =>
+    public static string ClipUploadUrl(string projectId, int scene, int clip, string? kind = null) =>
         $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes/{scene}/clips/{clip}/upload" +
         (string.IsNullOrEmpty(kind) ? "" : $"?kind={Uri.EscapeDataString(kind)}");
 
@@ -2974,14 +2976,14 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     private sealed class ArtifactIndexResponse
     {
         public bool Ok { get; set; }
-        public bool ReadyForManualFinalReview { get; set; }
-        public List<string>? MissingRequired { get; set; }
-        public ArtifactIndexDto? Index { get; set; }
+        public bool ReadyForManualFinalReview { get; set; } = false;
+        public List<string>? MissingRequired { get; set; } = null;
+        public ArtifactIndexDto? Index { get; set; } = null;
     }
 
     private sealed class ArtifactIndexDto
     {
-        public Dictionary<string, object?>? Stats { get; set; }
+        public Dictionary<string, object?>? Stats { get; set; } = null;
     }
 
     public sealed class ArtifactIndexResult
@@ -2994,7 +2996,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     private sealed class ClipAutoReviewDraftEnvelope
     {
         public bool Ok { get; set; }
-        public ClipAutoReviewDraft? Draft { get; set; }
+        public ClipAutoReviewDraft? Draft { get; set; } = null;
     }
 
     public async Task ReviewClipAsync(
@@ -3553,7 +3555,7 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     private sealed class SupportedModelsResponse
     {
         public bool Ok { get; set; }
-        public List<SupportedModelDto>? Models { get; set; }
+        public List<SupportedModelDto>? Models { get; set; } = null;
     }
 
     public async Task<ConfigDto?> SaveConfigAsync(
@@ -3733,7 +3735,9 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
             return url;
         }
 
-        var path = url.StartsWith('/') ? url : "/" + url.TrimStart('/');
+        var path = url.StartsWith(Path.AltDirectorySeparatorChar)
+            ? url
+            : Path.AltDirectorySeparatorChar + url.TrimStart(Path.AltDirectorySeparatorChar);
         return BrowserMediaPath(path);
     }
 
@@ -3745,9 +3749,9 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
     {
         if (string.IsNullOrWhiteSpace(rootRelativePath))
             return BrowserMediaOrigin;
-        var path = rootRelativePath.StartsWith('/')
+        var path = rootRelativePath.StartsWith(Path.AltDirectorySeparatorChar)
             ? rootRelativePath
-            : "/" + rootRelativePath.TrimStart('/');
+            : Path.AltDirectorySeparatorChar + rootRelativePath.TrimStart(Path.AltDirectorySeparatorChar);
         return WithMediaTokenAndOrigin(path);
     }
 
@@ -3760,8 +3764,9 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         // (access logs, browser history, Referer).
         if (HasFreshMediaToken())
         {
+            var token = _mediaToken ?? "";
             path += (path.Contains('?', StringComparison.Ordinal) ? "&" : "?")
-                    + "mt=" + Uri.EscapeDataString(_mediaToken!);
+                    + "mt=" + Uri.EscapeDataString(token);
         }
         else
         {

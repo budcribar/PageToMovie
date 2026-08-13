@@ -64,7 +64,7 @@ public sealed class YouTubeChannelGallerySync
         {
             // Successful list (0 or N videos) is authoritative. Exceptions are glitches — do not hide.
             var uploads = await _youTube.ListChannelUploadsAsync(maxVideos, ct).ConfigureAwait(false);
-            var (added, updated, total) = await _demos.SyncFromChannelUploadsAsync(uploads, createdBy, ct).ConfigureAwait(false);
+            var (added, updated, _) = await _demos.SyncFromChannelUploadsAsync(uploads, createdBy, ct).ConfigureAwait(false);
             var hidden = await _demos.HideDemosNotOnChannelAsync(
                 uploads.Select(u => u.VideoId).ToList(),
                 listIsAuthoritative: true, ct: ct).ConfigureAwait(false);

@@ -228,6 +228,8 @@ public enum AuditActionKind
 
 public static class ProtocolEnumExtensions
 {
+    private const string ExportToken = "export";
+
     public static ApiDiagnosticFlag ParseApiDiagnosticFlag(string? value) =>
             (value ?? "").Trim().ToLowerInvariant() switch
             {
@@ -248,7 +250,7 @@ public static class ProtocolEnumExtensions
                 "media" => ApiEndpointGroup.Media,
                 "models" => ApiEndpointGroup.Models,
                 "settings" => ApiEndpointGroup.Settings,
-                "export" => ApiEndpointGroup.Export,
+                ExportToken => ApiEndpointGroup.Export,
                 "webhooks" => ApiEndpointGroup.Webhooks,
                 "audit" => ApiEndpointGroup.Audit,
                 _ => ApiEndpointGroup.Projects
@@ -271,7 +273,7 @@ public static class ProtocolEnumExtensions
                 "update" => AuditActionKind.Update,
                 "delete" => AuditActionKind.Delete,
                 "execute" => AuditActionKind.Execute,
-                "export" => AuditActionKind.Export,
+                ExportToken => AuditActionKind.Export,
                 "login" => AuditActionKind.Login,
                 "logout" => AuditActionKind.Logout,
                 _ => AuditActionKind.Create
@@ -293,7 +295,7 @@ public static class ProtocolEnumExtensions
             {
                 "write" => AuthTokenScope.Write,
                 "admin" => AuthTokenScope.Admin,
-                "export" => AuthTokenScope.Export,
+                ExportToken => AuthTokenScope.Export,
                 "full_access" or "fullaccess" or "full" => AuthTokenScope.FullAccess,
                 _ => AuthTokenScope.Read
             };
@@ -566,7 +568,7 @@ public static class ProtocolEnumExtensions
             ApiEndpointGroup.Media => "media",
             ApiEndpointGroup.Models => "models",
             ApiEndpointGroup.Settings => "settings",
-            ApiEndpointGroup.Export => "export",
+            ApiEndpointGroup.Export => ExportToken,
             ApiEndpointGroup.Webhooks => "webhooks",
             ApiEndpointGroup.Audit => "audit",
             _ => "projects"
@@ -598,7 +600,7 @@ public static class ProtocolEnumExtensions
             AuthTokenScope.Read => "read",
             AuthTokenScope.Write => "write",
             AuthTokenScope.Admin => "admin",
-            AuthTokenScope.Export => "export",
+            AuthTokenScope.Export => ExportToken,
             AuthTokenScope.FullAccess => "full_access",
             _ => "read"
         };
@@ -660,7 +662,7 @@ public static class ProtocolEnumExtensions
             AuditActionKind.Update => "update",
             AuditActionKind.Delete => "delete",
             AuditActionKind.Execute => "execute",
-            AuditActionKind.Export => "export",
+            AuditActionKind.Export => ExportToken,
             AuditActionKind.Login => "login",
             AuditActionKind.Logout => "logout",
             _ => "create"

@@ -229,18 +229,15 @@
                                                 Remove key
                                             </button>
                                         }
-                                        @if (isOptionalJob)
+                                        @if (isOptionalJob && !c.OptionalOff)
                                         {
-                                            @if (!c.OptionalOff)
-                                            {
-                                                <button type="button"
-                                                        class="btn btn-sm btn-link text-muted px-1"
-                                                        disabled="@(Host._busy || string.IsNullOrEmpty(Host._projectId))"
-                                                        @onclick="() => Coverage.TurnOffOptionalAsync(c.Id)"
-                                                        @onclick:stopPropagation="true">
-                                                    Turn off
-                                                </button>
-                                            }
+                                            <button type="button"
+                                                    class="btn btn-sm btn-link text-muted px-1"
+                                                    disabled="@(Host._busy || string.IsNullOrEmpty(Host._projectId))"
+                                                    @onclick="() => Coverage.TurnOffOptionalAsync(c.Id)"
+                                                    @onclick:stopPropagation="true">
+                                                Turn off
+                                            </button>
                                         }
                                     </div>
                                 </td>

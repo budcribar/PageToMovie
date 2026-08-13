@@ -59,9 +59,8 @@ public static class DialogueComparisonNormalizer
         var tokens = new List<string>();
         var changes = new List<DialogueNormalizationChange>();
 
-        foreach (Match match in Words.Matches(original))
+        foreach (var raw in Words.Matches(original).Select(match => match.Value))
         {
-            var raw = match.Value;
             var normalized = raw.Replace('’', '\'').ToLowerInvariant();
             var spelling = NormalizeRegionalSpelling(normalized);
             if (!string.Equals(normalized, spelling, StringComparison.Ordinal))

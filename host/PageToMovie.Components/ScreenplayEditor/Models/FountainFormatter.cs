@@ -6,6 +6,8 @@ namespace PageToMovie.ScreenplayEditor.Models;
 
 public static class FountainFormatter
 {
+    private const string UnspecifiedLocation = "UNSPECIFIED";
+
     public static ScreenplayModel Parse(string fountainText)
     {
         var model = new ScreenplayModel();
@@ -64,7 +66,7 @@ public static class FountainFormatter
                 {
                     SceneNumber = sceneCounter,
                     Environment = "INT.",
-                    Location = "UNSPECIFIED",
+                    Location = UnspecifiedLocation,
                     TimeOfDay = "DAY",
                     SceneTitle = "",
                     Beats = new List<ScreenplayBeat>()
@@ -83,7 +85,7 @@ public static class FountainFormatter
                     var headingText = element.Text.Trim();
                     ParseSceneHeadingParts(headingText, out string env, out string location, out string timeOfDay);
 
-                    if (currentScene != null && (string.IsNullOrEmpty(currentScene.SceneTitle) || currentScene.Location == "UNSPECIFIED"))
+                    if (currentScene != null && (string.IsNullOrEmpty(currentScene.SceneTitle) || currentScene.Location == UnspecifiedLocation))
                     {
                         currentScene.Environment = env;
                         currentScene.Location = location;
@@ -141,7 +143,7 @@ public static class FountainFormatter
                         if (string.IsNullOrEmpty(activeDialogueBeat.Parenthetical))
                             activeDialogueBeat.Parenthetical = element.Text;
                         else
-                            activeDialogueBeat.Parenthetical += "\n" + element.Text;
+                            activeDialogueBeat.Parenthetical = string.Concat(activeDialogueBeat.Parenthetical, "\n", element.Text);
                     }
                     else
                     {
@@ -246,14 +248,9 @@ public static class FountainFormatter
             "INT. AND EXT.", "INT. AND EXT", "INT AND EXT.", "INT AND EXT",
             "EXT.", "INT.", "EST.", "EXT ", "INT ", "EST ",
         };
-        foreach (var p in prefixes)
-        {
-            if (rest.StartsWith(p, StringComparison.OrdinalIgnoreCase))
-            {
-                rest = rest[p.Length..].Trim();
-                break;
-            }
-        }
+        var matchedPrefix = prefixes.FirstOrDefault(p => rest.StartsWith(p, StringComparison.OrdinalIgnoreCase));
+        if (matchedPrefix is not null)
+            rest = rest[matchedPrefix.Length..].Trim();
         // Second pass for leftover "AND INT." / "AND EXT."
         if (rest.StartsWith("AND INT.", StringComparison.OrdinalIgnoreCase)
             || rest.StartsWith("AND INT ", StringComparison.OrdinalIgnoreCase)
@@ -300,7 +297,7 @@ public static class FountainFormatter
         }
 
         if (string.IsNullOrWhiteSpace(location))
-            location = "UNSPECIFIED";
+            location = UnspecifiedLocation;
         // Never keep env tokens in the place name.
         if (location.StartsWith("AND ", StringComparison.OrdinalIgnoreCase)
             || location.StartsWith("INT.", StringComparison.OrdinalIgnoreCase)
@@ -312,7 +309,7 @@ public static class FountainFormatter
                 "",
                 System.Text.RegularExpressions.RegexOptions.IgnoreCase).Trim();
             if (string.IsNullOrWhiteSpace(location))
-                location = "UNSPECIFIED";
+                location = UnspecifiedLocation;
         }
         if (string.IsNullOrWhiteSpace(timeOfDay))
             timeOfDay = "DAY";
@@ -366,7 +363,7 @@ public static class FountainFormatter
                         !heading.StartsWith("INT./EXT.", StringComparison.OrdinalIgnoreCase) &&
                         !heading.StartsWith("INT/EXT.", StringComparison.OrdinalIgnoreCase) &&
                         !heading.StartsWith("I/E.", StringComparison.OrdinalIgnoreCase) &&
-                        !heading.StartsWith("."))
+                        !heading.StartsWith('.'))
                     {
                         heading = "." + heading;
                     }
@@ -427,8 +424,8 @@ public static class FountainFormatter
                             foreach (var p in parenLines)
                             {
                                 var paren = p.Trim();
-                                if (!paren.StartsWith("(")) paren = "(" + paren;
-                                if (!paren.EndsWith(")")) paren = paren + ")";
+                                if (!paren.StartsWith('(')) paren = "(" + paren;
+                                if (!paren.EndsWith(')')) paren = paren + ")";
                                 sb.AppendLine(paren);
                             }
                         }
@@ -444,7 +441,7 @@ public static class FountainFormatter
                         if (!string.IsNullOrWhiteSpace(beat.TransitionText))
                         {
                             var trans = beat.TransitionText.Trim();
-                            if (trans.StartsWith(">") || trans.EndsWith("TO:", StringComparison.OrdinalIgnoreCase) || trans.EndsWith("OUT.", StringComparison.OrdinalIgnoreCase))
+                            if (trans.StartsWith('>') || trans.EndsWith("TO:", StringComparison.OrdinalIgnoreCase) || trans.EndsWith("OUT.", StringComparison.OrdinalIgnoreCase))
                                 sb.AppendLine(trans);
                             else
                                 sb.AppendLine($"> {trans}");

@@ -19,6 +19,7 @@ namespace PageToMovie.Engine;
 public sealed class YouTubeAuthService
 {
     private const string UserId = "PageToMovie";
+    private const string ReviewPath = "/review";
     private static readonly TimeSpan StateTtl = TimeSpan.FromMinutes(10);
 
     private readonly ProjectStore _projects;
@@ -87,7 +88,7 @@ public sealed class YouTubeAuthService
     /// <summary>Validates state and returns the post-OAuth path (default /review).</summary>
     public bool TryConsumeState(string state, out string returnPath)
     {
-        returnPath = "/review";
+        returnPath = ReviewPath;
         if (string.IsNullOrWhiteSpace(state)) return false;
         if (_pendingStates.TryRemove(state, out var entry))
         {
@@ -107,17 +108,17 @@ public sealed class YouTubeAuthService
     private static string NormalizeReturnPath(string? returnPath)
     {
         var p = (returnPath ?? "").Trim();
-        if (p.Length == 0) return "/review";
+        if (p.Length == 0) return ReviewPath;
         if (!p.StartsWith('/')) p = "/" + p;
         // Only same-site relative paths
         if (p.StartsWith("//", StringComparison.Ordinal) || p.Contains("://", StringComparison.Ordinal))
-            return "/review";
+            return ReviewPath;
         if (p.StartsWith("/admin", StringComparison.OrdinalIgnoreCase)
-            || p.StartsWith("/review", StringComparison.OrdinalIgnoreCase)
+            || p.StartsWith(ReviewPath, StringComparison.OrdinalIgnoreCase)
             || p.StartsWith("/demo", StringComparison.OrdinalIgnoreCase)
             || p == "/")
             return p.Split('?', 2)[0];
-        return "/review";
+        return ReviewPath;
     }
 
     private void PruneExpiredStates()
@@ -270,7 +271,7 @@ public sealed class YouTubeAuthService
                 list.Add(new ChannelUploadVideo(
                     videoId.Trim(),
                     title,
-                    string.IsNullOrWhiteSpace(sn?.Description) ? null : sn!.Description.Trim(),
+                    string.IsNullOrWhiteSpace(sn?.Description) ? null : sn.Description.Trim(),
                     published,
                     thumb));
             }
@@ -320,7 +321,7 @@ public sealed class YouTubeAuthService
                 byId[v.Id] = new ChannelUploadVideo(
                     v.Id,
                     title,
-                    string.IsNullOrWhiteSpace(sn?.Description) ? byId[v.Id].Description : sn!.Description.Trim(),
+                    string.IsNullOrWhiteSpace(sn?.Description) ? byId[v.Id].Description : sn.Description.Trim(),
                     published,
                     thumb);
             }
@@ -416,7 +417,7 @@ public sealed class SqliteDataStore : IDataStore
 
     public Task<T> GetAsync<T>(string key)
     {
-        if (string.IsNullOrWhiteSpace(key)) return Task.FromResult(default(T)!);
+        if (string.IsNullOrWhiteSpace(key)) return Task.FromResult(default(T));
         try
         {
             using var conn = new Microsoft.Data.Sqlite.SqliteConnection(_connectionString);
@@ -426,7 +427,7 @@ public sealed class SqliteDataStore : IDataStore
             cmd.Parameters.AddWithValue("@key", key);
             var result = cmd.ExecuteScalar() as string;
             if (string.IsNullOrWhiteSpace(result))
-                return Task.FromResult(default(T)!);
+                return Task.FromResult(default(T));
 
             // Prefer Newtonsoft (Google.Apis FileDataStore compatible). Fallback STJ for older rows.
             try
@@ -438,13 +439,13 @@ public sealed class SqliteDataStore : IDataStore
             catch { /* try STJ */ }
 
             var stj = System.Text.Json.JsonSerializer.Deserialize<T>(result);
-            return Task.FromResult(stj!);
+            return Task.FromResult(stj);
         }
         catch (Exception ex)
         {
             System.Diagnostics.Trace.TraceError(
                 "SqliteDataStore.GetAsync failed key={0}: {1}", key, ex.Message);
-            return Task.FromResult(default(T)!);
+            return Task.FromResult(default(T));
         }
     }
 

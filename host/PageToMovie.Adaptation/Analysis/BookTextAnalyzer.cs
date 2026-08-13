@@ -69,12 +69,7 @@ public static class BookTextAnalyzer
                 foreach (var w in wordList)
                 {
                     if (w.Length is < 4 or > 12) continue;
-                    var hasVowel = false;
-                    foreach (var c in w)
-                    {
-                        if ("aeiouAEIOU".Contains(c)) { hasVowel = true; break; }
-                    }
-                    if (!hasVowel) shortJunk++;
+                    if (!w.Any(c => "aeiouAEIOU".Contains(c))) shortJunk++;
                 }
                 garbage += Math.Min(0.35, shortJunk / (double)wordList.Length);
             }
@@ -99,8 +94,8 @@ public static class BookTextAnalyzer
             ? BookKind.PictureBook
             : words < 15000 ? BookKind.Short : BookKind.Novel;
 
-        // Natural film length from adaptation density (speech×staging for short literary;
-        // market δ for novels). Calibrated on TTH ~17 min published film.
+        // Natural film length from adaptation density (speech times staging for short literary
+        // work; market delta for novels). Calibrated on a published short-story film of about 17 minutes.
         var syllables = TextMetrics.CountSyllables(plain);
         var quoteFrac = AdaptationDensity.EstimateQuotedDialogueFraction(plain);
         var runtimeEstimate = AdaptationDensity.EstimateFromStats(bookKind, words, syllables, quoteFrac);

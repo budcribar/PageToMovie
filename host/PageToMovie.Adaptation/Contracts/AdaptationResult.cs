@@ -18,8 +18,8 @@ public sealed class AdaptationResult
     public AdaptationReportStatus AdaptationReportStatus { get; init; }
     public string? AdaptationReportError { get; init; }
 
-    public NaturalRuntimeEstimate Runtime { get; init; } = null!;
-    public BookAnalysisResult Analysis { get; init; } = null!;
+    public required NaturalRuntimeEstimate Runtime { get; init; }
+    public required BookAnalysisResult Analysis { get; init; }
 
     public bool UsedHeuristicFallback { get; init; }
     public string PromptContentSha256 { get; init; } = "";

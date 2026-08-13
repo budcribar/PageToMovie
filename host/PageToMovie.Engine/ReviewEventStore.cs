@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using PageToMovie.Core.Models;
 using PageToMovie.Core.Utils;
@@ -77,7 +78,7 @@ public sealed class ReviewEventStore
     {
         DateTimeOffset ts = DateTimeOffset.UtcNow;
         if (!string.IsNullOrWhiteSpace(entry.Ts) &&
-            DateTimeOffset.TryParse(entry.Ts, out var parsed))
+            DateTimeOffset.TryParse(entry.Ts, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsed))
             ts = parsed.ToUniversalTime();
 
         return AppendAsync(new ReviewLearningEvent
@@ -153,14 +154,14 @@ public sealed class ReviewEventStore
         {
             Bump(dto.ByType, e.Type);
             if (!string.IsNullOrWhiteSpace(e.Category))
-                Bump(dto.ByCategory, e.Category!);
+                Bump(dto.ByCategory, e.Category);
 
             if (string.Equals(e.Type, ClipFailType, StringComparison.OrdinalIgnoreCase) ||
                 (string.Equals(e.Type, "auto_review", StringComparison.OrdinalIgnoreCase) &&
                  string.Equals(e.Suggestion, "fail", StringComparison.OrdinalIgnoreCase)))
             {
                 dto.HumanFail += string.Equals(e.Type, ClipFailType, StringComparison.OrdinalIgnoreCase) ? 1 : 0;
-                var cat = string.IsNullOrWhiteSpace(e.Category) ? "other" : e.Category!;
+                var cat = string.IsNullOrWhiteSpace(e.Category) ? "other" : e.Category;
                 if (string.Equals(e.Type, ClipFailType, StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(e.Suggestion, "fail", StringComparison.OrdinalIgnoreCase))
                     Bump(dto.FailByCategory, cat);
@@ -265,7 +266,7 @@ public sealed class ReviewEventStore
         var items = new List<HumanVsAiComparisonItem>();
         var groups = events
             .Where(e => e.Scene.HasValue && e.Clip.HasValue)
-            .GroupBy(e => (e.ProjectId, Scene: e.Scene!.Value, Clip: e.Clip!.Value));
+            .GroupBy(e => (e.ProjectId, Scene: e.Scene.GetValueOrDefault(), Clip: e.Clip.GetValueOrDefault()));
 
         foreach (var g in groups)
         {

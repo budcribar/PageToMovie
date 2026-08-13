@@ -36,6 +36,30 @@ public sealed class Stage2PlannerService
     private const int GrokAbsMax = ClipDurationEstimator.AbsMaxSeconds;
     private const int GrokDefault = 6;
     private const int GrokSceneMin = 6;
+
+    private static class Keys
+    {
+        public const string VisualEvent = "visual_event";
+        public const string Stage2Meta = "stage2_meta";
+        public const string DurationSeconds = "duration_seconds";
+        public const string Delivery = "delivery";
+        public const string Scenes = "scenes";
+        public const string CharactersOnScreen = "characters_on_screen";
+        public const string VeoClips = "veo_clips";
+        public const string VideoProviderProfile = "video_provider_profile";
+        public const string LocationId = "location_id";
+        public const string ActionClass = "action_class";
+        public const string BigAction = "big_action";
+        public const string SecondarySpeaker = "secondary_speaker";
+        public const string SpokenOnCamera = "spoken_on_camera";
+        public const string PrimarySubject = "primary_subject";
+        public const string StoryBeats = "story_beats";
+        public const string Setting = "setting";
+        public const string GlobalProductionVariables = "global_production_variables";
+        public const string CharacterSeedTokens = "character_seed_tokens";
+        public const string SourceBookTitle = "source_book_title";
+    }
+
     // No design-time length budget — send full visual prompts.
     // If the video API rejects for length, GrokVideoClient shortens and retries.
 
@@ -196,9 +220,9 @@ public sealed class Stage2PlannerService
             enrichMeta["extend_hardcut"] = ext.ToMetaDict();
         }
 
-        var gpv = GetDict(stage1, "global_production_variables");
+        var gpv = GetDict(stage1, Keys.GlobalProductionVariables);
         var locSeeds = GetDict(gpv, "location_seed_tokens");
-        var charSeeds = GetDict(gpv, "character_seed_tokens");
+        var charSeeds = GetDict(gpv, Keys.CharacterSeedTokens);
         NormalizeCharPlaceholders(charSeeds);
 
         var want = ParseSceneRange(scenes);
@@ -247,13 +271,13 @@ public sealed class Stage2PlannerService
                 // sets auth per-request now (not on shared HttpClient.DefaultRequestHeaders), so
                 // this fan-out is safe there too.
                 var pacingTask = _beatPacingClassifier is not null
-                    ? _beatPacingClassifier.ClassifyScenePacingAsync(s, BuildSceneBeats(s, durMinSeconds, durMaxSeconds, durAbsMaxSeconds), line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
+                    ? _beatPacingClassifier.ClassifyScenePacingAsync(s, BuildSceneBeats(s, durMaxSeconds), line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
                     : Task.FromResult<Dictionary<string, int>?>(null);
                 var lightingTask = _lightingClassifier is not null
                     ? _lightingClassifier.ClassifySceneLightingAsync(s, line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
                     : Task.FromResult<string?>(null);
                 var cameraTask = _cameraClassifier is not null
-                    ? _cameraClassifier.ClassifySceneCameraAsync(s, BuildSceneBeats(s, durMinSeconds, durMaxSeconds, durAbsMaxSeconds), line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
+                    ? _cameraClassifier.ClassifySceneCameraAsync(s, BuildSceneBeats(s, durMaxSeconds), line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
                     : Task.FromResult<Dictionary<string, CameraDirective>?>(null);
                 var negativeTask = _negativeClassifier is not null
                     ? _negativeClassifier.ClassifySceneNegativeAsync(s, line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
@@ -262,13 +286,13 @@ public sealed class Stage2PlannerService
                     ? _wardrobeClassifier.ClassifySceneWardrobeAsync(s, UnionCharactersOnScreen(s), line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
                     : Task.FromResult<Dictionary<string, string>?>(null);
                 var emotionTask = _emotionClassifier is not null
-                    ? _emotionClassifier.ClassifySceneEmotionAsync(s, BuildSceneBeats(s, durMinSeconds, durMaxSeconds, durAbsMaxSeconds), line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
+                    ? _emotionClassifier.ClassifySceneEmotionAsync(s, BuildSceneBeats(s, durMaxSeconds), line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
                     : Task.FromResult<Dictionary<string, EmotionDirective>?>(null);
                 var soundTask = _soundComposerClassifier is not null
-                    ? _soundComposerClassifier.ClassifySceneSoundDesignAsync(s, BuildSceneBeats(s, durMinSeconds, durMaxSeconds, durAbsMaxSeconds), line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
+                    ? _soundComposerClassifier.ClassifySceneSoundDesignAsync(s, BuildSceneBeats(s, durMaxSeconds), line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
                     : Task.FromResult<Dictionary<string, SoundDesignDirective>?>(null);
                 var dofTask = _dofClassifier is not null
-                    ? _dofClassifier.ClassifySceneDepthOfFieldAsync(s, BuildSceneBeats(s, durMinSeconds, durMaxSeconds, durAbsMaxSeconds), line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
+                    ? _dofClassifier.ClassifySceneDepthOfFieldAsync(s, BuildSceneBeats(s, durMaxSeconds), line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
                     : Task.FromResult<Dictionary<string, DepthOfFieldDirective>?>(null);
                 var colorTask = _colorGradingClassifier is not null
                     ? _colorGradingClassifier.ClassifySceneColorGradingAsync(s, line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
@@ -279,7 +303,7 @@ public sealed class Stage2PlannerService
                     emotionTask, soundTask, dofTask, colorTask).ConfigureAwait(false);
 
                 var plannedScene = PlanScene(
-                    s, resolution, locSeeds, charSeeds, styleLock,
+                    s, locSeeds, charSeeds, styleLock,
                     pacingTask.Result, lightingTask.Result, cameraTask.Result, negativeTask.Result,
                     wardrobeTask.Result, emotionTask.Result, soundTask.Result, dofTask.Result, colorTask.Result,
                     durMinSeconds, durMaxSeconds, durAbsMaxSeconds, durExtensionMaxSeconds, maxSpeakersPerClip);
@@ -358,7 +382,7 @@ public sealed class Stage2PlannerService
         // some clip's audio_payload. Record coverage in stage2_meta (always), surface any drop as a
         // plan issue, and log it to generation_errors so we can trace which transform silenced it.
         var coverage = Stage2DialogueCoverage.Verify(stage1, plan);
-        GetDict(plan, "stage2_meta")["dialogue_coverage"] = coverage.Meta;
+        GetDict(plan, Keys.Stage2Meta)["dialogue_coverage"] = coverage.Meta;
         if (coverage.HasGaps)
         {
             onProgress?.Invoke(
@@ -367,7 +391,7 @@ public sealed class Stage2PlannerService
             await LogDialogueCoverageGapsAsync(coverage, videoModelId, planningModel, ct).ConfigureAwait(false);
         }
 
-        var planIssues = StructuredOperationArtifacts.RequireJsonProperties(plan, "stage2_meta", "scenes")
+        var planIssues = StructuredOperationArtifacts.RequireJsonProperties(plan, Keys.Stage2Meta, Keys.Scenes)
             .Concat(Stage2AggregateValidator.Validate(plan))
             .Concat(coverage.Issues)
             .ToArray();
@@ -392,9 +416,9 @@ public sealed class Stage2PlannerService
         }
 
         await File.WriteAllTextAsync(outPath, planJson + "\n", ct).ConfigureAwait(false);
-        var meta = GetDict(plan, "stage2_meta");
+        var meta = GetDict(plan, Keys.Stage2Meta);
         var totalClips = ToInt(meta.TryGetValue("total_clips", out var tc) ? tc : 0);
-        var sceneCount = GetList(plan, "scenes").Count;
+        var sceneCount = GetList(plan, Keys.Scenes).Count;
         var totalDur = ToInt(meta.TryGetValue("total_duration_seconds", out var td) ? td : 0);
         onProgress?.Invoke(
             $"Wrote {Path.GetFileName(outPath)} · {sceneCount} scenes · {totalClips} clips");
@@ -459,11 +483,11 @@ public sealed class Stage2PlannerService
         {
             ["schema_version"] = "stage2.v1",
             [JsonKeys.MovieTitle] = stage1.TryGetValue(JsonKeys.MovieTitle, out var mt) ? mt : null,
-            ["source_book_title"] = stage1.TryGetValue("source_book_title", out var sbt) ? sbt : null,
-            ["video_provider_profile"] = ResolveVideoProviderProfile(stage1),
-            ["global_production_variables"] = gpv,
-            ["scenes"] = planned.Cast<object?>().ToList(),
-            ["stage2_meta"] = MakeMeta(stage1, planned, sourceLabel, resolution, scenesFilter, classifyMeta, enrichMeta),
+            [Keys.SourceBookTitle] = stage1.TryGetValue(Keys.SourceBookTitle, out var sbt) ? sbt : null,
+            [Keys.VideoProviderProfile] = ResolveVideoProviderProfile(stage1),
+            [Keys.GlobalProductionVariables] = gpv,
+            [Keys.Scenes] = planned.Cast<object?>().ToList(),
+            [Keys.Stage2Meta] = MakeMeta(stage1, planned, sourceLabel, resolution, scenesFilter, classifyMeta, enrichMeta),
         };
     }
 
@@ -480,7 +504,7 @@ public sealed class Stage2PlannerService
         string? creditsVisualPrompt = null)
     {
         var byN = new Dictionary<int, Dictionary<string, object?>>();
-        foreach (var s in GetList(existing, "scenes").OfType<Dictionary<string, object?>>())
+        foreach (var s in GetList(existing, Keys.Scenes).OfType<Dictionary<string, object?>>())
         {
             var n = ToInt(s.TryGetValue(JsonKeys.SceneNumber, out var sn) ? sn : 0);
             if (n > 0) byN[n] = s;
@@ -495,12 +519,12 @@ public sealed class Stage2PlannerService
         existing["schema_version"] = "stage2.v1";
         existing[JsonKeys.MovieTitle] = stage1.TryGetValue(JsonKeys.MovieTitle, out var mt) ? mt
             : existing.TryGetValue(JsonKeys.MovieTitle, out var emt) ? emt : null;
-        existing["source_book_title"] = stage1.TryGetValue("source_book_title", out var sbt) ? sbt
-            : existing.TryGetValue("source_book_title", out var esbt) ? esbt : null;
-        existing["video_provider_profile"] = ResolveVideoProviderProfile(stage1);
-        existing["global_production_variables"] = gpv;
-        existing["scenes"] = all.Cast<object?>().ToList();
-        existing["stage2_meta"] = MakeMeta(stage1, all, sourceLabel, resolution, scenesFilter, classifyMeta, enrichMeta);
+        existing[Keys.SourceBookTitle] = stage1.TryGetValue(Keys.SourceBookTitle, out var sbt) ? sbt
+            : existing.TryGetValue(Keys.SourceBookTitle, out var esbt) ? esbt : null;
+        existing[Keys.VideoProviderProfile] = ResolveVideoProviderProfile(stage1);
+        existing[Keys.GlobalProductionVariables] = gpv;
+        existing[Keys.Scenes] = all.Cast<object?>().ToList();
+        existing[Keys.Stage2Meta] = MakeMeta(stage1, all, sourceLabel, resolution, scenesFilter, classifyMeta, enrichMeta);
         return existing;
     }
 
@@ -533,18 +557,18 @@ public sealed class Stage2PlannerService
             ["clip_index"] = 1,
             ["timestamp"] = "",
             ["veo_continuation_source"] = "none",
-            ["primary_subject"] = "End Credits Title Card",
-            ["characters_on_screen"] = new List<object?>(),
+            [Keys.PrimarySubject] = "End Credits Title Card",
+            [Keys.CharactersOnScreen] = new List<object?>(),
             ["focus_keys"] = new List<object?>(),
             ["action_summary"] = "Scrolling film end credits and attribution title card.",
-            ["duration_seconds"] = 6,
+            [Keys.DurationSeconds] = 6,
             ["is_credits"] = true,
             ["visual_prompt"] = visualPrompt,
             [JsonKeys.AudioPayload] = new Dictionary<string, object?>
             {
-                ["delivery"] = "none",
-                ["speaker"] = "",
-                ["dialogue"] = "",
+                [Keys.Delivery] = "none",
+                [JsonKeys.Speaker] = "",
+                [JsonKeys.Dialogue] = "",
             },
         };
 
@@ -554,7 +578,7 @@ public sealed class Stage2PlannerService
             ["scene_heading"] = "FADE OUT. END CREDITS",
             ["is_credits"] = true,
             ["total_estimated_duration_seconds"] = 6,
-            ["veo_clips"] = new List<object?> { creditsClip },
+            [Keys.VeoClips] = new List<object?> { creditsClip },
         };
 
         scenes.Add(creditsScene);
@@ -583,7 +607,7 @@ public sealed class Stage2PlannerService
             ["planned_at"] = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss"),
             ["total_duration_seconds"] = planned.Sum(s =>
                 ToInt(s.TryGetValue("total_estimated_duration_seconds", out var d) ? d : 0)),
-            ["total_clips"] = planned.Sum(s => GetList(s, "veo_clips").Count),
+            ["total_clips"] = planned.Sum(s => GetList(s, Keys.VeoClips).Count),
         };
         if (classifyMeta is not null)
             meta["silent_beat_classify"] = classifyMeta.ToMetaDict();
@@ -608,14 +632,14 @@ public sealed class Stage2PlannerService
         {
             var overlay = GrokChatClient.ParseJsonObject(File.ReadAllText(path));
             // Shapes: { character_seed_tokens } or { global_production_variables.character_seed_tokens }
-            var overlaySeeds = GetDict(overlay, "character_seed_tokens");
+            var overlaySeeds = GetDict(overlay, Keys.CharacterSeedTokens);
             if (overlaySeeds.Count == 0)
-                overlaySeeds = GetDict(GetDict(overlay, "global_production_variables"), "character_seed_tokens");
+                overlaySeeds = GetDict(GetDict(overlay, Keys.GlobalProductionVariables), Keys.CharacterSeedTokens);
             if (overlaySeeds.Count == 0)
                 return;
 
-            var gpv = GetDict(stage1, "global_production_variables");
-            var seeds = GetDict(gpv, "character_seed_tokens");
+            var gpv = GetDict(stage1, Keys.GlobalProductionVariables);
+            var seeds = GetDict(gpv, Keys.CharacterSeedTokens);
             foreach (var (key, val) in overlaySeeds)
             {
                 if (val is not Dictionary<string, object?> ov)
@@ -635,8 +659,8 @@ public sealed class Stage2PlannerService
                 }
                 seeds[key] = seeds[matchKey];
             }
-            gpv["character_seed_tokens"] = seeds;
-            stage1["global_production_variables"] = gpv;
+            gpv[Keys.CharacterSeedTokens] = seeds;
+            stage1[Keys.GlobalProductionVariables] = gpv;
         }
         catch
         {
@@ -662,7 +686,6 @@ public sealed class Stage2PlannerService
     /// </summary>
     private static Dictionary<string, object?>? PlanScene(
         Dictionary<string, object?> scene,
-        string resolution,
         Dictionary<string, object?> locSeeds,
         Dictionary<string, object?> charSeeds,
         string? styleLock,
@@ -687,7 +710,7 @@ public sealed class Stage2PlannerService
         {
             sceneInput["lighting_continuity_token"] = aiLighting;
         }
-        var beats = GetList(sceneInput, "story_beats").OfType<Dictionary<string, object?>>()
+        var beats = GetList(sceneInput, Keys.StoryBeats).OfType<Dictionary<string, object?>>()
             .Where(b => !IsNoopTransitionBeat(b))
             .ToList();
         // Moved ahead of coalescing (was computed after) — PrecomputeExtendsFromPrevious needs the
@@ -715,7 +738,7 @@ public sealed class Stage2PlannerService
         var cast = UnionCharactersOnScreen(scene);
 
         // Entire scene was only FADE IN / CUT TO — omit (no empty clip)
-        var setting = CoerceString(scene.TryGetValue("setting", out var set) ? set : null) ?? "";
+        var setting = CoerceString(scene.TryGetValue(Keys.Setting, out var set) ? set : null) ?? "";
         if (beats.Count == 0 &&
             setting.Contains("UNSPECIFIED", StringComparison.OrdinalIgnoreCase))
             return null;
@@ -749,7 +772,7 @@ public sealed class Stage2PlannerService
 
         var sceneWork = new Dictionary<string, object?>(sceneInput)
         {
-            ["characters_on_screen"] = cast.Cast<object?>().ToList(),
+            [Keys.CharactersOnScreen] = cast.Cast<object?>().ToList(),
         };
         if (!string.IsNullOrWhiteSpace(styleLock))
             sceneWork["render_style_lock"] = styleLock;
@@ -778,25 +801,25 @@ public sealed class Stage2PlannerService
         {
             var beat = beats[i];
             var dur = durs[i];
-            var lid = CoerceString(beat.TryGetValue("location_id", out var bl) ? bl : null)
+            var lid = CoerceString(beat.TryGetValue(Keys.LocationId, out var bl) ? bl : null)
                       ?? primary ?? (lids.Count > 0 ? lids[0] : null);
             var cont = ForceNone(beat, i, prevBeat, prevLid, lid) ? "none" : "extend_previous";
-            if (string.Equals(CoerceString(beat.TryGetValue("action_class", out var ac) ? ac : null),
-                    "big_action", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(CoerceString(beat.TryGetValue(Keys.ActionClass, out var ac) ? ac : null),
+                    Keys.BigAction, StringComparison.OrdinalIgnoreCase))
                 cont = "none";
             if (prevLid is not null && lid is not null && prevLid != lid)
                 cont = "none";
 
             var clipCast = ClipCastTokens(sceneWork, beat, charSeeds);
-            var ps = CoerceString(beat.TryGetValue("primary_subject", out var psv) ? psv : null) ?? "";
+            var ps = CoerceString(beat.TryGetValue(Keys.PrimarySubject, out var psv) ? psv : null) ?? "";
             if (ps.StartsWith(JsonKeys.CharacterPrefix, StringComparison.Ordinal) && !clipCast.Contains(ps))
                 clipCast.Insert(0, ps);
 
             UpdateWardrobeFromBeat(wardrobe, beat, clipCast);
 
             // Track continuous monologue step
-            var dlg = CoerceString(beat.TryGetValue("dialogue", out var dv) ? dv : null);
-            var spk = CoerceString(beat.TryGetValue("speaker", out var sv) ? sv : null);
+            var dlg = CoerceString(beat.TryGetValue(JsonKeys.Dialogue, out var dv) ? dv : null);
+            var spk = CoerceString(beat.TryGetValue(JsonKeys.Speaker, out var sv) ? sv : null);
             if (!string.IsNullOrWhiteSpace(dlg) && !string.IsNullOrWhiteSpace(spk))
             {
                 if (string.Equals(activeSpeaker, spk, StringComparison.OrdinalIgnoreCase))
@@ -847,22 +870,22 @@ public sealed class Stage2PlannerService
             }
             else if (!string.IsNullOrWhiteSpace(dlg))
             {
-                var spkDisplay = !string.IsNullOrWhiteSpace(spk) ? DisplayNameForKey(spk, charSeeds) : "speaker";
+                var spkDisplay = !string.IsNullOrWhiteSpace(spk) ? DisplayNameForKey(spk, charSeeds) : JsonKeys.Speaker;
                 // OTS only when ≥2 on-screen — solo monologue must not invent a listener.
                 var framing = GetMonologueCameraFraming(monologueStep, spkDisplay, clipCast.Count);
                 vp = $"{vp} {PromptTags.Wrap("Camera", PromptTags.SanitizeValue(framing))}";
             }
 
-            if (aiEmotion is not null && aiEmotion.TryGetValue(beatIdStr, out var emoDir))
+            if (aiEmotion is not null && aiEmotion.TryGetValue(beatIdStr, out var emoDir) &&
+                !string.IsNullOrWhiteSpace(emoDir.ActingPrompt))
             {
-                if (!string.IsNullOrWhiteSpace(emoDir.ActingPrompt))
-                    vp = $"{vp} {PromptTags.Wrap("Performance", PromptTags.SanitizeValue(emoDir.ActingPrompt))}";
+                vp = $"{vp} {PromptTags.Wrap("Performance", PromptTags.SanitizeValue(emoDir.ActingPrompt))}";
             }
 
-            if (aiDof is not null && aiDof.TryGetValue(beatIdStr, out var dofDir))
+            if (aiDof is not null && aiDof.TryGetValue(beatIdStr, out var dofDir) &&
+                !string.IsNullOrWhiteSpace(dofDir.Aperture))
             {
-                if (!string.IsNullOrWhiteSpace(dofDir.Aperture))
-                    vp = $"{vp} {PromptTags.Wrap("Optics", PromptTags.SanitizeValue(dofDir.Aperture))}";
+                vp = $"{vp} {PromptTags.Wrap("Optics", PromptTags.SanitizeValue(dofDir.Aperture))}";
             }
 
             if (aiColor is not null && !string.IsNullOrWhiteSpace(aiColor.GradingPrompt))
@@ -870,11 +893,11 @@ public sealed class Stage2PlannerService
                 vp = $"{vp} {aiColor.GradingPrompt}";
             }
 
-            var actionClassVal = beat.TryGetValue("action_class", out var beatAc) ? beatAc : null;
-            var primaryVal = beat.TryGetValue("primary_subject", out var psub) ? psub : null;
+            var actionClassVal = beat.TryGetValue(Keys.ActionClass, out var beatAc) ? beatAc : null;
+            var primaryVal = beat.TryGetValue(Keys.PrimarySubject, out var psub) ? psub : null;
             var audioPayload = BuildAudioPayload(beat, aiSound is not null && aiSound.TryGetValue(beatIdStr, out var sd) ? sd : null);
-            var speakerForFocus = CoerceString(beat.TryGetValue("speaker", out var spkFocus) ? spkFocus : null);
-            var secondarySpeakerForFocus = CoerceString(beat.TryGetValue("secondary_speaker", out var spkFocus2) ? spkFocus2 : null);
+            var speakerForFocus = CoerceString(beat.TryGetValue(JsonKeys.Speaker, out var spkFocus) ? spkFocus : null);
+            var secondarySpeakerForFocus = CoerceString(beat.TryGetValue(Keys.SecondarySpeaker, out var spkFocus2) ? spkFocus2 : null);
             var focusKeys = ClipVideoPromptBuilder.ResolveFocusKeys(
                     clipCast,
                     CoerceString(primaryVal),
@@ -889,19 +912,19 @@ public sealed class Stage2PlannerService
                 [JsonKeys.ClipNumber] = i + 1,
                 ["timestamp"] = FormatTs(t, t + dur),
                 ["veo_continuation_source"] = cont,
-                ["location_id"] = lid,
+                [Keys.LocationId] = lid,
                 ["visual_prompt"] = vp,
                 ["negative_prompt"] = neg,
                 [JsonKeys.AudioPayload] = audioPayload,
                 ["stage1_beat_id"] = beatIdStr,
                 ["stage1_beat_ids"] = sourceBeatIds.Cast<object?>().ToList(),
-                ["primary_subject"] = primaryVal,
+                [Keys.PrimarySubject] = primaryVal,
                 // Propagate for gen-time duration (EstimateForClip) — silent big_action etc.
-                ["action_class"] = actionClassVal,
-                ["characters_on_screen"] = clipCast.Cast<object?>().ToList(),
+                [Keys.ActionClass] = actionClassVal,
+                [Keys.CharactersOnScreen] = clipCast.Cast<object?>().ToList(),
                 // Full identity lock at gen; others on-screen get compact "also present" lines
                 ["focus_keys"] = focusKeys.Cast<object?>().ToList(),
-                ["duration_seconds"] = dur,
+                [Keys.DurationSeconds] = dur,
             };
 
             if (aiColor is not null)
@@ -954,20 +977,20 @@ public sealed class Stage2PlannerService
         List<object?> beatMap) => new()
     {
         [JsonKeys.SceneNumber] = scene.TryGetValue(JsonKeys.SceneNumber, out var sn) ? sn : null,
-        ["setting"] = scene.TryGetValue("setting", out var set) ? set : null,
+        [Keys.Setting] = scene.TryGetValue(Keys.Setting, out var set) ? set : null,
         ["location_ids"] = lids.Cast<object?>().ToList(),
         ["primary_location_id"] = primary,
-        ["characters_on_screen"] = cast.Cast<object?>().ToList(),
+        [Keys.CharactersOnScreen] = cast.Cast<object?>().ToList(),
         ["scene_filename"] = scene.TryGetValue("scene_filename", out var sf) ? sf : null,
         ["transition_type"] = CoerceString(scene.TryGetValue("transition_type", out var tt) ? tt : null) ?? "cut",
         ["lighting_continuity_token"] =
             CoerceString(scene.TryGetValue("lighting_continuity_token", out var lc) ? lc : null) ?? "",
         ["total_estimated_duration_seconds"] = total,
         ["music_bed"] = MusicBed(scene, total),
-        ["veo_clips"] = clips,
+        [Keys.VeoClips] = clips,
         ["stage1_scene_number"] = scene.TryGetValue(JsonKeys.SceneNumber, out var s1) ? s1 : null,
         ["stage1_beat_map"] = beatMap,
-        ["video_provider_profile"] = ResolveVideoProviderProfile(null),
+        [Keys.VideoProviderProfile] = ResolveVideoProviderProfile(null),
         ["spoiler_constraints"] = scene.TryGetValue("spoiler_constraints", out var sp) ? sp : new List<object?>(),
         ["source_book_refs"] = scene.TryGetValue("source_book_refs", out var sbr) ? sbr : new List<object?>(),
     };
@@ -980,11 +1003,9 @@ public sealed class Stage2PlannerService
     /// </summary>
     private static List<Dictionary<string, object?>> BuildSceneBeats(
         Dictionary<string, object?> scene,
-        int minSeconds = ClipDurationEstimator.MinSeconds,
-        int maxSeconds = ClipDurationEstimator.MaxSeconds,
-        int absMaxSeconds = ClipDurationEstimator.AbsMaxSeconds)
+        int maxSeconds = ClipDurationEstimator.MaxSeconds)
     {
-        var beats = GetList(scene, "story_beats").OfType<Dictionary<string, object?>>()
+        var beats = GetList(scene, Keys.StoryBeats).OfType<Dictionary<string, object?>>()
             .Where(b => !IsNoopTransitionBeat(b))
             .ToList();
         beats = ClipDurationEstimator.ExpandLongDialogueBeats(beats, modelMaxSeconds: maxSeconds);
@@ -1002,31 +1023,31 @@ public sealed class Stage2PlannerService
         var b1 = beats[0];
         var b2 = beats[1];
 
-        var d1 = CoerceString(b1.TryGetValue("dialogue", out var v1) ? v1 : null);
-        var s1 = CoerceString(b1.TryGetValue("speaker", out var sp1) ? sp1 : null);
-        var d2 = CoerceString(b2.TryGetValue("dialogue", out var v2) ? v2 : null);
+        var d1 = CoerceString(b1.TryGetValue(JsonKeys.Dialogue, out var v1) ? v1 : null);
+        var s1 = CoerceString(b1.TryGetValue(JsonKeys.Speaker, out var sp1) ? sp1 : null);
+        var d2 = CoerceString(b2.TryGetValue(JsonKeys.Dialogue, out var v2) ? v2 : null);
 
         // Beat 1 must be silent (no dialogue, no speaker) and Beat 2 must have dialogue
         if (string.IsNullOrWhiteSpace(d1) && string.IsNullOrWhiteSpace(s1) && !string.IsNullOrWhiteSpace(d2))
         {
-            var l1 = CoerceString(b1.TryGetValue("location_id", out var loc1) ? loc1 : null);
-            var l2 = CoerceString(b2.TryGetValue("location_id", out var loc2) ? loc2 : null);
+            var l1 = CoerceString(b1.TryGetValue(Keys.LocationId, out var loc1) ? loc1 : null);
+            var l2 = CoerceString(b2.TryGetValue(Keys.LocationId, out var loc2) ? loc2 : null);
 
             // Same location or empty
             if (string.Equals(l1, l2, StringComparison.OrdinalIgnoreCase) || string.IsNullOrEmpty(l1) || string.IsNullOrEmpty(l2))
             {
-                var ve1 = CoerceString(b1.TryGetValue("visual_event", out var vev1) ? vev1 : null);
-                var ve2 = CoerceString(b2.TryGetValue("visual_event", out var vev2) ? vev2 : null);
+                var ve1 = CoerceString(b1.TryGetValue(Keys.VisualEvent, out var vev1) ? vev1 : null);
+                var ve2 = CoerceString(b2.TryGetValue(Keys.VisualEvent, out var vev2) ? vev2 : null);
 
                 if (!string.IsNullOrWhiteSpace(ve1))
                 {
                     if (string.IsNullOrWhiteSpace(ve2))
                     {
-                        b2["visual_event"] = ve1;
+                        b2[Keys.VisualEvent] = ve1;
                     }
                     else if (!ve2.Contains(ve1, StringComparison.OrdinalIgnoreCase))
                     {
-                        b2["visual_event"] = $"{ve1} {ve2}";
+                        b2[Keys.VisualEvent] = $"{ve1} {ve2}";
                     }
                 }
 
@@ -1063,7 +1084,7 @@ public sealed class Stage2PlannerService
         for (var i = 0; i < beats.Count; i++)
         {
             var beat = beats[i];
-            var lid = CoerceString(beat.TryGetValue("location_id", out var bl) ? bl : null)
+            var lid = CoerceString(beat.TryGetValue(Keys.LocationId, out var bl) ? bl : null)
                       ?? primary ?? (lids.Count > 0 ? lids[0] : null);
             result[i] = !ForceNone(beat, i, prevBeat, prevLid, lid);
             prevBeat = beat;
@@ -1110,43 +1131,43 @@ public sealed class Stage2PlannerService
                     ? (extensionMaxSeconds ?? maxSeconds)
                     : maxSeconds;
             var cur = new Dictionary<string, object?>(beats[i]);
-            var d1 = CoerceString(cur.TryGetValue("dialogue", out var v1) ? v1 : null);
-            var sp1 = CoerceString(cur.TryGetValue("speaker", out var s1) ? s1 : null);
-            var del1 = CoerceString(cur.TryGetValue("delivery", out var delv1) ? delv1 : null) ?? "spoken_on_camera";
-            var loc1 = CoerceString(cur.TryGetValue("location_id", out var l1) ? l1 : null);
-            var ac1 = CoerceString(cur.TryGetValue("action_class", out var acv1) ? acv1 : null);
+            var d1 = CoerceString(cur.TryGetValue(JsonKeys.Dialogue, out var v1) ? v1 : null);
+            var sp1 = CoerceString(cur.TryGetValue(JsonKeys.Speaker, out var s1) ? s1 : null);
+            var del1 = CoerceString(cur.TryGetValue(Keys.Delivery, out var delv1) ? delv1 : null) ?? Keys.SpokenOnCamera;
+            var loc1 = CoerceString(cur.TryGetValue(Keys.LocationId, out var l1) ? l1 : null);
+            var ac1 = CoerceString(cur.TryGetValue(Keys.ActionClass, out var acv1) ? acv1 : null);
 
             if (!string.IsNullOrWhiteSpace(d1) &&
                 !string.IsNullOrWhiteSpace(sp1) &&
-                !string.Equals(ac1, "big_action", StringComparison.OrdinalIgnoreCase))
+                !string.Equals(ac1, Keys.BigAction, StringComparison.OrdinalIgnoreCase))
             {
                 while (i + 1 < beats.Count)
                 {
                     var next = beats[i + 1];
-                    var d2 = CoerceString(next.TryGetValue("dialogue", out var v2) ? v2 : null);
-                    var sp2 = CoerceString(next.TryGetValue("speaker", out var s2) ? s2 : null);
-                    var del2 = CoerceString(next.TryGetValue("delivery", out var delv2) ? delv2 : null) ?? "spoken_on_camera";
-                    var loc2 = CoerceString(next.TryGetValue("location_id", out var l2) ? l2 : null);
-                    var ac2 = CoerceString(next.TryGetValue("action_class", out var acv2) ? acv2 : null);
+                    var d2 = CoerceString(next.TryGetValue(JsonKeys.Dialogue, out var v2) ? v2 : null);
+                    var sp2 = CoerceString(next.TryGetValue(JsonKeys.Speaker, out var s2) ? s2 : null);
+                    var del2 = CoerceString(next.TryGetValue(Keys.Delivery, out var delv2) ? delv2 : null) ?? Keys.SpokenOnCamera;
+                    var loc2 = CoerceString(next.TryGetValue(Keys.LocationId, out var l2) ? l2 : null);
+                    var ac2 = CoerceString(next.TryGetValue(Keys.ActionClass, out var acv2) ? acv2 : null);
 
                     if (string.IsNullOrWhiteSpace(d2) ||
                         !string.Equals(sp1, sp2, StringComparison.OrdinalIgnoreCase) ||
                         !string.Equals(del1, del2, StringComparison.OrdinalIgnoreCase) ||
                         (!string.IsNullOrEmpty(loc1) && !string.IsNullOrEmpty(loc2) && !string.Equals(loc1, loc2, StringComparison.OrdinalIgnoreCase)) ||
-                        string.Equals(ac2, "big_action", StringComparison.OrdinalIgnoreCase))
+                        string.Equals(ac2, Keys.BigAction, StringComparison.OrdinalIgnoreCase))
                     {
                         break;
                     }
 
                     var combinedDlg = $"{d1.Trim()} {d2.Trim()}";
-                    var estCombined = ClipDurationEstimator.EstimateUncapped(combinedDlg, "", "dialogue", del1);
+                    var estCombined = ClipDurationEstimator.EstimateUncapped(combinedDlg, "", JsonKeys.Dialogue, del1);
                     if (estCombined > effectiveMax)
                     {
                         break;
                     }
 
                     d1 = combinedDlg;
-                    cur["dialogue"] = d1;
+                    cur[JsonKeys.Dialogue] = d1;
 
                     MergeVisualEvent(cur, next);
                     PageToMovie.Core.Utils.StableBeatId.MergeSourceIds(cur, next);
@@ -1222,21 +1243,21 @@ public sealed class Stage2PlannerService
                     : maxSeconds;
             var perLineCap = effectiveMax / 2.0;
             var cur = new Dictionary<string, object?>(beats[i]);
-            var d1 = CoerceString(cur.TryGetValue("dialogue", out var v1) ? v1 : null);
-            var sp1 = CoerceString(cur.TryGetValue("speaker", out var s1) ? s1 : null);
-            var loc1 = CoerceString(cur.TryGetValue("location_id", out var l1) ? l1 : null);
-            var ac1 = CoerceString(cur.TryGetValue("action_class", out var acv1) ? acv1 : null);
+            var d1 = CoerceString(cur.TryGetValue(JsonKeys.Dialogue, out var v1) ? v1 : null);
+            var sp1 = CoerceString(cur.TryGetValue(JsonKeys.Speaker, out var s1) ? s1 : null);
+            var loc1 = CoerceString(cur.TryGetValue(Keys.LocationId, out var l1) ? l1 : null);
+            var ac1 = CoerceString(cur.TryGetValue(Keys.ActionClass, out var acv1) ? acv1 : null);
 
             if (i + 1 < beats.Count &&
                 !string.IsNullOrWhiteSpace(d1) &&
                 !string.IsNullOrWhiteSpace(sp1) &&
-                !string.Equals(ac1, "big_action", StringComparison.OrdinalIgnoreCase))
+                !string.Equals(ac1, Keys.BigAction, StringComparison.OrdinalIgnoreCase))
             {
                 var next = beats[i + 1];
-                var d2 = CoerceString(next.TryGetValue("dialogue", out var v2) ? v2 : null);
-                var sp2 = CoerceString(next.TryGetValue("speaker", out var s2) ? s2 : null);
-                var loc2 = CoerceString(next.TryGetValue("location_id", out var l2) ? l2 : null);
-                var ac2 = CoerceString(next.TryGetValue("action_class", out var acv2) ? acv2 : null);
+                var d2 = CoerceString(next.TryGetValue(JsonKeys.Dialogue, out var v2) ? v2 : null);
+                var sp2 = CoerceString(next.TryGetValue(JsonKeys.Speaker, out var s2) ? s2 : null);
+                var loc2 = CoerceString(next.TryGetValue(Keys.LocationId, out var l2) ? l2 : null);
+                var ac2 = CoerceString(next.TryGetValue(Keys.ActionClass, out var acv2) ? acv2 : null);
 
                 var sameLocationOrEmpty = string.IsNullOrEmpty(loc1) || string.IsNullOrEmpty(loc2) ||
                     string.Equals(loc1, loc2, StringComparison.OrdinalIgnoreCase);
@@ -1245,23 +1266,23 @@ public sealed class Stage2PlannerService
                     !string.IsNullOrWhiteSpace(sp2) &&
                     !string.Equals(sp1, sp2, StringComparison.OrdinalIgnoreCase) &&
                     sameLocationOrEmpty &&
-                    !string.Equals(ac2, "big_action", StringComparison.OrdinalIgnoreCase))
+                    !string.Equals(ac2, Keys.BigAction, StringComparison.OrdinalIgnoreCase))
                 {
-                    var del1 = CoerceString(cur.TryGetValue("delivery", out var delv1) ? delv1 : null) ?? "spoken_on_camera";
-                    var del2 = CoerceString(next.TryGetValue("delivery", out var delv2) ? delv2 : null) ?? "spoken_on_camera";
-                    var est1 = ClipDurationEstimator.EstimateUncapped(d1, "", "dialogue", del1);
-                    var est2 = ClipDurationEstimator.EstimateUncapped(d2, "", "dialogue", del2);
+                    var del1 = CoerceString(cur.TryGetValue(Keys.Delivery, out var delv1) ? delv1 : null) ?? Keys.SpokenOnCamera;
+                    var del2 = CoerceString(next.TryGetValue(Keys.Delivery, out var delv2) ? delv2 : null) ?? Keys.SpokenOnCamera;
+                    var est1 = ClipDurationEstimator.EstimateUncapped(d1, "", JsonKeys.Dialogue, del1);
+                    var est2 = ClipDurationEstimator.EstimateUncapped(d2, "", JsonKeys.Dialogue, del2);
 
                     if (est1 <= perLineCap && est2 <= perLineCap && (est1 + est2) <= effectiveMax)
                     {
-                        cur["secondary_speaker"] = sp2;
+                        cur[Keys.SecondarySpeaker] = sp2;
                         cur["secondary_dialogue"] = d2;
 
                         // Size the merged clip for BOTH lines (was left at the primary's estimate,
                         // so the second speaker's line got cut). Read the spoken lines back through
                         // the shared accessor and size with the shared estimator, capped at the same
                         // effective max used to decide the merge fit.
-                        cur["duration_seconds"] = ClipDurationEstimator.EstimateSpokenLinesSeconds(
+                        cur[Keys.DurationSeconds] = ClipDurationEstimator.EstimateSpokenLinesSeconds(
                             ClipSpokenLines.FromBeat(cur), maxSeconds: effectiveMax);
 
                         MergeVisualEvent(cur, next);
@@ -1286,11 +1307,11 @@ public sealed class Stage2PlannerService
     /// </summary>
     private static void MergeVisualEvent(Dictionary<string, object?> cur, Dictionary<string, object?> next)
     {
-        var ve1 = CoerceString(cur.TryGetValue("visual_event", out var vev1) ? vev1 : null) ?? "";
-        var ve2 = CoerceString(next.TryGetValue("visual_event", out var vev2) ? vev2 : null) ?? "";
+        var ve1 = CoerceString(cur.TryGetValue(Keys.VisualEvent, out var vev1) ? vev1 : null) ?? "";
+        var ve2 = CoerceString(next.TryGetValue(Keys.VisualEvent, out var vev2) ? vev2 : null) ?? "";
         if (!string.IsNullOrWhiteSpace(ve2) && !ve1.Contains(ve2, StringComparison.OrdinalIgnoreCase))
         {
-            cur["visual_event"] = string.IsNullOrWhiteSpace(ve1) ? ve2 : $"{ve1} {ve2}";
+            cur[Keys.VisualEvent] = string.IsNullOrWhiteSpace(ve1) ? ve2 : $"{ve1} {ve2}";
         }
     }
 
@@ -1301,10 +1322,10 @@ public sealed class Stage2PlannerService
     /// </summary>
     public static string GetMonologueCameraFraming(
         int step,
-        string speakerDisplay = "speaker",
+        string speakerDisplay = JsonKeys.Speaker,
         int onScreenCastCount = 1)
     {
-        var s = string.IsNullOrWhiteSpace(speakerDisplay) ? "speaker" : speakerDisplay;
+        var s = string.IsNullOrWhiteSpace(speakerDisplay) ? JsonKeys.Speaker : speakerDisplay;
         var multi = onScreenCastCount >= 2;
         return (step % 4) switch
         {
@@ -1327,11 +1348,11 @@ public sealed class Stage2PlannerService
         Dictionary<string, List<string>> wardrobe,
         int clipIndex)
     {
-        var ve = CoerceString(beat.TryGetValue("visual_event", out var vev) ? vev : null) ?? "";
+        var ve = CoerceString(beat.TryGetValue(Keys.VisualEvent, out var vev) ? vev : null) ?? "";
         // Strip accidental technical suffix from beat text (res/fps owned at gen time)
         ve = CommonRegex.Replace(ve, @"\s*/\s*\d+p.*$", "", RegexOptions.IgnoreCase).Trim();
         var cast = ClipCastTokens(scene, beat, charSeeds);
-        var primary = CoerceString(beat.TryGetValue("primary_subject", out var ps) ? ps : null)
+        var primary = CoerceString(beat.TryGetValue(Keys.PrimarySubject, out var ps) ? ps : null)
                       ?? (cast.Count > 0 ? cast[0] : "");
 
         var place = LocationLockPhrase(scene, beat, locSeeds);
@@ -1365,8 +1386,8 @@ public sealed class Stage2PlannerService
             !ve.Contains(block, StringComparison.OrdinalIgnoreCase))
             ve = $"{ve}. {block}".Trim();
 
-        var ac = (CoerceString(beat.TryGetValue("action_class", out var acv) ? acv : null) ?? "").ToLowerInvariant();
-        if (ac == "big_action" &&
+        var ac = (CoerceString(beat.TryGetValue(Keys.ActionClass, out var acv) ? acv : null) ?? "").ToLowerInvariant();
+        if (ac == Keys.BigAction &&
             !ve.Contains("continuous", StringComparison.OrdinalIgnoreCase))
             ve = $"{ve}. ONE continuous take no cut; unbroken cause-to-effect motion";
 
@@ -1381,11 +1402,11 @@ public sealed class Stage2PlannerService
                  "traffic or passersby, a sign or light flickering, wind moving debris/foliage/fabric) " +
                  "so the shot feels alive, not a still photo";
 
-        var speech = SpeechClause(beat, cast);
+        var speech = SpeechClause(beat);
         var mustNot = GetList(beat, "must_not").Select(x => x?.ToString() ?? "").Where(x => x.Length > 0).Take(3).ToList();
         var mustBit = mustNot.Count > 0 ? $"must not: {string.Join("; ", mustNot)}" : "";
         // Same wardrobe phrase length for all clips in the scene (consistent continuity language).
-        var ward = WardrobeContinuityClause(wardrobe, cast, clipIndex, primary);
+        var ward = WardrobeContinuityClause(wardrobe, cast, primary);
 
         // Join full slots — no length budget, no dropping fields, no ellipsis packing.
         // Identity cues omitted: gen-time CHARACTER VARIABLES + locked refs own identity.
@@ -1485,10 +1506,10 @@ public sealed class Stage2PlannerService
         {
             var cn = CoerceString(d.TryGetValue("canonical_given_name", out var c) ? c : null);
             if (!string.IsNullOrWhiteSpace(cn))
-                return cn!;
+                return cn;
             var vl = CoerceString(d.TryGetValue("voice_label", out var v) ? v : null);
             if (!string.IsNullOrWhiteSpace(vl))
-                return vl!.Replace('_', ' ');
+                return vl.Replace('_', ' ');
         }
         var bare = primaryKey.StartsWith(JsonKeys.CharacterPrefix, StringComparison.OrdinalIgnoreCase)
             ? primaryKey[JsonKeys.CharacterPrefix.Length..]
@@ -1548,9 +1569,9 @@ public sealed class Stage2PlannerService
     /// <summary>FADE IN / CUT TO-only beats produce empty visual prompts — never plan clips for them.</summary>
     private static bool IsNoopTransitionBeat(Dictionary<string, object?> beat)
     {
-        var dlg = CoerceString(beat.TryGetValue("dialogue", out var d) ? d : null) ?? "";
+        var dlg = CoerceString(beat.TryGetValue(JsonKeys.Dialogue, out var d) ? d : null) ?? "";
         if (!string.IsNullOrWhiteSpace(dlg)) return false;
-        var ve = CoerceString(beat.TryGetValue("visual_event", out var v) ? v : null) ?? "";
+        var ve = CoerceString(beat.TryGetValue(Keys.VisualEvent, out var v) ? v : null) ?? "";
         if (string.IsNullOrWhiteSpace(ve)) return true;
         if (FountainParser.IsStandaloneTransitionLine(ve)) return true;
         return CommonRegex.IsMatch(
@@ -1572,9 +1593,9 @@ public sealed class Stage2PlannerService
         if (cut is "hard_cut" or "hardcut" or "none") return true;
         if (cut is "extend" or "continue" or "continuous") return false;
 
-        var ac = (CoerceString(beat.TryGetValue("action_class", out var a) ? a : null) ?? "").ToLowerInvariant();
+        var ac = (CoerceString(beat.TryGetValue(Keys.ActionClass, out var a) ? a : null) ?? "").ToLowerInvariant();
         var cont = (CoerceString(beat.TryGetValue("continuity", out var c) ? c : null) ?? "").ToLowerInvariant();
-        if (ac is "big_action" or "establishing" or "hard_cut" or "flashback_enter" or "flashback_exit" or "montage")
+        if (ac is Keys.BigAction or "establishing" or "hard_cut" or "flashback_enter" or "flashback_exit" or "montage")
             return true;
         if (cont is "new_setup" or "return_to_present" or "parallel")
             return true;
@@ -1587,7 +1608,7 @@ public sealed class Stage2PlannerService
             return true;
         if (IsVoBeat(beat))
             return cont != "continuous_from_previous_beat";
-        var ve = (CoerceString(beat.TryGetValue("visual_event", out var vev) ? vev : null) ?? "").ToLowerInvariant();
+        var ve = (CoerceString(beat.TryGetValue(Keys.VisualEvent, out var vev) ? vev : null) ?? "").ToLowerInvariant();
         if (CommonRegex.IsMatch(ve,
                 @"\b(kick|smash|punch|sprint|crash|explod|slam|throw|rocket|wide shot|establishing|flashback|back to present|cut to)\b"))
             return true;
@@ -1600,10 +1621,10 @@ public sealed class Stage2PlannerService
         var (delivery, _) = BeatAudio(beat);
         if (delivery is "none" or "")
             return false;
-        var dialogue = CoerceString(beat.TryGetValue("dialogue", out var d) ? d : null) ?? "";
+        var dialogue = CoerceString(beat.TryGetValue(JsonKeys.Dialogue, out var d) ? d : null) ?? "";
         if (string.IsNullOrWhiteSpace(dialogue) &&
             beat.TryGetValue("audio", out var a) && a is Dictionary<string, object?> ad)
-            dialogue = CoerceString(ad.TryGetValue("dialogue", out var d2) ? d2 : null) ?? "";
+            dialogue = CoerceString(ad.TryGetValue(JsonKeys.Dialogue, out var d2) ? d2 : null) ?? "";
         if (string.IsNullOrWhiteSpace(dialogue))
             return false;
         return IsOnCameraDelivery(delivery) ||
@@ -1630,7 +1651,7 @@ public sealed class Stage2PlannerService
     public static bool IsOnCameraDelivery(string? delivery)
     {
         var d = (delivery ?? "").Trim().ToLowerInvariant();
-        return d is "spoken_on_camera" or "on_camera" or "spoken";
+        return d is Keys.SpokenOnCamera or "on_camera" or "spoken";
     }
 
     /// <summary>Normalize delivery aliases to canonical tokens for audio_payload.</summary>
@@ -1639,7 +1660,7 @@ public sealed class Stage2PlannerService
         var d = (delivery ?? "none").Trim().ToLowerInvariant();
         if (string.IsNullOrEmpty(d)) return "none";
         if (d is "on_camera" or "spoken" or "dialogue_on_camera")
-            return "spoken_on_camera";
+            return Keys.SpokenOnCamera;
         if (d is "vo" or "voiceover" or "voice_over" or "off_camera" or "offcamera")
             return "voiceover_internal";
         return d;
@@ -1648,10 +1669,10 @@ public sealed class Stage2PlannerService
     private static (string Delivery, string Speaker) BeatAudio(Dictionary<string, object?> beat)
     {
         var nested = beat.TryGetValue("audio", out var a) && a is Dictionary<string, object?> ad ? ad : null;
-        var delivery = NormalizeDelivery(CoerceString(nested?.TryGetValue("delivery", out var d) == true ? d
-            : beat.TryGetValue("delivery", out var d2) ? d2 : null));
-        var speaker = (CoerceString(nested?.TryGetValue("speaker", out var s) == true ? s
-            : beat.TryGetValue("speaker", out var s2) ? s2 : null) ?? "").ToLowerInvariant();
+        var delivery = NormalizeDelivery(CoerceString(nested?.TryGetValue(Keys.Delivery, out var d) == true ? d
+            : beat.TryGetValue(Keys.Delivery, out var d2) ? d2 : null));
+        var speaker = (CoerceString(nested?.TryGetValue(JsonKeys.Speaker, out var s) == true ? s
+            : beat.TryGetValue(JsonKeys.Speaker, out var s2) ? s2 : null) ?? "").ToLowerInvariant();
         return (delivery, speaker);
     }
 
@@ -1663,12 +1684,12 @@ public sealed class Stage2PlannerService
         Stage1Normalizer.NormalizeBeatAudioKeys(beat);
 
         var nested = beat.TryGetValue("audio", out var a) && a is Dictionary<string, object?> ad ? ad : null;
-        var delivery = NormalizeDelivery(CoerceString(nested?.TryGetValue("delivery", out var d) == true ? d
-            : beat.TryGetValue("delivery", out var d2) ? d2 : null) ?? "none");
-        var speaker = CoerceString(nested?.TryGetValue("speaker", out var s) == true ? s
-            : beat.TryGetValue("speaker", out var s2) ? s2 : null) ?? "";
-        var dialogue = CoerceString(nested?.TryGetValue("dialogue", out var dlg) == true ? dlg
-            : beat.TryGetValue("dialogue", out var dlg2) ? dlg2 : null) ?? "";
+        var delivery = NormalizeDelivery(CoerceString(nested?.TryGetValue(Keys.Delivery, out var d) == true ? d
+            : beat.TryGetValue(Keys.Delivery, out var d2) ? d2 : null) ?? "none");
+        var speaker = CoerceString(nested?.TryGetValue(JsonKeys.Speaker, out var s) == true ? s
+            : beat.TryGetValue(JsonKeys.Speaker, out var s2) ? s2 : null) ?? "";
+        var dialogue = CoerceString(nested?.TryGetValue(JsonKeys.Dialogue, out var dlg) == true ? dlg
+            : beat.TryGetValue(JsonKeys.Dialogue, out var dlg2) ? dlg2 : null) ?? "";
         // Store speech-safe dialogue in the plan (UI + gen see the same text)
         dialogue = ClipVideoPromptBuilder.SanitizeSpokenDialogue(dialogue);
         var ambient = CoerceString(nested?.TryGetValue("ambient", out var am) == true ? am
@@ -1680,9 +1701,9 @@ public sealed class Stage2PlannerService
 
         var payload = new Dictionary<string, object?>
         {
-            ["delivery"] = delivery,
-            ["speaker"] = speaker,
-            ["dialogue"] = dialogue,
+            [Keys.Delivery] = delivery,
+            [JsonKeys.Speaker] = speaker,
+            [JsonKeys.Dialogue] = dialogue,
             ["sfx"] = sfx,
             ["ambient"] = ambient,
         };
@@ -1699,11 +1720,11 @@ public sealed class Stage2PlannerService
         // Cross-speaker two-hander clips (CoalesceCrossSpeakerDialogueBeats) carry a second
         // speaker's line here. Additive only — existing single-speaker readers keep working
         // unmodified since the flat speaker/dialogue keys above are untouched.
-        var secondarySpeaker = CoerceString(beat.TryGetValue("secondary_speaker", out var ss) ? ss : null);
+        var secondarySpeaker = CoerceString(beat.TryGetValue(Keys.SecondarySpeaker, out var ss) ? ss : null);
         var secondaryDialogue = CoerceString(beat.TryGetValue("secondary_dialogue", out var sd2) ? sd2 : null);
         if (!string.IsNullOrWhiteSpace(secondarySpeaker) && !string.IsNullOrWhiteSpace(secondaryDialogue))
         {
-            payload["secondary_speaker"] = secondarySpeaker;
+            payload[Keys.SecondarySpeaker] = secondarySpeaker;
             payload["secondary_dialogue"] = ClipVideoPromptBuilder.SanitizeSpokenDialogue(secondaryDialogue);
         }
 
@@ -1720,12 +1741,12 @@ public sealed class Stage2PlannerService
         return payload;
     }
 
-    private static string SpeechClause(Dictionary<string, object?> beat, List<string> cast)
+    private static string SpeechClause(Dictionary<string, object?> beat)
     {
         var ap = BuildAudioPayload(beat);
-        var delivery = (ap["delivery"] as string ?? "none").ToLowerInvariant();
-        var speaker = ap["speaker"] as string ?? "";
-        var dialogue = ap["dialogue"] as string ?? "";
+        var delivery = (ap[Keys.Delivery] as string ?? "none").ToLowerInvariant();
+        var speaker = ap[JsonKeys.Speaker] as string ?? "";
+        var dialogue = ap[JsonKeys.Dialogue] as string ?? "";
         if (string.IsNullOrWhiteSpace(dialogue) || delivery is "none" or "")
             return "";
         // Full speech-safe line (BuildAudioPayload already sanitized)
@@ -1748,19 +1769,6 @@ public sealed class Stage2PlannerService
         Dictionary<string, object?>? charSeeds = null)
     {
         var found = new List<string>();
-        void Add(string? key)
-        {
-            if (string.IsNullOrWhiteSpace(key)) return;
-            if (!key.StartsWith(JsonKeys.CharacterPrefix, StringComparison.Ordinal)) return;
-            if (!found.Contains(key)) found.Add(key);
-        }
-
-        void AddFrom(string? text)
-        {
-            if (string.IsNullOrEmpty(text)) return;
-            foreach (Match m in CharacterTokenRegex.Matches(text))
-                Add(m.Value);
-        }
         // AI / enricher closed-set list preferred when present.
         // Bug fix: previously short-circuited as soon as *any* character was found in
         // characters_on_screen, even when all found characters are pure voice-only
@@ -1769,21 +1777,21 @@ public sealed class Stage2PlannerService
         // across the yard in Scene 1) to be silently dropped — resulting in no reference
         // image being attached for the visually present animal lead.
         // Fix: only short-circuit if at least one found character is visually present.
-        if (beat.TryGetValue("characters_on_screen", out var cos) && cos is List<object?> cosList && cosList.Count > 0)
+        if (beat.TryGetValue(Keys.CharactersOnScreen, out var cos) && cos is List<object?> cosList && cosList.Count > 0)
         {
             foreach (var x in cosList)
-                Add(x?.ToString());
+                AddCharacterKey(found, x?.ToString());
             // Short-circuit only when at least one found character is actually on screen.
             // If every character listed is a never_on_screen voice-only role, fall through
             // and also scan visual_event prose for additional visible characters.
             if (found.Any(k => !IsNeverOnScreenCharacter(k, charSeeds)))
                 return found;
         }
-        var veText = CoerceString(beat.TryGetValue("visual_event", out var ve) ? ve : null) ?? "";
-        AddFrom(veText);
-        AddFrom(CoerceString(beat.TryGetValue("primary_subject", out var ps) ? ps : null));
-        AddFrom(CoerceString(beat.TryGetValue("speaker", out var sp) ? sp : null));
-        AddFrom(CoerceString(beat.TryGetValue("blocking_notes", out var bn) ? bn : null));
+        var veText = CoerceString(beat.TryGetValue(Keys.VisualEvent, out var ve) ? ve : null) ?? "";
+        AddCharacterKeysFromText(found, veText);
+        AddCharacterKey(found, CoerceString(beat.TryGetValue(Keys.PrimarySubject, out var ps) ? ps : null));
+        AddCharacterKey(found, CoerceString(beat.TryGetValue(JsonKeys.Speaker, out var sp) ? sp : null));
+        AddCharacterKeysFromText(found, CoerceString(beat.TryGetValue("blocking_notes", out var bn) ? bn : null));
 
         // Promote free-text names (OLD MAN, three officers) using cast seed keys
         if (charSeeds is { Count: > 0 })
@@ -1800,13 +1808,11 @@ public sealed class Stage2PlannerService
                         ?? k.Replace(JsonKeys.CharacterPrefix, "").Replace('_', ' '),
                 };
             }
-            var prose = string.Join(" ", new[]
-            {
+            var prose = string.Join(" ",
                 veText,
-                CoerceString(beat.TryGetValue("blocking_notes", out var bn2) ? bn2 : null) ?? "",
-            });
+                CoerceString(beat.TryGetValue("blocking_notes", out var bn2) ? bn2 : null) ?? "");
             foreach (var key in ClipVideoPromptBuilder.InferKeysFromProse(prose, profiles))
-                Add(key);
+                AddCharacterKey(found, key);
         }
 
         if (found.Count == 0)
@@ -1814,24 +1820,32 @@ public sealed class Stage2PlannerService
         return found;
     }
 
+    private static void AddCharacterKey(List<string> found, string? key)
+    {
+        if (string.IsNullOrWhiteSpace(key)) return;
+        if (!key.StartsWith(JsonKeys.CharacterPrefix, StringComparison.Ordinal)) return;
+        if (!found.Contains(key)) found.Add(key);
+    }
+
+    private static void AddCharacterKeysFromText(List<string> found, string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+        foreach (Match m in CharacterTokenRegex.Matches(text))
+            AddCharacterKey(found, m.Value);
+    }
+
     private static List<string> UnionCharactersOnScreen(Dictionary<string, object?> scene)
     {
         var set = new List<string>();
-        void Add(string? t)
+        foreach (var x in GetList(scene, Keys.CharactersOnScreen))
+            AddCharacterKey(set, x?.ToString());
+        foreach (var b in GetList(scene, Keys.StoryBeats).OfType<Dictionary<string, object?>>())
         {
-            if (string.IsNullOrWhiteSpace(t)) return;
-            if (!t.StartsWith(JsonKeys.CharacterPrefix, StringComparison.Ordinal)) return;
-            if (!set.Contains(t)) set.Add(t);
-        }
-        foreach (var x in GetList(scene, "characters_on_screen"))
-            Add(x?.ToString());
-        foreach (var b in GetList(scene, "story_beats").OfType<Dictionary<string, object?>>())
-        {
-            Add(CoerceString(b.TryGetValue("primary_subject", out var ps) ? ps : null));
-            Add(CoerceString(b.TryGetValue("speaker", out var sp) ? sp : null));
-            var ve = CoerceString(b.TryGetValue("visual_event", out var vev) ? vev : null) ?? "";
+            AddCharacterKey(set, CoerceString(b.TryGetValue(Keys.PrimarySubject, out var ps) ? ps : null));
+            AddCharacterKey(set, CoerceString(b.TryGetValue(JsonKeys.Speaker, out var sp) ? sp : null));
+            var ve = CoerceString(b.TryGetValue(Keys.VisualEvent, out var vev) ? vev : null) ?? "";
             foreach (Match m in CommonRegex.Matches(ve, @"Character_[A-Za-z0-9_]+"))
-                Add(m.Value);
+                AddCharacterKey(set, m.Value);
         }
         return set;
     }
@@ -1846,11 +1860,11 @@ public sealed class Stage2PlannerService
         Dictionary<string, object?> locSeeds)
     {
         // Current scene heading wins — includes correct time of day for this visit
-        var setting = CoerceString(scene.TryGetValue("setting", out var st) ? st : null)?.Trim();
+        var setting = CoerceString(scene.TryGetValue(Keys.Setting, out var st) ? st : null)?.Trim();
         if (!string.IsNullOrWhiteSpace(setting) && LooksLikeSceneHeading(setting))
-            return setting!;
+            return setting;
 
-        var lid = CoerceString(beat.TryGetValue("location_id", out var bl) ? bl : null)
+        var lid = CoerceString(beat.TryGetValue(Keys.LocationId, out var bl) ? bl : null)
                   ?? CoerceString(scene.TryGetValue("primary_location_id", out var pl) ? pl : null);
         if (string.IsNullOrEmpty(lid)) return setting ?? "";
 
@@ -1863,11 +1877,11 @@ public sealed class Stage2PlannerService
                 return lid;
             // If seed still has a full heading with TOD, prefer scene setting when available
             if (!string.IsNullOrWhiteSpace(setting))
-                return setting!;
+                return setting;
             return lockTxt;
         }
 
-        return !string.IsNullOrWhiteSpace(setting) ? setting! : lid;
+        return !string.IsNullOrWhiteSpace(setting) ? setting : lid;
     }
 
     /// <summary>True for Fountain-style INT./EXT. headings (used to prefer scene.setting as place lock).</summary>
@@ -1957,7 +1971,7 @@ public sealed class Stage2PlannerService
             beat.TryGetValue("wardrobe_put_on", out var po) ? po : null, 8);
         var remove = Stage1Normalizer.CoerceStringList(
             beat.TryGetValue("wardrobe_remove", out var rm) ? rm : null, 8);
-        var subject = CoerceString(beat.TryGetValue("primary_subject", out var ps) ? ps : null)
+        var subject = CoerceString(beat.TryGetValue(Keys.PrimarySubject, out var ps) ? ps : null)
                       ?? (cast.Count > 0 ? cast[0] : null);
         if (subject is null) return;
         if (!state.TryGetValue(subject, out var list))
@@ -1981,7 +1995,6 @@ public sealed class Stage2PlannerService
     private static string WardrobeContinuityClause(
         Dictionary<string, List<string>> state,
         List<string> cast,
-        int clipIndex,
         string primary)
     {
         // Full sticky list, importance-ordered. Primary subject first among cast.
@@ -2069,7 +2082,7 @@ public sealed class Stage2PlannerService
             ["style_description"] =
                 CoerceString(mi.TryGetValue("style_description", out var sd) ? sd : null)
                 ?? "cinematic underscore",
-            ["duration_seconds"] = total,
+            [Keys.DurationSeconds] = total,
         };
     }
 
@@ -2092,10 +2105,10 @@ public sealed class Stage2PlannerService
             scenes = GetScenes(stage1).Select(s => new
             {
                 n = s.TryGetValue(JsonKeys.SceneNumber, out var sn) ? sn : null,
-                b = GetList(s, "story_beats").Count,
+                b = GetList(s, Keys.StoryBeats).Count,
                 d = s.TryGetValue("duration_target_seconds", out var d) ? d : null,
             }),
-            chars = GetDict(GetDict(stage1, "global_production_variables"), "character_seed_tokens").Keys.OrderBy(k => k),
+            chars = GetDict(GetDict(stage1, Keys.GlobalProductionVariables), Keys.CharacterSeedTokens).Keys.OrderBy(k => k),
         });
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(raw));
         return Convert.ToHexString(hash)[..16].ToLowerInvariant();
@@ -2131,7 +2144,7 @@ public sealed class Stage2PlannerService
     }
 
     public static List<Dictionary<string, object?>> GetScenes(Dictionary<string, object?> d) =>
-        GetList(d, "scenes").OfType<Dictionary<string, object?>>().ToList();
+        GetList(d, Keys.Scenes).OfType<Dictionary<string, object?>>().ToList();
 
     public static Dictionary<string, object?> GetDict(Dictionary<string, object?> d, string key) =>
         d.TryGetValue(key, out var v) && v is Dictionary<string, object?> x ? x : new();
@@ -2146,25 +2159,27 @@ public sealed class Stage2PlannerService
     /// </summary>
     internal static void HealSceneCastFromClips(Dictionary<string, object?> plan)
     {
-        foreach (var scene in GetList(plan, "scenes").OfType<Dictionary<string, object?>>())
+        foreach (var scene in GetList(plan, Keys.Scenes).OfType<Dictionary<string, object?>>())
         {
-            var cast = GetList(scene, "characters_on_screen")
+            var cast = GetList(scene, Keys.CharactersOnScreen)
                 .Select(x => x?.ToString() ?? "")
                 .Where(s => s.Length > 0)
                 .ToList();
             var seen = new HashSet<string>(cast, StringComparer.OrdinalIgnoreCase);
             var changed = false;
-            foreach (var clip in GetList(scene, "veo_clips").OfType<Dictionary<string, object?>>())
+            foreach (var clip in GetList(scene, Keys.VeoClips).OfType<Dictionary<string, object?>>())
             {
-                foreach (var ch in GetList(clip, "characters_on_screen")
+                foreach (var ch in GetList(clip, Keys.CharactersOnScreen)
                              .Select(x => x?.ToString() ?? "")
-                             .Where(s => s.Length > 0))
+                             .Where(s => s.Length > 0)
+                             .Where(ch => seen.Add(ch)))
                 {
-                    if (seen.Add(ch)) { cast.Add(ch); changed = true; }
+                    cast.Add(ch);
+                    changed = true;
                 }
             }
             if (changed)
-                scene["characters_on_screen"] = cast.Cast<object?>().ToList();
+                scene[Keys.CharactersOnScreen] = cast.Cast<object?>().ToList();
         }
     }
 
@@ -2187,7 +2202,7 @@ public sealed class Stage2PlannerService
     {
         // Prefer explicit stamp already on stage1 / plan if a prior step wrote a catalog id.
         if (stage1 is not null
-            && stage1.TryGetValue("video_provider_profile", out var existing)
+            && stage1.TryGetValue(Keys.VideoProviderProfile, out var existing)
             && CoerceString(existing) is { Length: > 0 } prior
             && SupportedModelCatalog.IsKnownProviderId(prior))
         {

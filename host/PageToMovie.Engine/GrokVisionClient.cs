@@ -17,6 +17,9 @@ namespace PageToMovie.Engine;
 public sealed class GrokVisionClient : IVisionClient
 {
     public const string ApiBase = SupportedModelCatalog.XaiApiBase;
+    private const string KindVision = "vision";
+    private const string EndpointResponses = "responses";
+    private const string ContentKey = "content";
 
     private const string TranscribePrompt =
         "You are transcribing a children's / illustrated book page.\n\n" +
@@ -49,7 +52,7 @@ public sealed class GrokVisionClient : IVisionClient
         _keyProvider = keyProvider;
         _errorLogger = errorLogger;
         if (_http.BaseAddress is null)
-            _http.BaseAddress = new Uri(ApiBase + "/");
+            _http.BaseAddress = new Uri(ApiBase.TrimEnd(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar) + Path.AltDirectorySeparatorChar);
     }
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(ApiKeyScope.Current ?? Environment.GetEnvironmentVariable("XAI_API_KEY"));
@@ -61,7 +64,12 @@ public sealed class GrokVisionClient : IVisionClient
         CancellationToken ct = default)
     {
         FileInfo? fi = null;
-        try { fi = new FileInfo(imagePath); } catch { }
+        try { fi = new FileInfo(imagePath); }
+        catch (Exception)
+        {
+            // Invalid path — skip cache and continue without FileInfo.
+            fi = null;
+        }
         var cacheKey = $"{imagePath}|p{page}|m:{model}";
         if (fi is not null && fi.Exists &&
             TranscribeCache.TryGetValue(cacheKey, out var hit) &&
@@ -94,9 +102,9 @@ public sealed class GrokVisionClient : IVisionClient
         {
             await _telemetry.LogApiCallAsync(new ApiCallTelemetry
             {
-                Kind = "vision",
+                Kind = KindVision,
                 Mode = "transcribe_page",
-                Endpoint = "responses",
+                Endpoint = EndpointResponses,
                 Model = model,
                 DurationMs = sw.ElapsedMilliseconds,
                 Error = ex.Message,
@@ -113,15 +121,15 @@ public sealed class GrokVisionClient : IVisionClient
 
         async Task<string> DoRequestAsync(int attemptNum)
         {
-            using var resp = await SendJsonAsync(HttpMethod.Post, "responses", payload, ct);
+            using var resp = await SendJsonAsync(HttpMethod.Post, EndpointResponses, payload, ct);
             var body = await resp.Content.ReadAsStringAsync(ct);
             if (!resp.IsSuccessStatusCode)
             {
                 await _telemetry.LogApiCallAsync(new ApiCallTelemetry
                 {
-                    Kind = "vision",
+                    Kind = KindVision,
                     Mode = "transcribe_page",
-                    Endpoint = "responses",
+                    Endpoint = EndpointResponses,
                     Model = model,
                     HttpStatus = (int)resp.StatusCode,
                     DurationMs = sw.ElapsedMilliseconds,
@@ -139,9 +147,9 @@ public sealed class GrokVisionClient : IVisionClient
             t = CommonRegex.Replace(t, @"\s*```$", "").Trim();
             await _telemetry.LogApiCallAsync(new ApiCallTelemetry
             {
-                Kind = "vision",
+                Kind = KindVision,
                 Mode = "transcribe_page",
-                Endpoint = "responses",
+                Endpoint = EndpointResponses,
                 Model = model,
                 HttpStatus = (int)resp.StatusCode,
                 DurationMs = sw.ElapsedMilliseconds,
@@ -168,7 +176,12 @@ public sealed class GrokVisionClient : IVisionClient
             return new CharacterPageClassification { Page = page, PageKind = "unknown" };
 
         FileInfo? fi = null;
-        try { fi = new FileInfo(imagePath); } catch { }
+        try { fi = new FileInfo(imagePath); }
+        catch (Exception)
+        {
+            // Invalid path — skip cache and continue without FileInfo.
+            fi = null;
+        }
         var castKey = string.Join(";", cast.Select(c => $"{c.Key}:{c.DisplayName}:{c.Description}"));
         var cacheKey = $"{imagePath}|p{page}|m:{model}|c:{castKey}";
         if (fi is not null && fi.Exists &&
@@ -235,9 +248,9 @@ public sealed class GrokVisionClient : IVisionClient
         {
             await _telemetry.LogApiCallAsync(new ApiCallTelemetry
             {
-                Kind = "vision",
+                Kind = KindVision,
                 Mode = "classify_characters",
-                Endpoint = "responses",
+                Endpoint = EndpointResponses,
                 Model = model,
                 DurationMs = sw.ElapsedMilliseconds,
                 Error = ex.Message,
@@ -255,15 +268,15 @@ public sealed class GrokVisionClient : IVisionClient
 
         async Task<string> DoRequestAsync(int attemptNum)
         {
-            using var resp = await SendJsonAsync(HttpMethod.Post, "responses", payload, ct);
+            using var resp = await SendJsonAsync(HttpMethod.Post, EndpointResponses, payload, ct);
             var body = await resp.Content.ReadAsStringAsync(ct);
             if (!resp.IsSuccessStatusCode)
             {
                 await _telemetry.LogApiCallAsync(new ApiCallTelemetry
                 {
-                    Kind = "vision",
+                    Kind = KindVision,
                     Mode = "classify_characters",
-                    Endpoint = "responses",
+                    Endpoint = EndpointResponses,
                     Model = model,
                     HttpStatus = (int)resp.StatusCode,
                     DurationMs = sw.ElapsedMilliseconds,
@@ -281,9 +294,9 @@ public sealed class GrokVisionClient : IVisionClient
             t = CommonRegex.Replace(t, @"\s*```$", "").Trim();
             await _telemetry.LogApiCallAsync(new ApiCallTelemetry
             {
-                Kind = "vision",
+                Kind = KindVision,
                 Mode = "classify_characters",
-                Endpoint = "responses",
+                Endpoint = EndpointResponses,
                 Model = model,
                 HttpStatus = (int)resp.StatusCode,
                 DurationMs = sw.ElapsedMilliseconds,
@@ -308,7 +321,7 @@ public sealed class GrokVisionClient : IVisionClient
                 new Dictionary<string, object?>
                 {
                     ["role"] = "user",
-                    ["content"] = new object[]
+                    [ContentKey] = new object[]
                     {
                         new Dictionary<string, object?>
                         {
@@ -424,7 +437,7 @@ public sealed class GrokVisionClient : IVisionClient
             foreach (var item in output.EnumerateArray())
             {
                 if (item.ValueKind != JsonValueKind.Object) continue;
-                if (!item.TryGetProperty("content", out var content)) continue;
+                if (!item.TryGetProperty(ContentKey, out var content)) continue;
                 if (content.ValueKind == JsonValueKind.Array)
                 {
                     foreach (var part in content.EnumerateArray())
@@ -453,7 +466,7 @@ public sealed class GrokVisionClient : IVisionClient
         {
             var c0 = choices[0];
             if (c0.TryGetProperty("message", out var msg) &&
-                msg.TryGetProperty("content", out var mc) &&
+                msg.TryGetProperty(ContentKey, out var mc) &&
                 mc.GetString() is { Length: > 0 } mcs)
                 return mcs;
         }
@@ -517,13 +530,13 @@ public sealed class GrokVisionClient : IVisionClient
                 new Dictionary<string, object?>
                 {
                     ["role"] = "user",
-                    ["content"] = content,
+                    [ContentKey] = content,
                 },
             },
         };
 
         var sw = Stopwatch.StartNew();
-        var imageNames = paths.Select(Path.GetFileName).Where(n => n is not null).Cast<string>().ToList();
+        var imageNames = paths.Select(Path.GetFileName).OfType<string>().ToList();
         try
         {
             // Retries the whole request on 429/5xx or a network/timeout failure — previously a
@@ -541,8 +554,8 @@ public sealed class GrokVisionClient : IVisionClient
         {
             await _telemetry.LogApiCallAsync(new ApiCallTelemetry
             {
-                Kind = "vision",
-                Endpoint = "responses",
+                Kind = KindVision,
+                Endpoint = EndpointResponses,
                 Model = model,
                 DurationMs = sw.ElapsedMilliseconds,
                 Prompt = prompt,
@@ -555,14 +568,14 @@ public sealed class GrokVisionClient : IVisionClient
 
         async Task<string> DoRequestAsync(int attemptNum)
         {
-            using var resp = await SendJsonAsync(HttpMethod.Post, "responses", payload, ct);
+            using var resp = await SendJsonAsync(HttpMethod.Post, EndpointResponses, payload, ct);
             var body = await resp.Content.ReadAsStringAsync(ct);
             if (!resp.IsSuccessStatusCode)
             {
                 await _telemetry.LogApiCallAsync(new ApiCallTelemetry
                 {
-                    Kind = "vision",
-                    Endpoint = "responses",
+                    Kind = KindVision,
+                    Endpoint = EndpointResponses,
                     Model = model,
                     HttpStatus = (int)resp.StatusCode,
                     DurationMs = sw.ElapsedMilliseconds,
@@ -584,8 +597,8 @@ public sealed class GrokVisionClient : IVisionClient
             text = CommonRegex.Replace(text, @"\s*```$", "").Trim();
             await _telemetry.LogApiCallAsync(new ApiCallTelemetry
             {
-                Kind = "vision",
-                Endpoint = "responses",
+                Kind = KindVision,
+                Endpoint = EndpointResponses,
                 Model = model,
                 HttpStatus = (int)resp.StatusCode,
                 DurationMs = sw.ElapsedMilliseconds,

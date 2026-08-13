@@ -232,10 +232,14 @@ JSON only:
                             keys.Add(hit);
                     }
                 }
-                map[id!] = keys;
+                map[id] = keys;
             }
         }
-        catch { }
+        catch (Exception)
+        {
+            // Malformed classifier JSON: return labels parsed before the fault.
+            return map;
+        }
         return map;
     }
 

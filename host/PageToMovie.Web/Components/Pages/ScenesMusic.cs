@@ -108,10 +108,11 @@ public partial class Scenes
         
         if (!S.Caps.MusicReady)
         {
-            S._error = S.Caps.MusicBlockedReason;
+            S._error = StudioCapabilityState.MusicBlockedReason;
             return;
         }
-if (string.IsNullOrWhiteSpace(S._projectId)) return;
+        if (string.IsNullOrWhiteSpace(S._projectId))
+            return;
 
         var isVocal = _wantVocal && SelectedAudioModelCanSing;
         S._busy = true;
@@ -261,8 +262,9 @@ if (string.IsNullOrWhiteSpace(S._projectId)) return;
 
         try
         {
-            var target = _musicVersions?.FirstOrDefault(v => string.Equals(v.TakeId, takeId, StringComparison.OrdinalIgnoreCase));
-            if (target is null)
+            var versions = _musicVersions;
+            var target = versions?.FirstOrDefault(v => string.Equals(v.TakeId, takeId, StringComparison.OrdinalIgnoreCase));
+            if (target is null || versions is null)
             {
                 _musicCompareMessage = "Take not found.";
                 return;
@@ -271,7 +273,7 @@ if (string.IsNullOrWhiteSpace(S._projectId)) return;
             // Copy the chosen take's bytes to the active path first (archives whatever's currently
             // active under its own take id in the process — same mechanism a fresh generation uses),
             // then flip which sidecar the server considers active.
-            var current = _musicVersions?.FirstOrDefault(v => v.IsCurrent);
+            var current = versions.FirstOrDefault(v => v.IsCurrent);
             var archiveTakeId = current?.TakeId is { Length: > 0 } cid ? cid : DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString();
 
             var copied = await S.MediaFolder.PromoteMusicTakeAsync(S._projectId, target, archiveTakeId);

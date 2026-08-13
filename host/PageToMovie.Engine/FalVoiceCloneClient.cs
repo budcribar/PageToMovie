@@ -32,7 +32,7 @@ public sealed class FalVoiceCloneClient : IVoiceCloneClient
         _http = http;
         _log = log;
         if (_http.BaseAddress is null)
-            _http.BaseAddress = new Uri(ApiBase.TrimEnd('/') + "/");
+            _http.BaseAddress = new Uri(ApiBase.TrimEnd(Path.AltDirectorySeparatorChar) + Path.AltDirectorySeparatorChar);
     }
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(ResolveApiKey());

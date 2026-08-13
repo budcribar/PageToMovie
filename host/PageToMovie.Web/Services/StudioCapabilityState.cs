@@ -20,17 +20,17 @@ public sealed class StudioCapabilityState
     public bool MusicReady { get; private set; }
     public bool VoiceCloneReady { get; private set; }
 
-    public string VideoBlockedReason => "Set up video in Settings to enable this.";
-    public string ImageBlockedReason => "Set up pictures in Settings to enable this.";
-    public string VideoReviewBlockedReason => "Set up review in Settings to enable this.";
-    public string MusicBlockedReason => "Set up music in Settings to enable this.";
-    public string VoiceCloneBlockedReason => "Set up voice in Settings to enable this.";
+    public static string VideoBlockedReason => "Set up video in Settings to enable this.";
+    public static string ImageBlockedReason => "Set up pictures in Settings to enable this.";
+    public static string VideoReviewBlockedReason => "Set up review in Settings to enable this.";
+    public static string MusicBlockedReason => "Set up music in Settings to enable this.";
+    public static string VoiceCloneBlockedReason => "Set up voice in Settings to enable this.";
 
-    public string VideoSettingsHref => "/configuration?focus=video#api-keys";
-    public string ImageSettingsHref => "/configuration?focus=image#api-keys";
-    public string VideoReviewSettingsHref => "/configuration?focus=review#api-keys";
-    public string MusicSettingsHref => "/configuration?focus=music#api-keys";
-    public string VoiceCloneSettingsHref => "/configuration?focus=voice#api-keys";
+    public static string VideoSettingsHref => "/configuration?focus=video#api-keys";
+    public static string ImageSettingsHref => "/configuration?focus=image#api-keys";
+    public static string VideoReviewSettingsHref => "/configuration?focus=review#api-keys";
+    public static string MusicSettingsHref => "/configuration?focus=music#api-keys";
+    public static string VoiceCloneSettingsHref => "/configuration?focus=voice#api-keys";
 
     public async Task RefreshAsync(EngineApiClient engine, CancellationToken ct = default)
     {

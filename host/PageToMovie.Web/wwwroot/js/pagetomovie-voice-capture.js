@@ -5,7 +5,7 @@ window.PageToMovieVoiceCapture = (function () {
   let chunks = [];
 
   async function start() {
-    if (recorder && recorder.state === "recording") return { ok: true, already: true };
+    if (recorder?.state === "recording") return { ok: true, already: true };
     chunks = [];
     mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     let mime = "";
@@ -64,7 +64,7 @@ window.PageToMovieVoiceCapture = (function () {
 
   function cancel() {
     try {
-      if (recorder && recorder.state === "recording") recorder.stop();
+      if (recorder?.state === "recording") recorder.stop();
     } catch (_) {}
     recorder = null;
     chunks = [];

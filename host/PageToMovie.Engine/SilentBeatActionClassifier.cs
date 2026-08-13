@@ -57,7 +57,7 @@ public sealed class SilentBeatActionClassifier
         string? overrideModel = null)
     {
         var model = !string.IsNullOrWhiteSpace(overrideModel)
-            ? overrideModel!.Trim()
+            ? overrideModel.Trim()
             : (string.IsNullOrWhiteSpace(_opts.SilentBeatClassifyModel)
                 ? throw new InvalidOperationException(
                     "Silent beat classify: no model configured. Set the project Script & planning model in Settings, or SilentBeatClassifyModel.")
@@ -530,9 +530,9 @@ Use only the four class strings above.
                 var cls = el.TryGetProperty("class", out var cEl) ? cEl.GetString()
                     : el.TryGetProperty("action_class", out var aEl) ? aEl.GetString() : null;
                 if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(cls)) continue;
-                var n = NormalizeClass(cls!);
+                var n = NormalizeClass(cls);
                 if (n is null) continue;
-                map[id!] = n;
+                map[id] = n;
             }
         }
         catch

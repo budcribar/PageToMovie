@@ -66,12 +66,12 @@
                                                                 <button class="btn btn-sm btn-outline-primary me-1"
                                                                         disabled="@(string.IsNullOrEmpty(j.JobId))"
                                                                         title="Load job log"
-                                                                        @onclick="() => Jobs.LoadJobLogAsync(j.JobId!)">
+                                                                        @onclick="() => Jobs.LoadJobLogAsync(j.JobId)">
                                                                     Log
                                                                 </button>
                                                                 <button class="btn btn-sm btn-outline-danger"
                                                                         disabled="@Host._busy || string.IsNullOrEmpty(j.JobId)"
-                                                                        @onclick="() => Jobs.CancelJobAsync(j.JobId!)">
+                                                                        @onclick="() => Jobs.CancelJobAsync(j.JobId)">
                                                                     Cancel
                                                                 </button>
                                                             </td>
@@ -169,7 +169,7 @@
                                                     </div>
                                                     <button class="btn btn-sm btn-outline-warning"
                                                             disabled="@Host._busy || string.IsNullOrEmpty(l.Resource)"
-                                                            @onclick="() => Jobs.ReleaseLockAsync(l.Resource!)">
+                                                            @onclick="() => Jobs.ReleaseLockAsync(l.Resource)">
                                                         Force release
                                                     </button>
                                                 </li>

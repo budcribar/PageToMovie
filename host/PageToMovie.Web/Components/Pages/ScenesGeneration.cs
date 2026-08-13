@@ -155,9 +155,9 @@ public partial class Scenes
         get
         {
             var job = _job;
-            return job is not null &&
-                   IsScenesWorkflowJob(job.Kind) &&
-                   (job.Status is StatusRunning or StatusQueued);
+            return job is { } live &&
+                   IsScenesWorkflowJob(live.Kind) &&
+                   (live.Status is StatusRunning or StatusQueued);
         }
     }
 
@@ -167,9 +167,9 @@ public partial class Scenes
         {
             var job = _job;
             return !S.Session.IsAdmin &&
-                   job is not null &&
-                   IsScenesWorkflowJob(job.Kind) &&
-                   string.Equals(job.Status, "error", StringComparison.OrdinalIgnoreCase);
+                   job is { } live &&
+                   IsScenesWorkflowJob(live.Kind) &&
+                   string.Equals(live.Status, "error", StringComparison.OrdinalIgnoreCase);
         }
     }
 
@@ -179,9 +179,9 @@ public partial class Scenes
         {
             var job = _job;
             return !S.Session.IsAdmin &&
-                   job is not null &&
-                   IsScenesWorkflowJob(job.Kind) &&
-                   string.Equals(job.Status, "partial", StringComparison.OrdinalIgnoreCase);
+                   job is { } live &&
+                   IsScenesWorkflowJob(live.Kind) &&
+                   string.Equals(live.Status, "partial", StringComparison.OrdinalIgnoreCase);
         }
     }
 
@@ -707,12 +707,11 @@ public partial class Scenes
         try { detail = (await S.Engine.GetSceneDetailAsync(S._projectId, sn))?.Scene; }
         catch { /* fall back to a single clip below */ }
 
-        var clips = detail?.Clips;
-        if (clips is { Count: > 0 })
+        if (detail?.Clips is { Count: > 0 } clips)
         {
             foreach (var c in clips)
             {
-                var dur = c.DurationSeconds > 0 ? c.DurationSeconds : (detail?.PlannedDurationSeconds ?? 5);
+                var dur = c.DurationSeconds > 0 ? c.DurationSeconds : (detail.PlannedDurationSeconds ?? 5);
                 await RenderOneCreditsClipAsync(sn, c.ClipNumber, dur, w, h);
             }
         }

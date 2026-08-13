@@ -68,6 +68,10 @@ public static class ClipDurationEstimator
     /// </summary>
     public const int SilentVisualWordCap = 20;
 
+    private const string BigActionClass = "big_action";
+    private const string EstablishingClass = "establishing";
+    private const string ActionClassKey = "action_class";
+
     /// <summary>
     /// Resolves effective clip-duration bounds for a specific video model from
     /// <see cref="SupportedModelCatalog"/>, falling back to this class's own defaults for any field
@@ -121,7 +125,7 @@ public static class ClipDurationEstimator
     {
         // ResolveBoundsForModel throws on unknown/empty/incomplete catalog rows.
         var (min, max, _) = ResolveBoundsForModel(modelId);
-        var entry = SupportedModelCatalog.Find(modelId!.Trim(), ModelCapability.Video)!;
+        var entry = SupportedModelCatalog.Find(modelId.Trim(), ModelCapability.Video);
 
         int resolved;
         if (entry.AllowedDurationsSeconds is { Count: > 0 } allowed)
@@ -167,7 +171,7 @@ public static class ClipDurationEstimator
         // Unknown/empty model throws. No continue → 0 (never read maxExtensionSeconds).
         // Continue models must declare a positive maxExtensionSeconds in the catalog.
         _ = ResolveBoundsForModel(modelId);
-        var entry = SupportedModelCatalog.Find(modelId!.Trim(), ModelCapability.Video)!;
+        var entry = SupportedModelCatalog.Find(modelId.Trim(), ModelCapability.Video);
         if (!entry.SupportsVideoContinue)
             return 0;
         if (entry.MaxExtensionSeconds is not { } ext || ext <= 0)
@@ -190,9 +194,9 @@ public static class ClipDurationEstimator
     {
         if (beat is null)
             return minSeconds;
-        var dialogue = Coerce(beat, "dialogue");
+        var dialogue = Coerce(beat, JsonKeys.Dialogue);
         var visual = Coerce(beat, "visual_event");
-        var actionClass = Coerce(beat, "action_class").ToLowerInvariant();
+        var actionClass = Coerce(beat, ActionClassKey).ToLowerInvariant();
         var delivery = Coerce(beat, "delivery").ToLowerInvariant();
         return Estimate(dialogue, visual, actionClass, delivery, minSeconds, maxSeconds, absMaxSeconds);
     }
@@ -221,7 +225,7 @@ public static class ClipDurationEstimator
 
         // Prefer action_class from Stage 2 clip (older blueprints may omit it).
         var actionClass = "";
-        if (clipEl.TryGetProperty("action_class", out var acEl) &&
+        if (clipEl.TryGetProperty(ActionClassKey, out var acEl) &&
             acEl.ValueKind == JsonValueKind.String)
             actionClass = (acEl.GetString() ?? "").Trim().ToLowerInvariant();
 
@@ -267,7 +271,7 @@ public static class ClipDurationEstimator
         {
             // Only the first line pays the visual/action overhead; the rest are pure speech + gap.
             var lineVisual = i == 0 ? visual : "";
-            var lineClass = i == 0 ? actionClass : "dialogue";
+            var lineClass = i == 0 ? actionClass : JsonKeys.Dialogue;
             total += EstimateUncapped(lines[i].Dialogue, lineVisual, lineClass, lines[i].Delivery);
             if (i > 0) total += InterSpeakerGapSeconds;
         }
@@ -280,8 +284,8 @@ public static class ClipDurationEstimator
     public static int SilentMaxForActionClass(string? actionClass, int absMaxSeconds = AbsMaxSeconds) =>
         (actionClass ?? "").Trim().ToLowerInvariant() switch
         {
-            "big_action" => absMaxSeconds,
-            "establishing" => EstablishingMaxSeconds,
+            BigActionClass => absMaxSeconds,
+            EstablishingClass => EstablishingMaxSeconds,
             "hold" => ActionOnlyMinSeconds,
             _ => SilentActionMaxSeconds,
         };
@@ -313,7 +317,7 @@ public static class ClipDurationEstimator
     /// </summary>
     private static double DialogueClipActionOverhead(string visual, string actionClass)
     {
-        var flatFallback = actionClass is "big_action" ? 1.2 : 0.6;
+        var flatFallback = actionClass is BigActionClass ? 1.2 : 0.6;
         if (visual.Length == 0)
             return flatFallback;
 
@@ -362,8 +366,8 @@ public static class ClipDurationEstimator
         var aw = Math.Min(CountWords(visual), SilentVisualWordCap);
         return actionClass switch
         {
-            "big_action" => Math.Clamp(4.5 + aw / 8.0, 5, AbsMaxSeconds),
-            "establishing" => Math.Clamp(3.5 + aw / 10.0, ActionOnlyMinSeconds, EstablishingMaxSeconds),
+            BigActionClass => Math.Clamp(4.5 + aw / 8.0, 5, AbsMaxSeconds),
+            EstablishingClass => Math.Clamp(3.5 + aw / 10.0, ActionOnlyMinSeconds, EstablishingMaxSeconds),
             "hold" => ActionOnlyMinSeconds,
             _ => Math.Clamp(3.0 + aw / 12.0, ActionOnlyMinSeconds, SilentActionMaxSeconds),
         };
@@ -431,8 +435,8 @@ public static class ClipDurationEstimator
         {
             var silentMax = actionClass switch
             {
-                "big_action" => absMaxSeconds,
-                "establishing" => EstablishingMaxSeconds,
+                BigActionClass => absMaxSeconds,
+                EstablishingClass => EstablishingMaxSeconds,
                 "hold" => ActionOnlyMinSeconds,
                 _ => SilentActionMaxSeconds,
             };
@@ -496,7 +500,7 @@ public static class ClipDurationEstimator
         if (string.IsNullOrWhiteSpace(dialogue))
             return false;
         var budget = Math.Max(MinSeconds, modelMaxSeconds - paddingSeconds);
-        var need = EstimateUncapped(dialogue, visualOrAction: "", actionClass: "dialogue", delivery: delivery);
+        var need = EstimateUncapped(dialogue, visualOrAction: "", actionClass: JsonKeys.Dialogue, delivery: delivery);
         return need > budget + 0.01;
     }
 
@@ -535,7 +539,7 @@ public static class ClipDurationEstimator
             if (u.Length == 0) continue;
 
             // Unit alone still too long → pack by words
-            if (EstimateUncapped(u, "", "dialogue", delivery) > budget)
+            if (EstimateUncapped(u, "", JsonKeys.Dialogue, delivery) > budget)
             {
                 Flush();
                 foreach (var piece in PackByWords(u, delivery, budget))
@@ -545,7 +549,7 @@ public static class ClipDurationEstimator
 
             var trial = current.Length == 0 ? u : current + " " + u;
             if (current.Length > 0 &&
-                EstimateUncapped(trial, "", "dialogue", delivery) > budget)
+                EstimateUncapped(trial, "", JsonKeys.Dialogue, delivery) > budget)
             {
                 Flush();
                 current.Append(u);
@@ -580,10 +584,10 @@ public static class ClipDurationEstimator
             if (beat is null)
                 continue;
 
-            var dialogue = Coerce(beat, "dialogue");
+            var dialogue = Coerce(beat, JsonKeys.Dialogue);
             if (string.IsNullOrWhiteSpace(dialogue) &&
                 beat.TryGetValue("audio", out var a0) && a0 is Dictionary<string, object?> audio0)
-                dialogue = Coerce(audio0, "dialogue");
+                dialogue = Coerce(audio0, JsonKeys.Dialogue);
 
             var delivery = Coerce(beat, "delivery");
             if (string.IsNullOrWhiteSpace(delivery) &&
@@ -597,7 +601,7 @@ public static class ClipDurationEstimator
             {
                 sourceId = PageToMovie.Core.Utils.StableBeatId.ForContent(
                     "",
-                    string.IsNullOrWhiteSpace(dialogue) ? "action" : "dialogue",
+                    string.IsNullOrWhiteSpace(dialogue) ? "action" : JsonKeys.Dialogue,
                     Coerce(beat, "speaker"),
                     string.IsNullOrWhiteSpace(dialogue) ? Coerce(beat, "visual_event") : dialogue);
             }
@@ -639,7 +643,7 @@ public static class ClipDurationEstimator
         if (beats is null || beats.Count == 0)
             return new List<int>();
         // Null list entries are treated as empty action beats (not skipped — preserve index alignment)
-        var durs = beats.Select(b => EstimateForBeat(b!, minSeconds, maxSeconds, absMaxSeconds)).ToList();
+        var durs = beats.Select(b => EstimateForBeat(b, minSeconds, maxSeconds, absMaxSeconds)).ToList();
 
         if (sceneTargetSeconds is int target && target > durs.Sum() + 2)
         {
@@ -649,9 +653,9 @@ public static class ClipDurationEstimator
             for (var i = 0; i < beats.Count; i++)
             {
                 if (beats[i] is null) continue;
-                var dlg = Coerce(beats[i]!, "dialogue");
+                var dlg = Coerce(beats[i], JsonKeys.Dialogue);
                 if (!string.IsNullOrWhiteSpace(dlg)) continue;
-                var ac = Coerce(beats[i]!, "action_class").ToLowerInvariant();
+                var ac = Coerce(beats[i], ActionClassKey).ToLowerInvariant();
                 if (ac is "hold") continue; // never pad micro-beats
                 var maxFor = SilentPadCap(ac, absMaxSeconds);
                 if (durs[i] < maxFor)
@@ -665,7 +669,7 @@ public static class ClipDurationEstimator
                 foreach (var i in actionIdx)
                 {
                     if (need <= 0) break;
-                    var ac = beats[i] is null ? "" : Coerce(beats[i]!, "action_class").ToLowerInvariant();
+                    var ac = beats[i] is null ? "" : Coerce(beats[i], ActionClassKey).ToLowerInvariant();
                     var maxFor = SilentPadCap(ac, absMaxSeconds);
                     if (durs[i] >= maxFor) continue;
                     durs[i]++;
@@ -682,8 +686,8 @@ public static class ClipDurationEstimator
     private static int SilentPadCap(string actionClass, int absMaxSeconds = AbsMaxSeconds) =>
         actionClass switch
         {
-            "big_action" => absMaxSeconds,
-            "establishing" => EstablishingMaxSeconds,
+            BigActionClass => absMaxSeconds,
+            EstablishingClass => EstablishingMaxSeconds,
             "hold" => ActionOnlyMinSeconds,
             _ => SilentActionMaxSeconds,
         };
@@ -749,7 +753,7 @@ public static class ClipDurationEstimator
         {
             current.Add(w);
             var trial = Join(current);
-            if (EstimateUncapped(trial, "", "dialogue", delivery) > budgetSeconds && current.Count > 1)
+            if (EstimateUncapped(trial, "", JsonKeys.Dialogue, delivery) > budgetSeconds && current.Count > 1)
             {
                 current.RemoveAt(current.Count - 1);
                 chunks.Add(Join(current));
@@ -765,7 +769,7 @@ public static class ClipDurationEstimator
         if (chunks.Count > 1 && CountWords(chunks[^1]) <= 2)
         {
             var combined = $"{chunks[^2]} {chunks[^1]}";
-            if (EstimateUncapped(combined, "", "dialogue", delivery) <= budgetSeconds + 1.5)
+            if (EstimateUncapped(combined, "", JsonKeys.Dialogue, delivery) <= budgetSeconds + 1.5)
             {
                 chunks[^2] = combined;
                 chunks.RemoveAt(chunks.Count - 1);
@@ -796,19 +800,16 @@ public static class ClipDurationEstimator
         copy["beat_id"] = beatId;
         if (dialogueOverride is not null)
         {
-            copy["dialogue"] = dialogueOverride;
+            copy[JsonKeys.Dialogue] = dialogueOverride;
             if (copy.TryGetValue("audio", out var a) && a is Dictionary<string, object?> audio)
-                audio["dialogue"] = dialogueOverride;
+                audio[JsonKeys.Dialogue] = dialogueOverride;
 
             var words = CountWords(dialogueOverride);
             copy["time_weight"] = Math.Clamp(words / 8.0, 0.5, 4.0);
 
-            if (partCount > 1)
-            {
-                if (partIndex > 0)
-                    copy["continuity"] = "continuous_from_previous_beat";
-                // Keep visual_event stable (e.g. "NARRATOR speaks.") for monologue parts
-            }
+            if (partCount > 1 && partIndex > 0)
+                copy["continuity"] = "continuous_from_previous_beat";
+            // Keep visual_event stable (e.g. "NARRATOR speaks.") for monologue parts
         }
 
         return copy;

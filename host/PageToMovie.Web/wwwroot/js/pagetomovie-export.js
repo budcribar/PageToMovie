@@ -35,7 +35,7 @@ window.PageToMovieExport = {
             a.download = fileName || "PageToMovie_project.zip";
             document.body.appendChild(a);
             a.click();
-            document.body.removeChild(a);
+            a.remove();
             URL.revokeObjectURL(url);
             await this._reportProgress(progressRef, "done", 100, "Download complete");
             return { success: true };
@@ -90,7 +90,7 @@ window.PageToMovieExport = {
             const rawLength = raw.length;
             const uInt8Array = new Uint8Array(rawLength);
             for (let i = 0; i < rawLength; ++i) {
-                uInt8Array[i] = raw.charCodeAt(i);
+                uInt8Array[i] = raw.codePointAt(i) ?? 0;
             }
             const blob = new Blob([uInt8Array], { type: mimeType || 'video/mp4' });
 
@@ -126,7 +126,7 @@ window.PageToMovieExport = {
                 a.download = suggestedFilename || 'PageToMovie_WIP.mp4';
                 document.body.appendChild(a);
                 a.click();
-                document.body.removeChild(a);
+                a.remove();
                 URL.revokeObjectURL(url);
                 return { success: true, message: 'Movie downloaded via browser fallback.' };
             }
@@ -160,7 +160,7 @@ window.PageToMovieExport = {
             a.download = outputFilename || 'PageToMovie_FullMovie.mp4';
             document.body.appendChild(a);
             a.click();
-            document.body.removeChild(a);
+            a.remove();
             URL.revokeObjectURL(url);
 
             return { success: true, count: clipUrls.length };
@@ -175,7 +175,7 @@ window.PageToMovieExport = {
      */
     copyTextAsync: async function (text) {
         try {
-            if (navigator.clipboard && navigator.clipboard.writeText) {
+            if (navigator.clipboard?.writeText) {
                 await navigator.clipboard.writeText(text || "");
                 return { success: true };
             }
@@ -188,7 +188,7 @@ window.PageToMovieExport = {
             document.body.appendChild(ta);
             ta.select();
             const ok = document.execCommand("copy");
-            document.body.removeChild(ta);
+            ta.remove();
             return ok ? { success: true } : { success: false, error: "Copy command failed" };
         } catch (err) {
             return { success: false, error: err.message || String(err) };
@@ -259,10 +259,10 @@ window.PageToMovieExport = {
     _uploadDemoXhrSuccess: function (json) {
         return {
             success: true,
-            demo: json && json.demo ? json.demo : json,
-            pendingReview: !!(json && json.pendingReview),
-            replacedExisting: !!(json && json.replacedExisting),
-            message: json && json.message ? json.message : null,
+            demo: json?.demo ?? json,
+            pendingReview: !!(json?.pendingReview),
+            replacedExisting: !!(json?.replacedExisting),
+            message: json?.message ?? null,
         };
     },
 
@@ -308,10 +308,10 @@ window.PageToMovieExport = {
             const byPath = new Map();
             for (const e of entries) {
                 if (e.name.endsWith("/")) continue;
-                byPath.set(e.name.replace(/\\/g, "/"), e.data);
+                byPath.set(e.name.replaceAll("\\", "/"), e.data);
             }
 
-            const pid = (projectId || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+            const pid = (projectId || "").replaceAll("\\", "/").replaceAll(/^\/+/g, "").replaceAll(/\/+$/g, "");
             const { clientAdded, clientSkipped, mediaError } = await this._mergeLocalMediaFilesAsync(byPath, pid, progressRef);
 
             // Annotate export meta if present (keep projectSchemaVersion; bump package fields)
@@ -331,7 +331,7 @@ window.PageToMovieExport = {
                         "projectSchemaVersion drives ProjectMigrationService on import; " +
                         "exportFormatVersion is the zip package shape.";
                     byPath.set(metaKey, new TextEncoder().encode(JSON.stringify(obj, null, 2)));
-                } catch (_) { /* keep original meta */ }
+                } catch (e) { console.debug("keep original export meta", e); }
             }
 
             await this._reportProgress(progressRef, "pack", 50, "Packing final zip…");
@@ -344,12 +344,12 @@ window.PageToMovieExport = {
             a.download = fileName || "PageToMovie_project.zip";
             document.body.appendChild(a);
             a.click();
-            document.body.removeChild(a);
+            a.remove();
             URL.revokeObjectURL(url);
 
             const msgParts = [`Downloaded ${fileName || "zip"}`];
             if (clientAdded > 0) msgParts.push(`${clientAdded} local media file(s) merged`);
-            else if (!window.PageToMovieMedia || !window.PageToMovieMedia._root)
+            else if (!window.PageToMovieMedia?._root)
                 msgParts.push("server files only — connect media folder to include MP4/MP3");
             else if (mediaError)
                 msgParts.push(`local media: ${mediaError}`);
@@ -374,14 +374,14 @@ window.PageToMovieExport = {
         let clientAdded = 0;
         let clientSkipped = 0;
         let mediaError = null;
-        if (!window.PageToMovieMedia || !window.PageToMovieMedia._root || !pid)
+        if (!window.PageToMovieMedia?._root || !pid)
             return { clientAdded, clientSkipped, mediaError };
         const listed = await window.PageToMovieMedia.listMediaTreeAsync(pid);
         if (!listed.success)
             return { clientAdded, clientSkipped, mediaError: listed.error || "Could not list local media" };
         const files = listed.files || [];
         for (let i = 0; i < files.length; i++) {
-            const rel = (files[i].relativePath || "").replace(/\\/g, "/");
+            const rel = (files[i].relativePath || "").replaceAll("\\", "/");
             if (!rel) continue;
             if (i === 0 || i === files.length - 1 || (i + 1) % 3 === 0) {
                 const pct = files.length > 0 ? Math.min(100, ((i + 1) / files.length) * 100) : 0;
@@ -401,7 +401,8 @@ window.PageToMovieExport = {
             const bytes = got.bytes instanceof Uint8Array ? got.bytes : new Uint8Array(got.bytes);
             byPath.set(rel, bytes);
             return true;
-        } catch (_) {
+        } catch (err) {
+            console.debug("skip unreadable local media file", rel, err);
             return false;
         }
     },
@@ -416,7 +417,7 @@ window.PageToMovieExport = {
             const folder = await this._ensureClientMediaFolderAsync();
             if (!folder.success) return folder;
 
-            const targetId = (targetProjectId || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+            const targetId = (targetProjectId || "").replaceAll("\\", "/").replaceAll(/^\/+/g, "").replaceAll(/\/+$/g, "");
             if (!targetId) {
                 return { success: false, error: "Project id required", written: 0 };
             }
@@ -475,9 +476,9 @@ window.PageToMovieExport = {
     },
 
     _processZipMediaEntryAsync: async function (e, targetId, mediaExt) {
-        let name = (e.name || "").replace(/\\/g, "/");
+        let name = (e.name || "").replaceAll("\\", "/");
         if (!name || name.endsWith("/")) return { status: "ignored" };
-        name = name.replace(/^\.\//, "");
+        name = name.replaceAll(/^\.\//g, "");
         const base = name.split("/").pop() || "";
         const dot = base.lastIndexOf(".");
         const ext = dot >= 0 ? base.slice(dot).toLowerCase() : "";
@@ -497,8 +498,8 @@ window.PageToMovieExport = {
 
         try {
             const res = await window.PageToMovieMedia.saveBytesAsync(e.data, clientRel);
-            if (res && res.success) return { status: "written" };
-            return { status: "skipped", error: res && res.error ? `${clientRel}: ${res.error}` : null };
+            if (res?.success) return { status: "written" };
+            return { status: "skipped", error: res?.error ? `${clientRel}: ${res.error}` : null };
         } catch (err) {
             return { status: "skipped", error: `${clientRel}: ${err.message || err}` };
         }
@@ -662,8 +663,8 @@ window.PageToMovieExport = {
             this._crcTable = table;
         }
         let crc = 0 ^ (-1);
-        for (let i = 0; i < u8.length; i++)
-            crc = (crc >>> 8) ^ this._crcTable[(crc ^ u8[i]) & 0xff];
+        for (const b of u8)
+            crc = (crc >>> 8) ^ this._crcTable[(crc ^ b) & 0xff];
         return (crc ^ (-1)) >>> 0;
     },
 

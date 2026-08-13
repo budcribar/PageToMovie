@@ -117,13 +117,17 @@ JSON: {"ranked":["page_03.png","cover.png","embedded_p02.jpg"]}
                 if (string.IsNullOrWhiteSpace(name)) continue;
                 var hit = allowed.FirstOrDefault(a =>
                     a.Equals(name, StringComparison.OrdinalIgnoreCase) ||
-                    a.EndsWith(name!, StringComparison.OrdinalIgnoreCase) ||
-                    name!.EndsWith(a, StringComparison.OrdinalIgnoreCase));
+                    a.EndsWith(name, StringComparison.OrdinalIgnoreCase) ||
+                    name.EndsWith(a, StringComparison.OrdinalIgnoreCase));
                 if (hit is not null && !list.Contains(hit, StringComparer.OrdinalIgnoreCase))
                     list.Add(hit);
             }
         }
-        catch { }
+        catch
+        {
+            // Malformed JSON is not a ranked list — skip and return names parsed so far.
+            System.Diagnostics.Debug.WriteLine("PlateRank JSON was not a usable ranked list");
+        }
         return list;
     }
 

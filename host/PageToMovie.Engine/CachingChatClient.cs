@@ -121,7 +121,7 @@ public sealed class CachingChatClient : IChatClient
     {
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            Directory.CreateDirectory(Path.GetDirectoryName(path) ?? ".");
             // Write-then-move so a crash or concurrent classifier reading the same key never
             // sees a partial file.
             var tmp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";

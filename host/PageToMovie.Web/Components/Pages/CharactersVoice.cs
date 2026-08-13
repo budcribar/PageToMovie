@@ -74,8 +74,9 @@ public partial class Characters
             // A SILENT non-human (background animal, e.g. a lamb) gets no voice prompt — and a cast-extraction
             // auto-fill (e.g. "soft lamb bleat") must not force it to show. A TALKING animal speaks, so it gets a
             // voice like any speaker and falls through. Keyed on whether the character speaks, not species alone.
-            var isNonHuman = !string.IsNullOrWhiteSpace(c.SpeciesKind)
-                && !c.SpeciesKind!.Trim().Equals("human", StringComparison.OrdinalIgnoreCase);
+            var species = c.SpeciesKind;
+            var isNonHuman = !string.IsNullOrWhiteSpace(species)
+                && !species.Trim().Equals("human", StringComparison.OrdinalIgnoreCase);
             if (isNonHuman && !c.Speaks) return false;
             if (c.Speaks) return true;                      // any speaking role offers a voice
             if (HasVoiceProfile(c)) return true;
@@ -397,7 +398,7 @@ public partial class Characters
                 {
                     _voiceCloneError = string.IsNullOrWhiteSpace(result?.Error)
                         ? "Could not access the microphone. Check browser permissions and try again."
-                        : result!.Error;
+                        : result.Error;
                     return;
                 }
                 _voiceRecRecording = true;
@@ -434,7 +435,7 @@ public partial class Characters
                     return;
                 }
                 var raw = Convert.FromBase64String(result.Base64);
-                var name = string.IsNullOrWhiteSpace(result.FileName) ? "voice_clone_sample.webm" : result.FileName!;
+                var name = string.IsNullOrWhiteSpace(result.FileName) ? "voice_clone_sample.webm" : result.FileName;
                 await PersistVoiceCloneSampleAsync(raw, name);
             }
             catch (Exception ex)
@@ -551,9 +552,10 @@ public partial class Characters
             _voiceCloneHint = "Saving…";
 
             await using var ms = new MemoryStream(bytes);
-            if (string.IsNullOrWhiteSpace(S.List._selectedKey))
+            var selectedKey = S.List._selectedKey;
+            if (string.IsNullOrWhiteSpace(selectedKey))
                 throw new InvalidOperationException("No character selected for voice sample.");
-            await S.Engine.UploadVoiceCloneSampleAsync(S._projectId, S.List._selectedKey!, ms, "voice_clone_sample" + ext, _voiceSaveCts?.Token ?? CancellationToken.None);
+            await S.Engine.UploadVoiceCloneSampleAsync(S._projectId, selectedKey, ms, "voice_clone_sample" + ext, _voiceSaveCts?.Token ?? CancellationToken.None);
             await S.List.SoftReloadAsync();
             RefreshVoiceClonePlayUrl();
             _voiceCloneBust = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();

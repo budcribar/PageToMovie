@@ -6,9 +6,9 @@
  *
  *   node jungle-cast-gen.mjs
  */
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const API = (process.env.API_URL || "http://127.0.0.1:5088").replace(/\/$/, "");
@@ -73,7 +73,7 @@ async function waitJobsIdle(timeoutMs = 25 * 60_000) {
       await new Promise((r) => setTimeout(r, 600));
       const j2 = await api("GET", `/api/jobs?projectId=${encodeURIComponent(PROJECT)}`);
       const jobs2 = j2.json?.jobs || j2.json?.Jobs || [];
-      if (!jobs2.find((x) => /queued|running/i.test(x.status || x.Status || ""))) return;
+      if (!jobs2.some((x) => /queued|running/i.test(x.status || x.Status || ""))) return;
       continue;
     }
     const msg = `${active.kind || active.Kind}|${active.message || active.Message || ""}`;
@@ -185,7 +185,9 @@ async function main() {
   console.log(JSON.stringify(results, null, 2));
 }
 
-main().catch((e) => {
+try {
+  await main();
+} catch (e) {
   console.error(e);
   process.exit(1);
-});
+}

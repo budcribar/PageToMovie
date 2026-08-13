@@ -220,7 +220,7 @@ JSON only:
                 if (string.IsNullOrWhiteSpace(id)) continue;
                 var a = el.TryGetProperty("ambient", out var aEl) ? aEl.GetString() ?? "" : "";
                 var s = el.TryGetProperty("sfx", out var sEl) ? sEl.GetString() ?? "" : "";
-                map[id!] = (NormalizeList(a), NormalizeList(s));
+                map[id] = (NormalizeList(a), NormalizeList(s));
             }
         }
         catch { /* retry */ }

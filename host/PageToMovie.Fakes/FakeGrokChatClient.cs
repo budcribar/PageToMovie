@@ -42,13 +42,13 @@ public sealed class FakeGrokChatClient : IChatClient
         var sw = System.Diagnostics.Stopwatch.StartNew();
         // Fakes emit the same api_calls.jsonl telemetry as live clients so the feedback loop /
         // AI-Calls analytics page has data offline. Kind = the call mode when set, else "chat".
-        var result = Respond(sys, user, blob, model, mode);
+        var result = Respond(sys, user, mode);
         sw.Stop();
         try
         {
             await _telemetry.LogApiCallAsync(new ApiCallTelemetry
             {
-                Kind = string.IsNullOrWhiteSpace(mode) ? "chat" : mode!,
+                Kind = string.IsNullOrWhiteSpace(mode) ? "chat" : mode,
                 Mode = mode,
                 Model = model,
                 DurationMs = sw.ElapsedMilliseconds,
@@ -62,7 +62,7 @@ public sealed class FakeGrokChatClient : IChatClient
         return result;
     }
 
-    private static string Respond(string sys, string user, string blob, string model, string? mode)
+    private static string Respond(string sys, string user, string? mode)
     {
 
         // ── Cast from screenplay → cast_seeds-shaped JSON ──────────────────
@@ -501,32 +501,28 @@ public sealed class FakeGrokChatClient : IChatClient
     private static bool ContainsWord(string upperName, string[] words)
     {
         var tokens = CommonRegex.Split(upperName, "[^A-Z]+");
-        foreach (var w in words)
-            if (Array.IndexOf(tokens, w) >= 0)
-                return true;
-        return false;
+        return words.Any(w => Array.IndexOf(tokens, w) >= 0);
     }
 
-    /// <summary>Parse character cues + inline-introduced animal/creature/group names from a fountain
-    /// and emit cast_seeds JSON. Returns null when no characters are found (caller falls back).</summary>
-    private static string? BuildCastJsonFromScreenplay(string screenplay)
+    private static void AddCastName(List<string> order, Dictionary<string, bool> speaks, string name, bool spoken)
     {
-        if (string.IsNullOrWhiteSpace(screenplay)) return null;
-
-        // Only look at the fountain body — drop the prompt preamble before the first slug/title if any.
-        var lines = screenplay.Replace("\r\n", "\n").Split('\n');
-
-        // ordered unique names; track whether each has a spoken line (a cue followed by dialogue).
-        var order = new List<string>();
-        var speaks = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
-
-        void Add(string name, bool spoken)
+        name = name.Trim();
+        if (name.Length == 0) return;
+        if (!speaks.ContainsKey(name))
         {
-            name = name.Trim();
-            if (name.Length == 0) return;
-            if (!speaks.ContainsKey(name)) { order.Add(name); speaks[name] = spoken; }
-            else if (spoken) speaks[name] = true;
+            order.Add(name);
+            speaks[name] = spoken;
         }
+        else if (spoken)
+        {
+            speaks[name] = true;
+        }
+    }
+
+    private static bool TryCollectCastNames(string[] lines, out List<string> order)
+    {
+        order = new List<string>();
+        var speaks = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
 
         bool IsSceneOrTransition(string t) =>
             CommonRegex.IsMatch(t, @"^(INT|EXT|EST|INT\.?/EXT|I/E)[\. ]", RegexOptions.IgnoreCase)
@@ -536,8 +532,7 @@ public sealed class FakeGrokChatClient : IChatClient
 
         for (var i = 0; i < lines.Length; i++)
         {
-            var raw = lines[i];
-            var t = raw.Trim();
+            var t = lines[i].Trim();
             if (t.Length == 0) continue;
 
             // Character cue: an UPPERCASE line (optionally with a "(V.O.)"-style extension) that is
@@ -551,23 +546,33 @@ public sealed class FakeGrokChatClient : IChatClient
                 var name = cueMatch.Groups[1].Value.Trim();
                 if (!CueStopWords.Contains(name) && name.Length >= 2)
                 {
-                    Add(name, spoken: true);
+                    AddCastName(order, speaks, name, spoken: true);
                     continue;
                 }
             }
 
             // Action line: pick up inline UPPERCASE animal/creature/group names (e.g. a silent "LAMB")
             // so non-speaking cast still appear. Keyword-gated to avoid matching FADE/INT/etc.
-            foreach (Match m in CommonRegex.Matches(t, @"\b[A-Z][A-Z'’\-]{1,}\b"))
+            foreach (var w in CommonRegex.Matches(t, @"\b[A-Z][A-Z'’\-]{1,}\b").Select(m => m.Value))
             {
-                var w = m.Value;
                 if (CueStopWords.Contains(w)) continue;
                 if (ContainsWord(w, AnimalWords) || ContainsWord(w, CreatureWords) || ContainsWord(w, GroupWords))
-                    Add(w, spoken: false);
+                    AddCastName(order, speaks, w, spoken: false);
             }
         }
 
-        if (order.Count == 0) return null;
+        return order.Count > 0;
+    }
+
+    /// <summary>Parse character cues + inline-introduced animal/creature/group names from a fountain
+    /// and emit cast_seeds JSON. Returns null when no characters are found (caller falls back).</summary>
+    private static string? BuildCastJsonFromScreenplay(string screenplay)
+    {
+        if (string.IsNullOrWhiteSpace(screenplay)) return null;
+
+        var lines = screenplay.Replace("\r\n", "\n").Split('\n');
+        if (!TryCollectCastNames(lines, out var order))
+            return null;
 
         static string TitleCase(string upper) =>
             string.Join(' ', upper.Split(' ', StringSplitOptions.RemoveEmptyEntries)

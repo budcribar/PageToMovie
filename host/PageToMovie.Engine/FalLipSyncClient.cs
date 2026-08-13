@@ -35,7 +35,7 @@ public sealed class FalLipSyncClient : ILipSyncClient
         _http = http;
         _log = log;
         if (_http.BaseAddress is null)
-            _http.BaseAddress = new Uri(ApiBase.TrimEnd('/') + "/");
+            _http.BaseAddress = new Uri(ApiBase.TrimEnd('/') + '/');
     }
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(ResolveApiKey());

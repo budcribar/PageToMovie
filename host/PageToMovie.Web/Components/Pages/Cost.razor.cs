@@ -22,22 +22,27 @@ public partial class Cost : IAsyncDisposable
         ConfirmGenerate,
     }
 
+    private const string PreferPathKey = "preferPath";
+    private const string DurationFocus = "duration";
+    private const string CraftFocus = "craft";
+    private const string GeneratePath = "generate";
+
     private bool _disposed;
-    private CancellationTokenSource _pageCts = new();
+    private readonly CancellationTokenSource _pageCts = new();
     internal bool _busy;
     private string? _error;
     private string _projectId = "";
     private CostReport? _report;
     private FilmRuntimeDto? _filmRuntime;
     private string _draftRes = "480p";
-    private string _heroRes = "720p";
+    private readonly string _heroRes = "720p";
     private double _retries = 0.5;
 
     private DecisionPhase _phase = DecisionPhase.Card;
     /// <summary>cost | duration | both | craft — last edit focus (session + per-user prefs).</summary>
     private string? _editFocus;
     /// <summary>generate | edit — preferred DecisionCard emphasis.</summary>
-    internal string _preferPath = "generate";
+    internal string _preferPath = GeneratePath;
     private bool _prefsLoaded;
     /// <summary>G2 — skip EditFocus when true and a remembered focus exists.</summary>
     private bool _skipEditFocus;
@@ -66,9 +71,9 @@ public partial class Cost : IAsyncDisposable
     internal string PrePruneUndoTitle =>
         _prePruneCheckpointLabel ?? "Restore the screenplay from just before prune";
 
-    [Inject] private IJSRuntime Js { get; set; } = null!;
-    [Inject] private ProjectCollabHubClient CollabHub { get; set; } = null!;
-    [Inject] private StudioUserPrefsService UserPrefs { get; set; } = null!;
+    [Inject] private IJSRuntime Js { get; set; } = null;
+    [Inject] private ProjectCollabHubClient CollabHub { get; set; } = null;
+    [Inject] private StudioUserPrefsService UserPrefs { get; set; } = null;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -135,7 +140,7 @@ public partial class Cost : IAsyncDisposable
             var who = string.IsNullOrWhiteSpace(byUser) ? "a collaborator" : byUser;
             _collabNote = $"Plan updated by {who} — refreshing estimate…";
             try { await LoadAsync(); }
-            catch { /* */ }
+            catch { /* collaborator plan refresh is best-effort */ }
             StateHasChanged();
         });
     }
@@ -149,7 +154,7 @@ public partial class Cost : IAsyncDisposable
         _ = InvokeAsync(async () =>
         {
             if (_disposed) return;
-            try { await LoadCollabGuardsAsync(); } catch { /* */ }
+            try { await LoadCollabGuardsAsync(); } catch { /* lease holder refresh is best-effort */ }
             StateHasChanged();
         });
     }
@@ -160,16 +165,16 @@ public partial class Cost : IAsyncDisposable
         try
         {
             var focus = StudioDeepLinks.QueryValue(Nav, "focus");
-            if (focus is "cost" or "duration" or "both" or "craft")
+            if (focus is "cost" or DurationFocus or "both" or CraftFocus)
                 _editFocus = focus;
 
             var phase = StudioDeepLinks.QueryValue(Nav, "phase");
             if (string.IsNullOrWhiteSpace(phase))
             {
                 // ?focus= alone opens shaping / craft
-                if (_editFocus is "cost" or "duration" or "both")
+                if (_editFocus is "cost" or DurationFocus or "both")
                     _phase = DecisionPhase.Shaping;
-                else if (_editFocus == "craft")
+                else if (_editFocus == CraftFocus)
                     _phase = DecisionPhase.EditFocus;
                 return;
             }
@@ -179,10 +184,10 @@ public partial class Cost : IAsyncDisposable
                      || phase.Equals("shaping", StringComparison.OrdinalIgnoreCase))
                 _phase = DecisionPhase.Shaping;
             else if (phase.Equals("confirm", StringComparison.OrdinalIgnoreCase)
-                     || phase.Equals("generate", StringComparison.OrdinalIgnoreCase))
+                     || phase.Equals(GeneratePath, StringComparison.OrdinalIgnoreCase))
                 _phase = DecisionPhase.ConfirmGenerate;
 
-            if (_phase == DecisionPhase.Shaping && _editFocus is null or "craft")
+            if (_phase == DecisionPhase.Shaping && _editFocus is null or CraftFocus)
                 _editFocus = "both";
         }
         catch { /* ignore */ }
@@ -199,7 +204,7 @@ public partial class Cost : IAsyncDisposable
             _editFocus = UserPrefs.EditFocus;
             _skipEditFocus = UserPrefs.SkipEditFocus;
             if (_skipEditFocus && _phase == DecisionPhase.EditFocus &&
-                _editFocus is "cost" or "duration" or "both")
+                _editFocus is "cost" or DurationFocus or "both")
                 _phase = DecisionPhase.Shaping;
             StateHasChanged();
         }
@@ -215,8 +220,8 @@ public partial class Cost : IAsyncDisposable
         {
             switch (name)
             {
-                case "preferPath":
-                    await UserPrefs.SetPreferPathAsync(value ?? "generate");
+                case PreferPathKey:
+                    await UserPrefs.SetPreferPathAsync(value ?? GeneratePath);
                     _preferPath = UserPrefs.PreferPath;
                     break;
                 case "editFocus":
@@ -425,7 +430,7 @@ public partial class Cost : IAsyncDisposable
         get
         {
             var target = _filmRuntime?.TargetMinutes ?? 0;
-            if (target <= 0 || _filmRuntime is null) return false;
+            if (target <= 0) return false;
             var natural = _filmRuntime.NaturalMinutes;
             var planMin = _report?.DurationMinutes ?? 0;
             if (planMin > 0 && Math.Abs(target - planMin) >= 1) return true;
@@ -564,8 +569,8 @@ public partial class Cost : IAsyncDisposable
         if (!IsOwner)
         {
             // I1: Editors generate scenes on Film, not whole movie from DecisionCard
-            _preferPath = "generate";
-            await PersistPrefAsync("preferPath", "generate");
+            _preferPath = GeneratePath;
+            await PersistPrefAsync(PreferPathKey, GeneratePath);
             Nav.NavigateTo(ActiveProject.CanScenes
                 ? (ActiveProject.IsSimpleVoice ? "scenes?simple=1" : "scenes")
                 : "scenes");
@@ -573,8 +578,8 @@ public partial class Cost : IAsyncDisposable
         }
 
         // Show cost confirm, then Accept starts generating (fill-holes / B6 live in ConfirmGenerateAsync).
-        _preferPath = "generate";
-        await PersistPrefAsync("preferPath", "generate");
+        _preferPath = GeneratePath;
+        await PersistPrefAsync(PreferPathKey, GeneratePath);
         _busy = true;
         try
         {
@@ -600,7 +605,7 @@ public partial class Cost : IAsyncDisposable
             return;
         }
         _preferPath = "edit";
-        _ = PersistPrefAsync("preferPath", "edit");
+        _ = PersistPrefAsync(PreferPathKey, "edit");
         _phase = DecisionPhase.Card;
         _collabNote = null;
     }
@@ -642,7 +647,7 @@ public partial class Cost : IAsyncDisposable
         _busy = true;
         try
         {
-            try { await ActiveProject.RefreshReadinessAsync(Engine); } catch { /* */ }
+            try { await ActiveProject.RefreshReadinessAsync(Engine); } catch { /* readiness refresh is optional */ }
             // I4: always re-fetch estimate before navigating
             await LoadAsync();
             if (_report is null)
@@ -665,8 +670,8 @@ public partial class Cost : IAsyncDisposable
                 return;
             }
 
-            _preferPath = "generate";
-            await PersistPrefAsync("preferPath", "generate");
+            _preferPath = GeneratePath;
+            await PersistPrefAsync(PreferPathKey, GeneratePath);
 
             // F1/F4: when shot plan ready, ensure looks then resumable fill-holes + Film
             if (ActiveProject.CanScenes && !GeneratingBusy)
@@ -769,7 +774,7 @@ public partial class Cost : IAsyncDisposable
         _shapeMessage = null;
         _shapeError = null;
         await PersistPrefAsync("editFocus", focus);
-        if (focus == "craft")
+        if (focus == CraftFocus)
         {
             // Craft stays a hub of links on EditFocus (or jump to cast)
             _phase = DecisionPhase.EditFocus;
@@ -784,7 +789,7 @@ public partial class Cost : IAsyncDisposable
     private async Task DoneShapingAsync()
     {
         await LoadAsync();
-        try { await ActiveProject.RefreshReadinessAsync(Engine); } catch { /* */ }
+        try { await ActiveProject.RefreshReadinessAsync(Engine); } catch { /* readiness refresh is optional */ }
         _phase = DecisionPhase.Card;
         _shapeMessage = "Forecast refreshed for the current plan.";
     }
@@ -832,7 +837,7 @@ public partial class Cost : IAsyncDisposable
             if (target > 0)
                 await PersistPrefAsync("lastRuntimeTargetMin", target.ToString());
             await LoadAsync();
-            try { await ActiveProject.RefreshReadinessAsync(Engine); } catch { /* */ }
+            try { await ActiveProject.RefreshReadinessAsync(Engine); } catch { /* readiness refresh is optional */ }
         }
         catch (Exception ex)
         {
@@ -859,7 +864,7 @@ public partial class Cost : IAsyncDisposable
             _prePruneCheckpointHash = null;
             _prePruneCheckpointLabel = null;
             await LoadAsync();
-            try { await ActiveProject.RefreshReadinessAsync(Engine); } catch { /* */ }
+            try { await ActiveProject.RefreshReadinessAsync(Engine); } catch { /* readiness refresh is optional */ }
         }
         catch (Exception ex)
         {
@@ -905,29 +910,29 @@ public partial class Cost : IAsyncDisposable
     }
 
     private bool ShowDurationToolkit =>
-        _editFocus is "cost" or "duration" or "both" or null;
+        _editFocus is "cost" or DurationFocus or "both" or null;
 
     private bool ShowCostToolkit =>
         _editFocus is "cost" or "both";
 
     private bool ShowCraftToolkit =>
-        _editFocus == "craft";
+        _editFocus == CraftFocus;
 
-    private string EditFocusHint(string focus) => focus switch
+    private static string EditFocusHint(string focus) => focus switch
     {
         "cost" => "Resolution, runtime trim, and speaking-cast cap — shorter / fewer speakers usually costs less. Forecast updates here.",
-        "duration" => "Set target minutes and fit the screenplay. Estimate refreshes on this page.",
+        DurationFocus => "Set target minutes and fit the screenplay. Estimate refreshes on this page.",
         "both" => "Set runtime first, then cost levers (resolution, cast cap). One plan, two intents.",
-        "craft" => "Cast looks, voices, locations, and script — then return for an updated forecast.",
+        CraftFocus => "Cast looks, voices, locations, and script — then return for an updated forecast.",
         _ => "",
     };
 
     private string ShapingTitle => _editFocus switch
     {
         "cost" => "Shape plan · lower cost",
-        "duration" => "Shape plan · runtime",
+        DurationFocus => "Shape plan · runtime",
         "both" => "Shape plan · runtime & cost",
-        "craft" => "Craft · cast, locations, script",
+        CraftFocus => "Craft · cast, locations, script",
         _ => "Shape plan",
     };
 
@@ -950,12 +955,12 @@ public partial class Cost : IAsyncDisposable
         _disposed = true;
         if (_collabHubHooked)
         {
-            try { CollabHub.PlanDirty -= OnPlanDirty; } catch { /* */ }
-            try { CollabHub.LeaseChanged -= OnLeaseChanged; } catch { /* */ }
+            try { CollabHub.PlanDirty -= OnPlanDirty; } catch { /* hub may already be disposed */ }
+            try { CollabHub.LeaseChanged -= OnLeaseChanged; } catch { /* hub may already be disposed */ }
             _collabHubHooked = false;
         }
-        try { await CollabHub.LeaveAsync(CancellationToken.None); } catch { /* */ }
-        try { await _pageCts.CancelAsync(); } catch { /* */ }
-        try { _pageCts.Dispose(); } catch { /* */ }
+        try { await CollabHub.LeaveAsync(CancellationToken.None); } catch { /* leave is best-effort during dispose */ }
+        try { await _pageCts.CancelAsync(); } catch { /* cancel during dispose may already be completed */ }
+        try { _pageCts.Dispose(); } catch { /* CTS may already be disposed */ }
     }
 }

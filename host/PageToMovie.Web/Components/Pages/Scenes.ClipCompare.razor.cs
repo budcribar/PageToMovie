@@ -20,10 +20,10 @@ public partial class Scenes_ClipCompare
     [Parameter] public EventCallback<string> Restore { get; set; }
     [Parameter] public EventCallback EmptyTrash { get; set; }
 
-    private bool GridView = true;
+    private bool GridView { get; set; } = true;
     private bool ShowTrashBin;
     private bool ShowEmptyTrashConfirm;
-    private string? SelectedCompareVersionId;
+    private string? SelectedCompareVersionId = null;
 
     private ClipVersionItem? SelectedCompareVersion =>
         Versions?.FirstOrDefault(v => string.Equals(v.VersionId, SelectedCompareVersionId, StringComparison.OrdinalIgnoreCase));

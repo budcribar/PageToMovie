@@ -86,12 +86,10 @@ public partial class ScreenplayEditor_SceneCard : ComponentBase
 
     public async Task OnInsertBeatSelected(ChangeEventArgs e)
     {
-        if (e.Value is string val && !string.IsNullOrWhiteSpace(val))
+        if (e.Value is string val && !string.IsNullOrWhiteSpace(val) &&
+            Enum.TryParse<BeatType>(val, true, out var beatType))
         {
-            if (Enum.TryParse<BeatType>(val, true, out var beatType))
-            {
-                await AddBeat(beatType);
-            }
+            await AddBeat(beatType);
         }
     }
 

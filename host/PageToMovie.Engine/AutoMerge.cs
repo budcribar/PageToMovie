@@ -19,24 +19,44 @@ public static class AutoTextMerger
         while (i < bas.Count || oi < ours.Count || ti < theirs.Count)
         {
             while (i < bas.Count && oi < ours.Count && ti < theirs.Count && ours[oi] == bas[i] && theirs[ti] == bas[i])
-            { merged.Add(bas[i]); i++; oi++; ti++; }
+            {
+                merged.Add(bas[i]);
+                i++;
+                oi++;
+                ti++;
+            }
             if (i >= bas.Count && oi >= ours.Count && ti >= theirs.Count) break;
             var baseStart = i; var bc = new List<string>(); var oc = new List<string>(); var tc = new List<string>();
             if (i < bas.Count)
             {
                 int nextSync = -1;
                 for (int bi = i; bi < bas.Count; bi++)
-                    if (Idx(ours, bas[bi], oi) >= 0 && Idx(theirs, bas[bi], ti) >= 0) { nextSync = bi; break; }
+                {
+                    if (Idx(ours, bas[bi], oi) >= 0 && Idx(theirs, bas[bi], ti) >= 0)
+                    {
+                        nextSync = bi;
+                        break;
+                    }
+                }
                 int baseEnd = nextSync >= 0 ? nextSync : bas.Count;
-                for (int bi = i; bi < baseEnd; bi++) bc.Add(bas[bi]);
+                bc.AddRange(bas.Skip(i).Take(Math.Max(0, baseEnd - i)));
                 int oEnd = nextSync >= 0 ? Idx(ours, bas[nextSync], oi) : ours.Count;
                 int tEnd = nextSync >= 0 ? Idx(theirs, bas[nextSync], ti) : theirs.Count;
-                if (oEnd < 0) oEnd = ours.Count; if (tEnd < 0) tEnd = theirs.Count;
-                for (int x = oi; x < oEnd; x++) oc.Add(ours[x]);
-                for (int x = ti; x < tEnd; x++) tc.Add(theirs[x]);
+                if (oEnd < 0)
+                    oEnd = ours.Count;
+                if (tEnd < 0)
+                    tEnd = theirs.Count;
+                oc.AddRange(ours.Skip(oi).Take(Math.Max(0, oEnd - oi)));
+                tc.AddRange(theirs.Skip(ti).Take(Math.Max(0, tEnd - ti)));
                 i = baseEnd; oi = oEnd; ti = tEnd;
             }
-            else { while (oi < ours.Count) oc.Add(ours[oi++]); while (ti < theirs.Count) tc.Add(theirs[ti++]); }
+            else
+            {
+                oc.AddRange(ours.Skip(oi));
+                oi = ours.Count;
+                tc.AddRange(theirs.Skip(ti));
+                ti = theirs.Count;
+            }
             if (oc.Count == 0 && tc.Count == 0 && bc.Count == 0) break;
             if (Eq(oc, tc)) { merged.AddRange(oc); if (!Eq(oc, bc)) auto++; }
             else if (Eq(oc, bc)) { merged.AddRange(tc); auto++; }
@@ -51,10 +71,17 @@ public static class AutoTextMerger
                     case Strategy.PreferOurs: merged.AddRange(oc); auto++; break;
                     case Strategy.PreferTheirs: merged.AddRange(tc); auto++; break;
                     case Strategy.Union:
-                        merged.AddRange(oc); foreach (var l in tc) if (!oc.Contains(l)) merged.Add(l); auto++; break;
+                        merged.AddRange(oc);
+                        merged.AddRange(tc.Where(l => !oc.Contains(l)));
+                        auto++;
+                        break;
                     default:
                         conflicts.Add(new Hunk(baseStart, bc, oc, tc));
-                        merged.Add("<<<<<<< ours"); merged.AddRange(oc); merged.Add("======="); merged.AddRange(tc); merged.Add(">>>>>>> theirs");
+                        merged.Add("<<<<<<< ours");
+                        merged.AddRange(oc);
+                        merged.Add("=======");
+                        merged.AddRange(tc);
+                        merged.Add(">>>>>>> theirs");
                         break;
                 }
             }
@@ -63,8 +90,26 @@ public static class AutoTextMerger
     }
     static List<string> Split(string? t) => string.IsNullOrEmpty(t) ? new() : t.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n').ToList();
     static string Join(IReadOnlyList<string> lines) => string.Join("\n", lines);
-    static bool Eq(IReadOnlyList<string> a, IReadOnlyList<string> b) { if (a.Count != b.Count) return false; for (int i = 0; i < a.Count; i++) if (a[i] != b[i]) return false; return true; }
-    static int Idx(IReadOnlyList<string> lines, string v, int start) { for (int i = start; i < lines.Count; i++) if (lines[i] == v) return i; return -1; }
+    static bool Eq(IReadOnlyList<string> a, IReadOnlyList<string> b)
+    {
+        if (a.Count != b.Count)
+            return false;
+        for (int i = 0; i < a.Count; i++)
+        {
+            if (a[i] != b[i])
+                return false;
+        }
+        return true;
+    }
+    static int Idx(IReadOnlyList<string> lines, string v, int start)
+    {
+        for (int i = start; i < lines.Count; i++)
+        {
+            if (lines[i] == v)
+                return i;
+        }
+        return -1;
+    }
 
     /// <summary>
     /// A hunk with equal line counts on all three sides usually means independent, adjacent
@@ -81,7 +126,7 @@ public static class AutoTextMerger
             if (ol == tl) resolved.Add(ol);
             else if (ol == bl) resolved.Add(tl);
             else if (tl == bl) resolved.Add(ol);
-            else { resolved = null!; return false; }
+            else { return false; }
         }
         return true;
     }
@@ -142,12 +187,37 @@ public sealed class AutoProjectMerger : IAutoProjectMerger
                 var hasTheirs = theirsJson.TryGetProperty(key, out var theirsVal);
                 if (hasOurs && hasTheirs)
                 {
-                    if (oursVal.GetRawText() == theirsVal.GetRawText()) { W(writer, key, oursVal); if (!hasBase || oursVal.GetRawText() != baseVal.GetRawText()) auto++; }
-                    else if (hasBase && oursVal.GetRawText() == baseVal.GetRawText()) { W(writer, key, theirsVal); auto++; }
-                    else if (hasBase && theirsVal.GetRawText() == baseVal.GetRawText()) { W(writer, key, oursVal); auto++; }
-                    else if (strategy == AutoTextMerger.Strategy.PreferOurs) { W(writer, key, oursVal); auto++; }
-                    else if (strategy == AutoTextMerger.Strategy.PreferTheirs) { W(writer, key, theirsVal); auto++; }
-                    else { conflicts.Add(key); W(writer, key, oursVal); }
+                    var oursRaw = oursVal.GetRawText();
+                    var theirsRaw = theirsVal.GetRawText();
+                    var baseRaw = hasBase ? baseVal.GetRawText() : null;
+                    if (oursRaw == theirsRaw)
+                    {
+                        W(writer, key, oursVal);
+                        if (!hasBase || oursRaw != baseRaw) auto++;
+                    }
+                    else
+                    {
+                        // Three-way "one side changed" wins over PreferOurs/PreferTheirs.
+                        var useTheirs = hasBase && oursRaw == baseRaw
+                            || (!(hasBase && theirsRaw == baseRaw)
+                                && strategy != AutoTextMerger.Strategy.PreferOurs
+                                && strategy == AutoTextMerger.Strategy.PreferTheirs);
+                        if (useTheirs)
+                        {
+                            W(writer, key, theirsVal);
+                            auto++;
+                        }
+                        else if ((hasBase && theirsRaw == baseRaw) || strategy == AutoTextMerger.Strategy.PreferOurs)
+                        {
+                            W(writer, key, oursVal);
+                            auto++;
+                        }
+                        else
+                        {
+                            conflicts.Add(key);
+                            W(writer, key, oursVal);
+                        }
+                    }
                 }
                 else if (hasOurs) { W(writer, key, oursVal); auto++; }
                 else if (hasTheirs) { W(writer, key, theirsVal); auto++; }

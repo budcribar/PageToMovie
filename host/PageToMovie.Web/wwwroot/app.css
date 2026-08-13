@@ -2352,7 +2352,7 @@ h1:focus {
   min-height: 1.25rem;
   margin-bottom: 0.45rem;
   font-style: italic;
-  word-break: break-word;
+  overflow-wrap: break-word;
 }
 .voice-dictation-tips__label {
   font-size: 0.7rem;

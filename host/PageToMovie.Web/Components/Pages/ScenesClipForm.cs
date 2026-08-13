@@ -178,7 +178,12 @@ public partial class Scenes
                     await S.Engine.UpdateClipAsync(S._projectId, S.List._detail.SceneNumber, _clipEditor.Clip, _clipEditor);
                     S._message = $"Saved S{S.List._detail.SceneNumber:D2}C{_clipEditor.Clip:D2} — Regen the clip to re-render video/audio with the new fields";
                 }
-                try { await S.Engine.CommitProjectChangesAsync(S._projectId, $"Saved clip S{S.List._detail.SceneNumber:D2}C{_clipEditor.Clip:D2}"); } catch { }
+                try { await S.Engine.CommitProjectChangesAsync(S._projectId, $"Saved clip S{S.List._detail.SceneNumber:D2}C{_clipEditor.Clip:D2}"); }
+                catch (Exception ex)
+                {
+                    // Clip fields already saved; commit is best-effort for the uncommitted badge.
+                    System.Diagnostics.Debug.WriteLine(ex);
+                }
                 await S.RefreshUncommittedStatusAsync();
                 _clipEditor = null;
                 await S.List.LoadDetailAsync(S.List._detail.SceneNumber);

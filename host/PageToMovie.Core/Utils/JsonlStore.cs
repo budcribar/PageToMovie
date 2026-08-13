@@ -23,7 +23,7 @@ public static class JsonlStore
         CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(path)) return;
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(path) ?? ".");
         var line = JsonSerializer.Serialize(record, opts) + "\n";
 
         if (gate is not null)

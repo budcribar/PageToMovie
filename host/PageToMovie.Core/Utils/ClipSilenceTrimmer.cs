@@ -96,11 +96,8 @@ public static class ClipSilenceTrimmer
             return null;
 
         double? trailStart = null;
-        foreach (var s in starts)
-        {
-            if (!ends.Any(e => e > s + 0.05))
-                trailStart = s;
-        }
+        foreach (var s in starts.Where(s => !ends.Any(e => e > s + 0.05)))
+            trailStart = s;
 
         if (trailStart is null && ends.Count > 0)
         {

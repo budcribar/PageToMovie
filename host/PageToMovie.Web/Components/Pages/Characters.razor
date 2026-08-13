@@ -250,7 +250,7 @@ else if (Jobs._job is not null &&
 }
 else if (List._extractingCast)
 {
-    @* Hide stale cast while rebuild/build runs — avoids editing the old list mid-flight. *@
+    <span class="visually-hidden" data-testid="characters-extracting">Updating cast</span>
 }
 else if (!List.HasCast)
 {

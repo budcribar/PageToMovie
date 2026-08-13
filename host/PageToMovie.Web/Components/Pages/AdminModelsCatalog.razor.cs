@@ -36,7 +36,7 @@ public partial class AdminModelsCatalog
 
     internal string? _message;
 
-    [Inject] private IAppLocalizer Localizer { get; set; } = default!;
+    [Inject] private IAppLocalizer Localizer { get; set; } = default;
 
     protected override async Task OnInitializedAsync()
     {

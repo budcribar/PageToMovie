@@ -6,7 +6,7 @@ namespace PageToMovie.Web.Components.Pages;
 
 public partial class Admin_TakesSection
 {
-    [Inject] private EngineApiClient Api { get; set; } = default!;
+    [Inject] public required EngineApiClient Api { get; set; }
     [CascadingParameter] public Admin? Host { get; set; }
 
     internal bool _busy;

@@ -92,7 +92,7 @@ public sealed class SceneListCache
     // new ones later.
     private static SceneSummary CloneSummary(SceneSummary s)
     {
-        var clone = JsonSerializer.Deserialize<SceneSummary>(JsonSerializer.Serialize(s))!;
+        var clone = JsonSerializer.Deserialize<SceneSummary>(JsonSerializer.Serialize(s));
         // Locks applied per-request — leave empty in cache regardless of what was serialized.
         clone.LockOwnerUserId = null;
         clone.LockedByOther = false;

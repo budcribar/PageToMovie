@@ -97,10 +97,10 @@ public partial class Demo
         return msg;
     }
 
-    private bool IsOwnDemo(DemoListItem d) =>
-        Session.IsLoggedIn
+    private static bool IsOwnDemo(DemoListItem d, AdminSessionService session) =>
+        session.IsLoggedIn
         && !string.IsNullOrWhiteSpace(d.CreatedBy)
-        && IdentitiesMatch(Session.UserId, d.CreatedBy);
+        && IdentitiesMatch(session.UserId, d.CreatedBy);
 
     private static bool IdentitiesMatch(string? a, string? b)
     {
@@ -144,7 +144,7 @@ public partial class Demo
 
     private async Task ToggleStarAsync(DemoListItem d)
     {
-        if (_busy || IsOwnDemo(d)) return;
+        if (_busy || IsOwnDemo(d, Session)) return;
         if (!Session.IsLoggedIn)
         {
             Nav.NavigateTo("/login?returnUrl=/demo");

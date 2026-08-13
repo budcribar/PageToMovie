@@ -39,7 +39,7 @@
                     {
                         <span class="badge bg-warning text-dark">@L["ScreenplayPage.EditedSinceApproval"]</span>
                     }
-                    else if (SignOff._screenplayStatus?.DraftExists == true || !string.IsNullOrWhiteSpace(Editor._text))
+                    else if ((SignOff._screenplayStatus?.DraftExists ?? false) || !string.IsNullOrWhiteSpace(Editor._text))
                     {
                         <span class="badge bg-warning text-dark">@L["ScreenplayPage.Draft"]</span>
                     }

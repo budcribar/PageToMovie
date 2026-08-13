@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
@@ -543,8 +544,7 @@ public class UserDatabaseService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to initialize SQLite database at {DbPath}", _dbPath);
-                throw;
+                throw new InvalidOperationException($"Failed to initialize SQLite database at {_dbPath}.", ex);
             }
         }
     }
@@ -995,7 +995,7 @@ public class UserDatabaseService
         }
 
         // Rehome project folders + rewrite ownerUserId / project_id references in spend rows.
-        var projectsTouched = RehomeAliasProjectsV6(primaryId, primaryHandle, aliasUserIds, aliasCandidates);
+        var projectsTouched = RehomeAliasProjectsV6(primaryId, aliasUserIds, aliasCandidates);
 
         // Rewrite project_id prefixes in cost tables (alias/slug → primary/slug).
         foreach (var alias in aliasUserIds.Concat(aliasCandidates).Distinct(StringComparer.OrdinalIgnoreCase))
@@ -1006,50 +1006,10 @@ public class UserDatabaseService
                 continue;
             var oldPrefix = oldSeg + "/";
             var newPrefix = newSeg + "/";
-            using (var up = conn.CreateCommand())
+            foreach (var table in new[] { "user_api_calls", "generation_errors", "credit_ledger", "video_take_events" })
             {
-                up.CommandText = """
-                    UPDATE user_api_calls
-                    SET project_id = @newPrefix || SUBSTR(project_id, @oldLen + 1)
-                    WHERE project_id IS NOT NULL
-                      AND (project_id = @oldSeg OR project_id LIKE @oldPrefixLike);
-                    """;
-                BindProjectIdPrefixParams(up, newPrefix, oldPrefix);
-                try { up.ExecuteNonQuery(); }
-                catch { /* table may lack project_id in weird schemas */ }
-            }
-            using (var up = conn.CreateCommand())
-            {
-                up.CommandText = """
-                    UPDATE generation_errors
-                    SET project_id = @newPrefix || SUBSTR(project_id, @oldLen + 1)
-                    WHERE project_id IS NOT NULL
-                      AND (project_id = @oldSeg OR project_id LIKE @oldPrefixLike);
-                    """;
-                BindProjectIdPrefixParams(up, newPrefix, oldPrefix);
-                try { up.ExecuteNonQuery(); }
-                catch { /* table may lack project_id in weird schemas */ }
-            }
-            using (var up = conn.CreateCommand())
-            {
-                up.CommandText = """
-                    UPDATE credit_ledger
-                    SET project_id = @newPrefix || SUBSTR(project_id, @oldLen + 1)
-                    WHERE project_id IS NOT NULL
-                      AND (project_id = @oldSeg OR project_id LIKE @oldPrefixLike);
-                    """;
-                BindProjectIdPrefixParams(up, newPrefix, oldPrefix);
-                try { up.ExecuteNonQuery(); }
-                catch { /* table may lack project_id in weird schemas */ }
-            }
-            using (var up = conn.CreateCommand())
-            {
-                up.CommandText = """
-                    UPDATE video_take_events
-                    SET project_id = @newPrefix || SUBSTR(project_id, @oldLen + 1)
-                    WHERE project_id IS NOT NULL
-                      AND (project_id = @oldSeg OR project_id LIKE @oldPrefixLike);
-                    """;
+                using var up = conn.CreateCommand();
+                up.CommandText = RewriteProjectIdPrefixSql(table);
                 BindProjectIdPrefixParams(up, newPrefix, oldPrefix);
                 try { up.ExecuteNonQuery(); }
                 catch { /* table may lack project_id in weird schemas */ }
@@ -1068,7 +1028,6 @@ public class UserDatabaseService
     /// </summary>
     private int RehomeAliasProjectsV6(
         string primaryId,
-        string primaryHandle,
         IEnumerable<string> aliasUserIds,
         IEnumerable<string> aliasCandidates)
     {
@@ -1264,6 +1223,39 @@ public class UserDatabaseService
 
         return null;
     }
+
+    private static string RewriteProjectIdPrefixSql(string table) => table switch
+    {
+        "user_api_calls" =>
+            """
+            UPDATE user_api_calls
+            SET project_id = @newPrefix || SUBSTR(project_id, @oldLen + 1)
+            WHERE project_id IS NOT NULL
+              AND (project_id = @oldSeg OR project_id LIKE @oldPrefixLike);
+            """,
+        "generation_errors" =>
+            """
+            UPDATE generation_errors
+            SET project_id = @newPrefix || SUBSTR(project_id, @oldLen + 1)
+            WHERE project_id IS NOT NULL
+              AND (project_id = @oldSeg OR project_id LIKE @oldPrefixLike);
+            """,
+        "credit_ledger" =>
+            """
+            UPDATE credit_ledger
+            SET project_id = @newPrefix || SUBSTR(project_id, @oldLen + 1)
+            WHERE project_id IS NOT NULL
+              AND (project_id = @oldSeg OR project_id LIKE @oldPrefixLike);
+            """,
+        "video_take_events" =>
+            """
+            UPDATE video_take_events
+            SET project_id = @newPrefix || SUBSTR(project_id, @oldLen + 1)
+            WHERE project_id IS NOT NULL
+              AND (project_id = @oldSeg OR project_id LIKE @oldPrefixLike);
+            """,
+        _ => throw new ArgumentOutOfRangeException(nameof(table), table, "Unsupported table.")
+    };
 
     private static void BindProjectIdPrefixParams(SqliteCommand cmd, string newPrefix, string oldPrefix)
     {
@@ -1784,7 +1776,7 @@ public class UserDatabaseService
                 while (await r.ReadAsync(ct).ConfigureAwait(false))
                 {
                     var day = r.IsDBNull(0) ? "" : r.GetString(0);
-                    if (!DateTime.TryParse(day, out var d)) continue;
+                    if (!DateTime.TryParse(day, CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)) continue;
                     var weekStart = d.Date.AddDays(-(int)d.DayOfWeek).ToString("yyyy-MM-dd");
                     if (!byWeek.TryGetValue(weekStart, out var list))
                     {
@@ -2278,7 +2270,7 @@ public class UserDatabaseService
                 using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
                 while (await r.ReadAsync(ct).ConfigureAwait(false))
                 {
-                    DateTimeOffset? ts = r.IsDBNull(0) ? null : DateTimeOffset.Parse(r.GetString(0));
+                    DateTimeOffset? ts = r.IsDBNull(0) ? null : DateTimeOffset.Parse(r.GetString(0), CultureInfo.InvariantCulture);
                     raw.Failures.Add(new AiCallFailureRow
                     {
                         Ts = ts,
@@ -2754,7 +2746,7 @@ public class UserDatabaseService
         {
             var id = reader.GetString(0);
             var raw = reader.IsDBNull(1) ? null : reader.GetString(1);
-            if (DateTimeOffset.TryParse(raw, out var when))
+            if (DateTimeOffset.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var when))
                 map[id] = when;
         }
         return map;
@@ -2989,7 +2981,7 @@ public class UserDatabaseService
     {
         Id = reader.GetInt64(0),
         UserId = reader.GetString(1),
-        Ts = DateTimeOffset.TryParse(reader.GetString(2), out var ts) ? ts : DateTimeOffset.UtcNow,
+        Ts = DateTimeOffset.TryParse(reader.GetString(2), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var ts) ? ts : DateTimeOffset.UtcNow,
         Kind = reader.GetString(3),
         AmountUsd = reader.GetDouble(4),
         BalanceAfterUsd = reader.GetDouble(5),
@@ -3274,7 +3266,7 @@ public class UserDatabaseService
                 return null; // already used
             }
         }
-        if (!DateTimeOffset.TryParse(expRaw, out var exp) || exp < DateTimeOffset.UtcNow)
+        if (!DateTimeOffset.TryParse(expRaw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var exp) || exp < DateTimeOffset.UtcNow)
         {
             await tx.RollbackAsync(ct).ConfigureAwait(false);
             return null;
@@ -3396,7 +3388,7 @@ public class UserDatabaseService
         if (reader.FieldCount > 15 && !reader.IsDBNull(15))
         {
             var raw = reader.GetString(15);
-            if (DateTimeOffset.TryParse(raw, out var c)) confirmed = c;
+            if (DateTimeOffset.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var c)) confirmed = c;
         }
         return new UserEntity
         {
@@ -3408,8 +3400,8 @@ public class UserDatabaseService
             EncryptedAnthropicApiKey = reader.IsDBNull(5) ? null : reader.GetString(5),
             EncryptedFalApiKey = reader.IsDBNull(6) ? null : reader.GetString(6),
             Role = reader.GetString(7),
-            CreatedAt = DateTime.TryParse(reader.GetString(8), out var dt) ? dt : DateTime.UtcNow,
-            LastLoginAt = reader.IsDBNull(9) ? null : (DateTime.TryParse(reader.GetString(9), out var ldt) ? ldt : null),
+            CreatedAt = DateTime.TryParse(reader.GetString(8), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var dt) ? dt : DateTime.UtcNow,
+            LastLoginAt = reader.IsDBNull(9) ? null : (DateTime.TryParse(reader.GetString(9), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var ldt) ? ldt : null),
             CreditsBalanceUsd = reader.FieldCount > 10 && !reader.IsDBNull(10) ? reader.GetDouble(10) : 0,
             CreditsLifetimeGrantedUsd = reader.FieldCount > 11 && !reader.IsDBNull(11) ? reader.GetDouble(11) : 0,
             CreditsLifetimeUsedUsd = reader.FieldCount > 12 && !reader.IsDBNull(12) ? reader.GetDouble(12) : 0,

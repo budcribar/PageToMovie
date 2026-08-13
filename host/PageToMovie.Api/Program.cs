@@ -33,16 +33,15 @@ builder.Services.AddSingleton<PageToMovie.Engine.Collaboration.IProjectInviteMai
 builder.Services.AddSingleton<ProjectAclService>(sp =>
 {
     var store = sp.GetRequiredService<ProjectStore>();
-    var root = Path.Combine(store.WorkspaceRoot, "projects");
+    var root = Path.Combine(store.WorkspaceRoot, ApiText.ProjectsFolder);
     var email = sp.GetService<PageToMovie.Engine.Collaboration.IProjectInviteMailer>();
     return new ProjectAclService(root, null, email, store);
 });
 
-var processStartedUtc = DateTimeOffset.UtcNow;
-
-var OAuthCodeParamRegex = new System.Text.RegularExpressions.Regex(@"code=([^&]+)", System.Text.RegularExpressions.RegexOptions.Compiled);
-var OAuthStateParamRegex = new System.Text.RegularExpressions.Regex(@"state=([^&]+)", System.Text.RegularExpressions.RegexOptions.Compiled);
-var OAuthErrorParamRegex = new System.Text.RegularExpressions.Regex(@"error=([^&]+)", System.Text.RegularExpressions.RegexOptions.Compiled);
+var oauthTimeout = TimeSpan.FromSeconds(1);
+var OAuthCodeParamRegex = new System.Text.RegularExpressions.Regex(@"code=([^&]+)", System.Text.RegularExpressions.RegexOptions.Compiled, oauthTimeout);
+var OAuthStateParamRegex = new System.Text.RegularExpressions.Regex(@"state=([^&]+)", System.Text.RegularExpressions.RegexOptions.Compiled, oauthTimeout);
+var OAuthErrorParamRegex = new System.Text.RegularExpressions.Regex(@"error=([^&]+)", System.Text.RegularExpressions.RegexOptions.Compiled, oauthTimeout);
 
 var listenPorts = new HashSet<string> { "5088", "8080", "80" };
 // Testability/deploy override: replace the default bind ports entirely (comma-separated). Lets a
@@ -65,27 +64,7 @@ builder.Services.Configure<PageToMovieOptions>(
 
 // Optional ThreadPool pre-warm (PageToMovie:ThreadPool:MinWorkerThreads) for 100-VU ramps.
 // 0 / unset = CLR defaults. Apply before host starts accepting requests.
-{
-    var tp = builder.Configuration.GetSection(PageToMovieOptions.SectionName)
-        .GetSection("ThreadPool");
-    var minWorkers = tp.GetValue("MinWorkerThreads", 0);
-    var minIo = tp.GetValue("MinIoThreads", 0);
-    if (minWorkers > 0 || minIo > 0)
-    {
-        ThreadPool.GetMinThreads(out var curW, out var curIo);
-        ThreadPool.GetMaxThreads(out var maxW, out var maxIo);
-        var w = minWorkers > 0 ? Math.Clamp(minWorkers, 1, maxW) : curW;
-        var io = minIo > 0
-            ? Math.Clamp(minIo, 1, maxIo)
-            : (minWorkers > 0 ? Math.Clamp(minWorkers, 1, maxIo) : curIo);
-        if (w < curW) w = curW;
-        if (io < curIo) io = curIo;
-        if (ThreadPool.SetMinThreads(w, io))
-            Console.WriteLine($"ThreadPool min threads set: workers={w} io={io} (was {curW}/{curIo})");
-        else
-            Console.WriteLine($"ThreadPool SetMinThreads failed (requested workers={w} io={io})");
-    }
-}
+ApplyThreadPoolPrewarm(builder);
 
 // Default workspace = repo root (two levels up from host/PageToMovie.Api)
 var repoGuess = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", ".."));
@@ -119,12 +98,12 @@ builder.Services.AddSingleton<ProjectStore>();
 // /api/projects/{id}/costs/summary). Root matches ProjectStore's own convention (WorkspaceRoot/projects),
 // not IHostEnvironment.ContentRootPath — those differ under PageToMovie__WorkspaceRoot / fakes tests.
 builder.Services.AddSingleton(sp =>
-    new CostLedgerService(Path.Combine(sp.GetRequiredService<ProjectStore>().WorkspaceRoot, "projects")));
+    new CostLedgerService(Path.Combine(sp.GetRequiredService<ProjectStore>().WorkspaceRoot, ApiText.ProjectsFolder)));
 // Same unregistered-string-ctor issue as CostLedgerService above (SceneVersionHistory.razor's
 // /versions endpoints, used by the Scenes-page scene-history panel).
 builder.Services.AddSingleton(sp =>
     new PageToMovie.Engine.Collaboration.SceneVersionStore(
-        Path.Combine(sp.GetRequiredService<ProjectStore>().WorkspaceRoot, "projects")));
+        Path.Combine(sp.GetRequiredService<ProjectStore>().WorkspaceRoot, ApiText.ProjectsFolder)));
 
 builder.Services.AddSingleton<IProjectAclService>(sp => sp.GetRequiredService<ProjectAclService>());
 builder.Services.AddSingleton<IProjectLeaseService, ProjectLeaseService>();
@@ -172,9 +151,9 @@ builder.Services.AddSingleton<DepthOfFieldClassifier>();
 builder.Services.AddSingleton<ColorPaletteGradingClassifier>();
 builder.Services.AddSingleton<Stage2PlannerService>();
 builder.Services.AddSingleton<VoicePreviewService>();
-builder.Services.AddHttpClient("elevenlabs", c =>
+builder.Services.AddHttpClient(ApiText.ElevenLabsClient, c =>
 {
-    c.BaseAddress = new Uri(SupportedModelCatalog.ElevenLabsApiBase.TrimEnd('/') + "/");
+    c.BaseAddress = TrailingSlashUri(SupportedModelCatalog.ElevenLabsApiBase);
     c.Timeout = TimeSpan.FromMinutes(3);
 });
 // Real IVoiceClient (ElevenLabs) is registered only in the !useFakes branch below, alongside the
@@ -252,7 +231,8 @@ builder.Services.AddAntiforgery(options =>
 });
 builder.Services.AddSingleton<IUserContext, HttpUserContext>();
 builder.Services.AddSingleton<IUserApiKeyProvider, DbUserApiKeyProvider>();
-static IHttpClientBuilder ConfigurePooledSocketsHandler(IHttpClientBuilder b) =>
+static void ConfigurePooledSocketsHandler(IHttpClientBuilder b)
+{
     b.SetHandlerLifetime(TimeSpan.FromMinutes(15))
      .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
      {
@@ -260,6 +240,38 @@ static IHttpClientBuilder ConfigurePooledSocketsHandler(IHttpClientBuilder b) =>
          PooledConnectionIdleTimeout = TimeSpan.FromMinutes(2),
          EnableMultipleHttp2Connections = true,
      });
+}
+
+static Uri TrailingSlashUri(string apiBase) =>
+    new(apiBase.TrimEnd(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar) + Path.AltDirectorySeparatorChar);
+
+static string WindowsExplorerPath() =>
+    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe");
+
+static string UnixOpenPath() =>
+    OperatingSystem.IsMacOS() ? Path.Combine(Path.DirectorySeparatorChar.ToString(), "usr", "bin", "open")
+                              : Path.Combine(Path.DirectorySeparatorChar.ToString(), "usr", "bin", "xdg-open");
+
+static void ApplyThreadPoolPrewarm(WebApplicationBuilder builder)
+{
+    var tp = builder.Configuration.GetSection(PageToMovieOptions.SectionName)
+        .GetSection("ThreadPool");
+    var minWorkers = tp.GetValue("MinWorkerThreads", 0);
+    var minIo = tp.GetValue("MinIoThreads", 0);
+    if (minWorkers <= 0 && minIo <= 0) return;
+    ThreadPool.GetMinThreads(out var curW, out var curIo);
+    ThreadPool.GetMaxThreads(out var maxW, out var maxIo);
+    var w = minWorkers > 0 ? Math.Clamp(minWorkers, 1, maxW) : curW;
+    var io = minIo > 0
+        ? Math.Clamp(minIo, 1, maxIo)
+        : (minWorkers > 0 ? Math.Clamp(minWorkers, 1, maxIo) : curIo);
+    if (w < curW) w = curW;
+    if (io < curIo) io = curIo;
+    if (ThreadPool.SetMinThreads(w, io))
+        Console.WriteLine($"ThreadPool min threads set: workers={w} io={io} (was {curW}/{curIo})");
+    else
+        Console.WriteLine($"ThreadPool SetMinThreads failed (requested workers={w} io={io})");
+}
 
 // Shared admin/operator authorization gate. Returns null when the caller is authorized (admin
 // role, or the operator override secret supplied via ?me / ?admin_key / X-Admin-Key header), or a
@@ -273,7 +285,7 @@ static IResult? RequireAdminOrOperator(HttpContext http, IUserContext user, IOpt
          string.Equals(http.Request.Headers["X-Admin-Key"].ToString(), secret, StringComparison.Ordinal));
 
     if (!user.IsAdmin && !isOperator)
-        return Results.Json(new { ok = false, error = "admin role required" },
+        return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired },
             statusCode: StatusCodes.Status403Forbidden);
     return null;
 }
@@ -383,60 +395,60 @@ else
     // Concrete provider clients — each gets its own named HttpClient + base address + connection pooling.
     ConfigurePooledSocketsHandler(builder.Services.AddHttpClient<GrokVideoClient>(c =>
     {
-        c.BaseAddress = new Uri(GrokVideoClient.ApiBase + "/");
+        c.BaseAddress = TrailingSlashUri(GrokVideoClient.ApiBase);
         c.Timeout = TimeSpan.FromMinutes(15);
     }));
     // Single provider (xAI only) — bind IVideoEditClient straight to the concrete client, same
     // pattern as ILipSyncClient/FalLipSyncClient below (no MultiProvider* dispatcher needed).
     ConfigurePooledSocketsHandler(builder.Services.AddHttpClient<GrokVideoEditClient>(c =>
     {
-        c.BaseAddress = new Uri(GrokVideoEditClient.ApiBase + "/");
+        c.BaseAddress = TrailingSlashUri(GrokVideoEditClient.ApiBase);
         c.Timeout = TimeSpan.FromMinutes(15);
     }));
     builder.Services.AddSingleton<IVideoEditClient>(sp => sp.GetRequiredService<GrokVideoEditClient>());
     ConfigurePooledSocketsHandler(builder.Services.AddHttpClient<GeminiVideoClient>(c =>
     {
-        c.BaseAddress = new Uri(GeminiVideoClient.ApiBase + "/");
+        c.BaseAddress = TrailingSlashUri(GeminiVideoClient.ApiBase);
         c.Timeout = TimeSpan.FromMinutes(15);
     }));
     ConfigurePooledSocketsHandler(builder.Services.AddHttpClient<FalVideoClient>(c =>
     {
-        c.BaseAddress = new Uri(FalVideoClient.ApiBase.TrimEnd('/') + "/");
+        c.BaseAddress = TrailingSlashUri(FalVideoClient.ApiBase);
         c.Timeout = TimeSpan.FromMinutes(15);
     }));
     ConfigurePooledSocketsHandler(builder.Services.AddHttpClient<GrokImageClient>(c =>
     {
-        c.BaseAddress = new Uri(GrokImageClient.ApiBase + "/");
+        c.BaseAddress = TrailingSlashUri(GrokImageClient.ApiBase);
         c.Timeout = TimeSpan.FromMinutes(5);
     }));
     ConfigurePooledSocketsHandler(builder.Services.AddHttpClient<GeminiImageClient>(c =>
     {
-        c.BaseAddress = new Uri(GeminiImageClient.ApiBase + "/");
+        c.BaseAddress = TrailingSlashUri(GeminiImageClient.ApiBase);
         c.Timeout = TimeSpan.FromMinutes(5);
     }));
     ConfigurePooledSocketsHandler(builder.Services.AddHttpClient<FalImageClient>(c =>
     {
-        c.BaseAddress = new Uri(FalImageClient.ApiBase.TrimEnd('/') + "/");
+        c.BaseAddress = TrailingSlashUri(FalImageClient.ApiBase);
         c.Timeout = TimeSpan.FromMinutes(5);
     }));
     ConfigurePooledSocketsHandler(builder.Services.AddHttpClient<GrokVisionClient>(c =>
     {
-        c.BaseAddress = new Uri(GrokVisionClient.ApiBase + "/");
+        c.BaseAddress = TrailingSlashUri(GrokVisionClient.ApiBase);
         c.Timeout = TimeSpan.FromMinutes(5);
     }));
     ConfigurePooledSocketsHandler(builder.Services.AddHttpClient<GrokChatClient>(c =>
     {
-        c.BaseAddress = new Uri(GrokChatClient.ApiBase + "/");
+        c.BaseAddress = TrailingSlashUri(GrokChatClient.ApiBase);
         c.Timeout = TimeSpan.FromMinutes(20);
     }));
     ConfigurePooledSocketsHandler(builder.Services.AddHttpClient<AnthropicChatClient>(c =>
     {
-        c.BaseAddress = new Uri(AnthropicChatClient.ApiBase + "/");
+        c.BaseAddress = TrailingSlashUri(AnthropicChatClient.ApiBase);
         c.Timeout = TimeSpan.FromMinutes(20);
     }));
     ConfigurePooledSocketsHandler(builder.Services.AddHttpClient<GeminiChatClient>(c =>
     {
-        c.BaseAddress = new Uri(GeminiChatClient.ApiBase + "/");
+        c.BaseAddress = TrailingSlashUri(GeminiChatClient.ApiBase);
         c.Timeout = TimeSpan.FromMinutes(20);
     }));
     // ClipDialogueVerificationService needs Gemini's real native-video capability specifically
@@ -444,7 +456,7 @@ else
     builder.Services.AddSingleton<IGeminiVideoAnalysisClient>(sp => sp.GetRequiredService<GeminiChatClient>());
     ConfigurePooledSocketsHandler(builder.Services.AddHttpClient<FalAudioClient>(c =>
     {
-        c.BaseAddress = new Uri(FalAudioClient.ApiBase.TrimEnd('/') + "/");
+        c.BaseAddress = TrailingSlashUri(FalAudioClient.ApiBase);
         c.Timeout = TimeSpan.FromMinutes(5);
     }));
     ConfigurePooledSocketsHandler(builder.Services.AddHttpClient<SunoClient>(c =>
@@ -459,12 +471,12 @@ else
     }));
     ConfigurePooledSocketsHandler(builder.Services.AddHttpClient<ElevenLabsMusicClient>(c =>
     {
-        c.BaseAddress = new Uri(SupportedModelCatalog.ElevenLabsApiBase.TrimEnd('/') + "/");
+        c.BaseAddress = TrailingSlashUri(SupportedModelCatalog.ElevenLabsApiBase);
         c.Timeout = TimeSpan.FromMinutes(5); // composing a full-scene track can take a while
     }));
     ConfigurePooledSocketsHandler(builder.Services.AddHttpClient<ElevenLabsScribeClient>(c =>
     {
-        c.BaseAddress = new Uri(SupportedModelCatalog.ElevenLabsApiBase.TrimEnd('/') + "/");
+        c.BaseAddress = TrailingSlashUri(SupportedModelCatalog.ElevenLabsApiBase);
         c.Timeout = TimeSpan.FromMinutes(3); // STT on a short dialogue segment
     }));
     builder.Services.AddSingleton<IAudioClient, MultiProviderAudioClient>();
@@ -474,12 +486,12 @@ else
     // MultiProvider* dispatcher yet — same pattern as IGeminiVideoAnalysisClient below).
     ConfigurePooledSocketsHandler(builder.Services.AddHttpClient<FalLipSyncClient>(c =>
     {
-        c.BaseAddress = new Uri(FalLipSyncClient.ApiBase.TrimEnd('/') + "/");
+        c.BaseAddress = TrailingSlashUri(FalLipSyncClient.ApiBase);
         c.Timeout = TimeSpan.FromMinutes(6);
     }));
     ConfigurePooledSocketsHandler(builder.Services.AddHttpClient<FalVoiceCloneClient>(c =>
     {
-        c.BaseAddress = new Uri(FalVoiceCloneClient.ApiBase.TrimEnd('/') + "/");
+        c.BaseAddress = TrailingSlashUri(FalVoiceCloneClient.ApiBase);
         c.Timeout = TimeSpan.FromMinutes(4);
     }));
     builder.Services.AddSingleton<ILipSyncClient>(sp => sp.GetRequiredService<FalLipSyncClient>());
@@ -511,7 +523,7 @@ else
     // above binds IVoiceClient to FakeVoiceClient so no clone/TTS call reaches ElevenLabs.
     builder.Services.AddSingleton<IVoiceClient>(sp =>
     {
-        var http = sp.GetRequiredService<IHttpClientFactory>().CreateClient("elevenlabs");
+        var http = sp.GetRequiredService<IHttpClientFactory>().CreateClient(ApiText.ElevenLabsClient);
         var log = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<ElevenLabsVoiceClient>>();
         return new ElevenLabsVoiceClient(http, log, allowMockFallback: true);
     });
@@ -524,7 +536,7 @@ else
 // api.x.ai in fakes mode — Stage 1 falls back to the fake IChatClient instead.
 ConfigurePooledSocketsHandler(builder.Services.AddHttpClient<XaiResponsesClient>(c =>
 {
-    c.BaseAddress = new Uri(SupportedModelCatalog.XaiApiBase + "/");
+    c.BaseAddress = TrailingSlashUri(SupportedModelCatalog.XaiApiBase);
     c.Timeout = TimeSpan.FromMinutes(20);
 }));
 builder.Services.AddSingleton<PageToMovie.Core.Abstractions.IBookFileSessionFactory, BookFileSessionFactory>();
@@ -645,7 +657,7 @@ try
                 {
                     var meta = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(
                         await File.ReadAllTextAsync(srcMeta));
-                    if (meta.TryGetProperty("projectId", out var pidEl) &&
+                    if (meta.TryGetProperty(ApiText.ProjectIdKey, out var pidEl) &&
                         pidEl.GetString() is { Length: > 0 } pid)
                     {
                         var wipPath = store.ResolveWipMoviePath(pid);
@@ -682,14 +694,14 @@ app.Use(async (context, next) =>
     var uid = user?.UserId;
     // Request header override is treated as xAI/Grok (legacy X-Api-Key).
     var xai = !string.IsNullOrWhiteSpace(user?.RequestApiKey)
-        ? user!.RequestApiKey
+        ? user.RequestApiKey
         : (keyProvider is not null ? await keyProvider.GetKeyAsync(uid, "grok") : null);
     var gemini = keyProvider is not null ? await keyProvider.GetKeyAsync(uid, "gemini") : null;
     var anthropic = keyProvider is not null ? await keyProvider.GetKeyAsync(uid, "anthropic") : null;
     var fal = keyProvider is not null ? await keyProvider.GetKeyAsync(uid, "fal") : null;
     var suno = keyProvider is not null ? await keyProvider.GetKeyAsync(uid, "suno") : null;
     var aimusicapi = keyProvider is not null ? await keyProvider.GetKeyAsync(uid, "aimusicapi") : null;
-    var elevenlabs = keyProvider is not null ? await keyProvider.GetKeyAsync(uid, "elevenlabs") : null;
+    var elevenlabs = keyProvider is not null ? await keyProvider.GetKeyAsync(uid, ApiText.ElevenLabsClient) : null;
     using (ApiKeyScope.Push(new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
     {
         ["grok"] = xai,
@@ -698,7 +710,7 @@ app.Use(async (context, next) =>
         ["fal"] = fal,
         ["suno"] = suno,
         ["aimusicapi"] = aimusicapi,
-        ["elevenlabs"] = elevenlabs,
+        [ApiText.ElevenLabsClient] = elevenlabs,
     }))
     using (UserApiCallScope.Push(uid))
     {
@@ -778,10 +790,10 @@ app.MapPost("/api/auth/forgot-password", async (
             await userDb.NotePasswordResetRequestedAsync(name);
             var user = await userDb.ResolveUserAsync(name)
                        ?? await userDb.GetUserByEmailAsync(name);
-            if (user is not null && !user.IsDisabled && !string.IsNullOrWhiteSpace(user.Email))
+            if (user is not null && !user.IsDisabled && !string.IsNullOrWhiteSpace(user.Email) &&
+                auth is AdminAuthService concrete)
             {
-                if (auth is AdminAuthService concrete)
-                    await concrete.SendPasswordResetEmailAsync(user);
+                await concrete.SendPasswordResetEmailAsync(user);
             }
         }
         catch { /* never leak */ }
@@ -987,7 +999,7 @@ app.MapGet("/api/admin/state", (
     VolumeDiskTelemetryService diskTelemetry) =>
 {
     if (!user.IsAdmin)
-        return Results.Json(new { ok = false, error = "admin role required" },
+        return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired },
             statusCode: StatusCodes.Status403Forbidden);
 
     diskTelemetry.RecordDailySnapshotIfNeeded();
@@ -1068,7 +1080,7 @@ app.MapPost("/api/loadsim/progress", (LoadSimProgressDto body, LoadSimLiveStore 
 app.MapGet("/api/admin/loadsim", (IUserContext user, LoadSimLiveStore store) =>
 {
     if (!user.IsAdmin)
-        return Results.Json(new { ok = false, error = "admin role required" },
+        return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired },
             statusCode: StatusCodes.Status403Forbidden);
     var state = store.GetState();
     return Results.Ok(new { ok = true, loadSim = state });
@@ -1084,7 +1096,7 @@ app.MapGet("/api/admin/book-cache", async (
     CancellationToken ct) =>
 {
     if (!user.IsAdmin)
-        return Results.Json(new { ok = false, error = "admin role required" },
+        return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired },
             statusCode: StatusCodes.Status403Forbidden);
     var snap = await books.GetAdminCacheSnapshotAsync(take ?? 100, ct).ConfigureAwait(false);
     return Results.Ok(new
@@ -1134,7 +1146,7 @@ app.MapGet("/api/admin/learning/insights", async (
     CancellationToken ct) =>
 {
     if (!user.IsAdmin)
-        return Results.Json(new { ok = false, error = "admin role required" },
+        return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired },
             statusCode: StatusCodes.Status403Forbidden);
     var insights = await learning.BuildInsightsAsync(projectId, recentTake: take ?? 40, ct: ct);
     return Results.Ok(new { ok = true, insights });
@@ -1150,7 +1162,7 @@ app.MapGet("/api/admin/learning/events", async (
     CancellationToken ct) =>
 {
     if (!user.IsAdmin)
-        return Results.Json(new { ok = false, error = "admin role required" },
+        return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired },
             statusCode: StatusCodes.Status403Forbidden);
     var events = await learning.QueryAsync(projectId, type, category, take: take ?? 100, ct: ct);
     return Results.Ok(new { ok = true, events });
@@ -1163,7 +1175,7 @@ app.MapGet("/api/admin/learning/review-comparison", async (
     CancellationToken ct) =>
 {
     if (!user.IsAdmin)
-        return Results.Json(new { ok = false, error = "admin role required" },
+        return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired },
             statusCode: StatusCodes.Status403Forbidden);
     var comparison = await learning.GetReviewComparisonAsync(projectId, ct: ct);
     return Results.Ok(comparison);
@@ -1176,7 +1188,7 @@ app.MapPost("/api/admin/learning/synthesize-prompt-improvements", async (
     CancellationToken ct) =>
 {
     if (!user.IsAdmin)
-        return Results.Json(new { ok = false, error = "admin role required" },
+        return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired },
             statusCode: StatusCodes.Status403Forbidden);
     var result = await proposals.SynthesizePromptImprovementsAsync(projectId, ct);
     return Results.Ok(result);
@@ -1190,7 +1202,7 @@ app.MapPost("/api/admin/learning/propose", async (
     CancellationToken ct) =>
 {
     if (!user.IsAdmin)
-        return Results.Json(new { ok = false, error = "admin role required" },
+        return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired },
             statusCode: StatusCodes.Status403Forbidden);
     var result = await proposals.ProposeAsync(body, ct);
     if (result.Ok && !string.IsNullOrWhiteSpace(result.Proposal))
@@ -1220,7 +1232,7 @@ app.MapGet("/api/admin/learning/proposal-checklist", (
     ProposalChecklistService checklist) =>
 {
     if (!user.IsAdmin)
-        return Results.Json(new { ok = false, error = "admin role required" },
+        return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired },
             statusCode: StatusCodes.Status403Forbidden);
     return Results.Ok(new { ok = true, checklist = checklist.Load() });
 });
@@ -1231,7 +1243,7 @@ app.MapPost("/api/admin/learning/proposal-checklist", (
     ProposalChecklistService checklist) =>
 {
     if (!user.IsAdmin)
-        return Results.Json(new { ok = false, error = "admin role required" },
+        return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired },
             statusCode: StatusCodes.Status403Forbidden);
     try
     {
@@ -1250,7 +1262,7 @@ app.MapPost("/api/admin/learning/proposal-checklist/toggle", (
     ProposalChecklistService checklist) =>
 {
     if (!user.IsAdmin)
-        return Results.Json(new { ok = false, error = "admin role required" },
+        return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired },
             statusCode: StatusCodes.Status403Forbidden);
     try
     {
@@ -1270,7 +1282,7 @@ app.MapPost("/api/admin/learning/proposal-checklist/accept-matching", (
     ProposalChecklistService checklist) =>
 {
     if (!user.IsAdmin)
-        return Results.Json(new { ok = false, error = "admin role required" },
+        return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired },
             statusCode: StatusCodes.Status403Forbidden);
     try
     {
@@ -1293,7 +1305,7 @@ app.MapGet("/api/admin/learning/project-rules/{projectId}", async (
     CancellationToken ct) =>
 {
     if (!user.IsAdmin)
-        return Results.Json(new { ok = false, error = "admin role required" },
+        return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired },
             statusCode: StatusCodes.Status403Forbidden);
     return Results.Ok(new { ok = true, projectId, rules = await rules.LoadAsync(projectId, ct) });
 });
@@ -1306,7 +1318,7 @@ app.MapPost("/api/admin/learning/project-rules/{projectId}/suggest", async (
     CancellationToken ct) =>
 {
     if (!user.IsAdmin)
-        return Results.Json(new { ok = false, error = "admin role required" },
+        return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired },
             statusCode: StatusCodes.Status403Forbidden);
     try
     {
@@ -1328,7 +1340,7 @@ app.MapPost("/api/admin/learning/project-rules/{projectId}/approve", async (
     CancellationToken ct) =>
 {
     if (!user.IsAdmin)
-        return Results.Json(new { ok = false, error = "admin role required" },
+        return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired },
             statusCode: StatusCodes.Status403Forbidden);
     try
     {
@@ -1337,7 +1349,7 @@ app.MapPost("/api/admin/learning/project-rules/{projectId}/approve", async (
         var sug = before.Pending.FirstOrDefault(p =>
             string.Equals(p.Id, body.SuggestionId, StringComparison.OrdinalIgnoreCase));
         var approvedText = !string.IsNullOrWhiteSpace(body.Text)
-            ? body.Text!.Trim()
+            ? body.Text.Trim()
             : (sug?.Text ?? "").Trim();
 
         var doc = await rules.ApproveAsync(projectId, body.SuggestionId, body.Text, user.UserId, ct);
@@ -1375,7 +1387,7 @@ app.MapPost("/api/admin/learning/project-rules/{projectId}/reject", async (
     CancellationToken ct) =>
 {
     if (!user.IsAdmin)
-        return Results.Json(new { ok = false, error = "admin role required" },
+        return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired },
             statusCode: StatusCodes.Status403Forbidden);
     try
     {
@@ -1392,7 +1404,7 @@ app.MapPost("/api/admin/learning/project-rules/{projectId}/reject", async (
 app.MapGet("/api/admin/users", async (IUserContext user, CreditService credits) =>
 {
     if (!user.IsAdmin)
-        return Results.Json(new { ok = false, error = "admin role required" },
+        return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired },
             statusCode: StatusCodes.Status403Forbidden);
 
     var overview = await credits.GetAdminOverviewAsync(recentLedger: 50);
@@ -1515,7 +1527,7 @@ app.MapGet("/api/admin/generation-errors", async (
     CancellationToken ct) =>
 {
     if (!user.IsAdmin)
-        return Results.Json(new { ok = false, error = "admin role required" },
+        return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired },
             statusCode: StatusCodes.Status403Forbidden);
 
     var rows = await userDb.ListGenerationErrorsAsync(errorType, projectId, take ?? 100, ct);
@@ -1526,7 +1538,7 @@ app.MapGet("/api/admin/generation-errors", async (
 app.MapGet("/api/admin/ai-calls", async (IUserContext user, AiCallAnalyticsService analytics, int? maxRows, CancellationToken ct) =>
 {
     if (!user.IsAdmin)
-        return Results.Json(new { ok = false, error = "admin role required" }, statusCode: StatusCodes.Status403Forbidden);
+        return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired }, statusCode: StatusCodes.Status403Forbidden);
     try
     {
         var data = await analytics.BuildAsync(Math.Clamp(maxRows ?? 4000, 100, 20000), AnalyticsWindow.All, ct);
@@ -1561,7 +1573,7 @@ app.MapPost("/api/system/open-folder", async (OpenFolderRequest body, ProjectSto
             {
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
                 {
-                    FileName = "explorer.exe",
+                    FileName = WindowsExplorerPath(),
                     Arguments = $"\"{targetPath}\"",
                     UseShellExecute = true
                 });
@@ -1572,7 +1584,7 @@ app.MapPost("/api/system/open-folder", async (OpenFolderRequest body, ProjectSto
             {
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
                 {
-                    FileName = "explorer.exe",
+                    FileName = WindowsExplorerPath(),
                     Arguments = $"\"{parent}\"",
                     UseShellExecute = true
                 });
@@ -1581,12 +1593,12 @@ app.MapPost("/api/system/open-folder", async (OpenFolderRequest body, ProjectSto
         }
         else if (OperatingSystem.IsMacOS())
         {
-            System.Diagnostics.Process.Start("open", $"\"{targetPath}\"");
+            System.Diagnostics.Process.Start(UnixOpenPath(), $"\"{targetPath}\"");
             return Results.Ok(new { ok = true, opened = targetPath });
         }
         else if (OperatingSystem.IsLinux())
         {
-            System.Diagnostics.Process.Start("xdg-open", $"\"{targetPath}\"");
+            System.Diagnostics.Process.Start(UnixOpenPath(), $"\"{targetPath}\"");
             return Results.Ok(new { ok = true, opened = targetPath });
         }
 
@@ -1612,12 +1624,12 @@ app.MapPost("/api/system/open-editor", async (OpenEditorRequest body, ProjectSto
     {
         if (body.ClipNumber is int cn && cn > 0)
         {
-            var cPath = Path.Combine(projectDir, "assets", "video", $"scene_{sn:D3}_clip_{cn:D2}.mp4");
+            var cPath = Path.Combine(projectDir, ApiText.AssetsFolder, ApiText.VideoFolder, $"scene_{sn:D3}_clip_{cn:D2}.mp4");
             if (File.Exists(cPath)) videoPath = cPath;
         }
         if (videoPath is null)
         {
-            var compPath = Path.Combine(projectDir, "assets", "video", $"scene_{sn:D3}_composite.mp4");
+            var compPath = Path.Combine(projectDir, ApiText.AssetsFolder, ApiText.VideoFolder, $"scene_{sn:D3}_composite.mp4");
             if (File.Exists(compPath)) videoPath = compPath;
         }
     }
@@ -1628,14 +1640,14 @@ app.MapPost("/api/system/open-editor", async (OpenEditorRequest body, ProjectSto
         if (File.Exists(wipMovie)) videoPath = wipMovie;
         else
         {
-            var altWip = Path.Combine(projectDir, "assets", "video", "wip_movie.mp4");
+            var altWip = Path.Combine(projectDir, ApiText.AssetsFolder, ApiText.VideoFolder, "wip_movie.mp4");
             if (File.Exists(altWip)) videoPath = altWip;
         }
     }
 
     if (videoPath is null)
     {
-        var videoDir = Path.Combine(projectDir, "assets", "video");
+        var videoDir = Path.Combine(projectDir, ApiText.AssetsFolder, ApiText.VideoFolder);
         if (Directory.Exists(videoDir)) videoPath = videoDir;
         else videoPath = projectDir;
     }
@@ -1677,7 +1689,7 @@ app.MapPost("/api/system/open-editor", async (OpenEditorRequest body, ProjectSto
                     {
                         try
                         {
-                            System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{targetPath}\"");
+                            System.Diagnostics.Process.Start(WindowsExplorerPath(), $"/select,\"{targetPath}\"");
                         }
                         catch { /* best-effort explorer reveal */ }
                     }
@@ -1711,7 +1723,7 @@ app.MapPost("/api/system/open-editor", async (OpenEditorRequest body, ProjectSto
         {
             try
             {
-                System.Diagnostics.Process.Start("open", $"\"{targetPath}\"");
+                System.Diagnostics.Process.Start(UnixOpenPath(), $"\"{targetPath}\"");
                 return Results.Ok(new OpenEditorResponse { Ok = true, Opened = targetPath, Editor = editorName, VideoUrl = relativeVideoUrl });
             }
             catch (Exception)
@@ -1773,7 +1785,7 @@ app.MapPost("/api/admin/projects/import", async (
     CancellationToken ct) =>
 {
     if (!user.IsAdmin)
-        return Results.Json(new { ok = false, error = "admin role required" },
+        return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired },
             statusCode: StatusCodes.Status403Forbidden);
 
     if (!req.HasFormContentType)
@@ -1784,7 +1796,7 @@ app.MapPost("/api/admin/projects/import", async (
     if (file is null || file.Length == 0)
         return Results.BadRequest(new { ok = false, error = "file required (project zip)" });
 
-    var preferredId = form["projectId"].ToString();
+    var preferredId = form[ApiText.ProjectIdKey].ToString();
     if (string.IsNullOrWhiteSpace(preferredId))
         preferredId = form["id"].ToString();
 
@@ -1794,8 +1806,8 @@ app.MapPost("/api/admin/projects/import", async (
     if (string.IsNullOrWhiteSpace(targetUserId))
         targetUserId = form["ownerUserId"].ToString();
 
-    var overwrite = string.Equals(form["overwrite"].ToString(), "true", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(form["overwrite"].ToString(), "1", StringComparison.OrdinalIgnoreCase);
+    var overwrite = string.Equals(form[ApiText.OverwriteKey].ToString(), "true", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(form[ApiText.OverwriteKey].ToString(), "1", StringComparison.OrdinalIgnoreCase);
 
     try
     {
@@ -1849,10 +1861,10 @@ app.MapPost("/api/projects/import", async (
     // Optional target name — import under a name of the caller's choosing instead of the zip's slug
     // (forceOwnerUserId still re-namespaces it under the caller, so only the slug is taken from this).
     var name = form["name"].ToString();
-    if (string.IsNullOrWhiteSpace(name)) name = form["projectId"].ToString();
+    if (string.IsNullOrWhiteSpace(name)) name = form[ApiText.ProjectIdKey].ToString();
 
-    var overwrite = string.Equals(form["overwrite"].ToString(), "true", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(form["overwrite"].ToString(), "1", StringComparison.OrdinalIgnoreCase);
+    var overwrite = string.Equals(form[ApiText.OverwriteKey].ToString(), "true", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(form[ApiText.OverwriteKey].ToString(), "1", StringComparison.OrdinalIgnoreCase);
 
     try
     {
@@ -1894,17 +1906,17 @@ app.MapPost("/api/admin/users/credits", async (
     CreditService credits) =>
 {
     if (!user.IsAdmin)
-        return Results.Json(new { ok = false, error = "admin role required" },
+        return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired },
             statusCode: StatusCodes.Status403Forbidden);
 
     if (body is null || string.IsNullOrWhiteSpace(body.UserId))
-        return Results.BadRequest(new { ok = false, error = "userId is required" });
+        return Results.BadRequest(new { ok = false, error = ApiText.UserIdRequired });
     if (Math.Abs(body.AmountUsd) < 0.0001)
         return Results.BadRequest(new { ok = false, error = "amountUsd must be non-zero" });
 
     var summary = await credits.GrantAsync(body.UserId.Trim(), body.AmountUsd, body.Note);
     if (summary is null)
-        return Results.NotFound(new { ok = false, error = "user not found" });
+        return Results.NotFound(new { ok = false, error = ApiText.UserNotFound });
 
     return Results.Ok(new { ok = true, user = summary });
 });
@@ -1917,11 +1929,11 @@ app.MapPost("/api/admin/users/set-password", async (
     IAdminAuthService auth) =>
 {
     if (!user.IsAdmin)
-        return Results.Json(new { ok = false, error = "admin role required" },
+        return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired },
             statusCode: StatusCodes.Status403Forbidden);
 
     if (body is null || string.IsNullOrWhiteSpace(body.UserId))
-        return Results.BadRequest(new { ok = false, error = "userId is required" });
+        return Results.BadRequest(new { ok = false, error = ApiText.UserIdRequired });
     if (string.IsNullOrWhiteSpace(body.NewPassword) || body.NewPassword.Length < 4)
         return Results.BadRequest(new { ok = false, error = "New password must be at least 4 characters." });
     if (!await auth.VerifyCallerPasswordAsync(user.UserId, body.AdminPassword ?? ""))
@@ -1930,7 +1942,7 @@ app.MapPost("/api/admin/users/set-password", async (
 
     var target = await userDb.ResolveUserAsync(body.UserId.Trim());
     if (target is null)
-        return Results.NotFound(new { ok = false, error = "user not found" });
+        return Results.NotFound(new { ok = false, error = ApiText.UserNotFound });
 
     var ok = await userDb.SetPasswordAsync(target.UserId, body.NewPassword);
     if (!ok)
@@ -1952,15 +1964,15 @@ app.MapPost("/api/admin/users/disabled", async (
     UserDatabaseService userDb) =>
 {
     if (!user.IsAdmin)
-        return Results.Json(new { ok = false, error = "admin role required" },
+        return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired },
             statusCode: StatusCodes.Status403Forbidden);
 
     if (body is null || string.IsNullOrWhiteSpace(body.UserId))
-        return Results.BadRequest(new { ok = false, error = "userId is required" });
+        return Results.BadRequest(new { ok = false, error = ApiText.UserIdRequired });
 
     var target = await userDb.ResolveUserAsync(body.UserId.Trim());
     if (target is null)
-        return Results.NotFound(new { ok = false, error = "user not found" });
+        return Results.NotFound(new { ok = false, error = ApiText.UserNotFound });
 
     if (string.Equals(target.UserId, user.UserId, StringComparison.OrdinalIgnoreCase) ||
         string.Equals(target.Username, user.UserId, StringComparison.OrdinalIgnoreCase))
@@ -1977,7 +1989,7 @@ app.MapPost("/api/admin/users/disabled", async (
 
     var summary = await userDb.SetUserDisabledAsync(target.UserId, body.Disabled);
     if (summary is null)
-        return Results.NotFound(new { ok = false, error = "user not found" });
+        return Results.NotFound(new { ok = false, error = ApiText.UserNotFound });
 
     return Results.Ok(new
     {
@@ -2003,11 +2015,11 @@ app.MapPost("/api/admin/users/delete", async (
     CancellationToken ct) =>
 {
     if (!user.IsAdmin)
-        return Results.Json(new { ok = false, error = "admin role required" },
+        return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired },
             statusCode: StatusCodes.Status403Forbidden);
 
     if (body is null || string.IsNullOrWhiteSpace(body.UserId))
-        return Results.BadRequest(new { ok = false, error = "userId is required" });
+        return Results.BadRequest(new { ok = false, error = ApiText.UserIdRequired });
     if (string.IsNullOrWhiteSpace(body.ConfirmUsername))
         return Results.BadRequest(new { ok = false, error = "confirmUsername is required" });
     if (string.IsNullOrEmpty(body.AdminPassword))
@@ -2019,7 +2031,7 @@ app.MapPost("/api/admin/users/delete", async (
 
     var target = await userDb.ResolveUserAsync(body.UserId.Trim(), ct);
     if (target is null)
-        return Results.NotFound(new { ok = false, error = "user not found" });
+        return Results.NotFound(new { ok = false, error = ApiText.UserNotFound });
 
     if (!string.Equals(body.ConfirmUsername.Trim(), target.Username, StringComparison.OrdinalIgnoreCase) &&
         !string.Equals(body.ConfirmUsername.Trim(), target.UserId, StringComparison.OrdinalIgnoreCase))
@@ -2051,16 +2063,16 @@ app.MapPost("/api/admin/users/delete", async (
             (string.Equals(p.OwnerUserId, target.UserId, StringComparison.OrdinalIgnoreCase) ||
              string.Equals(p.OwnerUserId, target.Username, StringComparison.OrdinalIgnoreCase)))
             .ToList();
-        foreach (var p in owned)
+        foreach (var id in owned.Select(p => p.Id))
         {
             try
             {
-                await projects.DeleteProjectAsync(p.Id, ct);
+                await projects.DeleteProjectAsync(id, ct);
                 deletedProjects++;
             }
             catch (Exception ex)
             {
-                projectErrors.Add($"{p.Id}: {ex.Message}");
+                projectErrors.Add($"{id}: {ex.Message}");
             }
         }
     }
@@ -2089,7 +2101,7 @@ app.MapPost("/api/admin/users/delete", async (
 app.MapGet("/api/admin/config", (IUserContext user, IRuntimeConfigStore config) =>
 {
     if (!user.IsAdmin)
-        return Results.Json(new { ok = false, error = "admin role required" },
+        return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired },
             statusCode: StatusCodes.Status403Forbidden);
     return Results.Ok(config.Get());
 });
@@ -2102,7 +2114,7 @@ app.MapPut("/api/admin/config", async (
     CancellationToken ct) =>
 {
     if (!user.IsAdmin)
-        return Results.Json(new { ok = false, error = "admin role required" },
+        return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired },
             statusCode: StatusCodes.Status403Forbidden);
     try
     {
@@ -2119,7 +2131,7 @@ app.MapPut("/api/admin/config", async (
 app.MapGet("/api/admin/models-catalog", (IUserContext user) =>
 {
     if (!user.IsAdmin)
-        return Results.Json(new { ok = false, error = "admin role required" }, statusCode: StatusCodes.Status403Forbidden);
+        return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired }, statusCode: StatusCodes.Status403Forbidden);
 
     return Results.Ok(new
     {
@@ -2136,7 +2148,7 @@ app.MapGet("/api/admin/models-catalog", (IUserContext user) =>
 app.MapPut("/api/admin/models-catalog", (IUserContext user) =>
 {
     if (!user.IsAdmin)
-        return Results.Json(new { ok = false, error = "admin role required" }, statusCode: StatusCodes.Status403Forbidden);
+        return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired }, statusCode: StatusCodes.Status403Forbidden);
 
     // The catalog is the single source of truth, embedded at build time. Runtime edits are gone:
     // change PageToMovie.Core/config/models_catalog.json in git and redeploy.
@@ -2151,7 +2163,7 @@ app.MapPut("/api/admin/models-catalog", (IUserContext user) =>
 app.MapPost("/api/admin/models-catalog/reload", (IUserContext user) =>
 {
     if (!user.IsAdmin)
-        return Results.Json(new { ok = false, error = "admin role required" }, statusCode: StatusCodes.Status403Forbidden);
+        return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired }, statusCode: StatusCodes.Status403Forbidden);
 
     SupportedModelCatalog.ReloadCatalog();
     return Results.Ok(new
@@ -2165,7 +2177,7 @@ app.MapPost("/api/admin/models-catalog/reload", (IUserContext user) =>
 app.MapPost("/api/admin/models-catalog/validate", async (HttpContext http, IUserContext user) =>
 {
     if (!user.IsAdmin)
-        return Results.Json(new { ok = false, error = "admin role required" }, statusCode: StatusCodes.Status403Forbidden);
+        return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired }, statusCode: StatusCodes.Status403Forbidden);
 
     using var reader = new StreamReader(http.Request.Body);
     var rawJson = await reader.ReadToEndAsync();
@@ -2198,7 +2210,7 @@ app.MapPost("/api/admin/models-catalog/validate", async (HttpContext http, IUser
 app.MapPost("/api/admin/models-catalog/check-updates", async (IUserContext user, CatalogUpdateProbeService probe, CancellationToken ct) =>
 {
     if (!user.IsAdmin)
-        return Results.Json(new { ok = false, error = "admin role required" }, statusCode: StatusCodes.Status403Forbidden);
+        return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired }, statusCode: StatusCodes.Status403Forbidden);
     try
     {
         var result = await probe.ScanAsync(user.UserId, ct).ConfigureAwait(false);
@@ -2214,7 +2226,7 @@ app.MapPost("/api/admin/models-catalog/check-updates", async (IUserContext user,
 app.MapPost("/api/admin/chat-cache/clear", (IUserContext user, IServiceProvider sp) =>
 {
     if (!user.IsAdmin)
-        return Results.Json(new { ok = false, error = "admin role required" },
+        return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired },
             statusCode: StatusCodes.Status403Forbidden);
     // Not registered under PageToMovie:UseFakes (fakes never hit the network, so there's nothing
     // to cache) — report that plainly instead of a DI resolution error.
@@ -2232,7 +2244,7 @@ app.MapPost("/api/admin/test-email", async (
     IOptions<PageToMovieOptions> opts) =>
 {
     if (!user.IsAdmin)
-        return Results.Json(new { ok = false, error = "admin role required" }, statusCode: StatusCodes.Status403Forbidden);
+        return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired }, statusCode: StatusCodes.Status403Forbidden);
 
     var to = (body?.ToEmail ?? "").Trim();
     if (string.IsNullOrWhiteSpace(to) || !to.Contains('@'))
@@ -2285,7 +2297,7 @@ app.MapPost("/api/admin/test-email", async (
 app.MapPost("/api/admin/jobs/{jobId}/cancel", async (string jobId, IUserContext user, FilmJobService jobService) =>
 {
     if (!user.IsAdmin)
-        return Results.Json(new { ok = false, error = "admin role required" },
+        return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired },
             statusCode: StatusCodes.Status403Forbidden);
     await jobService.CancelAsync(jobId);
     return Results.Ok(new { ok = true, jobId, job = jobService.GetJob(jobId) });
@@ -2294,11 +2306,11 @@ app.MapPost("/api/admin/jobs/{jobId}/cancel", async (string jobId, IUserContext 
 app.MapPost("/api/admin/locks/release", (AdminReleaseLockRequest body, IUserContext user, ILockService locks) =>
 {
     if (!user.IsAdmin)
-        return Results.Json(new { ok = false, error = "admin role required" },
+        return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired },
             statusCode: StatusCodes.Status403Forbidden);
     if (string.IsNullOrWhiteSpace(body.Resource))
         return Results.BadRequest(new { ok = false, error = "resource required" });
-    var ok = locks.Release(body.Resource.Trim(), user.UserId, force: body.Force || true);
+    var ok = locks.Release(body.Resource.Trim(), user.UserId, force: true);
     return Results.Ok(new { ok, resource = body.Resource, locks = locks.ListActive() });
 });
 
@@ -2313,7 +2325,7 @@ app.MapGet("/api/youtube/status", async (YouTubeAuthService youTube, Cancellatio
 app.MapGet("/api/youtube/connect-url", (IUserContext user, YouTubeAuthService youTube, string? returnTo) =>
 {
     if (!user.IsAdmin)
-        return Results.Json(new { ok = false, error = "admin role required" },
+        return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired },
             statusCode: StatusCodes.Status403Forbidden);
     if (!youTube.IsConfigured)
         return Results.Json(new
@@ -2353,7 +2365,7 @@ async Task ProcessYouTubeOAuthCallbackAsync(HttpContext http, YouTubeAuthService
     }
 
     var returnPath = "/review";
-    var stateOk = !string.IsNullOrWhiteSpace(state) && youTube.TryConsumeState(state!, out returnPath);
+    var stateOk = !string.IsNullOrWhiteSpace(state) && youTube.TryConsumeState(state, out returnPath);
 
     if (!string.IsNullOrWhiteSpace(error))
     {
@@ -2390,7 +2402,7 @@ app.MapGet("/api/youtube/oauth2callback", ProcessYouTubeOAuthCallbackAsync);
 app.MapPost("/api/youtube/disconnect", async (IUserContext user, YouTubeAuthService youTube, CancellationToken ct) =>
 {
     if (!user.IsAdmin)
-        return Results.Json(new { ok = false, error = "admin role required" },
+        return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired },
             statusCode: StatusCodes.Status403Forbidden);
     await youTube.DisconnectAsync(ct);
     return Results.Ok(new { ok = true });
@@ -2490,7 +2502,7 @@ app.MapGet("/api/projects", async (
 
         // Self-heal: if folder/owner field used a stale alias, rewrite ownerUserId to canonical id
         // so future filters and admin tools stay consistent. Best-effort; never delete.
-        var canonical = !string.IsNullOrWhiteSpace(me?.UserId) ? me!.UserId.Trim() : user.UserId.Trim();
+        var canonical = !string.IsNullOrWhiteSpace(me?.UserId) ? me.UserId.Trim() : user.UserId.Trim();
         if (!string.IsNullOrWhiteSpace(canonical))
         {
             foreach (var p in list)
@@ -2586,7 +2598,7 @@ app.MapPost("/api/projects", async (
             var me = await userDb.GetUserByIdAsync(user.UserId, ct).ConfigureAwait(false)
                      ?? await userDb.GetUserByUsernameAsync(user.UserId, ct).ConfigureAwait(false);
             if (!string.IsNullOrWhiteSpace(me?.UserId))
-                ownerId = me!.UserId.Trim();
+                ownerId = me.UserId.Trim();
         }
         catch { /* use JWT id */ }
 
@@ -2839,7 +2851,7 @@ app.MapPost("/api/jobs/gen-scene", async (
         return Results.Accepted($"/api/jobs/{job.JobId}", new
         {
             ok = true,
-            message = job.Status == "queued"
+            message = job.Status == ApiText.QueuedStatus
                 ? $"Queued scene {body.Scene} (waiting for lock/worker)"
                 : $"Started scene {body.Scene}",
             job,
@@ -2866,12 +2878,12 @@ app.MapPost("/api/jobs/gen-batch", async (
         if ((body.Scenes is null || body.Scenes.Count == 0) && !hasClips)
             return Results.BadRequest(new { ok = false, error = "scenes or clips required" });
         var job = await jobService.StartBatchGenAsync(body);
-        var count = hasClips ? body.Clips!.Count : body.Scenes?.Count ?? 0;
+        var count = hasClips ? body.Clips.Count : body.Scenes?.Count ?? 0;
         var unit = hasClips ? "clip" : "scene";
         return Results.Accepted($"/api/jobs/{job.JobId}", new
         {
             ok = true,
-            message = job.Status == "queued"
+            message = job.Status == ApiText.QueuedStatus
                 ? $"Queued batch for {count} {unit}(s)"
                 : $"Started batch for {count} {unit}(s)",
             job,
@@ -2899,14 +2911,14 @@ app.MapPost("/api/jobs/speak-batch", async (
     try
     {
         if (string.IsNullOrWhiteSpace(body.ProjectId))
-            return Results.BadRequest(new { ok = false, error = "projectId required" });
+            return Results.BadRequest(new { ok = false, error = ApiText.ProjectIdRequired });
         if (string.IsNullOrWhiteSpace(body.CharKey))
             body.CharKey = "Character_Narrator";
         var job = await jobService.StartSpeakBatchAsync(body);
         return Results.Accepted($"/api/jobs/{job.JobId}", new
         {
             ok = true,
-            message = job.Status == "queued"
+            message = job.Status == ApiText.QueuedStatus
                 ? "Queued speak-batch (waiting for lock/worker)"
                 : "Started speak-batch",
             job,
@@ -2935,14 +2947,14 @@ app.MapPost("/api/jobs/voice-substitution", async (
     try
     {
         if (string.IsNullOrWhiteSpace(body.ProjectId))
-            return Results.BadRequest(new { ok = false, error = "projectId required" });
+            return Results.BadRequest(new { ok = false, error = ApiText.ProjectIdRequired });
         if (string.IsNullOrWhiteSpace(body.CharKey))
             body.CharKey = "Character_Narrator";
         var job = await jobService.StartVoiceSubstitutionAsync(body);
         return Results.Accepted($"/api/jobs/{job.JobId}", new
         {
             ok = true,
-            message = job.Status == "queued"
+            message = job.Status == ApiText.QueuedStatus
                 ? "Queued voice substitution (waiting for lock/worker)"
                 : "Started voice substitution",
             job,
@@ -3052,7 +3064,7 @@ app.MapGet("/api/stage2-status", async (
                 me = await userDb.GetUserByIdAsync(user.UserId, ct).ConfigureAwait(false)
                      ?? await userDb.GetUserByUsernameAsync(user.UserId, ct).ConfigureAwait(false);
             }
-            catch { /* */ }
+            catch { /* user lookup is best-effort */ }
             var aliases = ProjectOwnership.CollectAliases(
                 user.UserId, canonicalUserId: me?.UserId, username: me?.Username, email: me?.Email);
             if (!ProjectOwnership.IsOwnedBy(info, aliases))
@@ -3287,7 +3299,7 @@ app.MapGet("/api/projects/{projectId}/locations/{locKey}/ref", (HttpContext ctx,
     var path = store.ResolveLocationRefPath(projectId, locKey);
     if (path is null)
         return Results.NotFound(new { ok = false, error = "No locked location plate" });
-    return ServeCachedFile(ctx, path, "image/png", immutable: false);
+    return ServeCachedFile(ctx, path, SpecializedMimeType.ImagePng.ToMimeTypeString(), immutable: false);
 });
 
 /// <summary>Save location description / visual_lock into location_seed_tokens. I8: loc lease.</summary>
@@ -3382,7 +3394,7 @@ app.MapGet("/api/projects/{projectId}/locations/{locKey}/variants/{index:int}",
     var path = Path.Combine(dir, name);
     if (!File.Exists(path))
         return Results.NotFound(new { ok = false, error = "Variant not found" });
-    return ServeCachedFile(ctx, path, "image/png", immutable: false);
+    return ServeCachedFile(ctx, path, SpecializedMimeType.ImagePng.ToMimeTypeString(), immutable: false);
 });
 
 app.MapPost("/api/projects/{id}/locations/{locKey}/lock-variant", async (
@@ -3603,7 +3615,7 @@ app.MapPost("/api/jobs/embellish", async (StartEmbellishRequest? body, FilmJobSe
     {
         var projectId = body?.ProjectId ?? "";
         if (string.IsNullOrWhiteSpace(projectId))
-            return Results.BadRequest(new { ok = false, error = "projectId required" });
+            return Results.BadRequest(new { ok = false, error = ApiText.ProjectIdRequired });
         var job = await jobService.StartEmbellishAsync(projectId);
         return Results.Accepted($"/api/jobs/{job.JobId}", new
         {
@@ -3631,7 +3643,7 @@ app.MapPost("/api/jobs/plan-looks", async (StartPlanLooksRequest body, FilmJobSe
     try
     {
         if (string.IsNullOrWhiteSpace(body.ProjectId))
-            return Results.BadRequest(new { ok = false, error = "projectId required" });
+            return Results.BadRequest(new { ok = false, error = ApiText.ProjectIdRequired });
         var job = await jobService.StartPlanLooksAsync(body);
         return Results.Accepted($"/api/jobs/{job.JobId}", new
         {
@@ -3659,7 +3671,7 @@ app.MapPost("/api/projects/{id}/characters/{charKey}/voice",
     {
         body ??= new UpdateCharacterVoiceRequest();
         if (string.IsNullOrWhiteSpace(charKey))
-            return Results.BadRequest(new { ok = false, error = "charKey required" });
+            return Results.BadRequest(new { ok = false, error = ApiText.CharKeyRequired });
         store.UpdateCharacterSeedText(
             id,
             charKey,
@@ -3698,7 +3710,7 @@ app.MapPost("/api/projects/{id}/characters/{charKey}/voice/clone-sample", async 
     try
     {
         if (string.IsNullOrWhiteSpace(charKey))
-            return Results.BadRequest(new { ok = false, error = "charKey required" });
+            return Results.BadRequest(new { ok = false, error = ApiText.CharKeyRequired });
         if (!req.HasFormContentType)
             return Results.BadRequest(new { ok = false, error = "multipart form required (field: file)" });
 
@@ -3740,8 +3752,8 @@ app.MapGet("/api/projects/{id}/characters/{charKey}/voice/clone-sample",
         var ext = Path.GetExtension(path).ToLowerInvariant();
         var contentType = ext switch
         {
-            ".mp3" => "audio/mpeg",
-            ".wav" => "audio/wav",
+            ".mp3" => SpecializedMimeType.AudioMpeg.ToMimeTypeString(),
+            ".wav" => SpecializedMimeType.AudioWav.ToMimeTypeString(),
             ".m4a" or ".aac" => "audio/mp4",
             ".ogg" => "audio/ogg",
             _ => "audio/webm",
@@ -3794,7 +3806,7 @@ app.MapPost("/api/projects/{id}/characters/{charKey}/voice/clone", async (
     try
     {
         if (string.IsNullOrWhiteSpace(charKey))
-            return Results.BadRequest(new { ok = false, error = "charKey required" });
+            return Results.BadRequest(new { ok = false, error = ApiText.CharKeyRequired });
         // Unified router: catalog voice_model_name (or body.Model) → Fal MiniMax or ElevenLabs.
         var result = await apply.ApplyFromSampleAsync(
             id, charKey, modelOverride: body?.Model, ct: ct);
@@ -3839,7 +3851,7 @@ app.MapPost("/api/projects/{id}/characters/{charKey}/voice/speak", async (
     try
     {
         if (string.IsNullOrWhiteSpace(charKey))
-            return Results.BadRequest(new { ok = false, error = "charKey required" });
+            return Results.BadRequest(new { ok = false, error = ApiText.CharKeyRequired });
         var text = body?.Text?.Trim();
         if (string.IsNullOrWhiteSpace(text))
             return Results.BadRequest(new { ok = false, error = "text required" });
@@ -3890,12 +3902,12 @@ app.MapPost("/api/projects/{id}/characters/{charKey}/voice/speak", async (
         var providerId = entry?.ProviderId
                          ?? (string.IsNullOrWhiteSpace(seedProvider) ? null : seedProvider)
                          ?? "unknown";
-        var useEleven = providerId.Equals("elevenlabs", StringComparison.OrdinalIgnoreCase)
+        var useEleven = providerId.Equals(ApiText.ElevenLabsClient, StringComparison.OrdinalIgnoreCase)
                         || (entry?.Provider == ModelProviderFamily.ElevenLabs)
                         || voiceId.StartsWith("mock_", StringComparison.OrdinalIgnoreCase);
 
         byte[]? audioBytes = null;
-        string contentType = "audio/mpeg";
+        string contentType = SpecializedMimeType.AudioMpeg.ToMimeTypeString();
         string fileExt = ".mp3";
         string? clientUrl = null;
         string? error = null;
@@ -3909,7 +3921,7 @@ app.MapPost("/api/projects/{id}/characters/{charKey}/voice/speak", async (
                                ?? SupportedModelCatalog.Find("eleven_multilingual_v2", ModelCapability.Voice)?.Id
                                ?? model
                                ?? "eleven_multilingual_v2";
-            var tts = await voiceClient.TextToSpeechAsync(voiceId!, text, speakModelId, ct);
+            var tts = await voiceClient.TextToSpeechAsync(voiceId, text, speakModelId, ct);
             if (!tts.Ok || tts.AudioBytes is not { Length: > 0 })
             {
                 error = tts.Error ?? "Speech synthesis failed";
@@ -3917,7 +3929,7 @@ app.MapPost("/api/projects/{id}/characters/{charKey}/voice/speak", async (
             else
             {
                 audioBytes = tts.AudioBytes;
-                contentType = tts.ContentType ?? "audio/mpeg";
+                contentType = tts.ContentType ?? SpecializedMimeType.AudioMpeg.ToMimeTypeString();
                 fileExt = tts.FileExtension ?? ".mp3";
                 usedMock = tts.UsedMock;
             }
@@ -3929,7 +3941,7 @@ app.MapPost("/api/projects/{id}/characters/{charKey}/voice/speak", async (
             var speakModelId = entry?.Id
                                ?? SupportedModelCatalog.Find("fal-ai/minimax/speech-02-hd", ModelCapability.Voice)?.Id
                                ?? model;
-            var audioUrl = await voiceClone.SynthesizeSpeechAsync(text, voiceId!, speakModelId, ct);
+            var audioUrl = await voiceClone.SynthesizeSpeechAsync(text, voiceId, speakModelId, ct);
             if (string.IsNullOrWhiteSpace(audioUrl))
             {
                 error = "Speech synthesis failed — see server logs.";
@@ -3943,7 +3955,7 @@ app.MapPost("/api/projects/{id}/characters/{charKey}/voice/speak", async (
                     if (resp.IsSuccessStatusCode)
                     {
                         audioBytes = await resp.Content.ReadAsByteArrayAsync(ct);
-                        contentType = resp.Content.Headers.ContentType?.MediaType ?? "audio/mpeg";
+                        contentType = resp.Content.Headers.ContentType?.MediaType ?? SpecializedMimeType.AudioMpeg.ToMimeTypeString();
                     }
                     else
                     {
@@ -4035,7 +4047,7 @@ app.MapPost("/api/projects/{id}/media/lip-sync", async (
             return Results.BadRequest(new { ok = false, error = "Connect a lip-sync service (FAL_API_KEY) in Configuration." });
 
         var form = await req.ReadFormAsync(ct);
-        var videoFile = form.Files.GetFile("video");
+        var videoFile = form.Files.GetFile(ApiText.VideoFolder);
         var audioFile = form.Files.GetFile("audio");
         if (videoFile is null || videoFile.Length == 0)
             return Results.BadRequest(new { ok = false, error = "No video file (field: video)" });
@@ -4055,7 +4067,7 @@ app.MapPost("/api/projects/{id}/media/lip-sync", async (
 
         var resultUrl = await lipSync.GenerateLipSyncAsync(
             videoTemp, audioTemp, model,
-            string.IsNullOrWhiteSpace(syncMode) ? "cut_off" : syncMode!,
+            string.IsNullOrWhiteSpace(syncMode) ? "cut_off" : syncMode,
             onProgress: null, ct);
         await telemetry.LogApiCallAsync(new ApiCallTelemetry
         {
@@ -4135,7 +4147,7 @@ app.MapPost("/api/projects/{id}/characters/{charKey}/voice/apply-clone", async (
     try
     {
         if (string.IsNullOrWhiteSpace(charKey))
-            return Results.BadRequest(new { ok = false, error = "charKey required" });
+            return Results.BadRequest(new { ok = false, error = ApiText.CharKeyRequired });
         var result = await apply.ApplyFromSampleAsync(id, charKey, ct: ct);
         if (!result.Ok)
             return Results.BadRequest(new { ok = false, error = result.Error });
@@ -4178,11 +4190,11 @@ app.MapPost("/api/projects/{id}/characters/{charKey}/voice/apply-catalog", async
     {
         body ??= new ApplyCatalogVoiceRequest();
         if (string.IsNullOrWhiteSpace(charKey))
-            return Results.BadRequest(new { ok = false, error = "charKey required" });
+            return Results.BadRequest(new { ok = false, error = ApiText.CharKeyRequired });
         if (string.IsNullOrWhiteSpace(body.ProviderVoiceId))
             return Results.BadRequest(new { ok = false, error = "providerVoiceId required" });
         var result = await apply.ApplyCatalogVoiceAsync(
-            id, charKey, body.ProviderVoiceId!, body.DisplayName, body.PreviewText, ct);
+            id, charKey, body.ProviderVoiceId, body.DisplayName, body.PreviewText, ct);
         if (!result.Ok)
             return Results.BadRequest(new { ok = false, error = result.Error });
         return Results.Ok(new
@@ -4217,10 +4229,10 @@ app.MapGet("/api/projects/{id}/characters/{charKey}/voice/tts-preview",
         var ext = Path.GetExtension(path).ToLowerInvariant();
         var contentType = ext switch
         {
-            ".mp3" => "audio/mpeg",
-            ".wav" => "audio/wav",
+            ".mp3" => SpecializedMimeType.AudioMpeg.ToMimeTypeString(),
+            ".wav" => SpecializedMimeType.AudioWav.ToMimeTypeString(),
             ".m4a" => "audio/mp4",
-            _ => "application/octet-stream",
+            _ => SpecializedMimeType.ApplicationOctetStream.ToMimeTypeString(),
         };
         return Results.File(path, contentType, Path.GetFileName(path));
     }
@@ -4681,7 +4693,7 @@ app.MapPost("/api/projects/{id}/push", async (
         if (body?.CommitFirst == true)
         {
             commit = await git.CommitProjectStateAsync(
-                dir, user.UserId ?? "PageToMovie", body?.Message ?? "Project update");
+                dir, user.UserId ?? "PageToMovie", body.Message ?? "Project update");
         }
 
         var push = await git.PushProjectAsync(dir, proj.Id);
@@ -4978,8 +4990,8 @@ app.MapPost("/api/projects/{id}/invites", async (
         if (await RequireProjectOwnerOrAdmin(id, store, user, "Only the project owner or an admin can invite collaborators.", ct) is { } forbidden)
             return forbidden;
 
-        var targetHandle = string.IsNullOrWhiteSpace(body?.TargetHandle) ? null : body!.TargetHandle!.TrimStart('@').Trim();
-        var targetEmail = string.IsNullOrWhiteSpace(body?.TargetEmail) ? null : body!.TargetEmail!.Trim();
+        var targetHandle = string.IsNullOrWhiteSpace(body?.TargetHandle) ? null : body.TargetHandle.TrimStart('@').Trim();
+        var targetEmail = string.IsNullOrWhiteSpace(body?.TargetEmail) ? null : body.TargetEmail.Trim();
         if (targetHandle is null && targetEmail is null)
             return Results.BadRequest(new { ok = false, error = "A handle or email is required." });
 
@@ -5045,8 +5057,8 @@ app.MapPost("/api/invites/accept", async (
 
     try
     {
-        var fork = await store.ForkProjectAsync(outcome.ProjectId, user.UserId!, isInvite: true, ct);
-        await books.LinkForkAsync(outcome.ProjectId, user.UserId!, fork.Id, invitationAuthorized: true, ct);
+        var fork = await store.ForkProjectAsync(outcome.ProjectId, user.UserId, isInvite: true, ct);
+        await books.LinkForkAsync(outcome.ProjectId, user.UserId, fork.Id, invitationAuthorized: true, ct);
         return Results.Ok(new { ok = true, projectId = fork.Id, title = fork.Title });
     }
     catch (Exception ex)
@@ -5095,8 +5107,8 @@ app.MapPost("/api/projects/{id}/fork", async (
 
     try
     {
-        var fork = await store.ForkProjectAsync(id, user.UserId!, ct: ct);
-        await books.LinkForkAsync(id, user.UserId!, fork.Id, invitationAuthorized: false, ct);
+        var fork = await store.ForkProjectAsync(id, user.UserId, ct: ct);
+        await books.LinkForkAsync(id, user.UserId, fork.Id, invitationAuthorized: false, ct);
         return Results.Ok(new { ok = true, id = fork.Id, title = fork.Title, parentProjectId = fork.ParentProjectId, visibilityMode = fork.VisibilityMode });
     }
     catch (Exception ex)
@@ -5143,7 +5155,7 @@ app.MapGet("/api/projects/{id}/characters/{charKey}/voice/audio/status", (
     try
     {
         if (string.IsNullOrWhiteSpace(charKey))
-            return Results.BadRequest(new { ok = false, error = "charKey required" });
+            return Results.BadRequest(new { ok = false, error = ApiText.CharKeyRequired });
         var info = voices.GetCacheInfo(id, charKey, voiceProfile, voiceLabel, sampleText, displayName: null);
         return Results.Ok(new VoicePreviewStatusDto
         {
@@ -5173,12 +5185,12 @@ app.MapGet("/api/projects/{id}/characters/{charKey}/voice/audio", (
     try
     {
         if (string.IsNullOrWhiteSpace(charKey))
-            return Results.BadRequest(new { ok = false, error = "charKey required" });
+            return Results.BadRequest(new { ok = false, error = ApiText.CharKeyRequired });
         var path = voices.GetSampleMediaPath(id, charKey);
         if (path is null)
             return Results.NotFound(new { ok = false, error = "No voice sample yet — generate one first." });
         var isMp3 = path.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase);
-        var contentType = isMp3 ? "audio/mpeg" : "video/mp4";
+        var contentType = isMp3 ? SpecializedMimeType.AudioMpeg.ToMimeTypeString() : SpecializedMimeType.VideoMp4.ToMimeTypeString();
         var fileName = isMp3 ? $"{charKey}_voice.mp3" : $"{charKey}_voice.mp4";
         return Results.File(path, contentType, fileDownloadName: fileName, enableRangeProcessing: true);
     }
@@ -5206,7 +5218,7 @@ app.MapPost("/api/projects/{id}/characters/{charKey}/look", async (
     {
         body ??= new UpdateCharacterLookRequest();
         if (string.IsNullOrWhiteSpace(charKey))
-            return Results.BadRequest(new { ok = false, error = "charKey required" });
+            return Results.BadRequest(new { ok = false, error = ApiText.CharKeyRequired });
         var uidLook = user.UserId ?? "";
         if (!string.IsNullOrWhiteSpace(uidLook))
         {
@@ -5232,7 +5244,7 @@ app.MapPost("/api/projects/{id}/characters/{charKey}/look", async (
         var existing = store.GetCharacterSeed(id, charKey);
         if (existing is not null)
         {
-            if (existing.Value.TryGetProperty("description", out var d0))
+            if (existing.Value.TryGetProperty(ApiText.DescriptionKey, out var d0))
                 storedDesc = d0.GetString();
             if (existing.Value.TryGetProperty("visual_lock", out var v0))
                 storedVis = v0.GetString();
@@ -5288,7 +5300,7 @@ app.MapPost("/api/projects/{id}/characters/{charKey}/look", async (
         string? savedVis = null;
         if (seed is not null)
         {
-            if (seed.Value.TryGetProperty("description", out var dEl))
+            if (seed.Value.TryGetProperty(ApiText.DescriptionKey, out var dEl))
                 savedDesc = dEl.GetString();
             if (seed.Value.TryGetProperty("visual_lock", out var vEl))
                 savedVis = vEl.GetString();
@@ -5499,7 +5511,7 @@ app.MapPost("/api/projects/{id}/characters/{charKey}/upload-ref", async (
             return Results.BadRequest(new { ok = false, error = "No image file in form (field name: file)" });
 
         var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
-        if (ext is not (".png" or ".jpg" or ".jpeg" or ".webp" or ".gif" or ".bmp"))
+        if (ext is not (".png" or ".jpg" or ApiText.JpegExtension or ".webp" or ".gif" or ".bmp"))
             return Results.BadRequest(new { ok = false, error = "Use a PNG, JPG, WEBP, or GIF image." });
 
         if (file.Length > 25 * 1024 * 1024)
@@ -5575,11 +5587,11 @@ app.MapPost("/api/projects/{id}/characters/{charKey}/delete-image",
 });
 
 static string GuessImageContentType(string path) =>
-    path.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ? "image/png"
+    path.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ? SpecializedMimeType.ImagePng.ToMimeTypeString()
     : path.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) ||
-      path.EndsWith(".jpeg", StringComparison.OrdinalIgnoreCase) ? "image/jpeg"
+      path.EndsWith(ApiText.JpegExtension, StringComparison.OrdinalIgnoreCase) ? "image/jpeg"
     : path.EndsWith(".webp", StringComparison.OrdinalIgnoreCase) ? "image/webp"
-    : "application/octet-stream";
+    : SpecializedMimeType.ApplicationOctetStream.ToMimeTypeString();
 
 // ---- Adaptation (book / Stage 1 / Stage 2 status + jobs) ----
 app.MapGet("/api/projects/{id}/adaptation", async (string id, ProjectStore store, IUserContext user, CancellationToken ct) =>
@@ -5612,7 +5624,7 @@ app.MapPost("/api/jobs/book-prepare", async (
     try
     {
         if (string.IsNullOrWhiteSpace(body.ProjectId))
-            return Results.BadRequest(new { ok = false, error = "projectId required" });
+            return Results.BadRequest(new { ok = false, error = ApiText.ProjectIdRequired });
         var job = await jobService.StartBookPrepareAsync(body);
         return Results.Accepted($"/api/jobs/{job.JobId}", new
         {
@@ -5641,7 +5653,7 @@ app.MapPost("/api/jobs/book-import", async (
     try
     {
         if (string.IsNullOrWhiteSpace(body.ProjectId))
-            return Results.BadRequest(new { ok = false, error = "projectId required" });
+            return Results.BadRequest(new { ok = false, error = ApiText.ProjectIdRequired });
         var job = await jobService.StartBookImportAsync(body);
         return Results.Accepted($"/api/jobs/{job.JobId}", new
         {
@@ -5742,7 +5754,7 @@ app.MapPost("/api/books/{bookId}/artifacts", async (
     static string Required(JsonElement el, string name) =>
         el.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String &&
         !string.IsNullOrWhiteSpace(value.GetString())
-            ? value.GetString()!
+            ? value.GetString()
             : throw new ArgumentException($"{name} required");
     var artifact = await books.RegisterArtifactAsync(
         bookId, user.UserId,
@@ -6435,7 +6447,7 @@ app.MapPost("/api/jobs/stage1", async (
     try
     {
         if (string.IsNullOrWhiteSpace(body.ProjectId))
-            return Results.BadRequest(new { ok = false, error = "projectId required" });
+            return Results.BadRequest(new { ok = false, error = ApiText.ProjectIdRequired });
         var job = await jobService.StartStage1Async(body);
         return Results.Accepted($"/api/jobs/{job.JobId}", new
         {
@@ -6462,7 +6474,7 @@ app.MapPost("/api/jobs/stage2", async (
     try
     {
         if (string.IsNullOrWhiteSpace(body.ProjectId))
-            return Results.BadRequest(new { ok = false, error = "projectId required" });
+            return Results.BadRequest(new { ok = false, error = ApiText.ProjectIdRequired });
         var job = await jobService.StartStage2Async(body);
         return Results.Accepted($"/api/jobs/{job.JobId}", new
         {
@@ -6500,9 +6512,9 @@ app.MapPost("/api/jobs/youtube-upload", async (
         if (request.HasFormContentType)
         {
             var form = await request.ReadFormAsync(ct);
-            projectId = form["projectId"].ToString();
+            projectId = form[ApiText.ProjectIdKey].ToString();
             title = form["title"].ToString();
-            description = form["description"].ToString();
+            description = form[ApiText.DescriptionKey].ToString();
             privacyStatus = form["privacyStatus"].ToString();
             file = form.Files.GetFile("file") ?? form.Files.FirstOrDefault();
         }
@@ -6519,12 +6531,12 @@ app.MapPost("/api/jobs/youtube-upload", async (
         }
 
         if (string.IsNullOrWhiteSpace(projectId))
-            return Results.BadRequest(new { ok = false, error = "projectId required" });
+            return Results.BadRequest(new { ok = false, error = ApiText.ProjectIdRequired });
 
         if (file is not null && file.Length > 0)
         {
             var pDir = await store.GetProjectDirAsync(projectId, ct);
-            var videoDir = Path.Combine(pDir, "assets", "video");
+            var videoDir = Path.Combine(pDir, ApiText.AssetsFolder, ApiText.VideoFolder);
             Directory.CreateDirectory(videoDir);
             var savePath = Path.Combine(videoDir, "wip_movie.mp4");
             await using var stream = File.Create(savePath);
@@ -6533,7 +6545,7 @@ app.MapPost("/api/jobs/youtube-upload", async (
 
         var req = new StartYouTubeUploadRequest
         {
-            ProjectId = projectId!,
+            ProjectId = projectId,
             Title = title,
             Description = description,
             PrivacyStatus = privacyStatus ?? "unlisted",
@@ -6775,7 +6787,7 @@ app.MapPost("/api/jobs/clip-auto-review-batch", async (StartClipAutoReviewBatchR
     try
     {
         if (string.IsNullOrWhiteSpace(body.ProjectId))
-            return Results.BadRequest(new { ok = false, error = "projectId required" });
+            return Results.BadRequest(new { ok = false, error = ApiText.ProjectIdRequired });
         var job = await jobService.StartClipAutoReviewBatchAsync(body);
         return Results.Accepted($"/api/jobs/{job.JobId}", new
         {
@@ -6895,7 +6907,7 @@ app.MapPost("/api/projects/{id}/scenes/{scene:int}/clips/{clip:int}/verify-dialo
         if (httpContext.Request.HasFormContentType)
         {
             var form = await httpContext.Request.ReadFormAsync(ct);
-            var file = form.Files.GetFile("video");
+            var file = form.Files.GetFile(ApiText.VideoFolder);
             if (file is { Length: > 0 })
             {
                 tempFilePath = Path.Combine(Path.GetTempPath(), $"dialogue_verify_{Guid.NewGuid():N}.mp4");
@@ -6917,7 +6929,14 @@ app.MapPost("/api/projects/{id}/scenes/{scene:int}/clips/{clip:int}/verify-dialo
     {
         if (!string.IsNullOrWhiteSpace(tempFilePath) && File.Exists(tempFilePath))
         {
-            try { File.Delete(tempFilePath); } catch { }
+            try
+            {
+                File.Delete(tempFilePath);
+            }
+            catch (Exception)
+            {
+                // Best-effort cleanup of a temp upload that may already be gone.
+            }
         }
     }
 });
@@ -6930,12 +6949,12 @@ app.MapPost("/api/projects/{id}/scenes/{scene:int}/clips/{clip:int}/upload", asy
         return Results.BadRequest(new { ok = false, error = "Form data expected." });
 
     var form = await httpContext.Request.ReadFormAsync(ct);
-    var file = form.Files.GetFile("video");
+    var file = form.Files.GetFile(ApiText.VideoFolder);
     if (file is null || file.Length < 1024)
         return Results.BadRequest(new { ok = false, error = "Valid MP4 file expected." });
 
     var projectDir = await store.GetProjectDirAsync(id, ct);
-    var destDir = Path.Combine(projectDir, "assets", "video");
+    var destDir = Path.Combine(projectDir, ApiText.AssetsFolder, ApiText.VideoFolder);
     Directory.CreateDirectory(destDir);
     // "extend-source": the client's tail-trimmed continuation input for video-extend (see
     // FilmJobService.GenerateOneClipAsync) — fixed name, ignores any client-supplied filename so
@@ -6977,12 +6996,11 @@ app.MapPost("/api/jobs/scene-music", async (
         return denied;
     try
     {
-        var projectId = body?.ProjectId;
-        if (string.IsNullOrWhiteSpace(projectId))
-            return Results.BadRequest(new { ok = false, error = "projectId required" });
-        if (body is null || body.Scene <= 0)
+        if (body is null || string.IsNullOrWhiteSpace(body.ProjectId))
+            return Results.BadRequest(new { ok = false, error = ApiText.ProjectIdRequired });
+        if (body.Scene <= 0)
             return Results.BadRequest(new { ok = false, error = "scene required" });
-        var job = await jobService.StartSceneMusicGenAsync(projectId.Trim(), body.Scene, body.Model, body.IsVocal);
+        var job = await jobService.StartSceneMusicGenAsync(body.ProjectId.Trim(), body.Scene, body.Model, body.IsVocal);
         return Results.Accepted($"/api/jobs/{job.JobId}", new
         {
             ok = true,
@@ -7060,7 +7078,7 @@ app.MapGet("/api/me/api-calls", async (
     if (AuthGate.RequireLogin(user, opts) is { } denied)
         return denied;
     var rows = await userDb.ListUserApiCallsAsync(user.UserId, take ?? 100, ct);
-    var totalUsd = rows.Where(r => r.EstimatedUsd is > 0).Sum(r => r.EstimatedUsd!.Value);
+    var totalUsd = rows.Where(r => r.EstimatedUsd is > 0).Sum(r => r.EstimatedUsd.GetValueOrDefault());
     return Results.Ok(new
     {
         ok = true,
@@ -7088,7 +7106,7 @@ app.MapGet("/api/capabilities", (
 {
     var caps = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase)
     {
-        ["video"] = video.IsConfigured,
+        [ApiText.VideoFolder] = video.IsConfigured,
         ["image"] = image.IsConfigured,
         ["vision"] = vision.IsConfigured,
         ["review"] = vision.IsConfigured,   // multimodal auto-review runs on the vision client
@@ -7103,8 +7121,9 @@ app.MapGet("/api/capabilities", (
     var forcedOff = Environment.GetEnvironmentVariable("PAGETOMOVIE_FAKE_DISABLED_CAPABILITIES");
     if (!string.IsNullOrWhiteSpace(forcedOff))
     {
-        foreach (var c in forcedOff.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-            if (caps.ContainsKey(c)) caps[c] = false;
+        foreach (var c in forcedOff.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                     .Where(caps.ContainsKey))
+            caps[c] = false;
     }
 
     return Results.Ok(new { ok = true, capabilities = caps });
@@ -7398,7 +7417,7 @@ app.MapGet("/api/projects/{id}/scenes/{sceneNumber:int}/clips/{clipNumber:int}/v
         }
         if (path is null)
             return Results.NotFound(new { ok = false, error = "clip video not found" });
-        return Results.File(path, "video/mp4", enableRangeProcessing: true);
+        return Results.File(path, SpecializedMimeType.VideoMp4.ToMimeTypeString(), enableRangeProcessing: true);
     }
     catch (Exception ex)
     {
@@ -7428,7 +7447,7 @@ app.MapGet("/api/projects/{id}/scenes/{sceneNumber:int}/clips/{clipNumber:int}/p
         var projectDir = await store.GetProjectDirAsync(id, ct);
         string? currentPrompt = null;
         var currentMetaPath = Path.Combine(
-            projectDir, "assets", "video", "prompts", $"S{sceneNumber:D2}C{clipNumber:D2}.meta.json");
+            projectDir, ApiText.AssetsFolder, ApiText.VideoFolder, "prompts", $"S{sceneNumber:D2}C{clipNumber:D2}.meta.json");
         if (File.Exists(currentMetaPath))
         {
             try
@@ -7473,7 +7492,7 @@ app.MapGet("/api/projects/{id}/scenes/{sceneNumber:int}/composite",
         var path = store.ResolveCompositePath(id, sceneNumber);
         if (path is null)
             return Results.NotFound(new { ok = false, error = "composite not found" });
-        return Results.File(path, "video/mp4", enableRangeProcessing: true);
+        return Results.File(path, SpecializedMimeType.VideoMp4.ToMimeTypeString(), enableRangeProcessing: true);
     }
     catch (Exception ex)
     {
@@ -7492,12 +7511,12 @@ app.MapGet("/api/projects/{id}/movie", async (string id, ProjectStore store, IUs
         if (path is null || !File.Exists(path))
         {
             var pDir = await store.GetProjectDirAsync(id, ct);
-            var altWip = Path.Combine(pDir, "assets", "video", "wip_movie.mp4");
+            var altWip = Path.Combine(pDir, ApiText.AssetsFolder, ApiText.VideoFolder, "wip_movie.mp4");
             if (File.Exists(altWip)) path = altWip;
         }
         if (path is null || !File.Exists(path))
             return Results.NotFound(new { ok = false, error = "Full movie file not found on server — build or play movie first." });
-        return Results.File(path, "video/mp4", fileDownloadName: $"{id}_full.mp4", enableRangeProcessing: true);
+        return Results.File(path, SpecializedMimeType.VideoMp4.ToMimeTypeString(), fileDownloadName: $"{id}_full.mp4", enableRangeProcessing: true);
     }
     catch (Exception ex)
     {
@@ -7515,7 +7534,7 @@ app.MapGet("/api/projects/{id}/movie/wip", (string id, ProjectStore store, IUser
         var path = store.ResolveWipMoviePath(id);
         if (path is null)
             return Results.NotFound(new { ok = false, error = "WIP movie not found — Play first so the cut is built" });
-        return Results.File(path, "video/mp4", enableRangeProcessing: true);
+        return Results.File(path, SpecializedMimeType.VideoMp4.ToMimeTypeString(), enableRangeProcessing: true);
     }
     catch (Exception ex)
     {
@@ -7573,12 +7592,12 @@ app.MapGet("/api/projects/{id}/media/sync", async (
         var projectDir = await store.GetProjectDirAsync(id, ct);
         // Media that may have arrived via full project import (video, music, audio, history).
         var list = new List<object>();
-        var assetsRoot = Path.Combine(projectDir, "assets");
+        var assetsRoot = Path.Combine(projectDir, ApiText.AssetsFolder);
         var mediaExts = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             ".mp4", ".webm", ".mov", ".mkv", ".m4v",
             ".mp3", ".wav", ".m4a", ".ogg", ".aac", ".flac", ".opus",
-            ".png", ".jpg", ".jpeg", ".webp", ".gif",
+            ".png", ".jpg", ApiText.JpegExtension, ".webp", ".gif",
         };
 
         if (Directory.Exists(assetsRoot))
@@ -7674,15 +7693,15 @@ app.MapGet("/api/projects/{id}/media/file", async (
         var ext = Path.GetExtension(fullPath).ToLowerInvariant();
         var contentType = ext switch
         {
-            ".mp4" => "video/mp4",
+            ".mp4" => SpecializedMimeType.VideoMp4.ToMimeTypeString(),
             ".json" => JsonKeys.ApplicationJson,
-            ".png" => "image/png",
-            ".jpg" or ".jpeg" => "image/jpeg",
-            ".mp3" => "audio/mpeg",
-            ".wav" => "audio/wav",
+            ".png" => SpecializedMimeType.ImagePng.ToMimeTypeString(),
+            ".jpg" or ApiText.JpegExtension => "image/jpeg",
+            ".mp3" => SpecializedMimeType.AudioMpeg.ToMimeTypeString(),
+            ".wav" => SpecializedMimeType.AudioWav.ToMimeTypeString(),
             ".m4a" => "audio/mp4",
             ".webm" => "audio/webm",
-            _ => "application/octet-stream"
+            _ => SpecializedMimeType.ApplicationOctetStream.ToMimeTypeString()
         };
 
         return Results.File(fullPath, contentType, Path.GetFileName(fullPath), enableRangeProcessing: true);
@@ -7706,7 +7725,7 @@ app.MapGet("/api/share/{token}", async (string token, MediaShareService shares, 
         var path = store.ResolveWipMoviePath(rec.ProjectId);
         if (path is null)
             return Results.NotFound(new { ok = false, error = "Shared movie is no longer available" });
-        return Results.File(path, "video/mp4", enableRangeProcessing: true);
+        return Results.File(path, SpecializedMimeType.VideoMp4.ToMimeTypeString(), enableRangeProcessing: true);
     }
     catch (Exception ex)
     {
@@ -7798,21 +7817,18 @@ app.MapGet("/api/demos", async (
 
     var visibilityMap = new Dictionary<string, string>();
     var forkableProjectIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-    foreach (var d in list)
+    foreach (var d in list.Where(x => !string.IsNullOrWhiteSpace(x.ProjectId)))
     {
-        if (!string.IsNullOrWhiteSpace(d.ProjectId))
+        try
         {
-            try
+            var proj = await store.GetProjectAsync(d.ProjectId, ct);
+            if (proj is not null)
             {
-                var proj = await store.GetProjectAsync(d.ProjectId, ct);
-                if (proj is not null)
-                {
-                    visibilityMap[d.Id] = proj.VisibilityMode.ToString();
-                    forkableProjectIds.Add(d.ProjectId);
-                }
+                visibilityMap[d.Id] = proj.VisibilityMode.ToString();
+                forkableProjectIds.Add(d.ProjectId);
             }
-            catch { /* skip */ }
         }
+        catch { /* project lookup is best-effort for the public gallery */ }
     }
 
     var sortKey = (sort ?? "top").Trim().ToLowerInvariant();
@@ -7837,7 +7853,7 @@ app.MapGet("/api/demos", async (
             d,
             counts.GetValueOrDefault(d.Id),
             mine.Contains(d.Id),
-            canFork: !string.IsNullOrWhiteSpace(d.ProjectId) && forkableProjectIds.Contains(d.ProjectId!),
+            canFork: d.ProjectId is { Length: > 0 } pid && forkableProjectIds.Contains(pid),
             visibilityMode: visibilityMap.GetValueOrDefault(d.Id, "Private"))),
     });
 });
@@ -7854,7 +7870,7 @@ app.MapGet("/api/admin/demos", async (
     if (AuthGate.RequireLogin(user, opts) is { } denied)
         return denied;
     if (!user.IsAdmin)
-        return Results.Json(new { ok = false, error = "Admin only" }, statusCode: StatusCodes.Status403Forbidden);
+        return Results.Json(new { ok = false, error = ApiText.AdminOnly }, statusCode: StatusCodes.Status403Forbidden);
 
     var st = string.IsNullOrWhiteSpace(status) ? null : status.Trim();
     var list = await demos.ListAsync(take ?? 100, st, ct);
@@ -7881,7 +7897,7 @@ app.MapPost("/api/admin/demos/from-youtube", async (
     if (AuthGate.RequireLogin(user, opts) is { } denied)
         return denied;
     if (!user.IsAdmin)
-        return Results.Json(new { ok = false, error = "Admin only" }, statusCode: StatusCodes.Status403Forbidden);
+        return Results.Json(new { ok = false, error = ApiText.AdminOnly }, statusCode: StatusCodes.Status403Forbidden);
     if (body is null || string.IsNullOrWhiteSpace(body.YoutubeIdOrUrl) || string.IsNullOrWhiteSpace(body.Title))
         return Results.BadRequest(new { ok = false, error = "youtubeIdOrUrl and title are required" });
     try
@@ -7916,7 +7932,7 @@ app.MapPost("/api/admin/demos/sync-youtube", async (
     if (AuthGate.RequireLogin(user, opts) is { } denied)
         return denied;
     if (!user.IsAdmin)
-        return Results.Json(new { ok = false, error = "Admin only" }, statusCode: StatusCodes.Status403Forbidden);
+        return Results.Json(new { ok = false, error = ApiText.AdminOnly }, statusCode: StatusCodes.Status403Forbidden);
     try
     {
         var (added, updated, total, skipped) = await channelSync.EnsureSyncedAsync(
@@ -7954,9 +7970,9 @@ app.MapGet("/api/demos/{demoId}", async (
 {
     var d = await demos.TryGetAsync(demoId, ct);
     if (d is null)
-        return Results.NotFound(new { ok = false, error = "Demo not found" });
+        return Results.NotFound(new { ok = false, error = ApiText.DemoNotFound });
     if (!demos.CanUserViewVideo(d, user.UserId, user.IsAdmin))
-        return Results.NotFound(new { ok = false, error = "Demo not found" });
+        return Results.NotFound(new { ok = false, error = ApiText.DemoNotFound });
     var count = await upvotes.GetCountAsync(demoId, ct);
     var me = await upvotes.HasUpvotedAsync(demoId, user.UserId, ct);
     if (user.IsAdmin)
@@ -7984,8 +8000,8 @@ app.MapPost("/api/demos/{demoId}/upvote", async (
     if (AuthGate.RequireLogin(user, opts) is { } denied)
         return denied;
     var d = await demos.TryGetAsync(demoId, ct);
-    if (d is null || !demos.IsPubliclyStreamable(d))
-        return Results.NotFound(new { ok = false, error = "Demo not found" });
+    if (d is null || !DemoCatalogService.IsPubliclyStreamable(d))
+        return Results.NotFound(new { ok = false, error = ApiText.DemoNotFound });
     if (!string.IsNullOrWhiteSpace(d.CreatedBy) &&
         string.Equals(d.CreatedBy, user.UserId, StringComparison.OrdinalIgnoreCase))
     {
@@ -7997,7 +8013,7 @@ app.MapPost("/api/demos/{demoId}/upvote", async (
         }, statusCode: StatusCodes.Status403Forbidden);
     }
 
-    await upvotes.TryAddAsync(demoId, user.UserId!, ct);
+    await upvotes.TryAddAsync(demoId, user.UserId, ct);
     var newCount = await upvotes.GetCountAsync(demoId, ct);
     return Results.Ok(new
     {
@@ -8026,8 +8042,8 @@ app.MapPost("/api/demos/{demoId}/fork", async (
         return denied;
 
     var d = await demos.TryGetAsync(demoId, ct);
-    if (d is null || !demos.IsPubliclyStreamable(d))
-        return Results.NotFound(new { ok = false, error = "Demo not found" });
+    if (d is null || !DemoCatalogService.IsPubliclyStreamable(d))
+        return Results.NotFound(new { ok = false, error = ApiText.DemoNotFound });
 
     var sourceId = (d.ProjectId ?? "").Trim();
     if (sourceId.Length == 0)
@@ -8053,12 +8069,12 @@ app.MapPost("/api/demos/{demoId}/fork", async (
             });
         }
 
-        // A demo already confirmed public via demos.IsPubliclyStreamable(d) above is exactly the
+        // A demo already confirmed public via DemoCatalogService.IsPubliclyStreamable(d) above is exactly the
         // "explicit authorization to fork" this endpoint's own doc comment promises — same bypass
         // ForkProjectAsync gives real invite-accepts, regardless of the source project's own
         // (possibly still-Private) VisibilityMode.
-        var fork = await store.ForkProjectAsync(sourceId, user.UserId!, isInvite: true, ct: ct);
-        await books.LinkForkAsync(sourceId, user.UserId!, fork.Id, invitationAuthorized: true, ct);
+        var fork = await store.ForkProjectAsync(sourceId, user.UserId, isInvite: true, ct: ct);
+        await books.LinkForkAsync(sourceId, user.UserId, fork.Id, invitationAuthorized: true, ct);
         return Results.Ok(new
         {
             ok = true,
@@ -8087,10 +8103,10 @@ app.MapDelete("/api/demos/{demoId}/upvote", async (
     if (AuthGate.RequireLogin(user, opts) is { } denied)
         return denied;
     var d = await demos.TryGetAsync(demoId, ct);
-    if (d is null || !demos.IsPubliclyStreamable(d))
-        return Results.NotFound(new { ok = false, error = "Demo not found" });
+    if (d is null || !DemoCatalogService.IsPubliclyStreamable(d))
+        return Results.NotFound(new { ok = false, error = ApiText.DemoNotFound });
 
-    await upvotes.TryRemoveAsync(demoId, user.UserId!, ct);
+    await upvotes.TryRemoveAsync(demoId, user.UserId, ct);
     var newCount = await upvotes.GetCountAsync(demoId, ct);
     return Results.Ok(new
     {
@@ -8167,9 +8183,9 @@ app.MapGet("/api/demos/{demoId}/video", async (
     // YouTube is the public source of truth — never stream server MP4 once YT id exists.
     if (!string.IsNullOrWhiteSpace(d.YoutubeId))
     {
-        var url = !string.IsNullOrWhiteSpace(d.YoutubeUrl)
-            ? d.YoutubeUrl!
-            : $"https://www.youtube.com/watch?v={d.YoutubeId.Trim()}";
+        var url = string.IsNullOrWhiteSpace(d.YoutubeUrl)
+            ? $"https://www.youtube.com/watch?v={d.YoutubeId.Trim()}"
+            : d.YoutubeUrl;
         return Results.Redirect(url);
     }
 
@@ -8181,7 +8197,7 @@ app.MapGet("/api/demos/{demoId}/video", async (
             error = "Film is uploading to YouTube — try the gallery again in a moment.",
             code = "awaiting_youtube",
         });
-    return Results.File(path, "video/mp4", enableRangeProcessing: true);
+    return Results.File(path, SpecializedMimeType.VideoMp4.ToMimeTypeString(), enableRangeProcessing: true);
 });
 
 /// <summary>Register client-side media hash (clips/exports) so the server need not store MP4s.</summary>
@@ -8224,7 +8240,7 @@ app.MapPost("/api/projects/{id}/media/register", async (
             var dir = await store.GetProjectDirAsync(id, ct);
             var rel = dto.RelativePath.Replace('/', Path.DirectorySeparatorChar);
             var full = Path.Combine(dir, rel);
-            Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+            Directory.CreateDirectory(Path.GetDirectoryName(full) ?? ".");
 
             // Curated/forkable source projects opt out of offload (project.json "keep_media_on_server":
             // true) so their clips stay server-side and remain available to forks + the voice-dub input.
@@ -8365,9 +8381,8 @@ app.MapGet("/api/projects/{id}/voice-capture/narrator-lines", async (
 
     var all = VoiceAlignmentStore.BuildDialogueLinesFromBlueprint(blueprint.RootElement, null);
     var scenesWithOther = new HashSet<int>();
-    foreach (var cl in all)
-        if (cl.Lines.Any(l => !IsTarget(l.CharacterKey)))
-            scenesWithOther.Add(cl.Scene);
+    foreach (var cl in all.Where(c => c.Lines.Any(l => !IsTarget(l.CharacterKey))))
+        scenesWithOther.Add(cl.Scene);
 
     var byScene = VoiceAlignmentStore.BuildDialogueLinesFromBlueprint(blueprint.RootElement, IsTarget)
         .GroupBy(c => c.Scene)
@@ -8394,7 +8409,7 @@ app.MapGet("/api/projects/{id}/voice-capture/phrases", async (
 {
     if (AuthGate.RequireLogin(user, opts) is { } denied)
         return denied;
-    var path = Path.Combine(await store.GetProjectDirAsync(id, ct), "assets", "voice_capture", "phrases.json");
+    var path = Path.Combine(await store.GetProjectDirAsync(id, ct), ApiText.AssetsFolder, "voice_capture", "phrases.json");
     if (!File.Exists(path))
         return Results.Ok(new { ok = true, phrases = (VoiceCapturePhrases?)null });
     try
@@ -8417,7 +8432,7 @@ app.MapPost("/api/projects/{id}/voice-capture/phrases", async (
         return denied;
     if (body is null)
         return Results.BadRequest(new { ok = false, error = "phrases body required" });
-    var dir = Path.Combine(await store.GetProjectDirAsync(id, ct), "assets", "voice_capture");
+    var dir = Path.Combine(await store.GetProjectDirAsync(id, ct), ApiText.AssetsFolder, "voice_capture");
     Directory.CreateDirectory(dir);
     body.ProjectId = id;
     body.GeneratedAtUtc = DateTime.UtcNow;
@@ -8462,7 +8477,7 @@ app.MapGet("/api/projects/{id}/dialogue/timing", async (
 {
     if (AuthGate.RequireLogin(user, opts) is { } denied)
         return denied;
-    var path = Path.Combine(await store.GetProjectDirAsync(id, ct), "assets", "alignment", "dialogue_timing.json");
+    var path = Path.Combine(await store.GetProjectDirAsync(id, ct), ApiText.AssetsFolder, "alignment", "dialogue_timing.json");
     if (!File.Exists(path))
         return Results.Ok(new { ok = true, timing = (DialogueTimingDoc?)null });
     try
@@ -8487,7 +8502,7 @@ app.MapPost("/api/projects/{id}/dialogue/timing/scene", async (
     if (body is null || body.Scene <= 0)
         return Results.BadRequest(new { ok = false, error = "scene body with a scene number required" });
 
-    var dir = Path.Combine(await store.GetProjectDirAsync(id, ct), "assets", "alignment");
+    var dir = Path.Combine(await store.GetProjectDirAsync(id, ct), ApiText.AssetsFolder, "alignment");
     Directory.CreateDirectory(dir);
     var path = Path.Combine(dir, "dialogue_timing.json");
     var webOpts = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);
@@ -8531,7 +8546,7 @@ app.MapGet("/api/media/proxy/{token}", async (
         if (comma < 0 || !meta.Contains("base64", StringComparison.OrdinalIgnoreCase))
             return Results.BadRequest(new { ok = false, error = "Unsupported data URL" });
         var dataCtype = meta.Split(';')[0];
-        if (string.IsNullOrWhiteSpace(dataCtype)) dataCtype = "application/octet-stream";
+        if (string.IsNullOrWhiteSpace(dataCtype)) dataCtype = SpecializedMimeType.ApplicationOctetStream.ToMimeTypeString();
         byte[] dataBytes;
         try { dataBytes = Convert.FromBase64String(url[(comma + 1)..]); }
         catch { return Results.BadRequest(new { ok = false, error = "Malformed data URL" }); }
@@ -8549,10 +8564,10 @@ app.MapGet("/api/media/proxy/{token}", async (
             return Results.NotFound(new { ok = false, error = "Fixture file not found" });
         var fixtureCtype = Path.GetExtension(fixturePath).ToLowerInvariant() switch
         {
-            ".wav" => "audio/wav",
-            ".mp3" => "audio/mpeg",
-            ".mp4" => "video/mp4",
-            _ => "application/octet-stream",
+            ".wav" => SpecializedMimeType.AudioWav.ToMimeTypeString(),
+            ".mp3" => SpecializedMimeType.AudioMpeg.ToMimeTypeString(),
+            ".mp4" => SpecializedMimeType.VideoMp4.ToMimeTypeString(),
+            _ => SpecializedMimeType.ApplicationOctetStream.ToMimeTypeString(),
         };
         var fixtureStream = File.OpenRead(fixturePath);
         return Results.Stream(fixtureStream, contentType: fixtureCtype, fileDownloadName: Path.GetFileName(fixturePath));
@@ -8566,21 +8581,24 @@ app.MapGet("/api/media/proxy/{token}", async (
         if (!resp.IsSuccessStatusCode)
         {
             var code = (int)resp.StatusCode;
-            resp.Dispose();
             return Results.Json(new { ok = false, error = $"Upstream HTTP {code}" }, statusCode: code);
         }
 
         var stream = await resp.Content.ReadAsStreamAsync(ct);
-        var ctype = resp.Content.Headers.ContentType?.ToString() ?? "video/mp4";
+        var ctype = resp.Content.Headers.ContentType?.ToString() ?? SpecializedMimeType.VideoMp4.ToMimeTypeString();
         // Results.Stream has no completion callback — RegisterForDisposeAsync guarantees resp is
         // disposed once the response body finishes writing, on every exit path (success or client abort).
         httpContext.Response.RegisterForDispose(resp);
+        resp = null;
         return Results.Stream(stream, contentType: ctype, fileDownloadName: "clip.mp4");
     }
     catch (Exception ex)
     {
-        resp?.Dispose();
         return Results.BadRequest(new { ok = false, error = ex.Message });
+    }
+    finally
+    {
+        resp?.Dispose();
     }
 });
 
@@ -8619,19 +8637,19 @@ app.MapPost("/api/demos", async (
         {
             var form = await request.ReadFormAsync();
             title = form["title"].ToString();
-            description = form["description"].ToString();
-            projectId = form["projectId"].ToString();
-            acceptedGuidelines = string.Equals(form["acceptedGuidelines"].ToString(), "true", StringComparison.OrdinalIgnoreCase)
-                                 || form["acceptedGuidelines"] == "1"
-                                 || form["acceptedGuidelines"] == "on";
+            description = form[ApiText.DescriptionKey].ToString();
+            projectId = form[ApiText.ProjectIdKey].ToString();
+            acceptedGuidelines = string.Equals(form[ApiText.AcceptedGuidelinesKey].ToString(), "true", StringComparison.OrdinalIgnoreCase)
+                                 || form[ApiText.AcceptedGuidelinesKey] == "1"
+                                 || form[ApiText.AcceptedGuidelinesKey] == "on";
             madeForKids = string.Equals(form["madeForKids"].ToString(), "true", StringComparison.OrdinalIgnoreCase);
             if (bool.TryParse(form["isAiSynthetic"].ToString(), out var aiForm)) isAiSynthetic = aiForm;
             privacyStatus = form["privacyStatus"].ToString();
             tagsRaw = form["tags"].ToString();
-            if (bool.TryParse(form["replaceExisting"].ToString(), out var reForm))
+            if (bool.TryParse(form[ApiText.ReplaceExistingKey].ToString(), out var reForm))
                 replaceExisting = reForm;
-            else if (string.Equals(form["replaceExisting"].ToString(), "0", StringComparison.OrdinalIgnoreCase) ||
-                     string.Equals(form["replaceExisting"].ToString(), "false", StringComparison.OrdinalIgnoreCase))
+            else if (string.Equals(form[ApiText.ReplaceExistingKey].ToString(), "0", StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(form[ApiText.ReplaceExistingKey].ToString(), "false", StringComparison.OrdinalIgnoreCase))
                 replaceExisting = false;
             file = form.Files.GetFile("file") ?? form.Files.FirstOrDefault();
         }
@@ -8640,9 +8658,9 @@ app.MapPost("/api/demos", async (
             using var doc = await JsonDocument.ParseAsync(request.Body);
             var root = doc.RootElement;
             if (root.TryGetProperty("title", out var t)) title = t.GetString();
-            if (root.TryGetProperty("description", out var d)) description = d.GetString();
-            if (root.TryGetProperty("projectId", out var p)) projectId = p.GetString();
-            if (root.TryGetProperty("acceptedGuidelines", out var ag))
+            if (root.TryGetProperty(ApiText.DescriptionKey, out var d)) description = d.GetString();
+            if (root.TryGetProperty(ApiText.ProjectIdKey, out var p)) projectId = p.GetString();
+            if (root.TryGetProperty(ApiText.AcceptedGuidelinesKey, out var ag))
                 acceptedGuidelines = ag.ValueKind == JsonValueKind.True
                                      || (ag.ValueKind == JsonValueKind.String
                                          && bool.TryParse(ag.GetString(), out var b) && b);
@@ -8653,7 +8671,7 @@ app.MapPost("/api/demos", async (
             if (root.TryGetProperty("privacyStatus", out var ps)) privacyStatus = ps.GetString();
             if (root.TryGetProperty("tags", out var tg) && tg.ValueKind == JsonValueKind.String)
                 tagsRaw = tg.GetString();
-            if (root.TryGetProperty("replaceExisting", out var re) && re.ValueKind == JsonValueKind.False)
+            if (root.TryGetProperty(ApiText.ReplaceExistingKey, out var re) && re.ValueKind == JsonValueKind.False)
                 replaceExisting = false;
         }
 
@@ -8703,12 +8721,11 @@ app.MapPost("/api/demos", async (
         await demos.EnsureUserMayPublishAsync(user.UserId, user.IsAdmin, ct);
 
         DemoCatalogService.DemoEntry entry;
-        var autoPublic = false;
         var replacedExisting = false;
 
         // Item 11: re-publish → attach new movie to existing public demo and V2 YouTube replace.
         var existingPublic = replaceExisting
-            ? await demos.FindPublicDemoForProjectAsync(projectId!, user.UserId, ct)
+            ? await demos.FindPublicDemoForProjectAsync(projectId, user.UserId, ct)
             : null;
         var canReplace = existingPublic is not null
                          && !string.IsNullOrWhiteSpace(existingPublic.YoutubeId);
@@ -8717,7 +8734,7 @@ app.MapPost("/api/demos", async (
         {
             var ctHeader = file.ContentType ?? "";
             if (!string.IsNullOrWhiteSpace(ctHeader) &&
-                !ctHeader.Contains("video", StringComparison.OrdinalIgnoreCase) &&
+                !ctHeader.Contains(ApiText.VideoFolder, StringComparison.OrdinalIgnoreCase) &&
                 !ctHeader.Contains("octet-stream", StringComparison.OrdinalIgnoreCase) &&
                 !ctHeader.Contains("mp4", StringComparison.OrdinalIgnoreCase))
             {
@@ -8733,13 +8750,12 @@ app.MapPost("/api/demos", async (
             await file.CopyToAsync(ms, ct);
             var bytes = ms.ToArray();
             var sha = MediaRegistryService.HashBytes(bytes);
-            autoPublic = await media.IsTrustedShaAsync(projectId, sha);
 
             await using var stream = new MemoryStream(bytes);
             if (canReplace)
             {
                 entry = await demos.AttachMovieFromStreamAsync(
-                    existingPublic!.Id,
+                    existingPublic.Id,
                     stream,
                     title ?? existingPublic.Title,
                     description,
@@ -8752,8 +8768,8 @@ app.MapPost("/api/demos", async (
                 // Always overwrite assets/movie_wip.mp4 on server disk so WIP movie matches the fresh cut!
                 try
                 {
-                    var wipPath = Path.Combine(await store.GetProjectDirAsync(projectId, ct), "assets", "movie_wip.mp4");
-                    Directory.CreateDirectory(Path.GetDirectoryName(wipPath)!);
+                    var wipPath = Path.Combine(await store.GetProjectDirAsync(projectId, ct), ApiText.AssetsFolder, "movie_wip.mp4");
+                    Directory.CreateDirectory(Path.GetDirectoryName(wipPath) ?? ".");
                     await File.WriteAllBytesAsync(wipPath, bytes, ct);
                     try
                     {
@@ -8777,7 +8793,6 @@ app.MapPost("/api/demos", async (
                 entry = await demos.TryGetAsync(entry.Id, ct) ?? entry;
                 var demoIdForUpload = entry.Id;
                 _ = Task.Run(() => youTubePublisher.PublishAsync(demoIdForUpload, CancellationToken.None));
-                autoPublic = true; // already public / re-pointing gallery
             }
             else
             {
@@ -8801,8 +8816,8 @@ app.MapPost("/api/demos", async (
                 // Always overwrite assets/movie_wip.mp4 on server disk so WIP movie matches the fresh cut!
                 try
                 {
-                    var wipPath = Path.Combine(await store.GetProjectDirAsync(projectId, ct), "assets", "movie_wip.mp4");
-                    Directory.CreateDirectory(Path.GetDirectoryName(wipPath)!);
+                    var wipPath = Path.Combine(await store.GetProjectDirAsync(projectId, ct), ApiText.AssetsFolder, "movie_wip.mp4");
+                    Directory.CreateDirectory(Path.GetDirectoryName(wipPath) ?? ".");
                     await File.WriteAllBytesAsync(wipPath, bytes, ct);
                     try
                     {
@@ -8841,8 +8856,8 @@ app.MapPost("/api/demos", async (
         else if (canReplace)
         {
             entry = await demos.AttachMovieFromWipAsync(
-                existingPublic!.Id,
-                projectId!,
+                existingPublic.Id,
+                projectId,
                 title ?? existingPublic.Title,
                 description,
                 madeForKids,
@@ -8856,7 +8871,6 @@ app.MapPost("/api/demos", async (
             entry = await demos.TryGetAsync(entry.Id, ct) ?? entry;
             var demoIdForUpload = entry.Id;
             _ = Task.Run(() => youTubePublisher.PublishAsync(demoIdForUpload, CancellationToken.None));
-            autoPublic = true;
         }
         else
         {
@@ -8874,7 +8888,6 @@ app.MapPost("/api/demos", async (
             // Always push to YouTube — gallery only lists films with a YouTube id.
             var demoIdForUpload = entry.Id;
             _ = Task.Run(() => youTubePublisher.PublishAsync(demoIdForUpload, CancellationToken.None));
-            autoPublic = true;
         }
 
         return Results.Ok(new
@@ -8911,7 +8924,7 @@ app.MapPost("/api/demos/{demoId}/report", async (
     var note = body?.Note;
     var d = await demos.ReportAsync(demoId, note, user.IsAuthenticated ? user.UserId : null, ct);
     if (d is null)
-        return Results.NotFound(new { ok = false, error = "Demo not found" });
+        return Results.NotFound(new { ok = false, error = ApiText.DemoNotFound });
     return Results.Ok(new
     {
         ok = true,
@@ -8936,7 +8949,7 @@ app.MapPost("/api/admin/demos/{demoId}/review", async (
     if (AuthGate.RequireLogin(user, opts) is { } denied)
         return denied;
     if (!user.IsAdmin)
-        return Results.Json(new { ok = false, error = "Admin only" }, statusCode: StatusCodes.Status403Forbidden);
+        return Results.Json(new { ok = false, error = ApiText.AdminOnly }, statusCode: StatusCodes.Status403Forbidden);
 
     var status = (body?.Status ?? "").Trim().ToLowerInvariant();
     if (status is not (
@@ -8956,7 +8969,7 @@ app.MapPost("/api/admin/demos/{demoId}/review", async (
     {
         var d = await demos.SetStatusAsync(demoId, status, user.UserId, body?.Note, ct);
         if (d is null)
-            return Results.NotFound(new { ok = false, error = "Demo not found" });
+            return Results.NotFound(new { ok = false, error = ApiText.DemoNotFound });
 
         // Newly approved, or re-approved with a new local movie (V2 replace) → publish in the background.
         // Publisher no-ops when already on YouTube with no local movie.mp4.
@@ -9269,7 +9282,7 @@ try
 {
     var opts = app.Services.GetRequiredService<IOptions<PageToMovieOptions>>().Value;
     var workspaceRoot = opts.WorkspaceRoot ?? Directory.GetCurrentDirectory();
-    var projectsDir = Path.Combine(workspaceRoot, "projects");
+    var projectsDir = Path.Combine(workspaceRoot, ApiText.ProjectsFolder);
     var projectMigrations = app.Services.GetRequiredService<ProjectMigrationService>();
 
     if (Directory.Exists(projectsDir))
@@ -9345,7 +9358,7 @@ app.MapGet("/api/projects/{id}/costs/summary", async (
         // Same root convention as ProjectStore itself (WorkspaceRoot/projects) — ContentRootPath
         // would point at the wrong directory whenever PageToMovie__WorkspaceRoot differs from the
         // app's own content root (fakes-mode tests, /data mount in production).
-        var root = Path.Combine(store.WorkspaceRoot, "projects");
+        var root = Path.Combine(store.WorkspaceRoot, ApiText.ProjectsFolder);
         var summary = await ProjectCostAggregator.BuildSummaryAsync(id, root, ledger, ct);
         return Results.Ok(summary);
     }
@@ -9365,7 +9378,7 @@ app.MapPost("/api/projects/{id}/costs/record", async (
     {
         using var doc = await JsonDocument.ParseAsync(req.Body, cancellationToken: ct);
         var root = doc.RootElement;
-        var category = root.TryGetProperty("category", out var c) ? c.GetString() ?? "video" : "video";
+        var category = root.TryGetProperty("category", out var c) ? c.GetString() ?? ApiText.VideoFolder : ApiText.VideoFolder;
         var usd = root.TryGetProperty("usd", out var u) && u.ValueKind == JsonValueKind.Number ? u.GetDouble() : 0;
         var note = root.TryGetProperty("note", out var n) ? n.GetString() : null;
         var modelId = root.TryGetProperty("modelId", out var m) ? m.GetString() : null;
@@ -9410,7 +9423,11 @@ app.MapPost("/api/projects/{projectId}/scenes/{sceneKey}/versions", async (
         if (root.TryGetProperty("sceneStateJson", out var s)) sceneStateJson = s.GetString();
         else if (root.TryGetProperty("sceneState", out var s2)) sceneStateJson = s2.GetRawText();
     }
-    catch { }
+    catch (Exception)
+    {
+        // Optional JSON body — missing/invalid payload still snapshots with null note.
+        note = null;
+    }
 
     var info = await versions.SnapshotAsync(projectId, sceneKey, sceneStateJson, null, note, createdBy, ct);
     return Results.Ok(new { ok = true, version = info });
@@ -9442,6 +9459,28 @@ await app.RunAsync();
 
 namespace PageToMovie.Api
 {
+    internal static class ApiText
+    {
+        public const string AdminRoleRequired = "admin role required";
+        public const string AdminOnly = "Admin only";
+        public const string ProjectIdRequired = "projectId required";
+        public const string CharKeyRequired = "charKey required";
+        public const string UserIdRequired = "userId is required";
+        public const string UserNotFound = "user not found";
+        public const string DemoNotFound = "Demo not found";
+        public const string ProjectsFolder = "projects";
+        public const string AssetsFolder = "assets";
+        public const string VideoFolder = "video";
+        public const string ProjectIdKey = "projectId";
+        public const string QueuedStatus = "queued";
+        public const string OverwriteKey = "overwrite";
+        public const string ElevenLabsClient = "elevenlabs";
+        public const string JpegExtension = ".jpeg";
+        public const string DescriptionKey = "description";
+        public const string ReplaceExistingKey = "replaceExisting";
+        public const string AcceptedGuidelinesKey = "acceptedGuidelines";
+    }
+
     public record AcceptTermsRequest(string UserId, string? Version);
     public record SendInviteApiRequest(string? ProjectId, string? TargetHandle, string? TargetEmail);
     public record AcceptInviteApiRequest(string? Token);

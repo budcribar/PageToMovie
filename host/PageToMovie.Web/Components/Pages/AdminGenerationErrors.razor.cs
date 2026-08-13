@@ -12,8 +12,8 @@ namespace PageToMovie.Web.Components.Pages;
 /// </summary>
 public partial class AdminGenerationErrors : ComponentBase
 {
-    [Inject] private EngineApiClient Api { get; set; } = default!;
-    [Inject] private AdminSessionService Session { get; set; } = default!;
+    [Inject] private EngineApiClient Api { get; set; } = default;
+    [Inject] private AdminSessionService Session { get; set; } = default;
 
     internal List<EngineApiClient.GenerationErrorRowDto> _rows = new();
     internal bool _loading;

@@ -57,8 +57,8 @@
                     @L["ReviewPage.AiVisualContinuityDesc"]
                 </p>
                 <CapabilityLockedControl Enabled="Caps.VideoReviewReady"
-                                         BlockedReason="@Caps.VideoReviewBlockedReason"
-                                         SettingsHref="@Caps.VideoReviewSettingsHref"
+                                         BlockedReason="@StudioCapabilityState.VideoReviewBlockedReason"
+                                         SettingsHref="@StudioCapabilityState.VideoReviewSettingsHref"
                                          TestId="review-empty-cta-cap">
                     <button class="btn btn-info text-white fw-bold px-4"
                             disabled="@(Host._busy || Jobs.JobRunning)"
@@ -239,7 +239,7 @@
                                             data-scene="@sel"
                                             data-clip="@cn"
                                             disabled="@(Host._busy || !onDisk || Jobs.JobRunning || autoBusy || !Caps.VideoReviewReady)"
-                                            title="@(Caps.VideoReviewReady ? "AI review: this clip + end of previous (does not change files)" : Caps.VideoReviewBlockedReason)"
+                                            title="@(Caps.VideoReviewReady ? "AI review: this clip + end of previous (does not change files)" : StudioCapabilityState.VideoReviewBlockedReason)"
                                             @onclick="() => AutoReview.StartAutoReviewAsync(sel, cn)">
                                         @(autoBusy ? "Reviewing…" : draft is not null && !editing ? "Review again" : "Review")
                                     </button>

@@ -151,7 +151,7 @@ JSON: {"labels":[{"key":"Character_Narrator","class":"human"}]}
                 : el.TryGetProperty("id", out var id) ? id.GetString() : null;
             var cls = el.TryGetProperty("class", out var c) ? c.GetString() : null;
             if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(cls)) return (key, null);
-            cls = cls!.Trim().ToLowerInvariant();
+            cls = cls.Trim().ToLowerInvariant();
             if (cls is not ("animal" or "human" or "other")) return (key, null);
             return (key, cls);
         });

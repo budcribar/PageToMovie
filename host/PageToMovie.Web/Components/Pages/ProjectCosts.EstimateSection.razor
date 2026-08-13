@@ -5,7 +5,7 @@
 @* Technical estimate basis / model rates / history — admin only. *@
 @if (Session.IsAdmin)
 {
-    @if (!string.IsNullOrWhiteSpace(Host._report!.Notes))
+    @if (!string.IsNullOrWhiteSpace(Host._report?.Notes))
     {
         <p class="small text-muted mb-2" data-testid="cost-estimate-basis">@Host._report.Notes</p>
     }
@@ -66,7 +66,7 @@
     <div class="card-body">
         <div class="fw-semibold mb-1">Planned cost breakdown</div>
         <p class="small text-muted mb-3">
-            @if (string.Equals(Host._report!.EstimateBasis, "none", StringComparison.OrdinalIgnoreCase))
+            @if (string.Equals(Host._report?.EstimateBasis, "none", StringComparison.OrdinalIgnoreCase))
             {
                 <span>Import a book so we can size the film. Estimates use your selected models.</span>
             }

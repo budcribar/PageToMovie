@@ -68,30 +68,33 @@ public sealed class GlobalTimingCalibrationService
         _log?.LogInformation("[GlobalTimingCalibration] Logged timing telemetry for scene {Scene} ({VideoModel} / {EvaluatorModel})", sceneNumber, videoModelId, evaluatorModelId);
     }
 
+    private const string SerialMode = "serial";
+    private const string CompositeActionDialogueCategory = "Composite Action + Dialogue";
+
     public async Task<int> SeedDefaultBenchmarksAsync()
     {
         var defaultBenchmarks = new List<(string Id, string Category, string Prompt, double EstimatedSec, string Mode, double Gamma)>
         {
-            ("cam_push_in", "Camera Movement", "Cinematic slow push-in zoom", 1.8, "serial", 0.0),
-            ("react_gasp_shock", "Facial Reaction", "Character gasps in shock", 1.5, "serial", 0.0),
-            ("act_heavy_carry", "Physical Action", "Strong man carrying heavy grocery bags", 3.0, "serial", 0.0),
-            ("act_knife_pull", "Aggression", "Character pulls out a switchblade", 2.1, "serial", 0.0),
-            ("car_broadside_crash", "Vehicle", "Broadside T-bone car crash", 1.8, "serial", 0.0),
-            ("act_weightlifting", "Physical Action", "Man doing preacher curls with a 50lb barbell", 2.5, "serial", 0.0),
-            ("act_choke_wall", "Aggression", "Grabs by neck, pinning against wall", 2.4, "serial", 0.0),
-            ("act_stabbing", "Aggression", "Dramatic stabbing motion in hallway", 3.0, "serial", 0.0),
-            ("act_running_panic", "Locomotion", "Character sprinting down city street", 3.0, "serial", 0.0),
-            ("act_pills_sorting", "Elderly Care", "Elderly woman sorting pill bottles on counter", 2.6, "serial", 0.0),
-            ("car_muscle_drive", "Vehicle", "1980 Pontiac Trans Am revving engine", 2.5, "serial", 0.0),
-            ("act_yoga_pose", "Mindfulness", "Person lying on purple mat doing Savasana", 2.5, "serial", 0.0),
-            ("act_creeping_step", "Psychological Horror", "Creeping forward step-by-step in pitch darkness", 2.8, "serial", 0.0),
-            ("act_creature_pounce", "Creature / Adventure", "Large wild tiger leaping down from tree", 2.4, "serial", 0.0),
-            ("combo_pills_and_snivel", "Composite Action + Dialogue", "Sorting pill bottles while sniveling & speaking", 2.6, "concurrent", 0.85),
-            ("combo_weights_and_taunt", "Composite Action + Dialogue", "Dropping 50lb barbell then speaking taunt", 2.5, "serial", 0.0),
-            ("combo_knife_and_threat", "Composite Action + Dialogue", "Pulling switchblade open then delivering threat", 2.1, "serial", 0.10),
-            ("combo_drive_and_talk", "Composite Action + Dialogue", "Driving 1980 Trans Am while shouting dialogue", 2.5, "concurrent", 0.90),
-            ("combo_bar_and_confront", "Composite Action + Dialogue", "Pinning someone to wall then yelling in face", 2.4, "serial", 0.0),
-            ("combo_yoga_and_explain", "Composite Action + Dialogue", "Lying in corpse pose while explaining Savasana", 2.5, "concurrent", 0.80)
+            ("cam_push_in", "Camera Movement", "Cinematic slow push-in zoom", 1.8, SerialMode, 0.0),
+            ("react_gasp_shock", "Facial Reaction", "Character gasps in shock", 1.5, SerialMode, 0.0),
+            ("act_heavy_carry", "Physical Action", "Strong man carrying heavy grocery bags", 3.0, SerialMode, 0.0),
+            ("act_knife_pull", "Aggression", "Character pulls out a switchblade", 2.1, SerialMode, 0.0),
+            ("car_broadside_crash", "Vehicle", "Broadside T-bone car crash", 1.8, SerialMode, 0.0),
+            ("act_weightlifting", "Physical Action", "Man doing preacher curls with a 50lb barbell", 2.5, SerialMode, 0.0),
+            ("act_choke_wall", "Aggression", "Grabs by neck, pinning against wall", 2.4, SerialMode, 0.0),
+            ("act_stabbing", "Aggression", "Dramatic stabbing motion in hallway", 3.0, SerialMode, 0.0),
+            ("act_running_panic", "Locomotion", "Character sprinting down city street", 3.0, SerialMode, 0.0),
+            ("act_pills_sorting", "Elderly Care", "Elderly woman sorting pill bottles on counter", 2.6, SerialMode, 0.0),
+            ("car_muscle_drive", "Vehicle", "1980 Pontiac Trans Am revving engine", 2.5, SerialMode, 0.0),
+            ("act_yoga_pose", "Mindfulness", "Person lying on purple mat doing Savasana", 2.5, SerialMode, 0.0),
+            ("act_creeping_step", "Psychological Horror", "Creeping forward step-by-step in pitch darkness", 2.8, SerialMode, 0.0),
+            ("act_creature_pounce", "Creature / Adventure", "Large wild tiger leaping down from tree", 2.4, SerialMode, 0.0),
+            ("combo_pills_and_snivel", CompositeActionDialogueCategory, "Sorting pill bottles while sniveling & speaking", 2.6, "concurrent", 0.85),
+            ("combo_weights_and_taunt", CompositeActionDialogueCategory, "Dropping 50lb barbell then speaking taunt", 2.5, SerialMode, 0.0),
+            ("combo_knife_and_threat", CompositeActionDialogueCategory, "Pulling switchblade open then delivering threat", 2.1, SerialMode, 0.10),
+            ("combo_drive_and_talk", CompositeActionDialogueCategory, "Driving 1980 Trans Am while shouting dialogue", 2.5, "concurrent", 0.90),
+            ("combo_bar_and_confront", CompositeActionDialogueCategory, "Pinning someone to wall then yelling in face", 2.4, SerialMode, 0.0),
+            ("combo_yoga_and_explain", CompositeActionDialogueCategory, "Lying in corpse pose while explaining Savasana", 2.5, "concurrent", 0.80)
         };
 
         return await _repo.SeedInitialBenchmarksAsync(defaultBenchmarks).ConfigureAwait(false);

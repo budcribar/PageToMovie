@@ -14,5 +14,5 @@ namespace PageToMovie.Web.Components.Pages;
 
 public partial class SimpleRevoice_ProgressPanel
 {
-    [CascadingParameter] public SimpleRevoice Host { get; set; } = default!;
+    [CascadingParameter] public SimpleRevoice Host { get; set; } = default;
 }

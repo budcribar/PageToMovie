@@ -193,7 +193,7 @@ public partial class DialogueTiming
     }
 
     private Task<string?> GetSceneUrlAsync(int scene) =>
-        ScenePlaybackSupport.GetSceneUrlAsync(Stitch, _projectId!, scene, _sceneUrls);
+        ScenePlaybackSupport.GetSceneUrlAsync(Stitch, _projectId, scene, _sceneUrls);
 
     private static List<string> SplitWords(string? t) =>
         string.IsNullOrWhiteSpace(t) ? new() : t.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).ToList();

@@ -15,6 +15,7 @@ namespace PageToMovie.Engine.ModelBacked;
 public sealed class WardrobeContinuityClassifier
 {
     public const string PromptVersion = "v1_product";
+    private const string SceneNumberKey = "scene_number";
 
     private readonly IChatClient _chat;
     private readonly PageToMovieOptions _opts;
@@ -70,7 +71,7 @@ public sealed class WardrobeContinuityClassifier
     {
         if (!IsEnabled || cast.Count == 0) return null;
 
-        onProgress?.Invoke($"AI Costume Supervisor: Determining attire for {cast.Count} character(s) in Scene {scene.GetValueOrDefault("scene_number")}…");
+        onProgress?.Invoke($"AI Costume Supervisor: Determining attire for {cast.Count} character(s) in Scene {scene.GetValueOrDefault(SceneNumberKey)}…");
 
         try
         {
@@ -98,7 +99,7 @@ public sealed class WardrobeContinuityClassifier
 
             if (_errorLogger is not null)
             {
-                var sceneNum = ClassifierValueHelpers.ToIntOrNull(scene.GetValueOrDefault("scene_number"));
+                var sceneNum = ClassifierValueHelpers.ToIntOrNull(scene.GetValueOrDefault(SceneNumberKey));
                 await _errorLogger.LogCoverageResultAsync(
                     "wardrobe_continuity_classifier", effectiveModel, ClassifierValueHelpers.ResolveProvider(effectiveModel), sceneNum,
                     requestedIds, retry, ct).ConfigureAwait(false);
@@ -108,7 +109,7 @@ public sealed class WardrobeContinuityClassifier
         }
         catch (Exception ex)
         {
-            _log.LogWarning(ex, "Failed to run AI wardrobe continuity classification for scene {Scene}", scene.GetValueOrDefault("scene_number"));
+            _log.LogWarning(ex, "Failed to run AI wardrobe continuity classification for scene {Scene}", scene.GetValueOrDefault(SceneNumberKey));
             return null;
         }
     }
@@ -116,7 +117,7 @@ public sealed class WardrobeContinuityClassifier
     private static string BuildUserPrompt(Dictionary<string, object?> scene, List<string> cast)
     {
         var sb = new System.Text.StringBuilder();
-        sb.AppendLine($"SCENE {scene.GetValueOrDefault("scene_number")}: {scene.GetValueOrDefault("setting")}");
+        sb.AppendLine($"SCENE {scene.GetValueOrDefault(SceneNumberKey)}: {scene.GetValueOrDefault("setting")}");
         sb.AppendLine($"CHARACTERS ON SCREEN: {string.Join(", ", cast)}");
 
         ClassifierPromptParts.AppendSampleBeats(sb, scene);

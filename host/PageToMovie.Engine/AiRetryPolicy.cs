@@ -82,10 +82,8 @@ public static class AiRetryPolicy
         }
 
         var returned = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var id in returnedIds ?? Enumerable.Empty<string>())
-        {
-            if (!string.IsNullOrWhiteSpace(id)) returned.Add(id);
-        }
+        foreach (var id in (returnedIds ?? Enumerable.Empty<string>()).Where(id => !string.IsNullOrWhiteSpace(id)))
+            returned.Add(id);
 
         var missing = requested.Where(id => !returned.Contains(id)).ToList();
         return (missing, missing.Count == 0);
@@ -227,7 +225,7 @@ public static class AiRetryPolicy
         {
             RetryBackoffKind.Linear => (long)backoffBaseMs * attempt,
             RetryBackoffKind.Exponential => (long)backoffBaseMs * (1L << Math.Min(attempt - 1, 30)),
-            RetryBackoffKind.Quadratic or _ => (long)backoffBaseMs * attempt * attempt
+            _ => (long)backoffBaseMs * attempt * attempt
         };
         return TimeSpan.FromMilliseconds(Math.Min(DefaultTransientMaxBackoffMs, ms));
     }

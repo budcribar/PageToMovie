@@ -202,11 +202,8 @@ public partial class ScreenplayEditor_OutlineSidebar : ComponentBase
 
     public async Task HandleDrop(int targetIndex)
     {
-        if (ActiveDragIndex >= 0 && ActiveDragIndex != targetIndex)
-        {
-            if (OnReorderScenes.HasDelegate)
-                await OnReorderScenes.InvokeAsync((ActiveDragIndex, targetIndex));
-        }
+        if (ActiveDragIndex >= 0 && ActiveDragIndex != targetIndex && OnReorderScenes.HasDelegate)
+            await OnReorderScenes.InvokeAsync((ActiveDragIndex, targetIndex));
         ActiveDragIndex = -1;
     }
 }

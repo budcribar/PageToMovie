@@ -535,16 +535,16 @@ public partial class Home
             try
             {
                 var res = await S.Engine.PushProjectAsync(projectId, commitFirst: true, message: "Project update");
-                if (res is null || res.Ok == false)
+                if (res is null || !res.Ok)
                 {
                     S._error = FriendlyPushError(res?.Error ?? res?.Message ?? "Could not save revision.");
                     return;
                 }
 
                 if (!string.IsNullOrWhiteSpace(res.CommitHash))
-                    _revisionHashes[projectId] = res.CommitHash!;
+                    _revisionHashes[projectId] = res.CommitHash;
                 if (!string.IsNullOrWhiteSpace(res.HistoryUrl))
-                    _historyUrls[projectId] = res.HistoryUrl!;
+                    _historyUrls[projectId] = res.HistoryUrl;
 
                 var shortHash = Home.ShortHash(res.CommitHash);
                 S._message = string.IsNullOrEmpty(shortHash)

@@ -41,8 +41,9 @@ public sealed class ClientDialogueTimingService
         else
         {
             var stitched = await _stitch.ConcatAsync(clipUrls, ct);
-            if (!stitched.Success || string.IsNullOrWhiteSpace(stitched.Url)) return null;
-            sceneVideoUrl = stitched.Url!;
+            var stitchedUrl = stitched.Url;
+            if (!stitched.Success || string.IsNullOrWhiteSpace(stitchedUrl)) return null;
+            sceneVideoUrl = stitchedUrl;
         }
 
         onProgress?.Invoke($"Detecting speech in scene {scene:D2}…");
@@ -174,7 +175,7 @@ public sealed class ClientDialogueTimingService
     /// — Scribe (and Whisper-family models generally) emit bracketed tags for detected non-verbal
     /// sound, not spoken dialogue, so they don't belong in a script-vs-heard comparison.</summary>
     private static readonly System.Text.RegularExpressions.Regex SoundEffectTagRegex =
-        new(@"\[[^\]]*\]", System.Text.RegularExpressions.RegexOptions.Compiled);
+        new(@"\[[^\]]*\]", System.Text.RegularExpressions.RegexOptions.Compiled, CommonRegex.Timeout);
 
     private static string StripSoundEffectTags(string text)
     {

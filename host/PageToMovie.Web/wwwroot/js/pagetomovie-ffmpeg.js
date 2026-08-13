@@ -70,8 +70,8 @@ window.PageToMovieFfmpeg = {
                 await this._ensureScript(this._assets.ffmpegJs.url);
                 await this._ensureScript(this._assets.utilJs.url);
 
-                const FFmpegClass = (window.FFmpegWASM && window.FFmpegWASM.FFmpeg)
-                    || (window.FFmpeg && window.FFmpeg.FFmpeg)
+                const FFmpegClass = window.FFmpegWASM?.FFmpeg
+                    || window.FFmpeg?.FFmpeg
                     || window.FFmpeg;
                 if (!FFmpegClass) {
                     throw new Error("ffmpeg.wasm UMD not available");
@@ -218,11 +218,11 @@ window.PageToMovieFfmpeg = {
             const digest = await crypto.subtle.digest("SHA-256", buf);
             const bytes = new Uint8Array(digest);
             let hex = "";
-            for (let i = 0; i < bytes.length; i++)
-                hex += bytes[i].toString(16).padStart(2, "0");
+            for (const b of bytes)
+                hex += b.toString(16).padStart(2, "0");
             return { success: true, sha256: hex, byteLength: buf.byteLength };
         } catch (err) {
-            return { success: false, error: (err && err.message) ? err.message : String(err) };
+            return { success: false, error: err?.message ? err.message : String(err) };
         }
     },
 
@@ -287,7 +287,7 @@ window.PageToMovieFfmpeg = {
                 "out.mp4",
             ]);
         } catch (copyErr) {
-            this._log("copy concat failed, re-encoding: " + (copyErr && copyErr.message));
+            this._log("copy concat failed, re-encoding: " + copyErr?.message);
             try { await ffmpeg.deleteFile("out.mp4"); } catch (_) { /* */ }
             await ffmpeg.exec([
                 "-f", "concat", "-safe", "0", "-i", "list.txt",
@@ -309,11 +309,11 @@ window.PageToMovieFfmpeg = {
             const dig = await crypto.subtle.digest("SHA-256", ab);
             const bytes = new Uint8Array(dig);
             sha256 = "";
-            for (let i = 0; i < bytes.length; i++)
-                sha256 += bytes[i].toString(16).padStart(2, "0");
+            for (const b of bytes)
+                sha256 += b.toString(16).padStart(2, "0");
             blob = new Blob([ab], { type: blob.type || "video/mp4" });
         } catch (hashErr) {
-            this._log("stitch sha256 skipped: " + (hashErr && hashErr.message));
+            this._log("stitch sha256 skipped: " + hashErr?.message);
         }
         return { blob, sha256, byteLength };
     },
@@ -350,8 +350,13 @@ window.PageToMovieFfmpeg = {
             tile.width = tile.height = 128;
             const tg = tile.getContext("2d");
             const img = tg.createImageData(128, 128);
+            let seed = ((w * 73856093) ^ (h * 19349663)) >>> 0;
+            const nextGrain = function () {
+                seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+                return seed & 255;
+            };
             for (let i = 0; i < img.data.length; i += 4) {
-                const v = Math.trunc(Math.random() * 255);
+                const v = nextGrain();
                 img.data[i] = img.data[i + 1] = img.data[i + 2] = v; img.data[i + 3] = 255;
             }
             tg.putImageData(img, 0, 0);
@@ -360,7 +365,7 @@ window.PageToMovieFfmpeg = {
             const pat = g.createPattern(tile, "repeat");
             g.fillStyle = pat; g.fillRect(0, 0, w, h);
             g.restore();
-        } catch (_) { /* grain is optional */ }
+        } catch { /* grain is optional */ }
 
         // Soft vignette.
         const vg = g.createRadialGradient(w / 2, h / 2, h * 0.2, w / 2, h / 2, h * 0.75);
@@ -514,9 +519,9 @@ window.PageToMovieFfmpeg = {
             if (!message) return;
             const m = message.match(/Duration:\s*(\d+):(\d+):(\d+\.\d+)/);
             if (m) {
-                const hrs = parseFloat(m[1]);
-                const mins = parseFloat(m[2]);
-                const secs = parseFloat(m[3]);
+                const hrs = Number.parseFloat(m[1]);
+                const mins = Number.parseFloat(m[2]);
+                const secs = Number.parseFloat(m[3]);
                 durationSec = hrs * 3600 + mins * 60 + secs;
             }
         };
@@ -550,7 +555,7 @@ window.PageToMovieFfmpeg = {
 
                 reportProgress(onProgress, 18, "Probing duration…");
                 const probe = await this._probeDurationMemfsAsync(inName);
-                if (!probe.success || !(probe.seconds > 1.5)) {
+                if (!probe.success || probe.seconds <= 1.5) {
                     try { await ffmpeg.deleteFile(inName); } catch (_) { /* */ }
                     return {
                         success: true, token: null, totalSec: probe.seconds || 0, log: "",
@@ -590,7 +595,7 @@ window.PageToMovieFfmpeg = {
         const minSil = (typeof minSilenceSec === "number" && minSilenceSec > 0) ? minSilenceSec : 0.3;
         let log = "";
         const logHandler = ({ message }) => {
-            if (typeof message === "string" && message.indexOf("silence_") >= 0) {
+            if (typeof message === "string" && message.includes("silence_")) {
                 log += message + "\n";
             }
         };
@@ -605,7 +610,7 @@ window.PageToMovieFfmpeg = {
             ]);
         } catch (err) {
             ffmpeg.off("log", logHandler);
-            return { success: false, error: (err && err.message) ? err.message : String(err) };
+            return { success: false, error: err?.message ? err.message : String(err) };
         }
         ffmpeg.off("log", logHandler);
         return { success: true, log: log };
@@ -648,7 +653,7 @@ window.PageToMovieFfmpeg = {
                 reportProgress(onProgress, 100, "Speech detected");
                 return { success: true, totalSec: totalSec, segments: segments };
             } catch (err) {
-                return { success: false, error: (err && err.message) ? err.message : String(err) };
+                return { success: false, error: err?.message ? err.message : String(err) };
             } finally {
                 try { await ffmpeg.deleteFile(inName); } catch (_) { /* */ }
             }
@@ -730,7 +735,7 @@ window.PageToMovieFfmpeg = {
                 a.onerror = function () { resolve(false); };
                 const playResult = a.play();
                 Promise.resolve(playResult).catch(function () { resolve(false); });
-            } catch (_) { resolve(false); }
+            } catch { /* audio element or play() failed */ resolve(false); }
         });
     },
 
@@ -765,8 +770,8 @@ window.PageToMovieFfmpeg = {
                 mk(bufA, -0.6).start(t0, Math.max(0, leadA));
                 mk(bufB, 0.6).start(t0, Math.max(0, leadB));
             });
-        } catch (_) {
-            try { await ctx.close(); } catch (e) { /* */ }
+        } catch {
+            try { await ctx.close(); } catch { /* already tearing down */ }
             return false;
         }
     },
@@ -817,9 +822,7 @@ window.PageToMovieFfmpeg = {
             const sampled = this._resampleSpan(raw, lo, hi - lo + 1, fine, bins);
             this._drawWaveformBars(ctx, sampled.env, sampled.mx2, w, h, regions);
             return true;
-        } catch (_) {
-            return false;
-        } finally {
+        } catch { /* waveform decode/draw failed */ return false; } finally {
             if (actx) { try { await actx.close(); } catch (_) { /* */ } }
         }
     },
@@ -864,7 +867,9 @@ window.PageToMovieFfmpeg = {
     startWordTeleprompter: function (starts, ends, durationSec) {
         try {
             const el = document.getElementById("tele-text");
-            if (!el || !durationSec) return false;
+            if (!el || !durationSec) {
+                return false;
+            }
             const spans = el.querySelectorAll(".tele-w");
             const n = Math.min(spans.length, (starts || []).length);
             if (n === 0) return false;
@@ -877,28 +882,29 @@ window.PageToMovieFfmpeg = {
             el.animate(frames, { duration: D * 1000, easing: "linear", fill: "forwards" });
             this._armTeleprompterHighlights(el, spans, starts, ends, D, n);
             return true;
-        } catch (_) { return false; }
+        } catch { /* teleprompter element missing or animate failed */ return false; }
     },
 
     _teleprompterKeyframes: function (centers, starts, ends, D, n) {
         const frames = [{ transform: "translateX(" + (-centers[0]) + "px)", offset: 0 }];
         for (let i = 0; i < n; i++) {
-            let s = starts[i] / D, e = (ends && ends[i] != null ? ends[i] : starts[i]) / D;
-            if (!(s >= 0)) s = 0; if (s > 1) s = 1;
-            if (!(e >= s)) e = s; if (e > 1) e = 1;
+            let s = starts[i] / D, e = (ends?.[i] != null ? ends[i] : starts[i]) / D;
+            if (s < 0) s = 0; if (s > 1) s = 1;
+            if (e < s) e = s; if (e > 1) e = 1;
             const tx = "translateX(" + (-centers[i]) + "px)";
-            frames.push({ transform: tx, offset: s });
-            frames.push({ transform: tx, offset: e });
+            frames.push({ transform: tx, offset: s }, { transform: tx, offset: e });
         }
         frames.push({ transform: "translateX(" + (-centers[n - 1]) + "px)", offset: 1 });
-        for (let i = 1; i < frames.length; i++)
-            if (frames[i].offset <= frames[i - 1].offset)
+        for (let i = 1; i < frames.length; i++) {
+            if (frames[i].offset <= frames[i - 1].offset) {
                 frames[i].offset = Math.min(1, frames[i - 1].offset + 0.0001);
+            }
+        }
         return frames;
     },
 
     _armTeleprompterHighlights: function (el, spans, starts, ends, D, n) {
-        if (el._teleTimers) el._teleTimers.forEach(function (t) { clearTimeout(t); });
+        el._teleTimers?.forEach(function (t) { clearTimeout(t); });
         el._teleTimers = [];
         const clearAll = function () { for (let k = 0; k < n; k++) spans[k].classList.remove("tele-active"); };
         for (let i = 0; i < n; i++) {
@@ -1023,7 +1029,7 @@ window.PageToMovieFfmpeg = {
      * random offset or run-on speech. Returns mono 16-bit PCM WAV bytes (Uint8Array → C# byte[]).
      */
     buildCloneSampleAsync: async function (urls, gapSec) {
-        const list = Array.isArray(urls) ? urls.filter(u => u) : [];
+        const list = Array.isArray(urls) ? urls.filter(Boolean) : [];
         if (list.length === 0) throw new Error("no audio urls");
         const AC = window.AudioContext || window.webkitAudioContext;
         const ctx = new AC();
@@ -1065,7 +1071,7 @@ window.PageToMovieFfmpeg = {
 
     _concatSlicesWithGap: function (slices, gapSamples) {
         let total = 0;
-        for (let k = 0; k < slices.length; k++) total += slices[k].length;
+        for (const slice of slices) total += slice.length;
         const out = new Float32Array(total + gapSamples * (slices.length - 1));
         let pos = 0;
         for (let k = 0; k < slices.length; k++) {
@@ -1081,7 +1087,7 @@ window.PageToMovieFfmpeg = {
         const n = samples.length;
         const buffer = new ArrayBuffer(44 + n * 2);
         const view = new DataView(buffer);
-        const wr = function (off, str) { for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i)); };
+        const wr = function (off, str) { for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.codePointAt(i)); };
         wr(0, "RIFF"); view.setUint32(4, 36 + n * 2, true); wr(8, "WAVE");
         wr(12, "fmt "); view.setUint32(16, 16, true); view.setUint16(20, 1, true);
         view.setUint16(22, 1, true); view.setUint32(24, sampleRate, true);
@@ -1102,7 +1108,7 @@ window.PageToMovieFfmpeg = {
      * each) so mismatched containers/codecs still join cleanly. Throws on failure.
      */
     concatAudioToBytesAsync: async function (urls, onProgress) {
-        const list = Array.isArray(urls) ? urls.filter(u => u) : [];
+        const list = Array.isArray(urls) ? urls.filter(Boolean) : [];
         if (list.length === 0) throw new Error("no audio urls");
         return this._runExclusiveAsync(async () => {
             const load = await this.ensureLoadedAsync(onProgress);
@@ -1135,7 +1141,7 @@ window.PageToMovieFfmpeg = {
      * Silence runs are the complement of speech; a clip with no detected silence is one speech run.
      */
     _invertSilenceToSpeech: function (log, totalSec, minSilenceSec) {
-        const total = totalSec > 0 ? totalSec : 0;
+        const total = Math.max(0, totalSec || 0);
         const minGap = (typeof minSilenceSec === "number" && minSilenceSec > 0) ? minSilenceSec : 0.3;
         const silences = this._parseSilenceIntervals(log, total);
         if (total <= 0) return [];
@@ -1147,11 +1153,11 @@ window.PageToMovieFfmpeg = {
         const silences = [];
         let curStart = null;
         for (const line of String(log).split("\n")) {
-            let m = line.match(/silence_start:\s*(-?\d+(?:\.\d+)?)/);
-            if (m) { curStart = Math.max(0, parseFloat(m[1])); continue; }
-            m = line.match(/silence_end:\s*(-?\d+(?:\.\d+)?)/);
+            let m = /silence_start:\s*(-?\d+(?:\.\d+)?)/.exec(line);
+            if (m) { curStart = Math.max(0, Number.parseFloat(m[1])); continue; }
+            m = /silence_end:\s*(-?\d+(?:\.\d+)?)/.exec(line);
             if (m && curStart !== null) {
-                silences.push([curStart, parseFloat(m[1])]);
+                silences.push([curStart, Number.parseFloat(m[1])]);
                 curStart = null;
             }
         }
@@ -1174,8 +1180,8 @@ window.PageToMovieFfmpeg = {
     _mergeCloseWindows: function (speech, minGap) {
         const merged = [];
         for (const w of speech) {
-            if (merged.length > 0 && w.startSec - merged[merged.length - 1].endSec < minGap)
-                merged[merged.length - 1].endSec = w.endSec;
+            if (merged.length > 0 && w.startSec - merged.at(-1).endSec < minGap)
+                merged.at(-1).endSec = w.endSec;
             else
                 merged.push({ startSec: w.startSec, endSec: w.endSec });
         }
@@ -1183,8 +1189,8 @@ window.PageToMovieFfmpeg = {
     },
 
     _overlayVoiceExt: function (url) {
-        if (/\.wav(\?|$)/i.test(url) || (url.indexOf("audio/wav") >= 0)) return ".wav";
-        if (/\.m4a(\?|$)/i.test(url) || (url.indexOf("audio/mp4") >= 0)) return ".m4a";
+        if (/\.wav(\?|$)/i.test(url) || url.includes("audio/wav")) return ".wav";
+        if (/\.m4a(\?|$)/i.test(url) || url.includes("audio/mp4")) return ".m4a";
         return ".mp3";
     },
 
@@ -1204,7 +1210,7 @@ window.PageToMovieFfmpeg = {
             try {
                 await ffmpeg.exec(["-hide_banner", "-y", "-i", rawName, "-ar", "48000", "-ac", "2", wavName]);
             } catch (decErr) {
-                console.error("[dub] voice " + i + " decode→wav FAILED:", decErr && decErr.message);
+                console.error("[dub] voice " + i + " decode→wav FAILED:", decErr?.message);
                 try { await ffmpeg.deleteFile(rawName); } catch (_) { /* */ }
                 throw new Error("Cloned voice audio could not be decoded (segment " + i + ")");
             }
@@ -1238,7 +1244,7 @@ window.PageToMovieFfmpeg = {
         }
         const sample = segInfo.length <= 3
             ? segInfo.slice()
-            : [segInfo[0], segInfo[Math.floor(segInfo.length / 2)], segInfo[segInfo.length - 1]];
+            : [segInfo[0], segInfo[Math.floor(segInfo.length / 2)], segInfo.at(-1)];
         const ratios = sample.map(s => s.ratio).sort((a, b) => a - b);
         let tempo = ratios.length ? ratios[Math.floor(ratios.length / 2)] : 1.0;
         tempo = Math.max(0.8, Math.min(1.25, tempo));
@@ -1250,10 +1256,11 @@ window.PageToMovieFfmpeg = {
             const voice = "[" + (s.i + 1) + ":a]" + fmt + ",atempo=" + tempo.toFixed(4) +
                 ",volume=1.3,asetpts=PTS-STARTPTS";
             if (s.startSec >= 0.05) {
-                parts.push("anullsrc=channel_layout=stereo:sample_rate=48000,atrim=duration=" +
-                    s.startSec.toFixed(3) + ",asetpts=PTS-STARTPTS[sil" + s.i + "]");
-                parts.push(voice + "[sv" + s.i + "]");
-                parts.push("[sil" + s.i + "][sv" + s.i + "]concat=n=2:v=0:a=1[v" + s.i + "]");
+                parts.push(
+                    "anullsrc=channel_layout=stereo:sample_rate=48000,atrim=duration=" +
+                    s.startSec.toFixed(3) + ",asetpts=PTS-STARTPTS[sil" + s.i + "]",
+                    voice + "[sv" + s.i + "]",
+                    "[sil" + s.i + "][sv" + s.i + "]concat=n=2:v=0:a=1[v" + s.i + "]");
             } else {
                 parts.push(voice + "[v" + s.i + "]");
             }
@@ -1284,11 +1291,10 @@ window.PageToMovieFfmpeg = {
      */
     overlayVoiceSegmentsAsync: async function (videoUrl, segments, opts, onProgress) {
         if (!videoUrl) return { success: false, error: "No video URL" };
-        const list = Array.isArray(segments) ? segments.filter(s => s && s.audioUrl) : [];
+        const list = Array.isArray(segments) ? segments.filter(s => s?.audioUrl) : [];
         if (list.length === 0) return { success: true, url: videoUrl }; // nothing to overlay
 
         opts = opts || {};
-        const duck = Math.max(0, Math.min(1, opts.duckVolume != null ? opts.duckVolume : 0.15));
         // muteBase: drop the original clip audio entirely and use the cloned voice as the whole
         // soundtrack (narrator-only scenes) — no bed to duck, so no double voice.
         const muteBase = !!opts.muteBase;
@@ -1352,9 +1358,7 @@ window.PageToMovieFfmpeg = {
                 reportProgress(onProgress, 55, "Re-encoding trimmed clip…");
                 const args = ["-hide_banner", "-y"];
                 if (startSec > 0.001) args.push("-ss", String(startSec));
-                args.push("-i", inName);
-                args.push("-t", String(Math.max(0.5, durationSec)));
-                args.push(
+                args.push("-i", inName, "-t", String(Math.max(0.5, durationSec)),
                     "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
                     "-c:a", "aac", "-b:a", "128k",
                     "-movflags", "+faststart",
@@ -1398,7 +1402,7 @@ window.PageToMovieFfmpeg = {
 
                 reportProgress(onProgress, 30, "Probing duration…");
                 const probe = await this._probeDurationMemfsAsync(inName);
-                if (!probe.success || !(probe.seconds > 0)) {
+                if (!probe.success || probe.seconds <= 0) {
                     return { success: false, error: "Could not read source duration" };
                 }
 
@@ -1409,9 +1413,7 @@ window.PageToMovieFfmpeg = {
                 reportProgress(onProgress, 55, "Trimming tail…");
                 const args = ["-hide_banner", "-y"];
                 if (startSec > 0.001) args.push("-ss", String(startSec));
-                args.push("-i", inName);
-                args.push("-t", String(keepSec));
-                args.push(
+                args.push("-i", inName, "-t", String(keepSec),
                     "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
                     "-c:a", "aac", "-b:a", "128k",
                     "-movflags", "+faststart",
@@ -1517,7 +1519,7 @@ window.PageToMovieFfmpeg = {
             await this._execExtractFramesAsync(ffmpeg, inName, mode, count, scale, quality, pattern);
             return null;
         } catch (execErr) {
-            this._log("frame extract primary failed: " + (execErr && execErr.message));
+            this._log("frame extract primary failed: " + execErr?.message);
             try {
                 await ffmpeg.exec([
                     "-hide_banner", "-y",
@@ -1532,7 +1534,7 @@ window.PageToMovieFfmpeg = {
             } catch (fbErr) {
                 return {
                     success: false,
-                    error: "Frame extract failed: " + (fbErr.message || String(fbErr)),
+                    error: "Frame extract failed: " + (fbErr?.message || String(fbErr)),
                 };
             }
         }
@@ -1554,7 +1556,7 @@ window.PageToMovieFfmpeg = {
                 written.push(name);
                 const frame = this._jpegFrameFromBytes(out);
                 if (frame) frames.push(frame);
-            } catch (_) {
+            } catch { /* no more JPEG frames in MEMFS */
                 if (i > 1) break;
             }
         }
@@ -1694,9 +1696,9 @@ window.PageToMovieFfmpeg = {
 
     _audioExtForUrl: function (audioUrl) {
         if (typeof audioUrl !== "string") return ".bin";
-        if (audioUrl.indexOf("audio/wav") >= 0 || /\.wav(\?|$)/i.test(audioUrl)) return ".wav";
-        if (audioUrl.indexOf("audio/mp4") >= 0 || /\.m4a(\?|$)/i.test(audioUrl)) return ".m4a";
-        if (audioUrl.indexOf("audio/mpeg") >= 0 || /\.mp3(\?|$)/i.test(audioUrl)) return ".mp3";
+        if (audioUrl.includes("audio/wav") || /\.wav(\?|$)/i.test(audioUrl)) return ".wav";
+        if (audioUrl.includes("audio/mp4") || /\.m4a(\?|$)/i.test(audioUrl)) return ".m4a";
+        if (audioUrl.includes("audio/mpeg") || /\.mp3(\?|$)/i.test(audioUrl)) return ".mp3";
         return ".mp3";
     },
 

@@ -216,7 +216,7 @@ public static class PdfFormatter
             return lines;
         }
 
-        var current = "";
+        var current = new System.Text.StringBuilder();
         foreach (var word in text.Split(' '))
         {
             var remaining = word;
@@ -224,8 +224,8 @@ public static class PdfFormatter
             {
                 if (current.Length > 0)
                 {
-                    lines.Add(current);
-                    current = "";
+                    lines.Add(current.ToString());
+                    current.Clear();
                 }
                 lines.Add(remaining[..maxChars]);
                 remaining = remaining[maxChars..];
@@ -233,19 +233,20 @@ public static class PdfFormatter
 
             if (current.Length == 0)
             {
-                current = remaining;
+                current.Append(remaining);
             }
             else if (current.Length + 1 + remaining.Length <= maxChars)
             {
-                current += " " + remaining;
+                current.Append(' ').Append(remaining);
             }
             else
             {
-                lines.Add(current);
-                current = remaining;
+                lines.Add(current.ToString());
+                current.Clear();
+                current.Append(remaining);
             }
         }
-        lines.Add(current);
+        lines.Add(current.ToString());
         return lines;
     }
 

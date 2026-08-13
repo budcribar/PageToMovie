@@ -417,6 +417,8 @@ public static class SupportedModelCatalog
     public const string AiMusicApiBase = "https://api.aimusicapi.ai/api/v1";
     public const string AiMusicApiKeyEnv = "AIMUSICAPI_API_KEY";
     public const string ElevenLabsApiKeyEnv = "ElevenLabs_API_KEY";
+    public const string VideoReviewCapabilityId = "video-review";
+    private const string MaxPromptLengthField = "maxPromptLength";
     public const string ElevenLabsApiBase = "https://api.elevenlabs.io/v1";
 
     private static List<SupportedModelEntry>? _loadedEntries;
@@ -445,7 +447,7 @@ public static class SupportedModelCatalog
         new() { Id = "image", DisplayName = "Portrait / Image Generation", Description = "Creates character reference portraits and book plate graphics.", Order = 2 },
         new() { Id = "chat", DisplayName = "Script & Planning", Description = "Screenplay reasoning, shot planning, and cast analysis.", Order = 3 },
         new() { Id = "vision", DisplayName = "Image Vision & OCR", Description = "Book page OCR, cast-on-image classification, and frame inspection.", Order = 4 },
-        new() { Id = "video-review", DisplayName = "Video & Clip Review (Multimodal)", Description = "Evaluates dialogue, lip sync, and scene rhythm (Google Gemini natively analyzes MP4 video files).", Order = 5 },
+        new() { Id = VideoReviewCapabilityId, DisplayName = "Video & Clip Review (Multimodal)", Description = "Evaluates dialogue, lip sync, and scene rhythm (Google Gemini natively analyzes MP4 video files).", Order = 5 },
         new() { Id = "audio", DisplayName = "Audio & Music Generation", Description = "Generates beat-aligned background music scores and sound effects.", Order = 6 },
         new() { Id = "voice", DisplayName = "Voice Clone / TTS", Description = "Personal voice clone from a short sample, then spoken dialogue or narration for the film.", Order = 70 },
         new() { Id = "lipsync", DisplayName = "Video Lip-Sync", Description = "Resyncs a generated clip's mouth movement to a separate dialogue or narration audio track.", Order = 80 },
@@ -768,7 +770,7 @@ public static class SupportedModelCatalog
             "voice" or "tts" or "voice_clone" => ModelCapability.Voice,
             "lip_sync" or "lipsync" => ModelCapability.LipSync,
             "video_edit" or "videoedit" => ModelCapability.VideoEdit,
-            "chat" or "planning" or "video_review" or "video-review" => ModelCapability.Chat,
+            "chat" or "planning" or "video_review" or VideoReviewCapabilityId => ModelCapability.Chat,
             _ => null,
         };
 
@@ -1023,12 +1025,12 @@ public static class SupportedModelCatalog
                 "audio" or "music" => ModelCapability.Audio,
                 "voice" => ModelCapability.Voice,
                 "lipsync" or "lip-sync" => ModelCapability.LipSync,
-                "video-review" or "videoreview" => ModelCapability.Chat,
+                VideoReviewCapabilityId or "videoreview" => ModelCapability.Chat,
                 _ => ModelCapability.Chat,
             };
         }
 
-        if (string.Equals(capabilityId, "video-review", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(capabilityId, VideoReviewCapabilityId, StringComparison.OrdinalIgnoreCase))
         {
             var review = Entries.FirstOrDefault(e => e.Enabled && !e.Deprecated && e.SupportsVideoReview);
             if (review is not null) return review.Id;
@@ -1047,13 +1049,9 @@ public static class SupportedModelCatalog
 
     public static IReadOnlyList<string> MissingEnvKeys(SupportedModelEntry model)
     {
-        var missing = new List<string>();
-        foreach (var key in model.RequiredEnvKeys)
-        {
-            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(key)))
-                missing.Add(key);
-        }
-        return missing;
+        return model.RequiredEnvKeys
+            .Where(key => string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(key)))
+            .ToList();
     }
 
 
@@ -1118,7 +1116,7 @@ public static class SupportedModelCatalog
                 Need(e.MaxClipDurationSeconds is not null, "maxClipDurationSeconds");
                 Need(e.AbsMaxClipDurationSeconds is not null, "absMaxClipDurationSeconds");
                 Need(e.MaxReferenceImages is not null, "maxReferenceImages");
-                Need(e.MaxPromptLength is > 0, "maxPromptLength");
+                Need(e.MaxPromptLength is > 0, MaxPromptLengthField);
                 Need(
                     e.VideoCostPerSecondByResolution is { Count: > 0 } ||
                     e.VideoBaseCostByResolution is { Count: > 0 },
@@ -1132,7 +1130,7 @@ public static class SupportedModelCatalog
 
             case ModelCapability.Image:
                 Need(e.MaxReferenceImages is not null, "maxReferenceImages");
-                Need(e.MaxPromptLength is > 0, "maxPromptLength");
+                Need(e.MaxPromptLength is > 0, MaxPromptLengthField);
                 Need(e.ImageCostPerImage is not null, "imageCostPerImage");
                 Need(!string.IsNullOrWhiteSpace(e.PricingNotes), "pricingNotes");
                 Need(!string.IsNullOrWhiteSpace(e.PricingLastReviewedAt), "pricingLastReviewedAt");
@@ -1140,12 +1138,12 @@ public static class SupportedModelCatalog
 
             case ModelCapability.Audio:
                 Need(e.MaxAudioDurationSeconds is > 0, "maxAudioDurationSeconds");
-                Need(e.MaxPromptLength is > 0, "maxPromptLength");
+                Need(e.MaxPromptLength is > 0, MaxPromptLengthField);
                 // supportsVocals is bool — always present
                 break;
 
             case ModelCapability.Voice:
-                Need(e.MaxPromptLength is > 0, "maxPromptLength");
+                Need(e.MaxPromptLength is > 0, MaxPromptLengthField);
                 break;
 
             case ModelCapability.LipSync:
@@ -1154,7 +1152,7 @@ public static class SupportedModelCatalog
 
             case ModelCapability.VideoEdit:
                 Need(e.MaxEditInputDurationSeconds is > 0, "maxEditInputDurationSeconds");
-                Need(e.MaxPromptLength is > 0, "maxPromptLength");
+                Need(e.MaxPromptLength is > 0, MaxPromptLengthField);
                 // Cost fields optional — xAI hasn't published edit-specific pricing; entries may
                 // proxy generation's videoCostPerSecondByResolution as a labeled estimate instead.
                 break;

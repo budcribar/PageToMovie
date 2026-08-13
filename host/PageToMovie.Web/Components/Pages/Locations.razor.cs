@@ -376,7 +376,10 @@ public partial class Locations : IDisposable
             _saveHint = "Saved";
             await InvokeAsync(StateHasChanged);
         }
-        catch (TaskCanceledException) { }
+        catch (TaskCanceledException)
+        {
+            return;
+        }
         catch (Exception ex)
         {
             _saveHint = "Save failed";
@@ -504,7 +507,10 @@ public partial class Locations : IDisposable
                 await Task.Delay(1500, token);
             }
         }
-        catch (TaskCanceledException) { }
+        catch (TaskCanceledException)
+        {
+            return;
+        }
         catch (Exception ex)
         {
             _error = ex.Message;
@@ -546,7 +552,7 @@ public partial class Locations : IDisposable
         _message = null;
         try
         {
-            await using var stream = file.OpenReadStream(maxAllowedSize: 12 * 1024 * 1024, cancellationToken: _saveCts?.Token ?? CancellationToken.None);
+            await using var stream = file.OpenReadStream(maxAllowedSize: 8_000_000, cancellationToken: _saveCts?.Token ?? CancellationToken.None);
             await Engine.UploadLocationRefAsync(_projectId, _selected.Key, stream, file.Name, _saveCts?.Token ?? CancellationToken.None);
             _message = "Location plate locked.";
             await LoadAsync();
@@ -564,6 +570,13 @@ public partial class Locations : IDisposable
 
     public void Dispose()
     {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (!disposing) return;
         ActiveProject.Changed -= OnProjectChanged;
         _saveCts?.Cancel();
         _saveCts?.Dispose();

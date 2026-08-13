@@ -13,7 +13,7 @@ public partial class VoiceDictationButton : ComponentBase, IAsyncDisposable
 {
     private const int WaveBarCount = 12;
 
-    [Inject] private IJSRuntime Js { get; set; } = null!;
+    [Inject] public required IJSRuntime Js { get; set; }
 
     /// <summary>Current field value (appended or replaced with spoken text).</summary>
     [Parameter] public string Text { get; set; } = "";
@@ -230,7 +230,7 @@ public partial class VoiceDictationButton : ComponentBase, IAsyncDisposable
 
     private sealed class DictationStartResult
     {
-        public bool Ok { get; set; }
-        public string? Error { get; set; }
+        public bool Ok { get; set; } = false;
+        public string? Error { get; set; } = null;
     }
 }

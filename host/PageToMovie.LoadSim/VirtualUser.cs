@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
 using System.Text.Json;
 using PageToMovie.Core.Auth;
 
@@ -8,6 +9,7 @@ namespace PageToMovie.LoadSim;
 
 public sealed class VirtualUser
 {
+    private const string ActionBrowse = "browse";
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -18,7 +20,6 @@ public sealed class VirtualUser
     private readonly SimOptions _opts;
     private readonly MetricsCollector _metrics;
     private readonly HttpClient _http;
-    private readonly Random _rng;
     private int _sceneCount = 1;
     private int _gensDone;
 
@@ -31,8 +32,10 @@ public sealed class VirtualUser
         _opts = opts;
         _metrics = metrics;
         _http = http;
-        _rng = new Random(HashCode.Combine(index, Environment.TickCount));
     }
+
+    private static double NextUnitInterval() =>
+        RandomNumberGenerator.GetInt32(int.MaxValue) / (double)int.MaxValue;
 
     /// <summary>
     /// HTTP ready: open connection, prove /health, light-warm project paths, discover scenes.
@@ -58,7 +61,7 @@ public sealed class VirtualUser
         {
             var think = _opts.ThinkTimeMs <= 0
                 ? 0
-                : Math.Max(0, _opts.ThinkTimeMs + _rng.Next(-_opts.ThinkTimeMs / 4, _opts.ThinkTimeMs / 4 + 1));
+                : Math.Max(0, _opts.ThinkTimeMs + RandomNumberGenerator.GetInt32(-_opts.ThinkTimeMs / 4, _opts.ThinkTimeMs / 4 + 1));
             if (think > 0)
             {
                 try { await Task.Delay(think, ct); }
@@ -86,7 +89,7 @@ public sealed class VirtualUser
     {
         return _opts.Scenario switch
         {
-            LoadSimScenario.Browse => "browse",
+            LoadSimScenario.Browse => ActionBrowse,
             LoadSimScenario.Play => "play",
             LoadSimScenario.Gen => "gen",
             LoadSimScenario.Remux => "play", // remux retired — browser stitch only
@@ -98,28 +101,28 @@ public sealed class VirtualUser
     {
         var items = new (string Name, double W)[]
         {
-            ("browse", Math.Max(0, _opts.BrowseWeight)),
+            (ActionBrowse, Math.Max(0, _opts.BrowseWeight)),
             ("play", Math.Max(0, _opts.PlayWeight) + Math.Max(0, _opts.RemuxWeight)),
             ("gen", Math.Max(0, _opts.GenWeight)),
             ("review", Math.Max(0, _opts.ReviewWeight)),
         };
         var total = items.Sum(i => i.W);
-        if (total <= 0) return "browse";
-        var r = _rng.NextDouble() * total;
+        if (total <= 0) return ActionBrowse;
+        var r = NextUnitInterval() * total;
         var acc = 0.0;
         foreach (var (name, w) in items)
         {
             acc += w;
             if (r <= acc) return name;
         }
-        return "browse";
+        return ActionBrowse;
     }
 
     private async Task ExecuteAsync(string action, CancellationToken ct)
     {
         switch (action)
         {
-            case "browse":
+            case ActionBrowse:
                 await BrowseAsync(ct);
                 break;
             case "play":
@@ -137,7 +140,7 @@ public sealed class VirtualUser
         }
 
         // Capacity samples (any VU, ~10%) so peakApiInFlight/cap appear in results
-        if (_rng.NextDouble() < 0.10)
+        if (NextUnitInterval() < 0.10)
             await SampleCapacityAsync(ct);
     }
 
@@ -151,7 +154,7 @@ public sealed class VirtualUser
         var sn = AssignedScene();
         await TimedAsync("scene_detail",
             () => GetAsync($"/api/projects/{Esc(_opts.ProjectId)}/scenes/{sn}?light=1", ct), ct);
-        await TimedAsync("browse", () => GetAsync("/api/capacity", ct), ct);
+        await TimedAsync(ActionBrowse, () => GetAsync("/api/capacity", ct), ct);
     }
 
     private async Task PlayAsync(CancellationToken ct)

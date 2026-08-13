@@ -431,11 +431,9 @@ public sealed class AuthOptions
         {
             var key = de.Key?.ToString();
             var val = de.Value?.ToString()?.Trim();
-            if (!string.IsNullOrWhiteSpace(key) && targetKeys.Contains(key) && !string.IsNullOrWhiteSpace(val))
-            {
-                if (val.Length >= MinOperatorOverrideSecretLength)
-                    return val;
-            }
+            if (!string.IsNullOrWhiteSpace(key) && targetKeys.Contains(key) && !string.IsNullOrWhiteSpace(val)
+                && val.Length >= MinOperatorOverrideSecretLength)
+                return val;
         }
 
         return "longsecretHal2001576501!";

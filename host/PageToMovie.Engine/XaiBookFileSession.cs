@@ -102,8 +102,11 @@ public sealed class XaiBookFileSession : IBookFileSession
         {
             // Chain cold: re-attach file
             await EnsureUploadedAsync(ct).ConfigureAwait(false);
+            var fileId = FileId;
+            if (string.IsNullOrWhiteSpace(fileId))
+                throw new InvalidOperationException("xAI file_id missing after upload.");
             var restart = await _client.CompleteWithFilesAsync(
-                model, new[] { FileId! }, userInstruction, ct, temperature).ConfigureAwait(false);
+                model, new[] { fileId }, userInstruction, ct, temperature).ConfigureAwait(false);
             LastResponseId = restart.ResponseId;
             await _registry.UpdateLastResponseIdAsync(_bookId, ProviderName, LastResponseId, ct).ConfigureAwait(false);
             _onProgress?.Invoke($"xAI Responses follow-up (re-attach file) response_id={restart.ResponseId}.");
@@ -123,8 +126,11 @@ public sealed class XaiBookFileSession : IBookFileSession
         {
             _onProgress?.Invoke($"xAI chain failed ({ex.Message}); re-attaching file_id.");
             await EnsureUploadedAsync(ct).ConfigureAwait(false);
+            var retryFileId = FileId;
+            if (string.IsNullOrWhiteSpace(retryFileId))
+                throw new InvalidOperationException("xAI file_id missing after upload.");
             var restart = await _client.CompleteWithFilesAsync(
-                model, new[] { FileId! }, userInstruction, ct, temperature).ConfigureAwait(false);
+                model, new[] { retryFileId }, userInstruction, ct, temperature).ConfigureAwait(false);
             LastResponseId = restart.ResponseId;
             await _registry.UpdateLastResponseIdAsync(_bookId, ProviderName, LastResponseId, ct).ConfigureAwait(false);
             return restart.OutputText;

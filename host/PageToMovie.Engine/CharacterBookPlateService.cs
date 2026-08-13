@@ -57,12 +57,10 @@ public sealed class CharacterBookPlateService
         Action<string>? onProgress = null,
         CancellationToken ct = default)
     {
-        {
-            var cfg = await _projects.GetConfigAsync(projectId, ct).ConfigureAwait(false);
-            visionModel = string.IsNullOrWhiteSpace(visionModel)
-                ? ProjectModelSelection.RequireVision(cfg, "Character book plates")
-                : ProjectModelSelection.RequireExplicit(visionModel, ModelCapability.Vision, "Character book plates");
-        }
+        var cfg = await _projects.GetConfigAsync(projectId, ct).ConfigureAwait(false);
+        visionModel = string.IsNullOrWhiteSpace(visionModel)
+            ? ProjectModelSelection.RequireVision(cfg, "Character book plates")
+            : ProjectModelSelection.RequireExplicit(visionModel, ModelCapability.Vision, "Character book plates");
 
         var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         var castSeedsPath = ScreenplayService.GetCastSeedsPath(_projects, projectId);
@@ -361,7 +359,7 @@ public sealed class CharacterBookPlateService
         }
         catch { /* ignore */ }
 
-        Directory.CreateDirectory(Path.GetDirectoryName(castSeedsPath)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(castSeedsPath) ?? ".");
         await File.WriteAllTextAsync(
             castSeedsPath,
             castRoot.ToJsonString(JsonDefaults.Indented) + "\n",
@@ -1175,11 +1173,9 @@ public sealed class CharacterBookPlateService
             if (byName.TryGetValue(n, out var row))
                 ordered.Add(row);
         }
-        foreach (var row in baseline)
-        {
-            if (!ordered.Any(o => o.Name.Equals(row.Name, StringComparison.OrdinalIgnoreCase)))
-                ordered.Add(row);
-        }
+        foreach (var row in baseline.Where(row =>
+                     !ordered.Any(o => o.Name.Equals(row.Name, StringComparison.OrdinalIgnoreCase))))
+            ordered.Add(row);
         return ordered.Take(3).ToList();
     }
 
@@ -1198,15 +1194,15 @@ public sealed class CharacterBookPlateService
     {
         var n = r.Name;
         var score = 50;
-        if (n.Contains("cover", StringComparison.OrdinalIgnoreCase)) score -= 40;
-        if (n.Contains("sparse", StringComparison.OrdinalIgnoreCase)) score -= 30;
+        if (n.Contains(CoverCategory, StringComparison.OrdinalIgnoreCase)) score -= 40;
+        if (n.Contains(SparseCategory, StringComparison.OrdinalIgnoreCase)) score -= 30;
         if (r.Kind == "rendered_page" || n.StartsWith("page_", StringComparison.OrdinalIgnoreCase))
             score -= 5;
         if (r.Kind == "embedded" || n.Contains("embedded", StringComparison.OrdinalIgnoreCase))
             score -= 8;
         if (IsLikelyTextLayout(r)) score += 35;
         if (n.Contains("text", StringComparison.OrdinalIgnoreCase) &&
-            !n.Contains("sparse", StringComparison.OrdinalIgnoreCase))
+            !n.Contains(SparseCategory, StringComparison.OrdinalIgnoreCase))
             score += 10;
         return score;
     }
@@ -1294,17 +1290,14 @@ public sealed class CharacterBookPlateService
             return true;
 
         // Explicit cover or sparse visual tag override
-        if (r.Name.Contains("cover", StringComparison.OrdinalIgnoreCase) ||
-            r.Name.Contains("sparse", StringComparison.OrdinalIgnoreCase) ||
+        if (r.Name.Contains(CoverCategory, StringComparison.OrdinalIgnoreCase) ||
+            r.Name.Contains(SparseCategory, StringComparison.OrdinalIgnoreCase) ||
             r.Name.Contains("bookref", StringComparison.OrdinalIgnoreCase))
             return false;
 
         // Pixel-level bitmap inspection for image files on disk
-        if (!string.IsNullOrWhiteSpace(r.AbsPath) && File.Exists(r.AbsPath))
-        {
-            if (IsTextOnlyImageFile(r.AbsPath))
-                return true;
-        }
+        if (!string.IsNullOrWhiteSpace(r.AbsPath) && File.Exists(r.AbsPath) && IsTextOnlyImageFile(r.AbsPath))
+            return true;
 
         return false;
     }
@@ -1384,15 +1377,11 @@ public sealed class CharacterBookPlateService
         JsonObject? seedObj = null;
         if (seeds.TryGetValue(charKey, out var el))
         {
-            try { seedObj = JsonNode.Parse(el.GetRawText()) as JsonObject; } catch { }
+            try { seedObj = JsonNode.Parse(el.GetRawText()) as JsonObject; }
+            catch (Exception ex) { _log.LogDebug(ex, "Optional character seed JSON was not an object"); }
         }
 
         var charSeed = seedObj ?? new JsonObject();
-        var displayName = charSeed["display_name"]?.GetValue<string>()
-            ?? charSeed[CanonicalGivenNameKey]?.GetValue<string>()
-            ?? charKey.Replace(CharacterPrefix, "").Replace('_', ' ');
-
-        var desc = charSeed[DescriptionKey]?.GetValue<string>() ?? "";
         var aliases = BookOcrPlateShortlist.AliasesForSeed(charKey, charSeed);
         var ocrPages = await BookOcrPlateShortlist.TryLoadAsync(projectDir, ct).ConfigureAwait(false);
         var textHits = BookOcrPlateShortlist.FindTextHitPages(ocrPages, aliases);
@@ -1433,8 +1422,8 @@ public sealed class CharacterBookPlateService
 
             // Image type quality boost
             var name = r.Name.ToLowerInvariant();
-            if (name.Contains("cover")) baseScore += 15.0;
-            else if (name.Contains("sparse") || name.Contains("figure") || name.Contains("embedded")) baseScore += 10.0;
+            if (name.Contains(CoverCategory)) baseScore += 15.0;
+            else if (name.Contains(SparseCategory) || name.Contains("figure") || name.Contains("embedded")) baseScore += 10.0;
             else if (name.StartsWith("page_")) baseScore += 5.0;
 
             // Alias / token match in filename

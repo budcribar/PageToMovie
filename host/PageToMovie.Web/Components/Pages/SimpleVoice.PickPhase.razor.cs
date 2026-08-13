@@ -14,5 +14,5 @@ namespace PageToMovie.Web.Components.Pages;
 
 public partial class SimpleVoice_PickPhase
 {
-    [CascadingParameter] public SimpleVoice Host { get; set; } = default!;
+    [CascadingParameter] public required SimpleVoice Host { get; set; }
 }

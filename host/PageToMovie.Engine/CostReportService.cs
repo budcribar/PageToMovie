@@ -35,7 +35,35 @@ public sealed class CostReportService
     private const int MinApiSamples = 8;
     private const int MinTimingSamples = 5;
 
-            public CostReportService(
+    private static class Keys
+    {
+        public const string ModelName = "model_name";
+        public const string Resolution = "resolution";
+        public const string CostEstimates = "cost_estimates";
+        public const string ShotPlan = "shot_plan";
+        public const string Screenplay = "screenplay";
+        public const string Remaining = "remaining";
+        public const string ImageModelName = "image_model_name";
+        public const string Video = "video";
+        public const string Scene = "scene";
+        public const string DurationSec = "duration_sec";
+        public const string Model = "model";
+        public const string Category = "category";
+        public const string VideoProvider = "video_provider";
+        public const string Provider = "provider";
+        public const string VideoPricingSource = "video_pricing_source";
+        public const string RequestId = "request_id";
+        public const string Source = "source";
+        public const string ListUsd = "list_usd";
+        public const string Currency = "currency";
+        public const string UserId = "user_id";
+        public const string CostLedger = "cost_ledger";
+        public const string ModelCatalog = "model_catalog";
+        public const string Res1080p = "1080p";
+        public const string MissingCatalog = "missing_catalog";
+    }
+
+    public CostReportService(
         ProjectStore projects,
         CreditService? credits = null,
         UserDatabaseService? userDb = null,
@@ -65,13 +93,13 @@ public sealed class CostReportService
         // Cost rates come from the models catalog (SSoT) for the models this project has chosen.
         // There is no default model — if none is set (models are chosen on the Configuration page),
         // fail fast with a clear, actionable message instead of a cryptic downstream rate-table error.
-        if (string.IsNullOrWhiteSpace(GetStr(cfg, "model_name", "")))
+        if (string.IsNullOrWhiteSpace(GetStr(cfg, Keys.ModelName, "")))
             throw new InvalidOperationException(
                 "No models are set for this project yet. Choose a video and image model on the "
                 + "Configuration page to see a cost estimate.");
         var rates = RatesFromConfig(cfg);
         var draftRes = draftResolution
-            ?? GetStr(cfg, "resolution", "480p");
+            ?? GetStr(cfg, Keys.Resolution, "480p");
         var heroRes = heroResolution ?? "720p";
         var retries = assumeAvgRetries
             ?? GetDouble(rates, "assume_avg_retries", 0);
@@ -81,7 +109,7 @@ public sealed class CostReportService
         var qaMaxRetries = GetCfgInt(cfg, "qa_max_retries", defaultValue: 1);
         qaMaxRetries = Math.Clamp(qaMaxRetries, 0, 5);
         var priorVideoMultiplier = 1.3;
-        if (cfg.TryGetValue("cost_estimates", out var ceQa) && ceQa.ValueKind == JsonValueKind.Object)
+        if (cfg.TryGetValue(Keys.CostEstimates, out var ceQa) && ceQa.ValueKind == JsonValueKind.Object)
         {
             if (ceQa.TryGetProperty("qa_retry_video_multiplier", out var qm) &&
                 qm.TryGetDouble(out var qmv) && qmv >= 1.0)
@@ -106,13 +134,13 @@ public sealed class CostReportService
             retries = qaExpectedExtraGens;
 
         var blueprintClips = await LoadBlueprintClipsAsync(projectId, ct).ConfigureAwait(false);
-        var estimateBasis = blueprintClips.Any(s => s.Clips.Count > 0) ? "shot_plan" : "none";
+        var estimateBasis = blueprintClips.Any(s => s.Clips.Count > 0) ? Keys.ShotPlan : "none";
         if (estimateBasis == "none")
         {
             // A2: post-import / fountain shortcut (before shot plan) — always estimate from screenplay.
-            blueprintClips = await LoadScreenplayDerivedClipsAsync(projectId, cfg, ct).ConfigureAwait(false);
+            blueprintClips = await LoadScreenplayDerivedClipsAsync(projectId, cfg).ConfigureAwait(false);
             if (blueprintClips.Any(s => s.Clips.Count > 0))
-                estimateBasis = "screenplay";
+                estimateBasis = Keys.Screenplay;
         }
 
         var onDisk = IndexOnDiskClips(projectId);
@@ -208,18 +236,17 @@ public sealed class CostReportService
         rows.Sort((a, b) => a.Scene.CompareTo(b.Scene));
 
         // A1: when any media is on disk, upgrade basis to remaining (spent + missing operational).
-        if ((estimateBasis is "shot_plan" or "screenplay") && clipsOnDisk > 0)
-            estimateBasis = "remaining";
+        if ((estimateBasis is Keys.ShotPlan or Keys.Screenplay) && clipsOnDisk > 0)
+            estimateBasis = Keys.Remaining;
 
-        var scenarios = BuildScenarios(blueprintClips, onDisk, cfg, rates, retries, draftRes, heroRes);
+        var scenarios = BuildScenarios(blueprintClips, onDisk, cfg, retries, draftRes, heroRes);
 
         // Non-video scope (model-dependent): cast portraits, optional voice, music, planning.
-        var videoModel = GetStr(cfg, "model_name", "");
-        var imageModel = GetStr(cfg, "image_model_name", "");
+        var videoModel = GetStr(cfg, Keys.ModelName, "");
+        var imageModel = GetStr(cfg, Keys.ImageModelName, "");
         var planningModel = GetStr(cfg, "planning_model_name",
             GetStr(cfg, "chat_model_name", ""));
         var voiceModel = GetStr(cfg, "voice_model_name", "");
-        var audioModel = GetStr(cfg, "audio_model_name", "");
 
         var castPlan = EstimateCharacterGeneration(projectId, rates, cfg);
         var voicePlan = EstimateVoiceGeneration(projectId, blueprintClips, rates, cfg);
@@ -262,25 +289,25 @@ public sealed class CostReportService
 
         var basisNote = estimateBasis switch
         {
-            "shot_plan" => "Clip count from the shot plan.",
-            "screenplay" => "Clip count estimated from screenplay scene lengths (before shot plan).",
-            "remaining" => "Operational estimate: spent ledger + remaining planned clips.",
+            Keys.ShotPlan => "Clip count from the shot plan.",
+            Keys.Screenplay => "Clip count estimated from screenplay scene lengths (before shot plan).",
+            Keys.Remaining => "Operational estimate: spent ledger + remaining planned clips.",
             _ => "Import a book or fountain screenplay to unlock a film estimate.",
         };
 
         // A1 clip source + confidence for DecisionCard / API consumers.
         var clipSource = estimateBasis switch
         {
-            "shot_plan" => "blueprint",
-            "screenplay" => "synthetic_screenplay",
-            "remaining" => "remaining",
+            Keys.ShotPlan => "blueprint",
+            Keys.Screenplay => "synthetic_screenplay",
+            Keys.Remaining => Keys.Remaining,
             _ => "none",
         };
         var estimateConfidence = estimateBasis switch
         {
-            "remaining" => "best",
-            "shot_plan" => "good",
-            "screenplay" => "rough",
+            Keys.Remaining => "best",
+            Keys.ShotPlan => "good",
+            Keys.Screenplay => "rough",
             _ => "very_low",
         };
 
@@ -523,18 +550,18 @@ public sealed class CostReportService
         var seen = new HashSet<(int, int)>();
         foreach (var e in ledger)
         {
-            if (!string.Equals(GetRawKind(e), "video", StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(GetRawKind(e), Keys.Video, StringComparison.OrdinalIgnoreCase))
                 continue;
-            if (TryGetInt(e, "scene", out var sn) && TryGetInt(e, "clip", out var cn))
+            if (TryGetInt(e, Keys.Scene, out var sn) && TryGetInt(e, "clip", out var cn))
                 seen.Add((sn, cn));
         }
 
         var blueprint = await LoadBlueprintClipsAsync(projectId, ct).ConfigureAwait(false);
         var onDisk = IndexOnDiskClips(projectId);
         var clipJobs = await LoadClipJobsAsync(projectId, ct).ConfigureAwait(false);
-        var defaultRes = GetStr(cfg, "resolution", "480p");
-        var defaultModel = GetStr(cfg, "model_name", "");
-        var imageModel = GetStr(cfg, "image_model_name", "");
+        var defaultRes = GetStr(cfg, Keys.Resolution, "480p");
+        var defaultModel = GetStr(cfg, Keys.ModelName, "");
+        var imageModel = GetStr(cfg, Keys.ImageModelName, "");
         var defaultDur = GetDouble(cfg, "duration_seconds", 8);
         var assumeRef = GetBool(defaultRates, "assume_ref_image_per_clip", true);
 
@@ -559,17 +586,17 @@ public sealed class CostReportService
 
                 clipJobs.TryGetValue($"{scene.SceneNumber}_{clip.ClipNumber}", out var job);
                 var duration = clip.DurationSec > 0 ? clip.DurationSec : defaultDur;
-                if (job is not null && job.TryGetValue("duration_sec", out var ds) &&
+                if (job is not null && job.TryGetValue(Keys.DurationSec, out var ds) &&
                     ds.TryGetDouble(out var jdur) && jdur > 0)
                     duration = jdur;
 
                 var res = defaultRes;
-                if (job is not null && job.TryGetValue("resolution", out var jr) &&
+                if (job is not null && job.TryGetValue(Keys.Resolution, out var jr) &&
                     jr.ValueKind == JsonValueKind.String && jr.GetString() is { Length: > 0 } rs)
                     res = rs;
 
                 var model = defaultModel;
-                if (job is not null && job.TryGetValue("model", out var jm) &&
+                if (job is not null && job.TryGetValue(Keys.Model, out var jm) &&
                     jm.ValueKind == JsonValueKind.String && jm.GetString() is { Length: > 0 } md)
                     model = md;
 
@@ -581,29 +608,29 @@ public sealed class CostReportService
 
                 var evt = new Dictionary<string, object?>
                 {
-                    ["kind"] = "video",
-            ["category"] = CostCategories.Video,
-                    ["scene"] = scene.SceneNumber,
+                    ["kind"] = Keys.Video,
+            [Keys.Category] = CostCategories.Video,
+                    [Keys.Scene] = scene.SceneNumber,
                     ["clip"] = clip.ClipNumber,
-                    ["model"] = model,
-                    ["provider"] = rates.TryGetValue("video_provider", out var vp) ? vp : null,
-                    ["pricing_source"] = rates.TryGetValue("video_pricing_source", out var vps) ? vps : null,
-                    ["request_id"] = job is not null && job.TryGetValue("request_id", out var rid)
+                    [Keys.Model] = model,
+                    [Keys.Provider] = rates.TryGetValue(Keys.VideoProvider, out var vp) ? vp : null,
+                    ["pricing_source"] = rates.TryGetValue(Keys.VideoPricingSource, out var vps) ? vps : null,
+                    [Keys.RequestId] = job is not null && job.TryGetValue(Keys.RequestId, out var rid)
                         ? rid.GetString() ?? ""
                         : "",
                     ["has_ref_image"] = assumeRef,
                     ["is_extend"] = isExtend,
-                    ["source"] = "backfill",
-                    ["duration_sec"] = priced.DurationSec,
+                    [Keys.Source] = "backfill",
+                    [Keys.DurationSec] = priced.DurationSec,
                     ["attempts"] = 1.0,
-                    ["resolution"] = res,
+                    [Keys.Resolution] = res,
                     ["output_rate_per_sec"] = priced.RatePerSec,
                     ["video_output_usd"] = priced.VideoOut,
                     ["ref_image_usd"] = priced.RefImg,
                     ["extend_input_usd"] = priced.ExtendIn,
-                    ["list_usd"] = listUsd,
+                    [Keys.ListUsd] = listUsd,
                     ["usd"] = listUsd,
-                    ["currency"] = "USD",
+                    [Keys.Currency] = "USD",
                     ["extra"] = new Dictionary<string, object?> { ["backfill"] = true },
                 };
                 await AppendCostEventAsync(projectId, evt, save: true, ct).ConfigureAwait(false);
@@ -654,7 +681,7 @@ public sealed class CostReportService
         // Price this event with the model that actually ran (vendor catalog), not a stale config table.
         var rates = RatesFromModels(
             videoModelId: model,
-            imageModelId: GetStr(cfg, "image_model_name", ""),
+            imageModelId: GetStr(cfg, Keys.ImageModelName, ""),
             cfgOverrides: cfg);
         var priced = PriceVideo(durationSec, resolution, rates, hasRefImage, isExtend, 1);
         var listUsd = priced.Usd;
@@ -670,30 +697,30 @@ public sealed class CostReportService
 
         var evt = new Dictionary<string, object?>
         {
-            ["kind"] = "video",
-            ["category"] = CostCategories.Video,
-            ["scene"] = scene,
+            ["kind"] = Keys.Video,
+            [Keys.Category] = CostCategories.Video,
+            [Keys.Scene] = scene,
             ["clip"] = clip,
-            ["model"] = model,
-            ["provider"] = rates.TryGetValue("video_provider", out var vp) ? vp : null,
-            ["pricing_source"] = rates.TryGetValue("video_pricing_source", out var vps) ? vps : null,
-            ["request_id"] = requestId ?? "",
+            [Keys.Model] = model,
+            [Keys.Provider] = rates.TryGetValue(Keys.VideoProvider, out var vp) ? vp : null,
+            ["pricing_source"] = rates.TryGetValue(Keys.VideoPricingSource, out var vps) ? vps : null,
+            [Keys.RequestId] = requestId ?? "",
             ["has_ref_image"] = hasRefImage,
             ["is_extend"] = isExtend,
-            ["source"] = "list_rate",
+            [Keys.Source] = "list_rate",
             // Primary duration used for pricing (probed when available)
-            ["duration_sec"] = priced.DurationSec,
+            [Keys.DurationSec] = priced.DurationSec,
             ["attempts"] = 1.0,
-            ["resolution"] = resolution,
+            [Keys.Resolution] = resolution,
             ["output_rate_per_sec"] = priced.RatePerSec,
             ["video_output_usd"] = priced.VideoOut,
             ["ref_image_usd"] = priced.RefImg,
             ["extend_input_usd"] = priced.ExtendIn,
             // List rate only in ledger — multiplier applied at display / credit debit time.
-            ["list_usd"] = listUsd,
+            [Keys.ListUsd] = listUsd,
             ["usd"] = listUsd,
-            ["currency"] = "USD",
-            ["user_id"] = userId ?? "",
+            [Keys.Currency] = "USD",
+            [Keys.UserId] = userId ?? "",
             // I13 / H1 multi-user take telemetry
             ["key_mode"] = string.IsNullOrWhiteSpace(keyMode) ? "personal" : keyMode.Trim().ToLowerInvariant(),
             ["take_kind"] = resolvedKind,
@@ -726,7 +753,7 @@ public sealed class CostReportService
             try
             {
                 // Project opt-out: cost_estimates.contribute_to_studio_averages = false
-                if (cfg.TryGetValue("cost_estimates", out var ceOpt) &&
+                if (cfg.TryGetValue(Keys.CostEstimates, out var ceOpt) &&
                     ceOpt.ValueKind == JsonValueKind.Object &&
                     ceOpt.TryGetProperty("contribute_to_studio_averages", out var cta) &&
                     cta.ValueKind is JsonValueKind.False)
@@ -761,7 +788,7 @@ public sealed class CostReportService
                 userId,
                 chargeUsd,
                 projectId,
-                metaKind: "video",
+                metaKind: Keys.Video,
                 note: $"S{scene:D2}C{clip} {model} {priced.DurationSec:F1}s ×{mult:0.##}",
                 ct: ct).ConfigureAwait(false);
         }
@@ -800,16 +827,16 @@ public sealed class CostReportService
                 foreach (var p in doc.RootElement.EnumerateObject())
                     root[p.Name] = p.Value.Deserialize<object>();
 
-                if (doc.RootElement.TryGetProperty("cost_ledger", out var ledger) &&
+                if (doc.RootElement.TryGetProperty(Keys.CostLedger, out var ledger) &&
                     ledger.ValueKind == JsonValueKind.Array)
                 {
                     var list = ledger.EnumerateArray().Select(x => x.Clone()).ToList();
                     for (var i = list.Count - 1; i >= 0; i--)
                     {
                         var e = list[i];
-                        if (!string.Equals(GetRawKind(e), "video", StringComparison.OrdinalIgnoreCase))
+                        if (!string.Equals(GetRawKind(e), Keys.Video, StringComparison.OrdinalIgnoreCase))
                             continue;
-                        if (!TryGetInt(e, "scene", out var sn) || sn != scene) continue;
+                        if (!TryGetInt(e, Keys.Scene, out var sn) || sn != scene) continue;
                         if (!TryGetInt(e, "clip", out var cn) || cn != clip) continue;
                         if (takeIndex is > 0 && TryGetInt(e, "take_index", out var ti) && ti != takeIndex)
                             continue;
@@ -822,7 +849,7 @@ public sealed class CostReportService
                     }
                     if (ledgerOk)
                     {
-                        root["cost_ledger"] = list.Select(x => x.Deserialize<object>()).ToList();
+                        root[Keys.CostLedger] = list.Select(x => x.Deserialize<object>()).ToList();
                         var json = JsonSerializer.Serialize(root, JsonDefaults.Indented);
                         await File.WriteAllTextAsync(path, json + "\n", ct).ConfigureAwait(false);
                     }
@@ -849,16 +876,21 @@ public sealed class CostReportService
         DateTimeOffset? lastTs = null;
         foreach (var e in raw)
         {
-            if (!string.Equals(GetRawKind(e), "video", StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(GetRawKind(e), Keys.Video, StringComparison.OrdinalIgnoreCase))
                 continue;
-            if (!TryGetInt(e, "scene", out var sn) || sn != scene) continue;
+            if (!TryGetInt(e, Keys.Scene, out var sn) || sn != scene) continue;
             if (!TryGetInt(e, "clip", out var cn) || cn != clip) continue;
             prior++;
             if (e.TryGetProperty("ts", out var tsEl) &&
                 tsEl.ValueKind == JsonValueKind.String &&
-                DateTimeOffset.TryParse(tsEl.GetString(), out var parsed))
+                DateTimeOffset.TryParse(
+                    tsEl.GetString(),
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.RoundtripKind,
+                    out var parsed) &&
+                (lastTs is null || parsed > lastTs))
             {
-                if (lastTs is null || parsed > lastTs) lastTs = parsed;
+                lastTs = parsed;
             }
         }
 
@@ -921,18 +953,18 @@ public sealed class CostReportService
         await AppendCostEventAsync(projectId, new Dictionary<string, object?>
         {
             ["kind"] = "image",
-            ["category"] = CostCategories.Characters,
-            ["model"] = entry?.Id ?? model,
+            [Keys.Category] = CostCategories.Characters,
+            [Keys.Model] = entry.Id,
             ["character"] = character ?? "",
             ["n_images"] = n,
             ["unit_usd"] = unit,
-            ["list_usd"] = listUsd,
+            [Keys.ListUsd] = listUsd,
             ["usd"] = listUsd,
-            ["currency"] = "USD",
-            ["source"] = "list_rate",
-            ["pricing_source"] = isEstimated ? "estimated_fallback" : "model_catalog",
-            ["provider"] = entry?.ProviderId ?? "",
-            ["user_id"] = userId ?? "",
+            [Keys.Currency] = "USD",
+            [Keys.Source] = "list_rate",
+            ["pricing_source"] = isEstimated ? "estimated_fallback" : Keys.ModelCatalog,
+            [Keys.Provider] = entry.ProviderId,
+            [Keys.UserId] = userId ?? "",
         }, save: true, ct).ConfigureAwait(false);
 
         if (_credits is not null && chargeUsd > 0)
@@ -970,20 +1002,20 @@ public sealed class CostReportService
         var evt = new Dictionary<string, object?>
         {
             ["kind"] = rec.Kind,
-            ["category"] = rec.Category ?? CostCategories.Resolve(rec.Kind, rec.Mode),
-            ["model"] = rec.Model,
-            ["provider"] = rec.Provider,
+            [Keys.Category] = rec.Category ?? CostCategories.Resolve(rec.Kind, rec.Mode),
+            [Keys.Model] = rec.Model,
+            [Keys.Provider] = rec.Provider,
             ["mode"] = rec.Mode,
-            ["request_id"] = rec.RequestId ?? "",
-            ["source"] = "list_rate",
-            ["list_usd"] = Math.Round(listUsd, 6),
+            [Keys.RequestId] = rec.RequestId ?? "",
+            [Keys.Source] = "list_rate",
+            [Keys.ListUsd] = Math.Round(listUsd, 6),
             ["usd"] = Math.Round(listUsd, 6),
-            ["currency"] = "USD",
-            ["user_id"] = rec.UserId ?? "",
+            [Keys.Currency] = "USD",
+            [Keys.UserId] = rec.UserId ?? "",
         };
         // Only book-level classifiers with no single scene/clip/character omit these — keep the
         // event dict free of literal nulls rather than writing "scene": null for every such call.
-        if (rec.Scene is { } scene) evt["scene"] = scene;
+        if (rec.Scene is { } scene) evt[Keys.Scene] = scene;
         if (rec.Clip is { } clip) evt["clip"] = clip;
         if (!string.IsNullOrWhiteSpace(rec.CharKey)) evt["char_key"] = rec.CharKey;
 
@@ -1008,14 +1040,13 @@ public sealed class CostReportService
         List<BlueprintSceneClips> scenes,
         Dictionary<int, Dictionary<int, bool>> onDisk,
         Dictionary<string, JsonElement> cfg,
-        Dictionary<string, object?> baseRates,
         double retries,
         string draftRes,
         string heroRes)
     {
-        var model = GetStr(cfg, "model_name", "");
+        var model = GetStr(cfg, Keys.ModelName, "");
         var rows = new List<CostScenarioRow>();
-        foreach (var res in new[] { "480p", "720p", "1080p" })
+        foreach (var res in new[] { "480p", "720p", Keys.Res1080p })
         {
             var rates = RatesFromConfig(CloneCfg(cfg, res, retries));
             double full = 0, missing = 0, regen = 0;
@@ -1119,7 +1150,7 @@ public sealed class CostReportService
             }
             if (!string.IsNullOrEmpty(e.Model))
                 byModel[e.Model] = byModel.GetValueOrDefault(e.Model) + charge;
-            if (string.Equals(kind, "video", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(kind, Keys.Video, StringComparison.OrdinalIgnoreCase))
             {
                 videoJobs++;
                 videoSec += e.DurationSec ?? 0;
@@ -1155,17 +1186,17 @@ public sealed class CostReportService
             Category = CostCategories.Resolve(
                 e.TryGetProperty("kind", out var k2) ? k2.GetString() : null,
                 e.TryGetProperty("mode", out var mo) ? mo.GetString() : null,
-                e.TryGetProperty("category", out var cat) ? cat.GetString() : null),
-            Scene = TryGetInt(e, "scene", out var sn) ? sn : null,
+                e.TryGetProperty(Keys.Category, out var cat) ? cat.GetString() : null),
+            Scene = TryGetInt(e, Keys.Scene, out var sn) ? sn : null,
             Clip = TryGetInt(e, "clip", out var cn) ? cn : null,
-            Model = e.TryGetProperty("model", out var m) ? m.GetString() : null,
-            Resolution = e.TryGetProperty("resolution", out var r) ? r.GetString() : null,
-            DurationSec = TryGetDouble(e, "duration_sec", out var d) ? d : null,
+            Model = e.TryGetProperty(Keys.Model, out var m) ? m.GetString() : null,
+            Resolution = e.TryGetProperty(Keys.Resolution, out var r) ? r.GetString() : null,
+            DurationSec = TryGetDouble(e, Keys.DurationSec, out var d) ? d : null,
             Usd = TryGetDouble(e, "usd", out var u) ? u : 0,
-            ListUsd = TryGetDouble(e, "list_usd", out var lu) ? lu : null,
+            ListUsd = TryGetDouble(e, Keys.ListUsd, out var lu) ? lu : null,
             ChargeMultiplier = TryGetDouble(e, "charge_multiplier", out var cm) ? cm : null,
-            Currency = e.TryGetProperty("currency", out var c) ? c.GetString() ?? "USD" : "USD",
-            Source = e.TryGetProperty("source", out var s) ? s.GetString() : null,
+            Currency = e.TryGetProperty(Keys.Currency, out var c) ? c.GetString() ?? "USD" : "USD",
+            Source = e.TryGetProperty(Keys.Source, out var s) ? s.GetString() : null,
             Character = e.TryGetProperty("character", out var ch) ? ch.GetString() : null,
             OutputRatePerSec = TryGetDouble(e, "output_rate_per_sec", out var or) ? or : null,
             HasRefImage = e.TryGetProperty("has_ref_image", out var hr) &&
@@ -1176,7 +1207,7 @@ public sealed class CostReportService
                        (ie.ValueKind is JsonValueKind.True or JsonValueKind.False)
                 ? ie.GetBoolean()
                 : null,
-            UserId = e.TryGetProperty("user_id", out var uid) ? uid.GetString() : null,
+            UserId = e.TryGetProperty(Keys.UserId, out var uid) ? uid.GetString() : null,
             KeyMode = e.TryGetProperty("key_mode", out var km) ? km.GetString() : null,
             TakeKind = e.TryGetProperty("take_kind", out var tk)
                 ? tk.GetString()
@@ -1213,7 +1244,7 @@ public sealed class CostReportService
             await using var stream = File.OpenRead(path);
             using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct)
                 .ConfigureAwait(false);
-            if (!doc.RootElement.TryGetProperty("cost_ledger", out var ledger) ||
+            if (!doc.RootElement.TryGetProperty(Keys.CostLedger, out var ledger) ||
                 ledger.ValueKind != JsonValueKind.Array)
                 return new List<JsonElement>();
             return ledger.EnumerateArray().Select(x => x.Clone()).ToList();
@@ -1253,7 +1284,7 @@ public sealed class CostReportService
         using (rawDoc)
         {
             var ledgerList = new List<object?>();
-            if (rawDoc.RootElement.TryGetProperty("cost_ledger", out var existing) &&
+            if (rawDoc.RootElement.TryGetProperty(Keys.CostLedger, out var existing) &&
                 existing.ValueKind == JsonValueKind.Array)
             {
                 foreach (var item in existing.EnumerateArray())
@@ -1263,7 +1294,7 @@ public sealed class CostReportService
             var ts = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss");
             evt.TryAdd("id", $"{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}_{ledgerList.Count:D4}");
             evt.TryAdd("ts", ts);
-            evt.TryAdd("currency", "USD");
+            evt.TryAdd(Keys.Currency, "USD");
             ledgerList.Add(evt);
             if (ledgerList.Count > 20000)
                 ledgerList = ledgerList.TakeLast(20000).ToList();
@@ -1271,12 +1302,12 @@ public sealed class CostReportService
             var merged = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
             foreach (var p in rawDoc.RootElement.EnumerateObject())
             {
-                if (p.Name is "cost_ledger" or "cost_totals")
+                if (p.Name is Keys.CostLedger or "cost_totals")
                     continue;
                 merged[p.Name] = p.Value.Deserialize<object>();
             }
 
-            merged["cost_ledger"] = ledgerList;
+            merged[Keys.CostLedger] = ledgerList;
             var prevUsd = 0.0;
             var prevEvents = 0;
             if (rawDoc.RootElement.TryGetProperty("cost_totals", out var tot) &&
@@ -1359,9 +1390,8 @@ public sealed class CostReportService
             scenes.ValueKind != JsonValueKind.Array)
             return list;
 
-        var defaultDur = 8.0;
         var cfg = await LoadConfigMapAsync(projectId, ct).ConfigureAwait(false);
-        defaultDur = GetDouble(cfg, "duration_seconds", 8);
+        var defaultDur = GetDouble(cfg, "duration_seconds", 8);
 
         foreach (var s in scenes.EnumerateArray())
         {
@@ -1419,7 +1449,7 @@ public sealed class CostReportService
     private Dictionary<int, Dictionary<int, bool>> IndexOnDiskClips(string projectId)
     {
         var map = new Dictionary<int, Dictionary<int, bool>>();
-        var videoDir = Path.Combine(_projects.GetProjectDir(projectId), "assets", "video");
+        var videoDir = Path.Combine(_projects.GetProjectDir(projectId), "assets", Keys.Video);
         if (!Directory.Exists(videoDir))
             return map;
         try
@@ -1472,7 +1502,7 @@ public sealed class CostReportService
             {
                 if (!int.TryParse(p.Name, out var sn)) continue;
                 if (p.Value.ValueKind == JsonValueKind.Object &&
-                    p.Value.TryGetProperty("resolution", out var r) &&
+                    p.Value.TryGetProperty(Keys.Resolution, out var r) &&
                     r.GetString() is { Length: > 0 } res)
                     map[sn] = res;
                 else if (p.Value.ValueKind is JsonValueKind.True)
@@ -1516,8 +1546,8 @@ public sealed class CostReportService
     /// </summary>
     private static Dictionary<string, object?> RatesFromConfig(Dictionary<string, JsonElement> cfg)
     {
-        var videoModelId = GetStr(cfg, "model_name", "");
-        var imageModelId = GetStr(cfg, "image_model_name", "");
+        var videoModelId = GetStr(cfg, Keys.ModelName, "");
+        var imageModelId = GetStr(cfg, Keys.ImageModelName, "");
         return RatesFromModels(videoModelId, imageModelId, cfg);
     }
 
@@ -1539,13 +1569,13 @@ public sealed class CostReportService
         {
             return new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
             {
-                ["currency"] = "USD",
-                ["source"] = "model_catalog",
+                [Keys.Currency] = "USD",
+                [Keys.Source] = Keys.ModelCatalog,
                 ["video_model"] = videoModelId ?? "",
-                ["video_provider"] = "",
+                [Keys.VideoProvider] = "",
                 ["image_model"] = imageModelId ?? "",
                 ["image_provider"] = "",
-                ["video_pricing_source"] = "missing_catalog_entry",
+                [Keys.VideoPricingSource] = "missing_catalog_entry",
                 ["image_pricing_source"] = "missing_catalog_entry",
             };
         }
@@ -1599,10 +1629,10 @@ public sealed class CostReportService
         // future vendor-verified number takes over automatically.
         var refImageCostReal = video.VideoReferenceImageCost;
         var extendCostReal = video.VideoExtendCostPerSecond;
-        var refImageSource = refImageCostReal is not null ? "model_catalog" : "missing_catalog";
+        var refImageSource = refImageCostReal is not null ? Keys.ModelCatalog : Keys.MissingCatalog;
         var extendSource = extendCostReal is not null
-            ? "model_catalog"
-            : (video.SupportsVideoContinue ? "missing_catalog" : "not_applicable");
+            ? Keys.ModelCatalog
+            : (video.SupportsVideoContinue ? Keys.MissingCatalog : "not_applicable");
 
         // Overall video pricing is only "fully real" when the output pricing (per-second table OR
         // a flat base fee — a model priced entirely via base fee with no per-second rate, e.g.
@@ -1616,10 +1646,10 @@ public sealed class CostReportService
 
         var rates = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
         {
-            ["currency"] = "USD",
-            ["source"] = "model_catalog",
+            [Keys.Currency] = "USD",
+            [Keys.Source] = Keys.ModelCatalog,
             ["video_model"] = video.Id,
-            ["video_provider"] = video.ProviderId,
+            [Keys.VideoProvider] = video.ProviderId,
             ["image_model"] = imagePrimary.Id,
             ["image_provider"] = imagePrimary.ProviderId,
             ["video_output_per_sec"] = videoTable,
@@ -1645,19 +1675,19 @@ public sealed class CostReportService
             ["assume_ref_image_per_clip"] = true,
             ["assume_extend_fraction"] = 0.0,
             ["assume_avg_retries"] = 0.0,
-            ["video_pricing_source"] = video.LabMode
+            [Keys.VideoPricingSource] = video.LabMode
                 ? "lab_mode"
-                : (videoPricingFullyReal ? "model_catalog" : "missing_catalog"),
+                : (videoPricingFullyReal ? Keys.ModelCatalog : Keys.MissingCatalog),
             ["image_pricing_source"] = imagePrimary.LabMode
                 ? "lab_mode"
-                : (imagePricingIsEstimated ? "missing_catalog" : "model_catalog"),
+                : (imagePricingIsEstimated ? Keys.MissingCatalog : Keys.ModelCatalog),
             ["video_lab_mode"] = video.LabMode,
             ["image_lab_mode"] = imagePrimary.LabMode,
         };
 
         // Planning knobs only — do not let old manual $/sec tables override vendor rates.
         if (cfgOverrides is not null &&
-            cfgOverrides.TryGetValue("cost_estimates", out var ce) &&
+            cfgOverrides.TryGetValue(Keys.CostEstimates, out var ce) &&
             ce.ValueKind == JsonValueKind.Object)
         {
             foreach (var p in ce.EnumerateObject())
@@ -1665,12 +1695,12 @@ public sealed class CostReportService
                 if (p.NameEquals("video_output_per_sec") ||
                     p.NameEquals("image_output_quality") ||
                     p.NameEquals("image_output_standard") ||
-                    p.NameEquals("source") ||
+                    p.NameEquals(Keys.Source) ||
                     p.NameEquals("video_model") ||
-                    p.NameEquals("video_provider") ||
+                    p.NameEquals(Keys.VideoProvider) ||
                     p.NameEquals("image_model") ||
                     p.NameEquals("image_provider") ||
-                    p.NameEquals("currency") ||
+                    p.NameEquals(Keys.Currency) ||
                     p.NameEquals("notes"))
                     continue;
 
@@ -1738,7 +1768,7 @@ public sealed class CostReportService
             {
                 var name = x.GetString();
                 if (!string.IsNullOrWhiteSpace(name))
-                    list.Add(name!);
+                    list.Add(name);
             }
         }
         return list;
@@ -1759,9 +1789,9 @@ public sealed class CostReportService
     /// <summary>Fill any missing 480p/720p/1080p rate from the nearest present tier.</summary>
     private static void FillMissingResolutions(Dictionary<string, double> table)
     {
-        FillMissingRes(table, "720p", "1080p", "480p");
-        FillMissingRes(table, "480p", "720p", "1080p");
-        FillMissingRes(table, "1080p", "720p", "480p");
+        FillMissingRes(table, "720p", Keys.Res1080p, "480p");
+        FillMissingRes(table, "480p", "720p", Keys.Res1080p);
+        FillMissingRes(table, Keys.Res1080p, "720p", "480p");
     }
 
     private static void FillMissingRes(
@@ -1840,10 +1870,10 @@ public sealed class CostReportService
     /// </summary>
     private static string ResolveVideoProvider(Dictionary<string, JsonElement> cfg, string? videoModel)
     {
-        var fromModel = SupportedModelCatalog.CatalogProviderId(videoModel, "video");
+        var fromModel = SupportedModelCatalog.CatalogProviderId(videoModel, Keys.Video);
         if (!string.IsNullOrWhiteSpace(fromModel))
             return fromModel;
-        var fromCfg = GetStr(cfg, "video_provider", "");
+        var fromCfg = GetStr(cfg, Keys.VideoProvider, "");
         if (!string.IsNullOrWhiteSpace(fromCfg) && SupportedModelCatalog.IsKnownProviderId(fromCfg))
             return SupportedModelCatalog.NormalizeProviderId(fromCfg);
         return "";
@@ -1908,8 +1938,7 @@ public sealed class CostReportService
     /// </summary>
     private async Task<List<BlueprintSceneClips>> LoadScreenplayDerivedClipsAsync(
         string projectId,
-        Dictionary<string, JsonElement> cfg,
-        CancellationToken ct)
+        Dictionary<string, JsonElement> cfg)
     {
         await Task.Yield();
         var list = new List<BlueprintSceneClips>();
@@ -1961,7 +1990,7 @@ public sealed class CostReportService
                 {
                     var name = x?.ToString();
                     if (!string.IsNullOrWhiteSpace(name))
-                        chars.Add(name!);
+                        chars.Add(name);
                 }
             }
 
@@ -1988,11 +2017,9 @@ public sealed class CostReportService
     {
         var unit = GetDouble(rates, "image_output_quality", 0.05);
         var variants = 3;
-        if (cfg.TryGetValue("cost_estimates", out var ce) && ce.ValueKind == JsonValueKind.Object)
-        {
-            if (ce.TryGetProperty("character_variants", out var cv) && cv.TryGetInt32(out var n) && n > 0)
-                variants = Math.Clamp(n, 1, 6);
-        }
+        if (cfg.TryGetValue(Keys.CostEstimates, out var ce) && ce.ValueKind == JsonValueKind.Object &&
+            ce.TryGetProperty("character_variants", out var cv) && cv.TryGetInt32(out var n) && n > 0)
+            variants = Math.Clamp(n, 1, 6);
 
         var chars = _projects.ListCharacters(projectId);
         var onScreen = chars.Where(c => !c.VoiceOnly).ToList();
@@ -2027,7 +2054,7 @@ public sealed class CostReportService
         double ttsPerCharOverride = -1; // flat $ per speaking character (legacy knob)
         double ttsPerThousandOverride = -1;
 
-        if (cfg.TryGetValue("cost_estimates", out var ce) && ce.ValueKind == JsonValueKind.Object)
+        if (cfg.TryGetValue(Keys.CostEstimates, out var ce) && ce.ValueKind == JsonValueKind.Object)
         {
             if (ce.TryGetProperty("include_voice", out var iv) &&
                 iv.ValueKind is JsonValueKind.True or JsonValueKind.False)
@@ -2049,17 +2076,13 @@ public sealed class CostReportService
             include = true;
 
         // Shot plan with dialogue ⇒ speak-batch / re-voice is in scope even without a sample yet.
-        var dialogueChars = 0;
-        var dialogueClips = 0;
-        foreach (var s in scenes)
-        {
-            foreach (var c in s.Clips)
-            {
-                if (c.DialogueCharCount <= 0) continue;
-                dialogueChars += c.DialogueCharCount;
-                dialogueClips++;
-            }
-        }
+        var dialogueCharCounts = scenes
+            .SelectMany(s => s.Clips)
+            .Where(c => c.DialogueCharCount > 0)
+            .Select(c => c.DialogueCharCount)
+            .ToList();
+        var dialogueChars = dialogueCharCounts.Sum();
+        var dialogueClips = dialogueCharCounts.Count;
         if (dialogueChars > 0)
             include = true;
 
@@ -2161,7 +2184,7 @@ public sealed class CostReportService
             return new ScopeEstimate(0, 0, Included: false);
 
         var perScene = 0.08;
-        if (cfg.TryGetValue("cost_estimates", out var ce) && ce.ValueKind == JsonValueKind.Object &&
+        if (cfg.TryGetValue(Keys.CostEstimates, out var ce) && ce.ValueKind == JsonValueKind.Object &&
             ce.TryGetProperty("music_per_scene_usd", out var m) && m.TryGetDouble(out var mv) && mv >= 0)
             perScene = mv;
 
@@ -2377,7 +2400,7 @@ public sealed class CostReportService
         var outTok = 1_200.0;
         // Review passes track video multiplier: ~1.3× checks when QA retry is on (re-check after regen).
         var reviewPasses = qaRetryOnFail ? Math.Max(1.0, qaVideoMultiplier) : 1.0;
-        if (cfg.TryGetValue("cost_estimates", out var ce) && ce.ValueKind == JsonValueKind.Object)
+        if (cfg.TryGetValue(Keys.CostEstimates, out var ce) && ce.ValueKind == JsonValueKind.Object)
         {
             if (ce.TryGetProperty("review_input_tokens_per_clip", out var it) && it.TryGetDouble(out var itv) && itv > 0)
                 inTok = itv;
@@ -2443,13 +2466,13 @@ public sealed class CostReportService
         shotPlanUsd *= Math.Clamp(sceneN / 12.0, 0.6, 2.5);
 
         double total, remaining;
-        if (estimateBasis == "shot_plan")
+        if (estimateBasis == Keys.ShotPlan)
         {
             // Both passes done for planning purposes
             total = importUsd + shotPlanUsd;
             remaining = 0;
         }
-        else if (estimateBasis == "screenplay")
+        else if (estimateBasis == Keys.Screenplay)
         {
             total = importUsd + shotPlanUsd;
             remaining = shotPlanUsd; // shot plan still ahead

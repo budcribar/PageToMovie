@@ -74,7 +74,8 @@ public partial class VoiceCaptureStep
             var data = await Engine.GetVoiceCapturePhrasesAsync(_projectId);
             // Ignore a cache built for a different character — old caches (before CharKey existed)
             // are implicitly the narrator's.
-            var cachedKey = string.IsNullOrWhiteSpace(data?.CharKey) ? "Character_Narrator" : data!.CharKey!.Trim();
+            var charKey = data?.CharKey;
+            var cachedKey = string.IsNullOrWhiteSpace(charKey) ? "Character_Narrator" : charKey.Trim();
             if (string.Equals(cachedKey, CharKey, StringComparison.OrdinalIgnoreCase))
                 _phrases = SelectPool(data?.Phrases);
         }
@@ -131,7 +132,7 @@ public partial class VoiceCaptureStep
     }
 
     internal Task<string?> GetSceneUrlAsync(int scene) =>
-        ScenePlaybackSupport.GetSceneUrlAsync(Stitch, _projectId!, scene, _sceneUrls);
+        ScenePlaybackSupport.GetSceneUrlAsync(Stitch, _projectId ?? "", scene, _sceneUrls);
 
     internal async Task ListenAsync()
     {
