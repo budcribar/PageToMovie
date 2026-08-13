@@ -1137,66 +1137,68 @@ public static class BookToFountainConverter
             --- END FOUNTAIN ---
             """;
 
-        return await ExecuteNormalizationPassAsync(
+        return await ExecuteNormalizationPassAsync(new(
             system, fountain, user, chat, model, onProgress, ct, reasoningEffort,
-            mode: ChatCallModes.BookToFountainLocationNormalizeRetry,
-            retryLabel: "Location normalization",
-            promptVersion: "stage1-location-normalize-v1",
-            operationName: "stage1_location_normalize",
-            successMessage: "Location names checked.").ConfigureAwait(false);
+            ChatCallModes.BookToFountainLocationNormalizeRetry,
+            "Location normalization",
+            "stage1-location-normalize-v1",
+            "stage1_location_normalize",
+            "Location names checked.")).ConfigureAwait(false);
     }
+
+    private readonly record struct NormalizationPass(
+        string System,
+        string Fountain,
+        string User,
+        IChatClient Chat,
+        string Model,
+        Action<string>? OnProgress,
+        CancellationToken Ct,
+        string? ReasoningEffort,
+        string Mode,
+        string RetryLabel,
+        string PromptVersion,
+        string OperationName,
+        string SuccessMessage);
 
     /// <summary>
     /// Shared execute/validate/fallback for location-name and character-name normalization.
     /// Both passes ask the model to unify aliases or leave genuine differences; neither can
     /// re-run its candidate finder as a pass/fail signal.
     /// </summary>
-    private static async Task<string> ExecuteNormalizationPassAsync(
-        string system,
-        string fountain,
-        string user,
-        IChatClient chat,
-        string model,
-        Action<string>? onProgress,
-        CancellationToken ct,
-        string? reasoningEffort,
-        string mode,
-        string retryLabel,
-        string promptVersion,
-        string operationName,
-        string successMessage)
+    private static async Task<string> ExecuteNormalizationPassAsync(NormalizationPass pass)
     {
         try
         {
             var raw = await ExecuteStage1OperationAsync(
-                    chat, system, user, model, temperature: 0.1,
-                    mode: mode,
-                    retryLabel: retryLabel, onProgress, ct, reasoningEffort,
-                    promptVersion: promptVersion,
+                    pass.Chat, pass.System, pass.User, pass.Model, temperature: 0.1,
+                    mode: pass.Mode,
+                    retryLabel: pass.RetryLabel, pass.OnProgress, pass.Ct, pass.ReasoningEffort,
+                    promptVersion: pass.PromptVersion,
                     correctionInstruction: "Return the complete Fountain screenplay again — valid Fountain formatting throughout.",
                     validate: ValidateNormalizationRepair,
-                    deterministicFallback: fountain,
-                    operationName: operationName).ConfigureAwait(false);
+                    deterministicFallback: pass.Fountain,
+                    operationName: pass.OperationName).ConfigureAwait(false);
             if (raw is null)
             {
-                onProgress?.Invoke($"{retryLabel} failed twice — keeping prior draft.");
-                return fountain;
+                pass.OnProgress?.Invoke($"{pass.RetryLabel} failed twice — keeping prior draft.");
+                return pass.Fountain;
             }
 
             var repaired = StripBookPageTags(StripFences(raw));
             if (!LooksLikeGoodFountain(repaired))
             {
-                onProgress?.Invoke($"{retryLabel} unusable — keeping prior draft.");
-                return fountain;
+                pass.OnProgress?.Invoke($"{pass.RetryLabel} unusable — keeping prior draft.");
+                return pass.Fountain;
             }
 
-            onProgress?.Invoke(successMessage);
+            pass.OnProgress?.Invoke(pass.SuccessMessage);
             return repaired;
         }
         catch (Exception)
         {
-            onProgress?.Invoke($"{retryLabel} failed — keeping prior draft.");
-            return fountain;
+            pass.OnProgress?.Invoke($"{pass.RetryLabel} failed — keeping prior draft.");
+            return pass.Fountain;
         }
     }
 
@@ -1571,13 +1573,13 @@ public static class BookToFountainConverter
             --- END FOUNTAIN ---
             """;
 
-        return await ExecuteNormalizationPassAsync(
+        return await ExecuteNormalizationPassAsync(new(
             system, fountain, user, chat, model, onProgress, ct, reasoningEffort,
-            mode: ChatCallModes.BookToFountainNameNormalizeRetry,
-            retryLabel: "Name normalization",
-            promptVersion: "stage1-name-normalize-v1",
-            operationName: "stage1_name_normalize",
-            successMessage: "Names checked.").ConfigureAwait(false);
+            ChatCallModes.BookToFountainNameNormalizeRetry,
+            "Name normalization",
+            "stage1-name-normalize-v1",
+            "stage1_name_normalize",
+            "Names checked.")).ConfigureAwait(false);
     }
 
     // ── split narration (continuous V.O./verse broken by a real blank line) ───────────────
