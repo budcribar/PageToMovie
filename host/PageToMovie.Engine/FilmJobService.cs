@@ -1274,15 +1274,8 @@ public sealed class FilmJobService
             s.Index = Math.Max(s.Index, 6);
     }
 
-    private static bool ContainsAnyIgnoreCase(string line, params string[] needles)
-    {
-        foreach (var n in needles)
-        {
-            if (line.Contains(n, StringComparison.OrdinalIgnoreCase))
-                return true;
-        }
-        return false;
-    }
+    private static bool ContainsAnyIgnoreCase(string line, params string[] needles) =>
+        needles.Any(n => line.Contains(n, StringComparison.OrdinalIgnoreCase));
 
     private async Task<bool> TryRunBookImportPreparePhaseAsync(
         StartBookImportRequest req,
@@ -3418,7 +3411,6 @@ public sealed class FilmJobService
                     .ConfigureAwait(false);
                 return;
             }
-            var entry = ctx.Entry;
             var providerId = ctx.ProviderId;
 
             var work = await BuildSpeakBatchWorkAsync(req, projectId, charKey, ct).ConfigureAwait(false);
@@ -4669,10 +4661,7 @@ public sealed class FilmJobService
     {
         var todo = new List<(int ClipNum, JsonElement Clip)>();
         foreach (var c in clips)
-        {
-            if (!TryAddSceneGenTodoItem(todo, c, req, videoDir))
-                continue;
-        }
+            TryAddSceneGenTodoItem(todo, c, req, videoDir);
         return todo;
     }
 
@@ -4851,7 +4840,7 @@ public sealed class FilmJobService
         {
             if (pcn == cn - 1) return pclip;
         }
-        // Also scan full scene clips for prev not in todo
+        // Also scan full scene clips for prev not in the work list
         return FindClipInScene(sceneEl, cn - 1);
     }
 
@@ -5593,11 +5582,11 @@ public sealed class FilmJobService
         return overrunSec;
     }
 
-    private Task<ClipDialogueVerificationResult?>? StartDialogueVerificationIfConfigured(ClipGenContext ctx)
+    private Task<ClipDialogueVerificationResult?> StartDialogueVerificationIfConfigured(ClipGenContext ctx)
     {
         var verifier = _dialogueVerification;
         if (verifier is null || !verifier.IsConfigured)
-            return null;
+            return Task.FromResult<ClipDialogueVerificationResult?>(null);
         var projId = Snapshot.ProjectId ?? ctx.ProjectId ?? _projects.ActiveProjectId;
         var scene = ctx.Scene;
         var clip = ctx.Clip;
@@ -5620,7 +5609,7 @@ public sealed class FilmJobService
         ClipVideoPromptBuilder.PromptBuildResult built,
         int duration,
         double probedSec,
-        Task<ClipDialogueVerificationResult?>? dialogueVerificationTask)
+        Task<ClipDialogueVerificationResult?> dialogueVerificationTask)
     {
         // Record dynamic cut timing telemetry into SQLite database for continuous server learning
         if (_timingCalibration is null)
@@ -5709,7 +5698,7 @@ public sealed class FilmJobService
         double probedSec,
         double camOverhead,
         double measuredActOverhead,
-        Task<ClipDialogueVerificationResult?>? dialogueVerificationTask)
+        Task<ClipDialogueVerificationResult?> dialogueVerificationTask)
     {
         var calibration = _timingCalibration;
         if (calibration is null)
@@ -5747,10 +5736,8 @@ public sealed class FilmJobService
     }
 
     private static async Task<bool> ResolveDialogueTruncatedAsync(
-        Task<ClipDialogueVerificationResult?>? dialogueVerificationTask)
+        Task<ClipDialogueVerificationResult?> dialogueVerificationTask)
     {
-        if (dialogueVerificationTask is null)
-            return false;
         var verification = await dialogueVerificationTask.ConfigureAwait(false);
         if (verification is null)
             return false;

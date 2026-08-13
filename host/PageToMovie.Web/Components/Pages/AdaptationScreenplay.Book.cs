@@ -78,7 +78,7 @@ public partial class AdaptationScreenplay
                     _bookContext = new BookContextDto
                     {
                         Ok = false,
-                        HasBook = S.Status?.Book.BookTextExists is true,
+                        HasBook = S.Status?.Book.BookTextExists ?? false,
                         Heading = heading,
                         SceneIndex = sceneIndex,
                         Excerpt = "",
@@ -108,7 +108,7 @@ public partial class AdaptationScreenplay
         {
             get
             {
-                if (S.Status?.Book.BookTextExists is not true) return false;
+                if (!(S.Status?.Book.BookTextExists ?? false)) return false;
                 if (string.IsNullOrWhiteSpace(S.Editor._text)) return true;
                 if (S.SignOff._signOffWarnings.Any(w =>
                         w.Contains("empty", StringComparison.OrdinalIgnoreCase)

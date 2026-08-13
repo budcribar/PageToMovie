@@ -23,7 +23,7 @@ public partial class AdaptationScreenplay
         /// <summary>Approved and not edited since sign-off.</summary>
         internal bool IsApprovedClean =>
             (_screenplayStatus?.Signed ?? false)
-            && _screenplayStatus.Dirty is not true
+            && !_screenplayStatus.Dirty
             && !S.Save._dirtyLocal;
 
         /// <summary>Had an approval but draft changed (or local unsaved edits after sign-off).</summary>

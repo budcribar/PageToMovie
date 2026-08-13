@@ -88,26 +88,10 @@ public sealed class ResendEmailSender : IEmailSender
         var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
         if (!resp.IsSuccessStatusCode)
         {
-            if (resp.StatusCode == System.Net.HttpStatusCode.Forbidden &&
-                !string.Equals(fromAddr, "onboarding@resend.dev", StringComparison.OrdinalIgnoreCase) &&
-                body.Contains("not verified", StringComparison.OrdinalIgnoreCase))
-            {
-                _log.LogWarning("Resend domain {FromAddr} is not verified. Retrying with onboarding@resend.dev sandbox address.", fromAddr);
-                payload.From = $"{fromName} <onboarding@resend.dev>";
-                using var retryReq = new HttpRequestMessage(HttpMethod.Post, EmailsEndpoint)
-                {
-                    Content = JsonContent.Create(payload, options: JsonOpts),
-                };
-                retryReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
-                var retryResp = await client.SendAsync(retryReq, ct).ConfigureAwait(false);
-                var retryBody = await retryResp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-                if (retryResp.IsSuccessStatusCode)
-                {
-                    _log.LogInformation("Resend email sent via onboarding@resend.dev sandbox To={To} Subject={Subject}", toEmail, subject);
-                    return;
-                }
-                _log.LogWarning("Resend sandbox retry failed Status={Status} Body={Body}", (int)retryResp.StatusCode, retryBody);
-            }
+            if (await TrySendViaOnboardingSandboxAsync(
+                    client, payload, fromAddr, fromName, toEmail, subject, body, resp.StatusCode, ct)
+                    .ConfigureAwait(false))
+                return;
 
             _log.LogError(
                 "Resend send failed To={To} Status={Status} Body={Body}",
@@ -123,6 +107,44 @@ public sealed class ResendEmailSender : IEmailSender
             toEmail,
             subject,
             Truncate(body, 120));
+    }
+
+    private async Task<bool> TrySendViaOnboardingSandboxAsync(
+        HttpClient client,
+        ResendSendRequest payload,
+        string fromAddr,
+        string fromName,
+        string toEmail,
+        string subject,
+        string originalBody,
+        System.Net.HttpStatusCode status,
+        CancellationToken ct)
+    {
+        if (status != System.Net.HttpStatusCode.Forbidden ||
+            string.Equals(fromAddr, "onboarding@resend.dev", StringComparison.OrdinalIgnoreCase) ||
+            !originalBody.Contains("not verified", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        payload.From = $"{fromName} <onboarding@resend.dev>";
+        using var retryReq = new HttpRequestMessage(HttpMethod.Post, EmailsEndpoint)
+        {
+            Content = JsonContent.Create(payload, options: JsonOpts),
+        };
+        retryReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
+        var retryResp = await client.SendAsync(retryReq, ct).ConfigureAwait(false);
+        var retryBody = await retryResp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+        if (retryResp.IsSuccessStatusCode)
+        {
+            _log.LogInformation(
+                "Resend domain {FromAddr} is not verified; sent via onboarding@resend.dev sandbox To={To} Subject={Subject}",
+                fromAddr, toEmail, subject);
+            return true;
+        }
+
+        _log.LogWarning(
+            "Resend domain {FromAddr} is not verified; sandbox retry failed Status={Status} Body={Body}",
+            fromAddr, (int)retryResp.StatusCode, retryBody);
+        return false;
     }
 
     private static string Truncate(string? s, int max)
