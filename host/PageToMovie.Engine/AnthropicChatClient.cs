@@ -15,7 +15,7 @@ namespace PageToMovie.Engine;
 /// telemetry and auth conventions so callers and the api_calls.jsonl log see the same shape
 /// regardless of provider.
 /// </summary>
-public sealed class AnthropicChatClient : IChatClient, IVisionClient
+public sealed class AnthropicChatClient : ChatProviderWithoutBookVision, IChatClient
 {
     public const string ApiBase = SupportedModelCatalog.AnthropicApiBase;
     public const string ApiVersion = "2023-06-01";
@@ -56,7 +56,9 @@ public sealed class AnthropicChatClient : IChatClient, IVisionClient
         ProviderHttpHelpers.EnsureTrailingSlashBaseAddress(_http, ApiBase);
     }
 
-    public bool IsConfigured => !string.IsNullOrWhiteSpace(ResolveApiKey());
+    protected override string UnsupportedVisionProvider => "Anthropic";
+
+    public override bool IsConfigured => !string.IsNullOrWhiteSpace(ResolveApiKey());
 
     /// <summary>Maps the provider-neutral <c>reasoningEffort</c> scale to Anthropic's
     /// <c>output_config.effort</c> values (confirmed live: low/medium/high/xhigh/max).</summary>
@@ -99,13 +101,13 @@ public sealed class AnthropicChatClient : IChatClient, IVisionClient
         {
             payload[TemperatureKey] = temperature;
         }
-        return await SendWithTransientRetryAsync(
+        return await AiRetryPolicy.ChatSendWithTransientRetryAsync(
             attemptNum => SendAsync(
                 payload, model, "chat", MessagesKey, mode,
                 systemPrompt, userPrompt,
                 (systemPrompt?.Length ?? 0) + (userPrompt?.Length ?? 0),
                 attemptNum, ct),
-            model, mode, ct).ConfigureAwait(false);
+            _errorLogger, "anthropic_chat_completion", model, mode, ct).ConfigureAwait(false);
     }
 
     private static readonly HashSet<string> AllowedImageExtensions = new(StringComparer.OrdinalIgnoreCase)
@@ -114,7 +116,7 @@ public sealed class AnthropicChatClient : IChatClient, IVisionClient
     };
 
     /// <summary>Multi-image completion for clip auto-review (prev tail + current frames).</summary>
-    public async Task<string> CompleteWithImagesAsync(
+    public override async Task<string> CompleteWithImagesAsync(
         string prompt,
         IReadOnlyList<string> imagePaths,
         string model = "",
@@ -147,37 +149,13 @@ public sealed class AnthropicChatClient : IChatClient, IVisionClient
                 new Dictionary<string, object?> { ["role"] = "user", ["content"] = content },
             },
         };
-        return await SendWithTransientRetryAsync(
+        return await AiRetryPolicy.ChatSendWithTransientRetryAsync(
             attemptNum => SendAsync(
                 payload, model, "vision", MessagesKey, "clip_auto_review",
-                prompt, string.Join(", ", imagePaths.Select(Path.GetFileName)),
+                prompt, ChatClientHelpers.ImageNamesForLog(imagePaths),
                 prompt.Length, attemptNum, ct),
-            model, "clip_auto_review", ct).ConfigureAwait(false);
+            _errorLogger, "anthropic_chat_completion", model, "clip_auto_review", ct).ConfigureAwait(false);
     }
-
-    private Task<string> SendWithTransientRetryAsync(
-        Func<int, Task<string>> call,
-        string model,
-        string? mode,
-        CancellationToken ct) =>
-        AiRetryPolicy.ChatSendWithTransientRetryAsync(
-            call, _errorLogger, "anthropic_chat_completion", model, mode, ct);
-
-
-    /// <summary>
-    /// Not implemented for Anthropic — book-page OCR / cast classification stay on
-    /// <see cref="GrokVisionClient"/> for now. Fails loudly rather than silently
-    /// returning a wrong answer if ever routed here.
-    /// </summary>
-    public Task<string> TranscribePageAsync(
-        string imagePath, int page, string model = "", CancellationToken ct = default) =>
-        ChatClientHelpers.TranscribePageNotSupported("Anthropic");
-
-    /// <inheritdoc cref="TranscribePageAsync"/>
-    public Task<CharacterPageClassification> ClassifyCharactersOnImageAsync(
-        string imagePath, int page, IReadOnlyList<CharacterClassifyHint> cast,
-        string model = "", CancellationToken ct = default) =>
-        ChatClientHelpers.ClassifyCharactersNotSupported("Anthropic");
 
     private async Task<string> SendAsync(
         Dictionary<string, object?> payload,

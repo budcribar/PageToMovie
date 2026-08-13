@@ -15,7 +15,7 @@ namespace PageToMovie.Engine;
 /// built from Gemini's public documented format; verify against a live call before relying on
 /// this in production, same as any provider added without an account to test against.
 /// </summary>
-public sealed class GeminiChatClient : IChatClient, IVisionClient, IGeminiVideoAnalysisClient
+public sealed class GeminiChatClient : ChatProviderWithoutBookVision, IChatClient, IGeminiVideoAnalysisClient
 {
     public const string ApiBase = SupportedModelCatalog.GoogleApiBase;
 
@@ -40,7 +40,9 @@ public sealed class GeminiChatClient : IChatClient, IVisionClient, IGeminiVideoA
             _http.Timeout = TimeSpan.FromSeconds(180);
     }
 
-    public bool IsConfigured => !string.IsNullOrWhiteSpace(ResolveApiKey());
+    protected override string UnsupportedVisionProvider => "Gemini";
+
+    public override bool IsConfigured => !string.IsNullOrWhiteSpace(ResolveApiKey());
 
     private static readonly AsyncLocal<string?> _lastResolvedModel = new();
 
@@ -92,17 +94,17 @@ public sealed class GeminiChatClient : IChatClient, IVisionClient, IGeminiVideoA
             },
             ["generationConfig"] = generationConfig,
         };
-        return await SendWithTransientRetryAsync(
+        return await AiRetryPolicy.ChatSendWithTransientRetryAsync(
             attemptNum => SendAsync(
                 payload, model, "chat", mode,
                 systemPrompt, userPrompt,
                 (systemPrompt?.Length ?? 0) + (userPrompt?.Length ?? 0),
                 attemptNum, ct),
-            model, mode, ct).ConfigureAwait(false);
+            _errorLogger, "gemini_chat_completion", model, mode, ct).ConfigureAwait(false);
     }
 
     /// <summary>Multi-image completion for clip auto-review (prev tail + current frames).</summary>
-    public async Task<string> CompleteWithImagesAsync(
+    public override async Task<string> CompleteWithImagesAsync(
         string prompt,
         IReadOnlyList<string> imagePaths,
         string model = "",
@@ -127,37 +129,13 @@ public sealed class GeminiChatClient : IChatClient, IVisionClient, IGeminiVideoA
                 new Dictionary<string, object?> { ["role"] = "user", [PartsKey] = parts },
             },
         };
-        return await SendWithTransientRetryAsync(
+        return await AiRetryPolicy.ChatSendWithTransientRetryAsync(
             attemptNum => SendAsync(
                 payload, model, "vision", "clip_auto_review",
-                prompt, string.Join(", ", imagePaths.Select(Path.GetFileName)),
+                prompt, ChatClientHelpers.ImageNamesForLog(imagePaths),
                 prompt.Length, attemptNum, ct),
-            model, "clip_auto_review", ct).ConfigureAwait(false);
+            _errorLogger, "gemini_chat_completion", model, "clip_auto_review", ct).ConfigureAwait(false);
     }
-
-    private Task<string> SendWithTransientRetryAsync(
-        Func<int, Task<string>> call,
-        string model,
-        string? mode,
-        CancellationToken ct) =>
-        AiRetryPolicy.ChatSendWithTransientRetryAsync(
-            call, _errorLogger, "gemini_chat_completion", model, mode, ct);
-
-
-    /// <summary>
-    /// Not implemented for Gemini — book-page OCR / cast classification stay on
-    /// <see cref="GrokVisionClient"/> for now. Fails loudly rather than silently
-    /// returning a wrong answer if ever routed here.
-    /// </summary>
-    public Task<string> TranscribePageAsync(
-        string imagePath, int page, string model = "", CancellationToken ct = default) =>
-        ChatClientHelpers.TranscribePageNotSupported("Gemini");
-
-    /// <inheritdoc cref="TranscribePageAsync"/>
-    public Task<CharacterPageClassification> ClassifyCharactersOnImageAsync(
-        string imagePath, int page, IReadOnlyList<CharacterClassifyHint> cast,
-        string model = "", CancellationToken ct = default) =>
-        ChatClientHelpers.ClassifyCharactersNotSupported("Gemini");
 
     private static string NormalizeModelName(string? model)
     {
