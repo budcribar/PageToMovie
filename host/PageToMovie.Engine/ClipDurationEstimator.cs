@@ -646,41 +646,77 @@ public static class ClipDurationEstimator
         var durs = beats.Select(b => EstimateForBeat(b, minSeconds, maxSeconds, absMaxSeconds)).ToList();
 
         if (sceneTargetSeconds is int target && target > durs.Sum() + 2)
-        {
-            // Sharply limited pad: silent empty holds must not absorb monologue-scale scene budget
-            var need = Math.Min(target - durs.Sum(), beats.Count); // at most +1s per beat overall
-            var actionIdx = new List<int>();
-            for (var i = 0; i < beats.Count; i++)
-            {
-                if (beats[i] is null) continue;
-                var dlg = Coerce(beats[i], JsonKeys.Dialogue);
-                if (!string.IsNullOrWhiteSpace(dlg)) continue;
-                var ac = Coerce(beats[i], ActionClassKey).ToLowerInvariant();
-                if (ac is "hold") continue; // never pad micro-beats
-                var maxFor = SilentPadCap(ac, absMaxSeconds);
-                if (durs[i] < maxFor)
-                    actionIdx.Add(i);
-            }
-
-            var guard = 0;
-            while (need > 0 && actionIdx.Count > 0 && guard++ < 50)
-            {
-                var progressed = false;
-                foreach (var i in actionIdx)
-                {
-                    if (need <= 0) break;
-                    var ac = beats[i] is null ? "" : Coerce(beats[i], ActionClassKey).ToLowerInvariant();
-                    var maxFor = SilentPadCap(ac, absMaxSeconds);
-                    if (durs[i] >= maxFor) continue;
-                    durs[i]++;
-                    need--;
-                    progressed = true;
-                }
-                if (!progressed) break;
-            }
-        }
+            PadSilentBeatsTowardTarget(beats, durs, target, absMaxSeconds);
 
         return durs;
+    }
+
+    private static void PadSilentBeatsTowardTarget(
+        IReadOnlyList<Dictionary<string, object?>> beats,
+        List<int> durs,
+        int target,
+        int absMaxSeconds)
+    {
+        // Sharply limited pad: silent empty holds must not absorb monologue-scale scene budget
+        var need = Math.Min(target - durs.Sum(), beats.Count); // at most +1s per beat overall
+        var actionIdx = CollectPaddableSilentBeatIndices(beats, durs, absMaxSeconds);
+        DistributeSilentPadSeconds(beats, durs, actionIdx, need, absMaxSeconds);
+    }
+
+    private static List<int> CollectPaddableSilentBeatIndices(
+        IReadOnlyList<Dictionary<string, object?>> beats,
+        List<int> durs,
+        int absMaxSeconds)
+    {
+        var actionIdx = new List<int>();
+        for (var i = 0; i < beats.Count; i++)
+        {
+            if (!IsPaddableSilentBeat(beats[i], durs[i], absMaxSeconds)) continue;
+            actionIdx.Add(i);
+        }
+        return actionIdx;
+    }
+
+    private static bool IsPaddableSilentBeat(Dictionary<string, object?>? beat, int duration, int absMaxSeconds)
+    {
+        if (beat is null) return false;
+        var dlg = Coerce(beat, JsonKeys.Dialogue);
+        if (!string.IsNullOrWhiteSpace(dlg)) return false;
+        var ac = Coerce(beat, ActionClassKey).ToLowerInvariant();
+        if (ac is "hold") return false; // never pad micro-beats
+        return duration < SilentPadCap(ac, absMaxSeconds);
+    }
+
+    private static void DistributeSilentPadSeconds(
+        IReadOnlyList<Dictionary<string, object?>> beats,
+        List<int> durs,
+        List<int> actionIdx,
+        int need,
+        int absMaxSeconds)
+    {
+        var guard = 0;
+        while (need > 0 && actionIdx.Count > 0 && guard++ < 50)
+        {
+            var progressed = false;
+            foreach (var i in actionIdx)
+            {
+                if (need <= 0) break;
+                if (!TryIncrementSilentPad(beats[i], durs, i, absMaxSeconds)) continue;
+                need--;
+                progressed = true;
+            }
+            if (!progressed) break;
+        }
+    }
+
+    private static bool TryIncrementSilentPad(
+        Dictionary<string, object?>? beat, List<int> durs, int index, int absMaxSeconds)
+    {
+        var ac = beat is null ? "" : Coerce(beat, ActionClassKey).ToLowerInvariant();
+        var maxFor = SilentPadCap(ac, absMaxSeconds);
+        if (durs[index] >= maxFor) return false;
+        durs[index]++;
+        return true;
     }
 
     private static int SilentPadCap(string actionClass, int absMaxSeconds = AbsMaxSeconds) =>
