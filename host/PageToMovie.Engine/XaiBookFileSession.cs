@@ -136,6 +136,39 @@ public sealed class XaiBookFileSession : IBookFileSession
             return restart.OutputText;
         }
     }
+
+    public async Task<string> CompleteWithFilesAsync(
+        string systemPrompt,
+        string userInstruction,
+        IReadOnlyList<string> extraFileIds,
+        string model,
+        double temperature = 0.2,
+        CancellationToken ct = default)
+    {
+        await EnsureUploadedAsync(ct).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(FileId))
+            throw new InvalidOperationException("xAI file_id missing after upload.");
+
+        var ids = new List<string> { FileId };
+        if (extraFileIds is not null)
+        {
+            foreach (var extra in extraFileIds)
+            {
+                if (string.IsNullOrWhiteSpace(extra)) continue;
+                if (!ids.Contains(extra, StringComparer.Ordinal))
+                    ids.Add(extra);
+            }
+        }
+
+        var result = await _client.CompleteWithFilesAndSystemAsync(
+            model, ids, systemPrompt, userInstruction, ct, temperature).ConfigureAwait(false);
+        LastResponseId = result.ResponseId;
+        await _registry.UpdateLastResponseIdAsync(_bookId, ProviderName, LastResponseId, ct)
+            .ConfigureAwait(false);
+        _onProgress?.Invoke(
+            $"xAI Responses write ({ids.Count} file(s)) response_id={result.ResponseId}.");
+        return result.OutputText;
+    }
 }
 
 public sealed class BookFileSessionFactory : IBookFileSessionFactory

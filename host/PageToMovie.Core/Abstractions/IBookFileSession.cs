@@ -43,6 +43,18 @@ public interface IBookFileSession
         CancellationToken ct = default,
         string? mode = null,
         string? reasoningEffort = null);
+
+    /// <summary>
+    /// Instruction with the book file plus extra artifacts (index, stitch) attached.
+    /// Does not use previous_response_id — each call is a fresh turn.
+    /// </summary>
+    Task<string> CompleteWithFilesAsync(
+        string systemPrompt,
+        string userInstruction,
+        IReadOnlyList<string> extraFileIds,
+        string model,
+        double temperature = 0.2,
+        CancellationToken ct = default);
 }
 
 /// <summary>Factory used by Engine orchestration to open a session for a registered book.</summary>

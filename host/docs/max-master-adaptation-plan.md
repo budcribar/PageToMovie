@@ -167,13 +167,11 @@ Short books that fit a single pass skip the extra call. Index is skipped (not fa
 
 ### P3 — Write from index
 
-- `BookToFountainConverter` path `AdaptPath.Indexed` (or sibling in Adaptation — **no** second converter in Engine).
-- Batch planner: pack cards into sequences already in the index; if a sequence is huge, split by card count (~8–15 cards/call), never by raw book chars.
-- Each write: book `file_id` + index `file_id` + “cards 18–31 only.”
-- Deterministic stitch. Title page from batch 1.
-- Quality: stitched heading count ≈ index card count (soft 80–120%); missing card ids → rewrite that batch only.
-
-Short books: keep `AdaptPath.Single` (file_id). Indexed path when single-pass times out, book > single-shot ceiling, or operator/admin “index first.”
+- [x] `AdaptPath.Indexed` in Adaptation (`BookToIndexWriter`). No second converter in Engine.
+- [x] Batch planner packs sequences (~15 cards/call); huge sequences split by card count.
+- [x] Each write: book `file_id` + index `file_id` + “cards 18–31 only.” Chat fallback lists the cards.
+- [x] Deterministic stitch. Title page from batch 1.
+- [x] Soft heading count ≥80% of cards; thin batch rewritten once. Novels skip the 40‑minute single pass when an index exists.
 
 ### P4 — Trim is a view
 

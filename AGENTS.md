@@ -435,7 +435,7 @@ When debugging runtime behavior on the live Railway server across coding agent s
 
 ---
 
-*Last updated: 2026-08-13 — P2 screenplay index; P0 honest runtime + P1 fountain file_id; max-master; provider file cache.*
+*Last updated: 2026-08-13 — P3 write from index; P2 beat sheet; P1 fountain file_id; P0 honest runtime.*
 
 
 ## Stage‑1 prompt tokens (book → Fountain)

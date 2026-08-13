@@ -716,6 +716,12 @@ public abstract partial class AdaptationPageBase
                 return "Smoothing narration…";
             if (ContainsIgnoreCase(msg, "Indexing", "Planning scenes from the book"))
                 return "Planning scenes from the book…";
+            if (ContainsIgnoreCase(msg, "Writing sequence"))
+                return msg.Trim();
+            if (ContainsIgnoreCase(msg, "Writing from index"))
+                return "Writing the screenplay from the outline…";
+            if (ContainsIgnoreCase(msg, "Stitching master"))
+                return "Putting the chapters together…";
             if (ContainsIgnoreCase(msg, "Still writing", "single pass"))
                 return "Writing the full screenplay…";
             return null;

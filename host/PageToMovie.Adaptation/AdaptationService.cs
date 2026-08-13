@@ -214,7 +214,9 @@ public sealed class AdaptationService
             bookSession: bookSession,
             fountainSession: fountainSession,
             visualMedium: request.VisualMedium,
-            promptTokens: tokens).ConfigureAwait(false);
+            promptTokens: tokens,
+            index: request.Index,
+            indexFileId: request.IndexFileId).ConfigureAwait(false);
 
         // Re-emit runtime with the clamped minutes actually used for generation.
         var runtimeUsed = new NaturalRuntimeEstimate

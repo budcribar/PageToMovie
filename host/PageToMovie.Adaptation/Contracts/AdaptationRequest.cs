@@ -41,4 +41,10 @@ public sealed class AdaptationRequest
     public int? MinAudioCuesPerScene { get; init; }
     public int? MinAudioCuesAtPeak { get; init; }
     public int? BodyWordsPerMinute { get; init; }
+
+    /// <summary>Max-master beat sheet. When set on a long book, Stage‑1 writes from the index.</summary>
+    public ScreenplayIndex? Index { get; init; }
+
+    /// <summary>Provider file_id for the persisted index (optional; cards are also listed in the write prompt).</summary>
+    public string? IndexFileId { get; init; }
 }

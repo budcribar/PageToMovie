@@ -1113,6 +1113,8 @@ public static string NormalizeText(string text)
             .ConfigureAwait(false);
 
         var fountainSession = fountainFileSessionFactory?.TryCreate(projectDir, model);
+        var (index, indexFileId) = await TryLoadIndexForWriteAsync(
+            projectDir, responses, onProgress, ct).ConfigureAwait(false);
 
         var result = await AdaptationService.ConvertAsync(
             new AdaptationRequest
@@ -1132,6 +1134,8 @@ public static string NormalizeText(string text)
                 MinAudioCuesPerScene = adaptationDefaults?.MinAudioCuesPerScene,
                 MinAudioCuesAtPeak = adaptationDefaults?.MinAudioCuesAtPeak,
                 BodyWordsPerMinute = adaptationDefaults?.BodyWordsPerMinute,
+                Index = index,
+                IndexFileId = indexFileId,
             },
             chat,
             progressAdapter,
@@ -1254,6 +1258,35 @@ public static string NormalizeText(string text)
         {
             onProgress?.Invoke("Index skipped: " + ex.Message);
         }
+    }
+
+    private static async Task<(ScreenplayIndex? Index, string? FileId)> TryLoadIndexForWriteAsync(
+        string projectDir,
+        XaiResponsesClient? responses,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
+        var index = await ProjectScreenplayIndex.TryReadAsync(projectDir, ct).ConfigureAwait(false);
+        if (index is null) return (null, null);
+        await TryUploadIndexFileAsync(projectDir, responses, onProgress, ct).ConfigureAwait(false);
+        string? fileId = null;
+        try
+        {
+            var path = ProjectScreenplayIndex.GetPath(projectDir);
+            if (File.Exists(path))
+            {
+                var sha = ProjectXaiArtifactFiles.Sha256Hex(await File.ReadAllTextAsync(path, ct).ConfigureAwait(false));
+                if (ProjectXaiArtifactFiles.TryGetReusable(
+                        projectDir, ProjectXaiArtifactFiles.KindScreenplayIndex, sha, out var hit)
+                    && hit is not null)
+                    fileId = hit.FileId;
+            }
+        }
+        catch
+        {
+            /* file_id optional */
+        }
+        return (index, fileId);
     }
 
     private static async Task TryUploadIndexFileAsync(

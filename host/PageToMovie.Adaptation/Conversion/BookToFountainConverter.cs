@@ -81,6 +81,7 @@ public static class BookToFountainConverter
     {
         Single,
         Multi,
+        Indexed,
     }
 
     /// <summary>Per-model (or default) input budgets for book → Fountain.</summary>
@@ -159,7 +160,9 @@ public static class BookToFountainConverter
         IBookFileSession? bookSession = null,
         IFountainFileSession? fountainSession = null,
         string? visualMedium = null,
-        AdaptationPromptTokens? promptTokens = null)
+        AdaptationPromptTokens? promptTokens = null,
+        ScreenplayIndex? index = null,
+        string? indexFileId = null)
     {
         if (string.IsNullOrWhiteSpace(bookText))
             throw new InvalidOperationException("Book text is empty");
@@ -198,7 +201,8 @@ public static class BookToFountainConverter
             var text = await AdaptFountainBodyAsync(
                 system, title, author, pageCount, totalRuntimeMinutes, bookText,
                 chat, model, budget, onProgress, ct, reasoningEffort, temperature,
-                onStructuralGateFailure, onHeuristicFallback, bookFitsInline)
+                onStructuralGateFailure, onHeuristicFallback, bookFitsInline,
+                index, indexFileId)
                 .ConfigureAwait(false);
 
             var early = CaptureTrailerState(text);
@@ -280,13 +284,16 @@ public static class BookToFountainConverter
         double temperature,
         Func<StructuralGateFailure, CancellationToken, Task>? onStructuralGateFailure,
         Action<string>? onHeuristicFallback,
-        bool bookFitsInline)
+        bool bookFitsInline,
+        ScreenplayIndex? index = null,
+        string? indexFileId = null)
     {
         try
         {
             var text = await AdaptViaPreferredPathAsync(
                 system, title, author, pageCount, totalRuntimeMinutes, bookText,
-                chat, model, budget, onProgress, ct, reasoningEffort, temperature, bookFitsInline)
+                chat, model, budget, onProgress, ct, reasoningEffort, temperature, bookFitsInline,
+                index, indexFileId)
                 .ConfigureAwait(false);
             await EnforceMultiPathQualityAsync(
                 text, bookText, totalRuntimeMinutes, model, onStructuralGateFailure, ct)
@@ -316,16 +323,32 @@ public static class BookToFountainConverter
         CancellationToken ct,
         string? reasoningEffort,
         double temperature,
-        bool bookFitsInline)
+        bool bookFitsInline,
+        ScreenplayIndex? index = null,
+        string? indexFileId = null)
     {
-        // Both multi-chunk entry points (single-shot fallback and over-budget) invoke the multi-chunk
-        // adapter with the identical argument set derived from this call's budget.
         Task<string> ConvertMultiChunkFromBudgetAsync() => ConvertMultiChunkAsync(
             system, title, author, pageCount, totalRuntimeMinutes, bookText,
             chat, model, onProgress, ct,
             softMaxChars: budget.ChunkSoftMaxChars,
             maxChunks: ResolveMaxChunks(bookText, budget),
             reasoningEffort: reasoningEffort, temperature: temperature);
+
+        if (ShouldWriteFromIndex(bookText, model, index))
+        {
+            try
+            {
+                return await BookToIndexWriter.ConvertAsync(
+                    system, title, author, index!, indexFileId, chat, model,
+                    onProgress, ct, temperature, Stage1BookSessionScope.Current)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                onProgress?.Invoke("Index write failed — falling back to multi-chunk: " + ex.Message);
+                return await ConvertMultiChunkFromBudgetAsync().ConfigureAwait(false);
+            }
+        }
 
         // With a file session the full book is attached by id — single-shot is preferred
         // even when the inlined-token budget would force multi-chunk.
@@ -356,6 +379,14 @@ public static class BookToFountainConverter
         }
 
         throw new InvalidOperationException(UnusableScreenplayError);
+    }
+
+    public static bool ShouldWriteFromIndex(string bookText, string? model, ScreenplayIndex? index)
+    {
+        if (index is null) return false;
+        var cards = ScreenplayIndexParser.EnumerateCards(index).Count();
+        if (cards < 2) return false;
+        return cards >= 8 || bookText.Length >= 60_000;
     }
 
     private static async Task EnforceMultiPathQualityAsync(
@@ -2288,7 +2319,7 @@ public static class BookToFountainConverter
 
         var fails = CollectQualityFailures(fountain, bookText, hasTarget, minutes, path);
         var hard = fails.Contains("structure") || fails.Contains("excerpt_marker");
-        var ok = path == AdaptPath.Multi
+        var ok = path is AdaptPath.Multi or AdaptPath.Indexed
             ? !hard && LooksLikeGoodFountain(fountain)
             : fails.Count == 0;
 
