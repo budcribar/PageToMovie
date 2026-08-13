@@ -15,7 +15,7 @@ Pick a story, get a full screenplay (the **max master**), then cut it to 120 min
 
 Estimate is two numbers: **what it will cost** and **what you’ve spent**. Fit length cuts the outline; it does not re-adapt.
 
-Guards and phases (Book / Estimate / Film / Review) live in the **[studio state machine](docs/studio-decision-flow.md#4-state-machine)** — code: [`StudioStateMachine.cs`](host/PageToMovie.Core/Models/StudioStateMachine.cs).
+Guards and phases (Book / Estimate / Film / Review) are in the **[studio state machine](docs/studio-decision-flow.md#4-state-machine)**.
 
 ## Easy Start
 
@@ -59,7 +59,7 @@ Workspace root (`PageToMovie:WorkspaceRoot`) empty → the API uses the repo roo
 ```mermaid
 flowchart TD
     A["Book / PDF / Fountain"] --> B["Index the book<br/>acts → sequences → scene cards"]
-    B --> C["Write screenplay.max<br/>from the index · book by file_id"]
+    B --> C["Write screenplay.max<br/>then auto-enrich from the book"]
     C --> D["Estimate<br/>pick a length · trim is a view"]
     D --> E["Cast + locations<br/>3 looks · auto-lock used faces"]
     E --> F["Shot plan<br/>classifiers + blueprint"]
@@ -70,7 +70,7 @@ flowchart TD
 ```
 
 1. **Ingest** — text, PDF (vision OCR for picture books), or an existing Fountain.
-2. **Max master** — plan a beat sheet, then write the full Fountain. Short books: one pass. Novels: index, then write sequences. Default planning model: **Grok 4.6**.
+2. **Max master** — plan a beat sheet, write the full Fountain, then **enrich automatically** (visual detail from the book; dialogue and scene count stay). Short books: one pass. Novels: index, then write sequences. Default planning model: **Grok 4.6**.
 3. **Estimate** — set target minutes or keep every sequence. Snapshot first; Undo prune restores.
 4. **Cast & places** — extract used faces/locations, generate three looks, auto-lock the best. Voice clone or stock TTS.
 5. **Shot plan** — book-wide + per-scene classifiers → clip blueprint. Authoritative call list: [`docs/architecture/MODEL_CALL_INVENTORY.md`](docs/architecture/MODEL_CALL_INVENTORY.md).
@@ -78,7 +78,7 @@ flowchart TD
 7. **Review / export** — advisory vision review; stitch and play in the browser.
 8. **Share** — mark Public (Forkable). The next person uses Easy Start or forks into Estimate.
 
-Look / Enrich are optional polish on the master. Fit length only writes the working `screenplay.fountain`.
+Look (re-skin the medium) is optional. Fit length only writes the working `screenplay.fountain`. Enrich is part of write, not a button.
 
 ## Layout
 
@@ -111,11 +111,16 @@ Playwright pilot (against a running API): `host/playwright/README.md`.
 
 | Doc | Topic |
 |-----|--------|
-| [`docs/studio-decision-flow.md`](docs/studio-decision-flow.md) | Book → Estimate → Film |
 | [**State machine**](docs/studio-decision-flow.md#4-state-machine) | Phases, guards, Generate vs Edit |
-| [`StudioStateMachine.cs`](host/PageToMovie.Core/Models/StudioStateMachine.cs) | Code: who can open Book / Estimate / Film / Review |
-| [`host/docs/max-master-adaptation-plan.md`](host/docs/max-master-adaptation-plan.md) | Index, write, trim, share |
+| [`docs/studio-decision-flow.md`](docs/studio-decision-flow.md) | Book → Estimate → Film (full plan) |
+| [`host/docs/max-master-adaptation-plan.md`](host/docs/max-master-adaptation-plan.md) | Index, write, auto-enrich, trim, share |
+| [`host/docs/adaptation-session-pipeline.md`](host/docs/adaptation-session-pipeline.md) | Session artifacts from book to package |
 | [`docs/architecture/MODEL_CALL_INVENTORY.md`](docs/architecture/MODEL_CALL_INVENTORY.md) | Every model call |
+| [`host/docs/supported-models.md`](host/docs/supported-models.md) | Catalog / how models are chosen |
+| [`host/docs/voice-substitution-design.md`](host/docs/voice-substitution-design.md) | Easy Start / “speak as you” |
+| [`host/docs/public-community-plan.md`](host/docs/public-community-plan.md) | Public (Forkable) library |
+| [`host/docs/project_artifacts.md`](host/docs/project_artifacts.md) | What lives in a project folder |
+| [`host/docs/multi-user-collaboration.md`](host/docs/multi-user-collaboration.md) | Shared projects, leases |
 | [`host/README.md`](host/README.md) | API routes, SignalR, YouTube, LoadSim |
 | [`prompts/README.md`](prompts/README.md) | Prompts and schemas |
 | [`AGENTS.md`](AGENTS.md) | North star for contributors |
