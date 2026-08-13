@@ -34,51 +34,59 @@ public static class GutenbergCleaner
     {
         if (string.IsNullOrWhiteSpace(text)) return "";
 
-        var cleaned = text;
+        var cleaned = StripHeader(text);
+        cleaned = StripFooter(cleaned);
+        return cleaned.Trim();
+    }
 
-        // 1. Strip Header
+    private static string StripHeader(string cleaned)
+    {
         var startMatch = StartHeaderRegex.Match(cleaned);
         if (startMatch.Success)
         {
             var headerEndIndex = startMatch.Index + startMatch.Length;
-            cleaned = cleaned.Substring(headerEndIndex);
+            return cleaned.Substring(headerEndIndex);
         }
-        else
+
+        // Fallback header detection for older Gutenberg formats without *** START OF
+        return StripFallbackPreamble(cleaned);
+    }
+
+    private static string StripFallbackPreamble(string cleaned)
+    {
+        var headerMarker = GutenbergHeaderMarkerRegex.Match(cleaned);
+        if (headerMarker.Success && headerMarker.Index < 2000)
         {
-            // Fallback header detection for older Gutenberg formats without *** START OF
-            var headerMarker = GutenbergHeaderMarkerRegex.Match(cleaned);
-            if (headerMarker.Success && headerMarker.Index < 2000)
+            // Find transition past preamble metadata (e.g. after line containing Title / Author / Produced by)
+            var lines = cleaned.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+            var contentStartIndex = 0;
+            var inPreamble = true;
+
+            for (var i = 0; i < Math.Min(lines.Length, 120); i++)
             {
-                // Find transition past preamble metadata (e.g. after line containing Title / Author / Produced by)
-                var lines = cleaned.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
-                var contentStartIndex = 0;
-                var inPreamble = true;
-
-                for (var i = 0; i < Math.Min(lines.Length, 120); i++)
+                var line = lines[i].Trim();
+                if (inPreamble &&
+                    (line.StartsWith("***") || line.StartsWith("Produced by", StringComparison.OrdinalIgnoreCase)))
                 {
-                    var line = lines[i].Trim();
-                    if (inPreamble &&
-                        (line.StartsWith("***") || line.StartsWith("Produced by", StringComparison.OrdinalIgnoreCase)))
-                    {
-                        contentStartIndex = i + 1;
-                        inPreamble = false;
-                    }
+                    contentStartIndex = i + 1;
+                    inPreamble = false;
                 }
+            }
 
-                if (!inPreamble && contentStartIndex < lines.Length)
-                {
-                    cleaned = string.Join("\n", lines.AsSpan(contentStartIndex).ToArray());
-                }
+            if (!inPreamble && contentStartIndex < lines.Length)
+            {
+                return string.Join("\n", lines.AsSpan(contentStartIndex).ToArray());
             }
         }
 
-        // 2. Strip Footer
+        return cleaned;
+    }
+
+    private static string StripFooter(string cleaned)
+    {
         var endMatch = EndFooterRegex.Match(cleaned);
         if (endMatch.Success)
-        {
-            cleaned = cleaned.Substring(0, endMatch.Index);
-        }
-
-        return cleaned.Trim();
+            return cleaned.Substring(0, endMatch.Index);
+        return cleaned;
     }
 }

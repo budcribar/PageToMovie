@@ -33,7 +33,9 @@ public abstract partial class AdaptationPageBase
             public int EmptyOrGoneHits;
         }
 
-        public bool JobRunning =>
+        public bool JobRunning => ComputeJobRunning();
+
+        private bool ComputeJobRunning() =>
             !ClientCancelRequested &&
             (string.Equals(Job?.Status, JobStatusRunning, StringComparison.OrdinalIgnoreCase) ||
              string.Equals(Job?.Status, JobStatusQueued, StringComparison.OrdinalIgnoreCase));
@@ -63,21 +65,40 @@ public abstract partial class AdaptationPageBase
         {
             await S.SoftLoadAsync();
             try { await S.ActiveProject.RefreshReadinessAsync(S.Engine, _pollCts?.Token ?? CancellationToken.None); } catch { /* nav gates */ }
-            if (snap.Status == "done")
-            {
-                // Avoid flashing technical “Book ready · quality=good…” while Import
-                // continues into draft generation (Busy stays true).
-                if (!S.Busy)
-                    S.Message = AdaptationStepUi.OperatorJobDoneMessage(snap);
-                try { await S.OnAdaptationJobTerminalAsync(snap); }
-                catch (Exception ex) { S.Error ??= ex.Message; }
-            }
-            else if (snap.Status == JobStatusError)
-                S.Error = snap.Error ?? snap.Message ?? "Job failed";
+            await ApplyTerminalJobOutcomeAsync(snap);
             S.StateHasChanged();
         }
 
+        private async Task ApplyTerminalJobOutcomeAsync(JobSnapshot snap)
+        {
+            if (snap.Status == "done")
+            {
+                await ApplyTerminalJobDoneAsync(snap);
+                return;
+            }
+            if (snap.Status == JobStatusError)
+                S.Error = snap.Error ?? snap.Message ?? "Job failed";
+        }
+
+        private async Task ApplyTerminalJobDoneAsync(JobSnapshot snap)
+        {
+            // Avoid flashing technical “Book ready · quality=good…” while Import
+            // continues into draft generation (Busy stays true).
+            if (!S.Busy)
+                S.Message = AdaptationStepUi.OperatorJobDoneMessage(snap);
+            try { await S.OnAdaptationJobTerminalAsync(snap); }
+            catch (Exception ex) { S.Error ??= ex.Message; }
+        }
+
         public void OnJobLog(string line)
+        {
+            EnsureJobFromLogLine(line);
+            AbsorbProgressFromLine(line);
+            SyncJobProgressFromFields();
+            _ = S.InvokeAsync(S.StateHasChanged);
+        }
+
+        private void EnsureJobFromLogLine(string line)
         {
             if (Job is null)
             {
@@ -90,29 +111,34 @@ public abstract partial class AdaptationPageBase
                     Index = ProgressIndex,
                     Total = ProgressTotal > 0 ? ProgressTotal : 10,
                 };
+                return;
             }
-            else
+
+            Job.Message = line;
+            CapJobLog(Job, line);
+        }
+
+        private static void CapJobLog(JobSnapshot job, string line)
+        {
+            if (job.Log.Count == 0 || job.Log[^1] != line)
             {
-                Job.Message = line;
-                if (Job.Log.Count == 0 || Job.Log[^1] != line)
-                {
-                    Job.Log.Add(line);
-                    if (Job.Log.Count > 120)
-                        Job.Log = Job.Log.TakeLast(120).ToList();
-                }
+                job.Log.Add(line);
+                if (job.Log.Count > 120)
+                    job.Log = job.Log.TakeLast(120).ToList();
             }
-            AbsorbProgressFromLine(line);
-            if (Job is not null)
-            {
-                // Always keep a positive Total for adapt jobs so the bar can move.
-                if (Job.Total <= 0)
-                    Job.Total = ProgressTotal > 0 ? ProgressTotal : 10;
-                if (ProgressTotal > 0)
-                    Job.Total = Math.Max(Job.Total, ProgressTotal);
-                if (ProgressIndex > 0)
-                    Job.Index = Math.Max(Job.Index, ProgressIndex);
-            }
-            _ = S.InvokeAsync(S.StateHasChanged);
+        }
+
+        private void SyncJobProgressFromFields()
+        {
+            if (Job is null)
+                return;
+            // Always keep a positive Total for adapt jobs so the bar can move.
+            if (Job.Total <= 0)
+                Job.Total = ProgressTotal > 0 ? ProgressTotal : 10;
+            if (ProgressTotal > 0)
+                Job.Total = Math.Max(Job.Total, ProgressTotal);
+            if (ProgressIndex > 0)
+                Job.Index = Math.Max(Job.Index, ProgressIndex);
         }
 
         public void AbsorbProgressFromSnapshot(JobSnapshot snap)
@@ -135,6 +161,13 @@ public abstract partial class AdaptationPageBase
             // moves on phase messages even when there are no "chunk i/N" lines (single-pass).
             ProgressTotal = Math.Max(ProgressTotal, 10);
 
+            if (TryAbsorbChunkProgress(line)) return;
+            if (TryAbsorbVisionProgress(line)) return;
+            TryAbsorbKeywordProgress(line);
+        }
+
+        private bool TryAbsorbChunkProgress(string line)
+        {
             var mChunk = CommonRegex.Match(
                 line, @"chunk\s+(\d+)\s*/\s*(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             if (mChunk.Success &&
@@ -147,9 +180,13 @@ public abstract partial class AdaptationPageBase
                     ? Math.Clamp((double)cIdx / cTot, 0, 1)
                     : Math.Clamp((cIdx - 1.0) / cTot, 0, 1);
                 ProgressIndex = Math.Max(ProgressIndex, 4 + (int)Math.Round(4.0 * frac));
-                return;
+                return true;
             }
+            return false;
+        }
 
+        private bool TryAbsorbVisionProgress(string line)
+        {
             var mVis = CommonRegex.Match(
                 line, @"(?:Grok vision|Reading page|page)\s+(\d+)\s*/\s*(\d+)",
                 System.Text.RegularExpressions.RegexOptions.IgnoreCase);
@@ -160,41 +197,78 @@ public abstract partial class AdaptationPageBase
             {
                 var frac = Math.Clamp((vIdx - 1.0) / vTot, 0, 1);
                 ProgressIndex = Math.Max(ProgressIndex, 1 + (int)Math.Round(2.0 * frac));
-                return;
+                return true;
             }
+            return false;
+        }
 
+        private void TryAbsorbKeywordProgress(string line)
+        {
+            if (TryAbsorbLateKeywordProgress(line)) return;
+            TryAbsorbEarlyKeywordProgress(line);
+        }
+
+        private bool TryAbsorbLateKeywordProgress(string line)
+        {
             if (line.Contains("Screenplay ready", StringComparison.OrdinalIgnoreCase) ||
                 line.Contains("Stage 2 complete", StringComparison.OrdinalIgnoreCase) ||
                 line.Contains("shot plan ready", StringComparison.OrdinalIgnoreCase))
+            {
                 ProgressIndex = Math.Max(ProgressIndex, 10);
-            else if (line.Contains("approving", StringComparison.OrdinalIgnoreCase) ||
-                     line.Contains("Fountain draft saved", StringComparison.OrdinalIgnoreCase) ||
-                     line.Contains("plate", StringComparison.OrdinalIgnoreCase) ||
-                     line.Contains("Attaching", StringComparison.OrdinalIgnoreCase) ||
-                     line.Contains("Merged", StringComparison.OrdinalIgnoreCase))
+                return true;
+            }
+            if (line.Contains("approving", StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("Fountain draft saved", StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("plate", StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("Attaching", StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("Merged", StringComparison.OrdinalIgnoreCase))
+            {
                 ProgressIndex = Math.Max(ProgressIndex, 9);
-            else if (line.Contains("Merge", StringComparison.OrdinalIgnoreCase) ||
-                     line.Contains("Stitch", StringComparison.OrdinalIgnoreCase))
+                return true;
+            }
+            if (line.Contains("Merge", StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("Stitch", StringComparison.OrdinalIgnoreCase))
+            {
                 ProgressIndex = Math.Max(ProgressIndex, 8);
-            else if (line.Contains("repair", StringComparison.OrdinalIgnoreCase) ||
-                     line.Contains("retry", StringComparison.OrdinalIgnoreCase))
+                return true;
+            }
+            if (line.Contains("repair", StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("retry", StringComparison.OrdinalIgnoreCase))
+            {
                 ProgressIndex = Math.Max(ProgressIndex, 7);
-            else if (line.Contains("single pass", StringComparison.OrdinalIgnoreCase) ||
-                     line.Contains("Adapting", StringComparison.OrdinalIgnoreCase) ||
-                     line.Contains("Book split", StringComparison.OrdinalIgnoreCase) ||
-                     line.Contains("Writing screenplay", StringComparison.OrdinalIgnoreCase) ||
-                     line.Contains("Drafting", StringComparison.OrdinalIgnoreCase))
+                return true;
+            }
+            return false;
+        }
+
+        private bool TryAbsorbEarlyKeywordProgress(string line)
+        {
+            if (line.Contains("single pass", StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("Adapting", StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("Book split", StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("Writing screenplay", StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("Drafting", StringComparison.OrdinalIgnoreCase))
+            {
                 ProgressIndex = Math.Max(ProgressIndex, 5);
-            else if (line.Contains("Target runtime", StringComparison.OrdinalIgnoreCase) ||
-                     line.Contains("Planning", StringComparison.OrdinalIgnoreCase) ||
-                     line.Contains("building", StringComparison.OrdinalIgnoreCase))
+                return true;
+            }
+            if (line.Contains("Target runtime", StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("Planning", StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("building", StringComparison.OrdinalIgnoreCase))
+            {
                 ProgressIndex = Math.Max(ProgressIndex, 3);
-            else if (line.Contains("prepare", StringComparison.OrdinalIgnoreCase) ||
-                     line.Contains("Extract", StringComparison.OrdinalIgnoreCase) ||
-                     line.Contains("Checking book", StringComparison.OrdinalIgnoreCase) ||
-                     line.Contains("book text", StringComparison.OrdinalIgnoreCase) ||
-                     line.Contains("Loading screenplay", StringComparison.OrdinalIgnoreCase))
+                return true;
+            }
+            if (line.Contains("prepare", StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("Extract", StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("Checking book", StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("book text", StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("Loading screenplay", StringComparison.OrdinalIgnoreCase))
+            {
                 ProgressIndex = Math.Max(ProgressIndex, 1);
+                return true;
+            }
+            return false;
         }
 
         public void StartJobPolling()

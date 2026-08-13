@@ -466,30 +466,41 @@ public class ScreenplayModel
             var locKey = loc.ToUpperInvariant();
             var sameRun = prevLoc is not null && locKey == prevLoc;
             if (!sameRun)
-            {
-                seq++;
-                prevLoc = locKey;
-                // Default title = location; fall back to Sequence N
-                var defaultTitle = string.IsNullOrWhiteSpace(loc) ? $"Sequence {seq}" : loc;
-                if (force || string.IsNullOrWhiteSpace(scene.GroupTitle))
-                    scene.GroupTitle = defaultTitle;
-                prevGroup = scene.GroupTitle;
-            }
+                BeginNewLocationRun(scene, loc, locKey, force, ref seq, ref prevLoc, ref prevGroup);
             else
-            {
-                // Continue previous group title (prefer prior scene's title so renames stick)
-                if (force || string.IsNullOrWhiteSpace(scene.GroupTitle))
-                    scene.GroupTitle = prevGroup ?? (string.IsNullOrWhiteSpace(loc) ? $"Sequence {seq}" : loc);
-                else if (!string.IsNullOrWhiteSpace(prevGroup)
-                         && !scene.GroupTitle.Equals(prevGroup, StringComparison.OrdinalIgnoreCase))
-                {
-                    // Keep user's per-scene title if they split manually; still track
-                    prevGroup = scene.GroupTitle;
-                }
-                else
-                    prevGroup = scene.GroupTitle;
-            }
+                ContinueLocationRun(scene, loc, force, seq, ref prevGroup);
         }
+    }
+
+    private static string DefaultGroupTitle(string loc, int seq) =>
+        string.IsNullOrWhiteSpace(loc) ? $"Sequence {seq}" : loc;
+
+    private static void BeginNewLocationRun(
+        ScreenplayScene scene, string loc, string locKey, bool force,
+        ref int seq, ref string? prevLoc, ref string? prevGroup)
+    {
+        seq++;
+        prevLoc = locKey;
+        var defaultTitle = DefaultGroupTitle(loc, seq);
+        if (force || string.IsNullOrWhiteSpace(scene.GroupTitle))
+            scene.GroupTitle = defaultTitle;
+        prevGroup = scene.GroupTitle;
+    }
+
+    private static void ContinueLocationRun(
+        ScreenplayScene scene, string loc, bool force, int seq, ref string? prevGroup)
+    {
+        // Continue previous group title (prefer prior scene's title so renames stick)
+        if (force || string.IsNullOrWhiteSpace(scene.GroupTitle))
+            scene.GroupTitle = prevGroup ?? DefaultGroupTitle(loc, seq);
+        else if (!string.IsNullOrWhiteSpace(prevGroup)
+                 && !scene.GroupTitle.Equals(prevGroup, StringComparison.OrdinalIgnoreCase))
+        {
+            // Keep user's per-scene title if they split manually; still track
+            prevGroup = scene.GroupTitle;
+        }
+        else
+            prevGroup = scene.GroupTitle;
     }
 
     /// <summary>Rename a whole consecutive group (matched by old title + adjacency).</summary>

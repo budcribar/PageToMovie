@@ -44,76 +44,112 @@ public static class SpanFountainScanner
 
         while (lineStart < len)
         {
-            int lineEnd = text.Slice(lineStart).IndexOf('\n');
-            int nextLineStart;
-
-            ReadOnlySpan<char> line;
-            if (lineEnd < 0)
-            {
-                line = text.Slice(lineStart);
-                nextLineStart = len;
-            }
-            else
-            {
-                line = text.Slice(lineStart, lineEnd);
-                nextLineStart = lineStart + lineEnd + 1;
-            }
-
-            line = line.Trim('\r').Trim();
-
-            if (line.IsEmpty)
-            {
-                prevBlank = true;
-                inDialogue = false;
-                inTitlePage = false;
-                lineStart = nextLineStart;
+            if (!TryAdvanceLine(text, len, ref lineStart, ref prevBlank, ref inDialogue, ref inTitlePage, out var line))
                 continue;
-            }
 
-            // Title Page Key: Value
-            if (inTitlePage && IsTitlePageKey(line))
-            {
-                elementCount++;
-            }
-            // Scene heading, centered text, or transition — same bookkeeping.
-            else if (IsSceneHeading(line) ||
-                     (line.Length >= 2 && line[0] == '>' && line[line.Length - 1] == '<') ||
-                     IsTransition(line))
-            {
-                inDialogue = false;
-                inTitlePage = false;
-                elementCount++;
-            }
-            // Note [[...]]
-            else if (line.Length >= 4 && line.StartsWith("[[") && line.EndsWith("]]"))
-            {
-                elementCount++;
-            }
-            // 5. Parenthetical inside dialogue
-            else if (inDialogue && line.Length >= 2 && line[0] == '(' && line[line.Length - 1] == ')')
-            {
-                elementCount++;
-            }
-            // 6. Character Cue (uppercase line preceded by blank line)
-            else if (prevBlank && IsCharacterCue(line))
-            {
-                inDialogue = true;
-                inTitlePage = false;
-                elementCount++;
-            }
-            // 7. Dialogue or Action
-            else
-            {
-                inTitlePage = false;
-                elementCount++;
-            }
-
+            ClassifyNonEmptyLine(line, prevBlank, ref inDialogue, ref inTitlePage, ref elementCount);
             prevBlank = false;
-            lineStart = nextLineStart;
         }
 
         return elementCount;
     }
+
+    /// <summary>
+    /// Slice the next line and advance <paramref name="lineStart"/>. Returns false for a blank
+    /// line (dialogue / title-page flags already reset); true when <paramref name="line"/> should
+    /// be classified as an element.
+    /// </summary>
+    private static bool TryAdvanceLine(
+        ReadOnlySpan<char> text,
+        int len,
+        ref int lineStart,
+        ref bool prevBlank,
+        ref bool inDialogue,
+        ref bool inTitlePage,
+        out ReadOnlySpan<char> line)
+    {
+        int lineEnd = text.Slice(lineStart).IndexOf('\n');
+        int nextLineStart;
+        if (lineEnd < 0)
+        {
+            line = text.Slice(lineStart);
+            nextLineStart = len;
+        }
+        else
+        {
+            line = text.Slice(lineStart, lineEnd);
+            nextLineStart = lineStart + lineEnd + 1;
+        }
+
+        line = line.Trim('\r').Trim();
+        lineStart = nextLineStart;
+
+        if (line.IsEmpty)
+        {
+            prevBlank = true;
+            inDialogue = false;
+            inTitlePage = false;
+            return false;
+        }
+
+        return true;
+    }
+
+    private static void ClassifyNonEmptyLine(
+        ReadOnlySpan<char> line,
+        bool prevBlank,
+        ref bool inDialogue,
+        ref bool inTitlePage,
+        ref int elementCount)
+    {
+        if (inTitlePage && IsTitlePageKey(line))
+        {
+            elementCount++;
+            return;
+        }
+
+        if (IsSceneHeadingOrCenteredOrTransition(line))
+        {
+            inDialogue = false;
+            inTitlePage = false;
+            elementCount++;
+            return;
+        }
+
+        if (IsNoteLine(line))
+        {
+            elementCount++;
+            return;
+        }
+
+        if (inDialogue && IsParentheticalLine(line))
+        {
+            elementCount++;
+            return;
+        }
+
+        if (prevBlank && IsCharacterCue(line))
+        {
+            inDialogue = true;
+            inTitlePage = false;
+            elementCount++;
+            return;
+        }
+
+        inTitlePage = false;
+        elementCount++;
+    }
+
+    private static bool IsSceneHeadingOrCenteredOrTransition(ReadOnlySpan<char> line) =>
+        IsSceneHeading(line) ||
+        (line.Length >= 2 && line[0] == '>' && line[line.Length - 1] == '<') ||
+        IsTransition(line);
+
+    private static bool IsNoteLine(ReadOnlySpan<char> line) =>
+        line.Length >= 4 && line.StartsWith("[[") && line.EndsWith("]]");
+
+    private static bool IsParentheticalLine(ReadOnlySpan<char> line) =>
+        line.Length >= 2 && line[0] == '(' && line[line.Length - 1] == ')';
 
     private static bool IsTitlePageKey(ReadOnlySpan<char> line)
     {

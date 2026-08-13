@@ -148,29 +148,50 @@ public partial class AdminModelsCatalog
                 return;
             }
 
-            JsonObject obj;
+            if (!TryResolveEditorObject(out var obj))
+                return;
+
+            WriteIdentityFields(obj);
+            WriteFlagFields(obj);
+            WriteMetadataFields(obj);
+            WriteCapabilityFields(obj);
+
+            S.Raw.SyncModelListToRawJson();
+            S._message = $"Applied '{_editId}' to table. Run Validate, then Save to persist.";
+        }
+
+        private bool TryResolveEditorObject(out JsonObject obj)
+        {
             if (_editIsNew)
             {
                 if (S.List._modelList.Any(m => string.Equals(m["id"]?.ToString(), _editId.Trim(), StringComparison.OrdinalIgnoreCase)))
                 {
                     S._error = S.Localizer.Format("Catalog.ModelExists", _editId);
-                    return;
+                    obj = null!;
+                    return false;
                 }
                 obj = new JsonObject();
                 S.List._modelList.Add(obj);
                 _editModel = obj;
                 _editIsNew = false;
-            }
-            else
-            {
-                obj = _editModel ?? throw new InvalidOperationException("No model selected");
+                return true;
             }
 
+            obj = _editModel ?? throw new InvalidOperationException("No model selected");
+            return true;
+        }
+
+        private void WriteIdentityFields(JsonObject obj)
+        {
             obj["id"] = _editId.Trim();
             obj["displayName"] = string.IsNullOrWhiteSpace(_editDisplayName) ? _editId.Trim() : _editDisplayName.Trim();
             obj["capability"] = _editCapability;
             obj["provider"] = _editProvider.Trim();
             obj["enabled"] = _editEnabled;
+        }
+
+        private void WriteFlagFields(JsonObject obj)
+        {
             if (_editDeprecated)
                 obj["deprecated"] = true;
             else
@@ -180,44 +201,60 @@ public partial class AdminModelsCatalog
                 obj["labNotes"] = string.IsNullOrWhiteSpace(_editLabNotes) ? "Lab model — incomplete by design" : _editLabNotes.Trim();
             else
                 obj.Remove("labNotes");
+        }
+
+        private void WriteMetadataFields(JsonObject obj)
+        {
             SetOrRemove(obj, "endpointPath", string.IsNullOrWhiteSpace(_editEndpointPath) ? null : _editEndpointPath.Trim());
             SetOrRemoveNum(obj, "maxPromptLength", _editMaxPromptLength);
             SetOrRemove(obj, "lastVerifiedAt", string.IsNullOrWhiteSpace(_editLastVerifiedAt) ? null : _editLastVerifiedAt.Trim());
             SetOrRemove(obj, "pricingLastReviewedAt", string.IsNullOrWhiteSpace(_editPricingLastReviewedAt) ? null : _editPricingLastReviewedAt.Trim());
             SetOrRemove(obj, "pricingNotes", string.IsNullOrWhiteSpace(_editPricingNotes) ? null : _editPricingNotes.Trim());
+        }
 
+        private void WriteCapabilityFields(JsonObject obj)
+        {
             if (_editCapability is "Chat" or "Vision")
-            {
-                SetOrRemoveNum(obj, "maxInputTokens", _editMaxInputTokens);
-                SetOrRemoveNum(obj, "maxOutputTokens", _editMaxOutputTokens);
-                SetOrRemoveNum(obj, "inputCostPerMillionTokens", _editInputCost);
-                SetOrRemoveNum(obj, "outputCostPerMillionTokens", _editOutputCost);
-            }
+                WriteChatVisionFields(obj);
             if (_editCapability == "Video")
-            {
-                SetOrRemoveNum(obj, "minClipDurationSeconds", _editMinClip);
-                SetOrRemoveNum(obj, "maxClipDurationSeconds", _editMaxClip);
-                SetOrRemoveNum(obj, "absMaxClipDurationSeconds", _editAbsMaxClip);
-                SetOrRemoveNum(obj, "maxReferenceImages", _editMaxRefs);
-                obj["supportsVideoContinue"] = _editSupportsContinue;
-                SetOrRemoveNum(obj, "videoExtendCostPerSecond", _editSupportsContinue ? _editExtendCost : null);
-                SetOrRemoveNum(obj, "videoReferenceImageCost", _editRefImageCost);
-                SetJsonObject(obj, "videoCostPerSecondByResolution", _editVideoPerSecJson);
-                SetJsonObject(obj, "videoBaseCostByResolution", _editVideoBaseJson);
-            }
+                WriteVideoFields(obj);
             if (_editCapability == "Image")
-            {
-                SetOrRemoveNum(obj, "maxReferenceImages", _editMaxRefs);
-                SetOrRemoveNum(obj, "imageCostPerImage", _editImageCost);
-            }
+                WriteImageFields(obj);
             if (_editCapability == "Audio")
-            {
-                SetOrRemoveNum(obj, "maxAudioDurationSeconds", _editMaxAudio);
-                obj["supportsVocals"] = _editSupportsVocals;
-            }
+                WriteAudioFields(obj);
+        }
 
-            S.Raw.SyncModelListToRawJson();
-            S._message = $"Applied '{_editId}' to table. Run Validate, then Save to persist.";
+        private void WriteChatVisionFields(JsonObject obj)
+        {
+            SetOrRemoveNum(obj, "maxInputTokens", _editMaxInputTokens);
+            SetOrRemoveNum(obj, "maxOutputTokens", _editMaxOutputTokens);
+            SetOrRemoveNum(obj, "inputCostPerMillionTokens", _editInputCost);
+            SetOrRemoveNum(obj, "outputCostPerMillionTokens", _editOutputCost);
+        }
+
+        private void WriteVideoFields(JsonObject obj)
+        {
+            SetOrRemoveNum(obj, "minClipDurationSeconds", _editMinClip);
+            SetOrRemoveNum(obj, "maxClipDurationSeconds", _editMaxClip);
+            SetOrRemoveNum(obj, "absMaxClipDurationSeconds", _editAbsMaxClip);
+            SetOrRemoveNum(obj, "maxReferenceImages", _editMaxRefs);
+            obj["supportsVideoContinue"] = _editSupportsContinue;
+            SetOrRemoveNum(obj, "videoExtendCostPerSecond", _editSupportsContinue ? _editExtendCost : null);
+            SetOrRemoveNum(obj, "videoReferenceImageCost", _editRefImageCost);
+            SetJsonObject(obj, "videoCostPerSecondByResolution", _editVideoPerSecJson);
+            SetJsonObject(obj, "videoBaseCostByResolution", _editVideoBaseJson);
+        }
+
+        private void WriteImageFields(JsonObject obj)
+        {
+            SetOrRemoveNum(obj, "maxReferenceImages", _editMaxRefs);
+            SetOrRemoveNum(obj, "imageCostPerImage", _editImageCost);
+        }
+
+        private void WriteAudioFields(JsonObject obj)
+        {
+            SetOrRemoveNum(obj, "maxAudioDurationSeconds", _editMaxAudio);
+            obj["supportsVocals"] = _editSupportsVocals;
         }
 
         internal void ReviewAndApplyAsync()

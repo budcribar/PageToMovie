@@ -73,13 +73,6 @@ public partial class Scenes
             // and S.List._detail may be loaded for a different scene than the one we're checking (or null,
             // when this runs from the scene-list page rather than a scene-detail view).
             var detailCache = new Dictionary<int, SceneDetail?>();
-            async Task<SceneDetail?> GetSceneAsync(int sn)
-            {
-                if (detailCache.TryGetValue(sn, out var cached)) return cached;
-                var d = S.List._detail?.SceneNumber == sn ? S.List._detail : (await S.Engine.GetSceneDetailAsync(S._projectId, sn))?.Scene;
-                detailCache[sn] = d;
-                return d;
-            }
 
             // Video-extend continuity (see FilmJobService.GenerateOneClipAsync + ClientMediaFolderService.
             // PrepareExtendSourceAsync): resolved once per batch, not per target, since it's the same
@@ -88,41 +81,51 @@ public partial class Scenes
 
             foreach (var (sn, cn) in targets)
             {
-                if (cn <= 1) continue;
-                var prevClipNum = cn - 1;
-                if (targets.Any(t => t.Scene == sn && t.Clip == prevClipNum)) continue;
-
-                // OnDisk alone isn't enough here: it's also true when only the .client.json marker
-                // exists (clip synced to the client, then pruned off server disk) — SizeBytes is 0 in
-                // that case since there are no real bytes for the video-extend gate to find and copy.
-                var sceneDetail = await GetSceneAsync(sn);
-                var prevSummary = sceneDetail?.Clips?.FirstOrDefault(c => c.ClipNumber == prevClipNum);
-                var serverHasRealBytes = prevSummary?.OnDisk == true && prevSummary.SizeBytes >= 1024;
-                if (!serverHasRealBytes)
-                {
-                    var localBytes = await S.MediaFolder.GetClipBytesAsync(S._projectId, sn, prevClipNum);
-                    if (localBytes is { Length: >= 1024 })
-                    {
-                        S._message = $"Uploading local predecessor S{sn:D2}C{prevClipNum:D2} to server…";
-                        S.StateHasChanged();
-
-                        await S.Engine.UploadClipAsync(S._projectId, sn, prevClipNum, localBytes);
-                    }
-                }
-
-                if (extendModel is { } maxInputSeconds)
-                {
-                    var wantsExtend = string.Equals(
-                        sceneDetail?.Clips?.FirstOrDefault(c => c.ClipNumber == cn)?.Continuation,
-                        "extend_previous", StringComparison.OrdinalIgnoreCase);
-                    if (wantsExtend)
-                    {
-                        // Best-effort: a false return just means no extend-source file appears on the
-                        // server, so it falls back to today's fresh-gen behavior — never blocks generation.
-                        await S.MediaFolder.PrepareExtendSourceAsync(S._projectId, sn, cn, maxInputSeconds);
-                    }
-                }
+                if (ShouldSkipPredecessor(cn, sn, targets)) continue;
+                var sceneDetail = await GetSceneDetailCachedAsync(sn, detailCache);
+                await UploadPredecessorIfMissingAsync(sn, cn - 1, sceneDetail);
+                await PrepareExtendIfNeededAsync(sn, cn, sceneDetail, extendModel);
             }
+        }
+
+        private static bool ShouldSkipPredecessor(int cn, int sn, List<(int Scene, int Clip)> targets) =>
+            cn <= 1 || targets.Any(t => t.Scene == sn && t.Clip == cn - 1);
+
+        private async Task<SceneDetail?> GetSceneDetailCachedAsync(int sn, Dictionary<int, SceneDetail?> cache)
+        {
+            if (cache.TryGetValue(sn, out var cached)) return cached;
+            var d = S.List._detail?.SceneNumber == sn ? S.List._detail : (await S.Engine.GetSceneDetailAsync(S._projectId, sn))?.Scene;
+            cache[sn] = d;
+            return d;
+        }
+
+        private async Task UploadPredecessorIfMissingAsync(int sn, int prevClipNum, SceneDetail? sceneDetail)
+        {
+            // OnDisk alone isn't enough here: it's also true when only the .client.json marker
+            // exists (clip synced to the client, then pruned off server disk) — SizeBytes is 0 in
+            // that case since there are no real bytes for the video-extend gate to find and copy.
+            var prevSummary = sceneDetail?.Clips?.FirstOrDefault(c => c.ClipNumber == prevClipNum);
+            var serverHasRealBytes = prevSummary?.OnDisk == true && prevSummary.SizeBytes >= 1024;
+            if (serverHasRealBytes) return;
+
+            var localBytes = await S.MediaFolder.GetClipBytesAsync(S._projectId, sn, prevClipNum);
+            if (localBytes is not { Length: >= 1024 }) return;
+
+            S._message = $"Uploading local predecessor S{sn:D2}C{prevClipNum:D2} to server…";
+            S.StateHasChanged();
+            await S.Engine.UploadClipAsync(S._projectId, sn, prevClipNum, localBytes);
+        }
+
+        private async Task PrepareExtendIfNeededAsync(int sn, int cn, SceneDetail? sceneDetail, double? extendModel)
+        {
+            if (extendModel is not { } maxInputSeconds) return;
+            var wantsExtend = string.Equals(
+                sceneDetail?.Clips?.FirstOrDefault(c => c.ClipNumber == cn)?.Continuation,
+                "extend_previous", StringComparison.OrdinalIgnoreCase);
+            if (!wantsExtend) return;
+            // Best-effort: a false return just means no extend-source file appears on the
+            // server, so it falls back to today's fresh-gen behavior — never blocks generation.
+            await S.MediaFolder.PrepareExtendSourceAsync(S._projectId, sn, cn, maxInputSeconds);
         }
 
         /// <summary>Active project video model's max input length for a real video-extend call, or

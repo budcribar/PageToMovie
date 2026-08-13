@@ -136,27 +136,13 @@ public sealed class DbUserApiKeyProvider : IUserApiKeyProvider
 
         if (!string.IsNullOrWhiteSpace(userId))
         {
-            try
-            {
-                var dbKey = await _userDb.GetDecryptedProviderApiKeyAsync(userId, provider, ct).ConfigureAwait(false);
-                if (!string.IsNullOrWhiteSpace(dbKey))
-                    return dbKey.Trim();
-            }
-            catch { /* fallback */ }
+            var dbKey = await TryGetDbKey(userId, provider, ct).ConfigureAwait(false);
+            if (dbKey is not null)
+                return dbKey;
 
-            // Config map + USERKEY_* are xAI-only (historical).
-            if (provider == "grok")
-            {
-                if (_auth.UserApiKeys.TryGetValue(userId, out var mapped) &&
-                    !string.IsNullOrWhiteSpace(mapped))
-                    return mapped.Trim();
-
-                var envName = "USERKEY_" + userId.Trim().Replace('-', '_');
-                var env = Environment.GetEnvironmentVariable(envName)
-                          ?? Environment.GetEnvironmentVariable(envName.ToUpperInvariant());
-                if (!string.IsNullOrWhiteSpace(env))
-                    return env.Trim();
-            }
+            var mappedOrEnv = TryGetGrokMappedOrEnvKey(userId, provider);
+            if (mappedOrEnv is not null)
+                return mappedOrEnv;
         }
 
         // BYOK default: do not spend a server env key on a signed-in user.
@@ -164,6 +150,43 @@ public sealed class DbUserApiKeyProvider : IUserApiKeyProvider
         if (!allowServer)
             return null;
 
+        return TryGetProcessEnvKey(provider);
+    }
+
+    private async Task<string?> TryGetDbKey(string userId, string provider, CancellationToken ct)
+    {
+        try
+        {
+            var dbKey = await _userDb.GetDecryptedProviderApiKeyAsync(userId, provider, ct).ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(dbKey))
+                return dbKey.Trim();
+        }
+        catch { /* fallback */ }
+
+        return null;
+    }
+
+    private string? TryGetGrokMappedOrEnvKey(string userId, string provider)
+    {
+        // Config map + USERKEY_* are xAI-only (historical).
+        if (provider != "grok")
+            return null;
+
+        if (_auth.UserApiKeys.TryGetValue(userId, out var mapped) &&
+            !string.IsNullOrWhiteSpace(mapped))
+            return mapped.Trim();
+
+        var envName = "USERKEY_" + userId.Trim().Replace('-', '_');
+        var env = Environment.GetEnvironmentVariable(envName)
+                  ?? Environment.GetEnvironmentVariable(envName.ToUpperInvariant());
+        if (!string.IsNullOrWhiteSpace(env))
+            return env.Trim();
+
+        return null;
+    }
+
+    private static string? TryGetProcessEnvKey(string provider)
+    {
         var processEnv = provider switch
         {
             "grok" => SupportedModelCatalog.XaiApiKeyEnv,

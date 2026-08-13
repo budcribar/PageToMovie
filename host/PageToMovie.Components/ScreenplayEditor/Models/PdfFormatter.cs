@@ -108,45 +108,56 @@ public static class PdfFormatter
         switch (beat.BeatType)
         {
             case BeatType.Action:
-                if (string.IsNullOrWhiteSpace(beat.ActionText)) return;
-                foreach (var paragraph in Norm(beat.ActionText).Replace("\r\n", "\n").Split('\n'))
-                {
-                    foreach (var line in WrapText(paragraph, MaxCharsAction))
-                    {
-                        emitLine(ContentLeft, line);
-                    }
-                }
-                emitBlank();
+                EmitAction(beat, emitLine, emitBlank);
                 return;
-
             case BeatType.Dialogue:
                 EmitDialogue(beat, emitLine, emitBlank);
                 return;
-
             case BeatType.Transition:
-                if (string.IsNullOrWhiteSpace(beat.TransitionText)) return;
-                foreach (var line in WrapText(Norm(beat.TransitionText).Trim().ToUpperInvariant(), MaxCharsAction))
-                {
-                    emitLine(ContentRight - line.Length * CharWidth, line);
-                }
-                emitBlank();
+                EmitTransition(beat, emitLine, emitBlank);
                 return;
-
             case BeatType.Centered:
-                if (string.IsNullOrWhiteSpace(beat.ActionText)) return;
-                foreach (var line in WrapText(Norm(beat.ActionText).Trim('>', '<', ' '), MaxCharsAction))
-                {
-                    var x = ContentLeft + ((ContentRight - ContentLeft) - line.Length * CharWidth) / 2;
-                    emitLine(x, line);
-                }
-                emitBlank();
+                EmitCentered(beat, emitLine, emitBlank);
                 return;
-
             case BeatType.Note:
                 // Fountain notes ([[ ... ]]) are production annotations, never rendered into the
                 // formatted screenplay — same rule the Fountain spec itself uses.
                 return;
         }
+    }
+
+    private static void EmitAction(ScreenplayBeat beat, Action<double, string> emitLine, Action emitBlank)
+    {
+        if (string.IsNullOrWhiteSpace(beat.ActionText)) return;
+        foreach (var paragraph in Norm(beat.ActionText).Replace("\r\n", "\n").Split('\n'))
+        {
+            foreach (var line in WrapText(paragraph, MaxCharsAction))
+            {
+                emitLine(ContentLeft, line);
+            }
+        }
+        emitBlank();
+    }
+
+    private static void EmitTransition(ScreenplayBeat beat, Action<double, string> emitLine, Action emitBlank)
+    {
+        if (string.IsNullOrWhiteSpace(beat.TransitionText)) return;
+        foreach (var line in WrapText(Norm(beat.TransitionText).Trim().ToUpperInvariant(), MaxCharsAction))
+        {
+            emitLine(ContentRight - line.Length * CharWidth, line);
+        }
+        emitBlank();
+    }
+
+    private static void EmitCentered(ScreenplayBeat beat, Action<double, string> emitLine, Action emitBlank)
+    {
+        if (string.IsNullOrWhiteSpace(beat.ActionText)) return;
+        foreach (var line in WrapText(Norm(beat.ActionText).Trim('>', '<', ' '), MaxCharsAction))
+        {
+            var x = ContentLeft + ((ContentRight - ContentLeft) - line.Length * CharWidth) / 2;
+            emitLine(x, line);
+        }
+        emitBlank();
     }
 
     private static void EmitDialogue(ScreenplayBeat beat, Action<double, string> emitLine, Action emitBlank)

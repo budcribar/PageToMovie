@@ -627,44 +627,56 @@ public sealed class FakeGrokChatClient : IChatClient
         order = new List<string>();
         var speaks = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
 
-        bool IsSceneOrTransition(string t) =>
-            CommonRegex.IsMatch(t, @"^(INT|EXT|EST|INT\.?/EXT|I/E)[\. ]", RegexOptions.IgnoreCase)
-            || t.EndsWith("TO:", StringComparison.OrdinalIgnoreCase)
-            || t.StartsWith("FADE", StringComparison.OrdinalIgnoreCase)
-            || t.StartsWith("CUT", StringComparison.OrdinalIgnoreCase);
-
         for (var i = 0; i < lines.Length; i++)
         {
             var t = lines[i].Trim();
             if (t.Length == 0) continue;
 
-            // Character cue: an UPPERCASE line (optionally with a "(V.O.)"-style extension) that is
-            // preceded by a blank line and followed by dialogue (a non-blank next line).
-            var cueMatch = CommonRegex.Match(t, @"^([A-Z][A-Z0-9 .'’\-]*?)(\s*\([^)]*\))?$");
-            var prevBlank = i == 0 || lines[i - 1].Trim().Length == 0;
-            var nextNonBlank = i + 1 < lines.Length && lines[i + 1].Trim().Length > 0;
-            if (cueMatch.Success && prevBlank && nextNonBlank && !IsSceneOrTransition(t)
-                && CommonRegex.IsMatch(t, "[A-Z]"))
-            {
-                var name = cueMatch.Groups[1].Value.Trim();
-                if (!CueStopWords.Contains(name) && name.Length >= 2)
-                {
-                    AddCastName(order, speaks, name, spoken: true);
-                    continue;
-                }
-            }
+            if (TryAddCharacterCue(lines, i, t, order, speaks))
+                continue;
 
-            // Action line: pick up inline UPPERCASE animal/creature/group names (e.g. a silent "LAMB")
-            // so non-speaking cast still appear. Keyword-gated to avoid matching FADE/INT/etc.
-            foreach (var w in CommonRegex.Matches(t, @"\b[A-Z][A-Z'’\-]{1,}\b").Select(m => m.Value))
-            {
-                if (CueStopWords.Contains(w)) continue;
-                if (ContainsWord(w, AnimalWords) || ContainsWord(w, CreatureWords) || ContainsWord(w, GroupWords))
-                    AddCastName(order, speaks, w, spoken: false);
-            }
+            TryAddInlineActionNames(t, order, speaks);
         }
 
         return order.Count > 0;
+    }
+
+    private static bool IsSceneOrTransitionLine(string t) =>
+        CommonRegex.IsMatch(t, @"^(INT|EXT|EST|INT\.?/EXT|I/E)[\. ]", RegexOptions.IgnoreCase)
+        || t.EndsWith("TO:", StringComparison.OrdinalIgnoreCase)
+        || t.StartsWith("FADE", StringComparison.OrdinalIgnoreCase)
+        || t.StartsWith("CUT", StringComparison.OrdinalIgnoreCase);
+
+    private static bool TryAddCharacterCue(
+        string[] lines, int i, string t, List<string> order, Dictionary<string, bool> speaks)
+    {
+        // Character cue: an UPPERCASE line (optionally with a "(V.O.)"-style extension) that is
+        // preceded by a blank line and followed by dialogue (a non-blank next line).
+        var cueMatch = CommonRegex.Match(t, @"^([A-Z][A-Z0-9 .'’\-]*?)(\s*\([^)]*\))?$");
+        var prevBlank = i == 0 || lines[i - 1].Trim().Length == 0;
+        var nextNonBlank = i + 1 < lines.Length && lines[i + 1].Trim().Length > 0;
+        if (!cueMatch.Success || !prevBlank || !nextNonBlank || IsSceneOrTransitionLine(t)
+            || !CommonRegex.IsMatch(t, "[A-Z]"))
+            return false;
+
+        var name = cueMatch.Groups[1].Value.Trim();
+        if (CueStopWords.Contains(name) || name.Length < 2)
+            return false;
+
+        AddCastName(order, speaks, name, spoken: true);
+        return true;
+    }
+
+    private static void TryAddInlineActionNames(string t, List<string> order, Dictionary<string, bool> speaks)
+    {
+        // Action line: pick up inline UPPERCASE animal/creature/group names (e.g. a silent "LAMB")
+        // so non-speaking cast still appear. Keyword-gated to avoid matching FADE/INT/etc.
+        foreach (var w in CommonRegex.Matches(t, @"\b[A-Z][A-Z'’\-]{1,}\b").Select(m => m.Value))
+        {
+            if (CueStopWords.Contains(w)) continue;
+            if (ContainsWord(w, AnimalWords) || ContainsWord(w, CreatureWords) || ContainsWord(w, GroupWords))
+                AddCastName(order, speaks, w, spoken: false);
+        }
     }
 
     /// <summary>Parse character cues + inline-introduced animal/creature/group names from a fountain
@@ -677,10 +689,6 @@ public sealed class FakeGrokChatClient : IChatClient
         if (!TryCollectCastNames(lines, out var order))
             return null;
 
-        static string TitleCase(string upper) =>
-            string.Join(' ', upper.Split(' ', StringSplitOptions.RemoveEmptyEntries)
-                .Select(w => w.Length == 0 ? w : char.ToUpperInvariant(w[0]) + w[1..].ToLowerInvariant()));
-
         var sb = new System.Text.StringBuilder();
         sb.AppendLine("{");
         sb.AppendLine("  \"schema_version\": \"cast_seeds.v1\",");
@@ -689,29 +697,7 @@ public sealed class FakeGrokChatClient : IChatClient
         sb.AppendLine("  \"performance_lock\": \"PERFORMANCE LOCK: fake test cast\",");
         sb.AppendLine("  \"character_seed_tokens\": {");
         for (var idx = 0; idx < order.Count; idx++)
-        {
-            var name = order[idx];
-            var upper = name.ToUpperInvariant();
-            var species = ContainsWord(upper, AnimalWords) ? "animal"
-                : ContainsWord(upper, CreatureWords) ? "creature" : "human";
-            var isGroup = ContainsWord(upper, GroupWords);
-            var display = TitleCase(name);
-            var key = "Character_" + CommonRegex.Replace(display, @"\s+", "_");
-            var castKind = isGroup ? "group" : "individual";
-            sb.AppendLine("    \"" + key + "\": {");
-            sb.AppendLine("      \"canonical_given_name\": \"" + display + "\",");
-            sb.AppendLine("      \"species_kind\": \"" + species + "\",");
-            sb.AppendLine("      \"cast_kind\": \"" + castKind + "\",");
-            sb.AppendLine("      \"display_name_policy\": \"ok_anytime\",");
-            sb.AppendLine("      \"description\": \"" + display + " — " + species
-                + (isGroup ? " ensemble" : "") + ", photoreal test character\",");
-            sb.AppendLine("      \"visual_lock\": \"Consistent " + display + " across scenes\",");
-            sb.AppendLine("      \"voice_profile\": \"" + (species == "human" ? "Clear test voice" : "Non-human test voice") + "\",");
-            sb.AppendLine("      \"voice_label\": \"" + display + "\",");
-            sb.AppendLine("      \"wardrobe_always\": [],");
-            sb.AppendLine("      \"reference_image_placeholder\": \"" + key.ToLowerInvariant() + "_ref.png\"");
-            sb.AppendLine("    }" + (idx < order.Count - 1 ? "," : ""));
-        }
+            AppendCharacterSeed(sb, order[idx], idx, order.Count);
         sb.AppendLine("  },");
         sb.AppendLine("  \"location_seed_tokens\": {");
         sb.AppendLine("    \"Loc_Test_Set\": {");
@@ -724,6 +710,40 @@ public sealed class FakeGrokChatClient : IChatClient
         sb.AppendLine("  }");
         sb.AppendLine("}");
         return sb.ToString();
+    }
+
+    private static void AppendCharacterSeed(System.Text.StringBuilder sb, string name, int idx, int count)
+    {
+        static string TitleCase(string upper) =>
+            string.Join(' ', upper.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Select(w => w.Length == 0 ? w : char.ToUpperInvariant(w[0]) + w[1..].ToLowerInvariant()));
+
+        var upper = name.ToUpperInvariant();
+        var species = SpeciesKind(upper);
+        var isGroup = ContainsWord(upper, GroupWords);
+        var display = TitleCase(name);
+        var key = "Character_" + CommonRegex.Replace(display, @"\s+", "_");
+        var castKind = isGroup ? "group" : "individual";
+        sb.AppendLine("    \"" + key + "\": {");
+        sb.AppendLine("      \"canonical_given_name\": \"" + display + "\",");
+        sb.AppendLine("      \"species_kind\": \"" + species + "\",");
+        sb.AppendLine("      \"cast_kind\": \"" + castKind + "\",");
+        sb.AppendLine("      \"display_name_policy\": \"ok_anytime\",");
+        sb.AppendLine("      \"description\": \"" + display + " — " + species
+            + (isGroup ? " ensemble" : "") + ", photoreal test character\",");
+        sb.AppendLine("      \"visual_lock\": \"Consistent " + display + " across scenes\",");
+        sb.AppendLine("      \"voice_profile\": \"" + (species == "human" ? "Clear test voice" : "Non-human test voice") + "\",");
+        sb.AppendLine("      \"voice_label\": \"" + display + "\",");
+        sb.AppendLine("      \"wardrobe_always\": [],");
+        sb.AppendLine("      \"reference_image_placeholder\": \"" + key.ToLowerInvariant() + "_ref.png\"");
+        sb.AppendLine("    }" + (idx < count - 1 ? "," : ""));
+    }
+
+    private static string SpeciesKind(string upper)
+    {
+        if (ContainsWord(upper, AnimalWords)) return "animal";
+        if (ContainsWord(upper, CreatureWords)) return "creature";
+        return "human";
     }
 
     private const string AutoReviewJson = """

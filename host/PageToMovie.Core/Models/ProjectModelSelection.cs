@@ -32,13 +32,22 @@ public static class ProjectModelSelection
             if (!cfg.TryGetValue(key, out var el) || el.ValueKind != JsonValueKind.String)
                 continue;
             var id = el.GetString()?.Trim();
-            if (string.IsNullOrWhiteSpace(id)) continue;
-            if (id.Equals("none", StringComparison.OrdinalIgnoreCase)) continue;
-            if (id.Equals("disabled", StringComparison.OrdinalIgnoreCase)) continue;
-            if (id.Equals("auto", StringComparison.OrdinalIgnoreCase)) continue;
+            if (!IsUsableModelId(id)) continue;
             return id;
         }
         return null;
+    }
+
+    /// <summary>
+    /// True when <paramref name="id"/> is a concrete catalog model id (not empty / none / disabled / auto).
+    /// </summary>
+    private static bool IsUsableModelId(string? id)
+    {
+        if (string.IsNullOrWhiteSpace(id)) return false;
+        if (id.Equals("none", StringComparison.OrdinalIgnoreCase)) return false;
+        if (id.Equals("disabled", StringComparison.OrdinalIgnoreCase)) return false;
+        if (id.Equals("auto", StringComparison.OrdinalIgnoreCase)) return false;
+        return true;
     }
 
     /// <summary>

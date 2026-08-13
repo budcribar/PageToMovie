@@ -123,43 +123,10 @@ public partial class Scenes
             if (_clipEditor is null || S.List._detail is null) return;
 
             // Mirror server rules for fast feedback (server still authoritative).
-            if (string.IsNullOrWhiteSpace(_clipEditor.VisualPrompt))
+            var error = ValidateClipEditorFields();
+            if (error is not null)
             {
-                S._error = "Visual prompt is required.";
-                return;
-            }
-            if (_clipEditor.DurationSeconds < 0 || _clipEditor.DurationSeconds > 12)
-            {
-                S._error = "Duration must be 0 (unset) or 3–12 seconds.";
-                return;
-            }
-            if (_clipEditor.DurationSeconds is > 0 and < 3)
-            {
-                S._error = "Duration must be at least 3s (or 0 to leave unset).";
-                return;
-            }
-            var dlg = (_clipEditor.Dialogue ?? "").Trim();
-            var spk = (_clipEditor.Speaker ?? "").Trim();
-            var del = (_clipEditor.Delivery ?? "").Trim();
-            var delNone = del.Length == 0 || string.Equals(del, "none", StringComparison.OrdinalIgnoreCase);
-            if (dlg.Length > 0 && spk.Length == 0)
-            {
-                S._error = "Dialogue needs a speaker. Pick who says the line, or clear the dialogue.";
-                return;
-            }
-            if (dlg.Length > 0 && delNone)
-            {
-                S._error = "Dialogue needs a delivery: Spoken (on camera), Voiceover (internal), or Off camera.";
-                return;
-            }
-            if (spk.Length > 0 && dlg.Length == 0)
-            {
-                S._error = "Speaker is set but dialogue is empty. Add the line, or set speaker to none.";
-                return;
-            }
-            if (_clipEditorIsNew && (_clipEditor.Clip < 1 || _clipEditor.Clip > 200))
-            {
-                S._error = "Clip number must be between 1 and 200.";
+                S._error = error;
                 return;
             }
 
@@ -167,36 +134,73 @@ public partial class Scenes
             S._error = null;
             try
             {
-                _clipEditor.CharactersOnScreen = _clipEditorCast.ToList();
-                if (_clipEditorIsNew)
-                {
-                    await S.Engine.AddClipAsync(S._projectId, S.List._detail.SceneNumber, _clipEditor);
-                    S._message = $"Added S{S.List._detail.SceneNumber:D2}C{_clipEditor.Clip:D2} — generate its video when ready";
-                }
-                else
-                {
-                    await S.Engine.UpdateClipAsync(S._projectId, S.List._detail.SceneNumber, _clipEditor.Clip, _clipEditor);
-                    S._message = $"Saved S{S.List._detail.SceneNumber:D2}C{_clipEditor.Clip:D2} — Regen the clip to re-render video/audio with the new fields";
-                }
-                try { await S.Engine.CommitProjectChangesAsync(S._projectId, $"Saved clip S{S.List._detail.SceneNumber:D2}C{_clipEditor.Clip:D2}"); }
-                catch (Exception ex)
-                {
-                    // Clip fields already saved; commit is best-effort for the uncommitted badge.
-                    System.Diagnostics.Debug.WriteLine(ex);
-                }
-                await S.RefreshUncommittedStatusAsync();
-                _clipEditor = null;
-                await S.List.LoadDetailAsync(S.List._detail.SceneNumber);
-                var scenesDto = await S.Engine.GetScenesAsync(S._projectId);
-                if (scenesDto?.Scenes is not null)
-                {
-                    S.List._scenes = scenesDto.Scenes;
-                }
-                if (_selectedClip is int sel)
-                    _clip = S.List._detail.Clips.FirstOrDefault(c => c.ClipNumber == sel);
+                await PersistClipEditorAsync();
             }
             catch (Exception ex) { S._error = ex.Message; }
             finally { S._busy = false; }
+        }
+
+        private string? ValidateClipEditorFields()
+        {
+            if (string.IsNullOrWhiteSpace(_clipEditor!.VisualPrompt))
+                return "Visual prompt is required.";
+            if (_clipEditor.DurationSeconds < 0 || _clipEditor.DurationSeconds > 12)
+                return "Duration must be 0 (unset) or 3–12 seconds.";
+            if (_clipEditor.DurationSeconds is > 0 and < 3)
+                return "Duration must be at least 3s (or 0 to leave unset).";
+            var dialogueError = ValidateClipDialogue();
+            if (dialogueError is not null)
+                return dialogueError;
+            if (_clipEditorIsNew && (_clipEditor.Clip < 1 || _clipEditor.Clip > 200))
+                return "Clip number must be between 1 and 200.";
+            return null;
+        }
+
+        private string? ValidateClipDialogue()
+        {
+            var dlg = (_clipEditor!.Dialogue ?? "").Trim();
+            var spk = (_clipEditor.Speaker ?? "").Trim();
+            var del = (_clipEditor.Delivery ?? "").Trim();
+            var delNone = del.Length == 0 || string.Equals(del, "none", StringComparison.OrdinalIgnoreCase);
+            if (dlg.Length > 0 && spk.Length == 0)
+                return "Dialogue needs a speaker. Pick who says the line, or clear the dialogue.";
+            if (dlg.Length > 0 && delNone)
+                return "Dialogue needs a delivery: Spoken (on camera), Voiceover (internal), or Off camera.";
+            if (spk.Length > 0 && dlg.Length == 0)
+                return "Speaker is set but dialogue is empty. Add the line, or set speaker to none.";
+            return null;
+        }
+
+        private async Task PersistClipEditorAsync()
+        {
+            _clipEditor!.CharactersOnScreen = _clipEditorCast.ToList();
+            var detail = S.List._detail!;
+            if (_clipEditorIsNew)
+            {
+                await S.Engine.AddClipAsync(S._projectId, detail.SceneNumber, _clipEditor);
+                S._message = $"Added S{detail.SceneNumber:D2}C{_clipEditor.Clip:D2} — generate its video when ready";
+            }
+            else
+            {
+                await S.Engine.UpdateClipAsync(S._projectId, detail.SceneNumber, _clipEditor.Clip, _clipEditor);
+                S._message = $"Saved S{detail.SceneNumber:D2}C{_clipEditor.Clip:D2} — Regen the clip to re-render video/audio with the new fields";
+            }
+            try { await S.Engine.CommitProjectChangesAsync(S._projectId, $"Saved clip S{detail.SceneNumber:D2}C{_clipEditor.Clip:D2}"); }
+            catch (Exception ex)
+            {
+                // Clip fields already saved; commit is best-effort for the uncommitted badge.
+                System.Diagnostics.Debug.WriteLine(ex);
+            }
+            await S.RefreshUncommittedStatusAsync();
+            _clipEditor = null;
+            await S.List.LoadDetailAsync(detail.SceneNumber);
+            var scenesDto = await S.Engine.GetScenesAsync(S._projectId);
+            if (scenesDto?.Scenes is not null)
+            {
+                S.List._scenes = scenesDto.Scenes;
+            }
+            if (_selectedClip is int sel)
+                _clip = S.List._detail!.Clips.FirstOrDefault(c => c.ClipNumber == sel);
         }
 
         internal void RequestDeleteClip(int scene, int clip) => _deleteClipTarget = (scene, clip);

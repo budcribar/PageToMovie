@@ -1,3 +1,4 @@
+using System.Text.Json;
 using PageToMovie.Core.Models;
 
 namespace PageToMovie.Web.Services;
@@ -209,74 +210,107 @@ public sealed class ActiveProjectState
 
         try
         {
-            var json = System.Text.Json.JsonSerializer.Serialize(statusObj);
-            using var doc = System.Text.Json.JsonDocument.Parse(json);
-            var root = doc.RootElement;
-
-            static bool PropBool(System.Text.Json.JsonElement el, string camel, string pascal)
-            {
-                if (el.TryGetProperty(camel, out var v) && v.ValueKind is System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False)
-                    return v.GetBoolean();
-                if (el.TryGetProperty(pascal, out v) && v.ValueKind is System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False)
-                    return v.GetBoolean();
-                return false;
-            }
-
-            static int PropInt(System.Text.Json.JsonElement el, string camel, string pascal)
-            {
-                if (el.TryGetProperty(camel, out var v) && v.TryGetInt32(out var i)) return i;
-                if (el.TryGetProperty(pascal, out v) && v.TryGetInt32(out i)) return i;
-                return 0;
-            }
-
-            var screenplayReady = false;
-            if (root.TryGetProperty("screenplay", out var sp) || root.TryGetProperty("Screenplay", out sp))
-            {
-                screenplayReady = PropBool(sp, "readyForShots", "ReadyForShots")
-                    || PropBool(sp, "signed", "Signed");
-            }
-            if ((root.TryGetProperty("stage1", out var s1) || root.TryGetProperty("Stage1", out s1))
-                && PropBool(s1, "present", "Present") && PropInt(s1, "sceneCount", "SceneCount") > 0)
-                screenplayReady = true;
-
-            var shotsReady = false;
-            var stage2Stale = false;
-            if (root.TryGetProperty("stage2", out var s2) || root.TryGetProperty("Stage2", out s2))
-            {
-                shotsReady = PropBool(s2, "stage2Ready", "Stage2Ready")
-                    && PropInt(s2, "stage2Clips", "Stage2Clips") > 0;
-                stage2Stale = PropBool(s2, "stage2Stale", "Stage2Stale");
-            }
-
-            var castReady = true;
-            if (root.TryGetProperty("cast", out var ca) || root.TryGetProperty("Cast", out ca))
-                castReady = PropBool(ca, "readyForShots", "ReadyForShots");
-
-            CanCharacters = screenplayReady;
-            CharactersBlockedReason = screenplayReady ? "" : "Approve the screenplay first";
-            CanScenes = shotsReady;
-            CanReview = shotsReady;
-            CanEstimate = screenplayReady;
-            EstimateBlockedReason = screenplayReady
-                ? ""
-                : "Finish importing the book and approve the screenplay first";
-
-            if (shotsReady)
-                ScenesBlockedReason = castReady
-                    ? ""
-                    : "Approve every character voice + locked image before generating video";
-            else if (stage2Stale)
-                ScenesBlockedReason = "Update the shot plan first";
-            else if (!castReady)
-                ScenesBlockedReason = "Finish characters (voice + locked image), then the shot plan";
-            else
-                ScenesBlockedReason = ShotPlanBlockedReason;
-            ReviewBlockedReason = ScenesBlockedReason;
+            var json = JsonSerializer.Serialize(statusObj);
+            using var doc = JsonDocument.Parse(json);
+            ApplyReadinessFromJson(doc.RootElement);
         }
         catch
         {
             ClearReadiness();
         }
+    }
+
+    private void ApplyReadinessFromJson(JsonElement root)
+    {
+        var screenplayReady = ReadScreenplayReady(root);
+        var (shotsReady, stage2Stale) = ReadStage2(root);
+        var castReady = ReadCastReady(root);
+
+        CanCharacters = screenplayReady;
+        CharactersBlockedReason = screenplayReady ? "" : "Approve the screenplay first";
+        CanScenes = shotsReady;
+        CanReview = shotsReady;
+        CanEstimate = screenplayReady;
+        EstimateBlockedReason = screenplayReady
+            ? ""
+            : "Finish importing the book and approve the screenplay first";
+        ScenesBlockedReason = ScenesBlockedReasonFor(shotsReady, stage2Stale, castReady);
+        ReviewBlockedReason = ScenesBlockedReason;
+    }
+
+    private static bool ReadScreenplayReady(JsonElement root)
+    {
+        var screenplayReady = false;
+        if (TryGetCamelOrPascal(root, "screenplay", "Screenplay", out var sp))
+        {
+            screenplayReady = PropBool(sp, "readyForShots", "ReadyForShots")
+                || PropBool(sp, "signed", "Signed");
+        }
+        if (TryGetCamelOrPascal(root, "stage1", "Stage1", out var s1)
+            && PropBool(s1, "present", "Present") && PropInt(s1, "sceneCount", "SceneCount") > 0)
+            screenplayReady = true;
+        return screenplayReady;
+    }
+
+    private static (bool ShotsReady, bool Stage2Stale) ReadStage2(JsonElement root)
+    {
+        var shotsReady = false;
+        var stage2Stale = false;
+        if (TryGetCamelOrPascal(root, "stage2", "Stage2", out var s2))
+        {
+            shotsReady = PropBool(s2, "stage2Ready", "Stage2Ready")
+                && PropInt(s2, "stage2Clips", "Stage2Clips") > 0;
+            stage2Stale = PropBool(s2, "stage2Stale", "Stage2Stale");
+        }
+        return (shotsReady, stage2Stale);
+    }
+
+    private static bool ReadCastReady(JsonElement root)
+    {
+        var castReady = true;
+        if (TryGetCamelOrPascal(root, "cast", "Cast", out var ca))
+            castReady = PropBool(ca, "readyForShots", "ReadyForShots");
+        return castReady;
+    }
+
+    private static string ScenesBlockedReasonFor(bool shotsReady, bool stage2Stale, bool castReady)
+    {
+        if (shotsReady)
+            return castReady
+                ? ""
+                : "Approve every character voice + locked image before generating video";
+        if (stage2Stale)
+            return "Update the shot plan first";
+        if (!castReady)
+            return "Finish characters (voice + locked image), then the shot plan";
+        return ShotPlanBlockedReason;
+    }
+
+    private static bool TryGetCamelOrPascal(JsonElement el, string camel, string pascal, out JsonElement value)
+    {
+        if (el.TryGetProperty(camel, out value)) return true;
+        if (el.TryGetProperty(pascal, out value)) return true;
+        value = default;
+        return false;
+    }
+
+    private static bool PropBool(JsonElement el, string camel, string pascal) =>
+        TryPropBool(el, camel) ?? TryPropBool(el, pascal) ?? false;
+
+    private static bool? TryPropBool(JsonElement el, string name)
+    {
+        if (el.TryGetProperty(name, out var v) && v.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            return v.GetBoolean();
+        return null;
+    }
+
+    private static int PropInt(JsonElement el, string camel, string pascal) =>
+        TryPropInt(el, camel) ?? TryPropInt(el, pascal) ?? 0;
+
+    private static int? TryPropInt(JsonElement el, string name)
+    {
+        if (el.TryGetProperty(name, out var v) && v.TryGetInt32(out var i)) return i;
+        return null;
     }
 
     private void ClearReadiness()

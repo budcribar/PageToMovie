@@ -141,17 +141,16 @@ public sealed partial class Configuration
         }
 
 
-        internal IReadOnlyList<ProviderKeyStatusDto> ProviderRows
+        internal IReadOnlyList<ProviderKeyStatusDto> ProviderRows => GetProviderRows();
+
+        private IReadOnlyList<ProviderKeyStatusDto> GetProviderRows()
         {
-            get
-            {
-                // Prefer server DTO (includes personal/server key status). Fall back to catalog so
-                // Settings always shows key slots even if the settings API fails or is offline.
-                if (_userSettings?.Providers is { Count: > 0 } list)
-                    return list;
-                try { return SupportedModelCatalog.BuildProviderKeyRows(); }
-                catch { return Array.Empty<ProviderKeyStatusDto>(); }
-            }
+            // Prefer server DTO (includes personal/server key status). Fall back to catalog so
+            // Settings always shows key slots even if the settings API fails or is offline.
+            if (_userSettings?.Providers is { Count: > 0 } list)
+                return list;
+            try { return SupportedModelCatalog.BuildProviderKeyRows(); }
+            catch { return Array.Empty<ProviderKeyStatusDto>(); }
         }
 
 
@@ -179,52 +178,11 @@ public sealed partial class Configuration
         {
             try
             {
-                S._busy = true;
-                _apiKeySaving = true;
-                _savingProviderId = providerId;
-                _apiKeyFeedback = null;
-                S._error = null;
-
+                BeginPersistKey(providerId);
                 _userSettings = await S.Engine.UpdateUserSettingsAsync(
                     new Dictionary<string, string?> { [providerId] = keyValue });
-
                 _keyInputs[providerId] = null;
-
-                var label = ProviderRows.FirstOrDefault(p =>
-                    string.Equals(p.ProviderId, providerId, StringComparison.OrdinalIgnoreCase))?.DisplayName
-                    ?? providerId;
-
-                if (clearing)
-                {
-                    _apiKeyFeedback = $"{label}: personal key removed.";
-                }
-                else
-                {
-                    _apiKeyFeedback = $"{label}: personal key encrypted and saved.";
-                    // Fill empty required slots with this provider's first catalog models (if any).
-                    if (!string.IsNullOrWhiteSpace(S._projectId) && S._cfg is not null)
-                    {
-                        ApplyProviderModelDefaults(providerId);
-                        try { await S.Form.PersistProjectConfigAsync(); } catch { /* optional */ }
-                    }
-                    // Music key: if coverage model is none/unknown, pick a model for this provider so Ready lights up.
-                    if (providerId is "fal" or "suno" or "aimusicapi")
-                    {
-                        S.Coverage.EnsureMusicModelForProvider(providerId);
-                    }
-                    // Voice key (ElevenLabs) or Fal while adding voice coverage: pick clone-step model, not TTS-only.
-                    if (providerId is "elevenlabs"
-                        || (providerId is "fal" && string.Equals(S.Coverage._coverageEditId, "voice", StringComparison.OrdinalIgnoreCase)))
-                    {
-                        S.Coverage.EnsureVoiceModelForProvider(providerId);
-                    }
-                    if ((providerId is "fal" or "suno" or "aimusicapi" or "elevenlabs")
-                        && !string.IsNullOrWhiteSpace(S._projectId) && S._cfg is not null)
-                    {
-                        try { await S.Form.PersistProjectConfigAsync(); } catch { /* optional */ }
-                    }
-                }
-
+                await ApplyPersistKeyOutcomeAsync(providerId, ResolveProviderDisplayName(providerId), clearing);
                 S._message = _apiKeyFeedback;
                 await S.ActiveProject.RefreshReadinessAsync(S.Engine);
             }
@@ -239,6 +197,67 @@ public sealed partial class Configuration
                 _savingProviderId = null;
             }
         }
+
+        private void BeginPersistKey(string providerId)
+        {
+            S._busy = true;
+            _apiKeySaving = true;
+            _savingProviderId = providerId;
+            _apiKeyFeedback = null;
+            S._error = null;
+        }
+
+        private string ResolveProviderDisplayName(string providerId) =>
+            ProviderRows.FirstOrDefault(p =>
+                string.Equals(p.ProviderId, providerId, StringComparison.OrdinalIgnoreCase))?.DisplayName
+            ?? providerId;
+
+        private async Task ApplyPersistKeyOutcomeAsync(string providerId, string label, bool clearing)
+        {
+            if (clearing)
+            {
+                _apiKeyFeedback = $"{label}: personal key removed.";
+                return;
+            }
+
+            _apiKeyFeedback = $"{label}: personal key encrypted and saved.";
+            await ApplyNewKeySideEffectsAsync(providerId);
+        }
+
+        private async Task ApplyNewKeySideEffectsAsync(string providerId)
+        {
+            // Fill empty required slots with this provider's first catalog models (if any).
+            if (!string.IsNullOrWhiteSpace(S._projectId) && S._cfg is not null)
+            {
+                ApplyProviderModelDefaults(providerId);
+                await TryPersistProjectConfigAsync();
+            }
+            ApplyOptionalCoverageModelsForProvider(providerId);
+            if (IsOptionalCoverageProvider(providerId)
+                && !string.IsNullOrWhiteSpace(S._projectId) && S._cfg is not null)
+            {
+                await TryPersistProjectConfigAsync();
+            }
+        }
+
+        private async Task TryPersistProjectConfigAsync()
+        {
+            try { await S.Form.PersistProjectConfigAsync(); } catch { /* optional */ }
+        }
+
+        private void ApplyOptionalCoverageModelsForProvider(string providerId)
+        {
+            // Music key: if coverage model is none/unknown, pick a model for this provider so Ready lights up.
+            if (providerId is "fal" or "suno" or "aimusicapi")
+                S.Coverage.EnsureMusicModelForProvider(providerId);
+            // Voice key (ElevenLabs) or Fal while adding voice coverage: pick clone-step model, not TTS-only.
+            if (providerId is "elevenlabs"
+                || (providerId is "fal" && string.Equals(S.Coverage._coverageEditId, "voice", StringComparison.OrdinalIgnoreCase)))
+                S.Coverage.EnsureVoiceModelForProvider(providerId);
+        }
+
+        private static bool IsOptionalCoverageProvider(string providerId) =>
+            providerId is "fal" or "suno" or "aimusicapi" or "elevenlabs";
 
 
         /// <summary>After attaching a provider key, set empty required slots to that provider's first catalog model.</summary>

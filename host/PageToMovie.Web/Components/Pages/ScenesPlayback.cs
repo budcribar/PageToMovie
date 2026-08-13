@@ -137,111 +137,132 @@ public partial class Scenes
         try
         {
             var meta = await S.Engine.GetWipMovieMetaAsync(S._projectId);
-            var summary = S.List._scenes?.FirstOrDefault(s => s.SceneNumber == sn);
-            var compositeOk = summary?.CompositeExists == true
-                              || (S.List._detail is { SceneNumber: var dsn, CompositeExists: true } && dsn == sn);
-            var clipsOnDisk = summary?.ClipsOnDisk
-                              ?? (S.List._detail is { SceneNumber: var d2 } && d2 == sn ? S.List._detail.ClipsOnDisk : 0);
+            var (compositeOk, clipsOnDisk) = ResolveSceneMediaAvailability(sn);
             var stale = meta?.StaleScenes?.Contains(sn) ?? false;
             var needsStitch = !compositeOk || stale;
 
             // Fresh composite on disk — stream it directly (no stitch).
             if (!needsStitch)
             {
-                _clientSceneUrl = null;
-                _playingScene = sn;
-                _showScenePlayer = true;
-                _sceneVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                _inlineCompositeKey = _sceneVideoKey;
-                S._message = $"Playing S{sn:D2} composite";
+                ShowFreshComposite(sn);
                 return;
             }
 
             if (clipsOnDisk <= 0 && !compositeOk)
             {
-                if (S.MediaFolder.IsSyncing)
-                {
-                    _showScenePlayer = true;
-                    _playingScene = sn;
-                    _clientSceneUrl = null;
-                    S._message = $"Downloading video clips for S{sn:D2} to local folder…";
-                }
-                else
-                {
-                    S._error = $"No clips for S{sn:D2} — connect local media folder or generate clips first";
-                }
+                HandleNoClipsForScene(sn);
                 return;
             }
 
-            // Missing or stale composite: stitch clips (or fall back to stale composite) in the browser.
-            _clientStitching = true;
-            S._error = null;
-            S._message = null;
-            _clientStitchStatus = "Collecting clips…";
-            _showPreviewPlayer = false;
-            _clientPreviewUrl = null;
-            _playingScene = sn;
-            _showScenePlayer = true;
-            _clientSceneUrl = null;
-            try
-            {
-                SceneDetail? detail = S.List._detail is { SceneNumber: var d } && d == sn
-                    ? S.List._detail
-                    : null;
-                var urls = await S.Stitch.CollectClipUrlsAsync(S._projectId, sn, detail);
-                if (urls.Count == 0 && compositeOk)
-                {
-                    // Stale composite still playable
-                    _clientSceneUrl = null;
-                    _sceneVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                    S._message = $"Playing S{sn:D2} composite (may be stale)";
-                    return;
-                }
-
-                if (urls.Count == 0)
-                {
-                    S._error = $"No on-disk clips for S{sn:D2}";
-                    _showScenePlayer = false;
-                    _playingScene = null;
-                    return;
-                }
-
-                _clientStitchStatus = urls.Count == 1 ? "Loading…" : $"Combining {urls.Count} clips…";
-                await S.Stitch.RevokePreviewUrlAsync();
-                var result = await S.Stitch.ConcatAsync(urls);
-                if (!result.Success || string.IsNullOrWhiteSpace(result.Url))
-                {
-                    S._error = result.Error ?? "Browser stitch failed";
-                    _showScenePlayer = false;
-                    _playingScene = null;
-                    return;
-                }
-
-                // Layer locally-synced background music (if any) under the stitched video —
-                // client-side replacement for the old server-side ffmpeg mix; no-op if none synced.
-                _clientSceneUrl = await S.Stitch.MixSceneMusicAsync(S._projectId, result.Url, sn);
-                _sceneVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                _inlineCompositeKey = _sceneVideoKey;
-                S._message = urls.Count == 1
-                    ? $"Playing S{sn:D2} (single clip)"
-                    : $"Playing S{sn:D2} — {urls.Count} clips stitched in browser";
-            }
-            catch (Exception ex)
-            {
-                S._error = ex.Message;
-                _showScenePlayer = false;
-                _playingScene = null;
-                _clientSceneUrl = null;
-            }
-            finally
-            {
-                _clientStitching = false;
-                _clientStitchStatus = null;
-            }
+            await StitchSceneClipsAsync(sn, compositeOk);
         }
         finally
         {
             S._busy = false;
+        }
+    }
+
+    private (bool CompositeOk, int ClipsOnDisk) ResolveSceneMediaAvailability(int sn)
+    {
+        var summary = S.List._scenes?.FirstOrDefault(s => s.SceneNumber == sn);
+        var compositeOk = summary?.CompositeExists == true
+                          || (S.List._detail is { SceneNumber: var dsn, CompositeExists: true } && dsn == sn);
+        var clipsOnDisk = summary?.ClipsOnDisk
+                          ?? (S.List._detail is { SceneNumber: var d2 } && d2 == sn ? S.List._detail.ClipsOnDisk : 0);
+        return (compositeOk, clipsOnDisk);
+    }
+
+    private void ShowFreshComposite(int sn)
+    {
+        _clientSceneUrl = null;
+        _playingScene = sn;
+        _showScenePlayer = true;
+        _sceneVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        _inlineCompositeKey = _sceneVideoKey;
+        S._message = $"Playing S{sn:D2} composite";
+    }
+
+    private void HandleNoClipsForScene(int sn)
+    {
+        if (S.MediaFolder.IsSyncing)
+        {
+            _showScenePlayer = true;
+            _playingScene = sn;
+            _clientSceneUrl = null;
+            S._message = $"Downloading video clips for S{sn:D2} to local folder…";
+        }
+        else
+        {
+            S._error = $"No clips for S{sn:D2} — connect local media folder or generate clips first";
+        }
+    }
+
+    private async Task StitchSceneClipsAsync(int sn, bool compositeOk)
+    {
+        // Missing or stale composite: stitch clips (or fall back to stale composite) in the browser.
+        _clientStitching = true;
+        S._error = null;
+        S._message = null;
+        _clientStitchStatus = "Collecting clips…";
+        _showPreviewPlayer = false;
+        _clientPreviewUrl = null;
+        _playingScene = sn;
+        _showScenePlayer = true;
+        _clientSceneUrl = null;
+        try
+        {
+            SceneDetail? detail = S.List._detail is { SceneNumber: var d } && d == sn
+                ? S.List._detail
+                : null;
+            var urls = await S.Stitch.CollectClipUrlsAsync(S._projectId, sn, detail);
+            if (urls.Count == 0 && compositeOk)
+            {
+                // Stale composite still playable
+                _clientSceneUrl = null;
+                _sceneVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                S._message = $"Playing S{sn:D2} composite (may be stale)";
+                return;
+            }
+
+            if (urls.Count == 0)
+            {
+                S._error = $"No on-disk clips for S{sn:D2}";
+                _showScenePlayer = false;
+                _playingScene = null;
+                return;
+            }
+
+            _clientStitchStatus = urls.Count == 1 ? "Loading…" : $"Combining {urls.Count} clips…";
+            await S.Stitch.RevokePreviewUrlAsync();
+            var result = await S.Stitch.ConcatAsync(urls);
+            if (!result.Success || string.IsNullOrWhiteSpace(result.Url))
+            {
+                S._error = result.Error ?? "Browser stitch failed";
+                _showScenePlayer = false;
+                _playingScene = null;
+                return;
+            }
+
+            // Layer locally-synced background music (if any) under the stitched video —
+            // client-side replacement for the old server-side ffmpeg mix; no-op if none synced.
+            _clientSceneUrl = await S.Stitch.MixSceneMusicAsync(S._projectId, result.Url, sn);
+            _sceneVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            _inlineCompositeKey = _sceneVideoKey;
+            S._message = urls.Count == 1
+                ? $"Playing S{sn:D2} (single clip)"
+                : $"Playing S{sn:D2} — {urls.Count} clips stitched in browser";
+        }
+        catch (Exception ex)
+        {
+            S._error = ex.Message;
+            _showScenePlayer = false;
+            _playingScene = null;
+            _clientSceneUrl = null;
+        }
+        finally
+        {
+            _clientStitching = false;
+            _clientStitchStatus = null;
         }
     }
 

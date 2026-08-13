@@ -147,31 +147,7 @@ public sealed class ClientMediaFolderService
             var r = await _js.InvokeAsync<JsResult>("PageToMovieMedia.connectFolderAsync");
             if (r is { Success: true })
             {
-                FolderName = r.FolderName;
-                // Prefer path returned from JS (or previously stored full path if still valid).
-                if (!string.IsNullOrWhiteSpace(r.FullPath))
-                    FullPath = r.FullPath.Trim();
-                else
-                    await RefreshFullPathAsync();
-                // Drop stale full path when its last segment no longer matches the folder name.
-                if (!string.IsNullOrWhiteSpace(FullPath) && !string.IsNullOrWhiteSpace(FolderName))
-                {
-                    var normalized = FullPath.Replace('/', '\\').TrimEnd('\\');
-                    var idx = normalized.LastIndexOf('\\');
-                    var last = idx >= 0 ? normalized[(idx + 1)..] : normalized;
-                    if (!string.Equals(last, FolderName, StringComparison.OrdinalIgnoreCase))
-                    {
-                        FullPath = null;
-                        try { await _js.InvokeVoidAsync("PageToMovieMedia.setFullPath", (string?)null); } catch { /* ignore */ }
-                    }
-                }
-                LastStatus = $"Media folder: {FullPath ?? FolderName}";
-                LocalSaveWarning = null;
-                NeedsReconnect = false;
-                PendingReconnectFolderName = null;
-                Changed?.Invoke();
-                await EnsureHubHookAsync();
-                TriggerAutoSyncIfConnected();
+                await ApplyConnectedFolderAsync(r);
                 return true;
             }
             LastStatus = r?.Error ?? "Could not connect folder";
@@ -184,6 +160,37 @@ public sealed class ClientMediaFolderService
             Changed?.Invoke();
             return false;
         }
+    }
+
+    private async Task ApplyConnectedFolderAsync(JsResult r)
+    {
+        FolderName = r.FolderName;
+        // Prefer path returned from JS (or previously stored full path if still valid).
+        if (!string.IsNullOrWhiteSpace(r.FullPath))
+            FullPath = r.FullPath.Trim();
+        else
+            await RefreshFullPathAsync();
+        await ClearStaleFullPathIfFolderNameMismatchAsync();
+        LastStatus = $"Media folder: {FullPath ?? FolderName}";
+        LocalSaveWarning = null;
+        NeedsReconnect = false;
+        PendingReconnectFolderName = null;
+        Changed?.Invoke();
+        await EnsureHubHookAsync();
+        TriggerAutoSyncIfConnected();
+    }
+
+    private async Task ClearStaleFullPathIfFolderNameMismatchAsync()
+    {
+        if (string.IsNullOrWhiteSpace(FullPath) || string.IsNullOrWhiteSpace(FolderName))
+            return;
+        var normalized = FullPath.Replace('/', '\\').TrimEnd('\\');
+        var idx = normalized.LastIndexOf('\\');
+        var last = idx >= 0 ? normalized[(idx + 1)..] : normalized;
+        if (string.Equals(last, FolderName, StringComparison.OrdinalIgnoreCase))
+            return;
+        FullPath = null;
+        try { await _js.InvokeVoidAsync("PageToMovieMedia.setFullPath", (string?)null); } catch { /* ignore */ }
     }
 
     /// <summary>
@@ -547,32 +554,14 @@ public sealed class ClientMediaFolderService
                 return (false, null, analysis.Error ?? "skip: nothing to analyze");
 
             token = analysis.Token;
-            var total = analysis.TotalSec;
-            double startSec = 0, endSec = total;
-            var notes = new List<string>();
+            var (startSec, endSec, notes) = ComputeSilenceTrimWindow(
+                analysis, keepTailSeconds, trimLeading, keepHeadSeconds, minTrimSavings);
 
-            var cutAt = ClipSilenceTrimmer.ComputeCutPoint(analysis.Log ?? "", total, keepTailSeconds);
-            if (cutAt is { } cut && (total - cut) >= minTrimSavings)
-            {
-                endSec = cut;
-                notes.Add($"tail −{(total - cut):F2}s");
-            }
-
-            if (trimLeading)
-            {
-                var lead = ClipSilenceTrimmer.ComputeLeadInPoint(analysis.Log ?? "", total, keepHeadSeconds);
-                if (lead is { } l && l >= 0.25 && endSec - l >= ClipSilenceTrimmer.MinClipSeconds - 0.25)
-                {
-                    startSec = l;
-                    notes.Add($"head −{l:F2}s");
-                }
-            }
-
-            if (startSec <= 0.001 && endSec >= total - 0.05)
+            if (startSec <= 0.001 && endSec >= analysis.TotalSec - 0.05)
             {
                 await _js.InvokeVoidAsync("PageToMovieFfmpeg.discardSessionAsync", token);
                 token = null;
-                return (false, null, notes.Count > 0 ? string.Join("; ", notes) : "skip: no trailing/leading silence");
+                return (false, null, FormatTrimNotes(notes, "skip: no trailing/leading silence"));
             }
 
             var durationSec = Math.Max(0.5, endSec - startSec);
@@ -582,7 +571,7 @@ public sealed class ClientMediaFolderService
             if (enc is not { Success: true } || string.IsNullOrWhiteSpace(enc.Url))
                 return (false, null, "skip: re-encode failed — " + (enc?.Error ?? ""));
 
-            return (true, enc.Url, notes.Count > 0 ? string.Join("; ", notes) : "trimmed");
+            return (true, enc.Url, FormatTrimNotes(notes, "trimmed"));
         }
         catch (Exception ex)
         {
@@ -590,12 +579,50 @@ public sealed class ClientMediaFolderService
         }
         finally
         {
-            if (token is not null)
+            await DiscardSilenceSessionIfAnyAsync(token);
+        }
+    }
+
+    private static (double StartSec, double EndSec, List<string> Notes) ComputeSilenceTrimWindow(
+        JsSilenceAnalysis analysis,
+        double keepTailSeconds,
+        bool trimLeading,
+        double keepHeadSeconds,
+        double minTrimSavings)
+    {
+        var total = analysis.TotalSec;
+        double startSec = 0, endSec = total;
+        var notes = new List<string>();
+
+        var cutAt = ClipSilenceTrimmer.ComputeCutPoint(analysis.Log ?? "", total, keepTailSeconds);
+        if (cutAt is { } cut && (total - cut) >= minTrimSavings)
+        {
+            endSec = cut;
+            notes.Add($"tail −{(total - cut):F2}s");
+        }
+
+        if (trimLeading)
+        {
+            var lead = ClipSilenceTrimmer.ComputeLeadInPoint(analysis.Log ?? "", total, keepHeadSeconds);
+            if (lead is { } l && l >= 0.25 && endSec - l >= ClipSilenceTrimmer.MinClipSeconds - 0.25)
             {
-                try { await _js.InvokeVoidAsync("PageToMovieFfmpeg.discardSessionAsync", token); }
-                catch { /* best effort */ }
+                startSec = l;
+                notes.Add($"head −{l:F2}s");
             }
         }
+
+        return (startSec, endSec, notes);
+    }
+
+    private static string FormatTrimNotes(List<string> notes, string whenEmpty) =>
+        notes.Count > 0 ? string.Join("; ", notes) : whenEmpty;
+
+    private async Task DiscardSilenceSessionIfAnyAsync(string? token)
+    {
+        if (token is null)
+            return;
+        try { await _js.InvokeVoidAsync("PageToMovieFfmpeg.discardSessionAsync", token); }
+        catch { /* best effort */ }
     }
 
     public async Task<string?> GetLocalBlobUrlAsync(string projectId, string relativePath)

@@ -397,35 +397,39 @@ public partial class Scenes
         {
             var dto = await S.Engine.GetConfigAsync(S._projectId);
             if (dto?.Config is { } cfg)
-            {
-                if (cfg.TryGetValue("resolution", out var el) &&
-                    el.ValueKind == JsonValueKind.String &&
-                    el.GetString() is { Length: > 0 } res)
-                {
-                    S.Gen._genResolution = res.Trim().ToLowerInvariant() switch
-                    {
-                        "480" or "480p" => "480p",
-                        "720" or "720p" => "720p",
-                        "1080" or "1080p" => "1080p",
-                        _ => res.Trim(),
-                    };
-                }
-                if (cfg.TryGetValue("preferred_video_editor", out var edEl) &&
-                    edEl.ValueKind == JsonValueKind.String &&
-                    edEl.GetString() is { Length: > 0 } pve)
-                {
-                    S.ClipRegen._preferredVideoEditor = pve.Trim();
-                }
-                if (cfg.TryGetValue("audio_model_name", out var amEl) &&
-                    amEl.ValueKind == JsonValueKind.String &&
-                    amEl.GetString() is { Length: > 0 } am &&
-                    !string.Equals(am, "none", StringComparison.OrdinalIgnoreCase))
-                {
-                    S.Music._selectedAudioModel = am.Trim();
-                }
-            }
+                ApplyPipelineConfigLookups(cfg);
         }
         catch { /* keep default */ }
+    }
+
+    private void ApplyPipelineConfigLookups(Dictionary<string, JsonElement> cfg)
+    {
+        if (TryReadConfigString(cfg, "resolution", out var res))
+        {
+            S.Gen._genResolution = res.Trim().ToLowerInvariant() switch
+            {
+                "480" or "480p" => "480p",
+                "720" or "720p" => "720p",
+                "1080" or "1080p" => "1080p",
+                _ => res.Trim(),
+            };
+        }
+        if (TryReadConfigString(cfg, "preferred_video_editor", out var pve))
+            S.ClipRegen._preferredVideoEditor = pve.Trim();
+        if (TryReadConfigString(cfg, "audio_model_name", out var am) &&
+            !string.Equals(am, "none", StringComparison.OrdinalIgnoreCase))
+            S.Music._selectedAudioModel = am.Trim();
+    }
+
+    private static bool TryReadConfigString(Dictionary<string, JsonElement> cfg, string key, out string value)
+    {
+        value = "";
+        if (!cfg.TryGetValue(key, out var el) ||
+            el.ValueKind != JsonValueKind.String ||
+            el.GetString() is not { Length: > 0 } s)
+            return false;
+        value = s;
+        return true;
     }
 
 

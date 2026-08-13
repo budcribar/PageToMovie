@@ -482,28 +482,8 @@ public partial class Locations : IDisposable
             for (var i = 0; i < 120 && !token.IsCancellationRequested; i++)
             {
                 var jobs = await Engine.GetJobAsync(token);
-                var j = jobs?.Job;
-                if (j is not null &&
-                    (string.Equals(j.Kind, "location_variants", StringComparison.OrdinalIgnoreCase)
-                     || string.Equals(j.Kind, "plan_looks", StringComparison.OrdinalIgnoreCase)) &&
-                    string.Equals(j.ProjectId, _projectId, StringComparison.OrdinalIgnoreCase))
-                {
-                    _job = j;
-                    await InvokeAsync(StateHasChanged);
-                    if (j.IsFinished)
-                    {
-                        if (j.IsSuccess)
-                        {
-                            _message = j.Message ?? "Set plates ready.";
-                            await LoadAsync();
-                            if (!string.IsNullOrWhiteSpace(_selectedKey))
-                                await SelectAsync(_selectedKey);
-                        }
-                        else if (!string.IsNullOrWhiteSpace(j.Error))
-                            _error = j.Error;
-                        return;
-                    }
-                }
+                if (await TryApplyLocationJobAsync(jobs?.Job))
+                    return;
                 await Task.Delay(1500, token);
             }
         }
@@ -516,6 +496,37 @@ public partial class Locations : IDisposable
             _error = ex.Message;
             await InvokeAsync(StateHasChanged);
         }
+    }
+
+    private bool IsTrackedLocationJob(JobSnapshot? j) =>
+        j is not null &&
+        (string.Equals(j.Kind, "location_variants", StringComparison.OrdinalIgnoreCase)
+         || string.Equals(j.Kind, "plan_looks", StringComparison.OrdinalIgnoreCase)) &&
+        string.Equals(j.ProjectId, _projectId, StringComparison.OrdinalIgnoreCase);
+
+    private async Task<bool> TryApplyLocationJobAsync(JobSnapshot? j)
+    {
+        if (!IsTrackedLocationJob(j))
+            return false;
+        _job = j;
+        await InvokeAsync(StateHasChanged);
+        if (!j!.IsFinished)
+            return false;
+        await ApplyFinishedLocationJobAsync(j);
+        return true;
+    }
+
+    private async Task ApplyFinishedLocationJobAsync(JobSnapshot j)
+    {
+        if (j.IsSuccess)
+        {
+            _message = j.Message ?? "Set plates ready.";
+            await LoadAsync();
+            if (!string.IsNullOrWhiteSpace(_selectedKey))
+                await SelectAsync(_selectedKey);
+        }
+        else if (!string.IsNullOrWhiteSpace(j.Error))
+            _error = j.Error;
     }
 
     private async Task LockVariantAsync(int index)

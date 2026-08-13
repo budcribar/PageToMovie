@@ -38,13 +38,12 @@ public partial class Characters
         internal bool _simpleMode;
 
 
-        internal string? PreferredImageUrl
+        internal string? PreferredImageUrl => PreferredImageUrlCore();
+
+        private string? PreferredImageUrlCore()
         {
-            get
-            {
-                if (_selected is null || !_selected.HasPreferred) return null;
-                return ListThumbUrl(_selected);
-            }
+            if (_selected is null || !_selected.HasPreferred) return null;
+            return ListThumbUrl(_selected);
         }
 
 
@@ -57,35 +56,72 @@ public partial class Characters
             // "gone" after reload when variant_01 still existed and was preferred in the list).
             if (c.Locked || !string.IsNullOrWhiteSpace(c.RefUrl))
                 return S.CacheBust(S.Engine.CharacterRefUrl(S._projectId, c.Key));
-            if (c.HasPreferred)
-            {
-                if (c.PreferredUrl is { Length: > 0 } u)
-                    return S.CacheBust(S.Engine.AbsolutizeMediaUrl(u) ?? u);
-                if (c.RefUrl is { Length: > 0 } r)
-                    return S.CacheBust(S.Engine.AbsolutizeMediaUrl(r) ?? r);
-                if (c.Variants.Any(v => v.Index == 1 && v.Exists))
-                    return S.CacheBust(S.Engine.CharacterVariantUrl(S._projectId, c.Key, 1));
-            }
-            var book = c.BookRefs.FirstOrDefault(b => b.Exists);
-            if (book is not null)
-            {
-                if (!string.IsNullOrEmpty(book.Url))
-                    return S.CacheBust(S.Engine.AbsolutizeMediaUrl(book.Url) ?? book.Url);
-                if (book.Index is int bi)
-                    return S.CacheBust(S.Engine.CharacterBookRefUrl(S._projectId, c.Key, bi));
-            }
+            if (TryPreferredThumb(c, out var preferred))
+                return preferred;
+            if (TryBookThumb(c, out var book))
+                return book;
             return null;
         }
 
+        private bool TryPreferredThumb(CharacterSummary c, out string? url)
+        {
+            url = null;
+            if (!c.HasPreferred)
+                return false;
+            if (c.PreferredUrl is { Length: > 0 } u)
+            {
+                url = S.CacheBust(S.Engine.AbsolutizeMediaUrl(u) ?? u);
+                return true;
+            }
+            if (c.RefUrl is { Length: > 0 } r)
+            {
+                url = S.CacheBust(S.Engine.AbsolutizeMediaUrl(r) ?? r);
+                return true;
+            }
+            if (c.Variants.Any(v => v.Index == 1 && v.Exists))
+            {
+                url = S.CacheBust(S.Engine.CharacterVariantUrl(S._projectId, c.Key, 1));
+                return true;
+            }
+            return false;
+        }
 
-        internal string PreferredImageLabel =>
-            _selected is null ? ""
-            : _selected.HasPreferred
-                ? $"Preferred · {_selected.PreferredLabel}"
-                : "No preferred image";
+        private bool TryBookThumb(CharacterSummary c, out string? url)
+        {
+            url = null;
+            var book = c.BookRefs.FirstOrDefault(b => b.Exists);
+            if (book is null)
+                return false;
+            if (!string.IsNullOrEmpty(book.Url))
+            {
+                url = S.CacheBust(S.Engine.AbsolutizeMediaUrl(book.Url) ?? book.Url);
+                return true;
+            }
+            if (book.Index is int bi)
+            {
+                url = S.CacheBust(S.Engine.CharacterBookRefUrl(S._projectId, c.Key, bi));
+                return true;
+            }
+            return false;
+        }
+
+
+        internal string PreferredImageLabel => PreferredImageLabelCore();
+
+        private string PreferredImageLabelCore()
+        {
+            if (_selected is null) return "";
+            if (_selected.HasPreferred)
+                return $"Preferred · {_selected.PreferredLabel}";
+            return "No preferred image";
+        }
 
 
         internal bool HasCast => _chars is { Count: > 0 };
+
+
+        /// <summary>
+        /// Other age-variant seeds of the same identity as <paramref name="c"/> — siblings share
 
 
         /// <summary>
@@ -162,7 +198,9 @@ public partial class Characters
 
         /// <summary>Operator-facing cast: hide group/chorus seeds (too abstract for average users)
         /// and unused-in-plan seeds unless the operator opts in.</summary>
-        internal IEnumerable<CharacterSummary> CharactersForUi =>
+        internal IEnumerable<CharacterSummary> CharactersForUi => CharactersForUiCore();
+
+        private IEnumerable<CharacterSummary> CharactersForUiCore() =>
             _chars?.Where(c =>
                 !c.IsGroup
                 && (_showUnusedInPlan || c.UsedInPlan))
@@ -188,7 +226,9 @@ public partial class Characters
 
 
         /// <summary>Every cast member has look (if needed) + voice — next is shot plan or scenes.</summary>
-        internal bool IsCastComplete =>
+        internal bool IsCastComplete => ComputeIsCastComplete();
+
+        private bool ComputeIsCastComplete() =>
             OperatorCastCount > 0 &&
             CharactersForUi.All(c =>
                 Characters.CharactersVoice.HasVoiceProfile(c) &&

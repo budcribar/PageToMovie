@@ -45,6 +45,96 @@ public enum SpecializedMimeType
 
 public static class SpecializedHttpAndMimeExtensions
 {
+    private static readonly Dictionary<string, SpecializedHttpHeader> HttpHeaderAliases =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["authorization"] = SpecializedHttpHeader.Authorization,
+            ["content-type"] = SpecializedHttpHeader.ContentType,
+            ["contenttype"] = SpecializedHttpHeader.ContentType,
+            ["accept"] = SpecializedHttpHeader.Accept,
+            ["user-agent"] = SpecializedHttpHeader.UserAgent,
+            ["useragent"] = SpecializedHttpHeader.UserAgent,
+            ["x-api-key"] = SpecializedHttpHeader.XApiKey,
+            ["xapikey"] = SpecializedHttpHeader.XApiKey,
+            ["api-key"] = SpecializedHttpHeader.XApiKey,
+            ["x-correlation-id"] = SpecializedHttpHeader.XCorrelationId,
+            ["xcorrelationid"] = SpecializedHttpHeader.XCorrelationId,
+            ["correlation-id"] = SpecializedHttpHeader.XCorrelationId,
+            ["x-request-id"] = SpecializedHttpHeader.XRequestId,
+            ["xrequestid"] = SpecializedHttpHeader.XRequestId,
+            ["request-id"] = SpecializedHttpHeader.XRequestId,
+            ["x-ratelimit-limit"] = SpecializedHttpHeader.XRateLimitLimit,
+            ["xratelimitlimit"] = SpecializedHttpHeader.XRateLimitLimit,
+            ["ratelimit-limit"] = SpecializedHttpHeader.XRateLimitLimit,
+            ["x-ratelimit-remaining"] = SpecializedHttpHeader.XRateLimitRemaining,
+            ["xratelimitremaining"] = SpecializedHttpHeader.XRateLimitRemaining,
+            ["ratelimit-remaining"] = SpecializedHttpHeader.XRateLimitRemaining,
+            ["x-ratelimit-reset"] = SpecializedHttpHeader.XRateLimitReset,
+            ["xratelimitreset"] = SpecializedHttpHeader.XRateLimitReset,
+            ["ratelimit-reset"] = SpecializedHttpHeader.XRateLimitReset,
+            ["cache-control"] = SpecializedHttpHeader.CacheControl,
+            ["cachecontrol"] = SpecializedHttpHeader.CacheControl,
+            ["etag"] = SpecializedHttpHeader.ETag,
+            ["if-none-match"] = SpecializedHttpHeader.IfNoneMatch,
+            ["ifnonematch"] = SpecializedHttpHeader.IfNoneMatch,
+            ["location"] = SpecializedHttpHeader.Location,
+            ["retry-after"] = SpecializedHttpHeader.RetryAfter,
+            ["retryafter"] = SpecializedHttpHeader.RetryAfter,
+        };
+
+    private static readonly Dictionary<string, SpecializedMimeType> MimeTypeAliases =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            [JsonKeys.ApplicationJson] = SpecializedMimeType.ApplicationJson,
+            ["json"] = SpecializedMimeType.ApplicationJson,
+            ["applicationjson"] = SpecializedMimeType.ApplicationJson,
+            ["application/pdf"] = SpecializedMimeType.ApplicationPdf,
+            ["pdf"] = SpecializedMimeType.ApplicationPdf,
+            ["applicationpdf"] = SpecializedMimeType.ApplicationPdf,
+            ["application/zip"] = SpecializedMimeType.ApplicationZip,
+            ["zip"] = SpecializedMimeType.ApplicationZip,
+            ["applicationzip"] = SpecializedMimeType.ApplicationZip,
+            ["application/octet-stream"] = SpecializedMimeType.ApplicationOctetStream,
+            ["octet-stream"] = SpecializedMimeType.ApplicationOctetStream,
+            ["applicationoctetstream"] = SpecializedMimeType.ApplicationOctetStream,
+            ["text/plain"] = SpecializedMimeType.TextPlain,
+            ["plain"] = SpecializedMimeType.TextPlain,
+            ["textplain"] = SpecializedMimeType.TextPlain,
+            ["txt"] = SpecializedMimeType.TextPlain,
+            ["text/html"] = SpecializedMimeType.TextHtml,
+            ["html"] = SpecializedMimeType.TextHtml,
+            ["texthtml"] = SpecializedMimeType.TextHtml,
+            ["text/css"] = SpecializedMimeType.TextCss,
+            ["css"] = SpecializedMimeType.TextCss,
+            ["textcss"] = SpecializedMimeType.TextCss,
+            ["text/fountain"] = SpecializedMimeType.TextFountain,
+            ["fountain"] = SpecializedMimeType.TextFountain,
+            ["textfountain"] = SpecializedMimeType.TextFountain,
+            ["video/mp4"] = SpecializedMimeType.VideoMp4,
+            ["mp4"] = SpecializedMimeType.VideoMp4,
+            ["videomp4"] = SpecializedMimeType.VideoMp4,
+            ["video/webm"] = SpecializedMimeType.VideoWebm,
+            ["webm"] = SpecializedMimeType.VideoWebm,
+            ["videowebm"] = SpecializedMimeType.VideoWebm,
+            ["audio/mpeg"] = SpecializedMimeType.AudioMpeg,
+            ["mp3"] = SpecializedMimeType.AudioMpeg,
+            ["mpeg"] = SpecializedMimeType.AudioMpeg,
+            ["audiompeg"] = SpecializedMimeType.AudioMpeg,
+            ["audio/wav"] = SpecializedMimeType.AudioWav,
+            ["wav"] = SpecializedMimeType.AudioWav,
+            ["audiowav"] = SpecializedMimeType.AudioWav,
+            ["image/png"] = SpecializedMimeType.ImagePng,
+            ["png"] = SpecializedMimeType.ImagePng,
+            ["imagepng"] = SpecializedMimeType.ImagePng,
+            ["image/jpeg"] = SpecializedMimeType.ImageJpeg,
+            ["jpg"] = SpecializedMimeType.ImageJpeg,
+            ["jpeg"] = SpecializedMimeType.ImageJpeg,
+            ["imagejpeg"] = SpecializedMimeType.ImageJpeg,
+            ["image/webp"] = SpecializedMimeType.ImageWebp,
+            ["webp"] = SpecializedMimeType.ImageWebp,
+            ["imagewebp"] = SpecializedMimeType.ImageWebp,
+        };
+
     public static string ToApiString(this SpecializedHttpHeader header) => header.ToHeaderName();
     public static string ToApiString(this SpecializedMimeType mimeType) => mimeType.ToMimeTypeString();
 
@@ -82,34 +172,11 @@ public static class SpecializedHttpAndMimeExtensions
             return false;
         }
 
-        var normalized = value.Trim().ToLowerInvariant();
-        result = normalized switch
-        {
-            "authorization" => SpecializedHttpHeader.Authorization,
-            "content-type" or "contenttype" => SpecializedHttpHeader.ContentType,
-            "accept" => SpecializedHttpHeader.Accept,
-            "user-agent" or "useragent" => SpecializedHttpHeader.UserAgent,
-            "x-api-key" or "xapikey" or "api-key" => SpecializedHttpHeader.XApiKey,
-            "x-correlation-id" or "xcorrelationid" or "correlation-id" => SpecializedHttpHeader.XCorrelationId,
-            "x-request-id" or "xrequestid" or "request-id" => SpecializedHttpHeader.XRequestId,
-            "x-ratelimit-limit" or "xratelimitlimit" or "ratelimit-limit" => SpecializedHttpHeader.XRateLimitLimit,
-            "x-ratelimit-remaining" or "xratelimitremaining" or "ratelimit-remaining" => SpecializedHttpHeader.XRateLimitRemaining,
-            "x-ratelimit-reset" or "xratelimitreset" or "ratelimit-reset" => SpecializedHttpHeader.XRateLimitReset,
-            "cache-control" or "cachecontrol" => SpecializedHttpHeader.CacheControl,
-            "etag" => SpecializedHttpHeader.ETag,
-            "if-none-match" or "ifnonematch" => SpecializedHttpHeader.IfNoneMatch,
-            "location" => SpecializedHttpHeader.Location,
-            "retry-after" or "retryafter" => SpecializedHttpHeader.RetryAfter,
-            _ => (SpecializedHttpHeader)(-1)
-        };
+        if (HttpHeaderAliases.TryGetValue(value.Trim(), out result))
+            return true;
 
-        if ((int)result == -1)
-        {
-            result = SpecializedHttpHeader.Authorization;
-            return false;
-        }
-
-        return true;
+        result = SpecializedHttpHeader.Authorization;
+        return false;
     }
 
     public static string ToMimeTypeString(this SpecializedMimeType mimeType) => mimeType switch
@@ -146,33 +213,10 @@ public static class SpecializedHttpAndMimeExtensions
             return false;
         }
 
-        var normalized = value.Trim().ToLowerInvariant();
-        result = normalized switch
-        {
-            JsonKeys.ApplicationJson or "json" or "applicationjson" => SpecializedMimeType.ApplicationJson,
-            "application/pdf" or "pdf" or "applicationpdf" => SpecializedMimeType.ApplicationPdf,
-            "application/zip" or "zip" or "applicationzip" => SpecializedMimeType.ApplicationZip,
-            "application/octet-stream" or "octet-stream" or "applicationoctetstream" => SpecializedMimeType.ApplicationOctetStream,
-            "text/plain" or "plain" or "textplain" or "txt" => SpecializedMimeType.TextPlain,
-            "text/html" or "html" or "texthtml" => SpecializedMimeType.TextHtml,
-            "text/css" or "css" or "textcss" => SpecializedMimeType.TextCss,
-            "text/fountain" or "fountain" or "textfountain" => SpecializedMimeType.TextFountain,
-            "video/mp4" or "mp4" or "videomp4" => SpecializedMimeType.VideoMp4,
-            "video/webm" or "webm" or "videowebm" => SpecializedMimeType.VideoWebm,
-            "audio/mpeg" or "mp3" or "mpeg" or "audiompeg" => SpecializedMimeType.AudioMpeg,
-            "audio/wav" or "wav" or "audiowav" => SpecializedMimeType.AudioWav,
-            "image/png" or "png" or "imagepng" => SpecializedMimeType.ImagePng,
-            "image/jpeg" or "jpg" or "jpeg" or "imagejpeg" => SpecializedMimeType.ImageJpeg,
-            "image/webp" or "webp" or "imagewebp" => SpecializedMimeType.ImageWebp,
-            _ => (SpecializedMimeType)(-1)
-        };
+        if (MimeTypeAliases.TryGetValue(value.Trim(), out result))
+            return true;
 
-        if ((int)result == -1)
-        {
-            result = SpecializedMimeType.ApplicationJson;
-            return false;
-        }
-
-        return true;
+        result = SpecializedMimeType.ApplicationJson;
+        return false;
     }
 }

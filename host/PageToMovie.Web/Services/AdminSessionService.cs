@@ -158,24 +158,7 @@ public sealed class AdminSessionService
         try
         {
             var json = await _js.InvokeAsync<string?>("sessionStorage.getItem", StorageKey);
-            if (!string.IsNullOrWhiteSpace(json))
-            {
-                var s = JsonSerializer.Deserialize<StoredSession>(json, JsonOpts);
-                if (s is not null && !string.IsNullOrWhiteSpace(s.Token))
-                {
-                    if (s.ExpiresAt is DateTimeOffset exp && exp < DateTimeOffset.UtcNow)
-                    {
-                        await ClearPersistAsync();
-                    }
-                    else
-                    {
-                        Token = s.Token;
-                        UserId = string.IsNullOrWhiteSpace(s.UserId) ? "local" : s.UserId;
-                        Roles = s.Roles?.ToList() ?? new List<string>();
-                        ExpiresAt = s.ExpiresAt;
-                    }
-                }
-            }
+            await RestoreFromStoredJsonAsync(json);
         }
         catch
         {
@@ -185,6 +168,27 @@ public sealed class AdminSessionService
         {
             _hydrated = true;
         }
+    }
+
+    private async Task RestoreFromStoredJsonAsync(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return;
+
+        var s = JsonSerializer.Deserialize<StoredSession>(json, JsonOpts);
+        if (s is null || string.IsNullOrWhiteSpace(s.Token))
+            return;
+
+        if (s.ExpiresAt is DateTimeOffset exp && exp < DateTimeOffset.UtcNow)
+        {
+            await ClearPersistAsync();
+            return;
+        }
+
+        Token = s.Token;
+        UserId = string.IsNullOrWhiteSpace(s.UserId) ? "local" : s.UserId;
+        Roles = s.Roles?.ToList() ?? new List<string>();
+        ExpiresAt = s.ExpiresAt;
     }
 
     private async Task PersistAsync()

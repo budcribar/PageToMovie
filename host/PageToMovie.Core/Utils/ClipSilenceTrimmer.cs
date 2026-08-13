@@ -32,26 +32,10 @@ public static class ClipSilenceTrimmer
         if (string.IsNullOrWhiteSpace(silenceDetectLog) || totalDuration < 1.0)
             return null;
 
-        var starts = SilenceStartRe.Matches(silenceDetectLog)
-            .Select(m => double.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture))
-            .OrderBy(x => x)
-            .ToList();
-        var ends = SilenceEndRe.Matches(silenceDetectLog)
-            .Select(m => double.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture))
-            .OrderBy(x => x)
-            .ToList();
+        var (starts, ends) = ParseSilenceTimes(silenceDetectLog);
 
         if (starts.Count == 0 || starts[0] > 0.35)
-        {
-            if (ends.Count > 0 && ends[0] > 0.3 && ends[0] < totalDuration * 0.5 &&
-                (starts.Count == 0 || starts[0] > ends[0]))
-            {
-                var cut = Math.Max(0, ends[0] - keepHeadSeconds);
-                if (cut >= 0.2 && totalDuration - cut >= MinClipSeconds - 0.25)
-                    return cut;
-            }
-            return null;
-        }
+            return TryLeadInFromUnmatchedEnd(starts, ends, totalDuration, keepHeadSeconds);
 
         var leadStart = starts[0];
         var end = ends.FirstOrDefault(e => e > leadStart + 0.05);
@@ -83,14 +67,7 @@ public static class ClipSilenceTrimmer
         if (double.IsNaN(totalDuration) || double.IsInfinity(totalDuration))
             return null;
 
-        var starts = SilenceStartRe.Matches(silenceDetectLog)
-            .Select(m => double.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture))
-            .OrderBy(x => x)
-            .ToList();
-        var ends = SilenceEndRe.Matches(silenceDetectLog)
-            .Select(m => double.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture))
-            .OrderBy(x => x)
-            .ToList();
+        var (starts, ends) = ParseSilenceTimes(silenceDetectLog);
 
         if (starts.Count == 0)
             return null;
@@ -99,21 +76,8 @@ public static class ClipSilenceTrimmer
         foreach (var s in starts.Where(s => !ends.Any(e => e > s + 0.05)))
             trailStart = s;
 
-        if (trailStart is null && ends.Count > 0)
-        {
-            var lastEnd = ends[^1];
-            if (totalDuration - lastEnd < 0.35)
-            {
-                for (var i = starts.Count - 1; i >= 0; i--)
-                {
-                    if (starts[i] < lastEnd)
-                    {
-                        trailStart = starts[i];
-                        break;
-                    }
-                }
-            }
-        }
+        if (trailStart is null)
+            trailStart = TryTrailStartFromLastEnd(starts, ends, totalDuration);
 
         if (trailStart is null)
             return null;
@@ -129,5 +93,54 @@ public static class ClipSilenceTrimmer
         if (cut < MinClipSeconds - 0.25)
             return null;
         return cut;
+    }
+
+    private static (List<double> Starts, List<double> Ends) ParseSilenceTimes(string silenceDetectLog)
+    {
+        var starts = SilenceStartRe.Matches(silenceDetectLog)
+            .Select(m => double.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture))
+            .OrderBy(x => x)
+            .ToList();
+        var ends = SilenceEndRe.Matches(silenceDetectLog)
+            .Select(m => double.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture))
+            .OrderBy(x => x)
+            .ToList();
+        return (starts, ends);
+    }
+
+    private static double? TryLeadInFromUnmatchedEnd(
+        List<double> starts,
+        List<double> ends,
+        double totalDuration,
+        double keepHeadSeconds)
+    {
+        if (ends.Count > 0 && ends[0] > 0.3 && ends[0] < totalDuration * 0.5 &&
+            (starts.Count == 0 || starts[0] > ends[0]))
+        {
+            var cut = Math.Max(0, ends[0] - keepHeadSeconds);
+            if (cut >= 0.2 && totalDuration - cut >= MinClipSeconds - 0.25)
+                return cut;
+        }
+        return null;
+    }
+
+    private static double? TryTrailStartFromLastEnd(
+        List<double> starts,
+        List<double> ends,
+        double totalDuration)
+    {
+        if (ends.Count == 0)
+            return null;
+
+        var lastEnd = ends[^1];
+        if (totalDuration - lastEnd >= 0.35)
+            return null;
+
+        for (var i = starts.Count - 1; i >= 0; i--)
+        {
+            if (starts[i] < lastEnd)
+                return starts[i];
+        }
+        return null;
     }
 }

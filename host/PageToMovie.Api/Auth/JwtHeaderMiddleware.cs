@@ -19,57 +19,70 @@ public sealed class JwtHeaderMiddleware
     {
         if (ctx.User?.Identity?.IsAuthenticated != true)
         {
-            ClaimsPrincipal? principal = null;
-
-            var header = ctx.Request.Headers.Authorization.ToString();
-            if (header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
-            {
-                var bearer = header["Bearer ".Length..].Trim();
-                if (!string.IsNullOrWhiteSpace(bearer))
-                    principal = auth.ValidateToken(bearer);
-            }
-
-            // Media-only tokens for element src= (short TTL, token_use=media).
-            // Reject full-session JWTs from query to avoid log/history/Referer leakage of long-lived tokens.
-            if (principal is null)
-            {
-                var mediaRaw = TryQueryToken(ctx, "mt")
-                               ?? TryQueryToken(ctx, "media_token");
-                // Legacy name: still parse but only accept if media-scoped.
-                mediaRaw ??= TryQueryToken(ctx, "access_token");
-
-                if (!string.IsNullOrWhiteSpace(mediaRaw))
-                {
-                    var candidate = auth.ValidateToken(mediaRaw);
-                    if (candidate is not null && auth.IsMediaToken(candidate))
-                        principal = candidate;
-                }
-            }
+            var principal = TryAuthenticateFromHeader(ctx, auth)
+                            ?? TryAuthenticateFromMediaQuery(ctx, auth);
 
             if (principal is not null)
             {
-                var uid = principal.FindFirstValue(ClaimTypes.NameIdentifier)
-                          ?? principal.FindFirstValue("sub")
-                          ?? principal.Identity?.Name;
-                if (!string.IsNullOrWhiteSpace(uid) &&
-                    await userDb.IsUserDisabledAsync(uid, ctx.RequestAborted).ConfigureAwait(false))
-                {
-                    ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
-                    ctx.Response.ContentType = "application/json";
-                    await ctx.Response.WriteAsJsonAsync(new
-                    {
-                        ok = false,
-                        error = "This account has been disabled.",
-                        code = "account_disabled",
-                    }, cancellationToken: ctx.RequestAborted).ConfigureAwait(false);
+                if (await TryRejectDisabledAccount(ctx, principal, userDb).ConfigureAwait(false))
                     return;
-                }
 
                 ctx.User = principal;
             }
         }
 
         await _next(ctx);
+    }
+
+    private static ClaimsPrincipal? TryAuthenticateFromHeader(HttpContext ctx, IAdminAuthService auth)
+    {
+        var header = ctx.Request.Headers.Authorization.ToString();
+        if (!header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        var bearer = header["Bearer ".Length..].Trim();
+        if (string.IsNullOrWhiteSpace(bearer))
+            return null;
+
+        return auth.ValidateToken(bearer);
+    }
+
+    private static ClaimsPrincipal? TryAuthenticateFromMediaQuery(HttpContext ctx, IAdminAuthService auth)
+    {
+        var mediaRaw = TryQueryToken(ctx, "mt")
+                       ?? TryQueryToken(ctx, "media_token");
+        // Legacy name: still parse but only accept if media-scoped.
+        mediaRaw ??= TryQueryToken(ctx, "access_token");
+
+        if (string.IsNullOrWhiteSpace(mediaRaw))
+            return null;
+
+        var candidate = auth.ValidateToken(mediaRaw);
+        if (candidate is not null && auth.IsMediaToken(candidate))
+            return candidate;
+
+        return null;
+    }
+
+    private static async Task<bool> TryRejectDisabledAccount(
+        HttpContext ctx, ClaimsPrincipal principal, UserDatabaseService userDb)
+    {
+        var uid = principal.FindFirstValue(ClaimTypes.NameIdentifier)
+                  ?? principal.FindFirstValue("sub")
+                  ?? principal.Identity?.Name;
+        if (string.IsNullOrWhiteSpace(uid) ||
+            !await userDb.IsUserDisabledAsync(uid, ctx.RequestAborted).ConfigureAwait(false))
+            return false;
+
+        ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
+        ctx.Response.ContentType = "application/json";
+        await ctx.Response.WriteAsJsonAsync(new
+        {
+            ok = false,
+            error = "This account has been disabled.",
+            code = "account_disabled",
+        }, cancellationToken: ctx.RequestAborted).ConfigureAwait(false);
+        return true;
     }
 
     private static string? TryQueryToken(HttpContext ctx, string name)

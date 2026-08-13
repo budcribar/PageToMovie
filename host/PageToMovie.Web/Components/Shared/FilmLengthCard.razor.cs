@@ -150,42 +150,7 @@ public sealed partial class FilmLengthCard : IDisposable
         _saving = true;
         try
         {
-            // Save until the persisted target matches the latest edit — this coalesces rapid
-            // bumps (each edit reschedules, but we never run two saves at once).
-            while (true)
-            {
-                var minutes = Math.Clamp(_edit, 1, 180);
-                if (minutes == _target) break; // up to date
-                _busy = true;
-                _error = null;
-                StateHasChanged();
-                try
-                {
-                    // Hard timeout so a stalled request can never leave the control stuck on "Saving…".
-                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-                    var dto = await Engine.SetFilmRuntimeAsync(ProjectId, minutes, cts.Token);
-                    if (dto is null || !dto.Ok)
-                        throw new InvalidOperationException("Save failed.");
-                    _natural = dto.NaturalMinutes > 0 ? dto.NaturalMinutes : _natural;
-                    _target = dto.TargetMinutes > 0 ? dto.TargetMinutes : minutes;
-                    try { await UserPrefs.SetLastRuntimeTargetMinAsync(_target); } catch { /* soft */ }
-                }
-                catch (OperationCanceledException)
-                {
-                    _error = "Saving is taking too long — check your connection and try again.";
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    _error = ex.Message;
-                    break;
-                }
-                finally
-                {
-                    _busy = false;
-                    StateHasChanged();
-                }
-            }
+            await PersistUntilCurrentAsync();
         }
         finally
         {
@@ -194,6 +159,61 @@ public sealed partial class FilmLengthCard : IDisposable
 
         // Refresh the estimate OUTSIDE the busy/save lock: OnChanged (the host page's reload) does its
         // own network calls, and it must never be able to freeze this control if it stalls.
+        await NotifyHostIfSavedAsync();
+    }
+
+    private async Task PersistUntilCurrentAsync()
+    {
+        // Save until the persisted target matches the latest edit — this coalesces rapid
+        // bumps (each edit reschedules, but we never run two saves at once).
+        while (true)
+        {
+            var minutes = Math.Clamp(_edit, 1, 180);
+            if (minutes == _target) break; // up to date
+            _busy = true;
+            _error = null;
+            StateHasChanged();
+            try
+            {
+                if (!await TryPersistMinutesAsync(minutes))
+                    break;
+            }
+            finally
+            {
+                _busy = false;
+                StateHasChanged();
+            }
+        }
+    }
+
+    private async Task<bool> TryPersistMinutesAsync(int minutes)
+    {
+        try
+        {
+            // Hard timeout so a stalled request can never leave the control stuck on "Saving…".
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+            var dto = await Engine.SetFilmRuntimeAsync(ProjectId, minutes, cts.Token);
+            if (dto is null || !dto.Ok)
+                throw new InvalidOperationException("Save failed.");
+            _natural = dto.NaturalMinutes > 0 ? dto.NaturalMinutes : _natural;
+            _target = dto.TargetMinutes > 0 ? dto.TargetMinutes : minutes;
+            try { await UserPrefs.SetLastRuntimeTargetMinAsync(_target); } catch { /* soft */ }
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            _error = "Saving is taking too long — check your connection and try again.";
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            return false;
+        }
+    }
+
+    private async Task NotifyHostIfSavedAsync()
+    {
         if (_error is null && OnChanged.HasDelegate)
         {
             try { await OnChanged.InvokeAsync(); }

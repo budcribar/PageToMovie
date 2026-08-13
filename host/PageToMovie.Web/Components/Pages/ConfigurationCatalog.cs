@@ -38,6 +38,23 @@ public partial class Configuration
         internal async Task LoadCatalogAsync()
         {
             // Catalog is the only source of truth — never invent models in UI code.
+            ResetCatalogLists();
+            try
+            {
+                await TryHydrateCatalogJsonAsync();
+                await LoadAndFilterModelsAsync();
+                AssignModelsByCapability();
+                EnsureOptionalNoneRows();
+                ApplyCatalogDefaultsIfEmpty();
+            }
+            catch (Exception ex)
+            {
+                S._error = $"Models catalog unavailable: {ex.Message}";
+            }
+        }
+
+        private void ResetCatalogLists()
+        {
             _allModels = new();
             _videoModels = new();
             _imageModels = new();
@@ -46,77 +63,87 @@ public partial class Configuration
             _videoReviewModels = new();
             _audioModels = new();
             _voiceModels = new();
+        }
 
+        private async Task TryHydrateCatalogJsonAsync()
+        {
             try
             {
-                try
-                {
-                    var raw = await S.Engine.GetModelsCatalogJsonAsync();
-                    if (!string.IsNullOrWhiteSpace(raw))
-                        SupportedModelCatalog.TryLoadFromJson(raw);
-                }
-                catch (Exception ex)
-                {
-                    S._error = $"Could not load models catalog: {ex.Message}";
-                }
-
-                var list = await S.Engine.GetSupportedModelsAsync();
-                _allModels = (list ?? Array.Empty<SupportedModelDto>())
-                    .Where(m => S.Session.IsAdmin || !m.LabMode)
-                    .ToList();
-                // Hydrate from static catalog when the API list is empty/stale (WASM must still show music/voice).
-                if (_allModels.Count == 0)
-                {
-                    try
-                    {
-                        _allModels = SupportedModelCatalog.ToDtoList(enabledOnly: true, includeLabModels: S.Session.IsAdmin)
-                            .Where(m => S.Session.IsAdmin || !m.LabMode)
-                            .ToList();
-                    }
-                    catch { /* catalog not loaded */ }
-                }
-                bool Cap(SupportedModelDto m, string c)
-                {
-                    if (string.Equals(m.Capability, c, StringComparison.OrdinalIgnoreCase))
-                        return true;
-                    // Defensive: some payloads omit capability; resolve via catalog entry.
-                    try
-                    {
-                        var entry = SupportedModelCatalog.Find(m.Id);
-                        if (entry is null || !entry.Enabled) return false;
-                        return string.Equals(entry.Capability.ToString(), c, StringComparison.OrdinalIgnoreCase);
-                    }
-                    catch { return false; }
-                }
-
-                _videoModels = _allModels.Where(m => Cap(m, "video")).ToList();
-                _imageModels = _allModels.Where(m => Cap(m, "image")).ToList();
-                _planningModels = _allModels.Where(m => Cap(m, "chat")).ToList();
-                _visionModels = _allModels.Where(m => Cap(m, "vision")).ToList();
-                _audioModels = _allModels.Where(m => Cap(m, "audio")).ToList();
-                _voiceModels = _allModels.Where(m => Cap(m, "voice")).ToList();
-                // Review: only models the catalog marks SupportsVideoReview, else chat/vision from catalog.
-                _videoReviewModels = _allModels.Where(m => m.SupportsVideoReview).ToList();
-                if (_videoReviewModels.Count == 0)
-                    _videoReviewModels = _allModels.Where(m => Cap(m, "chat") || Cap(m, "vision")).ToList();
-
-                // Optional "off" rows are UI state, not providers — not catalog models.
-                if (!_audioModels.Any(m => m.Id == "none"))
-                    _audioModels.Insert(0, new SupportedModelDto { Id = "none", DisplayName = "None / Disabled (No Background Music)", Provider = "None", ProviderId = "none" });
-                _voiceModels = _voiceModels
-                    .OrderBy(m => string.Equals(m.Id, "none", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
-                    .ThenBy(m => m.IsVoiceCloneStep ? 0 : 1)
-                    .ThenBy(m => m.DisplayName, StringComparer.OrdinalIgnoreCase)
-                    .ToList();
-                if (!_voiceModels.Any(m => m.Id == "none"))
-                    _voiceModels.Insert(0, new SupportedModelDto { Id = "none", DisplayName = "None / Disabled (no voice clone)", Provider = "None", ProviderId = "none" });
-
-                ApplyCatalogDefaultsIfEmpty();
+                var raw = await S.Engine.GetModelsCatalogJsonAsync();
+                if (!string.IsNullOrWhiteSpace(raw))
+                    SupportedModelCatalog.TryLoadFromJson(raw);
             }
             catch (Exception ex)
             {
-                S._error = $"Models catalog unavailable: {ex.Message}";
+                S._error = $"Could not load models catalog: {ex.Message}";
             }
+        }
+
+        private async Task LoadAndFilterModelsAsync()
+        {
+            var list = await S.Engine.GetSupportedModelsAsync();
+            _allModels = (list ?? Array.Empty<SupportedModelDto>())
+                .Where(VisibleToSession)
+                .ToList();
+            // Hydrate from static catalog when the API list is empty/stale (WASM must still show music/voice).
+            if (_allModels.Count == 0)
+                TryHydrateFromStaticCatalog();
+        }
+
+        private void TryHydrateFromStaticCatalog()
+        {
+            try
+            {
+                _allModels = SupportedModelCatalog.ToDtoList(enabledOnly: true, includeLabModels: S.Session.IsAdmin)
+                    .Where(VisibleToSession)
+                    .ToList();
+            }
+            catch { /* catalog not loaded */ }
+        }
+
+        private bool VisibleToSession(SupportedModelDto m) =>
+            S.Session.IsAdmin || !m.LabMode;
+
+        private static bool MatchesCapability(SupportedModelDto m, string c)
+        {
+            if (string.Equals(m.Capability, c, StringComparison.OrdinalIgnoreCase))
+                return true;
+            // Defensive: some payloads omit capability; resolve via catalog entry.
+            try
+            {
+                var entry = SupportedModelCatalog.Find(m.Id);
+                if (entry is null || !entry.Enabled) return false;
+                return string.Equals(entry.Capability.ToString(), c, StringComparison.OrdinalIgnoreCase);
+            }
+            catch { return false; }
+        }
+
+        private void AssignModelsByCapability()
+        {
+            _videoModels = _allModels.Where(m => MatchesCapability(m, "video")).ToList();
+            _imageModels = _allModels.Where(m => MatchesCapability(m, "image")).ToList();
+            _planningModels = _allModels.Where(m => MatchesCapability(m, "chat")).ToList();
+            _visionModels = _allModels.Where(m => MatchesCapability(m, "vision")).ToList();
+            _audioModels = _allModels.Where(m => MatchesCapability(m, "audio")).ToList();
+            _voiceModels = _allModels.Where(m => MatchesCapability(m, "voice")).ToList();
+            // Review: only models the catalog marks SupportsVideoReview, else chat/vision from catalog.
+            _videoReviewModels = _allModels.Where(m => m.SupportsVideoReview).ToList();
+            if (_videoReviewModels.Count == 0)
+                _videoReviewModels = _allModels.Where(m => MatchesCapability(m, "chat") || MatchesCapability(m, "vision")).ToList();
+        }
+
+        private void EnsureOptionalNoneRows()
+        {
+            // Optional "off" rows are UI state, not providers — not catalog models.
+            if (!_audioModels.Any(m => m.Id == "none"))
+                _audioModels.Insert(0, new SupportedModelDto { Id = "none", DisplayName = "None / Disabled (No Background Music)", Provider = "None", ProviderId = "none" });
+            _voiceModels = _voiceModels
+                .OrderBy(m => string.Equals(m.Id, "none", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                .ThenBy(m => m.IsVoiceCloneStep ? 0 : 1)
+                .ThenBy(m => m.DisplayName, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (!_voiceModels.Any(m => m.Id == "none"))
+                _voiceModels.Insert(0, new SupportedModelDto { Id = "none", DisplayName = "None / Disabled (no voice clone)", Provider = "None", ProviderId = "none" });
         }
 
 
