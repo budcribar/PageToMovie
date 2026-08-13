@@ -110,7 +110,7 @@ public sealed class ActionCameraOverheadLedger
         _log = log;
     }
 
-    public double GetOverheadSec(string categoryId, double fallbackSec = 1.8)
+    public static double GetOverheadSec(string categoryId, double fallbackSec = 1.8)
     {
         if (SingleKeyOverheads.TryGetValue(categoryId, out var overhead))
             return overhead;
