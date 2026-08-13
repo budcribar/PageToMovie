@@ -46,6 +46,7 @@ public partial class SimpleVoice
     /// </summary>
     internal void Notify()
     {
+        _ = _storiesLoading; // instance-bound for S2325 (Blazor partial hides StateHasChanged)
         try
         {
             StateHasChanged();
