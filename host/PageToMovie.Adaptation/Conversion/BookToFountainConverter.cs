@@ -334,12 +334,12 @@ public static class BookToFountainConverter
             maxChunks: ResolveMaxChunks(bookText, budget),
             reasoningEffort: reasoningEffort, temperature: temperature);
 
-        if (ShouldWriteFromIndex(bookText, model, index))
+        if (index is not null && ShouldWriteFromIndex(bookText, model, index))
         {
             try
             {
                 return await BookToIndexWriter.ConvertAsync(
-                    system, title, author, index!, indexFileId, chat, model,
+                    system, title, author, index, indexFileId, chat, model,
                     onProgress, ct, temperature, Stage1BookSessionScope.Current)
                     .ConfigureAwait(false);
             }
@@ -2460,7 +2460,7 @@ public static class BookToFountainConverter
         return words / 155.0;
     }
 
-    private static bool TryReadReportedRuntime(string fountain, out double minutes, out string body)
+    private static void TryReadReportedRuntime(string fountain, out double minutes, out string body)
     {
         minutes = 0;
         body = fountain;
@@ -2470,7 +2470,7 @@ public static class BookToFountainConverter
             if (split.Report?.Metrics?.EstRuntimeMin is > 0)
             {
                 minutes = split.Report.Metrics.EstRuntimeMin;
-                return true;
+                return;
             }
             body = split.Fountain;
         }
@@ -2478,7 +2478,6 @@ public static class BookToFountainConverter
         {
             /* trailer parse optional */
         }
-        return false;
     }
 
     private static int CountDraftBodyWords(string fountain)
