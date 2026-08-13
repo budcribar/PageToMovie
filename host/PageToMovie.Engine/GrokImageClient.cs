@@ -259,7 +259,7 @@ public sealed class GrokImageClient : IImageClient
         string modelName,
         AspectRatio aspectRatio,
         IReadOnlyList<string> imageUris,
-        IReadOnlyList<string> refNames,
+        List<string> refNames,
         Action<string>? onProgress,
         CancellationToken ct)
     {
@@ -356,7 +356,7 @@ public sealed class GrokImageClient : IImageClient
         string modelName,
         AspectRatio aspectRatio,
         IReadOnlyList<string> imageUris,
-        IReadOnlyList<string> refNames,
+        List<string> refNames,
         Action<string>? onProgress,
         CancellationToken ct)
     {

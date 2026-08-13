@@ -108,15 +108,7 @@ public sealed class CostReportService
         var qaRetryOnFail = GetCfgBool(cfg, "qa_retry_on_fail", defaultValue: true);
         var qaMaxRetries = GetCfgInt(cfg, "qa_max_retries", defaultValue: 1);
         qaMaxRetries = Math.Clamp(qaMaxRetries, 0, 5);
-        var priorVideoMultiplier = 1.3;
-        if (cfg.TryGetValue(Keys.CostEstimates, out var ceQa) && ceQa.ValueKind == JsonValueKind.Object)
-        {
-            if (ceQa.TryGetProperty("qa_retry_video_multiplier", out var qm) &&
-                qm.TryGetDouble(out var qmv) && qmv >= 1.0)
-                priorVideoMultiplier = Math.Clamp(qmv, 1.0, 3.0);
-            else if (ceQa.TryGetProperty("qa_fail_rate", out var fr) && fr.TryGetDouble(out var frv) && frv >= 0)
-                priorVideoMultiplier = 1.0 + Math.Clamp(frv, 0, 1) * Math.Max(1, qaMaxRetries);
-        }
+        var priorVideoMultiplier = ResolvePriorVideoMultiplier(cfg, qaMaxRetries);
 
         var ledger = await GetCostLedgerAsync(projectId, ct).ConfigureAwait(false);
         var multEarly = GetChargeMultiplier();
@@ -126,22 +118,11 @@ public sealed class CostReportService
             projectId, priorVideoMultiplier, qaRetryOnFail, qaMaxRetries, actual, ct)
             .ConfigureAwait(false);
         // H5: scale video estimate with blended expected takes (QA mult and/or learned p50).
-        var qaVideoMultiplier = Math.Max(
-            qaRetryOnFail ? refinement.AppliedVideoMultiplier : 1.0,
-            refinement.ExpectedTakes > 0 ? refinement.ExpectedTakes : 1.0);
-        var qaExpectedExtraGens = Math.Max(0, qaVideoMultiplier - 1.0);
-        if (qaExpectedExtraGens > retries)
-            retries = qaExpectedExtraGens;
+        var (qaVideoMultiplier, retriesScaled) = ApplyQaRetryScaling(qaRetryOnFail, refinement, retries);
+        retries = retriesScaled;
 
-        var blueprintClips = await LoadBlueprintClipsAsync(projectId, ct).ConfigureAwait(false);
-        var estimateBasis = blueprintClips.Any(s => s.Clips.Count > 0) ? Keys.ShotPlan : "none";
-        if (estimateBasis == "none")
-        {
-            // A2: post-import / fountain shortcut (before shot plan) — always estimate from screenplay.
-            blueprintClips = await LoadScreenplayDerivedClipsAsync(projectId, cfg).ConfigureAwait(false);
-            if (blueprintClips.Any(s => s.Clips.Count > 0))
-                estimateBasis = Keys.Screenplay;
-        }
+        var (blueprintClips, estimateBasis) = await ResolveBlueprintAndEstimateBasisAsync(projectId, cfg, ct)
+            .ConfigureAwait(false);
 
         var onDisk = IndexOnDiskClips(projectId);
         var heroes = await LoadHeroMapAsync(projectId, ct).ConfigureAwait(false);
@@ -151,93 +132,12 @@ public sealed class CostReportService
         var draftRates = RatesFromConfig(draftCfg);
         var heroRates = RatesFromConfig(heroCfg);
 
-        double spent = 0, remainingDraft = 0, remainingHero = 0, allDraft = 0, allHero = 0;
-        int clipsOnDisk = 0, clipsMissing = 0, clipsTotal = 0;
-        double secOnDisk = 0, secMissing = 0;
-        var rows = new List<CostSceneRow>();
-
-        foreach (var scene in blueprintClips)
-        {
-            var sn = scene.SceneNumber;
-            var diskMap = onDisk.GetValueOrDefault(sn) ?? new Dictionary<int, bool>();
-            heroes.TryGetValue(sn, out var heroResForScene);
-            var isHero = !string.IsNullOrEmpty(heroResForScene);
-
-            double sSpent = 0, sMiss = 0, sHero = 0, sAllD = 0, sAllH = 0;
-            double dOn = 0, dMiss = 0;
-            int nDisk = 0, nMiss = 0, nAll = 0;
-
-            foreach (var clip in scene.Clips)
-            {
-                nAll++;
-                var on = diskMap.GetValueOrDefault(clip.ClipNumber);
-                if (on) nDisk++;
-                else nMiss++;
-
-                var spentRes = isHero ? (heroResForScene ?? heroRes) : draftRes;
-                var spentEst = EstimateClip(clip, spentRes, rates, retries);
-                var missEst = EstimateClip(clip, draftRes, draftRates, retries);
-                var heroEst = EstimateClip(clip, heroRes, heroRates, retries);
-                var allD = EstimateClip(clip, draftRes, draftRates, retries);
-                var allH = EstimateClip(clip, heroRes, heroRates, retries);
-
-                sAllD += allD.Usd;
-                sAllH += allH.Usd;
-                if (on)
-                {
-                    sSpent += spentEst.Usd;
-                    dOn += spentEst.DurationSec;
-                    if (!isHero)
-                        sHero += heroEst.Usd;
-                }
-                else
-                {
-                    sMiss += missEst.Usd;
-                    dMiss += missEst.DurationSec;
-                }
-            }
-
-            spent += sSpent;
-            remainingDraft += sMiss;
-            remainingHero += sHero;
-            allDraft += sAllD;
-            allHero += sAllH;
-            clipsOnDisk += nDisk;
-            clipsMissing += nMiss;
-            clipsTotal += nAll;
-            secOnDisk += dOn;
-            secMissing += dMiss;
-
-            actual.ByScene.TryGetValue(sn.ToString(CultureInfo.InvariantCulture), out var actualScene);
-
-            rows.Add(new CostSceneRow
-            {
-                Scene = sn,
-                Setting = scene.Setting.Length > 60 ? scene.Setting[..60] : scene.Setting,
-                ClipsTotal = nAll,
-                ClipsOnDisk = nDisk,
-                ClipsMissing = nMiss,
-                IsHero = isHero,
-                HeroResolution = heroResForScene,
-                CharactersOnScreen = scene.CharactersOnScreen,
-                LocationIds = scene.LocationIds,
-                PrimaryLocationId = scene.PrimaryLocationId,
-                SpentUsd = Math.Round(sSpent, 2),
-                ActualUsd = Math.Round(actualScene, 2),
-                RemainingDraftUsd = Math.Round(sMiss, 2),
-                HeroUpgradeUsd = Math.Round(sHero, 2),
-                AllDraftUsd = Math.Round(sAllD, 2),
-                AllHeroUsd = Math.Round(sAllH, 2),
-                DurationOnDiskSec = Math.Round(dOn, 1),
-                DurationMissingSec = Math.Round(dMiss, 1),
-            });
-        }
-
-        rows.Sort((a, b) => a.Scene.CompareTo(b.Scene));
+        var sceneTotals = AccumulateSceneCostRows(
+            blueprintClips, onDisk, heroes, actual, draftRes, heroRes, rates, draftRates, heroRates, retries);
+        sceneTotals.Rows.Sort((a, b) => a.Scene.CompareTo(b.Scene));
 
         // A1: when any media is on disk, upgrade basis to remaining (spent + missing operational).
-        if ((estimateBasis is Keys.ShotPlan or Keys.Screenplay) && clipsOnDisk > 0)
-            estimateBasis = Keys.Remaining;
+        estimateBasis = UpgradeEstimateBasisIfMediaOnDisk(estimateBasis, sceneTotals.ClipsOnDisk);
 
         var scenarios = BuildScenarios(blueprintClips, onDisk, cfg, retries, draftRes, heroRes);
 
@@ -248,30 +148,363 @@ public sealed class CostReportService
             GetStr(cfg, "chat_model_name", ""));
         var voiceModel = GetStr(cfg, "voice_model_name", "");
 
-        var castPlan = EstimateCharacterGeneration(projectId, rates, cfg);
-        var voicePlan = EstimateVoiceGeneration(projectId, blueprintClips, rates, cfg);
-        var musicPlan = EstimateMusicGeneration(blueprintClips, rates, cfg);
-        var planningPlan = EstimatePlanningWork(blueprintClips, estimateBasis, rates, cfg);
-        var reviewPlan = EstimateAutomatedReview(
-            clipsTotal, rates, cfg, qaRetryOnFail, qaVideoMultiplier);
+        var plans = EstimateNonVideoScopes(
+            projectId, cfg, rates, blueprintClips, estimateBasis,
+            sceneTotals.ClipsTotal, qaRetryOnFail, qaVideoMultiplier);
+        var estimateByCategory = BuildEstimateByCategory(plans, sceneTotals.AllDraft);
 
-        var catalogVideoDraft = allDraft;
-        var catalogVideoHero = allHero;
-        var estimateByCategory = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+        // Blend unit costs with portfolio averages when sample sizes allow.
+        ApplyHistoryUnitCosts(estimateByCategory, refinement, sceneTotals.ClipsTotal);
+
+        var filmTotals = CombineFilmTotals(estimateByCategory, plans, sceneTotals);
+
+        var basisNote = EstimateBasisNote(estimateBasis);
+        var clipSource = EstimateClipSource(estimateBasis);
+        var estimateConfidence = EstimateConfidence(estimateBasis);
+
+        var mult = multEarly;
+        // Snapshot list-rate category totals before applying charge multiplier for customer display.
+        var estimateList = estimateByCategory.ToDictionary(
+            kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase);
+        ApplyChargeToReport(estimateByCategory, sceneTotals, scenarios, filmTotals, mult);
+
+        var listFullDraft = estimateList.Values.Sum();
+        var listFullHero = ChargePricing.RoundMoney(
+            filmTotals.CatalogVideoHero * filmTotals.VideoScale +
+            estimateList.GetValueOrDefault(CostCategories.Screenplay) +
+            estimateList.GetValueOrDefault(CostCategories.Characters) +
+            estimateList.GetValueOrDefault(CostCategories.Voice) +
+            estimateList.GetValueOrDefault(CostCategories.Music) +
+            estimateList.GetValueOrDefault(CostCategories.Review) +
+            estimateList.GetValueOrDefault(CostCategories.Other));
+
+        // A1/A3/H5/H6 decision-facing $ band and duration labels.
+        // Prefer learned expected takes (p50 blend); fall back to QA video multiplier.
+        var expectedTakes = ResolveExpectedTakes(refinement, qaVideoMultiplier);
+        refinement.ExpectedTakes = expectedTakes;
+
+        var (takesLearning, takesP25, takesP75) = await LoadTakesLearningAsync(
+            projectId, expectedTakes, refinement, ct).ConfigureAwait(false);
+
+        var (costLow, costHigh, costPoint) = ComputeCostBand(
+            filmTotals.FullDraft, expectedTakes, takesP25, takesP75);
+        var (durationMinutes, durationLabel) = ComputeDurationLabels(sceneTotals.SecOnDisk, sceneTotals.SecMissing);
+        var showRange = ShouldShowCostRange(
+            estimateBasis, costPoint, takesLearning, estimateConfidence, costHigh, costLow);
+        var costLabel = BuildCostLabel(estimateBasis, costPoint, showRange, costLow, costHigh);
+
+        // A5 — remaining strip when any media exists (spent + missing operational).
+        var remainingUsd = Math.Round(filmTotals.RemainingDraft, 2);
+        var spentUsd = Math.Round(actual.ActualUsd, 2);
+        var finishUsd = Math.Round(spentUsd + remainingUsd, 2);
+        var remainingLabel = BuildRemainingLabel(
+            sceneTotals.ClipsOnDisk, spentUsd, remainingUsd, finishUsd, sceneTotals.ClipsMissing);
+
+        var productionMode = ProductionModes.FromConfig(cfg);
+
+        return AssembleCostReport(new CostReportParts
         {
-            [CostCategories.Screenplay] = Math.Round(planningPlan.Usd, 2),
-            [CostCategories.Characters] = Math.Round(castPlan.Usd, 2),
+            ProjectId = projectId,
+            DraftRes = draftRes,
+            HeroRes = heroRes,
+            VideoModel = videoModel,
+            Cfg = cfg,
+            ImageModel = imageModel,
+            PlanningModel = planningModel,
+            VoiceModel = voiceModel,
+            EstimateBasis = estimateBasis,
+            ClipSource = clipSource,
+            EstimateConfidence = estimateConfidence,
+            CostLow = costLow,
+            CostPoint = costPoint,
+            CostHigh = costHigh,
+            DurationMinutes = durationMinutes,
+            DurationLabel = durationLabel,
+            CostLabel = costLabel,
+            RemainingLabel = remainingLabel,
+            ProductionMode = productionMode,
+            TakesLearning = takesLearning,
+            VoicePlan = plans.Voice,
+            Mult = mult,
+            DraftRates = draftRates,
+            HeroRates = heroRates,
+            Retries = retries,
+            SceneTotals = sceneTotals,
+            Actual = actual,
+            FilmTotals = filmTotals,
+            EstimateByCategory = estimateByCategory,
+            EstimateList = estimateList,
+            ListFullDraft = listFullDraft,
+            ListFullHero = listFullHero,
+            Refinement = refinement,
+            Scenarios = scenarios,
+            Ledger = ledger,
+            RecentLimit = recentLimit,
+            BasisNote = basisNote,
+            QaRetryOnFail = qaRetryOnFail,
+            QaVideoMultiplier = qaVideoMultiplier,
+        });
+    }
+
+    private static void ApplyChargeMultiplierInPlace(Dictionary<string, double> byCategory, double mult)
+    {
+        foreach (var key in byCategory.Keys.ToList())
+            byCategory[key] = ChargePricing.RoundMoney(ChargePricing.ToCharge(byCategory[key], mult));
+    }
+
+    private static double ResolvePriorVideoMultiplier(Dictionary<string, JsonElement> cfg, int qaMaxRetries)
+    {
+        var priorVideoMultiplier = 1.3;
+        if (cfg.TryGetValue(Keys.CostEstimates, out var ceQa) && ceQa.ValueKind == JsonValueKind.Object)
+        {
+            if (ceQa.TryGetProperty("qa_retry_video_multiplier", out var qm) &&
+                qm.TryGetDouble(out var qmv) && qmv >= 1.0)
+                priorVideoMultiplier = Math.Clamp(qmv, 1.0, 3.0);
+            else if (ceQa.TryGetProperty("qa_fail_rate", out var fr) && fr.TryGetDouble(out var frv) && frv >= 0)
+                priorVideoMultiplier = 1.0 + Math.Clamp(frv, 0, 1) * Math.Max(1, qaMaxRetries);
+        }
+        return priorVideoMultiplier;
+    }
+
+    private static (double QaVideoMultiplier, double Retries) ApplyQaRetryScaling(
+        bool qaRetryOnFail,
+        CostEstimateRefinement refinement,
+        double retries)
+    {
+        var qaVideoMultiplier = Math.Max(
+            qaRetryOnFail ? refinement.AppliedVideoMultiplier : 1.0,
+            refinement.ExpectedTakes > 0 ? refinement.ExpectedTakes : 1.0);
+        var qaExpectedExtraGens = Math.Max(0, qaVideoMultiplier - 1.0);
+        if (qaExpectedExtraGens > retries)
+            retries = qaExpectedExtraGens;
+        return (qaVideoMultiplier, retries);
+    }
+
+    private async Task<(List<BlueprintSceneClips> Clips, string EstimateBasis)> ResolveBlueprintAndEstimateBasisAsync(
+        string projectId,
+        Dictionary<string, JsonElement> cfg,
+        CancellationToken ct)
+    {
+        var blueprintClips = await LoadBlueprintClipsAsync(projectId, ct).ConfigureAwait(false);
+        var estimateBasis = blueprintClips.Any(s => s.Clips.Count > 0) ? Keys.ShotPlan : "none";
+        if (estimateBasis == "none")
+        {
+            // A2: post-import / fountain shortcut (before shot plan) — always estimate from screenplay.
+            blueprintClips = await LoadScreenplayDerivedClipsAsync(projectId, cfg).ConfigureAwait(false);
+            if (blueprintClips.Any(s => s.Clips.Count > 0))
+                estimateBasis = Keys.Screenplay;
+        }
+        return (blueprintClips, estimateBasis);
+    }
+
+    private static string UpgradeEstimateBasisIfMediaOnDisk(string estimateBasis, int clipsOnDisk)
+    {
+        if ((estimateBasis is Keys.ShotPlan or Keys.Screenplay) && clipsOnDisk > 0)
+            return Keys.Remaining;
+        return estimateBasis;
+    }
+
+    private sealed class SceneCostTotals
+    {
+        public double Spent;
+        public double RemainingDraft;
+        public double RemainingHero;
+        public double AllDraft;
+        public double AllHero;
+        public int ClipsOnDisk;
+        public int ClipsMissing;
+        public int ClipsTotal;
+        public double SecOnDisk;
+        public double SecMissing;
+        public List<CostSceneRow> Rows { get; } = new();
+    }
+
+    private sealed class SceneClipCostAccum
+    {
+        public double SSpent, SMiss, SHero, SAllD, SAllH, DOn, DMiss;
+        public int NDisk, NMiss, NAll;
+    }
+
+    private static SceneCostTotals AccumulateSceneCostRows(
+        List<BlueprintSceneClips> blueprintClips,
+        Dictionary<int, Dictionary<int, bool>> onDisk,
+        Dictionary<int, string> heroes,
+        CostLedgerSummary actual,
+        string draftRes,
+        string heroRes,
+        Dictionary<string, object?> rates,
+        Dictionary<string, object?> draftRates,
+        Dictionary<string, object?> heroRates,
+        double retries)
+    {
+        var totals = new SceneCostTotals();
+        foreach (var scene in blueprintClips)
+            AccumulateOneScene(
+                scene, onDisk, heroes, actual, draftRes, heroRes, rates, draftRates, heroRates, retries, totals);
+        return totals;
+    }
+
+    private static void AccumulateOneScene(
+        BlueprintSceneClips scene,
+        Dictionary<int, Dictionary<int, bool>> onDisk,
+        Dictionary<int, string> heroes,
+        CostLedgerSummary actual,
+        string draftRes,
+        string heroRes,
+        Dictionary<string, object?> rates,
+        Dictionary<string, object?> draftRates,
+        Dictionary<string, object?> heroRates,
+        double retries,
+        SceneCostTotals totals)
+    {
+        var sn = scene.SceneNumber;
+        var diskMap = onDisk.GetValueOrDefault(sn) ?? new Dictionary<int, bool>();
+        heroes.TryGetValue(sn, out var heroResForScene);
+        var isHero = !string.IsNullOrEmpty(heroResForScene);
+        var acc = new SceneClipCostAccum();
+        foreach (var clip in scene.Clips)
+            AccumulateOneClip(clip, diskMap, isHero, heroResForScene, draftRes, heroRes, rates, draftRates, heroRates, retries, acc);
+
+        totals.Spent += acc.SSpent;
+        totals.RemainingDraft += acc.SMiss;
+        totals.RemainingHero += acc.SHero;
+        totals.AllDraft += acc.SAllD;
+        totals.AllHero += acc.SAllH;
+        totals.ClipsOnDisk += acc.NDisk;
+        totals.ClipsMissing += acc.NMiss;
+        totals.ClipsTotal += acc.NAll;
+        totals.SecOnDisk += acc.DOn;
+        totals.SecMissing += acc.DMiss;
+
+        actual.ByScene.TryGetValue(sn.ToString(CultureInfo.InvariantCulture), out var actualScene);
+        totals.Rows.Add(BuildCostSceneRow(scene, acc, isHero, heroResForScene, actualScene));
+    }
+
+    private static void AccumulateOneClip(
+        BlueprintClip clip,
+        Dictionary<int, bool> diskMap,
+        bool isHero,
+        string? heroResForScene,
+        string draftRes,
+        string heroRes,
+        Dictionary<string, object?> rates,
+        Dictionary<string, object?> draftRates,
+        Dictionary<string, object?> heroRates,
+        double retries,
+        SceneClipCostAccum acc)
+    {
+        acc.NAll++;
+        var on = diskMap.GetValueOrDefault(clip.ClipNumber);
+        if (on) acc.NDisk++;
+        else acc.NMiss++;
+
+        var spentRes = isHero ? (heroResForScene ?? heroRes) : draftRes;
+        var spentEst = EstimateClip(clip, spentRes, rates, retries);
+        var missEst = EstimateClip(clip, draftRes, draftRates, retries);
+        var heroEst = EstimateClip(clip, heroRes, heroRates, retries);
+        var allD = EstimateClip(clip, draftRes, draftRates, retries);
+        var allH = EstimateClip(clip, heroRes, heroRates, retries);
+
+        acc.SAllD += allD.Usd;
+        acc.SAllH += allH.Usd;
+        if (on)
+        {
+            acc.SSpent += spentEst.Usd;
+            acc.DOn += spentEst.DurationSec;
+            if (!isHero)
+                acc.SHero += heroEst.Usd;
+        }
+        else
+        {
+            acc.SMiss += missEst.Usd;
+            acc.DMiss += missEst.DurationSec;
+        }
+    }
+
+    private static CostSceneRow BuildCostSceneRow(
+        BlueprintSceneClips scene,
+        SceneClipCostAccum acc,
+        bool isHero,
+        string? heroResForScene,
+        double actualScene) =>
+        new()
+        {
+            Scene = scene.SceneNumber,
+            Setting = scene.Setting.Length > 60 ? scene.Setting[..60] : scene.Setting,
+            ClipsTotal = acc.NAll,
+            ClipsOnDisk = acc.NDisk,
+            ClipsMissing = acc.NMiss,
+            IsHero = isHero,
+            HeroResolution = heroResForScene,
+            CharactersOnScreen = scene.CharactersOnScreen,
+            LocationIds = scene.LocationIds,
+            PrimaryLocationId = scene.PrimaryLocationId,
+            SpentUsd = Math.Round(acc.SSpent, 2),
+            ActualUsd = Math.Round(actualScene, 2),
+            RemainingDraftUsd = Math.Round(acc.SMiss, 2),
+            HeroUpgradeUsd = Math.Round(acc.SHero, 2),
+            AllDraftUsd = Math.Round(acc.SAllD, 2),
+            AllHeroUsd = Math.Round(acc.SAllH, 2),
+            DurationOnDiskSec = Math.Round(acc.DOn, 1),
+            DurationMissingSec = Math.Round(acc.DMiss, 1),
+        };
+
+    private sealed class NonVideoPlans
+    {
+        public ScopeEstimate Cast;
+        public ScopeEstimate Voice;
+        public ScopeEstimate Music;
+        public ScopeEstimate Planning;
+        public ScopeEstimate Review;
+    }
+
+    private NonVideoPlans EstimateNonVideoScopes(
+        string projectId,
+        Dictionary<string, JsonElement> cfg,
+        Dictionary<string, object?> rates,
+        List<BlueprintSceneClips> blueprintClips,
+        string estimateBasis,
+        int clipsTotal,
+        bool qaRetryOnFail,
+        double qaVideoMultiplier) =>
+        new()
+        {
+            Cast = EstimateCharacterGeneration(projectId, rates, cfg),
+            Voice = EstimateVoiceGeneration(projectId, blueprintClips, rates, cfg),
+            Music = EstimateMusicGeneration(blueprintClips, rates, cfg),
+            Planning = EstimatePlanningWork(blueprintClips, estimateBasis, rates, cfg),
+            Review = EstimateAutomatedReview(clipsTotal, rates, cfg, qaRetryOnFail, qaVideoMultiplier),
+        };
+
+    private static Dictionary<string, double> BuildEstimateByCategory(NonVideoPlans plans, double allDraft) =>
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            [CostCategories.Screenplay] = Math.Round(plans.Planning.Usd, 2),
+            [CostCategories.Characters] = Math.Round(plans.Cast.Usd, 2),
             [CostCategories.Video] = Math.Round(allDraft, 2),
-            [CostCategories.Voice] = Math.Round(voicePlan.Usd, 2),
-            [CostCategories.Music] = Math.Round(musicPlan.Usd, 2),
-            [CostCategories.Review] = Math.Round(reviewPlan.Usd, 2),
+            [CostCategories.Voice] = Math.Round(plans.Voice.Usd, 2),
+            [CostCategories.Music] = Math.Round(plans.Music.Usd, 2),
+            [CostCategories.Review] = Math.Round(plans.Review.Usd, 2),
             [CostCategories.Other] = 0,
         };
 
-        // Blend unit costs with portfolio averages when sample sizes allow.
-        ApplyHistoryUnitCosts(estimateByCategory, refinement, clipsTotal);
+    private sealed class FilmTotals
+    {
+        public double Spent;
+        public double RemainingDraft;
+        public double RemainingHero;
+        public double FullDraft;
+        public double FullHero;
+        public double CatalogVideoHero;
+        public double VideoScale;
+    }
 
-        allDraft = estimateByCategory.GetValueOrDefault(CostCategories.Video);
+    private static FilmTotals CombineFilmTotals(
+        Dictionary<string, double> estimateByCategory,
+        NonVideoPlans plans,
+        SceneCostTotals sceneTotals)
+    {
+        var allDraft = estimateByCategory.GetValueOrDefault(CostCategories.Video);
         var nonVideo =
             estimateByCategory.GetValueOrDefault(CostCategories.Screenplay) +
             estimateByCategory.GetValueOrDefault(CostCategories.Characters) +
@@ -280,48 +513,63 @@ public sealed class CostReportService
             estimateByCategory.GetValueOrDefault(CostCategories.Review) +
             estimateByCategory.GetValueOrDefault(CostCategories.Other);
         var fullDraft = allDraft + nonVideo;
+        var catalogVideoDraft = sceneTotals.AllDraft;
+        var catalogVideoHero = sceneTotals.AllHero;
         var videoScale = catalogVideoDraft > 0.01 ? allDraft / catalogVideoDraft : 1.0;
         var fullHero = catalogVideoHero * videoScale + nonVideo;
         // Remaining first-pass: missing video + unfinished cast/voice/music (planning mostly already spent).
-        var remainingExtras = castPlan.RemainingUsd + voicePlan.RemainingUsd + musicPlan.RemainingUsd
-            + reviewPlan.RemainingUsd;
-        remainingDraft += remainingExtras;
-
-        var basisNote = estimateBasis switch
+        var remainingExtras = plans.Cast.RemainingUsd + plans.Voice.RemainingUsd + plans.Music.RemainingUsd
+            + plans.Review.RemainingUsd;
+        return new FilmTotals
         {
-            Keys.ShotPlan => "Clip count from the shot plan.",
-            Keys.Screenplay => "Clip count estimated from screenplay scene lengths (before shot plan).",
-            Keys.Remaining => "Operational estimate: spent ledger + remaining planned clips.",
-            _ => "Import a book or fountain screenplay to unlock a film estimate.",
+            Spent = sceneTotals.Spent,
+            RemainingDraft = sceneTotals.RemainingDraft + remainingExtras,
+            RemainingHero = sceneTotals.RemainingHero,
+            FullDraft = fullDraft,
+            FullHero = fullHero,
+            CatalogVideoHero = catalogVideoHero,
+            VideoScale = videoScale,
         };
+    }
 
-        // A1 clip source + confidence for DecisionCard / API consumers.
-        var clipSource = estimateBasis switch
-        {
-            Keys.ShotPlan => "blueprint",
-            Keys.Screenplay => "synthetic_screenplay",
-            Keys.Remaining => Keys.Remaining,
-            _ => "none",
-        };
-        var estimateConfidence = estimateBasis switch
-        {
-            Keys.Remaining => "best",
-            Keys.ShotPlan => "good",
-            Keys.Screenplay => "rough",
-            _ => "very_low",
-        };
+    private static string EstimateBasisNote(string estimateBasis) => estimateBasis switch
+    {
+        Keys.ShotPlan => "Clip count from the shot plan.",
+        Keys.Screenplay => "Clip count estimated from screenplay scene lengths (before shot plan).",
+        Keys.Remaining => "Operational estimate: spent ledger + remaining planned clips.",
+        _ => "Import a book or fountain screenplay to unlock a film estimate.",
+    };
 
-        var mult = multEarly;
-        // Snapshot list-rate category totals before applying charge multiplier for customer display.
-        var estimateList = estimateByCategory.ToDictionary(
-            kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase);
+    private static string EstimateClipSource(string estimateBasis) => estimateBasis switch
+    {
+        Keys.ShotPlan => "blueprint",
+        Keys.Screenplay => "synthetic_screenplay",
+        Keys.Remaining => Keys.Remaining,
+        _ => "none",
+    };
+
+    private static string EstimateConfidence(string estimateBasis) => estimateBasis switch
+    {
+        Keys.Remaining => "best",
+        Keys.ShotPlan => "good",
+        Keys.Screenplay => "rough",
+        _ => "very_low",
+    };
+
+    private static void ApplyChargeToReport(
+        Dictionary<string, double> estimateByCategory,
+        SceneCostTotals sceneTotals,
+        List<CostScenarioRow> scenarios,
+        FilmTotals filmTotals,
+        double mult)
+    {
         ApplyChargeMultiplierInPlace(estimateByCategory, mult);
-        spent = ChargePricing.ToCharge(spent, mult);
-        remainingDraft = ChargePricing.ToCharge(remainingDraft, mult);
-        remainingHero = ChargePricing.ToCharge(remainingHero, mult);
-        fullDraft = ChargePricing.ToCharge(fullDraft, mult);
-        fullHero = ChargePricing.ToCharge(fullHero, mult);
-        foreach (var row in rows)
+        filmTotals.Spent = ChargePricing.ToCharge(filmTotals.Spent, mult);
+        filmTotals.RemainingDraft = ChargePricing.ToCharge(filmTotals.RemainingDraft, mult);
+        filmTotals.RemainingHero = ChargePricing.ToCharge(filmTotals.RemainingHero, mult);
+        filmTotals.FullDraft = ChargePricing.ToCharge(filmTotals.FullDraft, mult);
+        filmTotals.FullHero = ChargePricing.ToCharge(filmTotals.FullHero, mult);
+        foreach (var row in sceneTotals.Rows)
         {
             row.SpentUsd = ChargePricing.RoundMoney(ChargePricing.ToCharge(row.SpentUsd, mult));
             row.RemainingDraftUsd = ChargePricing.RoundMoney(ChargePricing.ToCharge(row.RemainingDraftUsd, mult));
@@ -336,24 +584,19 @@ public sealed class CostReportService
             sc.RemainingMissingUsd = ChargePricing.RoundMoney(ChargePricing.ToCharge(sc.RemainingMissingUsd, mult));
             sc.RegenOnDiskUsd = ChargePricing.RoundMoney(ChargePricing.ToCharge(sc.RegenOnDiskUsd, mult));
         }
+    }
 
-        var listFullDraft = estimateList.Values.Sum();
-        var listFullHero = ChargePricing.RoundMoney(
-            catalogVideoHero * videoScale +
-            estimateList.GetValueOrDefault(CostCategories.Screenplay) +
-            estimateList.GetValueOrDefault(CostCategories.Characters) +
-            estimateList.GetValueOrDefault(CostCategories.Voice) +
-            estimateList.GetValueOrDefault(CostCategories.Music) +
-            estimateList.GetValueOrDefault(CostCategories.Review) +
-            estimateList.GetValueOrDefault(CostCategories.Other));
-
-        // A1/A3/H5/H6 decision-facing $ band and duration labels.
-        // Prefer learned expected takes (p50 blend); fall back to QA video multiplier.
-        var expectedTakes = Math.Max(1.0, refinement.ExpectedTakes > 0
+    private static double ResolveExpectedTakes(CostEstimateRefinement refinement, double qaVideoMultiplier) =>
+        Math.Max(1.0, refinement.ExpectedTakes > 0
             ? refinement.ExpectedTakes
             : qaVideoMultiplier);
-        refinement.ExpectedTakes = expectedTakes;
 
+    private async Task<(CostTakesLearning Learning, double TakesP25, double TakesP75)> LoadTakesLearningAsync(
+        string projectId,
+        double expectedTakes,
+        CostEstimateRefinement refinement,
+        CancellationToken ct)
+    {
         // H4/H6 — optional p25/p75 from global/project takes telemetry (fail-open).
         double takesP25 = 1.0;
         double takesP75 = Math.Max(expectedTakes, 1.5);
@@ -370,47 +613,86 @@ public sealed class CostReportService
             {
                 var g = await _userDb.GetTakesTelemetryStatsAsync(projectId: null, ct).ConfigureAwait(false);
                 var p = await _userDb.GetTakesTelemetryStatsAsync(projectId, ct).ConfigureAwait(false);
-                takesLearning.GlobalClipSamples = g.ClipSampleCount;
-                takesLearning.ProjectClipSamples = p.ClipSampleCount;
-                if (g.ClipSampleCount > 0)
-                {
-                    takesLearning.GlobalP25 = g.P25TakesPerClip;
-                    takesLearning.GlobalP50 = g.P50TakesPerClip;
-                    takesLearning.GlobalP75 = g.P75TakesPerClip;
-                }
-                if (p.ClipSampleCount > 0)
-                {
-                    takesLearning.ProjectMeanTakes = p.MeanTakesPerClip;
-                    takesLearning.ProjectRegenRate = p.RegenRate;
-                }
-                var rangeSrc = p.SufficientForBlend ? p : g.SufficientForBlend ? g : null;
-                if (rangeSrc is not null)
-                {
-                    takesP25 = Math.Max(1.0, rangeSrc.P25TakesPerClip);
-                    takesP75 = Math.Max(takesP25, rangeSrc.P75TakesPerClip);
-                    takesLearning.SufficientForRange = true;
-                    takesLearning.HistoryLabel =
-                        $"typical ~{rangeSrc.P50TakesPerClip:0.##} takes/clip from studio history (n={rangeSrc.ClipSampleCount})";
-                }
-                else if (g.ClipSampleCount > 0 || p.ClipSampleCount > 0)
-                {
-                    takesLearning.HistoryLabel =
-                        $"learning takes/clip (n={Math.Max(g.ClipSampleCount, p.ClipSampleCount)}; need {UserDatabaseService.MinTakesClipSamples})";
-                }
-                if (p.ClipSampleCount > 0 && expectedTakes > 0)
-                {
-                    var delta = p.MeanTakesPerClip - expectedTakes;
-                    takesLearning.CalibrationLabel =
-                        $"This project ~{p.MeanTakesPerClip:0.##} takes/clip actual vs ~{expectedTakes:0.##} in estimate" +
-                        (Math.Abs(delta) < 0.05 ? " (on track)." : delta > 0 ? " (running hotter)." : " (running cooler).");
-                }
+                ApplyTakesTelemetryToLearning(takesLearning, g, p, expectedTakes, ref takesP25, ref takesP75);
             }
         }
         catch
         {
             // H9 fail-open
         }
+        return (takesLearning, takesP25, takesP75);
+    }
 
+    private static void ApplyTakesTelemetryToLearning(
+        CostTakesLearning takesLearning,
+        TakesTelemetryStats g,
+        TakesTelemetryStats p,
+        double expectedTakes,
+        ref double takesP25,
+        ref double takesP75)
+    {
+        takesLearning.GlobalClipSamples = g.ClipSampleCount;
+        takesLearning.ProjectClipSamples = p.ClipSampleCount;
+        if (g.ClipSampleCount > 0)
+        {
+            takesLearning.GlobalP25 = g.P25TakesPerClip;
+            takesLearning.GlobalP50 = g.P50TakesPerClip;
+            takesLearning.GlobalP75 = g.P75TakesPerClip;
+        }
+        if (p.ClipSampleCount > 0)
+        {
+            takesLearning.ProjectMeanTakes = p.MeanTakesPerClip;
+            takesLearning.ProjectRegenRate = p.RegenRate;
+        }
+        ApplyTakesRange(takesLearning, g, p, ref takesP25, ref takesP75);
+        ApplyTakesCalibration(takesLearning, p, expectedTakes);
+    }
+
+    private static TakesTelemetryStats? PickTakesBlendSource(TakesTelemetryStats projectTakes, TakesTelemetryStats globalTakes) =>
+        projectTakes.SufficientForBlend ? projectTakes
+            : globalTakes.SufficientForBlend ? globalTakes
+            : null;
+
+    private static void ApplyTakesRange(
+        CostTakesLearning takesLearning,
+        TakesTelemetryStats g,
+        TakesTelemetryStats p,
+        ref double takesP25,
+        ref double takesP75)
+    {
+        var rangeSrc = PickTakesBlendSource(p, g);
+        if (rangeSrc is not null)
+        {
+            takesP25 = Math.Max(1.0, rangeSrc.P25TakesPerClip);
+            takesP75 = Math.Max(takesP25, rangeSrc.P75TakesPerClip);
+            takesLearning.SufficientForRange = true;
+            takesLearning.HistoryLabel =
+                $"typical ~{rangeSrc.P50TakesPerClip:0.##} takes/clip from studio history (n={rangeSrc.ClipSampleCount})";
+        }
+        else if (g.ClipSampleCount > 0 || p.ClipSampleCount > 0)
+        {
+            takesLearning.HistoryLabel =
+                $"learning takes/clip (n={Math.Max(g.ClipSampleCount, p.ClipSampleCount)}; need {UserDatabaseService.MinTakesClipSamples})";
+        }
+    }
+
+    private static void ApplyTakesCalibration(CostTakesLearning takesLearning, TakesTelemetryStats p, double expectedTakes)
+    {
+        if (p.ClipSampleCount > 0 && expectedTakes > 0)
+        {
+            var delta = p.MeanTakesPerClip - expectedTakes;
+            takesLearning.CalibrationLabel =
+                $"This project ~{p.MeanTakesPerClip:0.##} takes/clip actual vs ~{expectedTakes:0.##} in estimate" +
+                (Math.Abs(delta) < 0.05 ? " (on track)." : delta > 0 ? " (running hotter)." : " (running cooler).");
+        }
+    }
+
+    private static (double CostLow, double CostHigh, double CostPoint) ComputeCostBand(
+        double fullDraft,
+        double expectedTakes,
+        double takesP25,
+        double takesP75)
+    {
         // first-pass unit cost ≈ point / expectedTakes (point already includes expected takes via retries)
         var costPoint = Math.Round(fullDraft, 2);
         var firstPassUnit = expectedTakes > 0.01 ? costPoint / expectedTakes : costPoint;
@@ -418,7 +700,11 @@ public sealed class CostReportService
         var costHigh = Math.Round(firstPassUnit * takesP75, 2);
         if (costLow > costPoint) costLow = costPoint;
         if (costHigh < costPoint) costHigh = costPoint;
+        return (costLow, costHigh, costPoint);
+    }
 
+    private static (double? DurationMinutes, string DurationLabel) ComputeDurationLabels(double secOnDisk, double secMissing)
+    {
         var durationSec = secOnDisk + secMissing;
         double? durationMinutes = durationSec > 0.5
             ? Math.Round(durationSec / 60.0, 1)
@@ -426,19 +712,39 @@ public sealed class CostReportService
         var durationLabel = durationMinutes is > 0
             ? $"~{durationMinutes:0.#} min"
             : "duration TBD";
-        var showRange = estimateBasis != "none" && costPoint > 0 &&
-            (takesLearning.SufficientForRange || estimateConfidence is "rough" or "very_low") &&
-            Math.Abs(costHigh - costLow) >= 0.5;
-        var costLabel = estimateBasis == "none" || costPoint <= 0
+        return (durationMinutes, durationLabel);
+    }
+
+    private static bool ShouldShowCostRange(
+        string estimateBasis,
+        double costPoint,
+        CostTakesLearning takesLearning,
+        string estimateConfidence,
+        double costHigh,
+        double costLow) =>
+        estimateBasis != "none" && costPoint > 0 &&
+        (takesLearning.SufficientForRange || estimateConfidence is "rough" or "very_low") &&
+        Math.Abs(costHigh - costLow) >= 0.5;
+
+    private static string BuildCostLabel(
+        string estimateBasis,
+        double costPoint,
+        bool showRange,
+        double costLow,
+        double costHigh) =>
+        estimateBasis == "none" || costPoint <= 0
             ? "—"
             : showRange
                 ? $"~${costLow:0.##}–${costHigh:0.##}"
                 : $"~${costPoint:0.##}";
 
-        // A5 — remaining strip when any media exists (spent + missing operational).
-        var remainingUsd = Math.Round(remainingDraft, 2);
-        var spentUsd = Math.Round(actual.ActualUsd, 2);
-        var finishUsd = Math.Round(spentUsd + remainingUsd, 2);
+    private static string BuildRemainingLabel(
+        int clipsOnDisk,
+        double spentUsd,
+        double remainingUsd,
+        double finishUsd,
+        int clipsMissing)
+    {
         string remainingLabel = "";
         if (clipsOnDisk > 0 || spentUsd > 0.005)
         {
@@ -454,89 +760,135 @@ public sealed class CostReportService
                 parts.Add("all clips on disk");
             remainingLabel = string.Join(" · ", parts);
         }
+        return remainingLabel;
+    }
 
-        var productionMode = ProductionModes.FromConfig(cfg);
+    private static double? CostBandOrNull(string estimateBasis, double value) =>
+        estimateBasis == "none" ? null : value;
 
+    private static string BuildCostReportNotes(CostReportParts p) =>
+        p.BasisNote + " " +
+        $"Rates from selected models (video={p.VideoModel}, image={p.ImageModel}" +
+        (p.VoicePlan.Included ? $", voice={p.VoiceModel}" : "") + "). " +
+        $"Charge multiplier ×{p.Mult:0.##} on estimates and new actual charges. " +
+        (p.QaRetryOnFail
+            ? $"Quality gate retry ON (admin auto-regen; video ×{p.QaVideoMultiplier:0.##}). "
+            : "Quality gate retry OFF. ") +
+        (string.IsNullOrWhiteSpace(p.Refinement.Notes) ? "" : p.Refinement.Notes + " ") +
+        "Actual display = list rates in cost_ledger × admin charge multiplier (list rates only in storage).";
+
+    private sealed class CostReportParts
+    {
+        public string ProjectId = "";
+        public string DraftRes = "";
+        public string HeroRes = "";
+        public string VideoModel = "";
+        public Dictionary<string, JsonElement> Cfg = null!;
+        public string ImageModel = "";
+        public string PlanningModel = "";
+        public string VoiceModel = "";
+        public string EstimateBasis = "";
+        public string ClipSource = "";
+        public string EstimateConfidence = "";
+        public double CostLow;
+        public double CostPoint;
+        public double CostHigh;
+        public double? DurationMinutes;
+        public string DurationLabel = "";
+        public string CostLabel = "";
+        public string RemainingLabel = "";
+        public string ProductionMode = "";
+        public CostTakesLearning TakesLearning = null!;
+        public ScopeEstimate VoicePlan;
+        public double Mult;
+        public Dictionary<string, object?> DraftRates = null!;
+        public Dictionary<string, object?> HeroRates = null!;
+        public double Retries;
+        public SceneCostTotals SceneTotals = null!;
+        public CostLedgerSummary Actual = null!;
+        public FilmTotals FilmTotals = null!;
+        public Dictionary<string, double> EstimateByCategory = null!;
+        public Dictionary<string, double> EstimateList = null!;
+        public double ListFullDraft;
+        public double ListFullHero;
+        public CostEstimateRefinement Refinement = null!;
+        public List<CostScenarioRow> Scenarios = null!;
+        public IReadOnlyList<CostEvent> Ledger = null!;
+        public int RecentLimit;
+        public string BasisNote = "";
+        public bool QaRetryOnFail;
+        public double QaVideoMultiplier;
+    }
+
+    private static CostReport AssembleCostReport(CostReportParts p)
+    {
+        var rows = p.SceneTotals.Rows;
+        var film = p.FilmTotals;
         return new CostReport
         {
-            ProjectId = projectId,
-            DraftResolution = draftRes,
-            HeroResolution = heroRes,
-            ModelName = videoModel,
-            VideoProvider = ResolveVideoProvider(cfg, videoModel),
-            ImageModelName = imageModel,
+            ProjectId = p.ProjectId,
+            DraftResolution = p.DraftRes,
+            HeroResolution = p.HeroRes,
+            ModelName = p.VideoModel,
+            VideoProvider = ResolveVideoProvider(p.Cfg, p.VideoModel),
+            ImageModelName = p.ImageModel,
 
-            PlanningModelName = planningModel,
-            VoiceModelName = voicePlan.Included ? voiceModel : null,
-            EstimateBasis = estimateBasis,
-            ClipSource = clipSource,
-            EstimateConfidence = estimateConfidence,
-            CostLowUsd = estimateBasis == "none" ? null : costLow,
-            CostPointUsd = estimateBasis == "none" ? null : costPoint,
-            CostHighUsd = estimateBasis == "none" ? null : costHigh,
-            DurationMinutes = durationMinutes,
-            DurationLabel = durationLabel,
-            CostLabel = costLabel,
-            RemainingLabel = remainingLabel,
-            ProductionMode = productionMode,
-            TakesLearning = takesLearning,
-            VoiceIncludedInEstimate = voicePlan.Included,
-            ChargeMultiplier = mult,
-            OutputRateDraft = OutputRate(draftRes, draftRates),
-            OutputRateHero = OutputRate(heroRes, heroRates),
-            AssumeAvgRetries = retries,
+            PlanningModelName = p.PlanningModel,
+            VoiceModelName = p.VoicePlan.Included ? p.VoiceModel : null,
+            EstimateBasis = p.EstimateBasis,
+            ClipSource = p.ClipSource,
+            EstimateConfidence = p.EstimateConfidence,
+            CostLowUsd = CostBandOrNull(p.EstimateBasis, p.CostLow),
+            CostPointUsd = CostBandOrNull(p.EstimateBasis, p.CostPoint),
+            CostHighUsd = CostBandOrNull(p.EstimateBasis, p.CostHigh),
+            DurationMinutes = p.DurationMinutes,
+            DurationLabel = p.DurationLabel,
+            CostLabel = p.CostLabel,
+            RemainingLabel = p.RemainingLabel,
+            ProductionMode = p.ProductionMode,
+            TakesLearning = p.TakesLearning,
+            VoiceIncludedInEstimate = p.VoicePlan.Included,
+            ChargeMultiplier = p.Mult,
+            OutputRateDraft = OutputRate(p.DraftRes, p.DraftRates),
+            OutputRateHero = OutputRate(p.HeroRes, p.HeroRates),
+            AssumeAvgRetries = p.Retries,
             Summary = new CostReportSummary
             {
-                ClipsTotal = clipsTotal,
-                ClipsOnDisk = clipsOnDisk,
-                ClipsMissing = clipsMissing,
-                SecOnDisk = Math.Round(secOnDisk, 1),
-                SecMissing = Math.Round(secMissing, 1),
-                SpentUsd = Math.Round(spent, 2),
-                ActualUsd = actual.ActualUsd,
-                ActualEvents = actual.EventCount,
-                ActualVideoJobs = actual.VideoJobs,
-                ActualVideoSec = actual.VideoSec,
-                RemainingFirstPassUsd = Math.Round(remainingDraft, 2),
-                RemainingHeroUpgradeUsd = Math.Round(remainingHero, 2),
-                FinishDraftUsd = Math.Round(spent + remainingDraft, 2),
-                FinishDraftPlusHeroUsd = Math.Round(spent + remainingDraft + remainingHero, 2),
-                FinishFromActualUsd = Math.Round(actual.ActualUsd + remainingDraft, 2),
-                FullFilmAllDraftUsd = Math.Round(fullDraft, 2),
-                FullFilmAllHeroUsd = Math.Round(fullHero, 2),
-                FullFilmAllDraftListUsd = Math.Round(listFullDraft, 2),
-                FullFilmAllHeroListUsd = listFullHero,
+                ClipsTotal = p.SceneTotals.ClipsTotal,
+                ClipsOnDisk = p.SceneTotals.ClipsOnDisk,
+                ClipsMissing = p.SceneTotals.ClipsMissing,
+                SecOnDisk = Math.Round(p.SceneTotals.SecOnDisk, 1),
+                SecMissing = Math.Round(p.SceneTotals.SecMissing, 1),
+                SpentUsd = Math.Round(film.Spent, 2),
+                ActualUsd = p.Actual.ActualUsd,
+                ActualEvents = p.Actual.EventCount,
+                ActualVideoJobs = p.Actual.VideoJobs,
+                ActualVideoSec = p.Actual.VideoSec,
+                RemainingFirstPassUsd = Math.Round(film.RemainingDraft, 2),
+                RemainingHeroUpgradeUsd = Math.Round(film.RemainingHero, 2),
+                FinishDraftUsd = Math.Round(film.Spent + film.RemainingDraft, 2),
+                FinishDraftPlusHeroUsd = Math.Round(film.Spent + film.RemainingDraft + film.RemainingHero, 2),
+                FinishFromActualUsd = Math.Round(p.Actual.ActualUsd + film.RemainingDraft, 2),
+                FullFilmAllDraftUsd = Math.Round(film.FullDraft, 2),
+                FullFilmAllHeroUsd = Math.Round(film.FullHero, 2),
+                FullFilmAllDraftListUsd = Math.Round(p.ListFullDraft, 2),
+                FullFilmAllHeroListUsd = p.ListFullHero,
                 ScenesWithMedia = rows.Count(r => r.ClipsOnDisk > 0),
                 ScenesHero = rows.Count(r => r.IsHero),
                 ScenesTotal = rows.Count,
             },
-            Actual = actual,
-            EstimateByCategory = estimateByCategory,
-            EstimateByCategoryListRate = estimateList,
-            Refinement = refinement,
+            Actual = p.Actual,
+            EstimateByCategory = p.EstimateByCategory,
+            EstimateByCategoryListRate = p.EstimateList,
+            Refinement = p.Refinement,
             Scenes = rows,
-            Scenarios = scenarios,
-            RecentEvents = ledger
+            Scenarios = p.Scenarios,
+            RecentEvents = p.Ledger
                 .OrderByDescending(e => e.Ts ?? "")
-                .Take(Math.Clamp(recentLimit, 1, 200))
+                .Take(Math.Clamp(p.RecentLimit, 1, 200))
                 .ToList(),
-            Notes =
-                basisNote + " " +
-                $"Rates from selected models (video={videoModel}, image={imageModel}" +
-                (voicePlan.Included ? $", voice={voiceModel}" : "") + "). " +
-                $"Charge multiplier ×{mult:0.##} on estimates and new actual charges. " +
-                (qaRetryOnFail
-                    ? $"Quality gate retry ON (admin auto-regen; video ×{qaVideoMultiplier:0.##}). "
-                    : "Quality gate retry OFF. ") +
-                (string.IsNullOrWhiteSpace(refinement.Notes) ? "" : refinement.Notes + " ") +
-                "Actual display = list rates in cost_ledger × admin charge multiplier (list rates only in storage).",
+            Notes = BuildCostReportNotes(p),
         };
-    }
-
-    private static void ApplyChargeMultiplierInPlace(Dictionary<string, double> byCategory, double mult)
-    {
-        foreach (var key in byCategory.Keys.ToList())
-            byCategory[key] = ChargePricing.RoundMoney(ChargePricing.ToCharge(byCategory[key], mult));
     }
 
     public async Task<CostBackfillResult> BackfillFromDiskAsync(
@@ -547,96 +899,25 @@ public sealed class CostReportService
         var cfg = await LoadConfigMapAsync(projectId, ct).ConfigureAwait(false);
         var defaultRates = RatesFromConfig(cfg);
         var ledger = await GetCostLedgerRawAsync(projectId, ct).ConfigureAwait(false);
-        var seen = new HashSet<(int, int)>();
-        foreach (var e in ledger)
-        {
-            if (!string.Equals(GetRawKind(e), Keys.Video, StringComparison.OrdinalIgnoreCase))
-                continue;
-            if (TryGetInt(e, Keys.Scene, out var sn) && TryGetInt(e, "clip", out var cn))
-                seen.Add((sn, cn));
-        }
+        var seen = IndexSeenVideoClips(ledger);
 
         var blueprint = await LoadBlueprintClipsAsync(projectId, ct).ConfigureAwait(false);
         var onDisk = IndexOnDiskClips(projectId);
         var clipJobs = await LoadClipJobsAsync(projectId, ct).ConfigureAwait(false);
-        var defaultRes = GetStr(cfg, Keys.Resolution, "480p");
-        var defaultModel = GetStr(cfg, Keys.ModelName, "");
-        var imageModel = GetStr(cfg, Keys.ImageModelName, "");
-        var defaultDur = GetDouble(cfg, "duration_seconds", 8);
-        var assumeRef = GetBool(defaultRates, "assume_ref_image_per_clip", true);
+        var defaults = new BackfillDefaults(
+            GetStr(cfg, Keys.Resolution, "480p"),
+            GetStr(cfg, Keys.ModelName, ""),
+            GetStr(cfg, Keys.ImageModelName, ""),
+            GetDouble(cfg, "duration_seconds", 8),
+            GetBool(defaultRates, "assume_ref_image_per_clip", true));
 
         var added = 0;
         var skipped = 0;
         foreach (var scene in blueprint)
         {
-            var diskMap = onDisk.GetValueOrDefault(scene.SceneNumber) ?? new Dictionary<int, bool>();
-            foreach (var clip in scene.Clips)
-            {
-                if (!diskMap.GetValueOrDefault(clip.ClipNumber))
-                {
-                    skipped++;
-                    continue;
-                }
-
-                if (onlyMissing && seen.Contains((scene.SceneNumber, clip.ClipNumber)))
-                {
-                    skipped++;
-                    continue;
-                }
-
-                clipJobs.TryGetValue($"{scene.SceneNumber}_{clip.ClipNumber}", out var job);
-                var duration = clip.DurationSec > 0 ? clip.DurationSec : defaultDur;
-                if (job is not null && job.TryGetValue(Keys.DurationSec, out var ds) &&
-                    ds.TryGetDouble(out var jdur) && jdur > 0)
-                    duration = jdur;
-
-                var res = defaultRes;
-                if (job is not null && job.TryGetValue(Keys.Resolution, out var jr) &&
-                    jr.ValueKind == JsonValueKind.String && jr.GetString() is { Length: > 0 } rs)
-                    res = rs;
-
-                var model = defaultModel;
-                if (job is not null && job.TryGetValue(Keys.Model, out var jm) &&
-                    jm.ValueKind == JsonValueKind.String && jm.GetString() is { Length: > 0 } md)
-                    model = md;
-
-                var isExtend = string.Equals(
-                    clip.Continuation, "extend_previous", StringComparison.OrdinalIgnoreCase);
-                var rates = RatesFromModels(model, imageModel, cfg);
-                var priced = PriceVideo(duration, res, rates, assumeRef, isExtend, attempts: 1);
-                var listUsd = priced.Usd;
-
-                var evt = new Dictionary<string, object?>
-                {
-                    ["kind"] = Keys.Video,
-            [Keys.Category] = CostCategories.Video,
-                    [Keys.Scene] = scene.SceneNumber,
-                    ["clip"] = clip.ClipNumber,
-                    [Keys.Model] = model,
-                    [Keys.Provider] = rates.TryGetValue(Keys.VideoProvider, out var vp) ? vp : null,
-                    ["pricing_source"] = rates.TryGetValue(Keys.VideoPricingSource, out var vps) ? vps : null,
-                    [Keys.RequestId] = job is not null && job.TryGetValue(Keys.RequestId, out var rid)
-                        ? rid.GetString() ?? ""
-                        : "",
-                    ["has_ref_image"] = assumeRef,
-                    ["is_extend"] = isExtend,
-                    [Keys.Source] = "backfill",
-                    [Keys.DurationSec] = priced.DurationSec,
-                    ["attempts"] = 1.0,
-                    [Keys.Resolution] = res,
-                    ["output_rate_per_sec"] = priced.RatePerSec,
-                    ["video_output_usd"] = priced.VideoOut,
-                    ["ref_image_usd"] = priced.RefImg,
-                    ["extend_input_usd"] = priced.ExtendIn,
-                    [Keys.ListUsd] = listUsd,
-                    ["usd"] = listUsd,
-                    [Keys.Currency] = "USD",
-                    ["extra"] = new Dictionary<string, object?> { ["backfill"] = true },
-                };
-                await AppendCostEventAsync(projectId, evt, save: true, ct).ConfigureAwait(false);
-                seen.Add((scene.SceneNumber, clip.ClipNumber));
-                added++;
-            }
+            await BackfillSceneClipsAsync(
+                projectId, scene, onDisk, clipJobs, seen, cfg, defaults, onlyMissing, ct,
+                () => added++, () => skipped++).ConfigureAwait(false);
         }
 
         var summary = SummarizeLedger(await GetCostLedgerAsync(projectId, ct).ConfigureAwait(false), GetChargeMultiplier());
@@ -648,6 +929,147 @@ public sealed class CostReportService
             ActualUsd = summary.ActualUsd,
         };
     }
+
+    private readonly record struct BackfillDefaults(
+        string DefaultRes,
+        string DefaultModel,
+        string ImageModel,
+        double DefaultDur,
+        bool AssumeRef);
+
+    private static HashSet<(int, int)> IndexSeenVideoClips(List<JsonElement> ledger)
+    {
+        var seen = new HashSet<(int, int)>();
+        foreach (var e in ledger)
+        {
+            if (!string.Equals(GetRawKind(e), Keys.Video, StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (TryGetInt(e, Keys.Scene, out var sn) && TryGetInt(e, "clip", out var cn))
+                seen.Add((sn, cn));
+        }
+        return seen;
+    }
+
+    private async Task BackfillSceneClipsAsync(
+        string projectId,
+        BlueprintSceneClips scene,
+        Dictionary<int, Dictionary<int, bool>> onDisk,
+        Dictionary<string, Dictionary<string, JsonElement>> clipJobs,
+        HashSet<(int, int)> seen,
+        Dictionary<string, JsonElement> cfg,
+        BackfillDefaults defaults,
+        bool onlyMissing,
+        CancellationToken ct,
+        Action onAdded,
+        Action onSkipped)
+    {
+        var diskMap = onDisk.GetValueOrDefault(scene.SceneNumber) ?? new Dictionary<int, bool>();
+        foreach (var clip in scene.Clips)
+        {
+            if (!diskMap.GetValueOrDefault(clip.ClipNumber))
+            {
+                onSkipped();
+                continue;
+            }
+
+            if (onlyMissing && seen.Contains((scene.SceneNumber, clip.ClipNumber)))
+            {
+                onSkipped();
+                continue;
+            }
+
+            await AppendBackfillClipEventAsync(projectId, scene, clip, clipJobs, cfg, defaults, ct)
+                .ConfigureAwait(false);
+            seen.Add((scene.SceneNumber, clip.ClipNumber));
+            onAdded();
+        }
+    }
+
+    private async Task AppendBackfillClipEventAsync(
+        string projectId,
+        BlueprintSceneClips scene,
+        BlueprintClip clip,
+        Dictionary<string, Dictionary<string, JsonElement>> clipJobs,
+        Dictionary<string, JsonElement> cfg,
+        BackfillDefaults defaults,
+        CancellationToken ct)
+    {
+        clipJobs.TryGetValue($"{scene.SceneNumber}_{clip.ClipNumber}", out var job);
+        var duration = ResolveBackfillDuration(clip, job, defaults.DefaultDur);
+        var res = ResolveBackfillJobString(job, Keys.Resolution, defaults.DefaultRes);
+        var model = ResolveBackfillJobString(job, Keys.Model, defaults.DefaultModel);
+
+        var isExtend = string.Equals(
+            clip.Continuation, "extend_previous", StringComparison.OrdinalIgnoreCase);
+        var rates = RatesFromModels(model, defaults.ImageModel, cfg);
+        var priced = PriceVideo(duration, res, rates, defaults.AssumeRef, isExtend, attempts: 1);
+        var listUsd = priced.Usd;
+
+        var evt = BuildBackfillCostEvent(scene, clip, job, model, res, rates, priced, listUsd, defaults.AssumeRef, isExtend);
+        await AppendCostEventAsync(projectId, evt, save: true, ct).ConfigureAwait(false);
+    }
+
+    private static double ResolveBackfillDuration(
+        BlueprintClip clip,
+        Dictionary<string, JsonElement>? job,
+        double defaultDur)
+    {
+        var duration = clip.DurationSec > 0 ? clip.DurationSec : defaultDur;
+        if (job is not null && job.TryGetValue(Keys.DurationSec, out var ds) &&
+            ds.TryGetDouble(out var jdur) && jdur > 0)
+            duration = jdur;
+        return duration;
+    }
+
+    private static string ResolveBackfillJobString(
+        Dictionary<string, JsonElement>? job,
+        string key,
+        string fallback)
+    {
+        if (job is not null && job.TryGetValue(key, out var el) &&
+            el.ValueKind == JsonValueKind.String && el.GetString() is { Length: > 0 } s)
+            return s;
+        return fallback;
+    }
+
+    private static Dictionary<string, object?> BuildBackfillCostEvent(
+        BlueprintSceneClips scene,
+        BlueprintClip clip,
+        Dictionary<string, JsonElement>? job,
+        string model,
+        string res,
+        Dictionary<string, object?> rates,
+        (double Usd, double DurationSec, double RatePerSec, double VideoOut, double RefImg, double ExtendIn) priced,
+        double listUsd,
+        bool assumeRef,
+        bool isExtend) =>
+        new()
+        {
+            ["kind"] = Keys.Video,
+            [Keys.Category] = CostCategories.Video,
+            [Keys.Scene] = scene.SceneNumber,
+            ["clip"] = clip.ClipNumber,
+            [Keys.Model] = model,
+            [Keys.Provider] = rates.TryGetValue(Keys.VideoProvider, out var vp) ? vp : null,
+            ["pricing_source"] = rates.TryGetValue(Keys.VideoPricingSource, out var vps) ? vps : null,
+            [Keys.RequestId] = job is not null && job.TryGetValue(Keys.RequestId, out var rid)
+                ? rid.GetString() ?? ""
+                : "",
+            ["has_ref_image"] = assumeRef,
+            ["is_extend"] = isExtend,
+            [Keys.Source] = "backfill",
+            [Keys.DurationSec] = priced.DurationSec,
+            ["attempts"] = 1.0,
+            [Keys.Resolution] = res,
+            ["output_rate_per_sec"] = priced.RatePerSec,
+            ["video_output_usd"] = priced.VideoOut,
+            ["ref_image_usd"] = priced.RefImg,
+            ["extend_input_usd"] = priced.ExtendIn,
+            [Keys.ListUsd] = listUsd,
+            ["usd"] = listUsd,
+            [Keys.Currency] = "USD",
+            ["extra"] = new Dictionary<string, object?> { ["backfill"] = true },
+        };
 
     /// <param name="durationSec">
     /// Billed length — prefer probed final file seconds after silence trim; fall back to API request duration.
@@ -814,54 +1236,77 @@ public sealed class CostReportService
                 .ConfigureAwait(false);
 
         // Also stamp project cost_ledger last matching video event.
-        var ledgerOk = false;
+        var ledgerOk = await TryStampLedgerTakeReasonAsync(projectId, scene, clip, r, takeIndex, ct)
+            .ConfigureAwait(false);
+
+        return dbOk || ledgerOk;
+    }
+
+    private async Task<bool> TryStampLedgerTakeReasonAsync(
+        string projectId,
+        int scene,
+        int clip,
+        string r,
+        int? takeIndex,
+        CancellationToken ct)
+    {
         try
         {
             var path = await StatePathAsync(projectId, ct).ConfigureAwait(false);
-            if (File.Exists(path))
-            {
-                await using var stream = File.OpenRead(path);
-                using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct)
-                    .ConfigureAwait(false);
-                var root = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-                foreach (var p in doc.RootElement.EnumerateObject())
-                    root[p.Name] = p.Value.Deserialize<object>();
+            if (!File.Exists(path))
+                return false;
 
-                if (doc.RootElement.TryGetProperty(Keys.CostLedger, out var ledger) &&
-                    ledger.ValueKind == JsonValueKind.Array)
-                {
-                    var list = ledger.EnumerateArray().Select(x => x.Clone()).ToList();
-                    for (var i = list.Count - 1; i >= 0; i--)
-                    {
-                        var e = list[i];
-                        if (!string.Equals(GetRawKind(e), Keys.Video, StringComparison.OrdinalIgnoreCase))
-                            continue;
-                        if (!TryGetInt(e, Keys.Scene, out var sn) || sn != scene) continue;
-                        if (!TryGetInt(e, "clip", out var cn) || cn != clip) continue;
-                        if (takeIndex is > 0 && TryGetInt(e, "take_index", out var ti) && ti != takeIndex)
-                            continue;
-                        var dict = e.Deserialize<Dictionary<string, object?>>()
-                                   ?? new Dictionary<string, object?>();
-                        dict["reason"] = r;
-                        list[i] = JsonSerializer.SerializeToElement(dict);
-                        ledgerOk = true;
-                        break;
-                    }
-                    if (ledgerOk)
-                    {
-                        root[Keys.CostLedger] = list.Select(x => x.Deserialize<object>()).ToList();
-                        var json = JsonSerializer.Serialize(root, JsonDefaults.Indented);
-                        await File.WriteAllTextAsync(path, json + "\n", ct).ConfigureAwait(false);
-                    }
-                }
-            }
+            await using var stream = File.OpenRead(path);
+            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct)
+                .ConfigureAwait(false);
+            var root = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+            foreach (var p in doc.RootElement.EnumerateObject())
+                root[p.Name] = p.Value.Deserialize<object>();
+
+            if (!doc.RootElement.TryGetProperty(Keys.CostLedger, out var ledger) ||
+                ledger.ValueKind != JsonValueKind.Array)
+                return false;
+
+            var list = ledger.EnumerateArray().Select(x => x.Clone()).ToList();
+            var ledgerOk = TryStampMatchingVideoEvent(list, scene, clip, takeIndex, r);
+            if (!ledgerOk)
+                return false;
+
+            root[Keys.CostLedger] = list.Select(x => x.Deserialize<object>()).ToList();
+            var json = JsonSerializer.Serialize(root, JsonDefaults.Indented);
+            await File.WriteAllTextAsync(path, json + "\n", ct).ConfigureAwait(false);
+            return true;
         }
         catch
         {
             // H9 fail-open
+            return false;
         }
+    }
 
-        return dbOk || ledgerOk;
+    private static bool TryStampMatchingVideoEvent(
+        List<JsonElement> list,
+        int scene,
+        int clip,
+        int? takeIndex,
+        string r)
+    {
+        for (var i = list.Count - 1; i >= 0; i--)
+        {
+            var e = list[i];
+            if (!string.Equals(GetRawKind(e), Keys.Video, StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (!TryGetInt(e, Keys.Scene, out var sn) || sn != scene) continue;
+            if (!TryGetInt(e, "clip", out var cn) || cn != clip) continue;
+            if (takeIndex is > 0 && TryGetInt(e, "take_index", out var ti) && ti != takeIndex)
+                continue;
+            var dict = e.Deserialize<Dictionary<string, object?>>()
+                       ?? new Dictionary<string, object?>();
+            dict["reason"] = r;
+            list[i] = JsonSerializer.SerializeToElement(dict);
+            return true;
+        }
+        return false;
     }
 
     /// <summary>H1 — next take_index and minutes since last take for scene+clip.</summary>
@@ -1180,52 +1625,64 @@ public sealed class CostReportService
     {
         return new CostEvent
         {
-            Id = e.TryGetProperty("id", out var id) ? id.GetString() : null,
-            Ts = e.TryGetProperty("ts", out var ts) ? ts.GetString() : null,
-            Kind = e.TryGetProperty("kind", out var k) ? k.GetString() ?? "other" : "other",
+            Id = GetJsonStrOrNull(e, "id"),
+            Ts = GetJsonStrOrNull(e, "ts"),
+            Kind = GetJsonStrOrDefault(e, "kind", "other"),
             Category = CostCategories.Resolve(
-                e.TryGetProperty("kind", out var k2) ? k2.GetString() : null,
-                e.TryGetProperty("mode", out var mo) ? mo.GetString() : null,
-                e.TryGetProperty(Keys.Category, out var cat) ? cat.GetString() : null),
-            Scene = TryGetInt(e, Keys.Scene, out var sn) ? sn : null,
-            Clip = TryGetInt(e, "clip", out var cn) ? cn : null,
-            Model = e.TryGetProperty(Keys.Model, out var m) ? m.GetString() : null,
-            Resolution = e.TryGetProperty(Keys.Resolution, out var r) ? r.GetString() : null,
-            DurationSec = TryGetDouble(e, Keys.DurationSec, out var d) ? d : null,
-            Usd = TryGetDouble(e, "usd", out var u) ? u : 0,
-            ListUsd = TryGetDouble(e, Keys.ListUsd, out var lu) ? lu : null,
-            ChargeMultiplier = TryGetDouble(e, "charge_multiplier", out var cm) ? cm : null,
-            Currency = e.TryGetProperty(Keys.Currency, out var c) ? c.GetString() ?? "USD" : "USD",
-            Source = e.TryGetProperty(Keys.Source, out var s) ? s.GetString() : null,
-            Character = e.TryGetProperty("character", out var ch) ? ch.GetString() : null,
-            OutputRatePerSec = TryGetDouble(e, "output_rate_per_sec", out var or) ? or : null,
-            HasRefImage = e.TryGetProperty("has_ref_image", out var hr) &&
-                          (hr.ValueKind is JsonValueKind.True or JsonValueKind.False)
-                ? hr.GetBoolean()
-                : null,
-            IsExtend = e.TryGetProperty("is_extend", out var ie) &&
-                       (ie.ValueKind is JsonValueKind.True or JsonValueKind.False)
-                ? ie.GetBoolean()
-                : null,
-            UserId = e.TryGetProperty(Keys.UserId, out var uid) ? uid.GetString() : null,
-            KeyMode = e.TryGetProperty("key_mode", out var km) ? km.GetString() : null,
-            TakeKind = e.TryGetProperty("take_kind", out var tk)
-                ? tk.GetString()
-                : e.TryGetProperty("trigger", out var tr) ? tr.GetString() : null,
-            TakeIndex = TryGetInt(e, "take_index", out var ti) ? ti : null,
-            StableBeatId = e.TryGetProperty("stable_beat_id", out var sb) ? sb.GetString() : null,
-            HadCharRefs = e.TryGetProperty("had_char_refs", out var hcr) &&
-                          (hcr.ValueKind is JsonValueKind.True or JsonValueKind.False)
-                ? hcr.GetBoolean()
-                : null,
-            HadLocRef = e.TryGetProperty("had_loc_ref", out var hlr) &&
-                        (hlr.ValueKind is JsonValueKind.True or JsonValueKind.False)
-                ? hlr.GetBoolean()
-                : null,
-            MinutesSincePrevTake = TryGetDouble(e, "minutes_since_prev_take", out var msp) ? msp : null,
-            Reason = e.TryGetProperty("reason", out var rr) ? rr.GetString() : null,
+                GetJsonStrOrNull(e, "kind"),
+                GetJsonStrOrNull(e, "mode"),
+                GetJsonStrOrNull(e, Keys.Category)),
+            Scene = GetJsonIntOrNull(e, Keys.Scene),
+            Clip = GetJsonIntOrNull(e, "clip"),
+            Model = GetJsonStrOrNull(e, Keys.Model),
+            Resolution = GetJsonStrOrNull(e, Keys.Resolution),
+            DurationSec = GetJsonDoubleOrNull(e, Keys.DurationSec),
+            Usd = GetJsonDoubleOrZero(e, "usd"),
+            ListUsd = GetJsonDoubleOrNull(e, Keys.ListUsd),
+            ChargeMultiplier = GetJsonDoubleOrNull(e, "charge_multiplier"),
+            Currency = GetJsonStrOrDefault(e, Keys.Currency, "USD"),
+            Source = GetJsonStrOrNull(e, Keys.Source),
+            Character = GetJsonStrOrNull(e, "character"),
+            OutputRatePerSec = GetJsonDoubleOrNull(e, "output_rate_per_sec"),
+            HasRefImage = GetJsonBoolOrNull(e, "has_ref_image"),
+            IsExtend = GetJsonBoolOrNull(e, "is_extend"),
+            UserId = GetJsonStrOrNull(e, Keys.UserId),
+            KeyMode = GetJsonStrOrNull(e, "key_mode"),
+            TakeKind = GetTakeKindOrTrigger(e),
+            TakeIndex = GetJsonIntOrNull(e, "take_index"),
+            StableBeatId = GetJsonStrOrNull(e, "stable_beat_id"),
+            HadCharRefs = GetJsonBoolOrNull(e, "had_char_refs"),
+            HadLocRef = GetJsonBoolOrNull(e, "had_loc_ref"),
+            MinutesSincePrevTake = GetJsonDoubleOrNull(e, "minutes_since_prev_take"),
+            Reason = GetJsonStrOrNull(e, "reason"),
         };
     }
+
+    private static string? GetJsonStrOrNull(JsonElement e, string name) =>
+        e.TryGetProperty(name, out var el) ? el.GetString() : null;
+
+    private static string GetJsonStrOrDefault(JsonElement e, string name, string fallback) =>
+        e.TryGetProperty(name, out var el) ? el.GetString() ?? fallback : fallback;
+
+    private static int? GetJsonIntOrNull(JsonElement e, string name) =>
+        TryGetInt(e, name, out var v) ? v : null;
+
+    private static double? GetJsonDoubleOrNull(JsonElement e, string name) =>
+        TryGetDouble(e, name, out var v) ? v : null;
+
+    private static double GetJsonDoubleOrZero(JsonElement e, string name) =>
+        TryGetDouble(e, name, out var v) ? v : 0;
+
+    private static bool? GetJsonBoolOrNull(JsonElement e, string name) =>
+        e.TryGetProperty(name, out var el) &&
+        (el.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            ? el.GetBoolean()
+            : null;
+
+    private static string? GetTakeKindOrTrigger(JsonElement e) =>
+        e.TryGetProperty("take_kind", out var tk)
+            ? tk.GetString()
+            : e.TryGetProperty("trigger", out var tr) ? tr.GetString() : null;
 
     private Task<List<JsonElement>> GetCostLedgerRawAsync(
         string projectId,
@@ -1566,32 +2023,14 @@ public sealed class CostReportService
                            ?? SupportedModelCatalog.Find(imageModelId);
 
         if (video is null && imagePrimary is null)
-        {
-            return new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
-            {
-                [Keys.Currency] = "USD",
-                [Keys.Source] = Keys.ModelCatalog,
-                ["video_model"] = videoModelId ?? "",
-                [Keys.VideoProvider] = "",
-                ["image_model"] = imageModelId ?? "",
-                ["image_provider"] = "",
-                [Keys.VideoPricingSource] = "missing_catalog_entry",
-                ["image_pricing_source"] = "missing_catalog_entry",
-            };
-        }
+            return MissingCatalogRates(videoModelId, imageModelId);
 
         // If only one side is missing, keep going with empty pricing for that side (no invent of provider).
         video ??= PlaceholderEntry(videoModelId, ModelCapability.Video);
         imagePrimary ??= PlaceholderEntry(imageModelId, ModelCapability.Image);
 
         // Prefer a cheaper "standard" sibling in the same family when the project uses a quality image model.
-        var imageStandard = SupportedModelCatalog.ForCapability(ModelCapability.Image)
-            .Where(e => string.Equals(e.ProviderId, imagePrimary.ProviderId, StringComparison.OrdinalIgnoreCase)
-                        && e.ImageCostPerImage is not null
-                        && !string.Equals(e.Id, imagePrimary.Id, StringComparison.OrdinalIgnoreCase))
-            .OrderBy(e => e.ImageCostPerImage)
-            .FirstOrDefault()
-            ?? imagePrimary;
+        var imageStandard = ResolveStandardImageSibling(imagePrimary);
 
         var videoTable = BuildVideoRateTable(video);
         var videoBaseTable = BuildVideoBaseRateTable(video);
@@ -1600,24 +2039,8 @@ public sealed class CostReportService
         // itself shows which numbers are verified vendor pricing vs an unverified placeholder.
         // A model priced entirely via a flat base fee (no per-second rate at all, e.g. Hunyuan/Wan)
         // is NOT estimated as long as that base-fee data is real, so check both tables.
-        var videoPricingIsEstimated =
-            video.VideoCostPerSecondByResolution is not { Count: > 0 } &&
-            video.VideoBaseCostByResolution is not { Count: > 0 };
-        double qualityUnit;
-        bool imagePricingIsEstimated;
-        if (imagePrimary.ImageCostPerImage is { } imgCost)
-        {
-            qualityUnit = imgCost;
-            imagePricingIsEstimated = false;
-        }
-        else if (imagePrimary.LabMode)
-        {
-            qualityUnit = 0;
-            imagePricingIsEstimated = true; // lab: unknown, not invented vendor rate
-        }
-        else
-            throw new InvalidOperationException(
-                $"Image model '{imagePrimary.Id}' has no imageCostPerImage in models_catalog.json.");
+        var videoPricingIsEstimated = IsVideoPricingEstimated(video);
+        var (qualityUnit, imagePricingIsEstimated) = ResolveImageQualityUnit(imagePrimary);
         var standardUnit = imageStandard.ImageCostPerImage ?? qualityUnit;
 
         // Reference-image and extend-per-second add-ons: prefer a real per-model catalog value
@@ -1630,9 +2053,7 @@ public sealed class CostReportService
         var refImageCostReal = video.VideoReferenceImageCost;
         var extendCostReal = video.VideoExtendCostPerSecond;
         var refImageSource = refImageCostReal is not null ? Keys.ModelCatalog : Keys.MissingCatalog;
-        var extendSource = extendCostReal is not null
-            ? Keys.ModelCatalog
-            : (video.SupportsVideoContinue ? Keys.MissingCatalog : "not_applicable");
+        var extendSource = ResolveExtendCostSource(video, extendCostReal);
 
         // Overall video pricing is only "fully real" when the output pricing (per-second table OR
         // a flat base fee — a model priced entirely via base fee with no per-second rate, e.g.
@@ -1640,11 +2061,115 @@ public sealed class CostReportService
         // the reference-image add-on, and (only if this model can extend) the extend add-on are all
         // sourced from the catalog rather than a fallback estimate.
         var videoOutputIsCatalog = !videoPricingIsEstimated;
-        var videoPricingFullyReal = videoOutputIsCatalog
-            && refImageCostReal is not null
-            && (!video.SupportsVideoContinue || extendCostReal is not null);
+        var videoPricingFullyReal = IsVideoPricingFullyReal(
+            video, videoOutputIsCatalog, refImageCostReal, extendCostReal);
 
-        var rates = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        var rates = BuildCatalogRateTable(
+            video, imagePrimary, videoTable, videoBaseTable,
+            refImageCostReal, refImageSource, extendCostReal, extendSource,
+            qualityUnit, standardUnit, videoPricingFullyReal, imagePricingIsEstimated);
+
+        // Planning knobs only — do not let old manual $/sec tables override vendor rates.
+        ApplyCostEstimateOverrides(rates, cfgOverrides);
+
+        return rates;
+    }
+
+    private static Dictionary<string, object?> MissingCatalogRates(string? videoModelId, string? imageModelId) =>
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            [Keys.Currency] = "USD",
+            [Keys.Source] = Keys.ModelCatalog,
+            ["video_model"] = videoModelId ?? "",
+            [Keys.VideoProvider] = "",
+            ["image_model"] = imageModelId ?? "",
+            ["image_provider"] = "",
+            [Keys.VideoPricingSource] = "missing_catalog_entry",
+            ["image_pricing_source"] = "missing_catalog_entry",
+        };
+
+    private static SupportedModelEntry ResolveStandardImageSibling(SupportedModelEntry imagePrimary) =>
+        SupportedModelCatalog.ForCapability(ModelCapability.Image)
+            .Where(IsCheaperStandardImageSibling(imagePrimary))
+            .OrderBy(e => e.ImageCostPerImage)
+            .FirstOrDefault()
+            ?? imagePrimary;
+
+    private static Func<SupportedModelEntry, bool> IsCheaperStandardImageSibling(SupportedModelEntry imagePrimary) =>
+        e => string.Equals(e.ProviderId, imagePrimary.ProviderId, StringComparison.OrdinalIgnoreCase)
+             && e.ImageCostPerImage is not null
+             && !string.Equals(e.Id, imagePrimary.Id, StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsVideoPricingEstimated(SupportedModelEntry video) =>
+        video.VideoCostPerSecondByResolution is not { Count: > 0 } &&
+        video.VideoBaseCostByResolution is not { Count: > 0 };
+
+    private static (double QualityUnit, bool ImagePricingIsEstimated) ResolveImageQualityUnit(SupportedModelEntry imagePrimary)
+    {
+        if (imagePrimary.ImageCostPerImage is { } imgCost)
+            return (imgCost, false);
+        if (imagePrimary.LabMode)
+            return (0, true); // lab: unknown, not invented vendor rate
+        throw new InvalidOperationException(
+            $"Image model '{imagePrimary.Id}' has no imageCostPerImage in models_catalog.json.");
+    }
+
+    private static string ResolveExtendCostSource(SupportedModelEntry video, double? extendCostReal) =>
+        extendCostReal is not null
+            ? Keys.ModelCatalog
+            : (video.SupportsVideoContinue ? Keys.MissingCatalog : "not_applicable");
+
+    private static bool IsVideoPricingFullyReal(
+        SupportedModelEntry video,
+        bool videoOutputIsCatalog,
+        double? refImageCostReal,
+        double? extendCostReal) =>
+        videoOutputIsCatalog
+        && refImageCostReal is not null
+        && (!video.SupportsVideoContinue || extendCostReal is not null);
+
+    private static double ResolveVideoInputImageCost(SupportedModelEntry video, double? refImageCostReal) =>
+        refImageCostReal
+        ?? (video.LabMode
+            ? 0.0
+            : throw new InvalidOperationException(
+                $"Video model '{video.Id}' has no videoReferenceImageCost in models_catalog.json "
+                + "(use 0 if no separate ref fee; cite pricingNotes)."));
+
+    private static double ResolveVideoExtendCost(SupportedModelEntry video, double? extendCostReal) =>
+        extendCostReal
+        ?? (video.SupportsVideoContinue
+            ? (video.LabMode
+                ? 0.0
+                : throw new InvalidOperationException(
+                    $"Video model '{video.Id}' supports continue but has no videoExtendCostPerSecond "
+                    + "in models_catalog.json."))
+            : 0.0);
+
+    private static string ResolveVideoPricingSourceLabel(SupportedModelEntry video, bool videoPricingFullyReal) =>
+        video.LabMode
+            ? "lab_mode"
+            : (videoPricingFullyReal ? Keys.ModelCatalog : Keys.MissingCatalog);
+
+    private static string ResolveImagePricingSourceLabel(SupportedModelEntry imagePrimary, bool imagePricingIsEstimated) =>
+        imagePrimary.LabMode
+            ? "lab_mode"
+            : (imagePricingIsEstimated ? Keys.MissingCatalog : Keys.ModelCatalog);
+
+    private static Dictionary<string, object?> BuildCatalogRateTable(
+        SupportedModelEntry video,
+        SupportedModelEntry imagePrimary,
+        Dictionary<string, double> videoTable,
+        Dictionary<string, double> videoBaseTable,
+        double? refImageCostReal,
+        string refImageSource,
+        double? extendCostReal,
+        string extendSource,
+        double qualityUnit,
+        double standardUnit,
+        bool videoPricingFullyReal,
+        bool imagePricingIsEstimated) =>
+        new(StringComparer.OrdinalIgnoreCase)
         {
             [Keys.Currency] = "USD",
             [Keys.Source] = Keys.ModelCatalog,
@@ -1654,66 +2179,58 @@ public sealed class CostReportService
             ["image_provider"] = imagePrimary.ProviderId,
             ["video_output_per_sec"] = videoTable,
             ["video_base_per_video"] = videoBaseTable,
-            ["video_input_image"] = refImageCostReal
-                ?? (video.LabMode
-                    ? 0.0
-                    : throw new InvalidOperationException(
-                        $"Video model '{video.Id}' has no videoReferenceImageCost in models_catalog.json "
-                        + "(use 0 if no separate ref fee; cite pricingNotes).")),
+            ["video_input_image"] = ResolveVideoInputImageCost(video, refImageCostReal),
             ["video_input_image_source"] = refImageSource,
-            ["video_input_per_sec"] = extendCostReal
-                ?? (video.SupportsVideoContinue
-                    ? (video.LabMode
-                        ? 0.0
-                        : throw new InvalidOperationException(
-                            $"Video model '{video.Id}' supports continue but has no videoExtendCostPerSecond "
-                            + "in models_catalog.json."))
-                    : 0.0),
+            ["video_input_per_sec"] = ResolveVideoExtendCost(video, extendCostReal),
             ["video_input_per_sec_source"] = extendSource,
             ["image_output_quality"] = qualityUnit,
             ["image_output_standard"] = standardUnit,
             ["assume_ref_image_per_clip"] = true,
             ["assume_extend_fraction"] = 0.0,
             ["assume_avg_retries"] = 0.0,
-            [Keys.VideoPricingSource] = video.LabMode
-                ? "lab_mode"
-                : (videoPricingFullyReal ? Keys.ModelCatalog : Keys.MissingCatalog),
-            ["image_pricing_source"] = imagePrimary.LabMode
-                ? "lab_mode"
-                : (imagePricingIsEstimated ? Keys.MissingCatalog : Keys.ModelCatalog),
+            [Keys.VideoPricingSource] = ResolveVideoPricingSourceLabel(video, videoPricingFullyReal),
+            ["image_pricing_source"] = ResolveImagePricingSourceLabel(imagePrimary, imagePricingIsEstimated),
             ["video_lab_mode"] = video.LabMode,
             ["image_lab_mode"] = imagePrimary.LabMode,
         };
 
-        // Planning knobs only — do not let old manual $/sec tables override vendor rates.
+    private static void ApplyCostEstimateOverrides(
+        Dictionary<string, object?> rates,
+        Dictionary<string, JsonElement>? cfgOverrides)
+    {
         if (cfgOverrides is not null &&
             cfgOverrides.TryGetValue(Keys.CostEstimates, out var ce) &&
             ce.ValueKind == JsonValueKind.Object)
         {
             foreach (var p in ce.EnumerateObject())
             {
-                if (p.NameEquals("video_output_per_sec") ||
-                    p.NameEquals("image_output_quality") ||
-                    p.NameEquals("image_output_standard") ||
-                    p.NameEquals(Keys.Source) ||
-                    p.NameEquals("video_model") ||
-                    p.NameEquals(Keys.VideoProvider) ||
-                    p.NameEquals("image_model") ||
-                    p.NameEquals("image_provider") ||
-                    p.NameEquals(Keys.Currency) ||
-                    p.NameEquals("notes"))
+                if (IsProtectedRateOverrideKey(p))
                     continue;
-
-                if (p.Value.ValueKind == JsonValueKind.Number && p.Value.TryGetDouble(out var d))
-                    rates[p.Name] = d;
-                else if (p.Value.ValueKind is JsonValueKind.True or JsonValueKind.False)
-                    rates[p.Name] = p.Value.GetBoolean();
-                else if (p.Value.ValueKind == JsonValueKind.String)
-                    rates[p.Name] = p.Value.GetString();
+                ApplyOneCostEstimateOverride(rates, p);
             }
         }
+    }
 
-        return rates;
+    private static bool IsProtectedRateOverrideKey(JsonProperty p) =>
+        p.NameEquals("video_output_per_sec") ||
+        p.NameEquals("image_output_quality") ||
+        p.NameEquals("image_output_standard") ||
+        p.NameEquals(Keys.Source) ||
+        p.NameEquals("video_model") ||
+        p.NameEquals(Keys.VideoProvider) ||
+        p.NameEquals("image_model") ||
+        p.NameEquals("image_provider") ||
+        p.NameEquals(Keys.Currency) ||
+        p.NameEquals("notes");
+
+    private static void ApplyOneCostEstimateOverride(Dictionary<string, object?> rates, JsonProperty p)
+    {
+        if (p.Value.ValueKind == JsonValueKind.Number && p.Value.TryGetDouble(out var d))
+            rates[p.Name] = d;
+        else if (p.Value.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            rates[p.Name] = p.Value.GetBoolean();
+        else if (p.Value.ValueKind == JsonValueKind.String)
+            rates[p.Name] = p.Value.GetString();
     }
 
     /// <summary>
@@ -1956,56 +2473,87 @@ public sealed class CostReportService
         {
             if (raw is not Dictionary<string, object?> s) continue;
             sn++;
-            string setting = "";
-            if (s.TryGetValue("setting", out var setObj) && setObj is not null)
-                setting = setObj.ToString() ?? "";
-            else if (s.TryGetValue("heading", out var hObj) && hObj is not null)
-                setting = hObj.ToString() ?? "";
-            var target = ToPositiveDouble(
-                s.TryGetValue("duration_target_seconds", out var d1) ? d1 : null,
-                ToPositiveDouble(
-                    s.TryGetValue("estimated_duration_seconds", out var d2) ? d2 : null,
-                    24));
-            target = Math.Clamp(target, defaultDur, 600);
-
-            var nClips = Math.Max(1, (int)Math.Ceiling(target / defaultDur));
-            var clips = new List<BlueprintClip>();
-            var remaining = target;
-            for (var i = 1; i <= nClips; i++)
-            {
-                var dur = i == nClips ? Math.Max(1, remaining) : Math.Min(defaultDur, remaining);
-                clips.Add(new BlueprintClip
-                {
-                    ClipNumber = i,
-                    DurationSec = dur,
-                    Continuation = i > 1 ? "prev" : "none",
-                });
-                remaining -= dur;
-            }
-
-            var chars = new List<string>();
-            if (s.TryGetValue("characters_on_screen", out var cos) && cos is List<object?> cosList)
-            {
-                foreach (var x in cosList)
-                {
-                    var name = x?.ToString();
-                    if (!string.IsNullOrWhiteSpace(name))
-                        chars.Add(name);
-                }
-            }
-
-            list.Add(new BlueprintSceneClips
-            {
-                SceneNumber = s.TryGetValue(JsonKeys.SceneNumber, out var snObj) && snObj is not null
-                    && int.TryParse(snObj.ToString(), out var snParsed) ? snParsed : sn,
-                Setting = setting ?? "",
-                Clips = clips,
-                CharactersOnScreen = chars,
-            });
+            list.Add(BuildScreenplayDerivedScene(s, sn, defaultDur));
         }
 
         return list.OrderBy(x => x.SceneNumber).ToList();
     }
+
+    private static BlueprintSceneClips BuildScreenplayDerivedScene(
+        Dictionary<string, object?> s,
+        int sn,
+        double defaultDur)
+    {
+        var setting = ReadSceneSetting(s);
+        var target = ReadSceneDurationTarget(s, defaultDur);
+        var nClips = Math.Max(1, (int)Math.Ceiling(target / defaultDur));
+        var clips = BuildSyntheticClips(nClips, target, defaultDur);
+        var chars = ReadSceneCharactersOnScreen(s);
+        return new BlueprintSceneClips
+        {
+            SceneNumber = ResolveDerivedSceneNumber(s, sn),
+            Setting = setting ?? "",
+            Clips = clips,
+            CharactersOnScreen = chars,
+        };
+    }
+
+    private static string ReadSceneSetting(Dictionary<string, object?> s)
+    {
+        string setting = "";
+        if (s.TryGetValue("setting", out var setObj) && setObj is not null)
+            setting = setObj.ToString() ?? "";
+        else if (s.TryGetValue("heading", out var hObj) && hObj is not null)
+            setting = hObj.ToString() ?? "";
+        return setting;
+    }
+
+    private static double ReadSceneDurationTarget(Dictionary<string, object?> s, double defaultDur)
+    {
+        var target = ToPositiveDouble(
+            s.TryGetValue("duration_target_seconds", out var d1) ? d1 : null,
+            ToPositiveDouble(
+                s.TryGetValue("estimated_duration_seconds", out var d2) ? d2 : null,
+                24));
+        return Math.Clamp(target, defaultDur, 600);
+    }
+
+    private static List<BlueprintClip> BuildSyntheticClips(int nClips, double target, double defaultDur)
+    {
+        var clips = new List<BlueprintClip>();
+        var remaining = target;
+        for (var i = 1; i <= nClips; i++)
+        {
+            var dur = i == nClips ? Math.Max(1, remaining) : Math.Min(defaultDur, remaining);
+            clips.Add(new BlueprintClip
+            {
+                ClipNumber = i,
+                DurationSec = dur,
+                Continuation = i > 1 ? "prev" : "none",
+            });
+            remaining -= dur;
+        }
+        return clips;
+    }
+
+    private static List<string> ReadSceneCharactersOnScreen(Dictionary<string, object?> s)
+    {
+        var chars = new List<string>();
+        if (s.TryGetValue("characters_on_screen", out var cos) && cos is List<object?> cosList)
+        {
+            foreach (var x in cosList)
+            {
+                var name = x?.ToString();
+                if (!string.IsNullOrWhiteSpace(name))
+                    chars.Add(name);
+            }
+        }
+        return chars;
+    }
+
+    private static int ResolveDerivedSceneNumber(Dictionary<string, object?> s, int sn) =>
+        s.TryGetValue(JsonKeys.SceneNumber, out var snObj) && snObj is not null
+            && int.TryParse(snObj.ToString(), out var snParsed) ? snParsed : sn;
 
     private readonly record struct ScopeEstimate(double Usd, double RemainingUsd, bool Included);
 
@@ -2049,29 +2597,11 @@ public sealed class CostReportService
         Dictionary<string, object?> rates,
         Dictionary<string, JsonElement> cfg)
     {
-        var include = false;
-        double cloneUsdOverride = -1;
-        double ttsPerCharOverride = -1; // flat $ per speaking character (legacy knob)
-        double ttsPerThousandOverride = -1;
-
-        if (cfg.TryGetValue(Keys.CostEstimates, out var ce) && ce.ValueKind == JsonValueKind.Object)
-        {
-            if (ce.TryGetProperty("include_voice", out var iv) &&
-                iv.ValueKind is JsonValueKind.True or JsonValueKind.False)
-                include = iv.GetBoolean();
-            if (ce.TryGetProperty("voice_clone_usd", out var vc) && vc.TryGetDouble(out var v1))
-                cloneUsdOverride = v1;
-            if (ce.TryGetProperty("voice_tts_per_character_usd", out var vt) && vt.TryGetDouble(out var v2))
-                ttsPerCharOverride = v2;
-            if (ce.TryGetProperty("voice_tts_per_thousand_chars_usd", out var vt2) && vt2.TryGetDouble(out var v3))
-                ttsPerThousandOverride = v3;
-        }
+        var ov = ReadVoiceEstimateOverrides(cfg);
+        var include = ov.Include;
 
         var chars = _projects.ListCharacters(projectId);
-        var withVoice = chars.Where(c =>
-            c.HasVoiceCloneSample ||
-            !string.IsNullOrWhiteSpace(c.VoiceProfile) ||
-            !string.IsNullOrWhiteSpace(c.VoiceProviderVoiceId)).ToList();
+        var withVoice = chars.Where(CharacterHasVoiceSetup).ToList();
         if (withVoice.Count > 0)
             include = true;
 
@@ -2089,39 +2619,117 @@ public sealed class CostReportService
         if (!include || (chars.Count == 0 && dialogueChars == 0))
             return new ScopeEstimate(0, 0, Included: false);
 
+        var (voiceEntry, cloneEntry) = ResolveVoiceCatalogEntries(cfg);
+        var perThousand = ov.TtsPerThousandOverride >= 0
+            ? ov.TtsPerThousandOverride
+            : voiceEntry?.CostPerThousandCharsUsd ?? 0.10;
+        var cloneUsd = ov.CloneUsdOverride >= 0
+            ? ov.CloneUsdOverride
+            : cloneEntry?.CostPerCloneUsd ?? 0.0;
+
+        double total = 0, remaining = 0;
+        AddVoiceCloneEstimate(chars, withVoice, dialogueChars, cloneUsd, ref total, ref remaining);
+        AddVoiceTtsEstimate(
+            scenes, withVoice, chars, dialogueChars, perThousand, ov.TtsPerCharOverride, ref total, ref remaining);
+
+        _ = rates;
+        _ = dialogueClips;
+        return new ScopeEstimate(Math.Round(total, 4), Math.Round(remaining, 4), Included: total > 0 || include);
+    }
+
+    private readonly record struct VoiceEstimateOverrides(
+        bool Include,
+        double CloneUsdOverride,
+        double TtsPerCharOverride,
+        double TtsPerThousandOverride);
+
+    private static VoiceEstimateOverrides ReadVoiceEstimateOverrides(Dictionary<string, JsonElement> cfg)
+    {
+        var include = false;
+        double cloneUsdOverride = -1;
+        double ttsPerCharOverride = -1; // flat $ per speaking character (legacy knob)
+        double ttsPerThousandOverride = -1;
+
+        if (cfg.TryGetValue(Keys.CostEstimates, out var ce) && ce.ValueKind == JsonValueKind.Object)
+        {
+            TryReadIncludeVoice(ce, ref include);
+            TryReadDoubleProp(ce, "voice_clone_usd", ref cloneUsdOverride);
+            TryReadDoubleProp(ce, "voice_tts_per_character_usd", ref ttsPerCharOverride);
+            TryReadDoubleProp(ce, "voice_tts_per_thousand_chars_usd", ref ttsPerThousandOverride);
+        }
+
+        return new VoiceEstimateOverrides(include, cloneUsdOverride, ttsPerCharOverride, ttsPerThousandOverride);
+    }
+
+    private static void TryReadIncludeVoice(JsonElement ce, ref bool include)
+    {
+        if (ce.TryGetProperty("include_voice", out var iv) &&
+            iv.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            include = iv.GetBoolean();
+    }
+
+    private static void TryReadDoubleProp(JsonElement ce, string name, ref double target)
+    {
+        if (ce.TryGetProperty(name, out var el) && el.TryGetDouble(out var v))
+            target = v;
+    }
+
+    private static bool CharacterHasVoiceSetup(CharacterSummary c) =>
+        c.HasVoiceCloneSample ||
+        !string.IsNullOrWhiteSpace(c.VoiceProfile) ||
+        !string.IsNullOrWhiteSpace(c.VoiceProviderVoiceId);
+
+    private static (SupportedModelEntry? Voice, SupportedModelEntry? Clone) ResolveVoiceCatalogEntries(
+        Dictionary<string, JsonElement> cfg)
+    {
         var voiceId = GetStr(cfg, "voice_model_name", "");
         var voiceEntry = SupportedModelCatalog.Find(voiceId, ModelCapability.Voice)
-                         ?? SupportedModelCatalog.ForCapability(ModelCapability.Voice)
-                             .FirstOrDefault(m => !m.IsVoiceCloneStep && m.Enabled);
+                         ?? FindEnabledSpeakVoiceModel(matchProviderId: false, providerId: null);
 
         // Prefer speak model (not clone step) for TTS $/1k chars.
         if (voiceEntry is { IsVoiceCloneStep: true })
         {
-            voiceEntry = SupportedModelCatalog.ForCapability(ModelCapability.Voice)
-                .FirstOrDefault(m => !m.IsVoiceCloneStep && m.Enabled &&
-                    string.Equals(m.ProviderId, voiceEntry.ProviderId, StringComparison.OrdinalIgnoreCase))
+            voiceEntry = FindEnabledSpeakVoiceModel(matchProviderId: true, voiceEntry.ProviderId)
                 ?? voiceEntry;
         }
 
-        var cloneEntry = SupportedModelCatalog.ForCapability(ModelCapability.Voice)
-            .FirstOrDefault(m => m.IsVoiceCloneStep && m.Enabled &&
-                (voiceEntry is null ||
-                 string.Equals(m.ProviderId, voiceEntry.ProviderId, StringComparison.OrdinalIgnoreCase)));
+        var cloneEntry = FindEnabledCloneVoiceModel(voiceEntry);
+        return (voiceEntry, cloneEntry);
+    }
 
-        var perThousand = ttsPerThousandOverride >= 0
-            ? ttsPerThousandOverride
-            : voiceEntry?.CostPerThousandCharsUsd ?? 0.10;
-        var cloneUsd = cloneUsdOverride >= 0
-            ? cloneUsdOverride
-            : cloneEntry?.CostPerCloneUsd ?? 0.0;
+    private static SupportedModelEntry? FindEnabledSpeakVoiceModel(bool matchProviderId, string? providerId) =>
+        SupportedModelCatalog.ForCapability(ModelCapability.Voice)
+            .FirstOrDefault(m => IsEnabledSpeakVoice(m, matchProviderId, providerId));
 
+    private static bool IsEnabledSpeakVoice(SupportedModelEntry m, bool matchProviderId, string? providerId) =>
+        !m.IsVoiceCloneStep && m.Enabled &&
+        (!matchProviderId || string.Equals(m.ProviderId, providerId, StringComparison.OrdinalIgnoreCase));
+
+    private static SupportedModelEntry? FindEnabledCloneVoiceModel(SupportedModelEntry? voiceEntry) =>
+        SupportedModelCatalog.ForCapability(ModelCapability.Voice)
+            .FirstOrDefault(m => IsEnabledCloneVoice(m, voiceEntry));
+
+    private static bool IsEnabledCloneVoice(SupportedModelEntry m, SupportedModelEntry? voiceEntry) =>
+        m.IsVoiceCloneStep && m.Enabled &&
+        (voiceEntry is null ||
+         string.Equals(m.ProviderId, voiceEntry.ProviderId, StringComparison.OrdinalIgnoreCase));
+
+    private static bool IsNarratorCharacter(CharacterSummary c) =>
+        string.Equals(c.Key, "Character_Narrator", StringComparison.OrdinalIgnoreCase) ||
+        (c.Key?.Contains("narrator", StringComparison.OrdinalIgnoreCase) ?? false);
+
+    private static void AddVoiceCloneEstimate(
+        IReadOnlyList<CharacterSummary> chars,
+        List<CharacterSummary> withVoice,
+        int dialogueChars,
+        double cloneUsd,
+        ref double total,
+        ref double remaining)
+    {
         // Clone: once per character that still needs a sample (or one narrator slot if none listed).
-        double total = 0, remaining = 0;
         var cloneTargets = withVoice.Count > 0
             ? withVoice
-            : chars.Where(c =>
-                string.Equals(c.Key, "Character_Narrator", StringComparison.OrdinalIgnoreCase) ||
-                (c.Key?.Contains("narrator", StringComparison.OrdinalIgnoreCase) ?? false)).ToList();
+            : chars.Where(IsNarratorCharacter).ToList();
         if (cloneTargets.Count == 0 && dialogueChars > 0)
         {
             // Narrator re-voice path without seeds loaded: one clone slot.
@@ -2138,7 +2746,18 @@ public sealed class CostReportService
                 remaining += cloneUsd;
             }
         }
+    }
 
+    private static void AddVoiceTtsEstimate(
+        List<BlueprintSceneClips> scenes,
+        List<CharacterSummary> withVoice,
+        IReadOnlyList<CharacterSummary> chars,
+        int dialogueChars,
+        double perThousand,
+        double ttsPerCharOverride,
+        ref double total,
+        ref double remaining)
+    {
         // TTS: dialogue characters × catalog rate (speak-batch style).
         if (dialogueChars > 0)
         {
@@ -2168,10 +2787,6 @@ public sealed class CostReportService
                 remaining += tts;
             }
         }
-
-        _ = rates;
-        _ = dialogueClips;
-        return new ScopeEstimate(Math.Round(total, 4), Math.Round(remaining, 4), Included: total > 0 || include);
     }
 
     /// <summary>Background music: one track per scene with media plan, using audio model if priced.</summary>
@@ -2221,13 +2836,42 @@ public sealed class CostReportService
         CostLedgerSummary projectActual,
         CancellationToken ct)
     {
-        var refn = new CostEstimateRefinement
+        var refn = CreateHistoryRefinement(priorVideoMultiplier, qaRetryOnFail, projectActual);
+
+        await ApplyTimingFailRateAsync(projectId, refn, ct).ConfigureAwait(false);
+        var apiStats = await LoadApiCostHistoryStatsAsync(projectId, refn, ct).ConfigureAwait(false);
+
+        ApplyLearnedVideoMultiplier(refn, priorVideoMultiplier, qaRetryOnFail, qaMaxRetries);
+        var timingWeight = refn.HistoryWeight;
+
+        var bits = BuildRefinementHistoryBits(refn, projectActual);
+
+        // H4/H5 — blend learned takes-per-clip (p50) into expected video multiplier.
+        refn.ExpectedTakes = Math.Max(1.0, refn.AppliedVideoMultiplier);
+        await ApplyTakesBlendAsync(projectId, refn, qaRetryOnFail, bits, ct).ConfigureAwait(false);
+
+        ApplyRefinementNotes(refn, bits, timingWeight, qaRetryOnFail, priorVideoMultiplier);
+
+        _historyApiStats = apiStats;
+        return refn;
+    }
+
+    private static CostEstimateRefinement CreateHistoryRefinement(
+        double priorVideoMultiplier,
+        bool qaRetryOnFail,
+        CostLedgerSummary projectActual) =>
+        new()
         {
             PriorVideoMultiplier = priorVideoMultiplier,
             AppliedVideoMultiplier = qaRetryOnFail ? priorVideoMultiplier : 1.0,
             ProjectLedgerEvents = projectActual.EventCount,
         };
 
+    private async Task ApplyTimingFailRateAsync(
+        string projectId,
+        CostEstimateRefinement refn,
+        CancellationToken ct)
+    {
         double? failRate = null;
         var timingSamples = 0;
         if (_timingDb is not null)
@@ -2249,7 +2893,13 @@ public sealed class CostReportService
         }
         refn.TimingSamples = timingSamples;
         refn.LearnedFailRate = failRate;
+    }
 
+    private async Task<ApiCostHistoryStats?> LoadApiCostHistoryStatsAsync(
+        string projectId,
+        CostEstimateRefinement refn,
+        CancellationToken ct)
+    {
         ApiCostHistoryStats? apiStats = null;
         if (_userDb is not null)
         {
@@ -2263,34 +2913,56 @@ public sealed class CostReportService
             if (apiStats.ByCategory.TryGetValue(CostCategories.Review, out var r))
                 refn.ReviewApiSamples = r.Count;
         }
+        return apiStats;
+    }
 
+    private static void ApplyLearnedVideoMultiplier(
+        CostEstimateRefinement refn,
+        double priorVideoMultiplier,
+        bool qaRetryOnFail,
+        int qaMaxRetries)
+    {
         var learnedMult = priorVideoMultiplier;
+        var failRate = refn.LearnedFailRate;
         if (qaRetryOnFail && failRate is double fr)
         {
             learnedMult = 1.0 + Math.Clamp(fr, 0, 0.9) * Math.Max(1, qaMaxRetries);
             learnedMult = Math.Clamp(learnedMult, 1.0, 2.5);
         }
 
+        var timingSamples = refn.TimingSamples;
         var w = timingSamples <= 0 ? 0.0 : Math.Min(1.0, timingSamples / 30.0);
         refn.HistoryWeight = w;
         if (qaRetryOnFail)
             refn.AppliedVideoMultiplier = Math.Round(priorVideoMultiplier * (1 - w) + learnedMult * w, 3);
 
         refn.UsedHistory = timingSamples >= MinTimingSamples || refn.VideoApiSamples >= MinApiSamples
-            || projectActual.EventCount >= MinApiSamples;
+            || refn.ProjectLedgerEvents >= MinApiSamples;
+    }
 
+    private static List<string> BuildRefinementHistoryBits(
+        CostEstimateRefinement refn,
+        CostLedgerSummary projectActual)
+    {
         var bits = new List<string>();
-        if (timingSamples >= MinTimingSamples && failRate is double fr2)
-            bits.Add($"timing QA fail ~{fr2:P0} (n={timingSamples})");
+        if (refn.TimingSamples >= MinTimingSamples && refn.LearnedFailRate is double fr2)
+            bits.Add($"timing QA fail ~{fr2:P0} (n={refn.TimingSamples})");
         if (refn.VideoApiSamples > 0)
             bits.Add($"{refn.VideoApiSamples} video API samples");
         if (refn.ReviewApiSamples > 0)
             bits.Add($"{refn.ReviewApiSamples} review API samples");
         if (projectActual.EventCount > 0)
             bits.Add($"{projectActual.EventCount} project ledger events");
+        return bits;
+    }
 
-        // H4/H5 — blend learned takes-per-clip (p50) into expected video multiplier.
-        refn.ExpectedTakes = Math.Max(1.0, refn.AppliedVideoMultiplier);
+    private async Task ApplyTakesBlendAsync(
+        string projectId,
+        CostEstimateRefinement refn,
+        bool qaRetryOnFail,
+        List<string> bits,
+        CancellationToken ct)
+    {
         try
         {
             if (_userDb is not null)
@@ -2299,42 +2971,55 @@ public sealed class CostReportService
                     .ConfigureAwait(false);
                 var projectTakes = await _userDb.GetTakesTelemetryStatsAsync(projectId, ct)
                     .ConfigureAwait(false);
-                // Prefer project when it has enough samples; else global contribute=1 pool.
-                var takesSrc = projectTakes.SufficientForBlend ? projectTakes
-                    : globalTakes.SufficientForBlend ? globalTakes
-                    : null;
-                if (takesSrc is not null && takesSrc.P50TakesPerClip >= 1.0)
-                {
-                    refn.TakesClipSamples = takesSrc.ClipSampleCount;
-                    refn.LearnedTakesP50 = takesSrc.P50TakesPerClip;
-                    var tw = Math.Min(1.0, takesSrc.ClipSampleCount / 30.0);
-                    var priorTakes = Math.Max(1.0, refn.AppliedVideoMultiplier);
-                    var learned = Math.Clamp(takesSrc.P50TakesPerClip, 1.0, 4.0);
-                    refn.ExpectedTakes = Math.Round(priorTakes * (1 - tw) + learned * tw, 3);
-                    refn.HistoryWeight = Math.Max(refn.HistoryWeight, tw);
-                    refn.UsedHistory = true;
-                    // Keep AppliedVideoMultiplier in sync so video estimates scale with expected takes.
-                    if (qaRetryOnFail || takesSrc.SufficientForBlend)
-                        refn.AppliedVideoMultiplier = Math.Max(refn.AppliedVideoMultiplier, refn.ExpectedTakes);
-                    bits.Add(
-                        $"takes p50={takesSrc.P50TakesPerClip:0.##} (n={takesSrc.ClipSampleCount}, {takesSrc.Scope}) " +
-                        $"→ expected {refn.ExpectedTakes:0.##}");
-                }
+                ApplyTakesBlendFromStats(refn, qaRetryOnFail, bits, globalTakes, projectTakes);
             }
         }
         catch
         {
             // H9 fail-open — keep prior expected takes
         }
+    }
 
+    private static void ApplyTakesBlendFromStats(
+        CostEstimateRefinement refn,
+        bool qaRetryOnFail,
+        List<string> bits,
+        TakesTelemetryStats globalTakes,
+        TakesTelemetryStats projectTakes)
+    {
+        // Prefer project when it has enough samples; else global contribute=1 pool.
+        var takesSrc = PickTakesBlendSource(projectTakes, globalTakes);
+        if (takesSrc is not null && takesSrc.P50TakesPerClip >= 1.0)
+        {
+            refn.TakesClipSamples = takesSrc.ClipSampleCount;
+            refn.LearnedTakesP50 = takesSrc.P50TakesPerClip;
+            var tw = Math.Min(1.0, takesSrc.ClipSampleCount / 30.0);
+            var priorTakes = Math.Max(1.0, refn.AppliedVideoMultiplier);
+            var learned = Math.Clamp(takesSrc.P50TakesPerClip, 1.0, 4.0);
+            refn.ExpectedTakes = Math.Round(priorTakes * (1 - tw) + learned * tw, 3);
+            refn.HistoryWeight = Math.Max(refn.HistoryWeight, tw);
+            refn.UsedHistory = true;
+            // Keep AppliedVideoMultiplier in sync so video estimates scale with expected takes.
+            if (qaRetryOnFail || takesSrc.SufficientForBlend)
+                refn.AppliedVideoMultiplier = Math.Max(refn.AppliedVideoMultiplier, refn.ExpectedTakes);
+            bits.Add(
+                $"takes p50={takesSrc.P50TakesPerClip:0.##} (n={takesSrc.ClipSampleCount}, {takesSrc.Scope}) " +
+                $"→ expected {refn.ExpectedTakes:0.##}");
+        }
+    }
+
+    private static void ApplyRefinementNotes(
+        CostEstimateRefinement refn,
+        List<string> bits,
+        double w,
+        bool qaRetryOnFail,
+        double priorVideoMultiplier)
+    {
         if (bits.Count == 0)
             bits.Add("no history yet — using catalog priors");
         else if (w > 0 && qaRetryOnFail)
             bits.Add($"video mult {priorVideoMultiplier:0.##}→{refn.AppliedVideoMultiplier:0.##} (weight {w:0.00})");
         refn.Notes = "History: " + string.Join("; ", bits) + ".";
-
-        _historyApiStats = apiStats;
-        return refn;
     }
 
     private void ApplyHistoryUnitCosts(
