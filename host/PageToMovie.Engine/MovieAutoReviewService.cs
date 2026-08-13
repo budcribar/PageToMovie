@@ -24,19 +24,16 @@ public sealed class MovieAutoReviewService
 
     private readonly ProjectStore _projects;
     private readonly IVisionClient _vision;
-    private readonly ProjectTelemetryService _telemetry;
     private readonly ILogger<MovieAutoReviewService> _log;
 
     public MovieAutoReviewService(
         ProjectStore projects,
         IVisionClient vision,
-        ProjectTelemetryService telemetry,
         IChatClient? chat = null,
         ILogger<MovieAutoReviewService>? log = null)
     {
         _projects = projects;
         _vision = vision;
-        _telemetry = telemetry;
         _log = log ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<MovieAutoReviewService>.Instance;
     }
 

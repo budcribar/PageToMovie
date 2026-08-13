@@ -1,9 +1,9 @@
 namespace PageToMovie.Engine.Deterministic;
 
 /// <summary>Local, no-network fallback for action timing classification.</summary>
-public sealed class ActionOverheadHeuristic
+public static class ActionOverheadHeuristic
 {
-    public ActionClassifierEstimation Classify(string actionDescription, string? parenthetical = null)
+    public static ActionClassifierEstimation Classify(string actionDescription, string? parenthetical = null)
     {
         var text = $"{actionDescription} {parenthetical}".Trim().ToLowerInvariant();
 

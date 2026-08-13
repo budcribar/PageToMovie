@@ -633,11 +633,11 @@ Status options: 'verified' (dialogue & speaker match), 'mismatch' (dialogue inco
         }
         if (root.ValueKind == JsonValueKind.Object)
         {
-            foreach (var prop in root.EnumerateObject().Where(p => JsonPropertyNameMatches(p.Name, names)))
-            {
-                if (prop.Value.ValueKind is JsonValueKind.True or JsonValueKind.False)
-                    return prop.Value.GetBoolean();
-            }
+            return root.EnumerateObject()
+                .Where(p => JsonPropertyNameMatches(p.Name, names) &&
+                            p.Value.ValueKind is JsonValueKind.True or JsonValueKind.False)
+                .Select(p => p.Value.GetBoolean())
+                .FirstOrDefault();
         }
         return false;
     }

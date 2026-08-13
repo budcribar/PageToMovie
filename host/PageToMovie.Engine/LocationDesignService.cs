@@ -64,15 +64,8 @@ public sealed class LocationDesignService
 
         n = Math.Clamp(n <= 0 ? 3 : n, 1, 6);
         var preferred = _projects.ResolveLocationRefPath(projectId, locKey);
-        var hasEdit = !string.IsNullOrWhiteSpace(imageEditInstruction) && preferred is not null;
         // Iterative plate tweaks: one new look, keep the current lock as a sibling to pick from.
         LookTweakSlots.Pair? tweakSlots = null;
-        if (hasEdit)
-        {
-            n = 1;
-            tweakSlots = LookTweakSlots.Allocate(
-                locDir, i => ProjectStore.LocationVariantFileName(locKey, i), preferred);
-        }
         var imageModel = ProjectModelSelection.RequireImage(
             await _projects.GetConfigAsync(projectId, ct).ConfigureAwait(false),
             "Location plate generation");
@@ -81,14 +74,17 @@ public sealed class LocationDesignService
         IReadOnlyList<byte[]> blobs;
         string mode;
 
-        if (hasEdit)
+        if (!string.IsNullOrWhiteSpace(imageEditInstruction) && preferred is not null)
         {
-            prompt = BuildEditPrompt(locKey, desc, vlock, imageEditInstruction ?? "");
-            onProgress?.Invoke($"Grok image edit of locked set plate ({Path.GetFileName(preferred ?? "")})…");
+            n = 1;
+            tweakSlots = LookTweakSlots.Allocate(
+                locDir, i => ProjectStore.LocationVariantFileName(locKey, i), preferred);
+            prompt = BuildEditPrompt(locKey, desc, vlock, imageEditInstruction);
+            onProgress?.Invoke($"Grok image edit of locked set plate ({Path.GetFileName(preferred)})…");
             mode = "preferred_edit";
             blobs = await _images.EditVariantsAsync(
                 prompt,
-                preferred != null ? new[] { preferred } : Array.Empty<string>(),
+                new[] { preferred },
                 n,
                 aspectRatio: "16:9",
                 model: imageModel,
@@ -152,7 +148,7 @@ public sealed class LocationDesignService
         }
 
         // Tweak: keep current preferred locked. Operator picks new vs old from the tiles.
-        if (hasEdit && tweakSlots is { } kept)
+        if (tweakSlots is { } kept)
             onProgress?.Invoke($"New look is #{kept.Next} — current lock is #{kept.Previous}. Click a lock to choose.");
 
         return new LocationDesignResult
