@@ -186,22 +186,52 @@ public class UserDatabaseService
             {
                 using var conn = new SqliteConnection(ConnectionString);
                 conn.Open();
+                ApplyInitSchema(conn);
+                _initialized = true;
+                _logger.LogInformation("SQLite database initialized at {DbPath} (WAL mode enabled)", _dbPath);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Failed to initialize SQLite database at {_dbPath}.", ex);
+            }
+        }
+    }
 
-                using (var cmd = conn.CreateCommand())
-                {
-                    cmd.CommandText = @"
+    private void ApplyInitSchema(SqliteConnection conn)
+    {
+        ApplyWalPragmas(conn);
+        CreateUsersAndApiKeyTables(conn);
+        MigrateUserSchemaV2ToV4(conn);
+        EnsureUserCreditAndTermsColumns(conn);
+        TryCreateUsersEmailIndex(conn);
+        CreateAuthTokensAndCreditLedger(conn);
+        CreateUserApiCallsTable(conn);
+        EnsureUserApiCallExtraColumns(conn);
+        TryCreateUserApiCallsCategoryIndex(conn);
+        CreateGenerationErrorsTable(conn);
+        CreateVideoTakeEventsTable(conn);
+        MigrateUserSchemaV5ToV7(conn);
+        EnsureDefaultAdminUser(conn);
+    }
+
+    private static void ApplyWalPragmas(SqliteConnection conn)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
                         PRAGMA journal_mode = WAL;
                         PRAGMA busy_timeout = 5000;
                         PRAGMA synchronous = NORMAL;
                         PRAGMA temp_store = MEMORY;
                         PRAGMA cache_size = -8000;
                     ";
-                    cmd.ExecuteNonQuery();
-                }
+        cmd.ExecuteNonQuery();
+    }
 
-                using (var cmd = conn.CreateCommand())
-                {
-                    cmd.CommandText = $@"
+    private static void CreateUsersAndApiKeyTables(SqliteConnection conn)
+    {
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = $@"
                         CREATE TABLE IF NOT EXISTS {SqlLit.Users} (
                             user_id TEXT PRIMARY KEY,
                             username TEXT NOT NULL UNIQUE,
@@ -218,12 +248,12 @@ public class UserDatabaseService
                             credits_lifetime_used_usd {SqlLit.RealNotNullDefault0}
                         );
                     ";
-                    cmd.ExecuteNonQuery();
-                }
+            cmd.ExecuteNonQuery();
+        }
 
-                using (var cmd = conn.CreateCommand())
-                {
-                    cmd.CommandText = @"
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = @"
                         CREATE TABLE IF NOT EXISTS user_api_keys (
                             user_id TEXT NOT NULL,
                             provider_id TEXT NOT NULL,
@@ -232,34 +262,50 @@ public class UserDatabaseService
                             PRIMARY KEY (user_id, provider_id)
                         );
                     ";
-                    cmd.ExecuteNonQuery();
-                }
+            cmd.ExecuteNonQuery();
+        }
+    }
 
-                // Database Schema Migrations & Version Tracking (PRAGMA user_version)
-                using (var vCmd = conn.CreateCommand())
-                {
-                    vCmd.CommandText = PragmaUserVersion;
-                    var curVer = Convert.ToInt32(vCmd.ExecuteScalar() ?? 0);
+    private void MigrateUserSchemaV2ToV4(SqliteConnection conn)
+    {
+        using var vCmd = conn.CreateCommand();
+        vCmd.CommandText = PragmaUserVersion;
+        var curVer = Convert.ToInt32(vCmd.ExecuteScalar() ?? 0);
 
-                    // Migration v1 -> v2: Ensure provider key columns including Fal.ai
-                    EnsureColumn(conn, SqlLit.Users, "encrypted_gemini_api_key", "TEXT");
-                    EnsureColumn(conn, SqlLit.Users, "encrypted_anthropic_api_key", "TEXT");
-                    EnsureColumn(conn, SqlLit.Users, "encrypted_fal_api_key", "TEXT");
+        // Migration v1 -> v2: Ensure provider key columns including Fal.ai
+        EnsureColumn(conn, SqlLit.Users, "encrypted_gemini_api_key", "TEXT");
+        EnsureColumn(conn, SqlLit.Users, "encrypted_anthropic_api_key", "TEXT");
+        EnsureColumn(conn, SqlLit.Users, "encrypted_fal_api_key", "TEXT");
 
-                    if (curVer < 2)
-                    {
-                        using var setVer = conn.CreateCommand();
-                        setVer.CommandText = "PRAGMA user_version = 2;";
-                        setVer.ExecuteNonQuery();
-                        _logger.LogInformation("Migrated SQLite schema to user_version 2 (added provider key columns)");
-                    }
+        if (curVer < 2)
+        {
+            using var setVer = conn.CreateCommand();
+            setVer.CommandText = "PRAGMA user_version = 2;";
+            setVer.ExecuteNonQuery();
+            _logger.LogInformation("Migrated SQLite schema to user_version 2 (added provider key columns)");
+        }
 
-                    if (curVer < 3)
-                    {
-                        // Migration v2 -> v3: Auto-copy legacy column keys into unified user_api_keys table
-                        using (var copyCmd = conn.CreateCommand())
-                        {
-                            copyCmd.CommandText = $@"
+        if (curVer < 3)
+            CopyLegacyProviderKeysIntoApiKeysTable(conn);
+
+        if (curVer < 4)
+        {
+            // Migration v3 -> v4: generation_errors table created unconditionally below
+            // (CREATE TABLE IF NOT EXISTS, same idempotent style as user_api_calls) —
+            // this block only advances the version marker + logs the migration event.
+            using var setVer4 = conn.CreateCommand();
+            setVer4.CommandText = "PRAGMA user_version = 4;";
+            setVer4.ExecuteNonQuery();
+            _logger.LogInformation("Migrated SQLite schema to user_version 4 (added generation_errors table)");
+        }
+    }
+
+    private void CopyLegacyProviderKeysIntoApiKeysTable(SqliteConnection conn)
+    {
+        // Migration v2 -> v3: Auto-copy legacy column keys into unified user_api_keys table
+        using (var copyCmd = conn.CreateCommand())
+        {
+            copyCmd.CommandText = $@"
                                 INSERT OR IGNORE INTO user_api_keys (user_id, provider_id, encrypted_api_key, updated_at)
                                 SELECT user_id, 'grok', encrypted_xai_api_key, datetime('now') FROM {SqlLit.Users} WHERE encrypted_xai_api_key IS NOT NULL AND encrypted_xai_api_key != '';
                                 
@@ -272,57 +318,51 @@ public class UserDatabaseService
                                 INSERT OR IGNORE INTO user_api_keys (user_id, provider_id, encrypted_api_key, updated_at)
                                 SELECT user_id, 'fal', encrypted_fal_api_key, datetime('now') FROM {SqlLit.Users} WHERE encrypted_fal_api_key IS NOT NULL AND encrypted_fal_api_key != '';
                             ";
-                            copyCmd.ExecuteNonQuery();
-                        }
+            copyCmd.ExecuteNonQuery();
+        }
 
-                        using var setVer3 = conn.CreateCommand();
-                        setVer3.CommandText = "PRAGMA user_version = 3;";
-                        setVer3.ExecuteNonQuery();
-                        _logger.LogInformation("Migrated SQLite schema to user_version 3 (unified dynamic user_api_keys table)");
-                    }
+        using var setVer3 = conn.CreateCommand();
+        setVer3.CommandText = "PRAGMA user_version = 3;";
+        setVer3.ExecuteNonQuery();
+        _logger.LogInformation("Migrated SQLite schema to user_version 3 (unified dynamic user_api_keys table)");
+    }
 
-                    if (curVer < 4)
-                    {
-                        // Migration v3 -> v4: generation_errors table created unconditionally below
-                        // (CREATE TABLE IF NOT EXISTS, same idempotent style as user_api_calls) —
-                        // this block only advances the version marker + logs the migration event.
-                        using var setVer4 = conn.CreateCommand();
-                        setVer4.CommandText = "PRAGMA user_version = 4;";
-                        setVer4.ExecuteNonQuery();
-                        _logger.LogInformation("Migrated SQLite schema to user_version 4 (added generation_errors table)");
-                    }
-                }
+    private static void EnsureUserCreditAndTermsColumns(SqliteConnection conn)
+    {
+        // User billing credits (list-rate USD; 1 credit = $0.01).
+        EnsureColumn(conn, SqlLit.Users, "credits_balance_usd", SqlLit.RealNotNullDefault0);
+        EnsureColumn(conn, SqlLit.Users, "credits_lifetime_granted_usd", SqlLit.RealNotNullDefault0);
+        EnsureColumn(conn, SqlLit.Users, "credits_lifetime_used_usd", SqlLit.RealNotNullDefault0);
 
-                // User billing credits (list-rate USD; 1 credit = $0.01).
-                EnsureColumn(conn, SqlLit.Users, "credits_balance_usd", SqlLit.RealNotNullDefault0);
-                EnsureColumn(conn, SqlLit.Users, "credits_lifetime_granted_usd", SqlLit.RealNotNullDefault0);
-                EnsureColumn(conn, SqlLit.Users, "credits_lifetime_used_usd", SqlLit.RealNotNullDefault0);
+        // User Terms of Service acceptance tracking
+        EnsureColumn(conn, SqlLit.Users, "terms_accepted_at", "TEXT");
+        EnsureColumn(conn, SqlLit.Users, "terms_version", "TEXT");
 
-                // User Terms of Service acceptance tracking
-                EnsureColumn(conn, SqlLit.Users, "terms_accepted_at", "TEXT");
-                EnsureColumn(conn, SqlLit.Users, "terms_version", "TEXT");
+        // Admin disable (soft ban) — blocks login / API without deleting ledger.
+        EnsureColumn(conn, SqlLit.Users, "is_disabled", "INTEGER NOT NULL DEFAULT 0");
 
-                // Admin disable (soft ban) — blocks login / API without deleting ledger.
-                EnsureColumn(conn, SqlLit.Users, "is_disabled", "INTEGER NOT NULL DEFAULT 0");
+        // Forgot-password request marker (legacy admin path; email reset preferred).
+        EnsureColumn(conn, SqlLit.Users, "password_reset_requested_at", "TEXT");
+        EnsureColumn(conn, SqlLit.Users, "email", "TEXT");
+        EnsureColumn(conn, SqlLit.Users, "email_confirmed_at", "TEXT");
+        EnsureColumn(conn, SqlLit.Users, "active_project_id", "TEXT");
+    }
 
-                // Forgot-password request marker (legacy admin path; email reset preferred).
-                EnsureColumn(conn, SqlLit.Users, "password_reset_requested_at", "TEXT");
-                EnsureColumn(conn, SqlLit.Users, "email", "TEXT");
-                EnsureColumn(conn, SqlLit.Users, "email_confirmed_at", "TEXT");
-                EnsureColumn(conn, SqlLit.Users, "active_project_id", "TEXT");
-
-                using (var cmd = conn.CreateCommand())
-                {
-                    cmd.CommandText = $@"
+    private static void TryCreateUsersEmailIndex(SqliteConnection conn)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $@"
                         CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email
                         ON {SqlLit.Users}(email) WHERE email IS NOT NULL AND TRIM(email) != '';
                     ";
-                    try { cmd.ExecuteNonQuery(); } catch { /* index may already exist */ }
-                }
+        try { cmd.ExecuteNonQuery(); } catch { /* index may already exist */ }
+    }
 
-                using (var cmd = conn.CreateCommand())
-                {
-                    cmd.CommandText = @"
+    private static void CreateAuthTokensAndCreditLedger(SqliteConnection conn)
+    {
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = @"
                         CREATE TABLE IF NOT EXISTS auth_tokens (
                             token_hash TEXT PRIMARY KEY,
                             user_id TEXT NOT NULL,
@@ -333,12 +373,12 @@ public class UserDatabaseService
                         );
                         CREATE INDEX IF NOT EXISTS idx_auth_tokens_user ON auth_tokens(user_id);
                     ";
-                    cmd.ExecuteNonQuery();
-                }
+            cmd.ExecuteNonQuery();
+        }
 
-                using (var cmd = conn.CreateCommand())
-                {
-                    cmd.CommandText = @"
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = @"
                         CREATE TABLE IF NOT EXISTS credit_ledger (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
                             user_id TEXT NOT NULL,
@@ -353,12 +393,14 @@ public class UserDatabaseService
                         CREATE INDEX IF NOT EXISTS idx_credit_ledger_user ON credit_ledger(user_id);
                         CREATE INDEX IF NOT EXISTS idx_credit_ledger_ts ON credit_ledger(ts);
                     ";
-                    cmd.ExecuteNonQuery();
-                }
+            cmd.ExecuteNonQuery();
+        }
+    }
 
-                using (var cmd = conn.CreateCommand())
-                {
-                    cmd.CommandText = $@"
+    private static void CreateUserApiCallsTable(SqliteConnection conn)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $@"
                         CREATE TABLE IF NOT EXISTS {SqlLit.UserApiCalls} (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
                             user_id TEXT NOT NULL,
@@ -393,35 +435,43 @@ public class UserDatabaseService
                         CREATE INDEX IF NOT EXISTS idx_user_api_calls_project ON {SqlLit.UserApiCalls}(project_id);
                         CREATE INDEX IF NOT EXISTS idx_user_api_calls_kind ON {SqlLit.UserApiCalls}(kind);
                     ";
-                    cmd.ExecuteNonQuery();
-                }
+        cmd.ExecuteNonQuery();
+    }
 
-                // User-facing cost bucket (screenplay / characters / video / voice / music / other).
-                EnsureColumn(conn, SqlLit.UserApiCalls, "category", "TEXT");
-                // Customer charge (list × admin multiplier) — per-user actual charges.
-                EnsureColumn(conn, SqlLit.UserApiCalls, "charge_usd", "REAL");
-                EnsureColumn(conn, SqlLit.UserApiCalls, "charge_multiplier", "REAL");
-                // Retry attempt number (ApiCallTelemetry.Attempt) — needed to derive "succeeded after retry"
-                // in the AI-call analytics rollup (see GetAiCallRawDataAsync).
-                EnsureColumn(conn, SqlLit.UserApiCalls, "attempt", "INTEGER");
-                // Canonical outcome (AiCallOutcome, stored as its string name) — set once at write time
-                // in ProjectTelemetryService.LogApiCallAsync; replaces read-time string-guessing.
-                EnsureColumn(conn, SqlLit.UserApiCalls, "outcome", "TEXT");
-                try
-                {
-                    using var idxCmd = conn.CreateCommand();
-                    idxCmd.CommandText =
-                        $"CREATE INDEX IF NOT EXISTS idx_user_api_calls_category ON {SqlLit.UserApiCalls}(category);";
-                    idxCmd.ExecuteNonQuery();
-                }
-                catch { /* ignore */ }
+    private static void EnsureUserApiCallExtraColumns(SqliteConnection conn)
+    {
+        // User-facing cost bucket (screenplay / characters / video / voice / music / other).
+        EnsureColumn(conn, SqlLit.UserApiCalls, "category", "TEXT");
+        // Customer charge (list × admin multiplier) — per-user actual charges.
+        EnsureColumn(conn, SqlLit.UserApiCalls, "charge_usd", "REAL");
+        EnsureColumn(conn, SqlLit.UserApiCalls, "charge_multiplier", "REAL");
+        // Retry attempt number (ApiCallTelemetry.Attempt) — needed to derive "succeeded after retry"
+        // in the AI-call analytics rollup (see GetAiCallRawDataAsync).
+        EnsureColumn(conn, SqlLit.UserApiCalls, "attempt", "INTEGER");
+        // Canonical outcome (AiCallOutcome, stored as its string name) — set once at write time
+        // in ProjectTelemetryService.LogApiCallAsync; replaces read-time string-guessing.
+        EnsureColumn(conn, SqlLit.UserApiCalls, "outcome", "TEXT");
+    }
 
-                // generation_errors (v4): partial-coverage / structural-gate / transient-retry
-                // events — a different concept from user_api_calls (which logs every call,
-                // success or failure). See GenerationErrorLogger.
-                using (var cmd = conn.CreateCommand())
-                {
-                    cmd.CommandText = @"
+    private static void TryCreateUserApiCallsCategoryIndex(SqliteConnection conn)
+    {
+        try
+        {
+            using var idxCmd = conn.CreateCommand();
+            idxCmd.CommandText =
+                $"CREATE INDEX IF NOT EXISTS idx_user_api_calls_category ON {SqlLit.UserApiCalls}(category);";
+            idxCmd.ExecuteNonQuery();
+        }
+        catch { /* ignore */ }
+    }
+
+    private static void CreateGenerationErrorsTable(SqliteConnection conn)
+    {
+        // generation_errors (v4): partial-coverage / structural-gate / transient-retry
+        // events — a different concept from user_api_calls (which logs every call,
+        // success or failure). See GenerationErrorLogger.
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
                         CREATE TABLE IF NOT EXISTS generation_errors (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
                             ts TEXT NOT NULL,
@@ -447,13 +497,14 @@ public class UserDatabaseService
                         CREATE INDEX IF NOT EXISTS idx_generation_errors_project_ts ON generation_errors(project_id, ts);
                         CREATE INDEX IF NOT EXISTS idx_generation_errors_type_ts ON generation_errors(error_type, ts);
                     ";
-                    cmd.ExecuteNonQuery();
-                }
+        cmd.ExecuteNonQuery();
+    }
 
-                // H1–H9: durable video take events for takes-per-clip learning (fail-open dual-write).
-                using (var cmd = conn.CreateCommand())
-                {
-                    cmd.CommandText = @"
+    private static void CreateVideoTakeEventsTable(SqliteConnection conn)
+    {
+        // H1–H9: durable video take events for takes-per-clip learning (fail-open dual-write).
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
                         CREATE TABLE IF NOT EXISTS video_take_events (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
                             ts TEXT NOT NULL,
@@ -482,73 +533,83 @@ public class UserDatabaseService
                         CREATE INDEX IF NOT EXISTS idx_video_take_events_kind
                             ON video_take_events(take_kind);
                     ";
-                    cmd.ExecuteNonQuery();
-                }
+        cmd.ExecuteNonQuery();
+    }
 
-                // v5: attribute orphaned cost rows (no user / no project) to Bud Cribar + development.
-                // Also backfill charge_usd. Detects old DBs via PRAGMA user_version < 5 (Railway).
-                using (var vCmd5 = conn.CreateCommand())
-                {
-                    vCmd5.CommandText = PragmaUserVersion;
-                    var verAfterTables = Convert.ToInt32(vCmd5.ExecuteScalar() ?? 0);
-                    if (verAfterTables < 5)
-                    {
-                        MigrateLegacyCostAttributionV5(conn, _billing);
-                        using var setVer5 = conn.CreateCommand();
-                        setVer5.CommandText = "PRAGMA user_version = 5;";
-                        setVer5.ExecuteNonQuery();
-                        _logger.LogInformation(
-                            "Migrated SQLite schema to user_version 5 (legacy cost attribution → {User}/{Project})",
-                            string.IsNullOrWhiteSpace(_billing.LegacyCostOwnerUserId)
-                                ? DefaultOperatorUserId
-                                : _billing.LegacyCostOwnerUserId.Trim(),
-                            string.IsNullOrWhiteSpace(_billing.LegacyCostProjectId)
-                                ? "development"
-                                : _billing.LegacyCostProjectId.Trim());
-                    }
-                }
+    private void MigrateUserSchemaV5ToV7(SqliteConnection conn)
+    {
+        // v5: attribute orphaned cost rows (no user / no project) to Bud Cribar + development.
+        // Also backfill charge_usd. Detects old DBs via PRAGMA user_version < 5 (Railway).
+        if (ReadUserVersion(conn) < 5)
+        {
+            MigrateLegacyCostAttributionV5(conn, _billing);
+            SetUserVersion(conn, 5);
+            _logger.LogInformation(
+                "Migrated SQLite schema to user_version 5 (legacy cost attribution → {User}/{Project})",
+                LegacyCostOwnerId(),
+                LegacyCostProjectId());
+        }
 
-                // v6: one operator account — handle budcribar + email budcribar@msn.com.
-                // Merges alias accounts (email-shaped usernames, msn.com folder ids) into primary,
-                // reassigns all spend/estimates/credits, and rehomes project folders on disk.
-                using (var vCmd6 = conn.CreateCommand())
-                {
-                    vCmd6.CommandText = PragmaUserVersion;
-                    var ver6 = Convert.ToInt32(vCmd6.ExecuteScalar() ?? 0);
-                    if (ver6 < 6)
-                    {
-                        MigrateCanonicalAccountV6(conn, _billing);
-                        using var setVer6 = conn.CreateCommand();
-                        setVer6.CommandText = "PRAGMA user_version = 6;";
-                        setVer6.ExecuteNonQuery();
-                        _logger.LogInformation(
-                            "Migrated SQLite schema to user_version 6 (canonical account {User} / {Email})",
-                            string.IsNullOrWhiteSpace(_billing.LegacyCostOwnerUserId)
-                                ? DefaultOperatorUserId
-                                : _billing.LegacyCostOwnerUserId.Trim(),
-                            string.IsNullOrWhiteSpace(_billing.CanonicalAccountEmail)
-                                ? "budcribar@msn.com"
-                                : _billing.CanonicalAccountEmail.Trim());
-                    }
-                }
+        // v6: one operator account — handle budcribar + email budcribar@msn.com.
+        // Merges alias accounts (email-shaped usernames, msn.com folder ids) into primary,
+        // reassigns all spend/estimates/credits, and rehomes project folders on disk.
+        if (ReadUserVersion(conn) < 6)
+        {
+            MigrateCanonicalAccountV6(conn, _billing);
+            SetUserVersion(conn, 6);
+            _logger.LogInformation(
+                "Migrated SQLite schema to user_version 6 (canonical account {User} / {Email})",
+                LegacyCostOwnerId(),
+                CanonicalAccountEmail());
+        }
 
-                // v7: video_take_events (CREATE IF NOT EXISTS above is idempotent).
-                using (var vCmd7 = conn.CreateCommand())
-                {
-                    vCmd7.CommandText = PragmaUserVersion;
-                    var ver7 = Convert.ToInt32(vCmd7.ExecuteScalar() ?? 0);
-                    if (ver7 < 7)
-                    {
-                        using var setVer7 = conn.CreateCommand();
-                        setVer7.CommandText = "PRAGMA user_version = 7;";
-                        setVer7.ExecuteNonQuery();
-                        _logger.LogInformation("Migrated SQLite schema to user_version 7 (video_take_events)");
-                    }
-                }
+        // v7: video_take_events (CREATE IF NOT EXISTS above is idempotent).
+        if (ReadUserVersion(conn) < 7)
+        {
+            SetUserVersion(conn, 7);
+            _logger.LogInformation("Migrated SQLite schema to user_version 7 (video_take_events)");
+        }
+    }
 
-                using (var cmd = conn.CreateCommand())
-                {
-                    cmd.CommandText = $@"
+    private static int ReadUserVersion(SqliteConnection conn)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = PragmaUserVersion;
+        return Convert.ToInt32(cmd.ExecuteScalar() ?? 0);
+    }
+
+    private static void SetUserVersion(SqliteConnection conn, int version)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = version switch
+        {
+            5 => "PRAGMA user_version = 5;",
+            6 => "PRAGMA user_version = 6;",
+            7 => "PRAGMA user_version = 7;",
+            _ => throw new ArgumentOutOfRangeException(nameof(version), version, "Unsupported schema version."),
+        };
+        cmd.ExecuteNonQuery();
+    }
+
+    private string LegacyCostOwnerId() =>
+        string.IsNullOrWhiteSpace(_billing.LegacyCostOwnerUserId)
+            ? DefaultOperatorUserId
+            : _billing.LegacyCostOwnerUserId.Trim();
+
+    private string LegacyCostProjectId() =>
+        string.IsNullOrWhiteSpace(_billing.LegacyCostProjectId)
+            ? "development"
+            : _billing.LegacyCostProjectId.Trim();
+
+    private string CanonicalAccountEmail() =>
+        string.IsNullOrWhiteSpace(_billing.CanonicalAccountEmail)
+            ? "budcribar@msn.com"
+            : _billing.CanonicalAccountEmail.Trim();
+
+    private void EnsureDefaultAdminUser(SqliteConnection conn)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $@"
                         INSERT INTO {SqlLit.Users} (user_id, username, password_hash, role, created_at, email_confirmed_at)
                         VALUES ('admin', 'admin', @hash, 'Admin', {SqlLit.ParamCreated}, {SqlLit.ParamCreated})
                         ON CONFLICT(user_id) DO UPDATE SET
@@ -556,20 +617,11 @@ public class UserDatabaseService
                             role = 'Admin',
                             email_confirmed_at = COALESCE({SqlLit.Users}.email_confirmed_at, {SqlLit.ParamCreated});
                     ";
-                    cmd.Parameters.AddWithValue("@hash", HashPassword("admin"));
-                    cmd.Parameters.AddWithValue(SqlLit.ParamCreated, DateTime.UtcNow.ToString("o"));
-                    cmd.ExecuteNonQuery();
-                }
-
-                _initialized = true;
-                _logger.LogInformation("SQLite database initialized at {DbPath} (WAL mode enabled)", _dbPath);
-            }
-            catch (Exception ex)
-            {
-                throw new InvalidOperationException($"Failed to initialize SQLite database at {_dbPath}.", ex);
-            }
-        }
+        cmd.Parameters.AddWithValue("@hash", HashPassword("admin"));
+        cmd.Parameters.AddWithValue(SqlLit.ParamCreated, DateTime.UtcNow.ToString("o"));
+        cmd.ExecuteNonQuery();
     }
+
 
     /// <summary>
     /// One-shot migration for Railway / old DBs: rows with missing user and/or project
@@ -2171,11 +2223,33 @@ public class UserDatabaseService
         {
             using var conn = new SqliteConnection(ConnectionString);
             await conn.OpenAsync(ct).ConfigureAwait(false);
+            var pidFilter = string.IsNullOrWhiteSpace(projectId) ? "" : projectId.Trim();
+            var chargeMult = PageToMovie.Core.Billing.ChargePricing.ClampMultiplier(_billing.ChargeMultiplier);
 
-            // Totals + by project
-            using (var cmd = conn.CreateCommand())
-            {
-                cmd.CommandText = $"""
+            await FillSpendByProjectAsync(conn, summary, pidFilter, chargeMult, ct).ConfigureAwait(false);
+            summary.TotalListUsd = Math.Round(summary.TotalListUsd, 4);
+            summary.TotalChargeUsd = Math.Round(summary.TotalChargeUsd, 4);
+
+            var byProv = await GetApiCostByProviderAsync(summary.UserId, projectId, ct).ConfigureAwait(false);
+            summary.ByProvider = byProv.ByProvider
+                .OrderByDescending(kv => kv.Value.TotalChargeUsd)
+                .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase);
+
+            await FillSpendByCategoryAsync(conn, summary, pidFilter, chargeMult, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "GetUserSpendSummaryAsync failed for {UserId}", summary.UserId);
+        }
+
+        return summary;
+    }
+
+    private static async Task FillSpendByProjectAsync(
+        SqliteConnection conn, UserSpendSummary summary, string pidFilter, double chargeMult, CancellationToken ct)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $"""
                     SELECT
                         COALESCE(NULLIF(TRIM(project_id), ''), '(no project)') AS proj,
                         COUNT(*),
@@ -2190,42 +2264,33 @@ public class UserDatabaseService
                     GROUP BY proj
                     ORDER BY 4 DESC
                     """;
-                cmd.Parameters.AddWithValue(SqlLit.ParamUserId, summary.UserId);
-                cmd.Parameters.AddWithValue(SqlLit.ParamProjectId, string.IsNullOrWhiteSpace(projectId) ? "" : projectId.Trim());
-            cmd.Parameters.AddWithValue("@chargeMult", PageToMovie.Core.Billing.ChargePricing.ClampMultiplier(_billing.ChargeMultiplier));
-                using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
-                while (await r.ReadAsync(ct).ConfigureAwait(false))
-                {
-                    var proj = r.GetString(0);
-                    var count = r.GetInt32(1);
-                    var listSum = r.GetDouble(2);
-                    var chargeSum = r.GetDouble(3);
-                    summary.ByProject.Add(new ProjectSpendRow
-                    {
-                        ProjectId = proj,
-                        Calls = count,
-                        ListUsd = Math.Round(listSum, 4),
-                        ChargeUsd = Math.Round(chargeSum, 4),
-                    });
-                    summary.TotalCalls += count;
-                    summary.TotalListUsd += listSum;
-                    summary.TotalChargeUsd += chargeSum;
-                }
-            }
-
-            summary.TotalListUsd = Math.Round(summary.TotalListUsd, 4);
-            summary.TotalChargeUsd = Math.Round(summary.TotalChargeUsd, 4);
-
-            // By provider (reuse filter)
-            var byProv = await GetApiCostByProviderAsync(summary.UserId, projectId, ct).ConfigureAwait(false);
-            summary.ByProvider = byProv.ByProvider
-                .OrderByDescending(kv => kv.Value.TotalChargeUsd)
-                .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase);
-
-            // By category (user-facing buckets)
-            using (var cmd = conn.CreateCommand())
+        cmd.Parameters.AddWithValue(SqlLit.ParamUserId, summary.UserId);
+        cmd.Parameters.AddWithValue(SqlLit.ParamProjectId, pidFilter);
+        cmd.Parameters.AddWithValue("@chargeMult", chargeMult);
+        using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await r.ReadAsync(ct).ConfigureAwait(false))
+        {
+            var count = r.GetInt32(1);
+            var listSum = r.GetDouble(2);
+            var chargeSum = r.GetDouble(3);
+            summary.ByProject.Add(new ProjectSpendRow
             {
-                cmd.CommandText = $"""
+                ProjectId = r.GetString(0),
+                Calls = count,
+                ListUsd = Math.Round(listSum, 4),
+                ChargeUsd = Math.Round(chargeSum, 4),
+            });
+            summary.TotalCalls += count;
+            summary.TotalListUsd += listSum;
+            summary.TotalChargeUsd += chargeSum;
+        }
+    }
+
+    private static async Task FillSpendByCategoryAsync(
+        SqliteConnection conn, UserSpendSummary summary, string pidFilter, double chargeMult, CancellationToken ct)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $"""
                     SELECT
                         COALESCE(NULLIF(TRIM(category), ''), NULLIF(TRIM(kind), ''), 'other') AS cat,
                         COUNT(*),
@@ -2239,34 +2304,26 @@ public class UserDatabaseService
                       AND ({SqlLit.ParamProjectId} = '' OR project_id = {SqlLit.ParamProjectId})
                     GROUP BY cat
                     """;
-                cmd.Parameters.AddWithValue(SqlLit.ParamUserId, summary.UserId);
-                cmd.Parameters.AddWithValue(SqlLit.ParamProjectId, string.IsNullOrWhiteSpace(projectId) ? "" : projectId.Trim());
-            cmd.Parameters.AddWithValue("@chargeMult", PageToMovie.Core.Billing.ChargePricing.ClampMultiplier(_billing.ChargeMultiplier));
-                using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
-                while (await r.ReadAsync(ct).ConfigureAwait(false))
-                {
-                    var cat = CostCategories.Resolve(r.GetString(0), null, r.GetString(0));
-                    var count = r.GetInt32(1);
-                    var listSum = r.GetDouble(2);
-                    var chargeSum = r.GetDouble(3);
-                    summary.ByCategory[cat] = new CategoryCostStats
-                    {
-                        Category = cat,
-                        Count = count,
-                        TotalListUsd = Math.Round(listSum, 4),
-                        TotalChargeUsd = Math.Round(chargeSum, 4),
-                        TotalUsd = Math.Round(chargeSum, 4),
-                        AvgUsd = count > 0 ? Math.Round(chargeSum / count, 4) : 0,
-                    };
-                }
-            }
-        }
-        catch (Exception ex)
+        cmd.Parameters.AddWithValue(SqlLit.ParamUserId, summary.UserId);
+        cmd.Parameters.AddWithValue(SqlLit.ParamProjectId, pidFilter);
+        cmd.Parameters.AddWithValue("@chargeMult", chargeMult);
+        using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await r.ReadAsync(ct).ConfigureAwait(false))
         {
-            _logger.LogDebug(ex, "GetUserSpendSummaryAsync failed for {UserId}", summary.UserId);
+            var cat = CostCategories.Resolve(r.GetString(0), null, r.GetString(0));
+            var count = r.GetInt32(1);
+            var listSum = r.GetDouble(2);
+            var chargeSum = r.GetDouble(3);
+            summary.ByCategory[cat] = new CategoryCostStats
+            {
+                Category = cat,
+                Count = count,
+                TotalListUsd = Math.Round(listSum, 4),
+                TotalChargeUsd = Math.Round(chargeSum, 4),
+                TotalUsd = Math.Round(chargeSum, 4),
+                AvgUsd = count > 0 ? Math.Round(chargeSum / count, 4) : 0,
+            };
         }
-
-        return summary;
     }
 
     public async Task InsertUserApiCallAsync(ApiCallTelemetry rec, CancellationToken ct = default)
@@ -2361,135 +2418,11 @@ public class UserDatabaseService
                 await tmp.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
             }
 
-            using (var cmd = conn.CreateCommand())
-            {
-                cmd.CommandText = """
-                    SELECT
-                        COUNT(*),
-                        SUM(CASE WHEN ok = 1 AND COALESCE(attempt, 1) <= 1 THEN 1 ELSE 0 END),
-                        SUM(CASE WHEN ok = 1 AND attempt > 1 THEN 1 ELSE 0 END),
-                        SUM(CASE WHEN ok = 0 THEN 1 ELSE 0 END),
-                        SUM(CASE WHEN fakes = 1 THEN 1 ELSE 0 END),
-                        COALESCE(SUM(COALESCE(charge_usd, estimated_usd, 0)), 0),
-                        COALESCE(AVG(duration_ms), 0),
-                        COUNT(DISTINCT project_id)
-                    FROM recent_calls
-                    """;
-                using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
-                if (await r.ReadAsync(ct).ConfigureAwait(false))
-                {
-                    raw.TotalCalls = r.GetInt32(0);
-                    raw.OkCalls = r.GetInt32(1);
-                    raw.RetriedCalls = r.GetInt32(2);
-                    raw.FailedCalls = r.GetInt32(3);
-                    raw.FakeCalls = r.GetInt32(4);
-                    raw.TotalCostUsd = r.GetDouble(5);
-                    raw.AvgDurationMs = r.GetDouble(6);
-                    raw.ProjectsScanned = r.GetInt32(7);
-                }
-            }
-
-            using (var cmd = conn.CreateCommand())
-            {
-                cmd.CommandText = """
-                    SELECT
-                        LOWER(TRIM(COALESCE(NULLIF(TRIM(kind), ''), '(unknown)'))) AS op,
-                        COUNT(*),
-                        SUM(CASE WHEN ok = 1 AND attempt > 1 THEN 1 ELSE 0 END),
-                        SUM(CASE WHEN ok = 0 THEN 1 ELSE 0 END),
-                        COALESCE(SUM(COALESCE(charge_usd, estimated_usd, 0)), 0),
-                        COALESCE(AVG(duration_ms), 0)
-                    FROM recent_calls
-                    GROUP BY op
-                    ORDER BY 2 DESC
-                    """;
-                using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
-                while (await r.ReadAsync(ct).ConfigureAwait(false))
-                {
-                    raw.Ops.Add(new AiOpStat
-                    {
-                        Op = r.GetString(0),
-                        Calls = r.GetInt32(1),
-                        Retried = r.GetInt32(2),
-                        Failed = r.GetInt32(3),
-                        CostUsd = Math.Round(r.GetDouble(4), 4),
-                        AvgDurationMs = Math.Round(r.GetDouble(5), 0),
-                    });
-                }
-            }
-
-            using (var cmd = conn.CreateCommand())
-            {
-                cmd.CommandText = """
-                    SELECT
-                        COALESCE(NULLIF(TRIM(model), ''), '(none)') AS mdl,
-                        MAX(COALESCE(provider, '')),
-                        COUNT(*),
-                        SUM(CASE WHEN ok = 0 THEN 1 ELSE 0 END),
-                        COALESCE(SUM(COALESCE(charge_usd, estimated_usd, 0)), 0)
-                    FROM recent_calls
-                    GROUP BY mdl
-                    ORDER BY 3 DESC
-                    """;
-                using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
-                while (await r.ReadAsync(ct).ConfigureAwait(false))
-                {
-                    raw.Models.Add(new AiModelStat
-                    {
-                        Model = r.GetString(0),
-                        Provider = r.GetString(1),
-                        Calls = r.GetInt32(2),
-                        Failed = r.GetInt32(3),
-                        CostUsd = Math.Round(r.GetDouble(4), 4),
-                    });
-                }
-            }
-
-            using (var cmd = conn.CreateCommand())
-            {
-                cmd.CommandText = """
-                    SELECT ts, kind, model, http_status, error, COALESCE(project_id, ''), outcome
-                    FROM recent_calls
-                    WHERE ok = 0
-                    ORDER BY ts DESC
-                    LIMIT 400
-                    """;
-                using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
-                while (await r.ReadAsync(ct).ConfigureAwait(false))
-                {
-                    DateTimeOffset? ts = r.IsDBNull(0) ? null : DateTimeOffset.Parse(r.GetString(0), CultureInfo.InvariantCulture);
-                    raw.Failures.Add(new AiCallFailureRow
-                    {
-                        Ts = ts,
-                        Kind = r.IsDBNull(1) ? "" : r.GetString(1),
-                        Model = r.IsDBNull(2) ? "(none)" : r.GetString(2),
-                        HttpStatus = r.IsDBNull(3) ? null : r.GetInt32(3),
-                        Error = r.IsDBNull(4) ? null : r.GetString(4),
-                        ProjectId = r.GetString(5),
-                        Outcome = r.IsDBNull(6) ? "error" : r.GetString(6),
-                    });
-                }
-            }
-
-            using (var cmd = conn.CreateCommand())
-            {
-                cmd.CommandText = """
-                    SELECT COALESCE(NULLIF(TRIM(mode), ''), 'unspecified') AS reason, COUNT(*)
-                    FROM recent_calls
-                    WHERE kind = 'style_gate_override'
-                    GROUP BY reason
-                    ORDER BY 2 DESC
-                    """;
-                using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
-                while (await r.ReadAsync(ct).ConfigureAwait(false))
-                {
-                    raw.OverrideReasons.Add(new AiOverrideReasonStat
-                    {
-                        Reason = r.GetString(0),
-                        Count = r.GetInt32(1),
-                    });
-                }
-            }
+            await FillAiCallTotalsAsync(conn, raw, ct).ConfigureAwait(false);
+            await FillAiCallOpsAsync(conn, raw, ct).ConfigureAwait(false);
+            await FillAiCallModelsAsync(conn, raw, ct).ConfigureAwait(false);
+            await FillAiCallFailuresAsync(conn, raw, ct).ConfigureAwait(false);
+            await FillAiCallOverrideReasonsAsync(conn, raw, ct).ConfigureAwait(false);
 
             using (var drop = conn.CreateCommand())
             {
@@ -2503,6 +2436,139 @@ public class UserDatabaseService
         }
 
         return raw;
+    }
+
+    private static async Task FillAiCallTotalsAsync(SqliteConnection conn, AiCallAnalyticsRawData raw, CancellationToken ct)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+                    SELECT
+                        COUNT(*),
+                        SUM(CASE WHEN ok = 1 AND COALESCE(attempt, 1) <= 1 THEN 1 ELSE 0 END),
+                        SUM(CASE WHEN ok = 1 AND attempt > 1 THEN 1 ELSE 0 END),
+                        SUM(CASE WHEN ok = 0 THEN 1 ELSE 0 END),
+                        SUM(CASE WHEN fakes = 1 THEN 1 ELSE 0 END),
+                        COALESCE(SUM(COALESCE(charge_usd, estimated_usd, 0)), 0),
+                        COALESCE(AVG(duration_ms), 0),
+                        COUNT(DISTINCT project_id)
+                    FROM recent_calls
+                    """;
+        using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        if (!await r.ReadAsync(ct).ConfigureAwait(false)) return;
+        raw.TotalCalls = r.GetInt32(0);
+        raw.OkCalls = r.GetInt32(1);
+        raw.RetriedCalls = r.GetInt32(2);
+        raw.FailedCalls = r.GetInt32(3);
+        raw.FakeCalls = r.GetInt32(4);
+        raw.TotalCostUsd = r.GetDouble(5);
+        raw.AvgDurationMs = r.GetDouble(6);
+        raw.ProjectsScanned = r.GetInt32(7);
+    }
+
+    private static async Task FillAiCallOpsAsync(SqliteConnection conn, AiCallAnalyticsRawData raw, CancellationToken ct)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+                    SELECT
+                        LOWER(TRIM(COALESCE(NULLIF(TRIM(kind), ''), '(unknown)'))) AS op,
+                        COUNT(*),
+                        SUM(CASE WHEN ok = 1 AND attempt > 1 THEN 1 ELSE 0 END),
+                        SUM(CASE WHEN ok = 0 THEN 1 ELSE 0 END),
+                        COALESCE(SUM(COALESCE(charge_usd, estimated_usd, 0)), 0),
+                        COALESCE(AVG(duration_ms), 0)
+                    FROM recent_calls
+                    GROUP BY op
+                    ORDER BY 2 DESC
+                    """;
+        using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await r.ReadAsync(ct).ConfigureAwait(false))
+        {
+            raw.Ops.Add(new AiOpStat
+            {
+                Op = r.GetString(0),
+                Calls = r.GetInt32(1),
+                Retried = r.GetInt32(2),
+                Failed = r.GetInt32(3),
+                CostUsd = Math.Round(r.GetDouble(4), 4),
+                AvgDurationMs = Math.Round(r.GetDouble(5), 0),
+            });
+        }
+    }
+
+    private static async Task FillAiCallModelsAsync(SqliteConnection conn, AiCallAnalyticsRawData raw, CancellationToken ct)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+                    SELECT
+                        COALESCE(NULLIF(TRIM(model), ''), '(none)') AS mdl,
+                        MAX(COALESCE(provider, '')),
+                        COUNT(*),
+                        SUM(CASE WHEN ok = 0 THEN 1 ELSE 0 END),
+                        COALESCE(SUM(COALESCE(charge_usd, estimated_usd, 0)), 0)
+                    FROM recent_calls
+                    GROUP BY mdl
+                    ORDER BY 3 DESC
+                    """;
+        using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await r.ReadAsync(ct).ConfigureAwait(false))
+        {
+            raw.Models.Add(new AiModelStat
+            {
+                Model = r.GetString(0),
+                Provider = r.GetString(1),
+                Calls = r.GetInt32(2),
+                Failed = r.GetInt32(3),
+                CostUsd = Math.Round(r.GetDouble(4), 4),
+            });
+        }
+    }
+
+    private static async Task FillAiCallFailuresAsync(SqliteConnection conn, AiCallAnalyticsRawData raw, CancellationToken ct)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+                    SELECT ts, kind, model, http_status, error, COALESCE(project_id, ''), outcome
+                    FROM recent_calls
+                    WHERE ok = 0
+                    ORDER BY ts DESC
+                    LIMIT 400
+                    """;
+        using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await r.ReadAsync(ct).ConfigureAwait(false))
+            raw.Failures.Add(ReadAiCallFailureRow(r));
+    }
+
+    private static AiCallFailureRow ReadAiCallFailureRow(SqliteDataReader r) =>
+        new()
+        {
+            Ts = r.IsDBNull(0) ? null : DateTimeOffset.Parse(r.GetString(0), CultureInfo.InvariantCulture),
+            Kind = r.IsDBNull(1) ? "" : r.GetString(1),
+            Model = r.IsDBNull(2) ? "(none)" : r.GetString(2),
+            HttpStatus = r.IsDBNull(3) ? null : r.GetInt32(3),
+            Error = r.IsDBNull(4) ? null : r.GetString(4),
+            ProjectId = r.GetString(5),
+            Outcome = r.IsDBNull(6) ? "error" : r.GetString(6),
+        };
+
+    private static async Task FillAiCallOverrideReasonsAsync(SqliteConnection conn, AiCallAnalyticsRawData raw, CancellationToken ct)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+                    SELECT COALESCE(NULLIF(TRIM(mode), ''), 'unspecified') AS reason, COUNT(*)
+                    FROM recent_calls
+                    WHERE kind = 'style_gate_override'
+                    GROUP BY reason
+                    ORDER BY 2 DESC
+                    """;
+        using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await r.ReadAsync(ct).ConfigureAwait(false))
+        {
+            raw.OverrideReasons.Add(new AiOverrideReasonStat
+            {
+                Reason = r.GetString(0),
+                Count = r.GetInt32(1),
+            });
+        }
     }
 
     /// <summary>
@@ -3567,35 +3633,56 @@ public class UserDatabaseService
         return Convert.ToHexString(bytes).ToLowerInvariant();
     }
 
-    private static UserEntity ReadUserFromReader(SqliteDataReader reader)
-    {
-        // 0 id, 1 name, 2 hash, 3 xai, 4 gemini, 5 anthropic, 6 fal, 7 role, 8 created, 9 login,
-        // 10 balance, 11 granted, 12 used, 13 is_disabled, 14 email, 15 email_confirmed_at
-        DateTimeOffset? confirmed = null;
-        if (reader.FieldCount > 15 && !reader.IsDBNull(15))
-        {
-            var raw = reader.GetString(15);
-            if (DateTimeOffset.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var c)) confirmed = c;
-        }
-        return new UserEntity
+    private static UserEntity ReadUserFromReader(SqliteDataReader reader) =>
+        new()
         {
             UserId = reader.GetString(0),
             Username = reader.GetString(1),
             PasswordHash = reader.GetString(2),
-            EncryptedXaiApiKey = reader.IsDBNull(3) ? null : reader.GetString(3),
-            EncryptedGeminiApiKey = reader.IsDBNull(4) ? null : reader.GetString(4),
-            EncryptedAnthropicApiKey = reader.IsDBNull(5) ? null : reader.GetString(5),
-            EncryptedFalApiKey = reader.IsDBNull(6) ? null : reader.GetString(6),
+            EncryptedXaiApiKey = DbString(reader, 3),
+            EncryptedGeminiApiKey = DbString(reader, 4),
+            EncryptedAnthropicApiKey = DbString(reader, 5),
+            EncryptedFalApiKey = DbString(reader, 6),
             Role = reader.GetString(7),
-            CreatedAt = DateTime.TryParse(reader.GetString(8), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var dt) ? dt : DateTime.UtcNow,
-            LastLoginAt = reader.IsDBNull(9) ? null : (DateTime.TryParse(reader.GetString(9), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var ldt) ? ldt : null),
-            CreditsBalanceUsd = reader.FieldCount > 10 && !reader.IsDBNull(10) ? reader.GetDouble(10) : 0,
-            CreditsLifetimeGrantedUsd = reader.FieldCount > 11 && !reader.IsDBNull(11) ? reader.GetDouble(11) : 0,
-            CreditsLifetimeUsedUsd = reader.FieldCount > 12 && !reader.IsDBNull(12) ? reader.GetDouble(12) : 0,
-            IsDisabled = reader.FieldCount > 13 && !reader.IsDBNull(13) && reader.GetInt64(13) != 0,
-            Email = reader.FieldCount > 14 && !reader.IsDBNull(14) ? reader.GetString(14) : null,
-            EmailConfirmedAt = confirmed,
+            CreatedAt = ReadDateTimeOrUtcNow(reader, 8),
+            LastLoginAt = ReadOptionalDateTime(reader, 9),
+            CreditsBalanceUsd = ReadDoubleOrZero(reader, 10),
+            CreditsLifetimeGrantedUsd = ReadDoubleOrZero(reader, 11),
+            CreditsLifetimeUsedUsd = ReadDoubleOrZero(reader, 12),
+            IsDisabled = ReadDisabledFlag(reader, 13),
+            Email = ReadOptionalStringAt(reader, 14),
+            EmailConfirmedAt = ReadOptionalDateTimeOffsetAt(reader, 15),
         };
+
+    private static DateTime ReadDateTimeOrUtcNow(SqliteDataReader reader, int i) =>
+        DateTime.TryParse(reader.GetString(i), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var dt)
+            ? dt
+            : DateTime.UtcNow;
+
+    private static DateTime? ReadOptionalDateTime(SqliteDataReader reader, int i)
+    {
+        if (reader.IsDBNull(i)) return null;
+        return DateTime.TryParse(reader.GetString(i), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var ldt)
+            ? ldt
+            : null;
+    }
+
+    private static double ReadDoubleOrZero(SqliteDataReader reader, int i) =>
+        reader.FieldCount > i && !reader.IsDBNull(i) ? reader.GetDouble(i) : 0;
+
+    private static bool ReadDisabledFlag(SqliteDataReader reader, int i) =>
+        reader.FieldCount > i && !reader.IsDBNull(i) && reader.GetInt64(i) != 0;
+
+    private static string? ReadOptionalStringAt(SqliteDataReader reader, int i) =>
+        reader.FieldCount > i && !reader.IsDBNull(i) ? reader.GetString(i) : null;
+
+    private static DateTimeOffset? ReadOptionalDateTimeOffsetAt(SqliteDataReader reader, int i)
+    {
+        if (reader.FieldCount <= i || reader.IsDBNull(i)) return null;
+        var raw = reader.GetString(i);
+        return DateTimeOffset.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var c)
+            ? c
+            : null;
     }
 }
 

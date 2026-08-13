@@ -74,7 +74,15 @@ public sealed class CatalogUpdateProbeService
             var k = await _keyProvider.GetKeyAsync(userId, providerId, ct).ConfigureAwait(false);
             if (!string.IsNullOrWhiteSpace(k)) return k.Trim();
         }
-        var envKeyName = providerId.ToLowerInvariant() switch
+        if (TryTrimmedEnv(EnvKeyNameForProvider(providerId), out var env)) return env;
+        if (IsGeminiFamily(providerId) && TryTrimmedEnv("GOOGLE_API_KEY", out var g)) return g;
+        if (providerId.Equals(ProviderFal, StringComparison.OrdinalIgnoreCase) && TryTrimmedEnv("FAL_API_KEY", out var f))
+            return f;
+        return null;
+    }
+
+    private static string? EnvKeyNameForProvider(string providerId) =>
+        providerId.ToLowerInvariant() switch
         {
             ProviderOpenAi => "OPENAI_API_KEY",
             ProviderGrok or ProviderXai => "XAI_API_KEY",
@@ -83,22 +91,19 @@ public sealed class CatalogUpdateProbeService
             ProviderFal => "FAL_KEY",
             _ => null
         };
-        if (envKeyName is not null)
-        {
-            var env = Environment.GetEnvironmentVariable(envKeyName);
-            if (!string.IsNullOrWhiteSpace(env)) return env.Trim();
-        }
-        if (providerId.Equals(ProviderGemini, StringComparison.OrdinalIgnoreCase) || providerId.Equals(ProviderGoogle, StringComparison.OrdinalIgnoreCase))
-        {
-            var g = Environment.GetEnvironmentVariable("GOOGLE_API_KEY");
-            if (!string.IsNullOrWhiteSpace(g)) return g.Trim();
-        }
-        if (providerId.Equals(ProviderFal, StringComparison.OrdinalIgnoreCase))
-        {
-            var f = Environment.GetEnvironmentVariable("FAL_API_KEY");
-            if (!string.IsNullOrWhiteSpace(f)) return f.Trim();
-        }
-        return null;
+
+    private static bool IsGeminiFamily(string providerId) =>
+        providerId.Equals(ProviderGemini, StringComparison.OrdinalIgnoreCase)
+        || providerId.Equals(ProviderGoogle, StringComparison.OrdinalIgnoreCase);
+
+    private static bool TryTrimmedEnv(string? name, out string value)
+    {
+        value = "";
+        if (name is null) return false;
+        var env = Environment.GetEnvironmentVariable(name);
+        if (string.IsNullOrWhiteSpace(env)) return false;
+        value = env.Trim();
+        return true;
     }
 
     public async Task<CatalogUpdateScanResult> ScanAsync(string? userId = null, CancellationToken ct = default)
@@ -173,28 +178,9 @@ public sealed class CatalogUpdateProbeService
     private async Task ProbeEntryAsync(SupportedModelEntry entry, CatalogModelProbeResult row, string? userId, CancellationToken ct)
     {
         var provider = entry.ProviderId ?? "";
+        AddStalePricingReviewIfNeeded(entry, row);
 
-        // Capability-agnostic: review dates age (informational, not live)
-        if (!string.IsNullOrWhiteSpace(entry.PricingLastReviewedAt) &&
-            DateTime.TryParse(entry.PricingLastReviewedAt, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var reviewed) &&
-            (DateTime.UtcNow.Date - reviewed.Date).TotalDays > 90)
-        {
-            row.Fields.Add(new CatalogFieldProbeResult
-            {
-                Field = "pricingLastReviewedAt",
-                CatalogValue = entry.PricingLastReviewedAt,
-                LiveValue = null,
-                Status = StatusNotFound,
-                Message = "Last cost review > 90 days ago — re-check vendor pricing.",
-            });
-        }
-
-        var isFal = string.Equals(provider, ProviderFal, StringComparison.OrdinalIgnoreCase)
-                    || entry.Id.StartsWith("fal-", StringComparison.OrdinalIgnoreCase)
-                    || entry.Id.StartsWith("fal-ai/", StringComparison.OrdinalIgnoreCase)
-                    || (entry.EndpointPath?.Contains(ProviderFal, StringComparison.OrdinalIgnoreCase) == true);
-
-        if (isFal)
+        if (IsFalEntry(entry, provider))
         {
             await ProbeFalPricingAsync(entry, row, userId, ct).ConfigureAwait(false);
             return;
@@ -202,37 +188,12 @@ public sealed class CatalogUpdateProbeService
 
         if (string.Equals(provider, ProviderXai, StringComparison.OrdinalIgnoreCase))
         {
-            // P1: pricing from docs pages + existing duration probes for video
-            await ProbeXaiPricingAsync(entry, row, ct).ConfigureAwait(false);
-            if (entry.Capability == ModelCapability.Video)
-                await ProbeXaiVideoAsync(entry, row, ct).ConfigureAwait(false);
-            else if (entry.Capability is ModelCapability.Chat or ModelCapability.Vision)
-                await ProbeXaiChatExistsAsync(entry, row, userId, ct).ConfigureAwait(false);
+            await ProbeXaiEntryAsync(entry, row, userId, ct).ConfigureAwait(false);
             return;
         }
 
-        if (entry.Capability is ModelCapability.Chat or ModelCapability.Vision &&
-            string.Equals(provider, ProviderOpenAi, StringComparison.OrdinalIgnoreCase))
-        {
-            await ProbeOpenAiModelExistsAsync(entry, row, userId, ct).ConfigureAwait(false);
+        if (await TryProbeChatVisionByProviderAsync(entry, row, provider, userId, ct).ConfigureAwait(false))
             return;
-        }
-
-        if (entry.Capability is ModelCapability.Chat or ModelCapability.Vision &&
-            (string.Equals(provider, ProviderAnthropic, StringComparison.OrdinalIgnoreCase)
-             || string.Equals(provider, ProviderClaude, StringComparison.OrdinalIgnoreCase)))
-        {
-            await ProbeAnthropicModelAsync(entry, row, userId, ct).ConfigureAwait(false);
-            return;
-        }
-
-        if (entry.Capability is ModelCapability.Chat or ModelCapability.Vision &&
-            (string.Equals(provider, ProviderGoogle, StringComparison.OrdinalIgnoreCase)
-             || string.Equals(provider, ProviderGemini, StringComparison.OrdinalIgnoreCase)))
-        {
-            await ProbeGeminiModelAsync(entry, row, userId, ct).ConfigureAwait(false);
-            return;
-        }
 
         // Generic: mark key required fields as not_found when no probe
         row.Fields.Add(new CatalogFieldProbeResult
@@ -245,6 +206,68 @@ public sealed class CatalogUpdateProbeService
         });
     }
 
+    private static void AddStalePricingReviewIfNeeded(SupportedModelEntry entry, CatalogModelProbeResult row)
+    {
+        // Capability-agnostic: review dates age (informational, not live)
+        if (string.IsNullOrWhiteSpace(entry.PricingLastReviewedAt) ||
+            !DateTime.TryParse(entry.PricingLastReviewedAt, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var reviewed) ||
+            (DateTime.UtcNow.Date - reviewed.Date).TotalDays <= 90)
+            return;
+
+        row.Fields.Add(new CatalogFieldProbeResult
+        {
+            Field = "pricingLastReviewedAt",
+            CatalogValue = entry.PricingLastReviewedAt,
+            LiveValue = null,
+            Status = StatusNotFound,
+            Message = "Last cost review > 90 days ago — re-check vendor pricing.",
+        });
+    }
+
+    private static bool IsFalEntry(SupportedModelEntry entry, string provider) =>
+        string.Equals(provider, ProviderFal, StringComparison.OrdinalIgnoreCase)
+        || entry.Id.StartsWith("fal-", StringComparison.OrdinalIgnoreCase)
+        || entry.Id.StartsWith("fal-ai/", StringComparison.OrdinalIgnoreCase)
+        || (entry.EndpointPath?.Contains(ProviderFal, StringComparison.OrdinalIgnoreCase) == true);
+
+    private static bool IsChatOrVision(SupportedModelEntry entry) =>
+        entry.Capability is ModelCapability.Chat or ModelCapability.Vision;
+
+    private async Task ProbeXaiEntryAsync(
+        SupportedModelEntry entry, CatalogModelProbeResult row, string? userId, CancellationToken ct)
+    {
+        // P1: pricing from docs pages + existing duration probes for video
+        await ProbeXaiPricingAsync(entry, row, ct).ConfigureAwait(false);
+        if (entry.Capability == ModelCapability.Video)
+            await ProbeXaiVideoAsync(entry, row, ct).ConfigureAwait(false);
+        else if (IsChatOrVision(entry))
+            await ProbeXaiChatExistsAsync(entry, row, userId, ct).ConfigureAwait(false);
+    }
+
+    private async Task<bool> TryProbeChatVisionByProviderAsync(
+        SupportedModelEntry entry, CatalogModelProbeResult row, string provider, string? userId, CancellationToken ct)
+    {
+        if (!IsChatOrVision(entry)) return false;
+        if (string.Equals(provider, ProviderOpenAi, StringComparison.OrdinalIgnoreCase))
+        {
+            await ProbeOpenAiModelExistsAsync(entry, row, userId, ct).ConfigureAwait(false);
+            return true;
+        }
+        if (string.Equals(provider, ProviderAnthropic, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(provider, ProviderClaude, StringComparison.OrdinalIgnoreCase))
+        {
+            await ProbeAnthropicModelAsync(entry, row, userId, ct).ConfigureAwait(false);
+            return true;
+        }
+        if (string.Equals(provider, ProviderGoogle, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(provider, ProviderGemini, StringComparison.OrdinalIgnoreCase))
+        {
+            await ProbeGeminiModelAsync(entry, row, userId, ct).ConfigureAwait(false);
+            return true;
+        }
+        return false;
+    }
+
     /// <summary>
     /// P0: fal Platform API list prices — GET /v1/models/pricing?endpoint_id=…
     /// Maps unit_price into imageCostPerImage or videoBaseCostByResolution / per-sec hints.
@@ -253,81 +276,81 @@ public sealed class CatalogUpdateProbeService
     {
         var key = await ResolveKeyAsync(userId, ProviderFal, ct).ConfigureAwait(false);
         var endpointId = ResolveFalEndpointId(entry);
+        var url = FalModelsPricingUrl + "?endpoint_id=" + Uri.EscapeDataString(endpointId);
 
         if (string.IsNullOrWhiteSpace(key))
         {
             row.Fields.Add(Field("pricing", null, null, StatusNotFound,
-                "FAL_KEY / FAL_API_KEY not set — cannot fetch live fal pricing.",
-                FalModelsPricingUrl + "?endpoint_id=" + Uri.EscapeDataString(endpointId)));
+                "FAL_KEY / FAL_API_KEY not set — cannot fetch live fal pricing.", url));
             return;
         }
 
+        var body = await FetchFalPricingBodyAsync(key, url, row, ct).ConfigureAwait(false);
+        if (body is null) return;
+        if (!TryReadFalUnitPrice(body, url, row, out var unitPrice, out var unit, out var currency))
+            return;
+        AddFalUnitPriceFields(entry, row, unitPrice, unit, currency, url);
+    }
+
+    private async Task<string?> FetchFalPricingBodyAsync(
+        string key, string url, CatalogModelProbeResult row, CancellationToken ct)
+    {
         var client = _httpFactory.CreateClient(HttpClientName);
-        var url = FalModelsPricingUrl + "?endpoint_id=" + Uri.EscapeDataString(endpointId);
         using var req = new HttpRequestMessage(HttpMethod.Get, url);
         req.Headers.TryAddWithoutValidation("Authorization", "Key " + key.Trim());
         using var resp = await client.SendAsync(req, ct).ConfigureAwait(false);
         var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-        if (!resp.IsSuccessStatusCode)
-        {
-            row.Fields.Add(Field("pricing", null, null, StatusError,
-                $"fal pricing HTTP {(int)resp.StatusCode}: {Truncate(body, 180)}", url));
-            return;
-        }
+        if (resp.IsSuccessStatusCode) return body;
+        row.Fields.Add(Field("pricing", null, null, StatusError,
+            $"fal pricing HTTP {(int)resp.StatusCode}: {Truncate(body, 180)}", url));
+        return null;
+    }
 
+    private static bool TryReadFalUnitPrice(
+        string body, string url, CatalogModelProbeResult row,
+        out double unitPrice, out string? unit, out string? currency)
+    {
+        unitPrice = 0;
+        unit = null;
+        currency = "USD";
         using var doc = JsonDocument.Parse(body);
         if (!doc.RootElement.TryGetProperty("prices", out var prices) || prices.ValueKind != JsonValueKind.Array
             || prices.GetArrayLength() == 0)
         {
             row.Fields.Add(Field("pricing", null, null, StatusNotFound,
                 "fal pricing returned no prices[] for this endpoint_id.", url));
-            return;
+            return false;
         }
 
         var price = prices[0];
-        var unitPrice = price.TryGetProperty("unit_price", out var up) && up.TryGetDouble(out var upv) ? upv : (double?)null;
-        var unit = price.TryGetProperty("unit", out var u) ? u.GetString() : null;
-        var currency = price.TryGetProperty("currency", out var c) ? c.GetString() : "USD";
-
-        if (unitPrice is null)
+        unit = price.TryGetProperty("unit", out var u) ? u.GetString() : null;
+        currency = price.TryGetProperty("currency", out var c) ? c.GetString() : "USD";
+        if (price.TryGetProperty("unit_price", out var up) && up.TryGetDouble(out var upv))
         {
-            row.Fields.Add(Field("unit_price", null, null, StatusNotFound, "unit_price missing in fal response.", url));
-            return;
+            unitPrice = upv;
+            return true;
         }
+        row.Fields.Add(Field("unit_price", null, null, StatusNotFound, "unit_price missing in fal response.", url));
+        return false;
+    }
 
-        var liveStr = unitPrice.Value.ToString(FormatFourDecimals, CultureInfo.InvariantCulture);
+    private static void AddFalUnitPriceFields(
+        SupportedModelEntry entry, CatalogModelProbeResult row,
+        double unitPrice, string? unit, string? currency, string url)
+    {
+        var liveStr = unitPrice.ToString(FormatFourDecimals, CultureInfo.InvariantCulture);
         var unitNote = $"unit={unit ?? "?"} currency={currency}";
 
         if (entry.Capability == ModelCapability.Image
             || string.Equals(unit, UnitImage, StringComparison.OrdinalIgnoreCase))
         {
-            row.Fields.Add(CompareDouble("imageCostPerImage", entry.ImageCostPerImage, unitPrice.Value, url, unitNote));
+            row.Fields.Add(CompareDouble("imageCostPerImage", entry.ImageCostPerImage, unitPrice, url, unitNote));
             return;
         }
 
-        if (entry.Capability == ModelCapability.Video
-            || string.Equals(unit, "video", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(unit, "second", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(unit, "sec", StringComparison.OrdinalIgnoreCase))
+        if (IsFalVideoUnit(entry, unit))
         {
-            // Prefer flat base fee when catalog has videoBaseCostByResolution; else per-sec table.
-            if (entry.VideoBaseCostByResolution is { Count: > 0 } baseTable)
-            {
-                var catalogBase = baseTable.Values.FirstOrDefault();
-                row.Fields.Add(CompareDouble("videoBaseCostByResolution.*", catalogBase, unitPrice.Value, url,
-                    unitNote + " (fal unit applied as base/video fee)"));
-            }
-            else if (entry.VideoCostPerSecondByResolution is { Count: > 0 } perSec)
-            {
-                var catalogRate = perSec.Values.FirstOrDefault();
-                row.Fields.Add(CompareDouble("videoCostPerSecondByResolution.*", catalogRate, unitPrice.Value, url,
-                    unitNote + " (fal unit applied as $/sec or per-output)"));
-            }
-            else
-            {
-                row.Fields.Add(Field("video_price", null, liveStr, StatusChanged,
-                    $"Catalog has no video cost fields; fal reports {liveStr} per {unit}.", url));
-            }
+            AddFalVideoPrice(entry, row, unitPrice, unit, liveStr, unitNote, url);
             return;
         }
 
@@ -335,7 +358,36 @@ public sealed class CatalogUpdateProbeService
         var catalogHint = entry.ImageCostPerImage
                           ?? entry.CostPerMinuteUsd
                           ?? entry.VideoReferenceImageCost;
-        row.Fields.Add(CompareDouble("unit_price", catalogHint, unitPrice.Value, url, unitNote));
+        row.Fields.Add(CompareDouble("unit_price", catalogHint, unitPrice, url, unitNote));
+    }
+
+    private static bool IsFalVideoUnit(SupportedModelEntry entry, string? unit) =>
+        entry.Capability == ModelCapability.Video
+        || string.Equals(unit, "video", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(unit, "second", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(unit, "sec", StringComparison.OrdinalIgnoreCase);
+
+    private static void AddFalVideoPrice(
+        SupportedModelEntry entry, CatalogModelProbeResult row,
+        double unitPrice, string? unit, string liveStr, string unitNote, string url)
+    {
+        // Prefer flat base fee when catalog has videoBaseCostByResolution; else per-sec table.
+        if (entry.VideoBaseCostByResolution is { Count: > 0 } baseTable)
+        {
+            var catalogBase = baseTable.Values.FirstOrDefault();
+            row.Fields.Add(CompareDouble("videoBaseCostByResolution.*", catalogBase, unitPrice, url,
+                unitNote + " (fal unit applied as base/video fee)"));
+            return;
+        }
+        if (entry.VideoCostPerSecondByResolution is { Count: > 0 } perSec)
+        {
+            var catalogRate = perSec.Values.FirstOrDefault();
+            row.Fields.Add(CompareDouble("videoCostPerSecondByResolution.*", catalogRate, unitPrice, url,
+                unitNote + " (fal unit applied as $/sec or per-output)"));
+            return;
+        }
+        row.Fields.Add(Field("video_price", null, liveStr, StatusChanged,
+            $"Catalog has no video cost fields; fal reports {liveStr} per {unit}.", url));
     }
 
     private static string ResolveFalEndpointId(SupportedModelEntry entry)
@@ -511,77 +563,71 @@ public sealed class CatalogUpdateProbeService
     {
         var client = _httpFactory.CreateClient(HttpClientName);
         // Public docs — extension duration 2–10, generation 1–15 (as of docs scan)
-        string? extHtml = null;
-        string? genHtml = null;
+        var extHtml = await TryGetDocsHtmlAsync(client, XaiDocsVideoExtension, "docs.extension", row, ct)
+            .ConfigureAwait(false);
+        var genHtml = await TryGetDocsHtmlAsync(client, XaiDocsVideoGeneration, "docs.generation", row, ct)
+            .ConfigureAwait(false);
+
+        AddXaiDurationRangeField(
+            extHtml, entry.MaxExtensionSeconds, "maxExtensionSeconds",
+            @"extension duration range is\s+\*?\*?(\d+)\s*[–-]\s*(\d+)\s*seconds",
+            "Could not parse extension duration from docs.",
+            XaiDocsVideoExtension, row, compareAbsMax: false);
+        AddXaiDurationRangeField(
+            genHtml, entry.MaxClipDurationSeconds, "maxClipDurationSeconds",
+            @"allowed range is\s+(\d+)\s*[–-]\s*(\d+)\s*seconds",
+            "Could not parse generation duration from docs.",
+            XaiDocsVideoGeneration, row, compareAbsMax: true, absCatalog: entry.AbsMaxClipDurationSeconds);
+
+        await AddXaiMaxReferenceImagesAsync(client, entry, row, ct).ConfigureAwait(false);
+    }
+
+    private static async Task<string?> TryGetDocsHtmlAsync(
+        HttpClient client, string url, string field, CatalogModelProbeResult row, CancellationToken ct)
+    {
         try
         {
-            extHtml = await client.GetStringAsync(
-                XaiDocsVideoExtension, ct).ConfigureAwait(false);
+            return await client.GetStringAsync(url, ct).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            row.Fields.Add(Field("docs.extension", null, null, StatusError, ex.Message,
-                XaiDocsVideoExtension));
+            row.Fields.Add(Field(field, null, null, StatusError, ex.Message, url));
+            return null;
         }
+    }
 
-        try
+    private static void AddXaiDurationRangeField(
+        string? html,
+        int? catalog,
+        string field,
+        string primaryPattern,
+        string notFoundMessage,
+        string url,
+        CatalogModelProbeResult row,
+        bool compareAbsMax,
+        int? absCatalog = null)
+    {
+        if (string.IsNullOrEmpty(html)) return;
+        var m = CommonRegex.Match(html, primaryPattern, RegexOptions.IgnoreCase);
+        if (!m.Success)
+            m = CommonRegex.Match(html, @"(\d+)\s*[–-]\s*(\d+)\s*seconds", RegexOptions.IgnoreCase);
+        if (m.Success && int.TryParse(m.Groups[2].Value, out var liveMax))
         {
-            genHtml = await client.GetStringAsync(
-                XaiDocsVideoGeneration, ct).ConfigureAwait(false);
+            row.Fields.Add(CompareInt(field, catalog, liveMax, url));
+            if (compareAbsMax)
+                row.Fields.Add(CompareInt("absMaxClipDurationSeconds", absCatalog, liveMax, url));
+            return;
         }
-        catch (Exception ex)
-        {
-            row.Fields.Add(Field("docs.generation", null, null, StatusError, ex.Message,
-                XaiDocsVideoGeneration));
-        }
+        row.Fields.Add(Field(field, catalog?.ToString(), null, StatusNotFound, notFoundMessage, url));
+    }
 
-        // Extension max: docs say 2–10 seconds
-        if (!string.IsNullOrEmpty(extHtml))
-        {
-            var m = CommonRegex.Match(extHtml, @"extension duration range is\s+\*?\*?(\d+)\s*[–-]\s*(\d+)\s*seconds",
-                RegexOptions.IgnoreCase);
-            if (!m.Success)
-                m = CommonRegex.Match(extHtml, @"(\d+)\s*[–-]\s*(\d+)\s*seconds", RegexOptions.IgnoreCase);
-            if (m.Success && int.TryParse(m.Groups[2].Value, out var liveExtMax))
-            {
-                var catalog = entry.MaxExtensionSeconds;
-                row.Fields.Add(CompareInt("maxExtensionSeconds", catalog, liveExtMax,
-                    XaiDocsVideoExtension));
-            }
-            else
-            {
-                row.Fields.Add(Field("maxExtensionSeconds", entry.MaxExtensionSeconds?.ToString(), null, StatusNotFound,
-                    "Could not parse extension duration from docs.",
-                    XaiDocsVideoExtension));
-            }
-        }
-
-        if (!string.IsNullOrEmpty(genHtml))
-        {
-            var m = CommonRegex.Match(genHtml, @"allowed range is\s+(\d+)\s*[–-]\s*(\d+)\s*seconds",
-                RegexOptions.IgnoreCase);
-            if (!m.Success)
-                m = CommonRegex.Match(genHtml, @"(\d+)\s*[–-]\s*(\d+)\s*seconds", RegexOptions.IgnoreCase);
-            if (m.Success && int.TryParse(m.Groups[2].Value, out var liveMax))
-            {
-                row.Fields.Add(CompareInt("maxClipDurationSeconds", entry.MaxClipDurationSeconds, liveMax,
-                    XaiDocsVideoGeneration));
-                row.Fields.Add(CompareInt("absMaxClipDurationSeconds", entry.AbsMaxClipDurationSeconds, liveMax,
-                    XaiDocsVideoGeneration));
-            }
-            else
-            {
-                row.Fields.Add(Field("maxClipDurationSeconds", entry.MaxClipDurationSeconds?.ToString(), null, StatusNotFound,
-                    "Could not parse generation duration from docs.",
-                    XaiDocsVideoGeneration));
-            }
-        }
-
+    private async Task AddXaiMaxReferenceImagesAsync(
+        HttpClient client, SupportedModelEntry entry, CatalogModelProbeResult row, CancellationToken ct)
+    {
         // Reference images: multi-image docs historically say 7
         try
         {
-            var refHtml = await client.GetStringAsync(
-                XaiDocsVideoReferenceToVideo, ct).ConfigureAwait(false);
+            var refHtml = await client.GetStringAsync(XaiDocsVideoReferenceToVideo, ct).ConfigureAwait(false);
             var rm = CommonRegex.Match(refHtml, @"maximum of\s+\*?\*?(\d+)\s+reference images", RegexOptions.IgnoreCase);
             if (rm.Success && int.TryParse(rm.Groups[1].Value, out var liveRefs))
             {
@@ -835,21 +881,7 @@ public sealed class CatalogUpdateProbeService
         }
 
         using var doc = JsonDocument.Parse(body);
-        JsonElement? match = null;
-        if (doc.RootElement.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var m in data.EnumerateArray())
-            {
-                var id = m.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
-                if (string.Equals(id, entry.Id, StringComparison.OrdinalIgnoreCase)
-                    || (id is not null && id.StartsWith(entry.Id, StringComparison.OrdinalIgnoreCase)))
-                {
-                    match = m;
-                    break;
-                }
-            }
-        }
-
+        var match = FindAnthropicModelInList(doc.RootElement, entry.Id);
         if (match is null)
         {
             row.Fields.Add(Field(FieldModelId, entry.Id, null, StatusNotFound,
@@ -860,10 +892,29 @@ public sealed class CatalogUpdateProbeService
         var liveId = match.Value.TryGetProperty("id", out var lid) ? lid.GetString() : entry.Id;
         row.Fields.Add(Field(FieldModelId, entry.Id, liveId, StatusUnchanged,
             "Present in Anthropic /v1/models.", url));
+        AddAnthropicTokenLimitFields(entry, row, match.Value, url);
+    }
 
-        if (match.Value.TryGetProperty("max_input_tokens", out var mit) && mit.TryGetInt32(out var inTok) && inTok > 0)
+    private static JsonElement? FindAnthropicModelInList(JsonElement root, string entryId)
+    {
+        if (!root.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
+            return null;
+        foreach (var m in data.EnumerateArray())
+        {
+            var id = m.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
+            if (string.Equals(id, entryId, StringComparison.OrdinalIgnoreCase)
+                || (id is not null && id.StartsWith(entryId, StringComparison.OrdinalIgnoreCase)))
+                return m;
+        }
+        return null;
+    }
+
+    private static void AddAnthropicTokenLimitFields(
+        SupportedModelEntry entry, CatalogModelProbeResult row, JsonElement match, string url)
+    {
+        if (match.TryGetProperty("max_input_tokens", out var mit) && mit.TryGetInt32(out var inTok) && inTok > 0)
             row.Fields.Add(CompareInt("maxInputTokens", entry.MaxInputTokens, inTok, url));
-        if (match.Value.TryGetProperty("max_tokens", out var mot) && mot.TryGetInt32(out var outTok) && outTok > 0)
+        if (match.TryGetProperty("max_tokens", out var mot) && mot.TryGetInt32(out var outTok) && outTok > 0)
             row.Fields.Add(CompareInt("maxOutputTokens", entry.MaxOutputTokens, outTok, url));
     }
 
