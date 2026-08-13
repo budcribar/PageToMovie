@@ -142,19 +142,19 @@ else if (List.HasCast && !Jobs.JobRunning && !List._extractingCast)
             <button type="button" class="btn btn-sm btn-warning fw-semibold"
                     data-testid="char-override-ai-wrong"
                     disabled="@_busy"
-                    @onclick='() => LookPipe.LockCandidateAsync(LookPipe._styleRejectCandidate!, overrideStyle: true, overrideReason: "ai_wrong")'>
+                    @onclick='() => LookPipe.LockCandidateAsync(LookPipe._styleRejectCandidate, overrideStyle: true, overrideReason: "ai_wrong")'>
                 The check is wrong — this look does match
             </button>
             <button type="button" class="btn btn-sm btn-warning fw-semibold"
                     data-testid="char-override-preference"
                     disabled="@_busy"
-                    @onclick='() => LookPipe.LockCandidateAsync(LookPipe._styleRejectCandidate!, overrideStyle: true, overrideReason: "user_preference")'>
+                    @onclick='() => LookPipe.LockCandidateAsync(LookPipe._styleRejectCandidate, overrideStyle: true, overrideReason: "user_preference")'>
                 My creative choice — mix styles on purpose
             </button>
             <button type="button" class="btn btn-sm btn-outline-secondary"
                     data-testid="char-override-other"
                     disabled="@_busy"
-                    @onclick='() => LookPipe.LockCandidateAsync(LookPipe._styleRejectCandidate!, overrideStyle: true, overrideReason: "other")'>
+                    @onclick='() => LookPipe.LockCandidateAsync(LookPipe._styleRejectCandidate, overrideStyle: true, overrideReason: "other")'>
                 Other
             </button>
         </div>
@@ -263,7 +263,7 @@ else if (List.OperatorCastCount == 0)
        operator roster below is empty. Acknowledge the cast instead of the misleading "No cast yet". *@
     <div class="alert alert-info" data-testid="characters-all-ensembles">
         The speaking cast here are all ensemble roles
-        (@string.Join(", ", List._chars!.Where(c => c.IsGroup).Select(c => c.DisplayName))) —
+        (@string.Join(", ", List._chars.Where(c => c.IsGroup).Select(c => c.DisplayName))) —
         no individual portraits needed. You can continue to the next step.
     </div>
 }

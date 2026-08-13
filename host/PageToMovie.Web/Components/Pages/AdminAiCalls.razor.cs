@@ -11,8 +11,8 @@ namespace PageToMovie.Web.Components.Pages;
 /// </summary>
 public partial class AdminAiCalls : ComponentBase
 {
-    [Inject] private EngineApiClient Api { get; set; } = default!;
-    [Inject] private AdminSessionService Session { get; set; } = default!;
+    [Inject] public required EngineApiClient Api { get; set; }
+    [Inject] public required AdminSessionService Session { get; set; }
 
     internal AiCallAnalyticsDto? _data;
     internal bool _loading;

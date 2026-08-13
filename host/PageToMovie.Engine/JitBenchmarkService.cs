@@ -130,9 +130,8 @@ public sealed class JitBenchmarkService
                 SourceDescription: $"Confident index match ({estimation.Explanation}).");
         }
 
-        bool canRunLiveJit = _videoClient is not null && _videoClient.IsConfigured && !string.IsNullOrWhiteSpace(targetModel);
-
-        if (canRunLiveJit)
+        var videoClient = _videoClient;
+        if (videoClient is not null && videoClient.IsConfigured && !string.IsNullOrWhiteSpace(targetModel))
         {
             _log?.LogInformation(
                 "[JitBenchmark] Low-confidence index match (Conf={Conf:F2}) for action: '{Action}'; executing real 1-clip JIT benchmark using model '{Model}'",
@@ -142,16 +141,16 @@ public sealed class JitBenchmarkService
             try
             {
                 var prompt = $"Cinematic benchmark action shot: {actionDescription}";
-                var reqId = await _videoClient!.SubmitGenerationAsync(
+                var reqId = await videoClient.SubmitGenerationAsync(
                     prompt: prompt,
                     durationSeconds: 4,
                     resolution: "1280x720",
-                    model: targetModel!,
+                    model: targetModel,
                     ct: ct).ConfigureAwait(false);
 
                 _log?.LogInformation("[JitBenchmark] Submitted 1-clip JIT job '{ReqId}'. Polling for video completion...", reqId);
 
-                var videoUrl = await _videoClient.PollForVideoUrlAsync(reqId, msg => _log?.LogDebug("[JitBenchmark] {Msg}", msg), ct).ConfigureAwait(false);
+                var videoUrl = await videoClient.PollForVideoUrlAsync(reqId, msg => _log?.LogDebug("[JitBenchmark] {Msg}", msg), ct).ConfigureAwait(false);
 
                 double measuredTotalClipSec = 4.0;
                 double measuredActionOverheadSec = 2.4;

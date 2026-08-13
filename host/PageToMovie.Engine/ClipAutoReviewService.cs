@@ -97,7 +97,9 @@ public sealed class ClipAutoReviewService
             draft, "projectId", "suggestion", "confidence");
         if (issues.Any(i => i.Severity == ModelValidationSeverity.Error))
             throw new InvalidOperationException(string.Join(" ", issues.Select(i => i.Message)));
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var dir = Path.GetDirectoryName(path);
+        if (!string.IsNullOrEmpty(dir))
+            Directory.CreateDirectory(dir);
         await File.WriteAllTextAsync(path, JsonSerializer.Serialize(draft, JsonOpts) + "\n", ct).ConfigureAwait(false);
         await StructuredOperationArtifacts.WriteAsync(
             projectDir, "clip_multimodal_review", null,
@@ -127,7 +129,7 @@ public sealed class ClipAutoReviewService
         {
             if (Directory.Exists(workDir))
             {
-                try { Directory.Delete(workDir, recursive: true); } catch { /* */ }
+                try { Directory.Delete(workDir, recursive: true); } catch { /* best-effort stale frame cleanup */ }
             }
             Directory.CreateDirectory(workDir);
 
@@ -405,7 +407,7 @@ public sealed class ClipAutoReviewService
                         foreach (var x in cp.EnumerateArray())
                         {
                             var k = x.GetString();
-                            if (!string.IsNullOrWhiteSpace(k)) plan.Characters.Add(k!);
+                            if (!string.IsNullOrWhiteSpace(k)) plan.Characters.Add(k);
                         }
                     }
                     return plan;

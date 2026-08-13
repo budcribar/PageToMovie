@@ -69,8 +69,12 @@ file sealed class CoverageOperation<T>(
         var missing = context.Kind == ModelAttemptKind.Primary
             ? input.RequestedIds
             : context.ValidationIssues
-                .Where(issue => issue.Code == "missing_id" && !string.IsNullOrWhiteSpace(issue.Path))
-                .Select(issue => issue.Path![2..])
+                .Where(issue => issue.Code == "missing_id" && issue.Path is { Length: > 2 })
+                .Select(issue =>
+                {
+                    var path = issue.Path ?? "";
+                    return path.Length > 2 ? path[2..] : path;
+                })
                 .ToArray();
         return call(context, missing.Count > 0 ? missing : input.RequestedIds);
     }

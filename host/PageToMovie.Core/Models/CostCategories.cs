@@ -43,8 +43,8 @@ public static class CostCategories
     /// </summary>
     public static string Resolve(string? kind, string? mode, string? explicitCategory = null)
     {
-        if (IsKnown(explicitCategory))
-            return explicitCategory!.Trim().ToLowerInvariant();
+        if (IsKnown(explicitCategory) && explicitCategory is { } known)
+            return known.Trim().ToLowerInvariant();
 
         var m = (mode ?? "").Trim().ToLowerInvariant();
         var k = (kind ?? "").Trim().ToLowerInvariant();

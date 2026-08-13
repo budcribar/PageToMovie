@@ -40,7 +40,8 @@ public sealed class GrokVideoEditClient : IVideoEditClient
         _log = log;
         _errorLogger = errorLogger;
         if (_http.BaseAddress is null)
-            _http.BaseAddress = new Uri(ApiBase + "/");
+            _http.BaseAddress = new Uri(
+                ApiBase.TrimEnd(Path.AltDirectorySeparatorChar) + Path.AltDirectorySeparatorChar);
     }
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(ResolveApiKey());
@@ -245,7 +246,9 @@ public sealed class GrokVideoEditClient : IVideoEditClient
 
     public async Task DownloadToFileAsync(string url, string destPath, CancellationToken ct)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(destPath)!);
+        var destDir = Path.GetDirectoryName(destPath);
+        if (!string.IsNullOrEmpty(destDir))
+            Directory.CreateDirectory(destDir);
         using var resp = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
         resp.EnsureSuccessStatusCode();
         await using var fs = File.Create(destPath);
