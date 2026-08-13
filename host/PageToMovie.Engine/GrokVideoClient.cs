@@ -79,166 +79,236 @@ public sealed class GrokVideoClient : IVideoClient
             throw new InvalidOperationException(
                 $"Video model '{videoEntry.Id}' has no maxReferenceImages in models_catalog.json. " +
                 "Add the real API limit — do not invent a default.");
+
+        var setup = await BuildSubmitSetupAsync(
+            durationSeconds, resolution, model,
+            referenceImagePaths, startFrameImagePath, continueFromVideoPath,
+            maxRefsForModel, ct).ConfigureAwait(false);
+
+        var original = prompt ?? "";
+        Exception? lastLengthError = null;
+        for (var attempt = 0; attempt <= MaxPromptLengthRetries; attempt++)
+        {
+            var (requestId, lengthError) = await TrySubmitAttemptAsync(setup, original, attempt, ct).ConfigureAwait(false);
+            if (requestId is not null)
+                return requestId;
+            lastLengthError = lengthError;
+        }
+
+        throw lastLengthError
+              ?? new InvalidOperationException("Grok video submit failed after prompt length retries.");
+    }
+
+    private sealed class SubmitSetup
+    {
+        public required List<string> Refs { get; init; }
+        public required bool HasContinue { get; init; }
+        public required bool HasStart { get; init; }
+        public required int DurationSeconds { get; init; }
+        public string? VideoUri { get; init; }
+        public string? StartUri { get; init; }
+        public List<object?>? RefObjs { get; init; }
+        public required string Mode { get; init; }
+        public required string Kind { get; init; }
+        public required List<string> RefNames { get; init; }
+        public required int PromptHardCap { get; init; }
+        public required string Model { get; init; }
+        public required string Resolution { get; init; }
+        public string? ContinueFromVideoPath { get; init; }
+        public string? StartFrameImagePath { get; init; }
+    }
+
+    private static bool IsExistingMediaPath(string? p) =>
+        !string.IsNullOrWhiteSpace(p) && File.Exists(p);
+
+    private async Task<SubmitSetup> BuildSubmitSetupAsync(
+        int durationSeconds,
+        string resolution,
+        string model,
+        IReadOnlyList<string>? referenceImagePaths,
+        string? startFrameImagePath,
+        string? continueFromVideoPath,
+        int maxRefsForModel,
+        CancellationToken ct)
+    {
         var refs = (referenceImagePaths ?? Array.Empty<string>())
-            .Where(p => !string.IsNullOrWhiteSpace(p) && File.Exists(p))
+            .Where(IsExistingMediaPath)
             .Take(maxRefsForModel)
             .ToList();
-        var hasContinue = !string.IsNullOrWhiteSpace(continueFromVideoPath) &&
-                          File.Exists(continueFromVideoPath);
-        var hasStart = !string.IsNullOrWhiteSpace(startFrameImagePath) && File.Exists(startFrameImagePath);
+        var hasContinue = IsExistingMediaPath(continueFromVideoPath);
+        var hasStart = IsExistingMediaPath(startFrameImagePath);
 
+        ApplySubmitRefPriority(refs, ref hasContinue, ref hasStart, startFrameImagePath);
+
+        if (hasStart || refs.Count > 0 || hasContinue)
+            durationSeconds = ClipDurationEstimator.ResolveActualDurationForModel(
+                model, durationSeconds, isExtensionMode: true);
+
+        var (videoUri, startUri, refObjs) = await EncodeSubmitMediaAsync(
+            hasContinue, hasStart, continueFromVideoPath, startFrameImagePath, refs, ct).ConfigureAwait(false);
+
+        var promptHardCap = SupportedModelCatalog.ResolveOrDefault(model, ModelCapability.Video)
+            .MaxPromptLength
+            ?? throw new InvalidOperationException(
+                $"Video model has no maxPromptLength in models_catalog.json.");
+
+        return new SubmitSetup
+        {
+            Refs = refs,
+            HasContinue = hasContinue,
+            HasStart = hasStart,
+            DurationSeconds = durationSeconds,
+            VideoUri = videoUri,
+            StartUri = startUri,
+            RefObjs = refObjs,
+            Mode = ResolveSubmitMode(hasContinue, hasStart, refs.Count),
+            Kind = hasContinue ? "video_extend" : "video",
+            RefNames = refs.Select(Path.GetFileName).OfType<string>().ToList(),
+            PromptHardCap = promptHardCap,
+            Model = model,
+            Resolution = resolution,
+            ContinueFromVideoPath = continueFromVideoPath,
+            StartFrameImagePath = startFrameImagePath,
+        };
+    }
+
+    private void ApplySubmitRefPriority(
+        List<string> refs, ref bool hasContinue, ref bool hasStart, string? startFrameImagePath)
+    {
         // Priority: video-continue > start-frame > reference images > text
         if (hasContinue)
         {
             refs.Clear();
             hasStart = false;
+            return;
         }
-        else if (hasStart && refs.Count > 0)
+        if (hasStart && refs.Count > 0)
         {
             _log.LogWarning(
                 "Grok video: start frame + reference_images not allowed together — using start frame only ({Start})",
                 Path.GetFileName(startFrameImagePath));
             refs.Clear();
         }
+    }
 
-        // Image / reference-to-video / extension max duration is bounded by the model's own limits
-        // — resolved from the catalog (snapping to a discrete allowed-durations set if the model
-        // declares one, e.g. Veo's 4/6/8s, else a plain min/max clamp), not a bare hardcoded 1-10,
-        // so this stays correct if a future model's real bounds differ. isExtensionMode applies
-        // MaxExtensionSeconds too — Grok's real fresh-generation max (15s) is looser than what the
-        // "new portion" of a reference/continue call allows (often <=10s).
-        if (hasStart || refs.Count > 0 || hasContinue)
-            durationSeconds = ClipDurationEstimator.ResolveActualDurationForModel(
-                model, durationSeconds, isExtensionMode: true);
+    private static string ResolveSubmitMode(bool hasContinue, bool hasStart, int refCount)
+    {
+        if (hasContinue) return "video-extend";
+        if (hasStart) return "image-to-video";
+        if (refCount > 0) return "reference-to-video";
+        return "text-to-video";
+    }
 
-        // Encode media once — retries only change prompt text
-        string? videoUri = null;
-        string? startUri = null;
-        List<object?>? refObjs = null;
+    private static async Task<(string? VideoUri, string? StartUri, List<object?>? RefObjs)> EncodeSubmitMediaAsync(
+        bool hasContinue,
+        bool hasStart,
+        string? continueFromVideoPath,
+        string? startFrameImagePath,
+        List<string> refs,
+        CancellationToken ct)
+    {
         if (hasContinue)
         {
+            string? videoUri = null;
             if (continueFromVideoPath is not null)
                 videoUri = await FileToDataUriAsync(continueFromVideoPath, ct);
+            return (videoUri, null, null);
         }
-        else if (hasStart)
+        if (hasStart)
         {
+            string? startUri = null;
             if (startFrameImagePath is not null)
                 startUri = await FileToDataUriAsync(startFrameImagePath, ct);
+            return (null, startUri, null);
         }
-        else if (refs.Count > 0)
-        {
-            refObjs = new List<object?>();
-            foreach (var path in refs)
-                refObjs.Add(new Dictionary<string, object?> { ["url"] = await FileToDataUriAsync(path, ct) });
-        }
+        if (refs.Count == 0)
+            return (null, null, null);
 
-        var original = prompt ?? "";
-        Exception? lastLengthError = null;
-        var mode = hasContinue ? "video-extend"
-            : hasStart ? "image-to-video"
-            : refs.Count > 0 ? "reference-to-video"
-            : "text-to-video";
-        var kind = hasContinue ? "video_extend" : "video";
-        var refNames = refs.Select(Path.GetFileName).OfType<string>().ToList();
-        // Model-aware retry cap — a future model with a different prompt budget only needs its
-        // models_catalog.json MaxPromptLength updated, never a code change here.
-        var promptHardCap = SupportedModelCatalog.ResolveOrDefault(model, ModelCapability.Video)
-            .MaxPromptLength
-            ?? throw new InvalidOperationException(
-                $"Video model has no maxPromptLength in models_catalog.json.");
-
-        // Shared failure-telemetry for both catch paths (prompt-too-long retry and hard failure):
-        // identical fields, only the exception differs.
-        async Task LogAttemptFailureAsync(Stopwatch sw, string current, int attempt, Exception ex) =>
-            await _telemetry.LogApiCallAsync(new ApiCallTelemetry
-            {
-                Kind = kind,
-                Endpoint = hasContinue ? "videos/extensions" : "videos/generations",
-                Model = model,
-                DurationMs = sw.ElapsedMilliseconds,
-                Mode = mode,
-                Prompt = current,
-                PromptChars = current.Length,
-                ReferenceImagePaths = refNames.Count > 0 ? refNames : null,
-                RefsAttached = refs.Count > 0 && !hasContinue,
-                Resolution = resolution,
-                DurationSec = durationSeconds,
-                Attempt = attempt,
-                Error = ex.Message,
-                Ok = false,
-            }, ct);
-
-        for (var attempt = 0; attempt <= MaxPromptLengthRetries; attempt++)
-        {
-            var current = attempt == 0
-                ? original
-                : ClipVideoPromptBuilder.ShortenPromptForRetry(original, attempt, promptHardCap);
-
-            if (attempt > 0)
-            {
-                _log.LogWarning(
-                    "Grok video: prompt length reject — retry {Attempt}/{Max} promptLen {From}→{To}",
-                    attempt, MaxPromptLengthRetries, original.Length, current.Length);
-            }
-
-            var sw = Stopwatch.StartNew();
-            try
-            {
-                string requestId;
-                string endpoint;
-                if (hasContinue)
-                {
-                    endpoint = "videos/extensions";
-                    requestId = await SubmitExtendOnceAsync(
-                        current, durationSeconds, resolution, model,
-                        videoUri ?? string.Empty, continueFromVideoPath ?? string.Empty, ct);
-                }
-                else
-                {
-                    endpoint = "videos/generations";
-                    requestId = await SubmitFreshOnceAsync(
-                        current, durationSeconds, resolution, model,
-                        startUri, refObjs, startFrameImagePath, refs.Count, ct);
-                }
-
-                await _telemetry.LogApiCallAsync(new ApiCallTelemetry
-                {
-                    Kind = kind,
-                    Endpoint = endpoint,
-                    Model = model,
-                    HttpStatus = 200,
-                    RequestId = requestId,
-                    DurationMs = sw.ElapsedMilliseconds,
-                    Mode = mode,
-                    Prompt = current,
-                    PromptChars = current.Length,
-                    ReferenceImagePaths = refNames.Count > 0 ? refNames : null,
-                    RefsAttached = refs.Count > 0 && !hasContinue,
-                    Resolution = resolution,
-                    DurationSec = durationSeconds,
-                    Attempt = attempt + 1,
-                    Ok = true,
-                }, ct);
-                return requestId;
-            }
-            catch (Exception ex) when (
-                attempt < MaxPromptLengthRetries &&
-                ClipVideoPromptBuilder.IsPromptTooLongError(ex.Message))
-            {
-                lastLengthError = ex;
-                await LogAttemptFailureAsync(sw, current, attempt, ex);
-                _log.LogWarning(ex, "Grok video: prompt too long (attempt {Attempt})", attempt);
-            }
-            catch (Exception ex)
-            {
-                await LogAttemptFailureAsync(sw, current, attempt, ex);
-                throw;
-            }
-        }
-
-        throw lastLengthError
-              ?? new InvalidOperationException("Grok video submit failed after prompt length retries.");
+        var refObjs = new List<object?>();
+        foreach (var path in refs)
+            refObjs.Add(new Dictionary<string, object?> { ["url"] = await FileToDataUriAsync(path, ct) });
+        return (null, null, refObjs);
     }
+
+    private async Task<(string? RequestId, Exception? LengthError)> TrySubmitAttemptAsync(
+        SubmitSetup setup, string original, int attempt, CancellationToken ct)
+    {
+        var current = attempt == 0
+            ? original
+            : ClipVideoPromptBuilder.ShortenPromptForRetry(original, attempt, setup.PromptHardCap);
+
+        if (attempt > 0)
+        {
+            _log.LogWarning(
+                "Grok video: prompt length reject — retry {Attempt}/{Max} promptLen {From}→{To}",
+                attempt, MaxPromptLengthRetries, original.Length, current.Length);
+        }
+
+        var sw = Stopwatch.StartNew();
+        try
+        {
+            var (requestId, endpoint) = await SubmitOnceAsync(setup, current, ct).ConfigureAwait(false);
+            await _telemetry.LogApiCallAsync(BuildSubmitTelemetry(setup, current, attempt + 1, sw, requestId, ok: true, error: null), ct);
+            return (requestId, null);
+        }
+        catch (Exception ex) when (
+            attempt < MaxPromptLengthRetries &&
+            ClipVideoPromptBuilder.IsPromptTooLongError(ex.Message))
+        {
+            await LogSubmitAttemptFailureAsync(setup, sw, current, attempt, ex, ct).ConfigureAwait(false);
+            _log.LogWarning(ex, "Grok video: prompt too long (attempt {Attempt})", attempt);
+            return (null, ex);
+        }
+        catch (Exception ex)
+        {
+            await LogSubmitAttemptFailureAsync(setup, sw, current, attempt, ex, ct).ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    private async Task<(string RequestId, string Endpoint)> SubmitOnceAsync(
+        SubmitSetup setup, string current, CancellationToken ct)
+    {
+        if (setup.HasContinue)
+        {
+            var requestId = await SubmitExtendOnceAsync(
+                current, setup.DurationSeconds, setup.Resolution, setup.Model,
+                setup.VideoUri ?? string.Empty, setup.ContinueFromVideoPath ?? string.Empty, ct);
+            return (requestId, "videos/extensions");
+        }
+
+        var freshId = await SubmitFreshOnceAsync(
+            current, setup.DurationSeconds, setup.Resolution, setup.Model,
+            setup.StartUri, setup.RefObjs, setup.StartFrameImagePath, setup.Refs.Count, ct);
+        return (freshId, "videos/generations");
+    }
+
+    private ApiCallTelemetry BuildSubmitTelemetry(
+        SubmitSetup setup, string current, int attempt, Stopwatch sw, string? requestId, bool ok, string? error) =>
+        new()
+        {
+            Kind = setup.Kind,
+            Endpoint = setup.HasContinue ? "videos/extensions" : "videos/generations",
+            Model = setup.Model,
+            HttpStatus = ok ? 200 : null,
+            RequestId = requestId,
+            DurationMs = sw.ElapsedMilliseconds,
+            Mode = setup.Mode,
+            Prompt = current,
+            PromptChars = current.Length,
+            ReferenceImagePaths = setup.RefNames.Count > 0 ? setup.RefNames : null,
+            RefsAttached = setup.Refs.Count > 0 && !setup.HasContinue,
+            Resolution = setup.Resolution,
+            DurationSec = setup.DurationSeconds,
+            Attempt = attempt,
+            Error = error,
+            Ok = ok,
+        };
+
+    private async Task LogSubmitAttemptFailureAsync(
+        SubmitSetup setup, Stopwatch sw, string current, int attempt, Exception ex, CancellationToken ct) =>
+        await _telemetry.LogApiCallAsync(
+            BuildSubmitTelemetry(setup, current, attempt, sw, requestId: null, ok: false, error: ex.Message), ct);
 
     private async Task<string> SubmitExtendOnceAsync(
         string prompt,
@@ -407,118 +477,158 @@ public sealed class GrokVideoClient : IVideoClient
             ct.ThrowIfCancellationRequested();
             polls++;
 
-            // Each poll GET is idempotent (safe to retry freely, no billing risk) — unlike submit,
-            // there's no reason NOT to retry a transient blip here. Previously one bad poll threw
-            // and abandoned tracking of an already-submitted, already-paying job entirely.
-            string body;
-            try
-            {
-                body = await AiRetryPolicy.ExecuteWithTransientRetryAsync(
-                    async _ =>
-                    {
-                        using var resp = await SendAsync(HttpMethod.Get, $"videos/{requestId}", content: null, ct);
-                        var b = await resp.Content.ReadAsStringAsync(ct);
-                        if (!resp.IsSuccessStatusCode)
-                            throw ChatHttpStatusException.FromResponse(resp,
-                                $"Grok poll HTTP {(int)resp.StatusCode}: {Trim(b, 400)}");
-                        return b;
-                    },
-                    isTransient: AiRetryPolicy.IsTransientChatFailure,
-                    maxAttempts: AiRetryPolicy.DefaultTransientMaxAttempts,
-                    backoffBaseMs: AiRetryPolicy.DefaultTransientBackoffMs,
-                    onRetry: (attemptNum, ex) =>
-                    {
-                        retriedAnyPoll = true;
-                        return _errorLogger.LogRetryAttemptAsync("grok_video_poll", null, $"requestId={requestId}; poll={polls}", attemptNum, ex, ct);
-                    },
-                    ct: ct).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                await _telemetry.LogApiCallAsync(new ApiCallTelemetry
-                {
-                    Kind = "video_poll",
-                    Endpoint = $"videos/{requestId}",
-                    RequestId = requestId,
-                    HttpStatus = ex is ChatHttpStatusException hse ? hse.StatusCode : null,
-                    DurationMs = sw.ElapsedMilliseconds,
-                    Attempt = polls,
-                    Error = Trim(ex.Message, 400),
-                    Ok = false,
-                }, ct);
-                await _telemetry.LogOutcomeAsync(null, requestId, VideoJobOutcome.PollFailed, sw.ElapsedMilliseconds, polls, ok: false, ex.Message, ct);
-                throw;
-            }
+            var (body, retried) = await PollOnceGetAsync(requestId, polls, sw, ct).ConfigureAwait(false);
+            if (retried)
+                retriedAnyPoll = true;
 
             using var doc = JsonDocument.Parse(body);
             var root = doc.RootElement;
             var status = root.TryGetProperty("status", out var st) ? st.GetString() : null;
 
             if (string.Equals(status, "done", StringComparison.OrdinalIgnoreCase))
-            {
-                if (root.TryGetProperty("video", out var video) &&
-                    video.TryGetProperty("url", out var urlEl) &&
-                    urlEl.GetString() is { Length: > 0 } url)
-                {
-                    // Optional: xAI persisted the result to the Files API (storage_options was
-                    // sent on submit) — cache the file_id/expiry so a later video-edit can reuse
-                    // it. Absent whenever storage wasn't requested/succeeded; never required.
-                    if (video.TryGetProperty("file_output", out var fileOutput) &&
-                        fileOutput.ValueKind == JsonValueKind.Object)
-                    {
-                        var fileId = fileOutput.TryGetProperty("file_id", out var fid) ? fid.GetString() : null;
-                        long? expiresAt = fileOutput.TryGetProperty("expires_at", out var exp) && exp.TryGetInt64(out var expVal)
-                            ? expVal
-                            : null;
-                        if (!string.IsNullOrWhiteSpace(fileId))
-                            _fileRefs[requestId] = (fileId, expiresAt);
-                    }
+                return await HandlePollDoneAsync(requestId, root, sw, polls, retriedAnyPoll, ct).ConfigureAwait(false);
 
-                    await _telemetry.LogApiCallAsync(new ApiCallTelemetry
-                    {
-                        Kind = "video_poll",
-                        Endpoint = $"videos/{requestId}",
-                        RequestId = requestId,
-                        HttpStatus = 200,
-                        DurationMs = sw.ElapsedMilliseconds,
-                        Attempt = polls,
-                        Mode = "done",
-                        Ok = true,
-                    }, ct);
-                    await _telemetry.LogOutcomeAsync(null, requestId, retriedAnyPoll ? VideoJobOutcome.OkAfterRetry : VideoJobOutcome.Ok, sw.ElapsedMilliseconds, polls, ok: true, null, ct);
-                    return url;
-                }
-                await _telemetry.LogOutcomeAsync(null, requestId, VideoJobOutcome.ProviderFailed, sw.ElapsedMilliseconds, polls, ok: false, "done with no video.url", ct);
-                throw new InvalidOperationException("Grok done with no video.url");
-            }
-
-            if (string.Equals(status, "failed", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(status, "expired", StringComparison.OrdinalIgnoreCase))
-            {
-                var detail = root.TryGetProperty("error", out var err) ? err.ToString() : body;
-                await _telemetry.LogApiCallAsync(new ApiCallTelemetry
-                {
-                    Kind = "video_poll",
-                    Endpoint = $"videos/{requestId}",
-                    RequestId = requestId,
-                    HttpStatus = 200,
-                    DurationMs = sw.ElapsedMilliseconds,
-                    Attempt = polls,
-                    Mode = status,
-                    Error = Trim(detail, 500),
-                    Ok = false,
-                }, ct);
-                await _telemetry.LogOutcomeAsync(null, requestId, string.Equals(status, "expired", StringComparison.OrdinalIgnoreCase) ? VideoJobOutcome.Expired : VideoJobOutcome.ProviderFailed, sw.ElapsedMilliseconds, polls, ok: false, Trim(detail, 500), ct);
-                throw new InvalidOperationException($"Grok job {status}: {Trim(detail, 400)}");
-            }
+            if (IsPollFailedOrExpired(status))
+                await HandlePollFailedOrExpiredAsync(requestId, root, body, status, sw, polls, ct).ConfigureAwait(false);
 
             var progress = root.TryGetProperty("progress", out var pr) ? pr.ToString() : null;
-            onProgress?.Invoke(progress is null ? $"status={status}" : $"status={status} ({progress}%)");
+            onProgress?.Invoke(FormatPollProgress(status, progress));
             await Task.Delay(TimeSpan.FromSeconds(poll), ct);
         }
 
         await _telemetry.LogOutcomeAsync(null, requestId, VideoJobOutcome.TimedOut, sw.ElapsedMilliseconds, polls, ok: false, $"timed out after {_opts.GrokTimeoutSeconds}s", ct);
         throw new TimeoutException($"Grok job timed out after {_opts.GrokTimeoutSeconds}s");
+    }
+
+    private static bool IsPollFailedOrExpired(string? status) =>
+        string.Equals(status, "failed", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(status, "expired", StringComparison.OrdinalIgnoreCase);
+
+    private static string FormatPollProgress(string? status, string? progress) =>
+        progress is null ? $"status={status}" : $"status={status} ({progress}%)";
+
+    private async Task<(string Body, bool Retried)> PollOnceGetAsync(
+        string requestId, int polls, Stopwatch sw, CancellationToken ct)
+    {
+        var retried = false;
+        try
+        {
+            var body = await FetchPollBodyAsync(requestId, polls, () => retried = true, ct).ConfigureAwait(false);
+            return (body, retried);
+        }
+        catch (Exception ex)
+        {
+            await _telemetry.LogApiCallAsync(new ApiCallTelemetry
+            {
+                Kind = "video_poll",
+                Endpoint = $"videos/{requestId}",
+                RequestId = requestId,
+                HttpStatus = ex is ChatHttpStatusException hse ? hse.StatusCode : null,
+                DurationMs = sw.ElapsedMilliseconds,
+                Attempt = polls,
+                Error = Trim(ex.Message, 400),
+                Ok = false,
+            }, ct);
+            await _telemetry.LogOutcomeAsync(null, requestId, VideoJobOutcome.PollFailed, sw.ElapsedMilliseconds, polls, ok: false, ex.Message, ct);
+            throw;
+        }
+    }
+
+    private async Task<string> FetchPollBodyAsync(
+        string requestId, int polls, Action markRetried, CancellationToken ct) =>
+        await AiRetryPolicy.ExecuteWithTransientRetryAsync(
+            _ => GetPollResponseAsync(requestId, ct),
+            isTransient: AiRetryPolicy.IsTransientChatFailure,
+            maxAttempts: AiRetryPolicy.DefaultTransientMaxAttempts,
+            backoffBaseMs: AiRetryPolicy.DefaultTransientBackoffMs,
+            onRetry: (attemptNum, ex) =>
+            {
+                markRetried();
+                return _errorLogger.LogRetryAttemptAsync("grok_video_poll", null, $"requestId={requestId}; poll={polls}", attemptNum, ex, ct);
+            },
+            ct: ct).ConfigureAwait(false);
+
+    private async Task<string> GetPollResponseAsync(string requestId, CancellationToken ct)
+    {
+        using var resp = await SendAsync(HttpMethod.Get, $"videos/{requestId}", content: null, ct);
+        var b = await resp.Content.ReadAsStringAsync(ct);
+        if (!resp.IsSuccessStatusCode)
+            throw ChatHttpStatusException.FromResponse(resp,
+                $"Grok poll HTTP {(int)resp.StatusCode}: {Trim(b, 400)}");
+        return b;
+    }
+
+    private async Task<string> HandlePollDoneAsync(
+        string requestId, JsonElement root, Stopwatch sw, int polls, bool retriedAnyPoll, CancellationToken ct)
+    {
+        if (!TryReadVideoUrl(root, out var url, out var video))
+        {
+            await _telemetry.LogOutcomeAsync(null, requestId, VideoJobOutcome.ProviderFailed, sw.ElapsedMilliseconds, polls, ok: false, "done with no video.url", ct);
+            throw new InvalidOperationException("Grok done with no video.url");
+        }
+
+        TryCacheFileOutput(requestId, video);
+        await _telemetry.LogApiCallAsync(new ApiCallTelemetry
+        {
+            Kind = "video_poll",
+            Endpoint = $"videos/{requestId}",
+            RequestId = requestId,
+            HttpStatus = 200,
+            DurationMs = sw.ElapsedMilliseconds,
+            Attempt = polls,
+            Mode = "done",
+            Ok = true,
+        }, ct);
+        await _telemetry.LogOutcomeAsync(null, requestId, retriedAnyPoll ? VideoJobOutcome.OkAfterRetry : VideoJobOutcome.Ok, sw.ElapsedMilliseconds, polls, ok: true, null, ct);
+        return url;
+    }
+
+    private static bool TryReadVideoUrl(JsonElement root, out string url, out JsonElement video)
+    {
+        url = "";
+        video = default;
+        if (!root.TryGetProperty("video", out video))
+            return false;
+        if (!video.TryGetProperty("url", out var urlEl))
+            return false;
+        if (urlEl.GetString() is not { Length: > 0 } found)
+            return false;
+        url = found;
+        return true;
+    }
+
+    private void TryCacheFileOutput(string requestId, JsonElement video)
+    {
+        if (!video.TryGetProperty("file_output", out var fileOutput) ||
+            fileOutput.ValueKind != JsonValueKind.Object)
+            return;
+
+        var fileId = fileOutput.TryGetProperty("file_id", out var fid) ? fid.GetString() : null;
+        long? expiresAt = null;
+        if (fileOutput.TryGetProperty("expires_at", out var exp) && exp.TryGetInt64(out var expVal))
+            expiresAt = expVal;
+        if (!string.IsNullOrWhiteSpace(fileId))
+            _fileRefs[requestId] = (fileId, expiresAt);
+    }
+
+    private async Task HandlePollFailedOrExpiredAsync(
+        string requestId, JsonElement root, string body, string? status, Stopwatch sw, int polls, CancellationToken ct)
+    {
+        var detail = root.TryGetProperty("error", out var err) ? err.ToString() : body;
+        await _telemetry.LogApiCallAsync(new ApiCallTelemetry
+        {
+            Kind = "video_poll",
+            Endpoint = $"videos/{requestId}",
+            RequestId = requestId,
+            HttpStatus = 200,
+            DurationMs = sw.ElapsedMilliseconds,
+            Attempt = polls,
+            Mode = status,
+            Error = Trim(detail, 500),
+            Ok = false,
+        }, ct);
+        await _telemetry.LogOutcomeAsync(null, requestId, string.Equals(status, "expired", StringComparison.OrdinalIgnoreCase) ? VideoJobOutcome.Expired : VideoJobOutcome.ProviderFailed, sw.ElapsedMilliseconds, polls, ok: false, Trim(detail, 500), ct);
+        throw new InvalidOperationException($"Grok job {status}: {Trim(detail, 400)}");
     }
 
     public (string? FileId, long? ExpiresAtUnixSeconds) TryGetStoredFileReference(string requestId) =>

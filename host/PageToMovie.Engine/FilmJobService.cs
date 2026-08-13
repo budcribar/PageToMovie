@@ -523,44 +523,9 @@ public sealed class FilmJobService
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        // Hard reject only when client asks FailIfLocked and lock is held by someone else
-        if (failIfLocked)
-        {
-            foreach (var res in resources)
-            {
-                var held = _locks.Get(res);
-                if (held is null) continue;
-                if (string.Equals(held.UserId, userId, StringComparison.OrdinalIgnoreCase))
-                    continue;
-                _metrics.NoteLockConflict();
-                throw new LockConflictException(res, held.UserId, held.ExpiresAt);
-            }
-        }
+        ThrowIfLockedByOther(failIfLocked, resources, userId);
 
-        // I5 / P2: shared → Owner's keys; personal → actor's keys
-        var keyUserId = userId;
-        var keyMode = PageToMovie.Engine.Collaboration.ProjectKeyModes.Personal;
-        if (!string.IsNullOrWhiteSpace(meta.ProjectId) && _acl is not null)
-        {
-            try
-            {
-                var aclDoc = await _acl.GetOrCreateAclAsync(meta.ProjectId, userId).ConfigureAwait(false);
-                keyMode = PageToMovie.Engine.Collaboration.ProjectKeyModes.Normalize(aclDoc.KeyMode);
-                if (PageToMovie.Engine.Collaboration.ProjectKeyModes.IsShared(keyMode)
-                    && !string.IsNullOrWhiteSpace(aclDoc.OwnerUserId))
-                    keyUserId = aclDoc.OwnerUserId.Trim();
-            }
-            catch { /* fail-open personal */ }
-        }
-        var apiKey = !string.IsNullOrWhiteSpace(_user.RequestApiKey)
-            ? _user.RequestApiKey
-            : await _keys.GetKeyAsync(keyUserId, "grok").ConfigureAwait(false);
-        var geminiKey = await _keys.GetKeyAsync(keyUserId, "gemini").ConfigureAwait(false);
-        var anthropicKey = await _keys.GetKeyAsync(keyUserId, "anthropic").ConfigureAwait(false);
-        var falKey = await _keys.GetKeyAsync(keyUserId, "fal").ConfigureAwait(false);
-        var sunoKey = await _keys.GetKeyAsync(keyUserId, "suno").ConfigureAwait(false);
-        var aiMusicApiKey = await _keys.GetKeyAsync(keyUserId, "aimusicapi").ConfigureAwait(false);
-        var elevenLabsKey = await _keys.GetKeyAsync(keyUserId, "elevenlabs").ConfigureAwait(false);
+        var keys = await ResolveJobApiKeysAsync(userId, meta.ProjectId).ConfigureAwait(false);
 
         var queuedAt = DateTimeOffset.UtcNow;
         var cts = new CancellationTokenSource();
@@ -582,15 +547,15 @@ public sealed class FilmJobService
         var run = new JobRunState
         {
             UserId = userId,
-            ApiKey = apiKey,
-            KeyMode = keyMode,
-            KeyUserId = keyUserId,
-            GeminiApiKey = geminiKey,
-            AnthropicApiKey = anthropicKey,
-            FalApiKey = falKey,
-            SunoApiKey = sunoKey,
-            AiMusicApiKey = aiMusicApiKey,
-            ElevenLabsApiKey = elevenLabsKey,
+            ApiKey = keys.ApiKey,
+            KeyMode = keys.KeyMode,
+            KeyUserId = keys.KeyUserId,
+            GeminiApiKey = keys.GeminiApiKey,
+            AnthropicApiKey = keys.AnthropicApiKey,
+            FalApiKey = keys.FalApiKey,
+            SunoApiKey = keys.SunoApiKey,
+            AiMusicApiKey = keys.AiMusicApiKey,
+            ElevenLabsApiKey = keys.ElevenLabsApiKey,
             QueuedAt = queuedAt,
             Cts = cts,
             ActiveJobId = rec.JobId,
@@ -603,111 +568,244 @@ public sealed class FilmJobService
         _metrics.NoteJobQueued(kind, userId);
         _ = PublishSnapshotAsync(run.Snapshot);
 
-        _ = Task.Run(async () =>
-        {
-            CurrentRun.Value = run;
-            using (ApiKeyScope.Push(new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["grok"] = run.ApiKey,
-                ["gemini"] = run.GeminiApiKey,
-                ["anthropic"] = run.AnthropicApiKey,
-                ["fal"] = run.FalApiKey,
-                ["suno"] = run.SunoApiKey,
-                ["aimusicapi"] = run.AiMusicApiKey,
-                ["elevenlabs"] = run.ElevenLabsApiKey,
-            }))
-            using (UserApiCallScope.Push(run.UserId))
-            {
-                var startedAt = DateTimeOffset.UtcNow;
-                var success = false;
-                try
-                {
-                    // Wait for locks (queued stays visible via SignalR messages)
-                    await WaitForLocksAsync(run, cts.Token);
-
-                    await UpdateQueuedMessageAsync(run, "Waiting for worker slot…");
-
-                    async Task RunWorkAsync(CancellationToken ct)
-                    {
-                        using var linked = CancellationTokenSource.CreateLinkedTokenSource(run.Cts.Token, ct);
-                        // Bind api_calls telemetry to this job's project for the async flow
-                        using var tel = !string.IsNullOrWhiteSpace(meta.ProjectId)
-                            ? _telemetry.UseProject(meta.ProjectId)
-                            : null;
-                        await work(linked.Token);
-                    }
-
-                    await _apiPool.RunAsync(userId, RunWorkAsync, run.Cts.Token);
-
-                    var status = CurrentRun.Value?.Snapshot.Status;
-                    success = string.Equals(status, StatusDone, StringComparison.OrdinalIgnoreCase);
-                }
-                catch (OperationCanceledException)
-                {
-                    try
-                    {
-                        if (CurrentRun.Value?.Snapshot is { } s &&
-                            !string.Equals(s.Status, StatusCancelled, StringComparison.OrdinalIgnoreCase) &&
-                            !string.Equals(s.Status, StatusDone, StringComparison.OrdinalIgnoreCase))
-                        {
-                            await FinishAsync(StatusCancelled, CancelledByUser);
-                        }
-                    }
-                    catch { /* ignore */ }
-                }
-                catch (LockConflictException ex)
-                {
-                    _metrics.NoteLockConflict();
-                    try
-                    {
-                        await FinishAsync(StatusError, ex.Message, ex.Message);
-                    }
-                    catch { /* ignore */ }
-                }
-                catch (Exception ex)
-                {
-                    _log.LogError(ex, "Background job failed");
-                    try
-                    {
-                        if (CurrentRun.Value?.Snapshot is { } s &&
-                            (string.Equals(s.Status, StatusRunning, StringComparison.OrdinalIgnoreCase) ||
-                             string.Equals(s.Status, StatusQueued, StringComparison.OrdinalIgnoreCase)))
-                        {
-                            await FinishAsync(StatusError, ex.Message, ex.Message);
-                        }
-                    }
-                    catch { /* ignore */ }
-                }
-                finally
-                {
-                    var kindDone = CurrentRun.Value?.Snapshot.Kind ?? kind;
-                    var q = run.QueuedAt;
-                    var st = run.StartedAt ?? startedAt;
-                    var snapStatus = CurrentRun.Value?.Snapshot.Status;
-                    if (string.Equals(snapStatus, StatusDone, StringComparison.OrdinalIgnoreCase))
-                        success = true;
-                    else if (string.Equals(snapStatus, StatusError, StringComparison.OrdinalIgnoreCase) ||
-                             string.Equals(snapStatus, StatusCancelled, StringComparison.OrdinalIgnoreCase))
-                        success = false;
-
-                    _metrics.NoteJobFinished(kindDone, userId, success, q, st);
-
-                    foreach (var res in run.HeldLocks)
-                        _locks.Release(res, userId);
-
-                    if (!string.IsNullOrWhiteSpace(run.ActiveJobId))
-                    {
-                        if (_jobCts.TryRemove(run.ActiveJobId, out var finishedCts))
-                            finishedCts.Dispose();
-                        _locks.ReleaseAllForJob(run.ActiveJobId);
-                    }
-
-                    CurrentRun.Value = null;
-                }
-            }
-        }, CancellationToken.None);
+        _ = Task.Run(() => ExecuteQueuedJobAsync(work, meta, run, userId, kind), CancellationToken.None);
 
         return rec.ToSnapshot();
+    }
+
+    /// <summary>
+    /// Hard reject only when the client asks FailIfLocked and the lock is held by someone else.
+    /// </summary>
+    private void ThrowIfLockedByOther(bool failIfLocked, List<string> resources, string userId)
+    {
+        if (!failIfLocked)
+            return;
+        foreach (var res in resources)
+        {
+            var held = _locks.Get(res);
+            if (held is null) continue;
+            if (string.Equals(held.UserId, userId, StringComparison.OrdinalIgnoreCase))
+                continue;
+            _metrics.NoteLockConflict();
+            throw new LockConflictException(res, held.UserId, held.ExpiresAt);
+        }
+    }
+
+    private sealed class JobApiKeys
+    {
+        public string KeyUserId { get; init; } = "";
+        public string KeyMode { get; init; } = "";
+        public string? ApiKey { get; init; }
+        public string? GeminiApiKey { get; init; }
+        public string? AnthropicApiKey { get; init; }
+        public string? FalApiKey { get; init; }
+        public string? SunoApiKey { get; init; }
+        public string? AiMusicApiKey { get; init; }
+        public string? ElevenLabsApiKey { get; init; }
+    }
+
+    /// <summary>
+    /// I5 / P2: shared → owner's keys; personal → actor's keys. Fail-open to personal on ACL errors.
+    /// </summary>
+    private async Task<JobApiKeys> ResolveJobApiKeysAsync(string userId, string? projectId)
+    {
+        var keyUserId = userId;
+        var keyMode = PageToMovie.Engine.Collaboration.ProjectKeyModes.Personal;
+        if (!string.IsNullOrWhiteSpace(projectId) && _acl is not null)
+        {
+            try
+            {
+                var aclDoc = await _acl.GetOrCreateAclAsync(projectId, userId).ConfigureAwait(false);
+                keyMode = PageToMovie.Engine.Collaboration.ProjectKeyModes.Normalize(aclDoc.KeyMode);
+                if (PageToMovie.Engine.Collaboration.ProjectKeyModes.IsShared(keyMode)
+                    && !string.IsNullOrWhiteSpace(aclDoc.OwnerUserId))
+                    keyUserId = aclDoc.OwnerUserId.Trim();
+            }
+            catch { /* fail-open personal */ }
+        }
+
+        var apiKey = await ResolveGrokApiKeyAsync(keyUserId).ConfigureAwait(false);
+        var geminiKey = await _keys.GetKeyAsync(keyUserId, "gemini").ConfigureAwait(false);
+        var anthropicKey = await _keys.GetKeyAsync(keyUserId, "anthropic").ConfigureAwait(false);
+        var falKey = await _keys.GetKeyAsync(keyUserId, "fal").ConfigureAwait(false);
+        var sunoKey = await _keys.GetKeyAsync(keyUserId, "suno").ConfigureAwait(false);
+        var aiMusicApiKey = await _keys.GetKeyAsync(keyUserId, "aimusicapi").ConfigureAwait(false);
+        var elevenLabsKey = await _keys.GetKeyAsync(keyUserId, "elevenlabs").ConfigureAwait(false);
+        return new JobApiKeys
+        {
+            KeyUserId = keyUserId,
+            KeyMode = keyMode,
+            ApiKey = apiKey,
+            GeminiApiKey = geminiKey,
+            AnthropicApiKey = anthropicKey,
+            FalApiKey = falKey,
+            SunoApiKey = sunoKey,
+            AiMusicApiKey = aiMusicApiKey,
+            ElevenLabsApiKey = elevenLabsKey,
+        };
+    }
+
+    private async Task<string?> ResolveGrokApiKeyAsync(string keyUserId)
+    {
+        if (!string.IsNullOrWhiteSpace(_user.RequestApiKey))
+            return _user.RequestApiKey;
+        return await _keys.GetKeyAsync(keyUserId, "grok").ConfigureAwait(false);
+    }
+
+    private async Task ExecuteQueuedJobAsync(
+        Func<CancellationToken, Task> work,
+        JobEnqueueMeta meta,
+        JobRunState run,
+        string userId,
+        string kind)
+    {
+        CurrentRun.Value = run;
+        using (ApiKeyScope.Push(new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["grok"] = run.ApiKey,
+            ["gemini"] = run.GeminiApiKey,
+            ["anthropic"] = run.AnthropicApiKey,
+            ["fal"] = run.FalApiKey,
+            ["suno"] = run.SunoApiKey,
+            ["aimusicapi"] = run.AiMusicApiKey,
+            ["elevenlabs"] = run.ElevenLabsApiKey,
+        }))
+        using (UserApiCallScope.Push(run.UserId))
+        {
+            var startedAt = DateTimeOffset.UtcNow;
+            var success = false;
+            try
+            {
+                // Wait for locks (queued stays visible via SignalR messages)
+                await WaitForLocksAsync(run, run.Cts.Token);
+
+                await UpdateQueuedMessageAsync(run, "Waiting for worker slot…");
+
+                await _apiPool.RunAsync(
+                    userId,
+                    ct => RunQueuedWorkAsync(work, meta, run, ct),
+                    run.Cts.Token);
+
+                var status = CurrentRun.Value?.Snapshot.Status;
+                success = string.Equals(status, StatusDone, StringComparison.OrdinalIgnoreCase);
+            }
+            catch (OperationCanceledException)
+            {
+                await TryFinishCancelledQueuedJobAsync();
+            }
+            catch (LockConflictException ex)
+            {
+                await TryFinishLockConflictJobAsync(ex);
+            }
+            catch (Exception ex)
+            {
+                await TryFinishFailedQueuedJobAsync(ex);
+            }
+            finally
+            {
+                FinalizeQueuedJob(run, userId, kind, startedAt, success);
+            }
+        }
+    }
+
+    private async Task RunQueuedWorkAsync(
+        Func<CancellationToken, Task> work,
+        JobEnqueueMeta meta,
+        JobRunState run,
+        CancellationToken ct)
+    {
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(run.Cts.Token, ct);
+        // Bind api_calls telemetry to this job's project for the async flow
+        using var tel = CreateJobTelemetryScope(meta.ProjectId);
+        await work(linked.Token);
+    }
+
+    private IDisposable? CreateJobTelemetryScope(string? projectId)
+    {
+        if (string.IsNullOrWhiteSpace(projectId))
+            return null;
+        return _telemetry.UseProject(projectId);
+    }
+
+    private async Task TryFinishCancelledQueuedJobAsync()
+    {
+        try
+        {
+            if (CurrentRun.Value?.Snapshot is { } s &&
+                !string.Equals(s.Status, StatusCancelled, StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(s.Status, StatusDone, StringComparison.OrdinalIgnoreCase))
+            {
+                await FinishAsync(StatusCancelled, CancelledByUser);
+            }
+        }
+        catch { /* ignore */ }
+    }
+
+    private async Task TryFinishLockConflictJobAsync(LockConflictException ex)
+    {
+        _metrics.NoteLockConflict();
+        try
+        {
+            await FinishAsync(StatusError, ex.Message, ex.Message);
+        }
+        catch { /* ignore */ }
+    }
+
+    private async Task TryFinishFailedQueuedJobAsync(Exception ex)
+    {
+        _log.LogError(ex, "Background job failed");
+        try
+        {
+            if (CurrentRun.Value?.Snapshot is { } s &&
+                (string.Equals(s.Status, StatusRunning, StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(s.Status, StatusQueued, StringComparison.OrdinalIgnoreCase)))
+            {
+                await FinishAsync(StatusError, ex.Message, ex.Message);
+            }
+        }
+        catch { /* ignore */ }
+    }
+
+    private void FinalizeQueuedJob(
+        JobRunState run,
+        string userId,
+        string kind,
+        DateTimeOffset startedAt,
+        bool success)
+    {
+        var kindDone = CurrentRun.Value?.Snapshot.Kind ?? kind;
+        var q = run.QueuedAt;
+        var st = run.StartedAt ?? startedAt;
+        var snapStatus = CurrentRun.Value?.Snapshot.Status;
+        success = ResolveQueuedJobSuccess(snapStatus, success);
+
+        _metrics.NoteJobFinished(kindDone, userId, success, q, st);
+
+        foreach (var res in run.HeldLocks)
+            _locks.Release(res, userId);
+
+        ReleaseQueuedJobLocks(run);
+
+        CurrentRun.Value = null;
+    }
+
+    private static bool ResolveQueuedJobSuccess(string? snapStatus, bool success)
+    {
+        if (string.Equals(snapStatus, StatusDone, StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (string.Equals(snapStatus, StatusError, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(snapStatus, StatusCancelled, StringComparison.OrdinalIgnoreCase))
+            return false;
+        return success;
+    }
+
+    private void ReleaseQueuedJobLocks(JobRunState run)
+    {
+        if (string.IsNullOrWhiteSpace(run.ActiveJobId))
+            return;
+        if (_jobCts.TryRemove(run.ActiveJobId, out var finishedCts))
+            finishedCts.Dispose();
+        _locks.ReleaseAllForJob(run.ActiveJobId);
     }
 
     private async Task WaitForLocksAsync(JobRunState run, CancellationToken ct)
@@ -1065,12 +1163,7 @@ public sealed class FilmJobService
         try
         {
             // Ambient job scope is pushed before this runs — log which key source is active.
-            var keyHint = !string.IsNullOrWhiteSpace(ApiKeyScope.Current)
-                ? "personal/scope"
-                : !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("XAI_API_KEY"))
-                    ? "server XAI_API_KEY env"
-                    : "none";
-            await AppendLogAsync($"AI key source for import: {keyHint}").ConfigureAwait(false);
+            await AppendLogAsync($"AI key source for import: {ResolveImportKeySourceHint()}").ConfigureAwait(false);
 
             if (!_chat.IsConfigured)
             {
@@ -1087,58 +1180,10 @@ public sealed class FilmJobService
             var needPrepare = !req.SkipPrepare;
 
             // TXT may already have book_full after upload; still allow force extract for PDF
-            if (needPrepare && File.Exists(bookPath) && !req.ForceExtract && !req.ForceVision)
-            {
-                // Light skip if text already good and not forcing — still run prepare for PDF path consistency
-                // Import always sets ForceExtract=true for PDF; SkipPrepare for re-draft only.
-            }
+            NoteLightSkipPrepareIfApplicable(needPrepare, bookPath, req);
 
-            if (needPrepare)
-            {
-                await AppendLogAsync("Phase 1: prepare book text").ConfigureAwait(false);
-                await UpdateAsync(s =>
-                {
-                    s.Index = 1;
-                    s.Message = "Reading book…";
-                }).ConfigureAwait(false);
-
-                var prep = await _books.PrepareAsync(
-                    projectId,
-                    forceExtract: req.ForceExtract,
-                    forceVision: req.ForceVision,
-                    autoVision: req.AutoVision,
-                    visionModel: await ResolveVisionModelAsync(projectId, req.VisionModel, ct).ConfigureAwait(false),
-                    onProgress: line =>
-                    {
-                        _ = AppendLogAsync(line);
-                        _ = UpdateAsync(s =>
-                        {
-                            s.Message = line;
-                            if (line.Contains("Extract", StringComparison.OrdinalIgnoreCase))
-                                s.Index = Math.Max(s.Index, 2);
-                            else if (line.Contains("Vision", StringComparison.OrdinalIgnoreCase) ||
-                                     line.Contains("page", StringComparison.OrdinalIgnoreCase))
-                                s.Index = Math.Max(s.Index, 3);
-                            else
-                                s.Index = Math.Max(s.Index, 2);
-                        });
-                    },
-                    ct: ct).ConfigureAwait(false);
-
-                if (!prep.Ok)
-                {
-                    await FinishAsync(StatusError, prep.StrategyReason ?? "Book prepare failed",
-                        prep.StrategyReason ?? "Book prepare failed").ConfigureAwait(false);
-                    return;
-                }
-
-                await AppendLogAsync(
-                    $"Book text ready · {prep.TextWords} words · {prep.TextEngine}").ConfigureAwait(false);
-            }
-            else
-            {
-                await AppendLogAsync("Skipping prepare — using existing book text").ConfigureAwait(false);
-            }
+            if (!await TryRunBookImportPreparePhaseAsync(req, projectId, needPrepare, ct).ConfigureAwait(false))
+                return;
 
             if (!File.Exists(bookPath))
             {
@@ -1147,73 +1192,9 @@ public sealed class FilmJobService
                 return;
             }
 
-            await UpdateAsync(s =>
-            {
-                s.Index = 5;
-                s.Message = "Writing screenplay draft…";
-            }).ConfigureAwait(false);
-            await AppendLogAsync("Phase 2: book → Fountain screenplay").ConfigureAwait(false);
-
-            if (!_chat.IsConfigured)
-            {
-                await FinishAsync(StatusError, "Chat service not configured",
-                    "Chat service not configured").ConfigureAwait(false);
+            var save = await TryRunBookImportAdaptPhaseAsync(req, projectId, ct).ConfigureAwait(false);
+            if (save is null)
                 return;
-            }
-
-            var model = await ResolvePlanningModelAsync(projectId, req.Model, ct).ConfigureAwait(false);
-            var save = await ScreenplayService.CreateDraftFromBookAsync(
-                _projects,
-                projectId,
-                _chat,
-                model: model,
-                adaptationDefaults: _opts.AdaptationDefaults,
-                onProgress: line =>
-                {
-                    _ = AppendLogAsync(line);
-                    _ = UpdateAsync(s =>
-                    {
-                        s.Message = line;
-                        // Map adapt progress into 5–9
-                        if (line.Contains("chunk", StringComparison.OrdinalIgnoreCase))
-                        {
-                            var m = CommonRegex.Match(
-                                line, @"(\d+)\s*/\s*(\d+)");
-                            if (m.Success &&
-                                int.TryParse(m.Groups[1].Value, out var cur) &&
-                                int.TryParse(m.Groups[2].Value, out var tot) &&
-                                tot > 0)
-                            {
-                                s.Index = 5 + (int)Math.Round(4.0 * Math.Clamp(cur, 0, tot) / tot);
-                            }
-                            else
-                                s.Index = Math.Max(s.Index, 6);
-                        }
-                        else if (line.Contains("Merge", StringComparison.OrdinalIgnoreCase) ||
-                                 line.Contains("Stitch", StringComparison.OrdinalIgnoreCase))
-                            s.Index = Math.Max(s.Index, 9);
-                        else if (line.Contains("repair", StringComparison.OrdinalIgnoreCase) ||
-                                 line.Contains("retry", StringComparison.OrdinalIgnoreCase))
-                            s.Index = Math.Max(s.Index, 8);
-                        else
-                            s.Index = Math.Max(s.Index, 6);
-                    });
-                },
-                ct: ct,
-                errorLogger: _errorLogger,
-                jobId: Snapshot.JobId,
-                bookRegistry: _bookRegistry,
-                cacheUserId: _user.UserId,
-                bookFileSessionFactory: _bookFileSessionFactory,
-                responses: _xaiResponses,
-                useFakes: _opts.UseFakes).ConfigureAwait(false);
-
-            if (!save.Ok)
-            {
-                await FinishAsync(StatusError, save.Error ?? "Screenplay draft failed",
-                    save.Error ?? "Screenplay draft failed").ConfigureAwait(false);
-                return;
-            }
 
             await UpdateAsync(s => s.Index = 10).ConfigureAwait(false);
             await FinishAsync(
@@ -1229,6 +1210,170 @@ public sealed class FilmJobService
             _log.LogError(ex, "Book import failed");
             await FinishAsync(StatusError, ex.Message, ex.Message).ConfigureAwait(false);
         }
+    }
+
+    private static string ResolveImportKeySourceHint()
+    {
+        if (!string.IsNullOrWhiteSpace(ApiKeyScope.Current))
+            return "personal/scope";
+        if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("XAI_API_KEY")))
+            return "server XAI_API_KEY env";
+        return "none";
+    }
+
+    /// <summary>
+    /// TXT may already have book_full after upload; still allow force extract for PDF.
+    /// Light skip if text already good and not forcing — still run prepare for PDF path consistency.
+    /// Import always sets ForceExtract=true for PDF; SkipPrepare for re-draft only.
+    /// </summary>
+    private static void NoteLightSkipPrepareIfApplicable(bool needPrepare, string bookPath, StartBookImportRequest req)
+    {
+        if (needPrepare && File.Exists(bookPath) && !req.ForceExtract && !req.ForceVision)
+        {
+            // Light skip if text already good and not forcing — still run prepare for PDF path consistency
+            // Import always sets ForceExtract=true for PDF; SkipPrepare for re-draft only.
+        }
+    }
+
+    private static void ApplyBookPrepareProgress(JobSnapshot s, string line)
+    {
+        s.Message = line;
+        if (line.Contains("Extract", StringComparison.OrdinalIgnoreCase))
+            s.Index = Math.Max(s.Index, 2);
+        else if (ContainsAnyIgnoreCase(line, "Vision", "page"))
+            s.Index = Math.Max(s.Index, 3);
+        else
+            s.Index = Math.Max(s.Index, 2);
+    }
+
+    private static void ApplyChunkAdaptIndex(JobSnapshot s, string line)
+    {
+        var m = CommonRegex.Match(line, @"(\d+)\s*/\s*(\d+)");
+        if (m.Success &&
+            int.TryParse(m.Groups[1].Value, out var cur) &&
+            int.TryParse(m.Groups[2].Value, out var tot) &&
+            tot > 0)
+        {
+            s.Index = 5 + (int)Math.Round(4.0 * Math.Clamp(cur, 0, tot) / tot);
+        }
+        else
+            s.Index = Math.Max(s.Index, 6);
+    }
+
+    private static void ApplyBookAdaptProgress(JobSnapshot s, string line)
+    {
+        s.Message = line;
+        // Map adapt progress into 5–9
+        if (line.Contains("chunk", StringComparison.OrdinalIgnoreCase))
+            ApplyChunkAdaptIndex(s, line);
+        else if (ContainsAnyIgnoreCase(line, "Merge", "Stitch"))
+            s.Index = Math.Max(s.Index, 9);
+        else if (ContainsAnyIgnoreCase(line, "repair", "retry"))
+            s.Index = Math.Max(s.Index, 8);
+        else
+            s.Index = Math.Max(s.Index, 6);
+    }
+
+    private static bool ContainsAnyIgnoreCase(string line, params string[] needles)
+    {
+        foreach (var n in needles)
+        {
+            if (line.Contains(n, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
+    }
+
+    private async Task<bool> TryRunBookImportPreparePhaseAsync(
+        StartBookImportRequest req,
+        string projectId,
+        bool needPrepare,
+        CancellationToken ct)
+    {
+        if (!needPrepare)
+        {
+            await AppendLogAsync("Skipping prepare — using existing book text").ConfigureAwait(false);
+            return true;
+        }
+
+        await AppendLogAsync("Phase 1: prepare book text").ConfigureAwait(false);
+        await UpdateAsync(s =>
+        {
+            s.Index = 1;
+            s.Message = "Reading book…";
+        }).ConfigureAwait(false);
+
+        var prep = await _books.PrepareAsync(
+            projectId,
+            forceExtract: req.ForceExtract,
+            forceVision: req.ForceVision,
+            autoVision: req.AutoVision,
+            visionModel: await ResolveVisionModelAsync(projectId, req.VisionModel, ct).ConfigureAwait(false),
+            onProgress: line =>
+            {
+                _ = AppendLogAsync(line);
+                _ = UpdateAsync(s => ApplyBookPrepareProgress(s, line));
+            },
+            ct: ct).ConfigureAwait(false);
+
+        if (!prep.Ok)
+        {
+            await FinishAsync(StatusError, prep.StrategyReason ?? "Book prepare failed",
+                prep.StrategyReason ?? "Book prepare failed").ConfigureAwait(false);
+            return false;
+        }
+
+        await AppendLogAsync(
+            $"Book text ready · {prep.TextWords} words · {prep.TextEngine}").ConfigureAwait(false);
+        return true;
+    }
+
+    private async Task<ScreenplayService.SaveResult?> TryRunBookImportAdaptPhaseAsync(
+        StartBookImportRequest req,
+        string projectId,
+        CancellationToken ct)
+    {
+        await UpdateAsync(s =>
+        {
+            s.Index = 5;
+            s.Message = "Writing screenplay draft…";
+        }).ConfigureAwait(false);
+        await AppendLogAsync("Phase 2: book → Fountain screenplay").ConfigureAwait(false);
+
+        if (!_chat.IsConfigured)
+        {
+            await FinishAsync(StatusError, "Chat service not configured",
+                "Chat service not configured").ConfigureAwait(false);
+            return null;
+        }
+
+        var model = await ResolvePlanningModelAsync(projectId, req.Model, ct).ConfigureAwait(false);
+        var save = await ScreenplayService.CreateDraftFromBookAsync(
+            _projects,
+            projectId,
+            _chat,
+            model: model,
+            adaptationDefaults: _opts.AdaptationDefaults,
+            onProgress: line =>
+            {
+                _ = AppendLogAsync(line);
+                _ = UpdateAsync(s => ApplyBookAdaptProgress(s, line));
+            },
+            ct: ct,
+            errorLogger: _errorLogger,
+            jobId: Snapshot.JobId,
+            bookRegistry: _bookRegistry,
+            cacheUserId: _user.UserId,
+            bookFileSessionFactory: _bookFileSessionFactory,
+            responses: _xaiResponses,
+            useFakes: _opts.UseFakes).ConfigureAwait(false);
+
+        if (save.Ok)
+            return save;
+
+        await FinishAsync(StatusError, save.Error ?? "Screenplay draft failed",
+            save.Error ?? "Screenplay draft failed").ConfigureAwait(false);
+        return null;
     }
 
     /// <summary>
@@ -3357,32 +3502,62 @@ public sealed class FilmJobService
         string charKey,
         CancellationToken ct)
     {
-        var list = new List<SpeakWorkItem>();
         var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
 
         // Explicit clips: text override or pull from blueprint
         if (req.Clips is { Count: > 0 })
-        {
-            using var bp = await _projects.LoadBlueprintAsync(projectId, ct).ConfigureAwait(false);
-            foreach (var c in req.Clips.OrderBy(x => x.Scene).ThenBy(x => x.Clip))
-            {
-                if (c.Scene <= 0 || c.Clip <= 0) continue;
-                var text = (c.Text ?? "").Trim();
-                if (text.Length == 0 && bp is not null)
-                    text = FindClipDialogue(bp.RootElement, c.Scene, c.Clip);
-                text = ClipVideoPromptBuilder.SanitizeSpokenDialogue(text);
-                if (text.Length == 0) continue;
-
-                var rel = MediaRegistryService.RevoiceAudioRelativePath(c.Scene, c.Clip);
-                if (req.OnlyMissing && File.Exists(Path.Combine(projectDir, rel.Replace('/', Path.DirectorySeparatorChar))))
-                    continue;
-
-                list.Add(new SpeakWorkItem { Scene = c.Scene, Clip = c.Clip, Text = text });
-            }
-            return list;
-        }
+            return await BuildSpeakWorkFromExplicitClipsAsync(req, projectId, projectDir, ct).ConfigureAwait(false);
 
         // Auto: all blueprint clips (optionally narrator-only)
+        return await BuildSpeakWorkFromBlueprintAsync(req, projectId, projectDir, charKey, ct).ConfigureAwait(false);
+    }
+
+    private static bool ShouldSkipExistingRevoice(bool onlyMissing, string projectDir, int scene, int clip)
+    {
+        if (!onlyMissing)
+            return false;
+        var rel = MediaRegistryService.RevoiceAudioRelativePath(scene, clip);
+        return File.Exists(Path.Combine(projectDir, rel.Replace('/', Path.DirectorySeparatorChar)));
+    }
+
+    private async Task<List<SpeakWorkItem>> BuildSpeakWorkFromExplicitClipsAsync(
+        StartSpeakBatchRequest req,
+        string projectId,
+        string projectDir,
+        CancellationToken ct)
+    {
+        var list = new List<SpeakWorkItem>();
+        using var bp = await _projects.LoadBlueprintAsync(projectId, ct).ConfigureAwait(false);
+        foreach (var c in req.Clips!.OrderBy(x => x.Scene).ThenBy(x => x.Clip))
+        {
+            if (c.Scene <= 0 || c.Clip <= 0) continue;
+            var text = ResolveExplicitClipSpeakText(c, bp);
+            if (text.Length == 0) continue;
+
+            if (ShouldSkipExistingRevoice(req.OnlyMissing, projectDir, c.Scene, c.Clip))
+                continue;
+
+            list.Add(new SpeakWorkItem { Scene = c.Scene, Clip = c.Clip, Text = text });
+        }
+        return list;
+    }
+
+    private static string ResolveExplicitClipSpeakText(SpeakBatchClip c, JsonDocument? bp)
+    {
+        var text = (c.Text ?? "").Trim();
+        if (text.Length == 0 && bp is not null)
+            text = FindClipDialogue(bp.RootElement, c.Scene, c.Clip);
+        return ClipVideoPromptBuilder.SanitizeSpokenDialogue(text);
+    }
+
+    private async Task<List<SpeakWorkItem>> BuildSpeakWorkFromBlueprintAsync(
+        StartSpeakBatchRequest req,
+        string projectId,
+        string projectDir,
+        string charKey,
+        CancellationToken ct)
+    {
+        var list = new List<SpeakWorkItem>();
         using var blueprint = await _projects.LoadBlueprintAsync(projectId, ct).ConfigureAwait(false);
         if (blueprint is null)
             throw new InvalidOperationException(
@@ -3394,45 +3569,66 @@ public sealed class FilmJobService
 
         foreach (var s in scenesEl.EnumerateArray())
         {
-            var sn = s.TryGetProperty(JsonKeys.SceneNumber, out var snEl) && snEl.TryGetInt32(out var n) ? n : 0;
+            var sn = ReadSceneNumber(s);
             if (sn <= 0) continue;
             if (!s.TryGetProperty(VeoClipsKey, out var clipsEl) || clipsEl.ValueKind != JsonValueKind.Array)
                 continue;
             foreach (var c in clipsEl.EnumerateArray())
-            {
-                var cn = ClipKeying.ClipNumber(c);
-                if (cn <= 0) continue;
-
-                string? speaker = null;
-                var dialogue = "";
-                if (c.TryGetProperty(JsonKeys.AudioPayload, out var ap) && ap.ValueKind == JsonValueKind.Object)
-                {
-                    if (ap.TryGetProperty(JsonKeys.Dialogue, out var d))
-                        dialogue = d.GetString() ?? "";
-                    if (ap.TryGetProperty("speaker", out var sp))
-                        speaker = sp.GetString();
-                }
-                if (string.IsNullOrWhiteSpace(dialogue) && c.TryGetProperty(JsonKeys.Dialogue, out var rootD))
-                    dialogue = rootD.GetString() ?? "";
-                if (string.IsNullOrWhiteSpace(speaker) && c.TryGetProperty("speaker", out var rootSp))
-                    speaker = rootSp.GetString();
-
-                dialogue = ClipVideoPromptBuilder.SanitizeSpokenDialogue(dialogue);
-                if (string.IsNullOrWhiteSpace(dialogue)) continue;
-
-                if (req.NarratorOnly && !IsNarratorSpeaker(speaker, charKey))
-                    continue;
-
-                var rel = MediaRegistryService.RevoiceAudioRelativePath(sn, cn);
-                if (req.OnlyMissing &&
-                    File.Exists(Path.Combine(projectDir, rel.Replace('/', Path.DirectorySeparatorChar))))
-                    continue;
-
-                list.Add(new SpeakWorkItem { Scene = sn, Clip = cn, Text = dialogue });
-            }
+                TryAddSpeakWorkFromBlueprintClip(list, c, sn, req, projectDir, charKey);
         }
 
         return list.OrderBy(x => x.Scene).ThenBy(x => x.Clip).ToList();
+    }
+
+    private static int ReadSceneNumber(JsonElement s) =>
+        s.TryGetProperty(JsonKeys.SceneNumber, out var snEl) && snEl.TryGetInt32(out var n) ? n : 0;
+
+    private static void TryAddSpeakWorkFromBlueprintClip(
+        List<SpeakWorkItem> list,
+        JsonElement c,
+        int sn,
+        StartSpeakBatchRequest req,
+        string projectDir,
+        string charKey)
+    {
+        var cn = ClipKeying.ClipNumber(c);
+        if (cn <= 0) return;
+
+        var (dialogue, speaker) = ReadClipDialogueAndSpeaker(c);
+        dialogue = ClipVideoPromptBuilder.SanitizeSpokenDialogue(dialogue);
+        if (string.IsNullOrWhiteSpace(dialogue)) return;
+
+        if (req.NarratorOnly && !IsNarratorSpeaker(speaker, charKey))
+            return;
+
+        if (ShouldSkipExistingRevoice(req.OnlyMissing, projectDir, sn, cn))
+            return;
+
+        list.Add(new SpeakWorkItem { Scene = sn, Clip = cn, Text = dialogue });
+    }
+
+    private static (string Dialogue, string? Speaker) ReadClipDialogueAndSpeaker(JsonElement c)
+    {
+        var (dialogue, speaker) = ReadAudioPayloadDialogueAndSpeaker(c);
+        if (string.IsNullOrWhiteSpace(dialogue) && c.TryGetProperty(JsonKeys.Dialogue, out var rootD))
+            dialogue = rootD.GetString() ?? "";
+        if (string.IsNullOrWhiteSpace(speaker) && c.TryGetProperty("speaker", out var rootSp))
+            speaker = rootSp.GetString();
+        return (dialogue, speaker);
+    }
+
+    private static (string Dialogue, string? Speaker) ReadAudioPayloadDialogueAndSpeaker(JsonElement c)
+    {
+        string? speaker = null;
+        var dialogue = "";
+        if (c.TryGetProperty(JsonKeys.AudioPayload, out var ap) && ap.ValueKind == JsonValueKind.Object)
+        {
+            if (ap.TryGetProperty(JsonKeys.Dialogue, out var d))
+                dialogue = d.GetString() ?? "";
+            if (ap.TryGetProperty("speaker", out var sp))
+                speaker = sp.GetString();
+        }
+        return (dialogue, speaker);
     }
 
     private static bool IsNarratorSpeaker(string? speaker, string narratorKey) =>
@@ -3897,20 +4093,16 @@ public sealed class FilmJobService
         await _projects.RequireProjectAsync(projectId, ct);
         ApplyVideoTakeContext(req.OnlyMissing, req.TakeTrigger, forceRegen: req.Clips is { Count: > 0 });
         // G3/G4: draft production mode softens first-watch cast plate lock (plates optional).
-        if (req.RequireLockedCharacters && _projects.IsDraftProductionMode(projectId))
-            req.RequireLockedCharacters = false;
+        req.RequireLockedCharacters = EffectiveRequireLockedCharacters(req.RequireLockedCharacters, projectId);
 
         var hasClips = req.Clips is { Count: > 0 };
-        var scenes = (hasClips ? (req.Clips ?? new List<ClipTarget>()).Select(c => c.Scene) : req.Scenes)
-            .Distinct().OrderBy(s => s).ToList();
+        var scenes = DistinctOrderedScenes(hasClips, req);
         Snapshot = new JobSnapshot
         {
             Status = StatusRunning,
             Kind = "batch",
             ProjectId = projectId,
-            Message = hasClips
-                ? $"Batch: {(req.Clips ?? new List<ClipTarget>()).Count} clip(s)…"
-                : $"Batch: {scenes.Count} scene(s)…",
+            Message = BatchStartMessage(hasClips, req, scenes.Count),
             StartedAt = DateTimeOffset.UtcNow,
             Log = new List<string>(),
         };
@@ -3925,94 +4117,12 @@ public sealed class FilmJobService
                 ?? throw new InvalidOperationException(
                     $"No Stage 2 blueprint for project {projectId}. Run Stage 2 first.");
 
-            if (req.RequireLockedCharacters)
-            {
-                // The auto-inserted end-credits scene is a title card with no real cast, so it is
-                // exempt from the locked-character gate. Detect it by the same blueprint signal
-                // ProjectStore uses to derive SceneSummary.IsCredits — not a hardcoded scene number
-                // or story-specific title string (AGENTS.md: generalize, no story-specific strings).
-                var castScenes = scenes
-                    .Where(sn => !IsCreditsScene(FindScene(bp.RootElement, sn)))
-                    .ToList();
-
-                // Project-wide first (all cast voice + locked images), then per-scene mentions.
-                // Skip the cast-readiness gate entirely when the credits card is the ONLY scene being
-                // generated (nothing on-screen to lock — no wasted spend to guard against).
-                if (castScenes.Count > 0)
-                    EnsureCastReadyForVideo(projectId);
-                foreach (var sn in castScenes)
-                    EnsureSceneCharactersLocked(projectId, sn);
-            }
+            ApplyLockedCharacterGateForBatch(req, projectId, scenes, bp);
 
             var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
             Directory.CreateDirectory(Path.Combine(projectDir, AssetsFolder, VideoFolder));
 
-            // Pre-count work units
-            var work = new List<(int Scene, int Clip, JsonElement ClipEl)>();
-            if (hasClips)
-            {
-                // Explicit multi-select of specific clips — always force-regen (ignore OnlyMissing),
-                // same as single-clip regen.
-                foreach (var target in (req.Clips ?? new List<ClipTarget>()).OrderBy(c => c.Scene).ThenBy(c => c.Clip))
-                {
-                    var sceneEl = FindScene(bp.RootElement, target.Scene);
-                    if (sceneEl is null)
-                    {
-                        await AppendLogAsync($"Scene {target.Scene}: not in blueprint — skip");
-                        continue;
-                    }
-                    // Credits render deterministically client-side, never through the video model —
-                    // stop it here too in case a caller other than the Scenes page reaches this endpoint.
-                    if (IsCreditsScene(sceneEl))
-                    {
-                        await AppendLogAsync($"Scene {target.Scene}: end-credits scene — skip (rendered client-side)");
-                        continue;
-                    }
-                    var clipEl = FindClipInScene(sceneEl.Value, target.Clip);
-                    if (clipEl is null)
-                    {
-                        await AppendLogAsync($"S{target.Scene:D2}C{target.Clip}: not in blueprint — skip");
-                        continue;
-                    }
-                    work.Add((Scene: target.Scene, Clip: target.Clip, ClipEl: clipEl.Value.Clone()));
-                }
-            }
-            else
-            {
-                foreach (var sn in scenes)
-                {
-                    var sceneEl = FindScene(bp.RootElement, sn);
-                    if (sceneEl is null)
-                    {
-                        await AppendLogAsync($"Scene {sn}: not in blueprint — skip");
-                        continue;
-                    }
-                    // Credits render deterministically client-side, never through the video model —
-                    // stop it here too in case a caller other than the Scenes page reaches this endpoint.
-                    if (IsCreditsScene(sceneEl))
-                    {
-                        await AppendLogAsync($"Scene {sn}: end-credits scene — skip (rendered client-side)");
-                        continue;
-                    }
-                    if (!sceneEl.Value.TryGetProperty(VeoClipsKey, out var clipsEl) ||
-                        clipsEl.ValueKind != JsonValueKind.Array)
-                    {
-                        await AppendLogAsync($"Scene {sn}: no veo_clips — skip");
-                        continue;
-                    }
-
-                    foreach (var c in clipsEl.EnumerateArray())
-                    {
-                        var cn = ClipKeying.ClipNumber(c);
-                        if (cn <= 0) continue;
-                        var path = Path.Combine(projectDir, AssetsFolder, VideoFolder, $"scene_{sn:D2}_clip_{cn:D2}.mp4");
-                        var missing = !ClipPresentOnServerOrClient(path);
-                        if (!req.OnlyMissing || missing)
-                            work.Add((Scene: sn, Clip: cn, ClipEl: c.Clone()));
-                    }
-                }
-            }
-
+            var work = await CollectBatchWorkAsync(req, hasClips, scenes, bp, projectDir).ConfigureAwait(false);
             if (work.Count == 0)
             {
                 await AppendLogAsync("Batch: nothing to generate (only_missing).");
@@ -4037,77 +4147,12 @@ public sealed class FilmJobService
             });
             await AppendLogAsync(Snapshot.Message ?? "");
 
-            var done = 0;
-            var failed = 0;
-            string? firstClipError = null;
-            // Per-scene (LastGeneratedClip, CarryoverPaddingSec) — batch work can interleave scenes,
-            // so the padding nudge from one scene's overrun must never leak into a different scene.
-            var sceneCarryover = new Dictionary<int, (int LastClip, double PaddingSec)>();
-            for (var i = 0; i < work.Count; i++)
-            {
-                ct.ThrowIfCancellationRequested();
-                var (sn, cn, clip) = work[i];
-                await UpdateAsync(s =>
-                {
-                    s.Index = i + 1;
-                    s.Scene = sn;
-                    s.Clip = cn;
-                    s.Message = $"Generating S{sn:D2} C{cn} ({i + 1}/{work.Count})…";
-                });
-                await AppendLogAsync(Snapshot.Message ?? "");
+            var (done, failed, firstClipError, cancelled) = await GenerateBatchClipsLoopAsync(
+                work, bp, projectId, projectDir, resolution, req.VideoModel, ct).ConfigureAwait(false);
+            if (cancelled)
+                return;
 
-                try
-                {
-                    // Previous clip element in same scene (for prompt context)
-                    JsonElement? prevClipEl = null;
-                    if (cn > 1)
-                    {
-                        var sceneEl = FindScene(bp.RootElement, sn);
-                        if (sceneEl is not null)
-                            prevClipEl = FindClipInScene(sceneEl.Value, cn - 1);
-                    }
-
-                    var prior = sceneCarryover.TryGetValue(sn, out var p) ? p : (LastClip: 0, PaddingSec: 0.0);
-                    var incomingPadding = ResolveIncomingDurationPadding(cn, prior.LastClip, prior.PaddingSec);
-                    var overrun = await GenerateOneClipAsync(
-                        projectId, projectDir, sn, cn, clip, resolution, ct,
-                        previousClipEl: prevClipEl,
-                        blueprintRoot: bp.RootElement,
-                        incomingDurationPaddingSec: incomingPadding,
-                        modelOverride: req.VideoModel);
-                    sceneCarryover[sn] = (cn, overrun);
-                    done++;
-                    // Fresh clips x/y + status pills while batch is still running.
-                    _projects.InvalidateSceneListCache(projectId);
-                    await AppendLogAsync($"Done S{sn:D2} C{cn}");
-                }
-                catch (OperationCanceledException)
-                {
-                    await FinishAsync(StatusCancelled, CancelledByUser);
-                    return;
-                }
-                catch (Exception ex)
-                {
-                    failed++;
-                    firstClipError ??= ex.Message;
-                    _log.LogError(ex, "Clip S{Scene}C{Clip} failed", sn, cn);
-                    await AppendLogAsync($"Failed S{sn:D2} C{cn}: {ex.Message}");
-                }
-            }
-
-            var status = failed > 0 && done == 0 ? StatusError
-                : failed > 0 ? StatusPartial
-                : StatusDone;
-            var msg = status switch
-            {
-                StatusError => !string.IsNullOrWhiteSpace(firstClipError)
-                    ? $"Batch failed: {firstClipError}"
-                    : $"Batch failed ({failed} clip(s) failed, none ok)",
-                StatusPartial => !string.IsNullOrWhiteSpace(firstClipError)
-                    ? $"Batch partial ({done} ok, {failed} failed): {firstClipError}"
-                    : $"Batch partial ({done} ok, {failed} failed)",
-                _ => $"Batch finished ({done} clip(s))",
-            };
+            var (status, msg) = FormatBatchFinish(done, failed, firstClipError);
             await FinishAsync(status, msg, failed > 0 ? msg : null);
         }
         catch (OperationCanceledException)
@@ -4121,13 +4166,256 @@ public sealed class FilmJobService
         }
     }
 
+    private bool EffectiveRequireLockedCharacters(bool requireLocked, string projectId)
+    {
+        if (requireLocked && _projects.IsDraftProductionMode(projectId))
+            return false;
+        return requireLocked;
+    }
+
+    private static List<int> DistinctOrderedScenes(bool hasClips, StartBatchGenRequest req) =>
+        (hasClips ? (req.Clips ?? new List<ClipTarget>()).Select(c => c.Scene) : req.Scenes)
+            .Distinct().OrderBy(s => s).ToList();
+
+    private static string BatchStartMessage(bool hasClips, StartBatchGenRequest req, int sceneCount) =>
+        hasClips
+            ? $"Batch: {(req.Clips ?? new List<ClipTarget>()).Count} clip(s)…"
+            : $"Batch: {sceneCount} scene(s)…";
+
+    private void ApplyLockedCharacterGateForBatch(
+        StartBatchGenRequest req,
+        string projectId,
+        List<int> scenes,
+        JsonDocument bp)
+    {
+        if (!req.RequireLockedCharacters)
+            return;
+        // The auto-inserted end-credits scene is a title card with no real cast, so it is
+        // exempt from the locked-character gate. Detect it by the same blueprint signal
+        // ProjectStore uses to derive SceneSummary.IsCredits — not a hardcoded scene number
+        // or story-specific title string (AGENTS.md: generalize, no story-specific strings).
+        var castScenes = scenes
+            .Where(sn => !IsCreditsScene(FindScene(bp.RootElement, sn)))
+            .ToList();
+
+        // Project-wide first (all cast voice + locked images), then per-scene mentions.
+        // Skip the cast-readiness gate entirely when the credits card is the ONLY scene being
+        // generated (nothing on-screen to lock — no wasted spend to guard against).
+        if (castScenes.Count > 0)
+            EnsureCastReadyForVideo(projectId);
+        foreach (var sn in castScenes)
+            EnsureSceneCharactersLocked(projectId, sn);
+    }
+
+    private async Task<List<(int Scene, int Clip, JsonElement ClipEl)>> CollectBatchWorkAsync(
+        StartBatchGenRequest req,
+        bool hasClips,
+        List<int> scenes,
+        JsonDocument bp,
+        string projectDir)
+    {
+        if (hasClips)
+            return await CollectExplicitClipWorkAsync(req, bp).ConfigureAwait(false);
+        return await CollectSceneClipWorkAsync(req, scenes, bp, projectDir).ConfigureAwait(false);
+    }
+
+    private async Task<List<(int Scene, int Clip, JsonElement ClipEl)>> CollectExplicitClipWorkAsync(
+        StartBatchGenRequest req,
+        JsonDocument bp)
+    {
+        // Explicit multi-select of specific clips — always force-regen (ignore OnlyMissing),
+        // same as single-clip regen.
+        var work = new List<(int Scene, int Clip, JsonElement ClipEl)>();
+        foreach (var target in (req.Clips ?? new List<ClipTarget>()).OrderBy(c => c.Scene).ThenBy(c => c.Clip))
+        {
+            var sceneEl = FindScene(bp.RootElement, target.Scene);
+            if (sceneEl is null)
+            {
+                await AppendLogAsync($"Scene {target.Scene}: not in blueprint — skip");
+                continue;
+            }
+            // Credits render deterministically client-side, never through the video model —
+            // stop it here too in case a caller other than the Scenes page reaches this endpoint.
+            if (IsCreditsScene(sceneEl))
+            {
+                await AppendLogAsync($"Scene {target.Scene}: end-credits scene — skip (rendered client-side)");
+                continue;
+            }
+            var clipEl = FindClipInScene(sceneEl.Value, target.Clip);
+            if (clipEl is null)
+            {
+                await AppendLogAsync($"S{target.Scene:D2}C{target.Clip}: not in blueprint — skip");
+                continue;
+            }
+            work.Add((Scene: target.Scene, Clip: target.Clip, ClipEl: clipEl.Value.Clone()));
+        }
+        return work;
+    }
+
+    private async Task<List<(int Scene, int Clip, JsonElement ClipEl)>> CollectSceneClipWorkAsync(
+        StartBatchGenRequest req,
+        List<int> scenes,
+        JsonDocument bp,
+        string projectDir)
+    {
+        var work = new List<(int Scene, int Clip, JsonElement ClipEl)>();
+        foreach (var sn in scenes)
+        {
+            var sceneEl = FindScene(bp.RootElement, sn);
+            if (sceneEl is null)
+            {
+                await AppendLogAsync($"Scene {sn}: not in blueprint — skip");
+                continue;
+            }
+            // Credits render deterministically client-side, never through the video model —
+            // stop it here too in case a caller other than the Scenes page reaches this endpoint.
+            if (IsCreditsScene(sceneEl))
+            {
+                await AppendLogAsync($"Scene {sn}: end-credits scene — skip (rendered client-side)");
+                continue;
+            }
+            if (!sceneEl.Value.TryGetProperty(VeoClipsKey, out var clipsEl) ||
+                clipsEl.ValueKind != JsonValueKind.Array)
+            {
+                await AppendLogAsync($"Scene {sn}: no veo_clips — skip");
+                continue;
+            }
+
+            foreach (var c in clipsEl.EnumerateArray())
+                TryAddSceneClipWork(work, c, sn, projectDir, req.OnlyMissing);
+        }
+        return work;
+    }
+
+    private static void TryAddSceneClipWork(
+        List<(int Scene, int Clip, JsonElement ClipEl)> work,
+        JsonElement c,
+        int sn,
+        string projectDir,
+        bool onlyMissing)
+    {
+        var cn = ClipKeying.ClipNumber(c);
+        if (cn <= 0) return;
+        var path = Path.Combine(projectDir, AssetsFolder, VideoFolder, $"scene_{sn:D2}_clip_{cn:D2}.mp4");
+        var missing = !ClipPresentOnServerOrClient(path);
+        if (!onlyMissing || missing)
+            work.Add((Scene: sn, Clip: cn, ClipEl: c.Clone()));
+    }
+
+    private async Task<(int Done, int Failed, string? FirstClipError, bool Cancelled)> GenerateBatchClipsLoopAsync(
+        List<(int Scene, int Clip, JsonElement ClipEl)> work,
+        JsonDocument bp,
+        string projectId,
+        string projectDir,
+        string resolution,
+        string? videoModel,
+        CancellationToken ct)
+    {
+        var done = 0;
+        var failed = 0;
+        string? firstClipError = null;
+        // Per-scene (LastGeneratedClip, CarryoverPaddingSec) — batch work can interleave scenes,
+        // so the padding nudge from one scene's overrun must never leak into a different scene.
+        var sceneCarryover = new Dictionary<int, (int LastClip, double PaddingSec)>();
+        for (var i = 0; i < work.Count; i++)
+        {
+            ct.ThrowIfCancellationRequested();
+            var (sn, cn, clip) = work[i];
+            await UpdateAsync(s =>
+            {
+                s.Index = i + 1;
+                s.Scene = sn;
+                s.Clip = cn;
+                s.Message = $"Generating S{sn:D2} C{cn} ({i + 1}/{work.Count})…";
+            });
+            await AppendLogAsync(Snapshot.Message ?? "");
+
+            try
+            {
+                await GenerateOneBatchClipAsync(
+                    projectId, projectDir, sn, cn, clip, resolution, ct,
+                    bp, sceneCarryover, videoModel).ConfigureAwait(false);
+                done++;
+            }
+            catch (OperationCanceledException)
+            {
+                await FinishAsync(StatusCancelled, CancelledByUser);
+                return (done, failed, firstClipError, true);
+            }
+            catch (Exception ex)
+            {
+                failed++;
+                firstClipError ??= ex.Message;
+                _log.LogError(ex, "Clip S{Scene}C{Clip} failed", sn, cn);
+                await AppendLogAsync($"Failed S{sn:D2} C{cn}: {ex.Message}");
+            }
+        }
+        return (done, failed, firstClipError, false);
+    }
+
+    private async Task GenerateOneBatchClipAsync(
+        string projectId,
+        string projectDir,
+        int sn,
+        int cn,
+        JsonElement clip,
+        string resolution,
+        CancellationToken ct,
+        JsonDocument bp,
+        Dictionary<int, (int LastClip, double PaddingSec)> sceneCarryover,
+        string? videoModel)
+    {
+        // Previous clip element in same scene (for prompt context)
+        var prevClipEl = FindPreviousClipElement(bp.RootElement, sn, cn);
+        var prior = sceneCarryover.TryGetValue(sn, out var p) ? p : (LastClip: 0, PaddingSec: 0.0);
+        var incomingPadding = ResolveIncomingDurationPadding(cn, prior.LastClip, prior.PaddingSec);
+        var overrun = await GenerateOneClipAsync(
+            projectId, projectDir, sn, cn, clip, resolution, ct,
+            previousClipEl: prevClipEl,
+            blueprintRoot: bp.RootElement,
+            incomingDurationPaddingSec: incomingPadding,
+            modelOverride: videoModel);
+        sceneCarryover[sn] = (cn, overrun);
+        // Fresh clips x/y + status pills while batch is still running.
+        _projects.InvalidateSceneListCache(projectId);
+        await AppendLogAsync($"Done S{sn:D2} C{cn}");
+    }
+
+    private static JsonElement? FindPreviousClipElement(JsonElement root, int sn, int cn)
+    {
+        if (cn <= 1)
+            return null;
+        var sceneEl = FindScene(root, sn);
+        if (sceneEl is null)
+            return null;
+        return FindClipInScene(sceneEl.Value, cn - 1);
+    }
+
+    private static (string Status, string Message) FormatBatchFinish(int done, int failed, string? firstClipError)
+    {
+        if (failed > 0 && done == 0)
+            return (StatusError, FormatBatchFailedMessage(failed, firstClipError));
+        if (failed > 0)
+            return (StatusPartial, FormatBatchPartialMessage(done, failed, firstClipError));
+        return (StatusDone, $"Batch finished ({done} clip(s))");
+    }
+
+    private static string FormatBatchFailedMessage(int failed, string? firstClipError) =>
+        !string.IsNullOrWhiteSpace(firstClipError)
+            ? $"Batch failed: {firstClipError}"
+            : $"Batch failed ({failed} clip(s) failed, none ok)";
+
+    private static string FormatBatchPartialMessage(int done, int failed, string? firstClipError) =>
+        !string.IsNullOrWhiteSpace(firstClipError)
+            ? $"Batch partial ({done} ok, {failed} failed): {firstClipError}"
+            : $"Batch partial ({done} ok, {failed} failed)";
+
     private async Task RunSceneGenAsync(StartSceneGenRequest req, string projectId, CancellationToken ct)
     {
         await _projects.RequireProjectAsync(projectId, ct);
         ApplyVideoTakeContext(req.OnlyMissing, req.TakeTrigger, forceRegen: req.Clip is > 0 && !req.OnlyMissing);
         // G3/G4: draft production mode softens first-watch cast plate lock (plates optional).
-        if (req.RequireLockedCharacters && _projects.IsDraftProductionMode(projectId))
-            req.RequireLockedCharacters = false;
+        req.RequireLockedCharacters = EffectiveRequireLockedCharacters(req.RequireLockedCharacters, projectId);
 
         Snapshot = new JobSnapshot
         {
@@ -4153,44 +4441,16 @@ public sealed class FilmJobService
             var sceneEl = FindScene(bp.RootElement, req.Scene)
                 ?? throw new InvalidOperationException($"Scene {req.Scene} not in blueprint.");
 
-            // The end-credits card is rendered deterministically client-side (canvas -> ffmpeg.wasm),
-            // never through the video model — a video model asked to render a text-heavy title card
-            // hallucinates unrelated footage. The Scenes page already routes credits scenes elsewhere,
-            // but any other caller of this endpoint must be stopped here too, before spending an API call.
-            if (IsCreditsScene(sceneEl))
-                throw new InvalidOperationException(
-                    $"Scene {req.Scene} is the end-credits scene — it is rendered client-side, not through the video model.");
+            ThrowIfCreditsScene(sceneEl, req.Scene);
+            ApplyLockedCharactersForScene(req.RequireLockedCharacters, projectId, req.Scene);
 
-            if (req.RequireLockedCharacters)
-            {
-                EnsureCastReadyForVideo(projectId);
-                EnsureSceneCharactersLocked(projectId, req.Scene);
-            }
-
-            if (!sceneEl.TryGetProperty(VeoClipsKey, out var clipsEl) ||
-                clipsEl.ValueKind != JsonValueKind.Array)
-            {
-                throw new InvalidOperationException($"Scene {req.Scene} has no veo_clips.");
-            }
-
+            var clipsEl = RequireSceneClips(sceneEl, req.Scene);
             var clips = clipsEl.EnumerateArray().ToList();
             var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
             var videoDir = Path.Combine(projectDir, AssetsFolder, VideoFolder);
             Directory.CreateDirectory(videoDir);
 
-            var todo = new List<(int ClipNum, JsonElement Clip)>();
-            foreach (var c in clips)
-            {
-                var cn = ClipKeying.ClipNumber(c);
-                if (cn <= 0) continue;
-                if (req.Clip is int onlyClip && onlyClip > 0 && cn != onlyClip)
-                    continue;
-                var path = Path.Combine(videoDir, $"scene_{req.Scene:D2}_clip_{cn:D2}.mp4");
-                var missing = !ClipPresentOnServerOrClient(path);
-                if (!req.OnlyMissing || missing)
-                    todo.Add((cn, c.Clone()));
-            }
-
+            var todo = BuildSceneGenTodo(clips, req, videoDir);
             if (todo.Count == 0)
             {
                 await AppendLogAsync($"Scene {req.Scene}: nothing to generate (only_missing).");
@@ -4215,189 +4475,21 @@ public sealed class FilmJobService
             });
             await AppendLogAsync(startMsg);
 
-            // Admin-only quality gate: after dialogue QA fails, auto-regen up to qa_max_retries.
-            var qaRetryOnFail = false;
-            var qaMaxRetries = 1;
-            try
-            {
-                var cfgMap = await _projects.GetConfigAsync(projectId, ct).ConfigureAwait(false);
-                if (cfgMap.TryGetValue("qa_retry_on_fail", out var qe))
-                {
-                    if (qe.ValueKind is JsonValueKind.True) qaRetryOnFail = true;
-                    else if (qe.ValueKind is JsonValueKind.False) qaRetryOnFail = false;
-                    else if (qe.ValueKind == JsonValueKind.String &&
-                             bool.TryParse(qe.GetString(), out var qb))
-                        qaRetryOnFail = qb;
-                }
-                else
-                    qaRetryOnFail = true; // match Configuration default
+            var (qaRetryOnFail, qaMaxRetries) = await LoadQaRetryConfigAsync(projectId, ct).ConfigureAwait(false);
+            var (adminQaRetry, dialogueQa) = ResolveAdminQaRetry(qaRetryOnFail);
+            await LogQaRetryStatusAsync(qaRetryOnFail, adminQaRetry, qaMaxRetries).ConfigureAwait(false);
 
-                if (cfgMap.TryGetValue("qa_max_retries", out var qm) && qm.TryGetInt32(out var qmi))
-                    qaMaxRetries = Math.Clamp(qmi, 0, 5);
-            }
-            catch { /* keep defaults */ }
+            var (done, failed, cancelled) = await GenerateSceneClipsWithQaAsync(
+                req, projectId, projectDir, sceneEl, bp.RootElement, todo,
+                resolution, adminQaRetry, qaMaxRetries, dialogueQa, ct).ConfigureAwait(false);
+            if (cancelled)
+                return;
 
-            var adminQaRetry = qaRetryOnFail && _user.IsAdmin &&
-                               _dialogueVerification is not null &&
-                               _dialogueVerification.IsConfigured;
-            var dialogueQa = adminQaRetry ? _dialogueVerification : null;
-            if (qaRetryOnFail && !_user.IsAdmin)
-                await AppendLogAsync("Quality gate retry is on, but auto-regen runs in admin mode only.");
-            else if (adminQaRetry)
-                await AppendLogAsync(
-                    $"Admin quality gate retry ON (max {qaMaxRetries} re-gen(s) per clip on dialogue fail).");
-
-            var done = 0;
-            var failed = 0;
-            var lastGeneratedClipNum = 0;
-            var carryoverPaddingSec = 0.0;
-            for (var i = 0; i < todo.Count; i++)
-            {
-                ct.ThrowIfCancellationRequested();
-                var (cn, clip) = todo[i];
-                await UpdateAsync(s =>
-                {
-                    s.Index = i + 1;
-                    s.Clip = cn;
-                    s.Message = $"Generating S{req.Scene:D2} C{cn} ({i + 1}/{todo.Count})…";
-                });
-                await AppendLogAsync(Snapshot.Message ?? "");
-
-                try
-                {
-                    JsonElement? prevClipEl = null;
-                    if (cn > 1)
-                    {
-                        foreach (var (pcn, pclip) in todo)
-                        {
-                            if (pcn == cn - 1) { prevClipEl = pclip; break; }
-                        }
-                        // Also scan full scene clips for prev not in todo
-                        if (prevClipEl is null)
-                            prevClipEl = FindClipInScene(sceneEl, cn - 1);
-                    }
-
-                    var incomingPadding = ResolveIncomingDurationPadding(cn, lastGeneratedClipNum, carryoverPaddingSec);
-                    carryoverPaddingSec = await GenerateOneClipAsync(
-                        projectId, projectDir, req.Scene, cn, clip, resolution, ct,
-                        previousClipEl: prevClipEl,
-                        blueprintRoot: bp.RootElement,
-                        incomingDurationPaddingSec: incomingPadding);
-
-                    if (adminQaRetry && ClipHasSpokenAudio(clip))
-                    {
-                        for (var qaAttempt = 1; qaAttempt <= qaMaxRetries; qaAttempt++)
-                        {
-                            ct.ThrowIfCancellationRequested();
-                            ClipDialogueVerificationResult? ver = null;
-                            try
-                            {
-                                if (dialogueQa is null) break;
-                                ver = await dialogueQa
-                                    .VerifyClipDialogueAsync(projectId, req.Scene, cn, force: true, ct: ct)
-                                    .ConfigureAwait(false);
-                            }
-                            catch (Exception ex)
-                            {
-                                await AppendLogAsync(
-                                    $"  [QA] dialogue check failed to run S{req.Scene:D2}C{cn}: {ex.Message}");
-                                break;
-                            }
-
-                            if (ver is null || !DialogueQaNeedsRegen(ver))
-                            {
-                                if (ver is not null)
-                                    await AppendLogAsync(
-                                        $"  [QA] S{req.Scene:D2}C{cn} ok ({ver.Status})");
-                                break;
-                            }
-
-                            await AppendLogAsync(
-                                $"  [QA] S{req.Scene:D2}C{cn} {ver.Status} — auto-regen {qaAttempt}/{qaMaxRetries} (admin)…");
-                            try
-                            {
-                                await _learning.AppendAsync(new ReviewLearningEvent
-                                {
-                                    ProjectId = projectId,
-                                    Type = "qa_auto_retry",
-                                    Scene = req.Scene,
-                                    Clip = cn,
-                                    Note = ver.Status,
-                                    Outcome = $"attempt_{qaAttempt}",
-                                    JobId = Snapshot.JobId,
-                                    ActionTaken = "admin_dialogue_qa_regen",
-                                }, ct).ConfigureAwait(false);
-                            }
-                            catch { /* non-fatal */ }
-
-                            carryoverPaddingSec = await GenerateOneClipAsync(
-                                projectId, projectDir, req.Scene, cn, clip, resolution, ct,
-                                previousClipEl: prevClipEl,
-                                blueprintRoot: bp.RootElement,
-                                incomingDurationPaddingSec: incomingPadding,
-                                takeKindOverride: VideoTakeKinds.QaAuto);
-                        }
-                    }
-
-                    lastGeneratedClipNum = cn;
-                    done++;
-                    // Fresh clips x/y + status pills while scene gen is still running.
-                    _projects.InvalidateSceneListCache(projectId);
-                    await AppendLogAsync($"Done S{req.Scene:D2} C{cn}");
-                }
-                catch (OperationCanceledException)
-                {
-                    await FinishAsync(StatusCancelled, CancelledByUser);
-                    return;
-                }
-                catch (Exception ex)
-                {
-                    failed++;
-                    _log.LogError(ex, "Clip S{Scene}C{Clip} failed", req.Scene, cn);
-                    await AppendLogAsync($"Failed S{req.Scene:D2} C{cn}: {ex.Message}");
-                    // Full-scene sequential gen: later clips need previous on disk — stop after first fail.
-                    // Single-clip regen (req.Clip set) keeps trying only that one clip (already filtered).
-                    if (req.Clip is null or <= 0 && i + 1 < todo.Count)
-                    {
-                        await AppendLogAsync(
-                            "Stopping scene gen after first clip failure " +
-                            $"(remaining {todo.Count - i - 1} clip(s) need previous video).");
-                        break;
-                    }
-                }
-            }
-
-            // partial = some clips ok, some failed (not StatusDone — remux/continue need a clear signal)
-            var status = failed > 0 && done == 0 ? StatusError
-                : failed > 0 ? StatusPartial
-                : StatusDone;
-            var msg = status switch
-            {
-                StatusError => $"Scene gen failed ({failed} clip(s) failed, none ok)",
-                StatusPartial => $"Scene gen partial ({done} ok, {failed} failed)",
-                _ => $"Generation finished ({done} clip(s))",
-            };
+            var (status, msg) = FormatSceneGenFinish(done, failed);
             await FinishAsync(status, msg, failed > 0 ? msg : null);
 
             // P0 learning: single-clip regen (typical after auto-review apply)
-            if (req.Clip is int regenClip && regenClip > 0)
-            {
-                try
-                {
-                    await _learning.AppendAsync(new ReviewLearningEvent
-                    {
-                        ProjectId = projectId,
-                        Type = "regen_after_review",
-                        Scene = req.Scene,
-                        Clip = regenClip,
-                        Note = msg,
-                        Outcome = status,
-                        JobId = Snapshot.JobId,
-                        ActionTaken = $"gen clip force only_missing={req.OnlyMissing}",
-                    }, ct).ConfigureAwait(false);
-                }
-                catch { /* non-fatal */ }
-            }
+            await TryAppendRegenLearningEventAsync(req, projectId, status, msg, ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -4408,6 +4500,362 @@ public sealed class FilmJobService
             _log.LogError(ex, "Scene gen failed");
             await FinishAsync(StatusError, ex.Message, ex.Message);
         }
+    }
+
+    private static void ThrowIfCreditsScene(JsonElement sceneEl, int scene)
+    {
+        // The end-credits card is rendered deterministically client-side (canvas -> ffmpeg.wasm),
+        // never through the video model — a video model asked to render a text-heavy title card
+        // hallucinates unrelated footage. The Scenes page already routes credits scenes elsewhere,
+        // but any other caller of this endpoint must be stopped here too, before spending an API call.
+        if (IsCreditsScene(sceneEl))
+            throw new InvalidOperationException(
+                $"Scene {scene} is the end-credits scene — it is rendered client-side, not through the video model.");
+    }
+
+    private void ApplyLockedCharactersForScene(bool requireLocked, string projectId, int scene)
+    {
+        if (!requireLocked)
+            return;
+        EnsureCastReadyForVideo(projectId);
+        EnsureSceneCharactersLocked(projectId, scene);
+    }
+
+    private static JsonElement RequireSceneClips(JsonElement sceneEl, int scene)
+    {
+        if (!sceneEl.TryGetProperty(VeoClipsKey, out var clipsEl) ||
+            clipsEl.ValueKind != JsonValueKind.Array)
+            throw new InvalidOperationException($"Scene {scene} has no veo_clips.");
+        return clipsEl;
+    }
+
+    private static List<(int ClipNum, JsonElement Clip)> BuildSceneGenTodo(
+        List<JsonElement> clips,
+        StartSceneGenRequest req,
+        string videoDir)
+    {
+        var todo = new List<(int ClipNum, JsonElement Clip)>();
+        foreach (var c in clips)
+        {
+            if (!TryAddSceneGenTodoItem(todo, c, req, videoDir))
+                continue;
+        }
+        return todo;
+    }
+
+    private static bool TryAddSceneGenTodoItem(
+        List<(int ClipNum, JsonElement Clip)> todo,
+        JsonElement c,
+        StartSceneGenRequest req,
+        string videoDir)
+    {
+        var cn = ClipKeying.ClipNumber(c);
+        if (cn <= 0) return false;
+        if (req.Clip is int onlyClip && onlyClip > 0 && cn != onlyClip)
+            return false;
+        var path = Path.Combine(videoDir, $"scene_{req.Scene:D2}_clip_{cn:D2}.mp4");
+        var missing = !ClipPresentOnServerOrClient(path);
+        if (!req.OnlyMissing || missing)
+            todo.Add((cn, c.Clone()));
+        return true;
+    }
+
+    private async Task<(bool RetryOnFail, int MaxRetries)> LoadQaRetryConfigAsync(string projectId, CancellationToken ct)
+    {
+        var qaRetryOnFail = false;
+        var qaMaxRetries = 1;
+        try
+        {
+            var cfgMap = await _projects.GetConfigAsync(projectId, ct).ConfigureAwait(false);
+            qaRetryOnFail = ReadQaRetryOnFail(cfgMap);
+            if (cfgMap.TryGetValue("qa_max_retries", out var qm) && qm.TryGetInt32(out var qmi))
+                qaMaxRetries = Math.Clamp(qmi, 0, 5);
+        }
+        catch { /* keep defaults */ }
+        return (qaRetryOnFail, qaMaxRetries);
+    }
+
+    private static bool ReadQaRetryOnFail(Dictionary<string, JsonElement> cfgMap)
+    {
+        if (!cfgMap.TryGetValue("qa_retry_on_fail", out var qe))
+            return true; // match Configuration default
+        if (qe.ValueKind is JsonValueKind.True) return true;
+        if (qe.ValueKind is JsonValueKind.False) return false;
+        if (qe.ValueKind == JsonValueKind.String && bool.TryParse(qe.GetString(), out var qb))
+            return qb;
+        return false;
+    }
+
+    private (bool AdminQaRetry, ClipDialogueVerificationService? DialogueQa) ResolveAdminQaRetry(bool qaRetryOnFail)
+    {
+        var adminQaRetry = qaRetryOnFail && _user.IsAdmin &&
+                           _dialogueVerification is not null &&
+                           _dialogueVerification.IsConfigured;
+        var dialogueQa = adminQaRetry ? _dialogueVerification : null;
+        return (adminQaRetry, dialogueQa);
+    }
+
+    private async Task LogQaRetryStatusAsync(bool qaRetryOnFail, bool adminQaRetry, int qaMaxRetries)
+    {
+        if (qaRetryOnFail && !_user.IsAdmin)
+            await AppendLogAsync("Quality gate retry is on, but auto-regen runs in admin mode only.");
+        else if (adminQaRetry)
+            await AppendLogAsync(
+                $"Admin quality gate retry ON (max {qaMaxRetries} re-gen(s) per clip on dialogue fail).");
+    }
+
+    private async Task<(int Done, int Failed, bool Cancelled)> GenerateSceneClipsWithQaAsync(
+        StartSceneGenRequest req,
+        string projectId,
+        string projectDir,
+        JsonElement sceneEl,
+        JsonElement blueprintRoot,
+        List<(int ClipNum, JsonElement Clip)> todo,
+        string resolution,
+        bool adminQaRetry,
+        int qaMaxRetries,
+        ClipDialogueVerificationService? dialogueQa,
+        CancellationToken ct)
+    {
+        var done = 0;
+        var failed = 0;
+        var lastGeneratedClipNum = 0;
+        var carryoverPaddingSec = 0.0;
+        for (var i = 0; i < todo.Count; i++)
+        {
+            ct.ThrowIfCancellationRequested();
+            var (cn, clip) = todo[i];
+            await UpdateAsync(s =>
+            {
+                s.Index = i + 1;
+                s.Clip = cn;
+                s.Message = $"Generating S{req.Scene:D2} C{cn} ({i + 1}/{todo.Count})…";
+            });
+            await AppendLogAsync(Snapshot.Message ?? "");
+
+            try
+            {
+                carryoverPaddingSec = await GenerateOneSceneClipWithQaAsync(
+                    req, projectId, projectDir, sceneEl, blueprintRoot, todo,
+                    cn, clip, resolution, lastGeneratedClipNum, carryoverPaddingSec,
+                    adminQaRetry, qaMaxRetries, dialogueQa, ct).ConfigureAwait(false);
+                lastGeneratedClipNum = cn;
+                done++;
+                // Fresh clips x/y + status pills while scene gen is still running.
+                _projects.InvalidateSceneListCache(projectId);
+                await AppendLogAsync($"Done S{req.Scene:D2} C{cn}");
+            }
+            catch (OperationCanceledException)
+            {
+                await FinishAsync(StatusCancelled, CancelledByUser);
+                return (done, failed, true);
+            }
+            catch (Exception ex)
+            {
+                failed++;
+                _log.LogError(ex, "Clip S{Scene}C{Clip} failed", req.Scene, cn);
+                await AppendLogAsync($"Failed S{req.Scene:D2} C{cn}: {ex.Message}");
+                // Full-scene sequential gen: later clips need previous on disk — stop after first fail.
+                // Single-clip regen (req.Clip set) keeps trying only that one clip (already filtered).
+                if (ShouldStopSceneGenAfterClipFailure(req.Clip, i, todo.Count))
+                {
+                    await AppendLogAsync(
+                        "Stopping scene gen after first clip failure " +
+                        $"(remaining {todo.Count - i - 1} clip(s) need previous video).");
+                    break;
+                }
+            }
+        }
+        return (done, failed, false);
+    }
+
+    private static bool ShouldStopSceneGenAfterClipFailure(int? requestedClip, int i, int todoCount) =>
+        requestedClip is null or <= 0 && i + 1 < todoCount;
+
+    private async Task<double> GenerateOneSceneClipWithQaAsync(
+        StartSceneGenRequest req,
+        string projectId,
+        string projectDir,
+        JsonElement sceneEl,
+        JsonElement blueprintRoot,
+        List<(int ClipNum, JsonElement Clip)> todo,
+        int cn,
+        JsonElement clip,
+        string resolution,
+        int lastGeneratedClipNum,
+        double carryoverPaddingSec,
+        bool adminQaRetry,
+        int qaMaxRetries,
+        ClipDialogueVerificationService? dialogueQa,
+        CancellationToken ct)
+    {
+        var prevClipEl = FindPreviousClipForSceneGen(cn, todo, sceneEl);
+        var incomingPadding = ResolveIncomingDurationPadding(cn, lastGeneratedClipNum, carryoverPaddingSec);
+        carryoverPaddingSec = await GenerateOneClipAsync(
+            projectId, projectDir, req.Scene, cn, clip, resolution, ct,
+            previousClipEl: prevClipEl,
+            blueprintRoot: blueprintRoot,
+            incomingDurationPaddingSec: incomingPadding);
+
+        if (adminQaRetry && ClipHasSpokenAudio(clip))
+        {
+            carryoverPaddingSec = await RunDialogueQaRetryLoopAsync(
+                req, projectId, projectDir, cn, clip, resolution, ct,
+                prevClipEl, blueprintRoot, incomingPadding, qaMaxRetries, dialogueQa,
+                carryoverPaddingSec).ConfigureAwait(false);
+        }
+        return carryoverPaddingSec;
+    }
+
+    private static JsonElement? FindPreviousClipForSceneGen(
+        int cn,
+        List<(int ClipNum, JsonElement Clip)> todo,
+        JsonElement sceneEl)
+    {
+        if (cn <= 1)
+            return null;
+        foreach (var (pcn, pclip) in todo)
+        {
+            if (pcn == cn - 1) return pclip;
+        }
+        // Also scan full scene clips for prev not in todo
+        return FindClipInScene(sceneEl, cn - 1);
+    }
+
+    private enum QaVerifyOutcome
+    {
+        Stop,
+        NeedsRegen,
+    }
+
+    private async Task<double> RunDialogueQaRetryLoopAsync(
+        StartSceneGenRequest req,
+        string projectId,
+        string projectDir,
+        int cn,
+        JsonElement clip,
+        string resolution,
+        CancellationToken ct,
+        JsonElement? prevClipEl,
+        JsonElement blueprintRoot,
+        double incomingPadding,
+        int qaMaxRetries,
+        ClipDialogueVerificationService? dialogueQa,
+        double carryoverPaddingSec)
+    {
+        for (var qaAttempt = 1; qaAttempt <= qaMaxRetries; qaAttempt++)
+        {
+            ct.ThrowIfCancellationRequested();
+            var (outcome, ver) = await TryQaVerifyAsync(dialogueQa, projectId, req.Scene, cn, ct)
+                .ConfigureAwait(false);
+            if (outcome != QaVerifyOutcome.NeedsRegen)
+                break;
+
+            await AppendLogAsync(
+                $"  [QA] S{req.Scene:D2}C{cn} {ver!.Status} — auto-regen {qaAttempt}/{qaMaxRetries} (admin)…");
+            await TryAppendQaRetryLearningEventAsync(projectId, req.Scene, cn, ver, qaAttempt, ct)
+                .ConfigureAwait(false);
+            carryoverPaddingSec = await GenerateOneClipAsync(
+                projectId, projectDir, req.Scene, cn, clip, resolution, ct,
+                previousClipEl: prevClipEl,
+                blueprintRoot: blueprintRoot,
+                incomingDurationPaddingSec: incomingPadding,
+                takeKindOverride: VideoTakeKinds.QaAuto);
+        }
+        return carryoverPaddingSec;
+    }
+
+    private async Task<(QaVerifyOutcome Outcome, ClipDialogueVerificationResult? Ver)> TryQaVerifyAsync(
+        ClipDialogueVerificationService? dialogueQa,
+        string projectId,
+        int scene,
+        int cn,
+        CancellationToken ct)
+    {
+        if (dialogueQa is null)
+            return (QaVerifyOutcome.Stop, null);
+        ClipDialogueVerificationResult? ver;
+        try
+        {
+            ver = await dialogueQa
+                .VerifyClipDialogueAsync(projectId, scene, cn, force: true, ct: ct)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            await AppendLogAsync(
+                $"  [QA] dialogue check failed to run S{scene:D2}C{cn}: {ex.Message}");
+            return (QaVerifyOutcome.Stop, null);
+        }
+
+        if (ver is null || !DialogueQaNeedsRegen(ver))
+        {
+            if (ver is not null)
+                await AppendLogAsync($"  [QA] S{scene:D2}C{cn} ok ({ver.Status})");
+            return (QaVerifyOutcome.Stop, ver);
+        }
+        return (QaVerifyOutcome.NeedsRegen, ver);
+    }
+
+    private async Task TryAppendQaRetryLearningEventAsync(
+        string projectId,
+        int scene,
+        int cn,
+        ClipDialogueVerificationResult ver,
+        int qaAttempt,
+        CancellationToken ct)
+    {
+        try
+        {
+            await _learning.AppendAsync(new ReviewLearningEvent
+            {
+                ProjectId = projectId,
+                Type = "qa_auto_retry",
+                Scene = scene,
+                Clip = cn,
+                Note = ver.Status,
+                Outcome = $"attempt_{qaAttempt}",
+                JobId = Snapshot.JobId,
+                ActionTaken = "admin_dialogue_qa_regen",
+            }, ct).ConfigureAwait(false);
+        }
+        catch { /* non-fatal */ }
+    }
+
+    private static (string Status, string Message) FormatSceneGenFinish(int done, int failed)
+    {
+        // partial = some clips ok, some failed (not StatusDone — remux/continue need a clear signal)
+        if (failed > 0 && done == 0)
+            return (StatusError, $"Scene gen failed ({failed} clip(s) failed, none ok)");
+        if (failed > 0)
+            return (StatusPartial, $"Scene gen partial ({done} ok, {failed} failed)");
+        return (StatusDone, $"Generation finished ({done} clip(s))");
+    }
+
+    private async Task TryAppendRegenLearningEventAsync(
+        StartSceneGenRequest req,
+        string projectId,
+        string status,
+        string msg,
+        CancellationToken ct)
+    {
+        if (req.Clip is not int regenClip || regenClip <= 0)
+            return;
+        try
+        {
+            await _learning.AppendAsync(new ReviewLearningEvent
+            {
+                ProjectId = projectId,
+                Type = "regen_after_review",
+                Scene = req.Scene,
+                Clip = regenClip,
+                Note = msg,
+                Outcome = status,
+                JobId = Snapshot.JobId,
+                ActionTaken = $"gen clip force only_missing={req.OnlyMissing}",
+            }, ct).ConfigureAwait(false);
+        }
+        catch { /* non-fatal */ }
     }
 
     /// <summary>
@@ -4497,9 +4945,62 @@ public sealed class FilmJobService
         string? modelOverride = null,
         string? takeKindOverride = null)
     {
+        var ctx = await CreateClipGenContextAsync(
+            projectId, projectDir, scene, clip, clipEl, resolution, ct,
+            previousClipEl, blueprintRoot, incomingDurationPaddingSec,
+            modelOverride, takeKindOverride).ConfigureAwait(false);
+        try
+        {
+            return await ExecuteClipGenerationAsync(ctx).ConfigureAwait(false);
+        }
+        finally
+        {
+            // Single-use: consumed extend-source is deleted so a later plain regenerate (no fresh
+            // upload) falls back to fresh gen instead of silently reusing stale continuity data.
+            TryDeleteExtendInputTemp(ctx.ExtendSourcePath);
+        }
+    }
+
+    private sealed class ClipGenContext
+    {
+        public required string ProjectId { get; init; }
+        public required string ProjectDir { get; init; }
+        public int Scene { get; init; }
+        public int Clip { get; init; }
+        public JsonElement ClipEl { get; init; }
+        public string Resolution { get; set; } = "";
+        public CancellationToken Ct { get; init; }
+        public JsonElement? PreviousClipEl { get; init; }
+        public JsonElement? BlueprintRoot { get; init; }
+        public double IncomingDurationPaddingSec { get; init; }
+        public string? TakeKindOverride { get; init; }
+        public required Dictionary<string, ClipVideoPromptBuilder.CharacterProfile> Profiles { get; init; }
+        public required string VideoDir { get; init; }
+        public bool HadVideoBefore { get; init; }
+        public required string Model { get; init; }
+        public required SupportedModelEntry ModelEntry { get; init; }
+        public string? PrevVisual { get; set; }
+        public string? PrevVideoPath { get; set; }
+        public bool ReseedFresh { get; set; }
+        public string? ExtendSourcePath { get; init; }
+    }
+
+    private async Task<ClipGenContext> CreateClipGenContextAsync(
+        string projectId,
+        string projectDir,
+        int scene,
+        int clip,
+        JsonElement clipEl,
+        string resolution,
+        CancellationToken ct,
+        JsonElement? previousClipEl,
+        JsonElement? blueprintRoot,
+        double incomingDurationPaddingSec,
+        string? modelOverride,
+        string? takeKindOverride)
+    {
         var profiles = _projects.LoadCharacterPromptProfiles(projectId);
         var videoDir = Path.Combine(projectDir, AssetsFolder, VideoFolder);
-        var overrunSec = 0.0;
 
         // H1/H2: whether this scene+clip already has media (regen vs first take).
         var existingClipPath = Path.Combine(videoDir, $"scene_{scene:D2}_clip_{clip:D2}.mp4");
@@ -4507,19 +5008,50 @@ public sealed class FilmJobService
 
         // Previous clip in this scene — Imagine /videos/extensions continues from that video.
         // Cast-set changes reseed fresh+refs (PR2).
-        string? prevVisual = null;
-        string? prevVideoPath = null;
-        var reseedFresh = false;
-        var cont = clipEl.TryGetProperty("veo_continuation_source", out var ce)
-            ? (ce.GetString() ?? "none")
-            : "none";
-        var wantContinue =
-            string.Equals(cont, "extend_previous", StringComparison.OrdinalIgnoreCase) ||
-            clip > 1;
+        var wantContinue = WantsVideoContinue(clipEl, clip);
 
         var model = await ResolveVideoModelAsync(projectId, ct, modelOverride).ConfigureAwait(false);
         var modelEntry = SupportedModelCatalog.ResolveOrDefault(model, ModelCapability.Video);
 
+        var extendSourcePath = ResolveExtendSourcePath(projectDir, scene, clip, modelEntry);
+        var prevVisual = ResolvePreviousClipVisual(previousClipEl, wantContinue, blueprintRoot, scene, clip);
+
+        return new ClipGenContext
+        {
+            ProjectId = projectId,
+            ProjectDir = projectDir,
+            Scene = scene,
+            Clip = clip,
+            ClipEl = clipEl,
+            Resolution = resolution,
+            Ct = ct,
+            PreviousClipEl = previousClipEl,
+            BlueprintRoot = blueprintRoot,
+            IncomingDurationPaddingSec = incomingDurationPaddingSec,
+            TakeKindOverride = takeKindOverride,
+            Profiles = profiles,
+            VideoDir = videoDir,
+            HadVideoBefore = hadVideoBefore,
+            Model = model,
+            ModelEntry = modelEntry,
+            PrevVisual = prevVisual,
+            PrevVideoPath = extendSourcePath,
+            ExtendSourcePath = extendSourcePath,
+        };
+    }
+
+    private static bool WantsVideoContinue(JsonElement clipEl, int clip)
+    {
+        var cont = clipEl.TryGetProperty("veo_continuation_source", out var ce)
+            ? (ce.GetString() ?? "none")
+            : "none";
+        return string.Equals(cont, "extend_previous", StringComparison.OrdinalIgnoreCase) ||
+               clip > 1;
+    }
+
+    private static string? ResolveExtendSourcePath(
+        string projectDir, int scene, int clip, SupportedModelEntry modelEntry)
+    {
         // Real video-extend: the browser client prepares and uploads this file — its own copy of
         // the previous clip's display video, tail-trimmed to ≤ the model's max input length —
         // before requesting this clip (server has no native ffmpeg to do that trim itself, and
@@ -4527,503 +5059,676 @@ public sealed class FilmJobService
         // signal; a missing file (client didn't prepare one, an older/manual regenerate, or a
         // model that doesn't support continue) always falls back to fresh gen + locked refs,
         // exactly as before this feature existed — never blocks clip generation.
-        string? extendSourcePath = null;
         // maxExtensionSeconds is only consulted later for duration; continue eligibility is the bool.
-        if (clip > 1 && modelEntry.SupportsVideoContinue)
-        {
-            var candidate = Path.Combine(
-                projectDir, AssetsFolder, VideoFolder, $"_extend_src_s{scene:D2}c{clip:D2}.mp4");
-            if (File.Exists(candidate) && new FileInfo(candidate).Length >= 1024)
-                extendSourcePath = candidate;
-        }
-        if (extendSourcePath is not null)
-            prevVideoPath = extendSourcePath;
+        if (clip <= 1 || !modelEntry.SupportsVideoContinue)
+            return null;
+        var candidate = Path.Combine(
+            projectDir, AssetsFolder, VideoFolder, $"_extend_src_s{scene:D2}c{clip:D2}.mp4");
+        if (File.Exists(candidate) && new FileInfo(candidate).Length >= 1024)
+            return candidate;
+        return null;
+    }
 
+    private static string? ResolvePreviousClipVisual(
+        JsonElement? previousClipEl,
+        bool wantContinue,
+        JsonElement? blueprintRoot,
+        int scene,
+        int clip)
+    {
         if (previousClipEl is { } prevEl &&
             prevEl.TryGetProperty("visual_prompt", out var pvp))
-            prevVisual = pvp.GetString();
+            return pvp.GetString();
+        if (wantContinue && blueprintRoot is { } root)
+            return FindClipVisualInBlueprint(root, scene, clip - 1);
+        return null;
+    }
 
-        if (prevVisual is null && wantContinue && blueprintRoot is { } root)
-            prevVisual = FindClipVisualInBlueprint(root, scene, clip - 1);
+    private static void TryDeleteExtendInputTemp(string? path)
+    {
+        if (path is null)
+            return;
+        try { File.Delete(path); } catch { /* ignore */ }
+    }
 
+    private async Task<double> ExecuteClipGenerationAsync(ClipGenContext ctx)
+    {
         // PR2: reseed with locked refs when on-screen cast set changes (API drops refs on extend).
-        string? extendInputTemp = extendSourcePath;
+        await ApplyIdentityReseedIfNeededAsync(ctx).ConfigureAwait(false);
+
+        // Silent → first spoken/VO: video-extend often clips the opening word (mouth stays closed
+        // from the prior silent clip). Require prev on disk for order, but gen fresh + plates.
+        await ApplyFirstSpokenAfterSilenceReseedAsync(ctx).ConfigureAwait(false);
+        await LogContinuityOrReseedAsync(ctx).ConfigureAwait(false);
+
+        var styleHead = await TryGetStyleLockHeadAsync(ctx.ProjectId, ctx.Ct).ConfigureAwait(false);
+        var sceneLocationKey = ResolveSceneLocationKey(ctx.BlueprintRoot, ctx.Scene);
+
+        var built = ClipVideoPromptBuilder.Build(
+            ctx.ClipEl,
+            ctx.ProjectDir,
+            characters: ctx.Profiles,
+            previousClipVisualPrompt: ctx.PrevVisual,
+            previousClipVideoPath: ctx.PrevVideoPath,
+            startFrameImagePath: null,
+            maxRefs: ctx.ModelEntry.MaxReferenceImages
+                ?? throw new InvalidOperationException(
+                    $"Video model '{ctx.ModelEntry.Id}' has no maxReferenceImages in models_catalog.json."),
+            styleHead: styleHead,
+            videoModel: ctx.Model,
+            fallbackLocationKey: sceneLocationKey);
+
+        if (string.IsNullOrWhiteSpace(built.Prompt))
+            throw new InvalidOperationException("clip missing visual_prompt");
+
+        EnsureClipRefsForMode(ctx, built);
+        built = await ApplyProjectRulesToPromptAsync(ctx.ProjectId, built, ctx.Ct).ConfigureAwait(false);
+
+        if (string.IsNullOrWhiteSpace(ctx.Resolution))
+            ctx.Resolution = await ResolveVideoResolutionAsync(ctx.ProjectId, null, ctx.Ct);
+
+        built = await ApplyPromptBudgetAsync(built, ctx.ModelEntry).ConfigureAwait(false);
+        await WriteAndLogPromptAsync(ctx.ProjectId, ctx.ProjectDir, ctx.Scene, ctx.Clip, built, ctx.Ct)
+            .ConfigureAwait(false);
+        await LogPromptRefsAsync(built, ctx.PrevVideoPath).ConfigureAwait(false);
+
+        var supportsContinue = SupportedModelCatalog.ResolveOrDefault(ctx.Model, ModelCapability.Video).SupportsVideoContinue;
+        var duration = await ResolveClipDurationAsync(ctx, built, supportsContinue).ConfigureAwait(false);
+
+        var modeLabel = ctx.PrevVideoPath is not null ? "video-extend" : built.Mode;
+        await AppendLogAsync(
+            $"  [Grok] Submit S{ctx.Scene:D2}C{ctx.Clip} duration={duration}s res={ctx.Resolution} " +
+            $"model={ctx.Model} mode={modeLabel} {built.PromptLogSummary}");
+
+        var requestId = await _grok.SubmitGenerationAsync(
+            built.Prompt,
+            duration,
+            ctx.Resolution,
+            ctx.Model,
+            ctx.Ct,
+            referenceImagePaths: ClipReferenceImagesForSubmit(ctx.PrevVideoPath, built),
+            startFrameImagePath: null,
+            continueFromVideoPath: ctx.PrevVideoPath);
+        await AppendLogAsync($"  [Grok] request_id={requestId}");
+
+        var url = await _grok.PollForVideoUrlAsync(
+            requestId,
+            msg => { _ = AppendLogAsync($"  [Grok] {msg}"); },
+            ctx.Ct);
+
+        var mp4Path = Path.Combine(ctx.VideoDir, $"scene_{ctx.Scene:D2}_clip_{ctx.Clip:D2}.mp4");
+        var overrunSec = await DownloadClipAndRecordTelemetryAsync(
+            ctx, built, url, mp4Path, duration, supportsContinue).ConfigureAwait(false);
+
+        await PublishClipClientMediaAsync(ctx, url).ConfigureAwait(false);
+        await WriteClipSidecarIfConfiguredAsync(ctx, built, url, requestId, duration).ConfigureAwait(false);
+        await RecordClipCostAsync(ctx, built, requestId, duration).ConfigureAwait(false);
+        return overrunSec;
+    }
+
+    private static IReadOnlyList<string>? ClipReferenceImagesForSubmit(
+        string? prevVideoPath, ClipVideoPromptBuilder.PromptBuildResult built) =>
+        prevVideoPath is null && built.ReferenceImagePaths.Count > 0
+            ? built.ReferenceImagePaths
+            : null;
+
+    private static bool IsVisualOnScreenKey(
+        string k, Dictionary<string, ClipVideoPromptBuilder.CharacterProfile> profiles) =>
+        !(profiles.TryGetValue(k, out var cp) && cp.VoiceOnly);
+
+    private async Task ApplyIdentityReseedIfNeededAsync(ClipGenContext ctx)
+    {
+        if (ctx.PrevVideoPath is null || !_opts.IdentityReseedOnCastChange)
+            return;
+        var curKeys = ClipVideoPromptBuilder.ResolveOnScreenCharacterKeys(ctx.ClipEl)
+            .Where(k => IsVisualOnScreenKey(k, ctx.Profiles))
+            .Select(k => k)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(k => k, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var prevKeys = ctx.PreviousClipEl is { } pe
+            ? ClipVideoPromptBuilder.ResolveOnScreenCharacterKeys(pe)
+                .Where(k => IsVisualOnScreenKey(k, ctx.Profiles))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(k => k, StringComparer.OrdinalIgnoreCase)
+                .ToList()
+            : new List<string>();
+        if (prevKeys.Count == 0 || OnScreenSetsEqual(curKeys, prevKeys))
+            return;
+        ctx.ReseedFresh = true;
+        await AppendLogAsync(
+            $"  [Identity] Cast set changed " +
+            $"[{string.Join(", ", prevKeys)}] → [{string.Join(", ", curKeys)}] — " +
+            "fresh gen with locked refs (not video-extend)");
+        ctx.PrevVideoPath = null; // API: attach refs
+        // Keep prevVisual for continuity prose only
+    }
+
+    private async Task ApplyFirstSpokenAfterSilenceReseedAsync(ClipGenContext ctx)
+    {
+        if (ctx.PrevVideoPath is null)
+            return;
+        JsonElement? prevMeta = ctx.PreviousClipEl;
+        if (prevMeta is null && ctx.BlueprintRoot is { } br)
+            prevMeta = FindClipElementInBlueprint(br, ctx.Scene, ctx.Clip - 1);
+        if (prevMeta is not { } pm || !ClipHasSpokenAudio(ctx.ClipEl) || ClipHasSpokenAudio(pm))
+            return;
+        ctx.ReseedFresh = true;
+        ctx.PrevVideoPath = null;
+        await AppendLogAsync(
+            $"  [Speech] S{ctx.Scene:D2}C{ctx.Clip:D2} is first spoken after silence — " +
+            "fresh gen with locked refs (not video-extend) so the opening word is not clipped");
+    }
+
+    private async Task LogContinuityOrReseedAsync(ClipGenContext ctx)
+    {
+        if (ctx.PrevVideoPath is not null)
+        {
+            await AppendLogAsync(
+                $"  [Continuity] Imagine video-extend from S{ctx.Scene:D2}C{ctx.Clip - 1:D2} " +
+                $"({Path.GetFileName(ctx.PrevVideoPath)})");
+            return;
+        }
+        if (ctx.ReseedFresh && ctx.ExtendSourcePath is not null)
+        {
+            await AppendLogAsync(
+                $"  [Identity] Reseed S{ctx.Scene:D2}C{ctx.Clip:D2} after S{ctx.Scene:D2}C{ctx.Clip - 1:D2} " +
+                "(locked character refs attached)");
+        }
+    }
+
+    private async Task<string?> TryGetStyleLockHeadAsync(string projectId, CancellationToken ct)
+    {
         try
         {
-            if (prevVideoPath is not null && _opts.IdentityReseedOnCastChange)
-            {
-                var curKeys = ClipVideoPromptBuilder.ResolveOnScreenCharacterKeys(clipEl)
-                    .Where(k => !(profiles.TryGetValue(k, out var cp) && cp.VoiceOnly))
-                    .Select(k => k)
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .OrderBy(k => k, StringComparer.OrdinalIgnoreCase)
-                    .ToList();
-                var prevKeys = previousClipEl is { } pe
-                    ? ClipVideoPromptBuilder.ResolveOnScreenCharacterKeys(pe)
-                        .Where(k => !(profiles.TryGetValue(k, out var pp) && pp.VoiceOnly))
-                        .Distinct(StringComparer.OrdinalIgnoreCase)
-                        .OrderBy(k => k, StringComparer.OrdinalIgnoreCase)
-                        .ToList()
-                    : new List<string>();
-                if (prevKeys.Count > 0 && !OnScreenSetsEqual(curKeys, prevKeys))
-                {
-                    reseedFresh = true;
-                    await AppendLogAsync(
-                        $"  [Identity] Cast set changed " +
-                        $"[{string.Join(", ", prevKeys)}] → [{string.Join(", ", curKeys)}] — " +
-                        "fresh gen with locked refs (not video-extend)");
-                    prevVideoPath = null; // API: attach refs
-                    // Keep prevVisual for continuity prose only
-                }
-            }
-
-            // Silent → first spoken/VO: video-extend often clips the opening word (mouth stays closed
-            // from the prior silent clip). Require prev on disk for order, but gen fresh + plates.
-            if (prevVideoPath is not null)
-            {
-                JsonElement? prevMeta = previousClipEl;
-                if (prevMeta is null && blueprintRoot is { } br)
-                    prevMeta = FindClipElementInBlueprint(br, scene, clip - 1);
-                if (prevMeta is { } pm && ClipHasSpokenAudio(clipEl) && !ClipHasSpokenAudio(pm))
-                {
-                    reseedFresh = true;
-                    prevVideoPath = null;
-                    await AppendLogAsync(
-                        $"  [Speech] S{scene:D2}C{clip:D2} is first spoken after silence — " +
-                        "fresh gen with locked refs (not video-extend) so the opening word is not clipped");
-                }
-            }
-
-            if (prevVideoPath is not null)
-            {
-                await AppendLogAsync(
-                    $"  [Continuity] Imagine video-extend from S{scene:D2}C{clip - 1:D2} " +
-                    $"({Path.GetFileName(prevVideoPath)})");
-            }
-            else if (reseedFresh && extendSourcePath is not null)
-            {
-                await AppendLogAsync(
-                    $"  [Identity] Reseed S{scene:D2}C{clip:D2} after S{scene:D2}C{clip - 1:D2} " +
-                    "(locked character refs attached)");
-            }
-
-            string? styleHead = null;
-            try
-            {
-                var rules = await _projectRules.GetActiveRulesBlockAsync(projectId, ct).ConfigureAwait(false);
-                if (!string.IsNullOrWhiteSpace(rules))
-                {
-                    var m = CommonRegex.Match(
-                        rules, @"STYLE LOCK:\s*([^\n]+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-                    if (m.Success)
-                        styleHead = "STYLE LOCK: " + m.Groups[1].Value.Trim().TrimEnd('.', ' ');
-                }
-            }
-            catch { /* non-fatal */ }
-
-            string? sceneLocationKey = null;
-            if (blueprintRoot is { } sceneRoot)
-            {
-                var sceneEl = FindScene(sceneRoot, scene);
-                if (sceneEl is { } se)
-                {
-                    if (se.TryGetProperty("primary_location_id", out var pl) &&
-                        pl.ValueKind == JsonValueKind.String &&
-                        pl.GetString() is { Length: > 0 } pls)
-                        sceneLocationKey = pls;
-                    else if (se.TryGetProperty("location_ids", out var lids) &&
-                             lids.ValueKind == JsonValueKind.Array)
-                    {
-                        foreach (var x in lids.EnumerateArray())
-                        {
-                            if (x.ValueKind == JsonValueKind.String &&
-                                x.GetString() is { Length: > 0 } first)
-                            {
-                                sceneLocationKey = first;
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-
-            var built = ClipVideoPromptBuilder.Build(
-                clipEl,
-                projectDir,
-                characters: profiles,
-                previousClipVisualPrompt: prevVisual,
-                previousClipVideoPath: prevVideoPath,
-                startFrameImagePath: null,
-                maxRefs: modelEntry.MaxReferenceImages
-                    ?? throw new InvalidOperationException(
-                        $"Video model '{modelEntry.Id}' has no maxReferenceImages in models_catalog.json."),
-                styleHead: styleHead,
-                videoModel: model,
-                fallbackLocationKey: sceneLocationKey);
-
-            if (string.IsNullOrWhiteSpace(built.Prompt))
-                throw new InvalidOperationException("clip missing visual_prompt");
-
-            // Fresh / reseed: every on-screen cast key must have a locked ref attached
-            if (prevVideoPath is null)
-                EnsureFreshGenHasLockedRefs(projectId, projectDir, built, profiles);
-            else
-            {
-                // Extend still requires locks on disk even when API cannot attach them
-                EnsureOnScreenLocksExist(projectId, projectDir, built, profiles);
-            }
-
-            // Approved project-scoped house rules (learning). Global clip gen rules live in
-            // embedded prompts/clip_gen_rules.txt and are composed inside ClipVideoPromptBuilder.
-            try
-            {
-                var rules = await _projectRules.GetActiveRulesBlockAsync(projectId, ct).ConfigureAwait(false);
-                if (!string.IsNullOrWhiteSpace(rules))
-                {
-                    built = built.WithPrompt(
-                        built.Prompt.TrimEnd() + "\n\n" + rules.Trim(),
-                        " · project-rules");
-                }
-            }
-            catch { /* non-fatal */ }
-
-            if (string.IsNullOrWhiteSpace(resolution))
-                resolution = await ResolveVideoResolutionAsync(projectId, null, ct);
-
-            var modelMaxPromptLen = modelEntry.MaxPromptLength
-                ?? throw new InvalidOperationException(
-                    $"Video model '{modelEntry.Id}' has no maxPromptLength in models_catalog.json.");
-
-            // Pre-budget to model-specific prompt limit (e.g. 1000 for Fal.ai, 4096 for Grok).
-            // Avoids a guaranteed first-attempt 400 on every clip.
-            var preLen = built.Prompt.Length;
-            var fitted = ClipVideoPromptBuilder.FitPromptToVideoBudget(built.Prompt, modelMaxPromptLen);
-            if (fitted.Length < preLen)
-            {
-                built = built.WithPrompt(fitted, $" · pre-budget {preLen}→{fitted.Length}");
-                await AppendLogAsync(
-                    $"  [Prompt] pre-budget {preLen}→{fitted.Length} chars (model {modelEntry.Id} hard cap {modelMaxPromptLen})");
-            }
-
-            // Persist + log full prompt for evaluation (admin logs surface this)
-            await WriteAndLogPromptAsync(projectId, projectDir, scene, clip, built, ct).ConfigureAwait(false);
-
-            if (built.Prompt.Contains("<VoiceLock>", StringComparison.OrdinalIgnoreCase))
-                await AppendLogAsync("  [Voice] VOICE LOCK from character profile");
-            if (built.ReferenceImagePaths.Count > 0)
-                await AppendLogAsync(
-                    $"  [Refs] attached={built.RefsAttachedToApi} count={built.ReferenceImagePaths.Count}: " +
-                    string.Join(", ", built.ReferenceImagePaths.Select(Path.GetFileName)) +
-                    (built.LocationRefAttached
-                        ? $" · set={built.LocationKey} {built.LocationImageTag}"
-                        : built.LocationKey is { Length: > 0 }
-                            ? $" · set={built.LocationKey} (no locked plate)"
-                            : ""));
-            else if (prevVideoPath is not null)
-                await AppendLogAsync("  [Refs] video-extend — locked plates not attached to API (IDENTITY text only)");
-            else if (built.LocationKey is { Length: > 0 })
-                await AppendLogAsync($"  [Refs] no plates attached · set={built.LocationKey} (no locked plate or no slots)");
-
-            // Only continuation-chain models get carried-forward padding: clip N+1 already can't
-            // start before clip N is on disk for these, so reconciling against N's real measurement
-            // costs nothing extra. Non-continuation models don't have that same-scene coupling.
-            var supportsContinue = SupportedModelCatalog.ResolveOrDefault(model, ModelCapability.Video).SupportsVideoContinue;
-
-            // Dialogue-aware duration (tight for short lines — billed per second), clamped to the
-            // actually-selected model's own duration caps (SupportedModelCatalog) instead of a
-            // hardcoded provider assumption.
-            var (durMin, durMax, durAbsMax) = ClipDurationEstimator.ResolveBoundsForModel(model);
-            var duration = ClipDurationEstimator.EstimateForClip(clipEl, durMin, durMax, durAbsMax);
-            if (supportsContinue && incomingDurationPaddingSec > 0)
-            {
-                var padded = ApplyIncomingDurationPadding(duration, incomingDurationPaddingSec, durAbsMax);
-                await AppendLogAsync(
-                    $"  [Duration] +{incomingDurationPaddingSec:F1}s carried from previous clip's overrun -> {duration}s to {padded}s");
-                duration = padded;
-            }
-            await AppendLogAsync($"  [Duration] estimated {duration}s (dialogue-aware, max {durMax}s, model={model})");
-            // Reference-conditioned / continuation generation is bounded by the model's own
-            // tighter extension cap (catalog MaxExtensionSeconds), not a bare hardcoded 10 — keeps
-            // this correct if a future model's real ref-conditioned max differs from Grok's ~10s.
-            if (prevVideoPath is not null || built.ReferenceImagePaths.Count > 0)
-                duration = ClipDurationEstimator.ResolveActualDurationForModel(model, duration, isExtensionMode: true);
-
-            var modeLabel = prevVideoPath is not null ? "video-extend" : built.Mode;
-            await AppendLogAsync(
-                $"  [Grok] Submit S{scene:D2}C{clip} duration={duration}s res={resolution} " +
-                $"model={model} mode={modeLabel} {built.PromptLogSummary}");
-
-            // Prefer official video continue; character refs only on fresh gens (API: no mix)
-            var requestId = await _grok.SubmitGenerationAsync(
-                built.Prompt,
-                duration,
-                resolution,
-                model,
-                ct,
-                referenceImagePaths: prevVideoPath is null && built.ReferenceImagePaths.Count > 0
-                    ? built.ReferenceImagePaths
-                    : null,
-                startFrameImagePath: null,
-                continueFromVideoPath: prevVideoPath);
-            await AppendLogAsync($"  [Grok] request_id={requestId}");
-
-            var url = await _grok.PollForVideoUrlAsync(
-                requestId,
-                msg => { _ = AppendLogAsync($"  [Grok] {msg}"); },
-                ct);
-
-            // Save MP4 file to server project directory so client media sync delivers MP4 files to client folder.
-            // Via IVideoClient.DownloadToFileAsync, not a raw HttpClient GET. Fake providers may return a
-            // non-http URL (a local fixture scheme) that DownloadToFileAsync resolves on disk. A bare
-            // GetByteArrayAsync would skip the save on that scheme.
-            var mp4Path = Path.Combine(videoDir, $"scene_{scene:D2}_clip_{clip:D2}.mp4");
-            try
-            {
-                await _grok.DownloadToFileAsync(url, mp4Path, ct).ConfigureAwait(false);
-                var bytesLength = File.Exists(mp4Path) ? new FileInfo(mp4Path).Length : 0;
-                if (bytesLength > 0)
-                {
-                    await AppendLogAsync($"  [Media] Saved {bytesLength} bytes to {Path.GetFileName(mp4Path)}");
-
-                    // Trigger 100% automated background clip dialogue & speaker verification.
-                    // Telemetry recording below awaits this (if started) so DialogueTruncated
-                    // reflects the real Expected-vs-Heard result instead of staying hardcoded false.
-                    Task<ClipDialogueVerificationResult?>? dialogueVerificationTask = null;
-                    if (_dialogueVerification is not null && _dialogueVerification.IsConfigured)
-                    {
-                        var projId = Snapshot.ProjectId ?? projectId ?? _projects.ActiveProjectId;
-                        dialogueVerificationTask = Task.Run(async () =>
-                        {
-                            try
-                            {
-                                return await _dialogueVerification.VerifyClipDialogueAsync(projId, scene, clip, force: true, ct: CancellationToken.None).ConfigureAwait(false);
-                            }
-                            catch (Exception ex)
-                            {
-                                _log.LogWarning(ex, "Background dialogue verification failed for S{Scene:D2}C{Clip:D2}", scene, clip);
-                                return null;
-                            }
-                        }, ct);
-                    }
-
-                    // Probe the real rendered duration once — used both to carry a same-scene
-                    // continuation-chain padding nudge into the next clip (below) and, if timing
-                    // calibration is configured, for telemetry.
-                    var probedSec = await Mp4DurationReader.TryReadSecondsAsync(mp4Path, ct).ConfigureAwait(false) ?? (double)duration;
-                    overrunSec = ComputeCarryoverOverrunSec(supportsContinue, probedSec, duration);
-
-                    // Record dynamic cut timing telemetry into SQLite database for continuous server learning
-                    if (_timingCalibration is not null)
-                    {
-                        var projId = Snapshot.ProjectId ?? projectId ?? _projects.ActiveProjectId;
-
-                        // Attribute evaluator to project Video review / planning model (Settings), never invent.
-                        var evaluatorModelId = "";
-                        try
-                        {
-                            var evalCfg = await _projects.GetConfigAsync(projId, ct).ConfigureAwait(false);
-                            evaluatorModelId = ProjectModelSelection.TryGet(
-                                evalCfg,
-                                ProjectModelSelection.QualityConfigKey,
-                                ProjectModelSelection.PlanningConfigKey,
-                                ProjectModelSelection.ChatConfigKey) ?? "";
-                        }
-                        catch { /* telemetry only */ }
-
-                        // 1. Extract dialogue text & word count from clip blueprint
-                        string dialogueText = "";
-                        if (clipEl.TryGetProperty(JsonKeys.AudioPayload, out var ap) && ap.ValueKind == JsonValueKind.Object &&
-                            ap.TryGetProperty(JsonKeys.Dialogue, out var dEl))
-                        {
-                            dialogueText = dEl.GetString() ?? "";
-                        }
-                        int wordCount = string.IsNullOrWhiteSpace(dialogueText)
-                            ? 0
-                            : dialogueText.Split(new[] { ' ', '\t', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries).Length;
-
-                        // 2. Extract camera movement category from blueprint or visual prompt
-                        string camCat = "cam_push_in";
-                        if (clipEl.TryGetProperty("camera", out var camEl) && camEl.ValueKind == JsonValueKind.String)
-                        {
-                            var cam = camEl.GetString();
-                            if (!string.IsNullOrWhiteSpace(cam))
-                                camCat = cam;
-                        }
-                        else if (clipEl.TryGetProperty("camera_category", out var ccEl) && ccEl.ValueKind == JsonValueKind.String)
-                        {
-                            var cc = ccEl.GetString();
-                            if (!string.IsNullOrWhiteSpace(cc))
-                                camCat = cc;
-                        }
-
-                        // 3. Dynamically classify scene action category via AiActionOverheadClassifier
-                        var promptToAnalyze = built.Prompt ?? "";
-                        string actCat = "act_generic_action";
-                        if (_timingClassifier is not null)
-                        {
-                            var estimation = await _timingClassifier.ClassifyNovelActionAsync(promptToAnalyze, null, ct).ConfigureAwait(false);
-                            if (!string.IsNullOrWhiteSpace(estimation.MatchCategoryId))
-                                actCat = estimation.MatchCategoryId;
-                        }
-
-                        // 4. Calculate measured camera and physical action overheads
-                        double camOverhead = _timingLedger?.GetOverheadSec(camCat, 1.6) ?? 1.6;
-                        double netSpeechSec = wordCount > 0 ? (wordCount / ClipDurationEstimator.DialogueWordsPerSecond) : 0.0;
-                        double measuredActOverhead = Math.Max(0.5, Math.Round(probedSec - camOverhead - netSpeechSec, 2));
-
-                        _ = Task.Run(async () =>
-                        {
-                            try
-                            {
-                                var dialogueTruncated = false;
-                                if (dialogueVerificationTask is not null)
-                                {
-                                    var verification = await dialogueVerificationTask.ConfigureAwait(false);
-                                    if (verification is not null)
-                                        dialogueTruncated = ClipDialogueVerificationService.LooksTruncated(verification);
-                                }
-
-                                await _timingCalibration.RecordCutTelemetryAsync(
-                                    projectId: projId,
-                                    sceneNumber: scene,
-                                    videoModelId: model,
-                                    videoModelVersion: "v1",
-                                    evaluatorModelId: evaluatorModelId,
-                                    evaluatorModelVersion: "v1",
-                                    cameraCategory: camCat,
-                                    actionCategory: actCat,
-                                    wordCount: wordCount,
-                                    estimatedDurationSec: (double)duration,
-                                    clipDurationSec: probedSec,
-                                    measuredCamOverheadSec: camOverhead,
-                                    measuredActionOverheadSec: measuredActOverhead,
-                                    dialogueTruncated: dialogueTruncated).ConfigureAwait(false);
-                            }
-                            catch (Exception ex)
-                            {
-                                _log.LogWarning(ex, "Background timing telemetry logging failed for S{Scene:D2}C{Clip:D2}", scene, clip);
-                            }
-                        }, ct);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                _log.LogWarning(ex, "Could not save MP4 bytes to server project directory for S{Scene:D2}C{Clip:D2}", scene, clip);
-            }
-
-            var relPath = MediaRegistryService.ClipRelativePath(scene, clip);
-            var ticket = _mediaProxy.Issue(url, TimeSpan.FromMinutes(45));
-            var clientUrl = $"/api/media/proxy/{ticket}";
-            await UpdateAsync(s =>
-            {
-                s.ClientMediaUrl = clientUrl;
-                s.ClientRelativePath = relPath;
-                s.Scene = scene;
-                s.Clip = clip;
-            });
-            await AppendLogAsync(
-                $"  [Grok] video ready for client save → {relPath} (not stored on server disk)");
-
-            if (_sidecars is not null)
-            {
-                try
-                {
-                    var projDir = await _projects.GetProjectDirAsync(Snapshot.ProjectId ?? projectId ?? _projects.ActiveProjectId, ct).ConfigureAwait(false);
-                    // xAI Files API reference for this exact clip, when generation requested
-                    // storage and it succeeded (see GrokVideoClient's storage_options) — lets a
-                    // later "AI Edit" reuse the file instead of re-uploading. Absent for
-                    // non-Grok providers or when storage wasn't granted; never required.
-                    var (sourceFileId, sourceFileExpiresAt) = _grok.TryGetStoredFileReference(requestId);
-                    await _sidecars.WriteSidecarAsync(
-                        projDir,
-                        scene,
-                        clip,
-                        prompt: built.Prompt ?? "",
-                        scriptText: "",
-                        model: model,
-                        resolution: resolution,
-                        durationSeconds: (double)duration,
-                        sha256: "",
-                        sizeBytes: 0,
-                        // Persist the provider-hosted video URL so an exported project can be re-hydrated
-                        // by another user on import (xAI/Grok URLs are long-lived). Provider is resolved
-                        // from the model via the catalog (SSoT) rather than hardcoded.
-                        sourceUrl: url,
-                        sourceProvider: SupportedModelCatalog.ResolveOrDefault(model, ModelCapability.Video).ProviderId,
-                        sourceFileId: sourceFileId,
-                        sourceFileExpiresAtUnixSeconds: sourceFileExpiresAt,
-                        ct: ct).ConfigureAwait(false);
-                }
-                catch (Exception ex)
-                {
-                    _log.LogWarning(ex, "Could not write clip sidecar for S{Scene:D2}C{Clip:D2}", scene, clip);
-                }
-            }
-
-            // Cost uses requested duration (no server file to probe until client registers).
-            var costDurationSec = (double)duration;
-
-            try
-            {
-                var costProjectId = Snapshot.ProjectId ?? projectId ?? _projects.ActiveProjectId;
-                string? stableBeatId = null;
-                if (clipEl.TryGetProperty("stable_beat_id", out var sbe) &&
-                    sbe.ValueKind == JsonValueKind.String &&
-                    sbe.GetString() is { Length: > 0 } sbid)
-                    stableBeatId = sbid;
-                else if (clipEl.TryGetProperty("beat_id", out var be) &&
-                         be.ValueKind == JsonValueKind.String &&
-                         be.GetString() is { Length: > 0 } bid)
-                    stableBeatId = bid;
-
-                // Character refs: any attached path beyond an optional location plate.
-                var hadCharRefs = built.RefsAttachedToApi &&
-                    (built.ReferenceImagePaths.Count > (built.LocationRefAttached ? 1 : 0));
-
-                var takeKind = takeKindOverride
-                    ?? VideoTakeKinds.Resolve(
-                        CurrentRun.Value?.TakeTrigger,
-                        clipHadVideoBefore: hadVideoBefore,
-                        isQaRetry: false);
-
-                await _costs.RecordVideoGenerationAsync(
-                    costProjectId,
-                    scene,
-                    clip,
-                    costDurationSec,
-                    resolution,
-                    model,
-                    hasRefImage: built.ReferenceImagePaths.Count > 0 || prevVideoPath is not null,
-                    isExtend: prevVideoPath is not null,
-                    requestId: requestId,
-                    requestedDurationSec: duration,
-                    userId: Snapshot.UserId ?? _user.UserId,
-                    keyMode: CurrentRun.Value?.KeyMode,
-                    takeKind: takeKind,
-                    stableBeatId: stableBeatId,
-                    hadCharRefs: hadCharRefs,
-                    hadLocRef: built.LocationRefAttached,
-                    ct: ct);
-                await AppendLogAsync(
-                    $"  [Cost] tracked list-rate for S{scene:D2}C{clip} ({costDurationSec:F2}s, take={takeKind})");
-            }
-            catch (Exception ex)
-            {
-                await AppendLogAsync($"  [Cost] ledger write skipped: {ex.Message}");
-            }
+            var rules = await _projectRules.GetActiveRulesBlockAsync(projectId, ct).ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(rules))
+                return null;
+            var m = CommonRegex.Match(
+                rules, @"STYLE LOCK:\s*([^\n]+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (m.Success)
+                return "STYLE LOCK: " + m.Groups[1].Value.Trim().TrimEnd('.', ' ');
         }
-        finally
+        catch { /* non-fatal */ }
+        return null;
+    }
+
+    private static string? ResolveSceneLocationKey(JsonElement? blueprintRoot, int scene)
+    {
+        if (blueprintRoot is not { } sceneRoot)
+            return null;
+        var sceneEl = FindScene(sceneRoot, scene);
+        if (sceneEl is not { } se)
+            return null;
+        if (se.TryGetProperty("primary_location_id", out var pl) &&
+            pl.ValueKind == JsonValueKind.String &&
+            pl.GetString() is { Length: > 0 } pls)
+            return pls;
+        return FirstLocationId(se);
+    }
+
+    private static string? FirstLocationId(JsonElement se)
+    {
+        if (!se.TryGetProperty("location_ids", out var lids) ||
+            lids.ValueKind != JsonValueKind.Array)
+            return null;
+        foreach (var x in lids.EnumerateArray())
         {
-            // Single-use: consumed extend-source is deleted so a later plain regenerate (no fresh
-            // upload) falls back to fresh gen instead of silently reusing stale continuity data.
-            if (extendInputTemp is not null)
+            if (x.ValueKind == JsonValueKind.String &&
+                x.GetString() is { Length: > 0 } first)
+                return first;
+        }
+        return null;
+    }
+
+    private void EnsureClipRefsForMode(ClipGenContext ctx, ClipVideoPromptBuilder.PromptBuildResult built)
+    {
+        // Fresh / reseed: every on-screen cast key must have a locked ref attached
+        if (ctx.PrevVideoPath is null)
+            EnsureFreshGenHasLockedRefs(ctx.ProjectId, ctx.ProjectDir, built, ctx.Profiles);
+        else
+        {
+            // Extend still requires locks on disk even when API cannot attach them
+            EnsureOnScreenLocksExist(ctx.ProjectId, ctx.ProjectDir, built, ctx.Profiles);
+        }
+    }
+
+    private async Task<ClipVideoPromptBuilder.PromptBuildResult> ApplyProjectRulesToPromptAsync(
+        string projectId,
+        ClipVideoPromptBuilder.PromptBuildResult built,
+        CancellationToken ct)
+    {
+        // Approved project-scoped house rules (learning). Global clip gen rules live in
+        // embedded prompts/clip_gen_rules.txt and are composed inside ClipVideoPromptBuilder.
+        try
+        {
+            var rules = await _projectRules.GetActiveRulesBlockAsync(projectId, ct).ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(rules))
             {
-                try { File.Delete(extendInputTemp); } catch { /* ignore */ }
+                built = built.WithPrompt(
+                    built.Prompt.TrimEnd() + "\n\n" + rules.Trim(),
+                    " · project-rules");
             }
         }
+        catch { /* non-fatal */ }
+        return built;
+    }
 
+    private async Task<ClipVideoPromptBuilder.PromptBuildResult> ApplyPromptBudgetAsync(
+        ClipVideoPromptBuilder.PromptBuildResult built,
+        SupportedModelEntry modelEntry)
+    {
+        var modelMaxPromptLen = modelEntry.MaxPromptLength
+            ?? throw new InvalidOperationException(
+                $"Video model '{modelEntry.Id}' has no maxPromptLength in models_catalog.json.");
+
+        // Pre-budget to model-specific prompt limit (e.g. 1000 for Fal.ai, 4096 for Grok).
+        // Avoids a guaranteed first-attempt 400 on every clip.
+        var preLen = built.Prompt.Length;
+        var fitted = ClipVideoPromptBuilder.FitPromptToVideoBudget(built.Prompt, modelMaxPromptLen);
+        if (fitted.Length < preLen)
+        {
+            built = built.WithPrompt(fitted, $" · pre-budget {preLen}→{fitted.Length}");
+            await AppendLogAsync(
+                $"  [Prompt] pre-budget {preLen}→{fitted.Length} chars (model {modelEntry.Id} hard cap {modelMaxPromptLen})");
+        }
+        return built;
+    }
+
+    private static string FormatRefLocationSuffix(ClipVideoPromptBuilder.PromptBuildResult built)
+    {
+        if (built.LocationRefAttached)
+            return $" · set={built.LocationKey} {built.LocationImageTag}";
+        if (built.LocationKey is { Length: > 0 })
+            return $" · set={built.LocationKey} (no locked plate)";
+        return "";
+    }
+
+    private async Task LogPromptRefsAsync(
+        ClipVideoPromptBuilder.PromptBuildResult built, string? prevVideoPath)
+    {
+        if (built.Prompt.Contains("<VoiceLock>", StringComparison.OrdinalIgnoreCase))
+            await AppendLogAsync("  [Voice] VOICE LOCK from character profile");
+        if (built.ReferenceImagePaths.Count > 0)
+        {
+            await AppendLogAsync(
+                $"  [Refs] attached={built.RefsAttachedToApi} count={built.ReferenceImagePaths.Count}: " +
+                string.Join(", ", built.ReferenceImagePaths.Select(Path.GetFileName)) +
+                FormatRefLocationSuffix(built));
+            return;
+        }
+        if (prevVideoPath is not null)
+            await AppendLogAsync("  [Refs] video-extend — locked plates not attached to API (IDENTITY text only)");
+        else if (built.LocationKey is { Length: > 0 })
+            await AppendLogAsync($"  [Refs] no plates attached · set={built.LocationKey} (no locked plate or no slots)");
+    }
+
+    private async Task<int> ResolveClipDurationAsync(
+        ClipGenContext ctx,
+        ClipVideoPromptBuilder.PromptBuildResult built,
+        bool supportsContinue)
+    {
+        // Only continuation-chain models get carried-forward padding: clip N+1 already can't
+        // start before clip N is on disk for these, so reconciling against N's real measurement
+        // costs nothing extra. Non-continuation models don't have that same-scene coupling.
+        // Dialogue-aware duration (tight for short lines — billed per second), clamped to the
+        // actually-selected model's own duration caps (SupportedModelCatalog) instead of a
+        // hardcoded provider assumption.
+        var (durMin, durMax, durAbsMax) = ClipDurationEstimator.ResolveBoundsForModel(ctx.Model);
+        var duration = ClipDurationEstimator.EstimateForClip(ctx.ClipEl, durMin, durMax, durAbsMax);
+        if (supportsContinue && ctx.IncomingDurationPaddingSec > 0)
+        {
+            var padded = ApplyIncomingDurationPadding(duration, ctx.IncomingDurationPaddingSec, durAbsMax);
+            await AppendLogAsync(
+                $"  [Duration] +{ctx.IncomingDurationPaddingSec:F1}s carried from previous clip's overrun -> {duration}s to {padded}s");
+            duration = padded;
+        }
+        await AppendLogAsync($"  [Duration] estimated {duration}s (dialogue-aware, max {durMax}s, model={ctx.Model})");
+        // Reference-conditioned / continuation generation is bounded by the model's own
+        // tighter extension cap (catalog MaxExtensionSeconds), not a bare hardcoded 10 — keeps
+        // this correct if a future model's real ref-conditioned max differs from Grok's ~10s.
+        if (ctx.PrevVideoPath is not null || built.ReferenceImagePaths.Count > 0)
+            duration = ClipDurationEstimator.ResolveActualDurationForModel(ctx.Model, duration, isExtensionMode: true);
+        return duration;
+    }
+
+    private async Task PublishClipClientMediaAsync(ClipGenContext ctx, string url)
+    {
+        var relPath = MediaRegistryService.ClipRelativePath(ctx.Scene, ctx.Clip);
+        var ticket = _mediaProxy.Issue(url, TimeSpan.FromMinutes(45));
+        var clientUrl = $"/api/media/proxy/{ticket}";
+        await UpdateAsync(s =>
+        {
+            s.ClientMediaUrl = clientUrl;
+            s.ClientRelativePath = relPath;
+            s.Scene = ctx.Scene;
+            s.Clip = ctx.Clip;
+        });
+        await AppendLogAsync(
+            $"  [Grok] video ready for client save → {relPath} (not stored on server disk)");
+    }
+
+    private async Task<double> DownloadClipAndRecordTelemetryAsync(
+        ClipGenContext ctx,
+        ClipVideoPromptBuilder.PromptBuildResult built,
+        string url,
+        string mp4Path,
+        int duration,
+        bool supportsContinue)
+    {
+        var overrunSec = 0.0;
+        // Save MP4 file to server project directory so client media sync delivers MP4 files to client folder.
+        // Via IVideoClient.DownloadToFileAsync, not a raw HttpClient GET. Fake providers may return a
+        // non-http URL (a local fixture scheme) that DownloadToFileAsync resolves on disk. A bare
+        // GetByteArrayAsync would skip the save on that scheme.
+        try
+        {
+            await _grok.DownloadToFileAsync(url, mp4Path, ctx.Ct).ConfigureAwait(false);
+            var bytesLength = File.Exists(mp4Path) ? new FileInfo(mp4Path).Length : 0;
+            if (bytesLength > 0)
+            {
+                await AppendLogAsync($"  [Media] Saved {bytesLength} bytes to {Path.GetFileName(mp4Path)}");
+                overrunSec = await RecordDownloadedClipTelemetryAsync(
+                    ctx, built, mp4Path, duration, supportsContinue).ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Could not save MP4 bytes to server project directory for S{Scene:D2}C{Clip:D2}", ctx.Scene, ctx.Clip);
+        }
         return overrunSec;
+    }
+
+    private async Task<double> RecordDownloadedClipTelemetryAsync(
+        ClipGenContext ctx,
+        ClipVideoPromptBuilder.PromptBuildResult built,
+        string mp4Path,
+        int duration,
+        bool supportsContinue)
+    {
+        // Trigger 100% automated background clip dialogue & speaker verification.
+        // Telemetry recording below awaits this (if started) so DialogueTruncated
+        // reflects the real Expected-vs-Heard result instead of staying hardcoded false.
+        var dialogueVerificationTask = StartDialogueVerificationIfConfigured(ctx);
+        // Probe the real rendered duration once — used both to carry a same-scene
+        // continuation-chain padding nudge into the next clip (below) and, if timing
+        // calibration is configured, for telemetry.
+        var probedSec = await Mp4DurationReader.TryReadSecondsAsync(mp4Path, ctx.Ct).ConfigureAwait(false) ?? (double)duration;
+        var overrunSec = ComputeCarryoverOverrunSec(supportsContinue, probedSec, duration);
+        await RecordTimingTelemetryIfConfiguredAsync(
+            ctx, built, duration, probedSec, dialogueVerificationTask).ConfigureAwait(false);
+        return overrunSec;
+    }
+
+    private Task<ClipDialogueVerificationResult?>? StartDialogueVerificationIfConfigured(ClipGenContext ctx)
+    {
+        var verifier = _dialogueVerification;
+        if (verifier is null || !verifier.IsConfigured)
+            return null;
+        var projId = Snapshot.ProjectId ?? ctx.ProjectId ?? _projects.ActiveProjectId;
+        var scene = ctx.Scene;
+        var clip = ctx.Clip;
+        return Task.Run(async () =>
+        {
+            try
+            {
+                return await verifier.VerifyClipDialogueAsync(projId, scene, clip, force: true, ct: CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex, "Background dialogue verification failed for S{Scene:D2}C{Clip:D2}", scene, clip);
+                return null;
+            }
+        }, ctx.Ct);
+    }
+
+    private async Task RecordTimingTelemetryIfConfiguredAsync(
+        ClipGenContext ctx,
+        ClipVideoPromptBuilder.PromptBuildResult built,
+        int duration,
+        double probedSec,
+        Task<ClipDialogueVerificationResult?>? dialogueVerificationTask)
+    {
+        // Record dynamic cut timing telemetry into SQLite database for continuous server learning
+        if (_timingCalibration is null)
+            return;
+        var projId = Snapshot.ProjectId ?? ctx.ProjectId ?? _projects.ActiveProjectId;
+        var evaluatorModelId = await TryLoadEvaluatorModelIdAsync(projId, ctx.Ct).ConfigureAwait(false);
+        var wordCount = ExtractClipDialogueWordCount(ctx.ClipEl);
+        var camCat = ExtractCameraCategory(ctx.ClipEl);
+        var actCat = await ClassifyActionCategoryAsync(built.Prompt ?? "", ctx.Ct).ConfigureAwait(false);
+        double camOverhead = _timingLedger?.GetOverheadSec(camCat, 1.6) ?? 1.6;
+        double netSpeechSec = wordCount > 0 ? (wordCount / ClipDurationEstimator.DialogueWordsPerSecond) : 0.0;
+        double measuredActOverhead = Math.Max(0.5, Math.Round(probedSec - camOverhead - netSpeechSec, 2));
+        StartTimingTelemetryRecord(
+            ctx, projId, evaluatorModelId, camCat, actCat, wordCount, duration, probedSec,
+            camOverhead, measuredActOverhead, dialogueVerificationTask);
+    }
+
+    private async Task<string> TryLoadEvaluatorModelIdAsync(string projId, CancellationToken ct)
+    {
+        try
+        {
+            var evalCfg = await _projects.GetConfigAsync(projId, ct).ConfigureAwait(false);
+            // Attribute evaluator to project Video review / planning model (Settings), never invent.
+            return ProjectModelSelection.TryGet(
+                evalCfg,
+                ProjectModelSelection.QualityConfigKey,
+                ProjectModelSelection.PlanningConfigKey,
+                ProjectModelSelection.ChatConfigKey) ?? "";
+        }
+        catch { /* telemetry only */ }
+        return "";
+    }
+
+    private static int ExtractClipDialogueWordCount(JsonElement clipEl)
+    {
+        // 1. Extract dialogue text & word count from clip blueprint
+        string dialogueText = "";
+        if (clipEl.TryGetProperty(JsonKeys.AudioPayload, out var ap) && ap.ValueKind == JsonValueKind.Object &&
+            ap.TryGetProperty(JsonKeys.Dialogue, out var dEl))
+        {
+            dialogueText = dEl.GetString() ?? "";
+        }
+        return string.IsNullOrWhiteSpace(dialogueText)
+            ? 0
+            : dialogueText.Split(new[] { ' ', '\t', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries).Length;
+    }
+
+    private static string ExtractCameraCategory(JsonElement clipEl)
+    {
+        // 2. Extract camera movement category from blueprint or visual prompt
+        if (clipEl.TryGetProperty("camera", out var camEl) && camEl.ValueKind == JsonValueKind.String)
+        {
+            var cam = camEl.GetString();
+            if (!string.IsNullOrWhiteSpace(cam))
+                return cam;
+        }
+        else if (clipEl.TryGetProperty("camera_category", out var ccEl) && ccEl.ValueKind == JsonValueKind.String)
+        {
+            var cc = ccEl.GetString();
+            if (!string.IsNullOrWhiteSpace(cc))
+                return cc;
+        }
+        return "cam_push_in";
+    }
+
+    private async Task<string> ClassifyActionCategoryAsync(string promptToAnalyze, CancellationToken ct)
+    {
+        // 3. Dynamically classify scene action category via AiActionOverheadClassifier
+        string actCat = "act_generic_action";
+        if (_timingClassifier is null)
+            return actCat;
+        var estimation = await _timingClassifier.ClassifyNovelActionAsync(promptToAnalyze, null, ct).ConfigureAwait(false);
+        if (!string.IsNullOrWhiteSpace(estimation.MatchCategoryId))
+            actCat = estimation.MatchCategoryId;
+        return actCat;
+    }
+
+    private void StartTimingTelemetryRecord(
+        ClipGenContext ctx,
+        string projId,
+        string evaluatorModelId,
+        string camCat,
+        string actCat,
+        int wordCount,
+        int duration,
+        double probedSec,
+        double camOverhead,
+        double measuredActOverhead,
+        Task<ClipDialogueVerificationResult?>? dialogueVerificationTask)
+    {
+        var calibration = _timingCalibration;
+        if (calibration is null)
+            return;
+        var scene = ctx.Scene;
+        var clip = ctx.Clip;
+        var model = ctx.Model;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var dialogueTruncated = await ResolveDialogueTruncatedAsync(dialogueVerificationTask)
+                    .ConfigureAwait(false);
+                await calibration.RecordCutTelemetryAsync(
+                    projectId: projId,
+                    sceneNumber: scene,
+                    videoModelId: model,
+                    videoModelVersion: "v1",
+                    evaluatorModelId: evaluatorModelId,
+                    evaluatorModelVersion: "v1",
+                    cameraCategory: camCat,
+                    actionCategory: actCat,
+                    wordCount: wordCount,
+                    estimatedDurationSec: (double)duration,
+                    clipDurationSec: probedSec,
+                    measuredCamOverheadSec: camOverhead,
+                    measuredActionOverheadSec: measuredActOverhead,
+                    dialogueTruncated: dialogueTruncated).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex, "Background timing telemetry logging failed for S{Scene:D2}C{Clip:D2}", scene, clip);
+            }
+        }, ctx.Ct);
+    }
+
+    private static async Task<bool> ResolveDialogueTruncatedAsync(
+        Task<ClipDialogueVerificationResult?>? dialogueVerificationTask)
+    {
+        if (dialogueVerificationTask is null)
+            return false;
+        var verification = await dialogueVerificationTask.ConfigureAwait(false);
+        if (verification is null)
+            return false;
+        return ClipDialogueVerificationService.LooksTruncated(verification);
+    }
+
+    private async Task WriteClipSidecarIfConfiguredAsync(
+        ClipGenContext ctx,
+        ClipVideoPromptBuilder.PromptBuildResult built,
+        string url,
+        string requestId,
+        int duration)
+    {
+        if (_sidecars is null)
+            return;
+        try
+        {
+            var projDir = await _projects.GetProjectDirAsync(
+                Snapshot.ProjectId ?? ctx.ProjectId ?? _projects.ActiveProjectId, ctx.Ct).ConfigureAwait(false);
+            // xAI Files API reference for this exact clip, when generation requested
+            // storage and it succeeded (see GrokVideoClient's storage_options) — lets a
+            // later "AI Edit" reuse the file instead of re-uploading. Absent for
+            // non-Grok providers or when storage wasn't granted; never required.
+            var (sourceFileId, sourceFileExpiresAt) = _grok.TryGetStoredFileReference(requestId);
+            await _sidecars.WriteSidecarAsync(
+                projDir,
+                ctx.Scene,
+                ctx.Clip,
+                prompt: built.Prompt ?? "",
+                scriptText: "",
+                model: ctx.Model,
+                resolution: ctx.Resolution,
+                durationSeconds: (double)duration,
+                sha256: "",
+                sizeBytes: 0,
+                // Persist the provider-hosted video URL so an exported project can be re-hydrated
+                // by another user on import (xAI/Grok URLs are long-lived). Provider is resolved
+                // from the model via the catalog (SSoT) rather than hardcoded.
+                sourceUrl: url,
+                sourceProvider: SupportedModelCatalog.ResolveOrDefault(ctx.Model, ModelCapability.Video).ProviderId,
+                sourceFileId: sourceFileId,
+                sourceFileExpiresAtUnixSeconds: sourceFileExpiresAt,
+                ct: ctx.Ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Could not write clip sidecar for S{Scene:D2}C{Clip:D2}", ctx.Scene, ctx.Clip);
+        }
+    }
+
+    private static string? TryGetStableBeatId(JsonElement clipEl)
+    {
+        if (clipEl.TryGetProperty("stable_beat_id", out var sbe) &&
+            sbe.ValueKind == JsonValueKind.String &&
+            sbe.GetString() is { Length: > 0 } sbid)
+            return sbid;
+        if (clipEl.TryGetProperty("beat_id", out var be) &&
+            be.ValueKind == JsonValueKind.String &&
+            be.GetString() is { Length: > 0 } bid)
+            return bid;
+        return null;
+    }
+
+    private async Task RecordClipCostAsync(
+        ClipGenContext ctx,
+        ClipVideoPromptBuilder.PromptBuildResult built,
+        string requestId,
+        int duration)
+    {
+        // Cost uses requested duration (no server file to probe until client registers).
+        var costDurationSec = (double)duration;
+        try
+        {
+            var costProjectId = Snapshot.ProjectId ?? ctx.ProjectId ?? _projects.ActiveProjectId;
+            var stableBeatId = TryGetStableBeatId(ctx.ClipEl);
+
+            // Character refs: any attached path beyond an optional location plate.
+            var hadCharRefs = built.RefsAttachedToApi &&
+                (built.ReferenceImagePaths.Count > (built.LocationRefAttached ? 1 : 0));
+
+            var takeKind = ctx.TakeKindOverride
+                ?? VideoTakeKinds.Resolve(
+                    CurrentRun.Value?.TakeTrigger,
+                    clipHadVideoBefore: ctx.HadVideoBefore,
+                    isQaRetry: false);
+
+            await _costs.RecordVideoGenerationAsync(
+                costProjectId,
+                ctx.Scene,
+                ctx.Clip,
+                costDurationSec,
+                ctx.Resolution,
+                ctx.Model,
+                hasRefImage: built.ReferenceImagePaths.Count > 0 || ctx.PrevVideoPath is not null,
+                isExtend: ctx.PrevVideoPath is not null,
+                requestId: requestId,
+                requestedDurationSec: duration,
+                userId: Snapshot.UserId ?? _user.UserId,
+                keyMode: CurrentRun.Value?.KeyMode,
+                takeKind: takeKind,
+                stableBeatId: stableBeatId,
+                hadCharRefs: hadCharRefs,
+                hadLocRef: built.LocationRefAttached,
+                ct: ctx.Ct);
+            await AppendLogAsync(
+                $"  [Cost] tracked list-rate for S{ctx.Scene:D2}C{ctx.Clip} ({costDurationSec:F2}s, take={takeKind})");
+        }
+        catch (Exception ex)
+        {
+            await AppendLogAsync($"  [Cost] ledger write skipped: {ex.Message}");
+        }
     }
 
     private async Task WriteAndLogPromptAsync(
@@ -5661,81 +6366,85 @@ public sealed class FilmJobService
         // Single UpdateAsync so Index/Total + log stay atomic (no race losing counters).
         // Keep Total on a 10-step phase scale so single-pass adapt still moves the bar
         // (legacy chunk-only counters left Total=0 → UI stuck at 35%).
-        await UpdateAsync(s =>
-        {
-            if (s.Log.Count == 0 || s.Log[^1] != line)
-            {
-                s.Log.Add(line);
-                if (s.Log.Count > 120)
-                    s.Log = s.Log.TakeLast(120).ToList();
-            }
-            s.Message = line;
-            s.Total = Math.Max(s.Total, 10);
-
-            // Multi-chunk adapt: map chunk i/N into phases 4–8
-            var m = CommonRegex.Match(
-                line, @"chunk\s+(\d+)\s*/\s*(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-            if (m.Success &&
-                int.TryParse(m.Groups[1].Value, out var idx) &&
-                int.TryParse(m.Groups[2].Value, out var tot) &&
-                tot > 0)
-            {
-                var chunkDone = line.Contains(StatusDone, StringComparison.OrdinalIgnoreCase);
-                var frac = chunkDone
-                    ? Math.Clamp((double)idx / tot, 0, 1)
-                    : Math.Clamp((idx - 1.0) / tot, 0, 1);
-                s.Index = Math.Max(s.Index, 4 + (int)Math.Round(4.0 * frac));
-                return;
-            }
-
-            // Vision prepare: page i/N → phases 1–3
-            var mVis = CommonRegex.Match(
-                line, @"(?:Grok vision|Reading page|page)\s+(\d+)\s*/\s*(\d+)",
-                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-            if (mVis.Success &&
-                int.TryParse(mVis.Groups[1].Value, out var vi) &&
-                int.TryParse(mVis.Groups[2].Value, out var vt) &&
-                vt > 0)
-            {
-                var frac = Math.Clamp((vi - 1.0) / vt, 0, 1);
-                s.Index = Math.Max(s.Index, 1 + (int)Math.Round(2.0 * frac));
-                return;
-            }
-
-            if (line.Contains("Screenplay ready", StringComparison.OrdinalIgnoreCase))
-                s.Index = Math.Max(s.Index, 10);
-            else if (line.Contains("approving", StringComparison.OrdinalIgnoreCase) ||
-                     line.Contains("Fountain draft saved", StringComparison.OrdinalIgnoreCase) ||
-                     line.Contains("plate", StringComparison.OrdinalIgnoreCase) ||
-                     line.Contains("Attaching", StringComparison.OrdinalIgnoreCase))
-                s.Index = Math.Max(s.Index, 9);
-            else if (line.Contains("Merge", StringComparison.OrdinalIgnoreCase) ||
-                     line.Contains("Stitch", StringComparison.OrdinalIgnoreCase))
-                s.Index = Math.Max(s.Index, 8);
-            else if (line.Contains("repair", StringComparison.OrdinalIgnoreCase) ||
-                     line.Contains("retry", StringComparison.OrdinalIgnoreCase) ||
-                     line.Contains("Refin", StringComparison.OrdinalIgnoreCase))
-                s.Index = Math.Max(s.Index, 7);
-            else if (line.Contains("single pass", StringComparison.OrdinalIgnoreCase) ||
-                     line.Contains("Adapting book", StringComparison.OrdinalIgnoreCase) ||
-                     line.Contains("Book split", StringComparison.OrdinalIgnoreCase) ||
-                     line.Contains("multi-chunk", StringComparison.OrdinalIgnoreCase))
-                s.Index = Math.Max(s.Index, 4);
-            else if (line.Contains("Target runtime", StringComparison.OrdinalIgnoreCase) ||
-                     line.Contains("building Fountain", StringComparison.OrdinalIgnoreCase) ||
-                     line.Contains("Writing screenplay", StringComparison.OrdinalIgnoreCase))
-                s.Index = Math.Max(s.Index, 3);
-            else if (line.Contains("prepare", StringComparison.OrdinalIgnoreCase) ||
-                     line.Contains("Extract", StringComparison.OrdinalIgnoreCase) ||
-                     line.Contains("Vision", StringComparison.OrdinalIgnoreCase) ||
-                     line.Contains("book text", StringComparison.OrdinalIgnoreCase) ||
-                     line.Contains("Checking book", StringComparison.OrdinalIgnoreCase))
-                s.Index = Math.Max(s.Index, 1);
-            else
-                s.Index = Math.Max(s.Index, 1);
-        });
+        await UpdateAsync(s => ApplyStage1Progress(s, line));
         if (_sink is not null)
             await _sink.OnJobLogAsync(line);
+    }
+
+    private static void ApplyStage1Progress(JobSnapshot s, string line)
+    {
+        AppendJobLogLine(s, line);
+        s.Message = line;
+        s.Total = Math.Max(s.Total, 10);
+        if (TryApplyChunkAdaptProgress(s, line))
+            return;
+        if (TryApplyVisionPrepareProgress(s, line))
+            return;
+        ApplyStage1KeywordProgress(s, line);
+    }
+
+    private static void AppendJobLogLine(JobSnapshot s, string line)
+    {
+        if (s.Log.Count == 0 || s.Log[^1] != line)
+        {
+            s.Log.Add(line);
+            if (s.Log.Count > 120)
+                s.Log = s.Log.TakeLast(120).ToList();
+        }
+    }
+
+    private static bool TryApplyChunkAdaptProgress(JobSnapshot s, string line)
+    {
+        // Multi-chunk adapt: map chunk i/N into phases 4–8
+        var m = CommonRegex.Match(
+            line, @"chunk\s+(\d+)\s*/\s*(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (!m.Success ||
+            !int.TryParse(m.Groups[1].Value, out var idx) ||
+            !int.TryParse(m.Groups[2].Value, out var tot) ||
+            tot <= 0)
+            return false;
+        var chunkDone = line.Contains(StatusDone, StringComparison.OrdinalIgnoreCase);
+        var frac = chunkDone
+            ? Math.Clamp((double)idx / tot, 0, 1)
+            : Math.Clamp((idx - 1.0) / tot, 0, 1);
+        s.Index = Math.Max(s.Index, 4 + (int)Math.Round(4.0 * frac));
+        return true;
+    }
+
+    private static bool TryApplyVisionPrepareProgress(JobSnapshot s, string line)
+    {
+        // Vision prepare: page i/N → phases 1–3
+        var mVis = CommonRegex.Match(
+            line, @"(?:Grok vision|Reading page|page)\s+(\d+)\s*/\s*(\d+)",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (!mVis.Success ||
+            !int.TryParse(mVis.Groups[1].Value, out var vi) ||
+            !int.TryParse(mVis.Groups[2].Value, out var vt) ||
+            vt <= 0)
+            return false;
+        var frac = Math.Clamp((vi - 1.0) / vt, 0, 1);
+        s.Index = Math.Max(s.Index, 1 + (int)Math.Round(2.0 * frac));
+        return true;
+    }
+
+    private static void ApplyStage1KeywordProgress(JobSnapshot s, string line)
+    {
+        if (line.Contains("Screenplay ready", StringComparison.OrdinalIgnoreCase))
+            s.Index = Math.Max(s.Index, 10);
+        else if (ContainsAnyIgnoreCase(line, "approving", "Fountain draft saved", "plate", "Attaching"))
+            s.Index = Math.Max(s.Index, 9);
+        else if (ContainsAnyIgnoreCase(line, "Merge", "Stitch"))
+            s.Index = Math.Max(s.Index, 8);
+        else if (ContainsAnyIgnoreCase(line, "repair", "retry", "Refin"))
+            s.Index = Math.Max(s.Index, 7);
+        else if (ContainsAnyIgnoreCase(line, "single pass", "Adapting book", "Book split", "multi-chunk"))
+            s.Index = Math.Max(s.Index, 4);
+        else if (ContainsAnyIgnoreCase(line, "Target runtime", "building Fountain", "Writing screenplay"))
+            s.Index = Math.Max(s.Index, 3);
+        else if (ContainsAnyIgnoreCase(line, "prepare", "Extract", "Vision", "book text", "Checking book"))
+            s.Index = Math.Max(s.Index, 1);
+        else
+            s.Index = Math.Max(s.Index, 1);
     }
 
     private async Task AppendLogAsync(string message)

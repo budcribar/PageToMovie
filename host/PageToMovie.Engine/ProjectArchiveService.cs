@@ -80,95 +80,13 @@ public sealed class ProjectArchiveService
         var fileName = $"PageToMovie_{fileNameSafeId}_{stamp}.zip";
         var tempPath = Path.Combine(Path.GetTempPath(), $"ptm-export-{Guid.NewGuid():N}.zip");
 
-        if (_migrations is not null)
-        {
-            try
-            {
-                await _migrations.MigrateIfNeededAsync(projectDir, ct).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                _log.LogWarning(ex, "Export: schema migration failed for {ProjectId}", id);
-            }
-        }
-        else if (_sidecars is not null)
-        {
-            try
-            {
-                await _sidecars.ConvertProjectClipsToNewFormatAsync(projectDir, ct).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                _log.LogWarning(ex, "Export: clip format conversion failed for {ProjectId}", id);
-            }
-        }
+        await TryMigrateOrConvertClipsAsync(projectDir, id, ct).ConfigureAwait(false);
 
         try
         {
             await Task.Run(async () =>
             {
-                ct.ThrowIfCancellationRequested();
-                using var fs = new FileStream(tempPath, FileMode.Create, FileAccess.ReadWrite, FileShare.None);
-                using (var zip = new ZipArchive(fs, ZipArchiveMode.Create, leaveOpen: true))
-                {
-                    // Manifest for importers. Export must not modify a project's working files.
-                    var projectSchema = await ProjectFormatVersions.TryReadProjectSchemaVersionAsync(projectDir, ct).ConfigureAwait(false)
-                                        ?? ProjectFormatVersions.ProjectSchemaVersion;
-                    var metaEntry = zip.CreateEntry($"{id}/_export_meta.json", CompressionLevel.Fastest);
-                    await using (var metaStream = metaEntry.Open())
-                    using (var w = new StreamWriter(metaStream, Encoding.UTF8))
-                    {
-                        await w.WriteAsync(JsonSerializer.Serialize(
-                            ProjectFormatVersions.BuildExportMeta(id, projectSchema),
-                            JsonOpts));
-                    }
-
-                    // ZipArchiveMode.Create does not support GetEntry — track names ourselves.
-                    var seenEntries = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-                    {
-                        $"{id}/_export_meta.json",
-                    };
-
-                    foreach (var file in Directory.EnumerateFiles(projectDir, "*", SearchOption.AllDirectories))
-                    {
-                        ct.ThrowIfCancellationRequested();
-                        var rel = Path.GetRelativePath(projectDir, file);
-                        if (string.IsNullOrEmpty(rel) || rel.StartsWith("..", StringComparison.Ordinal))
-                            continue;
-                        // Skip OS junk. Also skip a stray on-disk "_export_meta.json" — it's an
-                        // export-generated manifest (written fresh, above, for THIS export), never
-                        // real project content; a leftover copy (e.g. from an older re-slug rename,
-                        // before ImportAsync started deleting it) would otherwise re-enter the zip as
-                        // a second, colliding entry with a stale projectId that wins on extraction.
-                        var name = Path.GetFileName(file);
-                        if (name is "Thumbs.db" or ".DS_Store" or "_export_meta.json")
-                            continue;
-
-                        // Ephemeral collab locks — not project content; filenames used colons
-                        // (loc:Hall.json) that break Windows Explorer extract (0x80070057).
-                        var relNorm = rel.Replace('\\', '/');
-                        if (relNorm.StartsWith("leases/", StringComparison.OrdinalIgnoreCase)
-                            || string.Equals(relNorm, "leases", StringComparison.OrdinalIgnoreCase))
-                            continue;
-
-                        // Portable zip entry names (no ':' etc.) so Windows extract works even if
-                        // something on the Linux host still uses an OS-allowed-but-not-Windows name.
-                        var safeRel = PageToMovie.Core.Utils.FileNameSanitizer.SanitizeRelativePath(relNorm);
-                        if (string.IsNullOrEmpty(safeRel))
-                            continue;
-                        var entryName = $"{id}/{safeRel}";
-                        // Avoid duplicate entries if two disk paths collapse to the same safe name.
-                        if (!seenEntries.Add(entryName))
-                            continue;
-
-                        var entry = zip.CreateEntry(entryName, CompressionLevel.Fastest);
-                        await using (var sourceStream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, useAsync: true))
-                        await using (var entryStream = entry.Open())
-                        {
-                            await sourceStream.CopyToAsync(entryStream, ct).ConfigureAwait(false);
-                        }
-                    }
-                }
+                await WriteZipContentsAsync(id, projectDir, tempPath, ct).ConfigureAwait(false);
             }, ct).ConfigureAwait(false);
 
             var length = new FileInfo(tempPath).Length;
@@ -194,8 +112,121 @@ public sealed class ProjectArchiveService
         }
         catch
         {
-            try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { /* ignore */ }
+            TryDeleteTempFile(tempPath);
             throw;
+        }
+    }
+
+    private async Task TryMigrateOrConvertClipsAsync(string projectDir, string id, CancellationToken ct)
+    {
+        if (_migrations is not null)
+        {
+            try
+            {
+                await _migrations.MigrateIfNeededAsync(projectDir, ct).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex, "Export: schema migration failed for {ProjectId}", id);
+            }
+        }
+        else if (_sidecars is not null)
+        {
+            try
+            {
+                await _sidecars.ConvertProjectClipsToNewFormatAsync(projectDir, ct).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex, "Export: clip format conversion failed for {ProjectId}", id);
+            }
+        }
+    }
+
+    private static async Task WriteZipContentsAsync(
+        string id, string projectDir, string tempPath, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        using var fs = new FileStream(tempPath, FileMode.Create, FileAccess.ReadWrite, FileShare.None);
+        using var zip = new ZipArchive(fs, ZipArchiveMode.Create, leaveOpen: true);
+        // Manifest for importers. Export must not modify a project's working files.
+        var projectSchema = await ProjectFormatVersions.TryReadProjectSchemaVersionAsync(projectDir, ct).ConfigureAwait(false)
+                            ?? ProjectFormatVersions.ProjectSchemaVersion;
+        var metaEntry = zip.CreateEntry($"{id}/_export_meta.json", CompressionLevel.Fastest);
+        await using (var metaStream = metaEntry.Open())
+        using (var w = new StreamWriter(metaStream, Encoding.UTF8))
+        {
+            await w.WriteAsync(JsonSerializer.Serialize(
+                ProjectFormatVersions.BuildExportMeta(id, projectSchema),
+                JsonOpts));
+        }
+
+        // ZipArchiveMode.Create does not support GetEntry — track names ourselves.
+        var seenEntries = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            $"{id}/_export_meta.json",
+        };
+
+        foreach (var file in Directory.EnumerateFiles(projectDir, "*", SearchOption.AllDirectories))
+        {
+            ct.ThrowIfCancellationRequested();
+            var rel = Path.GetRelativePath(projectDir, file);
+            var name = Path.GetFileName(file);
+            if (ShouldSkipExportFile(rel, name))
+                continue;
+
+            // Portable zip entry names (no ':' etc.) so Windows extract works even if
+            // something on the Linux host still uses an OS-allowed-but-not-Windows name.
+            var relNorm = rel.Replace('\\', '/');
+            var safeRel = PageToMovie.Core.Utils.FileNameSanitizer.SanitizeRelativePath(relNorm);
+            if (string.IsNullOrEmpty(safeRel))
+                continue;
+            var entryName = $"{id}/{safeRel}";
+            // Avoid duplicate entries if two disk paths collapse to the same safe name.
+            if (!seenEntries.Add(entryName))
+                continue;
+
+            var entry = zip.CreateEntry(entryName, CompressionLevel.Fastest);
+            await using (var sourceStream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, useAsync: true))
+            await using (var entryStream = entry.Open())
+            {
+                await sourceStream.CopyToAsync(entryStream, ct).ConfigureAwait(false);
+            }
+        }
+    }
+
+    private static bool ShouldSkipExportFile(string rel, string name)
+    {
+        if (string.IsNullOrEmpty(rel) || rel.StartsWith("..", StringComparison.Ordinal))
+            return true;
+        // Skip OS junk. Also skip a stray on-disk "_export_meta.json" — it's an
+        // export-generated manifest (written fresh, above, for THIS export), never
+        // real project content; a leftover copy (e.g. from an older re-slug rename,
+        // before ImportAsync started deleting it) would otherwise re-enter the zip as
+        // a second, colliding entry with a stale projectId that wins on extraction.
+        if (name is "Thumbs.db" or ".DS_Store" or "_export_meta.json")
+            return true;
+
+        // Ephemeral collab locks — not project content; filenames used colons
+        // (loc:Hall.json) that break Windows Explorer extract (0x80070057).
+        var relNorm = rel.Replace('\\', '/');
+        if (relNorm.StartsWith("leases/", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(relNorm, "leases", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return false;
+    }
+
+    private static void TryDeleteTempFile(string tempPath)
+    {
+        try
+        {
+            if (File.Exists(tempPath))
+                File.Delete(tempPath);
+        }
+        catch
+        {
+            /* ignore */
         }
     }
 

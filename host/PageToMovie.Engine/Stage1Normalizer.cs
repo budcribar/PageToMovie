@@ -36,37 +36,66 @@ public static class Stage1Normalizer
             data = new Dictionary<string, object?>();
         data = CleanNulls(data) as Dictionary<string, object?> ?? new();
         data["schema_version"] = "stage1.v1";
+        ApplyMovieTitles(data);
+
+        var gpv = GetOrCreateDict(data, "global_production_variables");
+        ApplyGpvDefaults(gpv);
+
+        var scenes = GetList(data, "scenes");
+        ApplyRuntimeTarget(gpv, scenes);
+        ApplySeedTokenDefaults(gpv);
+        ApplyStyleLock(gpv);
+
+        NormalizeCharacterSeeds(gpv);
+        NormalizeLocationSeeds(gpv);
+
+        foreach (var sObj in scenes.OfType<Dictionary<string, object?>>())
+            NormalizeScene(sObj);
+
+        data["cumulative_duration_target_seconds"] = SumSceneDurations(scenes);
+        data["scenes"] = scenes;
+        data["global_production_variables"] = gpv;
+        return data;
+    }
+
+    private static void ApplyMovieTitles(Dictionary<string, object?> data)
+    {
         data.TryGetValue("source_book_title", out var sbt);
         data.TryGetValue("movie_title", out var mt);
         data["movie_title"] = CoerceString(mt) is { Length: > 0 } mts ? mts : (CoerceString(sbt) ?? "Untitled");
         data["source_book_title"] = CoerceString(sbt) is { Length: > 0 } sbs ? sbs : data["movie_title"];
+    }
 
-        var gpv = GetOrCreateDict(data, "global_production_variables");
+    private static void ApplyGpvDefaults(Dictionary<string, object?> gpv)
+    {
         gpv["target_aspect_ratio"] = gpv.TryGetValue("target_aspect_ratio", out var ar) && ar is not null
             ? ar : "16:9";
         gpv["resolution"] = gpv.TryGetValue("resolution", out var res) && res is not null ? res : "720p";
         gpv["frame_rate"] = ParseFrameRate(gpv.TryGetValue("frame_rate", out var fr) ? fr : 24);
         if (!gpv.TryGetValue("directorial_treatment", out var dirTreat) || dirTreat is null)
             gpv["directorial_treatment"] = "cinematic lighting, film grain, steady camera, high-contrast";
+    }
 
-        var scenes = GetList(data, "scenes");
-        if (!gpv.TryGetValue("total_runtime_target_seconds", out var runtimeTarget) || runtimeTarget is null)
-        {
-            var sceneSum = 0;
-            foreach (var s in scenes.OfType<Dictionary<string, object?>>())
-                sceneSum += ToInt(s.TryGetValue("duration_target_seconds", out var d) ? d : 0);
-            gpv["total_runtime_target_seconds"] = sceneSum > 0 ? sceneSum : 900;
-        }
+    private static void ApplyRuntimeTarget(Dictionary<string, object?> gpv, List<object?> scenes)
+    {
+        if (gpv.TryGetValue("total_runtime_target_seconds", out var runtimeTarget) && runtimeTarget is not null)
+            return;
+        var sceneSum = SumSceneDurations(scenes);
+        gpv["total_runtime_target_seconds"] = sceneSum > 0 ? sceneSum : 900;
+    }
 
+    private static void ApplySeedTokenDefaults(Dictionary<string, object?> gpv)
+    {
         if (!gpv.TryGetValue(CharacterSeedTokensKey, out var charSeeds) || charSeeds is null)
             gpv[CharacterSeedTokensKey] = new Dictionary<string, object?>();
         if (!gpv.TryGetValue(LocationSeedTokensKey, out var locSeeds) || locSeeds is null)
             gpv[LocationSeedTokensKey] = new Dictionary<string, object?>();
+    }
 
+    private static void ApplyStyleLock(Dictionary<string, object?> gpv)
+    {
         var treat = CoerceString(gpv.TryGetValue("directorial_treatment", out var dt) ? dt : "") ?? "";
-        var rsl = CoerceString(
-            gpv.TryGetValue("render_style_lock", out var r1) ? r1
-            : gpv.TryGetValue("style_lock", out var r2) ? r2 : null) ?? "";
+        var rsl = CoerceString(ReadStyleLockRaw(gpv)) ?? "";
         if (string.IsNullOrWhiteSpace(rsl) &&
             CommonRegex.IsMatch(treat, @"styliz|animated|picture-book|cartoon|pixar|dreamworks|illustration|2d\b|3d\b",
                 RegexOptions.IgnoreCase))
@@ -79,19 +108,23 @@ public static class Stage1Normalizer
         {
             gpv["render_style_lock"] = rsl;
         }
+    }
 
-        NormalizeCharacterSeeds(gpv);
-        NormalizeLocationSeeds(gpv);
+    private static object? ReadStyleLockRaw(Dictionary<string, object?> gpv)
+    {
+        if (gpv.TryGetValue("render_style_lock", out var r1))
+            return r1;
+        if (gpv.TryGetValue("style_lock", out var r2))
+            return r2;
+        return null;
+    }
 
-        foreach (var sObj in scenes.OfType<Dictionary<string, object?>>())
-            NormalizeScene(sObj);
-
-        var total = scenes.OfType<Dictionary<string, object?>>()
-            .Sum(s => ToInt(s.TryGetValue("duration_target_seconds", out var d) ? d : 0));
-        data["cumulative_duration_target_seconds"] = total;
-        data["scenes"] = scenes;
-        data["global_production_variables"] = gpv;
-        return data;
+    private static int SumSceneDurations(List<object?> scenes)
+    {
+        var total = 0;
+        foreach (var s in scenes.OfType<Dictionary<string, object?>>())
+            total += ToInt(s.TryGetValue("duration_target_seconds", out var d) ? d : 0);
+        return total;
     }
 
     private static void NormalizeCharacterSeeds(Dictionary<string, object?> gpv)
@@ -173,6 +206,16 @@ public static class Stage1Normalizer
 
     private static void NormalizeScene(Dictionary<string, object?> s)
     {
+        ApplySceneIdentityAndDuration(s);
+        ApplySceneLocationIds(s);
+        ApplySceneWardrobeByCharacter(s);
+
+        foreach (var b in GetList(s, "story_beats").OfType<Dictionary<string, object?>>())
+            NormalizeBeat(b);
+    }
+
+    private static void ApplySceneIdentityAndDuration(Dictionary<string, object?> s)
+    {
         var sn = ToInt(s.TryGetValue("scene_number", out var n) ? n : 0);
         s["scene_filename"] =
             CoerceString(s.TryGetValue("scene_filename", out var sf) ? sf : null)
@@ -182,11 +225,16 @@ public static class Stage1Normalizer
         s["location_type"] = NormLocationType(s.TryGetValue("location_type", out var lt) ? lt : null);
         var dur = ToInt(s.TryGetValue(DurationTargetSecondsKey, out var d) ? d : 24);
         s[DurationTargetSecondsKey] = Math.Clamp(dur <= 0 ? 24 : dur, 8, 134);
+        ApplySceneTextFields(s, sn);
+    }
+
+    private static void ApplySceneTextFields(Dictionary<string, object?> s, int sn)
+    {
         s["dramatic_function"] =
             CoerceString(s.TryGetValue("dramatic_function", out var df) ? df : null) ?? "";
         s["summary"] =
             CoerceString(s.TryGetValue("summary", out var sum) ? sum : null)
-            ?? (s[SettingKey] is string settingStr && !string.IsNullOrEmpty(settingStr) ? settingStr : $"Scene {sn}");
+            ?? DefaultSceneSummary(s, sn);
         s["transition_type"] =
             CoerceString(s.TryGetValue("transition_type", out var tt) ? tt : null) ?? "cut";
         s["lighting_continuity_token"] =
@@ -195,61 +243,89 @@ public static class Stage1Normalizer
         if (!s.TryGetValue("story_beats", out var beats) || beats is null)
             s["story_beats"] = new List<object?>();
         s["music_intent"] = NormMusic(s.TryGetValue("music_intent", out var mi) ? mi : null);
+    }
 
+    private static string DefaultSceneSummary(Dictionary<string, object?> s, int sn)
+    {
+        if (s[SettingKey] is string settingStr && !string.IsNullOrEmpty(settingStr))
+            return settingStr;
+        return $"Scene {sn}";
+    }
+
+    private static void ApplySceneLocationIds(Dictionary<string, object?> s)
+    {
         var lids = s.TryGetValue("location_ids", out var lidsRaw) ? lidsRaw : null;
         var lidList = new List<string>();
         if (lids is string one) lidList.Add(one);
         else if (lids is List<object?> list)
-            lidList.AddRange(list.Select(x => CoerceString(x) ?? "").Where(x => !string.IsNullOrEmpty(x)));
+            lidList.AddRange(CoerceLocationIdList(list));
         s["location_ids"] = lidList;
         if (lidList.Count > 0 &&
             string.IsNullOrEmpty(CoerceString(s.TryGetValue("primary_location_id", out var pl) ? pl : null)))
             s["primary_location_id"] = lidList[0];
+    }
 
-        // Scrub nickname junk from scene wardrobe maps
-        if (s.TryGetValue("wardrobe_by_character", out var wbc) &&
-            wbc is Dictionary<string, object?> wmap)
+    private static List<string> CoerceLocationIdList(List<object?> list)
+    {
+        var lidList = new List<string>();
+        foreach (var x in list)
         {
-            foreach (var (ck, items) in wmap.ToList())
-            {
-                var cleaned = CharacterVisualTextScrubber.ScrubWardrobeList(CoerceStringList(items));
-                if (cleaned.Count > 0)
-                    wmap[ck] = cleaned;
-                else
-                    wmap.Remove(ck);
-            }
-            s["wardrobe_by_character"] = wmap;
+            var id = CoerceString(x) ?? "";
+            if (!string.IsNullOrEmpty(id))
+                lidList.Add(id);
         }
+        return lidList;
+    }
 
-        foreach (var b in GetList(s, "story_beats").OfType<Dictionary<string, object?>>())
+    private static void ApplySceneWardrobeByCharacter(Dictionary<string, object?> s)
+    {
+        if (!s.TryGetValue("wardrobe_by_character", out var wbc) ||
+            wbc is not Dictionary<string, object?> wmap)
+            return;
+
+        foreach (var (ck, items) in wmap.ToList())
         {
-            b["beat_id"] = CoerceString(b.TryGetValue("beat_id", out var bi) ? bi : null) ?? "b1";
-            b["intent"] = CoerceString(b.TryGetValue("intent", out var intent) ? intent : null) ?? "";
-            b[VisualEventKey] =
-                CoerceString(b.TryGetValue(VisualEventKey, out var ve) ? ve : null)
-                ?? (string)b["intent"]!;
-            // visual_event may mention nicknames from the book VO — only scrub clear food-hat junk
-            if (b[VisualEventKey] is string veStr &&
-                CharacterVisualTextScrubber.LooksLikeNicknameVisualJunk(veStr))
-                b[VisualEventKey] = CharacterVisualTextScrubber.ScrubVisualProse(veStr);
-            b["shot_scale_hint"] =
-                CoerceString(b.TryGetValue("shot_scale_hint", out var ssh) ? ssh : null) ?? "ms";
-            b["continuity"] =
-                CoerceString(b.TryGetValue("continuity", out var c) ? c : null) ?? "new_setup";
-            foreach (var leak in new[] { "visual_prompt", "negative_prompt", "timestamp", "veo_continuation_source" })
-                b.Remove(leak);
+            var cleaned = CharacterVisualTextScrubber.ScrubWardrobeList(CoerceStringList(items));
+            if (cleaned.Count > 0)
+                wmap[ck] = cleaned;
+            else
+                wmap.Remove(ck);
+        }
+        s["wardrobe_by_character"] = wmap;
+    }
 
-            foreach (var wkey in new[] { "wardrobe_put_on", "wardrobe_remove" })
-            {
-                if (!b.TryGetValue(wkey, out var wraw)) continue;
-                var cleaned = CharacterVisualTextScrubber.ScrubWardrobeList(CoerceStringList(wraw));
-                if (cleaned.Count > 0)
-                    b[wkey] = cleaned;
-                else
-                    b.Remove(wkey);
-            }
+    private static void NormalizeBeat(Dictionary<string, object?> b)
+    {
+        b["beat_id"] = CoerceString(b.TryGetValue("beat_id", out var bi) ? bi : null) ?? "b1";
+        b["intent"] = CoerceString(b.TryGetValue("intent", out var intent) ? intent : null) ?? "";
+        b[VisualEventKey] =
+            CoerceString(b.TryGetValue(VisualEventKey, out var ve) ? ve : null)
+            ?? (string)b["intent"]!;
+        // visual_event may mention nicknames from the book VO — only scrub clear food-hat junk
+        if (b[VisualEventKey] is string veStr &&
+            CharacterVisualTextScrubber.LooksLikeNicknameVisualJunk(veStr))
+            b[VisualEventKey] = CharacterVisualTextScrubber.ScrubVisualProse(veStr);
+        b["shot_scale_hint"] =
+            CoerceString(b.TryGetValue("shot_scale_hint", out var ssh) ? ssh : null) ?? "ms";
+        b["continuity"] =
+            CoerceString(b.TryGetValue("continuity", out var c) ? c : null) ?? "new_setup";
+        foreach (var leak in new[] { "visual_prompt", "negative_prompt", "timestamp", "veo_continuation_source" })
+            b.Remove(leak);
 
-            NormalizeBeatAudioKeys(b);
+        ApplyBeatWardrobeKeys(b);
+        NormalizeBeatAudioKeys(b);
+    }
+
+    private static void ApplyBeatWardrobeKeys(Dictionary<string, object?> b)
+    {
+        foreach (var wkey in new[] { "wardrobe_put_on", "wardrobe_remove" })
+        {
+            if (!b.TryGetValue(wkey, out var wraw)) continue;
+            var cleaned = CharacterVisualTextScrubber.ScrubWardrobeList(CoerceStringList(wraw));
+            if (cleaned.Count > 0)
+                b[wkey] = cleaned;
+            else
+                b.Remove(wkey);
         }
     }
 

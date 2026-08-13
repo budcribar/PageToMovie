@@ -204,48 +204,70 @@ JSON: {"labels":[{"id":"s1_b3","class":"extend"}]}
         var scenes = stage1.TryGetValue("scenes", out var sObj) && sObj is List<object?> sl ? sl : new();
         var si = 0;
         foreach (var sItem in scenes)
-        {
-            if (sItem is not Dictionary<string, object?> scene) continue;
-            si++;
-            var setting = scene.TryGetValue("setting", out var st) ? st?.ToString() ?? "" : "";
-            var primary = scene.TryGetValue("primary_location_id", out var pl) ? pl?.ToString() ?? "" : "";
-            var beats = scene.TryGetValue("story_beats", out var sb) && sb is List<object?> bl ? bl : new();
-            string? prevVe = null;
-            string? prevLid = null;
-            string? prevSpeaker = null;
-            var bi = 0;
-            var first = true;
-            foreach (var bItem in beats)
-            {
-                if (bItem is not Dictionary<string, object?> beat) continue;
-                bi++;
-                var ve = beat.TryGetValue("visual_event", out var v) ? v?.ToString() ?? "" : "";
-                var dlg = beat.TryGetValue("dialogue", out var d) ? d?.ToString() ?? "" : "";
-                if (string.IsNullOrWhiteSpace(ve) && string.IsNullOrWhiteSpace(dlg)) continue;
-                var lid = beat.TryGetValue("location_id", out var l) ? l?.ToString() ?? primary : primary;
-                var ac = beat.TryGetValue("action_class", out var a) ? a?.ToString() ?? "" : "";
-                var speaker = beat.TryGetValue("speaker", out var sp) ? sp?.ToString() ?? "" : "";
-                list.Add(new Pair
-                {
-                    Id = $"s{si}_b{bi}",
-                    Scene = si,
-                    Setting = setting,
-                    VisualEvent = ve,
-                    PrevVisual = prevVe ?? "",
-                    Speaker = speaker,
-                    PrevSpeaker = prevSpeaker ?? "",
-                    ActionClass = ac,
-                    SameLocation = prevLid is null || string.Equals(prevLid, lid, StringComparison.OrdinalIgnoreCase),
-                    IsFirst = first,
-                    Beat = beat,
-                });
-                first = false;
-                prevVe = ve;
-                prevLid = lid;
-                prevSpeaker = speaker;
-            }
-        }
+            CollectScenePairs(sItem, list, ref si);
         return list;
+    }
+
+    private static void CollectScenePairs(object? sItem, List<Pair> list, ref int si)
+    {
+        if (sItem is not Dictionary<string, object?> scene) return;
+        si++;
+        var setting = ReadDictString(scene, "setting");
+        var primary = ReadDictString(scene, "primary_location_id");
+        var beats = scene.TryGetValue("story_beats", out var sb) && sb is List<object?> bl ? bl : new();
+        string? prevVe = null;
+        string? prevLid = null;
+        string? prevSpeaker = null;
+        var bi = 0;
+        var first = true;
+        foreach (var bItem in beats)
+            TryAddBeatPair(bItem, list, si, setting, primary, ref bi, ref first, ref prevVe, ref prevLid, ref prevSpeaker);
+    }
+
+    private static void TryAddBeatPair(
+        object? bItem,
+        List<Pair> list,
+        int si,
+        string setting,
+        string primary,
+        ref int bi,
+        ref bool first,
+        ref string? prevVe,
+        ref string? prevLid,
+        ref string? prevSpeaker)
+    {
+        if (bItem is not Dictionary<string, object?> beat) return;
+        bi++;
+        var ve = ReadDictString(beat, "visual_event");
+        var dlg = ReadDictString(beat, "dialogue");
+        if (string.IsNullOrWhiteSpace(ve) && string.IsNullOrWhiteSpace(dlg)) return;
+        var lid = ReadDictString(beat, "location_id", primary);
+        var ac = ReadDictString(beat, "action_class");
+        var speaker = ReadDictString(beat, "speaker");
+        list.Add(new Pair
+        {
+            Id = $"s{si}_b{bi}",
+            Scene = si,
+            Setting = setting,
+            VisualEvent = ve,
+            PrevVisual = prevVe ?? "",
+            Speaker = speaker,
+            PrevSpeaker = prevSpeaker ?? "",
+            ActionClass = ac,
+            SameLocation = prevLid is null || string.Equals(prevLid, lid, StringComparison.OrdinalIgnoreCase),
+            IsFirst = first,
+            Beat = beat,
+        });
+        first = false;
+        prevVe = ve;
+        prevLid = lid;
+        prevSpeaker = speaker;
+    }
+
+    private static string ReadDictString(Dictionary<string, object?> d, string key, string fallback = "")
+    {
+        if (!d.TryGetValue(key, out var v)) return fallback;
+        return v?.ToString() ?? fallback;
     }
 
     // Token-accurate now (was raw character count) — see PromptTokenizer.

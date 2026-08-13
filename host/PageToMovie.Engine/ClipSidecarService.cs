@@ -183,114 +183,183 @@ public sealed class ClipSidecarService
             return 0;
 
         var videoFiles = Directory.EnumerateFiles(videoDir, "*", SearchOption.AllDirectories)
-            .Where(f => (f.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase) ||
-                         f.EndsWith(".mp4.client.json", StringComparison.OrdinalIgnoreCase) ||
-                         f.EndsWith(".webm", StringComparison.OrdinalIgnoreCase) ||
-                         f.EndsWith(".mov", StringComparison.OrdinalIgnoreCase))
-                        && !f.EndsWith(".clip.json", StringComparison.OrdinalIgnoreCase))
+            .Where(IsConvertibleVideoFile)
             .ToList();
 
         if (videoFiles.Count == 0)
             return 0;
 
-        var parsedFiles = new List<(string FullPath, string OriginalName, int Scene, int Clip, DateTime LastWrite)>();
+        var parsedFiles = ParseVideoFiles(videoFiles);
+        var groups = parsedFiles.GroupBy(ClipGroupKey);
+        var convertedCount = 0;
 
+        foreach (var group in groups)
+            convertedCount += await ConvertClipGroupAsync(projectDir, videoDir, group, ct).ConfigureAwait(false);
+
+        return convertedCount;
+    }
+
+    private static bool IsConvertibleVideoFile(string f) =>
+        (f.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase) ||
+         f.EndsWith(".mp4.client.json", StringComparison.OrdinalIgnoreCase) ||
+         f.EndsWith(".webm", StringComparison.OrdinalIgnoreCase) ||
+         f.EndsWith(".mov", StringComparison.OrdinalIgnoreCase))
+        && !f.EndsWith(".clip.json", StringComparison.OrdinalIgnoreCase);
+
+    private static (int Scene, int Clip) ClipGroupKey(
+        (string FullPath, string OriginalName, int Scene, int Clip, DateTime LastWrite) x) =>
+        (x.Scene, x.Clip);
+
+    private static List<(string FullPath, string OriginalName, int Scene, int Clip, DateTime LastWrite)> ParseVideoFiles(
+        List<string> videoFiles)
+    {
+        var parsedFiles = new List<(string FullPath, string OriginalName, int Scene, int Clip, DateTime LastWrite)>();
         foreach (var file in videoFiles)
         {
             var name = Path.GetFileName(file);
             var cleanName = name.EndsWith(".client.json", StringComparison.OrdinalIgnoreCase) ? name[..^12] : name;
-
-            var match = CommonRegex.Match(
-                cleanName, @"scene_?(\d+)(?:_clip_?(\d+))?", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-            var scene = match.Success && int.TryParse(match.Groups[1].Value, out var s) ? s : 1;
-            var clip = match.Success && match.Groups[2].Success && int.TryParse(match.Groups[2].Value, out var c) ? c : 1;
-
+            var (scene, clip) = ParseSceneClipNumbers(cleanName);
             var fi = new FileInfo(file);
             parsedFiles.Add((file, name, scene, clip, fi.LastWriteTimeUtc));
         }
+        return parsedFiles;
+    }
 
-        var groups = parsedFiles.GroupBy(x => (x.Scene, x.Clip));
+    private static (int Scene, int Clip) ParseSceneClipNumbers(string cleanName)
+    {
+        var match = CommonRegex.Match(
+            cleanName, @"scene_?(\d+)(?:_clip_?(\d+))?", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        var scene = MatchGroupInt(match, 1, requireGroupSuccess: false, fallback: 1);
+        var clip = MatchGroupInt(match, 2, requireGroupSuccess: true, fallback: 1);
+        return (scene, clip);
+    }
+
+    private static int MatchGroupInt(System.Text.RegularExpressions.Match match, int group, bool requireGroupSuccess, int fallback)
+    {
+        if (!match.Success)
+            return fallback;
+        if (requireGroupSuccess && !match.Groups[group].Success)
+            return fallback;
+        if (!int.TryParse(match.Groups[group].Value, out var n))
+            return fallback;
+        return n;
+    }
+
+    private async Task<int> ConvertClipGroupAsync(
+        string projectDir,
+        string videoDir,
+        IGrouping<(int Scene, int Clip), (string FullPath, string OriginalName, int Scene, int Clip, DateTime LastWrite)> group,
+        CancellationToken ct)
+    {
+        var take = 1;
         var convertedCount = 0;
+        var sorted = group.OrderBy(GetLastWrite).ToList();
 
-        foreach (var group in groups)
+        foreach (var item in sorted)
         {
-            var take = 1;
-            var sorted = group.OrderBy(x => x.LastWrite).ToList();
+            await ConvertOneClipItemAsync(projectDir, videoDir, item, take, ct).ConfigureAwait(false);
+            take++;
+            convertedCount++;
+        }
+        return convertedCount;
+    }
 
-            foreach (var item in sorted)
+    private static DateTime GetLastWrite(
+        (string FullPath, string OriginalName, int Scene, int Clip, DateTime LastWrite) item) =>
+        item.LastWrite;
+
+    private async Task ConvertOneClipItemAsync(
+        string projectDir,
+        string videoDir,
+        (string FullPath, string OriginalName, int Scene, int Clip, DateTime LastWrite) item,
+        int take,
+        CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        var stamp = item.LastWrite.ToString("yyyyMMdd_HHmmss");
+
+        var isClientMarker = item.OriginalName.EndsWith(".client.json", StringComparison.OrdinalIgnoreCase);
+        var baseClean = isClientMarker ? item.OriginalName[..^12] : item.OriginalName;
+        var ext = Path.GetExtension(baseClean);
+        if (string.IsNullOrEmpty(ext)) ext = ".mp4";
+
+        var newBaseName = $"scene_{item.Scene:D2}_clip_{item.Clip:D2}_take_{take:D2}_{stamp}";
+        var newMp4Name = $"{newBaseName}{ext}";
+        var dir = Path.GetDirectoryName(item.FullPath) ?? ".";
+
+        var newMp4Path = Path.Combine(dir, newMp4Name);
+
+        await TryRenameClipFileAsync(item, isClientMarker, dir, newMp4Name, newMp4Path, ct).ConfigureAwait(false);
+
+        var promptText = await LoadClipPromptTextAsync(videoDir, item.Scene, item.Clip, ct).ConfigureAwait(false);
+
+        var targetFileForHash = File.Exists(newMp4Path) ? newMp4Path : item.FullPath;
+        var fi = new FileInfo(targetFileForHash);
+        var sha256 = File.Exists(newMp4Path) ? await MediaRegistryService.HashFileAsync(newMp4Path, ct).ConfigureAwait(false) : "";
+
+        await WriteSidecarWithTakeAsync(
+            projectDir: projectDir,
+            scene: item.Scene,
+            clip: item.Clip,
+            take: take,
+            prompt: promptText,
+            scriptText: "",
+            model: "",
+            resolution: "480p",
+            durationSeconds: 6.0,
+            sha256: sha256,
+            sizeBytes: fi.Exists ? fi.Length : 0,
+            mp4FileName: newMp4Name,
+            createdUtc: item.LastWrite,
+            ct: ct).ConfigureAwait(false);
+    }
+
+    private async Task TryRenameClipFileAsync(
+        (string FullPath, string OriginalName, int Scene, int Clip, DateTime LastWrite) item,
+        bool isClientMarker,
+        string dir,
+        string newMp4Name,
+        string newMp4Path,
+        CancellationToken ct)
+    {
+        if (string.Equals(item.OriginalName, newMp4Name, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        try
+        {
+            if (isClientMarker)
             {
-                ct.ThrowIfCancellationRequested();
-                var stamp = item.LastWrite.ToString("yyyyMMdd_HHmmss");
-
-                var isClientMarker = item.OriginalName.EndsWith(".client.json", StringComparison.OrdinalIgnoreCase);
-                var baseClean = isClientMarker ? item.OriginalName[..^12] : item.OriginalName;
-                var ext = Path.GetExtension(baseClean);
-                if (string.IsNullOrEmpty(ext)) ext = ".mp4";
-
-                var newBaseName = $"scene_{item.Scene:D2}_clip_{item.Clip:D2}_take_{take:D2}_{stamp}";
-                var newMp4Name = $"{newBaseName}{ext}";
-                var dir = Path.GetDirectoryName(item.FullPath) ?? ".";
-
-                var newMp4Path = Path.Combine(dir, newMp4Name);
-
-                // Rename file / marker if name has changed
-                if (!string.Equals(item.OriginalName, newMp4Name, StringComparison.OrdinalIgnoreCase))
-                {
-                    try
-                    {
-                        if (isClientMarker)
-                        {
-                            var targetMarker = Path.Combine(dir, $"{newMp4Name}.client.json");
-                            if (!File.Exists(targetMarker))
-                                await Task.Run(() => File.Move(item.FullPath, targetMarker), ct).ConfigureAwait(false);
-                        }
-                        else if (!File.Exists(newMp4Path))
-                        {
-                            await Task.Run(() => File.Move(item.FullPath, newMp4Path), ct).ConfigureAwait(false);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        _log.LogWarning(ex, "Failed renaming clip {Old} → {New}", item.OriginalName, newMp4Name);
-                    }
-                }
-
-                // Load prompt text if exists
-                var promptPath = Path.Combine(videoDir, "prompts", $"S{item.Scene:D2}C{item.Clip:D2}.txt");
-                var promptText = "";
-                if (File.Exists(promptPath))
-                {
-                    try { promptText = await File.ReadAllTextAsync(promptPath, ct).ConfigureAwait(false); }
-                    catch { /* ignore */ }
-                }
-
-                var targetFileForHash = File.Exists(newMp4Path) ? newMp4Path : item.FullPath;
-                var fi = new FileInfo(targetFileForHash);
-                var sha256 = File.Exists(newMp4Path) ? await MediaRegistryService.HashFileAsync(newMp4Path, ct).ConfigureAwait(false) : "";
-
-                // Write new .clip.json sidecar with take and timestamp
-                await WriteSidecarWithTakeAsync(
-                    projectDir: projectDir,
-                    scene: item.Scene,
-                    clip: item.Clip,
-                    take: take,
-                    prompt: promptText,
-                    scriptText: "",
-                    model: "",
-                    resolution: "480p",
-                    durationSeconds: 6.0,
-                    sha256: sha256,
-                    sizeBytes: fi.Exists ? fi.Length : 0,
-                    mp4FileName: newMp4Name,
-                    createdUtc: item.LastWrite,
-                    ct: ct).ConfigureAwait(false);
-
-                take++;
-                convertedCount++;
+                var targetMarker = Path.Combine(dir, $"{newMp4Name}.client.json");
+                if (!File.Exists(targetMarker))
+                    await MoveFileAsync(item.FullPath, targetMarker, ct).ConfigureAwait(false);
+            }
+            else if (!File.Exists(newMp4Path))
+            {
+                await MoveFileAsync(item.FullPath, newMp4Path, ct).ConfigureAwait(false);
             }
         }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Failed renaming clip {Old} → {New}", item.OriginalName, newMp4Name);
+        }
+    }
 
-        return convertedCount;
+    private static Task MoveFileAsync(string source, string dest, CancellationToken ct) =>
+        Task.Run(() => File.Move(source, dest), ct);
+
+    private static async Task<string> LoadClipPromptTextAsync(string videoDir, int scene, int clip, CancellationToken ct)
+    {
+        var promptPath = Path.Combine(videoDir, "prompts", $"S{scene:D2}C{clip:D2}.txt");
+        if (!File.Exists(promptPath))
+            return "";
+        try
+        {
+            return await File.ReadAllTextAsync(promptPath, ct).ConfigureAwait(false);
+        }
+        catch
+        {
+            return "";
+        }
     }
 
     /// <summary>

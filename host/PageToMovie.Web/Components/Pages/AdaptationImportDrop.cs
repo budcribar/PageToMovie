@@ -207,88 +207,118 @@ public partial class AdaptationImport
             int spanPct)
         {
             await Task.Delay(400);
-            var sawRunning = false;
+            var state = new JobPollState();
 
             // Long novels: multi-chunk adapt can run 30–60+ minutes
             for (var i = 0; i < 3600; i++)
             {
-                if (S.Jobs.ClientCancelRequested)
-                {
-                    S.Message = ImportCancelledMessage;
-                    S.Error = null;
-                    return false;
-                }
+                if (IsCancel()) return false;
 
                 try
                 {
-                    using var pollCts = new CancellationTokenSource(TimeSpan.FromSeconds(4));
-                    var jobs = await S.Engine.GetJobAsync(pollCts.Token);
-                    if (S.Jobs.ClientCancelRequested)
-                    {
-                        S.Message = ImportCancelledMessage;
-                        S.Error = null;
-                        return false;
-                    }
-
-                    var snap = jobs?.Job;
-                    if (snap is not null)
-                    {
-                        S.Jobs.Job = snap;
-                        S.Jobs.AbsorbProgressFromSnapshot(snap);
-                        S.Jobs.AbsorbProgressFromLine(snap.Message);
-
-                        _importStatus = FriendlyJobStatus(snap);
-
-                        // Prefer engine Index/Total (phase scale); soft-crawl when quiet mid-adapt.
-                        var (_, tot, waiting, displayIdx) = AdaptationPageBase.AdaptationStepUi.ComputeJobProgress(
-                            snap, S.Jobs.ProgressIndex, S.Jobs.ProgressTotal, jobRunning: true);
-                        var pctWithin = AdaptationPageBase.AdaptationStepUi.ComputeProgressPercent(
-                            displayIdx, tot > 0 ? tot : 10, waiting, jobRunning: true, snap.StartedAt);
-                        var mapped = basePct + (int)Math.Round(spanPct * (pctWithin / 100.0));
-                        var lo = basePct;
-                        var hi = basePct + spanPct - 1;
-                        _importPct = mapped < lo ? lo : mapped > hi ? hi : mapped;
-
-                        await S.InvokeAsync(S.StateHasChanged);
-
-                        var st = snap.Status ?? "";
-                        var kindOk = string.IsNullOrEmpty(snap.Kind) ||
-                                     string.Equals(snap.Kind, expectedKind, StringComparison.OrdinalIgnoreCase);
-
-                        if (st is "running" or "queued")
-                            sawRunning = true;
-
-                        if (st is "error" or "cancelled")
-                        {
-                            if (st == "cancelled" || S.Jobs.ClientCancelRequested)
-                            {
-                                S.Message = ImportCancelledMessage;
-                                S.Error = null;
-                                return false;
-                            }
-                            S.Error = FriendlyError(snap.Error ?? snap.Message ?? "Could not import the book");
-                            return false;
-                        }
-
-                        if (st == "done" && kindOk && (sawRunning || i >= 2))
-                            return true;
-                    }
+                    var result = await TryHandleJobPollAsync(expectedKind, basePct, spanPct, i, state);
+                    if (result is { } done)
+                        return done;
                 }
                 catch
                 {
                     // 502 during deploy — keep waiting, but honor Cancel immediately.
-                    if (S.Jobs.ClientCancelRequested)
-                    {
-                        S.Message = ImportCancelledMessage;
-                        S.Error = null;
-                        return false;
-                    }
+                    if (IsCancel()) return false;
                 }
 
                 await Task.Delay(1000);
             }
 
             S.Error = "Timed out while importing the book.";
+            return false;
+        }
+
+        private sealed class JobPollState
+        {
+            public bool SawRunning;
+        }
+
+        private bool IsCancel(bool jobCancelled = false)
+        {
+            if (!jobCancelled && !S.Jobs.ClientCancelRequested)
+                return false;
+            S.Message = ImportCancelledMessage;
+            S.Error = null;
+            return true;
+        }
+
+        /// <summary>One poll tick. Null = keep looping; true/false = job finished.</summary>
+        private async Task<bool?> TryHandleJobPollAsync(
+            string expectedKind,
+            int basePct,
+            int spanPct,
+            int iteration,
+            JobPollState state)
+        {
+            using var pollCts = new CancellationTokenSource(TimeSpan.FromSeconds(4));
+            var jobs = await S.Engine.GetJobAsync(pollCts.Token);
+            if (IsCancel()) return false;
+
+            var snap = jobs?.Job;
+            if (snap is null) return null;
+
+            ApplyImportProgressFromSnapshot(snap, basePct, spanPct);
+            await S.InvokeAsync(S.StateHasChanged);
+            return HandleJobPollStatus(snap, expectedKind, iteration, state);
+        }
+
+        private void ApplyImportProgressFromSnapshot(JobSnapshot snap, int basePct, int spanPct)
+        {
+            S.Jobs.Job = snap;
+            S.Jobs.AbsorbProgressFromSnapshot(snap);
+            S.Jobs.AbsorbProgressFromLine(snap.Message);
+
+            _importStatus = FriendlyJobStatus(snap);
+
+            // Prefer engine Index/Total (phase scale); soft-crawl when quiet mid-adapt.
+            var (_, tot, waiting, displayIdx) = AdaptationPageBase.AdaptationStepUi.ComputeJobProgress(
+                snap, S.Jobs.ProgressIndex, S.Jobs.ProgressTotal, jobRunning: true);
+            var pctWithin = AdaptationPageBase.AdaptationStepUi.ComputeProgressPercent(
+                displayIdx, JobProgressDenom(tot), waiting, jobRunning: true, snap.StartedAt);
+            var mapped = basePct + (int)Math.Round(spanPct * (pctWithin / 100.0));
+            _importPct = ClampImportPct(mapped, basePct, basePct + spanPct - 1);
+        }
+
+        private static int JobProgressDenom(int tot) => tot > 0 ? tot : 10;
+
+        private static int ClampImportPct(int mapped, int lo, int hi) =>
+            mapped < lo ? lo : mapped > hi ? hi : mapped;
+
+        private bool? HandleJobPollStatus(
+            JobSnapshot snap,
+            string expectedKind,
+            int iteration,
+            JobPollState state)
+        {
+            var st = snap.Status ?? "";
+            var kindOk = string.IsNullOrEmpty(snap.Kind) ||
+                         string.Equals(snap.Kind, expectedKind, StringComparison.OrdinalIgnoreCase);
+
+            if (st is "running" or "queued")
+                state.SawRunning = true;
+
+            if (st is "error" or "cancelled")
+                return HandleJobPollFailure(snap, st);
+
+            if (IsJobPollDone(st, kindOk, state.SawRunning, iteration))
+                return true;
+
+            return null;
+        }
+
+        private static bool IsJobPollDone(string st, bool kindOk, bool sawRunning, int iteration) =>
+            st == "done" && kindOk && (sawRunning || iteration >= 2);
+
+        private bool? HandleJobPollFailure(JobSnapshot snap, string st)
+        {
+            if (IsCancel(jobCancelled: st == "cancelled"))
+                return false;
+            S.Error = FriendlyError(snap.Error ?? snap.Message ?? "Could not import the book");
             return false;
         }
 
