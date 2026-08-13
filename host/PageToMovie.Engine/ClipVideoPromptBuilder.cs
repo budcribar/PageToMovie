@@ -995,16 +995,8 @@ public static class ClipVideoPromptBuilder
         return names;
     }
 
-    private static bool ProseMentionsAnyName(string text, List<string> names)
-    {
-        foreach (var n in names)
-        {
-            if (n.Length < 3) continue;
-            if (text.Contains(n.ToLowerInvariant(), StringComparison.Ordinal))
-                return true;
-        }
-        return false;
-    }
+    private static bool ProseMentionsAnyName(string text, List<string> names) =>
+        names.Any(n => n.Length >= 3 && text.Contains(n.ToLowerInvariant(), StringComparison.Ordinal));
 
     /// <summary>Pull leading STYLE LOCK sentence from plan visual if present.</summary>
     public static string? ExtractStyleHead(string visual)
@@ -1760,15 +1752,8 @@ public static class ClipVideoPromptBuilder
         return IsHttp413TooLarge(m);
     }
 
-    private static bool ContainsAnyIgnoreCase(string message, string[] phrases)
-    {
-        foreach (var phrase in phrases)
-        {
-            if (message.Contains(phrase, StringComparison.OrdinalIgnoreCase))
-                return true;
-        }
-        return false;
-    }
+    private static bool ContainsAnyIgnoreCase(string message, string[] phrases) =>
+        phrases.Any(phrase => message.Contains(phrase, StringComparison.OrdinalIgnoreCase));
 
     private static bool ContainsBothIgnoreCase(string message, string a, string b) =>
         message.Contains(a, StringComparison.OrdinalIgnoreCase) &&

@@ -592,11 +592,14 @@ public sealed class ClipAutoReviewService
         if (!c.TryGetProperty("characters_present", out var cp) || cp.ValueKind != JsonValueKind.Array)
             return;
         foreach (var x in cp.EnumerateArray())
-        {
-            var k = x.GetString();
-            if (!string.IsNullOrWhiteSpace(k))
-                plan.Characters.Add(k);
-        }
+            AddPresentCharacter(plan, x);
+    }
+
+    private static void AddPresentCharacter(ClipPlan plan, JsonElement x)
+    {
+        var k = x.GetString();
+        if (!string.IsNullOrWhiteSpace(k))
+            plan.Characters.Add(k);
     }
 
     private static async Task<string> BuildReviewPromptAsync(

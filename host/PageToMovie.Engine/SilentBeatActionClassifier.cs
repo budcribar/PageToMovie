@@ -358,9 +358,8 @@ public sealed class SilentBeatActionClassifier
     {
         var list = new List<FlatNeighbor>();
         var sceneIdx = 0;
-        foreach (var sItem in DictObjectList(stage1, "scenes"))
+        foreach (var scene in DictObjectList(stage1, "scenes").OfType<Dictionary<string, object?>>())
         {
-            if (sItem is not Dictionary<string, object?> scene) continue;
             sceneIdx++;
             AppendNeighborsFromScene(list, scene, sceneIdx);
         }
@@ -373,9 +372,8 @@ public sealed class SilentBeatActionClassifier
         int sceneIdx)
     {
         var bi = 0;
-        foreach (var bItem in DictObjectList(scene, "story_beats"))
+        foreach (var beat in DictObjectList(scene, "story_beats").OfType<Dictionary<string, object?>>())
         {
-            if (bItem is not Dictionary<string, object?> beat) continue;
             bi++;
             list.Add(ToFlatNeighbor(sceneIdx, bi, beat));
         }
