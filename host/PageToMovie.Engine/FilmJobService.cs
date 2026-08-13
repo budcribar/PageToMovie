@@ -6207,10 +6207,6 @@ public sealed class FilmJobService
         return result;
     }
 
-    /// <summary>Archived prompt versions for one clip (newest first), for ClipPromptCompareViewer.</summary>
-    public static List<ClipPromptHistoryEntry> ListClipPromptHistory(string projectDir, int scene, int clip)
-        => ListClipPromptHistoryAsync(projectDir, scene, clip).GetAwaiter().GetResult();
-
     public sealed class ClipPromptHistoryEntry
     {
         public DateTimeOffset TimestampUtc { get; set; }

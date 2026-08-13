@@ -95,17 +95,6 @@ public static class FountainStage1Importer
     }
 
     /// <summary>
-    /// Save canonical Fountain draft only (no scenes.json). Prefer
-    /// <see cref="ScreenplayService.ImportAsDraft"/> / <see cref="ScreenplayService.SignOff"/>.
-    /// </summary>
-    public static ImportResult ImportToProject(
-        ProjectStore projects,
-        string projectId,
-        string fountainText,
-        string? originalFileName = null)
-        => ImportToProjectAsync(projects, projectId, fountainText, originalFileName).GetAwaiter().GetResult();
-
-    /// <summary>
     /// Optional bounds (typically from <see cref="ClipDurationEstimator.ResolveBoundsForModel"/>) clamp
     /// monologue pre-splitting against the actually-selected video model's own limits instead of the
     /// global Grok-shaped defaults; omitted, behavior is unchanged.

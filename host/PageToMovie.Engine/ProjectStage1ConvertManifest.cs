@@ -49,9 +49,6 @@ public static class ProjectStage1ConvertManifest
         await File.WriteAllTextAsync(path, JsonSerializer.Serialize(payload, JsonDefaults.Indented) + "\n", ct).ConfigureAwait(false);
     }
 
-    public static void Write(string projectDir, AdaptationConvertManifest manifest, string? bookId = null) =>
-        WriteAsync(projectDir, manifest, bookId).GetAwaiter().GetResult();
-
     public static async Task<AdaptationConvertManifest?> TryReadAsync(string projectDir, CancellationToken ct = default)
     {
         var path = GetPath(projectDir);
@@ -87,9 +84,6 @@ public static class ProjectStage1ConvertManifest
             return null;
         }
     }
-
-    public static AdaptationConvertManifest? TryRead(string projectDir) =>
-        TryReadAsync(projectDir).GetAwaiter().GetResult();
 
     private static string Str(JsonElement r, string name) =>
         r.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() ?? "" : "";
