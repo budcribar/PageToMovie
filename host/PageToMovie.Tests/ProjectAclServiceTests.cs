@@ -89,7 +89,7 @@ public class ProjectAclServiceTests : IDisposable
     [InlineData("../escape")]
     [InlineData("..\\escape")]
     [InlineData("%2e%2e/%2e%2e/escape")]
-    [InlineData("/tmp/escape")]
+    [InlineData("foo/../../escape")]
     public async Task SaveAclAsync_rejects_path_traversal_project_id(string evilId)
     {
         var sentinel = Path.Combine(_root, "sentinel-outside.txt");
@@ -101,13 +101,29 @@ public class ProjectAclServiceTests : IDisposable
         Assert.Equal("untouched", File.ReadAllText(sentinel));
         Assert.False(File.Exists(Path.Combine(_root, "project-acl.json")));
         Assert.False(File.Exists(Path.Combine(_root, "escape", "project-acl.json")));
-        Assert.False(File.Exists(Path.Combine(Path.GetTempPath(), "escape", "project-acl.json")));
+    }
+
+    [Fact]
+    public async Task SaveAclAsync_does_not_write_to_an_absolute_path_outside_projects_root()
+    {
+        // NormalizeProjectId trims leading slashes, so "/tmp/escape" becomes the relative
+        // slug "tmp/escape" — confinement must still keep I/O under the projects root.
+        var absoluteEscape = Path.Combine(Path.DirectorySeparatorChar.ToString(), "tmp", "escape", "project-acl.json");
+        var existedBefore = File.Exists(absoluteEscape);
+
+        await _acl.SaveAclAsync("/tmp/escape", new ProjectAclDocument { OwnerUserId = OwnerUserId });
+
+        Assert.Equal(existedBefore, File.Exists(absoluteEscape));
+        var projectsRoot = Path.GetFullPath(Path.Combine(_root, "projects"));
+        var written = Directory.GetFiles(projectsRoot, "project-acl.json", SearchOption.AllDirectories);
+        Assert.NotEmpty(written);
+        Assert.All(written, p => Assert.StartsWith(
+            projectsRoot + Path.DirectorySeparatorChar, Path.GetFullPath(p), StringComparison.OrdinalIgnoreCase));
     }
 
     [Theory]
     [InlineData("../escape")]
     [InlineData("%2e%2e/escape")]
-    [InlineData("/tmp/escape")]
     public async Task GetAclAsync_does_not_read_outside_projects_root(string evilId)
     {
         var loaded = await _acl.GetAclAsync(evilId);
