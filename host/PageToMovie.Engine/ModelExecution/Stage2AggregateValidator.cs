@@ -28,57 +28,96 @@ public static class Stage2AggregateValidator
         var sceneNumbers = new HashSet<int>();
         var scenes = GetList(plan, "scenes").OfType<Dictionary<string, object?>>().ToList();
         for (var sceneIndex = 0; sceneIndex < scenes.Count; sceneIndex++)
-        {
-            var scene = scenes[sceneIndex];
-            var scenePath = $"$.scenes[{sceneIndex}]";
-            var sceneNumber = ToInt(Value(scene, "scene_number"));
-            if (sceneNumber <= 0 || !sceneNumbers.Add(sceneNumber))
-                issues.Add(new("invalid_scene_reference", "Scene numbers must be unique positive integers.", scenePath + ".scene_number"));
-
-            var sceneCast = Strings(GetList(scene, "characters_on_screen"));
-            ValidateKnownCharacters(sceneCast, knownCharacters, scenePath + ".characters_on_screen", issues);
-            var clips = GetList(scene, "veo_clips").OfType<Dictionary<string, object?>>().ToList();
-            if (clips.Count == 0)
-                issues.Add(new("missing_clips", "Every planned scene must contain at least one clip.", scenePath + ".veo_clips"));
-
-            var beatMap = Strings(GetList(scene, "stage1_beat_map"));
-            // Single credits predicate (scene/clip is_credits or CREDITS heading/setting) so a
-            // credits card is exempt from the beat/clip 1:1 rule however it is marked.
-            var credits = ProjectStore.IsCreditsScene(scene);
-            if (!credits && beatMap.Count != clips.Count)
-                issues.Add(new("beat_clip_mismatch", "Stage 1 beat references must map one-to-one to planned clips.", scenePath + ".stage1_beat_map"));
-
-            var clipNumbers = new HashSet<int>();
-            string? priorLocation = null;
-            for (var clipIndex = 0; clipIndex < clips.Count; clipIndex++)
-            {
-                var clip = clips[clipIndex];
-                var clipPath = $"{scenePath}.veo_clips[{clipIndex}]";
-                var clipNumber = ToInt(Value(clip, "clip_number") ?? Value(clip, "clip_index"));
-                if (clipNumber <= 0 || !clipNumbers.Add(clipNumber))
-                    issues.Add(new("invalid_clip_reference", "Clip numbers must be unique positive integers within a scene.", clipPath + ".clip_number"));
-
-                var clipCast = Strings(GetList(clip, "characters_on_screen"));
-                ValidateKnownCharacters(clipCast, knownCharacters, clipPath + ".characters_on_screen", issues);
-                foreach (var character in clipCast.Where(character => !sceneCast.Contains(character, StringComparer.OrdinalIgnoreCase)))
-                    issues.Add(new("clip_cast_not_in_scene", $"Clip character '{character}' is absent from the scene cast.", clipPath + ".characters_on_screen"));
-                foreach (var focus in Strings(GetList(clip, "focus_keys")).Where(focus => !clipCast.Contains(focus, StringComparer.OrdinalIgnoreCase)))
-                    issues.Add(new("focus_not_on_screen", $"Focus character '{focus}' is absent from the clip cast.", clipPath + ".focus_keys"));
-
-                var primary = Text(Value(clip, "primary_subject"));
-                if (primary.StartsWith("Character_", StringComparison.Ordinal) && !clipCast.Contains(primary, StringComparer.OrdinalIgnoreCase))
-                    issues.Add(new("primary_subject_not_on_screen", $"Primary subject '{primary}' is absent from the clip cast.", clipPath + ".primary_subject"));
-
-                ValidateAudio(clip, clipCast, clipPath, issues);
-                var location = Text(Value(clip, "location_id"));
-                var continuation = Text(Value(clip, "veo_continuation_source"));
-                if (continuation.Equals("extend_previous", StringComparison.OrdinalIgnoreCase) &&
-                    (clipIndex == 0 || !string.Equals(location, priorLocation, StringComparison.OrdinalIgnoreCase)))
-                    issues.Add(new("invalid_continuity_reference", "extend_previous requires a preceding clip at the same location.", clipPath + ".veo_continuation_source"));
-                priorLocation = location;
-            }
-        }
+            ValidateScene(scenes[sceneIndex], sceneIndex, knownCharacters, sceneNumbers, issues);
         return issues;
+    }
+
+    private static void ValidateScene(
+        Dictionary<string, object?> scene,
+        int sceneIndex,
+        HashSet<string> knownCharacters,
+        HashSet<int> sceneNumbers,
+        List<ModelValidationIssue> issues)
+    {
+        var scenePath = $"$.scenes[{sceneIndex}]";
+        var sceneNumber = ToInt(Value(scene, "scene_number"));
+        if (sceneNumber <= 0 || !sceneNumbers.Add(sceneNumber))
+            issues.Add(new("invalid_scene_reference", "Scene numbers must be unique positive integers.", scenePath + ".scene_number"));
+
+        var sceneCast = Strings(GetList(scene, "characters_on_screen"));
+        ValidateKnownCharacters(sceneCast, knownCharacters, scenePath + ".characters_on_screen", issues);
+        var clips = GetList(scene, "veo_clips").OfType<Dictionary<string, object?>>().ToList();
+        if (clips.Count == 0)
+            issues.Add(new("missing_clips", "Every planned scene must contain at least one clip.", scenePath + ".veo_clips"));
+
+        var beatMap = Strings(GetList(scene, "stage1_beat_map"));
+        // Single credits predicate (scene/clip is_credits or CREDITS heading/setting) so a
+        // credits card is exempt from the beat/clip 1:1 rule however it is marked.
+        var credits = ProjectStore.IsCreditsScene(scene);
+        if (!credits && beatMap.Count != clips.Count)
+            issues.Add(new("beat_clip_mismatch", "Stage 1 beat references must map one-to-one to planned clips.", scenePath + ".stage1_beat_map"));
+
+        var clipNumbers = new HashSet<int>();
+        string? priorLocation = null;
+        for (var clipIndex = 0; clipIndex < clips.Count; clipIndex++)
+            priorLocation = ValidateClip(clips[clipIndex], clipIndex, scenePath, sceneCast, knownCharacters, clipNumbers, priorLocation, issues);
+    }
+
+    private static string ValidateClip(
+        Dictionary<string, object?> clip,
+        int clipIndex,
+        string scenePath,
+        List<string> sceneCast,
+        HashSet<string> knownCharacters,
+        HashSet<int> clipNumbers,
+        string? priorLocation,
+        List<ModelValidationIssue> issues)
+    {
+        var clipPath = $"{scenePath}.veo_clips[{clipIndex}]";
+        var clipNumber = ToInt(Value(clip, "clip_number") ?? Value(clip, "clip_index"));
+        if (clipNumber <= 0 || !clipNumbers.Add(clipNumber))
+            issues.Add(new("invalid_clip_reference", "Clip numbers must be unique positive integers within a scene.", clipPath + ".clip_number"));
+
+        var clipCast = Strings(GetList(clip, "characters_on_screen"));
+        ValidateKnownCharacters(clipCast, knownCharacters, clipPath + ".characters_on_screen", issues);
+        ValidateClipCastMembership(clipCast, sceneCast, clipPath, issues);
+        ValidateClipFocusAndPrimary(clip, clipCast, clipPath, issues);
+        ValidateAudio(clip, clipCast, clipPath, issues);
+        var location = Text(Value(clip, "location_id"));
+        ValidateClipContinuity(clip, clipIndex, location, priorLocation, clipPath, issues);
+        return location;
+    }
+
+    private static void ValidateClipCastMembership(
+        List<string> clipCast, List<string> sceneCast, string clipPath, List<ModelValidationIssue> issues)
+    {
+        foreach (var character in clipCast.Where(character => !sceneCast.Contains(character, StringComparer.OrdinalIgnoreCase)))
+            issues.Add(new("clip_cast_not_in_scene", $"Clip character '{character}' is absent from the scene cast.", clipPath + ".characters_on_screen"));
+    }
+
+    private static void ValidateClipFocusAndPrimary(
+        Dictionary<string, object?> clip, List<string> clipCast, string clipPath, List<ModelValidationIssue> issues)
+    {
+        foreach (var focus in Strings(GetList(clip, "focus_keys")).Where(focus => !clipCast.Contains(focus, StringComparer.OrdinalIgnoreCase)))
+            issues.Add(new("focus_not_on_screen", $"Focus character '{focus}' is absent from the clip cast.", clipPath + ".focus_keys"));
+
+        var primary = Text(Value(clip, "primary_subject"));
+        if (primary.StartsWith("Character_", StringComparison.Ordinal) && !clipCast.Contains(primary, StringComparer.OrdinalIgnoreCase))
+            issues.Add(new("primary_subject_not_on_screen", $"Primary subject '{primary}' is absent from the clip cast.", clipPath + ".primary_subject"));
+    }
+
+    private static void ValidateClipContinuity(
+        Dictionary<string, object?> clip,
+        int clipIndex,
+        string location,
+        string? priorLocation,
+        string clipPath,
+        List<ModelValidationIssue> issues)
+    {
+        var continuation = Text(Value(clip, "veo_continuation_source"));
+        if (continuation.Equals("extend_previous", StringComparison.OrdinalIgnoreCase) &&
+            (clipIndex == 0 || !string.Equals(location, priorLocation, StringComparison.OrdinalIgnoreCase)))
+            issues.Add(new("invalid_continuity_reference", "extend_previous requires a preceding clip at the same location.", clipPath + ".veo_continuation_source"));
     }
 
     public static IReadOnlyList<Stage2ClassifierProvenance> BuildClassifierProvenance(

@@ -1431,24 +1431,36 @@ public static class BookToFountainConverter
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
+        return ClusterSpellingDriftGroups(names);
+    }
+
+    private static IReadOnlyList<IReadOnlyList<string>> ClusterSpellingDriftGroups(IReadOnlyList<string> names)
+    {
         var groups = new List<IReadOnlyList<string>>();
         var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < names.Count; i++)
         {
             if (used.Contains(names[i])) continue;
-            List<string>? cluster = null;
-            for (var j = i + 1; j < names.Count; j++)
-            {
-                if (used.Contains(names[j])) continue;
-                if (!IsNameSpellingDriftCandidate(names[i], names[j])) continue;
-                cluster ??= [names[i]];
-                cluster.Add(names[j]);
-            }
+            var cluster = CollectDriftCluster(names, i, used);
             if (cluster is null) continue;
             foreach (var n in cluster) used.Add(n);
             groups.Add(cluster);
         }
         return groups;
+    }
+
+    private static List<string>? CollectDriftCluster(
+        IReadOnlyList<string> names, int i, HashSet<string> used)
+    {
+        List<string>? cluster = null;
+        for (var j = i + 1; j < names.Count; j++)
+        {
+            if (used.Contains(names[j])) continue;
+            if (!IsNameSpellingDriftCandidate(names[i], names[j])) continue;
+            cluster ??= [names[i]];
+            cluster.Add(names[j]);
+        }
+        return cluster;
     }
 
     /// <summary>
@@ -1942,15 +1954,32 @@ public static class BookToFountainConverter
             .Select(g => g.First())
             .ToList();
 
-        // locName per heading form
+        var locByHeading = BuildLocByHeading(forms);
+        var canonicalLoc = BuildCanonicalLocMap(locByHeading.Values);
+
+        // Only rewrite if at least one alias collapsed
+        if (!canonicalLoc.Any(kv =>
+                !kv.Key.Equals(kv.Value, StringComparison.OrdinalIgnoreCase)))
+            return fountain;
+
+        var map = BuildHeadingRewriteMap(forms, locByHeading, canonicalLoc);
+        return ApplyHeadingRewrites(fountain, map);
+    }
+
+    private static Dictionary<string, string> BuildLocByHeading(IReadOnlyList<string> forms)
+    {
         var locByHeading = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var h in forms)
         {
             var (_, loc, _) = SplitSceneHeadingParts(h);
             locByHeading[h] = loc;
         }
+        return locByHeading;
+    }
 
-        var locNames = locByHeading.Values
+    private static Dictionary<string, string> BuildCanonicalLocMap(IEnumerable<string> locValues)
+    {
+        var locNames = locValues
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
@@ -1972,12 +2001,14 @@ public static class BookToFountainConverter
                 break;
             }
         }
+        return canonicalLoc;
+    }
 
-        // Only rewrite if at least one alias collapsed
-        if (!canonicalLoc.Any(kv =>
-                !kv.Key.Equals(kv.Value, StringComparison.OrdinalIgnoreCase)))
-            return fountain;
-
+    private static Dictionary<string, string> BuildHeadingRewriteMap(
+        IReadOnlyList<string> forms,
+        Dictionary<string, string> locByHeading,
+        Dictionary<string, string> canonicalLoc)
+    {
         // Preferred loc phrase = canonical; rebuild each heading with original time-of-day
         var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var h in forms)
@@ -1991,12 +2022,15 @@ public static class BookToFountainConverter
             }
 
             var (prefix, _, time) = SplitSceneHeadingParts(h);
-            var rebuilt = string.IsNullOrEmpty(time)
+            map[h] = string.IsNullOrEmpty(time)
                 ? $"{prefix}{canon}"
                 : $"{prefix}{canon} - {time}";
-            map[h] = rebuilt;
         }
+        return map;
+    }
 
+    private static string ApplyHeadingRewrites(string fountain, Dictionary<string, string> map)
+    {
         // Prefer most frequent original form's casing for the same rebuilt target? use as-is
         var lines = fountain.Split('\n');
         for (var i = 0; i < lines.Length; i++)
@@ -2167,57 +2201,7 @@ public static class BookToFountainConverter
         var hasTarget = totalRuntimeMinutes is > 0;
         var minutes = hasTarget ? Math.Clamp(totalRuntimeMinutes.Value, 1, 180) : 0;
 
-        var fails = new List<string>();
-        var scenes = CountSceneHeadings(fountain);
-
-        if (!LooksLikeGoodFountain(fountain))
-            fails.Add("structure");
-
-        if (TruncatMarkerRegex.IsMatch(fountain))
-            fails.Add("excerpt_marker");
-
-        // Soft: long books should resolve
-        if (bookText.Length > 40_000 &&
-            path == AdaptPath.Single &&
-            fountain.Length >= 80 &&
-            !FadeOutEndingRegex.IsMatch(fountain))
-            fails.Add("missing_ending");
-
-        // Scene floor: only enforce a runtime-derived band when an artificial target is set.
-        // Unlimited (default) uses book-length soft floors only — never pad short stories.
-        int minScenes;
-        if (hasTarget)
-        {
-            minScenes = Math.Clamp(minutes / 2, 3, 40);
-            if (bookText.Length > 50_000)
-                minScenes = Math.Max(minScenes, 8);
-        }
-        else
-        {
-            minScenes = bookText.Length > 50_000 ? 8 : (bookText.Length > 20_000 ? 3 : 1);
-        }
-        if (bookText.Length < 8_000)
-            minScenes = Math.Min(minScenes, 2);
-        if (scenes < minScenes && bookText.Length >= MinBookCharsForChunkFallback)
-            fails.Add($"scene_count:{scenes}<{minScenes}");
-
-        if (path == AdaptPath.Single &&
-            bookText.Length > 60_000 &&
-            fountain.Length < Math.Min(8_000, Math.Max(500, bookText.Length / 40)))
-            fails.Add("suspiciously_short");
-
-        // Soft: draft runtime estimate << book natural length (max-then-trim expects a long base).
-        // Fails single-shot so multi-chunk fallback can try; multi path still accepts structure-ok drafts.
-        var naturalMin = NaturalRuntime.EstimateNaturalMinutes(bookText);
-        if (naturalMin >= 45)
-        {
-            var draftMin = EstimateDraftRuntimeMinutes(fountain);
-            // Floor: at least 40% of natural, and not under 25 min when natural is feature-scale.
-            var floor = Math.Max(25, (int)Math.Round(naturalMin * 0.40));
-            if (draftMin > 0 && draftMin < floor)
-                fails.Add($"runtime_short:{draftMin:0}<{floor}(natural~{naturalMin})");
-        }
-
+        var fails = CollectQualityFailures(fountain, bookText, hasTarget, minutes, path);
         var hard = fails.Contains("structure") || fails.Contains("excerpt_marker");
         var ok = path == AdaptPath.Multi
             ? !hard && LooksLikeGoodFountain(fountain)
@@ -2227,11 +2211,89 @@ public static class BookToFountainConverter
         {
             Ok = ok,
             Reason = fails.Count == 0 ? "ok" : string.Join(",", fails),
-            SceneCount = scenes,
+            SceneCount = CountSceneHeadings(fountain),
             FountainChars = fountain.Length,
             Failures = fails,
             HasHardFailure = hard,
         };
+    }
+
+    private static List<string> CollectQualityFailures(
+        string fountain, string bookText, bool hasTarget, int minutes, AdaptPath path)
+    {
+        var fails = new List<string>();
+        if (!LooksLikeGoodFountain(fountain))
+            fails.Add("structure");
+        if (TruncatMarkerRegex.IsMatch(fountain))
+            fails.Add("excerpt_marker");
+        AddMissingEndingIfNeeded(fails, fountain, bookText, path);
+        AddSceneCountFailureIfNeeded(fails, fountain, bookText, hasTarget, minutes);
+        AddSuspiciouslyShortIfNeeded(fails, fountain, bookText, path);
+        AddRuntimeShortIfNeeded(fails, fountain, bookText);
+        return fails;
+    }
+
+    private static void AddMissingEndingIfNeeded(
+        List<string> fails, string fountain, string bookText, AdaptPath path)
+    {
+        // Soft: long books should resolve
+        if (bookText.Length > 40_000 &&
+            path == AdaptPath.Single &&
+            fountain.Length >= 80 &&
+            !FadeOutEndingRegex.IsMatch(fountain))
+            fails.Add("missing_ending");
+    }
+
+    private static void AddSceneCountFailureIfNeeded(
+        List<string> fails, string fountain, string bookText, bool hasTarget, int minutes)
+    {
+        var scenes = CountSceneHeadings(fountain);
+        var minScenes = ResolveMinSceneFloor(bookText.Length, hasTarget, minutes);
+        if (scenes < minScenes && bookText.Length >= MinBookCharsForChunkFallback)
+            fails.Add($"scene_count:{scenes}<{minScenes}");
+    }
+
+    private static int ResolveMinSceneFloor(int bookLength, bool hasTarget, int minutes)
+    {
+        // Scene floor: only enforce a runtime-derived band when an artificial target is set.
+        // Unlimited (default) uses book-length soft floors only — never pad short stories.
+        int minScenes;
+        if (hasTarget)
+        {
+            minScenes = Math.Clamp(minutes / 2, 3, 40);
+            if (bookLength > 50_000)
+                minScenes = Math.Max(minScenes, 8);
+        }
+        else
+        {
+            minScenes = bookLength > 50_000 ? 8 : (bookLength > 20_000 ? 3 : 1);
+        }
+        if (bookLength < 8_000)
+            minScenes = Math.Min(minScenes, 2);
+        return minScenes;
+    }
+
+    private static void AddSuspiciouslyShortIfNeeded(
+        List<string> fails, string fountain, string bookText, AdaptPath path)
+    {
+        if (path == AdaptPath.Single &&
+            bookText.Length > 60_000 &&
+            fountain.Length < Math.Min(8_000, Math.Max(500, bookText.Length / 40)))
+            fails.Add("suspiciously_short");
+    }
+
+    private static void AddRuntimeShortIfNeeded(List<string> fails, string fountain, string bookText)
+    {
+        // Soft: draft runtime estimate << book natural length (max-then-trim expects a long base).
+        // Fails single-shot so multi-chunk fallback can try; multi path still accepts structure-ok drafts.
+        var naturalMin = NaturalRuntime.EstimateNaturalMinutes(bookText);
+        if (naturalMin < 45)
+            return;
+        var draftMin = EstimateDraftRuntimeMinutes(fountain);
+        // Floor: at least 40% of natural, and not under 25 min when natural is feature-scale.
+        var floor = Math.Max(25, (int)Math.Round(naturalMin * 0.40));
+        if (draftMin > 0 && draftMin < floor)
+            fails.Add($"runtime_short:{draftMin:0}<{floor}(natural~{naturalMin})");
     }
 
     /// <summary>

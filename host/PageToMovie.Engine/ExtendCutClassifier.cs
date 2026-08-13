@@ -51,13 +51,7 @@ public sealed class ExtendCutClassifier
         };
         var pairs = CollectPairs(stage1);
         result.ItemCount = pairs.Count;
-        foreach (var p in pairs)
-        {
-            var hard = BaselineHardCut(p);
-            p.Beat["cut_decision"] = hard ? HardCut : Extend;
-            if (hard)
-                p.Beat["continuity"] = "new_setup";
-        }
+        ApplyHeuristicCutDecisions(pairs);
 
         if (!IsEnabled || pairs.Count == 0)
         {
@@ -68,6 +62,29 @@ public sealed class ExtendCutClassifier
         }
 
         onProgress?.Invoke($"Classifying extend vs hard-cut for {pairs.Count} beat(s)…");
+        var labeled = await ClassifyPairsWithChatAsync(pairs, result, effectiveModel, ct).ConfigureAwait(false);
+
+        result.AiCount = labeled.Count;
+        result.FallbackCount = pairs.Count - labeled.Count;
+        result.Note = $"AI {labeled.Count}/{pairs.Count}";
+        onProgress?.Invoke($"Extend/cut: {result.Note}");
+        return result;
+    }
+
+    private static void ApplyHeuristicCutDecisions(List<Pair> pairs)
+    {
+        foreach (var p in pairs)
+        {
+            var hard = BaselineHardCut(p);
+            p.Beat["cut_decision"] = hard ? HardCut : Extend;
+            if (hard)
+                p.Beat["continuity"] = "new_setup";
+        }
+    }
+
+    private async Task<HashSet<string>> ClassifyPairsWithChatAsync(
+        List<Pair> pairs, SimpleClassifyResult result, string effectiveModel, CancellationToken ct)
+    {
         var maxAttempts = Math.Clamp(_opts.SilentBeatClassifyMaxAttempts, 1, 5);
         var backoffBaseMs = Math.Max(0, _opts.SilentBeatClassifyBackoffBaseMs);
         var labeled = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -77,85 +94,97 @@ public sealed class ExtendCutClassifier
             chunks.Add(pairs.Skip(offset).Take(batchSize).ToList());
 
         using var sem = new SemaphoreSlim(4);
-        var tasks = chunks.Select(async chunk =>
-        {
-            await sem.WaitAsync(ct).ConfigureAwait(false);
-            try
-            {
-                var chunkIds = chunk.Select(p => p.Id).ToList();
-                var byId = chunk.ToDictionary(p => p.Id, StringComparer.OrdinalIgnoreCase);
-                // Mutable: shrinks to only still-missing ids so each retry re-asks fewer beats —
-                // mirrors the pre-refactor hand-rolled loop exactly.
-                var retry = await AiRetryPolicy.RunWithCoverageRetryAsync<string>(
-                    chunkIds,
-                    callChat: async missingIds =>
-                    {
-                        var payload = missingIds.Select(id =>
-                        {
-                            var p = byId[id];
-                            return new Dictionary<string, object?>
-                            {
-                                ["id"] = p.Id,
-                                ["scene"] = p.Scene,
-                                ["setting"] = p.Setting,
-                                ["prev_visual"] = Trunc(p.PrevVisual, 40),
-                                ["prev_speaker"] = p.PrevSpeaker,
-                                ["visual_event"] = Trunc(p.VisualEvent, 50),
-                                ["speaker"] = p.Speaker,
-                                ["action_class"] = p.ActionClass,
-                                ["heuristic"] = BaselineHardCut(p) ? HardCut : Extend,
-                            };
-                        }).ToList();
-                        var user = "Label hard_cut vs extend for video continuity. JSON only.\n" +
-                                   JsonSerializer.Serialize(new { beats = payload });
-                        var raw = await _chat.CompleteAsync(SystemPrompt(), user, effectiveModel, 0, ct, ChatCallModes.ExtendCutClassify)
-                            .ConfigureAwait(false);
-                        lock (labeled) { result.ChatCalls++; }
-                        return raw;
-                    },
-                    parseResponse: raw =>
-                    {
-                        var parsed = ParseLabels(raw);
-                        return parsed;
-                    },
-                    maxAttempts,
-                    backoffBaseMs,
-                    ct,
-                    operationName: "stage2_extend_cut",
-                    promptVersion: "1",
-                    model: effectiveModel).ConfigureAwait(false);
-
-                if (retry.LastError is not null)
-                {
-                    _log.LogWarning("ExtendCut chunk failed: {Error}", retry.LastError);
-                    lock (labeled) { result.LastError = retry.LastError; }
-                }
-                if (retry.Result is not null)
-                {
-                    lock (labeled)
-                    {
-                        foreach (var kv in retry.Result)
-                        {
-                            if (!byId.TryGetValue(kv.Key, out var p)) continue;
-                            p.Beat["cut_decision"] = kv.Value;
-                            p.Beat["continuity"] = kv.Value == HardCut ? "new_setup" : "continuous_from_previous_beat";
-                            labeled.Add(kv.Key);
-                        }
-                    }
-                }
-            }
-            finally
-            {
-                sem.Release();
-            }
-        });
+        var tasks = chunks.Select(chunk => ClassifyChunkAsync(
+            chunk, result, labeled, effectiveModel, maxAttempts, backoffBaseMs, sem, ct));
         await Task.WhenAll(tasks).ConfigureAwait(false);
+        return labeled;
+    }
 
-        result.AiCount = labeled.Count;
-        result.FallbackCount = pairs.Count - labeled.Count;
-        result.Note = $"AI {labeled.Count}/{pairs.Count}";
-        onProgress?.Invoke($"Extend/cut: {result.Note}");
-        return result;
+    private async Task ClassifyChunkAsync(
+        List<Pair> chunk,
+        SimpleClassifyResult result,
+        HashSet<string> labeled,
+        string effectiveModel,
+        int maxAttempts,
+        int backoffBaseMs,
+        SemaphoreSlim sem,
+        CancellationToken ct)
+    {
+        await sem.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var chunkIds = chunk.Select(p => p.Id).ToList();
+            var byId = chunk.ToDictionary(p => p.Id, StringComparer.OrdinalIgnoreCase);
+            // Mutable: shrinks to only still-missing ids so each retry re-asks fewer beats —
+            // mirrors the pre-refactor hand-rolled loop exactly.
+            var retry = await AiRetryPolicy.RunWithCoverageRetryAsync<string>(
+                chunkIds,
+                callChat: missingIds => CompleteChunkLabelsAsync(missingIds, byId, result, labeled, effectiveModel, ct),
+                parseResponse: ParseLabels,
+                maxAttempts,
+                backoffBaseMs,
+                ct,
+                operationName: "stage2_extend_cut",
+                promptVersion: "1",
+                model: effectiveModel).ConfigureAwait(false);
+
+            if (retry.LastError is not null)
+            {
+                _log.LogWarning("ExtendCut chunk failed: {Error}", retry.LastError);
+                lock (labeled) { result.LastError = retry.LastError; }
+            }
+            if (retry.Result is not null)
+            {
+                lock (labeled)
+                    ApplyChunkLabels(retry.Result, byId, labeled);
+            }
+        }
+        finally
+        {
+            sem.Release();
+        }
+    }
+
+    private async Task<string> CompleteChunkLabelsAsync(
+        IReadOnlyList<string> missingIds,
+        Dictionary<string, Pair> byId,
+        SimpleClassifyResult result,
+        HashSet<string> labeled,
+        string effectiveModel,
+        CancellationToken ct)
+    {
+        var payload = missingIds.Select(id => BuildChunkPayload(byId[id])).ToList();
+        var user = "Label hard_cut vs extend for video continuity. JSON only.\n" +
+                   JsonSerializer.Serialize(new { beats = payload });
+        var raw = await _chat.CompleteAsync(SystemPrompt(), user, effectiveModel, 0, ct, ChatCallModes.ExtendCutClassify)
+            .ConfigureAwait(false);
+        lock (labeled) { result.ChatCalls++; }
+        return raw;
+    }
+
+    private static Dictionary<string, object?> BuildChunkPayload(Pair p) => new()
+    {
+        ["id"] = p.Id,
+        ["scene"] = p.Scene,
+        ["setting"] = p.Setting,
+        ["prev_visual"] = Trunc(p.PrevVisual, 40),
+        ["prev_speaker"] = p.PrevSpeaker,
+        ["visual_event"] = Trunc(p.VisualEvent, 50),
+        ["speaker"] = p.Speaker,
+        ["action_class"] = p.ActionClass,
+        ["heuristic"] = BaselineHardCut(p) ? HardCut : Extend,
+    };
+
+    private static void ApplyChunkLabels(
+        Dictionary<string, string> labels, Dictionary<string, Pair> byId, HashSet<string> labeled)
+    {
+        foreach (var kv in labels)
+        {
+            if (!byId.TryGetValue(kv.Key, out var p)) continue;
+            p.Beat["cut_decision"] = kv.Value;
+            p.Beat["continuity"] = kv.Value == HardCut ? "new_setup" : "continuous_from_previous_beat";
+            labeled.Add(kv.Key);
+        }
     }
 
     public static string SystemPrompt() => """

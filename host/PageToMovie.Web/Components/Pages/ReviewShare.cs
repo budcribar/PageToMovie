@@ -200,73 +200,15 @@ public partial class Review
                     return;
                 }
 
-                var uploadPath = "/api/demos";
-                var token = S.Session.Token;
                 var title = string.IsNullOrWhiteSpace(_demoTitle) ? S._projectId : _demoTitle.Trim();
                 var description = string.IsNullOrWhiteSpace(_demoDescription) ? "" : _demoDescription.Trim();
+                await RegisterBlobExportIfNeededAsync(mediaUrl);
 
-                // Register stitched export hash so server can auto-public trusted demos
-                if (mediaUrl.StartsWith("blob:", StringComparison.OrdinalIgnoreCase))
-                {
-                    var expPath = $"assets/exports/{S._projectId}_demo.mp4";
-                    await S.MediaFolder.RegisterBlobAsExportAsync(S._projectId, mediaUrl, expPath);
-                }
-
-                var res = await S.JS.InvokeAsync<System.Text.Json.JsonElement>(
-                    "PageToMovieExport.uploadDemoMovieAsync",
-                    mediaUrl,
-                    uploadPath,
-                    token,
-                    new
-                    {
-                        title,
-                        description,
-                        projectId = S._projectId,
-                        fileName = $"{S._projectId}_demo.mp4",
-                        acceptedGuidelines = true,
-                        madeForKids = _demoMadeForKids,
-                        isAiSynthetic = _demoIsAiSynthetic,
-                    },
-                    _dotNetRef);
-
-                if (!res.TryGetProperty("success", out var ok) || !ok.GetBoolean())
-                {
-                    if (S.Playback._wipExists && !S.Playback._wipStale && string.IsNullOrEmpty(S.Playback._clientWipUrl))
-                    {
-                        var pub = await S.Engine.PublishDemoFromWipAsync(
-                            S._projectId,
-                            title,
-                            string.IsNullOrWhiteSpace(description) ? null : description,
-                            acceptedGuidelines: true,
-                            madeForKids: _demoMadeForKids,
-                            isAiSynthetic: _demoIsAiSynthetic);
-                        if (pub?.Ok is true)
-                        {
-                            S.List._activeTab = ReviewTab.Review;
-                            S._message = (pub.Message ?? $"“{pub.Demo?.Title ?? title}” sent to YouTube — it appears in the gallery when the upload finishes.") +
-                                (_lastExportMissingMusic ? " (No local media folder connected — background music not included.)" : "");
-                            return;
-                        }
-                        S._error = pub?.Error ?? "Demo submit failed";
-                        return;
-                    }
-
-                    var err = res.TryGetProperty("error", out var e) ? e.GetString() : "upload failed";
-                    S._error = err ?? "Demo upload failed";
+                var res = await InvokeDemoUploadAsync(mediaUrl, title, description);
+                if (await TryHandleDemoUploadFailureAsync(res, title, description))
                     return;
-                }
 
-                var publishedTitle = title;
-                if (res.TryGetProperty("demo", out var demoEl) && demoEl.ValueKind == System.Text.Json.JsonValueKind.Object
-                    && demoEl.TryGetProperty("title", out var tEl))
-                {
-                    publishedTitle = tEl.GetString() ?? publishedTitle;
-                }
-
-                var msg = res.TryGetProperty("message", out var mEl) ? mEl.GetString() : null;
-                S.List._activeTab = ReviewTab.Review;
-                S._message = (msg ?? $"“{publishedTitle}” sent to YouTube — it appears in the gallery when the upload finishes.") +
-                    (_lastExportMissingMusic ? " (No local media folder connected — background music not included.)" : "");
+                ApplyDemoPublishSuccess(res, title);
             }
             catch (Exception ex)
             {
@@ -278,6 +220,91 @@ public partial class Review
                 _isPublishing = false;
             }
         }
+
+        private async Task RegisterBlobExportIfNeededAsync(string mediaUrl)
+        {
+            // Register stitched export hash so server can auto-public trusted demos
+            if (!mediaUrl.StartsWith("blob:", StringComparison.OrdinalIgnoreCase))
+                return;
+            var expPath = $"assets/exports/{S._projectId}_demo.mp4";
+            await S.MediaFolder.RegisterBlobAsExportAsync(S._projectId, mediaUrl, expPath);
+        }
+
+        private async Task<System.Text.Json.JsonElement> InvokeDemoUploadAsync(
+            string mediaUrl, string title, string description)
+        {
+            return await S.JS.InvokeAsync<System.Text.Json.JsonElement>(
+                "PageToMovieExport.uploadDemoMovieAsync",
+                mediaUrl,
+                "/api/demos",
+                S.Session.Token,
+                new
+                {
+                    title,
+                    description,
+                    projectId = S._projectId,
+                    fileName = $"{S._projectId}_demo.mp4",
+                    acceptedGuidelines = true,
+                    madeForKids = _demoMadeForKids,
+                    isAiSynthetic = _demoIsAiSynthetic,
+                },
+                _dotNetRef);
+        }
+
+        /// <summary>True when the failure path fully handled the result (success or error already applied).</summary>
+        private async Task<bool> TryHandleDemoUploadFailureAsync(
+            System.Text.Json.JsonElement res, string title, string description)
+        {
+            if (res.TryGetProperty("success", out var ok) && ok.GetBoolean())
+                return false;
+
+            if (S.Playback._wipExists && !S.Playback._wipStale && string.IsNullOrEmpty(S.Playback._clientWipUrl))
+            {
+                await TryPublishDemoFromWipAsync(title, description);
+                return true;
+            }
+
+            var err = res.TryGetProperty("error", out var e) ? e.GetString() : "upload failed";
+            S._error = err ?? "Demo upload failed";
+            return true;
+        }
+
+        private async Task TryPublishDemoFromWipAsync(string title, string description)
+        {
+            var pub = await S.Engine.PublishDemoFromWipAsync(
+                S._projectId,
+                title,
+                string.IsNullOrWhiteSpace(description) ? null : description,
+                acceptedGuidelines: true,
+                madeForKids: _demoMadeForKids,
+                isAiSynthetic: _demoIsAiSynthetic);
+            if (pub?.Ok is true)
+            {
+                S.List._activeTab = ReviewTab.Review;
+                S._message = (pub.Message ?? $"“{pub.Demo?.Title ?? title}” sent to YouTube — it appears in the gallery when the upload finishes.") +
+                    MissingMusicNote;
+                return;
+            }
+            S._error = pub?.Error ?? "Demo submit failed";
+        }
+
+        private void ApplyDemoPublishSuccess(System.Text.Json.JsonElement res, string title)
+        {
+            var publishedTitle = title;
+            if (res.TryGetProperty("demo", out var demoEl) && demoEl.ValueKind == System.Text.Json.JsonValueKind.Object
+                && demoEl.TryGetProperty("title", out var tEl))
+            {
+                publishedTitle = tEl.GetString() ?? publishedTitle;
+            }
+
+            var msg = res.TryGetProperty("message", out var mEl) ? mEl.GetString() : null;
+            S.List._activeTab = ReviewTab.Review;
+            S._message = (msg ?? $"“{publishedTitle}” sent to YouTube — it appears in the gallery when the upload finishes.") +
+                MissingMusicNote;
+        }
+
+        private string MissingMusicNote =>
+            _lastExportMissingMusic ? " (No local media folder connected — background music not included.)" : "";
 
 
         /// <summary>Return a browser-fetchable URL for the full cut (blob or authenticated WIP).</summary>
@@ -423,8 +450,7 @@ public partial class Review
                 }
 
                 S.List._activeTab = ReviewTab.Review;
-                S._message = "Uploading to YouTube…" +
-                    (_lastExportMissingMusic ? " (No local media folder connected — background music not included.)" : "");
+                S._message = "Uploading to YouTube…" + MissingMusicNote;
                 var jobs = await S.Engine.GetJobAsync();
                 S.Jobs._job = jobs?.Job;
             }
