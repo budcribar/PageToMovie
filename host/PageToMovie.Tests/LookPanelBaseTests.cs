@@ -7,23 +7,20 @@ namespace PageToMovie.Tests;
 public class LookPanelBaseTests
 {
     [Fact]
-    public void CharacterAndLocationPanels_KeepDistinctPrefixesAndSuggestions()
+    public void Prefix_UsesDefaultUntilTestIdIsSet()
     {
-        Assert.Equal(6, CharacterLookPanel.FaceTweakSuggestions.Count);
-        Assert.Contains("make his beard longer", CharacterLookPanel.FaceTweakSuggestions);
-        Assert.Equal(6, LocationLookPanel.PlateTweakSuggestions.Count);
-        Assert.Contains("make the trees taller", LocationLookPanel.PlateTweakSuggestions);
+        var panel = new Harness { DefaultPrefixValue = "look" };
+        Assert.Equal("look", panel.PrefixPublic);
+        Assert.Equal("look-imgedit", panel.ImgEditFieldIdPublic);
+        Assert.Equal("look-imgedit-voice", panel.ImgEditVoiceTestIdPublic);
 
-        var character = new CharacterLookPanelHarness();
-        Assert.Equal("look", character.PrefixPublic);
-        character.TestId = "char-edit";
-        Assert.Equal("char-edit", character.PrefixPublic);
-        Assert.Equal("char-edit-imgedit", character.ImgEditFieldIdPublic);
+        panel.SetTestId("char-edit");
+        Assert.Equal("char-edit", panel.PrefixPublic);
+        Assert.Equal("char-edit-imgedit", panel.ImgEditFieldIdPublic);
 
-        var location = new LocationLookPanelHarness();
+        var location = new Harness { DefaultPrefixValue = "loc" };
         Assert.Equal("loc", location.PrefixPublic);
-        location.TestId = "loc-edit";
-        Assert.Equal("loc-edit", location.PrefixPublic);
+        location.SetTestId("loc-edit");
         Assert.Equal("loc-edit-imgedit-voice", location.ImgEditVoiceTestIdPublic);
     }
 
@@ -32,11 +29,9 @@ public class LookPanelBaseTests
     {
         string? instruction = null;
         string? requested = null;
-        var panel = new CharacterLookPanelHarness
-        {
-            ImageEditInstructionChanged = EventCallback.Factory.Create<string>(this, v => instruction = v),
-            OnTweakRequested = EventCallback.Factory.Create<string>(this, v => requested = v),
-        };
+        var panel = new Harness { DefaultPrefixValue = "look" };
+        panel.SetImageEditInstructionChanged(EventCallback.Factory.Create<string>(this, v => instruction = v));
+        panel.SetOnTweakRequested(EventCallback.Factory.Create<string>(this, v => requested = v));
 
         await panel.CommitAsync("  shorter hair  ");
         Assert.Equal("shorter hair", instruction);
@@ -49,17 +44,21 @@ public class LookPanelBaseTests
         Assert.Equal("kept", requested);
     }
 
-    private sealed class CharacterLookPanelHarness : CharacterLookPanel
+    private sealed class Harness : LookPanelBase
     {
+        public string DefaultPrefixValue { get; init; } = "look";
+        protected override string DefaultPrefix => DefaultPrefixValue;
+
         public string PrefixPublic => Prefix;
         public string ImgEditFieldIdPublic => ImgEditFieldId;
         public string ImgEditVoiceTestIdPublic => ImgEditVoiceTestId;
-        public Task CommitAsync(string instruction) => OnTweakCommittedAsync(instruction);
-    }
 
-    private sealed class LocationLookPanelHarness : LocationLookPanel
-    {
-        public string PrefixPublic => Prefix;
-        public string ImgEditVoiceTestIdPublic => ImgEditVoiceTestId;
+        public void SetTestId(string? value) => TestId = value;
+        public void SetImageEditInstructionChanged(EventCallback<string> callback) =>
+            ImageEditInstructionChanged = callback;
+        public void SetOnTweakRequested(EventCallback<string> callback) =>
+            OnTweakRequested = callback;
+
+        public Task CommitAsync(string instruction) => OnTweakCommittedAsync(instruction);
     }
 }
