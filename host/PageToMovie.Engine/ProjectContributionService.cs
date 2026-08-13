@@ -395,9 +395,7 @@ public sealed class ProjectContributionService
 
     private static void AppendClipsFromScene(JsonElement scene, string projectDir, List<MediaClipContributionDto> clips)
     {
-        int sceneIdx = 1;
-        if (scene.TryGetProperty("scene_index", out var sIdx)) sceneIdx = sIdx.GetInt32();
-        else if (scene.TryGetProperty("scene", out var sIdx2)) sceneIdx = sIdx2.GetInt32();
+        int sceneIdx = ReadFirstProperty(scene, 1, static e => e.GetInt32(), "scene_index", "scene");
 
         if (scene.TryGetProperty("veo_clips", out var vClips) && vClips.ValueKind == JsonValueKind.Array)
             AppendClipsFromJsonArray(vClips, sceneIdx, projectDir, clips);
@@ -417,49 +415,14 @@ public sealed class ProjectContributionService
 
     private static MediaClipContributionDto? ParseClipElement(JsonElement clip, int defaultScene, int defaultClip, string projectDir)
     {
-        int scene = defaultScene;
-        if (clip.TryGetProperty("scene_index", out var s)) scene = s.GetInt32();
-        else if (clip.TryGetProperty("scene", out s)) scene = s.GetInt32();
-
-        int clipIdx = defaultClip;
-        if (clip.TryGetProperty("clip_index", out var c)) clipIdx = c.GetInt32();
-        else if (clip.TryGetProperty("clip", out c)) clipIdx = c.GetInt32();
-
-        string relPath = $"assets/video/scene_{scene:D2}_clip_{clipIdx:D2}.mp4";
-        if (clip.TryGetProperty("relative_path", out var rp) && !string.IsNullOrWhiteSpace(rp.GetString()))
-            relPath = rp.GetString()!.Replace('\\', '/');
-
-        string? cdnUrl = null;
-        if (clip.TryGetProperty("video_url", out var vu)) cdnUrl = vu.GetString();
-        else if (clip.TryGetProperty("source_video_url", out var svu)) cdnUrl = svu.GetString();
-        if (cdnUrl != null && !cdnUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
-            cdnUrl = null;
-
-        string sha = "";
-        if (clip.TryGetProperty("sha256", out var sh)) sha = sh.GetString() ?? "";
-        else if (clip.TryGetProperty("sha", out sh)) sha = sh.GetString() ?? "";
-
-        long size = 0;
-        var fullPath = Path.Combine(projectDir, relPath);
-        if (File.Exists(fullPath))
-        {
-            var fi = new FileInfo(fullPath);
-            size = fi.Length;
-            if (string.IsNullOrWhiteSpace(sha))
-            {
-                try
-                {
-                    using var fs = File.OpenRead(fullPath);
-                    var hashBytes = System.Security.Cryptography.SHA256.HashData(fs);
-                    sha = Convert.ToHexString(hashBytes).ToLowerInvariant();
-                }
-                catch (Exception)
-                {
-                    // Hash is optional metadata; leave empty if the file cannot be read.
-                    sha = "";
-                }
-            }
-        }
+        int scene = ReadFirstProperty(clip, defaultScene, static e => e.GetInt32(), "scene_index", "scene");
+        int clipIdx = ReadFirstProperty(clip, defaultClip, static e => e.GetInt32(), "clip_index", "clip");
+        string relPath = ReadRelativeVideoPath(clip, scene, clipIdx);
+        string? cdnUrl = ReadHttpUrl(clip, "video_url", "source_video_url");
+        var (size, sha) = FileSizeAndSha(
+            projectDir,
+            relPath,
+            ReadFirstProperty(clip, "", static e => e.GetString() ?? "", "sha256", "sha"));
 
         return new MediaClipContributionDto
         {
@@ -470,6 +433,63 @@ public sealed class ProjectContributionService
             SizeBytes = size,
             ProviderCdnUrl = cdnUrl,
         };
+    }
+
+    private static T ReadFirstProperty<T>(
+        JsonElement clip,
+        T fallback,
+        Func<JsonElement, T> read,
+        string primary,
+        string secondary)
+    {
+        if (clip.TryGetProperty(primary, out var el)) return read(el);
+        if (clip.TryGetProperty(secondary, out el)) return read(el);
+        return fallback;
+    }
+
+    private static string ReadRelativeVideoPath(JsonElement clip, int scene, int clipIdx)
+    {
+        var relPath = $"assets/video/scene_{scene:D2}_clip_{clipIdx:D2}.mp4";
+        if (!clip.TryGetProperty("relative_path", out var rp))
+            return relPath;
+        var raw = rp.GetString();
+        if (string.IsNullOrWhiteSpace(raw))
+            return relPath;
+        return raw.Replace('\\', '/');
+    }
+
+    private static string? ReadHttpUrl(JsonElement clip, string primary, string secondary)
+    {
+        var url = ReadFirstProperty<string?>(clip, null, static e => e.GetString(), primary, secondary);
+        if (url != null && !url.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            return null;
+        return url;
+    }
+
+    private static (long Size, string Sha) FileSizeAndSha(string projectDir, string relPath, string sha)
+    {
+        var fullPath = Path.Combine(projectDir, relPath);
+        if (!File.Exists(fullPath))
+            return (0, sha);
+        var size = new FileInfo(fullPath).Length;
+        if (!string.IsNullOrWhiteSpace(sha))
+            return (size, sha);
+        return (size, HashFileSha256OrEmpty(fullPath));
+    }
+
+    private static string HashFileSha256OrEmpty(string fullPath)
+    {
+        try
+        {
+            using var fs = File.OpenRead(fullPath);
+            var hashBytes = System.Security.Cryptography.SHA256.HashData(fs);
+            return Convert.ToHexString(hashBytes).ToLowerInvariant();
+        }
+        catch (Exception)
+        {
+            // Hash is optional metadata; leave empty if the file cannot be read.
+            return "";
+        }
     }
 
     private static List<DiffLineDto> ComputeLineDiff(string ours, string theirs, out bool hasConflicts)

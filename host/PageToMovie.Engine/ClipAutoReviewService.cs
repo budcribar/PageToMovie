@@ -570,20 +570,32 @@ public sealed class ClipAutoReviewService
 
     private static void ApplyClipPlanFields(ClipPlan plan, JsonElement c)
     {
-        plan.VisualPrompt = c.TryGetProperty(VisualPromptKey, out var vp) ? vp.GetString() ?? "" : "";
-        if (c.TryGetProperty("audio_payload", out var ap) && ap.ValueKind == JsonValueKind.Object)
+        plan.VisualPrompt = ReadJsonStringOrEmpty(c, VisualPromptKey);
+        ApplyAudioPayload(plan, c);
+        ApplyCharactersPresent(plan, c);
+    }
+
+    private static string ReadJsonStringOrEmpty(JsonElement parent, string name) =>
+        parent.TryGetProperty(name, out var el) ? el.GetString() ?? "" : "";
+
+    private static void ApplyAudioPayload(ClipPlan plan, JsonElement c)
+    {
+        if (!c.TryGetProperty("audio_payload", out var ap) || ap.ValueKind != JsonValueKind.Object)
+            return;
+        plan.Dialogue = ReadJsonStringOrEmpty(ap, "dialogue");
+        plan.Speaker = ReadJsonStringOrEmpty(ap, "speaker");
+        plan.Delivery = ReadJsonStringOrEmpty(ap, "delivery");
+    }
+
+    private static void ApplyCharactersPresent(ClipPlan plan, JsonElement c)
+    {
+        if (!c.TryGetProperty("characters_present", out var cp) || cp.ValueKind != JsonValueKind.Array)
+            return;
+        foreach (var x in cp.EnumerateArray())
         {
-            plan.Dialogue = ap.TryGetProperty("dialogue", out var d) ? d.GetString() ?? "" : "";
-            plan.Speaker = ap.TryGetProperty("speaker", out var sp) ? sp.GetString() ?? "" : "";
-            plan.Delivery = ap.TryGetProperty("delivery", out var del) ? del.GetString() ?? "" : "";
-        }
-        if (c.TryGetProperty("characters_present", out var cp) && cp.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var x in cp.EnumerateArray())
-            {
-                var k = x.GetString();
-                if (!string.IsNullOrWhiteSpace(k)) plan.Characters.Add(k);
-            }
+            var k = x.GetString();
+            if (!string.IsNullOrWhiteSpace(k))
+                plan.Characters.Add(k);
         }
     }
 
