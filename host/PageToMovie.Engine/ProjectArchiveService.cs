@@ -266,117 +266,173 @@ public sealed class ProjectArchiveService
                     "Zip does not look like a PageToMovie project (no project.json found).");
 
             var idFromMeta = await TryReadProjectIdAsync(contentRoot, ct).ConfigureAwait(false);
-            var idFromFolder = Path.GetFileName(contentRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-            var rawId = !string.IsNullOrWhiteSpace(preferredId)
-                ? preferredId.Trim()
-                : !string.IsNullOrWhiteSpace(idFromMeta)
-                    ? idFromMeta
-                    : idFromFolder;
-
-            // User-mode / rename import: land the project in the importer's own namespace, taking only
-            // the slug (last path segment) from the zip's id and prefixing the forced owner. Stops one
-            // user from importing into another's namespace, and re-slug rename from keeping the old owner.
-            if (!string.IsNullOrWhiteSpace(forceOwnerUserId))
-            {
-                var basis = rawId.Replace('\\', '/').Trim('/');
-                var lastSlash = basis.LastIndexOf('/');
-                var slug = lastSlash >= 0 ? basis[(lastSlash + 1)..] : basis;
-                rawId = $"{forceOwnerUserId.Trim()}/{slug}";
-                targetUserId = forceOwnerUserId.Trim(); // stamp ownerUserId to match the namespace
-            }
-
-            // Preserves an "owner/slug" split (SanitizeProjectIdPublic alone would collapse the "/"
-            // into "_", landing the import at a flat projects/{owner}_{slug}/ instead of the
-            // namespaced projects/{owner}/{slug}/ layout the rest of the app expects).
-            var id = ProjectStore.SanitizeComposeProjectIdPublic(rawId);
-            if (string.IsNullOrEmpty(id))
-                throw new InvalidOperationException("Could not derive a safe project id from the zip.");
-
-            var projectsRoot = Path.GetFullPath(Path.Combine(_projects.WorkspaceRoot, "projects"));
-            Directory.CreateDirectory(projectsRoot);
-            var dest = Path.GetFullPath(Path.Combine(projectsRoot, id));
-
-            if (!dest.StartsWith(projectsRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("Invalid project destination path.");
-
-            if (Directory.Exists(dest))
-            {
-                if (!overwrite)
-                    throw new InvalidOperationException(
-                        $"Project already exists: {id}. Enable overwrite or choose another id.");
-                await _projects.DeleteProjectAsync(id, ct).ConfigureAwait(false);
-            }
+            var (id, dest, ownerId) = await PrepareImportDestinationAsync(
+                contentRoot, preferredId, idFromMeta, overwrite, targetUserId, forceOwnerUserId, ct)
+                .ConfigureAwait(false);
 
             // Copy extracted content into projects/{id}
             CopyDirectory(contentRoot, dest);
 
-            var exportMeta = await ProjectFormatVersions.TryReadExportMetaAsync(contentRoot, ct).ConfigureAwait(false)
-                             ?? await ProjectFormatVersions.TryReadExportMetaAsync(dest, ct).ConfigureAwait(false);
-            var schemaBefore = await ProjectFormatVersions.TryReadProjectSchemaVersionAsync(dest, ct).ConfigureAwait(false)
-                               ?? exportMeta?.ProjectSchemaVersion
-                               ?? "v0";
-
-            // _export_meta.json is a manifest ABOUT an export, generated fresh by ExportAsync every
-            // time — never real project content. Leaving the copy from this zip on disk would freeze
-            // this project's next export with the *previous* project's id forever (re-slug rename's
-            // export → import → delete-old goes through here, and re-exporting later would re-zip
-            // this stale file as a second, colliding "_export_meta.json" entry that wins over the
-            // freshly-generated correct one on extraction).
-            try { File.Delete(Path.Combine(dest, "_export_meta.json")); } catch { /* best effort */ }
-
-            // Ensure project.json id and optional ownerUserId match
-            await EnsureProjectJsonIdAsync(dest, id, targetUserId, ct).ConfigureAwait(false);
-
-            var migrated = false;
-            if (_migrations is not null)
-            {
-                try
-                {
-                    migrated = await _migrations.MigrateIfNeededAsync(dest, ct).ConfigureAwait(false);
-                }
-                catch (Exception ex)
-                {
-                    _log.LogWarning(ex, "Import: schema migration failed for {ProjectId}", id);
-                }
-            }
-
-            var schemaAfter = await ProjectFormatVersions.TryReadProjectSchemaVersionAsync(dest, ct).ConfigureAwait(false)
-                              ?? ProjectFormatVersions.ProjectSchemaVersion;
-
-            _projects.InvalidateReadCaches(null);
-            var info = await _projects.ActivateAsync(id, ct).ConfigureAwait(false);
-
-            _log.LogInformation(
-                "Imported project {ProjectId} from zip (overwrite={Overwrite}, exportFmt={ExportFmt}, schema {Before}→{After}, migrated={Migrated})",
-                id, overwrite, exportMeta?.ExportFormatVersion, schemaBefore, schemaAfter, migrated);
-
-            var msg = overwrite
-                ? $"Imported and replaced project “{id}”"
-                : $"Imported project “{id}”";
-            if (migrated)
-                msg += $" · converted project schema {schemaBefore} → {schemaAfter}";
-            else if (!string.Equals(schemaBefore, schemaAfter, StringComparison.OrdinalIgnoreCase))
-                msg += $" · schema {schemaAfter}";
-            if (exportMeta?.ExportFormatVersion is int efv)
-                msg += $" · export format v{efv}";
-
-            return new ProjectImportResult
-            {
-                Ok = true,
-                ProjectId = id,
-                Project = info,
-                Message = msg,
-                ExportFormatVersion = exportMeta?.ExportFormatVersion,
-                ProjectSchemaVersionBefore = schemaBefore,
-                ProjectSchemaVersionAfter = schemaAfter,
-                Migrated = migrated,
-            };
+            return await FinishImportedProjectAsync(contentRoot, dest, id, ownerId, overwrite, ct)
+                .ConfigureAwait(false);
         }
         finally
         {
-            try { if (File.Exists(tempZip)) File.Delete(tempZip); } catch { /* ignore */ }
-            try { if (Directory.Exists(tempExtract)) Directory.Delete(tempExtract, recursive: true); } catch { /* ignore */ }
+            CleanupImportTemps(tempZip, tempExtract);
         }
+    }
+
+    private async Task<(string Id, string Dest, string? TargetUserId)> PrepareImportDestinationAsync(
+        string contentRoot,
+        string? preferredId,
+        string? idFromMeta,
+        bool overwrite,
+        string? targetUserId,
+        string? forceOwnerUserId,
+        CancellationToken ct)
+    {
+        var idFromFolder = Path.GetFileName(contentRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        var rawId = ResolveImportRawId(preferredId, idFromMeta, idFromFolder, forceOwnerUserId, ref targetUserId);
+
+        // Preserves an "owner/slug" split (SanitizeProjectIdPublic alone would collapse the "/"
+        // into "_", landing the import at a flat projects/{owner}_{slug}/ instead of the
+        // namespaced projects/{owner}/{slug}/ layout the rest of the app expects).
+        var id = ProjectStore.SanitizeComposeProjectIdPublic(rawId);
+        if (string.IsNullOrEmpty(id))
+            throw new InvalidOperationException("Could not derive a safe project id from the zip.");
+
+        var projectsRoot = Path.GetFullPath(Path.Combine(_projects.WorkspaceRoot, "projects"));
+        Directory.CreateDirectory(projectsRoot);
+        var dest = Path.GetFullPath(Path.Combine(projectsRoot, id));
+
+        if (!dest.StartsWith(projectsRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Invalid project destination path.");
+
+        if (Directory.Exists(dest))
+        {
+            if (!overwrite)
+                throw new InvalidOperationException(
+                    $"Project already exists: {id}. Enable overwrite or choose another id.");
+            await _projects.DeleteProjectAsync(id, ct).ConfigureAwait(false);
+        }
+
+        return (id, dest, targetUserId);
+    }
+
+    private static string ResolveImportRawId(
+        string? preferredId,
+        string? idFromMeta,
+        string idFromFolder,
+        string? forceOwnerUserId,
+        ref string? targetUserId)
+    {
+        var rawId = !string.IsNullOrWhiteSpace(preferredId)
+            ? preferredId.Trim()
+            : !string.IsNullOrWhiteSpace(idFromMeta)
+                ? idFromMeta
+                : idFromFolder;
+
+        // User-mode / rename import: land the project in the importer's own namespace, taking only
+        // the slug (last path segment) from the zip's id and prefixing the forced owner. Stops one
+        // user from importing into another's namespace, and re-slug rename from keeping the old owner.
+        if (string.IsNullOrWhiteSpace(forceOwnerUserId))
+            return rawId;
+
+        var basis = rawId.Replace('\\', '/').Trim('/');
+        var lastSlash = basis.LastIndexOf('/');
+        var slug = lastSlash >= 0 ? basis[(lastSlash + 1)..] : basis;
+        targetUserId = forceOwnerUserId.Trim(); // stamp ownerUserId to match the namespace
+        return $"{forceOwnerUserId.Trim()}/{slug}";
+    }
+
+    private async Task<ProjectImportResult> FinishImportedProjectAsync(
+        string contentRoot,
+        string dest,
+        string id,
+        string? targetUserId,
+        bool overwrite,
+        CancellationToken ct)
+    {
+        var exportMeta = await ProjectFormatVersions.TryReadExportMetaAsync(contentRoot, ct).ConfigureAwait(false)
+                         ?? await ProjectFormatVersions.TryReadExportMetaAsync(dest, ct).ConfigureAwait(false);
+        var schemaBefore = await ProjectFormatVersions.TryReadProjectSchemaVersionAsync(dest, ct).ConfigureAwait(false)
+                           ?? exportMeta?.ProjectSchemaVersion
+                           ?? "v0";
+
+        // _export_meta.json is a manifest ABOUT an export, generated fresh by ExportAsync every
+        // time — never real project content. Leaving the copy from this zip on disk would freeze
+        // this project's next export with the *previous* project's id forever (re-slug rename's
+        // export → import → delete-old goes through here, and re-exporting later would re-zip
+        // this stale file as a second, colliding "_export_meta.json" entry that wins over the
+        // freshly-generated correct one on extraction).
+        try { File.Delete(Path.Combine(dest, "_export_meta.json")); } catch { /* best effort */ }
+
+        // Ensure project.json id and optional ownerUserId match
+        await EnsureProjectJsonIdAsync(dest, id, targetUserId, ct).ConfigureAwait(false);
+
+        var migrated = await TryMigrateImportedProjectAsync(dest, id, ct).ConfigureAwait(false);
+        var schemaAfter = await ProjectFormatVersions.TryReadProjectSchemaVersionAsync(dest, ct).ConfigureAwait(false)
+                          ?? ProjectFormatVersions.ProjectSchemaVersion;
+
+        _projects.InvalidateReadCaches(null);
+        var info = await _projects.ActivateAsync(id, ct).ConfigureAwait(false);
+
+        _log.LogInformation(
+            "Imported project {ProjectId} from zip (overwrite={Overwrite}, exportFmt={ExportFmt}, schema {Before}→{After}, migrated={Migrated})",
+            id, overwrite, exportMeta?.ExportFormatVersion, schemaBefore, schemaAfter, migrated);
+
+        return new ProjectImportResult
+        {
+            Ok = true,
+            ProjectId = id,
+            Project = info,
+            Message = BuildImportSuccessMessage(id, overwrite, migrated, schemaBefore, schemaAfter, exportMeta?.ExportFormatVersion),
+            ExportFormatVersion = exportMeta?.ExportFormatVersion,
+            ProjectSchemaVersionBefore = schemaBefore,
+            ProjectSchemaVersionAfter = schemaAfter,
+            Migrated = migrated,
+        };
+    }
+
+    private async Task<bool> TryMigrateImportedProjectAsync(string dest, string id, CancellationToken ct)
+    {
+        if (_migrations is null)
+            return false;
+        try
+        {
+            return await _migrations.MigrateIfNeededAsync(dest, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Import: schema migration failed for {ProjectId}", id);
+            return false;
+        }
+    }
+
+    private static string BuildImportSuccessMessage(
+        string id,
+        bool overwrite,
+        bool migrated,
+        string schemaBefore,
+        string schemaAfter,
+        int? exportFormatVersion)
+    {
+        var msg = overwrite
+            ? $"Imported and replaced project “{id}”"
+            : $"Imported project “{id}”";
+        if (migrated)
+            msg += $" · converted project schema {schemaBefore} → {schemaAfter}";
+        else if (!string.Equals(schemaBefore, schemaAfter, StringComparison.OrdinalIgnoreCase))
+            msg += $" · schema {schemaAfter}";
+        if (exportFormatVersion is int efv)
+            msg += $" · export format v{efv}";
+        return msg;
+    }
+
+    private static void CleanupImportTemps(string tempZip, string tempExtract)
+    {
+        try { if (File.Exists(tempZip)) File.Delete(tempZip); } catch { /* ignore */ }
+        try { if (Directory.Exists(tempExtract)) Directory.Delete(tempExtract, recursive: true); } catch { /* ignore */ }
     }
 
     /// <summary>
@@ -505,64 +561,82 @@ public sealed class ProjectArchiveService
                     $"Zip has too many entries (max {MaxZipEntries:N0}).");
             }
 
-            // Directory entries end with / or \
-            var rawName = entry.FullName.Replace('\\', '/');
-            // Portable extract: map loc:Foo.json → loc_Foo.json so Linux-authored zips
-            // with colon lease names still extract on Windows (and on our Linux import host
-            // when running under a Windows-style invalid-char policy).
-            var name = PageToMovie.Core.Utils.FileNameSanitizer.SanitizeRelativePath(rawName);
-            if (string.IsNullOrWhiteSpace(rawName) || rawName.EndsWith('/'))
-            {
-                // Ensure directory exists (still count toward bomb limits via empty path only).
-                if (!string.IsNullOrWhiteSpace(name))
-                {
-                    var dirPath = Path.GetFullPath(Path.Combine(destDir, name));
-                    EnsureUnderRoot(destDir, dirPath);
-                    Directory.CreateDirectory(dirPath);
-                }
-                continue;
-            }
-
-            if (string.IsNullOrWhiteSpace(name))
-                continue;
-
-            // Ephemeral leases are not needed on import; skip if present in old zips.
-            if (name.Contains("/leases/", StringComparison.OrdinalIgnoreCase)
-                || name.StartsWith("leases/", StringComparison.OrdinalIgnoreCase)
-                || name.EndsWith("/leases", StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            if (entry.Length < 0 || entry.Length > MaxSingleEntryUncompressedBytes)
-            {
-                throw new InvalidOperationException(
-                    $"Zip entry too large: {entry.FullName} ({entry.Length:N0} bytes; max {MaxSingleEntryUncompressedBytes:N0}).");
-            }
-
-            totalUncompressed += entry.Length;
-            if (totalUncompressed > MaxUncompressedTotalBytes)
-            {
-                throw new InvalidOperationException(
-                    $"Zip uncompressed size exceeds limit ({MaxUncompressedTotalBytes:N0} bytes).");
-            }
-
-            var destPath = Path.GetFullPath(Path.Combine(destDir, name));
-            EnsureUnderRoot(destDir, destPath);
-
-            var parent = Path.GetDirectoryName(destPath);
-            if (!string.IsNullOrEmpty(parent))
-                Directory.CreateDirectory(parent);
-
-            entry.ExtractToFile(destPath, overwrite: true);
-
-            // Defense in depth: measure actual written size (some archives lie in headers).
-            var written = new FileInfo(destPath).Length;
-            if (written > MaxSingleEntryUncompressedBytes)
-            {
-                try { File.Delete(destPath); } catch { /* ignore */ }
-                throw new InvalidOperationException(
-                    $"Extracted entry exceeded size cap: {entry.FullName}");
-            }
+            ExtractOneZipEntry(entry, destDir, ref totalUncompressed);
         }
+    }
+
+    private static void ExtractOneZipEntry(ZipArchiveEntry entry, string destDir, ref long totalUncompressed)
+    {
+        // Directory entries end with / or \
+        var rawName = entry.FullName.Replace('\\', '/');
+        // Portable extract: map loc:Foo.json → loc_Foo.json so Linux-authored zips
+        // with colon lease names still extract on Windows (and on our Linux import host
+        // when running under a Windows-style invalid-char policy).
+        var name = PageToMovie.Core.Utils.FileNameSanitizer.SanitizeRelativePath(rawName);
+        if (string.IsNullOrWhiteSpace(rawName) || rawName.EndsWith('/'))
+        {
+            ExtractZipDirectoryEntry(destDir, name);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(name) || IsLeaseZipEntry(name))
+            return;
+
+        ExtractZipFileEntry(entry, destDir, name, ref totalUncompressed);
+    }
+
+    private static void ExtractZipDirectoryEntry(string destDir, string name)
+    {
+        // Ensure directory exists (still count toward bomb limits via empty path only).
+        if (string.IsNullOrWhiteSpace(name))
+            return;
+        var dirPath = Path.GetFullPath(Path.Combine(destDir, name));
+        EnsureUnderRoot(destDir, dirPath);
+        Directory.CreateDirectory(dirPath);
+    }
+
+    /// <summary>Ephemeral leases are not needed on import; skip if present in old zips.</summary>
+    private static bool IsLeaseZipEntry(string name) =>
+        name.Contains("/leases/", StringComparison.OrdinalIgnoreCase)
+        || name.StartsWith("leases/", StringComparison.OrdinalIgnoreCase)
+        || name.EndsWith("/leases", StringComparison.OrdinalIgnoreCase);
+
+    private static void ExtractZipFileEntry(
+        ZipArchiveEntry entry, string destDir, string name, ref long totalUncompressed)
+    {
+        if (entry.Length < 0 || entry.Length > MaxSingleEntryUncompressedBytes)
+        {
+            throw new InvalidOperationException(
+                $"Zip entry too large: {entry.FullName} ({entry.Length:N0} bytes; max {MaxSingleEntryUncompressedBytes:N0}).");
+        }
+
+        totalUncompressed += entry.Length;
+        if (totalUncompressed > MaxUncompressedTotalBytes)
+        {
+            throw new InvalidOperationException(
+                $"Zip uncompressed size exceeds limit ({MaxUncompressedTotalBytes:N0} bytes).");
+        }
+
+        var destPath = Path.GetFullPath(Path.Combine(destDir, name));
+        EnsureUnderRoot(destDir, destPath);
+
+        var parent = Path.GetDirectoryName(destPath);
+        if (!string.IsNullOrEmpty(parent))
+            Directory.CreateDirectory(parent);
+
+        entry.ExtractToFile(destPath, overwrite: true);
+        VerifyExtractedEntrySize(entry, destPath);
+    }
+
+    private static void VerifyExtractedEntrySize(ZipArchiveEntry entry, string destPath)
+    {
+        // Defense in depth: measure actual written size (some archives lie in headers).
+        var written = new FileInfo(destPath).Length;
+        if (written <= MaxSingleEntryUncompressedBytes)
+            return;
+        try { File.Delete(destPath); } catch { /* ignore */ }
+        throw new InvalidOperationException(
+            $"Extracted entry exceeded size cap: {entry.FullName}");
     }
 
     private static void EnsureUnderRoot(string root, string candidate)

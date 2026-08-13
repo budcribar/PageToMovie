@@ -1263,24 +1263,30 @@ public sealed class Stage2PlannerService
         List<object?> clips,
         List<object?> beatMap) => new()
     {
-        [JsonKeys.SceneNumber] = scene.TryGetValue(JsonKeys.SceneNumber, out var sn) ? sn : null,
-        [Keys.Setting] = scene.TryGetValue(Keys.Setting, out var set) ? set : null,
+        [JsonKeys.SceneNumber] = SceneValue(scene, JsonKeys.SceneNumber),
+        [Keys.Setting] = SceneValue(scene, Keys.Setting),
         ["location_ids"] = lids.Cast<object?>().ToList(),
         ["primary_location_id"] = primary,
         [Keys.CharactersOnScreen] = cast.Cast<object?>().ToList(),
-        ["scene_filename"] = scene.TryGetValue("scene_filename", out var sf) ? sf : null,
-        ["transition_type"] = CoerceString(scene.TryGetValue("transition_type", out var tt) ? tt : null) ?? "cut",
+        ["scene_filename"] = SceneValue(scene, "scene_filename"),
+        ["transition_type"] = CoerceString(SceneValue(scene, "transition_type")) ?? "cut",
         ["lighting_continuity_token"] =
-            CoerceString(scene.TryGetValue("lighting_continuity_token", out var lc) ? lc : null) ?? "",
+            CoerceString(SceneValue(scene, "lighting_continuity_token")) ?? "",
         ["total_estimated_duration_seconds"] = total,
         ["music_bed"] = MusicBed(scene, total),
         [Keys.VeoClips] = clips,
-        ["stage1_scene_number"] = scene.TryGetValue(JsonKeys.SceneNumber, out var s1) ? s1 : null,
+        ["stage1_scene_number"] = SceneValue(scene, JsonKeys.SceneNumber),
         ["stage1_beat_map"] = beatMap,
         [Keys.VideoProviderProfile] = ResolveVideoProviderProfile(null),
-        ["spoiler_constraints"] = scene.TryGetValue("spoiler_constraints", out var sp) ? sp : new List<object?>(),
-        ["source_book_refs"] = scene.TryGetValue("source_book_refs", out var sbr) ? sbr : new List<object?>(),
+        ["spoiler_constraints"] = SceneValueOrList(scene, "spoiler_constraints"),
+        ["source_book_refs"] = SceneValueOrList(scene, "source_book_refs"),
     };
+
+    private static object? SceneValue(Dictionary<string, object?> scene, string key) =>
+        scene.TryGetValue(key, out var v) ? v : null;
+
+    private static object? SceneValueOrList(Dictionary<string, object?> scene, string key) =>
+        scene.TryGetValue(key, out var v) ? v : new List<object?>();
 
     /// <summary>
     /// Filtered, expanded, coalesced story-beat list for a scene, ready to hand to a per-scene
@@ -1309,44 +1315,46 @@ public sealed class Stage2PlannerService
 
         var b1 = beats[0];
         var b2 = beats[1];
+        if (!IsSilentPreludePair(b1, b2) || !SameOrEmptyBeatLocation(b1, b2))
+            return beats;
 
+        MergeSilentPreludeVisual(b1, b2);
+
+        // Remove silent prelude b1 so b2 becomes clip 1 (frame-1 VO onset)
+        PageToMovie.Core.Utils.StableBeatId.MergeSourceIds(b2, b1);
+        var result = new List<Dictionary<string, object?>>(beats);
+        result.RemoveAt(0);
+        return result;
+    }
+
+    private static bool IsSilentPreludePair(Dictionary<string, object?> b1, Dictionary<string, object?> b2)
+    {
         var d1 = CoerceString(b1.TryGetValue(JsonKeys.Dialogue, out var v1) ? v1 : null);
         var s1 = CoerceString(b1.TryGetValue(JsonKeys.Speaker, out var sp1) ? sp1 : null);
         var d2 = CoerceString(b2.TryGetValue(JsonKeys.Dialogue, out var v2) ? v2 : null);
-
         // Beat 1 must be silent (no dialogue, no speaker) and Beat 2 must have dialogue
-        if (string.IsNullOrWhiteSpace(d1) && string.IsNullOrWhiteSpace(s1) && !string.IsNullOrWhiteSpace(d2))
-        {
-            var l1 = CoerceString(b1.TryGetValue(Keys.LocationId, out var loc1) ? loc1 : null);
-            var l2 = CoerceString(b2.TryGetValue(Keys.LocationId, out var loc2) ? loc2 : null);
+        return string.IsNullOrWhiteSpace(d1) && string.IsNullOrWhiteSpace(s1) && !string.IsNullOrWhiteSpace(d2);
+    }
 
-            // Same location or empty
-            if (string.Equals(l1, l2, StringComparison.OrdinalIgnoreCase) || string.IsNullOrEmpty(l1) || string.IsNullOrEmpty(l2))
-            {
-                var ve1 = CoerceString(b1.TryGetValue(Keys.VisualEvent, out var vev1) ? vev1 : null);
-                var ve2 = CoerceString(b2.TryGetValue(Keys.VisualEvent, out var vev2) ? vev2 : null);
+    private static bool SameOrEmptyBeatLocation(Dictionary<string, object?> b1, Dictionary<string, object?> b2)
+    {
+        var l1 = CoerceString(b1.TryGetValue(Keys.LocationId, out var loc1) ? loc1 : null);
+        var l2 = CoerceString(b2.TryGetValue(Keys.LocationId, out var loc2) ? loc2 : null);
+        return string.Equals(l1, l2, StringComparison.OrdinalIgnoreCase)
+            || string.IsNullOrEmpty(l1)
+            || string.IsNullOrEmpty(l2);
+    }
 
-                if (!string.IsNullOrWhiteSpace(ve1))
-                {
-                    if (string.IsNullOrWhiteSpace(ve2))
-                    {
-                        b2[Keys.VisualEvent] = ve1;
-                    }
-                    else if (!ve2.Contains(ve1, StringComparison.OrdinalIgnoreCase))
-                    {
-                        b2[Keys.VisualEvent] = $"{ve1} {ve2}";
-                    }
-                }
-
-                // Remove silent prelude b1 so b2 becomes clip 1 (frame-1 VO onset)
-                PageToMovie.Core.Utils.StableBeatId.MergeSourceIds(b2, b1);
-                var result = new List<Dictionary<string, object?>>(beats);
-                result.RemoveAt(0);
-                return result;
-            }
-        }
-
-        return beats;
+    private static void MergeSilentPreludeVisual(Dictionary<string, object?> b1, Dictionary<string, object?> b2)
+    {
+        var ve1 = CoerceString(b1.TryGetValue(Keys.VisualEvent, out var vev1) ? vev1 : null);
+        var ve2 = CoerceString(b2.TryGetValue(Keys.VisualEvent, out var vev2) ? vev2 : null);
+        if (string.IsNullOrWhiteSpace(ve1))
+            return;
+        if (string.IsNullOrWhiteSpace(ve2))
+            b2[Keys.VisualEvent] = ve1;
+        else if (!ve2.Contains(ve1, StringComparison.OrdinalIgnoreCase))
+            b2[Keys.VisualEvent] = $"{ve1} {ve2}";
     }
 
     /// <summary>
@@ -2153,10 +2161,31 @@ public sealed class Stage2PlannerService
         // Bug fix: previously short-circuited as soon as *any* character was found in
         // characters_on_screen, even when all found characters are pure voice-only
         // (display_name_policy = "never_on_screen", e.g. a narrator V.O.). This caused
-        // visible on-screen characters described in visual_event prose (like Buster bounding
-        // across the yard in Scene 1) to be silently dropped — resulting in no reference
-        // image being attached for the visually present animal lead.
+        // visible on-screen characters described in visual_event prose (like a hero animal
+        // bounding across a yard in an opening scene) to be silently dropped — resulting in
+        // no reference image being attached for the visually present lead.
         // Fix: only short-circuit if at least one found character is visually present.
+        if (TryTakeOnScreenCastList(beat, found, charSeeds))
+            return found;
+
+        var veText = CoerceString(beat.TryGetValue(Keys.VisualEvent, out var ve) ? ve : null) ?? "";
+        AddCharacterKeysFromText(found, veText);
+        AddCharacterKey(found, CoerceString(beat.TryGetValue(Keys.PrimarySubject, out var ps) ? ps : null));
+        AddCharacterKey(found, CoerceString(beat.TryGetValue(JsonKeys.Speaker, out var sp) ? sp : null));
+        AddCharacterKeysFromText(found, CoerceString(beat.TryGetValue("blocking_notes", out var bn) ? bn : null));
+
+        PromoteNamesFromCastSeeds(found, charSeeds, veText, beat);
+
+        if (found.Count == 0)
+            found.AddRange(UnionCharactersOnScreen(scene));
+        return found;
+    }
+
+    private static bool TryTakeOnScreenCastList(
+        Dictionary<string, object?> beat,
+        List<string> found,
+        Dictionary<string, object?>? charSeeds)
+    {
         if (beat.TryGetValue(Keys.CharactersOnScreen, out var cos) && cos is List<object?> cosList && cosList.Count > 0)
         {
             foreach (var x in cosList)
@@ -2164,40 +2193,47 @@ public sealed class Stage2PlannerService
             // Short-circuit only when at least one found character is actually on screen.
             // If every character listed is a never_on_screen voice-only role, fall through
             // and also scan visual_event prose for additional visible characters.
-            if (found.Any(k => !IsNeverOnScreenCharacter(k, charSeeds)))
-                return found;
+            return found.Any(k => !IsNeverOnScreenCharacter(k, charSeeds));
         }
-        var veText = CoerceString(beat.TryGetValue(Keys.VisualEvent, out var ve) ? ve : null) ?? "";
-        AddCharacterKeysFromText(found, veText);
-        AddCharacterKey(found, CoerceString(beat.TryGetValue(Keys.PrimarySubject, out var ps) ? ps : null));
-        AddCharacterKey(found, CoerceString(beat.TryGetValue(JsonKeys.Speaker, out var sp) ? sp : null));
-        AddCharacterKeysFromText(found, CoerceString(beat.TryGetValue("blocking_notes", out var bn) ? bn : null));
 
-        // Promote free-text names (OLD MAN, three officers) using cast seed keys
-        if (charSeeds is { Count: > 0 })
+        return false;
+    }
+
+    private static void PromoteNamesFromCastSeeds(
+        List<string> found,
+        Dictionary<string, object?>? charSeeds,
+        string veText,
+        Dictionary<string, object?> beat)
+    {
+        // Promote free-text names using cast seed keys
+        if (charSeeds is not { Count: > 0 })
+            return;
+
+        var profiles = BuildClipCastProfiles(charSeeds);
+        var prose = string.Join(" ",
+            veText,
+            CoerceString(beat.TryGetValue("blocking_notes", out var bn2) ? bn2 : null) ?? "");
+        foreach (var key in ClipVideoPromptBuilder.InferKeysFromProse(prose, profiles))
+            AddCharacterKey(found, key);
+    }
+
+    private static Dictionary<string, ClipVideoPromptBuilder.CharacterProfile> BuildClipCastProfiles(
+        Dictionary<string, object?> charSeeds)
+    {
+        var profiles = new Dictionary<string, ClipVideoPromptBuilder.CharacterProfile>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (k, v) in charSeeds)
         {
-            var profiles = new Dictionary<string, ClipVideoPromptBuilder.CharacterProfile>(StringComparer.OrdinalIgnoreCase);
-            foreach (var (k, v) in charSeeds)
+            if (v is not Dictionary<string, object?> d) continue;
+            profiles[k] = new ClipVideoPromptBuilder.CharacterProfile
             {
-                if (v is not Dictionary<string, object?> d) continue;
-                profiles[k] = new ClipVideoPromptBuilder.CharacterProfile
-                {
-                    Key = k,
-                    DisplayName = CoerceString(d.TryGetValue("canonical_given_name", out var cn) ? cn : null)
-                        ?? CoerceString(d.TryGetValue("voice_label", out var vl) ? vl : null)
-                        ?? k.Replace(JsonKeys.CharacterPrefix, "").Replace('_', ' '),
-                };
-            }
-            var prose = string.Join(" ",
-                veText,
-                CoerceString(beat.TryGetValue("blocking_notes", out var bn2) ? bn2 : null) ?? "");
-            foreach (var key in ClipVideoPromptBuilder.InferKeysFromProse(prose, profiles))
-                AddCharacterKey(found, key);
+                Key = k,
+                DisplayName = CoerceString(d.TryGetValue("canonical_given_name", out var cn) ? cn : null)
+                    ?? CoerceString(d.TryGetValue("voice_label", out var vl) ? vl : null)
+                    ?? k.Replace(JsonKeys.CharacterPrefix, "").Replace('_', ' '),
+            };
         }
 
-        if (found.Count == 0)
-            found.AddRange(UnionCharactersOnScreen(scene));
-        return found;
+        return profiles;
     }
 
     private static void AddCharacterKey(List<string> found, string? key)

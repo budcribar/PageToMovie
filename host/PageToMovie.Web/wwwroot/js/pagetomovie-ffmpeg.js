@@ -328,6 +328,34 @@ window.PageToMovieFfmpeg = {
         });
     },
 
+    _stampCreditsGrain: function (g, w, h) {
+        try {
+            const tile = document.createElement("canvas");
+            tile.width = tile.height = 128;
+            const tg = tile.getContext("2d");
+            const img = tg.createImageData(128, 128);
+            let seed = ((w * 73856093) ^ (h * 19349663)) >>> 0;
+            for (let i = 0; i < img.data.length; i += 4) {
+                seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+                const v = seed & 255;
+                img.data[i] = img.data[i + 1] = img.data[i + 2] = v; img.data[i + 3] = 255;
+            }
+            tg.putImageData(img, 0, 0);
+            g.save();
+            g.globalAlpha = 0.045;
+            const pat = g.createPattern(tile, "repeat");
+            g.fillStyle = pat; g.fillRect(0, 0, w, h);
+            g.restore();
+        } catch { /* grain is optional */ }
+    },
+
+    _fitCreditsFont: function (g, text, font, px, maxW) {
+        let size = px;
+        do { g.font = font.replace("%d", size); size -= 2; }
+        while (g.measureText(text).width > maxW && size > 10);
+        return g.font;
+    },
+
     /**
      * Draw the deterministic end-credits card on a canvas. We render the EXACT strings ourselves
      * (never a generative model), so text + our branding are always crisp and correct. Returns a
@@ -345,27 +373,7 @@ window.PageToMovieFfmpeg = {
         g.fillRect(0, 0, w, h);
 
         // Fine film grain: a small noise tile stamped at low opacity (cheap, textured, deterministic-enough).
-        try {
-            const tile = document.createElement("canvas");
-            tile.width = tile.height = 128;
-            const tg = tile.getContext("2d");
-            const img = tg.createImageData(128, 128);
-            let seed = ((w * 73856093) ^ (h * 19349663)) >>> 0;
-            const nextGrain = function () {
-                seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
-                return seed & 255;
-            };
-            for (let i = 0; i < img.data.length; i += 4) {
-                const v = nextGrain();
-                img.data[i] = img.data[i + 1] = img.data[i + 2] = v; img.data[i + 3] = 255;
-            }
-            tg.putImageData(img, 0, 0);
-            g.save();
-            g.globalAlpha = 0.045;
-            const pat = g.createPattern(tile, "repeat");
-            g.fillStyle = pat; g.fillRect(0, 0, w, h);
-            g.restore();
-        } catch { /* grain is optional */ }
+        this._stampCreditsGrain(g, w, h);
 
         // Soft vignette.
         const vg = g.createRadialGradient(w / 2, h / 2, h * 0.2, w / 2, h / 2, h * 0.75);
@@ -375,12 +383,6 @@ window.PageToMovieFfmpeg = {
 
         const cx = w / 2;
         // Fit a line to a max width by shrinking the font.
-        function fit(text, font, px, maxW) {
-            let size = px;
-            do { g.font = font.replace("%d", size); size -= 2; }
-            while (g.measureText(text).width > maxW && size > 10);
-            return g.font;
-        }
         g.textAlign = "center";
         g.textBaseline = "middle";
         const maxW = w * 0.84;
@@ -390,16 +392,16 @@ window.PageToMovieFfmpeg = {
         const title = (opts.title || "The End").trim();
         try { g.letterSpacing = Math.round(w * 0.004) + "px"; } catch (_) { /* older browsers */ }
         g.fillStyle = "#f4f1ea";
-        fit(title, 'italic %dpx Georgia, "Times New Roman", serif', Math.round(h * 0.12), maxW);
+        this._fitCreditsFont(g, title, 'italic %dpx Georgia, "Times New Roman", serif', Math.round(h * 0.12), maxW);
         g.fillText(title, cx, y);
         try { g.letterSpacing = "0px"; } catch (_) { /* */ }
 
         if (opts.author && String(opts.author).trim().length > 0) {
             y += h * 0.12;
             g.fillStyle = "rgba(230,226,216,0.72)";
-            fit("Based on the story by " + String(opts.author).trim(),
-                '%dpx Georgia, "Times New Roman", serif', Math.round(h * 0.045), maxW);
-            g.fillText("Based on the story by " + String(opts.author).trim(), cx, y);
+            const byline = "Based on the story by " + String(opts.author).trim();
+            this._fitCreditsFont(g, byline, '%dpx Georgia, "Times New Roman", serif', Math.round(h * 0.045), maxW);
+            g.fillText(byline, cx, y);
         }
 
         // Thin divider.
@@ -433,9 +435,9 @@ window.PageToMovieFfmpeg = {
         const site = (opts.siteUrl || "pagetomovie.com").trim();
         g.fillStyle = "rgba(230,226,216,0.82)";
         try { g.letterSpacing = Math.round(w * 0.002) + "px"; } catch (_) { /* */ }
-        fit("Made with " + soft + " · " + site,
-            '%dpx Helvetica, Arial, sans-serif', Math.round(h * 0.038), maxW);
-        g.fillText("Made with " + soft + " · " + site, cx, y);
+        const footer = "Made with " + soft + " · " + site;
+        this._fitCreditsFont(g, footer, '%dpx Helvetica, Arial, sans-serif', Math.round(h * 0.038), maxW);
+        g.fillText(footer, cx, y);
         try { g.letterSpacing = "0px"; } catch (_) { /* */ }
 
         return cv;

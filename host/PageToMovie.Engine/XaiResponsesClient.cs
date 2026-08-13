@@ -288,34 +288,64 @@ public sealed class XaiResponsesClient
     /// </summary>
     private static string ExtractOutputText(JsonElement root)
     {
-        if (root.TryGetProperty("output_text", out var flat) && flat.ValueKind == JsonValueKind.String)
-        {
-            var s = flat.GetString();
-            if (!string.IsNullOrEmpty(s)) return s;
-        }
-
-        if (root.TryGetProperty("output", out var output) && output.ValueKind == JsonValueKind.Array)
-        {
-            var parts = new List<string>();
-            foreach (var item in output.EnumerateArray())
-            {
-                if (item.ValueKind != JsonValueKind.Object) continue;
-                if (!item.TryGetProperty(ContentKey, out var content) || content.ValueKind != JsonValueKind.Array)
-                    continue;
-                foreach (var c in content.EnumerateArray())
-                {
-                    if (c.ValueKind == JsonValueKind.Object && c.TryGetProperty("text", out var t) &&
-                        t.ValueKind == JsonValueKind.String)
-                    {
-                        parts.Add(t.GetString() ?? "");
-                    }
-                }
-            }
-            if (parts.Count > 0) return string.Join("\n", parts);
-        }
+        if (TryReadFlatOutputText(root, out var flat))
+            return flat;
+        if (TryCollectOutputArrayText(root, out var joined))
+            return joined;
 
         var raw = root.GetRawText();
         return raw.Length <= 2000 ? raw : raw[..2000];
+    }
+
+    private static bool TryReadFlatOutputText(JsonElement root, out string text)
+    {
+        text = "";
+        if (!root.TryGetProperty("output_text", out var flat) || flat.ValueKind != JsonValueKind.String)
+            return false;
+        var s = flat.GetString();
+        if (string.IsNullOrEmpty(s))
+            return false;
+        text = s;
+        return true;
+    }
+
+    private static bool TryCollectOutputArrayText(JsonElement root, out string text)
+    {
+        text = "";
+        if (!root.TryGetProperty("output", out var output) || output.ValueKind != JsonValueKind.Array)
+            return false;
+        var parts = CollectOutputTextParts(output);
+        if (parts.Count == 0)
+            return false;
+        text = string.Join("\n", parts);
+        return true;
+    }
+
+    private static List<string> CollectOutputTextParts(JsonElement output)
+    {
+        var parts = new List<string>();
+        foreach (var item in output.EnumerateArray())
+            AppendMessageContentText(parts, item);
+        return parts;
+    }
+
+    private static void AppendMessageContentText(List<string> parts, JsonElement item)
+    {
+        if (item.ValueKind != JsonValueKind.Object)
+            return;
+        if (!item.TryGetProperty(ContentKey, out var content) || content.ValueKind != JsonValueKind.Array)
+            return;
+        foreach (var c in content.EnumerateArray())
+            AppendOutputTextPart(parts, c);
+    }
+
+    private static void AppendOutputTextPart(List<string> parts, JsonElement c)
+    {
+        if (c.ValueKind != JsonValueKind.Object ||
+            !c.TryGetProperty("text", out var t) ||
+            t.ValueKind != JsonValueKind.String)
+            return;
+        parts.Add(t.GetString() ?? "");
     }
 
     private async Task<string?> ResolveApiKeyAsync(CancellationToken ct = default) =>
