@@ -87,7 +87,7 @@ public sealed class MaryEndToEndLifecycleReplayTests
             }
 
             var responses = fixture.Operations[name];
-            var pipeline = new ValidatedModelOperation<string, string, ReplayValue>(
+            var pipeline = new ValidatedModelOperation<string, ReplayValue>(
                 new ReplayModelOperation<string, string>(name, config.PromptVersion,
                     responses.Select(response => new ModelResponse<string>(response, config.Model))),
                 new ReplayParser(),

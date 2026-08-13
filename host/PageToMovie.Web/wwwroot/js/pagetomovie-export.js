@@ -175,21 +175,11 @@ window.PageToMovieExport = {
      */
     copyTextAsync: async function (text) {
         try {
-            if (navigator.clipboard?.writeText) {
+            if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
                 await navigator.clipboard.writeText(text || "");
                 return { success: true };
             }
-            // Fallback for older browsers / non-secure contexts
-            const ta = document.createElement("textarea");
-            ta.value = text || "";
-            ta.setAttribute("readonly", "");
-            ta.style.position = "fixed";
-            ta.style.left = "-9999px";
-            document.body.appendChild(ta);
-            ta.select();
-            const ok = document.execCommand("copy");
-            ta.remove();
-            return ok ? { success: true } : { success: false, error: "Copy command failed" };
+            return { success: false, error: "Clipboard is not available in this browser" };
         } catch (err) {
             return { success: false, error: err.message || String(err) };
         }
@@ -311,7 +301,7 @@ window.PageToMovieExport = {
                 byPath.set(e.name.replaceAll("\\", "/"), e.data);
             }
 
-            const pid = (projectId || "").replaceAll("\\", "/").replaceAll(/^\/+/g, "").replaceAll(/\/+$/g, "");
+            const pid = this._stripWrapSlashes(projectId);
             const { clientAdded, clientSkipped, mediaError } = await this._mergeLocalMediaFilesAsync(byPath, pid, progressRef);
 
             // Annotate export meta if present (keep projectSchemaVersion; bump package fields)
@@ -417,7 +407,7 @@ window.PageToMovieExport = {
             const folder = await this._ensureClientMediaFolderAsync();
             if (!folder.success) return folder;
 
-            const targetId = (targetProjectId || "").replaceAll("\\", "/").replaceAll(/^\/+/g, "").replaceAll(/\/+$/g, "");
+            const targetId = this._stripWrapSlashes(targetProjectId);
             if (!targetId) {
                 return { success: false, error: "Project id required", written: 0 };
             }
@@ -438,6 +428,13 @@ window.PageToMovieExport = {
             console.error("importZipMediaToClientFolderAsync failed:", err);
             return { success: false, error: err.message || String(err), written: 0 };
         }
+    },
+
+    _stripWrapSlashes: function (s) {
+        let out = String(s || "").replaceAll("\\", "/");
+        while (out.startsWith("/")) out = out.slice(1);
+        while (out.endsWith("/")) out = out.slice(0, -1);
+        return out;
     },
 
     _ensureClientMediaFolderAsync: async function () {

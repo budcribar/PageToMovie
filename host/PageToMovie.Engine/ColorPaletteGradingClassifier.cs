@@ -71,7 +71,7 @@ public sealed class ColorPaletteGradingClassifier
         {
             var userPrompt = BuildUserPrompt(scene);
             var effectiveModel = !string.IsNullOrWhiteSpace(model) ? model : _opts.ColorPaletteGradingClassifyModel;
-            var pipeline = new ValidatedModelOperation<Stage2DirectiveInput, string, ColorGradingDirective>(
+            var pipeline = new ValidatedModelOperation<Stage2DirectiveInput, ColorGradingDirective>(
                 new Stage2DirectiveOperation(_chat, "color_palette_grading", PromptVersion),
                 new JsonColorDirectiveParser(), new ColorDirectiveValidator(),
                 new DirectiveTerminalFallback<Stage2DirectiveInput, ColorGradingDirective>(), new ModelOperationOptions { CorrectiveMaxAttempts = 1 });

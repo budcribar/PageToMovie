@@ -95,14 +95,14 @@ public sealed class JitBenchmarkService
         bool confidentMatch = estimation.ConfidenceScore >= ConfidentMatchThreshold;
 
         if (confidentMatch)
-            return await RecordIndexHit(actionDescription, concurrency, camOverhead, targetModel, evaluatorId, estimation, ct).ConfigureAwait(false);
+            return await RecordIndexHit(actionDescription, concurrency, camOverhead, targetModel, evaluatorId, estimation).ConfigureAwait(false);
 
         var live = await TryLiveBenchmarkAsync(
             actionDescription, concurrency, camOverhead, targetModel, evaluatorId, estimation, ct).ConfigureAwait(false);
         if (live is not null)
             return live;
 
-        return await RecordFallback(actionDescription, concurrency, camOverhead, targetModel, evaluatorId, estimation, ct).ConfigureAwait(false);
+        return await RecordFallback(actionDescription, concurrency, camOverhead, targetModel, evaluatorId, estimation).ConfigureAwait(false);
     }
 
     private async Task<JitCalibrationResult> RecordIndexHit(
@@ -111,8 +111,7 @@ public sealed class JitBenchmarkService
         double camOverhead,
         string? targetModel,
         string evaluatorId,
-        ActionClassifierEstimation estimation,
-        CancellationToken ct)
+        ActionClassifierEstimation estimation)
     {
         _log?.LogInformation(
             "[JitBenchmark] Confident index match for '{Action}' -> '{Category}' (Conf={Conf:F2}); skipping live measurement.",
@@ -202,7 +201,7 @@ public sealed class JitBenchmarkService
             var categoryId = $"jit_{Math.Abs(actionDescription.GetHashCode()):x8}";
             await RecordLiveTelemetryAsync(
                 categoryId, concurrency, camOverhead, targetModel, evaluatorId,
-                measuredTotalClipSec, measuredActionOverheadSec, ct).ConfigureAwait(false);
+                measuredTotalClipSec, measuredActionOverheadSec).ConfigureAwait(false);
 
             return new JitCalibrationResult(
                 CategoryId: categoryId,
@@ -333,7 +332,7 @@ public sealed class JitBenchmarkService
         return (measuredActionOverheadSec, sourceNote);
     }
 
-    private VisionActionTimingAnalysis? ParseVisionJson(string rawVision)
+    private static VisionActionTimingAnalysis? ParseVisionJson(string rawVision)
     {
         var json = rawVision.Trim();
         if (json.StartsWith("```json", StringComparison.OrdinalIgnoreCase))
@@ -359,8 +358,7 @@ public sealed class JitBenchmarkService
         string? targetModel,
         string evaluatorId,
         double measuredTotalClipSec,
-        double measuredActionOverheadSec,
-        CancellationToken ct)
+        double measuredActionOverheadSec)
     {
         if (_repository is null) return;
         await _repository.RecordCacheLookupAsync(isHit: false, lookupKey: categoryId).ConfigureAwait(false);
@@ -389,8 +387,7 @@ public sealed class JitBenchmarkService
         double camOverhead,
         string? targetModel,
         string evaluatorId,
-        ActionClassifierEstimation estimation,
-        CancellationToken ct)
+        ActionClassifierEstimation estimation)
     {
         _log?.LogInformation(
             "[JitBenchmark] Live measurement unavailable or failed; using low-confidence AI Similarity Classifier estimate for action: '{Action}' (Conf={Conf:F2})",

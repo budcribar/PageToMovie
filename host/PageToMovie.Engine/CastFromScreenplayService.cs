@@ -279,7 +279,7 @@ public sealed class CastFromScreenplayService
         if (parsed is not null)
             return (parsed, null);
 
-        var pipeline = new ValidatedModelOperation<CastModelInput, string, Dictionary<string, object?>>(
+        var pipeline = new ValidatedModelOperation<CastModelInput, Dictionary<string, object?>>(
             new CastChatOperation(_chat, "cast_extraction", "1", ChatCallModes.CastFromScreenplay, 0.2),
             new CastJsonObjectParser(),
             new CastExtractionValidator(),

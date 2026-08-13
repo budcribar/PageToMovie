@@ -705,8 +705,8 @@ public static class BookToFountainConverter
                         : fountain.TrimEnd() + "\n\n" + normalized)
                     : fountain.TrimEnd() + "\n\n" + normalized);
 
-            // Prefer the model's fountain-plus-meta output only when that fountain still looks good;
-            // otherwise append meta onto the original draft.
+            // Keep the model's fountain-plus-meta output when that fountain still looks good.
+            // Otherwise append meta onto the original draft.
             if (splitResult.Vision is not null && LooksLikeGoodFountain(splitResult.Fountain)
                 && CountSceneHeadings(splitResult.Fountain) >= Math.Max(1, CountSceneHeadings(fountain) / 2))
             {

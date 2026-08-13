@@ -11,7 +11,7 @@ public sealed record MultimodalReviewObservation(
 public sealed class MultimodalReviewOperation<TJudgment>
     where TJudgment : class
 {
-    private readonly ValidatedModelOperation<MultimodalReviewObservation, string, TJudgment> _pipeline;
+    private readonly ValidatedModelOperation<MultimodalReviewObservation, TJudgment> _pipeline;
 
     public MultimodalReviewOperation(
         IVisionClient vision,
@@ -22,7 +22,7 @@ public sealed class MultimodalReviewOperation<TJudgment>
         Func<string, ModelParseResult<TJudgment>> parse,
         Func<TJudgment, IReadOnlyList<ModelValidationIssue>> validate)
     {
-        _pipeline = new ValidatedModelOperation<MultimodalReviewObservation, string, TJudgment>(
+        _pipeline = new ValidatedModelOperation<MultimodalReviewObservation, TJudgment>(
             new VisionOperation(vision, imagePaths, model, operationName, promptVersion),
             new Parser(parse),
             new Validator(validate),

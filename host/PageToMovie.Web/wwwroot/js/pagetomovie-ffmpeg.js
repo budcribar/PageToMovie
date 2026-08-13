@@ -174,8 +174,7 @@ window.PageToMovieFfmpeg = {
     },
 
     /** Fine RMS envelope of a PCM channel (same 8%-of-peak trim the scorer uses). */
-    _rmsEnvelopeFromChannel: function (ch, fine) {
-        fine = fine || 400;
+    _rmsEnvelopeFromChannel: function (ch, fine = 400) {
         const n = ch.length;
         const per = Math.max(1, Math.floor(n / fine));
         const raw = new Float32Array(fine);
@@ -479,12 +478,7 @@ window.PageToMovieFfmpeg = {
                 ]);
                 const out = await ffmpeg.readFile("credits.mp4");
                 const bytes = out.buffer ? new Uint8Array(out.buffer) : out;
-                // Base64 in chunks (avoid apply() stack limits on large arrays).
-                let bin = "";
-                const CH = 0x8000;
-                for (let i = 0; i < bytes.length; i += CH)
-                    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CH));
-                const b64 = btoa(bin);
+                const b64 = this._bytesToBase64(bytes);
                 try { await ffmpeg.deleteFile("card.png"); } catch (_) { /* */ }
                 try { await ffmpeg.deleteFile("credits.mp4"); } catch (_) { /* */ }
                 return { success: true, mp4Base64: b64, byteLength: bytes.length };
@@ -891,8 +885,18 @@ window.PageToMovieFfmpeg = {
         const frames = [{ transform: "translateX(" + (-centers[0]) + "px)", offset: 0 }];
         for (let i = 0; i < n; i++) {
             let s = starts[i] / D, e = (ends?.[i] != null ? ends[i] : starts[i]) / D;
-            if (s < 0) s = 0; if (s > 1) s = 1;
-            if (e < s) e = s; if (e > 1) e = 1;
+            if (s < 0) {
+                s = 0;
+            }
+            if (s > 1) {
+                s = 1;
+            }
+            if (e < s) {
+                e = s;
+            }
+            if (e > 1) {
+                e = 1;
+            }
             const tx = "translateX(" + (-centers[i]) + "px)";
             frames.push({ transform: tx, offset: s }, { transform: tx, offset: e });
         }
@@ -915,7 +919,7 @@ window.PageToMovieFfmpeg = {
             })(i), Math.max(0, starts[i] * 1000)));
         }
         for (let i = 0; i < n; i++) {
-            const endMs = Math.max(0, (ends && ends[i] != null ? ends[i] : starts[i]) * 1000);
+            const endMs = Math.max(0, (ends?.[i] != null ? ends[i] : starts[i]) * 1000);
             el._teleTimers.push(setTimeout((function (idx) {
                 return function () { spans[idx].classList.remove("tele-active"); };
             })(i), endMs));
@@ -1283,8 +1287,8 @@ window.PageToMovieFfmpeg = {
      *
      * Each segment: { audioUrl, startSec, endSec }. The cloned audio is delayed to startSec; the
      * original track is ducked via a volume envelope that dips inside each [startSec,endSec] window.
-     * If a cloned line is longer than its window it simply plays past it (over ducked original); a
-     * future enhancement can atempo-fit it to the window (see design doc TODO).
+     * If a cloned line is longer than its window it simply plays past it (over ducked original);
+     * a later enhancement can atempo-fit it to the window (see the overlay-voice design notes).
      *
      * @param {string} videoUrl
      * @param {{audioUrl:string,startSec:number,endSec:number}[]} segments
@@ -1543,7 +1547,7 @@ window.PageToMovieFfmpeg = {
     },
 
     _jpegFrameFromBytes: function (out) {
-        if (!out || !out.length) return null;
+        if (!out?.length) return null;
         const bytes = out instanceof Uint8Array ? out : new Uint8Array(out.buffer || out);
         if (bytes.length < 64) return null;
         return { base64: this._bytesToBase64(bytes), mime: "image/jpeg" };
@@ -1569,7 +1573,7 @@ window.PageToMovieFfmpeg = {
         let binary = "";
         const chunk = 0x8000;
         for (let i = 0; i < bytes.length; i += chunk) {
-            binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+            binary += String.fromCodePoint.apply(null, bytes.subarray(i, i + chunk));
         }
         return btoa(binary);
     },

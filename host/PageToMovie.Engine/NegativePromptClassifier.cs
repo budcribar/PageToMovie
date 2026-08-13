@@ -67,7 +67,7 @@ public sealed class NegativePromptClassifier
         {
             var userPrompt = BuildUserPrompt(scene);
             var effectiveModel = !string.IsNullOrWhiteSpace(model) ? model : _opts.NegativePromptClassifyModel;
-            var pipeline = new ValidatedModelOperation<Stage2DirectiveInput, string, TextDirective>(
+            var pipeline = new ValidatedModelOperation<Stage2DirectiveInput, TextDirective>(
                 new Stage2DirectiveOperation(_chat, "negative_prompt", PromptVersion),
                 new JsonTextDirectiveParser("negative_tokens"), new TextDirectiveValidator("negative_tokens"),
                 new DirectiveTerminalFallback<Stage2DirectiveInput, TextDirective>(), new ModelOperationOptions { CorrectiveMaxAttempts = 1 });

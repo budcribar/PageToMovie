@@ -70,7 +70,7 @@ public sealed class CastVisualLiteralizeService
                 JsonSerializer.Serialize(payload, JsonDefaults.Indented);
 
             var requestedKeys = seeds.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
-            var pipeline = new ValidatedModelOperation<CastModelInput, string, Dictionary<string, object?>>(
+            var pipeline = new ValidatedModelOperation<CastModelInput, Dictionary<string, object?>>(
                 new CastChatOperation(_chat, "cast_visual_literalize", "1", ChatCallModes.CastVisualLiteralize, 0.15),
                 new CastJsonObjectParser(),
                 new LiteralizedCastValidator(requestedKeys),

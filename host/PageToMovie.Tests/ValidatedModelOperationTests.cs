@@ -101,7 +101,7 @@ public sealed class ValidatedModelOperationTests
             "stub",
             "fixture-v1",
             [new ModelResponse<string>("missing"), new ModelResponse<string>("ok")]);
-        var pipeline = new ValidatedModelOperation<string, string, StubResult>(
+        var pipeline = new ValidatedModelOperation<string, StubResult>(
             replay,
             new StubParser(),
             new StubValidator(),
@@ -114,7 +114,7 @@ public sealed class ValidatedModelOperationTests
         Assert.Equal(2, result.ModelCalls);
     }
 
-    private static ValidatedModelOperation<string, string, StubResult> CreateReplayPipeline() =>
+    private static ValidatedModelOperation<string, StubResult> CreateReplayPipeline() =>
         new(
             new ReplayModelOperation<string, string>(
                 "stub",
@@ -130,7 +130,7 @@ public sealed class ValidatedModelOperationTests
                 BehaviorVersions = new Dictionary<string, string> { ["lexicon"] = "test-v1" },
             });
 
-    private static ValidatedModelOperation<string, string, StubResult> CreatePipeline(StubOperation operation) =>
+    private static ValidatedModelOperation<string, StubResult> CreatePipeline(StubOperation operation) =>
         new(
             operation,
             new StubParser(),

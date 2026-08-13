@@ -262,7 +262,7 @@ public sealed class CharacterBookPlateService
             return await RunGrokVisionSortAsync(
                 method, inventory, scores, seeds, ocrPages, maxImages, cast, visionModel,
                 onlyCharKey, result, onProgress, ct).ConfigureAwait(false);
-        if (wantGrok && ocrComplete)
+        if (wantGrok)
             return CompleteOcrSkipVision(method, onProgress);
         if (!ocrComplete)
             return await RunHeuristicSortAsync(
