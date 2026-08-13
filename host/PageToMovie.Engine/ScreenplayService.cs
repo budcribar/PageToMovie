@@ -122,84 +122,116 @@ public static class ScreenplayService
             return status;
 
         status.Present = true;
-        status.MovieTitle = model.TryGetValue("movie_title", out var mt) ? mt?.ToString() : null;
-        status.SourceBookTitle = model.TryGetValue("source_book_title", out var sbt) ? sbt?.ToString() : null;
-        if (model.TryGetValue("cumulative_duration_target_seconds", out var rt) && rt is not null)
-        {
-            status.RuntimeSeconds = rt switch
-            {
-                int i => i,
-                long l => l,
-                double d => d,
-                _ => double.TryParse(rt.ToString(), out var x) ? x : null,
-            };
-        }
-
-        if (fountainPath is not null && File.Exists(fountainPath))
-        {
-            try { status.Mtime = File.GetLastWriteTime(fountainPath).ToString("yyyy-MM-dd HH:mm:ss"); }
-            catch { /* ignore */ }
-        }
-
-        if (model.TryGetValue("global_production_variables", out var gpvObj) &&
-            gpvObj is Dictionary<string, object?> gpv)
-        {
-            if (gpv.TryGetValue("character_seed_tokens", out var chars) &&
-                chars is Dictionary<string, object?> charDict)
-            {
-                status.CharacterCount = charDict.Count;
-                foreach (var (key, val) in charDict)
-                {
-                    var display = key.Replace("Character_", "").Replace("_", " ");
-                    if (val is Dictionary<string, object?> seed &&
-                        seed.TryGetValue("canonical_given_name", out var cn) &&
-                        cn is string cname && cname.Length > 0)
-                        display = cname;
-                    else if (val is Dictionary<string, object?> seed2 &&
-                             seed2.TryGetValue("voice_label", out var vl) &&
-                             vl is string lab && lab.Length > 0)
-                        display = lab;
-                    status.CastNames.Add(display);
-                }
-            }
-
-            if (gpv.TryGetValue("location_seed_tokens", out var locs) &&
-                locs is Dictionary<string, object?> locDict)
-                status.LocationCount = locDict.Count;
-        }
-
-        if (model.TryGetValue("scenes", out var scenesObj) && scenesObj is List<object?> scenes)
-        {
-            foreach (var s in scenes.OfType<Dictionary<string, object?>>())
-            {
-                var sn = s.TryGetValue("scene_number", out var sne) ? ToInt(sne) : 0;
-                var beats = 0;
-                if (s.TryGetValue("story_beats", out var sb) && sb is List<object?> beatList)
-                    beats = beatList.Count;
-                status.BeatCount += beats;
-                double? dur = null;
-                if (s.TryGetValue("duration_target_seconds", out var d) ||
-                    s.TryGetValue("estimated_duration_seconds", out d))
-                {
-                    if (d is double dd) dur = dd;
-                    else if (d is int di) dur = di;
-                    else if (double.TryParse(d?.ToString(), out var dx)) dur = dx;
-                }
-
-                status.Scenes.Add(new Stage1SceneRow
-                {
-                    SceneNumber = sn,
-                    Setting = s.TryGetValue("setting", out var set) ? set?.ToString() ?? "" : "",
-                    BeatCount = beats,
-                    DurationSeconds = dur,
-                });
-            }
-
-            status.SceneCount = status.Scenes.Count;
-            status.Scenes = status.Scenes.OrderBy(x => x.SceneNumber).ToList();
-        }
-
+        status.MovieTitle = TryGetModelString(model, "movie_title");
+        status.SourceBookTitle = TryGetModelString(model, "source_book_title");
+        status.RuntimeSeconds = TryGetRuntimeSeconds(model);
+        TryApplyFountainMtime(status, fountainPath);
+        TryApplyProductionVariables(status, model);
+        TryApplyScenes(status, model);
         return status;
+    }
+
+    private static string? TryGetModelString(Dictionary<string, object?> model, string key) =>
+        model.TryGetValue(key, out var v) ? v?.ToString() : null;
+
+    private static double? TryGetRuntimeSeconds(Dictionary<string, object?> model)
+    {
+        if (!model.TryGetValue("cumulative_duration_target_seconds", out var rt) || rt is null)
+            return null;
+        return rt switch
+        {
+            int i => i,
+            long l => l,
+            double d => d,
+            _ => double.TryParse(rt.ToString(), out var x) ? x : null,
+        };
+    }
+
+    private static void TryApplyFountainMtime(Stage1Status status, string? fountainPath)
+    {
+        if (fountainPath is null || !File.Exists(fountainPath))
+            return;
+        try { status.Mtime = File.GetLastWriteTime(fountainPath).ToString("yyyy-MM-dd HH:mm:ss"); }
+        catch { /* ignore */ }
+    }
+
+    private static void TryApplyProductionVariables(Stage1Status status, Dictionary<string, object?> model)
+    {
+        if (!model.TryGetValue("global_production_variables", out var gpvObj) ||
+            gpvObj is not Dictionary<string, object?> gpv)
+            return;
+        ApplyCharacterSeeds(status, gpv);
+        ApplyLocationSeeds(status, gpv);
+    }
+
+    private static void ApplyCharacterSeeds(Stage1Status status, Dictionary<string, object?> gpv)
+    {
+        if (!gpv.TryGetValue("character_seed_tokens", out var chars) ||
+            chars is not Dictionary<string, object?> charDict)
+            return;
+        status.CharacterCount = charDict.Count;
+        foreach (var (key, val) in charDict)
+            status.CastNames.Add(ResolveCastDisplayName(key, val));
+    }
+
+    private static string ResolveCastDisplayName(string key, object? val)
+    {
+        var display = key.Replace("Character_", "").Replace("_", " ");
+        if (val is Dictionary<string, object?> seed &&
+            seed.TryGetValue("canonical_given_name", out var cn) &&
+            cn is string cname && cname.Length > 0)
+            return cname;
+        if (val is Dictionary<string, object?> seed2 &&
+            seed2.TryGetValue("voice_label", out var vl) &&
+            vl is string lab && lab.Length > 0)
+            return lab;
+        return display;
+    }
+
+    private static void ApplyLocationSeeds(Stage1Status status, Dictionary<string, object?> gpv)
+    {
+        if (gpv.TryGetValue("location_seed_tokens", out var locs) &&
+            locs is Dictionary<string, object?> locDict)
+            status.LocationCount = locDict.Count;
+    }
+
+    private static void TryApplyScenes(Stage1Status status, Dictionary<string, object?> model)
+    {
+        if (!model.TryGetValue("scenes", out var scenesObj) || scenesObj is not List<object?> scenes)
+            return;
+        foreach (var s in scenes.OfType<Dictionary<string, object?>>())
+        {
+            var row = BuildSceneRow(s);
+            status.BeatCount += row.BeatCount;
+            status.Scenes.Add(row);
+        }
+        status.SceneCount = status.Scenes.Count;
+        status.Scenes = status.Scenes.OrderBy(x => x.SceneNumber).ToList();
+    }
+
+    private static Stage1SceneRow BuildSceneRow(Dictionary<string, object?> s)
+    {
+        var beats = 0;
+        if (s.TryGetValue("story_beats", out var sb) && sb is List<object?> beatList)
+            beats = beatList.Count;
+        return new Stage1SceneRow
+        {
+            SceneNumber = s.TryGetValue("scene_number", out var sne) ? ToInt(sne) : 0,
+            Setting = s.TryGetValue("setting", out var set) ? set?.ToString() ?? "" : "",
+            BeatCount = beats,
+            DurationSeconds = TryGetSceneDuration(s),
+        };
+    }
+
+    private static double? TryGetSceneDuration(Dictionary<string, object?> s)
+    {
+        if (!s.TryGetValue("duration_target_seconds", out var d) &&
+            !s.TryGetValue("estimated_duration_seconds", out d))
+            return null;
+        if (d is double dd) return dd;
+        if (d is int di) return di;
+        if (double.TryParse(d?.ToString(), out var dx)) return dx;
+        return null;
     }
 
     private static int ToInt(object? v) => v switch
@@ -844,27 +876,11 @@ public static string NormalizeText(string text)
         if (string.IsNullOrWhiteSpace(book))
             return new SaveResult { Ok = false, Error = "Book text is empty" };
 
-        // Persist-clean Gutenberg if still on disk (older txt imports); adapt + xAI file_id use cleaned text.
-        if (GutenbergCleaner.HasGutenbergHeader(book))
-        {
-            book = GutenbergCleaner.StripHeaderAndFooter(book);
-            book = book.Replace("\r\n", "\n").Replace('\r', '\n').Trim() + "\n";
-            await File.WriteAllTextAsync(bookPath, book, ct).ConfigureAwait(false);
-            onProgress?.Invoke("Stripped Project Gutenberg preamble from book text.");
-        }
-        else
-        {
-            book = book.Replace("\r\n", "\n").Replace('\r', '\n').Trim() + "\n";
-        }
+        book = await NormalizeBookForAdaptationAsync(book, bookPath, onProgress, ct).ConfigureAwait(false);
 
         Dictionary<string, JsonElement>? cfg = null;
         if (chat is not null)
-        {
-            cfg = await store.GetConfigAsync(projectId, ct).ConfigureAwait(false);
-            model = string.IsNullOrWhiteSpace(model)
-                ? ProjectModelSelection.RequirePlanning(cfg, "Screenplay draft from book")
-                : ProjectModelSelection.RequireExplicit(model, ModelCapability.Chat, "Screenplay draft from book");
-        }
+            (cfg, model) = await ResolveDraftChatModelAsync(store, projectId, model, ct).ConfigureAwait(false);
 
         var (title, author) = ReadProjectTitleAuthor(projectDir, projectId);
         // Resolve + persist the target (Trim/Fit-length reads it) but do NOT constrain generation with it.
@@ -877,256 +893,443 @@ public static string NormalizeText(string text)
             $"Writing the full-length screenplay (natural ~{runtime.NaturalMinutes} min); fit to your target on the next step.");
         const double generationTemperature = 0.2;
 
-        BookTextIdentity? bookIdentity = null;
-        string? promptHash = null;
-        string? promptVersion = null;
-        string? behaviorVersions = null;
-        if (bookRegistry is not null && !string.IsNullOrWhiteSpace(cacheUserId))
-        {
-            var project = await store.GetProjectAsync(projectId, ct).ConfigureAwait(false);
-            bookIdentity = await bookRegistry.RegisterAsync(
-                book, cacheUserId, projectId, (project?.VisibilityMode ?? ProjectVisibility.Private).ToString(), ct).ConfigureAwait(false);
-            var prompt = await new AdaptationService()
-                .BuildSystemPromptAsync(minutes, ct).ConfigureAwait(false);
-            promptHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(prompt))).ToLowerInvariant();
-            promptVersion = "book-to-fountain-" + promptHash[..12];
-            behaviorVersions = JsonSerializer.Serialize(new
-            {
-                title,
-                author,
-                totalRuntimeMinutes = minutes,
-                visionMetaSchema = ProjectVisionMeta.CurrentSchemaVersion,
-                cachePackageSchema = "adaptation-conversion.v1",
-            });
-
-            var cached = await bookRegistry.FindArtifactAsync(
-                bookIdentity.BookId, cacheUserId, "adaptation_conversion", model,
-                promptVersion, promptHash, generationTemperature, behaviorVersions, ct)
-                .ConfigureAwait(false);
-            if (cached is not null)
-            {
-                var cachedConversion = JsonSerializer.Deserialize<ProjectAdaptationConversionResult>(cached.Content);
-                if (cachedConversion is { Fountain.Length: > 0, VisionMeta: not null })
-                {
-                    onProgress?.Invoke($"Reused shared adaptation cache {cached.ArtifactId}.");
-                    var cachedFountain = new AdaptationService().FixDraftDate(cachedConversion.Fountain);
-                    var cachedSave = SaveDraft(store, projectId, cachedFountain);
-                    if (!cachedSave.Ok) return cachedSave;
-                    WriteMaxBase(store, projectId, cachedFountain); // D0: full-length base for Trim
-                    store.ClearBookSubsteps(projectId); // fresh screenplay → prior Look/Enrich/Fit length no longer apply
-                    ProjectVisionMeta.Write(projectDir, cachedConversion.VisionMeta);
-                    cachedSave.Message = "Screenplay draft ready — reused shared book adaptation";
-                    return cachedSave;
-                }
-            }
-        }
+        var cache = await TryLoadAdaptationCacheAsync(
+            store, projectId, projectDir, book, title, author, minutes, generationTemperature,
+            model, bookRegistry, cacheUserId, onProgress, ct).ConfigureAwait(false);
+        if (cache.ReusedSave is not null)
+            return cache.ReusedSave;
 
         try
         {
-            // Stage‑1 generation goes through Adaptation façade (not a reimplementation).
-            var adaptation = new AdaptationService();
-            Func<StructuralGateFailure, CancellationToken, Task>? onGate = null;
-            if (errorLogger is not null)
-            {
-                onGate = async (fail, token) =>
-                {
-                    await errorLogger.LogAsync(new GenerationErrorRecord
-                    {
-                        ProjectId = projectId,
-                        JobId = jobId,
-                        Stage = fail.Stage,
-                        Model = fail.Model,
-                        ErrorType = fail.ErrorType,
-                        ErrorMessage = fail.ErrorMessage,
-                        Resolved = false,
-                        ResponseSummary = fail.ResponseSummary,
-                    }, token).ConfigureAwait(false);
-                };
-            }
-
-            IProgress<string>? progressAdapter = onProgress is null
-                ? null
-                : new Progress<string>(onProgress);
-
-            if (chat is null || !chat.IsConfigured)
-            {
-                var hAdaptation = new AdaptationService();
-                var hFountain = hAdaptation.FixDraftDate(hAdaptation.ConvertHeuristic(title, book, author));
-                var hSave = SaveDraft(store, projectId, hFountain);
-                if (!hSave.Ok) return hSave;
-                hSave.Message = "Screenplay draft ready — review and approve";
-                return hSave;
-            }
-
-            PageToMovie.Core.Abstractions.IBookFileSession? bookSession = null;
-            if (bookFileSessionFactory is not null && bookIdentity is not null)
-            {
-                try
-                {
-                    bookSession = await bookFileSessionFactory.TryCreateAsync(
-                        bookIdentity.BookId, book, model, ct).ConfigureAwait(false);
-                    if (bookSession is { IsAvailable: true })
-                        onProgress?.Invoke(
-                            $"Book file session ready for {bookIdentity.BookId} (xAI file_id reuse / Responses multi-turn).");
-                }
-                catch (Exception ex)
-                {
-                    onProgress?.Invoke("Book file session unavailable — falling back to chat/completions: " + ex.Message);
-                    bookSession = null;
-                }
-            }
-
-            // UI / project medium preference (auto = model infers).
-            string? preferredMedium = null;
-            try
-            {
-                preferredMedium = ProjectVisionMeta.GetAdaptationMediumPreference(projectDir);
-            }
-            catch { /* ignore */ }
-
-            var result = await adaptation.ConvertAsync(
-                new AdaptationRequest
-                {
-                    BookText = book,
-                    Title = title,
-                    Author = author,
-                    TargetRuntimeMinutes = minutes,
-                    ModelId = model,
-                    Temperature = generationTemperature,
-                    VisualMedium = preferredMedium,
-                    MaxSpeakingCast = ResolveSharedAdaptationInt(cfg, "adaptation_max_speaking_cast", adaptationDefaults?.MaxSpeakingCast),
-                    MaxDialogueWords = ResolveSharedAdaptationInt(cfg, "adaptation_max_dialogue_words", adaptationDefaults?.MaxDialogueWords),
-                    VoMaxSentences = ResolveSharedAdaptationInt(cfg, "adaptation_vo_max_sentences", adaptationDefaults?.VoMaxSentences),
-                    SceneCountMin = ResolveSharedAdaptationInt(cfg, "adaptation_scene_count_min", adaptationDefaults?.SceneCountMin),
-                    SceneCountMax = ResolveSharedAdaptationInt(cfg, "adaptation_scene_count_max", adaptationDefaults?.SceneCountMax),
-                    MinAudioCuesPerScene = adaptationDefaults?.MinAudioCuesPerScene,
-                    MinAudioCuesAtPeak = adaptationDefaults?.MinAudioCuesAtPeak,
-                    BodyWordsPerMinute = adaptationDefaults?.BodyWordsPerMinute,
-                },
-                chat,
-                progressAdapter,
-                ct,
-                onStructuralGateFailure: onGate,
-                bookSession: bookSession).ConfigureAwait(false);
-
-            var fountain = result.Fountain;
-            var visionFromScript = BookToFountainConverter.MapVision(result.VisionMeta);
-            // Cache package shape remains Engine ProjectAdaptationConversionResult for registry compatibility.
-            var conversion = new ProjectAdaptationConversionResult
-            {
-                Fountain = fountain,
-                VisionMeta = visionFromScript,
-                VisionMetaStatus = BookToFountainConverter.MapStatus(result.VisionMetaStatus),
-                VisionMetaError = result.VisionMetaError,
-            };
-
-            if (!result.UsedHeuristicFallback && visionFromScript is not null && bookRegistry is not null &&
-                bookIdentity is not null && !string.IsNullOrWhiteSpace(cacheUserId) &&
-                promptHash is not null && promptVersion is not null && behaviorVersions is not null)
-            {
-                var cached = await bookRegistry.RegisterArtifactAsync(
-                    bookIdentity.BookId, cacheUserId, "adaptation_conversion",
-                    JsonSerializer.Serialize(conversion), model, promptVersion, promptHash,
-                    generationTemperature, behaviorVersions, ct).ConfigureAwait(false);
-                onProgress?.Invoke($"Saved shared adaptation cache {cached.ArtifactId}.");
-            }
-
-            fountain = new AdaptationService().FixDraftDate(fountain);
-            var save = SaveDraft(store, projectId, fountain);
-            if (!save.Ok) return save;
-            WriteMaxBase(store, projectId, fountain); // D0: full-length base for Trim (Fit length)
-            store.ClearBookSubsteps(projectId); // fresh screenplay → prior Look/Enrich/Fit length no longer apply
-
-            // Medium sidecar from the same adaptation response (preferred).
-            // Fallback: one structured LLM call if the model omitted the trailer.
-            try
-            {
-                if (visionFromScript is not null)
-                {
-                    ProjectVisionMeta.Write(projectDir, visionFromScript);
-                    onProgress?.Invoke($"Saved visual medium ({visionFromScript.VisualMedium}) to extract_meta");
-                }
-                else if (chat is not null && chat.IsConfigured)
-                {
-                    onProgress?.Invoke("No VISION_META trailer in screenplay response — asking model for medium…");
-                    await ProjectVisionMeta.DecideAtAdaptationAsync(
-                        projectDir,
-                        title,
-                        book,
-                        fountain,
-                        chat,
-                        model,
-                        onProgress,
-                        ct).ConfigureAwait(false);
-                }
-            }
-            catch (Exception metaEx)
-            {
-                onProgress?.Invoke("Vision medium metadata skipped: " + metaEx.Message);
-            }
-
-            // Optional ADAPTATION_REPORT diagnostic (v4+ prompts). Missing is normal on older prompts.
-            try
-            {
-                if (result.AdaptationReport is not null)
-                {
-                    await ProjectAdaptationReport.WriteAsync(projectDir, result.AdaptationReport, ct).ConfigureAwait(false);
-                    onProgress?.Invoke(
-                        $"Saved adaptation report (source_complete={result.AdaptationReport.SourceComplete}, " +
-                        $"issues={result.AdaptationReport.Issues.Count})");
-                }
-                else if (result.AdaptationReportStatus == AdaptationReportStatus.Malformed)
-                {
-                    onProgress?.Invoke(
-                        "Adaptation report trailer present but invalid: " +
-                        (result.AdaptationReportError ?? "malformed JSON"));
-                }
-            }
-            catch (Exception reportEx)
-            {
-                onProgress?.Invoke("Adaptation report skipped: " + reportEx.Message);
-            }
-
-            // Stage‑1 convert attribution (prompt / adaptation / runtime / model).
-            try
-            {
-                if (result.ConvertManifest is not null)
-                {
-                    await ProjectStage1ConvertManifest.WriteAsync(
-                        projectDir,
-                        result.ConvertManifest,
-                        bookId: bookIdentity?.BookId,
-                        ct: ct).ConfigureAwait(false);
-                    onProgress?.Invoke(
-                        $"Saved Stage‑1 convert manifest (adaptation={result.ConvertManifest.AdaptationVersion}, " +
-                        $"mode={result.ConvertManifest.RuntimeMode}, model={result.ConvertManifest.ModelId})");
-                }
-            }
-            catch (Exception manifestEx)
-            {
-                onProgress?.Invoke("Stage‑1 convert manifest skipped: " + manifestEx.Message);
-            }
-
-            // Trajectory: screenplay + optional report/manifest on project git (text only).
-            try
-            {
-                store.TriggerAutoGitCommit(projectId, ProjectStageCommits.ScreenplayCreated);
-            }
-            catch (Exception gitEx)
-            {
-                onProgress?.Invoke("Stage commit skipped: " + gitEx.Message);
-            }
-
-            await TryAutoEnrichAfterDraftAsync(
-                store, projectId, chat, model, onProgress, ct,
-                responses, bookRegistry, bookFileSessionFactory, useFakes).ConfigureAwait(false);
-
-            save.Message = "Screenplay draft ready — review and approve";
-            return save;
+            return await ConvertAndSaveDraftFromBookAsync(
+                store, projectId, projectDir, book, title, author, minutes, generationTemperature,
+                chat, model, cfg, cache, onProgress, ct, errorLogger, jobId,
+                bookRegistry, cacheUserId, bookFileSessionFactory, adaptationDefaults,
+                responses, useFakes).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             return new SaveResult { Ok = false, Error = ex.Message };
+        }
+    }
+
+    private static async Task<string> NormalizeBookForAdaptationAsync(
+        string book, string bookPath, Action<string>? onProgress, CancellationToken ct)
+    {
+        // Persist-clean Gutenberg if still on disk (older txt imports); adapt + xAI file_id use cleaned text.
+        var hadGutenberg = GutenbergCleaner.HasGutenbergHeader(book);
+        if (hadGutenberg)
+            book = GutenbergCleaner.StripHeaderAndFooter(book);
+        book = book.Replace("\r\n", "\n").Replace('\r', '\n').Trim() + "\n";
+        if (hadGutenberg)
+        {
+            await File.WriteAllTextAsync(bookPath, book, ct).ConfigureAwait(false);
+            onProgress?.Invoke("Stripped Project Gutenberg preamble from book text.");
+        }
+        return book;
+    }
+
+    private static async Task<(Dictionary<string, JsonElement>? Cfg, string Model)> ResolveDraftChatModelAsync(
+        ProjectStore store, string projectId, string model, CancellationToken ct)
+    {
+        var cfg = await store.GetConfigAsync(projectId, ct).ConfigureAwait(false);
+        model = string.IsNullOrWhiteSpace(model)
+            ? ProjectModelSelection.RequirePlanning(cfg, "Screenplay draft from book")
+            : ProjectModelSelection.RequireExplicit(model, ModelCapability.Chat, "Screenplay draft from book");
+        return (cfg, model);
+    }
+
+    private sealed class AdaptationCacheState
+    {
+        public BookTextIdentity? BookIdentity { get; init; }
+        public string? PromptHash { get; init; }
+        public string? PromptVersion { get; init; }
+        public string? BehaviorVersions { get; init; }
+        public SaveResult? ReusedSave { get; init; }
+    }
+
+    private static async Task<AdaptationCacheState> TryLoadAdaptationCacheAsync(
+        ProjectStore store,
+        string projectId,
+        string projectDir,
+        string book,
+        string title,
+        string? author,
+        int? minutes,
+        double generationTemperature,
+        string model,
+        BookTextRegistryService? bookRegistry,
+        string? cacheUserId,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
+        if (bookRegistry is null || string.IsNullOrWhiteSpace(cacheUserId))
+            return new AdaptationCacheState();
+
+        var project = await store.GetProjectAsync(projectId, ct).ConfigureAwait(false);
+        var bookIdentity = await bookRegistry.RegisterAsync(
+            book, cacheUserId, projectId, (project?.VisibilityMode ?? ProjectVisibility.Private).ToString(), ct).ConfigureAwait(false);
+        var prompt = await new AdaptationService()
+            .BuildSystemPromptAsync(minutes, ct).ConfigureAwait(false);
+        var promptHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(prompt))).ToLowerInvariant();
+        var promptVersion = "book-to-fountain-" + promptHash[..12];
+        var behaviorVersions = JsonSerializer.Serialize(new
+        {
+            title,
+            author,
+            totalRuntimeMinutes = minutes,
+            visionMetaSchema = ProjectVisionMeta.CurrentSchemaVersion,
+            cachePackageSchema = "adaptation-conversion.v1",
+        });
+
+        var state = new AdaptationCacheState
+        {
+            BookIdentity = bookIdentity,
+            PromptHash = promptHash,
+            PromptVersion = promptVersion,
+            BehaviorVersions = behaviorVersions,
+        };
+
+        var cached = await bookRegistry.FindArtifactAsync(
+            bookIdentity.BookId, cacheUserId, "adaptation_conversion", model,
+            promptVersion, promptHash, generationTemperature, behaviorVersions, ct)
+            .ConfigureAwait(false);
+        if (cached is null)
+            return state;
+
+        var cachedConversion = JsonSerializer.Deserialize<ProjectAdaptationConversionResult>(cached.Content);
+        if (cachedConversion is not { Fountain.Length: > 0, VisionMeta: not null })
+            return state;
+
+        onProgress?.Invoke($"Reused shared adaptation cache {cached.ArtifactId}.");
+        var cachedFountain = new AdaptationService().FixDraftDate(cachedConversion.Fountain);
+        var cachedSave = SaveDraft(store, projectId, cachedFountain);
+        if (!cachedSave.Ok)
+            return new AdaptationCacheState
+            {
+                BookIdentity = bookIdentity,
+                PromptHash = promptHash,
+                PromptVersion = promptVersion,
+                BehaviorVersions = behaviorVersions,
+                ReusedSave = cachedSave,
+            };
+        WriteMaxBase(store, projectId, cachedFountain); // D0: full-length base for Trim
+        store.ClearBookSubsteps(projectId); // fresh screenplay → prior Look/Enrich/Fit length no longer apply
+        ProjectVisionMeta.Write(projectDir, cachedConversion.VisionMeta);
+        cachedSave.Message = "Screenplay draft ready — reused shared book adaptation";
+        return new AdaptationCacheState
+        {
+            BookIdentity = bookIdentity,
+            PromptHash = promptHash,
+            PromptVersion = promptVersion,
+            BehaviorVersions = behaviorVersions,
+            ReusedSave = cachedSave,
+        };
+    }
+
+    private static async Task<SaveResult> ConvertAndSaveDraftFromBookAsync(
+        ProjectStore store,
+        string projectId,
+        string projectDir,
+        string book,
+        string title,
+        string? author,
+        int? minutes,
+        double generationTemperature,
+        PageToMovie.Core.Abstractions.IChatClient? chat,
+        string model,
+        Dictionary<string, JsonElement>? cfg,
+        AdaptationCacheState cache,
+        Action<string>? onProgress,
+        CancellationToken ct,
+        GenerationErrorLogger? errorLogger,
+        string? jobId,
+        BookTextRegistryService? bookRegistry,
+        string? cacheUserId,
+        PageToMovie.Core.Abstractions.IBookFileSessionFactory? bookFileSessionFactory,
+        AdaptationDefaultsOptions? adaptationDefaults,
+        XaiResponsesClient? responses,
+        bool useFakes)
+    {
+        // Stage‑1 generation goes through Adaptation façade (not a reimplementation).
+        var adaptation = new AdaptationService();
+        var onGate = BindStructuralGateLogger(errorLogger, projectId, jobId);
+        IProgress<string>? progressAdapter = onProgress is null
+            ? null
+            : new Progress<string>(onProgress);
+
+        if (chat is null || !chat.IsConfigured)
+            return SaveHeuristicDraft(store, projectId, title, book, author);
+
+        var bookSession = await TryCreateBookFileSessionAsync(
+            bookFileSessionFactory, cache.BookIdentity, book, model, onProgress, ct)
+            .ConfigureAwait(false);
+
+        var result = await adaptation.ConvertAsync(
+            new AdaptationRequest
+            {
+                BookText = book,
+                Title = title,
+                Author = author,
+                TargetRuntimeMinutes = minutes,
+                ModelId = model,
+                Temperature = generationTemperature,
+                VisualMedium = TryReadAdaptationMediumPreference(projectDir),
+                MaxSpeakingCast = ResolveSharedAdaptationInt(cfg, "adaptation_max_speaking_cast", adaptationDefaults?.MaxSpeakingCast),
+                MaxDialogueWords = ResolveSharedAdaptationInt(cfg, "adaptation_max_dialogue_words", adaptationDefaults?.MaxDialogueWords),
+                VoMaxSentences = ResolveSharedAdaptationInt(cfg, "adaptation_vo_max_sentences", adaptationDefaults?.VoMaxSentences),
+                SceneCountMin = ResolveSharedAdaptationInt(cfg, "adaptation_scene_count_min", adaptationDefaults?.SceneCountMin),
+                SceneCountMax = ResolveSharedAdaptationInt(cfg, "adaptation_scene_count_max", adaptationDefaults?.SceneCountMax),
+                MinAudioCuesPerScene = adaptationDefaults?.MinAudioCuesPerScene,
+                MinAudioCuesAtPeak = adaptationDefaults?.MinAudioCuesAtPeak,
+                BodyWordsPerMinute = adaptationDefaults?.BodyWordsPerMinute,
+            },
+            chat,
+            progressAdapter,
+            ct,
+            onStructuralGateFailure: onGate,
+            bookSession: bookSession).ConfigureAwait(false);
+
+        var fountain = result.Fountain;
+        var visionFromScript = BookToFountainConverter.MapVision(result.VisionMeta);
+        // Cache package shape remains Engine ProjectAdaptationConversionResult for registry compatibility.
+        var conversion = new ProjectAdaptationConversionResult
+        {
+            Fountain = fountain,
+            VisionMeta = visionFromScript,
+            VisionMetaStatus = BookToFountainConverter.MapStatus(result.VisionMetaStatus),
+            VisionMetaError = result.VisionMetaError,
+        };
+
+        await TryRegisterConversionCacheAsync(
+            result, conversion, visionFromScript, cache, bookRegistry, cacheUserId,
+            model, generationTemperature, onProgress, ct).ConfigureAwait(false);
+
+        fountain = new AdaptationService().FixDraftDate(fountain);
+        var save = SaveDraft(store, projectId, fountain);
+        if (!save.Ok) return save;
+        WriteMaxBase(store, projectId, fountain); // D0: full-length base for Trim (Fit length)
+        store.ClearBookSubsteps(projectId); // fresh screenplay → prior Look/Enrich/Fit length no longer apply
+
+        await TryWriteVisionSidecarAsync(
+            projectDir, title, book, fountain, visionFromScript, chat, model, onProgress, ct)
+            .ConfigureAwait(false);
+        await TryWriteAdaptationReportAsync(projectDir, result, onProgress, ct).ConfigureAwait(false);
+        await TryWriteConvertManifestAsync(projectDir, result, cache.BookIdentity, onProgress, ct)
+            .ConfigureAwait(false);
+        TryStageScreenplayCommit(store, projectId, onProgress);
+
+        await TryAutoEnrichAfterDraftAsync(
+            store, projectId, chat, model, onProgress, ct,
+            responses, bookRegistry, bookFileSessionFactory, useFakes).ConfigureAwait(false);
+
+        save.Message = "Screenplay draft ready — review and approve";
+        return save;
+    }
+
+    private static Func<StructuralGateFailure, CancellationToken, Task>? BindStructuralGateLogger(
+        GenerationErrorLogger? errorLogger, string projectId, string? jobId)
+    {
+        if (errorLogger is null)
+            return null;
+        return async (fail, token) =>
+        {
+            await errorLogger.LogAsync(new GenerationErrorRecord
+            {
+                ProjectId = projectId,
+                JobId = jobId,
+                Stage = fail.Stage,
+                Model = fail.Model,
+                ErrorType = fail.ErrorType,
+                ErrorMessage = fail.ErrorMessage,
+                Resolved = false,
+                ResponseSummary = fail.ResponseSummary,
+            }, token).ConfigureAwait(false);
+        };
+    }
+
+    private static SaveResult SaveHeuristicDraft(
+        ProjectStore store, string projectId, string title, string book, string? author)
+    {
+        var hAdaptation = new AdaptationService();
+        var hFountain = hAdaptation.FixDraftDate(hAdaptation.ConvertHeuristic(title, book, author));
+        var hSave = SaveDraft(store, projectId, hFountain);
+        if (!hSave.Ok) return hSave;
+        hSave.Message = "Screenplay draft ready — review and approve";
+        return hSave;
+    }
+
+    private static async Task<PageToMovie.Core.Abstractions.IBookFileSession?> TryCreateBookFileSessionAsync(
+        PageToMovie.Core.Abstractions.IBookFileSessionFactory? bookFileSessionFactory,
+        BookTextIdentity? bookIdentity,
+        string book,
+        string model,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
+        if (bookFileSessionFactory is null || bookIdentity is null)
+            return null;
+        try
+        {
+            var bookSession = await bookFileSessionFactory.TryCreateAsync(
+                bookIdentity.BookId, book, model, ct).ConfigureAwait(false);
+            if (bookSession is { IsAvailable: true })
+                onProgress?.Invoke(
+                    $"Book file session ready for {bookIdentity.BookId} (xAI file_id reuse / Responses multi-turn).");
+            return bookSession;
+        }
+        catch (Exception ex)
+        {
+            onProgress?.Invoke("Book file session unavailable — falling back to chat/completions: " + ex.Message);
+            return null;
+        }
+    }
+
+    private static string? TryReadAdaptationMediumPreference(string projectDir)
+    {
+        try
+        {
+            return ProjectVisionMeta.GetAdaptationMediumPreference(projectDir);
+        }
+        catch { return null; }
+    }
+
+    private static async Task TryRegisterConversionCacheAsync(
+        AdaptationResult result,
+        ProjectAdaptationConversionResult conversion,
+        ProjectVisionMeta.Document? visionFromScript,
+        AdaptationCacheState cache,
+        BookTextRegistryService? bookRegistry,
+        string? cacheUserId,
+        string model,
+        double generationTemperature,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
+        if (result.UsedHeuristicFallback ||
+            visionFromScript is null ||
+            bookRegistry is null ||
+            cache.BookIdentity is null ||
+            string.IsNullOrWhiteSpace(cacheUserId) ||
+            cache.PromptHash is null ||
+            cache.PromptVersion is null ||
+            cache.BehaviorVersions is null)
+            return;
+
+        var cached = await bookRegistry.RegisterArtifactAsync(
+            cache.BookIdentity.BookId, cacheUserId, "adaptation_conversion",
+            JsonSerializer.Serialize(conversion), model, cache.PromptVersion, cache.PromptHash,
+            generationTemperature, cache.BehaviorVersions, ct).ConfigureAwait(false);
+        onProgress?.Invoke($"Saved shared adaptation cache {cached.ArtifactId}.");
+    }
+
+    private static async Task TryWriteVisionSidecarAsync(
+        string projectDir,
+        string title,
+        string book,
+        string fountain,
+        ProjectVisionMeta.Document? visionFromScript,
+        PageToMovie.Core.Abstractions.IChatClient chat,
+        string model,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
+        // Medium sidecar from the same adaptation response (preferred).
+        // Fallback: one structured LLM call if the model omitted the trailer.
+        try
+        {
+            if (visionFromScript is not null)
+            {
+                ProjectVisionMeta.Write(projectDir, visionFromScript);
+                onProgress?.Invoke($"Saved visual medium ({visionFromScript.VisualMedium}) to extract_meta");
+            }
+            else if (chat.IsConfigured)
+            {
+                onProgress?.Invoke("No VISION_META trailer in screenplay response — asking model for medium…");
+                await ProjectVisionMeta.DecideAtAdaptationAsync(
+                    projectDir,
+                    title,
+                    book,
+                    fountain,
+                    chat,
+                    model,
+                    onProgress,
+                    ct).ConfigureAwait(false);
+            }
+        }
+        catch (Exception metaEx)
+        {
+            onProgress?.Invoke("Vision medium metadata skipped: " + metaEx.Message);
+        }
+    }
+
+    private static async Task TryWriteAdaptationReportAsync(
+        string projectDir,
+        AdaptationResult result,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
+        // Optional ADAPTATION_REPORT diagnostic (v4+ prompts). Missing is normal on older prompts.
+        try
+        {
+            if (result.AdaptationReport is not null)
+            {
+                await ProjectAdaptationReport.WriteAsync(projectDir, result.AdaptationReport, ct).ConfigureAwait(false);
+                onProgress?.Invoke(
+                    $"Saved adaptation report (source_complete={result.AdaptationReport.SourceComplete}, " +
+                    $"issues={result.AdaptationReport.Issues.Count})");
+            }
+            else if (result.AdaptationReportStatus == AdaptationReportStatus.Malformed)
+            {
+                onProgress?.Invoke(
+                    "Adaptation report trailer present but invalid: " +
+                    (result.AdaptationReportError ?? "malformed JSON"));
+            }
+        }
+        catch (Exception reportEx)
+        {
+            onProgress?.Invoke("Adaptation report skipped: " + reportEx.Message);
+        }
+    }
+
+    private static async Task TryWriteConvertManifestAsync(
+        string projectDir,
+        AdaptationResult result,
+        BookTextIdentity? bookIdentity,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
+        // Stage‑1 convert attribution (prompt / adaptation / runtime / model).
+        try
+        {
+            if (result.ConvertManifest is null)
+                return;
+            await ProjectStage1ConvertManifest.WriteAsync(
+                projectDir,
+                result.ConvertManifest,
+                bookId: bookIdentity?.BookId,
+                ct: ct).ConfigureAwait(false);
+            onProgress?.Invoke(
+                $"Saved Stage‑1 convert manifest (adaptation={result.ConvertManifest.AdaptationVersion}, " +
+                $"mode={result.ConvertManifest.RuntimeMode}, model={result.ConvertManifest.ModelId})");
+        }
+        catch (Exception manifestEx)
+        {
+            onProgress?.Invoke("Stage‑1 convert manifest skipped: " + manifestEx.Message);
+        }
+    }
+
+    private static void TryStageScreenplayCommit(
+        ProjectStore store, string projectId, Action<string>? onProgress)
+    {
+        // Trajectory: screenplay + optional report/manifest on project git (text only).
+        try
+        {
+            store.TriggerAutoGitCommit(projectId, ProjectStageCommits.ScreenplayCreated);
+        }
+        catch (Exception gitEx)
+        {
+            onProgress?.Invoke("Stage commit skipped: " + gitEx.Message);
         }
     }
 

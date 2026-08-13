@@ -148,92 +148,114 @@ public partial class Admin
             _archiveMsg = S.MediaFolder.IsConnected
                 ? "Building server zip, then merging local media…"
                 : "Building server zip (media folder not connected — MP4/MP3 may be missing)…";
-            await RunArchiveActionAsync(async () =>
+            await RunArchiveActionAsync(ExportProjectBodyAsync);
+        }
+
+        private async Task ExportProjectBodyAsync()
+        {
+            if (!S.MediaFolder.IsConnected)
             {
-                if (!S.MediaFolder.IsConnected)
-                {
-                    _archiveMsg = "Media folder not connected — exporting server files only. Connect media folder for MP4/MP3.";
-                }
+                _archiveMsg = "Media folder not connected — exporting server files only. Connect media folder for MP4/MP3.";
+            }
 
-                DotNetObjectReference<ExportProgressSink>? progressRef = null;
-                try
+            DotNetObjectReference<ExportProgressSink>? progressRef = null;
+            try
+            {
+                SetExportProgress(null, "Building zip on server (images + project files)…", true);
+                var (body, fileName) = await S.Api.ExportProjectZipBodyAdminWithProgressAsync(
+                    _exportProjectId,
+                    ReportMergeDownloadProgressAsync);
+
+                await using (body)
                 {
-                    SetExportProgress(null, "Building zip on server (images + project files)…", true);
-                    var (body, fileName) = await S.Api.ExportProjectZipBodyAdminWithProgressAsync(
+                    SetExportProgress(65, "Merging local media…");
+                    progressRef = DotNetObjectReference.Create(new ExportProgressSink(OnExportMergeProgressAsync));
+                    using var streamRef = new DotNetStreamReference(body);
+                    var result = await S.Js.InvokeAsync<JsonElement>(
+                        "PageToMovieExport.mergeServerZipWithLocalMediaAsync",
+                        fileName,
+                        streamRef,
                         _exportProjectId,
-                        async (loaded, total) =>
-                        {
-                            if (total is > 0)
-                                SetExportProgress(
-                                    5 + 60.0 * loaded / total.Value,
-                                    $"Downloading… {FormatExportBytes(loaded)} / {FormatExportBytes(total.Value)}");
-                            else
-                                SetExportProgress(null, $"Downloading… {FormatExportBytes(loaded)}", true);
-                            await Task.CompletedTask;
-                        });
+                        progressRef);
+                    await ApplyExportMergeResultAsync(result, fileName, progressRef);
+                }
+            }
+            finally
+            {
+                progressRef?.Dispose();
+                _exportIndeterminate = false;
+                if (_exportPercent is not 100)
+                    _exportPercent = null;
+            }
+        }
 
-                    await using (body)
-                    {
-                        SetExportProgress(65, "Merging local media…");
-                        progressRef = DotNetObjectReference.Create(new ExportProgressSink(OnExportMergeProgressAsync));
-                        using var streamRef = new DotNetStreamReference(body);
-                        var result = await S.Js.InvokeAsync<JsonElement>(
-                            "PageToMovieExport.mergeServerZipWithLocalMediaAsync",
-                            fileName,
-                            streamRef,
-                            _exportProjectId,
-                            progressRef);
-                        if (result.TryGetProperty(JsonSuccessProperty, out var ok) && ok.GetBoolean())
-                        {
-                            SetExportProgress(
-                                100,
-                                result.TryGetProperty("message", out var m) && m.ValueKind == JsonValueKind.String
-                                    ? m.GetString()
-                                    : $"Downloaded {fileName}");
-                        }
-                        else
-                        {
-                            var err = result.TryGetProperty(JsonErrorProperty, out var e) ? e.GetString() : "download failed";
-                            SetExportProgress(null, "Merge failed — downloading server zip only…", true);
-                            var (body2, fileName2) = await S.Api.ExportProjectZipBodyAdminWithProgressAsync(
-                                _exportProjectId,
-                                async (loaded, total) =>
-                                {
-                                    if (total is > 0)
-                                        SetExportProgress(10 + 80.0 * loaded / total.Value,
-                                            $"Downloading server zip… {FormatExportBytes(loaded)} / {FormatExportBytes(total.Value)}");
-                                    else
-                                        SetExportProgress(null, $"Downloading… {FormatExportBytes(loaded)}", true);
-                                    await Task.CompletedTask;
-                                });
-                            await using (body2)
-                            {
-                                using var streamRef2 = new DotNetStreamReference(body2);
-                                var plain = await S.Js.InvokeAsync<JsonElement>(
-                                    "PageToMovieExport.downloadStreamAsync",
-                                    fileName2,
-                                    streamRef2,
-                                    progressRef);
-                                if (plain.TryGetProperty(JsonSuccessProperty, out var ok2) && ok2.GetBoolean())
-                                    SetExportProgress(100, $"Downloaded {fileName2} (server only). Merge error: {err}");
-                                else
-                                {
-                                    _archiveError = err;
-                                    _archiveMsg = null;
-                                    _exportPhaseLabel = null;
-                                }
-                            }
-                        }
-                    }
-                }
-                finally
+        private Task ReportMergeDownloadProgressAsync(long loaded, long? total)
+            => ReportZipDownloadProgressAsync(loaded, total, 5, 60, "Downloading…");
+
+        private Task ReportServerOnlyDownloadProgressAsync(long loaded, long? total)
+            => ReportZipDownloadProgressAsync(loaded, total, 10, 80, "Downloading server zip…");
+
+        private Task ReportZipDownloadProgressAsync(long loaded, long? total, double basePct, double span, string labeledPrefix)
+        {
+            if (total is > 0)
+                SetExportProgress(
+                    basePct + span * loaded / total.Value,
+                    $"{labeledPrefix} {FormatExportBytes(loaded)} / {FormatExportBytes(total.Value)}");
+            else
+                SetExportProgress(null, $"Downloading… {FormatExportBytes(loaded)}", true);
+            return Task.CompletedTask;
+        }
+
+        private async Task ApplyExportMergeResultAsync(
+            JsonElement result,
+            string fileName,
+            DotNetObjectReference<ExportProgressSink>? progressRef)
+        {
+            if (JsonFlagTrue(result, JsonSuccessProperty))
+            {
+                SetExportProgress(100, JsonStringOr(result, "message", $"Downloaded {fileName}"));
+                return;
+            }
+
+            var err = result.TryGetProperty(JsonErrorProperty, out var e) ? e.GetString() : "download failed";
+            await DownloadServerZipOnlyAfterMergeFailAsync(err, progressRef);
+        }
+
+        private async Task DownloadServerZipOnlyAfterMergeFailAsync(
+            string? err,
+            DotNetObjectReference<ExportProgressSink>? progressRef)
+        {
+            SetExportProgress(null, "Merge failed — downloading server zip only…", true);
+            var (body2, fileName2) = await S.Api.ExportProjectZipBodyAdminWithProgressAsync(
+                _exportProjectId,
+                ReportServerOnlyDownloadProgressAsync);
+            await using (body2)
+            {
+                using var streamRef2 = new DotNetStreamReference(body2);
+                var plain = await S.Js.InvokeAsync<JsonElement>(
+                    "PageToMovieExport.downloadStreamAsync",
+                    fileName2,
+                    streamRef2,
+                    progressRef);
+                if (JsonFlagTrue(plain, JsonSuccessProperty))
+                    SetExportProgress(100, $"Downloaded {fileName2} (server only). Merge error: {err}");
+                else
                 {
-                    progressRef?.Dispose();
-                    _exportIndeterminate = false;
-                    if (_exportPercent is not 100)
-                        _exportPercent = null;
+                    _archiveError = err;
+                    _archiveMsg = null;
+                    _exportPhaseLabel = null;
                 }
-            });
+            }
+        }
+
+        private static bool JsonFlagTrue(JsonElement el, string name)
+            => el.TryGetProperty(name, out var ok) && ok.GetBoolean();
+
+        private static string? JsonStringOr(JsonElement el, string name, string fallback)
+        {
+            if (el.TryGetProperty(name, out var m) && m.ValueKind == JsonValueKind.String)
+                return m.GetString();
+            return fallback;
         }
 
         private static string FormatExportBytes(long n)
@@ -305,79 +327,100 @@ public partial class Admin
                 return;
             }
 
+            var file = _importFile;
             _archiveBusy = true;
             _archiveAction = "import";
             _archiveError = null;
             _archiveMsg = S.MediaFolder.IsConnected
                 ? "Stage 1/2: uploading project to server…"
                 : "Uploading project to server (connect media folder to restore MP4/MP3 locally)…";
-            await RunArchiveActionAsync(async () =>
+            await RunArchiveActionAsync(() => ImportProjectFromFileAsync(file));
+        }
+
+        private async Task ImportProjectFromFileAsync(IBrowserFile file)
+        {
+            // Buffer once — server import + client media extract both need the bytes.
+            await using var upload = file.OpenReadStream(MaxImportBytes, CancellationToken.None);
+            using var ms = new MemoryStream();
+            await upload.CopyToAsync(ms, CancellationToken.None);
+            ms.Position = 0;
+
+            var result = await S.Api.ImportProjectZipAsync(
+                ms,
+                file.Name,
+                preferredId: NullIfBlank(_importPreferredId),
+                overwrite: _importOverwrite,
+                targetUserId: NullIfBlank(_importTargetUserId));
+
+            var pid = result?.ProjectId?.Trim();
+            var parts = BuildImportMessageParts(result, pid);
+
+            // Stage 2: media from the same zip → local media folder (source of truth for playback).
+            if (!string.IsNullOrWhiteSpace(pid))
+                await RestoreImportedMediaAsync(ms, pid, parts);
+
+            _archiveMsg = string.Join(" · ", parts.Where(s => !string.IsNullOrWhiteSpace(s)));
+            _importFile = null;
+            await RefreshProjectOptionsAsync();
+            await S.State.RefreshAsync();
+        }
+
+        private static string? NullIfBlank(string? s)
+            => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+
+        private static List<string> BuildImportMessageParts(AdminProjectImportResultDto? result, string? pid)
+        {
+            var parts = new List<string>();
+            if (!string.IsNullOrWhiteSpace(result?.Message))
+                parts.Add(result.Message);
+            else if (!string.IsNullOrWhiteSpace(pid))
+                parts.Add($"Imported {pid}");
+            return parts;
+        }
+
+        private async Task RestoreImportedMediaAsync(MemoryStream ms, string pid, List<string> parts)
+        {
+            _archiveMsg = "Stage 2/2: restoring media to local folder…";
+            S.StateHasChanged();
+            try
             {
-                // Buffer once — server import + client media extract both need the bytes.
-                await using var upload = _importFile.OpenReadStream(MaxImportBytes, CancellationToken.None);
-                using var ms = new MemoryStream();
-                await upload.CopyToAsync(ms, CancellationToken.None);
                 ms.Position = 0;
+                using var streamRef = new DotNetStreamReference(ms);
+                var media = await S.Js.InvokeAsync<JsonElement>(
+                    "PageToMovieExport.importZipMediaToClientFolderAsync",
+                    streamRef,
+                    pid);
+                if (JsonFlagTrue(media, JsonSuccessProperty))
+                    AppendImportedMediaSuccess(media, parts);
+                else
+                    await AppendImportedMediaFailureAsync(media, pid, parts);
+            }
+            catch (Exception mex)
+            {
+                parts.Add($"Local media restore error: {mex.Message}");
+                try { await S.MediaFolder.SyncProjectMediaToClientAsync(pid); }
+                catch { /* best effort */ }
+            }
+        }
 
-                var result = await S.Api.ImportProjectZipAsync(
-                    ms,
-                    _importFile.Name,
-                    preferredId: string.IsNullOrWhiteSpace(_importPreferredId) ? null : _importPreferredId.Trim(),
-                    overwrite: _importOverwrite,
-                    targetUserId: string.IsNullOrWhiteSpace(_importTargetUserId) ? null : _importTargetUserId.Trim());
+        private static void AppendImportedMediaSuccess(JsonElement media, List<string> parts)
+        {
+            var written = media.TryGetProperty("written", out var w) && w.ValueKind == JsonValueKind.Number
+                ? w.GetInt32()
+                : 0;
+            if (media.TryGetProperty("message", out var mm) && mm.ValueKind == JsonValueKind.String
+                && !string.IsNullOrWhiteSpace(mm.GetString()))
+                parts.Add(mm.GetString()!);
+            else if (written > 0)
+                parts.Add($"{written} media file(s) restored locally");
+        }
 
-                var pid = result?.ProjectId?.Trim();
-                var parts = new List<string>();
-                if (!string.IsNullOrWhiteSpace(result?.Message))
-                    parts.Add(result.Message);
-                else if (!string.IsNullOrWhiteSpace(pid))
-                    parts.Add($"Imported {pid}");
-
-                // Stage 2: media from the same zip → local media folder (source of truth for playback).
-                if (!string.IsNullOrWhiteSpace(pid))
-                {
-                    _archiveMsg = "Stage 2/2: restoring media to local folder…";
-                    S.StateHasChanged();
-                    try
-                    {
-                        ms.Position = 0;
-                        using var streamRef = new DotNetStreamReference(ms);
-                        var media = await S.Js.InvokeAsync<JsonElement>(
-                            "PageToMovieExport.importZipMediaToClientFolderAsync",
-                            streamRef,
-                            pid);
-                        if (media.TryGetProperty(JsonSuccessProperty, out var ok) && ok.GetBoolean())
-                        {
-                            var written = media.TryGetProperty("written", out var w) && w.ValueKind == JsonValueKind.Number
-                                ? w.GetInt32()
-                                : 0;
-                            if (media.TryGetProperty("message", out var mm) && mm.ValueKind == JsonValueKind.String
-                                && !string.IsNullOrWhiteSpace(mm.GetString()))
-                                parts.Add(mm.GetString());
-                            else if (written > 0)
-                                parts.Add($"{written} media file(s) restored locally");
-                        }
-                        else
-                        {
-                            var err = media.TryGetProperty(JsonErrorProperty, out var e) ? e.GetString() : "local media restore failed";
-                            parts.Add($"Local media: {err}");
-                            // Fallback: pull whatever landed on the server
-                            await S.MediaFolder.SyncProjectMediaToClientAsync(pid);
-                        }
-                    }
-                    catch (Exception mex)
-                    {
-                        parts.Add($"Local media restore error: {mex.Message}");
-                        try { await S.MediaFolder.SyncProjectMediaToClientAsync(pid); }
-                        catch { /* best effort */ }
-                    }
-                }
-
-                _archiveMsg = string.Join(" · ", parts.Where(s => !string.IsNullOrWhiteSpace(s)));
-                _importFile = null;
-                await RefreshProjectOptionsAsync();
-                await S.State.RefreshAsync();
-            });
+        private async Task AppendImportedMediaFailureAsync(JsonElement media, string pid, List<string> parts)
+        {
+            var err = media.TryGetProperty(JsonErrorProperty, out var e) ? e.GetString() : "local media restore failed";
+            parts.Add($"Local media: {err}");
+            // Fallback: pull whatever landed on the server
+            await S.MediaFolder.SyncProjectMediaToClientAsync(pid);
         }
 
         
@@ -504,79 +547,8 @@ public partial class Admin
         {
             try
             {
-                // ~90 minutes — Odyssey-scale rewrite can sit in one model call that long.
-                var misses = 0;
-                for (var i = 0; i < 2700 && !token.IsCancellationRequested; i++)
-                {
-                    JobSnapshot? j = null;
-                    if (!string.IsNullOrWhiteSpace(_enrichJobId))
-                        j = await S.Api.TryGetJobAsync(_enrichJobId, token);
-                    if (j is null)
-                    {
-                        var jobs = await S.Api.GetJobAsync(token);
-                        var cand = jobs?.Job;
-                        if (cand is not null &&
-                            string.Equals(cand.Kind, "embellish", StringComparison.OrdinalIgnoreCase) &&
-                            (string.IsNullOrWhiteSpace(_enrichProjectId) ||
-                             string.Equals(cand.ProjectId, _enrichProjectId, StringComparison.OrdinalIgnoreCase)))
-                            j = cand;
-                    }
-                    if (j is not null)
-                    {
-                        misses = 0;
-                        if (string.IsNullOrWhiteSpace(_enrichJobId) && !string.IsNullOrWhiteSpace(j.JobId))
-                            _enrichJobId = j.JobId;
-                        _enrichJob = j;
-                        if (j.StartedAt is { } t)
-                            _enrichStarted = t;
-                        await S.NotifyChangedAsync();
-                        if (j.IsFinished)
-                        {
-                            if (j.IsSuccess)
-                            {
-                                _archiveMsg = j.Message ?? "Enrich finished.";
-                                await RefreshEnrichStatusAsync();
-                            }
-                            else
-                            {
-                                _archiveError = j.Error ?? j.Message ?? "Enrich failed.";
-                                _archiveMsg = null;
-                            }
-                            _archiveBusy = false;
-                            _archiveAction = null;
-                            await S.NotifyChangedAsync();
-                            return;
-                        }
-                    }
-                    else
-                    {
-                        // Job id gone and no running embellish = process restart or already finished.
-                        // Don't keep a fake 45% card for 90 minutes.
-                        misses++;
-                        if (i >= 8 && misses >= 3)
-                        {
-                            _archiveError = "No enrich job on the server (restarted or already finished). Original screenplay is unchanged unless a success line is in the log.";
-                            _archiveMsg = null;
-                            _archiveBusy = false;
-                            _archiveAction = null;
-                            if (_enrichJob is not null && !_enrichJob.IsFinished)
-                            {
-                                _enrichJob.Status = "error";
-                                _enrichJob.Message = _archiveError;
-                            }
-                            await S.NotifyChangedAsync();
-                            return;
-                        }
-                    }
-                    await Task.Delay(i < 20 ? 500 : 2000, token);
-                }
-                if (!token.IsCancellationRequested)
-                {
-                    _archiveError = "Timed out waiting for enrich (still running on the server — check Jobs).";
-                    _archiveBusy = false;
-                    _archiveAction = null;
-                    await S.NotifyChangedAsync();
-                }
+                if (!await PollEnrichUntilDoneAsync(token) && !token.IsCancellationRequested)
+                    await AbortEnrichBusyAsync("Timed out waiting for enrich (still running on the server — check Jobs).");
             }
             catch (TaskCanceledException)
             {
@@ -584,11 +556,109 @@ public partial class Admin
             }
             catch (Exception ex)
             {
-                _archiveError = ex.Message;
-                _archiveBusy = false;
-                _archiveAction = null;
-                await S.NotifyChangedAsync();
+                await AbortEnrichBusyAsync(ex.Message);
             }
+        }
+
+        private async Task AbortEnrichBusyAsync(string error)
+        {
+            _archiveError = error;
+            _archiveBusy = false;
+            _archiveAction = null;
+            await S.NotifyChangedAsync();
+        }
+
+        private async Task<bool> PollEnrichUntilDoneAsync(CancellationToken token)
+        {
+            // ~90 minutes — Odyssey-scale rewrite can sit in one model call that long.
+            var misses = 0;
+            for (var i = 0; i < 2700 && !token.IsCancellationRequested; i++)
+            {
+                (var stop, misses) = await ProcessEnrichPollTickAsync(i, token, misses);
+                if (stop)
+                    return true;
+                await Task.Delay(EnrichPollDelayMs(i), token);
+            }
+            return false;
+        }
+
+        private static int EnrichPollDelayMs(int i) => i < 20 ? 500 : 2000;
+
+        private async Task<(bool Stop, int Misses)> ProcessEnrichPollTickAsync(int i, CancellationToken token, int misses)
+        {
+            var j = await TryResolveEnrichJobAsync(token);
+            if (j is not null)
+                return (await ApplyEnrichJobSnapshotAsync(j), 0);
+            return await HandleEnrichMissAsync(i, misses);
+        }
+
+        private async Task<JobSnapshot?> TryResolveEnrichJobAsync(CancellationToken token)
+        {
+            if (!string.IsNullOrWhiteSpace(_enrichJobId))
+            {
+                var j = await S.Api.TryGetJobAsync(_enrichJobId!, token);
+                if (j is not null)
+                    return j;
+            }
+
+            var jobs = await S.Api.GetJobAsync(token);
+            var cand = jobs?.Job;
+            if (cand is not null && IsCurrentEmbellishCandidate(cand))
+                return cand;
+            return null;
+        }
+
+        private bool IsCurrentEmbellishCandidate(JobSnapshot cand)
+            => string.Equals(cand.Kind, "embellish", StringComparison.OrdinalIgnoreCase) &&
+               (string.IsNullOrWhiteSpace(_enrichProjectId) ||
+                string.Equals(cand.ProjectId, _enrichProjectId, StringComparison.OrdinalIgnoreCase));
+
+        private async Task<bool> ApplyEnrichJobSnapshotAsync(JobSnapshot j)
+        {
+            if (string.IsNullOrWhiteSpace(_enrichJobId) && !string.IsNullOrWhiteSpace(j.JobId))
+                _enrichJobId = j.JobId;
+            _enrichJob = j;
+            if (j.StartedAt is { } t)
+                _enrichStarted = t;
+            await S.NotifyChangedAsync();
+            if (!j.IsFinished)
+                return false;
+
+            if (j.IsSuccess)
+            {
+                _archiveMsg = j.Message ?? "Enrich finished.";
+                await RefreshEnrichStatusAsync();
+            }
+            else
+            {
+                _archiveError = j.Error ?? j.Message ?? "Enrich failed.";
+                _archiveMsg = null;
+            }
+            _archiveBusy = false;
+            _archiveAction = null;
+            await S.NotifyChangedAsync();
+            return true;
+        }
+
+        private async Task<(bool Stop, int Misses)> HandleEnrichMissAsync(int i, int misses)
+        {
+            // Job id gone and no running embellish = process restart or already finished.
+            // Don't keep a fake 45% card for 90 minutes.
+            misses++;
+            if (i < 8 || misses < 3)
+                return (false, misses);
+
+            _archiveError = "No enrich job on the server (restarted or already finished). Original screenplay is unchanged unless a success line is in the log.";
+            _archiveMsg = null;
+            _archiveBusy = false;
+            _archiveAction = null;
+            if (_enrichJob is not null && !_enrichJob.IsFinished)
+            {
+                _enrichJob.Status = "error";
+                _enrichJob.Message = _archiveError;
+            }
+            await S.NotifyChangedAsync();
+            return (true, misses);
         }
 
         internal async Task AugmentMusicAsync()
@@ -624,15 +694,8 @@ public partial class Admin
             // has). Without it, jobs would run (and cost real API spend) but the audio could never be
             // saved — the only visible sign was a warning banner that only renders on the Scenes page,
             // so from here it looked like nothing happened at all.
-            if (!S.MediaFolder.IsConnected)
-            {
-                var connected = await S.MediaFolder.ConnectFolderAsync();
-                if (!connected)
-                {
-                    _archiveError = "Connect a local media folder first (Scenes page → Connect folder) — background music can't be saved without one.";
-                    return;
-                }
-            }
+            if (!await EnsureMediaFolderConnectedForSynthAsync())
+                return;
 
             _archiveBusy = true;
             _archiveAction = "synthesize";
@@ -644,116 +707,7 @@ public partial class Admin
 
             try
             {
-                var scenesDto = await S.Api.GetScenesAsync(_augmentProjectId);
-                var scenes = scenesDto?.Scenes;
-                if (scenes is null || scenes.Count == 0)
-                {
-                    _archiveError = $"No scenes found for project {_augmentProjectId}. Build shot plan first.";
-                    _archiveMsg = null;
-                    return;
-                }
-
-                _synthesizeTotal = scenes.Count;
-                int queuedCount = 0;
-                int skippedCount = 0;
-                int failedCount = 0;
-                var failureMessages = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-                foreach (var sc in scenes)
-                {
-                    _synthesizeCurrent++;
-                    _archiveMsg = $"Checking background music for {_augmentProjectId} Scene S{sc.SceneNumber:D2} ({_synthesizeCurrent}/{_synthesizeTotal})…";
-                    S.StateHasChanged();
-
-                    // First music segment's relative path (see MediaRegistryService.MusicSegmentRelativePath) —
-                    // segment 1 always exists once a scene has any background music synced locally.
-                    var audioPath = $"assets/music/scene_{sc.SceneNumber:D2}_seg_01.wav";
-                    var hasLocalAudio = S.MediaFolder.IsConnected && (await S.MediaFolder.StatLocalFileAsync(_augmentProjectId, audioPath)).Found;
-
-                    if (hasLocalAudio)
-                    {
-                        skippedCount++;
-                        continue;
-                    }
-
-                    _archiveMsg = $"Queuing background music synthesis for Scene S{sc.SceneNumber:D2} ({_synthesizeCurrent}/{_synthesizeTotal})…";
-                    S.StateHasChanged();
-
-                    // One job at a time — FilmJobService caps queued jobs per user (MaxQueuePerUser),
-                    // and this loop can easily exceed that firing every scene back-to-back.
-                    var started = await S.Api.StartSceneMusicGenAsync(_augmentProjectId, sc.SceneNumber);
-                    queuedCount++;
-
-                    if (!string.IsNullOrWhiteSpace(started?.JobId))
-                    {
-                        _archiveMsg = $"Generating background music for Scene S{sc.SceneNumber:D2} ({_synthesizeCurrent}/{_synthesizeTotal})…";
-                        S.StateHasChanged();
-                        try
-                        {
-                            var final = await S.Api.WaitForJobTerminalAsync(started.JobId, timeout: TimeSpan.FromMinutes(8));
-                            // The job "succeeding" server-side only means audio bytes were fetched from the
-                            // provider — it says nothing about whether this browser tab actually wrote them
-                            // to the local media folder (SaveJobMediaAsync runs off a SignalR JobUpdated
-                            // event this loop doesn't observe). Without this check, a wrong/unconfigured
-                            // audio provider (e.g. only an AI Music API key set while audio_model_name is
-                            // still the fal-ai/stable-audio default) fails every scene silently — the loop
-                            // would report a false "Completed" with no sign anything went wrong.
-                            if (!string.Equals(final?.Status, "done", StringComparison.OrdinalIgnoreCase))
-                            {
-                                failedCount++;
-                                var msg = string.IsNullOrWhiteSpace(final?.Error) ? (final?.Message ?? "Unknown error") : final.Error;
-                                failureMessages.Add(msg);
-                            }
-                            else
-                            {
-                                // Don't rely solely on the passive SignalR-triggered auto-save (OnJobUpdated
-                                // → SaveJobMediaAsync) — its reliability here is unconfirmed. `final` already
-                                // carries the same ClientMediaUrl/ClientRelativePath that path would react to
-                                // (the last-generated segment's proxy ticket), so call the save directly, the
-                                // same way SyncProjectMediaToClientAsync explicitly pulls each file rather
-                                // than waiting on an event. SaveJobMediaAsync's own in-flight/dedup guard
-                                // makes this a safe no-op if the passive path already grabbed it.
-                                _archiveMsg = $"Saving audio for Scene S{sc.SceneNumber:D2} ({_synthesizeCurrent}/{_synthesizeTotal})…";
-                                S.StateHasChanged();
-                                if (final is not null)
-                                    await S.MediaFolder.SaveJobMediaAsync(final);
-
-                                _archiveMsg = $"Confirming local save for Scene S{sc.SceneNumber:D2} ({_synthesizeCurrent}/{_synthesizeTotal})…";
-                                S.StateHasChanged();
-                                var confirmed = false;
-                                for (var attempt = 0; attempt < 10; attempt++)
-                                {
-                                    if ((await S.MediaFolder.StatLocalFileAsync(_augmentProjectId, audioPath)).Found)
-                                    {
-                                        confirmed = true;
-                                        break;
-                                    }
-                                    await Task.Delay(1000, CancellationToken.None);
-                                }
-                                if (!confirmed)
-                                {
-                                    failedCount++;
-                                    failureMessages.Add(
-                                        $"Generated but never saved locally for Scene S{sc.SceneNumber:D2} — " +
-                                        (S.MediaFolder.IsConnected
-                                            ? $"check media folder connection ({S.MediaFolder.LastStatus})"
-                                            : "media folder disconnected"));
-                                }
-                            }
-                        }
-                        catch (TimeoutException)
-                        {
-                            // Move on — the job keeps running server-side; this loop just stops waiting on it.
-                        }
-                    }
-                }
-
-                _archiveMsg = $"Completed background music synthesis checks for {_augmentProjectId}. Queued: {queuedCount}, Skipped (Existing): {skippedCount}, Failed: {failedCount}.";
-                if (failedCount > 0)
-                {
-                    _archiveError = $"{failedCount} scene(s) failed to synthesize: {string.Join(" | ", failureMessages)}";
-                }
-                await S.State.RefreshAsync();
+                await SynthesizeAllScenesAsync();
             }
             catch (Exception ex)
             {
@@ -766,6 +720,152 @@ public partial class Admin
                 _archiveAction = null;
                 S.StateHasChanged();
             }
+        }
+
+        private async Task<bool> EnsureMediaFolderConnectedForSynthAsync()
+        {
+            if (S.MediaFolder.IsConnected)
+                return true;
+            var connected = await S.MediaFolder.ConnectFolderAsync();
+            if (connected)
+                return true;
+            _archiveError = "Connect a local media folder first (Scenes page → Connect folder) — background music can't be saved without one.";
+            return false;
+        }
+
+        private async Task SynthesizeAllScenesAsync()
+        {
+            var scenesDto = await S.Api.GetScenesAsync(_augmentProjectId);
+            var scenes = scenesDto?.Scenes;
+            if (scenes is null || scenes.Count == 0)
+            {
+                _archiveError = $"No scenes found for project {_augmentProjectId}. Build shot plan first.";
+                _archiveMsg = null;
+                return;
+            }
+
+            _synthesizeTotal = scenes.Count;
+            var tally = new SynthTally();
+
+            foreach (var sc in scenes)
+                await SynthesizeOneSceneAsync(sc, tally);
+
+            _archiveMsg = $"Completed background music synthesis checks for {_augmentProjectId}. Queued: {tally.Queued}, Skipped (Existing): {tally.Skipped}, Failed: {tally.Failed}.";
+            if (tally.Failed > 0)
+            {
+                _archiveError = $"{tally.Failed} scene(s) failed to synthesize: {string.Join(" | ", tally.Failures)}";
+            }
+            await S.State.RefreshAsync();
+        }
+
+        private async Task SynthesizeOneSceneAsync(SceneSummary sc, SynthTally tally)
+        {
+            _synthesizeCurrent++;
+            _archiveMsg = $"Checking background music for {_augmentProjectId} Scene S{sc.SceneNumber:D2} ({_synthesizeCurrent}/{_synthesizeTotal})…";
+            S.StateHasChanged();
+
+            // First music segment's relative path (see MediaRegistryService.MusicSegmentRelativePath) —
+            // segment 1 always exists once a scene has any background music synced locally.
+            var audioPath = $"assets/music/scene_{sc.SceneNumber:D2}_seg_01.wav";
+            var hasLocalAudio = S.MediaFolder.IsConnected && (await S.MediaFolder.StatLocalFileAsync(_augmentProjectId, audioPath)).Found;
+
+            if (hasLocalAudio)
+            {
+                tally.Skipped++;
+                return;
+            }
+
+            _archiveMsg = $"Queuing background music synthesis for Scene S{sc.SceneNumber:D2} ({_synthesizeCurrent}/{_synthesizeTotal})…";
+            S.StateHasChanged();
+
+            // One job at a time — FilmJobService caps queued jobs per user (MaxQueuePerUser),
+            // and this loop can easily exceed that firing every scene back-to-back.
+            var started = await S.Api.StartSceneMusicGenAsync(_augmentProjectId, sc.SceneNumber);
+            tally.Queued++;
+
+            if (string.IsNullOrWhiteSpace(started?.JobId))
+                return;
+
+            _archiveMsg = $"Generating background music for Scene S{sc.SceneNumber:D2} ({_synthesizeCurrent}/{_synthesizeTotal})…";
+            S.StateHasChanged();
+            await WaitAndSaveSceneMusicAsync(sc.SceneNumber, started.JobId, audioPath, tally);
+        }
+
+        private async Task WaitAndSaveSceneMusicAsync(int sceneNumber, string jobId, string audioPath, SynthTally tally)
+        {
+            try
+            {
+                var final = await S.Api.WaitForJobTerminalAsync(jobId, timeout: TimeSpan.FromMinutes(8));
+                // The job "succeeding" server-side only means audio bytes were fetched from the
+                // provider — it says nothing about whether this browser tab actually wrote them
+                // to the local media folder (SaveJobMediaAsync runs off a SignalR JobUpdated
+                // event this loop doesn't observe). Without this check, a wrong/unconfigured
+                // audio provider (e.g. only an AI Music API key set while audio_model_name is
+                // still the fal-ai/stable-audio default) fails every scene silently — the loop
+                // would report a false "Completed" with no sign anything went wrong.
+                if (!string.Equals(final?.Status, "done", StringComparison.OrdinalIgnoreCase))
+                {
+                    tally.Failed++;
+                    tally.Failures.Add(JobFailureMessage(final));
+                    return;
+                }
+
+                // Don't rely solely on the passive SignalR-triggered auto-save (OnJobUpdated
+                // → SaveJobMediaAsync) — its reliability here is unconfirmed. `final` already
+                // carries the same ClientMediaUrl/ClientRelativePath that path would react to
+                // (the last-generated segment's proxy ticket), so call the save directly, the
+                // same way SyncProjectMediaToClientAsync explicitly pulls each file rather
+                // than waiting on an event. SaveJobMediaAsync's own in-flight/dedup guard
+                // makes this a safe no-op if the passive path already grabbed it.
+                _archiveMsg = $"Saving audio for Scene S{sceneNumber:D2} ({_synthesizeCurrent}/{_synthesizeTotal})…";
+                S.StateHasChanged();
+                if (final is not null)
+                    await S.MediaFolder.SaveJobMediaAsync(final);
+
+                _archiveMsg = $"Confirming local save for Scene S{sceneNumber:D2} ({_synthesizeCurrent}/{_synthesizeTotal})…";
+                S.StateHasChanged();
+                if (await ConfirmLocalMusicSavedAsync(audioPath))
+                    return;
+
+                tally.Failed++;
+                tally.Failures.Add(LocalSaveFailureMessage(sceneNumber));
+            }
+            catch (TimeoutException)
+            {
+                // Move on — the job keeps running server-side; this loop just stops waiting on it.
+            }
+        }
+
+        private static string JobFailureMessage(JobSnapshot? final)
+        {
+            if (!string.IsNullOrWhiteSpace(final?.Error))
+                return final.Error!;
+            return final?.Message ?? "Unknown error";
+        }
+
+        private string LocalSaveFailureMessage(int sceneNumber)
+            => $"Generated but never saved locally for Scene S{sceneNumber:D2} — " +
+               (S.MediaFolder.IsConnected
+                   ? $"check media folder connection ({S.MediaFolder.LastStatus})"
+                   : "media folder disconnected");
+
+        private async Task<bool> ConfirmLocalMusicSavedAsync(string audioPath)
+        {
+            for (var attempt = 0; attempt < 10; attempt++)
+            {
+                if ((await S.MediaFolder.StatLocalFileAsync(_augmentProjectId, audioPath)).Found)
+                    return true;
+                await Task.Delay(1000, CancellationToken.None);
+            }
+            return false;
+        }
+
+        private sealed class SynthTally
+        {
+            public int Queued;
+            public int Skipped;
+            public int Failed;
+            public readonly HashSet<string> Failures = new(StringComparer.OrdinalIgnoreCase);
         }
     }
 }

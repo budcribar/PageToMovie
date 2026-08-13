@@ -78,165 +78,166 @@ public partial class Characters
             // New job id → always take the snapshot (Index may be 0)
             // Same job → update as usual
             _job = snap;
-            if ((snap.Status is "done" or JobStatusError or JobStatusCancelled) &&
-                string.Equals(snap.Kind, "voice-preview", StringComparison.OrdinalIgnoreCase))
-            {
-                _ = S.InvokeAsync(async () =>
-                {
-                    S.Voice._voicePreviewBusy = false;
-                    if (snap.Status == "done" &&
-                        string.Equals(snap.CharKey, S.List._selectedKey, StringComparison.OrdinalIgnoreCase))
-                    {
-                        S._error = null;
-                        S.Voice._voicePreviewError = null;
-                        S.Voice._voiceAudioBust = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                        S.Voice._voicePreviewUrl = S.Engine.CharacterVoiceAudioUrl(
-                            S._projectId, snap.CharKey, S.Voice._voiceAudioBust);
-                        S.Voice._voicePreviewStale = false;
-                        S.Voice._voicePreviewHint = "Film voice sample ready.";
-                        S._message = null;
-                    }
-                    else if (snap.Status == JobStatusError)
-                    {
-                        S._message = null;
-                        S.Voice._voicePreviewError = S.Session.IsAdmin
-                            ? (snap.Error ?? snap.Message ?? "Voice sample failed.")
-                            : "Could not generate voice sample. Try again.";
-                    }
-                    else if (snap.Status == JobStatusCancelled)
-                    {
-                        S.Voice._voicePreviewError = null;
-                        S.Voice._voicePreviewHint = "Voice sample cancelled.";
-                    }
-                    S.StateHasChanged();
-                    await Task.CompletedTask;
-                });
-            }
-            else if ((snap.Status is "done" or JobStatusError or JobStatusCancelled) &&
-                string.Equals(snap.Kind, "cast-extract", StringComparison.OrdinalIgnoreCase))
-            {
-                _ = S.InvokeAsync(async () =>
-                {
-                    S.List._extractingCast = false;
-                    S.List._rebuildCastHadExisting = false;
-                    S._busy = false;
-                    await S.List.LoadAsync();
-                    if (snap.Status == "done")
-                    {
-                        S._error = null;
-                        S._message = Characters.StripTrailingKeyDump(
-                            snap.Message ?? "Cast ready — review looks, then lock portraits");
-                        S.List._lastCastExtractKeys = S.List._chars?
-                            .Select(c => c.Key)
-                            .Where(k => !string.IsNullOrWhiteSpace(k))
-                            .ToList();
-                    }
-                    else if (snap.Status == JobStatusError)
-                    {
-                        S._message = null;
-                        S._error = S.Session.IsAdmin
-                            ? (snap.Error ?? snap.Message ?? "Cast extract failed.")
-                            : "Could not build cast. Try again.";
-                    }
-                    else
-                    {
-                        S._error = null;
-                        S._message = "Cast extract cancelled.";
-                    }
-                    S.StateHasChanged();
-                });
-            }
-            else if ((snap.Status is "done" or "partial" or JobStatusError or JobStatusCancelled) &&
-                string.Equals(snap.Kind, "plan_looks", StringComparison.OrdinalIgnoreCase))
-            {
-                _ = S.InvokeAsync(async () =>
-                {
-                    await S.List.LoadAsync();
-                    if (snap.Status is "done" or "partial")
-                    {
-                        S._error = null;
-                        S._message = snap.Message ?? "Plan looks ready — AI locked best picks (override any plate anytime).";
-                    }
-                    else if (snap.Status == JobStatusError)
-                    {
-                        S._message = null;
-                        S._error = S.Session.IsAdmin
-                            ? (snap.Error ?? snap.Message ?? "Plan looks failed.")
-                            : "Could not generate plan looks. Try again.";
-                    }
-                    else
-                    {
-                        S._error = null;
-                        S._message = "Plan looks cancelled.";
-                    }
-                    S.StateHasChanged();
-                });
-            }
-            else if ((snap.Status is "done" or JobStatusError or JobStatusCancelled) &&
-                string.Equals(snap.Kind, "character-plates", StringComparison.OrdinalIgnoreCase))
-            {
-                _ = S.InvokeAsync(async () =>
-                {
-                    await S.List.SoftReloadAsync();
-                    if (snap.Status == "done")
-                    {
-                        S._error = null;
-                        S._message = "Book pictures matched.";
-                    }
-                    else if (snap.Status == JobStatusError)
-                    {
-                        S._message = null;
-                        S._error = S.Session.IsAdmin
-                            ? (snap.Error ?? snap.Message ?? "Could not match book pictures.")
-                            : "Could not match book pictures. Try again.";
-                    }
-                    else if (snap.Status == JobStatusCancelled)
-                    {
-                        S._error = null;
-                        S._message = "Matching cancelled.";
-                    }
-                    S.StateHasChanged();
-                });
-            }
-            else if ((snap.Status is "done" or JobStatusError or JobStatusCancelled) &&
-                string.Equals(snap.Kind, "character", StringComparison.OrdinalIgnoreCase))
-            {
-                _ = S.InvokeAsync(async () =>
-                {
-                    // Leave "Generating…" as soon as the job finishes (even if files need a moment)
-                    if (S.LookPipe._mode == Mode.WaitingGenerate)
-                        S.LookPipe._mode = Mode.PickSource;
+            if (IsTerminalKind(snap, "voice-preview"))
+                _ = S.InvokeAsync(() => HandleVoicePreviewJobAsync(snap));
+            else if (IsTerminalKind(snap, "cast-extract"))
+                _ = S.InvokeAsync(() => HandleCastExtractJobAsync(snap));
+            else if (IsPlanLooksTerminal(snap))
+                _ = S.InvokeAsync(() => HandlePlanLooksJobAsync(snap));
+            else if (IsTerminalKind(snap, "character-plates"))
+                _ = S.InvokeAsync(() => HandleCharacterPlatesJobAsync(snap));
+            else if (IsTerminalKind(snap, "character"))
+                _ = S.InvokeAsync(() => HandleCharacterJobAsync(snap));
+            else
+                _ = S.InvokeAsync(S.StateHasChanged);
+        }
 
-                    await S.List.SoftReloadAsync();
-                    if (snap.Status == "done" &&
-                        string.Equals(snap.CharKey, S.List._selectedKey, StringComparison.OrdinalIgnoreCase))
-                    {
-                        S._error = null;
-                        S._message = null;
-                        // Brief delay so variant files are visible after write/flush
-                        await Task.Delay(150);
-                        await S.List.SoftReloadAsync();
-                        S.LookPipe.BeginCompareFromVariants();
-                    }
-                    else if (snap.Status == JobStatusError)
-                    {
-                        S._message = null;
-                        S._error = S.Session.IsAdmin
-                            ? (snap.Error ?? snap.Message ?? "Portrait generation failed.")
-                            : "Portrait generation failed. Try again.";
-                        S.LookPipe._mode = Mode.PickSource;
-                    }
-                    else if (snap.Status == JobStatusCancelled)
-                    {
-                        S.LookPipe._mode = Mode.PickSource;
-                    }
-                    S.StateHasChanged();
-                });
+        private static bool IsTerminalKind(JobSnapshot snap, string kind)
+            => (snap.Status is "done" or JobStatusError or JobStatusCancelled)
+               && string.Equals(snap.Kind, kind, StringComparison.OrdinalIgnoreCase);
+
+        private static bool IsPlanLooksTerminal(JobSnapshot snap)
+            => (snap.Status is "done" or "partial" or JobStatusError or JobStatusCancelled)
+               && string.Equals(snap.Kind, "plan_looks", StringComparison.OrdinalIgnoreCase);
+
+        private string AdminOrOperatorError(JobSnapshot snap, string adminFallback, string operatorText)
+            => S.Session.IsAdmin
+                ? (snap.Error ?? snap.Message ?? adminFallback)
+                : operatorText;
+
+        private async Task HandleVoicePreviewJobAsync(JobSnapshot snap)
+        {
+            S.Voice._voicePreviewBusy = false;
+            if (snap.Status == "done" &&
+                string.Equals(snap.CharKey, S.List._selectedKey, StringComparison.OrdinalIgnoreCase))
+            {
+                S._error = null;
+                S.Voice._voicePreviewError = null;
+                S.Voice._voiceAudioBust = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                S.Voice._voicePreviewUrl = S.Engine.CharacterVoiceAudioUrl(
+                    S._projectId, snap.CharKey, S.Voice._voiceAudioBust);
+                S.Voice._voicePreviewStale = false;
+                S.Voice._voicePreviewHint = "Film voice sample ready.";
+                S._message = null;
+            }
+            else if (snap.Status == JobStatusError)
+            {
+                S._message = null;
+                S.Voice._voicePreviewError = AdminOrOperatorError(
+                    snap, "Voice sample failed.", "Could not generate voice sample. Try again.");
+            }
+            else if (snap.Status == JobStatusCancelled)
+            {
+                S.Voice._voicePreviewError = null;
+                S.Voice._voicePreviewHint = "Voice sample cancelled.";
+            }
+            S.StateHasChanged();
+            await Task.CompletedTask;
+        }
+
+        private async Task HandleCastExtractJobAsync(JobSnapshot snap)
+        {
+            S.List._extractingCast = false;
+            S.List._rebuildCastHadExisting = false;
+            S._busy = false;
+            await S.List.LoadAsync();
+            if (snap.Status == "done")
+            {
+                S._error = null;
+                S._message = Characters.StripTrailingKeyDump(
+                    snap.Message ?? "Cast ready — review looks, then lock portraits");
+                S.List._lastCastExtractKeys = S.List._chars?
+                    .Select(c => c.Key)
+                    .Where(k => !string.IsNullOrWhiteSpace(k))
+                    .ToList();
+            }
+            else if (snap.Status == JobStatusError)
+            {
+                S._message = null;
+                S._error = AdminOrOperatorError(
+                    snap, "Cast extract failed.", "Could not build cast. Try again.");
             }
             else
             {
-                _ = S.InvokeAsync(S.StateHasChanged);
+                S._error = null;
+                S._message = "Cast extract cancelled.";
             }
+            S.StateHasChanged();
+        }
+
+        private async Task HandlePlanLooksJobAsync(JobSnapshot snap)
+        {
+            await S.List.LoadAsync();
+            if (snap.Status is "done" or "partial")
+            {
+                S._error = null;
+                S._message = snap.Message ?? "Plan looks ready — AI locked best picks (override any plate anytime).";
+            }
+            else if (snap.Status == JobStatusError)
+            {
+                S._message = null;
+                S._error = AdminOrOperatorError(
+                    snap, "Plan looks failed.", "Could not generate plan looks. Try again.");
+            }
+            else
+            {
+                S._error = null;
+                S._message = "Plan looks cancelled.";
+            }
+            S.StateHasChanged();
+        }
+
+        private async Task HandleCharacterPlatesJobAsync(JobSnapshot snap)
+        {
+            await S.List.SoftReloadAsync();
+            if (snap.Status == "done")
+            {
+                S._error = null;
+                S._message = "Book pictures matched.";
+            }
+            else if (snap.Status == JobStatusError)
+            {
+                S._message = null;
+                S._error = AdminOrOperatorError(
+                    snap, "Could not match book pictures.", "Could not match book pictures. Try again.");
+            }
+            else if (snap.Status == JobStatusCancelled)
+            {
+                S._error = null;
+                S._message = "Matching cancelled.";
+            }
+            S.StateHasChanged();
+        }
+
+        private async Task HandleCharacterJobAsync(JobSnapshot snap)
+        {
+            // Leave "Generating…" as soon as the job finishes (even if files need a moment)
+            if (S.LookPipe._mode == Mode.WaitingGenerate)
+                S.LookPipe._mode = Mode.PickSource;
+
+            await S.List.SoftReloadAsync();
+            if (snap.Status == "done" &&
+                string.Equals(snap.CharKey, S.List._selectedKey, StringComparison.OrdinalIgnoreCase))
+            {
+                S._error = null;
+                S._message = null;
+                // Brief delay so variant files are visible after write/flush
+                await Task.Delay(150);
+                await S.List.SoftReloadAsync();
+                S.LookPipe.BeginCompareFromVariants();
+            }
+            else if (snap.Status == JobStatusError)
+            {
+                S._message = null;
+                S._error = AdminOrOperatorError(
+                    snap, "Portrait generation failed.", "Portrait generation failed. Try again.");
+                S.LookPipe._mode = Mode.PickSource;
+            }
+            else if (snap.Status == JobStatusCancelled)
+            {
+                S.LookPipe._mode = Mode.PickSource;
+            }
+            S.StateHasChanged();
         }
 
 

@@ -366,101 +366,122 @@ public sealed class CatalogUpdateProbeService
 
         if (entry.Capability is ModelCapability.Chat or ModelCapability.Vision)
         {
-            // Prefer "Input … $X" / "Output … $Y" style; fallback to first two $ amounts near "1M"
-            var inMatch = CommonRegex.Match(html,
-                @"Input[^$]{0,80}\$([0-9]+(?:\.[0-9]+)?)\s*(?:/\s*1M|/1M|per\s*1M|/\s*million)?",
-                RegexOptions.IgnoreCase | RegexOptions.Singleline);
-            var outMatch = CommonRegex.Match(html,
-                @"Output[^$]{0,80}\$([0-9]+(?:\.[0-9]+)?)\s*(?:/\s*1M|/1M|per\s*1M|/\s*million)?",
-                RegexOptions.IgnoreCase | RegexOptions.Singleline);
-
-            if (inMatch.Success && double.TryParse(inMatch.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var inLive))
-                row.Fields.Add(CompareDouble("inputCostPerMillionTokens", entry.InputCostPerMillionTokens, inLive, docUrl, "parsed Input $/1M"));
-            else
-                row.Fields.Add(Field("inputCostPerMillionTokens", entry.InputCostPerMillionTokens?.ToString(CultureInfo.InvariantCulture), null, StatusNotFound,
-                    "Could not parse Input $/1M from docs.", docUrl));
-
-            if (outMatch.Success && double.TryParse(outMatch.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var outLive))
-                row.Fields.Add(CompareDouble("outputCostPerMillionTokens", entry.OutputCostPerMillionTokens, outLive, docUrl, "parsed Output $/1M"));
-            else
-                row.Fields.Add(Field("outputCostPerMillionTokens", entry.OutputCostPerMillionTokens?.ToString(CultureInfo.InvariantCulture), null, StatusNotFound,
-                    "Could not parse Output $/1M from docs.", docUrl));
+            AddXaiChatTokenPricing(entry, row, html, docUrl);
             return;
         }
 
         if (entry.Capability == ModelCapability.Image)
         {
-            var m = CommonRegex.Match(html,
-                @"\$([0-9]+(?:\.[0-9]+)?)\s*(?:/\s*image|per\s*image)",
-                RegexOptions.IgnoreCase);
-            if (!m.Success)
-                m = CommonRegex.Match(html, @"Pricing[^$]{0,40}\$([0-9]+(?:\.[0-9]+)?)", RegexOptions.IgnoreCase);
-            if (m.Success && double.TryParse(m.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var imgLive))
-                row.Fields.Add(CompareDouble("imageCostPerImage", entry.ImageCostPerImage, imgLive, docUrl, "parsed $/image"));
-            else
-                row.Fields.Add(Field("imageCostPerImage", entry.ImageCostPerImage?.ToString(CultureInfo.InvariantCulture), null, StatusNotFound,
-                    "Could not parse $/image from docs.", docUrl));
+            AddXaiImagePricing(entry, row, html, docUrl);
             return;
         }
 
         if (entry.Capability == ModelCapability.Video)
+            AddXaiVideoPricing(entry, row, html, docUrl);
+    }
+
+    private static void AddXaiChatTokenPricing(SupportedModelEntry entry, CatalogModelProbeResult row, string html, string docUrl)
+    {
+        // Prefer "Input … $X" / "Output … $Y" style; fallback to first two $ amounts near "1M"
+        var inMatch = CommonRegex.Match(html,
+            @"Input[^$]{0,80}\$([0-9]+(?:\.[0-9]+)?)\s*(?:/\s*1M|/1M|per\s*1M|/\s*million)?",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        var outMatch = CommonRegex.Match(html,
+            @"Output[^$]{0,80}\$([0-9]+(?:\.[0-9]+)?)\s*(?:/\s*1M|/1M|per\s*1M|/\s*million)?",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
+        if (inMatch.Success && double.TryParse(inMatch.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var inLive))
+            row.Fields.Add(CompareDouble("inputCostPerMillionTokens", entry.InputCostPerMillionTokens, inLive, docUrl, "parsed Input $/1M"));
+        else
+            row.Fields.Add(Field("inputCostPerMillionTokens", entry.InputCostPerMillionTokens?.ToString(CultureInfo.InvariantCulture), null, StatusNotFound,
+                "Could not parse Input $/1M from docs.", docUrl));
+
+        if (outMatch.Success && double.TryParse(outMatch.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var outLive))
+            row.Fields.Add(CompareDouble("outputCostPerMillionTokens", entry.OutputCostPerMillionTokens, outLive, docUrl, "parsed Output $/1M"));
+        else
+            row.Fields.Add(Field("outputCostPerMillionTokens", entry.OutputCostPerMillionTokens?.ToString(CultureInfo.InvariantCulture), null, StatusNotFound,
+                "Could not parse Output $/1M from docs.", docUrl));
+    }
+
+    private static void AddXaiImagePricing(SupportedModelEntry entry, CatalogModelProbeResult row, string html, string docUrl)
+    {
+        var m = CommonRegex.Match(html,
+            @"\$([0-9]+(?:\.[0-9]+)?)\s*(?:/\s*image|per\s*image)",
+            RegexOptions.IgnoreCase);
+        if (!m.Success)
+            m = CommonRegex.Match(html, @"Pricing[^$]{0,40}\$([0-9]+(?:\.[0-9]+)?)", RegexOptions.IgnoreCase);
+        if (m.Success && double.TryParse(m.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var imgLive))
+            row.Fields.Add(CompareDouble("imageCostPerImage", entry.ImageCostPerImage, imgLive, docUrl, "parsed $/image"));
+        else
+            row.Fields.Add(Field("imageCostPerImage", entry.ImageCostPerImage?.ToString(CultureInfo.InvariantCulture), null, StatusNotFound,
+                "Could not parse $/image from docs.", docUrl));
+    }
+
+    private static void AddXaiVideoPricing(SupportedModelEntry entry, CatalogModelProbeResult row, string html, string docUrl)
+    {
+        // Resolution-tiered: 480p $0.05, 720p $0.07, or flat $0.05 per second
+        var tierMatches = CommonRegex.Matches(html,
+            @"(480p|720p|1080p)[^$]{0,40}\$([0-9]+(?:\.[0-9]+)?)",
+            RegexOptions.IgnoreCase);
+        var foundTier = false;
+        foreach (var (tm, liveRate) in tierMatches.Cast<Match>()
+            .Select(static m => (m, parsed: double.TryParse(m.Groups[2].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var rate), rate))
+            .Where(static x => x.parsed)
+            .Select(static x => (x.m, x.rate)))
         {
-            // Resolution-tiered: 480p $0.05, 720p $0.07, or flat $0.05 per second
-            var tierMatches = CommonRegex.Matches(html,
-                @"(480p|720p|1080p)[^$]{0,40}\$([0-9]+(?:\.[0-9]+)?)",
-                RegexOptions.IgnoreCase);
-            var foundTier = false;
-            foreach (var (tm, liveRate) in tierMatches.Cast<Match>()
-                .Select(static m => (m, parsed: double.TryParse(m.Groups[2].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var rate), rate))
-                .Where(static x => x.parsed)
-                .Select(static x => (x.m, x.rate)))
-            {
-                var res = tm.Groups[1].Value.ToLowerInvariant();
-                foundTier = true;
-                double? catalog = null;
-                if (entry.VideoCostPerSecondByResolution is { } table)
-                {
-                    foreach (var kv in table)
-                    {
-                        if (kv.Key.Contains(res.TrimEnd('p'), StringComparison.OrdinalIgnoreCase)
-                            || string.Equals(kv.Key, res, StringComparison.OrdinalIgnoreCase))
-                        {
-                            catalog = kv.Value;
-                            break;
-                        }
-                    }
-                    catalog ??= table.Values.FirstOrDefault();
-                }
-                row.Fields.Add(CompareDouble($"videoCostPerSecondByResolution.{res}", catalog, liveRate, docUrl,
-                    "parsed resolution tier $/sec"));
-            }
+            var res = tm.Groups[1].Value.ToLowerInvariant();
+            foundTier = true;
+            var catalog = LookupXaiVideoCostForResolution(entry, res);
+            row.Fields.Add(CompareDouble($"videoCostPerSecondByResolution.{res}", catalog, liveRate, docUrl,
+                "parsed resolution tier $/sec"));
+        }
 
-            if (!foundTier)
-            {
-                var m = CommonRegex.Match(html,
-                    @"\$([0-9]+(?:\.[0-9]+)?)\s*(?:per\s*second|/\s*sec|/\s*second)",
-                    RegexOptions.IgnoreCase);
-                if (m.Success && double.TryParse(m.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var secLive))
-                {
-                    double? catalog = entry.VideoCostPerSecondByResolution?.Values.FirstOrDefault();
-                    row.Fields.Add(CompareDouble("videoCostPerSecondByResolution.*", catalog, secLive, docUrl, "parsed $/sec"));
-                }
-                else
-                {
-                    row.Fields.Add(Field("videoCostPerSecondByResolution", null, null, StatusNotFound,
-                        "Could not parse video $/sec from docs.", docUrl));
-                }
-            }
+        if (!foundTier)
+            AddXaiVideoFlatSecOrNotFound(entry, row, html, docUrl);
 
-            // Extend often billed at generation rate — note only
-            if (entry.SupportsVideoContinue && entry.VideoExtendCostPerSecond is { } ext)
+        AddXaiVideoExtendCompare(entry, row, docUrl);
+    }
+
+    private static double? LookupXaiVideoCostForResolution(SupportedModelEntry entry, string res)
+    {
+        if (entry.VideoCostPerSecondByResolution is not { } table)
+            return null;
+        foreach (var kv in table)
+        {
+            if (kv.Key.Contains(res.TrimEnd('p'), StringComparison.OrdinalIgnoreCase)
+                || string.Equals(kv.Key, res, StringComparison.OrdinalIgnoreCase))
+                return kv.Value;
+        }
+        return table.Values.FirstOrDefault();
+    }
+
+    private static void AddXaiVideoFlatSecOrNotFound(SupportedModelEntry entry, CatalogModelProbeResult row, string html, string docUrl)
+    {
+        var m = CommonRegex.Match(html,
+            @"\$([0-9]+(?:\.[0-9]+)?)\s*(?:per\s*second|/\s*sec|/\s*second)",
+            RegexOptions.IgnoreCase);
+        if (m.Success && double.TryParse(m.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var secLive))
+        {
+            double? catalog = entry.VideoCostPerSecondByResolution?.Values.FirstOrDefault();
+            row.Fields.Add(CompareDouble("videoCostPerSecondByResolution.*", catalog, secLive, docUrl, "parsed $/sec"));
+        }
+        else
+        {
+            row.Fields.Add(Field("videoCostPerSecondByResolution", null, null, StatusNotFound,
+                "Could not parse video $/sec from docs.", docUrl));
+        }
+    }
+
+    private static void AddXaiVideoExtendCompare(SupportedModelEntry entry, CatalogModelProbeResult row, string docUrl)
+    {
+        // Extend often billed at generation rate — note only
+        if (entry.SupportsVideoContinue && entry.VideoExtendCostPerSecond is { } ext)
+        {
+            var gen = entry.VideoCostPerSecondByResolution?.Values.FirstOrDefault();
+            if (gen is not null)
             {
-                var gen = entry.VideoCostPerSecondByResolution?.Values.FirstOrDefault();
-                if (gen is not null)
-                {
-                    row.Fields.Add(CompareDouble("videoExtendCostPerSecond", ext, gen.Value, docUrl,
-                        "extend vs generation rate (docs often say extend uses generation $/sec)"));
-                }
+                row.Fields.Add(CompareDouble("videoExtendCostPerSecond", ext, gen.Value, docUrl,
+                    "extend vs generation rate (docs often say extend uses generation $/sec)"));
             }
         }
     }
@@ -868,13 +889,7 @@ public sealed class CatalogUpdateProbeService
         var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
         if (resp.IsSuccessStatusCode)
         {
-            using var doc = JsonDocument.Parse(body);
-            var name = doc.RootElement.TryGetProperty("name", out var n) ? n.GetString() : entry.Id;
-            row.Fields.Add(Field(FieldModelId, entry.Id, name, StatusUnchanged, "Present in Gemini models.get.", baseUrl));
-            if (doc.RootElement.TryGetProperty("inputTokenLimit", out var it) && it.TryGetInt32(out var inLim) && inLim > 0)
-                row.Fields.Add(CompareInt("maxInputTokens", entry.MaxInputTokens, inLim, baseUrl));
-            if (doc.RootElement.TryGetProperty("outputTokenLimit", out var ot) && ot.TryGetInt32(out var outLim) && outLim > 0)
-                row.Fields.Add(CompareInt("maxOutputTokens", entry.MaxOutputTokens, outLim, baseUrl));
+            AddGeminiFieldsFromGetBody(entry, row, body, baseUrl);
             return;
         }
 
@@ -888,30 +903,54 @@ public sealed class CatalogUpdateProbeService
             return;
         }
 
-        using var listDoc = JsonDocument.Parse(listBody);
-        if (listDoc.RootElement.TryGetProperty("models", out var models) && models.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var m in models.EnumerateArray())
-            {
-                var name = m.TryGetProperty("name", out var nm) ? nm.GetString() : null;
-                if (name is null) continue;
-                var leaf = name.StartsWith(ModelsPrefix, StringComparison.OrdinalIgnoreCase) ? name[ModelsPrefix.Length..] : name;
-                if (!string.Equals(leaf, entry.Id, StringComparison.OrdinalIgnoreCase)
-                    && !string.Equals(name, entry.Id, StringComparison.OrdinalIgnoreCase)
-                    && !leaf.StartsWith(entry.Id, StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                row.Fields.Add(Field(FieldModelId, entry.Id, name, StatusUnchanged, "Present in Gemini models.list.", baseUrl));
-                if (m.TryGetProperty("inputTokenLimit", out var it2) && it2.TryGetInt32(out var inLim2) && inLim2 > 0)
-                    row.Fields.Add(CompareInt("maxInputTokens", entry.MaxInputTokens, inLim2, baseUrl));
-                if (m.TryGetProperty("outputTokenLimit", out var ot2) && ot2.TryGetInt32(out var outLim2) && outLim2 > 0)
-                    row.Fields.Add(CompareInt("maxOutputTokens", entry.MaxOutputTokens, outLim2, baseUrl));
-                return;
-            }
-        }
+        if (TryAddGeminiFieldsFromListBody(entry, row, listBody, baseUrl))
+            return;
 
         row.Fields.Add(Field(FieldModelId, entry.Id, null, StatusNotFound,
             "Not present in Gemini models list for this API key.", baseUrl));
+    }
+
+    private static void AddGeminiFieldsFromGetBody(SupportedModelEntry entry, CatalogModelProbeResult row, string body, string baseUrl)
+    {
+        using var doc = JsonDocument.Parse(body);
+        var name = doc.RootElement.TryGetProperty("name", out var n) ? n.GetString() : entry.Id;
+        row.Fields.Add(Field(FieldModelId, entry.Id, name, StatusUnchanged, "Present in Gemini models.get.", baseUrl));
+        AddGeminiTokenLimits(doc.RootElement, entry, row, baseUrl);
+    }
+
+    private static void AddGeminiTokenLimits(JsonElement el, SupportedModelEntry entry, CatalogModelProbeResult row, string baseUrl)
+    {
+        if (el.TryGetProperty("inputTokenLimit", out var it) && it.TryGetInt32(out var inLim) && inLim > 0)
+            row.Fields.Add(CompareInt("maxInputTokens", entry.MaxInputTokens, inLim, baseUrl));
+        if (el.TryGetProperty("outputTokenLimit", out var ot) && ot.TryGetInt32(out var outLim) && outLim > 0)
+            row.Fields.Add(CompareInt("maxOutputTokens", entry.MaxOutputTokens, outLim, baseUrl));
+    }
+
+    private static bool TryAddGeminiFieldsFromListBody(SupportedModelEntry entry, CatalogModelProbeResult row, string listBody, string baseUrl)
+    {
+        using var listDoc = JsonDocument.Parse(listBody);
+        if (!listDoc.RootElement.TryGetProperty("models", out var models) || models.ValueKind != JsonValueKind.Array)
+            return false;
+
+        foreach (var m in models.EnumerateArray())
+        {
+            var name = m.TryGetProperty("name", out var nm) ? nm.GetString() : null;
+            if (name is null || !GeminiListNameMatches(name, entry.Id))
+                continue;
+
+            row.Fields.Add(Field(FieldModelId, entry.Id, name, StatusUnchanged, "Present in Gemini models.list.", baseUrl));
+            AddGeminiTokenLimits(m, entry, row, baseUrl);
+            return true;
+        }
+        return false;
+    }
+
+    private static bool GeminiListNameMatches(string name, string entryId)
+    {
+        var leaf = name.StartsWith(ModelsPrefix, StringComparison.OrdinalIgnoreCase) ? name[ModelsPrefix.Length..] : name;
+        return string.Equals(leaf, entryId, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(name, entryId, StringComparison.OrdinalIgnoreCase)
+            || leaf.StartsWith(entryId, StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task DiscoverFromAnthropicAsync(CatalogUpdateScanResult result, HashSet<string> known, string? userId, CancellationToken ct)
@@ -1035,36 +1074,25 @@ public sealed class CatalogUpdateProbeService
         var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
         using var doc = JsonDocument.Parse(body);
         if (!doc.RootElement.TryGetProperty("models", out var models)) return;
+        var added = AddFalDiscoveredModels(models, known, result.NewModels);
+        result.DiscoveryNotes.Add($"fal: {added} candidate endpoint(s) not in catalog.");
+    }
+
+    private static int AddFalDiscoveredModels(JsonElement models, HashSet<string> known, List<CatalogNewModelHint> newModels)
+    {
         var added = 0;
         foreach (var m in models.EnumerateArray())
         {
             var id = m.TryGetProperty("endpoint_id", out var eid) ? eid.GetString() : null;
             if (string.IsNullOrWhiteSpace(id) || known.Contains(id)) continue;
 
-            var category = "";
-            var display = id;
-            if (m.TryGetProperty("metadata", out var meta) && meta.ValueKind == JsonValueKind.Object)
-            {
-                if (meta.TryGetProperty("category", out var cat))
-                    category = cat.GetString() ?? "";
-                if (meta.TryGetProperty("display_name", out var dn) && dn.GetString() is { } d)
-                    display = d;
-            }
-
-            var cap = category.Contains("video", StringComparison.OrdinalIgnoreCase) ? "Video"
-                : category.Contains(UnitImage, StringComparison.OrdinalIgnoreCase) ? CapabilityImage
-                : category.Contains("audio", StringComparison.OrdinalIgnoreCase)
-                  || category.Contains("music", StringComparison.OrdinalIgnoreCase) ? "Audio"
-                : category.Contains("speech", StringComparison.OrdinalIgnoreCase)
-                  || category.Contains("tts", StringComparison.OrdinalIgnoreCase) ? "Voice"
-                : CapabilityImage;
-
-            result.NewModels.Add(new CatalogNewModelHint
+            var (category, display) = ReadFalDiscoveryMeta(m, id);
+            newModels.Add(new CatalogNewModelHint
             {
                 Id = id,
                 Provider = "Fal",
                 ProviderId = ProviderFal,
-                SuggestedCapability = cap,
+                SuggestedCapability = SuggestFalCapability(category),
                 Source = "fal GET /v1/models",
                 LabMode = true,
                 LabNotes = $"Discovered via fal model search ({display}, category={category}) — add as lab; use pricing scan for unit_price.",
@@ -1072,7 +1100,34 @@ public sealed class CatalogUpdateProbeService
             known.Add(id);
             if (++added >= 30) break;
         }
-        result.DiscoveryNotes.Add($"fal: {added} candidate endpoint(s) not in catalog.");
+        return added;
+    }
+
+    private static (string Category, string Display) ReadFalDiscoveryMeta(JsonElement m, string id)
+    {
+        var category = "";
+        var display = id;
+        if (m.TryGetProperty("metadata", out var meta) && meta.ValueKind == JsonValueKind.Object)
+        {
+            if (meta.TryGetProperty("category", out var cat))
+                category = cat.GetString() ?? "";
+            if (meta.TryGetProperty("display_name", out var dn) && dn.GetString() is { } d)
+                display = d;
+        }
+        return (category, display);
+    }
+
+    private static string SuggestFalCapability(string category)
+    {
+        if (category.Contains("video", StringComparison.OrdinalIgnoreCase)) return "Video";
+        if (category.Contains(UnitImage, StringComparison.OrdinalIgnoreCase)) return CapabilityImage;
+        if (category.Contains("audio", StringComparison.OrdinalIgnoreCase)
+            || category.Contains("music", StringComparison.OrdinalIgnoreCase))
+            return "Audio";
+        if (category.Contains("speech", StringComparison.OrdinalIgnoreCase)
+            || category.Contains("tts", StringComparison.OrdinalIgnoreCase))
+            return "Voice";
+        return CapabilityImage;
     }
 
     private static CatalogFieldProbeResult CompareInt(string field, int? catalog, int live, string? url)

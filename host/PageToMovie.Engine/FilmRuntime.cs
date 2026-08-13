@@ -52,104 +52,14 @@ public static class FilmRuntime
         var metaPath = Path.Combine(dir, "source", "extract_meta.json");
         var bookPath = Path.Combine(dir, "source", "book_full.txt");
 
-        if (bookText is null && File.Exists(bookPath))
-            bookText = await File.ReadAllTextAsync(bookPath, ct).ConfigureAwait(false);
-
-        int? metaNatural = null;
-        int? metaTarget = null;
-        int? metaWords = null;
-        string? bookKind = null;
-
-        if (File.Exists(metaPath))
-        {
-            try
-            {
-                using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(metaPath, ct).ConfigureAwait(false));
-                var root = doc.RootElement;
-                if (TryInt(root, NaturalRuntimeMinutesKey, out var n0)) metaNatural = n0;
-                if (TryInt(root, TargetRuntimeMinutesKey, out var t0)) metaTarget = t0;
-                if (metaTarget is null && TryInt(root, "suggested_total_minutes", out var s0))
-                    metaTarget = s0;
-                if (TryInt(root, "text_words", out var w0)) metaWords = w0;
-                if (root.TryGetProperty("book_kind", out var bk))
-                    bookKind = bk.GetString();
-            }
-            catch { /* ignore */ }
-        }
-
+        bookText = await LoadBookTextIfMissingAsync(bookText, bookPath, ct).ConfigureAwait(false);
+        var meta = await TryReadExtractMetaAsync(metaPath, ct).ConfigureAwait(false);
         var hasBook = !string.IsNullOrWhiteSpace(bookText) || File.Exists(bookPath);
-
-        // Natural minutes: Adaptation math only (never re-derived in Engine).
-        int natural;
-        string densitySource;
-        if (!string.IsNullOrWhiteSpace(bookText))
-        {
-            natural = NaturalRuntime.EstimateNaturalMinutes(bookText);
-            densitySource = "density";
-        }
-        else if (metaNatural is > 0)
-        {
-            // Cached value written by BookPrepare / SetTarget (originally from Adaptation).
-            natural = ClampMinutes(metaNatural.Value);
-            densitySource = "extract_meta";
-        }
-        else if (metaTarget is > 0)
-        {
-            natural = ClampMinutes(metaTarget.Value);
-            densitySource = "extract_meta";
-        }
-        else
-        {
-            natural = 0;
-            densitySource = "none";
-        }
-
+        var (natural, densitySource) = ResolveNaturalMinutes(bookText, meta.Natural, meta.Target);
         var cfg = await store.GetConfigAsync(projectId, ct).ConfigureAwait(false);
-        int? configTarget = null;
-        string? configMode = null;
-        if (cfg.TryGetValue(TargetRuntimeMinutesKey, out var tr) && tr.ValueKind == JsonValueKind.Number &&
-            tr.TryGetInt32(out var ctm) && ctm > 0)
-            configTarget = ctm;
-        if (cfg.TryGetValue(RuntimeModeKey, out var rm) && rm.ValueKind == JsonValueKind.String)
-            configMode = rm.GetString();
-
-        int target;
-        string mode;
-        string source;
-        if (overrideTargetMinutes is > 0)
-        {
-            target = ClampMinutes(overrideTargetMinutes.Value);
-            mode = NaturalRuntime.ResolveMode(natural, target);
-            source = "override";
-        }
-        else if (configTarget is > 0)
-        {
-            target = ClampMinutes(configTarget.Value);
-            mode = string.IsNullOrWhiteSpace(configMode)
-                ? NaturalRuntime.ResolveMode(natural, target)
-                : configMode.Trim().ToLowerInvariant();
-            source = "config";
-        }
-        else if (metaTarget is > 0)
-        {
-            target = ClampMinutes(metaTarget.Value);
-            mode = NaturalRuntime.ResolveMode(natural, target);
-            source = "extract_meta";
-        }
-        else if (natural > 0)
-        {
-            // Default product behavior: estimate natural for display, but do not force a
-            // target into Stage‑1 (prompt gets unlimited until the user retargets).
-            target = 0;
-            mode = "unlimited";
-            source = densitySource;
-        }
-        else
-        {
-            target = 0;
-            mode = "unlimited";
-            source = "none";
-        }
+        var (configTarget, configMode) = ReadConfigTarget(cfg);
+        var (target, mode, source) = ResolveTargetAndMode(
+            overrideTargetMinutes, configTarget, configMode, meta.Target, natural, densitySource);
 
         return new Snapshot
         {
@@ -157,10 +67,114 @@ public static class FilmRuntime
             NaturalMinutes = natural,
             TargetMinutes = target,
             Mode = mode,
-            TextWords = metaWords,
-            BookKind = bookKind,
+            TextWords = meta.Words,
+            BookKind = meta.BookKind,
             Source = source,
         };
+    }
+
+    private static async Task<string?> LoadBookTextIfMissingAsync(
+        string? bookText, string bookPath, CancellationToken ct)
+    {
+        if (bookText is null && File.Exists(bookPath))
+            return await File.ReadAllTextAsync(bookPath, ct).ConfigureAwait(false);
+        return bookText;
+    }
+
+    private readonly record struct ExtractMeta(int? Natural, int? Target, int? Words, string? BookKind);
+
+    private static async Task<ExtractMeta> TryReadExtractMetaAsync(string metaPath, CancellationToken ct)
+    {
+        if (!File.Exists(metaPath))
+            return default;
+        try
+        {
+            using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(metaPath, ct).ConfigureAwait(false));
+            return ParseExtractMeta(doc.RootElement);
+        }
+        catch
+        {
+            return default;
+        }
+    }
+
+    private static ExtractMeta ParseExtractMeta(JsonElement root)
+    {
+        int? metaNatural = null;
+        int? metaTarget = null;
+        int? metaWords = null;
+        string? bookKind = null;
+        if (TryInt(root, NaturalRuntimeMinutesKey, out var n0)) metaNatural = n0;
+        if (TryInt(root, TargetRuntimeMinutesKey, out var t0)) metaTarget = t0;
+        if (metaTarget is null && TryInt(root, "suggested_total_minutes", out var s0))
+            metaTarget = s0;
+        if (TryInt(root, "text_words", out var w0)) metaWords = w0;
+        if (root.TryGetProperty("book_kind", out var bk))
+            bookKind = bk.GetString();
+        return new ExtractMeta(metaNatural, metaTarget, metaWords, bookKind);
+    }
+
+    private static (int Natural, string DensitySource) ResolveNaturalMinutes(
+        string? bookText, int? metaNatural, int? metaTarget)
+    {
+        // Natural minutes: Adaptation math only (never re-derived in Engine).
+        if (!string.IsNullOrWhiteSpace(bookText))
+            return (NaturalRuntime.EstimateNaturalMinutes(bookText), "density");
+        if (metaNatural is > 0)
+        {
+            // Cached value written by BookPrepare / SetTarget (originally from Adaptation).
+            return (ClampMinutes(metaNatural.Value), "extract_meta");
+        }
+        if (metaTarget is > 0)
+            return (ClampMinutes(metaTarget.Value), "extract_meta");
+        return (0, "none");
+    }
+
+    private static (int? Target, string? Mode) ReadConfigTarget(Dictionary<string, JsonElement> cfg)
+    {
+        int? configTarget = null;
+        string? configMode = null;
+        if (cfg.TryGetValue(TargetRuntimeMinutesKey, out var tr) && tr.ValueKind == JsonValueKind.Number &&
+            tr.TryGetInt32(out var ctm) && ctm > 0)
+            configTarget = ctm;
+        if (cfg.TryGetValue(RuntimeModeKey, out var rm) && rm.ValueKind == JsonValueKind.String)
+            configMode = rm.GetString();
+        return (configTarget, configMode);
+    }
+
+    private static (int Target, string Mode, string Source) ResolveTargetAndMode(
+        int? overrideTargetMinutes,
+        int? configTarget,
+        string? configMode,
+        int? metaTarget,
+        int natural,
+        string densitySource)
+    {
+        if (overrideTargetMinutes is > 0)
+        {
+            var target = ClampMinutes(overrideTargetMinutes.Value);
+            return (target, NaturalRuntime.ResolveMode(natural, target), "override");
+        }
+        if (configTarget is > 0)
+        {
+            var target = ClampMinutes(configTarget.Value);
+            var mode = string.IsNullOrWhiteSpace(configMode)
+                ? NaturalRuntime.ResolveMode(natural, target)
+                : configMode.Trim().ToLowerInvariant();
+            return (target, mode, "config");
+        }
+        if (metaTarget is > 0)
+        {
+            var target = ClampMinutes(metaTarget.Value);
+            return (target, NaturalRuntime.ResolveMode(natural, target), "extract_meta");
+        }
+        if (natural > 0)
+        {
+            // Default product behavior: estimate natural for display, but do not force a
+            // target into Stage‑1 (prompt gets unlimited until the user retargets).
+            return (0, "unlimited", densitySource);
+        }
+        return (0, "unlimited", "none");
     }
 
     /// <summary>

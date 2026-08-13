@@ -61,27 +61,53 @@ internal static class Stage2DialogueCoverage
         // Actual side, per scene: a normalized blob of every spoken line the plan carries, plus the set
         // of beat ids that reached a clip (so a residual gap can say whether its beat was silenced in a
         // clip that exists vs dropped from the plan entirely).
+        var (actualBlob, beatsWithClip) = CollectActualSpokenBlobs(plan);
+        var (expected, covered, gaps) = CollectCoverageGaps(stage1, actualBlob, beatsWithClip);
+        return BuildCoverageReport(expected, covered, gaps);
+    }
+
+    private static (Dictionary<int, string> ActualBlob, Dictionary<int, HashSet<string>> BeatsWithClip)
+        CollectActualSpokenBlobs(Dictionary<string, object?> plan)
+    {
         var actualBlob = new Dictionary<int, string>();
         var beatsWithClip = new Dictionary<int, HashSet<string>>();
         foreach (var scene in Stage2PlannerService.GetScenes(plan))
         {
             var sn = Stage2PlannerService.ToInt(scene.TryGetValue("scene_number", out var s) ? s : 0);
-            var sb = new StringBuilder(" ");
-            var beatIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var clip in Stage2PlannerService.GetList(scene, "veo_clips").OfType<Dictionary<string, object?>>())
-            {
-                var ap = clip.TryGetValue("audio_payload", out var apv) && apv is Dictionary<string, object?> apd ? apd : null;
-                // "What does this clip actually say?" is exactly ClipSpokenLines' job (delivery:"none"
-                // and empty lines are already excluded there — i.e. a silenced clip contributes nothing).
-                foreach (var line in ClipSpokenLines.FromBeat(ap))
-                    sb.Append(Normalize(line.Dialogue)).Append(' ');
-                var bid = clip.TryGetValue("stage1_beat_id", out var b) ? b?.ToString() : null;
-                if (!string.IsNullOrWhiteSpace(bid)) beatIds.Add(bid);
-            }
-            actualBlob[sn] = sb.ToString();
+            actualBlob[sn] = BuildSceneSpokenBlob(scene, out var beatIds);
             beatsWithClip[sn] = beatIds;
         }
+        return (actualBlob, beatsWithClip);
+    }
 
+    private static string BuildSceneSpokenBlob(
+        Dictionary<string, object?> scene, out HashSet<string> beatIds)
+    {
+        var sb = new StringBuilder(" ");
+        beatIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var clip in Stage2PlannerService.GetList(scene, "veo_clips").OfType<Dictionary<string, object?>>())
+        {
+            AppendClipSpokenLines(clip, sb);
+            var bid = clip.TryGetValue("stage1_beat_id", out var b) ? b?.ToString() : null;
+            if (!string.IsNullOrWhiteSpace(bid)) beatIds.Add(bid);
+        }
+        return sb.ToString();
+    }
+
+    private static void AppendClipSpokenLines(Dictionary<string, object?> clip, StringBuilder sb)
+    {
+        var ap = clip.TryGetValue("audio_payload", out var apv) && apv is Dictionary<string, object?> apd ? apd : null;
+        // "What does this clip actually say?" is exactly ClipSpokenLines' job (delivery:"none"
+        // and empty lines are already excluded there — i.e. a silenced clip contributes nothing).
+        foreach (var line in ClipSpokenLines.FromBeat(ap))
+            sb.Append(Normalize(line.Dialogue)).Append(' ');
+    }
+
+    private static (int Expected, int Covered, List<Gap> Gaps) CollectCoverageGaps(
+        Dictionary<string, object?> stage1,
+        Dictionary<int, string> actualBlob,
+        Dictionary<int, HashSet<string>> beatsWithClip)
+    {
         var expected = 0;
         var covered = 0;
         var gaps = new List<Gap>();
@@ -90,54 +116,89 @@ internal static class Stage2DialogueCoverage
             var sn = Stage2PlannerService.ToInt(scene.TryGetValue("scene_number", out var s) ? s : 0);
             var blob = actualBlob.TryGetValue(sn, out var bl) ? bl : " ";
             var clipBeats = beatsWithClip.TryGetValue(sn, out var cb) ? cb : null;
-            foreach (var beat in Stage2PlannerService.GetList(scene, "story_beats").OfType<Dictionary<string, object?>>())
-            {
-                var bid = (beat.TryGetValue("beat_id", out var bv) ? bv?.ToString() : null) ?? "";
-                foreach (var (speaker, dialogue) in ExpectedSpokenLines(beat))
-                {
-                    // Sanitize the expected line the same way the plan's audio_payload is built
-                    // (BuildAudioPayload → SanitizeSpokenDialogue), so number spell-out / abbreviation
-                    // expansion is applied to BOTH sides and can't masquerade as a dropped line.
-                    var needle = Normalize(ClipVideoPromptBuilder.SanitizeSpokenDialogue(dialogue));
-                    if (needle.Length == 0) continue; // nothing survives sanitize → nothing to speak
-                    expected++;
-                    if (blob.Contains(" " + needle + " ", StringComparison.Ordinal))
-                    {
-                        covered++;
-                        continue;
-                    }
-                    var diag = clipBeats is not null && clipBeats.Contains(bid)
-                        ? "beat_present_but_unspoken" // a clip exists for this beat but its audio is silent/other
-                        : "beat_absent_from_plan";     // no clip carries this beat at all
-                    gaps.Add(new Gap(sn, bid, speaker, Snippet(dialogue), diag));
-                }
-            }
+            ScoreSceneSpokenLines(scene, sn, blob, clipBeats, ref expected, ref covered, gaps);
         }
+        return (expected, covered, gaps);
+    }
 
-        var issues = gaps.Take(MaxReported).Select(g => new ModelValidationIssue(
-            Code: "stage2_dialogue_coverage",
-            Message: $"Scene {g.Scene}: screenplay line by {(string.IsNullOrWhiteSpace(g.Speaker) ? "a speaker" : g.Speaker)} " +
-                     $"is never spoken in the shot plan ({g.Diagnosis}): \"{g.Dialogue}\"",
-            Path: $"scenes[scene_number={g.Scene}].veo_clips",
-            Severity: GapSeverity)).ToArray();
+    private static void ScoreSceneSpokenLines(
+        Dictionary<string, object?> scene,
+        int sceneNumber,
+        string blob,
+        HashSet<string>? clipBeats,
+        ref int expected,
+        ref int covered,
+        List<Gap> gaps)
+    {
+        foreach (var beat in Stage2PlannerService.GetList(scene, "story_beats").OfType<Dictionary<string, object?>>())
+        {
+            var bid = (beat.TryGetValue("beat_id", out var bv) ? bv?.ToString() : null) ?? "";
+            ScoreBeatSpokenLines(beat, bid, sceneNumber, blob, clipBeats, ref expected, ref covered, gaps);
+        }
+    }
 
+    private static void ScoreBeatSpokenLines(
+        Dictionary<string, object?> beat,
+        string beatId,
+        int sceneNumber,
+        string blob,
+        HashSet<string>? clipBeats,
+        ref int expected,
+        ref int covered,
+        List<Gap> gaps)
+    {
+        foreach (var (speaker, dialogue) in ExpectedSpokenLines(beat))
+        {
+            // Sanitize the expected line the same way the plan's audio_payload is built
+            // (BuildAudioPayload → SanitizeSpokenDialogue), so number spell-out / abbreviation
+            // expansion is applied to BOTH sides and can't masquerade as a dropped line.
+            var needle = Normalize(ClipVideoPromptBuilder.SanitizeSpokenDialogue(dialogue));
+            if (needle.Length == 0) continue; // nothing survives sanitize → nothing to speak
+            expected++;
+            if (blob.Contains(" " + needle + " ", StringComparison.Ordinal))
+            {
+                covered++;
+                continue;
+            }
+            gaps.Add(new Gap(sceneNumber, beatId, speaker, Snippet(dialogue), DiagnoseGap(clipBeats, beatId)));
+        }
+    }
+
+    private static string DiagnoseGap(HashSet<string>? clipBeats, string beatId) =>
+        clipBeats is not null && clipBeats.Contains(beatId)
+            ? "beat_present_but_unspoken" // a clip exists for this beat but its audio is silent/other
+            : "beat_absent_from_plan";     // no clip carries this beat at all
+
+    private static Report BuildCoverageReport(int expected, int covered, List<Gap> gaps)
+    {
+        var issues = gaps.Take(MaxReported).Select(ToCoverageIssue).ToArray();
         var meta = new Dictionary<string, object?>
         {
             ["expected_lines"] = expected,
             ["covered_lines"] = covered,
             ["missing_lines"] = gaps.Count,
-            ["missing"] = gaps.Take(MaxReported).Select(g => new Dictionary<string, object?>
-            {
-                ["scene"] = g.Scene,
-                ["beat_id"] = g.BeatId,
-                ["speaker"] = g.Speaker,
-                ["dialogue"] = g.Dialogue,
-                ["diagnosis"] = g.Diagnosis,
-            }).Cast<object?>().ToList(),
+            ["missing"] = gaps.Take(MaxReported).Select(ToMissingMeta).Cast<object?>().ToList(),
         };
-
         return new Report { ExpectedLines = expected, CoveredLines = covered, Gaps = gaps, Issues = issues, Meta = meta };
     }
+
+    private static ModelValidationIssue ToCoverageIssue(Gap g) =>
+        new(
+            Code: "stage2_dialogue_coverage",
+            Message: $"Scene {g.Scene}: screenplay line by {(string.IsNullOrWhiteSpace(g.Speaker) ? "a speaker" : g.Speaker)} " +
+                     $"is never spoken in the shot plan ({g.Diagnosis}): \"{g.Dialogue}\"",
+            Path: $"scenes[scene_number={g.Scene}].veo_clips",
+            Severity: GapSeverity);
+
+    private static Dictionary<string, object?> ToMissingMeta(Gap g) =>
+        new()
+        {
+            ["scene"] = g.Scene,
+            ["beat_id"] = g.BeatId,
+            ["speaker"] = g.Speaker,
+            ["dialogue"] = g.Dialogue,
+            ["diagnosis"] = g.Diagnosis,
+        };
 
     /// <summary>
     /// The dialogue a Stage-1 <c>story_beat</c> is expected to have spoken — primary plus any

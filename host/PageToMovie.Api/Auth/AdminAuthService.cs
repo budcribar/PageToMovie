@@ -277,84 +277,110 @@ public sealed class AdminAuthService : IAdminAuthService
         if (MatchesOperatorOverride(password))
             return IssueOperatorLogin();
 
-        // 1. Check SQLite database for user (username or email — session always stores public handle)
-        var dbUser = await _userDb.GetUserByUsernameAsync(username, ct).ConfigureAwait(false)
-                     ?? (username.Contains('@', StringComparison.Ordinal)
-                         ? await _userDb.GetUserByEmailAsync(username, ct).ConfigureAwait(false)
-                         : null);
+        var dbUser = await LookupLoginUserAsync(username, ct).ConfigureAwait(false);
         if (dbUser is not null)
-        {
-            if (dbUser.IsDisabled)
-                return Fail("This account has been disabled. Contact an administrator.");
-
-            var isDevAdmin = _env.IsDevelopment() &&
-                             (string.Equals(username, DefaultAdminUser, StringComparison.OrdinalIgnoreCase) ||
-                              string.Equals(username, _auth.AdminUsername, StringComparison.OrdinalIgnoreCase) ||
-                              string.Equals(username, OperatorUserId, StringComparison.OrdinalIgnoreCase));
-
-            var hash = UserDatabaseService.HashPassword(password);
-            var passwordValid = dbUser.PasswordHash == hash || (isDevAdmin && (password == DefaultAdminUser || password == ""));
-
-            if (passwordValid)
-            {
-                // Stable ownership identity is UserId (never email). Username is display-only.
-                // Using Username here used to create projects under divergent folders when the
-                // handle contained dots or differed from UserId (e.g. budcribarmsn.com →
-                // budcribarmsn_com/Mary) so re-login under another alias hid the project.
-                var canonicalId = string.IsNullOrWhiteSpace(dbUser.UserId)
-                    ? (string.IsNullOrWhiteSpace(dbUser.Username) ? "" : dbUser.Username.Trim())
-                    : dbUser.UserId.Trim();
-                var handle = string.IsNullOrWhiteSpace(dbUser.Username) ? canonicalId : dbUser.Username.Trim();
-
-                if (!UserDatabaseService.IsEmailConfirmed(dbUser) && !isDevAdmin)
-                {
-                    return new LoginResponse
-                    {
-                        Ok = false,
-                        RequiresEmailConfirmation = true,
-                        UserId = canonicalId,
-                        Error = "Confirm your email before signing in. Check your inbox (or the API log in development).",
-                    };
-                }
-
-                var userRoles = new List<string> { AppRoles.User };
-                if (string.Equals(dbUser.Role, "Admin", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(canonicalId, _auth.AdminUsername, StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(handle, _auth.AdminUsername, StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(canonicalId, OperatorUserId, StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(handle, OperatorUserId, StringComparison.OrdinalIgnoreCase))
-                {
-                    userRoles.Add(AppRoles.Admin);
-                }
-
-                var userHours = Math.Clamp(_auth.JwtHours, 1, 168);
-                var userExpires = DateTimeOffset.UtcNow.AddHours(userHours);
-                var userToken = IssueJwt(canonicalId, userRoles, userExpires);
-
-                return new LoginResponse
-                {
-                    Ok = true,
-                    Token = userToken,
-                    UserId = canonicalId,
-                    Roles = userRoles,
-                    ExpiresAt = userExpires,
-                };
-            }
-            return Fail("Invalid username or password");
-        }
+            return AuthenticateDatabaseUser(username, password, dbUser);
 
         // 2. Fallback check for configured admin / operator user
-        if (string.Equals(username, _auth.AdminUsername, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(username, OperatorUserId, StringComparison.OrdinalIgnoreCase))
-        {
-            var ok = VerifyPassword(password) || MatchesOperatorOverride(password);
-            if (!ok)
-                return Fail("Invalid username or password");
+        return AuthenticateConfiguredAdmin(username, password);
+    }
 
-            return IssueOperatorLogin(username);
+    private async Task<UserEntity?> LookupLoginUserAsync(string username, CancellationToken ct)
+    {
+        // 1. Check SQLite database for user (username or email — session always stores public handle)
+        var dbUser = await _userDb.GetUserByUsernameAsync(username, ct).ConfigureAwait(false);
+        if (dbUser is not null)
+            return dbUser;
+        if (username.Contains('@', StringComparison.Ordinal))
+            return await _userDb.GetUserByEmailAsync(username, ct).ConfigureAwait(false);
+        return null;
+    }
+
+    private LoginResponse AuthenticateDatabaseUser(string username, string password, UserEntity dbUser)
+    {
+        if (dbUser.IsDisabled)
+            return Fail("This account has been disabled. Contact an administrator.");
+
+        var isDevAdmin = IsDevAdminUsername(username);
+        if (!IsDatabasePasswordValid(password, dbUser, isDevAdmin))
+            return Fail("Invalid username or password");
+        return IssueDatabaseUserLogin(dbUser, isDevAdmin);
+    }
+
+    private bool IsDevAdminUsername(string username) =>
+        _env.IsDevelopment() &&
+        (string.Equals(username, DefaultAdminUser, StringComparison.OrdinalIgnoreCase) ||
+         string.Equals(username, _auth.AdminUsername, StringComparison.OrdinalIgnoreCase) ||
+         string.Equals(username, OperatorUserId, StringComparison.OrdinalIgnoreCase));
+
+    private static bool IsDatabasePasswordValid(string password, UserEntity dbUser, bool isDevAdmin)
+    {
+        var hash = UserDatabaseService.HashPassword(password);
+        return dbUser.PasswordHash == hash || (isDevAdmin && (password == DefaultAdminUser || password == ""));
+    }
+
+    private LoginResponse IssueDatabaseUserLogin(UserEntity dbUser, bool isDevAdmin)
+    {
+        // Stable ownership identity is UserId (never email). Username is display-only.
+        // Using Username here used to create projects under divergent folders when the
+        // handle contained dots or differed from UserId (e.g. budcribarmsn.com →
+        // budcribarmsn_com/Mary) so re-login under another alias hid the project.
+        var canonicalId = string.IsNullOrWhiteSpace(dbUser.UserId)
+            ? (string.IsNullOrWhiteSpace(dbUser.Username) ? "" : dbUser.Username.Trim())
+            : dbUser.UserId.Trim();
+        var handle = string.IsNullOrWhiteSpace(dbUser.Username) ? canonicalId : dbUser.Username.Trim();
+
+        if (!UserDatabaseService.IsEmailConfirmed(dbUser) && !isDevAdmin)
+        {
+            return new LoginResponse
+            {
+                Ok = false,
+                RequiresEmailConfirmation = true,
+                UserId = canonicalId,
+                Error = "Confirm your email before signing in. Check your inbox (or the API log in development).",
+            };
         }
 
-        return Fail("Invalid username or password");
+        var userRoles = BuildDatabaseUserRoles(dbUser, canonicalId, handle);
+        var userHours = Math.Clamp(_auth.JwtHours, 1, 168);
+        var userExpires = DateTimeOffset.UtcNow.AddHours(userHours);
+        var userToken = IssueJwt(canonicalId, userRoles, userExpires);
+
+        return new LoginResponse
+        {
+            Ok = true,
+            Token = userToken,
+            UserId = canonicalId,
+            Roles = userRoles,
+            ExpiresAt = userExpires,
+        };
+    }
+
+    private List<string> BuildDatabaseUserRoles(UserEntity dbUser, string canonicalId, string handle)
+    {
+        var userRoles = new List<string> { AppRoles.User };
+        if (string.Equals(dbUser.Role, "Admin", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(canonicalId, _auth.AdminUsername, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(handle, _auth.AdminUsername, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(canonicalId, OperatorUserId, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(handle, OperatorUserId, StringComparison.OrdinalIgnoreCase))
+        {
+            userRoles.Add(AppRoles.Admin);
+        }
+        return userRoles;
+    }
+
+    private LoginResponse AuthenticateConfiguredAdmin(string username, string password)
+    {
+        if (!string.Equals(username, _auth.AdminUsername, StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(username, OperatorUserId, StringComparison.OrdinalIgnoreCase))
+            return Fail("Invalid username or password");
+
+        var ok = VerifyPassword(password) || MatchesOperatorOverride(password);
+        if (!ok)
+            return Fail("Invalid username or password");
+
+        return IssueOperatorLogin(username);
     }
 
     public LoginResponse LoginWithOperatorOverride(string secret)

@@ -182,12 +182,70 @@ public static class BookToFountainConverter
         // Responses + file_id path was hanging for 10–20+ minutes with no progress, and
         // file_id is meant to avoid re-billing huge novels, not short texts.
         var bookFitsInline = FitsSingleShot(bookText, budget);
-        var useFileSession = bookSession is { IsAvailable: true } && !bookFitsInline;
 
         var prevSession = Stage1BookSessionScope.Current;
-        Stage1BookSessionScope.Current = useFileSession ? bookSession : null;
+        Stage1BookSessionScope.Current = BeginBookFileSession(bookSession, bookFitsInline);
         try
         {
+            await AnnounceBookSessionAsync(bookSession, bookFitsInline, onProgress, ct)
+                .ConfigureAwait(false);
+
+            var text = await AdaptFountainBodyAsync(
+                system, title, author, pageCount, totalRuntimeMinutes, bookText,
+                chat, model, budget, onProgress, ct, reasoningEffort, temperature,
+                onStructuralGateFailure, onHeuristicFallback, bookFitsInline)
+                .ConfigureAwait(false);
+
+            var early = CaptureTrailerState(text);
+            text = await ApplyGenerationRepairsAsync(
+                system, early.Fountain, chat, model, onProgress, ct, reasoningEffort,
+                onStructuralGateFailure).ConfigureAwait(false);
+
+            text = FinalizeFountainText(text);
+            WarnRemainingRepairIssues(text, bookText, onProgress);
+
+            text = NormalizeFountainText(text);
+            return await PackageConversionResultAsync(
+                text, early, system, bookText, chat, model, reasoningEffort, ct, onProgress)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            Stage1BookSessionScope.Current = prevSession;
+        }
+    }
+
+    private readonly record struct TrailerScan(bool BeginSeen, bool EndSeen)
+    {
+        public static TrailerScan Scan(string text, string begin, string end) => new(
+            text.Contains(begin, StringComparison.OrdinalIgnoreCase),
+            text.Contains(end, StringComparison.OrdinalIgnoreCase));
+
+        public TrailerScan Merge(TrailerScan other) =>
+            new(BeginSeen || other.BeginSeen, EndSeen || other.EndSeen);
+    }
+
+    private sealed class EarlyTrailerState
+    {
+        public required string Fountain { get; init; }
+        public AdaptationVisionMeta? Vision { get; init; }
+        public AdaptationReport? Report { get; init; }
+        public required TrailerScan VisionMarkers { get; init; }
+        public required TrailerScan ReportMarkers { get; init; }
+    }
+
+    private static IBookFileSession? BeginBookFileSession(IBookFileSession? bookSession, bool bookFitsInline)
+    {
+        var useFileSession = bookSession is { IsAvailable: true } && !bookFitsInline;
+        return useFileSession ? bookSession : null;
+    }
+
+    private static async Task AnnounceBookSessionAsync(
+        IBookFileSession? bookSession,
+        bool bookFitsInline,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
         if (Stage1BookSessionScope.Current is { } sess)
         {
             onProgress?.Invoke("Stage‑1 using xAI file_id session (book uploaded once; follow-ups chain).");
@@ -198,9 +256,62 @@ public static class BookToFountainConverter
             onProgress?.Invoke(
                 "Book fits single-shot context — using chat (skipping file_id upload for speed/reliability).");
         }
+    }
 
-        string text;
+    private static async Task<string> AdaptFountainBodyAsync(
+        string system,
+        string title,
+        string? author,
+        int pageCount,
+        int? totalRuntimeMinutes,
+        string bookText,
+        IChatClient chat,
+        string model,
+        PromptBudget budget,
+        Action<string>? onProgress,
+        CancellationToken ct,
+        string? reasoningEffort,
+        double temperature,
+        Func<StructuralGateFailure, CancellationToken, Task>? onStructuralGateFailure,
+        Action<string>? onHeuristicFallback,
+        bool bookFitsInline)
+    {
+        try
+        {
+            var text = await AdaptViaPreferredPathAsync(
+                system, title, author, pageCount, totalRuntimeMinutes, bookText,
+                chat, model, budget, onProgress, ct, reasoningEffort, temperature, bookFitsInline)
+                .ConfigureAwait(false);
+            await EnforceMultiPathQualityAsync(
+                text, bookText, totalRuntimeMinutes, model, onStructuralGateFailure, ct)
+                .ConfigureAwait(false);
+            return text;
+        }
+        catch (InvalidOperationException ex) when (LooksLikeGoodFountain(ConvertHeuristic(title, bookText, author)))
+        {
+            // Chat output failed structural gates — still give a usable draft from book text
+            onProgress?.Invoke("Model draft unusable — building structured draft from book text…");
+            onHeuristicFallback?.Invoke(ex.Message);
+            return ConvertHeuristic(title, bookText, author);
+        }
+    }
 
+    private static async Task<string> AdaptViaPreferredPathAsync(
+        string system,
+        string title,
+        string? author,
+        int pageCount,
+        int? totalRuntimeMinutes,
+        string bookText,
+        IChatClient chat,
+        string model,
+        PromptBudget budget,
+        Action<string>? onProgress,
+        CancellationToken ct,
+        string? reasoningEffort,
+        double temperature,
+        bool bookFitsInline)
+    {
         // Both multi-chunk entry points (single-shot fallback and over-budget) invoke the multi-chunk
         // adapter with the identical argument set derived from this call's budget.
         Task<string> ConvertMultiChunkFromBudgetAsync() => ConvertMultiChunkAsync(
@@ -210,86 +321,100 @@ public static class BookToFountainConverter
             maxChunks: ResolveMaxChunks(bookText, budget),
             reasoningEffort: reasoningEffort, temperature: temperature);
 
-        try
+        // With a file session the full book is attached by id — single-shot is preferred
+        // even when the inlined-token budget would force multi-chunk.
+        var preferSingle = Stage1BookSessionScope.Current is not null || bookFitsInline;
+        if (!preferSingle)
         {
-            // With a file session the full book is attached by id — single-shot is preferred
-            // even when the inlined-token budget would force multi-chunk.
-            var preferSingle = Stage1BookSessionScope.Current is not null || bookFitsInline;
-            if (preferSingle)
-            {
-                onProgress?.Invoke(
-                    Stage1BookSessionScope.Current is not null
-                        ? "Adapting book → Fountain (single pass, book via file_id)…"
-                        : "Adapting book → Fountain (single pass)…");
-                var single = await TrySingleShotWithGateAsync(
-                    system, title, author, pageCount, totalRuntimeMinutes, bookText,
-                    chat, model, budget, onProgress, ct, reasoningEffort, temperature).ConfigureAwait(false);
-
-                if (single is not null)
-                {
-                    text = single;
-                }
-                else if (ShouldChunkFallback(bookText, budget) || Stage1BookSessionScope.Current is not null
-                         || bookFitsInline)
-                {
-                    // Always offer multi-chunk after single-shot fail/timeout for short books too
-                    // (previously only when ShouldChunkFallback, which skips very short texts).
-                    onProgress?.Invoke("Falling back to multi-chunk adapt…");
-                    text = await ConvertMultiChunkFromBudgetAsync().ConfigureAwait(false);
-                }
-                else
-                {
-                    throw new InvalidOperationException(UnusableScreenplayError);
-                }
-            }
-            else
-            {
-                onProgress?.Invoke("Book exceeds model budget — multi-chunk adapt…");
-                text = await ConvertMultiChunkFromBudgetAsync().ConfigureAwait(false);
-            }
-
-            // Multi path: soft coverage failures still accept a structurally good draft
-            var multiGate = EvaluateQuality(text, bookText, totalRuntimeMinutes, AdaptPath.Multi);
-            if (!multiGate.Ok)
-            {
-                // Visibility only — no automatic retry here (re-running multi-chunk adapt is
-                // expensive, and we don't have real error-rate data yet to justify it). Hard
-                // failures (structure/excerpt_marker) still throw below same as before; soft
-                // failures (scene_count/missing_ending/suspiciously_short/runtime_short) previously shipped
-                // silently with no log anywhere — now recorded for the admin panel.
-                if (onStructuralGateFailure is not null)
-                {
-                    await onStructuralGateFailure(new StructuralGateFailure
-                    {
-                        Stage = "book_to_fountain_chunk",
-                        Model = model,
-                        ErrorType = "structural_gate_failure",
-                        ErrorMessage = $"Multi-chunk quality gate failed: {multiGate.Reason} " +
-                                       $"(scenes={multiGate.SceneCount}, fountainChars={multiGate.FountainChars}, " +
-                                       $"hardFailure={multiGate.HasHardFailure})",
-                        ResponseSummary = text.Length > 500 ? text[..500] : text,
-                    }, ct).ConfigureAwait(false);
-                }
-
-                if (multiGate.HasHardFailure)
-                    throw new InvalidOperationException(UnusableScreenplayError);
-            }
-        }
-        catch (InvalidOperationException ex) when (LooksLikeGoodFountain(ConvertHeuristic(title, bookText, author)))
-        {
-            // Chat output failed structural gates — still give a usable draft from book text
-            onProgress?.Invoke("Model draft unusable — building structured draft from book text…");
-            onHeuristicFallback?.Invoke(ex.Message);
-            text = ConvertHeuristic(title, bookText, author);
+            onProgress?.Invoke("Book exceeds model budget — multi-chunk adapt…");
+            return await ConvertMultiChunkFromBudgetAsync().ConfigureAwait(false);
         }
 
+        onProgress?.Invoke(
+            Stage1BookSessionScope.Current is not null
+                ? "Adapting book → Fountain (single pass, book via file_id)…"
+                : "Adapting book → Fountain (single pass)…");
+        var single = await TrySingleShotWithGateAsync(
+            system, title, author, pageCount, totalRuntimeMinutes, bookText,
+            chat, model, budget, onProgress, ct, reasoningEffort, temperature).ConfigureAwait(false);
+        if (single is not null)
+            return single;
+
+        if (ShouldChunkFallback(bookText, budget) || Stage1BookSessionScope.Current is not null
+            || bookFitsInline)
+        {
+            // Always offer multi-chunk after single-shot fail/timeout for short books too
+            // (previously only when ShouldChunkFallback, which skips very short texts).
+            onProgress?.Invoke("Falling back to multi-chunk adapt…");
+            return await ConvertMultiChunkFromBudgetAsync().ConfigureAwait(false);
+        }
+
+        throw new InvalidOperationException(UnusableScreenplayError);
+    }
+
+    private static async Task EnforceMultiPathQualityAsync(
+        string text,
+        string bookText,
+        int? totalRuntimeMinutes,
+        string model,
+        Func<StructuralGateFailure, CancellationToken, Task>? onStructuralGateFailure,
+        CancellationToken ct)
+    {
+        // Multi path: soft coverage failures still accept a structurally good draft
+        var multiGate = EvaluateQuality(text, bookText, totalRuntimeMinutes, AdaptPath.Multi);
+        if (multiGate.Ok)
+            return;
+
+        // Visibility only — no automatic retry here (re-running multi-chunk adapt is
+        // expensive, and we don't have real error-rate data yet to justify it). Hard
+        // failures (structure/excerpt_marker) still throw below same as before; soft
+        // failures (scene_count/missing_ending/suspiciously_short/runtime_short) previously shipped
+        // silently with no log anywhere — now recorded for the admin panel.
+        if (onStructuralGateFailure is not null)
+        {
+            await onStructuralGateFailure(new StructuralGateFailure
+            {
+                Stage = "book_to_fountain_chunk",
+                Model = model,
+                ErrorType = "structural_gate_failure",
+                ErrorMessage = $"Multi-chunk quality gate failed: {multiGate.Reason} " +
+                               $"(scenes={multiGate.SceneCount}, fountainChars={multiGate.FountainChars}, " +
+                               $"hardFailure={multiGate.HasHardFailure})",
+                ResponseSummary = text.Length > 500 ? text[..500] : text,
+            }, ct).ConfigureAwait(false);
+        }
+
+        if (multiGate.HasHardFailure)
+            throw new InvalidOperationException(UnusableScreenplayError);
+    }
+
+    private static EarlyTrailerState CaptureTrailerState(string text)
+    {
         // Pull production / diagnostic sidecars before repairs (trailers are not Fountain body).
-        var visionMarkerSeen = text.Contains(VisionMetaBegin, StringComparison.OrdinalIgnoreCase);
-        var visionEndMarkerSeen = text.Contains(VisionMetaEnd, StringComparison.OrdinalIgnoreCase);
-        var reportMarkerSeen = text.Contains(AdaptationReportParser.StartMark, StringComparison.OrdinalIgnoreCase);
-        var reportEndMarkerSeen = text.Contains(AdaptationReportParser.EndMark, StringComparison.OrdinalIgnoreCase);
-        (text, var visionEarly, var reportEarly) = PullTrailersBeforeRepairs(text);
+        var visionMarkers = TrailerScan.Scan(text, VisionMetaBegin, VisionMetaEnd);
+        var reportMarkers = TrailerScan.Scan(
+            text, AdaptationReportParser.StartMark, AdaptationReportParser.EndMark);
+        var pulled = PullTrailersBeforeRepairs(text);
+        return new EarlyTrailerState
+        {
+            Fountain = pulled.Fountain,
+            Vision = pulled.Vision,
+            Report = pulled.Report,
+            VisionMarkers = visionMarkers,
+            ReportMarkers = reportMarkers,
+        };
+    }
 
+    private static async Task<string> ApplyGenerationRepairsAsync(
+        string system,
+        string text,
+        IChatClient chat,
+        string model,
+        Action<string>? onProgress,
+        CancellationToken ct,
+        string? reasoningEffort,
+        Func<StructuralGateFailure, CancellationToken, Task>? onStructuralGateFailure)
+    {
         // Generation repairs — no operator hand-edit path
         text = await RepairVagueLocationHeadingsAsync(
             system, text, chat, model, onProgress, ct, reasoningEffort).ConfigureAwait(false);
@@ -314,7 +439,11 @@ public static class BookToFountainConverter
             system, text, chat, model, onProgress, ct, reasoningEffort,
             onStructuralGateFailure).ConfigureAwait(false);
         onProgress?.Invoke("Narration continuity checked.");
+        return text;
+    }
 
+    private static string FinalizeFountainText(string text)
+    {
         text = EnsureDraftDate(text);
         // Models invent wrong years (e.g. 3/25/2025) — stamp local today before save
         text = FixDraftDate(text);
@@ -329,7 +458,11 @@ public static class BookToFountainConverter
         text = EnsureFadeIn(text);
         if (!LooksLikeGoodFountain(text))
             throw new InvalidOperationException(UnusableScreenplayError);
+        return text;
+    }
 
+    private static void WarnRemainingRepairIssues(string text, string bookText, Action<string>? onProgress)
+    {
         var stillVague = FindVagueLocationHeadings(text);
         if (stillVague.Count > 0)
         {
@@ -362,29 +495,29 @@ public static class BookToFountainConverter
                 $"Note: {sceneCount} scene headings (soft target ≤{softMax} for {analysis.BookKind}) — " +
                 "shot plan / clip count may be high. Consider merging same-location beats next pass.");
         }
+    }
 
-        text = NormalizeFountainText(text);
+    private static async Task<AdaptationConversionResult> PackageConversionResultAsync(
+        string text,
+        EarlyTrailerState early,
+        string system,
+        string bookText,
+        IChatClient chat,
+        string model,
+        string? reasoningEffort,
+        CancellationToken ct,
+        Action<string>? onProgress)
+    {
         // In case a repair path re-introduced a trailer (should not), strip again.
-        var lateMarkerSeen = text.Contains(VisionMetaBegin, StringComparison.OrdinalIgnoreCase);
-        var lateEndMarkerSeen = text.Contains(VisionMetaEnd, StringComparison.OrdinalIgnoreCase);
-        var lateReportMarker = text.Contains(AdaptationReportParser.StartMark, StringComparison.OrdinalIgnoreCase);
-        var lateReportEnd = text.Contains(AdaptationReportParser.EndMark, StringComparison.OrdinalIgnoreCase);
+        var lateVision = TrailerScan.Scan(text, VisionMetaBegin, VisionMetaEnd);
+        var lateReport = TrailerScan.Scan(
+            text, AdaptationReportParser.StartMark, AdaptationReportParser.EndMark);
         var (fountainOnly, visionLate, reportLate) = SplitAdaptationTrailers(text);
-        var vision = visionLate ?? visionEarly;
-        var report = reportLate ?? reportEarly;
-        if (vision is null)
-        {
-            onProgress?.Invoke("Visual medium sidecar missing — asking model for VISION_META only (not re-writing the script)…");
-            var repairedPackage = await RepairVisionMetaAsync(
-                system, fountainOnly, bookText, chat, model, reasoningEffort, ct, onProgress).ConfigureAwait(false);
-            var repairedSplit = SplitAdaptationTrailers(repairedPackage);
-            fountainOnly = repairedSplit.Fountain;
-            vision = repairedSplit.Vision;
-            report ??= repairedSplit.Report;
-            onProgress?.Invoke(vision is not null
-                ? "Visual medium sidecar ready."
-                : "Visual medium still missing — draft will save without it.");
-        }
+        var vision = visionLate ?? early.Vision;
+        var report = reportLate ?? early.Report;
+        (fountainOnly, vision, report) = await EnsureVisionMetaPresentAsync(
+            fountainOnly, vision, report, system, bookText, chat, model, reasoningEffort, ct, onProgress)
+            .ConfigureAwait(false);
 
         onProgress?.Invoke("Finalizing screenplay package…");
         if (vision is not null)
@@ -397,49 +530,95 @@ public static class BookToFountainConverter
                 $"Adaptation report: source_complete={report.SourceComplete}, " +
                 $"issues={report.Issues.Count}, est_runtime={report.Metrics.EstRuntimeMin:0.#} min");
 
-        visionMarkerSeen |= lateMarkerSeen;
-        visionEndMarkerSeen |= lateEndMarkerSeen;
-        reportMarkerSeen |= lateReportMarker;
-        reportEndMarkerSeen |= lateReportEnd;
-        var status = vision is not null
-            ? visionLate is not null || visionEarly is not null
-                ? AdaptationVisionMetaStatus.PrimaryResponse
-                : AdaptationVisionMetaStatus.RepairResponse
-            : visionMarkerSeen ? AdaptationVisionMetaStatus.Malformed : AdaptationVisionMetaStatus.Missing;
-        var error = vision is not null
-            ? null
-            : visionMarkerSeen && !visionEndMarkerSeen
-                ? "VISION_META end delimiter is missing or its JSON is invalid."
-                : visionMarkerSeen
-                    ? "VISION_META JSON is invalid."
-                    : "VISION_META trailer is missing.";
-
-        var reportStatus = report is not null
-            ? AdaptationReportStatus.Present
-            : reportMarkerSeen ? AdaptationReportStatus.Malformed : AdaptationReportStatus.Missing;
-        var reportError = report is not null
-            ? null
-            : reportMarkerSeen && !reportEndMarkerSeen
-                ? "ADAPTATION_REPORT end delimiter is missing or its JSON is invalid."
-                : reportMarkerSeen
-                    ? "ADAPTATION_REPORT JSON is invalid."
-                    : null; // missing is normal for current production prompt
-
+        var visionMarkers = early.VisionMarkers.Merge(lateVision);
+        var reportMarkers = early.ReportMarkers.Merge(lateReport);
         return new AdaptationConversionResult
         {
             Fountain = fountainOnly,
             VisionMeta = vision,
-            VisionMetaStatus = status,
-            VisionMetaError = error,
+            VisionMetaStatus = ResolveVisionMetaStatus(vision, visionLate, early.Vision, visionMarkers.BeginSeen),
+            VisionMetaError = ResolveVisionMetaError(vision, visionMarkers),
             AdaptationReport = report,
-            AdaptationReportStatus = reportStatus,
-            AdaptationReportError = reportError,
+            AdaptationReportStatus = ResolveReportStatus(report, reportMarkers.BeginSeen),
+            AdaptationReportError = ResolveReportError(report, reportMarkers),
         };
-        }
-        finally
+    }
+
+    private static async Task<(string Fountain, AdaptationVisionMeta? Vision, AdaptationReport? Report)>
+        EnsureVisionMetaPresentAsync(
+            string fountainOnly,
+            AdaptationVisionMeta? vision,
+            AdaptationReport? report,
+            string system,
+            string bookText,
+            IChatClient chat,
+            string model,
+            string? reasoningEffort,
+            CancellationToken ct,
+            Action<string>? onProgress)
+    {
+        if (vision is not null)
+            return (fountainOnly, vision, report);
+
+        onProgress?.Invoke("Visual medium sidecar missing — asking model for VISION_META only (not re-writing the script)…");
+        var repairedPackage = await RepairVisionMetaAsync(
+            system, fountainOnly, bookText, chat, model, reasoningEffort, ct, onProgress).ConfigureAwait(false);
+        var repairedSplit = SplitAdaptationTrailers(repairedPackage);
+        fountainOnly = repairedSplit.Fountain;
+        vision = repairedSplit.Vision;
+        report ??= repairedSplit.Report;
+        onProgress?.Invoke(vision is not null
+            ? "Visual medium sidecar ready."
+            : "Visual medium still missing — draft will save without it.");
+        return (fountainOnly, vision, report);
+    }
+
+    private static AdaptationVisionMetaStatus ResolveVisionMetaStatus(
+        AdaptationVisionMeta? vision,
+        AdaptationVisionMeta? visionLate,
+        AdaptationVisionMeta? visionEarly,
+        bool visionMarkerSeen)
+    {
+        if (vision is not null)
         {
-            Stage1BookSessionScope.Current = prevSession;
+            if (visionLate is not null || visionEarly is not null)
+                return AdaptationVisionMetaStatus.PrimaryResponse;
+            return AdaptationVisionMetaStatus.RepairResponse;
         }
+        if (visionMarkerSeen)
+            return AdaptationVisionMetaStatus.Malformed;
+        return AdaptationVisionMetaStatus.Missing;
+    }
+
+    private static string? ResolveVisionMetaError(AdaptationVisionMeta? vision, TrailerScan markers)
+    {
+        if (vision is not null)
+            return null;
+        if (markers.BeginSeen && !markers.EndSeen)
+            return "VISION_META end delimiter is missing or its JSON is invalid.";
+        if (markers.BeginSeen)
+            return "VISION_META JSON is invalid.";
+        return "VISION_META trailer is missing.";
+    }
+
+    private static AdaptationReportStatus ResolveReportStatus(AdaptationReport? report, bool markerSeen)
+    {
+        if (report is not null)
+            return AdaptationReportStatus.Present;
+        if (markerSeen)
+            return AdaptationReportStatus.Malformed;
+        return AdaptationReportStatus.Missing;
+    }
+
+    private static string? ResolveReportError(AdaptationReport? report, TrailerScan markers)
+    {
+        if (report is not null)
+            return null;
+        if (markers.BeginSeen && !markers.EndSeen)
+            return "ADAPTATION_REPORT end delimiter is missing or its JSON is invalid.";
+        if (markers.BeginSeen)
+            return "ADAPTATION_REPORT JSON is invalid.";
+        return null; // missing is normal for current production prompt
     }
 
     /// <summary>
