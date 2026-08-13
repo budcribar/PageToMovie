@@ -105,11 +105,8 @@ public partial class Scenes : IAsyncDisposable
     private static void AddNonEmptyNames(HashSet<string> set, IEnumerable<string>? names)
     {
         if (names is null) return;
-        foreach (var c in names)
-        {
-            if (!string.IsNullOrWhiteSpace(c))
-                set.Add(c);
-        }
+        foreach (var c in names.Where(n => !string.IsNullOrWhiteSpace(n)))
+            set.Add(c);
     }
 
 
