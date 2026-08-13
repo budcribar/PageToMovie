@@ -28,6 +28,17 @@ public sealed class ProposalChecklistService
     private const string PendingStatus = "pending";
     private const string ReviewedStatus = "reviewed";
 
+    private static readonly (string Pattern, string Theme)[] ThemePatterns =
+    [
+        (@"\b(photoreal|live-?action|period|illustrated|anime|cartoon|painted|cgi|medium|style lock|render)\b", "style"),
+        (@"\b(cast count|extras|background|crowd|unlisted|named identit)\b", "cast_count"),
+        (@"\b(identity|face|wardrobe|grooming|visual_?lock|character|narrator|swap|drift)\b", "identity"),
+        (@"\b(silent|no-dialogue|closed mouth|shout|speaking|agitation|audio|parity)\b", "silent_audio"),
+        (@"\b(eye|gaze|eye-line|downcast|expression|skin|vampiric)\b", "face_expression"),
+        (@"\b(prompt|truncat|complete|ungarbled|who acts|who speaks)\b", "prompt_quality"),
+        (@"\b(auto-?review|fail any clip|verifier)\b", "auto_review"),
+    ];
+
     private readonly ProjectStore _projects;
     private readonly ILogger<ProposalChecklistService> _log;
     private readonly object _gate = new();
@@ -371,24 +382,13 @@ public sealed class ProposalChecklistService
     {
         var t = (text ?? "").ToLowerInvariant();
         var themes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        if (CommonRegex.IsMatch(t, @"\b(photoreal|live-?action|period|illustrated|anime|cartoon|painted|cgi|medium|style lock|render)\b"))
-            themes.Add("style");
-        if (CommonRegex.IsMatch(t, @"\b(cast count|extras|background|crowd|unlisted|named identit)\b"))
-            themes.Add("cast_count");
-        if (CommonRegex.IsMatch(t, @"\b(identity|face|wardrobe|grooming|visual_?lock|character|narrator|swap|drift)\b"))
-            themes.Add("identity");
-        if (CommonRegex.IsMatch(t, @"\b(silent|no-dialogue|closed mouth|shout|speaking|agitation|audio|parity)\b"))
-            themes.Add("silent_audio");
-        if (CommonRegex.IsMatch(t, @"\b(eye|gaze|eye-line|downcast|expression|skin|vampiric)\b"))
-            themes.Add("face_expression");
-        if (CommonRegex.IsMatch(t, @"\b(prompt|truncat|complete|ungarbled|who acts|who speaks)\b"))
-            themes.Add("prompt_quality");
-        if (CommonRegex.IsMatch(t, @"\b(auto-?review|fail any clip|verifier)\b"))
-            themes.Add("auto_review");
-        if (CommonRegex.IsMatch(t, @"\b(negative|ban|forbid|constraint)\b") && themes.Contains("style"))
+        foreach (var (pattern, theme) in ThemePatterns)
+        {
+            if (CommonRegex.IsMatch(t, pattern))
+                themes.Add(theme);
+        }
+        if (themes.Contains("style") && CommonRegex.IsMatch(t, @"\b(negative|ban|forbid|constraint)\b"))
             themes.Add("style_negative");
-
         return themes;
     }
 

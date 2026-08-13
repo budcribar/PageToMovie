@@ -327,7 +327,7 @@ public sealed class DemoCatalogService
                              temp, FileMode.Create, FileAccess.Write, FileShare.None,
                              128 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan))
             {
-                await CopyWithSizeCapAsync(content, fs, MaxUploadBytes, ct).ConfigureAwait(false);
+                await StreamCopy.CopyWithSizeCapAsync(content, fs, MaxUploadBytes, ct, "Upload").ConfigureAwait(false);
             }
 
             var fi = new FileInfo(temp);
@@ -445,7 +445,7 @@ public sealed class DemoCatalogService
                              moviePath, FileMode.CreateNew, FileAccess.Write, FileShare.None,
                              128 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan))
             {
-                await CopyWithSizeCapAsync(content, fs, MaxUploadBytes, ct).ConfigureAwait(false);
+                await StreamCopy.CopyWithSizeCapAsync(content, fs, MaxUploadBytes, ct, "Upload").ConfigureAwait(false);
             }
 
             var fi = new FileInfo(moviePath);
@@ -1151,26 +1151,6 @@ public sealed class DemoCatalogService
                 JsonSerializer.Serialize(entry, JsonOpts) + "\n",
                 ct)
             .ConfigureAwait(false);
-
-    private static async Task CopyWithSizeCapAsync(
-        Stream source,
-        Stream dest,
-        long maxBytes,
-        CancellationToken ct)
-    {
-        var buffer = new byte[128 * 1024];
-        long total = 0;
-        while (true)
-        {
-            var n = await source.ReadAsync(buffer.AsMemory(0, buffer.Length), ct).ConfigureAwait(false);
-            if (n <= 0) break;
-            total += n;
-            if (total > maxBytes)
-                throw new InvalidOperationException(
-                    $"Upload exceeds size limit ({maxBytes:N0} bytes).");
-            await dest.WriteAsync(buffer.AsMemory(0, n), ct).ConfigureAwait(false);
-        }
-    }
 
     private static bool IsValidId(string? id) =>
         !string.IsNullOrWhiteSpace(id)
