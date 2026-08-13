@@ -40,6 +40,25 @@ public partial class SimpleVoice
     /// <summary>Child phase components mutate host state; ensure shell re-renders (phase switch).</summary>
     internal void Notify() => StateHasChanged();
 
+    /// <summary>Test seam — the injected Engine property name collides with the Engine namespace.</summary>
+    internal void BindEngine(EngineApiClient engine) => Engine = engine;
+
+    /// <summary>
+    /// Marshal a paint onto the renderer. Must not be blocked by OnAfterRenderAsync awaiting
+    /// hydrate/resume — that was the production "Loading stories…" hang after a 200.
+    /// </summary>
+    internal async Task PaintAsync()
+    {
+        try
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (InvalidOperationException)
+        {
+            // No renderer (unit tests).
+        }
+    }
+
     /// <summary>
     /// Public catalog — do not wait on JS session hydrate. Login forceLoad lands here before
     /// interactive JS is safe; awaiting sessionStorage in OnInitializedAsync hangs forever
@@ -49,27 +68,43 @@ public partial class SimpleVoice
 
     /// <summary>
     /// Restore session after first interactive render (JS available), then optionally resume
-    /// an in-progress simple-voice project. Stories have already started loading.
+    /// an in-progress simple-voice project. Must return immediately: Blazor defers further
+    /// renders of this component until OnAfterRenderAsync completes.
     /// </summary>
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    protected override Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender || _sessionReady)
-            return;
+            return Task.CompletedTask;
         _sessionReady = true;
-        try { await Session.EnsureHydratedAsync(); }
-        catch { /* JS session restore; the public list does not need it */ }
-        await TryResumeExistingProjectAsync();
-        Notify();
+        _ = ResumeSessionAfterPaintAsync();
+        return Task.CompletedTask;
+    }
+
+    private async Task ResumeSessionAfterPaintAsync()
+    {
+        try
+        {
+            try { await Session.EnsureHydratedAsync(); }
+            catch { /* JS session restore; the public list does not need it */ }
+            await TryResumeExistingProjectAsync();
+        }
+        catch
+        {
+            /* resume is best-effort; never block the story list */
+        }
+        await PaintAsync();
     }
 
     internal async Task LoadStoriesAsync()
     {
         _storiesLoading = true;
         _storiesError = null;
-        Notify();
+        await PaintAsync();
         try
         {
-            _forkableStories = await Engine.ListForkableProjectsAsync();
+            var (stories, error) = await Engine.ListForkableProjectsAsync();
+            _forkableStories = stories;
+            _storiesError = error;
         }
         catch (Exception ex)
         {
@@ -79,14 +114,14 @@ public partial class SimpleVoice
         finally
         {
             _storiesLoading = false;
-            Notify();
+            await PaintAsync();
         }
     }
 
     internal static string TimeoutOrFail(Exception ex) =>
         ex is OperationCanceledException or TaskCanceledException or TimeoutException
-            ? "Stories took too long to load. Try again."
-            : "Could not load stories. Try again.";
+            ? EngineApiClient.ForkableStoriesTimeoutMessage
+            : EngineApiClient.ForkableStoriesFailMessage;
 
     internal static bool ShouldResumeRecordPhase(bool isLoggedIn, bool isSimpleVoiceProject, string? projectId) =>
         isLoggedIn && isSimpleVoiceProject && !string.IsNullOrEmpty(projectId);

@@ -1,3 +1,5 @@
+using System.Net;
+using System.Text;
 using PageToMovie.Web.Components.Pages;
 using PageToMovie.Web.Services;
 using Xunit;
@@ -31,14 +33,41 @@ public class WebPageHydrationGateTests
     public void SimpleVoice_story_load_errors_clear_spinner_copy_on_cancel_and_failure()
     {
         Assert.Equal(
-            "Stories took too long to load. Try again.",
+            EngineApiClient.ForkableStoriesTimeoutMessage,
             SimpleVoice.TimeoutOrFail(new TaskCanceledException()));
         Assert.Equal(
-            "Stories took too long to load. Try again.",
+            EngineApiClient.ForkableStoriesTimeoutMessage,
             SimpleVoice.TimeoutOrFail(new TimeoutException()));
         Assert.Equal(
-            "Could not load stories. Try again.",
+            EngineApiClient.ForkableStoriesFailMessage,
             SimpleVoice.TimeoutOrFail(new InvalidOperationException("boom")));
+    }
+
+    [Fact]
+    public async Task LoadStoriesAsync_clears_loading_and_shows_titles_on_success()
+    {
+        var page = new SimpleVoiceStoriesHarness(CatalogEngine());
+        await page.LoadStoriesAsync();
+
+        Assert.False(page._storiesLoading);
+        Assert.Null(page._storiesError);
+        Assert.Equal(2, page._forkableStories.Count);
+        Assert.Equal("Buster", page._forkableStories[0].Title);
+        Assert.Equal("Mary10", page._forkableStories[1].Title);
+    }
+
+    [Fact]
+    public async Task LoadStoriesAsync_clears_loading_on_timeout()
+    {
+        var http = new HttpClient(new HangHandler()) { BaseAddress = new Uri("http://localhost") };
+        var engine = new EngineApiClient(http) { ForkableListTimeout = TimeSpan.FromMilliseconds(80) };
+        var page = new SimpleVoiceStoriesHarness(engine);
+
+        await page.LoadStoriesAsync();
+
+        Assert.False(page._storiesLoading);
+        Assert.Empty(page._forkableStories);
+        Assert.Equal(EngineApiClient.ForkableStoriesTimeoutMessage, page._storiesError);
     }
 
     [Theory]
@@ -51,5 +80,46 @@ public class WebPageHydrationGateTests
         bool loggedIn, bool simpleVoice, string? projectId, bool expected)
     {
         Assert.Equal(expected, SimpleVoice.ShouldResumeRecordPhase(loggedIn, simpleVoice, projectId));
+    }
+
+    private static EngineApiClient CatalogEngine()
+    {
+        var json = """
+            {
+              "ok": true,
+              "projects": [
+                { "id": "Buster", "title": "Buster" },
+                { "id": "Mary10", "title": "Mary10" }
+              ]
+            }
+            """;
+        var handler = new ReplyHandler(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(json, Encoding.UTF8, "application/json"),
+        });
+        return new EngineApiClient(new HttpClient(handler) { BaseAddress = new Uri("http://localhost") });
+    }
+
+    /// <summary>Sets the injected Engine without a Blazor renderer.</summary>
+    private sealed class SimpleVoiceStoriesHarness : SimpleVoice
+    {
+        public SimpleVoiceStoriesHarness(EngineApiClient engine) => BindEngine(engine);
+    }
+
+    private sealed class ReplyHandler : HttpMessageHandler
+    {
+        private readonly HttpResponseMessage _reply;
+        public ReplyHandler(HttpResponseMessage reply) => _reply = reply;
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(_reply);
+    }
+
+    private sealed class HangHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken) =>
+            new TaskCompletionSource<HttpResponseMessage>().Task;
     }
 }

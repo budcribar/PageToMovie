@@ -738,16 +738,79 @@ public sealed class EngineApiClient
         return await SendJsonAsync<ForkResultDto>(req, ct);
     }
 
-    /// <summary>Public forkable movies (visibility "Open") — the Easy Start "story in your voice" picker.</summary>
-    public async Task<List<ForkableStoryDto>> ListForkableProjectsAsync(CancellationToken ct = default)
+    /// <summary>Operator copy when the public story catalog times out.</summary>
+    internal const string ForkableStoriesTimeoutMessage = "Stories took too long to load. Try again.";
+
+    /// <summary>Operator copy when the public story catalog fails.</summary>
+    internal const string ForkableStoriesFailMessage = "Could not load stories. Try again.";
+
+    internal TimeSpan ForkableListTimeout { get; set; } = TimeSpan.FromSeconds(8);
+
+    /// <summary>Public forkable movies (visibility "Open") — the Easy Start "story in your voice" picker.
+    /// Per-request identity headers only (never DefaultRequestHeaders). Always completes: empty list
+    /// + error string on timeout/failure so the picker cannot hang on BrowserHttpHandler.</summary>
+    public async Task<(List<ForkableStoryDto> Projects, string? Error)> ListForkableProjectsAsync(
+        CancellationToken ct = default)
     {
-        SyncIdentityHeaders();
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        if (ct == default || !ct.CanBeCanceled)
-            linked.CancelAfter(TimeSpan.FromSeconds(8));
-        var dto = await _http.GetFromJsonAsync<ForkableStoriesEnvelope>(
-            "/api/projects/forkable", JsonOpts, linked.Token);
-        return dto?.Projects ?? new List<ForkableStoryDto>();
+        var req = new HttpRequestMessage(HttpMethod.Get, "/api/projects/forkable");
+        AttachForkableIdentity(req);
+        return await SendForkableWithTimeoutAsync(req, ct).ConfigureAwait(false);
+    }
+
+    private void AttachForkableIdentity(HttpRequestMessage req)
+    {
+        if (_session is null || string.IsNullOrWhiteSpace(_session.Token))
+            return;
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _session.Token.Trim());
+        var uid = string.IsNullOrWhiteSpace(_session.UserId) ? "local" : _session.UserId.Trim();
+        req.Headers.TryAddWithoutValidation(AuthHeaders.UserId, uid);
+    }
+
+    private async Task<(List<ForkableStoryDto> Projects, string? Error)> SendForkableWithTimeoutAsync(
+        HttpRequestMessage req, CancellationToken ct)
+    {
+        var timeout = ForkableListTimeout <= TimeSpan.Zero ? TimeSpan.FromSeconds(8) : ForkableListTimeout;
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(timeout);
+        var fetch = ReadForkableStoriesAsync(req, timeoutCts.Token);
+        var completed = await Task.WhenAny(fetch, Task.Delay(timeout, ct)).ConfigureAwait(false);
+        if (completed != fetch)
+        {
+            _ = AwaitForkableFetchAsync(fetch);
+            return (new List<ForkableStoryDto>(), ForkableStoriesTimeoutMessage);
+        }
+        return await AwaitForkableFetchAsync(fetch).ConfigureAwait(false);
+    }
+
+    private async Task<(List<ForkableStoryDto> Projects, string? Error)> ReadForkableStoriesAsync(
+        HttpRequestMessage req, CancellationToken ct)
+    {
+        using (req)
+        using (var resp = await _http.SendAsync(req, ct).ConfigureAwait(false))
+        {
+            if (!resp.IsSuccessStatusCode)
+                return (new List<ForkableStoryDto>(), ForkableStoriesFailMessage);
+            var dto = await resp.Content.ReadFromJsonAsync<ForkableStoriesEnvelope>(JsonOpts, ct)
+                .ConfigureAwait(false);
+            return (dto?.Projects ?? new List<ForkableStoryDto>(), null);
+        }
+    }
+
+    private static async Task<(List<ForkableStoryDto> Projects, string? Error)> AwaitForkableFetchAsync(
+        Task<(List<ForkableStoryDto> Projects, string? Error)> fetch)
+    {
+        try
+        {
+            return await fetch.ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is OperationCanceledException or TaskCanceledException or TimeoutException)
+        {
+            return (new List<ForkableStoryDto>(), ForkableStoriesTimeoutMessage);
+        }
+        catch (Exception)
+        {
+            return (new List<ForkableStoryDto>(), ForkableStoriesFailMessage);
+        }
     }
 
     private sealed class ForkableStoriesEnvelope
