@@ -89,11 +89,7 @@ public class JitBenchmarkServiceTests
     [Fact]
     public void AiActionOverheadClassifier_ClassifiesWeaponActionCorrectly()
     {
-        var ledger = new ActionCameraOverheadLedger();
-        var router = new SmartClassifierModelRouter();
-        var classifier = new AiActionOverheadClassifier(router, ledger);
-
-        var estimation = classifier.ClassifyNovelAction("Pulls out a rusty blade", "(clicks open)");
+        var estimation = AiActionOverheadClassifier.ClassifyNovelAction("Pulls out a rusty blade", "(clicks open)");
 
         Assert.Equal("act_knife_pull", estimation.MatchCategoryId);
         Assert.Equal(2.0, estimation.EstimatedOverheadSec);

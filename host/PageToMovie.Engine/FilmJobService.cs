@@ -708,7 +708,7 @@ public sealed class FilmJobService
         }
     }
 
-    private async Task RunQueuedWorkAsync(
+    private static async Task RunQueuedWorkAsync(
         Func<CancellationToken, Task> work,
         JobEnqueueMeta meta,
         JobRunState run,
