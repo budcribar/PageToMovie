@@ -312,6 +312,13 @@ public enum ProjectMilestoneStatus
 /// </summary>
 public static class CiCdAndDevToolsEnumExtensions
 {
+    private const string TokenFeature = "feature";
+    private const string TokenBugfix = "bugfix";
+    private const string TokenRefactor = "refactor";
+    private const string TokenBuild = "build";
+    private const string TokenWarning = "warning";
+    private const string TokenCritical = "critical";
+    private const string TokenUnknown = "unknown";
     public static AgentWorkMode ParseAgentWorkMode(string? value) =>
             (value ?? "").Trim().ToLowerInvariant() switch
             {
@@ -350,11 +357,11 @@ public static class CiCdAndDevToolsEnumExtensions
     public static ChangelogCategory ParseChangelogCategory(string? value) =>
             (value ?? "").Trim().ToLowerInvariant() switch
             {
-                "feature" or "feat" => ChangelogCategory.Feature,
-                "fix" or "bugfix" => ChangelogCategory.Fix,
+                TokenFeature or "feat" => ChangelogCategory.Feature,
+                "fix" or TokenBugfix => ChangelogCategory.Fix,
                 "performance" or "perf" => ChangelogCategory.Performance,
                 "documentation" or "docs" => ChangelogCategory.Documentation,
-                "refactor" => ChangelogCategory.Refactor,
+                TokenRefactor => ChangelogCategory.Refactor,
                 "deprecation" or "deprecate" => ChangelogCategory.Deprecation,
                 "security" or "sec" => ChangelogCategory.Security,
                 "breaking_change" or "breakingchange" or "breaking" => ChangelogCategory.BreakingChange,
@@ -365,7 +372,7 @@ public static class CiCdAndDevToolsEnumExtensions
             (value ?? "").Trim().ToLowerInvariant() switch
             {
                 "lint" => CiCdPipelineStage.Lint,
-                "build" => CiCdPipelineStage.Build,
+                TokenBuild => CiCdPipelineStage.Build,
                 "unit_test" or "unittest" => CiCdPipelineStage.UnitTest,
                 "integration_test" or "integrationtest" => CiCdPipelineStage.IntegrationTest,
                 "security_scan" or "securityscan" => CiCdPipelineStage.SecurityScan,
@@ -391,7 +398,7 @@ public static class CiCdAndDevToolsEnumExtensions
             {
                 "passed" or "pass" or "success" => CodeQualityGateResult.Passed,
                 "failed" or "fail" or "error" => CodeQualityGateResult.Failed,
-                "warning" or "warn" => CodeQualityGateResult.Warning,
+                TokenWarning or "warn" => CodeQualityGateResult.Warning,
                 "skipped" or "skip" => CodeQualityGateResult.Skipped,
                 "pending" => CodeQualityGateResult.Pending,
                 _ => CodeQualityGateResult.Passed
@@ -424,8 +431,8 @@ public static class CiCdAndDevToolsEnumExtensions
             {
                 "main" or "master" => GitBranchType.Main,
                 "develop" or "dev" => GitBranchType.Develop,
-                "feature" or "feat" => GitBranchType.Feature,
-                "bugfix" or "fix" => GitBranchType.Bugfix,
+                TokenFeature or "feat" => GitBranchType.Feature,
+                TokenBugfix or "fix" => GitBranchType.Bugfix,
                 "release" => GitBranchType.Release,
                 "hotfix" => GitBranchType.Hotfix,
                 "experimental" or "exp" => GitBranchType.Experimental,
@@ -435,16 +442,16 @@ public static class CiCdAndDevToolsEnumExtensions
     public static GitCommitType ParseGitCommitType(string? value) =>
             (value ?? "").Trim().ToLowerInvariant() switch
             {
-                "feat" or "feature" => GitCommitType.Feat,
-                "fix" or "bugfix" => GitCommitType.Fix,
+                "feat" or TokenFeature => GitCommitType.Feat,
+                "fix" or TokenBugfix => GitCommitType.Fix,
                 "docs" or "doc" => GitCommitType.Docs,
                 "style" => GitCommitType.Style,
-                "refactor" => GitCommitType.Refactor,
+                TokenRefactor => GitCommitType.Refactor,
                 "perf" or "performance" => GitCommitType.Perf,
                 "test" or "tests" => GitCommitType.Test,
                 "chore" => GitCommitType.Chore,
                 "ci" => GitCommitType.Ci,
-                "build" => GitCommitType.Build,
+                TokenBuild => GitCommitType.Build,
                 "revert" => GitCommitType.Revert,
                 _ => GitCommitType.Feat
             };
@@ -456,7 +463,7 @@ public static class CiCdAndDevToolsEnumExtensions
                 "medium" or "med" or "p2" => IssuePriorityLevel.Medium,
                 "high" or "p1" => IssuePriorityLevel.High,
                 "urgent" or "p0" => IssuePriorityLevel.Urgent,
-                "critical" or "blocker" => IssuePriorityLevel.Critical,
+                TokenCritical or "blocker" => IssuePriorityLevel.Critical,
                 _ => IssuePriorityLevel.Medium
             };
 
@@ -529,7 +536,7 @@ public static class CiCdAndDevToolsEnumExtensions
                 "minor" => SemVerBumpType.Minor,
                 "patch" => SemVerBumpType.Patch,
                 "prerelease" or "pre" => SemVerBumpType.PreRelease,
-                "build_metadata" or "buildmetadata" or "build" => SemVerBumpType.BuildMetadata,
+                "build_metadata" or "buildmetadata" or TokenBuild => SemVerBumpType.BuildMetadata,
                 "none" => SemVerBumpType.None,
                 _ => SemVerBumpType.Patch
             };
@@ -538,9 +545,9 @@ public static class CiCdAndDevToolsEnumExtensions
             (value ?? "").Trim().ToLowerInvariant() switch
             {
                 "info" or "information" => StaticAnalysisSeverity.Info,
-                "warning" or "warn" => StaticAnalysisSeverity.Warning,
+                TokenWarning or "warn" => StaticAnalysisSeverity.Warning,
                 "error" or "err" => StaticAnalysisSeverity.Error,
-                "critical" or "crit" => StaticAnalysisSeverity.Critical,
+                TokenCritical or "crit" => StaticAnalysisSeverity.Critical,
                 "blocker" => StaticAnalysisSeverity.Blocker,
                 _ => StaticAnalysisSeverity.Warning
             };
@@ -560,26 +567,26 @@ public static class CiCdAndDevToolsEnumExtensions
     public static string ToApiString(this CiCdPipelineStage value) => value switch
         {
             CiCdPipelineStage.Lint => "lint",
-            CiCdPipelineStage.Build => "build",
+            CiCdPipelineStage.Build => TokenBuild,
             CiCdPipelineStage.UnitTest => "unit_test",
             CiCdPipelineStage.IntegrationTest => "integration_test",
             CiCdPipelineStage.SecurityScan => "security_scan",
             CiCdPipelineStage.Package => "package",
             CiCdPipelineStage.DeployStaging => "deploy_staging",
             CiCdPipelineStage.DeployProduction => "deploy_production",
-            _ => "unknown"
+            _ => TokenUnknown
         };
 
     public static string ToApiString(this GitBranchType value) => value switch
         {
             GitBranchType.Main => "main",
             GitBranchType.Develop => "develop",
-            GitBranchType.Feature => "feature",
-            GitBranchType.Bugfix => "bugfix",
+            GitBranchType.Feature => TokenFeature,
+            GitBranchType.Bugfix => TokenBugfix,
             GitBranchType.Release => "release",
             GitBranchType.Hotfix => "hotfix",
             GitBranchType.Experimental => "experimental",
-            _ => "unknown"
+            _ => TokenUnknown
         };
 
     public static string ToApiString(this CodeCoverageMetric value) => value switch
@@ -589,17 +596,17 @@ public static class CiCdAndDevToolsEnumExtensions
             CodeCoverageMetric.MethodCoverage => "method_coverage",
             CodeCoverageMetric.StatementCoverage => "statement_coverage",
             CodeCoverageMetric.ConditionCoverage => "condition_coverage",
-            _ => "unknown"
+            _ => TokenUnknown
         };
 
     public static string ToApiString(this StaticAnalysisSeverity value) => value switch
         {
             StaticAnalysisSeverity.Info => "info",
-            StaticAnalysisSeverity.Warning => "warning",
+            StaticAnalysisSeverity.Warning => TokenWarning,
             StaticAnalysisSeverity.Error => "error",
-            StaticAnalysisSeverity.Critical => "critical",
+            StaticAnalysisSeverity.Critical => TokenCritical,
             StaticAnalysisSeverity.Blocker => "blocker",
-            _ => "unknown"
+            _ => TokenUnknown
         };
 
     public static string ToApiString(this PackageRegistryType value) => value switch
@@ -611,7 +618,7 @@ public static class CiCdAndDevToolsEnumExtensions
             PackageRegistryType.PyPI => "pypi",
             PackageRegistryType.Maven => "maven",
             PackageRegistryType.Cargo => "cargo",
-            _ => "unknown"
+            _ => TokenUnknown
         };
 
     public static string ToApiString(this BuildArtifactType value) => value switch
@@ -623,7 +630,7 @@ public static class CiCdAndDevToolsEnumExtensions
             BuildArtifactType.NpmPackage => "npm_package",
             BuildArtifactType.ZipArchive => "zip_archive",
             BuildArtifactType.TestReport => "test_report",
-            _ => "unknown"
+            _ => TokenUnknown
         };
 
     public static string ToApiString(this ReleaseChannel value) => value switch
@@ -634,20 +641,20 @@ public static class CiCdAndDevToolsEnumExtensions
             ReleaseChannel.Stable => "stable",
             ReleaseChannel.Nightly => "nightly",
             ReleaseChannel.Lts => "lts",
-            _ => "unknown"
+            _ => TokenUnknown
         };
 
     public static string ToApiString(this ChangelogCategory value) => value switch
         {
-            ChangelogCategory.Feature => "feature",
+            ChangelogCategory.Feature => TokenFeature,
             ChangelogCategory.Fix => "fix",
             ChangelogCategory.Performance => "performance",
             ChangelogCategory.Documentation => "documentation",
-            ChangelogCategory.Refactor => "refactor",
+            ChangelogCategory.Refactor => TokenRefactor,
             ChangelogCategory.Deprecation => "deprecation",
             ChangelogCategory.Security => "security",
             ChangelogCategory.BreakingChange => "breaking_change",
-            _ => "unknown"
+            _ => TokenUnknown
         };
 
     public static string ToApiString(this SemVerBumpType value) => value switch
@@ -658,7 +665,7 @@ public static class CiCdAndDevToolsEnumExtensions
             SemVerBumpType.PreRelease => "prerelease",
             SemVerBumpType.BuildMetadata => "build_metadata",
             SemVerBumpType.None => "none",
-            _ => "unknown"
+            _ => TokenUnknown
         };
 
     public static string ToApiString(this LinterRuleSet value) => value switch
@@ -669,7 +676,7 @@ public static class CiCdAndDevToolsEnumExtensions
             LinterRuleSet.StyleOnly => "style_only",
             LinterRuleSet.Custom => "custom",
             LinterRuleSet.Disabled => "disabled",
-            _ => "unknown"
+            _ => TokenUnknown
         };
 
     public static string ToApiString(this TestReportFormat value) => value switch
@@ -680,7 +687,7 @@ public static class CiCdAndDevToolsEnumExtensions
             TestReportFormat.HtmlSummary => "html_summary",
             TestReportFormat.CoberturaXml => "cobertura_xml",
             TestReportFormat.ConsoleOutput => "console_output",
-            _ => "unknown"
+            _ => TokenUnknown
         };
 
     public static string ToApiString(this GitCommitType value) => value switch
@@ -689,14 +696,14 @@ public static class CiCdAndDevToolsEnumExtensions
             GitCommitType.Fix => "fix",
             GitCommitType.Docs => "docs",
             GitCommitType.Style => "style",
-            GitCommitType.Refactor => "refactor",
+            GitCommitType.Refactor => TokenRefactor,
             GitCommitType.Perf => "perf",
             GitCommitType.Test => "test",
             GitCommitType.Chore => "chore",
             GitCommitType.Ci => "ci",
-            GitCommitType.Build => "build",
+            GitCommitType.Build => TokenBuild,
             GitCommitType.Revert => "revert",
-            _ => "unknown"
+            _ => TokenUnknown
         };
 
     public static string ToApiString(this DependencyUpdateStrategy value) => value switch
@@ -706,7 +713,7 @@ public static class CiCdAndDevToolsEnumExtensions
             DependencyUpdateStrategy.PatchOnly => "patch_only",
             DependencyUpdateStrategy.LatestCompatible => "latest_compatible",
             DependencyUpdateStrategy.ManualApproval => "manual_approval",
-            _ => "unknown"
+            _ => TokenUnknown
         };
 
     public static string ToApiString(this BuildRunnerOS value) => value switch
@@ -716,17 +723,17 @@ public static class CiCdAndDevToolsEnumExtensions
             BuildRunnerOS.MacOsLatest => "macos_latest",
             BuildRunnerOS.SelfHostedLinux => "self_hosted_linux",
             BuildRunnerOS.SelfHostedWindows => "self_hosted_windows",
-            _ => "unknown"
+            _ => TokenUnknown
         };
 
     public static string ToApiString(this CodeQualityGateResult value) => value switch
         {
             CodeQualityGateResult.Passed => "passed",
             CodeQualityGateResult.Failed => "failed",
-            CodeQualityGateResult.Warning => "warning",
+            CodeQualityGateResult.Warning => TokenWarning,
             CodeQualityGateResult.Skipped => "skipped",
             CodeQualityGateResult.Pending => "pending",
-            _ => "unknown"
+            _ => TokenUnknown
         };
 
     public static string ToApiString(this AgentWorkMode value) => value switch
@@ -736,7 +743,7 @@ public static class CiCdAndDevToolsEnumExtensions
             AgentWorkMode.Supervised => "supervised",
             AgentWorkMode.Interactive => "interactive",
             AgentWorkMode.DryRun => "dry_run",
-            _ => "unknown"
+            _ => TokenUnknown
         };
 
     public static string ToApiString(this CodeReviewStatus value) => value switch
@@ -746,7 +753,7 @@ public static class CiCdAndDevToolsEnumExtensions
             CodeReviewStatus.ChangesRequested => "changes_requested",
             CodeReviewStatus.Draft => "draft",
             CodeReviewStatus.ClosedUnmerged => "closed_unmerged",
-            _ => "unknown"
+            _ => TokenUnknown
         };
 
     public static string ToApiString(this RepositoryLicense value) => value switch
@@ -758,7 +765,7 @@ public static class CiCdAndDevToolsEnumExtensions
             RepositoryLicense.AGPLv3 => "agpl_3_0",
             RepositoryLicense.Proprietary => "proprietary",
             RepositoryLicense.Unlicense => "unlicense",
-            _ => "unknown"
+            _ => TokenUnknown
         };
 
     public static string ToApiString(this IssuePriorityLevel value) => value switch
@@ -767,8 +774,8 @@ public static class CiCdAndDevToolsEnumExtensions
             IssuePriorityLevel.Medium => "medium",
             IssuePriorityLevel.High => "high",
             IssuePriorityLevel.Urgent => "urgent",
-            IssuePriorityLevel.Critical => "critical",
-            _ => "unknown"
+            IssuePriorityLevel.Critical => TokenCritical,
+            _ => TokenUnknown
         };
 
     public static string ToApiString(this ProjectMilestoneStatus value) => value switch
@@ -779,7 +786,7 @@ public static class CiCdAndDevToolsEnumExtensions
             ProjectMilestoneStatus.InTesting => "in_testing",
             ProjectMilestoneStatus.Closed => "closed",
             ProjectMilestoneStatus.Overdue => "overdue",
-            _ => "unknown"
+            _ => TokenUnknown
         };
 
 }

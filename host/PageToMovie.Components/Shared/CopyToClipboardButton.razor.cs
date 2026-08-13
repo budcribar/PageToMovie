@@ -68,9 +68,9 @@ public sealed partial class CopyToClipboardButton : IAsyncDisposable, IDisposabl
             {
                 oldCts.Cancel();
             }
-            catch (ObjectDisposedException ex)
+            catch (ObjectDisposedException)
             {
-                _ = ex;
+                // Cancel on an already-disposed CTS is a no-op; Dispose still runs below.
             }
             oldCts.Dispose();
             _resetCts = null;

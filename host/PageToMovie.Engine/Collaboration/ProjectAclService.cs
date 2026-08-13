@@ -79,7 +79,11 @@ public sealed class ProjectAclService : IProjectAclService
             await JsonSerializer.SerializeAsync(fs, acl, JsonOpts, ct);
         File.Copy(tmp, path, overwrite: true);
         try { File.Delete(tmp); }
-        catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex); }
+        catch (Exception ex)
+        {
+            // Canonical ACL is already at path; leftover tmp is best-effort cleanup.
+            System.Diagnostics.Debug.WriteLine(ex);
+        }
     }
 
     public async Task<ProjectAccessLevel> GetAccessLevelAsync(string projectId, string userId, CancellationToken ct = default)
@@ -305,7 +309,11 @@ public sealed class ProjectAclService : IProjectAclService
                 var inv = acl?.PendingInvites.FirstOrDefault(i => string.Equals(i.Token, token, StringComparison.Ordinal));
                 if (inv is not null) return (projectId, inv);
             }
-            catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex); }
+            catch (Exception ex)
+            {
+                // Skip unreadable ACL files while scanning invites.
+                System.Diagnostics.Debug.WriteLine(ex);
+            }
         }
         return null;
     }

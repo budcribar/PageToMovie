@@ -14,7 +14,7 @@ namespace PageToMovie.Web.Components.Pages;
 
 public partial class Demo_FilmCard
 {
-    [Parameter, EditorRequired] public DemoListItem Film { get; set; } = default!;
+    [Parameter, EditorRequired] public DemoListItem Film { get; set; } = default;
     [Parameter] public bool IsHighlight { get; set; }
     [Parameter] public bool Busy { get; set; }
     [Parameter] public bool IsReported { get; set; }

@@ -144,7 +144,7 @@ public sealed class DemoYouTubePublisherService
                 !string.Equals(oldYoutubeId, videoId, StringComparison.Ordinal) &&
                 !string.IsNullOrWhiteSpace(oldYoutubeId))
             {
-                await TryDeleteYouTubeVideoAsync(youtube, oldYoutubeId!, demoId, ct).ConfigureAwait(false);
+                await TryDeleteYouTubeVideoAsync(youtube, oldYoutubeId, demoId, ct).ConfigureAwait(false);
             }
         }
         catch (Exception ex)

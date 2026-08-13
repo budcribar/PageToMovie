@@ -11,6 +11,8 @@ namespace PageToMovie.Engine;
 public sealed class BookTextRegistryService
 {
     private readonly string _connectionString;
+    private const string ParamUser = "@user";
+    private const string ParamBook = "@book";
 
     public BookTextRegistryService(IOptions<PageToMovieOptions> options)
     {
@@ -55,7 +57,7 @@ public sealed class BookTextRegistryService
             cmd.Parameters.AddWithValue("@text", text);
             cmd.Parameters.AddWithValue("@bytes", bytes.Length);
             cmd.Parameters.AddWithValue("@now", now);
-            cmd.Parameters.AddWithValue("@user", userId);
+            cmd.Parameters.AddWithValue(ParamUser, userId);
             cmd.Parameters.AddWithValue("@project", projectId ?? "");
             cmd.Parameters.AddWithValue("@visibility", NormalizeVisibility(visibility));
             await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
@@ -80,7 +82,7 @@ public sealed class BookTextRegistryService
             LIMIT 1;
             """;
         cmd.Parameters.AddWithValue("@key", idOrHash.Trim());
-        cmd.Parameters.AddWithValue("@user", userId);
+        cmd.Parameters.AddWithValue(ParamUser, userId);
         await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
         return await reader.ReadAsync(ct).ConfigureAwait(false)
             ? new(reader.GetString(0), reader.GetString(1), reader.GetInt32(2), reader.GetString(3))
@@ -103,8 +105,8 @@ public sealed class BookTextRegistryService
                   AND (a.user_id=@user OR a.visibility_mode='Forkable'))
             ON CONFLICT(book_id, user_id, project_id) DO NOTHING;
             """;
-        cmd.Parameters.AddWithValue("@book", bookId);
-        cmd.Parameters.AddWithValue("@user", userId);
+        cmd.Parameters.AddWithValue(ParamBook, bookId);
+        cmd.Parameters.AddWithValue(ParamUser, userId);
         cmd.Parameters.AddWithValue("@project", projectId);
         cmd.Parameters.AddWithValue("@now", DateTime.UtcNow.ToString("o"));
         if (await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false) == 0)
@@ -122,7 +124,7 @@ public sealed class BookTextRegistryService
             WHERE user_id=@user AND project_id=@project;
             """;
         cmd.Parameters.AddWithValue("@visibility", NormalizeVisibility(visibility));
-        cmd.Parameters.AddWithValue("@user", userId);
+        cmd.Parameters.AddWithValue(ParamUser, userId);
         cmd.Parameters.AddWithValue("@project", projectId);
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }
@@ -146,7 +148,7 @@ public sealed class BookTextRegistryService
             ON CONFLICT(book_id, user_id, project_id) DO NOTHING;
             """;
         cmd.Parameters.AddWithValue("@source", sourceProjectId);
-        cmd.Parameters.AddWithValue("@user", targetUserId);
+        cmd.Parameters.AddWithValue(ParamUser, targetUserId);
         cmd.Parameters.AddWithValue("@target", targetProjectId);
         cmd.Parameters.AddWithValue("@now", DateTime.UtcNow.ToString("o"));
         cmd.Parameters.AddWithValue("@invited", invitationAuthorized ? 1 : 0);
@@ -187,8 +189,8 @@ public sealed class BookTextRegistryService
             """;
         cmd.Parameters.AddWithValue("@id", artifactId);
         cmd.Parameters.AddWithValue("@derivation", derivationHash);
-        cmd.Parameters.AddWithValue("@book", bookId);
-        cmd.Parameters.AddWithValue("@user", userId);
+        cmd.Parameters.AddWithValue(ParamBook, bookId);
+        cmd.Parameters.AddWithValue(ParamUser, userId);
         cmd.Parameters.AddWithValue("@kind", artifactKind);
         cmd.Parameters.AddWithValue("@content", content);
         cmd.Parameters.AddWithValue("@contentHash", contentHash);
@@ -202,8 +204,8 @@ public sealed class BookTextRegistryService
         {
             await using var access = conn.CreateCommand();
             access.CommandText = "SELECT 1 FROM book_text_access WHERE book_id=@book AND user_id=@user LIMIT 1;";
-            access.Parameters.AddWithValue("@book", bookId);
-            access.Parameters.AddWithValue("@user", userId);
+            access.Parameters.AddWithValue(ParamBook, bookId);
+            access.Parameters.AddWithValue(ParamUser, userId);
             if (await access.ExecuteScalarAsync(ct).ConfigureAwait(false) is null)
                 throw new UnauthorizedAccessException("The caller does not have access to this book identity.");
         }
@@ -253,7 +255,7 @@ public sealed class BookTextRegistryService
               AND (a.user_id=@user OR a.visibility_mode IN ('Public', 'Forkable')) LIMIT 1;
             """;
         cmd.Parameters.AddWithValue(keyParam, keyValue);
-        cmd.Parameters.AddWithValue("@user", userId);
+        cmd.Parameters.AddWithValue(ParamUser, userId);
         await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
         return await reader.ReadAsync(ct).ConfigureAwait(false)
             ? new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5))
@@ -293,7 +295,7 @@ public sealed class BookTextRegistryService
             WHERE book_id=@book AND provider=@provider
             LIMIT 1;
             """;
-        cmd.Parameters.AddWithValue("@book", bookId);
+        cmd.Parameters.AddWithValue(ParamBook, bookId);
         cmd.Parameters.AddWithValue("@provider", provider.Trim().ToLowerInvariant());
         await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
         if (!await reader.ReadAsync(ct).ConfigureAwait(false)) return null;
@@ -332,7 +334,7 @@ public sealed class BookTextRegistryService
                 last_response_id=COALESCE(excluded.last_response_id, book_provider_files.last_response_id),
                 updated_at=excluded.updated_at;
             """;
-        cmd.Parameters.AddWithValue("@book", bookId);
+        cmd.Parameters.AddWithValue(ParamBook, bookId);
         cmd.Parameters.AddWithValue("@provider", provider);
         cmd.Parameters.AddWithValue("@file", fileId);
         cmd.Parameters.AddWithValue("@exp", (object?)expiresAtUnix ?? DBNull.Value);
@@ -352,7 +354,7 @@ public sealed class BookTextRegistryService
             SET last_response_id=@resp, updated_at=@now
             WHERE book_id=@book AND provider=@provider;
             """;
-        cmd.Parameters.AddWithValue("@book", bookId);
+        cmd.Parameters.AddWithValue(ParamBook, bookId);
         cmd.Parameters.AddWithValue("@provider", provider.Trim().ToLowerInvariant());
         cmd.Parameters.AddWithValue("@resp", (object?)responseId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@now", DateTime.UtcNow.ToString("o"));
@@ -472,7 +474,7 @@ public sealed class BookTextRegistryService
         {
             var line = rawLine.Trim();
             if (string.IsNullOrWhiteSpace(line)) continue;
-            if (line.StartsWith("/*") || line.StartsWith("//") || line.StartsWith("#")) continue;
+            if (line.StartsWith("/*") || line.StartsWith("//") || line.StartsWith('#')) continue;
             return line.Length > 60 ? line[..57] + "…" : line;
         }
         return "Untitled Book";

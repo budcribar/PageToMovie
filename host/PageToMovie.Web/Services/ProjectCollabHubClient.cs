@@ -115,10 +115,10 @@ public sealed class ProjectCollabHubClient : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        try { await LeaveAsync().ConfigureAwait(false); } catch { /* */ }
+        try { await LeaveAsync().ConfigureAwait(false); } catch { /* leave is best-effort on dispose */ }
         if (_connection is not null)
         {
-            try { await _connection.DisposeAsync().ConfigureAwait(false); } catch { /* */ }
+            try { await _connection.DisposeAsync().ConfigureAwait(false); } catch { /* hub already gone */ }
             _connection = null;
         }
     }

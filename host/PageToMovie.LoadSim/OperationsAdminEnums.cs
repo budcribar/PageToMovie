@@ -272,6 +272,7 @@ public enum MaintenanceWindowMode
 /// </summary>
 public static class OperationsAdminEnumExtensions
 {
+    private const string TokenCritical = "critical";
     public static AdminDashboardTab ParseAdminDashboardTab(string? value) =>
             (value ?? "").Trim().ToLowerInvariant() switch
             {
@@ -354,7 +355,7 @@ public static class OperationsAdminEnumExtensions
     public static IncidentSeverity ParseIncidentSeverity(string? value) =>
             (value ?? "").Trim().ToLowerInvariant() switch
             {
-                "sev0" or "critical" => IncidentSeverity.Sev0Critical,
+                "sev0" or TokenCritical => IncidentSeverity.Sev0Critical,
                 "sev1" or "high" => IncidentSeverity.Sev1High,
                 "sev2" or "medium" => IncidentSeverity.Sev2Medium,
                 "sev3" or "low" => IncidentSeverity.Sev3Low,
@@ -436,7 +437,7 @@ public static class OperationsAdminEnumExtensions
                 "normal" => MemoryPressureLevel.Normal,
                 "moderate" => MemoryPressureLevel.Moderate,
                 "high" => MemoryPressureLevel.High,
-                "critical" => MemoryPressureLevel.Critical,
+                TokenCritical => MemoryPressureLevel.Critical,
                 "oom_risk" or "oom" => MemoryPressureLevel.OutOfMemoryRisk,
                 _ => MemoryPressureLevel.Normal
             };
@@ -479,7 +480,7 @@ public static class OperationsAdminEnumExtensions
             {
                 "healthy" => SystemHealthState.Healthy,
                 "degraded" => SystemHealthState.Degraded,
-                "critical" => SystemHealthState.Critical,
+                TokenCritical => SystemHealthState.Critical,
                 "unhealthy" => SystemHealthState.Unhealthy,
                 "maintenance" => SystemHealthState.Maintenance,
                 _ => SystemHealthState.Healthy
@@ -557,7 +558,7 @@ public static class OperationsAdminEnumExtensions
         {
             SystemHealthState.Healthy => "healthy",
             SystemHealthState.Degraded => "degraded",
-            SystemHealthState.Critical => "critical",
+            SystemHealthState.Critical => TokenCritical,
             SystemHealthState.Unhealthy => "unhealthy",
             SystemHealthState.Maintenance => "maintenance",
             _ => "healthy"
@@ -598,7 +599,7 @@ public static class OperationsAdminEnumExtensions
             MemoryPressureLevel.Normal => "normal",
             MemoryPressureLevel.Moderate => "moderate",
             MemoryPressureLevel.High => "high",
-            MemoryPressureLevel.Critical => "critical",
+            MemoryPressureLevel.Critical => TokenCritical,
             MemoryPressureLevel.OutOfMemoryRisk => "oom_risk",
             _ => "normal"
         };

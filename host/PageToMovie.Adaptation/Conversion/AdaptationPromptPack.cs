@@ -52,7 +52,7 @@ public static class AdaptationPromptPack
         }
         catch (InvalidOperationException) when (!string.IsNullOrWhiteSpace(fallbackBody))
         {
-            body = fallbackBody!;
+            body = fallbackBody;
         }
 
         tokens ??= AdaptationPromptTokens.Default(totalRuntimeMinutes);
@@ -77,7 +77,7 @@ public static class AdaptationPromptPack
         var unlimited = tokens.TotalRuntimeMinutes is null or <= 0;
         var minutes = unlimited
             ? 0
-            : Math.Clamp(tokens.TotalRuntimeMinutes!.Value, 1, 180);
+            : Math.Clamp(tokens.TotalRuntimeMinutes.Value, 1, 180);
 
         var directive = unlimited
             ? UnlimitedRuntimeDirective

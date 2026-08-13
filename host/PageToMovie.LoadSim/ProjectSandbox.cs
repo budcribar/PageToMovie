@@ -165,12 +165,7 @@ public static class ProjectSandbox
 
     private static bool ShouldSkipDirectory(string name)
     {
-        foreach (var skip in SkipDirectoryNames)
-        {
-            if (string.Equals(name, skip, StringComparison.OrdinalIgnoreCase))
-                return true;
-        }
-        return false;
+        return SkipDirectoryNames.Any(skip => string.Equals(name, skip, StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool ShouldSkipFile(string name)

@@ -4,5 +4,5 @@ namespace PageToMovie.Web.Components;
 
 public partial class FilmLengthCard_Control
 {
-    [CascadingParameter] public FilmLengthCard Host { get; set; } = default!;
+    [CascadingParameter] public FilmLengthCard Host { get; set; } = default;
 }

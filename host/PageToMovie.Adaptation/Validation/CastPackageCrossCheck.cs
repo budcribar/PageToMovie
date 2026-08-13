@@ -299,7 +299,7 @@ public static class CastPackageCrossCheck
         var dict = seeds as Dictionary<string, JsonElement>
             ?? new Dictionary<string, JsonElement>(seeds, StringComparer.OrdinalIgnoreCase);
         var raw = (speakerOrKey ?? "").Trim();
-        if (raw.StartsWith("Character_", StringComparison.OrdinalIgnoreCase))
+        if (raw.StartsWith(JsonKeys.CharacterPrefix, StringComparison.OrdinalIgnoreCase))
             raw = CastKindClassifier.StripPrefix(raw).Replace('_', ' ');
         var want = NormalizeSpeaker(raw);
         return ResolveNumberedSpeakerToGroupKey(want, dict);
@@ -335,7 +335,7 @@ public static class CastPackageCrossCheck
     private static string? ResolveCastKey(string speaker, Dictionary<string, JsonElement> seeds)
     {
         var want = NormalizeSpeaker(speaker);
-        var wantKey = "Character_" + SanitizeKey(want);
+        var wantKey = JsonKeys.CharacterPrefix + SanitizeKey(want);
 
         foreach (var key in seeds.Keys)
         {
@@ -391,7 +391,7 @@ public static class CastPackageCrossCheck
 
         foreach (var cand in candidates.Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            var tryKey = "Character_" + SanitizeKey(cand);
+            var tryKey = JsonKeys.CharacterPrefix + SanitizeKey(cand);
             foreach (var key in seeds.Keys)
             {
                 if (!key.Equals(tryKey, StringComparison.OrdinalIgnoreCase)
@@ -463,7 +463,7 @@ public static class CastPackageCrossCheck
 
         q.DescriptionChars = desc?.Length ?? 0;
         q.HasDescription = !string.IsNullOrWhiteSpace(desc) && q.DescriptionChars >= 8;
-        q.HasVisualLock = !string.IsNullOrWhiteSpace(vlock) && vlock!.Length >= 8;
+        q.HasVisualLock = !string.IsNullOrWhiteSpace(vlock) && vlock.Length >= 8;
         q.HasWardrobe = !string.IsNullOrWhiteSpace(wardrobe);
         q.HasSpecies = !string.IsNullOrWhiteSpace(species);
         if (q.HasDescription && q.DescriptionChars < 40)
@@ -502,7 +502,7 @@ public static class CastPackageCrossCheck
                 found = true;
             // Whole object is character map (Character_* keys)
             else if (root.EnumerateObject().Any(p =>
-                         p.Name.StartsWith("Character_", StringComparison.OrdinalIgnoreCase)))
+                         p.Name.StartsWith(JsonKeys.CharacterPrefix, StringComparison.OrdinalIgnoreCase)))
             {
                 seedsEl = root;
                 found = true;

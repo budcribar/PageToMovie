@@ -33,7 +33,7 @@ public sealed class GeminiImageClient : IImageClient
         _http = http;
         _telemetry = telemetry;
         if (_http.BaseAddress is null)
-            _http.BaseAddress = new Uri(ApiBase + "/");
+            _http.BaseAddress = new Uri(ApiBase.TrimEnd(Path.AltDirectorySeparatorChar) + Path.AltDirectorySeparatorChar);
     }
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(ResolveApiKey());
@@ -104,7 +104,7 @@ public sealed class GeminiImageClient : IImageClient
         if (refs.Count == 0 && !hasCostumeRef)
             throw new InvalidOperationException("No usable reference images for character edit.");
 
-        var allRefs = hasCostumeRef ? refs.Append(costumeRefPath!).ToList() : refs;
+        var allRefs = hasCostumeRef ? refs.Append(costumeRefPath).ToList() : refs;
         var costumeClause = hasCostumeRef
             ? " The LAST reference image is a COSTUME REFERENCE ONLY (shared wardrobe design) — " +
               "copy its coat, hat, and badge exactly; completely ignore any face or person in it; " +
@@ -174,7 +174,7 @@ public sealed class GeminiImageClient : IImageClient
         var endpoint = $"models/{Uri.EscapeDataString(model)}:generateContent";
         var sw = Stopwatch.StartNew();
         var refNames = (referenceImagePaths ?? Array.Empty<string>())
-            .Select(Path.GetFileName).Where(x => x is not null).Cast<string>().ToList();
+            .Select(Path.GetFileName).OfType<string>().ToList();
         try
         {
             // Per-request API key — never mutate shared DefaultRequestHeaders (multi-user race).
