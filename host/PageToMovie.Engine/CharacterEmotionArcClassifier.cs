@@ -37,11 +37,11 @@ public sealed class CharacterEmotionArcClassifier : BeatChatClassifierBase<Emoti
     protected override string OperationName => "stage2_character_emotion_arc";
     protected override string ErrorLoggerName => "character_emotion_arc_classifier";
     protected override string LogNoun => "character emotion arc";
-    protected override string GetSystemPrompt() => SystemPrompt();
+    protected override string GetSystemPrompt() => SystemPrompt;
     protected override string ProgressMessage(int beatCount) =>
         $"AI Acting Coach: Directing emotional intensity & micro-acting for {beatCount} beats…";
 
-    public static string SystemPrompt() => """
+    public const string SystemPrompt = """
         You are an expert film Acting Coach and Performance Director directing character micro-acting.
 
         Your task: Given a list of scene beats, determine the emotional intensity (1 to 10 scale) and facial micro-expressions per beat ID.

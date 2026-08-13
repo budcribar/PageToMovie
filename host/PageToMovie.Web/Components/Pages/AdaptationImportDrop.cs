@@ -21,6 +21,8 @@ public partial class AdaptationImport
         /// <summary>Bumped after each selection so InputFile remounts cleanly.</summary>
         internal int _inputFileKey;
 
+        private const string ImportCancelledMessage = "Import cancelled. You can start again when ready.";
+
         internal void OnDragEnter(DragEventArgs e)
         {
             if (_importing || S.Busy || S.Jobs.JobRunning || !S.Gate.ImportReady) return;
@@ -212,7 +214,7 @@ public partial class AdaptationImport
             {
                 if (S.Jobs.ClientCancelRequested)
                 {
-                    S.Message = "Import cancelled. You can start again when ready.";
+                    S.Message = ImportCancelledMessage;
                     S.Error = null;
                     return false;
                 }
@@ -223,7 +225,7 @@ public partial class AdaptationImport
                     var jobs = await S.Engine.GetJobAsync(pollCts.Token);
                     if (S.Jobs.ClientCancelRequested)
                     {
-                        S.Message = "Import cancelled. You can start again when ready.";
+                        S.Message = ImportCancelledMessage;
                         S.Error = null;
                         return false;
                     }
@@ -260,7 +262,7 @@ public partial class AdaptationImport
                         {
                             if (st == "cancelled" || S.Jobs.ClientCancelRequested)
                             {
-                                S.Message = "Import cancelled. You can start again when ready.";
+                                S.Message = ImportCancelledMessage;
                                 S.Error = null;
                                 return false;
                             }
@@ -277,7 +279,7 @@ public partial class AdaptationImport
                     // 502 during deploy — keep waiting, but honor Cancel immediately.
                     if (S.Jobs.ClientCancelRequested)
                     {
-                        S.Message = "Import cancelled. You can start again when ready.";
+                        S.Message = ImportCancelledMessage;
                         S.Error = null;
                         return false;
                     }

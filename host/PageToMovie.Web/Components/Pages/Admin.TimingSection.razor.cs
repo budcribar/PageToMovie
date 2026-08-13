@@ -14,7 +14,7 @@ namespace PageToMovie.Web.Components.Pages;
 
 public partial class Admin_TimingSection
 {
-    [CascadingParameter] public Admin Host { get; set; } = default!;
+    [CascadingParameter] public Admin Host { get; set; } = default;
     [CascadingParameter] public Admin.AdminTelemetry? Telemetry { get; set; }
     [CascadingParameter] public Admin.AdminUi? Ui { get; set; }
 }

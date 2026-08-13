@@ -172,16 +172,9 @@ public partial class ProjectCosts
                 {
                     if (by.TryGetValue(c.Id, out var v)) usd = v;
                     else
-                    {
-                        foreach (var kv in by)
-                        {
-                            if (string.Equals(kv.Key, c.Id, StringComparison.OrdinalIgnoreCase))
-                            {
-                                usd = kv.Value;
-                                break;
-                            }
-                        }
-                    }
+                        usd = by.Where(kv => string.Equals(kv.Key, c.Id, StringComparison.OrdinalIgnoreCase))
+                            .Select(kv => kv.Value)
+                            .FirstOrDefault();
                 }
                 return new CostSlice(c.Id, c.Label, Math.Round(usd, 2), c.Color);
             })
@@ -199,11 +192,11 @@ public partial class ProjectCosts
         if (!string.IsNullOrWhiteSpace(e.Character))
             bits.Add(KeyFormatting.ShortChar(e.Character));
         if (!string.IsNullOrWhiteSpace(e.Resolution))
-            bits.Add(e.Resolution!);
+            bits.Add(e.Resolution);
         if (e.DurationSec is double d && d > 0)
             bits.Add($"{d:0.#}s");
         if (!string.IsNullOrWhiteSpace(e.Model))
-            bits.Add(e.Model!);
+            bits.Add(e.Model);
         if (bits.Count == 0)
             bits.Add(string.IsNullOrWhiteSpace(e.Kind) ? "Work item" : e.Kind);
         return string.Join(" · ", bits);

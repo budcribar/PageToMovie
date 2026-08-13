@@ -73,7 +73,7 @@ async function waitJobsIdle(timeoutMs = 25 * 60_000) {
       await new Promise((r) => setTimeout(r, 600));
       const j2 = await api("GET", `/api/jobs?projectId=${encodeURIComponent(PROJECT)}`);
       const jobs2 = j2.json?.jobs || j2.json?.Jobs || [];
-      if (!jobs2.find((x) => /queued|running/i.test(x.status || x.Status || ""))) return;
+      if (!jobs2.some((x) => /queued|running/i.test(x.status || x.Status || ""))) return;
       continue;
     }
     const msg = `${active.kind || active.Kind}|${active.message || active.Message || ""}`;

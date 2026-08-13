@@ -151,6 +151,8 @@ public enum KeyboardShortcutKind
 /// </summary>
 public static class BlazorUiExtendedEnumExtensions
 {
+    private const string ClickToken = "click";
+
     public static AccordionExpandModeKind ParseAccordionExpandModeKind(string? value) =>
             (value ?? "").Trim().ToLowerInvariant() switch
             {
@@ -200,7 +202,7 @@ public static class BlazorUiExtendedEnumExtensions
     public static DropdownTriggerModeKind ParseDropdownTriggerModeKind(string? value) =>
             (value ?? "").Trim().ToLowerInvariant() switch
             {
-                "click" => DropdownTriggerModeKind.Click,
+                ClickToken => DropdownTriggerModeKind.Click,
                 "hover" => DropdownTriggerModeKind.Hover,
                 "context_menu" => DropdownTriggerModeKind.ContextMenu,
                 "manual" => DropdownTriggerModeKind.Manual,
@@ -239,7 +241,7 @@ public static class BlazorUiExtendedEnumExtensions
     public static TabChangeSourceKind ParseTabChangeSourceKind(string? value) =>
             (value ?? "").Trim().ToLowerInvariant() switch
             {
-                "user_click" or "click" => TabChangeSourceKind.UserClick,
+                "user_click" or ClickToken => TabChangeSourceKind.UserClick,
                 "programmatic" => TabChangeSourceKind.Programmatic,
                 "keyboard" or "keyboard_navigation" => TabChangeSourceKind.KeyboardNavigation,
                 "url_hash" or "hash" => TabChangeSourceKind.UrlHash,
@@ -315,12 +317,12 @@ public static class BlazorUiExtendedEnumExtensions
 
     public static string ToApiString(this DropdownTriggerModeKind mode) => mode switch
         {
-            DropdownTriggerModeKind.Click => "click",
+            DropdownTriggerModeKind.Click => ClickToken,
             DropdownTriggerModeKind.Hover => "hover",
             DropdownTriggerModeKind.ContextMenu => "context_menu",
             DropdownTriggerModeKind.Manual => "manual",
             DropdownTriggerModeKind.DoubleClick => "double_click",
-            _ => "click"
+            _ => ClickToken
         };
 
     public static string ToApiString(this AccordionExpandModeKind mode) => mode switch

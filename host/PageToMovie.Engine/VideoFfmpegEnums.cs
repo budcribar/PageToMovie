@@ -312,6 +312,8 @@ public enum ExportFileNamingPattern
 /// </summary>
 public static class VideoFfmpegEnumExtensions
 {
+    private const string CustomApi = "custom";
+
     public static string ToApiString(this VideoCodecName val) => val switch
     {
         VideoCodecName.H264 => "h264",
@@ -325,21 +327,6 @@ public static class VideoFfmpegEnumExtensions
         _ => "h264"
     };
 
-    public static VideoCodecName ParseVideoCodecName(string? s, VideoCodecName defaultValue = VideoCodecName.H264)
-    {
-        if (string.IsNullOrWhiteSpace(s)) return defaultValue;
-        var lower = s.ToLowerInvariant().Trim();
-        if (lower.Contains("264")) return VideoCodecName.H264;
-        if (lower.Contains("265") || lower.Contains("hevc")) return VideoCodecName.H265;
-        if (lower.Contains("vp8")) return VideoCodecName.Vp8;
-        if (lower.Contains("vp9")) return VideoCodecName.Vp9;
-        if (lower.Contains("av1")) return VideoCodecName.Av1;
-        if (lower.Contains("prores")) return VideoCodecName.ProRes;
-        if (lower.Contains("dnx")) return VideoCodecName.DnxHd;
-        if (lower.Contains("copy")) return VideoCodecName.Copy;
-        return Enum.TryParse<VideoCodecName>(s, true, out var r) ? r : defaultValue;
-    }
-
     public static string ToApiString(this VideoPixelFormat val) => val switch
     {
         VideoPixelFormat.Yuv420p => "yuv420p",
@@ -352,9 +339,6 @@ public static class VideoFfmpegEnumExtensions
         _ => "yuv420p"
     };
 
-    public static VideoPixelFormat ParseVideoPixelFormat(string? s, VideoPixelFormat defaultValue = VideoPixelFormat.Yuv420p)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoPixelFormat>(s, true, out var r) ? r : defaultValue;
-
     public static string ToApiString(this VideoColorSpace val) => val switch
     {
         VideoColorSpace.Bt709 => "bt709",
@@ -365,13 +349,7 @@ public static class VideoFfmpegEnumExtensions
         _ => "bt709"
     };
 
-    public static VideoColorSpace ParseVideoColorSpace(string? s, VideoColorSpace defaultValue = VideoColorSpace.Bt709)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoColorSpace>(s, true, out var r) ? r : defaultValue;
-
     public static string ToApiString(this VideoBitrateControlMode val) => val.ToString().ToLowerInvariant();
-
-    public static VideoBitrateControlMode ParseVideoBitrateControlMode(string? s, VideoBitrateControlMode defaultValue = VideoBitrateControlMode.Crf)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoBitrateControlMode>(s, true, out var r) ? r : defaultValue;
 
     public static string ToApiString(this VideoGopStructure val) => val switch
     {
@@ -383,18 +361,9 @@ public static class VideoFfmpegEnumExtensions
         _ => "auto"
     };
 
-    public static VideoGopStructure ParseVideoGopStructure(string? s, VideoGopStructure defaultValue = VideoGopStructure.Auto)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoGopStructure>(s, true, out var r) ? r : defaultValue;
-
     public static string ToApiString(this FfmpegPresetSpeed val) => val.ToString().ToLowerInvariant();
 
-    public static FfmpegPresetSpeed ParseFfmpegPresetSpeed(string? s, FfmpegPresetSpeed defaultValue = FfmpegPresetSpeed.Medium)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<FfmpegPresetSpeed>(s, true, out var r) ? r : defaultValue;
-
     public static string ToApiString(this FfmpegLogVerbosity val) => val.ToString().ToLowerInvariant();
-
-    public static FfmpegLogVerbosity ParseFfmpegLogVerbosity(string? s, FfmpegLogVerbosity defaultValue = FfmpegLogVerbosity.Info)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<FfmpegLogVerbosity>(s, true, out var r) ? r : defaultValue;
 
     public static string ToApiString(this VideoScaleAlgorithm val) => val switch
     {
@@ -407,9 +376,6 @@ public static class VideoFfmpegEnumExtensions
         _ => "bicubic"
     };
 
-    public static VideoScaleAlgorithm ParseVideoScaleAlgorithm(string? s, VideoScaleAlgorithm defaultValue = VideoScaleAlgorithm.Bicubic)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoScaleAlgorithm>(s, true, out var r) ? r : defaultValue;
-
     public static string ToApiString(this VideoAspectMode val) => val switch
     {
         VideoAspectMode.Letterbox => "letterbox",
@@ -421,9 +387,6 @@ public static class VideoFfmpegEnumExtensions
         _ => "letterbox"
     };
 
-    public static VideoAspectMode ParseVideoAspectMode(string? s, VideoAspectMode defaultValue = VideoAspectMode.Letterbox)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoAspectMode>(s, true, out var r) ? r : defaultValue;
-
     public static string ToApiString(this VideoWatermarkPosition val) => val switch
     {
         VideoWatermarkPosition.TopLeft => "top_left",
@@ -431,12 +394,9 @@ public static class VideoFfmpegEnumExtensions
         VideoWatermarkPosition.BottomLeft => "bottom_left",
         VideoWatermarkPosition.BottomRight => "bottom_right",
         VideoWatermarkPosition.Center => "center",
-        VideoWatermarkPosition.Custom => "custom",
+        VideoWatermarkPosition.Custom => CustomApi,
         _ => "bottom_right"
     };
-
-    public static VideoWatermarkPosition ParseVideoWatermarkPosition(string? s, VideoWatermarkPosition defaultValue = VideoWatermarkPosition.BottomRight)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoWatermarkPosition>(s, true, out var r) ? r : defaultValue;
 
     public static string ToApiString(this VideoTransitionType val) => val switch
     {
@@ -453,9 +413,6 @@ public static class VideoFfmpegEnumExtensions
         _ => "none"
     };
 
-    public static VideoTransitionType ParseVideoTransitionType(string? s, VideoTransitionType defaultValue = VideoTransitionType.None)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoTransitionType>(s, true, out var r) ? r : defaultValue;
-
     public static string ToApiString(this SubtitleFontFamily val) => val switch
     {
         SubtitleFontFamily.Arial => "arial",
@@ -465,12 +422,9 @@ public static class VideoFfmpegEnumExtensions
         SubtitleFontFamily.TimesNewRoman => "times_new_roman",
         SubtitleFontFamily.CourierNew => "courier_new",
         SubtitleFontFamily.Montserrat => "montserrat",
-        SubtitleFontFamily.Custom => "custom",
+        SubtitleFontFamily.Custom => CustomApi,
         _ => "inter"
     };
-
-    public static SubtitleFontFamily ParseSubtitleFontFamily(string? s, SubtitleFontFamily defaultValue = SubtitleFontFamily.Inter)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<SubtitleFontFamily>(s, true, out var r) ? r : defaultValue;
 
     public static string ToApiString(this SubtitleFontSizeCategory val) => val switch
     {
@@ -478,12 +432,9 @@ public static class VideoFfmpegEnumExtensions
         SubtitleFontSizeCategory.Medium => "medium",
         SubtitleFontSizeCategory.Large => "large",
         SubtitleFontSizeCategory.ExtraLarge => "extra_large",
-        SubtitleFontSizeCategory.Custom => "custom",
+        SubtitleFontSizeCategory.Custom => CustomApi,
         _ => "medium"
     };
-
-    public static SubtitleFontSizeCategory ParseSubtitleFontSizeCategory(string? s, SubtitleFontSizeCategory defaultValue = SubtitleFontSizeCategory.Medium)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<SubtitleFontSizeCategory>(s, true, out var r) ? r : defaultValue;
 
     public static string ToApiString(this SubtitleAlignmentPreset val) => val switch
     {
@@ -494,12 +445,9 @@ public static class VideoFfmpegEnumExtensions
         SubtitleAlignmentPreset.TopLeft => "top_left",
         SubtitleAlignmentPreset.TopRight => "top_right",
         SubtitleAlignmentPreset.MiddleCenter => "middle_center",
-        SubtitleAlignmentPreset.Custom => "custom",
+        SubtitleAlignmentPreset.Custom => CustomApi,
         _ => "bottom_center"
     };
-
-    public static SubtitleAlignmentPreset ParseSubtitleAlignmentPreset(string? s, SubtitleAlignmentPreset defaultValue = SubtitleAlignmentPreset.BottomCenter)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<SubtitleAlignmentPreset>(s, true, out var r) ? r : defaultValue;
 
     public static string ToApiString(this SubtitleBorderMode val) => val switch
     {
@@ -510,9 +458,6 @@ public static class VideoFfmpegEnumExtensions
         SubtitleBorderMode.OutlineAndShadow => "outline_and_shadow",
         _ => "outline"
     };
-
-    public static SubtitleBorderMode ParseSubtitleBorderMode(string? s, SubtitleBorderMode defaultValue = SubtitleBorderMode.Outline)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<SubtitleBorderMode>(s, true, out var r) ? r : defaultValue;
 
     public static string ToApiString(this RemuxJobStage val) => val switch
     {
@@ -530,13 +475,7 @@ public static class VideoFfmpegEnumExtensions
         _ => "pending"
     };
 
-    public static RemuxJobStage ParseRemuxJobStage(string? s, RemuxJobStage defaultValue = RemuxJobStage.Pending)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<RemuxJobStage>(s, true, out var r) ? r : defaultValue;
-
     public static string ToApiString(this VideoHardwareAcceleration val) => val.ToString().ToLowerInvariant();
-
-    public static VideoHardwareAcceleration ParseVideoHardwareAcceleration(string? s, VideoHardwareAcceleration defaultValue = VideoHardwareAcceleration.None)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoHardwareAcceleration>(s, true, out var r) ? r : defaultValue;
 
     public static string ToApiString(this VideoFrameInterpolation val) => val switch
     {
@@ -547,9 +486,6 @@ public static class VideoFfmpegEnumExtensions
         VideoFrameInterpolation.OpticalFlow => "optical_flow",
         _ => "none"
     };
-
-    public static VideoFrameInterpolation ParseVideoFrameInterpolation(string? s, VideoFrameInterpolation defaultValue = VideoFrameInterpolation.None)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoFrameInterpolation>(s, true, out var r) ? r : defaultValue;
 
     public static string ToApiString(this VideoThumbnailTimeRef val) => val switch
     {
@@ -562,21 +498,89 @@ public static class VideoFfmpegEnumExtensions
         _ => "first_keyframe"
     };
 
-    public static VideoThumbnailTimeRef ParseVideoThumbnailTimeRef(string? s, VideoThumbnailTimeRef defaultValue = VideoThumbnailTimeRef.FirstKeyframe)
-        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoThumbnailTimeRef>(s, true, out var r) ? r : defaultValue;
-
     public static string ToApiString(this ExportFileNamingPattern val) => val switch
     {
         ExportFileNamingPattern.ProjectAndTimestamp => "project_timestamp",
         ExportFileNamingPattern.SceneAndBeat => "scene_beat",
         ExportFileNamingPattern.TitleOnly => "title_only",
         ExportFileNamingPattern.SequentialIndex => "sequential_index",
-        ExportFileNamingPattern.Custom => "custom",
+        ExportFileNamingPattern.Custom => CustomApi,
         _ => "project_timestamp"
     };
 
+
+    public static VideoCodecName ParseVideoCodecName(string? s, VideoCodecName defaultValue = VideoCodecName.H264)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return defaultValue;
+        var lower = s.ToLowerInvariant().Trim();
+        if (lower.Contains("264")) return VideoCodecName.H264;
+        if (lower.Contains("265") || lower.Contains("hevc")) return VideoCodecName.H265;
+        if (lower.Contains("vp8")) return VideoCodecName.Vp8;
+        if (lower.Contains("vp9")) return VideoCodecName.Vp9;
+        if (lower.Contains("av1")) return VideoCodecName.Av1;
+        if (lower.Contains("prores")) return VideoCodecName.ProRes;
+        if (lower.Contains("dnx")) return VideoCodecName.DnxHd;
+        if (lower.Contains("copy")) return VideoCodecName.Copy;
+        return Enum.TryParse<VideoCodecName>(s, true, out var r) ? r : defaultValue;
+    }
+
+    public static VideoPixelFormat ParseVideoPixelFormat(string? s, VideoPixelFormat defaultValue = VideoPixelFormat.Yuv420p)
+        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoPixelFormat>(s, true, out var r) ? r : defaultValue;
+
+    public static VideoColorSpace ParseVideoColorSpace(string? s, VideoColorSpace defaultValue = VideoColorSpace.Bt709)
+        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoColorSpace>(s, true, out var r) ? r : defaultValue;
+
+    public static VideoBitrateControlMode ParseVideoBitrateControlMode(string? s, VideoBitrateControlMode defaultValue = VideoBitrateControlMode.Crf)
+        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoBitrateControlMode>(s, true, out var r) ? r : defaultValue;
+
+    public static VideoGopStructure ParseVideoGopStructure(string? s, VideoGopStructure defaultValue = VideoGopStructure.Auto)
+        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoGopStructure>(s, true, out var r) ? r : defaultValue;
+
+    public static FfmpegPresetSpeed ParseFfmpegPresetSpeed(string? s, FfmpegPresetSpeed defaultValue = FfmpegPresetSpeed.Medium)
+        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<FfmpegPresetSpeed>(s, true, out var r) ? r : defaultValue;
+
+    public static FfmpegLogVerbosity ParseFfmpegLogVerbosity(string? s, FfmpegLogVerbosity defaultValue = FfmpegLogVerbosity.Info)
+        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<FfmpegLogVerbosity>(s, true, out var r) ? r : defaultValue;
+
+    public static VideoScaleAlgorithm ParseVideoScaleAlgorithm(string? s, VideoScaleAlgorithm defaultValue = VideoScaleAlgorithm.Bicubic)
+        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoScaleAlgorithm>(s, true, out var r) ? r : defaultValue;
+
+    public static VideoAspectMode ParseVideoAspectMode(string? s, VideoAspectMode defaultValue = VideoAspectMode.Letterbox)
+        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoAspectMode>(s, true, out var r) ? r : defaultValue;
+
+    public static VideoWatermarkPosition ParseVideoWatermarkPosition(string? s, VideoWatermarkPosition defaultValue = VideoWatermarkPosition.BottomRight)
+        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoWatermarkPosition>(s, true, out var r) ? r : defaultValue;
+
+    public static VideoTransitionType ParseVideoTransitionType(string? s, VideoTransitionType defaultValue = VideoTransitionType.None)
+        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoTransitionType>(s, true, out var r) ? r : defaultValue;
+
+    public static SubtitleFontFamily ParseSubtitleFontFamily(string? s, SubtitleFontFamily defaultValue = SubtitleFontFamily.Inter)
+        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<SubtitleFontFamily>(s, true, out var r) ? r : defaultValue;
+
+    public static SubtitleFontSizeCategory ParseSubtitleFontSizeCategory(string? s, SubtitleFontSizeCategory defaultValue = SubtitleFontSizeCategory.Medium)
+        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<SubtitleFontSizeCategory>(s, true, out var r) ? r : defaultValue;
+
+    public static SubtitleAlignmentPreset ParseSubtitleAlignmentPreset(string? s, SubtitleAlignmentPreset defaultValue = SubtitleAlignmentPreset.BottomCenter)
+        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<SubtitleAlignmentPreset>(s, true, out var r) ? r : defaultValue;
+
+    public static SubtitleBorderMode ParseSubtitleBorderMode(string? s, SubtitleBorderMode defaultValue = SubtitleBorderMode.Outline)
+        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<SubtitleBorderMode>(s, true, out var r) ? r : defaultValue;
+
+    public static RemuxJobStage ParseRemuxJobStage(string? s, RemuxJobStage defaultValue = RemuxJobStage.Pending)
+        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<RemuxJobStage>(s, true, out var r) ? r : defaultValue;
+
+    public static VideoHardwareAcceleration ParseVideoHardwareAcceleration(string? s, VideoHardwareAcceleration defaultValue = VideoHardwareAcceleration.None)
+        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoHardwareAcceleration>(s, true, out var r) ? r : defaultValue;
+
+    public static VideoFrameInterpolation ParseVideoFrameInterpolation(string? s, VideoFrameInterpolation defaultValue = VideoFrameInterpolation.None)
+        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoFrameInterpolation>(s, true, out var r) ? r : defaultValue;
+
+    public static VideoThumbnailTimeRef ParseVideoThumbnailTimeRef(string? s, VideoThumbnailTimeRef defaultValue = VideoThumbnailTimeRef.FirstKeyframe)
+        => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<VideoThumbnailTimeRef>(s, true, out var r) ? r : defaultValue;
+
     public static ExportFileNamingPattern ParseExportFileNamingPattern(string? s, ExportFileNamingPattern defaultValue = ExportFileNamingPattern.ProjectAndTimestamp)
         => string.IsNullOrWhiteSpace(s) ? defaultValue : Enum.TryParse<ExportFileNamingPattern>(s, true, out var r) ? r : defaultValue;
+
 }
 
 #endregion

@@ -13,11 +13,11 @@ public abstract partial class AdaptationPageBase
         private readonly AdaptationPageBase S;
         public AdaptationPipeline(AdaptationPageBase host) => S = host;
 
-        public IBrowserFile? PendingFile;
-        public int TotalMinutes = 5;
-        public int ChunkPages = 10;
-        public string Model = "";
-        public bool Resume;
+        public IBrowserFile? PendingFile { get; set; }
+        public int TotalMinutes { get; set; } = 5;
+        public int ChunkPages { get; set; } = 10;
+        public string Model { get; set; } = "";
+        public bool Resume { get; set; }
 
         public bool CanRunOutline =>
             S.Status is not null &&

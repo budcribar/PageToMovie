@@ -19,7 +19,7 @@ public sealed partial class FilmLengthCard : IDisposable
     /// <summary>Render the control flat (no card wrapper) so a host page can group it in one card.</summary>
     [Parameter] public bool Embedded { get; set; }
 
-    [Inject] private StudioUserPrefsService UserPrefs { get; set; } = null!;
+    [Inject] private StudioUserPrefsService UserPrefs { get; set; } = default;
 
     internal readonly string _inputId = "film-target-" + Guid.NewGuid().ToString("N")[..8];
     internal string? _loadedFor;

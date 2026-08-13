@@ -55,7 +55,7 @@ public sealed class GrokVideoClient : IVideoClient
         _log = log;
         _errorLogger = errorLogger;
         if (_http.BaseAddress is null)
-            _http.BaseAddress = new Uri(ApiBase + "/");
+            _http.BaseAddress = new Uri(ApiBase.TrimEnd('/') + '/');
     }
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(ResolveApiKey());
@@ -116,9 +116,15 @@ public sealed class GrokVideoClient : IVideoClient
         string? startUri = null;
         List<object?>? refObjs = null;
         if (hasContinue)
-            videoUri = await FileToDataUriAsync(continueFromVideoPath!, ct);
+        {
+            if (continueFromVideoPath is not null)
+                videoUri = await FileToDataUriAsync(continueFromVideoPath, ct);
+        }
         else if (hasStart)
-            startUri = await FileToDataUriAsync(startFrameImagePath!, ct);
+        {
+            if (startFrameImagePath is not null)
+                startUri = await FileToDataUriAsync(startFrameImagePath, ct);
+        }
         else if (refs.Count > 0)
         {
             refObjs = new List<object?>();
@@ -133,7 +139,7 @@ public sealed class GrokVideoClient : IVideoClient
             : refs.Count > 0 ? "reference-to-video"
             : "text-to-video";
         var kind = hasContinue ? "video_extend" : "video";
-        var refNames = refs.Select(Path.GetFileName).Where(n => n is not null).Cast<string>().ToList();
+        var refNames = refs.Select(Path.GetFileName).OfType<string>().ToList();
         // Model-aware retry cap — a future model with a different prompt budget only needs its
         // models_catalog.json MaxPromptLength updated, never a code change here.
         var promptHardCap = SupportedModelCatalog.ResolveOrDefault(model, ModelCapability.Video)
@@ -184,7 +190,8 @@ public sealed class GrokVideoClient : IVideoClient
                 {
                     endpoint = "videos/extensions";
                     requestId = await SubmitExtendOnceAsync(
-                        current, durationSeconds, resolution, model, videoUri!, continueFromVideoPath!, ct);
+                        current, durationSeconds, resolution, model,
+                        videoUri ?? string.Empty, continueFromVideoPath ?? string.Empty, ct);
                 }
                 else
                 {
@@ -519,7 +526,9 @@ public sealed class GrokVideoClient : IVideoClient
 
     public async Task DownloadToFileAsync(string url, string destPath, CancellationToken ct)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(destPath)!);
+        var destDir = Path.GetDirectoryName(destPath);
+        if (destDir is not null)
+            Directory.CreateDirectory(destDir);
         using var resp = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
         resp.EnsureSuccessStatusCode();
         await using var fs = File.Create(destPath);

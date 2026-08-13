@@ -9,7 +9,7 @@ public partial class Admin_TestEmailModal
     [Parameter] public EventCallback OnClose { get; set; }
     [Parameter] public string? DefaultAddress { get; set; }
 
-    [Inject] private EngineApiClient Api { get; set; } = default!;
+    [Inject] private EngineApiClient Api { get; set; } = default;
 
     private string _address = "";
     internal string? _status;

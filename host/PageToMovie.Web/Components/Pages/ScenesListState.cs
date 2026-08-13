@@ -147,7 +147,7 @@ public partial class Scenes
     //   ○ (muted)   nothing generated yet, or no clips planned
     //   ◐ (warning) some clips on disk, not all
     //   ● (success) every planned clip generated
-    internal (string Glyph, string Css, string Title) SceneProgressGlyph(SceneSummary s)
+    internal static (string Glyph, string Css, string Title) SceneProgressGlyph(SceneSummary s)
     {
         if (s.ClipCount <= 0)
             return ("○", "text-muted", "No clips planned");

@@ -351,7 +351,6 @@ public partial class Characters
             _pendingLockCandidate = c;
             _chosenCandidateKey = CandidateKey(c);
             var charKey = S.List._selected.Key;
-            var display = S.List._selected.DisplayName;
             S._busy = true;
             S._error = null;
             if (overrideStyle) { _styleRejectCandidate = null; _styleRejectMessage = null; }
@@ -451,7 +450,6 @@ public partial class Characters
 
             // Capture identity before any re-render; buffer bytes while InputFile is still mounted.
             var charKey = S.List._selected.Key;
-            var display = S.List._selected.DisplayName;
             var fileName = file.Name;
             byte[] bytes;
             try

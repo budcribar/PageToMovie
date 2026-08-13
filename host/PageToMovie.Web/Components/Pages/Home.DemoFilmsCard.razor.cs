@@ -14,6 +14,6 @@ namespace PageToMovie.Web.Components.Pages;
 
 public partial class Home_DemoFilmsCard
 {
-    [CascadingParameter] public Home Host { get; set; } = default!;
+    [CascadingParameter] public Home Host { get; set; } = default;
     [CascadingParameter] public Home.HomeCosts? Costs { get; set; }
 }

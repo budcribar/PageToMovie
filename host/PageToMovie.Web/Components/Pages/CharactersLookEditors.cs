@@ -123,9 +123,8 @@ public partial class Characters
         {
             if (S.List._selected is null) return;
 
-            // Snapshot identity + text — never re-read S.List._selected after await for the POST.
+            // Snapshot identity — never re-read S.List._selected after await for the POST.
             var charKey = S.List._selected.Key;
-            var displayName = S.List._selected.DisplayName;
 
             // No text or medium change → no API
             var desc = _editDescription ?? "";
@@ -164,7 +163,7 @@ public partial class Characters
                 if (stillOnChar && !silent)
                 {
                     if (!string.IsNullOrWhiteSpace(result.Description))
-                        _editDescription = result.Description!;
+                        _editDescription = result.Description;
                     if (result.VisualLock is not null)
                         _editVisualLock = result.VisualLock;
                 }
@@ -178,7 +177,7 @@ public partial class Characters
                     S.List._selected is not null)
                 {
                     if (!silent && !string.IsNullOrWhiteSpace(result.Description))
-                        _editDescription = result.Description!;
+                        _editDescription = result.Description;
                     else if (silent)
                     {
                         // Keep what the operator typed; mark as saved baseline

@@ -41,6 +41,7 @@ public sealed record TimingTrendPoint(
 /// </summary>
 public sealed class ClipTimingTelemetryRepository
 {
+    private const string CreatedAtParam = "$created_at";
     private readonly string _dbPath;
     private readonly ILogger<ClipTimingTelemetryRepository>? _log;
 
@@ -186,7 +187,7 @@ public sealed class ClipTimingTelemetryRepository
             cmd.Parameters.AddWithValue("$measured_cam_overhead_sec", record.MeasuredCamOverheadSec);
             cmd.Parameters.AddWithValue("$measured_action_overhead_sec", record.MeasuredActionOverheadSec);
             cmd.Parameters.AddWithValue("$dialogue_truncated", record.DialogueTruncated ? 1 : 0);
-            cmd.Parameters.AddWithValue("$created_at", record.CreatedAt);
+            cmd.Parameters.AddWithValue(CreatedAtParam, record.CreatedAt);
 
             await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
         }
@@ -211,7 +212,7 @@ public sealed class ClipTimingTelemetryRepository
             cmd.Parameters.AddWithValue("$id", Guid.NewGuid().ToString("N"));
             cmd.Parameters.AddWithValue("$is_hit", isHit ? 1 : 0);
             cmd.Parameters.AddWithValue("$lookup_key", lookupKey);
-            cmd.Parameters.AddWithValue("$created_at", DateTime.UtcNow.ToString("o"));
+            cmd.Parameters.AddWithValue(CreatedAtParam, DateTime.UtcNow.ToString("o"));
 
             await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
         }
@@ -381,7 +382,7 @@ public sealed class ClipTimingTelemetryRepository
                 cmd.Parameters.AddWithValue("$action", e.Id);
                 cmd.Parameters.AddWithValue("$duration", e.EstimatedSec);
                 cmd.Parameters.AddWithValue("$action_overhead", e.EstimatedSec);
-                cmd.Parameters.AddWithValue("$created_at", DateTime.UtcNow.ToString("o"));
+                cmd.Parameters.AddWithValue(CreatedAtParam, DateTime.UtcNow.ToString("o"));
 
                 await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
 
@@ -393,7 +394,7 @@ public sealed class ClipTimingTelemetryRepository
                     """;
                 hitCmd.Parameters.AddWithValue("$id", Guid.NewGuid().ToString("N"));
                 hitCmd.Parameters.AddWithValue("$key", $"{e.Category}:{e.Id}:{e.Mode}");
-                hitCmd.Parameters.AddWithValue("$created_at", DateTime.UtcNow.ToString("o"));
+                hitCmd.Parameters.AddWithValue(CreatedAtParam, DateTime.UtcNow.ToString("o"));
                 await hitCmd.ExecuteNonQueryAsync().ConfigureAwait(false);
 
                 count++;

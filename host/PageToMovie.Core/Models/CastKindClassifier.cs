@@ -99,12 +99,7 @@ public static class CastKindClassifier
         if (string.IsNullOrWhiteSpace(t)) return false;
         if (GroupTokens.Contains(t)) return true;
         // Multi-word: any segment matches
-        foreach (var part in t.Split(' ', StringSplitOptions.RemoveEmptyEntries))
-        {
-            if (GroupTokens.Contains(part))
-                return true;
-        }
-        return false;
+        return t.Split(' ', StringSplitOptions.RemoveEmptyEntries).Any(GroupTokens.Contains);
     }
 
     private static bool LooksPluralToken(string? raw)

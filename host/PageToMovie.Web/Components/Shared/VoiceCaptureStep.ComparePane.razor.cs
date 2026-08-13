@@ -14,5 +14,5 @@ namespace PageToMovie.Web.Components.Shared;
 
 public partial class VoiceCaptureStep_ComparePane
 {
-    [CascadingParameter] public VoiceCaptureStep Host { get; set; } = default!;
+    [CascadingParameter] public VoiceCaptureStep Host { get; set; } = default;
 }

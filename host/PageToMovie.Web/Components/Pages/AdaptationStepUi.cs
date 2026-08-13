@@ -7,17 +7,25 @@ public abstract partial class AdaptationPageBase
     /// <summary>Static UI helpers for adaptation step strip, job panel, and progress display.</summary>
     public static class AdaptationStepUi
     {
+        private const string SignScreenplay = "sign_screenplay";
+        private const string DraftScreenplay = "draft_screenplay";
+        private const string RunStage1 = "run_stage1";
+        private const string PinCharacters = "pin_characters";
+        private const string RunStage2 = "run_stage2";
+        private const string ReplanStage2 = "replan_stage2";
+        private const string GenerateClips = "generate_clips";
+
         public static string NextStepLabel(string step) => step switch
         {
             "import_book" => "Import a screenplay, PDF, or text file",
             "fix_book_text" => "Prepare imported text, or import a screenplay",
-            "sign_screenplay" => "Open Screenplay, edit if needed, then approve",
-            "draft_screenplay" => "Create a screenplay draft from the book",
-            "run_stage1" => "Build the screenplay from the book",
-            "pin_characters" => "Approve cast voices and locked images on Characters",
-            "run_stage2" => "Build the shot plan",
-            "replan_stage2" => "Update the shot plan (screenplay changed)",
-            "generate_clips" => "Open Scenes and create video clips",
+            SignScreenplay => "Open Screenplay, edit if needed, then approve",
+            DraftScreenplay => "Create a screenplay draft from the book",
+            RunStage1 => "Build the screenplay from the book",
+            PinCharacters => "Approve cast voices and locked images on Characters",
+            RunStage2 => "Build the shot plan",
+            ReplanStage2 => "Update the shot plan (screenplay changed)",
+            GenerateClips => "Open Scenes and create video clips",
             _ => "Looks complete — refine on Characters or Scenes",
         };
 
@@ -32,13 +40,13 @@ public abstract partial class AdaptationPageBase
             "stage2" => "Shot plan ready",
             _ => string.IsNullOrWhiteSpace(snap.Message) || snap.Message.Contains("quality=", StringComparison.Ordinal)
                 ? "Step finished"
-                : snap.Message!,
+                : snap.Message,
         };
 
         public static string NextStepAlertClass(string step) => step switch
         {
-            "generate_clips" or "done" => "alert-success",
-            "replan_stage2" or "fix_book_text" or "sign_screenplay" => "alert-warning",
+            GenerateClips or "done" => "alert-success",
+            ReplanStage2 or "fix_book_text" or SignScreenplay => "alert-warning",
             _ => "alert-info",
         };
 
@@ -58,14 +66,14 @@ public abstract partial class AdaptationPageBase
             return status.NextStep switch
             {
                 "import_book" or "fix_book_text" => "/adaptation/import",
-                "sign_screenplay" or "draft_screenplay" or "run_stage1" => "/adaptation/screenplay",
+                SignScreenplay or DraftScreenplay or RunStage1 => "/adaptation/screenplay",
                 // The Book strip step routes through /adaptation. When cast is the next step the book itself is
                 // done, so land on the screenplay editor — never bounce out to /characters (that has its own
                 // strip step), or clicking Book from Cast just returns to Cast.
-                "pin_characters" => "/adaptation/screenplay",
+                PinCharacters => "/adaptation/screenplay",
                 // Shot plan is still an Adaptation step (rebuild lives here). Scenes has its own nav item —
                 // do not bounce /adaptation → /scenes or operators cannot find Rebuild shot plan.
-                "run_stage2" or "replan_stage2" or "generate_clips" or "done" => "/adaptation/shots",
+                RunStage2 or ReplanStage2 or GenerateClips or "done" => "/adaptation/shots",
                 _ => "/adaptation/import",
             };
         }
@@ -179,22 +187,22 @@ public abstract partial class AdaptationPageBase
             {
                 // On import: only after the pipeline is idle and they should leave Import
                 // (draft exists → continue to screenplay). Don't say "approve" mid-import.
-                if (next is "sign_screenplay" or "generate_clips" or "run_stage2" or "replan_stage2"
-                    or "pin_characters")
+                if (next is SignScreenplay or GenerateClips or RunStage2 or ReplanStage2
+                    or PinCharacters)
                     return status.Screenplay.DraftExists;
-                return next is "draft_screenplay" or "run_stage1";
+                return next is DraftScreenplay or RunStage1;
             }
             if (step == "screenplay")
             {
                 // Hide when the action is already "edit/approve screenplay"
-                return next is not ("sign_screenplay" or "draft_screenplay" or "run_stage1");
+                return next is not (SignScreenplay or DraftScreenplay or RunStage1);
             }
             if (step == "shots")
             {
                 // Hide plain "build shot plan"; keep replan / go elsewhere.
                 // Hide "generate_clips" too — the page's own "Open Scenes" button already
                 // says this; it carries the hint as a hover tooltip instead.
-                return next is not ("run_stage2" or "pin_characters" or "generate_clips");
+                return next is not (RunStage2 or PinCharacters or GenerateClips);
             }
             return true;
         }

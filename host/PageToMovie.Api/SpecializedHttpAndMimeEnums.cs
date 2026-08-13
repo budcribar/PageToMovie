@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using PageToMovie.Core.Utils;
 
 namespace PageToMovie.Api;
 
@@ -128,7 +129,7 @@ public static class SpecializedHttpAndMimeExtensions
 
     public static string ToMimeTypeString(this SpecializedMimeType mimeType) => mimeType switch
     {
-        SpecializedMimeType.ApplicationJson => "application/json",
+        SpecializedMimeType.ApplicationJson => JsonKeys.ApplicationJson,
         SpecializedMimeType.ApplicationPdf => "application/pdf",
         SpecializedMimeType.ApplicationZip => "application/zip",
         SpecializedMimeType.ApplicationOctetStream => "application/octet-stream",
@@ -143,13 +144,13 @@ public static class SpecializedHttpAndMimeExtensions
         SpecializedMimeType.ImagePng => "image/png",
         SpecializedMimeType.ImageJpeg => "image/jpeg",
         SpecializedMimeType.ImageWebp => "image/webp",
-        _ => "application/json"
+        _ => JsonKeys.ApplicationJson
     };
 
     public static SpecializedMimeType ParseSpecializedMimeType(this string? value) =>
         (value ?? "").Trim().ToLowerInvariant() switch
         {
-            "application/json" or "json" or "applicationjson" => SpecializedMimeType.ApplicationJson,
+            JsonKeys.ApplicationJson or "json" or "applicationjson" => SpecializedMimeType.ApplicationJson,
             "application/pdf" or "pdf" or "applicationpdf" => SpecializedMimeType.ApplicationPdf,
             "application/zip" or "zip" or "applicationzip" => SpecializedMimeType.ApplicationZip,
             "application/octet-stream" or "octet-stream" or "applicationoctetstream" => SpecializedMimeType.ApplicationOctetStream,
@@ -178,7 +179,7 @@ public static class SpecializedHttpAndMimeExtensions
         var normalized = value.Trim().ToLowerInvariant();
         result = normalized switch
         {
-            "application/json" or "json" or "applicationjson" => SpecializedMimeType.ApplicationJson,
+            JsonKeys.ApplicationJson or "json" or "applicationjson" => SpecializedMimeType.ApplicationJson,
             "application/pdf" or "pdf" or "applicationpdf" => SpecializedMimeType.ApplicationPdf,
             "application/zip" or "zip" or "applicationzip" => SpecializedMimeType.ApplicationZip,
             "application/octet-stream" or "octet-stream" or "applicationoctetstream" => SpecializedMimeType.ApplicationOctetStream,
