@@ -292,172 +292,12 @@ public sealed class ClientMediaFolderService
 
     public async Task SaveJobMediaAsync(JobSnapshot snap)
     {
-        var projectId = snap.ProjectId;
-        var clientUrl = snap.ClientMediaUrl;
-        var relativePath = snap.ClientRelativePath;
-        if (projectId is not { Length: > 0 } pid ||
-            clientUrl is not { Length: > 0 } url0 ||
-            relativePath is not { Length: > 0 } rel ||
-            string.IsNullOrWhiteSpace(pid) ||
-            string.IsNullOrWhiteSpace(url0) ||
-            string.IsNullOrWhiteSpace(rel))
+        if (!TryBeginJobMediaSave(snap, out var pid, out var url0, out var rel, out var key))
             return;
-
-        var key = $"{pid}|{rel}";
-        lock (_savingKeys)
-        {
-            if (!_savingKeys.Add(key))
-                return; // already saving this path
-        }
 
         try
         {
-            if (!IsConnected)
-            {
-                // Offer folder picker once; if declined / unsupported, surface feature-8 fallback.
-                var ok = await ConnectFolderAsync();
-                if (!ok)
-                {
-                    NoteLocalSaveNeeded(LastStatus);
-                    return;
-                }
-            }
-
-            LastStatus = $"Saving {rel}…";
-            Changed?.Invoke();
-
-            var url = url0;
-
-            // Real video-extend (see FilmJobService.GenerateOneClipAsync + PrepareExtendSourceAsync
-            // above): this job's video is Grok's combined [continuation-input + new content]
-            // response, not a plain fresh generation. Slice out just the new tail before it ever
-            // becomes this clip's saved/registered file — shipping the raw combined video would
-            // reintroduce the exact "clip contains pieces of the previous clip" bug this feature
-            // exists to fix, so on ANY failure here we surface it and return without saving,
-            // rather than silently falling through to save the un-sliced video.
-            var extendKey = $"{pid}|{snap.Scene}|{snap.Clip}";
-            double? extendSourceSec = null;
-            lock (_pendingExtendSourceSeconds)
-            {
-                if (_pendingExtendSourceSeconds.Remove(extendKey, out var sec))
-                    extendSourceSec = sec;
-            }
-            string? extendSliceBlobUrl = null;
-            if (extendSourceSec is { } srcSec)
-            {
-                var probe = await _js.InvokeAsync<JsProbeResult>("PageToMovieFfmpeg.probeDurationAsync", url);
-                var combinedSec = probe is { Success: true, Seconds: > 0 } ? probe.Seconds : (double?)null;
-                var newDurationSec = combinedSec is { } c && c > srcSec + 0.1 ? c - srcSec : (double?)null;
-                var slice = newDurationSec is { } nd
-                    ? await _js.InvokeAsync<JsTrimTailResult>("PageToMovieFfmpeg.trimTailAsync", url, nd, null)
-                    : null;
-                if (slice is not { Success: true } || string.IsNullOrWhiteSpace(slice.Url))
-                {
-                    LastStatus = $"Video-extend slice failed for {rel} " +
-                                 $"({slice?.Error ?? "duration probe failed"}) — retry the clip.";
-                    Changed?.Invoke();
-                    return;
-                }
-                extendSliceBlobUrl = slice.Url;
-                url = slice.Url;
-            }
-
-            // Silence-trim in browser (ffmpeg.wasm) before write. Decision logic
-            // (where to cut) lives once in ClipSilenceTrimmer (Core) — JS only does
-            // the ffmpeg I/O. Longer breath tail for speech-style clips; lead trim on clip 2+.
-            var clipNum = snap.Clip ?? 1;
-            var isCredits = rel.Contains("credits", StringComparison.OrdinalIgnoreCase) ||
-                            rel.Contains("sc18", StringComparison.OrdinalIgnoreCase) ||
-                            snap.Scene == 18 ||
-                            string.Equals(snap.Kind, "credits", StringComparison.OrdinalIgnoreCase);
-            var isMusic = string.Equals(snap.Kind, "music", StringComparison.OrdinalIgnoreCase);
-            var isSpeakBatch = string.Equals(snap.Kind, "speak-batch", StringComparison.OrdinalIgnoreCase);
-            var keepTail = isCredits
-                ? ClipSilenceTrimmer.DefaultKeepTailSeconds
-                : ClipSilenceTrimmer.SpeechBreathTailSeconds; // safe default without dialogue metadata
-
-            string? silenceMessage = null;
-            string? trimmedBlobUrl = null;
-            var urlToSave = url;
-            // The extend slice is already tightly bounded to the requested new-content duration —
-            // silence-trimming it further risks cutting real content rather than dead air, so skip
-            // that pass entirely for this clip (unlike a plain fresh generation, which can be
-            // arbitrarily longer than its useful content).
-            // Music + speak-batch are pure audio files — never run video silence-trim.
-            if (!isCredits && !isMusic && !isSpeakBatch && extendSliceBlobUrl is null)
-            {
-                var (trimmed, trimUrl, message) = await SilenceTrimAsync(
-                    url,
-                    keepTailSeconds: keepTail,
-                    trimLeading: clipNum > 1,
-                    keepHeadSeconds: 0.08);
-                silenceMessage = message;
-                if (trimmed && !string.IsNullOrWhiteSpace(trimUrl))
-                {
-                    trimmedBlobUrl = trimUrl;
-                    urlToSave = trimUrl;
-                }
-            }
-
-            try
-            {
-                // Project-scoped path on the shared local folder — the server-facing bare path
-                // (snap.ClientRelativePath) is kept separately below for RegisterMediaAsync, since
-                // the server resolves that string under its own already-project-scoped directory
-                // and would double-nest if it also carried this prefix.
-                var clientPath = $"{pid}/{rel}";
-                var saved = await _js.InvokeAsync<JsSaveResult>(
-                    "PageToMovieMedia.saveFromUrlAsync",
-                    urlToSave,
-                    clientPath,
-                    null,
-                    snap.MusicTakeId);
-
-                if (saved is not { Success: true, Sha256: { Length: > 0 } sha256 })
-                {
-                    LastStatus = saved?.Error ?? "Save failed";
-                    Changed?.Invoke();
-                    return;
-                }
-
-                var scene = snap.Scene;
-                var clip = snap.Clip;
-                await _api.RegisterMediaAsync(pid, new MediaRegisterRequest
-                {
-                    // Bare server-side path, NOT saved.RelativePath (which JS echoes back with the
-                    // client-only project prefix baked in) — the server keys media_objects on the
-                    // bare path within its own already-project-scoped directory.
-                    RelativePath = rel,
-                    Sha256 = sha256,
-                    SizeBytes = saved.SizeBytes,
-                    Kind = isCredits ? "credits" : isMusic ? "music" : isSpeakBatch ? "audio" : "clip",
-                    Scene = scene,
-                    Clip = clip,
-                });
-
-                var sil = string.IsNullOrWhiteSpace(silenceMessage)
-                    ? ""
-                    : $" · silence: {silenceMessage}";
-                LastStatus =
-                    $"Saved {Path.GetFileName(rel)} ({saved.SizeBytes / 1024} KB){sil}";
-                Changed?.Invoke();
-
-                lock (_savingKeys)
-                    _savedKeys.Add(key);
-            }
-            finally
-            {
-                if (trimmedBlobUrl is not null)
-                {
-                    try { await _js.InvokeVoidAsync("PageToMovieMedia.revokeUrl", trimmedBlobUrl); }
-                    catch { /* best effort */ }
-                }
-                if (extendSliceBlobUrl is not null)
-                {
-                    try { await _js.InvokeVoidAsync("PageToMovieMedia.revokeUrl", extendSliceBlobUrl); }
-                    catch { /* best effort */ }
-                }
-            }
+            await SaveJobMediaCoreAsync(snap, pid, url0, rel, key);
         }
         catch (Exception ex)
         {
@@ -469,6 +309,218 @@ public sealed class ClientMediaFolderService
             lock (_savingKeys)
                 _savingKeys.Remove(key);
         }
+    }
+
+    private bool TryBeginJobMediaSave(
+        JobSnapshot snap,
+        out string pid,
+        out string url0,
+        out string rel,
+        out string key)
+    {
+        pid = "";
+        url0 = "";
+        rel = "";
+        key = "";
+        var projectId = snap.ProjectId;
+        var clientUrl = snap.ClientMediaUrl;
+        var relativePath = snap.ClientRelativePath;
+        if (projectId is not { Length: > 0 } p ||
+            clientUrl is not { Length: > 0 } u ||
+            relativePath is not { Length: > 0 } r ||
+            string.IsNullOrWhiteSpace(p) ||
+            string.IsNullOrWhiteSpace(u) ||
+            string.IsNullOrWhiteSpace(r))
+            return false;
+
+        pid = p;
+        url0 = u;
+        rel = r;
+        key = $"{pid}|{rel}";
+        lock (_savingKeys)
+        {
+            if (!_savingKeys.Add(key))
+                return false; // already saving this path
+        }
+        return true;
+    }
+
+    private async Task SaveJobMediaCoreAsync(JobSnapshot snap, string pid, string url0, string rel, string key)
+    {
+        if (!IsConnected)
+        {
+            // Offer folder picker once; if declined / unsupported, surface feature-8 fallback.
+            var ok = await ConnectFolderAsync();
+            if (!ok)
+            {
+                NoteLocalSaveNeeded(LastStatus);
+                return;
+            }
+        }
+
+        LastStatus = $"Saving {rel}…";
+        Changed?.Invoke();
+
+        var (url, extendSliceBlobUrl, sliceFailed) = await TrySliceExtendTailAsync(snap, pid, rel, url0);
+        if (sliceFailed)
+            return;
+
+        var prepared = await PrepareUrlToSaveAsync(snap, rel, url, extendSliceBlobUrl);
+        try
+        {
+            await SaveAndRegisterJobMediaAsync(
+                snap, pid, rel, key, prepared.UrlToSave, prepared.SilenceMessage,
+                prepared.IsCredits, prepared.IsMusic, prepared.IsSpeakBatch);
+        }
+        finally
+        {
+            await RevokeBlobIfAnyAsync(prepared.TrimmedBlobUrl);
+            await RevokeBlobIfAnyAsync(extendSliceBlobUrl);
+        }
+    }
+
+    private async Task<(string Url, string? ExtendSliceBlobUrl, bool SliceFailed)> TrySliceExtendTailAsync(
+        JobSnapshot snap, string pid, string rel, string url)
+    {
+        // Real video-extend (see FilmJobService.GenerateOneClipAsync + PrepareExtendSourceAsync
+        // above): this job's video is Grok's combined [continuation-input + new content]
+        // response, not a plain fresh generation. Slice out just the new tail before it ever
+        // becomes this clip's saved/registered file — shipping the raw combined video would
+        // reintroduce the exact "clip contains pieces of the previous clip" bug this feature
+        // exists to fix, so on ANY failure here we surface it and return without saving,
+        // rather than silently falling through to save the un-sliced video.
+        var extendKey = $"{pid}|{snap.Scene}|{snap.Clip}";
+        double? extendSourceSec = null;
+        lock (_pendingExtendSourceSeconds)
+        {
+            if (_pendingExtendSourceSeconds.Remove(extendKey, out var sec))
+                extendSourceSec = sec;
+        }
+        if (extendSourceSec is not { } srcSec)
+            return (url, null, false);
+
+        var probe = await _js.InvokeAsync<JsProbeResult>("PageToMovieFfmpeg.probeDurationAsync", url);
+        var combinedSec = probe is { Success: true, Seconds: > 0 } ? probe.Seconds : (double?)null;
+        var newDurationSec = combinedSec is { } c && c > srcSec + 0.1 ? c - srcSec : (double?)null;
+        var slice = newDurationSec is { } nd
+            ? await _js.InvokeAsync<JsTrimTailResult>("PageToMovieFfmpeg.trimTailAsync", url, nd, null)
+            : null;
+        if (slice is not { Success: true } || string.IsNullOrWhiteSpace(slice.Url))
+        {
+            LastStatus = $"Video-extend slice failed for {rel} " +
+                         $"({slice?.Error ?? "duration probe failed"}) — retry the clip.";
+            Changed?.Invoke();
+            return (url, null, true);
+        }
+        return (slice.Url, slice.Url, false);
+    }
+
+    private readonly record struct PreparedSaveUrl(
+        string UrlToSave,
+        string? TrimmedBlobUrl,
+        string? SilenceMessage,
+        bool IsCredits,
+        bool IsMusic,
+        bool IsSpeakBatch);
+
+    private static bool IsCreditsJobMedia(string rel, JobSnapshot snap) =>
+        rel.Contains("credits", StringComparison.OrdinalIgnoreCase) ||
+        rel.Contains("sc18", StringComparison.OrdinalIgnoreCase) ||
+        snap.Scene == 18 ||
+        string.Equals(snap.Kind, "credits", StringComparison.OrdinalIgnoreCase);
+
+    private async Task<PreparedSaveUrl> PrepareUrlToSaveAsync(
+        JobSnapshot snap, string rel, string url, string? extendSliceBlobUrl)
+    {
+        // Silence-trim in browser (ffmpeg.wasm) before write. Decision logic
+        // (where to cut) lives once in ClipSilenceTrimmer (Core) — JS only does
+        // the ffmpeg I/O. Longer breath tail for speech-style clips; lead trim on clip 2+.
+        var clipNum = snap.Clip ?? 1;
+        var isCredits = IsCreditsJobMedia(rel, snap);
+        var isMusic = string.Equals(snap.Kind, "music", StringComparison.OrdinalIgnoreCase);
+        var isSpeakBatch = string.Equals(snap.Kind, "speak-batch", StringComparison.OrdinalIgnoreCase);
+        var keepTail = isCredits
+            ? ClipSilenceTrimmer.DefaultKeepTailSeconds
+            : ClipSilenceTrimmer.SpeechBreathTailSeconds; // safe default without dialogue metadata
+
+        // The extend slice is already tightly bounded to the requested new-content duration —
+        // silence-trimming it further risks cutting real content rather than dead air, so skip
+        // that pass entirely for this clip (unlike a plain fresh generation, which can be
+        // arbitrarily longer than its useful content).
+        // Music + speak-batch are pure audio files — never run video silence-trim.
+        if (isCredits || isMusic || isSpeakBatch || extendSliceBlobUrl is not null)
+            return new PreparedSaveUrl(url, null, null, isCredits, isMusic, isSpeakBatch);
+
+        var (trimmed, trimUrl, message) = await SilenceTrimAsync(
+            url,
+            keepTailSeconds: keepTail,
+            trimLeading: clipNum > 1,
+            keepHeadSeconds: 0.08);
+        if (trimmed && !string.IsNullOrWhiteSpace(trimUrl))
+            return new PreparedSaveUrl(trimUrl, trimUrl, message, isCredits, isMusic, isSpeakBatch);
+        return new PreparedSaveUrl(url, null, message, isCredits, isMusic, isSpeakBatch);
+    }
+
+    private async Task SaveAndRegisterJobMediaAsync(
+        JobSnapshot snap,
+        string pid,
+        string rel,
+        string key,
+        string urlToSave,
+        string? silenceMessage,
+        bool isCredits,
+        bool isMusic,
+        bool isSpeakBatch)
+    {
+        // Project-scoped path on the shared local folder — the server-facing bare path
+        // (snap.ClientRelativePath) is kept separately below for RegisterMediaAsync, since
+        // the server resolves that string under its own already-project-scoped directory
+        // and would double-nest if it also carried this prefix.
+        var clientPath = $"{pid}/{rel}";
+        var saved = await _js.InvokeAsync<JsSaveResult>(
+            "PageToMovieMedia.saveFromUrlAsync",
+            urlToSave,
+            clientPath,
+            null,
+            snap.MusicTakeId);
+
+        if (saved is not { Success: true, Sha256: { Length: > 0 } sha256 })
+        {
+            LastStatus = saved?.Error ?? "Save failed";
+            Changed?.Invoke();
+            return;
+        }
+
+        await _api.RegisterMediaAsync(pid, new MediaRegisterRequest
+        {
+            // Bare server-side path, NOT saved.RelativePath (which JS echoes back with the
+            // client-only project prefix baked in) — the server keys media_objects on the
+            // bare path within its own already-project-scoped directory.
+            RelativePath = rel,
+            Sha256 = sha256,
+            SizeBytes = saved.SizeBytes,
+            Kind = isCredits ? "credits" : isMusic ? "music" : isSpeakBatch ? "audio" : "clip",
+            Scene = snap.Scene,
+            Clip = snap.Clip,
+        });
+
+        var sil = string.IsNullOrWhiteSpace(silenceMessage)
+            ? ""
+            : $" · silence: {silenceMessage}";
+        LastStatus =
+            $"Saved {Path.GetFileName(rel)} ({saved.SizeBytes / 1024} KB){sil}";
+        Changed?.Invoke();
+
+        lock (_savingKeys)
+            _savedKeys.Add(key);
+    }
+
+    private async Task RevokeBlobIfAnyAsync(string? blobUrl)
+    {
+        if (blobUrl is null)
+            return;
+        try { await _js.InvokeVoidAsync("PageToMovieMedia.revokeUrl", blobUrl); }
+        catch { /* best effort */ }
     }
 
     /// <summary>

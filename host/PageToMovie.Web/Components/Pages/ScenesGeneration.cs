@@ -285,78 +285,86 @@ public partial class Scenes
                 await RefreshMyJobsAsync();
 
             if (snap.Status is "done" or "partial" or "error" or "cancelled")
-            {
-                _lastListRefreshIndex = -1;
-                _lastListRefreshScene = null;
-                _lastListRefreshMessage = null;
-                await SoftReloadAsync();
-                // A5: final remaining numbers after job ends
-                try { await S.List.RefreshCostEstimateAsync(); } catch { /* soft */ }
-                if (snap.Status == "done" &&
-                    string.Equals(snap.Kind, KindRemux, StringComparison.OrdinalIgnoreCase))
-                {
-                    // Bust cache so next manual play / inline preview loads the new file.
-                    var bust = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                    S.Playback._sceneVideoKey = bust;
-                    S.Playback._inlineCompositeKey = bust;
-
-                    if (S.Playback._playSceneAfterRemux is int playSn)
-                    {
-                        // Play scene (auto-remux) — open player once remux finishes.
-                        S.Playback._playSceneAfterRemux = null;
-                        S.Playback._playingScene = playSn;
-                        S.Playback._showScenePlayer = true;
-                        S._message = $"Scene S{playSn:D2} ready — playing";
-                    }
-                }
-                else if (snap.Status == "done" &&
-                         string.Equals(snap.Kind, "preview", StringComparison.OrdinalIgnoreCase))
-                {
-                    S.Playback._previewVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                    S.Playback._showPreviewPlayer = true;
-                    S._message = $"Preview ready — {S.Playback._previewScenes.Count} scene(s): " +
-                                string.Join(", ", S.Playback._previewScenes.Select(s => $"S{s:D2}"));
-                }
-                else if (snap.Status == "done" &&
-                         string.Equals(snap.Kind, KindScene, StringComparison.OrdinalIgnoreCase) &&
-                         snap.Clip is int cn &&
-                         snap.Scene is int gsn)
-                {
-                    S.Playback._clipVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                    S._message = $"Clip S{gsn:D2}C{cn:D2} finished — Play scene when you want the updated composite";
-                    if (S.ClipForm._selectedClip == cn)
-                        S.ClipForm.SelectClip(cn);
-                }
-                else if (snap.Status == "done" &&
-                         string.Equals(snap.Kind, "video_edit", StringComparison.OrdinalIgnoreCase) &&
-                         snap.Clip is int vecn &&
-                         snap.Scene is int vesn)
-                {
-                    // New take saved as the active clip — bust the cache key so the inline
-                    // <video> shows the edit result, and refresh the open clip's Takes list.
-                    // SelectClip clears S._message as its first line, so it must run BEFORE the
-                    // completion message is set, not after (setting it after got silently wiped).
-                    S.Playback._clipVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                    if (S.ClipForm._selectedClip == vecn)
-                        S.ClipForm.SelectClip(vecn);
-                    S._message = $"Clip S{vesn:D2}C{vecn:D2} edited — saved as a new take";
-                }
-                else if (snap.Status == "done" &&
-                         string.Equals(snap.Kind, KindBatch, StringComparison.OrdinalIgnoreCase))
-                {
-                    // Batch generation finished — clear the scene selection so the toolbar no longer
-                    // reads "Generate N scenes" (which looked like it would regenerate everything).
-                    S.List._selected.Clear();
-                }
-            }
+                await HandleTerminalJobAsync(snap);
             else if (ShouldRefreshSceneListWhileRunning(snap))
-            {
-                // Clips x/y + scene status pills: refresh while gen/remux is still running.
                 await SoftReloadListLiveAsync();
-            }
 
             S.StateHasChanged();
         });
+    }
+
+    private async Task HandleTerminalJobAsync(JobSnapshot snap)
+    {
+        _lastListRefreshIndex = -1;
+        _lastListRefreshScene = null;
+        _lastListRefreshMessage = null;
+        await SoftReloadAsync();
+        // A5: final remaining numbers after job ends
+        try { await S.List.RefreshCostEstimateAsync(); } catch { /* soft */ }
+        if (snap.Status == "done")
+            ApplyDoneJobSideEffects(snap);
+    }
+
+    private void ApplyDoneJobSideEffects(JobSnapshot snap)
+    {
+        if (string.Equals(snap.Kind, KindRemux, StringComparison.OrdinalIgnoreCase))
+            ApplyRemuxDone();
+        else if (string.Equals(snap.Kind, "preview", StringComparison.OrdinalIgnoreCase))
+            ApplyPreviewDone();
+        else if (string.Equals(snap.Kind, KindScene, StringComparison.OrdinalIgnoreCase) &&
+                 snap.Clip is int cn &&
+                 snap.Scene is int gsn)
+            ApplySceneClipDone(cn, gsn);
+        else if (string.Equals(snap.Kind, "video_edit", StringComparison.OrdinalIgnoreCase) &&
+                 snap.Clip is int vecn &&
+                 snap.Scene is int vesn)
+            ApplyVideoEditDone(vecn, vesn);
+        else if (string.Equals(snap.Kind, KindBatch, StringComparison.OrdinalIgnoreCase))
+            S.List._selected.Clear();
+    }
+
+    private void ApplyRemuxDone()
+    {
+        // Bust cache so next manual play / inline preview loads the new file.
+        var bust = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        S.Playback._sceneVideoKey = bust;
+        S.Playback._inlineCompositeKey = bust;
+
+        if (S.Playback._playSceneAfterRemux is not int playSn)
+            return;
+        // Play scene (auto-remux) — open player once remux finishes.
+        S.Playback._playSceneAfterRemux = null;
+        S.Playback._playingScene = playSn;
+        S.Playback._showScenePlayer = true;
+        S._message = $"Scene S{playSn:D2} ready — playing";
+    }
+
+    private void ApplyPreviewDone()
+    {
+        S.Playback._previewVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        S.Playback._showPreviewPlayer = true;
+        S._message = $"Preview ready — {S.Playback._previewScenes.Count} scene(s): " +
+                    string.Join(", ", S.Playback._previewScenes.Select(s => $"S{s:D2}"));
+    }
+
+    private void ApplySceneClipDone(int cn, int gsn)
+    {
+        S.Playback._clipVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        S._message = $"Clip S{gsn:D2}C{cn:D2} finished — Play scene when you want the updated composite";
+        if (S.ClipForm._selectedClip == cn)
+            S.ClipForm.SelectClip(cn);
+    }
+
+    private void ApplyVideoEditDone(int vecn, int vesn)
+    {
+        // New take saved as the active clip — bust the cache key so the inline
+        // <video> shows the edit result, and refresh the open clip's Takes list.
+        // SelectClip clears S._message as its first line, so it must run BEFORE the
+        // completion message is set, not after (setting it after got silently wiped).
+        S.Playback._clipVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        if (S.ClipForm._selectedClip == vecn)
+            S.ClipForm.SelectClip(vecn);
+        S._message = $"Clip S{vesn:D2}C{vecn:D2} edited — saved as a new take";
     }
 
 
