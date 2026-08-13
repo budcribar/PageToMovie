@@ -189,49 +189,65 @@ public static class BenchmarkHistoryStore
 
             if (modelScoresList.Count == 0) continue;
 
-            int wins = 0;
-            foreach (var run in liveRuns)
-            {
-                var validScores = run.ModelScores.Where(m => m.CompositeScore >= 0 && !m.IsGenerationFallback).OrderByDescending(m => m.CompositeScore).ToList();
-                if (validScores.Count > 0)
-                {
-                    var topScore = validScores[0].CompositeScore;
-                    var topTies = validScores.Where(m => Math.Abs(m.CompositeScore - topScore) < 0.01).ToList();
-                    // Award a win only if topScore > 0 and it's not a universal tie across all candidates
-                    if (topScore > 0 && topTies.Count < validScores.Count && topTies.Any(m => string.Equals(m.ModelId, modelId, StringComparison.OrdinalIgnoreCase)))
-                    {
-                        wins++;
-                    }
-                }
-            }
-
-            result.Add(new CompositeModelSummary
-            {
-                ModelId = modelId,
-                MultiBookCompositeScore = Math.Round(modelScoresList.Average(s => s.CompositeScore), 1),
-                AvgSyntaxScore = Math.Round(modelScoresList.Average(s => s.SyntaxAudit.OverallSyntaxScore), 1),
-                AvgFormatCompliance = Math.Round(modelScoresList.Average(s => s.SyntaxAudit.FormatComplianceScore), 1),
-                AvgSceneBudget = Math.Round(modelScoresList.Average(s => s.SyntaxAudit.SceneBudgetScore), 1),
-                AvgDialoguePacing = Math.Round(modelScoresList.Average(s => s.SyntaxAudit.DialoguePacingScore), 1),
-                AvgCharDisambiguationSyntax = Math.Round(modelScoresList.Average(s => s.SyntaxAudit.CharacterDisambiguationScore), 1),
-                AvgMusicSpec = Math.Round(modelScoresList.Average(s => s.SyntaxAudit.MusicSpecScore), 1),
-                AvgQualitativeScore = Math.Round(modelScoresList.Average(s => s.AvgOverallQualitative * 10.0), 1),
-                AvgFidelity = Math.Round(modelScoresList.Average(s => s.AvgAdaptationFidelity), 1),
-                AvgCharSplit = Math.Round(modelScoresList.Average(s => s.AvgCharacterDisambiguation), 1),
-                AvgVideoDirect = Math.Round(modelScoresList.Average(s => s.AvgAiVideoDirectibility), 1),
-                AvgPacing = Math.Round(modelScoresList.Average(s => s.AvgDramaticPacing), 1),
-                AvgDialogue = Math.Round(modelScoresList.Average(s => s.AvgDialogueAuthenticity), 1),
-                AvgMusic = Math.Round(modelScoresList.Average(s => s.AvgSoundDesignMusic), 1),
-                TotalBooksEvaluated = modelRuns.Select(r => r.BookSlug).Distinct(StringComparer.OrdinalIgnoreCase).Count(),
-                EvaluatedBookTitles = modelRuns
-                    .Select(r => !string.IsNullOrWhiteSpace(r.BookTitle) ? r.BookTitle : r.BookSlug)
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToList(),
-                FirstPlaceWins = wins,
-            });
+            result.Add(BuildCompositeSummary(modelId, modelRuns, modelScoresList, liveRuns));
         }
 
         return result.OrderByDescending(c => c.MultiBookCompositeScore).ToList();
+    }
+
+    private static CompositeModelSummary BuildCompositeSummary(
+        string modelId,
+        List<HistoricalBenchmarkRun> modelRuns,
+        List<ModelScoreSummary> modelScoresList,
+        List<HistoricalBenchmarkRun> liveRuns)
+    {
+        return new CompositeModelSummary
+        {
+            ModelId = modelId,
+            MultiBookCompositeScore = Math.Round(modelScoresList.Average(s => s.CompositeScore), 1),
+            AvgSyntaxScore = Math.Round(modelScoresList.Average(s => s.SyntaxAudit.OverallSyntaxScore), 1),
+            AvgFormatCompliance = Math.Round(modelScoresList.Average(s => s.SyntaxAudit.FormatComplianceScore), 1),
+            AvgSceneBudget = Math.Round(modelScoresList.Average(s => s.SyntaxAudit.SceneBudgetScore), 1),
+            AvgDialoguePacing = Math.Round(modelScoresList.Average(s => s.SyntaxAudit.DialoguePacingScore), 1),
+            AvgCharDisambiguationSyntax = Math.Round(modelScoresList.Average(s => s.SyntaxAudit.CharacterDisambiguationScore), 1),
+            AvgMusicSpec = Math.Round(modelScoresList.Average(s => s.SyntaxAudit.MusicSpecScore), 1),
+            AvgQualitativeScore = Math.Round(modelScoresList.Average(s => s.AvgOverallQualitative * 10.0), 1),
+            AvgFidelity = Math.Round(modelScoresList.Average(s => s.AvgAdaptationFidelity), 1),
+            AvgCharSplit = Math.Round(modelScoresList.Average(s => s.AvgCharacterDisambiguation), 1),
+            AvgVideoDirect = Math.Round(modelScoresList.Average(s => s.AvgAiVideoDirectibility), 1),
+            AvgPacing = Math.Round(modelScoresList.Average(s => s.AvgDramaticPacing), 1),
+            AvgDialogue = Math.Round(modelScoresList.Average(s => s.AvgDialogueAuthenticity), 1),
+            AvgMusic = Math.Round(modelScoresList.Average(s => s.AvgSoundDesignMusic), 1),
+            TotalBooksEvaluated = modelRuns.Select(r => r.BookSlug).Distinct(StringComparer.OrdinalIgnoreCase).Count(),
+            EvaluatedBookTitles = modelRuns
+                .Select(r => !string.IsNullOrWhiteSpace(r.BookTitle) ? r.BookTitle : r.BookSlug)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList(),
+            FirstPlaceWins = CountFirstPlaceWins(modelId, liveRuns),
+        };
+    }
+
+    private static int CountFirstPlaceWins(string modelId, List<HistoricalBenchmarkRun> liveRuns)
+    {
+        var wins = 0;
+        foreach (var run in liveRuns)
+        {
+            if (RunAwardsFirstPlace(run, modelId))
+                wins++;
+        }
+        return wins;
+    }
+
+    private static bool RunAwardsFirstPlace(HistoricalBenchmarkRun run, string modelId)
+    {
+        var validScores = run.ModelScores.Where(m => m.CompositeScore >= 0 && !m.IsGenerationFallback).OrderByDescending(m => m.CompositeScore).ToList();
+        if (validScores.Count == 0) return false;
+        var topScore = validScores[0].CompositeScore;
+        var topTies = validScores.Where(m => Math.Abs(m.CompositeScore - topScore) < 0.01).ToList();
+        // Award a win only if topScore > 0 and it's not a universal tie across all candidates
+        return topScore > 0
+            && topTies.Count < validScores.Count
+            && topTies.Any(m => string.Equals(m.ModelId, modelId, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>
@@ -254,43 +270,9 @@ public static class BenchmarkHistoryStore
         var result = new List<JudgeQualitySummary>();
         foreach (var judgeId in allJudgeIds)
         {
-            int booksJudged = 0, booksReliable = 0;
-            var netBiasSamples = new List<double>();
-
-            foreach (var run in liveRuns)
-            {
-                if (!run.JudgeMatrix.TryGetValue(judgeId, out var ownRow)) continue;
-                booksJudged++;
-
-                // A fully mock/failed judge attempt has every entry in its own row at -1.0.
-                if (!ownRow.Values.Any(v => v >= 0.0)) continue;
-                booksReliable++;
-
-                if (!ownRow.TryGetValue(judgeId, out var selfScore) || selfScore < 0.0) continue;
-
-                var peerScores = run.JudgeMatrix
-                    .Where(kv => !string.Equals(kv.Key, judgeId, StringComparison.OrdinalIgnoreCase))
-                    .Select(kv => kv.Value.TryGetValue(judgeId, out var s) ? s : (double?)null)
-                    .Where(s => s.HasValue && s.Value >= 0.0)
-                    .Select(s => s!.Value)
-                    .ToList();
-                if (peerScores.Count == 0) continue;
-
-                netBiasSamples.Add(selfScore - peerScores.Average());
-            }
-
-            if (booksJudged == 0) continue;
-
-            result.Add(new JudgeQualitySummary
-            {
-                ModelId = judgeId,
-                BooksJudged = booksJudged,
-                BooksReliable = booksReliable,
-                ReliabilityRate = Math.Round((double)booksReliable / booksJudged, 2),
-                SelfBiasSampleCount = netBiasSamples.Count,
-                AvgNetSelfBias = netBiasSamples.Count > 0 ? Math.Round(netBiasSamples.Average(), 2) : 0.0,
-                AvgAbsSelfBias = netBiasSamples.Count > 0 ? Math.Round(netBiasSamples.Select(Math.Abs).Average(), 2) : 0.0,
-            });
+            var summary = SummarizeJudge(judgeId, liveRuns);
+            if (summary is not null)
+                result.Add(summary);
         }
 
         // Most reliable first, then least (absolute) self-bias among equally-reliable judges.
@@ -298,5 +280,62 @@ public static class BenchmarkHistoryStore
             .OrderByDescending(j => j.ReliabilityRate)
             .ThenBy(j => j.AvgAbsSelfBias)
             .ToList();
+    }
+
+    private static JudgeQualitySummary? SummarizeJudge(string judgeId, List<HistoricalBenchmarkRun> liveRuns)
+    {
+        int booksJudged = 0, booksReliable = 0;
+        var netBiasSamples = new List<double>();
+
+        foreach (var run in liveRuns)
+        {
+            if (!TryScoreJudgeRun(judgeId, run, out var reliable, out var netBias))
+                continue;
+            booksJudged++;
+            if (!reliable) continue;
+            booksReliable++;
+            if (netBias is { } sample)
+                netBiasSamples.Add(sample);
+        }
+
+        if (booksJudged == 0) return null;
+
+        return new JudgeQualitySummary
+        {
+            ModelId = judgeId,
+            BooksJudged = booksJudged,
+            BooksReliable = booksReliable,
+            ReliabilityRate = Math.Round((double)booksReliable / booksJudged, 2),
+            SelfBiasSampleCount = netBiasSamples.Count,
+            AvgNetSelfBias = netBiasSamples.Count > 0 ? Math.Round(netBiasSamples.Average(), 2) : 0.0,
+            AvgAbsSelfBias = netBiasSamples.Count > 0 ? Math.Round(netBiasSamples.Select(Math.Abs).Average(), 2) : 0.0,
+        };
+    }
+
+    private static bool TryScoreJudgeRun(
+        string judgeId, HistoricalBenchmarkRun run, out bool reliable, out double? netBias)
+    {
+        reliable = false;
+        netBias = null;
+        if (!run.JudgeMatrix.TryGetValue(judgeId, out var ownRow)) return false;
+
+        // A fully mock/failed judge attempt has every entry in its own row at -1.0.
+        if (!ownRow.Values.Any(v => v >= 0.0))
+            return true;
+
+        reliable = true;
+        if (!ownRow.TryGetValue(judgeId, out var selfScore) || selfScore < 0.0)
+            return true;
+
+        var peerScores = run.JudgeMatrix
+            .Where(kv => !string.Equals(kv.Key, judgeId, StringComparison.OrdinalIgnoreCase))
+            .Select(kv => kv.Value.TryGetValue(judgeId, out var s) ? s : (double?)null)
+            .Where(s => s.HasValue && s.Value >= 0.0)
+            .Select(s => s!.Value)
+            .ToList();
+        if (peerScores.Count == 0) return true;
+
+        netBias = selfScore - peerScores.Average();
+        return true;
     }
 }

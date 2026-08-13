@@ -8,119 +8,20 @@
 <PageTitle>Book · Import</PageTitle>
 
 <AdaptationShell Host="this" Step="import">
+    <CascadingValue Value="this" IsFixed="true">
     @if (Status is not null)
     {
-        @if (!Gate.ImportReady)
-        {
-            <div class="alert alert-warning d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4"
-                 data-testid="import-setup-required">
-                <div>
-                    <strong>Setup required before import.</strong>
-                    @Gate._importBlockedReason
-                </div>
-                <a class="btn btn-sm btn-warning fw-semibold"
-                   href="configuration?focus=planning"
-                   data-testid="import-open-settings">Open Settings →</a>
-            </div>
-        }
-        else if (ImportGate.IsUsablePlanningModel(Status.PlanningModel))
-        {
-            <div class="mb-3 d-flex flex-wrap align-items-center gap-2" data-testid="import-planning-ready">
-                <span class="badge text-bg-success">Ready to import</span>
-                @* Pipeline.Model name is provider jargon — admin only (respects the "view as user" toggle). *@
-                @if (Session.IsAdmin)
-                {
-                    <span class="badge text-bg-secondary fw-normal" data-testid="import-planning-model">@Status.PlanningModel</span>
-                }
-                <a class="small link-secondary" href="configuration?focus=planning">Change in Settings</a>
-            </div>
-        }
+        <AdaptationImport_SetupBanner />
 
         <div class="card mb-4">
             <div class="card-body p-4">
                 @if (Drop._importing || Jobs.JobRunning)
                 {
-                    @* Import in flight (or reattached after browser exit) — hide drop zone so progress has the room. *@
-                    <h5 class="card-title mb-1">Importing</h5>
-                    @if (!string.IsNullOrWhiteSpace(Drop._chosenFileName))
-                    {
-                        <p class="text-muted small mb-3 text-truncate" title="@Drop._chosenFileName">
-                            <span class="text-body-secondary">From</span> @Drop._chosenFileName
-                        </p>
-                    }
-                    else
-                    {
-                        <p class="text-muted small mb-3">Hang tight — the pipeline is running on the server (safe if you closed the browser).</p>
-                    }
-
-                    <JobProgressCard Status="@(Jobs.JobRunning ? (Jobs.Job?.Status ?? "running") : (Drop._importing ? "running" : "idle"))"
-                                     Message="@(Drop._importStatus.Length > 0 ? Drop._importStatus : (Jobs.Job?.Message ?? "Working…"))"
-                                     Index="@(Jobs.Job?.Index ?? Jobs.ProgressIndex)"
-                                     Total="@(Jobs.Job?.Total ?? (Jobs.ProgressTotal > 0 ? Jobs.ProgressTotal : 10))"
-                                     Percent="@(Drop._importPct ?? AdaptationStepUi.ComputeProgressPercent(Jobs.ProgressIndex, Jobs.ProgressTotal > 0 ? Jobs.ProgressTotal : 10, waiting: true, jobRunning: true, startedAt: Jobs.Job?.StartedAt))"
-                                     ShowCancel="true"
-                                     CancelDisabled="false"
-                                     OnCancel="Jobs.CancelAsync"
-                                     Kind="@(Jobs.Job?.Kind)"
-                                     ShowLog="@(Session.IsAdmin && Jobs.Job?.Log is { Count: > 0 })"
-                                     LogLines="@(Jobs.Job?.Log)"
-                                     LogMaxLines="50"
-                                     TestId="import-progress"
-                                     CssClass="mb-1" />
+                    <AdaptationImport_Importing />
                 }
                 else
                 {
-                    <h5 class="card-title mb-1">Import source</h5>
-                    <p class="text-muted small mb-3">PDF, text, or fountain — then the pipeline runs. You can edit after.</p>
-
-                    <label class="ptm-dropzone @(Busy || Jobs.JobRunning || Drop._importing || !Gate.ImportReady ? "ptm-dropzone--disabled" : "") @(Drop._dragOver && Gate.ImportReady ? "ptm-dropzone--active" : "")"
-                           data-testid="import-dropzone"
-                           @ondragenter="Drop.OnDragEnter"
-                           @ondragenter:preventDefault
-                           @ondragover="Drop.OnDragOver"
-                           @ondragover:preventDefault
-                           @ondragleave="Drop.OnDragLeave"
-                           @ondrop="Drop.OnDrop"
-                           @ondrop:preventDefault>
-                        @* @key remounts InputFile after each pick so Blazor's file map stays valid. *@
-                        <InputFile @key="Drop._inputFileKey"
-                                   OnChange="Drop.OnSourceSelectedAsync"
-                                   class="ptm-dropzone__input"
-                                   accept=".fountain,.spmd,.pdf,.txt,text/plain,application/pdf"
-                                   data-testid="import-file-input"
-                                   disabled="@(Busy || Jobs.JobRunning || Drop._importing || !Gate.ImportReady)" />
-                        <div class="ptm-dropzone__inner" aria-hidden="true">
-                            <div class="ptm-dropzone__icon">📖</div>
-                            <div class="ptm-dropzone__title">Drop your book here</div>
-                            <div class="ptm-dropzone__hint">or click to choose a file</div>
-                            <div class="ptm-dropzone__types">.pdf · .txt · .fountain</div>
-                        </div>
-                    </label>
-
-                    @if (!string.IsNullOrWhiteSpace(Drop._chosenFileName))
-                    {
-                        <div class="fs-file-chosen mt-2" data-testid="import-file-name">
-                            <span class="fs-file-chosen-label">Selected:</span>@Drop._chosenFileName
-                        </div>
-                    }
-
-
-                    @if (Gate.CanContinueToScreenplay)
-                    {
-                        <div class="d-flex flex-wrap gap-2 mt-3" data-testid="import-continue-actions">
-                            <a class="btn btn-success btn-sm" data-testid="import-continue-screenplay" href="adaptation/screenplay">
-                                Continue to screenplay →
-                            </a>
-                            @* B7: fountain/book draft ready — DecisionCard is the pre-gen hub *@
-                            <a class="btn btn-outline-primary btn-sm" data-testid="import-go-estimate" href="cost">
-                                Go to Estimate →
-                            </a>
-                        </div>
-                        <p class="small text-muted mt-2 mb-0" data-testid="import-estimate-hint">
-                            Fountain or draft on disk: open <strong>Estimate</strong> for cost/duration and Generate or Edit plan
-                            (approve the screenplay first if Estimate is still blocked).
-                        </p>
-                    }
+                    <AdaptationImport_SourceForm />
                 }
 
                 <div data-testid="import-status"
@@ -139,4 +40,5 @@
                         Disabled="@(Busy || Jobs.JobRunning || Drop._importing)"
                         OnChanged="Runtime.OnFilmLengthChangedAsync" />
     }
+    </CascadingValue>
 </AdaptationShell>

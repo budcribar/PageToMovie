@@ -1,0 +1,27 @@
+@* Import in flight (or reattached after browser exit) — hide drop zone so progress has the room. *@
+<h5 class="card-title mb-1">Importing</h5>
+@if (!string.IsNullOrWhiteSpace(Host.Drop._chosenFileName))
+{
+    <p class="text-muted small mb-3 text-truncate" title="@Host.Drop._chosenFileName">
+        <span class="text-body-secondary">From</span> @Host.Drop._chosenFileName
+    </p>
+}
+else
+{
+    <p class="text-muted small mb-3">Hang tight — the pipeline is running on the server (safe if you closed the browser).</p>
+}
+
+<JobProgressCard Status="@(Host.Jobs.JobRunning ? (Host.Jobs.Job?.Status ?? "running") : (Host.Drop._importing ? "running" : "idle"))"
+                 Message="@(Host.Drop._importStatus.Length > 0 ? Host.Drop._importStatus : (Host.Jobs.Job?.Message ?? "Working…"))"
+                 Index="@(Host.Jobs.Job?.Index ?? Host.Jobs.ProgressIndex)"
+                 Total="@(Host.Jobs.Job?.Total ?? (Host.Jobs.ProgressTotal > 0 ? Host.Jobs.ProgressTotal : 10))"
+                 Percent="@(Host.Drop._importPct ?? AdaptationPageBase.AdaptationStepUi.ComputeProgressPercent(Host.Jobs.ProgressIndex, Host.Jobs.ProgressTotal > 0 ? Host.Jobs.ProgressTotal : 10, waiting: true, jobRunning: true, startedAt: Host.Jobs.Job?.StartedAt))"
+                 ShowCancel="true"
+                 CancelDisabled="false"
+                 OnCancel="Host.Jobs.CancelAsync"
+                 Kind="@(Host.Jobs.Job?.Kind)"
+                 ShowLog="@(Session.IsAdmin && Host.Jobs.Job?.Log is { Count: > 0 })"
+                 LogLines="@(Host.Jobs.Job?.Log)"
+                 LogMaxLines="50"
+                 TestId="import-progress"
+                 CssClass="mb-1" />

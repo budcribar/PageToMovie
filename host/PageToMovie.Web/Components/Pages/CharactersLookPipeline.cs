@@ -134,19 +134,8 @@ public partial class Characters
         internal async Task StartRegenerateAsync()
         {
             if (S.List._selected is null) return;
-
-            // Gallery checkmarks are the intended seeds — do not require a separate "Use for generation"
-            // click, and do not mix in preferred/variants the operator did not rank as tiles.
-            if (S.LookBook._selectedBookCandidatePaths.Count > 0)
-            {
-                var prepared = await S.LookBook.EnsureGalleryBookSelectionAppliedAsync();
-                if (!prepared)
-                    return;
-            }
-
-            if (S.LookBook.SelectedSeedCount == 0
-                && string.IsNullOrWhiteSpace(S.LookEdit._editDescription)
-                && string.IsNullOrWhiteSpace(S.LookEdit._imageEditInstruction))
+            if (!await TryApplyGallerySeedsAsync()) return;
+            if (MissingRegenInputs())
             {
                 S._error = "Select book pictures (or another reference), enter a description, or type a face tweak.";
                 return;
@@ -154,6 +143,31 @@ public partial class Characters
 
             var maxSend = S.LookBook.ApiMaxSeedRefs;
             var sendOrder = S.LookBook._seedOrder.Take(maxSend).ToList();
+            var (includePref, variants, books) = PartitionSeedOrder(sendOrder);
+            var hasImageEdit = !string.IsNullOrWhiteSpace(S.LookEdit._imageEditInstruction)
+                               && S.List.PreferredImageUrl is { Length: > 0 };
+            await StartGenerateCoreAsync(BuildRegenRequest(
+                hasImageEdit, includePref, variants, books, sendOrder, maxSend));
+            if (hasImageEdit)
+                S.LookEdit._imageEditInstruction = "";
+        }
+
+        private async Task<bool> TryApplyGallerySeedsAsync()
+        {
+            // Gallery checkmarks are the intended seeds — do not require a separate "Use for generation"
+            // click, and do not mix in preferred/variants the operator did not rank as tiles.
+            if (S.LookBook._selectedBookCandidatePaths.Count == 0) return true;
+            return await S.LookBook.EnsureGalleryBookSelectionAppliedAsync();
+        }
+
+        private bool MissingRegenInputs() =>
+            S.LookBook.SelectedSeedCount == 0
+            && string.IsNullOrWhiteSpace(S.LookEdit._editDescription)
+            && string.IsNullOrWhiteSpace(S.LookEdit._imageEditInstruction);
+
+        private static (bool IncludePref, List<int> Variants, List<int> Books) PartitionSeedOrder(
+            List<string> sendOrder)
+        {
             var includePref = sendOrder.Any(k => k is "p");
             var variants = new List<int>();
             var books = new List<int>();
@@ -164,22 +178,31 @@ public partial class Characters
                 if (k.Length >= 2 && k[0] == 'b' && int.TryParse(k[1..], out var bi))
                     books.Add(bi);
             }
+            return (includePref, variants, books);
+        }
 
-            // First gen / full regen: 3 options + AI pick. Voice/text plate tweak: one edit, lock immediately.
-            var hasImageEdit = !string.IsNullOrWhiteSpace(S.LookEdit._imageEditInstruction)
-                               && S.List.PreferredImageUrl is { Length: > 0 };
+        private StartCharacterVariantsRequest BuildRegenRequest(
+            bool hasImageEdit,
+            bool includePref,
+            List<int> variants,
+            List<int> books,
+            List<string> sendOrder,
+            int maxSend)
+        {
             var descForGen = hasImageEdit
                 ? BuildImageEditPrompt(S.LookEdit._editDescription, S.LookEdit._editVisualLock, S.LookEdit._imageEditInstruction)
                 : S.LookEdit._editDescription;
-            await StartGenerateCoreAsync(new StartCharacterVariantsRequest
+            string seedMode;
+            if (hasImageEdit) seedMode = "preferred_only";
+            else if (S.LookBook.SelectedSeedCount == 0) seedMode = "none";
+            else seedMode = "explicit";
+            return new StartCharacterVariantsRequest
             {
                 ProjectId = S._projectId,
-                CharKey = S.List._selected.Key,
+                CharKey = S.List._selected!.Key,
                 Count = hasImageEdit ? 1 : 3,
                 // Voice/text image edit always anchors on the preferred plate.
-                SeedMode = hasImageEdit
-                    ? "preferred_only"
-                    : (S.LookBook.SelectedSeedCount == 0 ? "none" : "explicit"),
+                SeedMode = seedMode,
                 IncludePreferred = hasImageEdit || includePref,
                 IncludeLockedRef = hasImageEdit || includePref,
                 BookRefIndices = hasImageEdit ? new List<int>() : books,
@@ -191,9 +214,7 @@ public partial class Characters
                 PersistDescription = !hasImageEdit, // don't overwrite seed with ephemeral edit instruction
                 AutoLockBest = true,
                 IterativeEdit = hasImageEdit,
-            });
-            if (hasImageEdit)
-                S.LookEdit._imageEditInstruction = "";
+            };
         }
 
         /// <summary>Prompt for Grok image edit: keep identity, apply spoken/typed change.</summary>

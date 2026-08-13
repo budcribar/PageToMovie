@@ -1826,131 +1826,15 @@ public class UserDatabaseService
             EnsureDatabaseInitialized();
             using var conn = new SqliteConnection(ConnectionString);
             await conn.OpenAsync(ct).ConfigureAwait(false);
+            var pid = string.IsNullOrWhiteSpace(projectId) ? "" : projectId.Trim();
 
-            using (var cmd = conn.CreateCommand())
-            {
-                cmd.CommandText = """
-                    SELECT project_id, scene, clip, MAX(take_index) AS takes
-                    FROM video_take_events
-                    WHERE (@projectId = '' OR project_id = @projectId)
-                      AND (@projectId != '' OR contribute = 1)
-                    GROUP BY project_id, scene, clip
-                    """;
-                cmd.Parameters.AddWithValue("@projectId",
-                    string.IsNullOrWhiteSpace(projectId) ? "" : projectId.Trim());
-                var takes = new List<int>();
-                using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
-                while (await r.ReadAsync(ct).ConfigureAwait(false))
-                    takes.Add(Math.Max(1, r.GetInt32(3)));
-                stats.ClipSampleCount = takes.Count;
-                if (takes.Count > 0)
-                {
-                    takes.Sort();
-                    stats.MeanTakesPerClip = Math.Round(takes.Average(), 3);
-                    stats.P25TakesPerClip = PercentileSorted(takes, 0.25);
-                    stats.P50TakesPerClip = PercentileSorted(takes, 0.50);
-                    stats.P75TakesPerClip = PercentileSorted(takes, 0.75);
-                    stats.RegenRate = Math.Round(takes.Count(t => t >= 2) / (double)takes.Count, 4);
-                }
-            }
-
-            using (var cmd = conn.CreateCommand())
-            {
-                cmd.CommandText = """
-                    SELECT take_kind, COUNT(*)
-                    FROM video_take_events
-                    WHERE (@projectId = '' OR project_id = @projectId)
-                      AND (@projectId != '' OR contribute = 1)
-                    GROUP BY take_kind
-                    """;
-                cmd.Parameters.AddWithValue("@projectId",
-                    string.IsNullOrWhiteSpace(projectId) ? "" : projectId.Trim());
-                using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
-                var byKind = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-                while (await r.ReadAsync(ct).ConfigureAwait(false))
-                {
-                    var k = r.IsDBNull(0) ? "unknown" : r.GetString(0);
-                    var c = r.GetInt32(1);
-                    byKind[k] = c;
-                    stats.EventCount += c;
-                }
-                if (stats.EventCount > 0)
-                {
-                    double Share(string kind) =>
-                        byKind.TryGetValue(kind, out var n) ? Math.Round(n / (double)stats.EventCount, 4) : 0;
-                    stats.InitialShare = Share(VideoTakeKinds.Initial);
-                    stats.UserRegenShare = Share(VideoTakeKinds.UserRegen);
-                    stats.QaAutoShare = Share(VideoTakeKinds.QaAuto);
-                    stats.FillHolesShare = Share(VideoTakeKinds.FillHoles);
-                    stats.StaleRegenShare = Share(VideoTakeKinds.StaleRegen);
-                }
-            }
-
-            using (var cmd = conn.CreateCommand())
-            {
-                cmd.CommandText = """
-                    SELECT reason, COUNT(*)
-                    FROM video_take_events
-                    WHERE reason IS NOT NULL AND TRIM(reason) != ''
-                      AND (@projectId = '' OR project_id = @projectId)
-                      AND (@projectId != '' OR contribute = 1)
-                    GROUP BY reason
-                    """;
-                cmd.Parameters.AddWithValue("@projectId",
-                    string.IsNullOrWhiteSpace(projectId) ? "" : projectId.Trim());
-                using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
-                while (await r.ReadAsync(ct).ConfigureAwait(false))
-                    stats.Reasons[r.GetString(0)] = r.GetInt32(1);
-            }
-
-            using (var cmd = conn.CreateCommand())
-            {
-                cmd.CommandText = """
-                    SELECT substr(ts, 1, 10) AS day, project_id, scene, clip, MAX(take_index)
-                    FROM video_take_events
-                    WHERE (@projectId = '' OR project_id = @projectId)
-                      AND (@projectId != '' OR contribute = 1)
-                      AND ts >= @since
-                    GROUP BY day, project_id, scene, clip
-                    """;
-                cmd.Parameters.AddWithValue("@projectId",
-                    string.IsNullOrWhiteSpace(projectId) ? "" : projectId.Trim());
-                cmd.Parameters.AddWithValue("@since",
-                    DateTime.UtcNow.AddDays(-84).ToString("yyyy-MM-dd"));
-                var byWeek = new Dictionary<string, List<int>>(StringComparer.Ordinal);
-                using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
-                while (await r.ReadAsync(ct).ConfigureAwait(false))
-                {
-                    var day = r.IsDBNull(0) ? "" : r.GetString(0);
-                    if (!DateTime.TryParse(day, CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)) continue;
-                    var weekStart = d.Date.AddDays(-(int)d.DayOfWeek).ToString("yyyy-MM-dd");
-                    if (!byWeek.TryGetValue(weekStart, out var list))
-                    {
-                        list = new List<int>();
-                        byWeek[weekStart] = list;
-                    }
-                    list.Add(Math.Max(1, r.GetInt32(4)));
-                }
-                foreach (var kv in byWeek.OrderBy(k => k.Key))
-                {
-                    var list = kv.Value;
-                    if (list.Count == 0) continue;
-                    stats.Weekly.Add(new TakesTelemetryWeekBucket
-                    {
-                        WeekStart = kv.Key,
-                        ClipSampleCount = list.Count,
-                        MeanTakesPerClip = Math.Round(list.Average(), 3),
-                        RegenRate = Math.Round(list.Count(t => t >= 2) / (double)list.Count, 4),
-                    });
-                }
-            }
+            await FillClipTakeStatsAsync(conn, pid, stats, ct).ConfigureAwait(false);
+            await FillTakeKindSharesAsync(conn, pid, stats, ct).ConfigureAwait(false);
+            await FillReasonCountsAsync(conn, pid, stats, ct).ConfigureAwait(false);
+            await FillWeeklyTakeBucketsAsync(conn, pid, stats, ct).ConfigureAwait(false);
 
             stats.SufficientForBlend = stats.ClipSampleCount >= MinTakesClipSamples;
-            stats.Notes = stats.ClipSampleCount == 0
-                ? "No take events yet."
-                : stats.SufficientForBlend
-                    ? $"n={stats.ClipSampleCount} clips; p50={stats.P50TakesPerClip:0.##} takes/clip."
-                    : $"n={stats.ClipSampleCount} clips (need {MinTakesClipSamples} for blend); p50={stats.P50TakesPerClip:0.##}.";
+            stats.Notes = TakesTelemetryNotes(stats);
         }
         catch (Exception ex)
         {
@@ -1958,6 +1842,141 @@ public class UserDatabaseService
             stats.Notes = "Take telemetry unavailable (fail-open).";
         }
         return stats;
+    }
+
+    private static string TakesTelemetryNotes(TakesTelemetryStats stats)
+    {
+        if (stats.ClipSampleCount == 0) return "No take events yet.";
+        if (stats.SufficientForBlend)
+            return $"n={stats.ClipSampleCount} clips; p50={stats.P50TakesPerClip:0.##} takes/clip.";
+        return $"n={stats.ClipSampleCount} clips (need {MinTakesClipSamples} for blend); p50={stats.P50TakesPerClip:0.##}.";
+    }
+
+    private static void BindTakesProjectId(SqliteCommand cmd, string projectId) =>
+        cmd.Parameters.AddWithValue("@projectId", projectId);
+
+    private static async Task FillClipTakeStatsAsync(
+        SqliteConnection conn, string projectId, TakesTelemetryStats stats, CancellationToken ct)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT project_id, scene, clip, MAX(take_index) AS takes
+            FROM video_take_events
+            WHERE (@projectId = '' OR project_id = @projectId)
+              AND (@projectId != '' OR contribute = 1)
+            GROUP BY project_id, scene, clip
+            """;
+        BindTakesProjectId(cmd, projectId);
+        var takes = new List<int>();
+        using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await r.ReadAsync(ct).ConfigureAwait(false))
+            takes.Add(Math.Max(1, r.GetInt32(3)));
+        stats.ClipSampleCount = takes.Count;
+        if (takes.Count == 0) return;
+        takes.Sort();
+        stats.MeanTakesPerClip = Math.Round(takes.Average(), 3);
+        stats.P25TakesPerClip = PercentileSorted(takes, 0.25);
+        stats.P50TakesPerClip = PercentileSorted(takes, 0.50);
+        stats.P75TakesPerClip = PercentileSorted(takes, 0.75);
+        stats.RegenRate = Math.Round(takes.Count(t => t >= 2) / (double)takes.Count, 4);
+    }
+
+    private static async Task FillTakeKindSharesAsync(
+        SqliteConnection conn, string projectId, TakesTelemetryStats stats, CancellationToken ct)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT take_kind, COUNT(*)
+            FROM video_take_events
+            WHERE (@projectId = '' OR project_id = @projectId)
+              AND (@projectId != '' OR contribute = 1)
+            GROUP BY take_kind
+            """;
+        BindTakesProjectId(cmd, projectId);
+        using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        var byKind = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        while (await r.ReadAsync(ct).ConfigureAwait(false))
+        {
+            var k = r.IsDBNull(0) ? "unknown" : r.GetString(0);
+            var c = r.GetInt32(1);
+            byKind[k] = c;
+            stats.EventCount += c;
+        }
+        if (stats.EventCount <= 0) return;
+        stats.InitialShare = TakeKindShare(byKind, stats.EventCount, VideoTakeKinds.Initial);
+        stats.UserRegenShare = TakeKindShare(byKind, stats.EventCount, VideoTakeKinds.UserRegen);
+        stats.QaAutoShare = TakeKindShare(byKind, stats.EventCount, VideoTakeKinds.QaAuto);
+        stats.FillHolesShare = TakeKindShare(byKind, stats.EventCount, VideoTakeKinds.FillHoles);
+        stats.StaleRegenShare = TakeKindShare(byKind, stats.EventCount, VideoTakeKinds.StaleRegen);
+    }
+
+    private static double TakeKindShare(Dictionary<string, int> byKind, int eventCount, string kind) =>
+        byKind.TryGetValue(kind, out var n) ? Math.Round(n / (double)eventCount, 4) : 0;
+
+    private static async Task FillReasonCountsAsync(
+        SqliteConnection conn, string projectId, TakesTelemetryStats stats, CancellationToken ct)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT reason, COUNT(*)
+            FROM video_take_events
+            WHERE reason IS NOT NULL AND TRIM(reason) != ''
+              AND (@projectId = '' OR project_id = @projectId)
+              AND (@projectId != '' OR contribute = 1)
+            GROUP BY reason
+            """;
+        BindTakesProjectId(cmd, projectId);
+        using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await r.ReadAsync(ct).ConfigureAwait(false))
+            stats.Reasons[r.GetString(0)] = r.GetInt32(1);
+    }
+
+    private static async Task FillWeeklyTakeBucketsAsync(
+        SqliteConnection conn, string projectId, TakesTelemetryStats stats, CancellationToken ct)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT substr(ts, 1, 10) AS day, project_id, scene, clip, MAX(take_index)
+            FROM video_take_events
+            WHERE (@projectId = '' OR project_id = @projectId)
+              AND (@projectId != '' OR contribute = 1)
+              AND ts >= @since
+            GROUP BY day, project_id, scene, clip
+            """;
+        BindTakesProjectId(cmd, projectId);
+        cmd.Parameters.AddWithValue("@since",
+            DateTime.UtcNow.AddDays(-84).ToString("yyyy-MM-dd"));
+        var byWeek = new Dictionary<string, List<int>>(StringComparer.Ordinal);
+        using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await r.ReadAsync(ct).ConfigureAwait(false))
+            AccumulateWeekTake(byWeek, r);
+        foreach (var kv in byWeek.OrderBy(k => k.Key))
+            AddWeeklyBucket(stats, kv.Key, kv.Value);
+    }
+
+    private static void AccumulateWeekTake(Dictionary<string, List<int>> byWeek, SqliteDataReader r)
+    {
+        var day = r.IsDBNull(0) ? "" : r.GetString(0);
+        if (!DateTime.TryParse(day, CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)) return;
+        var weekStart = d.Date.AddDays(-(int)d.DayOfWeek).ToString("yyyy-MM-dd");
+        if (!byWeek.TryGetValue(weekStart, out var list))
+        {
+            list = new List<int>();
+            byWeek[weekStart] = list;
+        }
+        list.Add(Math.Max(1, r.GetInt32(4)));
+    }
+
+    private static void AddWeeklyBucket(TakesTelemetryStats stats, string weekStart, List<int> list)
+    {
+        if (list.Count == 0) return;
+        stats.Weekly.Add(new TakesTelemetryWeekBucket
+        {
+            WeekStart = weekStart,
+            ClipSampleCount = list.Count,
+            MeanTakesPerClip = Math.Round(list.Average(), 3),
+            RegenRate = Math.Round(list.Count(t => t >= 2) / (double)list.Count, 4),
+        });
     }
 
     private static double PercentileSorted(List<int> sortedAsc, double p)

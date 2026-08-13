@@ -23,7 +23,7 @@ using PageToMovie.Engine.Abstractions;
 
 namespace ScreenplayBenchmark;
 
-public static class Program
+public static partial class Program
 {
     public static async Task<int> Main(string[] args)
     {
@@ -31,359 +31,8 @@ public static class Program
             return SelfTest.Run();
 
         TryLoadDotEnv();
-
-        Console.WriteLine("==========================================================================");
-        Console.WriteLine(" 🎬 Film Studio — Screenplay Generation & Blind Peer-Evaluation Benchmark ");
-        Console.WriteLine("==========================================================================");
-        Console.WriteLine();
-
-        string? bookPath = null;
-        string? suiteDir = null;
-        string? outDir = null;
-        string? bookSlug = null;
-        List<string>? requestedModels = null;
-        List<string>? requestedJudges = null;
-        string? reasoningEffort = null;
-        bool dryRun = false;
-        bool showLeaderboardOnly = false;
-        bool showJudgeLeaderboardOnly = false;
-        bool retryFailed = false;
-        bool syntaxOnly = false;
-        bool adaptationSessionPilot = false;
-        string adaptationModel = "grok-4.5";
-        // null = production BookTextAnalyzer.SuggestedTotalMinutes (same as Stage 1).
-        // Set only via --target-runtime-minutes.
-        int? targetRuntimeMinutesOverride = null;
-        string? judgeModel = null;
-        string? judgeModel2 = null;
-        string? videoModel = null;
-        double adaptationJudgeTemperature = 0.0;
-        bool adaptationClipShotPlan = false;
-        bool adaptationDualAttachClipPlan = false;
-        // Default true: dual-attach (no chaining) is the committed pipeline, not an opt-in experiment
-        // anymore — pass --chained-only to skip it and run only the older chained reference path.
-        bool adaptationDualAttachAll = true;
-        bool refreshDashboard = false;
-        bool reviewPrompt = false;
-        List<string>? reviewModels = null;
-        bool sidecarPilot = false;
-        string? sidecarPilotModel = null;
-        string? validateSidecarDirectory = null;
-        double samplingTemperature = 0.2;
-        bool bypassCache = false;
-        bool allowDirty = false;
-        bool useSharedCache = true;
-        string sharedCacheUser = Environment.GetEnvironmentVariable("PTM_BENCHMARK_CACHE_USER") ?? "benchmark";
-        string sharedCacheVisibility = Environment.GetEnvironmentVariable("PTM_BENCHMARK_CACHE_VISIBILITY") ?? "Forkable";
-
-        for (int i = 0; i < args.Length; i++)
-        {
-            var arg = args[i];
-            if (arg.Equals("--book", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
-            {
-                bookPath = args[++i];
-            }
-            else if (arg.Equals("--adaptation-session-pilot", StringComparison.OrdinalIgnoreCase))
-            {
-                adaptationSessionPilot = true;
-            }
-            else if (arg.Equals("--model", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
-            {
-                adaptationModel = args[++i].Trim();
-            }
-            else if (arg.Equals("--target-runtime-minutes", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
-            {
-                if (int.TryParse(args[++i], out var trm) && trm > 0)
-                    targetRuntimeMinutesOverride = trm;
-            }
-            else if (arg.Equals("--judge-model", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
-            {
-                judgeModel = args[++i].Trim();
-            }
-            else if (arg.Equals("--judge-model-2", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
-            {
-                judgeModel2 = args[++i].Trim();
-            }
-            else if (arg.Equals("--video-model", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
-            {
-                videoModel = args[++i].Trim();
-            }
-            else if (arg.Equals("--judge-temperature", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
-            {
-                if (double.TryParse(args[++i], out var jt)) adaptationJudgeTemperature = jt;
-            }
-            else if (arg.Equals("--clip-shot-plan", StringComparison.OrdinalIgnoreCase))
-            {
-                adaptationClipShotPlan = true;
-            }
-            else if (arg.Equals("--dual-attach-clip-plan", StringComparison.OrdinalIgnoreCase))
-            {
-                adaptationDualAttachClipPlan = true;
-            }
-            else if (arg.Equals("--dual-attach-all", StringComparison.OrdinalIgnoreCase))
-            {
-                adaptationDualAttachAll = true;
-            }
-            else if (arg.Equals("--chained-only", StringComparison.OrdinalIgnoreCase))
-            {
-                adaptationDualAttachAll = false;
-            }
-            else if (arg.Equals("--suite", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
-            {
-                suiteDir = args[++i];
-            }
-            else if (arg.Equals("--out", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
-            {
-                outDir = args[++i];
-            }
-            else if (arg.Equals("--book-slug", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
-            {
-                bookSlug = args[++i];
-            }
-            else if (arg.Equals("--models", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
-            {
-                requestedModels = args[++i].Split(',').Select(m => m.Trim()).Where(m => m.Length > 0).ToList();
-            }
-            else if (arg.Equals("--judges", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
-            {
-                requestedJudges = args[++i].Split(',').Select(m => m.Trim()).Where(m => m.Length > 0).ToList();
-            }
-            else if (arg.Equals("--reasoning-effort", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
-            {
-                reasoningEffort = args[++i].Trim();
-            }
-            else if (arg.Equals("--temperature", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length
-                     && double.TryParse(args[++i], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var parsedTemperature)
-                     && parsedTemperature is >= 0 and <= 2)
-            {
-                samplingTemperature = parsedTemperature;
-            }
-            else if (arg.Equals("--no-cache", StringComparison.OrdinalIgnoreCase))
-            {
-                bypassCache = true;
-            }
-            else if (arg.Equals("--allow-dirty", StringComparison.OrdinalIgnoreCase))
-            {
-                allowDirty = true;
-            }
-            else if (arg.Equals("--no-shared-cache", StringComparison.OrdinalIgnoreCase))
-            {
-                useSharedCache = false;
-            }
-            else if (arg.Equals("--cache-user", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
-            {
-                sharedCacheUser = args[++i].Trim();
-            }
-            else if (arg.Equals("--cache-visibility", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
-            {
-                sharedCacheVisibility = args[++i].Trim();
-            }
-            else if (arg.Equals("--dry-run", StringComparison.OrdinalIgnoreCase))
-            {
-                dryRun = true;
-            }
-            else if (arg.Equals("--leaderboard", StringComparison.OrdinalIgnoreCase))
-            {
-                showLeaderboardOnly = true;
-            }
-            else if (arg.Equals("--judge-leaderboard", StringComparison.OrdinalIgnoreCase))
-            {
-                showJudgeLeaderboardOnly = true;
-            }
-            else if (arg.Equals("--retry-failed", StringComparison.OrdinalIgnoreCase) || arg.Equals("--resume", StringComparison.OrdinalIgnoreCase))
-            {
-                retryFailed = true;
-            }
-            else if (arg.Equals("--syntax-only", StringComparison.OrdinalIgnoreCase) || arg.Equals("--regrade", StringComparison.OrdinalIgnoreCase))
-            {
-                syntaxOnly = true;
-            }
-            else if (arg.Equals("--refresh-dashboard", StringComparison.OrdinalIgnoreCase))
-            {
-                refreshDashboard = true;
-            }
-            else if (arg.Equals("--review-prompt", StringComparison.OrdinalIgnoreCase))
-            {
-                reviewPrompt = true;
-            }
-            else if (arg.Equals("--review-models", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
-            {
-                reviewModels = args[++i].Split(',').Select(m => m.Trim()).Where(m => m.Length > 0).ToList();
-            }
-            else if (arg.Equals("--sidecar-pilot", StringComparison.OrdinalIgnoreCase))
-            {
-                sidecarPilot = true;
-            }
-            else if (arg.Equals("--sidecar-pilot-model", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
-            {
-                sidecarPilotModel = args[++i].Trim();
-            }
-            else if (arg.Equals("--validate-sidecar-pilot", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
-            {
-                validateSidecarDirectory = args[++i].Trim();
-            }
-        }
-
-        var (chat, workspaceRoot) = BuildServices();
-        Console.WriteLine($"📂 Workspace root: {workspaceRoot}");
-
-        if (adaptationSessionPilot)
-        {
-            if (string.IsNullOrWhiteSpace(bookPath) || !File.Exists(bookPath))
-            {
-                Console.WriteLine("❌ Error: --adaptation-session-pilot requires --book <path/to/book.txt>.");
-                return 1;
-            }
-            var (pilotSurfaceOk, pilotPromptRevision, pilotPromptError) = await TryGetCommittedStage1SurfaceAsync(workspaceRoot, allowDirty: false).ConfigureAwait(false);
-            if (!pilotSurfaceOk)
-            {
-                await Console.Error.WriteLineAsync($"❌ Adaptation session pilot not started: {pilotPromptError}");
-                await Console.Error.WriteLineAsync("   Commit Stage‑1 prompts and host/PageToMovie.Adaptation/, then run again.");
-                return 1;
-            }
-            var pilotBookText = await File.ReadAllTextAsync(bookPath);
-            var pilotRuntimeMinutes = ResolveTargetRuntimeMinutes(pilotBookText, targetRuntimeMinutesOverride);
-            Console.WriteLine(
-                $"⏱️  Target runtime {pilotRuntimeMinutes} min " +
-                DescribeRuntimeSource(pilotBookText, targetRuntimeMinutesOverride));
-            return await AdaptationSessionPilot.RunAsync(
-                bookPath, bookSlug, adaptationModel, pilotRuntimeMinutes, workspaceRoot, pilotPromptRevision, CancellationToken.None,
-                judgeModel, samplingTemperature, adaptationJudgeTemperature, adaptationClipShotPlan,
-                adaptationDualAttachClipPlan, adaptationDualAttachAll, judgeModel2, videoModel);
-        }
-
-        var historyFilePath = Path.Combine(workspaceRoot, "evals", "benchmark_history.json");
-        var historyStore = BenchmarkHistoryStore.LoadHistory(historyFilePath);
-        if (await BackfillLegacyPromptRevisionsAsync(historyStore, workspaceRoot).ConfigureAwait(false))
-            BenchmarkHistoryStore.SaveHistory(historyStore, historyFilePath);
-
-        if (reviewPrompt)
-        {
-            var models = reviewModels is { Count: > 0 }
-                ? reviewModels
-                : new List<string> { "gpt-5.6-terra", "grok-4.5" };
-            return await PromptImprovementReview.RunAsync(workspaceRoot, chat, models);
-        }
-
-        if (sidecarPilot)
-        {
-            if (string.IsNullOrWhiteSpace(bookPath))
-            {
-                Console.Error.WriteLine("--sidecar-pilot requires --book <path/to/book.txt>.");
-                return 1;
-            }
-            return await SidecarPlanningPilot.RunAsync(workspaceRoot, bookPath, sidecarPilotModel ?? "grok-4.5", chat);
-        }
-
-        if (!string.IsNullOrWhiteSpace(validateSidecarDirectory))
-        {
-            var validation = await SidecarArtifactValidator.ValidateDirectoryAsync(validateSidecarDirectory);
-            Console.WriteLine($"🧪 Validation: {validation["status"]} ({validation["summary"]?["failure_count"]} repair target(s))");
-            Console.WriteLine($"📄 Report: {Path.Combine(validateSidecarDirectory, "validation_report.json")}");
-            return validation["status"]?.GetValue<string>() == "passed" ? 0 : 2;
-        }
-
-        if (showLeaderboardOnly)
-        {
-            PrintHistoricalLeaderboard(historyStore);
-            return 0;
-        }
-
-        if (showJudgeLeaderboardOnly)
-        {
-            PrintJudgeLeaderboard(historyStore);
-            return 0;
-        }
-
-        if (refreshDashboard)
-        {
-            var (revOk, revision, _) = await TryGetCommittedPromptRevisionAsync(workspaceRoot).ConfigureAwait(false);
-            var currentPromptCommit = revOk
-                ? revision
-                : null;
-            var dashboardHtml = HtmlDashboardGenerator.GenerateHtmlDashboard(historyStore, null, currentPromptCommit);
-            var dashboardFile = Path.Combine(workspaceRoot, "evals", "benchmark_dashboard.html");
-            await File.WriteAllTextAsync(dashboardFile, dashboardHtml);
-            Console.WriteLine($"✅ Dashboard refreshed: {Path.GetFullPath(dashboardFile)}");
-            return 0;
-        }
-
-        if (syntaxOnly)
-        {
-            await RegradeSyntaxOnlyAsync(historyFilePath, workspaceRoot);
-            return 0;
-        }
-
-        var (surfaceOk, promptRevision, promptError) = await TryGetCommittedStage1SurfaceAsync(workspaceRoot, allowDirty).ConfigureAwait(false);
-        if (!surfaceOk)
-        {
-            await Console.Error.WriteLineAsync($"❌ Benchmark not started: {promptError}");
-            await Console.Error.WriteLineAsync("   Commit Stage‑1 prompts and host/PageToMovie.Adaptation/, then run again.");
-            await Console.Error.WriteLineAsync("   (Local experiments only: pass --allow-dirty to skip this gate.)");
-            return 1;
-        }
-
-        var adaptationVersion = PageToMovie.Adaptation.AdaptationVersion.Current;
-        Console.WriteLine($"🔖 Prompt revision: {promptRevision}  ·  Adaptation version: {adaptationVersion}");
-
-        outDir ??= Path.Combine(workspaceRoot, "evals", "results", $"screenplay_benchmark_{DateTime.Now:yyyyMMdd_HHmmss}");
-        Directory.CreateDirectory(outDir);
-
-        if (!dryRun && !chat.IsConfigured)
-        {
-            Console.WriteLine("⚠️  No provider API key found in the environment (XAI_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY).");
-            Console.WriteLine("   Generation and peer-judging will fall back to mock data. Pass --dry-run to silence this warning.");
-        }
-
-        List<string> bookSuiteFiles = new();
-        if (!string.IsNullOrWhiteSpace(suiteDir) && Directory.Exists(suiteDir))
-        {
-            bookSuiteFiles = Directory.GetFiles(suiteDir, "*.txt", SearchOption.TopDirectoryOnly).ToList();
-        }
-        else if (string.IsNullOrWhiteSpace(bookPath))
-        {
-            // Default to curated 5-book benchmark suite
-            bookSuiteFiles = LocateDefaultSuiteBooks(workspaceRoot);
-        }
-
-        if (bookSuiteFiles.Count > 0)
-        {
-            Console.WriteLine($"📚 Running Default 5-Book Evaluation Suite across {bookSuiteFiles.Count} stories...");
-            foreach (var file in bookSuiteFiles)
-            {
-                var slug = Path.GetFileNameWithoutExtension(file).ToLowerInvariant();
-                await RunSingleBookBenchmarkAsync(file, slug, outDir, requestedModels, requestedJudges, dryRun, retryFailed, historyFilePath, chat, workspaceRoot, promptRevision, adaptationVersion, reasoningEffort, samplingTemperature, bypassCache, adaptationJudgeTemperature, useSharedCache, sharedCacheUser, sharedCacheVisibility, targetRuntimeMinutesOverride);
-            }
-
-            // Generate updated HTML Dashboard after suite execution
-            historyStore = BenchmarkHistoryStore.LoadHistory(historyFilePath);
-            var dashboardHtml = HtmlDashboardGenerator.GenerateHtmlDashboard(historyStore, null, promptRevision);
-            var dashboardFile = Path.Combine(workspaceRoot, "evals", "benchmark_dashboard.html");
-            await File.WriteAllTextAsync(dashboardFile, dashboardHtml);
-
-            Console.WriteLine();
-            Console.WriteLine($"✅ Multi-Book Suite Completed! Global Dashboard updated at:");
-            Console.WriteLine($"   🌐 {Path.GetFullPath(dashboardFile)}");
-            return 0;
-        }
-
-        if (string.IsNullOrWhiteSpace(bookPath) || !File.Exists(bookPath))
-        {
-            Console.WriteLine("❌ Error: Book file not found. Provide --book <path/to/book.txt> or --suite <dir>.");
-            return 1;
-        }
-
-        bookSlug ??= Path.GetFileNameWithoutExtension(bookPath).ToLowerInvariant();
-        await RunSingleBookBenchmarkAsync(bookPath, bookSlug, outDir, requestedModels, requestedJudges, dryRun, retryFailed, historyFilePath, chat, workspaceRoot, promptRevision, adaptationVersion, reasoningEffort, samplingTemperature, bypassCache, adaptationJudgeTemperature, useSharedCache, sharedCacheUser, sharedCacheVisibility, targetRuntimeMinutesOverride);
-
-        // Generate updated HTML Dashboard
-        historyStore = BenchmarkHistoryStore.LoadHistory(historyFilePath);
-        var html = HtmlDashboardGenerator.GenerateHtmlDashboard(historyStore, null, promptRevision);
-        var dashFile = Path.Combine(workspaceRoot, "evals", "benchmark_dashboard.html");
-        await File.WriteAllTextAsync(dashFile, html);
-
-        Console.WriteLine($"   🌐 Interactive HTML Dashboard: {Path.GetFullPath(dashFile)}");
-        return 0;
+        PrintBanner();
+        return await RunParsedAsync(CliOptions.Parse(args)).ConfigureAwait(false);
     }
 
     private static async Task RunSingleBookBenchmarkAsync(
@@ -491,180 +140,14 @@ public static class Program
         // Phase 1 & 2: Generation & C# Audits
         foreach (var modelId in candidateModels)
         {
-            Console.Write($"  [Adaptation] Model '{modelId}'... ");
-            string screenplayText;
-            ProjectVisionMeta.Document? visionMeta;
-
-            var screenplayFile = Path.Combine(screenplaysDir, $"{SanitizeFileName(modelId)}{effortSuffix}.fountain");
-            var visionMetaFile = Path.Combine(screenplaysDir, $"{SanitizeFileName(modelId)}{effortSuffix}.vision_meta.json");
-            // A screenplay cache must be scoped to the committed prompt revision, the Adaptation
-            // module surface (converter + embedded prompt identity), and the model / effort /
-            // temperature. Otherwise a V4 benchmark could silently reuse a V3 draft, or a
-            // prompt-unchanged converter fix would keep grading stale Fountain.
-            var adaptationKey = SanitizeFileName(adaptationVersion);
-            var cacheFile = Path.Combine(workspaceRoot, "evals", "cache", bookSlug, $"{SanitizeFileName(modelId)}{effortSuffix}_{promptRevision}_{adaptationKey}_temp{temperatureKey}.fountain");
-            var cacheVisionMetaFile = Path.Combine(workspaceRoot, "evals", "cache", bookSlug, $"{SanitizeFileName(modelId)}{effortSuffix}_{promptRevision}_{adaptationKey}_temp{temperatureKey}.vision_meta.json");
-
-
-            var diskCached = File.Exists(cacheFile) ? await File.ReadAllTextAsync(cacheFile) : null;
-            var localCached = File.Exists(screenplayFile) ? await File.ReadAllTextAsync(screenplayFile) : null;
-            var diskVisionMeta = await ReadVisionMetaAsync(cacheVisionMetaFile);
-            var localVisionMeta = await ReadVisionMetaAsync(visionMetaFile);
-            var sharedBehaviorVersions = JsonSerializer.Serialize(new
-            {
-                title = Path.GetFileNameWithoutExtension(bookPath),
-                author = "Author",
-                totalRuntimeMinutes = generationRuntimeMinutes,
-                visionMetaSchema = ProjectVisionMeta.CurrentSchemaVersion,
-                reasoningEffort,
-                cachePackageSchema = "adaptation-conversion.v1",
-            });
-            DerivedBookArtifact? sharedArtifact = null;
-            if (sharedCache is not null && sharedBook is not null && sharedPromptHash is not null)
-            {
-                sharedArtifact = await sharedCache.FindArtifactAsync(
-                    sharedBook.BookId, sharedCacheUser, "adaptation_conversion", modelId,
-                    "book-to-fountain-" + sharedPromptHash[..12], sharedPromptHash,
-                    samplingTemperature, sharedBehaviorVersions);
-            }
-
-            if (sharedArtifact is not null &&
-                JsonSerializer.Deserialize<EngineConversionResult>(sharedArtifact.Content) is
-                    { Fountain.Length: > 0, VisionMeta: not null } sharedConversion)
-            {
-                screenplayText = sharedConversion.Fountain;
-                visionMeta = sharedConversion.VisionMeta;
-                Console.WriteLine($"(reused shared cache {sharedArtifact.ArtifactId})");
-            }
-            else if (!bypassCache && diskCached is not null && diskVisionMeta is not null && !string.Equals(diskCached, canonicalFallbackText, StringComparison.Ordinal))
-            {
-                screenplayText = diskCached;
-                visionMeta = diskVisionMeta;
-                Console.WriteLine("(reused from disk cache)");
-            }
-            else if (localCached is not null && localVisionMeta is not null && !string.Equals(localCached, canonicalFallbackText, StringComparison.Ordinal))
-            {
-                screenplayText = localCached;
-                visionMeta = localVisionMeta;
-                Console.WriteLine("(reused from local run folder)");
-            }
-            else if (dryRun)
-            {
-                if (diskCached is not null) Console.Write("(ignoring stale fallback-poisoned cache) ");
-                screenplayText = GenerateMockScreenplay(modelId);
-                visionMeta = null;
-                Console.WriteLine("(mock generated)");
-            }
-            else
-            {
-                if (diskCached is not null)
-                    Console.Write("(ignoring stale fallback-poisoned cache, retrying live) ");
-                try
-                {
-                    var budget = ResolveRateLimitSafeBudgetOverride(modelId);
-                    var adaptResult = await new AdaptationService().ConvertAsync(
-                        new PageToMovie.Adaptation.Contracts.AdaptationRequest
-                        {
-                            BookText = bookText,
-                            Title = Path.GetFileNameWithoutExtension(bookPath),
-                            Author = "Author",
-                            TargetRuntimeMinutes = generationRuntimeMinutes,
-                            ModelId = modelId,
-                            Temperature = samplingTemperature,
-                            ReasoningEffort = reasoningEffort,
-                        },
-                        chat,
-                        new Progress<string>(msg => Console.WriteLine($"    · {msg}")),
-                        budgetOverride: budget);
-                    if (adaptResult.UsedHeuristicFallback)
-                        generationFallbacks[modelId] = "adaptation_heuristic_fallback";
-                    screenplayText = adaptResult.Fountain;
-                    visionMeta = EngineFountainMap.MapVision(adaptResult.VisionMeta);
-                    var conversion = new EngineConversionResult
-                    {
-                        Fountain = screenplayText,
-                        VisionMeta = visionMeta,
-                        VisionMetaStatus = adaptResult.VisionMetaStatus switch
-                        {
-                            PageToMovie.Adaptation.Contracts.AdaptationVisionMetaStatus.PrimaryResponse => VisionMetaStatus.PrimaryResponse,
-                            PageToMovie.Adaptation.Contracts.AdaptationVisionMetaStatus.RepairResponse => VisionMetaStatus.RepairResponse,
-                            PageToMovie.Adaptation.Contracts.AdaptationVisionMetaStatus.Missing => VisionMetaStatus.Missing,
-                            PageToMovie.Adaptation.Contracts.AdaptationVisionMetaStatus.Malformed => VisionMetaStatus.Malformed,
-                            PageToMovie.Adaptation.Contracts.AdaptationVisionMetaStatus.InvalidValue => VisionMetaStatus.InvalidValue,
-                            _ => VisionMetaStatus.Missing,
-                        },
-                        VisionMetaError = adaptResult.VisionMetaError,
-                    };
-
-                    if (generationFallbacks.TryGetValue(modelId, out var fallbackReason))
-                    {
-                        Console.WriteLine($"FALLBACK ({fallbackReason}) — non-AI heuristic draft, not cached, excluded from comparison");
-                    }
-                    else
-                    {
-                        Console.WriteLine("DONE");
-
-                        // A complete cache entry requires both genuine Fountain and its required
-                        // visual metadata. Fountain-only legacy entries are intentionally ignored.
-                        if (visionMeta is not null)
-                        {
-                            Directory.CreateDirectory(Path.Combine(workspaceRoot, "evals", "cache", bookSlug));
-                            await File.WriteAllTextAsync(cacheFile, screenplayText);
-                            await WriteVisionMetaAsync(cacheVisionMetaFile, visionMeta);
-                            if (sharedCache is not null && sharedBook is not null && sharedPromptHash is not null)
-                            {
-                                await sharedCache.RegisterArtifactAsync(
-                                    sharedBook.BookId, sharedCacheUser, "adaptation_conversion",
-                                    JsonSerializer.Serialize(conversion), modelId,
-                                    "book-to-fountain-" + sharedPromptHash[..12], sharedPromptHash,
-                                    samplingTemperature, sharedBehaviorVersions);
-                            }
-                        }
-                        else
-                        {
-                            Console.WriteLine($"    · {conversion.VisionMetaError} Candidate package will not be cached.");
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"FAILED: {ex.Message}");
-                    screenplayText = $"FADE IN:\n\nINT. ERROR - DAY\n\n[Adaptation failed for {modelId}: {ex.Message}]\n\nFADE OUT.";
-                    visionMeta = null;
-                    generationFallbacks[modelId] = ex.Message;
-                }
-            }
-
-            await File.WriteAllTextAsync(screenplayFile, screenplayText);
-            await WriteVisionMetaAsync(visionMetaFile, visionMeta);
-            generatedScreenplays[modelId] = screenplayText;
-            generatedVisionMeta[modelId] = visionMeta;
-
-            var syntaxAudit = DeterministicSyntaxScorer.Evaluate(screenplayText);
-            deterministicResults[modelId] = syntaxAudit;
-
-            // Layer 2 (deterministic): cast package when present alongside the Fountain.
-            // Stage 1 score alone does not judge cast_seeds.json — that is intentional until
-            // cast extraction is part of the run. When the file exists, cross-check membership.
-            var castSeedsFile = Path.Combine(screenplaysDir, $"{SanitizeFileName(modelId)}{effortSuffix}.cast_seeds.json");
-            if (File.Exists(castSeedsFile))
-            {
-                var castJson = await File.ReadAllTextAsync(castSeedsFile);
-                var castReport = CastPackageCrossCheck.Evaluate(screenplayText, castJson, bookText);
-                castPackageResults[modelId] = castReport;
-                await File.WriteAllTextAsync(
-                    Path.Combine(screenplaysDir, $"{SanitizeFileName(modelId)}{effortSuffix}.cast_package_report.json"),
-                    JsonSerializer.Serialize(castReport, new JsonSerializerOptions { WriteIndented = true }));
-                Console.WriteLine(
-                    castReport.Ok
-                        ? $"    · Cast package OK · score {castReport.Score:F1}"
-                        : $"    · Cast package FAIL · score {castReport.Score:F1} · {castReport.Failures.Count} issue(s)");
-            }
-            else
-            {
-                // Explicit null marker so reports can show "cast not evaluated".
-                castPackageResults[modelId] = null;
-            }
+            await GenerateOneCandidateAsync(
+                modelId, bookPath, bookSlug, bookText, screenplaysDir, workspaceRoot,
+                promptRevision, adaptationVersion, effortSuffix, temperatureKey,
+                generationRuntimeMinutes, reasoningEffort, samplingTemperature,
+                bypassCache, dryRun, chat, canonicalFallbackText,
+                sharedCache, sharedBook, sharedPromptHash, sharedCacheUser, sharedCacheVisibility,
+                generatedScreenplays, generatedVisionMeta, deterministicResults,
+                castPackageResults, generationFallbacks).ConfigureAwait(false);
         }
 
         // Phase 3 & 4: Blind Cross-Evaluation
@@ -696,97 +179,12 @@ public static class Program
 
         foreach (var judgeModelId in judgeModels)
         {
-            Console.Write($"  [Peer Judge] Model '{judgeModelId}'... ");
-
-            if (realCandidates.Count == 0)
-            {
-                Console.WriteLine("(no real candidates to judge — all generations fell back)");
-                judgeEvaluations[judgeModelId] = GenerateMockJudgePayload(new Dictionary<string, string>(), judgeModelId);
-                continue;
-            }
-
-            var keys = realCandidates.OrderBy(_ => random.Next()).ToList();
-            var anonMapping = new Dictionary<string, string>();
-            var anonScreenplays = new Dictionary<string, string>();
-
-            for (int i = 0; i < keys.Count; i++)
-            {
-                var label = $"Screenplay {(char)('A' + i)}";
-                anonMapping[label] = keys[i];
-                anonScreenplays[label] = BuildJudgeCandidatePackage(
-                    generatedScreenplays[keys[i]], generatedVisionMeta[keys[i]]);
-            }
-
-            // Same effort-suffix reasoning as the generation cache above: a judge verdict formed
-            // at boosted reasoning effort is not interchangeable with one at default effort, even
-            // when ScreenplaysHash matches (the candidates could be unchanged while only the
-            // judge's own effort level changed).
-            var judgeCacheFile = Path.Combine(workspaceRoot, "evals", "cache", bookSlug, $"judge_{judgeModelId}{effortSuffix}_{promptRevision}_{SanitizeFileName(adaptationVersion)}_temp{temperatureKey}_judgetemp{judgeTemperatureKey}.json");
-            JudgeEvaluationPayload? cachedJudge = null;
-
-            if (!bypassCache && File.Exists(judgeCacheFile))
-            {
-                try
-                {
-                    var json = await File.ReadAllTextAsync(judgeCacheFile);
-                    var loaded = JsonSerializer.Deserialize<JudgeEvaluationPayload>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                    if (loaded is not null && !loaded.IsMock && loaded.Evaluations.Count > 0 && loaded.Evaluations.All(e => e.OverallQualitativeScore >= 0.0)
-                        && loaded.RubricVersion == ScreenplayJudgmentRubric.RubricVersion
-                        && loaded.ScreenplaysHash == screenplaysHash)
-                    {
-                        cachedJudge = loaded;
-                    }
-                }
-                catch { /* Corrupt cache — re-evaluate */ }
-            }
-
-            JudgeEvaluationPayload evalPayload;
-            if (cachedJudge is not null && (!retryFailed || !cachedJudge.IsMock))
-            {
-                evalPayload = cachedJudge;
-                Console.WriteLine("DONE (cached live evaluation)");
-            }
-            else if (dryRun)
-            {
-                evalPayload = GenerateMockJudgePayload(anonMapping, judgeModelId);
-                Console.WriteLine("(mock evaluated)");
-            }
-            else if (!chat.IsConfigured)
-            {
-                evalPayload = GenerateMockJudgePayload(anonMapping, judgeModelId);
-                Console.WriteLine("(no provider API key configured — mock evaluated)");
-            }
-            else
-            {
-                try
-                {
-                    var userPrompt = ScreenplayJudgmentRubric.BuildPrompt(bookText, anonScreenplays, generationSystemPrompt);
-                    var raw = await chat.CompleteAsync(
-                        systemPrompt: "Respond with ONLY the JSON object described in the instructions. No prose, no markdown code fences.",
-                        userPrompt: userPrompt,
-                        model: judgeModelId,
-                        temperature: judgeTemperature,
-                        mode: "screenplay_benchmark_judge",
-                        reasoningEffort: reasoningEffort);
-                    evalPayload = ParseJudgePayload(raw, anonMapping.Keys);
-                    evalPayload.IsMock = false;
-                    evalPayload.RubricVersion = ScreenplayJudgmentRubric.RubricVersion;
-                    evalPayload.ScreenplaysHash = screenplaysHash;
-                    Console.WriteLine("DONE");
-
-                    // Save valid live evaluation to cache
-                    Directory.CreateDirectory(Path.Combine(workspaceRoot, "evals", "cache", bookSlug));
-                    await File.WriteAllTextAsync(judgeCacheFile, JsonSerializer.Serialize(evalPayload, new JsonSerializerOptions { WriteIndented = true }));
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"FAILED ({ex.Message}) — falling back to mock evaluation (-1.0)");
-                    evalPayload = GenerateMockJudgePayload(anonMapping, judgeModelId);
-                }
-            }
-
-            var deAnonymizedPayload = DeAnonymizePayload(evalPayload, anonMapping);
-            judgeEvaluations[judgeModelId] = deAnonymizedPayload;
+            await EvaluateOneJudgeAsync(
+                judgeModelId, realCandidates, generatedScreenplays, generatedVisionMeta,
+                bookText, generationSystemPrompt, bookSlug, workspaceRoot, promptRevision,
+                adaptationVersion, effortSuffix, temperatureKey, judgeTemperatureKey,
+                bypassCache, retryFailed, dryRun, chat, judgeTemperature, reasoningEffort,
+                screenplaysHash, random, judgeEvaluations).ConfigureAwait(false);
         }
 
         // Phase 5: Aggregation & History Persistence
@@ -1293,162 +691,263 @@ Uncle Nick turned, offering a small, reassuring nod. ""She always holds when the
         Dictionary<string, string> generationFallbacks,
         Dictionary<string, CastPackageCrossCheck.Report?>? castPackageResults = null)
     {
-        var runData = new BenchmarkRunData
-        {
-            BookPath = bookPath,
-        };
-
-        var BordaScores = candidateModels.ToDictionary(m => m, _ => 0);
-        var RankSums = candidateModels.ToDictionary(m => m, _ => 0.0);
-        var RankCounts = candidateModels.ToDictionary(m => m, _ => 0);
-
-        foreach (var (judgeId, payload) in judgeEvaluations)
-        {
-            runData.JudgeMatrix[judgeId] = new Dictionary<string, double>();
-            runData.JudgeRankMatrix[judgeId] = new Dictionary<string, int>();
-            runData.JudgeSummaries[judgeId] = payload.JudgeSummaryNotes;
-            runData.JudgeRationale[judgeId] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            runData.JudgePromptSuggestions[judgeId] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var eval in payload.Evaluations)
-            {
-                if (!string.IsNullOrWhiteSpace(eval.Rationale))
-                    runData.JudgeRationale[judgeId][eval.ScreenplayId] = eval.Rationale; // last-wins if a malformed judge response repeats a screenplayId
-                if (!string.IsNullOrWhiteSpace(eval.PromptImprovementSuggestion))
-                    runData.JudgePromptSuggestions[judgeId][eval.ScreenplayId] = eval.PromptImprovementSuggestion;
-            }
-
-            if (payload.IsMock)
-            {
-                foreach (var key in payload.ForcedRanking)
-                {
-                    runData.JudgeRankMatrix[judgeId][key] = -1;
-                    runData.JudgeMatrix[judgeId][key] = -1.0;
-                }
-                continue; // Do NOT count points or ranks for mock judges
-            }
-
-            for (int r = 0; r < payload.ForcedRanking.Count; r++)
-            {
-                var authorId = payload.ForcedRanking[r];
-                var rank = r + 1;
-                var points = candidateModels.Count - r;
-
-                if (BordaScores.ContainsKey(authorId))
-                {
-                    BordaScores[authorId] += points;
-                    RankSums[authorId] += rank;
-                    RankCounts[authorId]++;
-                }
-
-                runData.JudgeRankMatrix[judgeId][authorId] = rank;
-            }
-
-            foreach (var eval in payload.Evaluations)
-            {
-                runData.JudgeMatrix[judgeId][eval.ScreenplayId] = eval.OverallQualitativeScore >= 0.0 ? eval.OverallQualitativeScore : -1.0;
-            }
-        }
-
-        // Self-bias check: every judge is also a candidate here, so compare each judge's score for
-        // its OWN screenplay against the average score OTHER (non-mock) judges gave that same
-        // candidate. A judge rating itself well above its peers' consensus is the exact failure mode
-        // blind anonymized review is meant to catch.
-        const double SelfBiasThreshold = 1.0;
-        foreach (var judgeId in candidateModels)
-        {
-            if (!judgeEvaluations.TryGetValue(judgeId, out var judgePayload) || judgePayload.IsMock) continue;
-
-            var selfEval = judgePayload.Evaluations.FirstOrDefault(e =>
-                string.Equals(e.ScreenplayId, judgeId, StringComparison.OrdinalIgnoreCase) && e.OverallQualitativeScore >= 0.0);
-            if (selfEval is null) continue;
-
-            var peerScores = judgeEvaluations
-                .Where(kv => !string.Equals(kv.Key, judgeId, StringComparison.OrdinalIgnoreCase) && !kv.Value.IsMock)
-                .SelectMany(kv => kv.Value.Evaluations)
-                .Where(e => string.Equals(e.ScreenplayId, judgeId, StringComparison.OrdinalIgnoreCase) && e.OverallQualitativeScore >= 0.0)
-                .Select(e => e.OverallQualitativeScore)
-                .ToList();
-            if (peerScores.Count == 0) continue;
-
-            var peerAvg = peerScores.Average();
-            var delta = selfEval.OverallQualitativeScore - peerAvg;
-            if (delta >= SelfBiasThreshold)
-            {
-                runData.SelfBiasNotes.Add(
-                    $"⚠️ {judgeId} rated its own screenplay {selfEval.OverallQualitativeScore:F1}/10 vs. a {peerAvg:F1}/10 average from {peerScores.Count} other judge(s) (+{delta:F1}) — possible self-preference bias.");
-            }
-            else if (delta <= -SelfBiasThreshold)
-            {
-                runData.SelfBiasNotes.Add(
-                    $"ℹ️ {judgeId} rated its own screenplay {selfEval.OverallQualitativeScore:F1}/10 vs. a {peerAvg:F1}/10 average from {peerScores.Count} other judge(s) ({delta:F1}) — notably harsher on itself than peers were.");
-            }
-        }
-
-        foreach (var modelId in candidateModels)
-        {
-            var syntax = deterministicResults[modelId];
-
-            var modelEvals = judgeEvaluations.Values
-                .Where(p => !p.IsMock)
-                .SelectMany(p => p.Evaluations)
-                .Where(e => string.Equals(e.ScreenplayId, modelId, StringComparison.OrdinalIgnoreCase) && e.OverallQualitativeScore >= 0.0)
-                .ToList();
-
-            var disqualifyingFlags = judgeEvaluations
-                .Where(kv => !kv.Value.IsMock)
-                .SelectMany(kv => kv.Value.Evaluations
-                    .Where(e => string.Equals(e.ScreenplayId, modelId, StringComparison.OrdinalIgnoreCase) && !e.ProductionReady)
-                    .SelectMany(e => e.DisqualifyingIssues.Count > 0
-                        ? e.DisqualifyingIssues.Select(issue => $"{kv.Key}: {issue}")
-                        : new[] { $"{kv.Key}: flagged not production-ready (no specific issue given)" }))
-                .ToList();
-
-            var avgFidelity = modelEvals.Count > 0 ? modelEvals.Average(e => e.AdaptationFidelity) : 0.0;
-            var avgCharSplit = modelEvals.Count > 0 ? modelEvals.Average(e => e.CharacterDisambiguation) : 0.0;
-            var avgDirect = modelEvals.Count > 0 ? modelEvals.Average(e => e.AiVideoDirectibility) : 0.0;
-            var avgPacing = modelEvals.Count > 0 ? modelEvals.Average(e => e.DramaticPacing) : 0.0;
-            var avgDialogue = modelEvals.Count > 0 ? modelEvals.Average(e => e.DialogueAuthenticity) : 0.0;
-            var avgMusic = modelEvals.Count > 0 ? modelEvals.Average(e => e.SoundDesignMusic) : 0.0;
-            var avgQual = modelEvals.Count > 0 ? modelEvals.Average(e => e.OverallQualitativeScore) : 0.0;
-
-            var avgRank = RankCounts[modelId] > 0 ? RankSums[modelId] / RankCounts[modelId] : candidateModels.Count / 2.0;
-            var composite = Math.Round((syntax.OverallSyntaxScore * 0.40) + (avgQual * 10.0 * 0.60), 1);
-
-            var isFallback = generationFallbacks.TryGetValue(modelId, out var fallbackReason);
-
-            CastPackageCrossCheck.Report? castReport = null;
-            castPackageResults?.TryGetValue(modelId, out castReport);
-
-            runData.Leaderboard.Add(new ModelScoreSummary
-            {
-                ModelId = modelId,
-                CompositeScore = composite,
-                BordaPoints = BordaScores[modelId],
-                AvgJudgeRank = Math.Round(avgRank, 1),
-                SyntaxAudit = syntax,
-                AvgAdaptationFidelity = Math.Round(avgFidelity, 1),
-                AvgCharacterDisambiguation = Math.Round(avgCharSplit, 1),
-                AvgAiVideoDirectibility = Math.Round(avgDirect, 1),
-                AvgDramaticPacing = Math.Round(avgPacing, 1),
-                AvgDialogueAuthenticity = Math.Round(avgDialogue, 1),
-                AvgSoundDesignMusic = Math.Round(avgMusic, 1),
-                AvgOverallQualitative = Math.Round(avgQual, 1),
-                IsGenerationFallback = isFallback,
-                GenerationFallbackReason = fallbackReason,
-                DisqualifyingFlags = disqualifyingFlags,
-                CastPackageScore = castReport?.Score,
-                CastPackageMembershipScore = castReport?.MembershipScore,
-                CastPackageDescriptionScore = castReport?.DescriptionScore,
-                SpeakersMissingFromCast = castReport?.SpeakersMissingFromCast?.ToList() ?? new List<string>(),
-                CastPackageOk = castReport?.Ok,
-                CastPackageFailures = castReport?.Failures?.ToList() ?? new List<string>(),
-                CastPackageWarnings = castReport?.Warnings?.ToList() ?? new List<string>(),
-            });
-        }
-
+        var runData = new BenchmarkRunData { BookPath = bookPath };
+        var borda = CreateBordaAccumulators(candidateModels);
+        IngestJudgeEvaluations(runData, borda, candidateModels, judgeEvaluations);
+        AppendSelfBiasNotes(runData, candidateModels, judgeEvaluations);
+        FillLeaderboard(runData, borda, candidateModels, deterministicResults, judgeEvaluations, generationFallbacks, castPackageResults);
         runData.Leaderboard = runData.Leaderboard.OrderByDescending(l => l.CompositeScore).ToList();
         return runData;
     }
+
+    private readonly record struct BordaAccumulators(
+        Dictionary<string, int> Scores,
+        Dictionary<string, double> RankSums,
+        Dictionary<string, int> RankCounts);
+
+    private static BordaAccumulators CreateBordaAccumulators(List<string> candidateModels) => new(
+        candidateModels.ToDictionary(m => m, _ => 0),
+        candidateModels.ToDictionary(m => m, _ => 0.0),
+        candidateModels.ToDictionary(m => m, _ => 0));
+
+    private static void IngestJudgeEvaluations(
+        BenchmarkRunData runData,
+        BordaAccumulators borda,
+        List<string> candidateModels,
+        Dictionary<string, JudgeEvaluationPayload> judgeEvaluations)
+    {
+        foreach (var (judgeId, payload) in judgeEvaluations)
+        {
+            InitJudgeSlots(runData, judgeId, payload);
+            RecordJudgeNotes(runData, judgeId, payload);
+            if (payload.IsMock)
+            {
+                RecordMockJudgeRanks(runData, judgeId, payload);
+                continue; // Do NOT count points or ranks for mock judges
+            }
+
+            RecordLiveJudgeRanks(runData, borda, candidateModels, judgeId, payload);
+            RecordJudgeScores(runData, judgeId, payload);
+        }
+    }
+
+    private static void InitJudgeSlots(BenchmarkRunData runData, string judgeId, JudgeEvaluationPayload payload)
+    {
+        runData.JudgeMatrix[judgeId] = new Dictionary<string, double>();
+        runData.JudgeRankMatrix[judgeId] = new Dictionary<string, int>();
+        runData.JudgeSummaries[judgeId] = payload.JudgeSummaryNotes;
+        runData.JudgeRationale[judgeId] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        runData.JudgePromptSuggestions[judgeId] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static void RecordJudgeNotes(BenchmarkRunData runData, string judgeId, JudgeEvaluationPayload payload)
+    {
+        foreach (var eval in payload.Evaluations)
+        {
+            if (!string.IsNullOrWhiteSpace(eval.Rationale))
+                runData.JudgeRationale[judgeId][eval.ScreenplayId] = eval.Rationale; // last-wins if a malformed judge response repeats a screenplayId
+            if (!string.IsNullOrWhiteSpace(eval.PromptImprovementSuggestion))
+                runData.JudgePromptSuggestions[judgeId][eval.ScreenplayId] = eval.PromptImprovementSuggestion;
+        }
+    }
+
+    private static void RecordMockJudgeRanks(BenchmarkRunData runData, string judgeId, JudgeEvaluationPayload payload)
+    {
+        foreach (var key in payload.ForcedRanking)
+        {
+            runData.JudgeRankMatrix[judgeId][key] = -1;
+            runData.JudgeMatrix[judgeId][key] = -1.0;
+        }
+    }
+
+    private static void RecordLiveJudgeRanks(
+        BenchmarkRunData runData,
+        BordaAccumulators borda,
+        List<string> candidateModels,
+        string judgeId,
+        JudgeEvaluationPayload payload)
+    {
+        for (int r = 0; r < payload.ForcedRanking.Count; r++)
+        {
+            var authorId = payload.ForcedRanking[r];
+            var rank = r + 1;
+            var points = candidateModels.Count - r;
+            if (borda.Scores.ContainsKey(authorId))
+            {
+                borda.Scores[authorId] += points;
+                borda.RankSums[authorId] += rank;
+                borda.RankCounts[authorId]++;
+            }
+
+            runData.JudgeRankMatrix[judgeId][authorId] = rank;
+        }
+    }
+
+    private static void RecordJudgeScores(BenchmarkRunData runData, string judgeId, JudgeEvaluationPayload payload)
+    {
+        foreach (var eval in payload.Evaluations)
+            runData.JudgeMatrix[judgeId][eval.ScreenplayId] = eval.OverallQualitativeScore >= 0.0 ? eval.OverallQualitativeScore : -1.0;
+    }
+
+    private static void AppendSelfBiasNotes(
+        BenchmarkRunData runData,
+        List<string> candidateModels,
+        Dictionary<string, JudgeEvaluationPayload> judgeEvaluations)
+    {
+        const double SelfBiasThreshold = 1.0;
+        foreach (var judgeId in candidateModels)
+        {
+            if (!TryGetLiveSelfEval(judgeEvaluations, judgeId, out var selfEval, out var peerScores))
+                continue;
+            var peerAvg = peerScores.Average();
+            var delta = selfEval.OverallQualitativeScore - peerAvg;
+            AppendOneSelfBiasNote(runData, judgeId, selfEval.OverallQualitativeScore, peerAvg, peerScores.Count, delta, SelfBiasThreshold);
+        }
+    }
+
+    private static bool TryGetLiveSelfEval(
+        Dictionary<string, JudgeEvaluationPayload> judgeEvaluations,
+        string judgeId,
+        out ScreenplayEvaluationEntry selfEval,
+        out List<double> peerScores)
+    {
+        selfEval = null!;
+        peerScores = new List<double>();
+        if (!judgeEvaluations.TryGetValue(judgeId, out var judgePayload) || judgePayload.IsMock)
+            return false;
+
+        var found = judgePayload.Evaluations.FirstOrDefault(e =>
+            string.Equals(e.ScreenplayId, judgeId, StringComparison.OrdinalIgnoreCase) && e.OverallQualitativeScore >= 0.0);
+        if (found is null) return false;
+        selfEval = found;
+
+        peerScores = judgeEvaluations
+            .Where(kv => !string.Equals(kv.Key, judgeId, StringComparison.OrdinalIgnoreCase) && !kv.Value.IsMock)
+            .SelectMany(kv => kv.Value.Evaluations)
+            .Where(e => string.Equals(e.ScreenplayId, judgeId, StringComparison.OrdinalIgnoreCase) && e.OverallQualitativeScore >= 0.0)
+            .Select(e => e.OverallQualitativeScore)
+            .ToList();
+        return peerScores.Count > 0;
+    }
+
+    private static void AppendOneSelfBiasNote(
+        BenchmarkRunData runData,
+        string judgeId,
+        double selfScore,
+        double peerAvg,
+        int peerCount,
+        double delta,
+        double threshold)
+    {
+        if (delta >= threshold)
+        {
+            runData.SelfBiasNotes.Add(
+                $"⚠️ {judgeId} rated its own screenplay {selfScore:F1}/10 vs. a {peerAvg:F1}/10 average from {peerCount} other judge(s) (+{delta:F1}) — possible self-preference bias.");
+        }
+        else if (delta <= -threshold)
+        {
+            runData.SelfBiasNotes.Add(
+                $"ℹ️ {judgeId} rated its own screenplay {selfScore:F1}/10 vs. a {peerAvg:F1}/10 average from {peerCount} other judge(s) ({delta:F1}) — notably harsher on itself than peers were.");
+        }
+    }
+
+    private static void FillLeaderboard(
+        BenchmarkRunData runData,
+        BordaAccumulators borda,
+        List<string> candidateModels,
+        Dictionary<string, DeterministicSyntaxResult> deterministicResults,
+        Dictionary<string, JudgeEvaluationPayload> judgeEvaluations,
+        Dictionary<string, string> generationFallbacks,
+        Dictionary<string, CastPackageCrossCheck.Report?>? castPackageResults)
+    {
+        foreach (var modelId in candidateModels)
+        {
+            runData.Leaderboard.Add(BuildModelScoreSummary(
+                modelId, borda, candidateModels.Count, deterministicResults, judgeEvaluations, generationFallbacks, castPackageResults));
+        }
+    }
+
+    private static ModelScoreSummary BuildModelScoreSummary(
+        string modelId,
+        BordaAccumulators borda,
+        int candidateCount,
+        Dictionary<string, DeterministicSyntaxResult> deterministicResults,
+        Dictionary<string, JudgeEvaluationPayload> judgeEvaluations,
+        Dictionary<string, string> generationFallbacks,
+        Dictionary<string, CastPackageCrossCheck.Report?>? castPackageResults)
+    {
+        var syntax = deterministicResults[modelId];
+        var modelEvals = CollectLiveEvalsForModel(judgeEvaluations, modelId);
+        var avgQual = AverageOrZero(modelEvals, e => e.OverallQualitativeScore);
+        var avgRank = borda.RankCounts[modelId] > 0
+            ? borda.RankSums[modelId] / borda.RankCounts[modelId]
+            : candidateCount / 2.0;
+        var isFallback = generationFallbacks.TryGetValue(modelId, out var fallbackReason);
+        CastPackageCrossCheck.Report? castReport = null;
+        castPackageResults?.TryGetValue(modelId, out castReport);
+        return new ModelScoreSummary
+        {
+            ModelId = modelId,
+            CompositeScore = Math.Round((syntax.OverallSyntaxScore * 0.40) + (avgQual * 10.0 * 0.60), 1),
+            BordaPoints = borda.Scores[modelId],
+            AvgJudgeRank = Math.Round(avgRank, 1),
+            SyntaxAudit = syntax,
+            AvgAdaptationFidelity = Math.Round(AverageOrZero(modelEvals, e => e.AdaptationFidelity), 1),
+            AvgCharacterDisambiguation = Math.Round(AverageOrZero(modelEvals, e => e.CharacterDisambiguation), 1),
+            AvgAiVideoDirectibility = Math.Round(AverageOrZero(modelEvals, e => e.AiVideoDirectibility), 1),
+            AvgDramaticPacing = Math.Round(AverageOrZero(modelEvals, e => e.DramaticPacing), 1),
+            AvgDialogueAuthenticity = Math.Round(AverageOrZero(modelEvals, e => e.DialogueAuthenticity), 1),
+            AvgSoundDesignMusic = Math.Round(AverageOrZero(modelEvals, e => e.SoundDesignMusic), 1),
+            AvgOverallQualitative = Math.Round(avgQual, 1),
+            IsGenerationFallback = isFallback,
+            GenerationFallbackReason = fallbackReason,
+            DisqualifyingFlags = CollectDisqualifyingFlags(judgeEvaluations, modelId),
+            CastPackageScore = castReport?.Score,
+            CastPackageMembershipScore = castReport?.MembershipScore,
+            CastPackageDescriptionScore = castReport?.DescriptionScore,
+            SpeakersMissingFromCast = castReport?.SpeakersMissingFromCast?.ToList() ?? new List<string>(),
+            CastPackageOk = castReport?.Ok,
+            CastPackageFailures = castReport?.Failures?.ToList() ?? new List<string>(),
+            CastPackageWarnings = castReport?.Warnings?.ToList() ?? new List<string>(),
+        };
+    }
+
+    private static List<ScreenplayEvaluationEntry> CollectLiveEvalsForModel(
+        Dictionary<string, JudgeEvaluationPayload> judgeEvaluations,
+        string modelId) =>
+        judgeEvaluations.Values
+            .Where(p => !p.IsMock)
+            .SelectMany(p => p.Evaluations)
+            .Where(e => string.Equals(e.ScreenplayId, modelId, StringComparison.OrdinalIgnoreCase) && e.OverallQualitativeScore >= 0.0)
+            .ToList();
+
+    private static List<string> CollectDisqualifyingFlags(
+        Dictionary<string, JudgeEvaluationPayload> judgeEvaluations,
+        string modelId)
+    {
+        var flags = new List<string>();
+        foreach (var kv in judgeEvaluations)
+        {
+            if (kv.Value.IsMock) continue;
+            foreach (var e in kv.Value.Evaluations)
+            {
+                if (!string.Equals(e.ScreenplayId, modelId, StringComparison.OrdinalIgnoreCase) || e.ProductionReady)
+                    continue;
+                flags.AddRange(FormatDisqualifyingIssues(kv.Key, e));
+            }
+        }
+        return flags;
+    }
+
+    private static IEnumerable<string> FormatDisqualifyingIssues(string judgeId, ScreenplayEvaluationEntry e) =>
+        e.DisqualifyingIssues.Count > 0
+            ? e.DisqualifyingIssues.Select(issue => $"{judgeId}: {issue}")
+            : new[] { $"{judgeId}: flagged not production-ready (no specific issue given)" };
+
+    private static double AverageOrZero(
+        List<ScreenplayEvaluationEntry> evals,
+        Func<ScreenplayEvaluationEntry, double> selector) =>
+        evals.Count > 0 ? evals.Average(selector) : 0.0;
 
     private static string GenerateMockScreenplay(string modelId)
     {
@@ -1519,29 +1018,28 @@ FADE OUT.";
 
         foreach (var dir in dirs.Distinct())
         {
-            var envFiles = new[] { Path.Combine(dir, ".env"), Path.Combine(dir, ".env.local") };
-            foreach (var envPath in envFiles)
-            {
-                if (File.Exists(envPath))
-                {
-                    foreach (var line in File.ReadAllLines(envPath))
-                    {
-                        var trimmed = line.Trim();
-                        if (string.IsNullOrWhiteSpace(trimmed) || trimmed.StartsWith('#')) continue;
-                        var idx = trimmed.IndexOf('=');
-                        if (idx > 0)
-                        {
-                            var k = trimmed.Substring(0, idx).Trim();
-                            var v = trimmed.Substring(idx + 1).Trim(' ', '"', '\'', '\r', '\n', '\t');
-                            if (!string.IsNullOrWhiteSpace(k) && string.IsNullOrEmpty(Environment.GetEnvironmentVariable(k)))
-                            {
-                                Environment.SetEnvironmentVariable(k, v);
-                            }
-                        }
-                    }
-                }
-            }
+            ApplyEnvFile(Path.Combine(dir, ".env"));
+            ApplyEnvFile(Path.Combine(dir, ".env.local"));
         }
+    }
+
+    private static void ApplyEnvFile(string envPath)
+    {
+        if (!File.Exists(envPath)) return;
+        foreach (var line in File.ReadAllLines(envPath))
+            ApplyEnvLine(line);
+    }
+
+    private static void ApplyEnvLine(string line)
+    {
+        var trimmed = line.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed) || trimmed.StartsWith('#')) return;
+        var idx = trimmed.IndexOf('=');
+        if (idx <= 0) return;
+        var k = trimmed.Substring(0, idx).Trim();
+        var v = trimmed.Substring(idx + 1).Trim(' ', '"', '\'', '\r', '\n', '\t');
+        if (!string.IsNullOrWhiteSpace(k) && string.IsNullOrEmpty(Environment.GetEnvironmentVariable(k)))
+            Environment.SetEnvironmentVariable(k, v);
     }
 
     private static async Task RegradeSyntaxOnlyAsync(string historyFilePath, string workspaceRoot)
@@ -1560,51 +1058,7 @@ FADE OUT.";
         var archivedScreenplayDirectories = FindArchivedScreenplayDirectories(workspaceRoot);
 
         foreach (var run in historyStore.Runs)
-        {
-            var bookSlug = run.BookSlug;
-            Console.WriteLine($"\n📖 Story: '{run.BookTitle}' ({bookSlug}) — Date: {run.Timestamp}");
-
-            if (!archivedScreenplayDirectories.TryGetValue(MakeArchivedRunKey(run.Timestamp, bookSlug), out var screenplaysDirectory))
-            {
-                Console.WriteLine("  Archived screenplay files not found for this historical run; left unchanged to preserve score provenance.");
-                continue;
-            }
-
-            string? canonicalFallbackText = null;
-            if (File.Exists(run.BookPath))
-            {
-                var bookText = await File.ReadAllTextAsync(run.BookPath);
-                canonicalFallbackText = new AdaptationService().ConvertHeuristic(run.BookTitle, new AdaptationService().NormalizeBookText(bookText), "Author");
-            }
-
-            foreach (var m in run.ModelScores)
-            {
-                var modelId = m.ModelId;
-                var effortSuffix = string.IsNullOrWhiteSpace(run.ReasoningEffort) ? "" : $"_{SanitizeFileName(run.ReasoningEffort)}";
-                var screenplayFile = Path.Combine(screenplaysDirectory, $"{SanitizeFileName(modelId)}{effortSuffix}.fountain");
-                if (File.Exists(screenplayFile))
-                {
-                    var screenplayText = await File.ReadAllTextAsync(screenplayFile);
-                    var newSyntax = DeterministicSyntaxScorer.Evaluate(screenplayText);
-                    m.SyntaxAudit = newSyntax;
-                    m.IsGenerationFallback = canonicalFallbackText is not null
-                        && string.Equals(screenplayText, canonicalFallbackText, StringComparison.Ordinal);
-
-                    // Recompute composite score if live qual score is valid (>= 0)
-                    if (m.AvgOverallQualitative >= 0)
-                    {
-                        m.CompositeScore = Math.Round((newSyntax.OverallSyntaxScore * 0.40) + (m.AvgOverallQualitative * 10.0 * 0.60), 1);
-                    }
-
-                    var fallbackTag = m.IsGenerationFallback ? " ⚠️ FALLBACK DRAFT (not real model output)" : "";
-                    Console.WriteLine($"  Model '{modelId,-15}' -> Syntax: {newSyntax.OverallSyntaxScore,5:F1}% (Format: {newSyntax.FormatComplianceScore,3:F0}%, Budget: {newSyntax.SceneBudgetScore,3:F0}%, Pacing: {newSyntax.DialoguePacingScore,3:F0}%, Char: {newSyntax.CharacterDisambiguationScore,3:F0}%, Music: {newSyntax.MusicSpecScore,3:F0}%) | Composite: {m.CompositeScore:F1}{fallbackTag}");
-                }
-                else
-                {
-                    Console.WriteLine($"  Model '{modelId,-15}' -> Archived screenplay file not found; left unchanged.");
-                }
-            }
-        }
+            await RegradeOneHistoryRunAsync(run, archivedScreenplayDirectories).ConfigureAwait(false);
 
         BenchmarkHistoryStore.SaveHistory(historyStore, historyFilePath);
 
@@ -1618,6 +1072,55 @@ FADE OUT.";
 
         Console.WriteLine("\n✅ Syntax re-grading completed! Global Dashboard updated at:");
         Console.WriteLine($"   🌐 {Path.GetFullPath(dashboardFile)}");
+    }
+
+    private static async Task RegradeOneHistoryRunAsync(
+        HistoricalBenchmarkRun run, Dictionary<string, string> archivedScreenplayDirectories)
+    {
+        var bookSlug = run.BookSlug;
+        Console.WriteLine($"\n📖 Story: '{run.BookTitle}' ({bookSlug}) — Date: {run.Timestamp}");
+
+        if (!archivedScreenplayDirectories.TryGetValue(MakeArchivedRunKey(run.Timestamp, bookSlug), out var screenplaysDirectory))
+        {
+            Console.WriteLine("  Archived screenplay files not found for this historical run; left unchanged to preserve score provenance.");
+            return;
+        }
+
+        string? canonicalFallbackText = null;
+        if (File.Exists(run.BookPath))
+        {
+            var bookText = await File.ReadAllTextAsync(run.BookPath);
+            canonicalFallbackText = new AdaptationService().ConvertHeuristic(run.BookTitle, new AdaptationService().NormalizeBookText(bookText), "Author");
+        }
+
+        foreach (var m in run.ModelScores)
+            await RegradeOneModelScoreAsync(m, run, screenplaysDirectory, canonicalFallbackText).ConfigureAwait(false);
+    }
+
+    private static async Task RegradeOneModelScoreAsync(
+        ModelScoreSummary m, HistoricalBenchmarkRun run, string screenplaysDirectory, string? canonicalFallbackText)
+    {
+        var modelId = m.ModelId;
+        var effortSuffix = string.IsNullOrWhiteSpace(run.ReasoningEffort) ? "" : $"_{SanitizeFileName(run.ReasoningEffort)}";
+        var screenplayFile = Path.Combine(screenplaysDirectory, $"{SanitizeFileName(modelId)}{effortSuffix}.fountain");
+        if (!File.Exists(screenplayFile))
+        {
+            Console.WriteLine($"  Model '{modelId,-15}' -> Archived screenplay file not found; left unchanged.");
+            return;
+        }
+
+        var screenplayText = await File.ReadAllTextAsync(screenplayFile);
+        var newSyntax = DeterministicSyntaxScorer.Evaluate(screenplayText);
+        m.SyntaxAudit = newSyntax;
+        m.IsGenerationFallback = canonicalFallbackText is not null
+            && string.Equals(screenplayText, canonicalFallbackText, StringComparison.Ordinal);
+
+        // Recompute composite score if live qual score is valid (>= 0)
+        if (m.AvgOverallQualitative >= 0)
+            m.CompositeScore = Math.Round((newSyntax.OverallSyntaxScore * 0.40) + (m.AvgOverallQualitative * 10.0 * 0.60), 1);
+
+        var fallbackTag = m.IsGenerationFallback ? " ⚠️ FALLBACK DRAFT (not real model output)" : "";
+        Console.WriteLine($"  Model '{modelId,-15}' -> Syntax: {newSyntax.OverallSyntaxScore,5:F1}% (Format: {newSyntax.FormatComplianceScore,3:F0}%, Budget: {newSyntax.SceneBudgetScore,3:F0}%, Pacing: {newSyntax.DialoguePacingScore,3:F0}%, Char: {newSyntax.CharacterDisambiguationScore,3:F0}%, Music: {newSyntax.MusicSpecScore,3:F0}%) | Composite: {m.CompositeScore:F1}{fallbackTag}");
     }
 
     private static Dictionary<string, string> FindArchivedScreenplayDirectories(string workspaceRoot)

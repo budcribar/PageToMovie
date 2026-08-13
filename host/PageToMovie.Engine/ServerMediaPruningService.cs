@@ -104,56 +104,66 @@ namespace PageToMovie.Engine
             // Pass 0: aggressive prune — synced files only, but past a short grace period rather
             // than the full age window, since the client has already confirmed a local copy.
             var aggressiveCutoff = DateTime.UtcNow - TimeSpan.FromMinutes(Math.Max(1, _opts.AggressivePruneGraceMinutes));
-            foreach (var c in candidates.Where(c => c.LastWriteTimeUtc < aggressiveCutoff && TryDelete(c)).ToList())
-            {
-                deletedCount++;
-                candidates.Remove(c);
-            }
+            deletedCount += PruneOlderThan(candidates, aggressiveCutoff);
 
             // Pass 1: age-based prune (synced files only) — mostly redundant with Pass 0 above
             // (aggressiveCutoff is always >= cutoff), kept as a harmless fallback.
-            var cutoff = DateTime.UtcNow - maxAge;
-            foreach (var c in candidates.Where(c => c.LastWriteTimeUtc < cutoff && TryDelete(c)).ToList())
-            {
-                deletedCount++;
-                candidates.Remove(c);
-            }
+            deletedCount += PruneOlderThan(candidates, DateTime.UtcNow - maxAge);
 
             // Pass 2: emergency disk-pressure prune (synced files only), oldest first.
+            deletedCount += EmergencyPruneForDisk(candidates, projectsRoot, maxDiskPercent);
+
+            return deletedCount;
+        }
+
+        private int PruneOlderThan(List<MediaCandidate> candidates, DateTime cutoff)
+        {
+            var deleted = 0;
+            foreach (var c in candidates.Where(c => c.LastWriteTimeUtc < cutoff && TryDelete(c)).ToList())
+            {
+                deleted++;
+                candidates.Remove(c);
+            }
+            return deleted;
+        }
+
+        private int EmergencyPruneForDisk(List<MediaCandidate> candidates, string projectsRoot, double maxDiskPercent)
+        {
             try
             {
                 var driveRoot = Path.GetPathRoot(Path.GetFullPath(projectsRoot));
-                if (!string.IsNullOrEmpty(driveRoot))
-                {
-                    var drive = new DriveInfo(driveRoot);
-                    if (drive.IsReady && drive.TotalSize > 0)
-                    {
-                        double UsedPercent() =>
-                            (double)(drive.TotalSize - drive.AvailableFreeSpace) / drive.TotalSize * 100.0;
+                if (string.IsNullOrEmpty(driveRoot)) return 0;
+                var drive = new DriveInfo(driveRoot);
+                if (!drive.IsReady || drive.TotalSize <= 0) return 0;
+                if (DriveUsedPercent(drive) <= maxDiskPercent) return 0;
 
-                        if (UsedPercent() > maxDiskPercent)
-                        {
-                            _logger.LogWarning(
-                                "Disk usage ({UsedPercent:F1}%) exceeds max threshold ({MaxPercent:F1}%). " +
-                                "Emergency-pruning synced media oldest-first.",
-                                UsedPercent(), maxDiskPercent);
-
-                            foreach (var c in candidates.OrderBy(c => c.LastWriteTimeUtc).ToList())
-                            {
-                                if (UsedPercent() <= maxDiskPercent) break;
-                                if (TryDelete(c)) deletedCount++;
-                            }
-                        }
-                    }
-                }
+                _logger.LogWarning(
+                    "Disk usage ({UsedPercent:F1}%) exceeds max threshold ({MaxPercent:F1}%). " +
+                    "Emergency-pruning synced media oldest-first.",
+                    DriveUsedPercent(drive), maxDiskPercent);
+                return DeleteOldestUntilUnderQuota(candidates, drive, maxDiskPercent);
             }
             catch (Exception ex)
             {
                 _logger.LogDebug(ex, "Disk usage check skipped during pruning.");
+                return 0;
             }
-
-            return deletedCount;
         }
+
+        private int DeleteOldestUntilUnderQuota(
+            List<MediaCandidate> candidates, DriveInfo drive, double maxDiskPercent)
+        {
+            var deleted = 0;
+            foreach (var c in candidates.OrderBy(c => c.LastWriteTimeUtc).ToList())
+            {
+                if (DriveUsedPercent(drive) <= maxDiskPercent) break;
+                if (TryDelete(c)) deleted++;
+            }
+            return deleted;
+        }
+
+        private static double DriveUsedPercent(DriveInfo drive) =>
+            (double)(drive.TotalSize - drive.AvailableFreeSpace) / drive.TotalSize * 100.0;
 
         private sealed record MediaCandidate(string ProjectId, string RelativePath, string FullPath, DateTime LastWriteTimeUtc);
 
