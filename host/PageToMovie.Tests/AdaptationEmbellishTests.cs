@@ -18,7 +18,7 @@ public sealed class AdaptationEmbellishTests
         var enriched = Fountain(scenes: 3, tag: "lantern-lit, breath fogging the cold air");
         var chat = new FakeChat(_ => enriched);
 
-        var result = await new AdaptationService().EmbellishAsync(
+        var result = await AdaptationService.EmbellishAsync(
             input, "illustrated_picture_book", chat, bookText: "Once upon a cold night...", model: "grok-4.5");
 
         Assert.True(result.Ok);
@@ -36,7 +36,7 @@ public sealed class AdaptationEmbellishTests
         var added = Fountain(scenes: 4, tag: "over-enriched"); // model wrongly invented a scene
         var chat = new FakeChat(_ => added);
 
-        var result = await new AdaptationService().EmbellishAsync(input, "photoreal_live_action", chat);
+        var result = await AdaptationService.EmbellishAsync(input, "photoreal_live_action", chat);
 
         Assert.False(result.Ok);
         Assert.False(result.StructurePreserved);
@@ -53,7 +53,7 @@ public sealed class AdaptationEmbellishTests
         string? seenUser = null;
         var chat = new FakeChat(u => { seenUser = u; return Fountain(scenes: 2, tag: "enriched"); });
 
-        await new AdaptationService().EmbellishAsync(
+        await AdaptationService.EmbellishAsync(
             input, "auto", chat, bookText: "MAGIC_BOOK_MARKER text of the source");
 
         Assert.NotNull(seenUser);
@@ -72,7 +72,7 @@ public sealed class AdaptationEmbellishTests
             return Fountain(scenes: Math.Max(1, n), tag: "lantern-lit");
         });
 
-        var result = await new AdaptationService().EmbellishAsync(input, "auto", chat);
+        var result = await AdaptationService.EmbellishAsync(input, "auto", chat);
 
         Assert.True(result.Ok);
         Assert.True(result.StructurePreserved);

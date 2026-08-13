@@ -108,7 +108,7 @@ public static partial class Program
                 new PageToMovieOptions { WorkspaceRoot = workspaceRoot }));
             sharedBook = await sharedCache.RegisterAsync(
                 bookText, sharedCacheUser, $"benchmark:{bookSlug}", sharedCacheVisibility);
-            var sharedPrompt = await new AdaptationService().BuildSystemPromptAsync(generationRuntimeMinutes);
+            var sharedPrompt = await AdaptationService.BuildSystemPromptAsync(generationRuntimeMinutes);
             sharedPromptHash = Convert.ToHexString(
                 SHA256.HashData(Encoding.UTF8.GetBytes(sharedPrompt))).ToLowerInvariant();
         }
@@ -122,9 +122,8 @@ public static partial class Program
         // used below to detect (and refuse to trust) both live fallbacks and previously-poisoned
         // disk cache entries, so a real generation failure never gets silently graded as a model's
         // actual output. See ModelScoreSummary.IsGenerationFallback.
-        var adaptationFacade = new AdaptationService();
-        var canonicalFallbackText = adaptationFacade.ConvertHeuristic(
-            Path.GetFileNameWithoutExtension(bookPath), adaptationFacade.NormalizeBookText(bookText), "Author");
+        var canonicalFallbackText = AdaptationService.ConvertHeuristic(
+            Path.GetFileNameWithoutExtension(bookPath), AdaptationService.NormalizeBookText(bookText), "Author");
         var generationFallbacks = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         // Effort suffix keeps a max-effort run from silently reusing (or clobbering) a cached
@@ -159,7 +158,7 @@ public static partial class Program
         // prompts/book_to_fountain.txt, so this is the exact text every model above just ran
         // under, not an approximation). Judges need to see this to suggest a REAL prompt fix
         // instead of guessing blind at what the prompt might already say.
-        var generationSystemPrompt = await new AdaptationService().BuildSystemPromptAsync(generationRuntimeMinutes);
+        var generationSystemPrompt = await AdaptationService.BuildSystemPromptAsync(generationRuntimeMinutes);
 
         // Fallback-poisoned screenplays are already excluded from scoring (IsGenerationFallback) —
         // don't also make every judge read them. They're near-duplicates of the raw book text, so
@@ -1090,7 +1089,7 @@ FADE OUT.";
         if (File.Exists(run.BookPath))
         {
             var bookText = await File.ReadAllTextAsync(run.BookPath);
-            canonicalFallbackText = new AdaptationService().ConvertHeuristic(run.BookTitle, new AdaptationService().NormalizeBookText(bookText), "Author");
+            canonicalFallbackText = AdaptationService.ConvertHeuristic(run.BookTitle, AdaptationService.NormalizeBookText(bookText), "Author");
         }
 
         foreach (var m in run.ModelScores)

@@ -214,7 +214,7 @@ public sealed class CastPackageCrossCheckTests
     [Fact]
     public void Facade_CrossCheckCast_matches_static_Evaluate()
     {
-        var viaFacade = new AdaptationService().CrossCheckCast(MaryGroupFountain, GroupCast, MaryBook);
+        var viaFacade = AdaptationService.CrossCheckCast(MaryGroupFountain, GroupCast, MaryBook);
         var viaStatic = CastPackageCrossCheck.Evaluate(MaryGroupFountain, GroupCast, MaryBook);
         Assert.Equal(viaStatic.Ok, viaFacade.Ok);
         Assert.Equal(viaStatic.Score, viaFacade.Score);

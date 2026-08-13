@@ -522,8 +522,7 @@ public static string NormalizeText(string text)
             responses, bookRegistry, bookFileSessions, useFakes,
             projectId, projectDir, current, bookText: null, model, onProgress,
             ScreenplayEnrichFiles.ReskinInstruction, attachBook: false, label: "Look");
-        var result = await new AdaptationService()
-            .ReskinAsync(current, visualMedium, chat, model, progress, ct, viaFiles)
+        var result = await AdaptationService.ReskinAsync(current, visualMedium, chat, model, progress, ct, viaFiles)
             .ConfigureAwait(false);
 
         return ApplyDraftEdit(store, projectId, result,
@@ -571,8 +570,7 @@ public static string NormalizeText(string text)
             projectId, projectDir, current, bookText, model, onProgress,
             ScreenplayEnrichFiles.EnrichInstruction, attachBook: true, label: "Enrich");
 
-        var result = await new AdaptationService()
-            .EmbellishAsync(current, visualMedium, chat, bookText, model, progress, ct, viaFiles)
+        var result = await AdaptationService.EmbellishAsync(current, visualMedium, chat, bookText, model, progress, ct, viaFiles)
             .ConfigureAwait(false);
 
         return ApplyDraftEdit(store, projectId, result,
@@ -661,8 +659,7 @@ public static string NormalizeText(string text)
             responses, bookRegistry, bookFileSessions, useFakes,
             projectId, projectDir, baseFountain, bookText: null, model, onProgress,
             ScreenplayEnrichFiles.TrimInstruction(target, natural), attachBook: false, label: "Fit length");
-        var result = await new AdaptationService()
-            .TrimAsync(baseFountain, target, natural, chat, model, progress, ct, viaFiles)
+        var result = await AdaptationService.TrimAsync(baseFountain, target, natural, chat, model, progress, ct, viaFiles)
             .ConfigureAwait(false);
 
         return ApplyDraftEdit(store, projectId, result,
@@ -965,8 +962,7 @@ public static string NormalizeText(string text)
         var project = await store.GetProjectAsync(projectId, ct).ConfigureAwait(false);
         var bookIdentity = await bookRegistry.RegisterAsync(
             book, cacheUserId, projectId, (project?.VisibilityMode ?? ProjectVisibility.Private).ToString(), ct).ConfigureAwait(false);
-        var prompt = await new AdaptationService()
-            .BuildSystemPromptAsync(minutes, ct).ConfigureAwait(false);
+        var prompt = await AdaptationService.BuildSystemPromptAsync(minutes, ct).ConfigureAwait(false);
         var promptHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(prompt))).ToLowerInvariant();
         var promptVersion = "book-to-fountain-" + promptHash[..12];
         var behaviorVersions = JsonSerializer.Serialize(new
@@ -998,7 +994,7 @@ public static string NormalizeText(string text)
             return state;
 
         onProgress?.Invoke($"Reused shared adaptation cache {cached.ArtifactId}.");
-        var cachedFountain = new AdaptationService().FixDraftDate(cachedConversion.Fountain);
+        var cachedFountain = AdaptationService.FixDraftDate(cachedConversion.Fountain);
         var cachedSave = SaveDraft(store, projectId, cachedFountain);
         if (!cachedSave.Ok)
             return new AdaptationCacheState
@@ -1048,7 +1044,6 @@ public static string NormalizeText(string text)
         bool useFakes)
     {
         // Stage‑1 generation goes through Adaptation façade (not a reimplementation).
-        var adaptation = new AdaptationService();
         var onGate = BindStructuralGateLogger(errorLogger, projectId, jobId);
         IProgress<string>? progressAdapter = onProgress is null
             ? null
@@ -1061,7 +1056,7 @@ public static string NormalizeText(string text)
             bookFileSessionFactory, cache.BookIdentity, book, model, onProgress, ct)
             .ConfigureAwait(false);
 
-        var result = await adaptation.ConvertAsync(
+        var result = await AdaptationService.ConvertAsync(
             new AdaptationRequest
             {
                 BookText = book,
@@ -1101,7 +1096,7 @@ public static string NormalizeText(string text)
             result, conversion, visionFromScript, cache, bookRegistry, cacheUserId,
             model, generationTemperature, onProgress, ct).ConfigureAwait(false);
 
-        fountain = new AdaptationService().FixDraftDate(fountain);
+        fountain = AdaptationService.FixDraftDate(fountain);
         var save = SaveDraft(store, projectId, fountain);
         if (!save.Ok) return save;
         WriteMaxBase(store, projectId, fountain); // D0: full-length base for Trim (Fit length)
@@ -1147,8 +1142,7 @@ public static string NormalizeText(string text)
     private static SaveResult SaveHeuristicDraft(
         ProjectStore store, string projectId, string title, string book, string? author)
     {
-        var hAdaptation = new AdaptationService();
-        var hFountain = hAdaptation.FixDraftDate(hAdaptation.ConvertHeuristic(title, book, author));
+        var hFountain = AdaptationService.FixDraftDate(AdaptationService.ConvertHeuristic(title, book, author));
         var hSave = SaveDraft(store, projectId, hFountain);
         if (!hSave.Ok) return hSave;
         hSave.Message = "Screenplay draft ready — review and approve";
@@ -1477,7 +1471,7 @@ public static string NormalizeText(string text)
 
     /// <summary>Heuristic book text → Fountain draft (offline stub path).</summary>
     public static string BookTextToFountainDraft(string title, string bookText) =>
-        new AdaptationService().ConvertHeuristic(title, bookText);
+        AdaptationService.ConvertHeuristic(title, bookText);
 
     private static MetaDto ReadMeta(ProjectStore store, string projectId)
     {

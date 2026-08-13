@@ -34,9 +34,8 @@ public sealed class AdaptationGoldenFixtureTests
     public void Mary_analyze_and_natural_runtime_are_short_book()
     {
         var book = Read("mary_had_a_little_lamb.txt");
-        var svc = new AdaptationService();
-        var analysis = svc.AnalyzeBook(book);
-        var runtime = svc.EstimateNaturalRuntime(book);
+        var analysis = AdaptationService.AnalyzeBook(book);
+        var runtime = AdaptationService.EstimateNaturalRuntime(book);
 
         Assert.True(analysis.TextWords > 20, $"words={analysis.TextWords}");
         Assert.True(analysis.ReadyForStage1, string.Join("; ", analysis.Notes));
@@ -50,9 +49,8 @@ public sealed class AdaptationGoldenFixtureTests
     public void Buster_analyze_ready_for_stage1()
     {
         var book = Read("buster_the_noodlehead_dog.txt");
-        var svc = new AdaptationService();
-        var analysis = svc.AnalyzeBook(book);
-        var runtime = svc.EstimateNaturalRuntime(book);
+        var analysis = AdaptationService.AnalyzeBook(book);
+        var runtime = AdaptationService.EstimateNaturalRuntime(book);
 
         Assert.True(analysis.TextWords > 50, $"words={analysis.TextWords}");
         Assert.True(analysis.ReadyForStage1, string.Join("; ", analysis.Notes));
@@ -67,11 +65,10 @@ public sealed class AdaptationGoldenFixtureTests
         string bookFile, string title, string author)
     {
         var book = Read(bookFile);
-        var svc = new AdaptationService();
-        var fountain = svc.FixDraftDate(svc.ConvertHeuristic(title, book, author));
+        var fountain = AdaptationService.FixDraftDate(AdaptationService.ConvertHeuristic(title, book, author));
 
         Assert.False(string.IsNullOrWhiteSpace(fountain));
-        Assert.True(svc.LooksLikeGoodFountain(fountain), "LooksLikeGoodFountain failed");
+        Assert.True(AdaptationService.LooksLikeGoodFountain(fountain), "LooksLikeGoodFountain failed");
         Assert.Matches(new Regex(@"(?im)^(INT|EXT|EST)", RegexOptions.Multiline, CommonRegex.Timeout), fountain);
         Assert.Contains("Title:", fountain, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("NARRATOR", fountain, StringComparison.OrdinalIgnoreCase);
@@ -84,9 +81,8 @@ public sealed class AdaptationGoldenFixtureTests
     {
         var fountain = Read("mary_reference.fountain");
         var book = Read("mary_had_a_little_lamb.txt");
-        var svc = new AdaptationService();
 
-        Assert.True(svc.LooksLikeGoodFountain(fountain));
+        Assert.True(AdaptationService.LooksLikeGoodFountain(fountain));
 
         // Scene headings + dialogue shape (line scan — no Engine FountainParser)
         var headings = CommonRegex.Matches(fountain, @"(?im)^(INT|EXT)\.\s+\S+").Count;
@@ -137,7 +133,7 @@ public sealed class AdaptationGoldenFixtureTests
             }
             """;
 
-        var report = svc.CrossCheckCast(fountain, cast, book);
+        var report = AdaptationService.CrossCheckCast(fountain, cast, book);
         Assert.True(report.Ok, string.Join("; ", report.Failures));
         Assert.Empty(report.SpeakersMissingFromBook);
         Assert.Contains("Character_Children", report.MatchedKeys);
@@ -150,9 +146,8 @@ public sealed class AdaptationGoldenFixtureTests
     public void ResolveTargetMinutes_override_clamps_and_sets_mode()
     {
         var book = Read("mary_had_a_little_lamb.txt");
-        var svc = new AdaptationService();
-        var natural = svc.EstimateNaturalRuntime(book);
-        var reduced = svc.ResolveTargetMinutes(book, overrideMinutes: 2);
+        var natural = AdaptationService.EstimateNaturalRuntime(book);
+        var reduced = AdaptationService.ResolveTargetMinutes(book, overrideMinutes: 2);
 
         Assert.Equal(2, reduced.TargetMinutes);
         Assert.Equal(natural.NaturalMinutes, reduced.NaturalMinutes);
@@ -164,9 +159,8 @@ public sealed class AdaptationGoldenFixtureTests
     public void NormalizeBookText_is_stable_for_cache_keys()
     {
         var book = Read("buster_the_noodlehead_dog.txt");
-        var svc = new AdaptationService();
-        var a = svc.NormalizeBookText(book);
-        var b = svc.NormalizeBookText(book);
+        var a = AdaptationService.NormalizeBookText(book);
+        var b = AdaptationService.NormalizeBookText(book);
         Assert.Equal(a, b);
         Assert.False(string.IsNullOrWhiteSpace(a));
     }

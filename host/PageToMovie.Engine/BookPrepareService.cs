@@ -431,11 +431,10 @@ public sealed class BookPrepareService
         var bookForNatural = File.Exists(bookTxt)
             ? await File.ReadAllTextAsync(bookTxt, ct).ConfigureAwait(false)
             : "";
-        var adaptation = new AdaptationService();
-        var analysisFacade = adaptation.AnalyzeBook(bookForNatural);
+        var analysisFacade = AdaptationService.AnalyzeBook(bookForNatural);
         var naturalMinutes = analysisFacade.SuggestedTotalMinutes > 0
             ? analysisFacade.SuggestedTotalMinutes
-            : adaptation.EstimateNaturalRuntime(bookForNatural).NaturalMinutes;
+            : AdaptationService.EstimateNaturalRuntime(bookForNatural).NaturalMinutes;
         if (naturalMinutes > 0)
             analysis.SuggestedTotalMinutes = naturalMinutes;
     }

@@ -75,7 +75,7 @@ public sealed class CastKindClassifierTests
               }
             }
             """;
-        var report = new AdaptationService().CrossCheckCast(fountain, cast, bookText: "Mary had a little lamb. The eager children cry.");
+        var report = AdaptationService.CrossCheckCast(fountain, cast, bookText: "Mary had a little lamb. The eager children cry.");
         Assert.True(report.Ok, string.Join("; ", report.Failures));
         Assert.Contains("Character_Children", report.GroupCastKeys);
         Assert.DoesNotContain("Character_Teacher", report.GroupCastKeys);

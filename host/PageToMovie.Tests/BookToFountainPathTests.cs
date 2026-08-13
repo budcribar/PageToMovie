@@ -509,7 +509,7 @@ public class BookToFountainPathTests
         AdaptationFountain.PromptBudget? budgetOverride = null,
         string? author = null)
     {
-        var result = await new AdaptationService().ConvertAsync(
+        var result = await AdaptationService.ConvertAsync(
             new AdaptationRequest
             {
                 BookText = bookText,
