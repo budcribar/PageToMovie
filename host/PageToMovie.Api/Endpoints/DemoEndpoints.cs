@@ -314,7 +314,7 @@ public static class DemoEndpoints
 
         if (request.HasFormContentType)
         {
-            var form = await request.ReadFormAsync();
+            var form = await request.ReadFormAsync(ct);
             title = form["title"].ToString();
             description = form[ApiText.DescriptionKey].ToString();
             projectId = form[ApiText.ProjectIdKey].ToString();
@@ -334,7 +334,7 @@ public static class DemoEndpoints
         }
         else
         {
-            using var doc = await JsonDocument.ParseAsync(request.Body);
+            using var doc = await JsonDocument.ParseAsync(request.Body, cancellationToken: ct);
             var root = doc.RootElement;
             if (root.TryGetProperty("title", out var t)) title = t.GetString();
             if (root.TryGetProperty(ApiText.DescriptionKey, out var d)) description = d.GetString();
@@ -471,7 +471,7 @@ public static class DemoEndpoints
                     await demos.SetStatusAsync(entry.Id, DemoCatalogService.DemoStatuses.Public, user.UserId, "Re-publish: YouTube V2 replace", ct);
                 entry = await demos.TryGetAsync(entry.Id, ct) ?? entry;
                 var demoIdForUpload = entry.Id;
-                _ = Task.Run(() => youTubePublisher.PublishAsync(demoIdForUpload, CancellationToken.None));
+                _ = Task.Run(() => youTubePublisher.PublishAsync(demoIdForUpload, ct));
             }
             else
             {
@@ -524,12 +524,13 @@ public static class DemoEndpoints
                         "demo",
                         scene: null,
                         clip: null,
-                        user.UserId);
+                        user.UserId,
+                        ct);
                 }
                 catch { /* non-fatal */ }
 
                 var demoIdForUpload = entry.Id;
-                _ = Task.Run(() => youTubePublisher.PublishAsync(demoIdForUpload, CancellationToken.None));
+                _ = Task.Run(() => youTubePublisher.PublishAsync(demoIdForUpload, ct));
             }
         }
         else if (canReplace)
@@ -549,7 +550,7 @@ public static class DemoEndpoints
                 await demos.SetStatusAsync(entry.Id, DemoCatalogService.DemoStatuses.Public, user.UserId, "Re-publish: YouTube V2 replace", ct);
             entry = await demos.TryGetAsync(entry.Id, ct) ?? entry;
             var demoIdForUpload = entry.Id;
-            _ = Task.Run(() => youTubePublisher.PublishAsync(demoIdForUpload, CancellationToken.None));
+            _ = Task.Run(() => youTubePublisher.PublishAsync(demoIdForUpload, ct));
         }
         else
         {
@@ -566,7 +567,7 @@ public static class DemoEndpoints
                 ct: ct);
             // Always push to YouTube — gallery only lists films with a YouTube id.
             var demoIdForUpload = entry.Id;
-            _ = Task.Run(() => youTubePublisher.PublishAsync(demoIdForUpload, CancellationToken.None));
+            _ = Task.Run(() => youTubePublisher.PublishAsync(demoIdForUpload, ct));
         }
 
         return Results.Ok(new

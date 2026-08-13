@@ -949,7 +949,7 @@ public static class AdminEndpoints
         return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired }, statusCode: StatusCodes.Status403Forbidden);
 
     using var reader = new StreamReader(http.Request.Body);
-    var rawJson = await reader.ReadToEndAsync();
+    var rawJson = await reader.ReadToEndAsync(http.RequestAborted);
     try
     {
         if (!SupportedModelCatalog.TryLoadFromJson(rawJson))
@@ -1230,7 +1230,7 @@ public static class AdminEndpoints
         // Newly approved, or re-approved with a new local movie (V2 replace) → publish in the background.
         // Publisher no-ops when already on YouTube with no local movie.mp4.
         if (status == DemoCatalogService.DemoStatuses.Public)
-            _ = Task.Run(() => youTubePublisher.PublishAsync(demoId, CancellationToken.None));
+            _ = Task.Run(() => youTubePublisher.PublishAsync(demoId, ct));
 
         return Results.Ok(new { ok = true, demo = ApiEndpointHelpers.DemoAdminDto(d) });
     }

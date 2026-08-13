@@ -556,7 +556,7 @@ public static class ProjectEndpoints
         // never sees this; the /api/users/search endpoint already keeps raw emails server-side.
         if (targetHandle is not null && targetEmail is null)
         {
-            var target = await userDb.GetUserByUsernameAsync(targetHandle);
+            var target = await userDb.GetUserByUsernameAsync(targetHandle, ct);
             targetEmail = target?.Email;
         }
 

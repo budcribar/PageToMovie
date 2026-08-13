@@ -290,18 +290,18 @@ public static class AdaptationEndpoints
         string text;
         if (req.HasFormContentType)
         {
-            var form = await req.ReadFormAsync();
+            var form = await req.ReadFormAsync(ct);
             text = form["text"].ToString() ?? form["content"].ToString() ?? "";
             if (string.IsNullOrEmpty(text) && form.Files.Count > 0)
             {
                 using var reader = new StreamReader(form.Files[0].OpenReadStream());
-                text = await reader.ReadToEndAsync();
+                text = await reader.ReadToEndAsync(ct);
             }
         }
         else
         {
             using var reader = new StreamReader(req.Body);
-            var body = await reader.ReadToEndAsync();
+            var body = await reader.ReadToEndAsync(ct);
             // Accept raw text or JSON { "text": "..." }
             text = body;
             if (body.TrimStart().StartsWith('{'))
@@ -363,7 +363,7 @@ public static class AdaptationEndpoints
         if (req.ContentLength is > 0 || req.ContentType is not null)
         {
             using var reader = new StreamReader(req.Body);
-            var body = await reader.ReadToEndAsync();
+            var body = await reader.ReadToEndAsync(ct);
             if (!string.IsNullOrWhiteSpace(body))
             {
                 if (body.TrimStart().StartsWith('{'))

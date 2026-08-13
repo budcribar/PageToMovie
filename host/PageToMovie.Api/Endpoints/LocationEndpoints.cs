@@ -173,7 +173,7 @@ public static class LocationEndpoints
                 }, statusCode: StatusCodes.Status423Locked);
         }
         var vi = index is > 0 ? index.Value : 1;
-        var path = await locations.LockVariantAsync(id, locKey, vi);
+        var path = await locations.LockVariantAsync(id, locKey, vi, ct);
         return Results.Ok(new
         {
             ok = true,
