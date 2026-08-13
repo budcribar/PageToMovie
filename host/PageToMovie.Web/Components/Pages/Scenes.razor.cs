@@ -86,36 +86,30 @@ public partial class Scenes : IAsyncDisposable
         if (List._scenes is not null)
         {
             foreach (var s in List._scenes)
-            {
-                foreach (var c in s.CharactersOnScreen.Where(c => !string.IsNullOrWhiteSpace(c)))
-                    set.Add(c);
-            }
+                AddNonEmptyNames(set, s.CharactersOnScreen);
         }
         if (List._detail is not null)
         {
-            foreach (var c in List._detail.CharactersOnScreen.Where(c => !string.IsNullOrWhiteSpace(c)))
-                set.Add(c);
-
+            AddNonEmptyNames(set, List._detail.CharactersOnScreen);
             if (List._detail.Clips is not null)
             {
                 foreach (var cl in List._detail.Clips)
-                {
-                    foreach (var c in cl.CharactersOnScreen.Where(c => !string.IsNullOrWhiteSpace(c)))
-                        set.Add(c);
-                }
+                    AddNonEmptyNames(set, cl.CharactersOnScreen);
             }
         }
-        if (ClipForm._clipEditorCast is not null)
-        {
-            foreach (var c in ClipForm._clipEditorCast.Where(c => !string.IsNullOrWhiteSpace(c)))
-                set.Add(c);
-        }
-        if (List._castMissing is not null)
-        {
-            foreach (var c in List._castMissing.Where(c => !string.IsNullOrWhiteSpace(c)))
-                set.Add(c);
-        }
+        AddNonEmptyNames(set, ClipForm._clipEditorCast);
+        AddNonEmptyNames(set, List._castMissing);
         return set.OrderBy(c => ShortChar(c), StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private static void AddNonEmptyNames(HashSet<string> set, IEnumerable<string>? names)
+    {
+        if (names is null) return;
+        foreach (var c in names)
+        {
+            if (!string.IsNullOrWhiteSpace(c))
+                set.Add(c);
+        }
     }
 
 

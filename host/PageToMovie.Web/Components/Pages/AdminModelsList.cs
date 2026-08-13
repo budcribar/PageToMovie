@@ -41,40 +41,50 @@ public partial class AdminModelsCatalog
             _filterStatus = "";
         }
 
-        internal IEnumerable<JsonObject> FilteredModels => _modelList.Where(m =>
+        internal IEnumerable<JsonObject> FilteredModels => _modelList.Where(MatchesFilters);
+
+        private bool MatchesFilters(JsonObject m) =>
+            MatchesQuery(m) && MatchesCapability(m) && MatchesProvider(m) && MatchesStatus(m);
+
+        private bool MatchesQuery(JsonObject m)
         {
+            if (string.IsNullOrWhiteSpace(_filterQuery)) return true;
+            var q = _filterQuery.Trim();
             var modelId = m["id"]?.ToString() ?? "";
             var displayName = m["displayName"]?.ToString() ?? "";
-            var cap = m["capability"]?.ToString() ?? "";
             var prov = m["provider"]?.ToString() ?? "";
-            var isEnabled = IsEnabled(m);
-            var isLab = m.TryGetPropertyValue("labMode", out var labNode) && labNode?.GetValue<bool>() == true;
+            return modelId.Contains(q, StringComparison.OrdinalIgnoreCase)
+                || displayName.Contains(q, StringComparison.OrdinalIgnoreCase)
+                || prov.Contains(q, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private bool MatchesCapability(JsonObject m)
+        {
+            if (string.IsNullOrWhiteSpace(_filterCapability)) return true;
+            var cap = m["capability"]?.ToString() ?? "";
+            return string.Equals(cap, _filterCapability, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private bool MatchesProvider(JsonObject m)
+        {
+            if (string.IsNullOrWhiteSpace(_filterProvider)) return true;
+            var prov = m["provider"]?.ToString() ?? "";
+            return string.Equals(prov, _filterProvider, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private bool MatchesStatus(JsonObject m)
+        {
             var isDeprecated = IsDeprecated(m);
-
-            if (!string.IsNullOrWhiteSpace(_filterQuery))
-            {
-                var q = _filterQuery.Trim();
-                if (!modelId.Contains(q, StringComparison.OrdinalIgnoreCase) &&
-                    !displayName.Contains(q, StringComparison.OrdinalIgnoreCase) &&
-                    !prov.Contains(q, StringComparison.OrdinalIgnoreCase))
-                    return false;
-            }
-
-            if (!string.IsNullOrWhiteSpace(_filterCapability) && !string.Equals(cap, _filterCapability, StringComparison.OrdinalIgnoreCase))
-                return false;
-
-            if (!string.IsNullOrWhiteSpace(_filterProvider) && !string.Equals(prov, _filterProvider, StringComparison.OrdinalIgnoreCase))
-                return false;
-
-            if (_filterStatus == "enabled") return isEnabled && !isDeprecated;
-            if (_filterStatus == "disabled") return !isEnabled && !isDeprecated;
-            if (_filterStatus == "lab") return isLab && !isDeprecated;
             if (_filterStatus == Deprecated) return isDeprecated;
             if (_filterStatus == "all") return true;
-
+            if (isDeprecated) return false;
+            if (_filterStatus == "enabled") return IsEnabled(m);
+            if (_filterStatus == "disabled") return !IsEnabled(m);
+            if (_filterStatus == "lab")
+                return m.TryGetPropertyValue("labMode", out var labNode) && labNode?.GetValue<bool>() == true;
             // Default (empty filterStatus): hide deprecated models!
-            return !isDeprecated;
-        });
+            return true;
+        }
 
         internal List<string> GetAvailableProviders() => _modelList
             .Select(m => m["provider"]?.ToString())

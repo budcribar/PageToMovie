@@ -1,0 +1,53 @@
+@using Microsoft.AspNetCore.Components.Forms
+
+<h5 class="card-title mb-1">Import source</h5>
+<p class="text-muted small mb-3">PDF, text, or fountain — then the pipeline runs. You can edit after.</p>
+
+<label class="ptm-dropzone @(Host.Busy || Host.Jobs.JobRunning || Host.Drop._importing || !Host.Gate.ImportReady ? "ptm-dropzone--disabled" : "") @(Host.Drop._dragOver && Host.Gate.ImportReady ? "ptm-dropzone--active" : "")"
+       data-testid="import-dropzone"
+       @ondragenter="Host.Drop.OnDragEnter"
+       @ondragenter:preventDefault
+       @ondragover="Host.Drop.OnDragOver"
+       @ondragover:preventDefault
+       @ondragleave="Host.Drop.OnDragLeave"
+       @ondrop="Host.Drop.OnDrop"
+       @ondrop:preventDefault>
+    @* @key remounts InputFile after each pick so Blazor's file map stays valid. *@
+    <InputFile @key="Host.Drop._inputFileKey"
+               OnChange="Host.Drop.OnSourceSelectedAsync"
+               class="ptm-dropzone__input"
+               accept=".fountain,.spmd,.pdf,.txt,text/plain,application/pdf"
+               data-testid="import-file-input"
+               disabled="@(Host.Busy || Host.Jobs.JobRunning || Host.Drop._importing || !Host.Gate.ImportReady)" />
+    <div class="ptm-dropzone__inner" aria-hidden="true">
+        <div class="ptm-dropzone__icon">📖</div>
+        <div class="ptm-dropzone__title">Drop your book here</div>
+        <div class="ptm-dropzone__hint">or click to choose a file</div>
+        <div class="ptm-dropzone__types">.pdf · .txt · .fountain</div>
+    </div>
+</label>
+
+@if (!string.IsNullOrWhiteSpace(Host.Drop._chosenFileName))
+{
+    <div class="fs-file-chosen mt-2" data-testid="import-file-name">
+        <span class="fs-file-chosen-label">Selected:</span>@Host.Drop._chosenFileName
+    </div>
+}
+
+
+@if (Host.Gate.CanContinueToScreenplay)
+{
+    <div class="d-flex flex-wrap gap-2 mt-3" data-testid="import-continue-actions">
+        <a class="btn btn-success btn-sm" data-testid="import-continue-screenplay" href="adaptation/screenplay">
+            Continue to screenplay →
+        </a>
+        @* B7: fountain/book draft ready — DecisionCard is the pre-gen hub *@
+        <a class="btn btn-outline-primary btn-sm" data-testid="import-go-estimate" href="cost">
+            Go to Estimate →
+        </a>
+    </div>
+    <p class="small text-muted mt-2 mb-0" data-testid="import-estimate-hint">
+        Fountain or draft on disk: open <strong>Estimate</strong> for cost/duration and Generate or Edit plan
+        (approve the screenplay first if Estimate is still blocked).
+    </p>
+}

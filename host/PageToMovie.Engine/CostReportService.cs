@@ -1155,54 +1155,15 @@ public sealed class CostReportService
             evt["stable_beat_id"] = stableBeatId.Trim();
         if (minutesSincePrev is not null)
             evt["minutes_since_prev_take"] = Math.Round(minutesSincePrev.Value, 2);
-        if (requestedDurationSec is > 0 &&
-            Math.Abs(requestedDurationSec.Value - priced.DurationSec) >= 0.05)
-        {
-            evt["request_duration_sec"] = Math.Round(requestedDurationSec.Value, 3);
-            evt["duration_source"] = "probed";
-        }
-        else
-        {
-            evt["duration_source"] = requestedDurationSec is > 0 ? "request" : "probed_or_request";
-        }
+        StampDurationSource(evt, requestedDurationSec, priced.DurationSec);
 
         await AppendCostEventAsync(projectId, evt, save: true, ct).ConfigureAwait(false);
 
-        // H1/H9 — dual-write take to studio SQLite for aggregates (fail-open).
-        if (_userDb is not null)
-        {
-            var contribute = true;
-            try
-            {
-                // Project opt-out: cost_estimates.contribute_to_studio_averages = false
-                if (cfg.TryGetValue(Keys.CostEstimates, out var ceOpt) &&
-                    ceOpt.ValueKind == JsonValueKind.Object &&
-                    ceOpt.TryGetProperty("contribute_to_studio_averages", out var cta) &&
-                    cta.ValueKind is JsonValueKind.False)
-                    contribute = false;
-            }
-            catch { /* fail-open contribute */ }
-
-            await _userDb.TryInsertVideoTakeEventAsync(new VideoTakeEventRecord
-            {
-                ProjectId = projectId,
-                UserId = userId,
-                Scene = scene,
-                Clip = clip,
-                TakeIndex = takeIndex,
-                TakeKind = resolvedKind,
-                Model = model,
-                Resolution = resolution,
-                ListUsd = listUsd,
-                DurationSec = priced.DurationSec,
-                KeyMode = string.IsNullOrWhiteSpace(keyMode) ? "personal" : keyMode.Trim().ToLowerInvariant(),
-                StableBeatId = stableBeatId,
-                HadCharRefs = hadCharRefs ?? hasRefImage,
-                HadLocRef = hadLocRef ?? false,
-                MinutesSincePrevTake = minutesSincePrev,
-                ContributeToStudioAverages = contribute,
-            }, ct).ConfigureAwait(false);
-        }
+        await DualWriteVideoTakeAsync(
+            projectId, scene, clip, durationSec: priced.DurationSec, resolution, model,
+            hasRefImage, takeIndex, minutesSincePrev, resolvedKind, listUsd,
+            userId, keyMode, stableBeatId, hadCharRefs, hadLocRef, cfg, ct)
+            .ConfigureAwait(false);
 
         if (_credits is not null && chargeUsd > 0)
         {
@@ -1214,6 +1175,76 @@ public sealed class CostReportService
                 note: $"S{scene:D2}C{clip} {model} {priced.DurationSec:F1}s ×{mult:0.##}",
                 ct: ct).ConfigureAwait(false);
         }
+    }
+
+    private static void StampDurationSource(
+        Dictionary<string, object?> evt, double? requestedDurationSec, double pricedDurationSec)
+    {
+        if (requestedDurationSec is > 0 &&
+            Math.Abs(requestedDurationSec.Value - pricedDurationSec) >= 0.05)
+        {
+            evt["request_duration_sec"] = Math.Round(requestedDurationSec.Value, 3);
+            evt["duration_source"] = "probed";
+            return;
+        }
+        evt["duration_source"] = requestedDurationSec is > 0 ? "request" : "probed_or_request";
+    }
+
+    private async Task DualWriteVideoTakeAsync(
+        string projectId,
+        int scene,
+        int clip,
+        double durationSec,
+        string resolution,
+        string model,
+        bool hasRefImage,
+        int takeIndex,
+        double? minutesSincePrev,
+        string resolvedKind,
+        double listUsd,
+        string? userId,
+        string? keyMode,
+        string? stableBeatId,
+        bool? hadCharRefs,
+        bool? hadLocRef,
+        Dictionary<string, JsonElement> cfg,
+        CancellationToken ct)
+    {
+        if (_userDb is null) return;
+        await _userDb.TryInsertVideoTakeEventAsync(new VideoTakeEventRecord
+        {
+            ProjectId = projectId,
+            UserId = userId,
+            Scene = scene,
+            Clip = clip,
+            TakeIndex = takeIndex,
+            TakeKind = resolvedKind,
+            Model = model,
+            Resolution = resolution,
+            ListUsd = listUsd,
+            DurationSec = durationSec,
+            KeyMode = string.IsNullOrWhiteSpace(keyMode) ? "personal" : keyMode.Trim().ToLowerInvariant(),
+            StableBeatId = stableBeatId,
+            HadCharRefs = hadCharRefs ?? hasRefImage,
+            HadLocRef = hadLocRef ?? false,
+            MinutesSincePrevTake = minutesSincePrev,
+            ContributeToStudioAverages = ShouldContributeToStudioAverages(cfg),
+        }, ct).ConfigureAwait(false);
+    }
+
+    private static bool ShouldContributeToStudioAverages(Dictionary<string, JsonElement> cfg)
+    {
+        try
+        {
+            // Project opt-out: cost_estimates.contribute_to_studio_averages = false
+            if (cfg.TryGetValue(Keys.CostEstimates, out var ceOpt) &&
+                ceOpt.ValueKind == JsonValueKind.Object &&
+                ceOpt.TryGetProperty("contribute_to_studio_averages", out var cta) &&
+                cta.ValueKind is JsonValueKind.False)
+                return false;
+        }
+        catch { /* fail-open contribute */ }
+        return true;
     }
 
     /// <summary>
@@ -1719,80 +1750,80 @@ public sealed class CostReportService
         CancellationToken ct = default)
     {
         var path = await StatePathAsync(projectId, ct).ConfigureAwait(false);
+        using var rawDoc = await ReadStateDocumentAsync(path, ct).ConfigureAwait(false);
+        var merged = MergeLedgerEvent(rawDoc.RootElement, evt);
+        if (!save) return;
+        var json = JsonSerializer.Serialize(merged, JsonDefaults.Indented);
+        await File.WriteAllTextAsync(path, json + "\n", ct).ConfigureAwait(false);
+    }
 
-        JsonDocument rawDoc;
-        if (File.Exists(path))
+    private static async Task<JsonDocument> ReadStateDocumentAsync(string path, CancellationToken ct)
+    {
+        if (!File.Exists(path))
+            return JsonDocument.Parse("{}");
+        try
         {
-            try
-            {
-                var bytes = await File.ReadAllBytesAsync(path, ct).ConfigureAwait(false);
-                rawDoc = JsonDocument.Parse(bytes);
-            }
-            catch
-            {
-                rawDoc = JsonDocument.Parse("{}");
-            }
+            var bytes = await File.ReadAllBytesAsync(path, ct).ConfigureAwait(false);
+            return JsonDocument.Parse(bytes);
         }
-        else
+        catch
         {
-            rawDoc = JsonDocument.Parse("{}");
+            return JsonDocument.Parse("{}");
         }
+    }
 
-        using (rawDoc)
+    private static Dictionary<string, object?> MergeLedgerEvent(JsonElement root, Dictionary<string, object?> evt)
+    {
+        var ledgerList = new List<object?>();
+        if (root.TryGetProperty(Keys.CostLedger, out var existing) &&
+            existing.ValueKind == JsonValueKind.Array)
         {
-            var ledgerList = new List<object?>();
-            if (rawDoc.RootElement.TryGetProperty(Keys.CostLedger, out var existing) &&
-                existing.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var item in existing.EnumerateArray())
-                    ledgerList.Add(item.Deserialize<object>());
-            }
-
-            var ts = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss");
-            evt.TryAdd("id", $"{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}_{ledgerList.Count:D4}");
-            evt.TryAdd("ts", ts);
-            evt.TryAdd(Keys.Currency, "USD");
-            ledgerList.Add(evt);
-            if (ledgerList.Count > 20000)
-                ledgerList = ledgerList.TakeLast(20000).ToList();
-
-            var merged = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-            foreach (var p in rawDoc.RootElement.EnumerateObject())
-            {
-                if (p.Name is Keys.CostLedger or "cost_totals")
-                    continue;
-                merged[p.Name] = p.Value.Deserialize<object>();
-            }
-
-            merged[Keys.CostLedger] = ledgerList;
-            var prevUsd = 0.0;
-            var prevEvents = 0;
-            if (rawDoc.RootElement.TryGetProperty("cost_totals", out var tot) &&
-                tot.ValueKind == JsonValueKind.Object)
-            {
-                if (tot.TryGetProperty("usd", out var u) && u.TryGetDouble(out var ud))
-                    prevUsd = ud;
-                if (tot.TryGetProperty("events", out var ev) && ev.TryGetInt32(out var en))
-                    prevEvents = en;
-            }
-
-            var addUsd = 0.0;
-            if (evt.TryGetValue("usd", out var usdObj) && usdObj is not null)
-                addUsd = Convert.ToDouble(usdObj, CultureInfo.InvariantCulture);
-
-            merged["cost_totals"] = new Dictionary<string, object?>
-            {
-                ["usd"] = Math.Round(prevUsd + addUsd, 4),
-                ["events"] = prevEvents + 1,
-                ["updated_at"] = ts,
-            };
-
-            if (save)
-            {
-                var json = JsonSerializer.Serialize(merged, JsonDefaults.Indented);
-                await File.WriteAllTextAsync(path, json + "\n", ct).ConfigureAwait(false);
-            }
+            foreach (var item in existing.EnumerateArray())
+                ledgerList.Add(item.Deserialize<object>());
         }
+
+        var ts = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss");
+        evt.TryAdd("id", $"{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}_{ledgerList.Count:D4}");
+        evt.TryAdd("ts", ts);
+        evt.TryAdd(Keys.Currency, "USD");
+        ledgerList.Add(evt);
+        if (ledgerList.Count > 20000)
+            ledgerList = ledgerList.TakeLast(20000).ToList();
+
+        var merged = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var p in root.EnumerateObject())
+        {
+            if (p.Name is Keys.CostLedger or "cost_totals")
+                continue;
+            merged[p.Name] = p.Value.Deserialize<object>();
+        }
+
+        merged[Keys.CostLedger] = ledgerList;
+        var (prevUsd, prevEvents) = ReadPreviousCostTotals(root);
+        var addUsd = 0.0;
+        if (evt.TryGetValue("usd", out var usdObj) && usdObj is not null)
+            addUsd = Convert.ToDouble(usdObj, CultureInfo.InvariantCulture);
+
+        merged["cost_totals"] = new Dictionary<string, object?>
+        {
+            ["usd"] = Math.Round(prevUsd + addUsd, 4),
+            ["events"] = prevEvents + 1,
+            ["updated_at"] = ts,
+        };
+        return merged;
+    }
+
+    private static (double PrevUsd, int PrevEvents) ReadPreviousCostTotals(JsonElement root)
+    {
+        var prevUsd = 0.0;
+        var prevEvents = 0;
+        if (!root.TryGetProperty("cost_totals", out var tot) || tot.ValueKind != JsonValueKind.Object)
+            return (prevUsd, prevEvents);
+        if (tot.TryGetProperty("usd", out var u) && u.TryGetDouble(out var ud))
+            prevUsd = ud;
+        if (tot.TryGetProperty("events", out var ev) && ev.TryGetInt32(out var en))
+            prevEvents = en;
+        return (prevUsd, prevEvents);
     }
 
     private async Task<string> StatePathAsync(string projectId, CancellationToken ct)
@@ -1851,56 +1882,59 @@ public sealed class CostReportService
         var defaultDur = GetDouble(cfg, "duration_seconds", 8);
 
         foreach (var s in scenes.EnumerateArray())
-        {
-            var sn = s.TryGetProperty(JsonKeys.SceneNumber, out var sne) && sne.TryGetInt32(out var n) ? n : 0;
-            var setting = s.TryGetProperty("setting", out var set) ? set.GetString() ?? "" : "";
-            var clips = new List<BlueprintClip>();
-            if (s.TryGetProperty("veo_clips", out var vc) && vc.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var c in vc.EnumerateArray())
-                {
-                    var cn = ClipKeying.ClipNumber(c);
-                    if (cn <= 0) continue;
-                    var dur = ClipDuration.Resolve(c, defaultDur);
-
-                    clips.Add(new BlueprintClip
-                    {
-                        ClipNumber = cn,
-                        DurationSec = dur,
-                        Continuation = c.TryGetProperty("veo_continuation_source", out var cont)
-                            ? cont.GetString() ?? "none"
-                            : "none",
-                        DialogueCharCount = CountClipDialogueChars(c),
-                        Speaker = ReadClipSpeaker(c),
-                    });
-                }
-            }
-
-            var chars = ReadStringArray(s, "characters_on_screen");
-
-            var locs = ReadStringArray(s, "location_ids");
-
-            string? primaryLoc = null;
-            if (s.TryGetProperty("primary_location_id", out var pl) &&
-                pl.GetString() is { Length: > 0 } plId)
-            {
-                primaryLoc = plId;
-                if (!locs.Contains(plId, StringComparer.OrdinalIgnoreCase))
-                    locs.Insert(0, plId);
-            }
-
-            list.Add(new BlueprintSceneClips
-            {
-                SceneNumber = sn,
-                Setting = setting,
-                Clips = clips,
-                CharactersOnScreen = chars,
-                LocationIds = locs,
-                PrimaryLocationId = primaryLoc,
-            });
-        }
+            list.Add(ReadBlueprintScene(s, defaultDur));
 
         return list.OrderBy(x => x.SceneNumber).ToList();
+    }
+
+    private static BlueprintSceneClips ReadBlueprintScene(JsonElement s, double defaultDur)
+    {
+        var sn = s.TryGetProperty(JsonKeys.SceneNumber, out var sne) && sne.TryGetInt32(out var n) ? n : 0;
+        var setting = s.TryGetProperty("setting", out var set) ? set.GetString() ?? "" : "";
+        var locs = ReadStringArray(s, "location_ids");
+        var primaryLoc = ApplyPrimaryLocation(s, locs);
+        return new BlueprintSceneClips
+        {
+            SceneNumber = sn,
+            Setting = setting,
+            Clips = ReadVeoClips(s, defaultDur),
+            CharactersOnScreen = ReadStringArray(s, "characters_on_screen"),
+            LocationIds = locs,
+            PrimaryLocationId = primaryLoc,
+        };
+    }
+
+    private static List<BlueprintClip> ReadVeoClips(JsonElement s, double defaultDur)
+    {
+        var clips = new List<BlueprintClip>();
+        if (!s.TryGetProperty("veo_clips", out var vc) || vc.ValueKind != JsonValueKind.Array)
+            return clips;
+        foreach (var c in vc.EnumerateArray())
+        {
+            var cn = ClipKeying.ClipNumber(c);
+            if (cn <= 0) continue;
+            clips.Add(new BlueprintClip
+            {
+                ClipNumber = cn,
+                DurationSec = ClipDuration.Resolve(c, defaultDur),
+                Continuation = c.TryGetProperty("veo_continuation_source", out var cont)
+                    ? cont.GetString() ?? "none"
+                    : "none",
+                DialogueCharCount = CountClipDialogueChars(c),
+                Speaker = ReadClipSpeaker(c),
+            });
+        }
+        return clips;
+    }
+
+    private static string? ApplyPrimaryLocation(JsonElement s, List<string> locs)
+    {
+        if (!s.TryGetProperty("primary_location_id", out var pl) ||
+            pl.GetString() is not { Length: > 0 } plId)
+            return null;
+        if (!locs.Contains(plId, StringComparer.OrdinalIgnoreCase))
+            locs.Insert(0, plId);
+        return plId;
     }
 
     private Dictionary<int, Dictionary<int, bool>> IndexOnDiskClips(string projectId)
@@ -1913,33 +1947,35 @@ public sealed class CostReportService
         {
             // DirectoryInfo avoids a second FileInfo stat per path for Length.
             foreach (var fi in new DirectoryInfo(videoDir).EnumerateFiles("scene_*_clip_*.mp4"))
-            {
-                var name = fi.Name;
-                // Exact scene_01_clip_02.mp4 only (not .native.mp4 sidecars)
-                if (!ClipFileNaming.IsExactClipFileName(name)) continue;
-                var stem = Path.GetFileNameWithoutExtension(name);
-                var parts = stem.Split('_');
-                if (parts.Length >= 4 &&
-                    int.TryParse(parts[1], out var sn) &&
-                    int.TryParse(parts[3], out var cn))
-                {
-                    try
-                    {
-                        if (fi.Length < 1024) continue;
-                    }
-                    catch { continue; }
-
-                    if (!map.TryGetValue(sn, out var inner))
-                    {
-                        inner = new Dictionary<int, bool>();
-                        map[sn] = inner;
-                    }
-                    inner[cn] = true;
-                }
-            }
+                TryRegisterOnDiskClip(map, fi);
         }
         catch { /* ignore */ }
         return map;
+    }
+
+    private static void TryRegisterOnDiskClip(Dictionary<int, Dictionary<int, bool>> map, FileInfo fi)
+    {
+        var name = fi.Name;
+        // Exact scene_01_clip_02.mp4 only (not .native.mp4 sidecars)
+        if (!ClipFileNaming.IsExactClipFileName(name)) return;
+        var stem = Path.GetFileNameWithoutExtension(name);
+        var parts = stem.Split('_');
+        if (parts.Length < 4 ||
+            !int.TryParse(parts[1], out var sn) ||
+            !int.TryParse(parts[3], out var cn))
+            return;
+        try
+        {
+            if (fi.Length < 1024) return;
+        }
+        catch { return; }
+
+        if (!map.TryGetValue(sn, out var inner))
+        {
+            inner = new Dictionary<int, bool>();
+            map[sn] = inner;
+        }
+        inner[cn] = true;
     }
 
     private async Task<Dictionary<int, string>> LoadHeroMapAsync(

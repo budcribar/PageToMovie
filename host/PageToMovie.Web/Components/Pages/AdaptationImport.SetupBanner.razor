@@ -1,0 +1,27 @@
+@inject AdminSessionService Session
+
+@if (!Host.Gate.ImportReady)
+{
+    <div class="alert alert-warning d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4"
+         data-testid="import-setup-required">
+        <div>
+            <strong>Setup required before import.</strong>
+            @Host.Gate._importBlockedReason
+        </div>
+        <a class="btn btn-sm btn-warning fw-semibold"
+           href="configuration?focus=planning"
+           data-testid="import-open-settings">Open Settings →</a>
+    </div>
+}
+else if (AdaptationImport.ImportGate.IsUsablePlanningModel(Host.Status!.PlanningModel))
+{
+    <div class="mb-3 d-flex flex-wrap align-items-center gap-2" data-testid="import-planning-ready">
+        <span class="badge text-bg-success">Ready to import</span>
+        @* Pipeline.Model name is provider jargon — admin only (respects the "view as user" toggle). *@
+        @if (Session.IsAdmin)
+        {
+            <span class="badge text-bg-secondary fw-normal" data-testid="import-planning-model">@Host.Status.PlanningModel</span>
+        }
+        <a class="small link-secondary" href="configuration?focus=planning">Change in Settings</a>
+    </div>
+}

@@ -73,7 +73,7 @@ public sealed class GrokImageClient : IImageClient
             // GrokChatClient/GrokVisionClient already get. Video/GeminiVideoClient submissions are
             // NOT wrapped this way: a lost response there could mean a duplicate expensive render.
             return await AiRetryPolicy.ExecuteWithTransientRetryAsync(
-                DoRequestAsync,
+                attemptNum => GenerateOnceAsync(payload, modelName, prompt, n, sw, attemptNum, ct),
                 isTransient: AiRetryPolicy.IsTransientChatFailure,
                 maxAttempts: AiRetryPolicy.DefaultTransientMaxAttempts,
                 backoffBaseMs: AiRetryPolicy.DefaultTransientBackoffMs,
@@ -94,53 +94,42 @@ public sealed class GrokImageClient : IImageClient
             }, ct);
             throw;
         }
+    }
 
-        async Task<IReadOnlyList<byte[]>> DoRequestAsync(int attemptNum)
+    private async Task<IReadOnlyList<byte[]>> GenerateOnceAsync(
+        Dictionary<string, object?> payload,
+        string modelName,
+        string prompt,
+        int n,
+        Stopwatch sw,
+        int attemptNum,
+        CancellationToken ct)
+    {
+        using var resp = await SendJsonAsync(HttpMethod.Post, EndpointGenerations, payload, ct);
+        var body = await resp.Content.ReadAsStringAsync(ct);
+        if (!resp.IsSuccessStatusCode)
         {
-            using var resp = await SendJsonAsync(HttpMethod.Post, EndpointGenerations, payload, ct);
-            var body = await resp.Content.ReadAsStringAsync(ct);
-            if (!resp.IsSuccessStatusCode)
+            await _telemetry.LogApiCallAsync(new ApiCallTelemetry
             {
-                await _telemetry.LogApiCallAsync(new ApiCallTelemetry
-                {
-                    Kind = KindImage,
-                    Endpoint = EndpointGenerations,
-                    Model = modelName,
-                    HttpStatus = (int)resp.StatusCode,
-                    DurationMs = sw.ElapsedMilliseconds,
-                    Prompt = prompt,
-                    PromptChars = prompt?.Length ?? 0,
-                    ImageCount = n,
-                    Attempt = attemptNum,
-                    Error = Trim(body, 400),
-                    Ok = false,
-                }, ct);
-                throw ChatHttpStatusException.FromResponse(resp,
-                    $"Grok image generations HTTP {(int)resp.StatusCode}: {Trim(body, 400)}");
-            }
+                Kind = KindImage,
+                Endpoint = EndpointGenerations,
+                Model = modelName,
+                HttpStatus = (int)resp.StatusCode,
+                DurationMs = sw.ElapsedMilliseconds,
+                Prompt = prompt,
+                PromptChars = prompt?.Length ?? 0,
+                ImageCount = n,
+                Attempt = attemptNum,
+                Error = Trim(body, 400),
+                Ok = false,
+            }, ct);
+            throw ChatHttpStatusException.FromResponse(resp,
+                $"Grok image generations HTTP {(int)resp.StatusCode}: {Trim(body, 400)}");
+        }
 
-            var images = ParseImageResponse(body, n, "generations");
-            if (images.Count < n)
-            {
-                await _telemetry.LogApiCallAsync(new ApiCallTelemetry
-                {
-                    Kind = KindImage,
-                    Endpoint = EndpointGenerations,
-                    Model = modelName,
-                    HttpStatus = (int)resp.StatusCode,
-                    DurationMs = sw.ElapsedMilliseconds,
-                    Prompt = prompt,
-                    PromptChars = prompt?.Length ?? 0,
-                    ImageCount = images.Count,
-                    Attempt = attemptNum,
-                    Error = $"returned {images.Count}/{n} images",
-                    Ok = false,
-                }, ct);
-                // Not retried: a content shortfall, not a transport failure.
-                throw new InvalidOperationException(
-                    $"Grok image API returned {images.Count}/{n} usable images");
-            }
-
+        var images = ParseImageResponse(body, n, "generations");
+        if (images.Count < n)
+        {
             await _telemetry.LogApiCallAsync(new ApiCallTelemetry
             {
                 Kind = KindImage,
@@ -152,10 +141,28 @@ public sealed class GrokImageClient : IImageClient
                 PromptChars = prompt?.Length ?? 0,
                 ImageCount = images.Count,
                 Attempt = attemptNum,
-                Ok = true,
+                Error = $"returned {images.Count}/{n} images",
+                Ok = false,
             }, ct);
-            return images;
+            // Not retried: a content shortfall, not a transport failure.
+            throw new InvalidOperationException(
+                $"Grok image API returned {images.Count}/{n} usable images");
         }
+
+        await _telemetry.LogApiCallAsync(new ApiCallTelemetry
+        {
+            Kind = KindImage,
+            Endpoint = EndpointGenerations,
+            Model = modelName,
+            HttpStatus = (int)resp.StatusCode,
+            DurationMs = sw.ElapsedMilliseconds,
+            Prompt = prompt,
+            PromptChars = prompt?.Length ?? 0,
+            ImageCount = images.Count,
+            Attempt = attemptNum,
+            Ok = true,
+        }, ct);
+        return images;
     }
 
     /// <summary>
@@ -458,77 +465,107 @@ public sealed class GrokImageClient : IImageClient
         Action<string>? onProgress,
         CancellationToken ct)
     {
-        async Task<(bool Ok, int Code, string Body, TimeSpan? RetryAfter)> SendAsync(JsonObject payload)
-        {
-            using var content = new StringContent(
-                payload.ToJsonString(),
-                Encoding.UTF8,
-                "application/json");
-            // Per-request Bearer — never mutate shared DefaultRequestHeaders (multi-user race).
-            using var req = new HttpRequestMessage(HttpMethod.Post, EndpointEdits) { Content = content };
-            var key = ResolveApiKey();
-            if (!string.IsNullOrWhiteSpace(key))
-                req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key.Trim());
-            using var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
-            var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-            return (resp.IsSuccessStatusCode, (int)resp.StatusCode, body, AiRetryPolicy.ParseRetryAfter(resp.Headers));
-        }
-
-        JsonObject BasePayload() => new()
-        {
-            ["model"] = modelName,
-            ["prompt"] = variantPrompt,
-            ["response_format"] = "b64_json",
-            ["aspect_ratio"] = aspectRatio.ToApiString(),
-        };
-
         if (imageUris.Count > 1)
-        {
-            // Primary multi-ref shape per xAI: "images": [ dataUri, ... ]
-            var arr = new JsonArray();
-            foreach (var u in imageUris)
-                arr.Add(u);
-            var multi = BasePayload();
-            multi["images"] = arr;
-            var (ok, code, body, retryAfter) = await SendAsync(multi).ConfigureAwait(false);
-            if (ok) return body;
+            return await PostMultiImageEditAsync(modelName, variantPrompt, aspectRatio, imageUris, onProgress, ct)
+                .ConfigureAwait(false);
+        return await PostSingleImageEditAsync(modelName, variantPrompt, aspectRatio, imageUris, ct)
+            .ConfigureAwait(false);
+    }
 
-            // Fallback: "image" as string[] (older / alternate parsers)
-            var alt = BasePayload();
-            alt[KindImage] = arr.DeepClone();
-            var (ok2, code2, body2, retryAfter2) = await SendAsync(alt).ConfigureAwait(false);
-            if (ok2) return body2;
+    private JsonObject BuildImageEditPayload(string modelName, string variantPrompt, AspectRatio aspectRatio) => new()
+    {
+        ["model"] = modelName,
+        ["prompt"] = variantPrompt,
+        ["response_format"] = "b64_json",
+        ["aspect_ratio"] = aspectRatio.ToApiString(),
+    };
 
-            // Last resort: drop last ref(s) so 3→2 still produces a portrait
-            if (imageUris.Count >= 3)
-            {
-                onProgress?.Invoke(
-                    $"3 reference images rejected by API — retrying with first 2…");
-                var two = imageUris.Take(2).ToList();
-                var cut = variantPrompt.IndexOf("CHARACTER CONTINUITY", StringComparison.OrdinalIgnoreCase);
-                if (cut < 0)
-                    cut = variantPrompt.IndexOf("IDENTITY", StringComparison.OrdinalIgnoreCase);
-                var core = cut >= 0 ? variantPrompt[cut..] : variantPrompt;
-                var prompt2 = BuildMultiImageOrderHint(2) + core;
+    private async Task<(bool Ok, int Code, string Body, TimeSpan? RetryAfter)> SendImageEditAsync(
+        JsonObject payload, CancellationToken ct)
+    {
+        using var content = new StringContent(
+            payload.ToJsonString(),
+            Encoding.UTF8,
+            "application/json");
+        // Per-request Bearer — never mutate shared DefaultRequestHeaders (multi-user race).
+        using var req = new HttpRequestMessage(HttpMethod.Post, EndpointEdits) { Content = content };
+        var key = ResolveApiKey();
+        if (!string.IsNullOrWhiteSpace(key))
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key.Trim());
+        using var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
+        var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+        return (resp.IsSuccessStatusCode, (int)resp.StatusCode, body, AiRetryPolicy.ParseRetryAfter(resp.Headers));
+    }
 
-                return await PostImageEditAsync(
-                    modelName, prompt2, aspectRatio, two, onProgress, ct).ConfigureAwait(false);
-            }
+    private async Task<string?> PostMultiImageEditAsync(
+        string modelName,
+        string variantPrompt,
+        AspectRatio aspectRatio,
+        IReadOnlyList<string> imageUris,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
+        // Primary multi-ref shape per xAI: "images": [ dataUri, ... ]
+        var arr = new JsonArray();
+        foreach (var u in imageUris)
+            arr.Add(u);
+        var multi = BuildImageEditPayload(modelName, variantPrompt, aspectRatio);
+        multi["images"] = arr;
+        var (ok, code, body, retryAfter) = await SendImageEditAsync(multi, ct).ConfigureAwait(false);
+        if (ok) return body;
 
-            throw new ChatHttpStatusException(code2 != 0 ? code2 : code,
-                $"Image edit failed: {Trim(body.Length > 0 ? body : body2, 400)}",
-                retryAfter2 ?? retryAfter);
-        }
+        // Fallback: "image" as string[] (older / alternate parsers)
+        var alt = BuildImageEditPayload(modelName, variantPrompt, aspectRatio);
+        alt[KindImage] = arr.DeepClone();
+        var (ok2, code2, body2, retryAfter2) = await SendImageEditAsync(alt, ct).ConfigureAwait(false);
+        if (ok2) return body2;
 
+        // Last resort: drop last ref(s) so 3→2 still produces a portrait
+        if (imageUris.Count >= 3)
+            return await RetryImageEditWithTwoRefsAsync(
+                modelName, variantPrompt, aspectRatio, imageUris, onProgress, ct).ConfigureAwait(false);
+
+        throw new ChatHttpStatusException(code2 != 0 ? code2 : code,
+            $"Image edit failed: {Trim(body.Length > 0 ? body : body2, 400)}",
+            retryAfter2 ?? retryAfter);
+    }
+
+    private async Task<string?> RetryImageEditWithTwoRefsAsync(
+        string modelName,
+        string variantPrompt,
+        AspectRatio aspectRatio,
+        IReadOnlyList<string> imageUris,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
+        onProgress?.Invoke(
+            $"3 reference images rejected by API — retrying with first 2…");
+        var two = imageUris.Take(2).ToList();
+        var cut = variantPrompt.IndexOf("CHARACTER CONTINUITY", StringComparison.OrdinalIgnoreCase);
+        if (cut < 0)
+            cut = variantPrompt.IndexOf("IDENTITY", StringComparison.OrdinalIgnoreCase);
+        var core = cut >= 0 ? variantPrompt[cut..] : variantPrompt;
+        var prompt2 = BuildMultiImageOrderHint(2) + core;
+        return await PostImageEditAsync(
+            modelName, prompt2, aspectRatio, two, onProgress, ct).ConfigureAwait(false);
+    }
+
+    private async Task<string?> PostSingleImageEditAsync(
+        string modelName,
+        string variantPrompt,
+        AspectRatio aspectRatio,
+        IReadOnlyList<string> imageUris,
+        CancellationToken ct)
+    {
         // Single image: "image" as data-URI string, then { "url": ... }
-        var p = BasePayload();
+        var p = BuildImageEditPayload(modelName, variantPrompt, aspectRatio);
         p[KindImage] = imageUris[0];
-        var (okSingle, codeSingle, bodySingle, retryAfterSingle) = await SendAsync(p).ConfigureAwait(false);
+        var (okSingle, codeSingle, bodySingle, retryAfterSingle) = await SendImageEditAsync(p, ct).ConfigureAwait(false);
         if (okSingle) return bodySingle;
 
-        var p2 = BasePayload();
+        var p2 = BuildImageEditPayload(modelName, variantPrompt, aspectRatio);
         p2[KindImage] = new JsonObject { ["url"] = imageUris[0] };
-        var (okSingle2, codeSingle2, bodySingle2, retryAfterSingle2) = await SendAsync(p2).ConfigureAwait(false);
+        var (okSingle2, codeSingle2, bodySingle2, retryAfterSingle2) = await SendImageEditAsync(p2, ct).ConfigureAwait(false);
         if (okSingle2) return bodySingle2;
 
         throw new ChatHttpStatusException(codeSingle2 != 0 ? codeSingle2 : codeSingle,
