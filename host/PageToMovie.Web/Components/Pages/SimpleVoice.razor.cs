@@ -19,6 +19,7 @@ public partial class SimpleVoice
     internal Phase _phase = Phase.Pick;
     internal List<ForkableStoryDto> _forkableStories = new();
     internal bool _storiesLoading = true;
+    internal string? _storiesError;
     internal bool _voiceReady; // narrator has a cloned voice (freshly captured or already applied) → show "make movie"
     internal bool _dubbing;
     internal string? _dubStatus;
@@ -40,12 +41,11 @@ public partial class SimpleVoice
 
     protected override async Task OnInitializedAsync()
     {
-        _storiesLoading = true;
-        try { _forkableStories = await Engine.ListForkableProjectsAsync(); }
-        catch { /* empty list shown */ }
-        finally { _storiesLoading = false; }
+        try { await Session.EnsureHydratedAsync(); }
+        catch { /* list is public */ }
 
-        // Resume mid-flow if active project is already on simple path.
+        await LoadStoriesAsync();
+
         if (Session.IsLoggedIn
             && ActiveProject.IsSimpleVoice
             && !string.IsNullOrEmpty(ActiveProject.ProjectId))
@@ -59,6 +59,32 @@ public partial class SimpleVoice
                 await RefreshSampleStateAsync();
         }
     }
+
+    internal async Task LoadStoriesAsync()
+    {
+        _storiesLoading = true;
+        _storiesError = null;
+        Notify();
+        try
+        {
+            _forkableStories = await Engine.ListForkableProjectsAsync();
+        }
+        catch (Exception ex)
+        {
+            _forkableStories = new();
+            _storiesError = TimeoutOrFail(ex);
+        }
+        finally
+        {
+            _storiesLoading = false;
+            Notify();
+        }
+    }
+
+    private static string TimeoutOrFail(Exception ex) =>
+        ex is OperationCanceledException or TaskCanceledException or TimeoutException
+            ? "Stories took too long to load. Try again."
+            : "Could not load stories. Try again.";
 
     internal async Task SelectStoryAsync(ForkableStoryDto story)
     {

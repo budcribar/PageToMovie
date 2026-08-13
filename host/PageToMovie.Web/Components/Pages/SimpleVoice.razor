@@ -24,28 +24,31 @@
         <a class="btn btn-sm btn-primary" href="login?returnUrl=/simple-voice">Sign in</a>
     </div>
 }
-else
+
+<StudioProcessStrip Active="@(_phase == Phase.Movie ? "film" : _phase is Phase.Record or Phase.Done ? "cast" : "book")" SimpleMode="true" />
+
+<InlineAlert Message="@_error" data-testid="simple-voice-error" />
+@if (string.IsNullOrEmpty(_error))
 {
-    <StudioProcessStrip Active="@(_phase == Phase.Movie ? "film" : _phase is Phase.Record or Phase.Done ? "cast" : "book")" SimpleMode="true" />
-
-    <InlineAlert Message="@_error" data-testid="simple-voice-error" />
-    @if (string.IsNullOrEmpty(_error))
-    {
-        <InlineAlert Message="@_message" Variant="success" CssClass="py-2" data-testid="simple-voice-message" />
-    }
-
-    <CascadingValue Value="this" IsFixed="true">
-        @if (_phase == Phase.Pick)
-        {
-            <SimpleVoice_PickPhase />
-        }
-        else if (_phase is Phase.Record or Phase.Done)
-        {
-            <SimpleVoice_RecordPhase />
-        }
-        else if (_phase == Phase.Movie)
-        {
-            <SimpleVoice_MoviePhase />
-        }
-    </CascadingValue>
+    <InlineAlert Message="@_message" Variant="success" CssClass="py-2" data-testid="simple-voice-message" />
 }
+
+<CascadingValue Value="this" IsFixed="true">
+    @if (_phase == Phase.Pick)
+    {
+        <SimpleVoice_PickPhase />
+    }
+    else if (!Session.IsLoggedIn)
+    {
+        @* Record/movie need a session; bounce to pick + sign-in. *@
+        <SimpleVoice_PickPhase />
+    }
+    else if (_phase is Phase.Record or Phase.Done)
+    {
+        <SimpleVoice_RecordPhase />
+    }
+    else if (_phase == Phase.Movie)
+    {
+        <SimpleVoice_MoviePhase />
+    }
+</CascadingValue>

@@ -47,7 +47,7 @@ public static class ProjectEndpoints
         // </summary>
         app.MapPost("/api/projects/{id}/invites", PostProjectsIdInvites);
         // <summary>Public forkable movies (visibility "Open"/"PublicForkable") — the source list for the
-        // Easy Start "story in your voice" picker. Any signed-in user can see them to fork.</summary>
+        // Easy Start "story in your voice" picker. Public — sign-in is only required to fork.</summary>
         app.MapGet("/api/projects/forkable", GetProjectsForkable);
         // <summary>1-click community fork endpoint for Open (Public Forkable) projects.</summary>
         app.MapPost("/api/projects/{id}/fork", PostProjectsIdFork);
@@ -614,33 +614,30 @@ public static class ProjectEndpoints
 }
 
     private static async Task<IResult> GetProjectsForkable(ProjectStore store,
-    IUserContext user,
-    IOptions<PageToMovieOptions> opts,
     CancellationToken ct)
     {
-    if (AuthGate.RequireLogin(user, opts) is { } denied)
-        return denied;
-    var all = await store.ListProjectsAsync(ct);
-    var forkable = new List<object>();
-    foreach (var p in all
-        .Where(p => p.VisibilityMode == ProjectVisibility.Public
-                    && string.IsNullOrWhiteSpace(p.ParentProjectId))
-        .OrderBy(p => p.Label ?? p.Title ?? p.Id, StringComparer.OrdinalIgnoreCase))
-    {
-        var share = ProjectScreenplayShare.Inspect(p.Path);
-        forkable.Add(new
+        // Public catalog — sign-in is only required to fork a pick, not to see titles.
+        var all = await store.ListProjectsAsync(ct);
+        var forkable = new List<object>();
+        foreach (var p in all
+            .Where(p => p.VisibilityMode == ProjectVisibility.Public
+                        && string.IsNullOrWhiteSpace(p.ParentProjectId))
+            .OrderBy(p => p.Label ?? p.Title ?? p.Id, StringComparer.OrdinalIgnoreCase))
         {
-            id = p.Id,
-            title = p.Label ?? p.Title ?? p.Id,
-            ownerUserId = p.OwnerUserId,
-            hasMaxMaster = share.HasMax,
-            hasIndex = share.HasIndex,
-            sceneCards = share.SceneCards,
-            next = share.Next,
-        });
+            var share = ProjectScreenplayShare.Inspect(p.Path);
+            forkable.Add(new
+            {
+                id = p.Id,
+                title = p.Label ?? p.Title ?? p.Id,
+                ownerUserId = p.OwnerUserId,
+                hasMaxMaster = share.HasMax,
+                hasIndex = share.HasIndex,
+                sceneCards = share.SceneCards,
+                next = share.Next,
+            });
+        }
+        return Results.Ok(new { ok = true, projects = forkable });
     }
-    return Results.Ok(new { ok = true, projects = forkable });
-}
 
     private static async Task<IResult> PostProjectsIdFork(string id,
     ProjectStore store,

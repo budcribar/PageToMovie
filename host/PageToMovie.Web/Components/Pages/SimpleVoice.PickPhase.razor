@@ -12,7 +12,16 @@
         </p>
         @if (Host._storiesLoading)
         {
-            <p class="small text-muted">Loading stories…</p>
+            <p class="small text-muted" data-testid="simple-voice-loading">Loading stories…</p>
+        }
+        else if (!string.IsNullOrWhiteSpace(Host._storiesError))
+        {
+            <div class="alert alert-warning py-2 small mb-3" data-testid="simple-voice-stories-error">
+                <span>@Host._storiesError</span>
+                <button type="button" class="btn btn-sm btn-outline-secondary ms-2" @onclick="Host.LoadStoriesAsync">
+                    Retry
+                </button>
+            </div>
         }
         else if (Host._forkableStories.Count == 0)
         {

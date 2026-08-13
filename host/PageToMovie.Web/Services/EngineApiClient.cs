@@ -742,15 +742,12 @@ public sealed class EngineApiClient
     public async Task<List<ForkableStoryDto>> ListForkableProjectsAsync(CancellationToken ct = default)
     {
         SyncIdentityHeaders();
-        try
-        {
-            var dto = await _http.GetFromJsonAsync<ForkableStoriesEnvelope>("/api/projects/forkable", JsonOpts, ct);
-            return dto?.Projects ?? new List<ForkableStoryDto>();
-        }
-        catch
-        {
-            return new List<ForkableStoryDto>();
-        }
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        if (ct == default || !ct.CanBeCanceled)
+            linked.CancelAfter(TimeSpan.FromSeconds(8));
+        var dto = await _http.GetFromJsonAsync<ForkableStoriesEnvelope>(
+            "/api/projects/forkable", JsonOpts, linked.Token);
+        return dto?.Projects ?? new List<ForkableStoryDto>();
     }
 
     private sealed class ForkableStoriesEnvelope
