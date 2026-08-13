@@ -1,63 +1,48 @@
 # PageToMovie (.NET solution)
 
-Visual Studio / `dotnet` solution: **Blazor WASM UI + C# API/engine**, with live **SignalR** job progress.
-**No Python runtime is required** for the product path under `host/`.
+Visual Studio / `dotnet` solution: **one host** — REST + SignalR + the Blazor WASM UI.  
+**No Python.** **Do not run `PageToMovie.Web` as a second site** unless you are deliberately splitting ports.
 
 ```text
 host/
   PageToMovie.slnx          # open this in Visual Studio
-  PageToMovie.Core/         # shared models + options
-  PageToMovie.Engine/       # project store + jobs (gen, review drafts, cast, book prepare)
-  PageToMovie.Api/          # REST + SignalR hub (:5088); hosts WASM UI
-  PageToMovie.Web/          # Blazor WebAssembly UI + ffmpeg.wasm media tools
-  PageToMovie.Fakes/        # fake Grok clients + fixtures
+  PageToMovie.Api/          # start this — :5088, serves UI + /api + /hubs/jobs
+  PageToMovie.Web/          # WASM client (published into Api)
+  PageToMovie.Engine/       # project store + jobs
+  PageToMovie.Adaptation/   # Stage‑1 index / write / trim / enrich
+  PageToMovie.Core/         # models, options, catalog
+  PageToMovie.Fakes/        # fake clients + fixtures
   PageToMovie.LoadSim/      # concurrent virtual-user load client
   PageToMovie.Tests/        # unit tests
-  docs/                    # multi-user plan, loadsim soak guide
+  docs/                     # plans, soak, max-master
 ```
 
-## Architecture
+Product flow and north star: repo-root [README.md](../README.md) and [AGENTS.md](../AGENTS.md).
 
-| Project | Role |
-|---------|------|
-| **PageToMovie.Web** | Blazor UI (projects, adaptation, scenes, characters, review, cost) + client stitch/trim/frames |
-| **PageToMovie.Api** | Backend: REST + `/hubs/jobs` SignalR (no native ffmpeg) |
-| **PageToMovie.Engine** | C# job runner (Stage 1/2 adaptation, classifiers, video prompts, vision review, book prepare) |
-| **PageToMovie.Core** | DTOs / options |
-
-> **Pipeline overview**: See the root [README.md](../README.md#how-film-studio-converts-source-text-to-a-movie-step-by-step-ai-pipeline). Media compose/trim runs in the browser; vision/gen keys stay on the API.
-
-## Run (two terminals)
-
-### 1) API / engine first (set API key for real gen)
+## Run (one process)
 
 ```powershell
-cd C:\Users\budcr\source\repos\NickAndMe\host\PageToMovie.Api
-$env:XAI_API_KEY = "your-key"   # required for Stage 1 / images / video / vision
-dotnet run
-# Must listen on http://127.0.0.1:5088
-# GET http://127.0.0.1:5088/health
+cd host
+$env:XAI_API_KEY = "your-key"        # required for real Stage 1 / images / video
+# $env:PageToMovie__UseFakes = "true"  # optional — no xAI spend
+dotnet run --project PageToMovie.Api
+# http://127.0.0.1:5088
+# GET /health
 # SignalR: /hubs/jobs
 ```
 
-You need **two processes**: Api **and** Web. If only Web is running, health checks fail with connection refused.
+Visual Studio: open `host/PageToMovie.slnx`, start **PageToMovie.Api** only (launch profile `http`).
 
-**All video stitch / silence-trim / auto-review frame sampling is in the browser** (`ffmpeg.wasm` in PageToMovie.Web).  
-The API host never installs or spawns native `ffmpeg`. Gen clips may live in a user media folder; the server keeps hashes/metadata.
+All video stitch / silence-trim / auto-review frame sampling is in the browser (`ffmpeg.wasm`). The API never installs or spawns native `ffmpeg`.
 
-### 2) Blazor UI
+Optional split-port (UI on :5079, API on :5088):
 
 ```powershell
-cd C:\Users\budcr\source\repos\NickAndMe\host\PageToMovie.Web
-dotnet run
-# e.g. https://localhost:7206  or  http://localhost:5079
+$env:EngineApi__BaseUrl = "http://127.0.0.1:5088"
+dotnet run --project PageToMovie.Web
 ```
 
-Web calls API at `EngineApi:BaseUrl` = `http://127.0.0.1:5088` (see `appsettings.json` + `appsettings.Development.json`).
-
-### Visual Studio
-
-Open `host/PageToMovie.slnx`, set **multiple startup projects**: Api + Web.
+Same-origin (the usual case) needs no `EngineApi:BaseUrl`.
 
 ## REST (Api)
 
@@ -133,7 +118,7 @@ Uses checked-in **`projects/LoadSimBuster`** (isolated from real Buster). See `d
 | Feature | Status |
 |---------|--------|
 | PDF extract + vision OCR + page render | Yes |
-| Stage 1 scene bible (Grok chat) | Yes |
+| Stage 1 (index + Fountain max master) | Yes |
 | Stage 2 clip planner | Yes |
 | Multi-ref video + audio prompt build | Yes |
 | Character portrait gen / lock | Yes |
