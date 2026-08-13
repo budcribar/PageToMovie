@@ -28,7 +28,7 @@ public sealed class ProjectAclService : IProjectAclService
         IProjectInviteMailer? email = null,
         ProjectStore? projects = null)
     {
-        _projectsRoot = projectsRoot ?? throw new ArgumentNullException(nameof(projectsRoot));
+        _projectsRoot = Path.GetFullPath(projectsRoot ?? throw new ArgumentNullException(nameof(projectsRoot)));
         _users = users;
         _email = email;
         _projects = projects;
@@ -71,9 +71,8 @@ public sealed class ProjectAclService : IProjectAclService
     public async Task SaveAclAsync(string projectId, ProjectAclDocument acl, CancellationToken ct = default)
     {
         acl.UpdatedAt = DateTimeOffset.UtcNow;
-        var dir = Path.Combine(_projectsRoot, projectId);
-        Directory.CreateDirectory(dir);
-        var path = AclPath(projectId);
+        var path = ResolveAclFilePath(projectId);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var tmp = path + ".tmp";
         await using (var fs = File.Create(tmp))
             await JsonSerializer.SerializeAsync(fs, acl, JsonOpts, ct);
@@ -301,7 +300,11 @@ public sealed class ProjectAclService : IProjectAclService
         token = token.Trim();
         foreach (var dir in Directory.EnumerateDirectories(_projectsRoot))
         {
-            var projectId = Path.GetFileName(dir);
+            string fullDir;
+            try { fullDir = Path.GetFullPath(dir); }
+            catch { continue; }
+            if (!IsUnderProjectsRoot(fullDir)) continue;
+            var projectId = Path.GetFileName(fullDir);
             if (string.IsNullOrWhiteSpace(projectId) || projectId.StartsWith('.')) continue;
             try
             {
@@ -352,8 +355,7 @@ public sealed class ProjectAclService : IProjectAclService
 
     private async Task<ProjectAclDocument?> LoadAsync(string projectId, CancellationToken ct)
     {
-        var path = AclPath(projectId);
-        if (!File.Exists(path)) return null;
+        if (!TryResolveAclFilePath(projectId, out var path) || !File.Exists(path)) return null;
         await using var fs = File.OpenRead(path);
         var acl = await JsonSerializer.DeserializeAsync<ProjectAclDocument>(fs, JsonOpts, ct);
         if (acl is null) return null;
@@ -366,9 +368,52 @@ public sealed class ProjectAclService : IProjectAclService
     // Route-bound projectId parameters often arrive with a %2F-encoded slash still intact (ASP.NET
     // routing doesn't decode %2F within a single segment — see ProjectStore.NormalizeProjectId's
     // remarks). Normalize the same way ProjectStore does so ACL reads/writes and the access-check
-    // middleware (which decodes manually) always agree on the same on-disk path.
-    private string AclPath(string projectId) =>
-        Path.Combine(_projectsRoot, ProjectStore.NormalizeProjectId(projectId), "project-acl.json");
+    // middleware (which decodes manually) always agree on the same on-disk path. Then canonicalize
+    // and reject anything that escapes _projectsRoot (S2083).
+    private string ResolveAclFilePath(string projectId)
+    {
+        if (!TryResolveAclFilePath(projectId, out var path))
+            throw new InvalidOperationException($"Invalid project id: {projectId}");
+        return path;
+    }
+
+    private bool TryResolveAclFilePath(string projectId, out string path)
+    {
+        path = "";
+        var id = ProjectStore.NormalizeProjectId(projectId);
+        if (string.IsNullOrWhiteSpace(id) ||
+            id.Contains("..", StringComparison.Ordinal) ||
+            Path.IsPathRooted(id))
+            return false;
+
+        string fullDir;
+        try
+        {
+            fullDir = Path.GetFullPath(Path.Combine(_projectsRoot, id));
+        }
+        catch
+        {
+            return false;
+        }
+
+        if (!IsUnderProjectsRoot(fullDir))
+            return false;
+
+        path = Path.Combine(fullDir, "project-acl.json");
+        return true;
+    }
+
+    /// <summary>
+    /// True when <paramref name="fullPath"/> is a descendant of the projects root (not the root
+    /// itself). Matches <c>ProjectStore.ConfineToProjectsRoot</c>.
+    /// </summary>
+    private bool IsUnderProjectsRoot(string fullPath)
+    {
+        var rootPrefix = _projectsRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                         + Path.DirectorySeparatorChar;
+        return fullPath.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static void EnsureOwner(ProjectAclDocument acl, string callerUserId)
     {
         if (!string.Equals(acl.OwnerUserId, Norm(callerUserId), StringComparison.OrdinalIgnoreCase))
