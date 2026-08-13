@@ -214,7 +214,7 @@ public sealed class CostReportService
             VoiceModel = voiceModel,
             EstimateBasis = estimateBasis,
             ClipSource = clipSource,
-            EstimateConfidence = estimateConfidence,
+            Confidence = estimateConfidence,
             CostLow = costLow,
             CostPoint = costPoint,
             CostHigh = costHigh,
@@ -789,7 +789,7 @@ public sealed class CostReportService
         public string VoiceModel = "";
         public string EstimateBasis = "";
         public string ClipSource = "";
-        public string EstimateConfidence = "";
+        public string Confidence = "";
         public double CostLow;
         public double CostPoint;
         public double CostHigh;
@@ -837,7 +837,7 @@ public sealed class CostReportService
             VoiceModelName = p.VoicePlan.Included ? p.VoiceModel : null,
             EstimateBasis = p.EstimateBasis,
             ClipSource = p.ClipSource,
-            EstimateConfidence = p.EstimateConfidence,
+            EstimateConfidence = p.Confidence,
             CostLowUsd = CostBandOrNull(p.EstimateBasis, p.CostLow),
             CostPointUsd = CostBandOrNull(p.EstimateBasis, p.CostPoint),
             CostHighUsd = CostBandOrNull(p.EstimateBasis, p.CostHigh),
