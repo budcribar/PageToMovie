@@ -734,48 +734,8 @@ public sealed class BookPrepareService
             {
                 ct.ThrowIfCancellationRequested();
                 pageIndex++;
-                var imgIndex = 0;
-                foreach (var image in page.GetImages())
-                {
-                    imgIndex++;
-                    try
-                    {
-                        byte[]? pngBytes = null;
-                        if (image.TryGetPng(out var png) && png is { Length: >= 256 })
-                            pngBytes = png;
-                        else if (image.TryGetBytesAsMemory(out var mem) && mem.Length >= 256)
-                            pngBytes = mem.ToArray();
-                        if (pngBytes is null)
-                            continue;
-
-                        // Skip tiny icons
-                        var w = image.WidthInSamples;
-                        var h = image.HeightInSamples;
-                        if (w < 64 || h < 64)
-                            continue;
-
-                        var ext = pngBytes.Length >= 2 && pngBytes[0] == 0xFF && pngBytes[1] == 0xD8
-                            ? "jpg"
-                            : "png";
-                        var name = $"embedded_p{pageIndex:D3}_x{imgIndex}.{ext}";
-                        var full = Path.Combine(imgDir, name);
-                        await File.WriteAllBytesAsync(full, pngBytes, ct);
-                        var rel = Path.GetRelativePath(sourceDir, full).Replace('\\', '/');
-                        rows.Add(new Dictionary<string, object?>
-                        {
-                            ["kind"] = EmbeddedKind,
-                            ["page"] = pageIndex,
-                            ["path"] = rel.StartsWith(BookImagesFolder) ? rel : $"book_images/{name}",
-                            ["width"] = w,
-                            ["height"] = h,
-                            [RelevanceKey] = "embedded_figure",
-                        });
-                    }
-                    catch
-                    {
-                        // skip bad images
-                    }
-                }
+                await AddEmbeddedImagesFromPageAsync(page, pageIndex, imgDir, sourceDir, rows, ct)
+                    .ConfigureAwait(false);
             }
         }
         catch
@@ -784,6 +744,80 @@ public sealed class BookPrepareService
         }
 
         return rows;
+    }
+
+    private static async Task AddEmbeddedImagesFromPageAsync(
+        Page page,
+        int pageIndex,
+        string imgDir,
+        string sourceDir,
+        List<Dictionary<string, object?>> rows,
+        CancellationToken ct)
+    {
+        var imgIndex = 0;
+        foreach (var image in page.GetImages())
+        {
+            imgIndex++;
+            try
+            {
+                if (!TryGetEmbeddedImageBytes(image, out var pngBytes, out var w, out var h))
+                    continue;
+                rows.Add(await WriteEmbeddedImageRowAsync(
+                    pngBytes, w, h, pageIndex, imgIndex, imgDir, sourceDir, ct).ConfigureAwait(false));
+            }
+            catch
+            {
+                // skip bad images
+            }
+        }
+    }
+
+    private static bool TryGetEmbeddedImageBytes(
+        IPdfImage image, out byte[] pngBytes, out int w, out int h)
+    {
+        pngBytes = null!;
+        w = image.WidthInSamples;
+        h = image.HeightInSamples;
+        byte[]? bytes = null;
+        if (image.TryGetPng(out var png) && png is { Length: >= 256 })
+            bytes = png;
+        else if (image.TryGetBytesAsMemory(out var mem) && mem.Length >= 256)
+            bytes = mem.ToArray();
+        if (bytes is null)
+            return false;
+        // Skip tiny icons
+        if (w < 64 || h < 64)
+            return false;
+        pngBytes = bytes;
+        return true;
+    }
+
+    private static async Task<Dictionary<string, object?>> WriteEmbeddedImageRowAsync(
+        byte[] pngBytes,
+        int w,
+        int h,
+        int pageIndex,
+        int imgIndex,
+        string imgDir,
+        string sourceDir,
+        CancellationToken ct)
+    {
+        var ext = pngBytes.Length >= 2 && pngBytes[0] == 0xFF && pngBytes[1] == 0xD8
+            ? "jpg"
+            : "png";
+        var name = $"embedded_p{pageIndex:D3}_x{imgIndex}.{ext}";
+        var full = Path.Combine(imgDir, name);
+        await File.WriteAllBytesAsync(full, pngBytes, ct);
+        var rel = Path.GetRelativePath(sourceDir, full).Replace('\\', '/');
+        return new Dictionary<string, object?>
+        {
+            ["kind"] = EmbeddedKind,
+            ["page"] = pageIndex,
+            ["path"] = rel.StartsWith(BookImagesFolder) ? rel : $"book_images/{name}",
+            ["width"] = w,
+            ["height"] = h,
+            [RelevanceKey] = "embedded_figure",
+        };
     }
 
     /// <summary>

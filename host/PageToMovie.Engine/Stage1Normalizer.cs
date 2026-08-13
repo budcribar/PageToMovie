@@ -133,56 +133,66 @@ public static class Stage1Normalizer
         foreach (var (key, val) in seeds.ToList())
         {
             if (val is not Dictionary<string, object?> seed) continue;
-
-            // Filmable identity only — strip nicknames + cross-species style bleed (any book)
-            var rawDesc = CoerceString(seed.TryGetValue(DescriptionKey, out var d) ? d : null) ?? key;
-            seed[DescriptionKey] = CharacterVisualTextScrubber.ScrubVisualProse(rawDesc);
-            if (string.IsNullOrWhiteSpace(CoerceString(seed[DescriptionKey])))
-                seed[DescriptionKey] = key;
-
-            seed["reference_image_placeholder"] =
-                CoerceString(seed.TryGetValue("reference_image_placeholder", out var ph) ? ph : null)
-                ?? ProjectStore.CharacterRefFileName(key);
-            seed["voice_profile"] =
-                CoerceString(seed.TryGetValue("voice_profile", out var vp) ? vp : null)
-                ?? "Consistent character voice every scene.";
-            seed["voice_label"] =
-                CoerceString(seed.TryGetValue("voice_label", out var vl) ? vl : null) ?? key;
-
-            // Voice-only = never appears on screen — from the cast seed's display_name_policy only,
-            // NOT the name "Narrator". An on-camera / POV narrator (e.g. Tell-Tale Heart) is a real
-            // character with a locked look; only a pure off-screen narrator (never_on_screen) has its
-            // visual_lock/wardrobe stripped. Single source of truth: CastKindClassifier.IsVoiceOnlyPolicy.
-            var pol = CoerceString(seed.TryGetValue("display_name_policy", out var polV) ? polV : null);
-            var isVoiceOnly = CastKindClassifier.IsVoiceOnlyPolicy(pol);
-            if (isVoiceOnly)
-            {
-                seed.Remove(VisualLockKey);
-                seed.Remove(WardrobeAlwaysKey);
-            }
-            else
-            {
-                var vlck = CoerceString(seed.TryGetValue(VisualLockKey, out var v) ? v : null);
-                if (string.IsNullOrWhiteSpace(vlck))
-                {
-                    var desc = CoerceString(seed[DescriptionKey]) ?? key;
-                    seed[VisualLockKey] = desc.Length > 220 ? desc[..220] + "…" : desc;
-                }
-                else
-                {
-                    seed[VisualLockKey] = CharacterVisualTextScrubber.ScrubVisualProse(vlck);
-                }
-
-                var always = CharacterVisualTextScrubber.ScrubWardrobeList(
-                    CoerceStringList(seed.TryGetValue(WardrobeAlwaysKey, out var wa) ? wa : null));
-                if (always.Count > 0)
-                    seed[WardrobeAlwaysKey] = always;
-                else
-                    seed.Remove("wardrobe_always");
-            }
+            NormalizeOneCharacterSeed(key, seed);
             seeds[key] = seed;
         }
         gpv["character_seed_tokens"] = seeds;
+    }
+
+    private static void NormalizeOneCharacterSeed(string key, Dictionary<string, object?> seed)
+    {
+        // Filmable identity only — strip nicknames + cross-species style bleed (any book)
+        var rawDesc = CoerceString(seed.TryGetValue(DescriptionKey, out var d) ? d : null) ?? key;
+        seed[DescriptionKey] = CharacterVisualTextScrubber.ScrubVisualProse(rawDesc);
+        if (string.IsNullOrWhiteSpace(CoerceString(seed[DescriptionKey])))
+            seed[DescriptionKey] = key;
+
+        seed["reference_image_placeholder"] =
+            CoerceString(seed.TryGetValue("reference_image_placeholder", out var ph) ? ph : null)
+            ?? ProjectStore.CharacterRefFileName(key);
+        seed["voice_profile"] =
+            CoerceString(seed.TryGetValue("voice_profile", out var vp) ? vp : null)
+            ?? "Consistent character voice every scene.";
+        seed["voice_label"] =
+            CoerceString(seed.TryGetValue("voice_label", out var vl) ? vl : null) ?? key;
+
+        ApplyCharacterVisualPolicy(key, seed);
+    }
+
+    private static void ApplyCharacterVisualPolicy(string key, Dictionary<string, object?> seed)
+    {
+        // Voice-only = never appears on screen — from the cast seed's display_name_policy only,
+        // NOT the name "Narrator". An on-camera / POV narrator (e.g. Tell-Tale Heart) is a real
+        // character with a locked look; only a pure off-screen narrator (never_on_screen) has its
+        // visual_lock/wardrobe stripped. Single source of truth: CastKindClassifier.IsVoiceOnlyPolicy.
+        var pol = CoerceString(seed.TryGetValue("display_name_policy", out var polV) ? polV : null);
+        if (CastKindClassifier.IsVoiceOnlyPolicy(pol))
+        {
+            seed.Remove(VisualLockKey);
+            seed.Remove(WardrobeAlwaysKey);
+            return;
+        }
+
+        ApplyOnScreenVisualLock(key, seed);
+        var always = CharacterVisualTextScrubber.ScrubWardrobeList(
+            CoerceStringList(seed.TryGetValue(WardrobeAlwaysKey, out var wa) ? wa : null));
+        if (always.Count > 0)
+            seed[WardrobeAlwaysKey] = always;
+        else
+            seed.Remove("wardrobe_always");
+    }
+
+    private static void ApplyOnScreenVisualLock(string key, Dictionary<string, object?> seed)
+    {
+        var vlck = CoerceString(seed.TryGetValue(VisualLockKey, out var v) ? v : null);
+        if (string.IsNullOrWhiteSpace(vlck))
+        {
+            var desc = CoerceString(seed[DescriptionKey]) ?? key;
+            seed[VisualLockKey] = desc.Length > 220 ? desc[..220] + "…" : desc;
+            return;
+        }
+
+        seed[VisualLockKey] = CharacterVisualTextScrubber.ScrubVisualProse(vlck);
     }
 
     private static void NormalizeLocationSeeds(Dictionary<string, object?> gpv)
@@ -435,33 +445,50 @@ public static class Stage1Normalizer
 
     public static List<string> CoerceStringList(object? val, int maxItems = 12)
     {
+        var raw = CollectCoerceStringListRaw(val);
+        var outList = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in raw)
+        {
+            if (!TryAddCoercedListItem(item, maxItems, seen, outList))
+                break;
+        }
+        return outList;
+    }
+
+    private static List<string> CollectCoerceStringListRaw(object? val)
+    {
         var raw = new List<string>();
-        if (val is null) return raw;
+        if (val is null)
+            return raw;
         if (val is string s)
         {
             raw.AddRange(CommonRegex.Split(s, @"\s+and\s+|[,;|/]")
                 .Select(p => p.Trim())
                 .Where(p => p.Length > 0));
+            return raw;
         }
-        else if (val is List<object?> list)
+        if (val is not List<object?> list)
+            return raw;
+        foreach (var x in list)
         {
-            foreach (var x in list)
-            {
-                var t = CoerceString(x);
-                if (!string.IsNullOrWhiteSpace(t)) raw.Add(t);
-            }
+            var t = CoerceString(x);
+            if (!string.IsNullOrWhiteSpace(t))
+                raw.Add(t);
         }
-        var outList = new List<string>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var item in raw)
-        {
-            var cleaned = CommonRegex.Replace(item, @"\s+", " ").Trim(' ', '.', ',', ';', ':');
-            if (cleaned.Length < 2) continue;
-            if (!seen.Add(cleaned.ToLowerInvariant())) continue;
-            outList.Add(cleaned.Length > 80 ? cleaned[..80] : cleaned);
-            if (outList.Count >= maxItems) break;
-        }
-        return outList;
+        return raw;
+    }
+
+    private static bool TryAddCoercedListItem(
+        string item, int maxItems, HashSet<string> seen, List<string> outList)
+    {
+        var cleaned = CommonRegex.Replace(item, @"\s+", " ").Trim(' ', '.', ',', ';', ':');
+        if (cleaned.Length < 2)
+            return true;
+        if (!seen.Add(cleaned.ToLowerInvariant()))
+            return true;
+        outList.Add(cleaned.Length > 80 ? cleaned[..80] : cleaned);
+        return outList.Count < maxItems;
     }
 
     private static object? CleanNulls(object? obj)

@@ -710,21 +710,7 @@ public sealed class CharacterBookPlateService
         List<BookOcrPlateShortlist.PageText> ocrPages,
         int maxImages)
     {
-        var priorityPages = new HashSet<int>();
-        if (ocrPages.Count > 0)
-        {
-            foreach (var (key, seedNode) in seeds)
-            {
-                if (seedNode is not JsonObject seed) continue;
-                if (IsVoiceOnly(key, seed)) continue;
-                // Still need more plates for this cast?
-                var have = scores.TryGetValue(key, out var list) ? list.Count : 0;
-                if (have >= 3) continue;
-                var aliases = BookOcrPlateShortlist.AliasesForSeed(key, seed);
-                foreach (var pg in BookOcrPlateShortlist.ShortlistArtPages(ocrPages, aliases, maxPlates: 6))
-                    priorityPages.Add(pg);
-            }
-        }
+        var priorityPages = CollectPriorityArtPages(scores, seeds, ocrPages);
 
         var art = inventory.Where(r => !IsLikelyTextLayout(r)).ToList();
         var head = RankIllustrationFirst(art.Where(r => r.Page > 0 && priorityPages.Contains(r.Page)));
@@ -734,6 +720,38 @@ public sealed class CharacterBookPlateService
             .Select(g => g.First())
             .Take(maxImages)
             .ToList();
+    }
+
+    private static HashSet<int> CollectPriorityArtPages(
+        Dictionary<string, List<(BookImageRow Row, double Score)>> scores,
+        JsonObject seeds,
+        List<BookOcrPlateShortlist.PageText> ocrPages)
+    {
+        var priorityPages = new HashSet<int>();
+        if (ocrPages.Count == 0)
+            return priorityPages;
+        foreach (var (key, seedNode) in seeds)
+            AddPriorityPagesForSeed(key, seedNode, scores, ocrPages, priorityPages);
+        return priorityPages;
+    }
+
+    private static void AddPriorityPagesForSeed(
+        string key,
+        JsonNode? seedNode,
+        Dictionary<string, List<(BookImageRow Row, double Score)>> scores,
+        List<BookOcrPlateShortlist.PageText> ocrPages,
+        HashSet<int> priorityPages)
+    {
+        if (seedNode is not JsonObject seed)
+            return;
+        if (IsVoiceOnly(key, seed))
+            return;
+        var have = scores.TryGetValue(key, out var list) ? list.Count : 0;
+        if (have >= 3)
+            return;
+        var aliases = BookOcrPlateShortlist.AliasesForSeed(key, seed);
+        foreach (var pg in BookOcrPlateShortlist.ShortlistArtPages(ocrPages, aliases, maxPlates: 6))
+            priorityPages.Add(pg);
     }
 
     private static bool CastScoresComplete(
@@ -818,63 +836,80 @@ public sealed class CharacterBookPlateService
         var index = 0;
         foreach (var (key, seedNode) in seeds)
         {
-            if (onlyCharKey is { Length: > 0 } &&
-                !string.Equals(key, onlyCharKey, StringComparison.OrdinalIgnoreCase))
+            if (TryBeginHeuristicSeed(
+                    key, seedNode, onlyCharKey, scores, onlyEmpty, heroOnly, index,
+                    out var seed, out var list, out var isHero))
             {
-                index++;
-                continue;
+                var picks = await ResolveHeuristicPicksAsync(
+                    inventory, key, seed, index, isHero, ct).ConfigureAwait(false);
+                foreach (var p in picks.Where(r => !IsLikelyTextLayout(r)))
+                    list.Add((p, isHero ? 0.5 : 0.4));
             }
-            if (seedNode is not JsonObject seed || IsVoiceOnly(key, seed))
-            {
-                index++;
-                continue;
-            }
-            if (!scores.TryGetValue(key, out var list))
-            {
-                list = new List<(BookImageRow, double)>();
-                scores[key] = list;
-            }
-            if (onlyEmpty && list.Count > 0)
-            {
-                index++;
-                continue;
-            }
-
-            var desc = (seed[DescriptionKey]?.GetValue<string>() ?? "").ToLowerInvariant();
-            // Hero = first cast or primary animal species — not humans whose text mentions the animal medium
-            var isHero = index == 0 ||
-                         CharacterVisualTextScrubber.IsPrimarilyAnimalCharacter(
-                             key, ageBand: "", description: desc, visualLock: "", animalWord: "dog") ||
-                         CharacterVisualTextScrubber.IsPrimarilyAnimalCharacter(
-                             key, ageBand: "", description: desc, visualLock: "", animalWord: "cat");
-
-            // heroOnly: never invent Mom/Dad plates from shared early covers
-            if (heroOnly && !isHero)
-            {
-                index++;
-                continue;
-            }
-
-            var pages = PagesForSeed(seed);
-            List<BookImageRow> picks;
-            if (pages.Count > 0)
-            {
-                picks = RowsForPages(inventory, pages);
-                if (picks.Count == 0)
-                    picks = await HeuristicPicksRankedAsync(inventory, key, seed, index, nameHitsOnly: !isHero, ct)
-                        .ConfigureAwait(false);
-            }
-            else
-            {
-                // Non-hero: only filename/name hits — never dump generic early pages onto Mom/Dad
-                picks = await HeuristicPicksRankedAsync(inventory, key, seed, index, nameHitsOnly: !isHero, ct)
-                    .ConfigureAwait(false);
-            }
-
-            foreach (var p in picks.Where(r => !IsLikelyTextLayout(r)))
-                list.Add((p, isHero ? 0.5 : 0.4));
             index++;
         }
+    }
+
+    private static bool TryBeginHeuristicSeed(
+        string key,
+        JsonNode? seedNode,
+        string? onlyCharKey,
+        Dictionary<string, List<(BookImageRow Row, double Score)>> scores,
+        bool onlyEmpty,
+        bool heroOnly,
+        int index,
+        out JsonObject seed,
+        out List<(BookImageRow Row, double Score)> list,
+        out bool isHero)
+    {
+        seed = null!;
+        list = null!;
+        isHero = false;
+        if (onlyCharKey is { Length: > 0 } &&
+            !string.Equals(key, onlyCharKey, StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (seedNode is not JsonObject seedObj || IsVoiceOnly(key, seedObj))
+            return false;
+        seed = seedObj;
+        if (!scores.TryGetValue(key, out list!))
+        {
+            list = new List<(BookImageRow, double)>();
+            scores[key] = list;
+        }
+        if (onlyEmpty && list.Count > 0)
+            return false;
+
+        var desc = (seed[DescriptionKey]?.GetValue<string>() ?? "").ToLowerInvariant();
+        // Hero = first cast or primary animal species — not humans whose text mentions the animal medium
+        isHero = index == 0 ||
+                 CharacterVisualTextScrubber.IsPrimarilyAnimalCharacter(
+                     key, ageBand: "", description: desc, visualLock: "", animalWord: "dog") ||
+                 CharacterVisualTextScrubber.IsPrimarilyAnimalCharacter(
+                     key, ageBand: "", description: desc, visualLock: "", animalWord: "cat");
+        // heroOnly: never invent Mom/Dad plates from shared early covers
+        return !heroOnly || isHero;
+    }
+
+    private async Task<List<BookImageRow>> ResolveHeuristicPicksAsync(
+        List<BookImageRow> inventory,
+        string key,
+        JsonObject seed,
+        int index,
+        bool isHero,
+        CancellationToken ct)
+    {
+        var pages = PagesForSeed(seed);
+        if (pages.Count == 0)
+        {
+            // Non-hero: only filename/name hits — never dump generic early pages onto Mom/Dad
+            return await HeuristicPicksRankedAsync(inventory, key, seed, index, nameHitsOnly: !isHero, ct)
+                .ConfigureAwait(false);
+        }
+
+        var picks = RowsForPages(inventory, pages);
+        if (picks.Count > 0)
+            return picks;
+        return await HeuristicPicksRankedAsync(inventory, key, seed, index, nameHitsOnly: !isHero, ct)
+            .ConfigureAwait(false);
     }
 
     /// <summary>
@@ -919,6 +954,25 @@ public sealed class CharacterBookPlateService
             kv => kv.Value.Select(x => x.Row.Page).Where(p => p > 0).Distinct().Count(),
             StringComparer.OrdinalIgnoreCase);
 
+        var flat = FlattenScoredPlates(scores)
+            .OrderByDescending(x => x.Score)
+            .ThenBy(x => uniquePageCount.GetValueOrDefault(x.Key, 99)) // scarce pages first
+            .ThenBy(x => IllustrationScore(x.Row))
+            .ToList();
+
+        var claimed = new ExclusivePlateClaims();
+        var assigned = new Dictionary<string, List<BookImageRow>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, row, _, fp) in flat)
+            TryAssignExclusivePlate(key, row, fp, maxPerCharacter, claimed, assigned);
+
+        // No last-resort sharing of claimed plates across cast (that put the dog cover on Dad).
+        // Empty book refs are better than wrong species / wrong character.
+        return assigned;
+    }
+
+    private static List<(string Key, BookImageRow Row, double Score, string Fingerprint)> FlattenScoredPlates(
+        Dictionary<string, List<(BookImageRow Row, double Score)>> scores)
+    {
         var flat = new List<(string Key, BookImageRow Row, double Score, string Fingerprint)>();
         foreach (var (key, list) in scores)
         {
@@ -928,49 +982,63 @@ public sealed class CharacterBookPlateService
                 flat.Add((key, row, score, ContentFingerprint(row)));
             }
         }
+        return flat;
+    }
 
-        flat = flat
-            .OrderByDescending(x => x.Score)
-            .ThenBy(x => uniquePageCount.GetValueOrDefault(x.Key, 99)) // scarce pages first
-            .ThenBy(x => IllustrationScore(x.Row))
-            .ToList();
+    private sealed class ExclusivePlateClaims
+    {
+        public HashSet<string> Fingerprints { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public HashSet<string> Paths { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public HashSet<int> Pages { get; } = new();
+        public Dictionary<string, HashSet<int>> PerCharPages { get; } = new(StringComparer.OrdinalIgnoreCase);
+    }
 
-        var claimedFingerprints = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var claimedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var claimedPages = new HashSet<int>(); // global page exclusivity for near-duplicate embeds
-        var perCharPages = new Dictionary<string, HashSet<int>>(StringComparer.OrdinalIgnoreCase);
-        var assigned = new Dictionary<string, List<BookImageRow>>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var (key, row, _, fp) in flat)
+    private static void TryAssignExclusivePlate(
+        string key,
+        BookImageRow row,
+        string fp,
+        int maxPerCharacter,
+        ExclusivePlateClaims claimed,
+        Dictionary<string, List<BookImageRow>> assigned)
+    {
+        if (!assigned.TryGetValue(key, out var picks))
         {
-            if (!assigned.TryGetValue(key, out var picks))
-            {
-                picks = new List<BookImageRow>();
-                assigned[key] = picks;
-                perCharPages[key] = new HashSet<int>();
-            }
-            if (picks.Count >= maxPerCharacter) continue;
-
-            if (fp.Length > 0 && claimedFingerprints.Contains(fp)) continue;
-            if (claimedPaths.Contains(row.AbsPath)) continue;
-
-            // Same page number → almost always same art (cover embed + cover render)
-            if (row.Page > 0 && claimedPages.Contains(row.Page)) continue;
-            if (row.Page > 0 && perCharPages[key].Contains(row.Page)) continue;
-
-            picks.Add(row);
-            if (fp.Length > 0) claimedFingerprints.Add(fp);
-            claimedPaths.Add(row.AbsPath);
-            if (row.Page > 0)
-            {
-                claimedPages.Add(row.Page);
-                perCharPages[key].Add(row.Page);
-            }
+            picks = new List<BookImageRow>();
+            assigned[key] = picks;
+            claimed.PerCharPages[key] = new HashSet<int>();
         }
+        if (picks.Count >= maxPerCharacter)
+            return;
+        if (PlateAlreadyClaimed(row, fp, key, claimed))
+            return;
 
-        // No last-resort sharing of claimed plates across cast (that put the dog cover on Dad).
-        // Empty book refs are better than wrong species / wrong character.
-        return assigned;
+        picks.Add(row);
+        ClaimExclusivePlate(row, fp, key, claimed);
+    }
+
+    private static bool PlateAlreadyClaimed(
+        BookImageRow row, string fp, string key, ExclusivePlateClaims claimed)
+    {
+        if (fp.Length > 0 && claimed.Fingerprints.Contains(fp))
+            return true;
+        if (claimed.Paths.Contains(row.AbsPath))
+            return true;
+        // Same page number → almost always same art (cover embed + cover render)
+        if (row.Page > 0 && claimed.Pages.Contains(row.Page))
+            return true;
+        return row.Page > 0 && claimed.PerCharPages[key].Contains(row.Page);
+    }
+
+    private static void ClaimExclusivePlate(
+        BookImageRow row, string fp, string key, ExclusivePlateClaims claimed)
+    {
+        if (fp.Length > 0)
+            claimed.Fingerprints.Add(fp);
+        claimed.Paths.Add(row.AbsPath);
+        if (row.Page <= 0)
+            return;
+        claimed.Pages.Add(row.Page);
+        claimed.PerCharPages[key].Add(row.Page);
     }
 
     /// <summary>
@@ -981,53 +1049,92 @@ public sealed class CharacterBookPlateService
         Dictionary<string, List<(BookImageRow Row, double Score)>> scores,
         JsonObject seeds)
     {
+        var tokensByKey = BuildDistinctiveNameTokens(seeds);
+        foreach (var (key, list) in scores.ToList())
+            scores[key] = KeepPlatesNotOwnedByOthers(key, list, tokensByKey);
+    }
+
+    private static Dictionary<string, List<string>> BuildDistinctiveNameTokens(JsonObject seeds)
+    {
         var tokensByKey = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
         foreach (var (key, node) in seeds)
         {
-            if (node is not JsonObject seed || IsVoiceOnly(key, seed)) continue;
-            var toks = new List<string>();
-            var suffix = key.Replace(CharacterPrefix, "", StringComparison.OrdinalIgnoreCase);
-            if (suffix.Length >= 3 && !IsGenericRoleToken(suffix))
-                toks.Add(suffix);
-            var given = seed[CanonicalGivenNameKey]?.GetValue<string>() ?? "";
-            if (given.Length >= 3 && !IsGenericRoleToken(given))
-                toks.Add(given);
-            tokensByKey[key] = toks;
+            if (node is not JsonObject seed || IsVoiceOnly(key, seed))
+                continue;
+            tokensByKey[key] = DistinctiveTokensForSeed(key, seed);
         }
+        return tokensByKey;
+    }
 
-        foreach (var (key, list) in scores.ToList())
+    private static List<string> DistinctiveTokensForSeed(string key, JsonObject seed)
+    {
+        var toks = new List<string>();
+        var suffix = key.Replace(CharacterPrefix, "", StringComparison.OrdinalIgnoreCase);
+        if (suffix.Length >= 3 && !IsGenericRoleToken(suffix))
+            toks.Add(suffix);
+        var given = seed[CanonicalGivenNameKey]?.GetValue<string>() ?? "";
+        if (given.Length >= 3 && !IsGenericRoleToken(given))
+            toks.Add(given);
+        return toks;
+    }
+
+    private static List<(BookImageRow Row, double Score)> KeepPlatesNotOwnedByOthers(
+        string key,
+        List<(BookImageRow Row, double Score)> list,
+        Dictionary<string, List<string>> tokensByKey)
+    {
+        var own = tokensByKey.GetValueOrDefault(key) ?? new List<string>();
+        var kept = new List<(BookImageRow Row, double Score)>();
+        foreach (var (row, score) in list)
         {
-            var own = tokensByKey.GetValueOrDefault(key) ?? new List<string>();
-            var kept = new List<(BookImageRow Row, double Score)>();
-            foreach (var (row, score) in list)
-            {
-                var name = row.Name + " " + (row.PathRel ?? "");
-                var hitsOther = false;
-                foreach (var (otherKey, otherToks) in tokensByKey)
-                {
-                    if (string.Equals(otherKey, key, StringComparison.OrdinalIgnoreCase)) continue;
-                    foreach (var t in otherToks)
-                    {
-                        if (t.Length < 3) continue;
-                        if (name.Contains(t, StringComparison.OrdinalIgnoreCase))
-                        {
-                            // Only purge if this plate does not also name *us*
-                            var hitsSelf = own.Any(o => o.Length >= 3 &&
-                                name.Contains(o, StringComparison.OrdinalIgnoreCase));
-                            if (!hitsSelf)
-                            {
-                                hitsOther = true;
-                                break;
-                            }
-                        }
-                    }
-                    if (hitsOther) break;
-                }
-                if (!hitsOther)
-                    kept.Add((row, score));
-            }
-            scores[key] = kept;
+            var name = row.Name + " " + (row.PathRel ?? "");
+            if (!PlateHitsOtherCharacter(name, key, own, tokensByKey))
+                kept.Add((row, score));
         }
+        return kept;
+    }
+
+    private static bool PlateHitsOtherCharacter(
+        string name,
+        string key,
+        List<string> own,
+        Dictionary<string, List<string>> tokensByKey)
+    {
+        foreach (var (otherKey, otherToks) in tokensByKey)
+        {
+            if (HitsOtherExclusiveToken(name, key, otherKey, otherToks, own))
+                return true;
+        }
+        return false;
+    }
+
+    private static bool HitsOtherExclusiveToken(
+        string name,
+        string key,
+        string otherKey,
+        List<string> otherToks,
+        List<string> own)
+    {
+        if (string.Equals(otherKey, key, StringComparison.OrdinalIgnoreCase))
+            return false;
+        foreach (var t in otherToks)
+        {
+            if (TokenHitsOtherNotSelf(name, t, own))
+                return true;
+        }
+        return false;
+    }
+
+    private static bool TokenHitsOtherNotSelf(string name, string t, List<string> own)
+    {
+        if (t.Length < 3)
+            return false;
+        if (!name.Contains(t, StringComparison.OrdinalIgnoreCase))
+            return false;
+        // Only purge if this plate does not also name *us*
+        var hitsSelf = own.Any(o => o.Length >= 3 &&
+            name.Contains(o, StringComparison.OrdinalIgnoreCase));
+        return !hitsSelf;
     }
 
     private static void PurgeSpeciesMismatches(
