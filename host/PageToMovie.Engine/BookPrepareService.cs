@@ -849,44 +849,12 @@ public sealed class BookPrepareService
             {
                 index++;
                 using (bitmap)
-                {
-                    try
-                    {
-                        if (!renderAll && index > 1 &&
-                            index % Math.Max(2, pageCount / 20) != 0 && index != pageCount)
-                        {
-                            continue;
-                        }
-
-                        var name = $"page_{index:D3}_render.png";
-                        var full = Path.Combine(imgDir, name);
-                        using (var fs = File.OpenWrite(full))
-                            bitmap.Encode(fs, SkiaSharp.SKEncodedImageFormat.Png, 90);
-
-                        rows.Add(new Dictionary<string, object?>
-                        {
-                            ["kind"] = RenderedPageRelevance,
-                            ["page"] = index,
-                            ["path"] = $"book_images/{name}",
-                            [RelevanceKey] = index == 1 ? "cover" : RenderedPageRelevance,
-                        });
-                    }
-                    catch (Exception pageEx)
-                    {
-                        // Skip only this page — never abort the whole render loop.
-                        if (pageErrors.Count < 8)
-                        {
-                            pageErrors.Add(
-                                $"page {index}: {pageEx.GetType().Name}: {pageEx.Message}");
-                        }
-                    }
-                }
+                    TryAddRenderedPdfPage(bitmap, index, renderAll, pageCount, imgDir, rows, pageErrors);
             }
 
-            if (rows.Count == 0 && index == 0)
-                return (rows, "PDFtoImage returned no page bitmaps (empty or unreadable PDF).");
-            if (rows.Count == 0 && pageErrors.Count > 0)
-                return (rows, "All page renders failed. " + string.Join("; ", pageErrors));
+            var outcome = PdfRenderOutcome(rows, index, pageErrors);
+            if (outcome is not null)
+                return (rows, outcome);
             // Partial success: ignore per-page noise (caller uses row count).
         }
         catch (DllNotFoundException ex)
@@ -903,6 +871,63 @@ public sealed class BookPrepareService
             return (rows, $"{ex.GetType().Name}: {ex.Message}");
         }
         return (rows, null);
+    }
+
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    [System.Runtime.Versioning.SupportedOSPlatform("linux")]
+    [System.Runtime.Versioning.SupportedOSPlatform("macos")]
+    private static void TryAddRenderedPdfPage(
+        SkiaSharp.SKBitmap bitmap,
+        int index,
+        bool renderAll,
+        int pageCount,
+        string imgDir,
+        List<Dictionary<string, object?>> rows,
+        List<string> pageErrors)
+    {
+        try
+        {
+            if (ShouldSkipPdfPageRender(renderAll, index, pageCount))
+                return;
+
+            var name = $"page_{index:D3}_render.png";
+            var full = Path.Combine(imgDir, name);
+            using (var fs = File.OpenWrite(full))
+                bitmap.Encode(fs, SkiaSharp.SKEncodedImageFormat.Png, 90);
+
+            rows.Add(new Dictionary<string, object?>
+            {
+                ["kind"] = RenderedPageRelevance,
+                ["page"] = index,
+                ["path"] = $"book_images/{name}",
+                [RelevanceKey] = index == 1 ? "cover" : RenderedPageRelevance,
+            });
+        }
+        catch (Exception pageEx)
+        {
+            // Skip only this page — never abort the whole render loop.
+            if (pageErrors.Count < 8)
+            {
+                pageErrors.Add(
+                    $"page {index}: {pageEx.GetType().Name}: {pageEx.Message}");
+            }
+        }
+    }
+
+    private static bool ShouldSkipPdfPageRender(bool renderAll, int index, int pageCount) =>
+        !renderAll && index > 1 &&
+        index % Math.Max(2, pageCount / 20) != 0 && index != pageCount;
+
+    private static string? PdfRenderOutcome(
+        List<Dictionary<string, object?>> rows,
+        int index,
+        List<string> pageErrors)
+    {
+        if (rows.Count == 0 && index == 0)
+            return "PDFtoImage returned no page bitmaps (empty or unreadable PDF).";
+        if (rows.Count == 0 && pageErrors.Count > 0)
+            return "All page renders failed. " + string.Join("; ", pageErrors);
+        return null;
     }
 
     private static async Task WriteManifestAsync(
@@ -934,43 +959,47 @@ public sealed class BookPrepareService
         CancellationToken ct = default)
     {
         var path = Path.Combine(imgDir, "manifest.json");
-        if (File.Exists(path))
-        {
-            try
-            {
-                await using var stream = File.OpenRead(path);
-                using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct)
-                    .ConfigureAwait(false);
-                if (doc.RootElement.TryGetProperty("images", out var imgs) &&
-                    imgs.ValueKind == JsonValueKind.Array &&
-                    imgs.GetArrayLength() > 0)
-                    return; // keep existing inventory
-            }
-            catch { /* rebuild below */ }
-        }
+        if (await ManifestAlreadyHasImagesAsync(path, ct).ConfigureAwait(false))
+            return;
 
         if (!Directory.Exists(imgDir)) return;
+        var rows = BuildManifestRowsFromDisk(imgDir);
+        if (rows.Count == 0) return;
+        await WriteManifestAsync(
+            imgDir,
+            rows,
+            ManifestPageCount(pages, rows),
+            ct).ConfigureAwait(false);
+    }
+
+    private static async Task<bool> ManifestAlreadyHasImagesAsync(string path, CancellationToken ct)
+    {
+        if (!File.Exists(path))
+            return false;
+        try
+        {
+            await using var stream = File.OpenRead(path);
+            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct)
+                .ConfigureAwait(false);
+            if (doc.RootElement.TryGetProperty("images", out var imgs) &&
+                imgs.ValueKind == JsonValueKind.Array &&
+                imgs.GetArrayLength() > 0)
+                return true; // keep existing inventory
+        }
+        catch { /* rebuild below */ }
+        return false;
+    }
+
+    private static List<Dictionary<string, object?>> BuildManifestRowsFromDisk(string imgDir)
+    {
         var rows = new List<Dictionary<string, object?>>();
         foreach (var name in new DirectoryInfo(imgDir).EnumerateFiles()
                      .Where(f => ImageFileExtRegex.IsMatch(f.Name))
                      .OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase)
                      .Select(fi => fi.Name))
         {
-            var m = EmbeddedPageNumRegex.Match(name);
-            var kind = EmbeddedKind;
-            int page = 0;
-            if (m.Success)
-                int.TryParse(m.Groups[1].Value, out page);
-            else
-            {
-                m = RenderedPageNumRegex.Match(name);
-                if (m.Success)
-                {
-                    kind = RenderedPageRelevance;
-                    int.TryParse(m.Groups[1].Value, out page);
-                }
-            }
-            if (page <= 0) continue;
+            if (!TryParseManifestImageFile(name, out var kind, out var page))
+                continue;
             rows.Add(new Dictionary<string, object?>
             {
                 ["kind"] = kind,
@@ -979,13 +1008,34 @@ public sealed class BookPrepareService
                 [RelevanceKey] = kind == EmbeddedKind ? "embedded_figure" : RenderedPageRelevance,
             });
         }
-        if (rows.Count == 0) return;
-        await WriteManifestAsync(
-            imgDir,
-            rows,
-            pages > 0 ? pages : rows.Max(r => r["page"] is int p ? p : 0),
-            ct).ConfigureAwait(false);
+        return rows;
     }
+
+    private static bool TryParseManifestImageFile(string name, out string kind, out int page)
+    {
+        kind = EmbeddedKind;
+        page = 0;
+        var m = EmbeddedPageNumRegex.Match(name);
+        if (m.Success)
+        {
+            if (!int.TryParse(m.Groups[1].Value, out page))
+                page = 0;
+        }
+        else
+        {
+            m = RenderedPageNumRegex.Match(name);
+            if (m.Success)
+            {
+                kind = RenderedPageRelevance;
+                if (!int.TryParse(m.Groups[1].Value, out page))
+                    page = 0;
+            }
+        }
+        return page > 0;
+    }
+
+    private static int ManifestPageCount(int pages, List<Dictionary<string, object?>> rows) =>
+        pages > 0 ? pages : rows.Max(r => r["page"] is int p ? p : 0);
 
     private static async Task<List<(int Page, string Path)>> CollectPageImagesAsync(
         string sourceDir,

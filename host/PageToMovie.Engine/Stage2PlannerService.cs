@@ -626,28 +626,41 @@ public sealed class Stage2PlannerService
         string? creditsVisualPrompt = null)
     {
         var byN = new Dictionary<int, Dictionary<string, object?>>();
-        foreach (var s in GetList(existing, Keys.Scenes).OfType<Dictionary<string, object?>>())
-        {
-            var n = ToInt(s.TryGetValue(JsonKeys.SceneNumber, out var sn) ? sn : 0);
-            if (n > 0) byN[n] = s;
-        }
-        foreach (var s in planned)
-        {
-            var n = ToInt(s.TryGetValue(JsonKeys.SceneNumber, out var sn) ? sn : 0);
-            if (n > 0) byN[n] = s;
-        }
+        AbsorbScenesByNumber(byN, GetList(existing, Keys.Scenes).OfType<Dictionary<string, object?>>());
+        AbsorbScenesByNumber(byN, planned);
         var all = byN.OrderBy(kv => kv.Key).Select(kv => kv.Value).ToList();
         EnsureEndCreditsScene(all, creditsVisualPrompt);
         existing["schema_version"] = "stage2.v1";
-        existing[JsonKeys.MovieTitle] = stage1.TryGetValue(JsonKeys.MovieTitle, out var mt) ? mt
-            : existing.TryGetValue(JsonKeys.MovieTitle, out var emt) ? emt : null;
-        existing[Keys.SourceBookTitle] = stage1.TryGetValue(Keys.SourceBookTitle, out var sbt) ? sbt
-            : existing.TryGetValue(Keys.SourceBookTitle, out var esbt) ? esbt : null;
+        existing[JsonKeys.MovieTitle] = CoalesceStage1OrExisting(stage1, existing, JsonKeys.MovieTitle);
+        existing[Keys.SourceBookTitle] = CoalesceStage1OrExisting(stage1, existing, Keys.SourceBookTitle);
         existing[Keys.VideoProviderProfile] = ResolveVideoProviderProfile(stage1);
         existing[Keys.GlobalProductionVariables] = gpv;
         existing[Keys.Scenes] = all.Cast<object?>().ToList();
         existing[Keys.Stage2Meta] = MakeMeta(stage1, all, sourceLabel, resolution, scenesFilter, classifyMeta, enrichMeta);
         return existing;
+    }
+
+    private static void AbsorbScenesByNumber(
+        Dictionary<int, Dictionary<string, object?>> byN,
+        IEnumerable<Dictionary<string, object?>> scenes)
+    {
+        foreach (var s in scenes)
+        {
+            var n = ToInt(s.TryGetValue(JsonKeys.SceneNumber, out var sn) ? sn : 0);
+            if (n > 0) byN[n] = s;
+        }
+    }
+
+    private static object? CoalesceStage1OrExisting(
+        Dictionary<string, object?> stage1,
+        Dictionary<string, object?> existing,
+        string key)
+    {
+        if (stage1.TryGetValue(key, out var fromStage1))
+            return fromStage1;
+        if (existing.TryGetValue(key, out var fromExisting))
+            return fromExisting;
+        return null;
     }
 
     public static void EnsureEndCreditsScene(List<Dictionary<string, object?>> scenes, string? creditsVisualPrompt = null)
@@ -2003,32 +2016,62 @@ public sealed class Stage2PlannerService
         string? locationId)
     {
         if (clipIndex == 0) return true;
-        // AI / enricher cut decision (hard_cut|extend) — preferred when present
         var cut = (CoerceString(beat.TryGetValue("cut_decision", out var cd) ? cd : null) ?? "").ToLowerInvariant();
-        if (cut is "hard_cut" or "hardcut" or "none") return true;
-        if (cut is "extend" or "continue" or "continuous") return false;
+        if (TryCutDecisionForceNone(cut, out var fromCut))
+            return fromCut;
 
         var ac = (CoerceString(beat.TryGetValue(Keys.ActionClass, out var a) ? a : null) ?? "").ToLowerInvariant();
         var cont = (CoerceString(beat.TryGetValue("continuity", out var c) ? c : null) ?? "").ToLowerInvariant();
-        if (ac is Keys.BigAction or "establishing" or "hard_cut" or "flashback_enter" or "flashback_exit" or "montage")
+        if (ActionOrContinuityForcesNone(ac, cont))
             return true;
-        if (cont is "new_setup" or "return_to_present" or "parallel")
+        if (LocationsDiffer(prevLocationId, locationId))
             return true;
-        if (prevLocationId is not null && locationId is not null && prevLocationId != locationId)
-            return true;
-        // Silent establish → first spoken/VO: hard cut so opening words are not clipped by extend
-        if (prevBeat is not null && BeatHasSpokenAudio(beat) && !BeatHasSpokenAudio(prevBeat))
-            return true;
-        if (IsVoBeat(beat) && prevBeat is not null && IsOnCameraSpeech(prevBeat))
+        if (SpokenTransitionForcesNone(beat, prevBeat))
             return true;
         if (IsVoBeat(beat))
             return cont != "continuous_from_previous_beat";
         var ve = (CoerceString(beat.TryGetValue(Keys.VisualEvent, out var vev) ? vev : null) ?? "").ToLowerInvariant();
-        if (CommonRegex.IsMatch(ve,
-                @"\b(kick|smash|punch|sprint|crash|explod|slam|throw|rocket|wide shot|establishing|flashback|back to present|cut to)\b"))
+        return VisualEventForcesNone(ve);
+    }
+
+    private static bool TryCutDecisionForceNone(string cut, out bool forceNone)
+    {
+        if (cut is "hard_cut" or "hardcut" or "none")
+        {
+            forceNone = true;
             return true;
+        }
+        if (cut is "extend" or "continue" or "continuous")
+        {
+            forceNone = false;
+            return true;
+        }
+        forceNone = false;
         return false;
     }
+
+    private static bool ActionOrContinuityForcesNone(string ac, string cont)
+    {
+        if (ac is Keys.BigAction or "establishing" or "hard_cut" or "flashback_enter" or "flashback_exit" or "montage")
+            return true;
+        return cont is "new_setup" or "return_to_present" or "parallel";
+    }
+
+    private static bool LocationsDiffer(string? prevLocationId, string? locationId) =>
+        prevLocationId is not null && locationId is not null && prevLocationId != locationId;
+
+    private static bool SpokenTransitionForcesNone(
+        Dictionary<string, object?> beat, Dictionary<string, object?>? prevBeat)
+    {
+        // Silent establish → first spoken/VO: hard cut so opening words are not clipped by extend
+        if (prevBeat is not null && BeatHasSpokenAudio(beat) && !BeatHasSpokenAudio(prevBeat))
+            return true;
+        return IsVoBeat(beat) && prevBeat is not null && IsOnCameraSpeech(prevBeat);
+    }
+
+    private static bool VisualEventForcesNone(string ve) =>
+        CommonRegex.IsMatch(ve,
+            @"\b(kick|smash|punch|sprint|crash|explod|slam|throw|rocket|wide shot|establishing|flashback|back to present|cut to)\b");
 
     /// <summary>True when the beat carries spoken dialogue or VO (not silent action).</summary>
     private static bool BeatHasSpokenAudio(Dictionary<string, object?> beat)
@@ -2319,27 +2362,50 @@ public sealed class Stage2PlannerService
     {
         // Current scene heading wins — includes correct time of day for this visit
         var setting = CoerceString(scene.TryGetValue(Keys.Setting, out var st) ? st : null)?.Trim();
-        if (!string.IsNullOrWhiteSpace(setting) && LooksLikeSceneHeading(setting))
-            return setting;
+        if (HasSceneHeadingSetting(setting))
+            return setting ?? "";
 
         var lid = CoerceString(beat.TryGetValue(Keys.LocationId, out var bl) ? bl : null)
                   ?? CoerceString(scene.TryGetValue("primary_location_id", out var pl) ? pl : null);
         if (string.IsNullOrEmpty(lid)) return setting ?? "";
 
-        if (locSeeds.TryGetValue(lid, out var seedObj) && seedObj is Dictionary<string, object?> seed)
-        {
-            var lockTxt = CoerceString(seed.TryGetValue("visual_lock", out var vl) ? vl : null)
-                          ?? CoerceString(seed.TryGetValue("description", out var d) ? d : null)
-                          ?? lid;
-            if (IsPlaceholderIdentityText(lockTxt))
-                return lid;
-            // If seed still has a full heading with TOD, prefer scene setting when available
-            if (!string.IsNullOrWhiteSpace(setting))
-                return setting;
-            return lockTxt;
-        }
+        if (TryPhraseFromLocationSeed(lid, locSeeds, setting, out var fromSeed))
+            return fromSeed;
+        return HasNonEmptySetting(setting) ? setting ?? "" : lid;
+    }
 
-        return !string.IsNullOrWhiteSpace(setting) ? setting : lid;
+    private static bool HasSceneHeadingSetting(string? setting) =>
+        !string.IsNullOrWhiteSpace(setting) && LooksLikeSceneHeading(setting);
+
+    private static bool HasNonEmptySetting(string? setting) =>
+        !string.IsNullOrWhiteSpace(setting);
+
+    private static bool TryPhraseFromLocationSeed(
+        string lid,
+        Dictionary<string, object?> locSeeds,
+        string? setting,
+        out string phrase)
+    {
+        phrase = lid;
+        if (!locSeeds.TryGetValue(lid, out var seedObj) || seedObj is not Dictionary<string, object?> seed)
+            return false;
+
+        var lockTxt = CoerceString(seed.TryGetValue("visual_lock", out var vl) ? vl : null)
+                      ?? CoerceString(seed.TryGetValue("description", out var d) ? d : null)
+                      ?? lid;
+        if (IsPlaceholderIdentityText(lockTxt))
+        {
+            phrase = lid;
+            return true;
+        }
+        // If seed still has a full heading with TOD, prefer scene setting when available
+        if (HasNonEmptySetting(setting))
+        {
+            phrase = setting ?? "";
+            return true;
+        }
+        phrase = lockTxt;
+        return true;
     }
 
     /// <summary>True for Fountain-style INT./EXT. headings (used to prefer scene.setting as place lock).</summary>
