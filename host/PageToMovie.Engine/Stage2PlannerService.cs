@@ -1727,51 +1727,16 @@ public sealed class Stage2PlannerService
                       ?? (cast.Count > 0 ? cast[0] : "");
 
         var place = LocationLockPhrase(scene, beat, locSeeds);
-        var style = RenderStyleLock(scene);
-        // Bug fix: previously only fired for human cast tokens ("mom"/"dad"/"human"),
-        // so animal-only scenes (e.g. Buster's backyard opener) received no style lock and
-        // rendered in a completely different visual style from all subsequent scenes.
-        // Fix: fire for any on-screen character that is visually present, i.e. not a
-        // pure-voice-only character (display_name_policy = "never_on_screen").
-        if (string.IsNullOrWhiteSpace(style) &&
-            cast.Any(t => !IsNeverOnScreenCharacter(t, charSeeds)))
-        {
-            style =
-                "STYLE LOCK: stylized 3D animated children's picture-book CG " +
-                "(same render family as animal hero) -- not photoreal, not live-action";
-        }
-
-        // Attach subject as readable display name — never "Character_X He steadies…"
-        if (!string.IsNullOrEmpty(primary) && !VisualMentionsSubject(ve, primary))
-        {
-            var display = DisplayNameForKey(primary, charSeeds);
-            ve = AttachPrimaryToVisual(ve, primary, display);
-        }
+        var style = EnsureCastStyleLock(RenderStyleLock(scene), cast, charSeeds);
+        ve = AttachSubjectIfMissing(ve, primary, charSeeds);
 
         var others = cast.Where(t => t != primary && !ve.Contains(t, StringComparison.Ordinal)).Take(3).ToList();
         var othersBit = others.Count > 0 ? $"also on screen: {string.Join(", ", others)}" : "";
         // CAST COUNT + CHARACTER VARIABLES owned by ClipVideoPromptBuilder at gen time.
 
-        var block = CoerceString(beat.TryGetValue("blocking_notes", out var bn) ? bn : null) ?? "";
-        if (!string.IsNullOrWhiteSpace(block) &&
-            !ve.Contains(block, StringComparison.OrdinalIgnoreCase))
-            ve = $"{ve}. {block}".Trim();
-
+        ve = AppendBlockingNotes(ve, beat);
         var ac = (CoerceString(beat.TryGetValue(Keys.ActionClass, out var acv) ? acv : null) ?? "").ToLowerInvariant();
-        if (ac == Keys.BigAction &&
-            !ve.Contains("continuous", StringComparison.OrdinalIgnoreCase))
-            ve = $"{ve}. ONE continuous take no cut; unbroken cause-to-effect motion";
-
-        // Establishing shots otherwise describe only a static composition — a known AI-video
-        // failure mode where the "opening wide shot" of a scene looks like a frozen photo. Nudge
-        // in setting-appropriate ambient background life (the model invents specifics; no new
-        // classifier call), mirroring how big_action gets its own action_class-specific guidance.
-        if (ac == "establishing" &&
-            !ve.Contains("subtle", StringComparison.OrdinalIgnoreCase) &&
-            !ve.Contains("ambient motion", StringComparison.OrdinalIgnoreCase))
-            ve = $"{ve}. Include subtle background motion appropriate to this setting (e.g. distant " +
-                 "traffic or passersby, a sign or light flickering, wind moving debris/foliage/fabric) " +
-                 "so the shot feels alive, not a still photo";
+        ve = AppendActionClassMotion(ve, ac);
 
         var speech = SpeechClause(beat);
         var mustNot = GetList(beat, "must_not").Select(x => x?.ToString() ?? "").Where(x => x.Length > 0).Take(3).ToList();
@@ -1784,7 +1749,7 @@ public sealed class Stage2PlannerService
         var parts = new List<(int Order, string Text)>
         {
             (0, style),
-            (2, !string.IsNullOrEmpty(place) && !ve.Contains(place, StringComparison.OrdinalIgnoreCase) ? place : ""),
+            (2, PlaceLockIfMissing(place, ve)),
             (3, othersBit),
             (5, ve),
             (6, speech),
@@ -1792,6 +1757,74 @@ public sealed class Stage2PlannerService
             (8, ward),
         };
         return JoinVisualPromptParts(parts);
+    }
+
+    private static string EnsureCastStyleLock(
+        string style,
+        List<string> cast,
+        Dictionary<string, object?> charSeeds)
+    {
+        // Bug fix: previously only fired for human cast tokens ("mom"/"dad"/"human"),
+        // so animal-only scenes (e.g. Buster's backyard opener) received no style lock and
+        // rendered in a completely different visual style from all subsequent scenes.
+        // Fix: fire for any on-screen character that is visually present, i.e. not a
+        // pure-voice-only character (display_name_policy = "never_on_screen").
+        if (!string.IsNullOrWhiteSpace(style))
+            return style;
+        if (!cast.Any(t => !IsNeverOnScreenCharacter(t, charSeeds)))
+            return style;
+        return
+            "STYLE LOCK: stylized 3D animated children's picture-book CG " +
+            "(same render family as animal hero) -- not photoreal, not live-action";
+    }
+
+    private static string AttachSubjectIfMissing(
+        string ve,
+        string primary,
+        Dictionary<string, object?> charSeeds)
+    {
+        // Attach subject as readable display name — never "Character_X He steadies…"
+        if (string.IsNullOrEmpty(primary) || VisualMentionsSubject(ve, primary))
+            return ve;
+        var display = DisplayNameForKey(primary, charSeeds);
+        return AttachPrimaryToVisual(ve, primary, display);
+    }
+
+    private static string AppendBlockingNotes(string ve, Dictionary<string, object?> beat)
+    {
+        var block = CoerceString(beat.TryGetValue("blocking_notes", out var bn) ? bn : null) ?? "";
+        if (string.IsNullOrWhiteSpace(block) ||
+            ve.Contains(block, StringComparison.OrdinalIgnoreCase))
+            return ve;
+        return $"{ve}. {block}".Trim();
+    }
+
+    private static string AppendActionClassMotion(string ve, string ac)
+    {
+        if (ac == Keys.BigAction &&
+            !ve.Contains("continuous", StringComparison.OrdinalIgnoreCase))
+            ve = $"{ve}. ONE continuous take no cut; unbroken cause-to-effect motion";
+
+        // Establishing shots otherwise describe only a static composition — a known AI-video
+        // failure mode where the "opening wide shot" of a scene looks like a frozen photo. Nudge
+        // in setting-appropriate ambient background life (the model invents specifics; no new
+        // classifier call), mirroring how big_action gets its own action_class-specific guidance.
+        if (ac == "establishing" &&
+            !ve.Contains("subtle", StringComparison.OrdinalIgnoreCase) &&
+            !ve.Contains("ambient motion", StringComparison.OrdinalIgnoreCase))
+        {
+            ve = $"{ve}. Include subtle background motion appropriate to this setting (e.g. distant " +
+                 "traffic or passersby, a sign or light flickering, wind moving debris/foliage/fabric) " +
+                 "so the shot feels alive, not a still photo";
+        }
+        return ve;
+    }
+
+    private static string PlaceLockIfMissing(string place, string ve)
+    {
+        if (string.IsNullOrEmpty(place) || ve.Contains(place, StringComparison.OrdinalIgnoreCase))
+            return "";
+        return place;
     }
 
     /// <summary>

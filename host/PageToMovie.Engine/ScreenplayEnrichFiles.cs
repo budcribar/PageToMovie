@@ -83,29 +83,13 @@ public static class ScreenplayEnrichFiles
         if (!LooksXai(model)) return null;
 
         var fileIds = new List<string>();
-
-        if (attachBook && !string.IsNullOrWhiteSpace(bookText))
-        {
-            var bookId = await ResolveBookIdAsync(deps, projectId, projectDir, bookText, ct).ConfigureAwait(false);
-            var bookFileId = await EnsureBookFileIdAsync(
-                deps, projectDir, bookId, bookText, model, onProgress, ct).ConfigureAwait(false);
-            if (!string.IsNullOrWhiteSpace(bookFileId))
-                fileIds.Add(bookFileId);
-        }
-
-        if (!string.IsNullOrWhiteSpace(screenplay))
-        {
-            var spFileId = await EnsureProjectFileAsync(
-                deps.Responses, projectDir, screenplayKind, screenplay, screenplayFilename, onProgress, ct)
-                .ConfigureAwait(false);
-            if (string.IsNullOrWhiteSpace(spFileId))
-            {
-                if (requireScreenplay) return null;
-            }
-            else
-                fileIds.Add(spFileId);
-        }
-        else if (requireScreenplay)
+        await TryAddBookFileAsync(
+            deps, projectId, projectDir, bookText, model, attachBook, fileIds, onProgress, ct)
+            .ConfigureAwait(false);
+        if (!await TryAddScreenplayFileAsync(
+                deps.Responses, projectDir, screenplay, screenplayKind, screenplayFilename,
+                requireScreenplay, fileIds, onProgress, ct)
+            .ConfigureAwait(false))
             return null;
 
         if (fileIds.Count == 0) return null;
@@ -121,6 +105,52 @@ public static class ScreenplayEnrichFiles
             onProgress?.Invoke("xAI response_id=" + result.ResponseId);
 
         return result.OutputText;
+    }
+
+    static async Task TryAddBookFileAsync(
+        Deps deps,
+        string projectId,
+        string projectDir,
+        string? bookText,
+        string model,
+        bool attachBook,
+        List<string> fileIds,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
+        if (!attachBook || string.IsNullOrWhiteSpace(bookText))
+            return;
+        var bookId = await ResolveBookIdAsync(deps, projectId, projectDir, bookText, ct).ConfigureAwait(false);
+        var bookFileId = await EnsureBookFileIdAsync(
+            deps, projectDir, bookId, bookText, model, onProgress, ct).ConfigureAwait(false);
+        if (!string.IsNullOrWhiteSpace(bookFileId))
+            fileIds.Add(bookFileId);
+    }
+
+    static async Task<bool> TryAddScreenplayFileAsync(
+        XaiResponsesClient responses,
+        string projectDir,
+        string? screenplay,
+        string screenplayKind,
+        string screenplayFilename,
+        bool requireScreenplay,
+        List<string> fileIds,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(screenplay))
+            return !requireScreenplay;
+
+        var spFileId = await EnsureProjectFileAsync(
+            responses, projectDir, screenplayKind, screenplay, screenplayFilename, onProgress, ct)
+            .ConfigureAwait(false);
+        if (!string.IsNullOrWhiteSpace(spFileId))
+        {
+            fileIds.Add(spFileId);
+            return true;
+        }
+
+        return !requireScreenplay;
     }
 
     static async Task<string?> ResolveBookIdAsync(
@@ -153,44 +183,16 @@ public static class ScreenplayEnrichFiles
         Action<string>? onProgress,
         CancellationToken ct)
     {
-        if (!string.IsNullOrWhiteSpace(bookId) && deps.Registry is not null)
-        {
-            var existing = await deps.Registry.GetProviderFileAsync(bookId, XaiBookFileSession.ProviderName, ct)
-                .ConfigureAwait(false);
-            var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            if (existing is not null &&
-                !string.IsNullOrWhiteSpace(existing.FileId) &&
-                (existing.ExpiresAtUnix is null || existing.ExpiresAtUnix > now + 3600))
-            {
-                onProgress?.Invoke($"Reusing book file_id for {bookId} (no re-upload).");
-                return existing.FileId;
-            }
-        }
-
+        var reused = await TryReuseRegistryBookFileIdAsync(deps, bookId, onProgress, ct).ConfigureAwait(false);
+        if (reused is not null)
+            return reused;
         if (string.IsNullOrWhiteSpace(bookText))
             return null;
 
-        if (!string.IsNullOrWhiteSpace(bookId) && deps.BookSessions is not null)
-        {
-            try
-            {
-                var session = await deps.BookSessions.TryCreateAsync(bookId, bookText, model, ct)
-                    .ConfigureAwait(false);
-                if (session is { IsAvailable: true })
-                {
-                    await session.EnsureUploadedAsync(ct).ConfigureAwait(false);
-                    if (!string.IsNullOrWhiteSpace(session.FileId))
-                    {
-                        onProgress?.Invoke($"Book uploaded / reused as file_id={session.FileId}.");
-                        return session.FileId;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                onProgress?.Invoke("Book file session failed: " + ex.Message);
-            }
-        }
+        var uploaded = await TryUploadViaBookSessionAsync(deps, bookId, bookText, model, onProgress, ct)
+            .ConfigureAwait(false);
+        if (uploaded is not null)
+            return uploaded;
 
         return await EnsureProjectFileAsync(
             deps.Responses,
@@ -200,6 +202,51 @@ public static class ScreenplayEnrichFiles
             "book_full.txt",
             onProgress,
             ct).ConfigureAwait(false);
+    }
+
+    static async Task<string?> TryReuseRegistryBookFileIdAsync(
+        Deps deps, string? bookId, Action<string>? onProgress, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(bookId) || deps.Registry is null)
+            return null;
+        var existing = await deps.Registry.GetProviderFileAsync(bookId, XaiBookFileSession.ProviderName, ct)
+            .ConfigureAwait(false);
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        if (existing is null ||
+            string.IsNullOrWhiteSpace(existing.FileId) ||
+            (existing.ExpiresAtUnix is not null && existing.ExpiresAtUnix <= now + 3600))
+            return null;
+        onProgress?.Invoke($"Reusing book file_id for {bookId} (no re-upload).");
+        return existing.FileId;
+    }
+
+    static async Task<string?> TryUploadViaBookSessionAsync(
+        Deps deps,
+        string? bookId,
+        string bookText,
+        string model,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(bookId) || deps.BookSessions is null)
+            return null;
+        try
+        {
+            var session = await deps.BookSessions.TryCreateAsync(bookId, bookText, model, ct)
+                .ConfigureAwait(false);
+            if (session is not { IsAvailable: true })
+                return null;
+            await session.EnsureUploadedAsync(ct).ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(session.FileId))
+                return null;
+            onProgress?.Invoke($"Book uploaded / reused as file_id={session.FileId}.");
+            return session.FileId;
+        }
+        catch (Exception ex)
+        {
+            onProgress?.Invoke("Book file session failed: " + ex.Message);
+            return null;
+        }
     }
 
     static async Task<string?> EnsureProjectFileAsync(
