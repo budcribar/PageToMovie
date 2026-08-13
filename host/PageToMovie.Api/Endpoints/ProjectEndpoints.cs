@@ -621,18 +621,24 @@ public static class ProjectEndpoints
     if (AuthGate.RequireLogin(user, opts) is { } denied)
         return denied;
     var all = await store.ListProjectsAsync(ct);
-    var forkable = all
+    var forkable = new List<object>();
+    foreach (var p in all
         .Where(p => p.VisibilityMode == ProjectVisibility.Public
-                    // Exclude forks themselves — only original forkable sources are pickable stories.
                     && string.IsNullOrWhiteSpace(p.ParentProjectId))
-        .OrderBy(p => p.Label ?? p.Title ?? p.Id, StringComparer.OrdinalIgnoreCase)
-        .Select(p => new
+        .OrderBy(p => p.Label ?? p.Title ?? p.Id, StringComparer.OrdinalIgnoreCase))
+    {
+        var share = ProjectScreenplayShare.Inspect(p.Path);
+        forkable.Add(new
         {
             id = p.Id,
             title = p.Label ?? p.Title ?? p.Id,
             ownerUserId = p.OwnerUserId,
-        })
-        .ToList();
+            hasMaxMaster = share.HasMax,
+            hasIndex = share.HasIndex,
+            sceneCards = share.SceneCards,
+            next = share.Next,
+        });
+    }
     return Results.Ok(new { ok = true, projects = forkable });
 }
 
@@ -650,7 +656,19 @@ public static class ProjectEndpoints
     {
         var fork = await store.ForkProjectAsync(id, user.UserId, ct: ct);
         await books.LinkForkAsync(id, user.UserId, fork.Id, invitationAuthorized: false, ct);
-        return Results.Ok(new { ok = true, id = fork.Id, title = fork.Title, parentProjectId = fork.ParentProjectId, visibilityMode = fork.VisibilityMode });
+        var share = ProjectScreenplayShare.Inspect(fork.Path);
+        return Results.Ok(new
+        {
+            ok = true,
+            id = fork.Id,
+            title = fork.Title,
+            parentProjectId = fork.ParentProjectId,
+            visibilityMode = fork.VisibilityMode,
+            hasMaxMaster = share.HasMax,
+            hasIndex = share.HasIndex,
+            sceneCards = share.SceneCards,
+            next = share.Next,
+        });
     }
     catch (Exception ex)
     {

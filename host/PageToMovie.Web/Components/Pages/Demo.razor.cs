@@ -123,9 +123,13 @@ public partial class Demo
         try
         {
             var forked = await Engine.ForkProjectAsync(d.ProjectId);
-            if (forked is not null)
+            if (forked is not null && !string.IsNullOrWhiteSpace(forked.Id))
             {
-                Nav.NavigateTo("adaptation");
+                await ActiveProject.SelectAsync(Engine, forked.Id, forked.Title ?? d.Title);
+                var dest = forked.HasMaxMaster || forked.HasIndex || forked.Next == "trim"
+                    ? "cost"
+                    : "adaptation";
+                Nav.NavigateTo(dest);
             }
             else
             {

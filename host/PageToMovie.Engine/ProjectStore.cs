@@ -6296,7 +6296,8 @@ public sealed partial class ProjectStore
 
         // Fountain is the screenplay source of truth.
         // Flow: import → draft/approve → pin characters → shot plan → generate clips (Scenes).
-        var next = ResolveAdaptationNextStep(book, screenplay, stage1, stage2, cast);
+        var next = ResolveAdaptationNextStep(book, screenplay, stage1, stage2, cast, ProjectScreenplayIndex.TryReadSummary(dir));
+
 
         return new AdaptationStatus
         {
@@ -6334,12 +6335,16 @@ public sealed partial class ProjectStore
         ScreenplayStatus screenplay,
         Stage1Status stage1,
         Stage2PlanStatus stage2,
-        CastStatus cast)
+        CastStatus cast,
+        ScreenplayIndexSummary? index)
     {
         if (!HasAdaptationSource(book, screenplay, stage1))
             return "import_book";
         if (NeedsFixBookText(book, screenplay, stage1))
             return "fix_book_text";
+        // Inherited max+index: pick a length before writing another screenplay.
+        if (index is { HasIndex: true } && screenplay.DraftExists && !cast.ReadyForShots && !stage2.Stage2Ready)
+            return "shape_runtime";
         if (!screenplay.DraftExists && book.BookTextExists)
             return "draft_screenplay";
         if (screenplay.DraftExists && (!screenplay.Signed || screenplay.Dirty))

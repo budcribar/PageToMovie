@@ -152,12 +152,17 @@ public sealed class ProjectArchiveService
         // Manifest for importers. Export must not modify a project's working files.
         var projectSchema = await ProjectFormatVersions.TryReadProjectSchemaVersionAsync(projectDir, ct).ConfigureAwait(false)
                             ?? ProjectFormatVersions.ProjectSchemaVersion;
+        var share = ProjectScreenplayShare.Inspect(projectDir);
         var metaEntry = zip.CreateEntry($"{id}/_export_meta.json", CompressionLevel.Fastest);
         await using (var metaStream = await metaEntry.OpenAsync(ct).ConfigureAwait(false))
         using (var w = new StreamWriter(metaStream, Encoding.UTF8))
         {
             await w.WriteAsync(JsonSerializer.Serialize(
-                ProjectFormatVersions.BuildExportMeta(id, projectSchema),
+                ProjectFormatVersions.BuildExportMeta(
+                    id, projectSchema,
+                    hasScreenplayMax: share.HasMax,
+                    hasScreenplayIndex: share.HasIndex,
+                    indexSceneCards: share.SceneCards),
                 JsonOpts));
         }
 

@@ -729,13 +729,13 @@ public sealed class EngineApiClient
         return res.IsSuccessStatusCode;
     }
 
-    public async Task<ProjectInfo?> ForkProjectAsync(
+    public async Task<ForkResultDto?> ForkProjectAsync(
         string projectId,
         CancellationToken ct = default)
     {
         SyncIdentityHeaders();
         using var req = new HttpRequestMessage(HttpMethod.Post, $"/api/projects/{Uri.EscapeDataString(projectId)}/fork");
-        return await SendJsonAsync<ProjectInfo>(req, ct);
+        return await SendJsonAsync<ForkResultDto>(req, ct);
     }
 
     /// <summary>Public forkable movies (visibility "Open") — the Easy Start "story in your voice" picker.</summary>
@@ -5035,11 +5035,27 @@ public sealed class DemoListItem
     public ulong TotalStars => (ulong)Math.Max(0, UpvoteCount) + (YoutubeLikeCount ?? 0);
 }
 
+public sealed class ForkResultDto
+{
+    public bool Ok { get; set; }
+    public string? Id { get; set; }
+    public string? Title { get; set; }
+    public string? ParentProjectId { get; set; }
+    public bool HasMaxMaster { get; set; }
+    public bool HasIndex { get; set; }
+    public int SceneCards { get; set; }
+    public string? Next { get; set; }
+}
+
 public sealed class ForkableStoryDto
 {
     public string Id { get; set; } = "";
     public string Title { get; set; } = "";
     public string? OwnerUserId { get; set; }
+    public bool HasMaxMaster { get; set; }
+    public bool HasIndex { get; set; }
+    public int SceneCards { get; set; }
+    public string? Next { get; set; }
 }
 
 public sealed class CheckpointDto

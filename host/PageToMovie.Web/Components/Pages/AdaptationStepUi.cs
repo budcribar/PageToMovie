@@ -26,6 +26,7 @@ public abstract partial class AdaptationPageBase
             RunStage2 => "Build the shot plan",
             ReplanStage2 => "Update the shot plan (screenplay changed)",
             GenerateClips => "Open Scenes and create video clips",
+            "shape_runtime" => "Pick a length on Estimate — the full screenplay is already here",
             _ => "Looks complete — refine on Characters or Scenes",
         };
 
@@ -67,6 +68,7 @@ public abstract partial class AdaptationPageBase
             {
                 "import_book" or "fix_book_text" => "/adaptation/import",
                 SignScreenplay or DraftScreenplay or RunStage1 => "/adaptation/screenplay",
+                "shape_runtime" => "/cost",
                 // The Book strip step routes through /adaptation. When cast is the next step the book itself is
                 // done, so land on the screenplay editor — never bounce out to /characters (that has its own
                 // strip step), or clicking Book from Cast just returns to Cast.
@@ -199,7 +201,7 @@ public abstract partial class AdaptationPageBase
                 // On import: only after the pipeline is idle and they should leave Import
                 // (draft exists → continue to screenplay). Don't say "approve" mid-import.
                 if (next is SignScreenplay or GenerateClips or RunStage2 or ReplanStage2
-                    or PinCharacters)
+                    or PinCharacters or "shape_runtime")
                     return status.Screenplay.DraftExists;
                 return next is DraftScreenplay or RunStage1;
             }

@@ -37,10 +37,12 @@ public static class ProjectFormatVersions
         string? projectSchemaVersion,
         bool clientMediaMerged = false,
         int? clientMediaFilesAdded = null,
-        string? clientMediaListError = null) => new
+        string? clientMediaListError = null,
+        bool hasScreenplayMax = false,
+        bool hasScreenplayIndex = false,
+        int indexSceneCards = 0) => new
     {
         package = ExportPackageId,
-        // Legacy string for older importers
         schema = $"{ExportPackageId}.v{ExportFormatVersion}",
         exportFormatVersion = ExportFormatVersion,
         projectSchemaVersion = string.IsNullOrWhiteSpace(projectSchemaVersion)
@@ -52,10 +54,13 @@ public static class ProjectFormatVersions
         clientMediaMerged,
         clientMediaFilesAdded,
         clientMediaListError,
+        hasScreenplayMax,
+        hasScreenplayIndex,
+        indexSceneCards,
         note =
-            "Server project folder; browser may merge local media (MP4/MP3). " +
-            "On import, ProjectMigrationService upgrades projectSchemaVersion. " +
-            "Bump ExportFormatVersion / ProjectSchemaVersion when formats change.",
+            "Server project folder including screenplay.max and screenplay.index when present. " +
+            "Browser may merge local media (MP4/MP3). " +
+            "On import, ProjectMigrationService upgrades projectSchemaVersion.",
     };
 
     /// <summary>Read project.json schema_version if present.</summary>

@@ -125,6 +125,39 @@ public class ProjectArchiveServiceTests
     }
 
     [Fact]
+    public async Task Export_includes_max_master_and_index()
+    {
+        var tmp = Path.Combine(Path.GetTempPath(), "ptm-archive-max-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tmp);
+        try
+        {
+            var opts = Options.Create(new PageToMovieOptions { WorkspaceRoot = tmp });
+            var store = new ProjectStore(opts);
+            var archives = new ProjectArchiveService(store, NullLogger<ProjectArchiveService>.Instance);
+            var created = await store.CreateProjectAsync("MasterShare");
+            var dir = store.GetProjectDir(created.Id!);
+            Directory.CreateDirectory(Path.Combine(dir, "source"));
+            await File.WriteAllTextAsync(Path.Combine(dir, "source", "screenplay.max.fountain"), "Title: M\n\nINT. HALL - DAY\n\nHi.\n");
+            await File.WriteAllTextAsync(Path.Combine(dir, "source", "screenplay.index.json"),
+                """{"schema_version":"screenplay.index.v1","movie_title":"M","acts":[{"id":"a1","title":"A","sequences":[{"id":"s1","title":"S","scenes":[{"id":"c1","order":1,"heading":"INT. HALL - DAY","location_key":"Loc_Hall","speaking_cast":["H"],"beat":"b","book_anchor_start":"a","book_anchor_end":"z"}]}]}]}""");
+
+            await using var exp = await archives.ExportAsync(created.Id!);
+            using var zip = new ZipArchive(exp.Stream, ZipArchiveMode.Read, leaveOpen: true);
+            Assert.Contains(zip.Entries, e => e.FullName.Replace('\\', '/').EndsWith("source/screenplay.max.fountain", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(zip.Entries, e => e.FullName.Replace('\\', '/').EndsWith("source/screenplay.index.json", StringComparison.OrdinalIgnoreCase));
+            var meta = zip.Entries.First(e => e.FullName.Replace('\\', '/').EndsWith("_export_meta.json", StringComparison.OrdinalIgnoreCase));
+            using var reader = new StreamReader(meta.Open());
+            var json = await reader.ReadToEndAsync();
+            Assert.Contains("hasScreenplayMax", json);
+            Assert.Contains("hasScreenplayIndex", json);
+        }
+        finally
+        {
+            try { Directory.Delete(tmp, true); } catch { /* ignore */ }
+        }
+    }
+
+    [Fact]
     public async Task Import_flat_zip_with_project_json_at_root()
     {
         var tmp = Path.Combine(Path.GetTempPath(), "ptm-archive-flat-" + Guid.NewGuid().ToString("N"));

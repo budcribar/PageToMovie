@@ -68,6 +68,37 @@ public class ProjectForkTests
     }
 
     [Fact]
+    public async Task ForkProjectAsync_inherits_max_master_and_index()
+    {
+        var (store, root) = MakeStore();
+        try
+        {
+            var source = await store.CreateProjectAsync("Epic", ownerUserId: "owner1");
+            await store.SetProjectVisibilityModeAsync(source.Id, "Open");
+            var srcDir = Path.Combine(source.Path, "source");
+            Directory.CreateDirectory(srcDir);
+            await File.WriteAllTextAsync(Path.Combine(srcDir, "screenplay.fountain"), "INT. CUT - DAY\n\nShort cut.\n");
+            await File.WriteAllTextAsync(Path.Combine(srcDir, "screenplay.max.fountain"), "Title: Epic\n\nINT. HALL - DAY\n\nFull master.\n");
+            await File.WriteAllTextAsync(Path.Combine(srcDir, "screenplay.index.json"),
+                """{"schema_version":"screenplay.index.v1","movie_title":"Epic","acts":[{"id":"a1","title":"A","sequences":[{"id":"s1","title":"Open","scenes":[{"id":"c1","order":1,"heading":"INT. HALL - DAY","location_key":"Loc_Hall","speaking_cast":["HERO"],"beat":"Start","book_anchor_start":"a","book_anchor_end":"b"}]}]}]}""");
+            await File.WriteAllTextAsync(Path.Combine(srcDir, "screenplay.cut.json"), """{"keep_all":false}""");
+
+            var fork = await store.ForkProjectAsync(source.Id, "reader1");
+            var share = ProjectScreenplayShare.Inspect(fork.Path);
+            Assert.True(share.HasMax);
+            Assert.True(share.HasIndex);
+            Assert.True(share.HasDraft);
+            Assert.Equal("trim", share.Next);
+            Assert.True(File.Exists(Path.Combine(fork.Path, "source", "screenplay.index.json")));
+            Assert.Contains("Full master", await File.ReadAllTextAsync(Path.Combine(fork.Path, "source", "screenplay.max.fountain")));
+        }
+        finally
+        {
+            DeleteRoot(root);
+        }
+    }
+
+    [Fact]
     public async Task ForkProjectAsync_does_not_change_the_active_project()
     {
         var (store, root) = MakeStore();

@@ -31,7 +31,13 @@
                             data-testid="@($"simple-voice-story-{story.Id}")"
                             @onclick="() => Host.SelectStoryAsync(story)">
                         <div class="d-flex justify-content-between gap-2 align-items-center">
-                            <div class="fw-semibold text-start">@story.Title</div>
+                            <div class="text-start">
+                                <div class="fw-semibold">@story.Title</div>
+                                @if (story.HasIndex || story.HasMaxMaster)
+                                {
+                                    <div class="small text-muted">Full screenplay included — pick a length or film</div>
+                                }
+                            </div>
                             <span class="small text-muted flex-shrink-0">Read in my voice →</span>
                         </div>
                     </button>

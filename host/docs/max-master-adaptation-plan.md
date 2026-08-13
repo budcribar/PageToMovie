@@ -183,8 +183,9 @@ Short books that fit a single pass skip the extra call. Index is skipped (not fa
 
 ### P5 — Share the master
 
-- Export / backup already includes fountain + assets. Add `screenplay.index.json`.
-- Forkable projects: new user inherits max + index; their first action is trim or film, not adapt.
+- [x] Export zip includes `screenplay.max.fountain` + `screenplay.index.json`; `_export_meta.json` flags them.
+- [x] Fork copies max + index with the project. First action is trim (Estimate) or film — not a new adapt.
+- [x] Forkable list advertises the inherited master. Demo fork lands on Estimate when a master exists.
 
 ## Files to touch (when building)
 
