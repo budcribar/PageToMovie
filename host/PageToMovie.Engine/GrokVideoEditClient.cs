@@ -184,56 +184,17 @@ public sealed class GrokVideoEditClient : IVideoEditClient
             ct.ThrowIfCancellationRequested();
             polls++;
 
-            string body;
-            try
-            {
-                body = await AiRetryPolicy.ExecuteWithTransientRetryAsync(
-                    async _ =>
-                    {
-                        using var resp = await SendAsync(HttpMethod.Get, $"videos/{requestId}", content: null, ct);
-                        var b = await resp.Content.ReadAsStringAsync(ct);
-                        if (!resp.IsSuccessStatusCode)
-                            throw ChatHttpStatusException.FromResponse(resp,
-                                $"Grok video edit poll HTTP {(int)resp.StatusCode}: {Trim(b, 400)}");
-                        return b;
-                    },
-                    isTransient: AiRetryPolicy.IsTransientChatFailure,
-                    maxAttempts: AiRetryPolicy.DefaultTransientMaxAttempts,
-                    backoffBaseMs: AiRetryPolicy.DefaultTransientBackoffMs,
-                    onRetry: (attemptNum, ex) => _errorLogger.LogRetryAttemptAsync(
-                        "grok_video_edit_poll", null, $"requestId={requestId}; poll={polls}", attemptNum, ex, ct),
-                    ct: ct).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                await _telemetry.LogOutcomeAsync(null, requestId, VideoJobOutcome.PollFailed, sw.ElapsedMilliseconds, polls, ok: false, ex.Message, ct);
-                throw;
-            }
-
+            var body = await FetchEditPollBodyAsync(requestId, polls, sw, ct).ConfigureAwait(false);
             using var doc = JsonDocument.Parse(body);
             var root = doc.RootElement;
             var status = root.TryGetProperty("status", out var st) ? st.GetString() : null;
 
             if (string.Equals(status, "done", StringComparison.OrdinalIgnoreCase))
-            {
-                if (root.TryGetProperty("video", out var video) &&
-                    video.TryGetProperty("url", out var urlEl) &&
-                    urlEl.GetString() is { Length: > 0 } url)
-                {
-                    await _telemetry.LogOutcomeAsync(null, requestId, VideoJobOutcome.Ok, sw.ElapsedMilliseconds, polls, ok: true, null, ct);
-                    return url;
-                }
-                await _telemetry.LogOutcomeAsync(null, requestId, VideoJobOutcome.ProviderFailed, sw.ElapsedMilliseconds, polls, ok: false, "done with no video.url", ct);
-                throw new InvalidOperationException("Grok video edit done with no video.url");
-            }
+                return await HandleEditPollDoneAsync(requestId, root, sw, polls, ct).ConfigureAwait(false);
 
-            if (string.Equals(status, "failed", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(status, "expired", StringComparison.OrdinalIgnoreCase))
-            {
-                var detail = root.TryGetProperty("error", out var err) ? err.ToString() : body;
-                await _telemetry.LogOutcomeAsync(null, requestId, string.Equals(status, "expired", StringComparison.OrdinalIgnoreCase) ? VideoJobOutcome.Expired : VideoJobOutcome.ProviderFailed, sw.ElapsedMilliseconds, polls, ok: false, Trim(detail, 500), ct);
-                throw new InvalidOperationException($"Grok video edit job {status}: {Trim(detail, 400)}");
-            }
+            if (IsPollFailedOrExpired(status))
+                await HandleEditPollFailedOrExpiredAsync(requestId, root, body, status, sw, polls, ct)
+                    .ConfigureAwait(false);
 
             var progress = root.TryGetProperty("progress", out var pr) ? pr.ToString() : null;
             onProgress?.Invoke(progress is null ? $"status={status}" : $"status={status} ({progress}%)");
@@ -242,6 +203,72 @@ public sealed class GrokVideoEditClient : IVideoEditClient
 
         await _telemetry.LogOutcomeAsync(null, requestId, VideoJobOutcome.TimedOut, sw.ElapsedMilliseconds, polls, ok: false, $"timed out after {_opts.GrokTimeoutSeconds}s", ct);
         throw new TimeoutException($"Grok video edit timed out after {_opts.GrokTimeoutSeconds}s");
+    }
+
+    private static bool IsPollFailedOrExpired(string? status) =>
+        string.Equals(status, "failed", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(status, "expired", StringComparison.OrdinalIgnoreCase);
+
+    private async Task<string> FetchEditPollBodyAsync(string requestId, int polls, Stopwatch sw, CancellationToken ct)
+    {
+        try
+        {
+            return await AiRetryPolicy.ExecuteWithTransientRetryAsync(
+                _ => GetEditPollResponseAsync(requestId, ct),
+                isTransient: AiRetryPolicy.IsTransientChatFailure,
+                maxAttempts: AiRetryPolicy.DefaultTransientMaxAttempts,
+                backoffBaseMs: AiRetryPolicy.DefaultTransientBackoffMs,
+                onRetry: (attemptNum, ex) => _errorLogger.LogRetryAttemptAsync(
+                    "grok_video_edit_poll", null, $"requestId={requestId}; poll={polls}", attemptNum, ex, ct),
+                ct: ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            await _telemetry.LogOutcomeAsync(null, requestId, VideoJobOutcome.PollFailed, sw.ElapsedMilliseconds, polls, ok: false, ex.Message, ct);
+            throw;
+        }
+    }
+
+    private async Task<string> GetEditPollResponseAsync(string requestId, CancellationToken ct)
+    {
+        using var resp = await SendAsync(HttpMethod.Get, $"videos/{requestId}", content: null, ct);
+        var b = await resp.Content.ReadAsStringAsync(ct);
+        if (!resp.IsSuccessStatusCode)
+            throw ChatHttpStatusException.FromResponse(resp,
+                $"Grok video edit poll HTTP {(int)resp.StatusCode}: {Trim(b, 400)}");
+        return b;
+    }
+
+    private async Task<string> HandleEditPollDoneAsync(
+        string requestId, JsonElement root, Stopwatch sw, int polls, CancellationToken ct)
+    {
+        if (root.TryGetProperty("video", out var video) &&
+            video.TryGetProperty("url", out var urlEl) &&
+            urlEl.GetString() is { Length: > 0 } url)
+        {
+            await _telemetry.LogOutcomeAsync(null, requestId, VideoJobOutcome.Ok, sw.ElapsedMilliseconds, polls, ok: true, null, ct);
+            return url;
+        }
+        await _telemetry.LogOutcomeAsync(null, requestId, VideoJobOutcome.ProviderFailed, sw.ElapsedMilliseconds, polls, ok: false, "done with no video.url", ct);
+        throw new InvalidOperationException("Grok video edit done with no video.url");
+    }
+
+    private async Task HandleEditPollFailedOrExpiredAsync(
+        string requestId, JsonElement root, string body, string? status, Stopwatch sw, int polls, CancellationToken ct)
+    {
+        var detail = root.TryGetProperty("error", out var err) ? err.ToString() : body;
+        await _telemetry.LogOutcomeAsync(
+            null,
+            requestId,
+            string.Equals(status, "expired", StringComparison.OrdinalIgnoreCase)
+                ? VideoJobOutcome.Expired
+                : VideoJobOutcome.ProviderFailed,
+            sw.ElapsedMilliseconds,
+            polls,
+            ok: false,
+            Trim(detail, 500),
+            ct);
+        throw new InvalidOperationException($"Grok video edit job {status}: {Trim(detail, 400)}");
     }
 
     public async Task DownloadToFileAsync(string url, string destPath, CancellationToken ct)

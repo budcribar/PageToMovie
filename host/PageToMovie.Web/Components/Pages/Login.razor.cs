@@ -357,33 +357,8 @@ public partial class Login : IDisposable
         _info = null;
         _needsResend = false;
 
-        if (string.IsNullOrWhiteSpace(_username) || _username.Trim().Length < 3)
-        {
-            _error = "Username must be at least 3 characters long.";
+        if (!ValidateSubmitFields())
             return;
-        }
-
-        if (_isSignup)
-        {
-            var email = (_email ?? "").Trim();
-            if (email.Length < 5 || !email.Contains('@') || !email.Contains('.'))
-            {
-                _error = "Enter a valid email address.";
-                return;
-            }
-        }
-
-        if (string.IsNullOrWhiteSpace(_password) || _password.Length < 4)
-        {
-            _error = "Password must be at least 4 characters long.";
-            return;
-        }
-
-        if (_isSignup && _password != _confirmPassword)
-        {
-            _error = "Passwords do not match.";
-            return;
-        }
 
         _busy = true;
         _status = _isSignup ? "Creating account…" : "Signing in…";
@@ -391,52 +366,7 @@ public partial class Login : IDisposable
 
         try
         {
-            var resp = _isSignup
-                ? await Api.SignupAsync(_username.Trim(), _password, (_email ?? "").Trim())
-                : await Api.LoginAsync(_username.Trim(), _password);
-
-            if (resp is null)
-            {
-                _error = _isSignup ? "Sign up failed." : "Sign in failed.";
-                return;
-            }
-
-            // Signup (or login) that still needs email confirmation — no session yet
-            if (resp.RequiresEmailConfirmation || (_isSignup && resp.Ok && string.IsNullOrWhiteSpace(resp.Token)))
-            {
-                _needsResend = true;
-                if (resp.Ok || !string.IsNullOrWhiteSpace(resp.Message))
-                {
-                    _info = resp.Message
-                            ?? "Account created. Check your email for a confirmation link before signing in.";
-                    _error = null;
-                    _isSignup = false;
-                }
-                else
-                {
-                    _error = resp.Error
-                             ?? "Confirm your email before signing in. Check your inbox (or the API log in development).";
-                }
-                return;
-            }
-
-            if (!resp.Ok || string.IsNullOrWhiteSpace(resp.Token))
-            {
-                _error = resp.Error ?? (_isSignup ? "Sign up failed." : "Sign in failed.");
-                return;
-            }
-
-            // Await storage write so forceLoad cannot rehydrate a previous user id (e.g. renamed account).
-            await Session.SetSessionAsync(
-                resp.Token,
-                resp.UserId ?? _username.Trim(),
-                resp.Roles,
-                resp.ExpiresAt);
-
-            _status = "Redirecting…";
-            StateHasChanged();
-
-            Nav.NavigateTo(ResolveReturnUrl(), forceLoad: true);
+            await ExecuteSubmitAsync();
         }
         catch (HttpRequestException ex)
         {
@@ -450,6 +380,97 @@ public partial class Login : IDisposable
         {
             _busy = false;
             StateHasChanged();
+        }
+    }
+
+    private bool ValidateSubmitFields()
+    {
+        if (string.IsNullOrWhiteSpace(_username) || _username.Trim().Length < 3)
+        {
+            _error = "Username must be at least 3 characters long.";
+            return false;
+        }
+
+        if (_isSignup)
+        {
+            var email = (_email ?? "").Trim();
+            if (email.Length < 5 || !email.Contains('@') || !email.Contains('.'))
+            {
+                _error = "Enter a valid email address.";
+                return false;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(_password) || _password.Length < 4)
+        {
+            _error = "Password must be at least 4 characters long.";
+            return false;
+        }
+
+        if (_isSignup && _password != _confirmPassword)
+        {
+            _error = "Passwords do not match.";
+            return false;
+        }
+
+        return true;
+    }
+
+    private async Task ExecuteSubmitAsync()
+    {
+        var resp = _isSignup
+            ? await Api.SignupAsync(_username.Trim(), _password, (_email ?? "").Trim())
+            : await Api.LoginAsync(_username.Trim(), _password);
+
+        if (resp is null)
+        {
+            _error = _isSignup ? "Sign up failed." : "Sign in failed.";
+            return;
+        }
+
+        if (NeedsEmailConfirmation(resp))
+        {
+            ApplyEmailConfirmationOutcome(resp);
+            return;
+        }
+
+        if (!resp.Ok || string.IsNullOrWhiteSpace(resp.Token))
+        {
+            _error = resp.Error ?? (_isSignup ? "Sign up failed." : "Sign in failed.");
+            return;
+        }
+
+        // Await storage write so forceLoad cannot rehydrate a previous user id (e.g. renamed account).
+        await Session.SetSessionAsync(
+            resp.Token,
+            resp.UserId ?? _username.Trim(),
+            resp.Roles,
+            resp.ExpiresAt);
+
+        _status = "Redirecting…";
+        StateHasChanged();
+
+        Nav.NavigateTo(ResolveReturnUrl(), forceLoad: true);
+    }
+
+    private bool NeedsEmailConfirmation(LoginResponse resp) =>
+        resp.RequiresEmailConfirmation || (_isSignup && resp.Ok && string.IsNullOrWhiteSpace(resp.Token));
+
+    private void ApplyEmailConfirmationOutcome(LoginResponse resp)
+    {
+        // Signup (or login) that still needs email confirmation — no session yet
+        _needsResend = true;
+        if (resp.Ok || !string.IsNullOrWhiteSpace(resp.Message))
+        {
+            _info = resp.Message
+                    ?? "Account created. Check your email for a confirmation link before signing in.";
+            _error = null;
+            _isSignup = false;
+        }
+        else
+        {
+            _error = resp.Error
+                     ?? "Confirm your email before signing in. Check your inbox (or the API log in development).";
         }
     }
 }

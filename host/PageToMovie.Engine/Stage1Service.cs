@@ -84,6 +84,39 @@ public sealed class Stage1Service
         var bookPath = Path.Combine(projectDir, "source", "book_full.txt");
         var draftPath = ScreenplayService.GetDraftPath(_projects, projectId);
 
+        var book = await EnsurePreparedBookTextAsync(projectId, bookPath, model, onProgress, ct)
+            .ConfigureAwait(false);
+        var analysis = BookTextAnalyzer.Analyze(book);
+        ThrowIfBookTextGarbled(analysis);
+
+        var minutes = totalMinutes is > 0
+            ? BookTextAnalyzer.ResolveStage1RuntimeMinutes(book, totalMinutes)
+            : BookTextAnalyzer.ResolveStage1RuntimeMinutes(book);
+
+        onProgress?.Invoke(
+            $"Target runtime {minutes} min · building Fountain from book (prompts/book_to_fountain.txt)…");
+
+        await CreateAndApproveFountainDraftAsync(projectId, model, onProgress, ct).ConfigureAwait(false);
+        await AttachBookPlatesBestEffortAsync(projectId, onProgress, ct).ConfigureAwait(false);
+
+        var fountainText = File.Exists(draftPath)
+            ? await File.ReadAllTextAsync(draftPath, ct).ConfigureAwait(false)
+            : "";
+        var result = BuildStage1Result(projectId, draftPath, minutes, fountainText);
+        AddDraftQualityNotes(result, fountainText, analysis, onProgress);
+        AnnounceScreenplayReady(result, draftPath, onProgress);
+        await PersistStage1ArtifactsAsync(projectId, projectDir, model, book, fountainText, result, ct)
+            .ConfigureAwait(false);
+        return result;
+    }
+
+    private async Task<string> EnsurePreparedBookTextAsync(
+        string projectId,
+        string bookPath,
+        string model,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
         onProgress?.Invoke("Checking book text…");
         if (!File.Exists(bookPath))
         {
@@ -104,19 +137,19 @@ public sealed class Stage1Service
         if (!File.Exists(bookPath))
             throw new InvalidOperationException("No prepared book text yet.");
 
-        var book = await File.ReadAllTextAsync(bookPath, ct).ConfigureAwait(false);
-        var analysis = BookTextAnalyzer.Analyze(book);
+        return await File.ReadAllTextAsync(bookPath, ct).ConfigureAwait(false);
+    }
+
+    private static void ThrowIfBookTextGarbled(BookTextAnalysis analysis)
+    {
         if (analysis.TextQuality is TextQuality.Poor or TextQuality.Empty || analysis.GarbageScore >= 0.45)
             throw new InvalidOperationException(
                 "book_full.txt is still garbled OCR. Prepare the book with vision first.");
+    }
 
-        var minutes = totalMinutes is > 0
-            ? BookTextAnalyzer.ResolveStage1RuntimeMinutes(book, totalMinutes)
-            : BookTextAnalyzer.ResolveStage1RuntimeMinutes(book);
-
-        onProgress?.Invoke(
-            $"Target runtime {minutes} min · building Fountain from book (prompts/book_to_fountain.txt)…");
-
+    private async Task CreateAndApproveFountainDraftAsync(
+        string projectId, string model, Action<string>? onProgress, CancellationToken ct)
+    {
         var draft = await ScreenplayService.CreateDraftFromBookAsync(
             _projects,
             projectId,
@@ -137,7 +170,11 @@ public sealed class Stage1Service
         var sign = ScreenplayService.SignOff(_projects, projectId);
         if (!sign.Ok)
             throw new InvalidOperationException(sign.Error ?? "Could not approve screenplay from Fountain.");
+    }
 
+    private async Task AttachBookPlatesBestEffortAsync(
+        string projectId, Action<string>? onProgress, CancellationToken ct)
+    {
         // Book plate attach → cast_seeds.json (Stage 2 reads Fountain + overlay)
         try
         {
@@ -161,14 +198,14 @@ public sealed class Stage1Service
             _log.LogWarning(ex, "Book plate attach after Fountain approve failed");
             onProgress?.Invoke($"Book plate attach failed (non-fatal): {ex.Message}");
         }
+    }
 
+    private Stage1Result BuildStage1Result(
+        string projectId, string draftPath, int minutes, string fountainText)
+    {
         var stage1 = ScreenplayService.ReadStage1Lite(_projects, projectId);
-        var fountainText = File.Exists(draftPath)
-            ? await File.ReadAllTextAsync(draftPath, ct).ConfigureAwait(false)
-            : "";
         var (voCues, totalCues) = FountainParser.CountVoiceoverCues(fountainText);
         var voPct = totalCues > 0 ? voCues * 100 / totalCues : 0;
-
         var result = new Stage1Result
         {
             Ok = stage1.Present && stage1.SceneCount > 0,
@@ -185,40 +222,57 @@ public sealed class Stage1Service
             HardErrors = new List<string>(),
             Warnings = new List<string>(),
         };
-
         if (!result.Ok)
             result.HardErrors.Add("Fountain approved but no scenes were found.");
+        return result;
+    }
 
+    private static void AddDraftQualityNotes(
+        Stage1Result result, string fountainText, BookTextAnalysis analysis, Action<string>? onProgress)
+    {
         // Re-check for issues the generation-time auto-repair may have failed to clear
         // (e.g. a transient API failure on the repair call itself). Checked from the
         // saved draft every run, not just once at generation time, so it doesn't rely
         // on catching a one-off progress message.
-        var stillVagueHeadings = AdaptationFountain.FindVagueLocationHeadings(fountainText);
-        if (stillVagueHeadings.Count > 0)
-        {
-            var msg = $"{stillVagueHeadings.Count} vague location heading(s) unresolved: " +
-                      string.Join("; ", stillVagueHeadings.Take(3));
-            result.Warnings.Add(msg);
-            onProgress?.Invoke($"Warning: {msg}");
-        }
+        WarnUnresolvedItems(
+            result, onProgress,
+            AdaptationFountain.FindVagueLocationHeadings(fountainText),
+            count => $"{count} vague location heading(s) unresolved");
+        WarnUnresolvedItems(
+            result, onProgress,
+            AdaptationFountain.FindGenericNumberedSpeakers(fountainText),
+            count => $"{count} generic numbered speaker(s) unresolved");
+        NoteHighVoiceoverShare(result, onProgress);
+        NoteHighSceneCount(result, analysis, onProgress);
+    }
 
-        var stillGenericSpeakers = AdaptationFountain.FindGenericNumberedSpeakers(fountainText);
-        if (stillGenericSpeakers.Count > 0)
-        {
-            var msg = $"{stillGenericSpeakers.Count} generic numbered speaker(s) unresolved: " +
-                      string.Join("; ", stillGenericSpeakers.Take(3));
-            result.Warnings.Add(msg);
-            onProgress?.Invoke($"Warning: {msg}");
-        }
+    private static void WarnUnresolvedItems(
+        Stage1Result result,
+        Action<string>? onProgress,
+        IReadOnlyList<string> items,
+        Func<int, string> headline)
+    {
+        if (items.Count == 0)
+            return;
+        var msg = $"{headline(items.Count)}: " + string.Join("; ", items.Take(3));
+        result.Warnings.Add(msg);
+        onProgress?.Invoke($"Warning: {msg}");
+    }
 
+    private static void NoteHighVoiceoverShare(Stage1Result result, Action<string>? onProgress)
+    {
         // Surface-only: high V.O. share is fine for confessional prose but leans clip gen on narration
-        if (totalCues > 0 && voPct >= 45)
+        if (result.TotalDialogueCues > 0 && result.VoPercent >= 45)
         {
             onProgress?.Invoke(
-                $"Note: {voCues}/{totalCues} dialogue cues are V.O. ({voPct}%) — " +
+                $"Note: {result.VoCueCount}/{result.TotalDialogueCues} dialogue cues are V.O. ({result.VoPercent}%) — " +
                 "clip gen will lean on narration. Prefer on-camera frame cutbacks where possible.");
         }
+    }
 
+    private static void NoteHighSceneCount(
+        Stage1Result result, BookTextAnalysis analysis, Action<string>? onProgress)
+    {
         var softMaxScenes = AdaptationFountain.SoftMaxSceneHeadings(analysis.BookKind.ToString());
         if (result.SceneCount > softMaxScenes)
         {
@@ -226,12 +280,27 @@ public sealed class Stage1Service
                 $"Note: {result.SceneCount} scenes (soft target ≤{softMaxScenes} for {analysis.BookKind.ToApiString()}) — " +
                 "shot plan / clip count may be high.");
         }
+    }
 
+    private static void AnnounceScreenplayReady(
+        Stage1Result result, string draftPath, Action<string>? onProgress)
+    {
         var warningsSuffix = result.Warnings.Count > 0 ? $" · {result.Warnings.Count} warning(s)" : "";
         onProgress?.Invoke(
             $"Screenplay ready · {result.SceneCount} scenes · " +
             $"{result.CharacterCount} cast · {result.LocationCount} locations · " +
-            $"V.O. {voCues}/{totalCues} ({voPct}%){warningsSuffix} · {Path.GetFileName(draftPath)}");
+            $"V.O. {result.VoCueCount}/{result.TotalDialogueCues} ({result.VoPercent}%){warningsSuffix} · {Path.GetFileName(draftPath)}");
+    }
+
+    private async Task PersistStage1ArtifactsAsync(
+        string projectId,
+        string projectDir,
+        string model,
+        string book,
+        string fountainText,
+        Stage1Result result,
+        CancellationToken ct)
+    {
         var stageIssues = new List<ModelValidationIssue>();
         if (string.IsNullOrWhiteSpace(fountainText))
             stageIssues.Add(new("missing_fountain", "Stage 1 produced no Fountain text.", "$.fountain"));
@@ -244,7 +313,6 @@ public sealed class Stage1Service
             throw new InvalidOperationException(string.Join(" ", stageIssues.Select(i => i.Message)));
         if (result.Ok)
             _projects.TriggerAutoGitCommit(projectId, "Stage: screenplay created");
-        return result;
     }
 }
 
