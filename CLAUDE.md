@@ -11,48 +11,26 @@ path. The `scripts/` Python files are one-off maintenance/debug helpers, not par
 
 ## Commands
 
-All commands run from `host/` unless noted.
+All commands run from `host/` unless noted. **One process:** `PageToMovie.Api` hosts the UI. Do not start Web unless you are splitting ports on purpose.
+
+Full product story: [docs/README.md](docs/README.md). Durable rules: [AGENTS.md](AGENTS.md).
 
 ```powershell
-# Build
-dotnet build PageToMovie.slnx          # or open host/PageToMovie.slnx in Visual Studio
+dotnet build PageToMovie.slnx
 
-# Run API (terminal 1) — must listen on 127.0.0.1:5088
-$env:PageToMovie__WorkspaceRoot = (Resolve-Path ..).Path
-$env:PageToMovie__UseFakes = "false"    # "true" to avoid xAI spend (uses PageToMovie.Fakes)
-$env:XAI_API_KEY = "your-key"           # required when UseFakes=false
-$env:ASPNETCORE_URLS = "http://127.0.0.1:5088"
-dotnet run --project PageToMovie.Api
+$env:XAI_API_KEY = "your-key"            # skip if using fakes
+$env:PageToMovie__UseFakes = "false"
+dotnet run --project PageToMovie.Api     # http://127.0.0.1:5088  (UI + API)
 
-# Run Web UI (terminal 2) — needs the Api running too
-$env:EngineApi__BaseUrl = "http://127.0.0.1:5088"
-$env:ASPNETCORE_URLS = "http://localhost:5079"
-dotnet run --project PageToMovie.Web
+dotnet test PageToMovie.Tests            # free / default
+# Paid: $env:PAGETOMOVIE_LIVE_API_TESTS = "1"; dotnet test PageToMovie.Tests --filter "Category=LiveApi"
 
-# Tests — free/default (excludes paid LiveApi tests via VSTestTestCaseFilter)
-dotnet test PageToMovie.Tests
-
-# Run a single test
-dotnet test PageToMovie.Tests --filter "FullyQualifiedName~ClassName.MethodName"
-
-# Paid provider tests (opt-in, costs API tokens) — see PageToMovie.Tests/LiveApi/README.md
-$env:PAGETOMOVIE_LIVE_API_TESTS = "1"
-$env:XAI_API_KEY = "xai-..."
-dotnet test PageToMovie.Tests --filter "Category=LiveApi"
-
-# LoadSim (concurrent virtual users against fakes)
 $env:PageToMovie_USE_FAKES = "true"
-dotnet run --project PageToMovie.Api          # terminal 1
-dotnet run --project PageToMovie.LoadSim -- --users 25 --duration 90 --scenario mixed --out loadsim-results.json
-
-# Playwright pilot (E2E against real or fake API)
-cd playwright && npm install
-$env:API_URL = "http://127.0.0.1:5088"; $env:WEB_URL = "http://localhost:5079"
-npm run pilot
+dotnet run --project PageToMovie.Api
+dotnet run --project PageToMovie.LoadSim -- --users 25 --duration 90 --scenario mixed
 ```
 
-Both `Api` and `Web` processes are required together — Web calls Api at `EngineApi:BaseUrl`; if only Web runs,
-API calls fail. Health check: `GET http://127.0.0.1:5088/health`.
+Playwright: start Api only; `WEB_URL` is the same origin (`http://127.0.0.1:5088`). See `host/playwright/README.md`.
 
 ## Architecture
 
@@ -91,26 +69,9 @@ implementing the relevant interface(s) and register it in the corresponding `Mul
 
 ### The pipeline (book → movie)
 
-Ingestion (`BookPrepareService`) → **Stage 1** screenplay adaptation to Fountain via the `AdaptationService`
-façade in `PageToMovie.Adaptation` (prompt `book_to_fountain.txt`, with automated fixup retries for malformed
-scene headings/dialogue cues) → optional screenplay tools (`AdaptationService.ReskinAsync`/`EmbellishAsync`/
-`TrimAsync` — change visual medium, enrich descriptive prose, or fit a target runtime, all scene-count-preserving
-with fallback to the original on drift) → cast discovery + portrait generation + AI vision style-gate
-(`CastFromScreenplayService`, `CharacterDesignService`) → **Stage 2** shot planning (`Stage2PlannerService`), which
-runs the screenplay through ~15 specialized AI classifiers (see root `README.md` pipeline diagram for the full
-list: on-screen cast, silent-beat pacing, ambient SFX, species/body-type, extend-vs-cut, camera director,
-lighting, wardrobe continuity, emotion arc, sound design, depth of field, color grading, etc.) to produce a
-frame-accurate `blueprint.clips*.json` shot plan → video generation (`ClipVideoPromptBuilder` +
-`MultiProviderVideoClient` routing to `GrokVideoClient`/`GeminiVideoClient`/`FalVideoClient` per the project's
-configured model, attaching locked reference images for identity consistency) → multi-frame auto-review
-(`ClipAutoReviewService`: browser samples frames, server runs vision QA, key never leaves the API host; result is
-advisory — operator still confirms via Apply → Regen) → music plan + score
-(`SceneMusicCompositionService` plans per-scene prompts into the blueprint, `SceneMusicScoringService` +
-`MultiProviderAudioClient` generate against Fal/Suno/AI Music API/ElevenLabs, ffmpeg.wasm ducks/mixes
-client-side) → browser stitch/export (ffmpeg.wasm, no server remux).
-
-Long books are handled by **multi-chunk adapt → stitch → merge** in `BookToFountainConverter` (ordered chunks +
-continuity brief + final merge pass) rather than one giant prompt.
+Ingestion (`BookPrepareService`) → **Stage 1** (`AdaptationService`: index → max Fountain → **auto-enrich**; Look / Fit length optional) →
+cast + plates → **Stage 2** shot plan → video → advisory auto-review → music → browser stitch.
+Novels: index then write sequences (`file_id`). The 40k chunker is a fallback. See [max-master](host/docs/max-master-adaptation-plan.md).
 
 ### Jobs
 
@@ -165,5 +126,4 @@ These apply to *product code* under `host/` (Engine/Api/Web), not to one-off scr
   money — never call paid APIs from a non-`LiveApi` unit test.
 - `host/evals/` + `host/tools/{ClassifierBenchmarks,BeatLabelEval,HeuristicAiEval,AmbientBlind}` hold AI-vs-baseline
   classifier benchmark history for product classifiers — separate from story-project test fixtures.
-- Prefer Release build + fakes + a single Api/LoadSim process pair for perf soaks (see `host/docs/loadsim-soak.md`,
-  `host/docs/perf-findings-2026-07.md`).
+- Prefer Release build + fakes + a single Api/LoadSim process pair for perf soaks (see `host/docs/loadsim-soak.md`).

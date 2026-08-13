@@ -9,7 +9,7 @@ namespace ScreenplayBenchmark;
 
 /// <summary>
 /// Benchmark-only prototype of the staged adaptation-session pipeline described in
-/// <c>host/docs/adaptation-session-pipeline.md</c>:
+/// <c>docs/archive/adaptation-session-pipeline.md</c> (living path: max-master):
 ///
 ///   Book retained in adaptation session
 ///     → source-grounded beat plan

@@ -1,7 +1,8 @@
-# Public community & multiplayer features (plan — not implemented)
+# Public library, forks, and invite
 
-Backlog for **project collaborators**, **public demos / modes**, **fork → contribution → owner merge**, and **upvotes**.  
-Nothing in this doc is required for current production unless explicitly scheduled.
+**Status:** most of the table below is **built** (invite, visibility, fork, Git merge, upvotes). Remaining rows are follow-ups, not a greenfield plan.
+
+Forkable titles appear in Easy Start. Namespaced project remotes: [archive/github-projects-backup-checklist.md](../../docs/archive/github-projects-backup-checklist.md).
 
 **Priority Note**: Collaboration is unified under the **Invite-to-Fork & Async Diff-Merge Model** powered by client-side media storage, Git-backed server engine (`LibGit2Sharp`), and privacy-preserving user invites.
 
@@ -636,15 +637,14 @@ Keep generated MP4 clips and scene previews on client devices while enforcing a 
 | Auto-save on job **done** | ✅ | Hub hook from `MainLayout` + Scenes; ignore `running` to avoid double-save |
 | **Fallback when folder not connected (feature 8)** | ✅ | One-shot Scenes warning + **Connect folder** / Dismiss; Chrome/Edge copy when API unsupported (`6769a93`) |
 | Silence trim before local write | ✅ | ffmpeg.wasm + `ClipSilenceTrimmer` |
-| Stream proxy (no full RAM buffer) | 🔲 planned | See `client-storage-implementation-plan.md` step 1 |
+| Stream proxy (no full RAM buffer) | 🔲 planned | See [archive/client-storage-implementation-plan.md](../../docs/archive/client-storage-implementation-plan.md) step 1 |
 | `.client.json` marker on register | 🔲 planned | Step 3 — UI “present” without server MP4 |
 | Proactive “connect folder” banner | 🔲 planned | Step 4 (distinct from feature-8 post-gen warning) |
 | Prune server MP4 when client marker exists | 🔲 planned | Step 5 |
 | Folder name persistence | 🔲 planned | Step 6 |
 | `ClientStorageMode` skip server write | 🔲 planned | Step 7 — only after 1–5 proven |
 
-**Detail plan:** [`host/docs/client-storage-implementation-plan.md`](client-storage-implementation-plan.md)  
-**Gap item:** Item 14 in [`host/docs/gap-analysis.md`](gap-analysis.md)
+**Detail plan (archived):** [`docs/archive/client-storage-implementation-plan.md`](../../docs/archive/client-storage-implementation-plan.md)
 
 ---
 

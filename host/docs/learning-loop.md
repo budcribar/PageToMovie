@@ -1,5 +1,7 @@
 # Learning loop (review → smarter prompts)
 
+Operator path. Architecture: [film-provenance…](film-provenance-critic-learning-architecture.md). Older twin archived: [docs/archive/learning_loop.md](../../docs/archive/learning_loop.md).
+
 ## Phases
 
 | Phase | What |

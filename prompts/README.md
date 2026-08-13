@@ -9,10 +9,11 @@ Paths are relative to the **workspace root** (repo root with `host/`, `projects/
 
 | File | Role |
 |------|------|
-| `book_to_fountain.txt` | **Product path:** book → editable Fountain screenplay |
-| `fountain_reskin.txt` | **Product path:** re-render an existing Fountain draft's descriptive layer for a different visual medium (Screenplay editor "Look" tool) |
-| `embellish_scene.txt` | **Product path:** enrich an existing Fountain draft's descriptive prose, grounded in the book text (Screenplay editor "Enrich" tool) |
-| `trim_scene.txt` | **Product path:** condense an existing Fountain draft toward a target runtime (Screenplay editor "Fit length" tool) |
+| `book_to_index.txt` | **Product path:** book → hierarchical scene index (acts / sequences / cards) |
+| `book_to_fountain.txt` | **Product path:** book (or index cards) → `screenplay.max` Fountain |
+| `fountain_reskin.txt` | Optional: re-render description for a different visual medium (Look) |
+| `embellish_scene.txt` | **Automatic after write:** visual detail from the book; dialogue and scene count stay |
+| `trim_scene.txt` | Optional: condense the **working** Fountain toward a target runtime (Fit length) |
 | `fountain_to_cast.txt` | **Product path:** Fountain (+ book) → `source/cast_seeds.json` closed cast |
 | `cast_visual_literalize.txt` | Cast post-pass: figurative/idiomatic looks → literal filmable prose |
 | `clip_gen_rules.txt` | **Product path:** house rules composed into clip video prompts |
@@ -32,8 +33,8 @@ loaders (`fountain_to_cast`, `cast_visual_literalize`, `clip_gen_rules`, `clip_a
 redeploy (rebuild `PageToMovie.Adaptation` for the Stage 1 group). Optional local override:
 `PAGETOMOVIE_PROMPTS_DIR`.
 
-**Operator flow:** book PDF → prepare text → **Fountain draft** (`book_to_fountain.txt`) → edit → approve → **shot plan (reads Fountain)** → clips.
-Long novels use **multi-chunk adapt → stitch → merge** in `BookToFountainConverter` (ordered book chunks, continuity brief, final merge pass).
+**Operator flow:** book → **index** (`book_to_index.txt`) → **max Fountain** (`book_to_fountain.txt`) → **auto-enrich** (`embellish_scene.txt`) → Estimate / Fit length → shot plan → clips.
+Short books may write in one `file_id` pass. Novels: index, then write sequences. The 40k-character chunker is a **transport fallback**, not the quality path.
 There is no `stage1_scene_bible.txt` prompt and no intermediate scenes.json for planning.
 Optional `source/cast_seeds.json` holds plate/voice overlays only.
 

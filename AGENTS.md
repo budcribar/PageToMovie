@@ -332,15 +332,16 @@ Current over-ceiling backlog and agent pairing live in the working tree under sp
 
 | Doc | Purpose |
 |-----|---------|
-| `host/docs/north-star-checklists.md` | Checklist A (AI-call feedback loop, active) + Checklist B (pre-UI-consolidation, on hold) — cross-session status |
+| `docs/README.md` | **Map** — product story + living vs archive |
+| `docs/studio-decision-flow.md` | Book → Estimate → Film; [state machine](docs/studio-decision-flow.md#4-state-machine) |
+| `host/docs/max-master-adaptation-plan.md` | Index, write, auto-enrich, trim, share |
+| `host/docs/backlog.md` | Open work (includes leftover AI-call loop items) |
 | `host/evals/README.md` | App eval root (not story projects) |
-| `host/evals/screenplay_benchmark/README.md` | 8-dimension screenplay adaptation & peer-evaluation benchmark guide |
-| `host/evals/classifier_benchmarks/README.md` | Classifier AI vs baseline suite; history, model/prompt matrix, charts |
-| `host/evals/beat_label_eval/README.md` | Silent-beat action_class ground truth + model comparison |
-| `host/evals/heuristic_ai_eval/` | Legacy holdout / ambient blind dumps |
-| `host/docs/perf-findings-2026-07.md` | Multi-user perf soak findings; optimization paused; files→DB notes |
-| `host/docs/async-io-pass-plan.md` | Async I/O multipass status |
+| `host/evals/screenplay_benchmark/README.md` | Screenplay benchmark guide |
+| `host/evals/classifier_benchmarks/README.md` | Classifier AI vs baseline suite |
+| `host/evals/beat_label_eval/README.md` | Silent-beat action_class ground truth |
 | `host/docs/loadsim-soak.md` | How to run LoadSim |
+| `docs/archive/` | Dated snapshots and completed plans |
 
 ---
 

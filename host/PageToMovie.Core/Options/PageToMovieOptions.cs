@@ -175,7 +175,8 @@ public sealed class PageToMovieOptions
     public YouTubeOptions YouTube { get; set; } = new();
     public CreditsOptions Credits { get; set; } = new();
     public MediaPruningOptions MediaPruning { get; set; } = new();
-    /// <summary>GitHub (or any Git host) remote for project package history — see host/docs/github-projects-backup-checklist.md.</summary>
+    /// <summary>GitHub (or any Git host) remote for project package history — see docs/archive/github-projects-backup-checklist.md.</summary>
+
     public GitOptions Git { get; set; } = new();
 }
 

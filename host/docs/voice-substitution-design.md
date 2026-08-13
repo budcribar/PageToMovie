@@ -1,13 +1,17 @@
-# Voice substitution — substitute a user's cloned voice into an already-generated movie
+# Voice — Easy Start and substitute-in-place
 
-Status: implemented (server orchestration + persistence + client ffmpeg overlay wired); optional
-STT word-alignment path specified as a future plug-in. On branch `feature/voice-substitution`.
+**Status:** implemented. Easy Start (`/simple-voice`) forks a public film and re-voices the narrator. The same overlay path can replace any speaking character on an already-generated movie.
 
-## Goal
+Optional STT word-alignment is a future plug-in. Clone-sample “listen and copy” design: [archive/voice-capture-karaoke.md](../../docs/archive/voice-capture-karaoke.md).
 
-A user has already generated a full movie (many clips). Later they want a character's spoken
-dialogue replaced with **their own cloned voice**. On demand ("substitute my voice in this movie"),
-for every clip we:
+## Easy Start
+
+1. Browse Public (Forkable) titles.
+2. Fork a private copy (inherit max master + index when present).
+3. Record one sample (or pick the speaker if there is no narrator).
+4. Overlay cloned speech on narrator windows; pictures stay.
+
+## Substitute an existing movie
 
 1. determine **when** the target character speaks (start/end of each spoken line);
 2. **associate** each speech window with the character speaking it, using the shot plan's already

@@ -8,7 +8,7 @@ projects/{projectId}/
 
 ## Refresh the map
 
-After gen / remux / clip review (or anytime):
+After gen / clip review (or anytime):
 
 ```http
 POST /api/projects/{projectId}/artifacts/index
@@ -31,7 +31,7 @@ Live streams (appended during jobs):
 | Path | Purpose |
 |------|---------|
 | `telemetry/api_calls.jsonl` | Full prompts per live API call |
-| `telemetry/ffmpeg.jsonl` | Condensed remux / frame-sample ops |
+| `telemetry/ffmpeg.jsonl` | Browser ffmpeg.wasm frame-sample / stitch notes |
 
 ## Manual Claude workflow
 
@@ -44,9 +44,10 @@ Live streams (appended during jobs):
 
 ## Core paths (also listed in ARTIFACTS.md)
 
-- `source/book_full.txt`, `source/screenplay.fountain`, `source/cast_seeds.json`
+- `source/book_full.txt`, `source/screenplay.max.fountain`, `source/screenplay.index.json`, `source/screenplay.fountain`
+- `source/cast_seeds.json`
 - `assets/movie_wip.mp4`
-- `assets/characters/`
+- `assets/characters/`, `assets/locations/`
 - `assets/video/` + `assets/video/prompts/*.meta.json`
 - `assets/review/`
 - `project_rules.json`, `pipeline_state.json`, `blueprint.clips.grok.json`
@@ -56,6 +57,5 @@ Live streams (appended during jobs):
 `FilmJobService` rebuilds the artifact map when these jobs finish successfully:
 
 - `gen-scene`, `gen-batch`
-- `remux`
 - `clip-auto-review`, `clip-auto-review-batch`
-- `stage2`, `character-variants`
+- `stage1`, `stage2`, `character-variants`

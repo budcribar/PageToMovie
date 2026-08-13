@@ -98,7 +98,7 @@ Related but different:
 
 | System | Learns | Feeds |
 |--------|--------|--------|
-| [learning_loop.md](./learning_loop.md) | *What* was wrong (prompts, stage1/2) | Better next plan/render quality |
+| [learning-loop.md](../host/docs/learning-loop.md) | *What* was wrong (prompts, stage1/2) | Better next plan/render quality |
 | **Regen cost loop (here)** | *How many takes* and cost impact | Better $ forecasts / ranges |
 | QA auto-retry (existing) | Fail rates → video multiplier | Automatic quality regens |
 
@@ -752,7 +752,7 @@ Use this as the build/acceptance tracker. Check items off in PRs; leave dates/no
 | Leases | `host/PageToMovie.Engine/Collaboration/ProjectLeaseService.cs` (`project` \| `scene:N` \| `script`) |
 | Presence | `host/PageToMovie.Engine/Collaboration/IProjectPresenceService.cs` |
 | Scene lock fields | `SceneSummary.LockOwnerUserId`, `LockedByOther` |
-| Quality / prompt learning (separate) | [docs/learning_loop.md](./learning_loop.md) |
+| Quality / prompt learning (separate) | [host/docs/learning-loop.md](../host/docs/learning-loop.md) |
 | API cost history stats | `UserDatabaseService.GetApiCostHistoryStatsAsync` |
 
 ---

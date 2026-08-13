@@ -5,7 +5,7 @@
 | Severity | suggestion |
 | Status | open |
 | Branch | (none yet) |
-| Related files | `host/PageToMovie.Core/config/models_catalog.json`, `host/PageToMovie.Engine/GrokChatClient.cs`, `host/PageToMovie.Engine/AnthropicChatClient.cs`, `host/PageToMovie.Engine/GeminiChatClient.cs`, `host/PageToMovie.Engine/MultiProviderChatClient.cs`, `host/docs/automatic-model-selection-plan.md` |
+| Related files | `host/PageToMovie.Core/config/models_catalog.json`, chat clients, `docs/archive/automatic-model-selection-plan.md` |
 
 ## Problem
 
@@ -43,7 +43,7 @@ gpt-4o onto the multi-chunk path) is in `ScreenplayBenchmark/Program.cs`
 
 ## Notes
 
-This is a prerequisite for `automatic-model-selection-plan.md`'s Tier Policy Engine: automatic
+This is a prerequisite for archived `automatic-model-selection-plan.md`'s Tier Policy Engine: automatic
 model routing under a quality-tier abstraction needs real-time rate-limit awareness, not just
 static per-tier pricing — otherwise the "pick a model, bill me" experience that plan describes can
 still silently blow up mid-job exactly like this run did, just with no human watching to notice and

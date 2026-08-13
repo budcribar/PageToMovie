@@ -55,7 +55,7 @@ public static class GitVersionEndpoints
         // <summary>
         // Push the project's text package (video excluded) to the configured Projects remote.
         // Owner/admin only. Optional body.commitFirst + message creates a local commit first.
-        // Returns historyUrl when the remote is GitHub. See host/docs/github-projects-backup-checklist.md.
+        // Returns historyUrl when the remote is GitHub. See docs/archive/github-projects-backup-checklist.md.
         // </summary>
         app.MapPost("/api/projects/{id}/push", PostProjectsIdPush);
         // <summary>

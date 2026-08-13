@@ -19,9 +19,9 @@ Single prioritized backlog. Older checklist docs were merged here and removed (2
 - UI audit sequences S1–S2 exercised; many S3–S5 notes captured historically
 - Mary4 UI batch (Agree&Continue, MinMinutes, character `@key`, etc.)
 - P1 pipeline stages shipped (2026-08-06):
-  - **Stage-1 full-book Fountain + length-later split** (`/adaptation/import` + `/adaptation/screenplay` produce the base; `/adaptation/trim` retargets length) — was #5
-  - **Embellishment stage** as first-class UI (`/adaptation/embellish`, `EmbellishScreenplayAsync`) — was #8
-  - **Look & medium stage** (`/adaptation/look`, `VisualMediumCard` + visual-medium API) — was #9
+  - **Stage-1 full-book Fountain + length-later split**
+  - **Auto-enrich after write** (admin can still re-run a one-off; not a required user button)
+  - **Look & medium** (`VisualMediumCard` + visual-medium API)
 
 ---
 
@@ -335,11 +335,24 @@ Single prioritized backlog. Older checklist docs were merged here and removed (2
 
 ---
 
+## Folded from north-star checklists (2026-08-13)
+
+Open leftovers (full history: [archive/north-star-checklists.md](../../docs/archive/north-star-checklists.md)):
+
+- Migrate remaining bespoke vision/chat sites onto `ValidatedModelOperation` (dialogue-verify, cast-on-image, music, OCR — see `KnownBespokeDebt`)
+- `AiCallAnalyzer` CLI + replay for vision/video/image
+- Close AI-call telemetry into the learning loop
+
+Checklist B (pre-UI-consolidation) stays on hold.
+
+---
+
 ## Sources folded into this backlog
 
 - Former `mary4-ui-checklist.md`, `adaptation-remaining-checklist.md`, `ui-fix-order-checklist.md`, `ui-testing-branch-checklist.md`
 - UI audit sequence / capability notes
 - Session: ActiveProjectState, SoftReload, Cost EnsureLoaded, navigate-away review (2026-08-06)
 - Project memory: Stage-1 full Fountain, Mary remaining, catalog/lab direction
+- `north-star-checklists.md` (archived)
 
 `host/docs/github-project-v2-setup-checklist.md` is **kept** (infra setup, not product backlog).

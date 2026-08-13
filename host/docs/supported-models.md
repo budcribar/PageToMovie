@@ -53,6 +53,6 @@ Studio jobs + **`defaultModelId`** (must be a real enabled model id in `models[]
 
 Do **not** enable half-working models. Prefer a disabled row + `featureRequestUrl` / GitHub issue until the client exists.
 
-## Agent policy
+## Admin catalog UI
 
-See root **`AGENTS.md`** → *Models & providers — catalog SSoT (mandatory)*.
+`/admin/models-catalog` edits the same JSON (add/enable/disable, scan, labMode for incomplete rows). Cost rates come only from the catalog — no C# fallbacks. Dated 2026-08-05 notes: [docs/archive](../../docs/archive/README.md).

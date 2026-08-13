@@ -10,7 +10,7 @@ using Xunit;
 namespace PageToMovie.Tests;
 
 /// <summary>
-/// Covers the Step 2 fix from client-storage-implementation-plan.md: OnJobUpdated must accept both
+/// Covers the Step 2 fix from docs/archive/client-storage-implementation-plan.md: OnJobUpdated must accept both
 /// "running" and "done" so every clip in a multi-clip batch gets saved (Status stays "running" for
 /// the whole batch loop — only the final clip's tick flips to "done"), while a second notification
 /// for a path that already finished saving (e.g. a single-clip job's "done" tick after its "running"

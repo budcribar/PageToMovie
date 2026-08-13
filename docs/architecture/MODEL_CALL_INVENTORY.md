@@ -1,6 +1,6 @@
 # Model-call inventory
 
-Status: verified operation inventory. `MODEL_LIFECYCLE_MIGRATION_CHECKLIST.md` remains the authoritative completion checklist. A row marked **Lifecycle** means the feature request is owned by an `IModelOperation` or `ValidatedCoverageOperation`; **Direct** identifies remaining migration work; **Transport** is provider/routing infrastructure rather than a feature operation; **Orchestrator** delegates and does not parse a raw model response.
+Status: verified operation inventory. Completed lifecycle migration notes live in [archive/MODEL_LIFECYCLE_MIGRATION_CHECKLIST.md](../archive/MODEL_LIFECYCLE_MIGRATION_CHECKLIST.md). A row marked **Lifecycle** means the feature request is owned by an `IModelOperation` or `ValidatedCoverageOperation`; **Direct** identifies remaining migration work; **Transport** is provider/routing infrastructure rather than a feature operation; **Orchestrator** delegates and does not parse a raw model response.
 
 ## Enforced boundaries
 

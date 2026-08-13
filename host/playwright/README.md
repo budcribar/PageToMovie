@@ -4,8 +4,7 @@ Drive the Blazor UI end-to-end for a cinematic short (**Poe — The Tell-Tale He
 
 ## Prerequisites
 
-- API on `http://127.0.0.1:5088`
-- Web on `http://localhost:5079`
+- API (and UI) on `http://127.0.0.1:5088` — **one process.** Do not start Web separately.
 - Node 18+
 
 ```bash
@@ -16,28 +15,17 @@ npx playwright install chromium
 
 ## Phase A — fakes (default)
 
-Start API with fakes:
-
 ```powershell
 cd host
 $env:PageToMovie__UseFakes = "true"
 $env:PageToMovie_USE_FAKES = "true"
-$env:PageToMovie__WorkspaceRoot = (Resolve-Path ..).Path
 dotnet run --project PageToMovie.Api --launch-profile "http (fakes)"
 ```
 
-Web (other terminal):
-
-```powershell
-cd host
-$env:EngineApi__BaseUrl = "http://127.0.0.1:5088"
-dotnet run --project PageToMovie.Web --launch-profile http
-```
-
-Run pilot:
-
 ```powershell
 cd host/playwright
+$env:API_URL = "http://127.0.0.1:5088"
+$env:WEB_URL = "http://127.0.0.1:5088"
 $env:HEADED = "1"   # optional
 npm run pilot
 ```

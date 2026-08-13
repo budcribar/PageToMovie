@@ -56,7 +56,7 @@ Same-origin (the usual case) needs no `EngineApi:BaseUrl`.
 | GET | `/api/jobs/{jobId}` | Job detail |
 | POST | `/api/jobs/{jobId}/cancel` | Cancel one job |
 | POST | `/api/jobs/book-prepare` | PDF extract / vision OCR |
-| POST | `/api/jobs/stage1` | Stage 1 scene bible |
+| POST | `/api/jobs/stage1` | Stage 1: index + max Fountain + auto-enrich |
 | POST | `/api/jobs/stage2` | Stage 2 clip plan |
 | POST | `/api/jobs/gen-scene` | Generate scene clips (client may save MP4 to media folder) |
 | POST | `/api/jobs/clip-auto-review` | Auto-review one clip (body includes browser-sampled frames) |
