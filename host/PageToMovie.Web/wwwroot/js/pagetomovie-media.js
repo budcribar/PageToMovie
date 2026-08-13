@@ -63,7 +63,7 @@ window.PageToMovieMedia = {
         const prev = this.getFullPath();
         if (!prev) return null;
         const parts = prev.split(/[\\/]/).filter(Boolean);
-        const leaf = parts.length ? parts[parts.length - 1] : "";
+        const leaf = parts.at(-1) ?? "";
         if (leaf?.toLowerCase() === String(handle.name).toLowerCase())
             return prev;
         try { localStorage.removeItem("ptm-media-fullpath"); } catch (_) { /* ignore */ }

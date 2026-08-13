@@ -1299,9 +1299,8 @@ public sealed partial class ProjectStore
                 .ConfigureAwait(false);
             foreach (var p in doc.RootElement.EnumerateObject())
             {
-                if (string.Equals(p.Name, "id", StringComparison.OrdinalIgnoreCase))
-                    continue; // folder path id wins over any embedded project.json id
-                else if (string.Equals(p.Name, StoreLit.Title, StringComparison.OrdinalIgnoreCase))
+                // Embedded project.json "id" is ignored — folder path id always wins.
+                if (string.Equals(p.Name, StoreLit.Title, StringComparison.OrdinalIgnoreCase))
                     title = p.Value.GetString();
                 else if (string.Equals(p.Name, "label", StringComparison.OrdinalIgnoreCase))
                     label = p.Value.GetString();
@@ -1481,7 +1480,7 @@ public sealed partial class ProjectStore
         }
     }
 
-    private async Task WriteNewProjectMetaAsync(
+    private static async Task WriteNewProjectMetaAsync(
         string dir, string id, string raw, string? title, string? owner, string? ownerUserId,
         StudioPath studioPath, CancellationToken ct)
     {
@@ -1511,6 +1510,7 @@ public sealed partial class ProjectStore
 
     private static async Task TryInitProjectGitAsync(string dir, string? owner, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         // Git package (text only) — initial commit for history foundation
         try
         {
@@ -1678,9 +1678,11 @@ public sealed partial class ProjectStore
 
         var ownerSeg = SanitizeUserSegment(newOwnerUserId);
         var newId = string.IsNullOrEmpty(ownerSeg) ? slug : $"{ownerSeg}/{slug}";
-        var newDir = string.IsNullOrEmpty(ownerSeg)
-            ? Path.Combine(WorkspaceRoot, StoreLit.Projects, slug)
-            : Path.Combine(WorkspaceRoot, StoreLit.Projects, ownerSeg, slug);
+        var newDir = ConfineToProjectsRoot(
+            string.IsNullOrEmpty(ownerSeg)
+                ? Path.Combine(WorkspaceRoot, StoreLit.Projects, slug)
+                : Path.Combine(WorkspaceRoot, StoreLit.Projects, ownerSeg, slug),
+            newId);
         if (Directory.Exists(newDir))
             throw new InvalidOperationException($"Project already exists: {newId}");
 
@@ -1889,14 +1891,10 @@ public sealed partial class ProjectStore
         var id = NormalizeProjectId(projectId);
         ValidateProjectId(id);
 
-        var projectsRoot = Path.GetFullPath(Path.Combine(WorkspaceRoot, StoreLit.Projects));
-        var dir = Path.GetFullPath(ResolveProjectDirPath(id));
-        if (!dir.StartsWith(projectsRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(dir, projectsRoot, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException($"Invalid project path: {projectId}");
-
+        var dir = ConfineToProjectsRoot(ResolveProjectDirPath(id), projectId);
         if (!Directory.Exists(dir))
             throw new InvalidOperationException($"Unknown project: {id}");
+        var projectsRoot = Path.GetFullPath(Path.Combine(WorkspaceRoot, StoreLit.Projects));
 
         // Best-effort delete (files may be locked by a running job). Git writes loose-object files
         // read-only by design (immutable objects) — on Windows, Directory.Delete throws
@@ -2003,7 +2001,7 @@ public sealed partial class ProjectStore
             throw new InvalidOperationException("Unknown project: (empty)");
         var id = NormalizeProjectId(projectId);
         ValidateProjectId(id);
-        var dir = ResolveProjectDirPath(id);
+        var dir = ConfineToProjectsRoot(ResolveProjectDirPath(id), projectId);
         if (!Directory.Exists(dir))
             throw new InvalidOperationException($"Unknown project: {projectId}");
         return dir;
@@ -2063,9 +2061,9 @@ public sealed partial class ProjectStore
         var projects = Path.Combine(WorkspaceRoot, StoreLit.Projects);
         var parts = normalizedId.Split('/');
         if (parts.Length == 2)
-            return Path.Combine(projects, parts[0], parts[1]);
+            return ConfineToProjectsRoot(Path.Combine(projects, parts[0], parts[1]), normalizedId);
         // Legacy flat; also try nested scan if flat missing (caller checks Exists)
-        var flat = Path.Combine(projects, parts[0]);
+        var flat = ConfineToProjectsRoot(Path.Combine(projects, parts[0]), normalizedId);
         if (Directory.Exists(flat))
             return flat;
         // Slow path: find projects/*/slug when id is bare slug stored under a user folder
@@ -2073,12 +2071,27 @@ public sealed partial class ProjectStore
         {
             foreach (var ownerDir in Directory.GetDirectories(projects))
             {
-                var candidate = Path.Combine(ownerDir, parts[0]);
+                var candidate = ConfineToProjectsRoot(Path.Combine(ownerDir, parts[0]), normalizedId);
                 if (File.Exists(Path.Combine(candidate, StoreLit.ProjectJson)))
                     return candidate;
             }
         }
         return flat;
+    }
+
+    /// <summary>
+    /// Canonicalize <paramref name="path"/> and reject anything outside the projects root.
+    /// </summary>
+    private string ConfineToProjectsRoot(string path, string? displayId = null)
+    {
+        var root = Path.GetFullPath(Path.Combine(WorkspaceRoot, StoreLit.Projects));
+        var full = Path.GetFullPath(path);
+        var rootPrefix = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                         + Path.DirectorySeparatorChar;
+        if (!full.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(full, root, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException($"Invalid project path: {displayId ?? path}");
+        return full;
     }
 
     /// <summary>
@@ -2398,6 +2411,13 @@ public sealed partial class ProjectStore
     private static string JsonStr(JsonElement info, string name) =>
         info.TryGetProperty(name, out var v) ? v.GetString() ?? "" : "";
 
+    private static string JsonStr(JsonElement info, string name, string fallback)
+    {
+        if (!info.TryGetProperty(name, out var v))
+            return fallback;
+        return v.GetString() ?? fallback;
+    }
+
     private static string? JsonStrOrNull(JsonElement info, string name) =>
         info.TryGetProperty(name, out var v) ? v.GetString() : null;
 
@@ -2505,7 +2525,7 @@ public sealed partial class ProjectStore
         var refName = CharacterRefFileName(key);
         var resolvedRef = voiceOnly ? null : ResolveCharacterRefPath(projectId, key, allowNormalizedFallback: false);
         var hasRef = resolvedRef is not null;
-        if (hasRef && resolvedRef is not null)
+        if (resolvedRef is not null)
             refName = Path.GetFileName(resolvedRef);
 
         var hasPreferred = hasRef;
@@ -2859,12 +2879,15 @@ public sealed partial class ProjectStore
         var inStub = IsWeakLocationField(inV, display, key);
 
         // Prefer strong filmable text; never replace strong with Stage‑1 action dump.
-        if (curStub && !inStub)
-            cur[field] = inV;
-        else if (curStub && inStub && inV.Length > curV.Length)
-            cur[field] = inV;
-        else if (!curStub && !inStub && inV.Length > curV.Length + 40)
+        if (curStub)
+        {
+            if (!inStub || inV.Length > curV.Length)
+                cur[field] = inV;
+        }
+        else if (!inStub && inV.Length > curV.Length + 40)
+        {
             cur[field] = inV; // longer AI set design wins
+        }
     }
 
     private static void RestorePreservedCastFields(
@@ -3089,13 +3112,10 @@ public sealed partial class ProjectStore
 
     private List<string> FilterUnlockedOnScreenCharacters(string projectId, HashSet<string> cast)
     {
-        var unlocked = new List<string>();
-        foreach (var key in cast.OrderBy(k => k, StringComparer.OrdinalIgnoreCase))
-        {
-            if (OnScreenCharacterNeedsLock(projectId, key))
-                unlocked.Add(key);
-        }
-        return unlocked;
+        return cast
+            .OrderBy(k => k, StringComparer.OrdinalIgnoreCase)
+            .Where(key => OnScreenCharacterNeedsLock(projectId, key))
+            .ToList();
     }
 
     private bool OnScreenCharacterNeedsLock(string projectId, string key)
@@ -4189,10 +4209,11 @@ public sealed partial class ProjectStore
         if (fields.PrimarySubject.Length > 0 && !cast.Contains(fields.PrimarySubject))
             throw new InvalidOperationException(
                 $"Primary subject must be a cast member (unknown key: {fields.PrimarySubject}).");
-        foreach (var ck in fields.CharactersOnScreen.Where(ck => !cast.Contains(ck)))
+        var unknownOnScreen = fields.CharactersOnScreen.FirstOrDefault(ck => !cast.Contains(ck));
+        if (unknownOnScreen is not null)
         {
             throw new InvalidOperationException(
-                $"On-screen list has unknown cast key: {ck}.");
+                $"On-screen list has unknown cast key: {unknownOnScreen}.");
         }
     }
 
@@ -5766,13 +5787,6 @@ public sealed partial class ProjectStore
             IsStale = isStale,
             StaleReason = staleReason,
         };
-    }
-
-    private static string JsonStr(JsonElement info, string name, string fallback)
-    {
-        if (!info.TryGetProperty(name, out var v))
-            return fallback;
-        return v.GetString() ?? fallback;
     }
 
     private static long ResolveClipSizeOnDisk(

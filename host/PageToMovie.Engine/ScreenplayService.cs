@@ -420,7 +420,7 @@ public static string NormalizeText(string text)
             }
             catch (Exception)
             {
-                continue;
+                // skip unreadable files
             }
         }
         return best;
@@ -430,19 +430,13 @@ public static string NormalizeText(string text)
     {
         if (Directory.Exists(sourceDir))
         {
-            foreach (var f in Directory.EnumerateFiles(sourceDir, "*.fountain"))
-            {
-                if (IsRecoverableScreenplayName(f)) yield return f;
-            }
-            foreach (var f in Directory.EnumerateFiles(sourceDir, "*.spmd"))
-            {
-                if (IsRecoverableScreenplayName(f)) yield return f;
-            }
+            foreach (var f in Directory.EnumerateFiles(sourceDir, "*.fountain").Where(IsRecoverableScreenplayName))
+                yield return f;
+            foreach (var f in Directory.EnumerateFiles(sourceDir, "*.spmd").Where(IsRecoverableScreenplayName))
+                yield return f;
         }
-        foreach (var f in Directory.EnumerateFiles(projectDir, "*.fountain"))
-        {
-            if (IsRecoverableScreenplayName(f)) yield return f;
-        }
+        foreach (var f in Directory.EnumerateFiles(projectDir, "*.fountain").Where(IsRecoverableScreenplayName))
+            yield return f;
     }
 
     private static bool IsRecoverableScreenplayName(string path)

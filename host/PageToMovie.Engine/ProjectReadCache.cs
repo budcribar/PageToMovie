@@ -259,7 +259,7 @@ public sealed class ProjectReadCache
             try
             {
                 var root = Path.GetFullPath(projectDir);
-                foreach (var key in _blueprints.Keys.ToArray()
+                foreach (var key in _blueprints.Keys
                              .Where(k => k.StartsWith(root, StringComparison.OrdinalIgnoreCase)))
                 {
                     if (_blueprints.TryRemove(key, out var old))
@@ -268,7 +268,7 @@ public sealed class ProjectReadCache
                     }
                 }
 
-                foreach (var key in _dirs.Keys.ToArray().Where(k => k.StartsWith(root, StringComparison.OrdinalIgnoreCase)))
+                foreach (var key in _dirs.Keys.Where(k => k.StartsWith(root, StringComparison.OrdinalIgnoreCase)))
                     _dirs.TryRemove(key, out _);
             }
             catch

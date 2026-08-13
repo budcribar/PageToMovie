@@ -170,8 +170,7 @@ public sealed class ProjectMigrationService
                 }
                 break;
             case JsonArray arr:
-                foreach (var item in arr)
-                    if (MigrateVisualPromptNode(item)) changed = true;
+                changed |= arr.Count(MigrateVisualPromptNode) > 0;
                 break;
         }
         return changed;
