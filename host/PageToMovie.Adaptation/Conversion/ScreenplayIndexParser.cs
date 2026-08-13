@@ -60,31 +60,9 @@ public static class ScreenplayIndexParser
         if (cards.Count == 0)
             fails.Add("no_scene_cards");
 
-        foreach (var act in index.Acts)
-            RequireId(act.Id, "act", ids, fails);
-        foreach (var seq in index.Acts.SelectMany(a => a.Sequences))
-            RequireId(seq.Id, "sequence", ids, fails);
-
-        foreach (var card in cards)
-        {
-            RequireId(card.Id, "scene", ids, fails);
-            if (string.IsNullOrWhiteSpace(card.Heading))
-                fails.Add($"missing_heading:{card.Id}");
-            if (string.IsNullOrWhiteSpace(card.Beat))
-                fails.Add($"missing_beat:{card.Id}");
-            if (string.IsNullOrWhiteSpace(card.BookAnchorStart))
-                fails.Add($"missing_anchor_start:{card.Id}");
-            if (string.IsNullOrWhiteSpace(card.BookAnchorEnd))
-                fails.Add($"missing_anchor_end:{card.Id}");
-        }
-
-        if (cards.Count > 0)
-        {
-            if (string.IsNullOrWhiteSpace(cards[0].BookAnchorStart))
-                fails.Add("source_incomplete:first_anchor");
-            if (string.IsNullOrWhiteSpace(cards[^1].BookAnchorEnd))
-                fails.Add("source_incomplete:last_anchor");
-        }
+        RequireHierarchyIds(index, ids, fails);
+        RequireCardFields(cards, ids, fails);
+        RequireSourceAnchors(cards, fails);
 
         AddCollapseWarnings(warns, cards.Count, bookText);
         index.Warnings = warns;
@@ -160,6 +138,43 @@ public static class ScreenplayIndexParser
         var end = t.LastIndexOf('}');
         if (start < 0 || end <= start) return null;
         return t[start..(end + 1)];
+    }
+
+    private static void RequireHierarchyIds(ScreenplayIndex index, HashSet<string> ids, List<string> fails)
+    {
+        foreach (var act in index.Acts)
+            RequireId(act.Id, "act", ids, fails);
+        foreach (var seq in index.Acts.SelectMany(a => a.Sequences))
+            RequireId(seq.Id, "sequence", ids, fails);
+    }
+
+    private static void RequireCardFields(
+        List<ScreenplayIndexCard> cards,
+        HashSet<string> ids,
+        List<string> fails)
+    {
+        foreach (var card in cards)
+        {
+            RequireId(card.Id, "scene", ids, fails);
+            if (string.IsNullOrWhiteSpace(card.Heading))
+                fails.Add($"missing_heading:{card.Id}");
+            if (string.IsNullOrWhiteSpace(card.Beat))
+                fails.Add($"missing_beat:{card.Id}");
+            if (string.IsNullOrWhiteSpace(card.BookAnchorStart))
+                fails.Add($"missing_anchor_start:{card.Id}");
+            if (string.IsNullOrWhiteSpace(card.BookAnchorEnd))
+                fails.Add($"missing_anchor_end:{card.Id}");
+        }
+    }
+
+    private static void RequireSourceAnchors(List<ScreenplayIndexCard> cards, List<string> fails)
+    {
+        if (cards.Count == 0)
+            return;
+        if (string.IsNullOrWhiteSpace(cards[0].BookAnchorStart))
+            fails.Add("source_incomplete:first_anchor");
+        if (string.IsNullOrWhiteSpace(cards[^1].BookAnchorEnd))
+            fails.Add("source_incomplete:last_anchor");
     }
 
     private static void RequireId(string? id, string kind, HashSet<string> ids, List<string> fails)
