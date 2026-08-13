@@ -71,7 +71,7 @@ async function api(method, p, body) {
 
 function jget(obj, ...names) {
   for (const n of names) {
-    if (obj && obj[n] !== undefined) return obj[n];
+    if (obj?.[n] !== undefined) return obj[n];
   }
   return undefined;
 }
@@ -81,7 +81,7 @@ async function waitJobIdle(timeoutMs = 5 * 60_000) {
   while (Date.now() - start < timeoutMs) {
     const j = await api("GET", `/api/jobs?projectId=${encodeURIComponent(PROJECT)}`);
     const jobs = jget(j.json || {}, "jobs", "Jobs") || [];
-    const active = jobs.find((x) => /queued|running/i.test(jget(x, "status", "Status") || ""));
+    const active = jobs.some((x) => /queued|running/i.test(jget(x, "status", "Status") || ""));
     if (!active) return;
     await new Promise((r) => setTimeout(r, 500));
   }

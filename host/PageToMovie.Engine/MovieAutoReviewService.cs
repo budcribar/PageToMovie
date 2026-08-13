@@ -65,7 +65,9 @@ public sealed class MovieAutoReviewService
         var issues = StructuredOperationArtifacts.RequireJsonProperties(report, "projectId");
         if (issues.Any(i => i.Severity == ModelValidationSeverity.Error))
             throw new InvalidOperationException(string.Join(" ", issues.Select(i => i.Message)));
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var dir = Path.GetDirectoryName(path);
+        if (!string.IsNullOrEmpty(dir))
+            Directory.CreateDirectory(dir);
         await File.WriteAllTextAsync(path, JsonSerializer.Serialize(report, JsonOpts) + "\n", ct).ConfigureAwait(false);
         await StructuredOperationArtifacts.WriteAsync(
             projectDir, "movie_multimodal_review", null,
@@ -86,7 +88,7 @@ public sealed class MovieAutoReviewService
             throw new InvalidOperationException("AI service key required for full movie review.");
 
         using var _telScope = _telemetry.UseProject(projectId);
-        var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
+        _ = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
 
         onProgress?.Invoke(10, "Organizing scene keyframes for full movie review…");
 
@@ -285,12 +287,11 @@ Return valid JSON with non-generic, specific observations:
         }
         catch (Exception ex)
         {
-            _log.LogWarning(ex, "Error evaluating scene chunk {Range}", rangeStr);
-            throw;
+            throw new InvalidOperationException($"Error evaluating scene chunk {rangeStr}. {ex.Message}", ex);
         }
         finally
         {
-            try { if (Directory.Exists(tempWorkDir)) Directory.Delete(tempWorkDir, true); } catch { /* */ }
+            try { if (Directory.Exists(tempWorkDir)) Directory.Delete(tempWorkDir, true); } catch { /* best-effort temp cleanup */ }
         }
 
         return feedback;
@@ -405,19 +406,20 @@ Return valid JSON with non-generic, specific observations:
             ["dialogueScore"] = feedback.DialogueScore,
             ["musicScore"] = feedback.MusicScore,
         };
-        foreach (var (name, score) in scores.Where(pair => pair.Value is < 1 or > 10))
+        foreach (var (name, _) in scores.Where(pair => pair.Value is < 1 or > 10))
             issues.Add(new("invalid_score", $"{name} must be between 1 and 10.", "$." + name));
 
+        const string MissingObservation = "missing_observation";
         if (string.IsNullOrWhiteSpace(feedback.ContinuityNotes))
-            issues.Add(new("missing_observation", "Continuity observations are required.", "$.continuityNotes"));
+            issues.Add(new(MissingObservation, "Continuity observations are required.", "$.continuityNotes"));
         if (string.IsNullOrWhiteSpace(feedback.VisualConsistencyNotes))
-            issues.Add(new("missing_observation", "Character consistency observations are required.", "$.visualConsistencyNotes"));
+            issues.Add(new(MissingObservation, "Character consistency observations are required.", "$.visualConsistencyNotes"));
         if (string.IsNullOrWhiteSpace(feedback.LightingNotes))
-            issues.Add(new("missing_observation", "Lighting observations are required.", "$.lightingNotes"));
+            issues.Add(new(MissingObservation, "Lighting observations are required.", "$.lightingNotes"));
         if (string.IsNullOrWhiteSpace(feedback.DialogueNotes))
-            issues.Add(new("missing_observation", "Dialogue observations are required.", "$.dialogueNotes"));
+            issues.Add(new(MissingObservation, "Dialogue observations are required.", "$.dialogueNotes"));
         if (string.IsNullOrWhiteSpace(feedback.AudioNotes))
-            issues.Add(new("missing_observation", "Audio observations are required.", "$.audioNotes"));
+            issues.Add(new(MissingObservation, "Audio observations are required.", "$.audioNotes"));
         return issues;
     }
 

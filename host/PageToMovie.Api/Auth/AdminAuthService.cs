@@ -58,6 +58,7 @@ public interface IAdminAuthService
 public sealed class AdminAuthService : IAdminAuthService
 {
     private const string DefaultAdminUser = "admin";
+    private const string FallbackPublicBaseUrl = "https://pagetomovie-production.up.railway.app";
     private readonly AuthOptions _auth;
     private readonly MailOptions _mail;
     private readonly bool _useFakes;
@@ -108,7 +109,7 @@ public sealed class AdminAuthService : IAdminAuthService
         var existing = await _userDb.GetUserByUsernameAsync(username, ct).ConfigureAwait(false);
         if (existing is not null)
             return Fail("Username is already taken");
-        var byEmail = await _userDb.GetUserByEmailAsync(email!, ct).ConfigureAwait(false);
+        var byEmail = await _userDb.GetUserByEmailAsync(email, ct).ConfigureAwait(false);
         if (byEmail is not null)
             return Fail("That email is already registered");
 
@@ -177,7 +178,7 @@ public sealed class AdminAuthService : IAdminAuthService
         {
             try
             {
-                await _email.SendAsync(user.Email!, subject, html, text, ct);
+                await _email.SendAsync(user.Email, subject, html, text, ct);
                 _logger?.LogInformation("EMAIL CONFIRMATION SENT successfully to {Email}", user.Email);
             }
             catch (Exception ex)
@@ -208,7 +209,7 @@ public sealed class AdminAuthService : IAdminAuthService
         {
             try
             {
-                await _email.SendAsync(user.Email!, subject, html, text, ct);
+                await _email.SendAsync(user.Email, subject, html, text, ct);
                 _logger?.LogInformation("PASSWORD RESET EMAIL SENT successfully to {Email}", user.Email);
             }
             catch (Exception ex)
@@ -257,10 +258,10 @@ public sealed class AdminAuthService : IAdminAuthService
         }
         if (string.IsNullOrWhiteSpace(bas))
         {
-            bas = "https://pagetomovie-production.up.railway.app";
+            bas = FallbackPublicBaseUrl;
         }
-        if (!pathAndQuery.StartsWith('/'))
-            pathAndQuery = "/" + pathAndQuery;
+        if (!pathAndQuery.StartsWith(Path.AltDirectorySeparatorChar))
+            pathAndQuery = $"{Path.AltDirectorySeparatorChar}{pathAndQuery}";
         return bas + pathAndQuery;
     }
 

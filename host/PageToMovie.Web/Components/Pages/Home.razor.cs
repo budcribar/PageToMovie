@@ -100,12 +100,7 @@ public partial class Home : IAsyncDisposable
 
     private static string? FirstNonEmpty(params string?[] parts)
     {
-        foreach (var p in parts)
-        {
-            if (!string.IsNullOrWhiteSpace(p))
-                return p.Trim();
-        }
-        return null;
+        return parts.Select(p => p?.Trim()).FirstOrDefault(p => !string.IsNullOrWhiteSpace(p));
     }
 
 

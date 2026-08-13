@@ -19,6 +19,12 @@ public partial class Scenes
     private readonly Scenes S;
     public ScenesGeneration(Scenes host) => S = host;
 
+    private const string StatusRunning = "running";
+    private const string StatusQueued = "queued";
+    private const string KindBatch = "batch";
+    private const string KindRemux = "remux";
+    private const string KindScene = "scene";
+
 
     internal JobSnapshot? _job;
 
@@ -93,11 +99,11 @@ public partial class Scenes
 
 
     internal bool JobRunning =>
-        string.Equals(_job?.Status, "running", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(_job?.Status, "queued", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(_job?.Status, StatusRunning, StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(_job?.Status, StatusQueued, StringComparison.OrdinalIgnoreCase) ||
         _myJobs.Any(j =>
-            string.Equals(j.Status, "running", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(j.Status, "queued", StringComparison.OrdinalIgnoreCase));
+            string.Equals(j.Status, StatusRunning, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(j.Status, StatusQueued, StringComparison.OrdinalIgnoreCase));
 
 
 
@@ -110,8 +116,8 @@ public partial class Scenes
         if (_pendingRegenScene == sceneNumber) return true;
 
         static bool Active(string? status) =>
-            string.Equals(status, "running", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(status, "queued", StringComparison.OrdinalIgnoreCase);
+            string.Equals(status, StatusRunning, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(status, StatusQueued, StringComparison.OrdinalIgnoreCase);
 
         bool Affects(JobSnapshot j)
         {
@@ -121,8 +127,8 @@ public partial class Scenes
             // Remux job.Scene goes null during the WIP-stitch phase ("Combining scenes
             // into movie…") — treat that the same way: hide every composite rather than
             // let one sit there mid-rewrite with a Play button live on it.
-            if (string.Equals(j.Kind, "batch", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(j.Kind, "remux", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(j.Kind, KindBatch, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(j.Kind, KindRemux, StringComparison.OrdinalIgnoreCase))
                 return true;
             return j.Scene is int sn && sn == sceneNumber;
         }
@@ -136,7 +142,7 @@ public partial class Scenes
 
     /// <summary>Jobs that belong on Scenes (not leftover stage2 / character jobs).</summary>
     internal static bool IsScenesWorkflowJob(string? kind) =>
-        kind is "scene" or "batch" or "remux" or "music" or "lip_sync" or "video_edit";
+        kind is KindScene or KindBatch or KindRemux or "music" or "lip_sync" or "video_edit";
 
 
 
@@ -151,7 +157,7 @@ public partial class Scenes
             var job = _job;
             return job is { } live &&
                    IsScenesWorkflowJob(live.Kind) &&
-                   (live.Status is "running" or "queued");
+                   (live.Status is StatusRunning or StatusQueued);
         }
     }
 
@@ -185,7 +191,7 @@ public partial class Scenes
     internal static string LiveGenStatusLabel(JobSnapshot job)
     {
         var kind = job.Kind ?? "";
-        if (string.Equals(job.Status, "queued", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(job.Status, StatusQueued, StringComparison.OrdinalIgnoreCase))
             return "Waiting…";
 
         if (string.Equals(kind, "music", StringComparison.OrdinalIgnoreCase))
@@ -193,7 +199,7 @@ public partial class Scenes
         if (string.Equals(kind, "lip_sync", StringComparison.OrdinalIgnoreCase))
             return !string.IsNullOrWhiteSpace(job.Message) ? job.Message : "Lip-syncing dialogue…";
 
-        if (string.Equals(kind, "remux", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(kind, KindRemux, StringComparison.OrdinalIgnoreCase))
         {
             var msg = job.Message ?? "";
             // Engine already sends short operator lines for remux ("Combining scene 2 of 5…").
@@ -204,18 +210,18 @@ public partial class Scenes
         }
 
         if (job.Total > 0 &&
-            !string.Equals(kind, "remux", StringComparison.OrdinalIgnoreCase))
+            !string.Equals(kind, KindRemux, StringComparison.OrdinalIgnoreCase))
         {
             // Clip gen: Index is current clip (1..Total).
             var display = job.Index <= 0 ? 1 : Math.Min(job.Index, job.Total);
             return $"Generating… {display} of {job.Total}";
         }
 
-        if (string.Equals(kind, "scene", StringComparison.OrdinalIgnoreCase) && job.Clip is int)
+        if (string.Equals(kind, KindScene, StringComparison.OrdinalIgnoreCase) && job.Clip is int)
             return "Generating clip…";
-        if (string.Equals(kind, "scene", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(kind, KindScene, StringComparison.OrdinalIgnoreCase))
             return "Generating scene…";
-        if (string.Equals(kind, "batch", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(kind, KindBatch, StringComparison.OrdinalIgnoreCase))
             return "Generating clips…";
         return "Generating…";
     }
@@ -238,7 +244,7 @@ public partial class Scenes
 
         int pct;
         var kind = job.Kind ?? "";
-        if (string.Equals(kind, "remux", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(kind, KindRemux, StringComparison.OrdinalIgnoreCase))
         {
             // Engine: Total=100, Index=0..99 while running (FinishAsync → 100).
             var total = job.Total > 0 ? job.Total : 100;
@@ -255,7 +261,7 @@ public partial class Scenes
             pct = AdaptationPageBase.AdaptationStepUi.ComputeProgressPercent(
                 displayIndex: index,
                 total: total,
-                waiting: string.Equals(job.Status, "queued", StringComparison.OrdinalIgnoreCase),
+                waiting: string.Equals(job.Status, StatusQueued, StringComparison.OrdinalIgnoreCase),
                 jobRunning: true,
                 startedAt: job.StartedAt);
         }
@@ -287,7 +293,7 @@ public partial class Scenes
                 // A5: final remaining numbers after job ends
                 try { await S.List.RefreshCostEstimateAsync(); } catch { /* soft */ }
                 if (snap.Status == "done" &&
-                    string.Equals(snap.Kind, "remux", StringComparison.OrdinalIgnoreCase))
+                    string.Equals(snap.Kind, KindRemux, StringComparison.OrdinalIgnoreCase))
                 {
                     // Bust cache so next manual play / inline preview loads the new file.
                     var bust = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -312,7 +318,7 @@ public partial class Scenes
                                 string.Join(", ", S.Playback._previewScenes.Select(s => $"S{s:D2}"));
                 }
                 else if (snap.Status == "done" &&
-                         string.Equals(snap.Kind, "scene", StringComparison.OrdinalIgnoreCase) &&
+                         string.Equals(snap.Kind, KindScene, StringComparison.OrdinalIgnoreCase) &&
                          snap.Clip is int cn &&
                          snap.Scene is int gsn)
                 {
@@ -336,7 +342,7 @@ public partial class Scenes
                     S._message = $"Clip S{vesn:D2}C{vecn:D2} edited — saved as a new take";
                 }
                 else if (snap.Status == "done" &&
-                         string.Equals(snap.Kind, "batch", StringComparison.OrdinalIgnoreCase))
+                         string.Equals(snap.Kind, KindBatch, StringComparison.OrdinalIgnoreCase))
                 {
                     // Batch generation finished — clear the scene selection so the toolbar no longer
                     // reads "Generate N scenes" (which looked like it would regenerate everything).
@@ -363,7 +369,7 @@ public partial class Scenes
     {
         if (!IsScenesWorkflowJob(snap.Kind))
             return false;
-        if (snap.Status is not ("running" or "queued"))
+        if (snap.Status is not (StatusRunning or StatusQueued))
             return false;
 
         var msg = snap.Message ?? "";
@@ -487,8 +493,8 @@ public partial class Scenes
             var list = await S.Engine.GetJobsAsync(mine: true);
             _myJobs = list?.Jobs?
                 .Where(j =>
-                    string.Equals(j.Status, "running", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(j.Status, "queued", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(j.Status, StatusRunning, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(j.Status, StatusQueued, StringComparison.OrdinalIgnoreCase) ||
                     (j.FinishedAt is DateTimeOffset f && f > DateTimeOffset.UtcNow.AddMinutes(-5)))
                 .OrderByDescending(j => j.StartedAt ?? j.QueuedAt)
                 .Take(12)
@@ -817,7 +823,7 @@ public partial class Scenes
         _showAdminJobLog = false;
         try
         {
-            var list = S.List._selected.OrderBy(x => x).Where(sn => !IsCreditsSceneNum(sn)).ToList();
+            var list = S.List._selected.Where(sn => !IsCreditsSceneNum(sn)).OrderBy(x => x).ToList();
             await EnsureHubAsync();
             foreach (var sn in list)
                 await S.ClipRegen.EnsurePredecessorsUploadedAsync(await S.ClipRegen.MissingClipTargetsAsync(sn));

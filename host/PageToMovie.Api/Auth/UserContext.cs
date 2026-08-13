@@ -56,11 +56,10 @@ public sealed class HttpUserContext : IUserContext
             var roles = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { AppRoles.User };
             if (ctx?.User?.Identity?.IsAuthenticated == true)
             {
-                foreach (var c in ctx.User.FindAll(ClaimTypes.Role))
-                {
-                    if (!string.IsNullOrWhiteSpace(c.Value))
-                        roles.Add(c.Value.Trim());
-                }
+                roles.UnionWith(
+                    ctx.User.FindAll(ClaimTypes.Role)
+                        .Where(c => !string.IsNullOrWhiteSpace(c.Value))
+                        .Select(c => c.Value.Trim()));
             }
 
             if (_auth.AdminUserIds.Any(id =>

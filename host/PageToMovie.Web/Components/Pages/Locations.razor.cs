@@ -10,7 +10,7 @@ public partial class Locations : IDisposable
 
     private string _projectId = "";
     private List<LocationSummary> _locations = new();
-    private bool _showUnusedInPlan;
+    private bool _showUnusedInPlan = false;
     private string? _selectedKey;
 
     private IEnumerable<LocationSummary> LocationsForUi =>
@@ -193,9 +193,9 @@ public partial class Locations : IDisposable
 
         var restored = 0;
         var missingLocal = 0;
-        foreach (var loc in need)
+        foreach (var locKey in need.Select(loc => loc.Key))
         {
-            var rel = await FindLocalLocationRefRelativeAsync(loc.Key);
+            var rel = await FindLocalLocationRefRelativeAsync(locKey);
             if (rel is null)
             {
                 missingLocal++;
@@ -211,7 +211,7 @@ public partial class Locations : IDisposable
 
             await using var ms = new MemoryStream(bytes);
             var fileName = Path.GetFileName(rel);
-            await Engine.UploadLocationRefAsync(_projectId, loc.Key, ms, fileName);
+            await Engine.UploadLocationRefAsync(_projectId, locKey, ms, fileName);
             restored++;
         }
 

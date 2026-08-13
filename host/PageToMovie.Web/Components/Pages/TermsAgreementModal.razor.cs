@@ -16,7 +16,7 @@ public partial class TermsAgreementModal
     [Parameter] public string UserId { get; set; } = "";
     [Parameter] public EventCallback OnAccepted { get; set; }
 
-    private bool hasAgreed = false;
+    private bool hasAgreed { get; set; } = false;
     internal bool isSubmitting = false;
 
     private async Task AcceptTerms()

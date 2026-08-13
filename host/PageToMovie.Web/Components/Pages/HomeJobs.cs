@@ -42,7 +42,7 @@ public partial class Home
             get
             {
                 if (!string.IsNullOrWhiteSpace(_packageStatus?.HistoryUrl))
-                    return _packageStatus!.HistoryUrl;
+                    return _packageStatus.HistoryUrl;
                 var pid = ActivePackageProjectId;
                 if (string.IsNullOrWhiteSpace(pid)) return null;
                 return S.Projects._historyUrls.TryGetValue(pid, out var hu) ? hu : null;
@@ -81,9 +81,9 @@ public partial class Home
                 var env = await S.Engine.GetProjectUncommittedStatusAsync(pid);
                 _packageStatus = env?.Status;
                 if (!string.IsNullOrWhiteSpace(_packageStatus?.LastCommitHash))
-                    S.Projects._revisionHashes[pid] = _packageStatus!.LastCommitHash!;
+                    S.Projects._revisionHashes[pid] = _packageStatus.LastCommitHash;
                 if (!string.IsNullOrWhiteSpace(_packageStatus?.HistoryUrl))
-                    S.Projects._historyUrls[pid] = _packageStatus!.HistoryUrl!;
+                    S.Projects._historyUrls[pid] = _packageStatus.HistoryUrl;
             }
             catch
             {
@@ -187,7 +187,7 @@ public partial class Home
 
 
         internal static string FriendlyStatus(string? status) =>
-            string.IsNullOrWhiteSpace(status) ? "…" : status!;
+            string.IsNullOrWhiteSpace(status) ? "…" : status;
 
 
         internal static string FriendlyKind(string? kind) => kind switch
@@ -197,7 +197,7 @@ public partial class Home
             "stage1" => "Screenplay",
             "stage2" => "Shot plan",
             "video" or "clip" => "Clip",
-            _ => string.IsNullOrWhiteSpace(kind) ? "Job" : kind!,
+            _ => string.IsNullOrWhiteSpace(kind) ? "Job" : kind,
         };
 
 

@@ -160,8 +160,8 @@ public sealed class HttpRequestMetrics
             path = path[..q];
 
         // Some hosts / reverse proxies report path without a leading slash.
-        if (path.Length > 0 && path[0] != '/')
-            path = "/" + path;
+        if (path.Length > 0 && path[0] != Path.AltDirectorySeparatorChar)
+            path = $"{Path.AltDirectorySeparatorChar}{path}";
 
         if (path.StartsWith("/api/admin", StringComparison.OrdinalIgnoreCase))
             return PrefixKind.Admin;

@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -80,11 +79,14 @@ public sealed class ClipDialogueVerificationService
     }
 
     private static readonly byte[] NewLineBytes = new byte[] { (byte)'\n' };
+    private const string StatusUnverified = "unverified";
 
     public async Task SaveVerificationAsync(string projectId, ClipDialogueVerificationResult result, CancellationToken ct = default)
     {
         var path = VerificationPath(projectId, result.SceneNumber, result.ClipNumber);
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var dir = Path.GetDirectoryName(path);
+        if (!string.IsNullOrEmpty(dir))
+            Directory.CreateDirectory(dir);
         // Write to a temp file then atomically rename — a crash/cancellation mid-write must never
         // leave the verification file truncated. Readers (ProjectStore's mtime-validated cache)
         // rely on this atomicity to treat "file exists" as "file is a complete, valid write."
@@ -147,10 +149,11 @@ public sealed class ClipDialogueVerificationService
         if (!force && string.IsNullOrWhiteSpace(overrideVideoPath))
         {
             var existing = await LoadVerificationAsync(projectId, sceneNumber, clipNumber, ct).ConfigureAwait(false);
-            if (existing is not null && !string.Equals(existing.Status, "unverified", StringComparison.OrdinalIgnoreCase))
+            if (existing is not null &&
+                !string.Equals(existing.Status, StatusUnverified, StringComparison.OrdinalIgnoreCase) &&
+                !string.IsNullOrWhiteSpace(clipPath) &&
+                File.Exists(clipPath))
             {
-                if (!string.IsNullOrWhiteSpace(clipPath) && File.Exists(clipPath))
-                {
                     var videoMTime = File.GetLastWriteTimeUtc(clipPath);
                     if (existing.VerifiedAt >= videoMTime &&
                         string.Equals(existing.ExpectedDialogue, expectedDialogue, StringComparison.Ordinal) &&
@@ -159,7 +162,6 @@ public sealed class ClipDialogueVerificationService
                         _log.LogInformation("Dialogue verification for {Project} S{Scene} C{Clip} is up-to-date (cached)", projectId, sceneNumber, clipNumber);
                         return existing;
                     }
-                }
             }
         }
 
@@ -172,7 +174,7 @@ public sealed class ClipDialogueVerificationService
                 ClipNumber = clipNumber,
                 ExpectedSpeaker = expectedSpeaker,
                 ExpectedDialogue = expectedDialogue,
-                Status = "unverified",
+                Status = StatusUnverified,
                 SummaryNote = "Google Gemini key (GEMINI_API_KEY) required for native MP4 video & audio dialogue verification. Please set key in Configuration.",
                 VerifiedAt = DateTime.UtcNow,
             };
@@ -193,15 +195,14 @@ public sealed class ClipDialogueVerificationService
         var sceneChars = clip?.CharactersOnScreen is { Count: > 0 } ? clip.CharactersOnScreen : new List<string> { expectedSpeaker };
         // Every speaking character (primary + any second speaker) must have its reference portrait
         // attached so the vision pass can match each line's face.
-        foreach (var lineSpeaker in spokenLines.Select(l => l.Speaker)
-                     .Append(expectedSpeaker)
-                     .Where(s => !string.IsNullOrWhiteSpace(s)))
-        {
-            if (!sceneChars.Any(c => string.Equals(c, lineSpeaker, StringComparison.OrdinalIgnoreCase)))
-            {
-                sceneChars = sceneChars.Concat(new[] { lineSpeaker }).ToList();
-            }
-        }
+        var extraSpeakers = spokenLines.Select(l => l.Speaker)
+            .Append(expectedSpeaker)
+            .Where(s => !string.IsNullOrWhiteSpace(s)
+                        && !sceneChars.Any(c => string.Equals(c, s, StringComparison.OrdinalIgnoreCase)))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (extraSpeakers.Count > 0)
+            sceneChars = sceneChars.Concat(extraSpeakers).ToList();
 
         var charGuides = new List<string>();
         int mediaIndex = 1; // Index 1 is the MP4 video clip
@@ -238,7 +239,7 @@ public sealed class ClipDialogueVerificationService
                 ClipNumber = clipNumber,
                 ExpectedSpeaker = expectedSpeaker,
                 ExpectedDialogue = expectedDialogue,
-                Status = "unverified",
+                Status = StatusUnverified,
                 SummaryNote = "Clip video file (.mp4) not found on server disk. Please generate video clips for this scene first.",
                 VerifiedAt = DateTime.UtcNow,
             };
@@ -283,21 +284,13 @@ Status options: 'verified' (dialogue & speaker match), 'mismatch' (dialogue inco
 
         try
         {
-            var sw = Stopwatch.StartNew();
             string targetModel;
             SupportedModelEntry entry;
-            try
-            {
-                var cfg = await _projects.GetConfigAsync(projectId, ct).ConfigureAwait(false);
-                targetModel = ProjectModelSelection.RequireVideoReview(cfg, "Dialogue verification");
-                entry = SupportedModelCatalog.Find(targetModel)
-                        ?? throw new InvalidOperationException(
-                            $"Dialogue verification: model '{targetModel}' missing from catalog.");
-            }
-            catch (InvalidOperationException)
-            {
-                throw;
-            }
+            var cfg = await _projects.GetConfigAsync(projectId, ct).ConfigureAwait(false);
+            targetModel = ProjectModelSelection.RequireVideoReview(cfg, "Dialogue verification");
+            entry = SupportedModelCatalog.Find(targetModel)
+                    ?? throw new InvalidOperationException(
+                        $"Dialogue verification: model '{targetModel}' missing from catalog.");
 
             var hasVideoFile = mediaToPass.Any(p => p.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase) || p.EndsWith(".mov", StringComparison.OrdinalIgnoreCase));
 
@@ -416,7 +409,7 @@ Status options: 'verified' (dialogue & speaker match), 'mismatch' (dialogue inco
                 ClipNumber = clipNumber,
                 ExpectedSpeaker = expectedSpeaker,
                 ExpectedDialogue = expectedDialogue,
-                Status = "unverified",
+                Status = StatusUnverified,
                 SummaryNote = $"Verification error: {ex.Message}",
                 VerifiedAt = DateTime.UtcNow,
             };
@@ -466,19 +459,12 @@ Status options: 'verified' (dialogue & speaker match), 'mismatch' (dialogue inco
 
         if (expWords.Count == 0) return 1.0;
 
-        int matches = 0;
-        foreach (var ew in expWords)
-        {
-            if (actWords.Any(aw => IsWordEquivalent(ew, ew, aw)))
-            {
-                matches++;
-            }
-        }
+        int matches = expWords.Count(ew => actWords.Any(aw => IsWordEquivalent(ew, aw)));
 
         return (double)matches / expWords.Count;
     }
 
-    private static bool IsWordEquivalent(string rawExp, string normExp, string normAct)
+    private static bool IsWordEquivalent(string normExp, string normAct)
     {
         if (string.Equals(normExp, normAct, StringComparison.OrdinalIgnoreCase)) return true;
 
@@ -536,13 +522,11 @@ Status options: 'verified' (dialogue & speaker match), 'mismatch' (dialogue inco
             {
                 foreach (var name in names)
                 {
-                    if (string.Equals(prop.Name.Replace("_", ""), name.Replace("_", ""), StringComparison.OrdinalIgnoreCase))
+                    if (string.Equals(prop.Name.Replace("_", ""), name.Replace("_", ""), StringComparison.OrdinalIgnoreCase) &&
+                        prop.Value.ValueKind == JsonValueKind.String)
                     {
-                        if (prop.Value.ValueKind == JsonValueKind.String)
-                        {
                             var val = prop.Value.GetString();
                             if (!string.IsNullOrWhiteSpace(val)) return val.Trim();
-                        }
                     }
                 }
             }
@@ -554,24 +538,20 @@ Status options: 'verified' (dialogue & speaker match), 'mismatch' (dialogue inco
     {
         foreach (var name in names)
         {
-            if (root.TryGetProperty(name, out var el))
+            if (root.TryGetProperty(name, out var el) &&
+                el.ValueKind is JsonValueKind.True or JsonValueKind.False)
             {
-                if (el.ValueKind is JsonValueKind.True or JsonValueKind.False)
                     return el.GetBoolean();
             }
         }
         if (root.ValueKind == JsonValueKind.Object)
         {
-            foreach (var prop in root.EnumerateObject())
+            foreach (var prop in root.EnumerateObject().Where(p =>
+                         names.Any(name =>
+                             string.Equals(p.Name.Replace("_", ""), name.Replace("_", ""), StringComparison.OrdinalIgnoreCase))))
             {
-                foreach (var name in names)
-                {
-                    if (string.Equals(prop.Name.Replace("_", ""), name.Replace("_", ""), StringComparison.OrdinalIgnoreCase))
-                    {
-                        if (prop.Value.ValueKind is JsonValueKind.True or JsonValueKind.False)
-                            return prop.Value.GetBoolean();
-                    }
-                }
+                if (prop.Value.ValueKind is JsonValueKind.True or JsonValueKind.False)
+                    return prop.Value.GetBoolean();
             }
         }
         return false;
@@ -586,16 +566,12 @@ Status options: 'verified' (dialogue & speaker match), 'mismatch' (dialogue inco
         }
         if (root.ValueKind == JsonValueKind.Object)
         {
-            foreach (var prop in root.EnumerateObject())
+            foreach (var prop in root.EnumerateObject().Where(p =>
+                         names.Any(name =>
+                             string.Equals(p.Name.Replace("_", ""), name.Replace("_", ""), StringComparison.OrdinalIgnoreCase))))
             {
-                foreach (var name in names)
-                {
-                    if (string.Equals(prop.Name.Replace("_", ""), name.Replace("_", ""), StringComparison.OrdinalIgnoreCase))
-                    {
-                        if (prop.Value.ValueKind == JsonValueKind.Number && prop.Value.TryGetDouble(out var v))
-                            return v;
-                    }
-                }
+                if (prop.Value.ValueKind == JsonValueKind.Number && prop.Value.TryGetDouble(out var v))
+                    return v;
             }
         }
         return null;

@@ -90,7 +90,7 @@ public sealed class BookPrepareService
 
             await File.WriteAllTextAsync(bookTxt, text + "\n", ct).ConfigureAwait(false);
             if (epubImgRows.Count > 0)
-                await WriteManifestAsync(source, imgDir, epubImgRows, epubPages, ct).ConfigureAwait(false);
+                await WriteManifestAsync(imgDir, epubImgRows, epubPages, ct).ConfigureAwait(false);
             else
                 await EnsureManifestFromDiskAsync(source, imgDir, epubPages, ct).ConfigureAwait(false);
         }
@@ -145,7 +145,7 @@ public sealed class BookPrepareService
             }
 
             if (imageRows.Count > 0)
-                await WriteManifestAsync(source, imgDir, imageRows, pageCount, ct).ConfigureAwait(false);
+                await WriteManifestAsync(imgDir, imageRows, pageCount, ct).ConfigureAwait(false);
             else
                 await EnsureManifestFromDiskAsync(source, imgDir, pageCount, ct).ConfigureAwait(false);
 
@@ -288,8 +288,6 @@ public sealed class BookPrepareService
         result.SuggestedChunkPages = analysis.SuggestedChunkPages;
         result.Notes = analysis.Notes.ToList();
 
-        // Vision success is stage-1-ready; strategies that need user/key are not;
-        // clean embedded text uses analyzer flags.
         if (result.TextEngine == GrokVisionEngine)
         {
             var failed = result.VisionFailedPages;
@@ -386,18 +384,18 @@ public sealed class BookPrepareService
             };
         }
 
-        if (hasImages && hasXai)
+        if (hasImages)
         {
-            return new BookStrategy
+            if (hasXai)
             {
-                Action = GrokVisionTranscribeAction,
-                Reason = $"Text quality is '{quality}'. Rebuilding with Grok vision.",
-                ReadyForStage1 = false,
-            };
-        }
+                return new BookStrategy
+                {
+                    Action = GrokVisionTranscribeAction,
+                    Reason = $"Text quality is '{quality}'. Rebuilding with Grok vision.",
+                    ReadyForStage1 = false,
+                };
+            }
 
-        if (hasImages && !hasXai)
-        {
             return new BookStrategy
             {
                 Action = "need_xai_for_vision",
@@ -629,40 +627,37 @@ public sealed class BookPrepareService
             foreach (var bitmap in PDFtoImage.Conversion.ToImages(ms, options: options))
             {
                 index++;
-                try
+                using (bitmap)
                 {
-                    if (!renderAll && index > 1)
+                    try
                     {
-                        // Keep cover + every Nth for longer books
-                        if (index % Math.Max(2, pageCount / 20) != 0 && index != pageCount)
+                        if (!renderAll && index > 1 &&
+                            index % Math.Max(2, pageCount / 20) != 0 && index != pageCount)
                         {
-                            bitmap.Dispose();
                             continue;
                         }
+
+                        var name = $"page_{index:D3}_render.png";
+                        var full = Path.Combine(imgDir, name);
+                        using (var fs = File.OpenWrite(full))
+                            bitmap.Encode(fs, SkiaSharp.SKEncodedImageFormat.Png, 90);
+
+                        rows.Add(new Dictionary<string, object?>
+                        {
+                            ["kind"] = RenderedPageRelevance,
+                            ["page"] = index,
+                            ["path"] = $"book_images/{name}",
+                            [RelevanceKey] = index == 1 ? "cover" : RenderedPageRelevance,
+                        });
                     }
-
-                    var name = $"page_{index:D3}_render.png";
-                    var full = Path.Combine(imgDir, name);
-                    using (var fs = File.OpenWrite(full))
-                        bitmap.Encode(fs, SkiaSharp.SKEncodedImageFormat.Png, 90);
-                    bitmap.Dispose();
-
-                    rows.Add(new Dictionary<string, object?>
+                    catch (Exception pageEx)
                     {
-                        ["kind"] = RenderedPageRelevance,
-                        ["page"] = index,
-                        ["path"] = $"book_images/{name}",
-                        [RelevanceKey] = index == 1 ? "cover" : RenderedPageRelevance,
-                    });
-                }
-                catch (Exception pageEx)
-                {
-                    // Skip only this page — never abort the whole render loop.
-                    try { bitmap.Dispose(); } catch { /* ignore */ }
-                    if (pageErrors.Count < 8)
-                    {
-                        pageErrors.Add(
-                            $"page {index}: {pageEx.GetType().Name}: {pageEx.Message}");
+                        // Skip only this page — never abort the whole render loop.
+                        if (pageErrors.Count < 8)
+                        {
+                            pageErrors.Add(
+                                $"page {index}: {pageEx.GetType().Name}: {pageEx.Message}");
+                        }
                     }
                 }
             }
@@ -690,7 +685,6 @@ public sealed class BookPrepareService
     }
 
     private static async Task WriteManifestAsync(
-        string sourceDir,
         string imgDir,
         List<Dictionary<string, object?>> rows,
         int pages,
@@ -767,7 +761,6 @@ public sealed class BookPrepareService
         }
         if (rows.Count == 0) return;
         await WriteManifestAsync(
-            sourceDir,
             imgDir,
             rows,
             pages > 0 ? pages : rows.Max(r => r["page"] is int p ? p : 0),

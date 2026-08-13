@@ -135,15 +135,15 @@
                                                     Remove
                                                 </button>
                                             </div>
-                                            <CharacterLookPanel Description="@LookEdit!._editDescription"
-                                                               DescriptionChanged="LookEdit!.OnLookDescriptionChanged"
-                                                               VisualLock="@LookEdit!._editVisualLock"
-                                                               VisualLockChanged="LookEdit!.OnLookVisualLockChanged"
-                                                               ImageEditInstruction="@LookEdit!._imageEditInstruction"
-                                                               ImageEditInstructionChanged="LookEdit!.OnImageEditInstructionChanged"
+                                            <CharacterLookPanel Description="@LookEdit._editDescription"
+                                                               DescriptionChanged="LookEdit.OnLookDescriptionChanged"
+                                                               VisualLock="@LookEdit._editVisualLock"
+                                                               VisualLockChanged="LookEdit.OnLookVisualLockChanged"
+                                                               ImageEditInstruction="@LookEdit._imageEditInstruction"
+                                                               ImageEditInstructionChanged="LookEdit.OnImageEditInstructionChanged"
                                                                ShowDescription="false"
                                                                ShowImageEditInstruction="true"
-                                                               Busy="@(Host._busy || Jobs!.JobRunning)"
+                                                               Busy="@(Host._busy || Jobs.JobRunning)"
                                                                TestId="char-tweak-preferred">
                                                 <Actions>
                                                     <CapabilityLockedControl Enabled="Caps.ImageReady"
@@ -151,8 +151,8 @@
                                                                              SettingsHref="@Caps.ImageSettingsHref"
                                                                              TestId="char-tweak-preferred-cap">
                                                         <button type="button" class="btn btn-primary btn-sm"
-                                                                disabled="@(Host._busy || Jobs!.JobRunning || string.IsNullOrWhiteSpace(LookEdit!._imageEditInstruction))"
-                                                                @onclick="LookPipe!.StartRegenerateAsync"
+                                                                disabled="@(Host._busy || Jobs.JobRunning || string.IsNullOrWhiteSpace(LookEdit._imageEditInstruction))"
+                                                                @onclick="LookPipe.StartRegenerateAsync"
                                                                 data-testid="char-tweak-preferred-go">
                                                             Tweak face
                                                         </button>
@@ -259,7 +259,7 @@
                                             {
                                                 var bi = b.Index ?? 0;
                                                 var src = !string.IsNullOrEmpty(b.Url)
-                                                    ? Host.CacheBust(b.Url!)
+                                                    ? Host.CacheBust(b.Url)
                                                     : Host.CacheBust(Engine.CharacterBookRefUrl(Host._projectId, List._selected.Key, bi));
                                                 <div class="char-seed-tile-wrap">
                                                     <div class="char-seed-tile char-seed-tile--on">

@@ -27,6 +27,7 @@ public partial class MainLayout : IDisposable
     internal List<string> _presenceOthers = new();
     private System.Threading.Timer? _presenceTimer;
     internal string? _presenceProjectId;
+    private bool _disposed;
 
     private const string AdminToken = "admin";
     private static readonly string UrlRoot = Path.AltDirectorySeparatorChar.ToString();
@@ -89,14 +90,23 @@ public partial class MainLayout : IDisposable
     private void EnsurePresenceTimer()
     {
         if (_presenceTimer is not null) return;
-        _presenceTimer = new System.Threading.Timer(_ =>
+        _presenceTimer = new System.Threading.Timer(PresenceTick, null, TimeSpan.FromSeconds(20), TimeSpan.FromSeconds(20));
+    }
+
+    private async void PresenceTick(object? state)
+    {
+        try
         {
-            _ = InvokeAsync(async () =>
+            await InvokeAsync(async () =>
             {
                 await RefreshPresenceAsync();
                 StateHasChanged();
             });
-        }, null, TimeSpan.FromSeconds(20), TimeSpan.FromSeconds(20));
+        }
+        catch
+        {
+            /* soft */
+        }
     }
 
     private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
@@ -374,14 +384,25 @@ public partial class MainLayout : IDisposable
 
     public void Dispose()
     {
-        MediaFolder.Changed -= OnMediaFolderChanged;
-        _presenceTimer?.Dispose();
-        _presenceTimer = null;
-        ActiveProject.Changed -= OnActiveProjectChanged;
-        if (_locationHooked)
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (_disposed) return;
+        if (disposing)
         {
-            Nav.LocationChanged -= OnLocationChanged;
-            _locationHooked = false;
+            MediaFolder.Changed -= OnMediaFolderChanged;
+            _presenceTimer?.Dispose();
+            _presenceTimer = null;
+            ActiveProject.Changed -= OnActiveProjectChanged;
+            if (_locationHooked)
+            {
+                Nav.LocationChanged -= OnLocationChanged;
+                _locationHooked = false;
+            }
         }
+        _disposed = true;
     }
 }

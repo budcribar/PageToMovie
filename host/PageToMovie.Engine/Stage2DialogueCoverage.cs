@@ -76,7 +76,7 @@ internal static class Stage2DialogueCoverage
                 foreach (var line in ClipSpokenLines.FromBeat(ap))
                     sb.Append(Normalize(line.Dialogue)).Append(' ');
                 var bid = clip.TryGetValue("stage1_beat_id", out var b) ? b?.ToString() : null;
-                if (!string.IsNullOrWhiteSpace(bid)) beatIds.Add(bid!);
+                if (!string.IsNullOrWhiteSpace(bid)) beatIds.Add(bid);
             }
             actualBlob[sn] = sb.ToString();
             beatsWithClip[sn] = beatIds;

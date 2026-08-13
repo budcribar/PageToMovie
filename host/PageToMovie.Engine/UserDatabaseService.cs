@@ -23,6 +23,12 @@ namespace PageToMovie.Engine;
 /// </summary>
 public class UserDatabaseService
 {
+    private const string ContainerDataDir = "/data";
+    private const string AppContainerDataDir = "/app/data";
+    private const string PragmaUserVersion = "PRAGMA user_version;";
+    private const string DefaultOperatorUserId = "budcribar";
+    private const string ProviderGemini = "gemini";
+    private const string ProviderAnthropic = "anthropic";
     private readonly string _dbPath;
     private readonly IDataProtector? _protector;
     private readonly ILogger<UserDatabaseService> _logger;
@@ -66,13 +72,13 @@ public class UserDatabaseService
             return envDir.Trim();
 
         // Unit tests pass a unique temp WorkspaceRoot — never share C:\data / /data with them.
-        if (IsIsolatedTestWorkspace(workspace))
-            return Path.Combine(workspace!.Trim(), "data");
+        if (IsIsolatedTestWorkspace(workspace) && workspace is { } isolatedRoot)
+            return Path.Combine(isolatedRoot.Trim(), "data");
 
-        if (Directory.Exists("/data"))
-            return "/data";
-        if (Directory.Exists("/app/data"))
-            return "/app/data";
+        if (Directory.Exists(ContainerDataDir))
+            return ContainerDataDir;
+        if (Directory.Exists(AppContainerDataDir))
+            return AppContainerDataDir;
 
         // Local Visual Studio / Windows: keep tokens & users outside the repo so Clean/Rebuild
         // never deletes OAuth (YouTube) or personal API keys. Workspace still holds projects.
@@ -136,6 +142,7 @@ public class UserDatabaseService
         }
         catch
         {
+            // Path.GetFullPath can throw for malformed workspace roots; treat as not isolated.
             return false;
         }
     }
@@ -209,7 +216,7 @@ public class UserDatabaseService
                 // Database Schema Migrations & Version Tracking (PRAGMA user_version)
                 using (var vCmd = conn.CreateCommand())
                 {
-                    vCmd.CommandText = "PRAGMA user_version;";
+                    vCmd.CommandText = PragmaUserVersion;
                     var curVer = Convert.ToInt32(vCmd.ExecuteScalar() ?? 0);
 
                     // Migration v1 -> v2: Ensure provider key columns including Fal.ai
@@ -460,7 +467,7 @@ public class UserDatabaseService
                 // Also backfill charge_usd. Detects old DBs via PRAGMA user_version < 5 (Railway).
                 using (var vCmd5 = conn.CreateCommand())
                 {
-                    vCmd5.CommandText = "PRAGMA user_version;";
+                    vCmd5.CommandText = PragmaUserVersion;
                     var verAfterTables = Convert.ToInt32(vCmd5.ExecuteScalar() ?? 0);
                     if (verAfterTables < 5)
                     {
@@ -471,7 +478,7 @@ public class UserDatabaseService
                         _logger.LogInformation(
                             "Migrated SQLite schema to user_version 5 (legacy cost attribution → {User}/{Project})",
                             string.IsNullOrWhiteSpace(_billing.LegacyCostOwnerUserId)
-                                ? "budcribar"
+                                ? DefaultOperatorUserId
                                 : _billing.LegacyCostOwnerUserId.Trim(),
                             string.IsNullOrWhiteSpace(_billing.LegacyCostProjectId)
                                 ? "development"
@@ -484,7 +491,7 @@ public class UserDatabaseService
                 // reassigns all spend/estimates/credits, and rehomes project folders on disk.
                 using (var vCmd6 = conn.CreateCommand())
                 {
-                    vCmd6.CommandText = "PRAGMA user_version;";
+                    vCmd6.CommandText = PragmaUserVersion;
                     var ver6 = Convert.ToInt32(vCmd6.ExecuteScalar() ?? 0);
                     if (ver6 < 6)
                     {
@@ -495,7 +502,7 @@ public class UserDatabaseService
                         _logger.LogInformation(
                             "Migrated SQLite schema to user_version 6 (canonical account {User} / {Email})",
                             string.IsNullOrWhiteSpace(_billing.LegacyCostOwnerUserId)
-                                ? "budcribar"
+                                ? DefaultOperatorUserId
                                 : _billing.LegacyCostOwnerUserId.Trim(),
                             string.IsNullOrWhiteSpace(_billing.CanonicalAccountEmail)
                                 ? "budcribar@msn.com"
@@ -506,7 +513,7 @@ public class UserDatabaseService
                 // v7: video_take_events (CREATE IF NOT EXISTS above is idempotent).
                 using (var vCmd7 = conn.CreateCommand())
                 {
-                    vCmd7.CommandText = "PRAGMA user_version;";
+                    vCmd7.CommandText = PragmaUserVersion;
                     var ver7 = Convert.ToInt32(vCmd7.ExecuteScalar() ?? 0);
                     if (ver7 < 7)
                     {
@@ -550,7 +557,7 @@ public class UserDatabaseService
     private void MigrateLegacyCostAttributionV5(SqliteConnection conn, BillingOptions billing)
     {
         var ownerId = string.IsNullOrWhiteSpace(billing.LegacyCostOwnerUserId)
-            ? "budcribar"
+            ? DefaultOperatorUserId
             : billing.LegacyCostOwnerUserId.Trim();
         var ownerName = string.IsNullOrWhiteSpace(billing.LegacyCostOwnerUsername)
             ? "Bud Cribar"
@@ -697,7 +704,7 @@ public class UserDatabaseService
     private void MigrateCanonicalAccountV6(SqliteConnection conn, BillingOptions billing)
     {
         var primaryId = string.IsNullOrWhiteSpace(billing.LegacyCostOwnerUserId)
-            ? "budcribar"
+            ? DefaultOperatorUserId
             : billing.LegacyCostOwnerUserId.Trim();
         var primaryHandle = string.IsNullOrWhiteSpace(billing.CanonicalAccountUsername)
             ? primaryId
@@ -709,9 +716,6 @@ public class UserDatabaseService
         var primaryEmail = string.IsNullOrWhiteSpace(billing.CanonicalAccountEmail)
             ? "budcribar@msn.com"
             : NormalizeEmail(billing.CanonicalAccountEmail) ?? "budcribar@msn.com";
-        var displayName = string.IsNullOrWhiteSpace(billing.LegacyCostOwnerUsername)
-            ? primaryHandle
-            : billing.LegacyCostOwnerUsername.Trim();
 
         var aliasCandidates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         void AddAlias(string? raw)
@@ -1006,10 +1010,7 @@ public class UserDatabaseService
             {
                 using var up = conn.CreateCommand();
                 up.CommandText = RewriteProjectIdPrefixSql(table);
-                up.Parameters.AddWithValue("@newPrefix", newPrefix);
-                up.Parameters.AddWithValue("@oldLen", oldPrefix.Length);
-                up.Parameters.AddWithValue("@oldSeg", oldSeg);
-                up.Parameters.AddWithValue("@oldPrefixLike", oldPrefix + "%");
+                BindProjectIdPrefixParams(up, newPrefix, oldPrefix);
                 try { up.ExecuteNonQuery(); }
                 catch { /* table may lack project_id in weird schemas */ }
             }
@@ -1036,7 +1037,7 @@ public class UserDatabaseService
 
         var primarySeg = ProjectOwnership.SanitizeOwnerSegment(primaryId);
         if (string.IsNullOrEmpty(primarySeg))
-            primarySeg = "budcribar";
+            primarySeg = DefaultOperatorUserId;
 
         var segs = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { primarySeg };
         // Collect every alias folder segment we might own.
@@ -1185,7 +1186,7 @@ public class UserDatabaseService
         }
         catch
         {
-            // best-effort
+            // best-effort rewrite of project.json owner fields during alias rehome
         }
     }
 
@@ -1194,8 +1195,8 @@ public class UserDatabaseService
         foreach (var candidate in new[]
                  {
                      _workspaceRoot,
-                     Directory.Exists("/data") ? "/data" : null,
-                     Directory.Exists("/app/data") ? "/app/data" : null,
+                     Directory.Exists(ContainerDataDir) ? ContainerDataDir : null,
+                     Directory.Exists(AppContainerDataDir) ? AppContainerDataDir : null,
                  })
         {
             if (string.IsNullOrWhiteSpace(candidate)) continue;
@@ -1255,6 +1256,14 @@ public class UserDatabaseService
             """,
         _ => throw new ArgumentOutOfRangeException(nameof(table), table, "Unsupported table.")
     };
+
+    private static void BindProjectIdPrefixParams(SqliteCommand cmd, string newPrefix, string oldPrefix)
+    {
+        cmd.Parameters.AddWithValue("@newPrefix", newPrefix);
+        cmd.Parameters.AddWithValue("@oldLen", oldPrefix.Length);
+        cmd.Parameters.AddWithValue("@oldSeg", oldPrefix.TrimEnd(Path.AltDirectorySeparatorChar));
+        cmd.Parameters.AddWithValue("@oldPrefixLike", oldPrefix + "%");
+    }
 
     private static void EnsureColumn(SqliteConnection conn, string table, string column, string typeSql)
     {
@@ -2130,7 +2139,7 @@ public class UserDatabaseService
             cmd.Parameters.AddWithValue("@promptChars", (object?)rec.PromptChars ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@responseChars", (object?)rec.ResponseChars ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@requestId", (object?)rec.RequestId ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@error", string.IsNullOrWhiteSpace(rec.Error) ? DBNull.Value : (rec.Error!.Length > 500 ? rec.Error[..500] : rec.Error));
+            cmd.Parameters.AddWithValue("@error", string.IsNullOrWhiteSpace(rec.Error) ? DBNull.Value : (rec.Error.Length > 500 ? rec.Error[..500] : rec.Error));
             cmd.Parameters.AddWithValue("@purpose", purpose ?? "");
             cmd.Parameters.AddWithValue("@fakes", rec.Fakes ? 1 : 0);
             cmd.Parameters.AddWithValue("@attempt", (object?)rec.Attempt ?? DBNull.Value);
@@ -2463,6 +2472,7 @@ public class UserDatabaseService
                 try { return DecryptApiKey(legacyEncrypted); }
                 catch (Exception)
                 {
+                    // Legacy ciphertext from a rotated data-protection key cannot be recovered.
                     return null;
                 }
             }
@@ -2499,8 +2509,8 @@ public class UserDatabaseService
 
         // Fallback for legacy columns if user_api_keys table hasn't populated them yet
         if (!personalKeys.ContainsKey("grok") && DecryptOptional(user?.EncryptedXaiApiKey) is { } x) personalKeys["grok"] = x;
-        if (!personalKeys.ContainsKey("gemini") && DecryptOptional(user?.EncryptedGeminiApiKey) is { } g) personalKeys["gemini"] = g;
-        if (!personalKeys.ContainsKey("anthropic") && DecryptOptional(user?.EncryptedAnthropicApiKey) is { } a) personalKeys["anthropic"] = a;
+        if (!personalKeys.ContainsKey(ProviderGemini) && DecryptOptional(user?.EncryptedGeminiApiKey) is { } g) personalKeys[ProviderGemini] = g;
+        if (!personalKeys.ContainsKey(ProviderAnthropic) && DecryptOptional(user?.EncryptedAnthropicApiKey) is { } a) personalKeys[ProviderAnthropic] = a;
         if (!personalKeys.ContainsKey("fal") && DecryptOptional(user?.EncryptedFalApiKey) is { } f) personalKeys["fal"] = f;
 
         // Dynamically discover providers from models_catalog.json (enabled models + requiredEnvKeys).
@@ -2669,7 +2679,7 @@ public class UserDatabaseService
     }
 
     /// <summary>True when password matches the stored hash for this user.</summary>
-    public bool VerifyPasswordHash(UserEntity user, string password)
+    public static bool VerifyPasswordHash(UserEntity user, string password)
     {
         if (user is null || string.IsNullOrEmpty(user.PasswordHash))
             return false;
@@ -3054,8 +3064,8 @@ public class UserDatabaseService
         NormalizeProvider(providerId) switch
         {
             "grok" => "encrypted_xai_api_key",
-            "gemini" => "encrypted_gemini_api_key",
-            "anthropic" => "encrypted_anthropic_api_key",
+            ProviderGemini => "encrypted_gemini_api_key",
+            ProviderAnthropic => "encrypted_anthropic_api_key",
             "fal" => "encrypted_fal_api_key",
             _ => null,
         };
@@ -3067,8 +3077,8 @@ public class UserDatabaseService
         return p switch
         {
             "xai" or "grok" => "grok",
-            "google" or "gemini" => "gemini",
-            "claude" or "anthropic" => "anthropic",
+            "google" or ProviderGemini => ProviderGemini,
+            "claude" or ProviderAnthropic => ProviderAnthropic,
             "fal" or "fal.ai" => "fal",
             "openai" or "oai" => "openai",
             "suno" => "suno",
@@ -3082,8 +3092,8 @@ public class UserDatabaseService
         NormalizeProvider(providerId) switch
         {
             "grok" => user.EncryptedXaiApiKey,
-            "gemini" => user.EncryptedGeminiApiKey,
-            "anthropic" => user.EncryptedAnthropicApiKey,
+            ProviderGemini => user.EncryptedGeminiApiKey,
+            ProviderAnthropic => user.EncryptedAnthropicApiKey,
             "fal" => user.EncryptedFalApiKey,
             _ => null,
         };
@@ -3093,8 +3103,8 @@ public class UserDatabaseService
         switch (NormalizeProvider(providerId))
         {
             case "grok": user.EncryptedXaiApiKey = encrypted; break;
-            case "gemini": user.EncryptedGeminiApiKey = encrypted; break;
-            case "anthropic": user.EncryptedAnthropicApiKey = encrypted; break;
+            case ProviderGemini: user.EncryptedGeminiApiKey = encrypted; break;
+            case ProviderAnthropic: user.EncryptedAnthropicApiKey = encrypted; break;
         }
     }
 

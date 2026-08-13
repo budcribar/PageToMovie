@@ -18,6 +18,16 @@ public partial class Configuration
         private readonly Configuration S;
         public ConfigurationCoverage(Configuration host) => S = host;
 
+        private const string CapMusic = "music";
+        private const string CapAudio = "audio";
+        private const string CapVoice = "voice";
+        private const string CapReview = "review";
+        private const string CapVideo = "video";
+        private const string CapImage = "image";
+        private const string CapPlanning = "planning";
+        private const string CapVision = "vision";
+        private const string ModelDisabled = "disabled";
+
         internal string _audioModel = "none";
 
         internal int _backgroundMusicVolumePercent = 20;
@@ -67,13 +77,13 @@ public partial class Configuration
             var s = (raw ?? "").Trim().ToLowerInvariant();
             return s switch
             {
-                "music" or "audio" or "bgm" => "music",
-                "voice" or "voice_clone" or "clone" or "tts" => "voice",
-                "review" or "qa" or "video_review" or "quality" => "review",
-                "video" or "film" => "video",
-                "image" or "portrait" or "characters" => "image",
-                "planning" or "script" or "chat" or "screenplay" => "planning",
-                "vision" or "ocr" => "vision",
+                CapMusic or CapAudio or "bgm" => CapMusic,
+                CapVoice or "voice_clone" or "clone" or "tts" => CapVoice,
+                CapReview or "qa" or "video_review" or "quality" => CapReview,
+                CapVideo or "film" => CapVideo,
+                CapImage or "portrait" or "characters" => CapImage,
+                CapPlanning or "script" or "chat" or "screenplay" => CapPlanning,
+                CapVision or "ocr" => CapVision,
                 _ => string.IsNullOrWhiteSpace(s) ? null : s,
             };
         }
@@ -100,14 +110,14 @@ public partial class Configuration
         {
             var rows = new List<CoverageRow>
             {
-                MakeCoverage("video", "Video generation", "Clips / film", _modelName, "video", required: true),
-                MakeCoverage("image", "Character portraits", "Image gen", _imageModel, "image", required: true),
-                MakeCoverage("planning", "Script & planning", "Screenplay, cast, shot plan", _planningModel, "chat", required: true),
-                MakeCoverage("vision", "Image vision / OCR", "Book pages & image understanding", _visionModel, "vision", required: true),
+                MakeCoverage(CapVideo, "Video generation", "Clips / film", _modelName, CapVideo, required: true),
+                MakeCoverage(CapImage, "Character portraits", "Image gen", _imageModel, CapImage, required: true),
+                MakeCoverage(CapPlanning, "Script & planning", "Screenplay, cast, shot plan", _planningModel, "chat", required: true),
+                MakeCoverage(CapVision, "Image vision / OCR", "Book pages & image understanding", _visionModel, CapVision, required: true),
                 // QA only — missing key must not block book→screenplay or film generation.
-                MakeCoverage("review", "Video review (QA)", "Optional: dialogue check & auto-review", _qualityModel, "chat", required: false, preferVideoReview: true),
-                MakeCoverage("music", "Background music", "Optional scores", _audioModel, "audio", required: false),
-                MakeCoverage("voice", "Voice clone & speech", "Clones your voice and speaks the dialogue (text-to-speech)", _voiceModel, "voice", required: false),
+                MakeCoverage(CapReview, "Video review (QA)", "Optional: dialogue check & auto-review", _qualityModel, "chat", required: false, preferVideoReview: true),
+                MakeCoverage(CapMusic, "Background music", "Optional scores", _audioModel, CapAudio, required: false),
+                MakeCoverage(CapVoice, "Voice clone & speech", "Clones your voice and speaks the dialogue (text-to-speech)", _voiceModel, CapVoice, required: false),
             };
             return rows;
         }
@@ -128,7 +138,7 @@ public partial class Configuration
             // Optional stage turned off (music "none", etc.).
             var off = string.IsNullOrWhiteSpace(modelId)
                       || modelId.Equals("none", StringComparison.OrdinalIgnoreCase)
-                      || modelId.Equals("disabled", StringComparison.OrdinalIgnoreCase);
+                      || modelId.Equals(ModelDisabled, StringComparison.OrdinalIgnoreCase);
 
 
             string providerId;
@@ -167,7 +177,7 @@ public partial class Configuration
         {
             if (string.IsNullOrWhiteSpace(modelId)
                 || modelId.Equals("none", StringComparison.OrdinalIgnoreCase)
-                || modelId.Equals("disabled", StringComparison.OrdinalIgnoreCase))
+                || modelId.Equals(ModelDisabled, StringComparison.OrdinalIgnoreCase))
                 return "";
 
             // Only models that exist in the loaded catalog (or catalog static after hydrate).
@@ -184,11 +194,11 @@ public partial class Configuration
             // Server-side catalog (if WASM hydrated SupportedModelCatalog).
             var cap = capability.ToLowerInvariant() switch
             {
-                "video" => ModelCapability.Video,
-                "image" => ModelCapability.Image,
-                "vision" => ModelCapability.Vision,
-                "audio" => ModelCapability.Audio,
-                "voice" => ModelCapability.Voice,
+                CapVideo => ModelCapability.Video,
+                CapImage => ModelCapability.Image,
+                CapVision => ModelCapability.Vision,
+                CapAudio => ModelCapability.Audio,
+                CapVoice => ModelCapability.Voice,
                 _ => ModelCapability.Chat,
             };
             var entry = SupportedModelCatalog.Find(modelId, cap) ?? SupportedModelCatalog.Find(modelId);
@@ -237,9 +247,9 @@ public partial class Configuration
             S.Keys._apiKeyFeedback = null;
             var label = ConfigurationCatalog.FriendlyProviderLabel(providerId);
 
-            if (string.Equals(coverageId, "music", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(coverageId, CapMusic, StringComparison.OrdinalIgnoreCase))
                 EnsureMusicModelForProvider(providerId);
-            else if (string.Equals(coverageId, "voice", StringComparison.OrdinalIgnoreCase))
+            else if (string.Equals(coverageId, CapVoice, StringComparison.OrdinalIgnoreCase))
                 EnsureVoiceModelForProvider(providerId);
             else
             {
@@ -291,13 +301,13 @@ public partial class Configuration
 
         internal string GetCoverageModelId(string coverageId) => coverageId switch
         {
-            "video" => _modelName,
-            "image" => _imageModel,
-            "planning" => _planningModel,
-            "vision" => _visionModel,
-            "review" => _qualityModel,
-            "music" => _audioModel,
-            "voice" => _voiceModel,
+            CapVideo => _modelName,
+            CapImage => _imageModel,
+            CapPlanning => _planningModel,
+            CapVision => _visionModel,
+            CapReview => _qualityModel,
+            CapMusic => _audioModel,
+            CapVoice => _voiceModel,
             _ => "",
         };
 
@@ -306,26 +316,26 @@ public partial class Configuration
         {
             switch (coverageId)
             {
-                case "video": _modelName = modelId; break;
-                case "image": _imageModel = modelId; break;
-                case "planning": _planningModel = modelId; break;
-                case "vision": _visionModel = modelId; break;
-                case "review": _qualityModel = modelId; break;
-                case "music": _audioModel = modelId; break;
-                case "voice": _voiceModel = modelId; break;
+                case CapVideo: _modelName = modelId; break;
+                case CapImage: _imageModel = modelId; break;
+                case CapPlanning: _planningModel = modelId; break;
+                case CapVision: _visionModel = modelId; break;
+                case CapReview: _qualityModel = modelId; break;
+                case CapMusic: _audioModel = modelId; break;
+                case CapVoice: _voiceModel = modelId; break;
             }
         }
 
 
         internal IReadOnlyList<SupportedModelDto> ModelsForCoverage(string coverageId) => coverageId switch
         {
-            "video" => S.Catalog._videoModels,
-            "image" => S.Catalog._imageModels,
-            "planning" => S.Catalog._planningModels,
-            "vision" => S.Catalog._visionModels,
-            "review" => S.Catalog._videoReviewModels,
-            "music" => S.Catalog._audioModels,
-            "voice" => S.Catalog._voiceModels,
+            CapVideo => S.Catalog._videoModels,
+            CapImage => S.Catalog._imageModels,
+            CapPlanning => S.Catalog._planningModels,
+            CapVision => S.Catalog._visionModels,
+            CapReview => S.Catalog._videoReviewModels,
+            CapMusic => S.Catalog._audioModels,
+            CapVoice => S.Catalog._voiceModels,
             _ => Array.Empty<SupportedModelDto>(),
         };
 
@@ -361,7 +371,7 @@ public partial class Configuration
                 var pick = models.FirstOrDefault(m => m.IsVoiceCloneStep) ?? models.FirstOrDefault();
                 if (pick is not null)
                     SetCoverageModelId(coverageId, pick.Id);
-                else if (coverageId is "music" or "voice")
+                else if (coverageId is CapMusic or CapVoice)
                     SetCoverageModelId(coverageId, "none");
             }
 
@@ -405,15 +415,15 @@ public partial class Configuration
                 {
                     var ok = coverageId switch
                     {
-                        "video" => pr.SupportsVideoGen || pr.SupportsVideo,
-                        "image" => pr.SupportsImageGen || pr.SupportsImage,
-                        "planning" => pr.SupportsScriptPlanning || pr.SupportsChat,
-                        "vision" => pr.SupportsImageVision || pr.SupportsVision,
-                        "review" => pr.SupportsVideoReview || pr.SupportsChat,
-                        "music" => string.Equals(pr.ProviderId, "fal", StringComparison.OrdinalIgnoreCase)
+                        CapVideo => pr.SupportsVideoGen || pr.SupportsVideo,
+                        CapImage => pr.SupportsImageGen || pr.SupportsImage,
+                        CapPlanning => pr.SupportsScriptPlanning || pr.SupportsChat,
+                        CapVision => pr.SupportsImageVision || pr.SupportsVision,
+                        CapReview => pr.SupportsVideoReview || pr.SupportsChat,
+                        CapMusic => string.Equals(pr.ProviderId, "fal", StringComparison.OrdinalIgnoreCase)
                                    || string.Equals(pr.ProviderId, "suno", StringComparison.OrdinalIgnoreCase)
                                    || string.Equals(pr.ProviderId, "aimusicapi", StringComparison.OrdinalIgnoreCase),
-                        "voice" => string.Equals(pr.ProviderId, "elevenlabs", StringComparison.OrdinalIgnoreCase)
+                        CapVoice => string.Equals(pr.ProviderId, "elevenlabs", StringComparison.OrdinalIgnoreCase)
                                    || string.Equals(pr.ProviderId, "fal", StringComparison.OrdinalIgnoreCase),
                         _ => false,
                     };
@@ -471,16 +481,16 @@ public partial class Configuration
             {
                 var cap = coverageId switch
                 {
-                    "video" => "video",
-                    "image" => "image",
-                    "planning" => "chat",
-                    "vision" => "vision",
-                    "review" => "chat",
-                    "music" => "audio",
-                    "voice" => "voice",
+                    CapVideo => CapVideo,
+                    CapImage => CapImage,
+                    CapPlanning => "chat",
+                    CapVision => CapVision,
+                    CapReview => "chat",
+                    CapMusic => CapAudio,
+                    CapVoice => CapVoice,
                     _ => "chat",
                 };
-                currentPid = ResolveProviderIdForModel(currentModelId, cap, preferVideoReview: coverageId == "review");
+                currentPid = ResolveProviderIdForModel(currentModelId, cap, preferVideoReview: coverageId == CapReview);
                 if (!string.IsNullOrWhiteSpace(currentPid)
                     && !rows.Any(r => string.Equals(r.ProviderId, currentPid, StringComparison.OrdinalIgnoreCase)))
                 {
@@ -528,16 +538,16 @@ public partial class Configuration
 
         internal async Task TurnOffOptionalAsync(string coverageId)
         {
-            if (coverageId == "music")
+            if (coverageId == CapMusic)
             {
                 _audioModel = "none";
                 _enableBackgroundMusic = false;
             }
-            else if (coverageId == "voice")
+            else if (coverageId == CapVoice)
             {
                 _voiceModel = "none";
             }
-            else if (coverageId == "review")
+            else if (coverageId == CapReview)
             {
                 _qualityModel = "none";
             }
@@ -564,10 +574,10 @@ public partial class Configuration
         internal void EnsureVoiceModelForProvider(string providerId)
         {
             var pid = SupportedModelCatalog.NormalizeProviderId(providerId);
-            var currentProvider = ResolveProviderIdForModel(_voiceModel, "voice", preferVideoReview: false);
+            var currentProvider = ResolveProviderIdForModel(_voiceModel, CapVoice, preferVideoReview: false);
             var off = string.IsNullOrWhiteSpace(_voiceModel)
                       || _voiceModel.Equals("none", StringComparison.OrdinalIgnoreCase)
-                      || _voiceModel.Equals("disabled", StringComparison.OrdinalIgnoreCase);
+                      || _voiceModel.Equals(ModelDisabled, StringComparison.OrdinalIgnoreCase);
 
             if (!off && string.Equals(currentProvider, pid, StringComparison.OrdinalIgnoreCase))
             {
@@ -618,10 +628,10 @@ public partial class Configuration
         internal void EnsureMusicModelForProvider(string providerId)
         {
             var pid = SupportedModelCatalog.NormalizeProviderId(providerId);
-            var currentProvider = ResolveProviderIdForModel(_audioModel, "audio", preferVideoReview: false);
+            var currentProvider = ResolveProviderIdForModel(_audioModel, CapAudio, preferVideoReview: false);
             var off = string.IsNullOrWhiteSpace(_audioModel)
                       || _audioModel.Equals("none", StringComparison.OrdinalIgnoreCase)
-                      || _audioModel.Equals("disabled", StringComparison.OrdinalIgnoreCase);
+                      || _audioModel.Equals(ModelDisabled, StringComparison.OrdinalIgnoreCase);
             if (!off && string.Equals(currentProvider, pid, StringComparison.OrdinalIgnoreCase))
                 return;
 

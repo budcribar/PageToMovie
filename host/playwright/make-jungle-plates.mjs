@@ -12,9 +12,9 @@
  *   projects/The_Jungle_Book/assets/characters/
  */
 import { chromium } from "playwright";
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..", "..");
@@ -99,10 +99,10 @@ function textPageHtml(n) {
 
 function escapeHtml(s) {
   return String(s || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
 }
 
 const ACCENTS = {
@@ -183,7 +183,7 @@ async function main() {
 
   for (const key of keys) {
     const seed = seeds[key] || {};
-    const name = (seed.canonical_given_name || key.replace(/^Character_/, "").replace(/_/g, " ")).trim();
+    const name = (seed.canonical_given_name || key.replaceAll(/^Character_/g, "").replaceAll("_", " ")).trim();
     const desc = (seed.description || "").slice(0, 220);
     const s = slug(key);
     const accent = accentFor(key, desc);
@@ -225,7 +225,9 @@ async function main() {
   console.log("assets/characters:", ASSETS, manifest.characterAssets.length);
 }
 
-main().catch((e) => {
+try {
+  await main();
+} catch (e) {
   console.error(e);
   process.exit(1);
-});
+}

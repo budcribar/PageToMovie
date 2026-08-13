@@ -14,7 +14,7 @@ namespace PageToMovie.Web.Components.Pages;
 
 public partial class Admin_GenErrorsSection
 {
-    [CascadingParameter] public Admin Host { get; set; } = default!;
+    [CascadingParameter] public required Admin Host { get; set; }
     [CascadingParameter] public Admin.AdminTelemetry? Telemetry { get; set; }
     [CascadingParameter] public Admin.AdminArchive? Archive { get; set; }
     [CascadingParameter] public Admin.AdminUi? Ui { get; set; }

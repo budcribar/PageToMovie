@@ -86,12 +86,9 @@ public partial class ScreenplayEditor_BeatEditor : ComponentBase
 
     public async Task HandleDrop()
     {
-        if (ActiveDragIndex >= 0 && ActiveDragIndex != Index)
+        if (ActiveDragIndex >= 0 && ActiveDragIndex != Index && OnReorderBeats.HasDelegate)
         {
-            if (OnReorderBeats.HasDelegate)
-            {
-                await OnReorderBeats.InvokeAsync((ActiveDragIndex, Index));
-            }
+            await OnReorderBeats.InvokeAsync((ActiveDragIndex, Index));
         }
         ActiveDragIndex = -1;
     }

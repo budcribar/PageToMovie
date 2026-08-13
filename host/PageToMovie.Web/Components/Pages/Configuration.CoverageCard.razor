@@ -45,7 +45,6 @@
                     <tbody>
                         @foreach (var c in cov)
                         {
-                            var allModels = Coverage.ModelsForCoverage(c.Id);
                             var providers = Coverage.ProvidersForCoverage(c.Id).ToList();
                             var providerModels = Coverage.ModelsForCoverageProvider(c.Id, c.ProviderId).ToList();
                             var editing = string.Equals(Coverage._coverageEditId, c.Id, StringComparison.OrdinalIgnoreCase);

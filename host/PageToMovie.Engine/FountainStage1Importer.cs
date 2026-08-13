@@ -292,7 +292,7 @@ public static class FountainStage1Importer
             pendingMeta = null;
         }
 
-        void CloseScene()
+        Dictionary<string, object?>? CloseScene()
         {
             FlushAction();
             FlushDialogue();
@@ -300,7 +300,7 @@ public static class FountainStage1Importer
             pendingMeta = null;
             pendingParen = null;
             lastPictureVisual = null;
-            if (curScene is null || beats is null) return;
+            if (curScene is null || beats is null) return null;
 
             // Drop pure transition noise that slipped in as action
             beats.RemoveAll(b =>
@@ -318,7 +318,7 @@ public static class FountainStage1Importer
                     beats = null;
                     beatIndex = 0;
                     contentOccurrence.Clear();
-                    return;
+                    return null;
                 }
 
                 beatIndex++;
@@ -362,16 +362,19 @@ public static class FountainStage1Importer
                     .Select(b => b.TryGetValue(VisualEvent, out var v) ? v?.ToString() : null)
                     .Where(s => !string.IsNullOrWhiteSpace(s))),
                 280);
-            scenes.Add(curScene);
+            var completed = curScene;
             curScene = null;
             beats = null;
             beatIndex = 0;
             contentOccurrence.Clear();
+            return completed;
         }
 
-        void OpenScene(string heading)
+        Dictionary<string, object?> OpenScene(string heading)
         {
-            CloseScene();
+            var closed = CloseScene();
+            if (closed is not null)
+                scenes.Add(closed);
             sceneNum++;
             var (locType, locName, setting) = ParseHeading(heading);
             var locId = EnsureLocation(locSeeds, locName, locType, setting);
@@ -393,6 +396,7 @@ public static class FountainStage1Importer
                 ["story_beats"] = storyBeats,
             };
             beats = storyBeats;
+            return curScene;
         }
 
         foreach (var el in parsed.Elements)
@@ -400,7 +404,7 @@ public static class FountainStage1Importer
             switch (el.Type)
             {
                 case FountainParser.ElementType.SceneHeading:
-                    OpenScene(el.Text);
+                    curScene = OpenScene(el.Text);
                     break;
 
                 case FountainParser.ElementType.Action:
@@ -413,7 +417,7 @@ public static class FountainStage1Importer
                          IsNoopTransitionText(actionText)))
                         break;
                     if (curScene is null)
-                        OpenScene(UnspecifiedIntDay);
+                        curScene = OpenScene(UnspecifiedIntDay);
                     FlushDialogue();
                     pendingChar = null;
                     if (actionBuf.Length > 0) actionBuf.Append(' ');
@@ -423,7 +427,7 @@ public static class FountainStage1Importer
 
                 case FountainParser.ElementType.Character:
                     if (curScene is null)
-                        OpenScene(UnspecifiedIntDay);
+                        curScene = OpenScene(UnspecifiedIntDay);
                     FlushAction();
                     FlushDialogue();
                     pendingChar = el.Text.Trim();
@@ -444,7 +448,7 @@ public static class FountainStage1Importer
 
                 case FountainParser.ElementType.Dialogue:
                     if (curScene is null)
-                        OpenScene(UnspecifiedIntDay);
+                        curScene = OpenScene(UnspecifiedIntDay);
                     FlushAction();
                     if (dialogueBuf.Length > 0) dialogueBuf.Append(' ');
                     dialogueBuf.Append(CleanEmphasis(el.Text));
@@ -461,10 +465,14 @@ public static class FountainStage1Importer
             }
         }
 
-        CloseScene();
+        {
+            var closed = CloseScene();
+            if (closed is not null)
+                scenes.Add(closed);
+        }
 
         if (scenes.Count == 0)
-            ImportHeadinglessFileAsSingleScene(parsed, actionBuf, OpenScene, CloseScene);
+            ImportHeadinglessFileAsSingleScene(parsed, actionBuf, OpenScene, CloseScene, scenes);
 
         // Ensure at least narrator if only action
         if (charSeeds.Count == 0)
@@ -511,8 +519,9 @@ public static class FountainStage1Importer
     private static void ImportHeadinglessFileAsSingleScene(
         FountainParser.ParseResult parsed,
         StringBuilder actionBuf,
-        Action<string> openScene,
-        Action closeScene)
+        Func<string, Dictionary<string, object?>> openScene,
+        Func<Dictionary<string, object?>?> closeScene,
+        ICollection<Dictionary<string, object?>> scenes)
     {
         // Entire file was action without headings — one scene
         openScene(UnspecifiedIntDay);
@@ -522,7 +531,9 @@ public static class FountainStage1Importer
             if (actionBuf.Length > 0) actionBuf.Append(' ');
             actionBuf.Append(CleanEmphasis(el.Text));
         }
-        closeScene();
+        var fallback = closeScene();
+        if (fallback is not null)
+            scenes.Add(fallback);
     }
 
     private static string? FirstTitle(FountainParser.ParseResult p, string key) =>

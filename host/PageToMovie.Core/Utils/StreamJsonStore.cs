@@ -28,7 +28,9 @@ public static class StreamJsonStore
         CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(path)) return;
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var dir = Path.GetDirectoryName(path);
+        if (!string.IsNullOrEmpty(dir))
+            Directory.CreateDirectory(dir);
         var tmp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         await using (var stream = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None, 4096, useAsync: true))
         {

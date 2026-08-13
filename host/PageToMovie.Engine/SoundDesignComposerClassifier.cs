@@ -90,9 +90,9 @@ public sealed class SoundDesignComposerClassifier : BeatChatClassifierBase<Sound
         sb.AppendLine($"Beat '{id}':");
         AppendSpoken(sb, spk, dlg);
         AppendActionProse(sb, action);
-        if (!string.IsNullOrWhiteSpace(amb?.ToString()))
+        if (!string.IsNullOrWhiteSpace(amb.ToString()))
             sb.AppendLine($"  Base ambient: {amb}");
-        if (!string.IsNullOrWhiteSpace(sfx?.ToString()))
+        if (!string.IsNullOrWhiteSpace(sfx.ToString()))
             sb.AppendLine($"  Base SFX: {sfx}");
     }
 

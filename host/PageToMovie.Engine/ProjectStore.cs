@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -577,14 +578,14 @@ public sealed partial class ProjectStore
             Directory.CreateDirectory(historyDir);
             var archiveStamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             var archiveMp4 = Path.Combine(historyDir, $"scene_{scene:D2}_clip_{clip:D2}_{archiveStamp}.mp4");
-            try { File.Copy(activeMp4Path, archiveMp4, overwrite: true); } catch { }
+            try { File.Copy(activeMp4Path, archiveMp4, overwrite: true); } catch { /* archive is best-effort */ }
         }
 
         File.Copy(targetMp4Path, activeMp4Path, overwrite: true);
 
         if (!string.IsNullOrWhiteSpace(target.VisualPrompt))
         {
-            try { UpdateClipVisualPrompt(projectId, scene, clip, target.VisualPrompt); } catch { }
+            try { UpdateClipVisualPrompt(projectId, scene, clip, target.VisualPrompt); } catch { /* prompt restore is best-effort */ }
         }
 
         InvalidateSceneListCache(projectId);
@@ -693,14 +694,14 @@ public sealed partial class ProjectStore
         if (File.Exists(sidecar))
         {
             var trashSidecar = Path.Combine(trashDir, Path.GetFileName(sidecar));
-            try { File.Move(sidecar, trashSidecar, overwrite: true); } catch { }
+            try { File.Move(sidecar, trashSidecar, overwrite: true); } catch { /* sidecar may already be gone */ }
         }
 
         var meta = Path.ChangeExtension(targetMp4, ".meta.json");
         if (File.Exists(meta))
         {
             var trashMeta = Path.Combine(trashDir, Path.GetFileName(meta));
-            try { File.Move(meta, trashMeta, overwrite: true); } catch { }
+            try { File.Move(meta, trashMeta, overwrite: true); } catch { /* meta may already be gone */ }
         }
 
         InvalidateSceneListCache(projectId);
@@ -758,7 +759,7 @@ public sealed partial class ProjectStore
         if (File.Exists(trashSidecar))
         {
             var restoredSidecar = Path.Combine(historyDir, Path.GetFileName(trashSidecar));
-            try { File.Move(trashSidecar, restoredSidecar, overwrite: true); } catch { }
+            try { File.Move(trashSidecar, restoredSidecar, overwrite: true); } catch { /* sidecar restore is best-effort */ }
         }
 
         InvalidateSceneListCache(projectId);
@@ -788,7 +789,7 @@ public sealed partial class ProjectStore
                 if (file.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase))
                     purgedCount++;
             }
-            catch { }
+            catch { /* skip locked or already-deleted trash files */ }
         }
 
         InvalidateSceneListCache(projectId);
@@ -959,7 +960,7 @@ public sealed partial class ProjectStore
             {
                 Directory.CreateDirectory(historyDir);
                 var archivePath = Path.Combine(historyDir, $"scene_{scene:D2}_take_{current.TakeId}.meta.json");
-                try { File.Copy(activeSidecar, archivePath, overwrite: true); } catch { }
+                try { File.Copy(activeSidecar, archivePath, overwrite: true); } catch { /* archive is best-effort */ }
             }
         }
 
@@ -1266,7 +1267,6 @@ public sealed partial class ProjectStore
         string? parentProjectId = null;
         string? visibilityMode = null;
         string? studioPath = null;
-        string? metaId = null;
         try
         {
             await using var stream = File.OpenRead(metaPath);
@@ -1275,7 +1275,7 @@ public sealed partial class ProjectStore
             foreach (var p in doc.RootElement.EnumerateObject())
             {
                 if (string.Equals(p.Name, "id", StringComparison.OrdinalIgnoreCase))
-                    metaId = p.Value.GetString();
+                    continue; // folder path id wins over any embedded project.json id
                 else if (string.Equals(p.Name, StoreLit.Title, StringComparison.OrdinalIgnoreCase))
                     title = p.Value.GetString();
                 else if (string.Equals(p.Name, "label", StringComparison.OrdinalIgnoreCase))
@@ -1811,9 +1811,8 @@ public sealed partial class ProjectStore
         {
             if (char.IsAsciiLetterOrDigit(ch) || ch is '_' or '-')
                 sb.Append(ch);
-            else if (char.IsWhiteSpace(ch) || ch is '.' or '/')
+            else if ((char.IsWhiteSpace(ch) || ch is '.' or '/') && sb.Length > 0 && sb[^1] != '_')
             {
-                if (sb.Length > 0 && sb[^1] != '_')
                     sb.Append('_');
             }
         }
@@ -2330,7 +2329,7 @@ public sealed partial class ProjectStore
         var rows = new List<CharacterSummary>();
         foreach (var (key, info) in seeds)
         {
-            var voiceOnly = IsVoiceOnly(key, info);
+            var voiceOnly = IsVoiceOnly(info);
             var display = info.TryGetProperty("canonical_given_name", out var cn) &&
                           cn.GetString() is { Length: > 0 } cname
                 ? cname
@@ -2724,10 +2723,10 @@ public sealed partial class ProjectStore
                 root[StoreLit.SchemaVersion] = StoreLit.CastSeedsV1;
 
             // If we had characters going in, refuse to write a file without them.
-            if (hadCharacters)
+            if (hadCharacters &&
+                (root[StoreLit.CharacterSeedTokens] is not System.Text.Json.Nodes.JsonObject checkChars
+                 || checkChars.Count == 0))
             {
-                if (root[StoreLit.CharacterSeedTokens] is not System.Text.Json.Nodes.JsonObject checkChars
-                    || checkChars.Count == 0)
                     return false;
             }
 
@@ -2782,7 +2781,7 @@ public sealed partial class ProjectStore
         // the two gates cannot drift apart. allowNormalizedFallback:false (cast listing) skips the
         // normalized scan so Character_Narrator / Character_The_Narrator don't share one *_ref.png.
         var seeds = LoadCharacterSeeds(projectId);
-        if (seeds.TryGetValue(charKey, out var info) && IsVoiceOnly(charKey, info))
+        if (seeds.TryGetValue(charKey, out var info) && IsVoiceOnly(info))
             return null;
 
         return ClipVideoPromptBuilder.ResolveCharacterRefPathPublic(
@@ -2928,7 +2927,7 @@ public sealed partial class ProjectStore
         foreach (var key in cast.OrderBy(k => k, StringComparer.OrdinalIgnoreCase))
         {
             var seed = GetCharacterSeed(projectId, key);
-            if (seed is not null && IsVoiceOnly(key, seed.Value))
+            if (seed is not null && IsVoiceOnly(seed.Value))
                 continue;
             // Group / ensemble cast (e.g. "Children", "Crowd") have no single portrait identity —
             // the operator can't pick one image for them and shouldn't be forced to. The video model
@@ -4886,7 +4885,7 @@ public sealed partial class ProjectStore
         if (variantIndex is < 1 or > 3)
             return null;
         var seeds = LoadCharacterSeeds(projectId);
-        if (seeds.TryGetValue(charKey, out var info) && IsVoiceOnly(charKey, info))
+        if (seeds.TryGetValue(charKey, out var info) && IsVoiceOnly(info))
             return null;
         var fileName = $"{charKey.ToLowerInvariant()}_variant_0{variantIndex}.png";
         var full = Path.Combine(GetProjectDir(projectId), StoreLit.Assets, StoreLit.Characters, fileName);
@@ -4896,7 +4895,7 @@ public sealed partial class ProjectStore
     public string? ResolveCharacterBookRefPath(string projectId, string charKey, int bookIndex)
     {
         var seeds = LoadCharacterSeeds(projectId);
-        if (seeds.TryGetValue(charKey, out var info) && IsVoiceOnly(charKey, info))
+        if (seeds.TryGetValue(charKey, out var info) && IsVoiceOnly(info))
             return null;
 
         var projectDir = GetProjectDir(projectId);
@@ -5764,9 +5763,9 @@ public sealed partial class ProjectStore
     {
         var dir = await GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         var book = ReadBookSourceStatus(projectId, dir);
-        var stage1 = ReadStage1Status(projectId, dir);
+        var stage1 = ReadStage1Status(projectId);
         var screenplay = ScreenplayService.ReadStatus(this, projectId, stage1);
-        var stage2 = ReadStage2PlanStatus(projectId, dir, stage1);
+        var stage2 = ReadStage2PlanStatus(projectId, stage1);
         // Fountain re-sign that changed Stage 1 makes an existing shot plan stale
         if (screenplay.DraftExists && screenplay.Dirty && stage2.Stage2Ready)
             stage2.Stage2Stale = true;
@@ -5790,7 +5789,7 @@ public sealed partial class ProjectStore
 
         // Fountain is the screenplay source of truth.
         // Flow: import → draft/approve → pin characters → shot plan → generate clips (Scenes).
-        var next = "done";
+        string next;
         var hasSource = book.PdfExists || book.BookTextExists || screenplay.DraftExists ||
                         (stage1.Present && stage1.SceneCount > 0);
         if (!hasSource)
@@ -6200,19 +6199,15 @@ public sealed partial class ProjectStore
                 status.ReadyForStage1 = true;
             }
         }
-        else if (!status.ReadyForStage1)
+        else if (!status.ReadyForStage1 &&
+                 string.Equals(status.TextQuality, "good", StringComparison.OrdinalIgnoreCase) &&
+                 status.GarbageScore < 0.45 &&
+                 status.BookTextBytes > 200)
         {
-            // Strategy often sets ready=false for "prefer vision" even when text is usable
-            // (picture books). Allow Stage 1 / re-run when quality is good enough.
-            if (string.Equals(status.TextQuality, "good", StringComparison.OrdinalIgnoreCase) &&
-                status.GarbageScore < 0.45 &&
-                status.BookTextBytes > 200)
-            {
                 status.ReadyForStage1 = true;
                 if (status.Notes.All(n => !n.Contains("Stage 1 unlocked", StringComparison.OrdinalIgnoreCase)))
                     status.Notes.Add(
                         "Stage 1 unlocked: text quality is good enough (vision still optional for better OCR).");
-            }
         }
 
         if (status.BookTextExists)
@@ -6252,7 +6247,7 @@ public sealed partial class ProjectStore
         return status;
     }
 
-    private Stage1Status ReadStage1Status(string projectId, string projectDir)
+    private Stage1Status ReadStage1Status(string projectId)
     {
         // Fountain is the screenplay source of truth
         try
@@ -6271,7 +6266,7 @@ public sealed partial class ProjectStore
         return new Stage1Status { Present = false, ScenesFile = StoreLit.ScenesJson };
     }
 
-    private Stage2PlanStatus ReadStage2PlanStatus(string projectId, string projectDir, Stage1Status stage1)
+    private Stage2PlanStatus ReadStage2PlanStatus(string projectId, Stage1Status stage1)
     {
         var bpPath = FindBlueprintPathSync(projectId);
         var status = new Stage2PlanStatus
@@ -6400,7 +6395,7 @@ public sealed partial class ProjectStore
 
         var clipsByScene = IndexExactClipsByScene(videoDir);
         var blueprintScenes = GetBlueprintSceneNumbers(projectId);
-        var scenesToRemux = ListScenesToRemuxForWip(projectId, clipsByScene, blueprintScenes);
+        var scenesToRemux = ListScenesToRemuxForWip(clipsByScene, blueprintScenes);
         result.ScenesToRemux = scenesToRemux;
 
         // Stale = missing composite, clips newer, no .sources.json,
@@ -6449,8 +6444,8 @@ public sealed partial class ProjectStore
                 using var doc = JsonDocument.Parse(File.ReadAllText(manifestPath));
                 if (doc.RootElement.TryGetProperty("blueprintMtimeUtc", out var bm) &&
                     bm.ValueKind == JsonValueKind.String &&
-                    DateTime.TryParse(bm.GetString(), null,
-                        System.Globalization.DateTimeStyles.RoundtripKind, out var recordedBp))
+                    DateTime.TryParse(bm.GetString(), CultureInfo.InvariantCulture,
+                        DateTimeStyles.RoundtripKind, out var recordedBp))
                 {
                     if (bpm > recordedBp.ToUniversalTime().AddSeconds(1))
                     {
@@ -6461,8 +6456,8 @@ public sealed partial class ProjectStore
                 }
                 else if (doc.RootElement.TryGetProperty("builtAtUtc", out var built) &&
                          built.ValueKind == JsonValueKind.String &&
-                         DateTime.TryParse(built.GetString(), null,
-                             System.Globalization.DateTimeStyles.RoundtripKind, out var builtAt) &&
+                         DateTime.TryParse(built.GetString(), CultureInfo.InvariantCulture,
+                             DateTimeStyles.RoundtripKind, out var builtAt) &&
                          bpm > builtAt.ToUniversalTime().AddSeconds(1))
                 {
                     result.Stale = true;
@@ -6617,9 +6612,9 @@ public sealed partial class ProjectStore
             foreach (var name in files.OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase).Select(fi => fi.Name))
             {
                 if (!ClipFileNaming.IsExactClipFileName(name)) continue;
-                if (allowed is { Count: > 0 })
+                if (allowed is { Count: > 0 } &&
+                    (!int.TryParse(name.AsSpan(14, 2), out var cn) || !allowed.Contains(cn)))
                 {
-                    if (!int.TryParse(name.AsSpan(14, 2), out var cn) || !allowed.Contains(cn))
                         continue;
                 }
                 names.Add(name);
@@ -6697,12 +6692,10 @@ public sealed partial class ProjectStore
     /// </summary>
     public List<int> ListScenesToRemuxForWip(string projectId) =>
         ListScenesToRemuxForWip(
-            projectId,
             IndexExactClipsByScene(Path.Combine(GetProjectDir(projectId), StoreLit.Assets, StoreLit.Video)),
             GetBlueprintSceneNumbers(projectId));
 
     private static List<int> ListScenesToRemuxForWip(
-        string projectId,
         Dictionary<int, List<FileInfo>> clipsByScene,
         List<int>? blueprintScenes)
     {
@@ -6819,8 +6812,8 @@ public sealed partial class ProjectStore
                 var mtime = DateTime.MinValue;
                 if (el.TryGetProperty("mtimeUtc", out var m) &&
                     m.ValueKind == JsonValueKind.String &&
-                    DateTime.TryParse(m.GetString(), null,
-                        System.Globalization.DateTimeStyles.RoundtripKind, out var mt))
+                    DateTime.TryParse(m.GetString(), CultureInfo.InvariantCulture,
+                        DateTimeStyles.RoundtripKind, out var mt))
                     mtime = mt.ToUniversalTime();
                 recorded.Add((name, bytes, mtime));
             }
@@ -7240,7 +7233,7 @@ public sealed partial class ProjectStore
         out JsonElement info) =>
         seeds.TryGetValue(charKey, out info);
 
-    private static bool IsVoiceOnly(string key, JsonElement info)
+    private static bool IsVoiceOnly(JsonElement info)
     {
         // Prefer cast seed policy only — do not force voice-only for keys named Narrator
         if (info.ValueKind == JsonValueKind.Object &&

@@ -134,13 +134,13 @@ public sealed class ClientVideoStitchService
             return Array.Empty<string>();
 
         var list = new List<string>();
-        foreach (var c in detail.Clips.Where(c => c.OnDisk).OrderBy(c => c.ClipNumber))
+        foreach (var clipNumber in detail.Clips.Where(c => c.OnDisk).OrderBy(c => c.ClipNumber).Select(c => c.ClipNumber))
         {
             var local = _media is null
                 ? null
                 : await _media.GetLocalBlobUrlAsync(
-                    projectId, $"assets/video/scene_{sceneNumber:D2}_clip_{c.ClipNumber:D2}.mp4");
-            list.Add(local ?? _engine.ClipVideoUrl(projectId, sceneNumber, c.ClipNumber));
+                    projectId, $"assets/video/scene_{sceneNumber:D2}_clip_{clipNumber:D2}.mp4");
+            list.Add(local ?? _engine.ClipVideoUrl(projectId, sceneNumber, clipNumber));
         }
         return list;
     }
@@ -184,11 +184,11 @@ public sealed class ClientVideoStitchService
             if (!raw.Success)
                 return ClientStitchResult.Fail(raw.Error ?? "Browser stitch failed");
 
-            if (string.IsNullOrWhiteSpace(raw.Url))
+            if (raw.Url is not { Length: > 0 } stitchedUrl)
                 return ClientStitchResult.Fail("Stitch produced no video URL");
 
             return ClientStitchResult.Ok(
-                raw.Url!,
+                stitchedUrl,
                 raw.Count > 0 ? raw.Count : urls.Count,
                 raw.Single,
                 raw.Sha256,
@@ -229,9 +229,9 @@ public sealed class ClientVideoStitchService
             else
             {
                 var concat = await ConcatAsync(sceneUrls, ct);
-                if (!concat.Success || string.IsNullOrWhiteSpace(concat.Url))
+                if (concat is not { Success: true } || concat.Url is not { Length: > 0 } concatUrl)
                     continue;
-                sceneUrl = concat.Url!;
+                sceneUrl = concatUrl;
             }
 
             sceneUrl = await MixSceneMusicAsync(projectId, sceneUrl, sn, ct: ct);
@@ -368,14 +368,14 @@ public sealed class ClientVideoStitchService
             {
                 var concat = await _js.InvokeAsync<JsConcatResult>(
                     "PageToMovieFfmpeg.concatAudioSegmentsAsync", (object)segmentUrls.ToArray());
-                if (concat is not { Success: true } || string.IsNullOrWhiteSpace(concat.Url))
+                if (concat is not { Success: true } || concat.Url is not { Length: > 0 } concatUrl)
                     return videoUrl;
-                musicUrl = concat.Url!;
+                musicUrl = concatUrl;
             }
 
             var mixed = await _js.InvokeAsync<JsConcatResult>(
                 "PageToMovieFfmpeg.mixSceneAudioAsync", videoUrl, musicUrl, volumePercent);
-            return mixed is { Success: true, Url: not null and not "" } ? mixed.Url! : videoUrl;
+            return mixed is { Success: true, Url: { Length: > 0 } mixedUrl } ? mixedUrl : videoUrl;
         }
         catch
         {
@@ -556,7 +556,7 @@ public sealed class ClientVideoStitchService
                         await _engine.RegisterMediaAsync(projectId, new MediaRegisterRequest
                         {
                             RelativePath = relPath,
-                            Sha256 = sha256!,
+                            Sha256 = sha256,
                             SizeBytes = sizeBytes,
                             Kind = "credits",
                             Scene = scene,
@@ -588,41 +588,41 @@ public sealed class ClientVideoStitchService
 
     private sealed class JsCreditsResult
     {
-        public bool Success { get; set; }
-        public string? Mp4Base64 { get; set; }
-        public long ByteLength { get; set; }
-        public string? Error { get; set; }
+        public bool Success { get; set; } = false;
+        public string? Mp4Base64 { get; set; } = null;
+        public long ByteLength { get; set; } = 0;
+        public string? Error { get; set; } = null;
     }
 
     private sealed class JsConcatResult
     {
-        public bool Success { get; set; }
-        public string? Url { get; set; }
-        public string? Error { get; set; }
-        public int Count { get; set; }
-        public bool Single { get; set; }
-        public string? Sha256 { get; set; }
-        public long? ByteLength { get; set; }
+        public bool Success { get; set; } = false;
+        public string? Url { get; set; } = null;
+        public string? Error { get; set; } = null;
+        public int Count { get; set; } = 0;
+        public bool Single { get; set; } = false;
+        public string? Sha256 { get; set; } = null;
+        public long? ByteLength { get; set; } = null;
     }
 
     private sealed class JsProbeResult
     {
-        public bool Success { get; set; }
-        public double Seconds { get; set; }
-        public string? Error { get; set; }
+        public bool Success { get; set; } = false;
+        public double Seconds { get; set; } = 0;
+        public string? Error { get; set; } = null;
     }
 
     public sealed class JsFramesResult
     {
-        public bool Success { get; set; }
-        public string? Error { get; set; }
-        public List<JsFrameItem>? Frames { get; set; }
+        public bool Success { get; set; } = false;
+        public string? Error { get; set; } = null;
+        public List<JsFrameItem>? Frames { get; set; } = null;
     }
 
     public sealed class JsFrameItem
     {
-        public string? Base64 { get; set; }
-        public string? Mime { get; set; }
+        public string? Base64 { get; set; } = null;
+        public string? Mime { get; set; } = null;
     }
 }
 
@@ -663,8 +663,8 @@ public sealed class ClientWipSegment
 
 public sealed class JsHashResult
 {
-    public bool Success { get; set; }
-    public string? Sha256 { get; set; }
-    public long? ByteLength { get; set; }
-    public string? Error { get; set; }
+    public bool Success { get; set; } = false;
+    public string? Sha256 { get; set; } = null;
+    public long? ByteLength { get; set; } = null;
+    public string? Error { get; set; } = null;
 }
