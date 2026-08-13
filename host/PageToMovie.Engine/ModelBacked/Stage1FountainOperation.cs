@@ -20,7 +20,7 @@ internal sealed record Stage1FountainRequest(
 /// <summary>
 /// Shared, versioned model boundary for Stage 1 Fountain generation and focused repairs.
 /// Transport retry, semantic correction, parsing, validation, and terminal policy are owned by
-/// <see cref="ValidatedModelOperation{TInput,TRaw,TResult}"/> rather than converter-local loops.
+/// <see cref="ValidatedModelOperation{TInput,TResult}"/> rather than converter-local loops.
 /// </summary>
 internal static class Stage1FountainLifecycle
 {
@@ -30,7 +30,7 @@ internal static class Stage1FountainLifecycle
         Func<string, IReadOnlyList<ModelValidationIssue>> validate,
         CancellationToken ct)
     {
-        var pipeline = new ValidatedModelOperation<Stage1FountainRequest, string, Stage1FountainResponse>(
+        var pipeline = new ValidatedModelOperation<Stage1FountainRequest, Stage1FountainResponse>(
             new Operation(chat),
             new Parser(),
             new Validator(validate),

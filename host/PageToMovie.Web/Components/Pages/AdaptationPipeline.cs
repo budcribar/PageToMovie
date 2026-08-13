@@ -26,21 +26,39 @@ public abstract partial class AdaptationPageBase
               S.Status.Stage1.SceneCount > 0 &&
               S.Status.Book.BookTextExists));
 
+        /// <summary>Book PDF/TXT upload cap (same 80 MB ceiling as Adaptation Import).</summary>
+        internal const long MaxBookUploadBytes = 80L * 1024 * 1024;
+
         public void OnFileSelected(InputFileChangeEventArgs e)
         {
-            PendingFile = e.File;
-            S.Message = $"Selected {e.File.Name} ({e.File.Size:N0} bytes)";
+            var file = e.File;
+            if (file.Size > MaxBookUploadBytes)
+            {
+                PendingFile = null;
+                S.Error = $"File too large (max {MaxBookUploadBytes / (1024 * 1024)} MB)";
+                S.Message = null;
+                return;
+            }
+
+            PendingFile = file;
+            S.Error = null;
+            S.Message = $"Selected {file.Name} ({file.Size:N0} bytes)";
         }
 
         public async Task UploadAsync()
         {
             if (PendingFile is null) return;
+            if (PendingFile.Size > MaxBookUploadBytes)
+            {
+                S.Error = $"File too large (max {MaxBookUploadBytes / (1024 * 1024)} MB)";
+                return;
+            }
+
             S.Busy = true;
             S.Error = null;
             try
             {
-                const long max = 80 * 1024 * 1024;
-                await using var stream = PendingFile.OpenReadStream(max);
+                await using var stream = PendingFile.OpenReadStream(maxAllowedSize: PendingFile.Size);
                 await S.Engine.UploadBookAsync(S.ProjectId, PendingFile.Name, stream);
                 S.Message = $"Saved {PendingFile.Name}";
                 PendingFile = null;

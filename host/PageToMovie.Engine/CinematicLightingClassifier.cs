@@ -67,7 +67,7 @@ public sealed class CinematicLightingClassifier
         {
             var userPrompt = BuildUserPrompt(scene);
             var effectiveModel = !string.IsNullOrWhiteSpace(model) ? model : _opts.CinematicLightingClassifyModel;
-            var pipeline = new ValidatedModelOperation<Stage2DirectiveInput, string, TextDirective>(
+            var pipeline = new ValidatedModelOperation<Stage2DirectiveInput, TextDirective>(
                 new Stage2DirectiveOperation(_chat, "cinematic_lighting", PromptVersion),
                 new JsonTextDirectiveParser("lighting_token"), new TextDirectiveValidator("lighting_token"),
                 new DirectiveTerminalFallback<Stage2DirectiveInput, TextDirective>(), new ModelOperationOptions { CorrectiveMaxAttempts = 1 });

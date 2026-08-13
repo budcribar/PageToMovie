@@ -14,7 +14,7 @@ namespace PageToMovie.Engine.ModelBacked;
 public sealed class AiActionOverheadClassifier
 {
     private readonly ActionOverheadHeuristic _heuristic;
-    private readonly ValidatedModelOperation<ActionInput, string, ActionClassifierEstimation>? _pipeline;
+    private readonly ValidatedModelOperation<ActionInput, ActionClassifierEstimation>? _pipeline;
 
     public AiActionOverheadClassifier(
         SmartClassifierModelRouter router,
@@ -28,7 +28,7 @@ public sealed class AiActionOverheadClassifier
         if (chat is null || !chat.IsConfigured)
             return;
 
-        _pipeline = new ValidatedModelOperation<ActionInput, string, ActionClassifierEstimation>(
+        _pipeline = new ValidatedModelOperation<ActionInput, ActionClassifierEstimation>(
             new ActionModelOperation(chat, router, log, modelOverride),
             new ActionResponseParser(),
             new ActionResultValidator(),

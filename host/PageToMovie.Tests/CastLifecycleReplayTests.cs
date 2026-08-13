@@ -25,7 +25,7 @@ public sealed class CastLifecycleReplayTests
               }
             }
             """;
-        var pipeline = new ValidatedModelOperation<CastModelInput, string, Dictionary<string, object?>>(
+        var pipeline = new ValidatedModelOperation<CastModelInput, Dictionary<string, object?>>(
             new ReplayModelOperation<CastModelInput, string>(
                 "cast_extraction", "1",
                 [new ModelResponse<string>("{}", input.Model), new ModelResponse<string>(valid, input.Model)]),
@@ -47,7 +47,7 @@ public sealed class CastLifecycleReplayTests
     public async Task Extraction_replay_fails_terminally_when_required_model_data_stays_missing()
     {
         var input = new CastModelInput("system", "user", OfflineTestModelConfig.Required("chat"));
-        var pipeline = new ValidatedModelOperation<CastModelInput, string, Dictionary<string, object?>>(
+        var pipeline = new ValidatedModelOperation<CastModelInput, Dictionary<string, object?>>(
             new ReplayModelOperation<CastModelInput, string>(
                 "cast_extraction", "1",
                 [new ModelResponse<string>("not json", input.Model), new ModelResponse<string>("{}", input.Model)]),
@@ -82,7 +82,7 @@ public sealed class CastLifecycleReplayTests
             }}
             """;
         var input = new CastModelInput("system", "user", OfflineTestModelConfig.Required("chat"));
-        var pipeline = new ValidatedModelOperation<CastModelInput, string, Dictionary<string, object?>>(
+        var pipeline = new ValidatedModelOperation<CastModelInput, Dictionary<string, object?>>(
             new ReplayModelOperation<CastModelInput, string>(
                 "cast_visual_literalize", "1",
                 [new ModelResponse<string>(invented, input.Model), new ModelResponse<string>(invented, input.Model)]),

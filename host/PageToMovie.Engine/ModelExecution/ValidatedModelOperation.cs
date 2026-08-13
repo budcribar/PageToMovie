@@ -9,19 +9,19 @@ namespace PageToMovie.Engine.ModelExecution;
 /// corrective requests, and finally a deterministic fallback. Caller cancellation always
 /// propagates. Ordinary model and fallback failures are represented in the returned provenance.
 /// </summary>
-public sealed class ValidatedModelOperation<TInput, TRaw, TResult>
+public sealed class ValidatedModelOperation<TInput, TResult>
     where TResult : class
 {
-    private readonly IModelOperation<TInput, TRaw> _operation;
-    private readonly IModelResponseParser<TRaw, TResult> _parser;
+    private readonly IModelOperation<TInput, string> _operation;
+    private readonly IModelResponseParser<string, TResult> _parser;
     private readonly IModelResultValidator<TResult> _validator;
     private readonly IDeterministicFallback<TInput, TResult> _fallback;
     private readonly ModelOperationOptions _options;
     private readonly Func<Exception, bool> _isTransient;
 
     public ValidatedModelOperation(
-        IModelOperation<TInput, TRaw> operation,
-        IModelResponseParser<TRaw, TResult> parser,
+        IModelOperation<TInput, string> operation,
+        IModelResponseParser<string, TResult> parser,
         IModelResultValidator<TResult> validator,
         IDeterministicFallback<TInput, TResult> fallback,
         ModelOperationOptions? options = null,
@@ -41,7 +41,7 @@ public sealed class ValidatedModelOperation<TInput, TRaw, TResult>
     {
         var attempts = new List<ModelOperationAttempt>();
         var unresolved = new List<ModelValidationIssue>();
-        TRaw? previous = default;
+        string? previous = default;
         string? lastModel = null;
         string? lastError = null;
         var semanticAttemptCount = 1 + Math.Max(0, _options.CorrectiveMaxAttempts);
@@ -59,7 +59,7 @@ public sealed class ValidatedModelOperation<TInput, TRaw, TResult>
                         transportAttempts = transportAttempt;
                         return await _operation.ExecuteAsync(
                             input,
-                            new ModelAttemptContext<TRaw>(kind, semanticAttempt, previous, unresolved.ToArray()),
+                            new ModelAttemptContext<string>(kind, semanticAttempt, previous, unresolved.ToArray()),
                             ct).ConfigureAwait(false);
                     },
                     _isTransient,
@@ -151,7 +151,7 @@ public sealed class ValidatedModelOperation<TInput, TRaw, TResult>
         }
     }
 
-    private static string HashRawResponse(TRaw response)
+    private static string HashRawResponse(string response)
     {
         var text = response?.ToString() ?? "";
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text))).ToLowerInvariant();

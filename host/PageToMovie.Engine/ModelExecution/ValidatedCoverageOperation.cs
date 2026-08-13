@@ -21,7 +21,7 @@ public static class ValidatedCoverageOperation
     {
         var input = new CoverageInput(requestedIds.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
         var parser = new MergingParser<T>(parse);
-        var pipeline = new ValidatedModelOperation<CoverageInput, string, Dictionary<string, T>>(
+        var pipeline = new ValidatedModelOperation<CoverageInput, Dictionary<string, T>>(
             new CoverageOperation(operationName, promptVersion, call),
             parser,
             new CoverageValidator<T>(input.RequestedIds),

@@ -36,6 +36,8 @@ static void PauseIfInteractive(string message)
     try { Console.ReadLine(); } catch { /* ignore */ }
 }
 
+namespace PageToMovie.LoadSim
+{
 file sealed class LoadSimRun
 {
     public static async Task<int> ExecuteAsync(SimOptions opts)
@@ -269,13 +271,8 @@ file sealed class LoadSimRun
         if (!root.TryGetProperty("projects", out var arr) || arr.ValueKind != JsonValueKind.Array)
             return false;
 
-        foreach (var p in arr.EnumerateArray())
-        {
-            if (string.Equals(ProjectIdOf(p), projectId, StringComparison.OrdinalIgnoreCase))
-                return true;
-        }
-
-        return false;
+        return arr.EnumerateArray().Any(p =>
+            string.Equals(ProjectIdOf(p), projectId, StringComparison.OrdinalIgnoreCase));
     }
 
     private static string? ProjectIdOf(JsonElement p) =>
@@ -618,4 +615,5 @@ file sealed class LoadSimRun
 
         public void DisposeStressCts() => StressCts?.Dispose();
     }
+}
 }

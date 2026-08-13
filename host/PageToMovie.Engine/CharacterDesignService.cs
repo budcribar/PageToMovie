@@ -1141,7 +1141,7 @@ public sealed class CharacterDesignService
     private const string PortraitStyleGatePromptVersion = "v1";
 
     /// <summary>
-    /// Runs through <see cref="ModelExecution.ValidatedModelOperation{TInput,TRaw,TResult}"/> — same
+    /// Runs through <see cref="ModelExecution.ValidatedModelOperation{TInput,TResult}"/> — same
     /// contract as the beat classifiers, via the <c>ModelBacked</c> single-shot-directive pattern
     /// (<see cref="ModelBacked.PortraitStyleGateOperation"/>), not the batched-coverage one those use
     /// (wrong shape for a single-image single-verdict call). Gains a corrective re-ask when the model
@@ -1156,7 +1156,7 @@ public sealed class CharacterDesignService
         CancellationToken ct)
     {
         var model = ProjectModelSelection.RequireExplicit(visionModel, ModelCapability.Vision, "Portrait style gate");
-        var pipeline = new ModelExecution.ValidatedModelOperation<ModelBacked.PortraitStyleGateInput, string, PortraitStyleGateResult>(
+        var pipeline = new ModelExecution.ValidatedModelOperation<ModelBacked.PortraitStyleGateInput, PortraitStyleGateResult>(
             new ModelBacked.PortraitStyleGateOperation(_vision, "portrait_style_gate", PortraitStyleGatePromptVersion),
             new ModelBacked.PortraitStyleGateResponseParser(),
             new ModelBacked.PortraitStyleGateValidator(),
@@ -1301,7 +1301,7 @@ public sealed class CharacterDesignService
     private static string TrimForError(string s, int max) =>
         s.Length <= max ? s : s[..max] + "…";
 
-    /// <summary>A class, not a struct — <see cref="ModelExecution.ValidatedModelOperation{TInput,TRaw,TResult}"/>
+    /// <summary>A class, not a struct — <see cref="ModelExecution.ValidatedModelOperation{TInput,TResult}"/>
     /// requires <c>TResult : class</c>.</summary>
     public sealed record PortraitStyleGateResult(bool Pass, string Medium, string Reason);
 
