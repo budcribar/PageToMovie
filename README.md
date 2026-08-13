@@ -90,7 +90,7 @@ Look (re-skin the medium) is optional. Fit length only writes the working `scree
 | `host/PageToMovie.Adaptation` | Stage‑1: index, write, trim, enrich |
 | `projects/` | Per-film fountain, max, index, cast, clips, WIP |
 | `prompts/` | Product prompts |
-| `docs/` | Architecture and [state machine](docs/studio-decision-flow.md#4-state-machine) |
+| `docs/` | [Documentation map](docs/README.md) and [state machine](docs/studio-decision-flow.md#4-state-machine) |
 | `host/docs/max-master-adaptation-plan.md` | Full screenplay, cut later |
 
 ## Tests
@@ -109,20 +109,19 @@ Playwright pilot (against a running API): `host/playwright/README.md`.
 
 ## Docs
 
+**Map (top-down):** [`docs/README.md`](docs/README.md)
+
 | Doc | Topic |
 |-----|--------|
+| [**Documentation map**](docs/README.md) | Product story + links + what to archive |
 | [**State machine**](docs/studio-decision-flow.md#4-state-machine) | Phases, guards, Generate vs Edit |
 | [`docs/studio-decision-flow.md`](docs/studio-decision-flow.md) | Book → Estimate → Film (full plan) |
 | [`host/docs/max-master-adaptation-plan.md`](host/docs/max-master-adaptation-plan.md) | Index, write, auto-enrich, trim, share |
-| [`host/docs/adaptation-session-pipeline.md`](host/docs/adaptation-session-pipeline.md) | Session artifacts from book to package |
 | [`docs/architecture/MODEL_CALL_INVENTORY.md`](docs/architecture/MODEL_CALL_INVENTORY.md) | Every model call |
 | [`host/docs/supported-models.md`](host/docs/supported-models.md) | Catalog / how models are chosen |
 | [`host/docs/voice-substitution-design.md`](host/docs/voice-substitution-design.md) | Easy Start / “speak as you” |
 | [`host/docs/public-community-plan.md`](host/docs/public-community-plan.md) | Public (Forkable) library |
-| [`host/docs/project_artifacts.md`](host/docs/project_artifacts.md) | What lives in a project folder |
-| [`host/docs/multi-user-collaboration.md`](host/docs/multi-user-collaboration.md) | Shared projects, leases |
 | [`host/README.md`](host/README.md) | API routes, SignalR, YouTube, LoadSim |
-| [`prompts/README.md`](prompts/README.md) | Prompts and schemas |
 | [`AGENTS.md`](AGENTS.md) | North star for contributors |
 
 ## Config
