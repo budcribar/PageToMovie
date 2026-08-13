@@ -585,7 +585,13 @@ public abstract partial class AdaptationPageBase
                    || message.Contains("single pass", StringComparison.OrdinalIgnoreCase)
                    || message.Contains("Adapting", StringComparison.OrdinalIgnoreCase)
                    || message.Contains("Writing screenplay", StringComparison.OrdinalIgnoreCase)
-                   || message.Contains("Drafting", StringComparison.OrdinalIgnoreCase);
+                   || message.Contains("Drafting", StringComparison.OrdinalIgnoreCase)
+                   || message.Contains("Still working", StringComparison.OrdinalIgnoreCase)
+                   || message.Contains("Still writing", StringComparison.OrdinalIgnoreCase)
+                   || message.Contains("Still generating", StringComparison.OrdinalIgnoreCase)
+                   || message.Contains("Checking", StringComparison.OrdinalIgnoreCase)
+                   || message.Contains("Merge", StringComparison.OrdinalIgnoreCase)
+                   || message.Contains("normalization", StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>
@@ -689,6 +695,8 @@ public abstract partial class AdaptationPageBase
 
         private static string? TryMessageFromKeywords(string msg, string kind)
         {
+            if (TryMessageFromPolishKeywords(msg) is { } polish)
+                return polish;
             if (TryMessageFromCombineRefineKeywords(msg) is { } combineRefine)
                 return combineRefine;
             if (TryMessageFromAdaptKeywords(msg, kind) is { } adapt)
@@ -696,6 +704,31 @@ public abstract partial class AdaptationPageBase
             if (TryMessageFromPlanExtractReadKeywords(msg, kind) is { } planExtractRead)
                 return planExtractRead;
             return null;
+        }
+
+        private static string? TryMessageFromPolishKeywords(string msg)
+        {
+            if (ContainsIgnoreCase(msg, "name-spelling", "Name normalization", "Names checked", "generic numbered"))
+                return "Smoothing names…";
+            if (ContainsIgnoreCase(msg, "duplicate location", "Location normalization", "Location names", "vague location"))
+                return "Smoothing place names…";
+            if (ContainsIgnoreCase(msg, "narration", "split V.O.", "verse"))
+                return "Smoothing narration…";
+            if (ContainsIgnoreCase(msg, "Indexing", "Planning scenes from the book"))
+                return "Planning scenes from the book…";
+            if (ContainsIgnoreCase(msg, "Still writing", "single pass"))
+                return "Writing the full screenplay…";
+            return null;
+        }
+
+        private static bool ContainsIgnoreCase(string msg, params string[] needles)
+        {
+            foreach (var n in needles)
+            {
+                if (msg.Contains(n, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            return false;
         }
 
         private static string? TryMessageFromCombineRefineKeywords(string msg)

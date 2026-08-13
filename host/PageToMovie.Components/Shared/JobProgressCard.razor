@@ -20,9 +20,9 @@
                     {
                         <span>Working…</span>
                     }
-                    @if (!string.IsNullOrWhiteSpace(Elapsed) && IsActive)
+                    @if (!string.IsNullOrWhiteSpace(DisplayElapsed) && IsActive)
                     {
-                        <span class="text-muted ms-2" data-testid="@(TestId)-elapsed">@Elapsed</span>
+                        <span class="text-muted ms-2" data-testid="@(TestId)-elapsed">@DisplayElapsed</span>
                     }
                     @if (!Indeterminate && Total > 0 && IsActive)
                     {

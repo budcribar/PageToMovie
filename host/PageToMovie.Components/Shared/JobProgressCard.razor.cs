@@ -4,10 +4,11 @@ using Microsoft.JSInterop;
 using PageToMovie.Core.Models;
 using PageToMovie.Core.Localization;
 using PageToMovie.Core.Util;
+using PageToMovie.Core.Utils;
 
 namespace PageToMovie.Web.Components;
 
-public partial class JobProgressCard
+public partial class JobProgressCard : IDisposable
 {
     [Parameter] public bool Visible { get; set; } = true;
     [Parameter] public string Status { get; set; } = "";
@@ -37,11 +38,15 @@ public partial class JobProgressCard
     [Parameter] public RenderFragment? ChildContent { get; set; }
     /// <summary>Optional live elapsed label (e.g. "4m 12s") shown while the job is active.</summary>
     [Parameter] public string? Elapsed { get; set; }
+    /// <summary>When set, the card ticks a live elapsed clock from this instant.</summary>
+    [Parameter] public DateTimeOffset? StartedAt { get; set; }
     /// <summary>
     /// When false, skip the progress bar entirely (message + optional log only).
     /// Default: show bar while active/indeterminate; hide for successful done (bar looked “stuck”).
     /// </summary>
     [Parameter] public bool? ForceShowProgressBar { get; set; }
+
+    Timer? _elapsedTimer;
 
     bool IsActive =>
         string.Equals(Status, "running", StringComparison.OrdinalIgnoreCase)
@@ -51,6 +56,13 @@ public partial class JobProgressCard
                    || string.Equals(Status, "partial", StringComparison.OrdinalIgnoreCase);
 
     bool IsError => string.Equals(Status, "error", StringComparison.OrdinalIgnoreCase);
+
+    string? DisplayElapsed =>
+        !string.IsNullOrWhiteSpace(Elapsed)
+            ? Elapsed
+            : IsActive && StartedAt is DateTimeOffset started
+                ? ElapsedClock.FormatSince(started)
+                : null;
 
     /// <summary>
     /// Active jobs always get a bar. Successful done: hide by default (message is enough).
@@ -77,6 +89,8 @@ public partial class JobProgressCard
         : IsDone ? "border-success"
         : "border-secondary";
 
+    protected override void OnParametersSet() => SyncElapsedTimer();
+
     int EffectivePercent()
     {
         if (Indeterminate) return 45;
@@ -88,4 +102,32 @@ public partial class JobProgressCard
         if (st == "running" && Index <= 0) return 0;
         return (int)Math.Round(100.0 * Math.Clamp(Index, 0, Total) / Math.Max(1, Total));
     }
+
+    void SyncElapsedTimer()
+    {
+        var need = IsActive && StartedAt is not null && string.IsNullOrWhiteSpace(Elapsed);
+        if (need)
+        {
+            _elapsedTimer ??= new Timer(
+                _ =>
+                {
+                    try { _ = InvokeAsync(StateHasChanged); }
+                    catch { /* disposed */ }
+                },
+                null,
+                TimeSpan.FromSeconds(1),
+                TimeSpan.FromSeconds(1));
+            return;
+        }
+
+        StopElapsedTimer();
+    }
+
+    void StopElapsedTimer()
+    {
+        _elapsedTimer?.Dispose();
+        _elapsedTimer = null;
+    }
+
+    public void Dispose() => StopElapsedTimer();
 }

@@ -13,9 +13,11 @@ else
 
 <JobProgressCard Status="@(Host.Jobs.JobRunning ? (Host.Jobs.Job?.Status ?? "running") : (Host.Drop._importing ? "running" : "idle"))"
                  Message="@(Host.Drop._importStatus.Length > 0 ? Host.Drop._importStatus : (Host.Jobs.Job?.Message ?? "Working…"))"
+                 DetailMessage="@(AdaptationPageBase.AdaptationStepUi.LongAdaptHint(Host.Jobs.Job, Host.Jobs.JobRunning || Host.Drop._importing))"
                  Index="@(Host.Jobs.Job?.Index ?? Host.Jobs.ProgressIndex)"
                  Total="@(Host.Jobs.Job?.Total ?? (Host.Jobs.ProgressTotal > 0 ? Host.Jobs.ProgressTotal : 10))"
                  Percent="@(Host.Drop._importPct ?? AdaptationPageBase.AdaptationStepUi.ComputeProgressPercent(Host.Jobs.ProgressIndex, Host.Jobs.ProgressTotal > 0 ? Host.Jobs.ProgressTotal : 10, waiting: true, jobRunning: true, startedAt: Host.Jobs.Job?.StartedAt))"
+                 StartedAt="Host.Jobs.Job?.StartedAt"
                  ShowCancel="true"
                  CancelDisabled="false"
                  OnCancel="Host.Jobs.CancelAsync"

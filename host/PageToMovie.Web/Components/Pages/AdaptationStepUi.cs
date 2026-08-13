@@ -113,6 +113,17 @@ public abstract partial class AdaptationPageBase
                    (job.Status == "done" && adaptationJob);
         }
 
+        /// <summary>Shown under the bar on long Stage‑1 / enrich jobs so an hour does not look like a hang.</summary>
+        public static string? LongAdaptHint(JobSnapshot? job, bool running)
+        {
+            if (!running || job is null)
+                return null;
+            var kind = job.Kind ?? "";
+            if (kind is "stage1" or "book_import" or "book_prepare" or "embellish")
+                return "Long books often take 20–60 minutes. You can leave this page.";
+            return null;
+        }
+
         /// <summary>Merges job-reported and locally-tracked (log-scraped) progress into one index/total/waiting triple.</summary>
         public static (int Index, int Total, bool Waiting, int DisplayIndex) ComputeJobProgress(
             JobSnapshot job, int progressIndex, int progressTotal, bool jobRunning)

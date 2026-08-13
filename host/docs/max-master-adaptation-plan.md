@@ -144,7 +144,7 @@ Non-admin: short outcome only (existing UI copy rules). Admin: the lines above.
 
 - [x] North star in `AGENTS.md` + this plan.
 - [ ] `EstimateDraftRuntimeMinutes`: if trailer `est_runtime_min` disagrees with body-word estimate by >2×, **use the word count** and log the sidecar as suspect.
-- [ ] Heartbeat on merge + loc/name/narration (reuse single-pass timer helper).
+- [x] Heartbeat on merge + loc/name/narration (15s ticks via `Stage1ProgressHeartbeat`); live elapsed on the job card; operator phase lines.
 
 ### P1 — Fountain `file_id` on extra passes
 

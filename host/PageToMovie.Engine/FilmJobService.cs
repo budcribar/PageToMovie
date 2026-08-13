@@ -2873,7 +2873,7 @@ public sealed class FilmJobService
             {
                 await Task.Delay(TimeSpan.FromSeconds(15), token).ConfigureAwait(false);
                 var elapsed = DateTimeOffset.UtcNow - started;
-                var msg = $"Still generating… {FormatEnrichElapsed(elapsed)} elapsed. Scene-by-scene enrich — this is normal.";
+                var msg = $"Still generating… {ElapsedClock.Format(elapsed)} elapsed. Scene-by-scene enrich — this is normal.";
                 await UpdateAsync(s =>
                 {
                     s.Message = msg;
@@ -2900,15 +2900,6 @@ public sealed class FilmJobService
         if (!int.TryParse(m.Groups[1].Value, out index)) return false;
         if (!int.TryParse(m.Groups[2].Value, out total) || total <= 0) return false;
         return true;
-    }
-
-    private static string FormatEnrichElapsed(TimeSpan elapsed)
-    {
-        if (elapsed.TotalHours >= 1)
-            return $"{(int)elapsed.TotalHours}h {elapsed.Minutes}m";
-        if (elapsed.TotalMinutes >= 1)
-            return $"{(int)elapsed.TotalMinutes}m {elapsed.Seconds:00}s";
-        return $"{Math.Max(1, elapsed.Seconds)}s";
     }
 
     private async Task RunPlanLooksAsync(StartPlanLooksRequest req, string projectId, CancellationToken ct)
@@ -3131,7 +3122,7 @@ public sealed class FilmJobService
             Status = StatusRunning,
             Kind = "stage1",
             ProjectId = projectId,
-            Message = "Building screenplay…",
+            Message = "Writing the full screenplay. Long books often take 20–60 minutes.",
             Index = 0,
             Total = 10,
             StartedAt = DateTimeOffset.UtcNow,
@@ -6777,7 +6768,8 @@ public sealed class FilmJobService
     {
         AppendJobLogLine(s, line);
         s.Message = line;
-        s.Total = Math.Max(s.Total, 10);
+        if (s.Total <= 0)
+            s.Total = 10;
         if (TryApplyChunkAdaptProgress(s, line))
             return;
         if (TryApplyVisionPrepareProgress(s, line))
@@ -6787,6 +6779,11 @@ public sealed class FilmJobService
 
     private static void AppendJobLogLine(JobSnapshot s, string line)
     {
+        if (IsStage1HeartbeatLine(line) && s.Log.Count > 0 && IsStage1HeartbeatLine(s.Log[^1]))
+        {
+            s.Log[^1] = line;
+            return;
+        }
         if (s.Log.Count == 0 || s.Log[^1] != line)
         {
             s.Log.Add(line);
@@ -6794,6 +6791,12 @@ public sealed class FilmJobService
                 s.Log = s.Log.TakeLast(120).ToList();
         }
     }
+
+    private static bool IsStage1HeartbeatLine(string? line) =>
+        !string.IsNullOrWhiteSpace(line)
+        && (line.StartsWith("Still working — ", StringComparison.Ordinal)
+            || line.StartsWith("Still writing", StringComparison.Ordinal)
+            || line.StartsWith("Still generating", StringComparison.Ordinal));
 
     private static bool TryApplyChunkAdaptProgress(JobSnapshot s, string line)
     {
@@ -6806,10 +6809,9 @@ public sealed class FilmJobService
             tot <= 0)
             return false;
         var chunkDone = line.Contains(StatusDone, StringComparison.OrdinalIgnoreCase);
-        var frac = chunkDone
-            ? Math.Clamp((double)idx / tot, 0, 1)
-            : Math.Clamp((idx - 1.0) / tot, 0, 1);
-        s.Index = Math.Max(s.Index, 4 + (int)Math.Round(4.0 * frac));
+        var shown = chunkDone ? idx : Math.Max(1, idx);
+        s.Total = tot;
+        s.Index = Math.Clamp(shown, 1, tot);
         return true;
     }
 
@@ -6832,20 +6834,23 @@ public sealed class FilmJobService
     private static void ApplyStage1KeywordProgress(JobSnapshot s, string line)
     {
         if (line.Contains("Screenplay ready", StringComparison.OrdinalIgnoreCase))
-            s.Index = Math.Max(s.Index, 10);
+            s.Index = s.Total > 0 ? s.Total : 10;
         else if (ContainsAnyIgnoreCase(line, "approving", "Fountain draft saved", "plate", "Attaching"))
-            s.Index = Math.Max(s.Index, 9);
+            s.Index = s.Total > 0 ? s.Total : Math.Max(s.Index, 9);
+        else if (ContainsAnyIgnoreCase(line, "name-spelling", "Name normalization", "Names checked",
+                     "Location names", "Location normalization", "narration", "split V.O."))
+            s.Index = s.Total > 0 ? s.Total : Math.Max(s.Index, 9);
         else if (ContainsAnyIgnoreCase(line, "Merge", "Stitch"))
-            s.Index = Math.Max(s.Index, 8);
+            s.Index = s.Total > 0 ? s.Total : Math.Max(s.Index, 8);
         else if (ContainsAnyIgnoreCase(line, "repair", "retry", "Refin"))
-            s.Index = Math.Max(s.Index, 7);
+            s.Index = s.Total > 0 ? Math.Max(s.Index, s.Total - 1) : Math.Max(s.Index, 7);
         else if (ContainsAnyIgnoreCase(line, "single pass", "Adapting book", "Book split", "multi-chunk"))
-            s.Index = Math.Max(s.Index, 4);
+            s.Index = Math.Max(s.Index, s.Total >= 10 ? 4 : 1);
         else if (ContainsAnyIgnoreCase(line, "Target runtime", "building Fountain", "Writing screenplay"))
-            s.Index = Math.Max(s.Index, 3);
+            s.Index = Math.Max(s.Index, 1);
         else if (ContainsAnyIgnoreCase(line, "prepare", "Extract", "Vision", "book text", "Checking book"))
             s.Index = Math.Max(s.Index, 1);
-        else
+        else if (!IsStage1HeartbeatLine(line))
             s.Index = Math.Max(s.Index, 1);
     }
 

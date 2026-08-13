@@ -948,6 +948,7 @@ public static class BookToFountainConverter
         validate ??= static value => string.IsNullOrWhiteSpace(value)
             ? [new Stage1ValidationIssue("empty_response", "The response was empty.")]
             : Array.Empty<Stage1ValidationIssue>();
+        using var heartbeat = Stage1ProgressHeartbeat.Start(onProgress, retryLabel);
         var result = await Stage1ChatExecutor.ExecuteAsync(
             chat,
             new Stage1ChatExecutor.Request(
@@ -2715,10 +2716,10 @@ public static class BookToFountainConverter
         string? reasoningEffort = null,
         double temperature = 0.2)
     {
-        // Bound the primary call so a stuck provider (or proxy that never closes) cannot
-        // leave the job UI frozen at 6/10 for the full 20‑minute HttpClient timeout.
-        // On soft timeout we return null → multi-chunk fallback (or clear error).
-        const int singleShotSoftMinutes = 8;
+        // Bound the primary call so a hung provider cannot sit forever. File_id novels
+        // (Odyssey-scale) routinely need 15–20+ min on Grok 4.6; 8 and 15 both cancelled
+        // a still-writing single pass. Keep this under the Responses HttpClient (30 min).
+        const int singleShotSoftMinutes = 25;
         try
         {
             using var softCts = CancellationTokenSource.CreateLinkedTokenSource(ct);

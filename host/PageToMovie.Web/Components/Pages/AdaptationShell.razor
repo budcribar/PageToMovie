@@ -86,12 +86,15 @@
     var jobMsg = Host.Jobs.JobRunning
         ? AdaptationPageBase.AdaptationJobs.OperatorJobRunningMessage(Host.Jobs.Job)
         : AdaptationPageBase.AdaptationStepUi.OperatorJobDoneMessage(Host.Jobs.Job);
+    var longHint = AdaptationPageBase.AdaptationStepUi.LongAdaptHint(Host.Jobs.Job, Host.Jobs.JobRunning);
     <JobProgressCard Visible="true"
                      Status="@Host.Jobs.Job.Status"
                      Message="@jobMsg"
+                     DetailMessage="@longHint"
                      Index="displayIdx"
                      Total="jobTot"
                      Percent="runPct"
+                     StartedAt="Host.Jobs.Job.StartedAt"
                      ShowCancel="@(Host.Jobs.JobRunning || Host.Busy)"
                      CancelDisabled="false"
                      OnCancel="Host.Jobs.CancelAsync"

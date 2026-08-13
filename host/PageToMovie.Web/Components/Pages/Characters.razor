@@ -239,6 +239,7 @@ else if (Jobs._job is not null &&
                      CancelDisabled="false"
                      OnCancel="Jobs.CancelAsync"
                      Kind="@Jobs._job.Kind"
+                     StartedAt="Jobs._job.StartedAt"
                      ShowLog="Session.IsAdmin"
                      LogLines="Jobs._job.Log"
                      TestId="characters-job" />
