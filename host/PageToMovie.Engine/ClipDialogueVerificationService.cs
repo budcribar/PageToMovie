@@ -597,67 +597,109 @@ Status options: 'verified' (dialogue & speaker match), 'mismatch' (dialogue inco
 
     private static string GetJsonString(JsonElement root, params string[] names)
     {
+        if (TryGetNamedString(root, names, out var exact))
+            return exact;
+        return TryGetFuzzyString(root, names) ?? "";
+    }
+
+    private static bool TryGetNamedString(JsonElement root, string[] names, out string value)
+    {
         foreach (var name in names)
         {
-            if (root.TryGetProperty(name, out var el) && el.ValueKind == JsonValueKind.String)
-            {
-                var val = el.GetString();
-                if (!string.IsNullOrWhiteSpace(val)) return val.Trim();
-            }
+            if (!root.TryGetProperty(name, out var el) || el.ValueKind != JsonValueKind.String)
+                continue;
+            var val = el.GetString();
+            if (string.IsNullOrWhiteSpace(val))
+                continue;
+            value = val.Trim();
+            return true;
         }
-        if (root.ValueKind == JsonValueKind.Object)
+        value = "";
+        return false;
+    }
+
+    private static string? TryGetFuzzyString(JsonElement root, string[] names)
+    {
+        if (root.ValueKind != JsonValueKind.Object)
+            return null;
+        foreach (var val in root.EnumerateObject()
+                     .Where(p => JsonPropertyNameMatches(p.Name, names))
+                     .Select(p => p.Value))
         {
-            foreach (var val in root.EnumerateObject()
-                         .Where(p => JsonPropertyNameMatches(p.Name, names))
-                         .Select(p => p.Value))
-            {
-                if (val.ValueKind == JsonValueKind.String)
-                {
-                    var s = val.GetString();
-                    if (!string.IsNullOrWhiteSpace(s)) return s.Trim();
-                }
-            }
+            if (val.ValueKind != JsonValueKind.String)
+                continue;
+            var s = val.GetString();
+            if (!string.IsNullOrWhiteSpace(s))
+                return s.Trim();
         }
-        return "";
+        return null;
     }
 
     private static bool GetJsonBool(JsonElement root, params string[] names)
     {
+        if (TryGetNamedBool(root, names, out var exact))
+            return exact;
+        return TryGetFuzzyBool(root, names);
+    }
+
+    private static bool TryGetNamedBool(JsonElement root, string[] names, out bool value)
+    {
         foreach (var name in names)
         {
-            if (root.TryGetProperty(name, out var el) &&
-                el.ValueKind is JsonValueKind.True or JsonValueKind.False)
-            {
-                    return el.GetBoolean();
-            }
+            if (!root.TryGetProperty(name, out var el) ||
+                el.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                continue;
+            value = el.GetBoolean();
+            return true;
         }
-        if (root.ValueKind == JsonValueKind.Object)
-        {
-            return root.EnumerateObject()
-                .Where(p => JsonPropertyNameMatches(p.Name, names) &&
-                            p.Value.ValueKind is JsonValueKind.True or JsonValueKind.False)
-                .Select(p => p.Value.GetBoolean())
-                .FirstOrDefault();
-        }
+        value = false;
         return false;
+    }
+
+    private static bool TryGetFuzzyBool(JsonElement root, string[] names)
+    {
+        if (root.ValueKind != JsonValueKind.Object)
+            return false;
+        return root.EnumerateObject()
+            .Where(p => JsonPropertyNameMatches(p.Name, names) &&
+                        p.Value.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            .Select(p => p.Value.GetBoolean())
+            .FirstOrDefault();
     }
 
     private static double? GetJsonDouble(JsonElement root, params string[] names)
     {
+        if (TryGetNamedDouble(root, names, out var exact))
+            return exact;
+        return TryGetFuzzyDouble(root, names);
+    }
+
+    private static bool TryGetNamedDouble(JsonElement root, string[] names, out double value)
+    {
         foreach (var name in names)
         {
-            if (root.TryGetProperty(name, out var el) && el.ValueKind == JsonValueKind.Number && el.TryGetDouble(out var v))
-                return v;
-        }
-        if (root.ValueKind == JsonValueKind.Object)
-        {
-            foreach (var val in root.EnumerateObject()
-                         .Where(p => JsonPropertyNameMatches(p.Name, names))
-                         .Select(p => p.Value))
+            if (root.TryGetProperty(name, out var el) &&
+                el.ValueKind == JsonValueKind.Number &&
+                el.TryGetDouble(out var v))
             {
-                if (val.ValueKind == JsonValueKind.Number && val.TryGetDouble(out var v))
-                    return v;
+                value = v;
+                return true;
             }
+        }
+        value = 0;
+        return false;
+    }
+
+    private static double? TryGetFuzzyDouble(JsonElement root, string[] names)
+    {
+        if (root.ValueKind != JsonValueKind.Object)
+            return null;
+        foreach (var val in root.EnumerateObject()
+                     .Where(p => JsonPropertyNameMatches(p.Name, names))
+                     .Select(p => p.Value))
+        {
+            if (val.ValueKind == JsonValueKind.Number && val.TryGetDouble(out var v))
+                return v;
         }
         return null;
     }

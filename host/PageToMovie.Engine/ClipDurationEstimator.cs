@@ -520,48 +520,59 @@ public static class ClipDurationEstimator
             return new[] { text };
 
         var budget = Math.Max(MinSeconds, modelMaxSeconds - paddingSeconds);
-        var units = SegmentDialogueUnits(text);
+        var chunks = PackDialogueUnits(SegmentDialogueUnits(text), delivery, budget);
+        return chunks.Count > 0 ? chunks : new[] { text };
+    }
+
+    private static List<string> PackDialogueUnits(
+        IReadOnlyList<string> units, string delivery, double budget)
+    {
         var chunks = new List<string>();
         var current = new StringBuilder();
-
-        void Flush()
-        {
-            var s = current.ToString().Trim();
-            current.Clear();
-            if (s.Length > 0)
-                chunks.Add(s);
-        }
-
         foreach (var unit in units)
+            AppendDialogueUnit(unit.Trim(), delivery, budget, current, chunks);
+        FlushDialogueChunk(current, chunks);
+        return chunks;
+    }
+
+    private static void AppendDialogueUnit(
+        string unit,
+        string delivery,
+        double budget,
+        StringBuilder current,
+        List<string> chunks)
+    {
+        if (unit.Length == 0)
+            return;
+
+        // Unit alone still too long → pack by words
+        if (EstimateUncapped(unit, "", JsonKeys.Dialogue, delivery) > budget)
         {
-            var u = unit.Trim();
-            if (u.Length == 0) continue;
-
-            // Unit alone still too long → pack by words
-            if (EstimateUncapped(u, "", JsonKeys.Dialogue, delivery) > budget)
-            {
-                Flush();
-                foreach (var piece in PackByWords(u, delivery, budget))
-                    chunks.Add(piece);
-                continue;
-            }
-
-            var trial = current.Length == 0 ? u : current + " " + u;
-            if (current.Length > 0 &&
-                EstimateUncapped(trial, "", JsonKeys.Dialogue, delivery) > budget)
-            {
-                Flush();
-                current.Append(u);
-            }
-            else
-            {
-                if (current.Length > 0) current.Append(' ');
-                current.Append(u);
-            }
+            FlushDialogueChunk(current, chunks);
+            chunks.AddRange(PackByWords(unit, delivery, budget));
+            return;
         }
 
-        Flush();
-        return chunks.Count > 0 ? chunks : new[] { text };
+        var trial = current.Length == 0 ? unit : current + " " + unit;
+        if (current.Length > 0 &&
+            EstimateUncapped(trial, "", JsonKeys.Dialogue, delivery) > budget)
+        {
+            FlushDialogueChunk(current, chunks);
+            current.Append(unit);
+            return;
+        }
+
+        if (current.Length > 0)
+            current.Append(' ');
+        current.Append(unit);
+    }
+
+    private static void FlushDialogueChunk(StringBuilder current, List<string> chunks)
+    {
+        var s = current.ToString().Trim();
+        current.Clear();
+        if (s.Length > 0)
+            chunks.Add(s);
     }
 
     /// <summary>
@@ -728,16 +739,29 @@ public static class ClipDurationEstimator
         var guard = 0;
         while (need > 0 && actionIdx.Count > 0 && guard++ < 50)
         {
-            var progressed = false;
-            foreach (var i in actionIdx)
-            {
-                if (need <= 0) break;
-                if (!TryIncrementSilentPad(beats[i], durs, i, absMaxSeconds)) continue;
-                need--;
-                progressed = true;
-            }
-            if (!progressed) break;
+            if (!TryDistributeOneSilentPadRound(beats, durs, actionIdx, ref need, absMaxSeconds))
+                break;
         }
+    }
+
+    private static bool TryDistributeOneSilentPadRound(
+        IReadOnlyList<Dictionary<string, object?>> beats,
+        List<int> durs,
+        List<int> actionIdx,
+        ref int need,
+        int absMaxSeconds)
+    {
+        var progressed = false;
+        foreach (var i in actionIdx)
+        {
+            if (need <= 0)
+                break;
+            if (!TryIncrementSilentPad(beats[i], durs, i, absMaxSeconds))
+                continue;
+            need--;
+            progressed = true;
+        }
+        return progressed;
     }
 
     private static bool TryIncrementSilentPad(
@@ -794,56 +818,64 @@ public static class ClipDurationEstimator
 
         var chunks = new List<string>();
         var current = new List<string>();
-
-        string Join(List<string> ws)
-        {
-            var sb = new StringBuilder();
-            var suppressNextSpace = false;
-            foreach (var w in ws)
-            {
-                // Em-dash/en-dash/hyphen tokens attach directly to both neighbors (source text has
-                // no surrounding space, e.g. "nights—every") — unlike trailing punctuation (.!?;,:),
-                // which only suppresses its OWN leading space, a dash also suppresses the space
-                // before the word that follows it.
-                var isDash = CommonRegex.IsMatch(w, @"^[—–-]+$");
-                var noLeadingSpace = suppressNextSpace || isDash || CommonRegex.IsMatch(w, @"^[.!?;,:]+$");
-                if (sb.Length == 0 || noLeadingSpace)
-                    sb.Append(w);
-                else
-                    sb.Append(' ').Append(w);
-                suppressNextSpace = isDash;
-            }
-            return sb.ToString().Trim();
-        }
-
         foreach (var w in words)
-        {
-            current.Add(w);
-            var trial = Join(current);
-            if (EstimateUncapped(trial, "", JsonKeys.Dialogue, delivery) > budgetSeconds && current.Count > 1)
-            {
-                current.RemoveAt(current.Count - 1);
-                chunks.Add(Join(current));
-                current.Clear();
-                current.Add(w);
-            }
-        }
+            AppendPackedWord(w, delivery, budgetSeconds, current, chunks);
 
         if (current.Count > 0)
-            chunks.Add(Join(current));
+            chunks.Add(JoinWordsPreservingDashes(current));
 
-        // Merge orphan trailing words (<= 2 words, e.g. "it") into preceding chunk if budget allows
-        if (chunks.Count > 1 && CountWords(chunks[^1]) <= 2)
-        {
-            var combined = $"{chunks[^2]} {chunks[^1]}";
-            if (EstimateUncapped(combined, "", JsonKeys.Dialogue, delivery) <= budgetSeconds + 1.5)
-            {
-                chunks[^2] = combined;
-                chunks.RemoveAt(chunks.Count - 1);
-            }
-        }
-
+        MergeOrphanTrailingChunk(chunks, delivery, budgetSeconds);
         return chunks;
+    }
+
+    private static void AppendPackedWord(
+        string word,
+        string delivery,
+        double budgetSeconds,
+        List<string> current,
+        List<string> chunks)
+    {
+        current.Add(word);
+        var trial = JoinWordsPreservingDashes(current);
+        if (EstimateUncapped(trial, "", JsonKeys.Dialogue, delivery) <= budgetSeconds || current.Count <= 1)
+            return;
+        current.RemoveAt(current.Count - 1);
+        chunks.Add(JoinWordsPreservingDashes(current));
+        current.Clear();
+        current.Add(word);
+    }
+
+    private static void MergeOrphanTrailingChunk(List<string> chunks, string delivery, double budgetSeconds)
+    {
+        // Merge orphan trailing words (<= 2 words, e.g. "it") into preceding chunk if budget allows
+        if (chunks.Count <= 1 || CountWords(chunks[^1]) > 2)
+            return;
+        var combined = $"{chunks[^2]} {chunks[^1]}";
+        if (EstimateUncapped(combined, "", JsonKeys.Dialogue, delivery) > budgetSeconds + 1.5)
+            return;
+        chunks[^2] = combined;
+        chunks.RemoveAt(chunks.Count - 1);
+    }
+
+    private static string JoinWordsPreservingDashes(List<string> ws)
+    {
+        var sb = new StringBuilder();
+        var suppressNextSpace = false;
+        foreach (var w in ws)
+        {
+            // Em-dash/en-dash/hyphen tokens attach directly to both neighbors (source text has
+            // no surrounding space, e.g. "nights—every") — unlike trailing punctuation (.!?;,:),
+            // which only suppresses its OWN leading space, a dash also suppresses the space
+            // before the word that follows it.
+            var isDash = CommonRegex.IsMatch(w, @"^[—–-]+$");
+            var noLeadingSpace = suppressNextSpace || isDash || CommonRegex.IsMatch(w, @"^[.!?;,:]+$");
+            if (sb.Length == 0 || noLeadingSpace)
+                sb.Append(w);
+            else
+                sb.Append(' ').Append(w);
+            suppressNextSpace = isDash;
+        }
+        return sb.ToString().Trim();
     }
 
     private static Dictionary<string, object?> CloneBeatWithId(

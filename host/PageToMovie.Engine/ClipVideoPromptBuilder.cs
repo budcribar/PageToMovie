@@ -744,20 +744,11 @@ public static class ClipVideoPromptBuilder
     public static List<string> ResolveOnScreenCharacterKeys(JsonElement clipEl)
     {
         var found = new List<string>();
-        void Add(string? key)
-        {
-            if (string.IsNullOrWhiteSpace(key)) return;
-            key = key.Trim();
-            if (!key.StartsWith(JsonKeys.CharacterPrefix, StringComparison.OrdinalIgnoreCase)) return;
-            if (found.Any(k => string.Equals(k, key, StringComparison.OrdinalIgnoreCase))) return;
-            found.Add(key);
-        }
-
         if (clipEl.TryGetProperty(CharactersOnScreenKey, out var cos) &&
             cos.ValueKind == JsonValueKind.Array)
         {
             foreach (var x in cos.EnumerateArray())
-                Add(x.GetString());
+                AddUniqueCharacterKey(found, x.GetString());
         }
 
         // Authoritative plan list present (even empty) — do not re-infer from prose
@@ -767,9 +758,9 @@ public static class ClipVideoPromptBuilder
 
         // Legacy clips without the field: explicit Character_* tokens only
         if (clipEl.TryGetProperty(PrimarySubjectKey, out var ps))
-            Add(ps.GetString());
+            AddUniqueCharacterKey(found, ps.GetString());
         foreach (var k in ClipCharacterKeys(clipEl))
-            Add(k);
+            AddUniqueCharacterKey(found, k);
 
         return found;
     }
@@ -784,34 +775,37 @@ public static class ClipVideoPromptBuilder
     {
         _ = characters; // reserved for future voice-only metadata filters
         var found = new List<string>();
-        void Add(string? key)
-        {
-            if (string.IsNullOrWhiteSpace(key)) return;
-            key = key.Trim();
-            if (!key.StartsWith(JsonKeys.CharacterPrefix, StringComparison.OrdinalIgnoreCase)) return;
-            if (found.Any(k => string.Equals(k, key, StringComparison.OrdinalIgnoreCase))) return;
-            found.Add(key);
-        }
-
         foreach (var k in ResolveOnScreenCharacterKeys(clipEl))
-            Add(k);
+            AddUniqueCharacterKey(found, k);
 
         if (clipEl.TryGetProperty(PrimarySubjectKey, out var ps))
-            Add(ps.GetString());
+            AddUniqueCharacterKey(found, ps.GetString());
 
         if (clipEl.TryGetProperty(JsonKeys.AudioPayload, out var ap) && ap.ValueKind == JsonValueKind.Object &&
             ap.TryGetProperty("speaker", out var sp))
-            Add(sp.GetString());
+            AddUniqueCharacterKey(found, sp.GetString());
 
         // Only when plan list is missing — Character_* tokens in visual (not free-text names)
         if (!(clipEl.TryGetProperty(CharactersOnScreenKey, out var cos) &&
               cos.ValueKind == JsonValueKind.Array))
         {
             foreach (var k in ClipCharacterKeys(clipEl))
-                Add(k);
+                AddUniqueCharacterKey(found, k);
         }
 
         return found;
+    }
+
+    private static void AddUniqueCharacterKey(List<string> found, string? key)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+            return;
+        key = key.Trim();
+        if (!key.StartsWith(JsonKeys.CharacterPrefix, StringComparison.OrdinalIgnoreCase))
+            return;
+        if (found.Any(k => string.Equals(k, key, StringComparison.OrdinalIgnoreCase)))
+            return;
+        found.Add(key);
     }
 
     /// <summary>
@@ -1068,55 +1062,58 @@ public static class ClipVideoPromptBuilder
     {
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var list = new List<string>();
-        void Add(string? name)
-        {
-            if (string.IsNullOrWhiteSpace(name)) return;
-            name = Path.GetFileName(name.Trim().Replace(' ', '_')).ToLowerInvariant();
-            if (!name.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
-                name = name.EndsWith("_ref", StringComparison.OrdinalIgnoreCase) ? name + ".png" : name + "_ref.png";
-            if (seen.Add(name))
-                list.Add(name);
-        }
-
-        Add(ProjectStore.LocationRefFileName(locKey));
+        AddLocationRefCandidate(list, seen, ProjectStore.LocationRefFileName(locKey));
         var raw = (locKey ?? "").Trim();
         if (raw.StartsWith("Loc_", StringComparison.OrdinalIgnoreCase))
         {
             var bare = raw["Loc_".Length..];
-            Add(ProjectStore.LocationRefFileName(bare));
-            Add(bare + "_ref.png");
+            AddLocationRefCandidate(list, seen, ProjectStore.LocationRefFileName(bare));
+            AddLocationRefCandidate(list, seen, bare + "_ref.png");
         }
         else
         {
-            Add(ProjectStore.LocationRefFileName("Loc_" + raw));
+            AddLocationRefCandidate(list, seen, ProjectStore.LocationRefFileName("Loc_" + raw));
         }
         return list;
+    }
+
+    private static void AddLocationRefCandidate(List<string> list, HashSet<string> seen, string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return;
+        name = Path.GetFileName(name.Trim().Replace(' ', '_')).ToLowerInvariant();
+        if (!name.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+            name = name.EndsWith("_ref", StringComparison.OrdinalIgnoreCase) ? name + ".png" : name + "_ref.png";
+        if (seen.Add(name))
+            list.Add(name);
     }
 
     public static List<string> ClipCharacterKeys(JsonElement clipEl)
     {
         var found = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        void Scan(string? text)
-        {
-            if (string.IsNullOrEmpty(text)) return;
-            foreach (Match m in CommonRegex.Matches(text, @"Character_[A-Za-z0-9_]+"))
-                found.Add(m.Value);
-        }
         if (clipEl.TryGetProperty("visual_prompt", out var vp))
-            Scan(vp.GetString());
+            ScanCharacterKeys(found, vp.GetString());
         if (clipEl.TryGetProperty(PrimarySubjectKey, out var ps))
-            Scan(ps.GetString());
+            ScanCharacterKeys(found, ps.GetString());
         if (clipEl.TryGetProperty(JsonKeys.AudioPayload, out var ap) && ap.ValueKind == JsonValueKind.Object &&
             ap.TryGetProperty("speaker", out var sp))
         {
-            Scan(sp.GetString());
+            ScanCharacterKeys(found, sp.GetString());
         }
         if (clipEl.TryGetProperty(CharactersOnScreenKey, out var cos) && cos.ValueKind == JsonValueKind.Array)
         {
             foreach (var x in cos.EnumerateArray())
-                Scan(x.GetString());
+                ScanCharacterKeys(found, x.GetString());
         }
         return found.ToList();
+    }
+
+    private static void ScanCharacterKeys(HashSet<string> found, string? text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return;
+        foreach (Match m in CommonRegex.Matches(text, @"Character_[A-Za-z0-9_]+"))
+            found.Add(m.Value);
     }
 
     private static string? ResolveCharacterRefPath(string projectDir, string key) =>
@@ -1601,20 +1598,25 @@ public static class ClipVideoPromptBuilder
 
         // Dedupe tokens across global + story
         var items = new List<string>();
-        static void AddCsv(List<string> dest, string csv)
-        {
-            foreach (var p in csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-            {
-                if (p.Length == 0) continue;
-                if (dest.Any(x => x.Equals(p, StringComparison.OrdinalIgnoreCase))) continue;
-                dest.Add(p);
-            }
-        }
-        if (global.Length > 0) AddCsv(items, global);
-        if (story.Length > 0) AddCsv(items, story);
+        if (global.Length > 0)
+            AddCsvNegatives(items, global);
+        if (story.Length > 0)
+            AddCsvNegatives(items, story);
         if (items.Count == 0)
             return "";
         return PromptTags.Wrap("Negative", string.Join(", ", items));
+    }
+
+    private static void AddCsvNegatives(List<string> dest, string csv)
+    {
+        foreach (var p in csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (p.Length == 0)
+                continue;
+            if (dest.Any(x => x.Equals(p, StringComparison.OrdinalIgnoreCase)))
+                continue;
+            dest.Add(p);
+        }
     }
 
     private static string SimplifyVisual(string visual)
