@@ -1303,7 +1303,7 @@ public sealed partial class ProjectStore
             list.Add(info);
     }
 
-    private async Task AddNamespacedProjectsAsync(
+    private static async Task AddNamespacedProjectsAsync(
         List<ProjectInfo> list, string ownerDir, string ownerName, CancellationToken ct)
     {
         foreach (var child in Directory.GetDirectories(ownerDir))
