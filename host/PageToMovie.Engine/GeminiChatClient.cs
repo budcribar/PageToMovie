@@ -196,23 +196,21 @@ public sealed class GeminiChatClient : IChatClient, IVisionClient, IGeminiVideoA
                 _http, HttpMethod.Post, endpoint, payload, ct,
                 req => ProviderHttpHelpers.ApplyGoogleApiKey(req, key)).ConfigureAwait(false);
             var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-            if (!resp.IsSuccessStatusCode)
+            // Not every Gemini model supports thinkingConfig (confirmed live: gemini-2.5-flash
+            // 400s with "Thinking level is not supported for this model"). Self-heal by
+            // stripping it and retrying rather than maintaining a model-capability list.
+            if (!resp.IsSuccessStatusCode
+                && resp.StatusCode == System.Net.HttpStatusCode.BadRequest
+                && payload.TryGetValue("generationConfig", out var gc)
+                && gc is Dictionary<string, object?> genConfig
+                && genConfig.ContainsKey("thinkingConfig")
+                && body.Contains("hinking", StringComparison.OrdinalIgnoreCase))
             {
-                // Not every Gemini model supports thinkingConfig (confirmed live: gemini-2.5-flash
-                // 400s with "Thinking level is not supported for this model"). Self-heal by
-                // stripping it and retrying rather than maintaining a model-capability list.
-                if (resp.StatusCode == System.Net.HttpStatusCode.BadRequest
-                    && payload.TryGetValue("generationConfig", out var gc)
-                    && gc is Dictionary<string, object?> genConfig
-                    && genConfig.ContainsKey("thinkingConfig")
-                    && body.Contains("hinking", StringComparison.OrdinalIgnoreCase))
-                {
-                    var retryPayload = new Dictionary<string, object?>(payload);
-                    var retryGenConfig = new Dictionary<string, object?>(genConfig);
-                    retryGenConfig.Remove("thinkingConfig");
-                    retryPayload["generationConfig"] = retryGenConfig;
-                    return await SendAsync(retryPayload, model, kind, mode, promptForLog, userPromptForLog, promptChars, attemptNum, ct).ConfigureAwait(false);
-                }
+                var retryPayload = new Dictionary<string, object?>(payload);
+                var retryGenConfig = new Dictionary<string, object?>(genConfig);
+                retryGenConfig.Remove("thinkingConfig");
+                retryPayload["generationConfig"] = retryGenConfig;
+                return await SendAsync(retryPayload, model, kind, mode, promptForLog, userPromptForLog, promptChars, attemptNum, ct).ConfigureAwait(false);
             }
 
             var text = await ChatClientHelpers.FinishChatResponseAsync(

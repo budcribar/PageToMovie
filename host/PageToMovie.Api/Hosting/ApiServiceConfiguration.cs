@@ -477,9 +477,10 @@ internal static class ApiServiceConfiguration
         ThreadPool.GetMinThreads(out var curW, out var curIo);
         ThreadPool.GetMaxThreads(out var maxW, out var maxIo);
         var w = minWorkers > 0 ? Math.Clamp(minWorkers, 1, maxW) : curW;
+        // After the early return, minIo <= 0 implies minWorkers > 0, so fall back to that.
         var io = minIo > 0
             ? Math.Clamp(minIo, 1, maxIo)
-            : (minWorkers > 0 ? Math.Clamp(minWorkers, 1, maxIo) : curIo);
+            : Math.Clamp(minWorkers, 1, maxIo);
         if (w < curW) w = curW;
         if (io < curIo) io = curIo;
         if (ThreadPool.SetMinThreads(w, io))

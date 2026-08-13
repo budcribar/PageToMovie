@@ -156,7 +156,7 @@ public sealed class BookPrepareService
         result.ImagesExtracted = epubImgRows.Count;
 
         await File.WriteAllTextAsync(bookTxt, text + "\n", ct).ConfigureAwait(false);
-        await WriteManifestOrEnsureFromDiskAsync(source, imgDir, epubImgRows, epubPages, ct)
+        await WriteManifestOrEnsureFromDiskAsync(imgDir, epubImgRows, epubPages, ct)
             .ConfigureAwait(false);
         return analysis;
     }
@@ -184,7 +184,7 @@ public sealed class BookPrepareService
 
         imageRows = ApplyPdfRenderFallback(pdf, imgDir, source, pageCount, analysis, imageRows, result, onProgress);
         ThrowIfPictureBookHasNoImages(analysis, imageRows);
-        await WriteManifestOrEnsureFromDiskAsync(source, imgDir, imageRows, pageCount, ct)
+        await WriteManifestOrEnsureFromDiskAsync(imgDir, imageRows, pageCount, ct)
             .ConfigureAwait(false);
         ClearCharacterPlatesSortedFlag(projectId, onProgress);
 
@@ -251,7 +251,6 @@ public sealed class BookPrepareService
     }
 
     private static async Task WriteManifestOrEnsureFromDiskAsync(
-        string sourceDir,
         string imgDir,
         List<Dictionary<string, object?>> rows,
         int pages,

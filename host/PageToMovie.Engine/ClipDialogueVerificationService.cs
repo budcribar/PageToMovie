@@ -631,11 +631,10 @@ Status options: 'verified' (dialogue & speaker match), 'mismatch' (dialogue inco
         }
         if (root.ValueKind == JsonValueKind.Object)
         {
-            foreach (var prop in root.EnumerateObject().Where(p =>
-                         JsonPropertyNameMatches(p.Name, names) &&
-                         p.Value.ValueKind is JsonValueKind.True or JsonValueKind.False))
+            foreach (var prop in root.EnumerateObject().Where(p => JsonPropertyNameMatches(p.Name, names)))
             {
-                return prop.Value.GetBoolean();
+                if (prop.Value.ValueKind is JsonValueKind.True or JsonValueKind.False)
+                    return prop.Value.GetBoolean();
             }
         }
         return false;
