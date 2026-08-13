@@ -64,188 +64,22 @@ public sealed class FakeGrokChatClient : IChatClient
 
     private static string Respond(string sys, string user, string? mode)
     {
-
-        // ── Cast from screenplay → cast_seeds-shaped JSON ──────────────────
-        if (sys.Contains("casting director", StringComparison.OrdinalIgnoreCase) ||
-            sys.Contains("CLOSED CAST", StringComparison.OrdinalIgnoreCase) ||
-            sys.Contains("fountain_to_cast", StringComparison.OrdinalIgnoreCase) ||
-            user.Contains("closed cast", StringComparison.OrdinalIgnoreCase) ||
-            user.Contains("character_seed_tokens", StringComparison.OrdinalIgnoreCase) ||
-            (sys.Contains("character", StringComparison.OrdinalIgnoreCase) &&
-             sys.Contains("seed", StringComparison.OrdinalIgnoreCase) &&
-             !sys.Contains("literal", StringComparison.OrdinalIgnoreCase)))
-        {
-            // Poe fixture keeps its hand-authored cast; any other screenplay gets a cast generated
-            // from its own character cues so speaking roles, species and groups line up with the
-            // fountain (lets varied fixtures — animals, crowds, big/solo casts — drive the real UI).
-            if (IsPoe(user)) return PoeCastJson;
-            var generated = BuildCastJsonFromScreenplay(user);
-            return (generated ?? DefaultCastJson);
-        }
-
-        // ── Auto-review / QC JSON ──────────────────────────────────────────
-        if (sys.Contains("auto-review", StringComparison.OrdinalIgnoreCase) ||
-            sys.Contains("auto_review", StringComparison.OrdinalIgnoreCase) ||
-            sys.Contains("QC", StringComparison.Ordinal) ||
-            user.Contains("visual_prompt", StringComparison.OrdinalIgnoreCase) &&
-            user.Contains("clip", StringComparison.OrdinalIgnoreCase))
-        {
-            return (AutoReviewJson);
-        }
-
-        // ── Learning propose ───────────────────────────────────────────────
-        if (sys.Contains("house rules", StringComparison.OrdinalIgnoreCase) ||
-            sys.Contains("QC fail", StringComparison.OrdinalIgnoreCase) ||
-            user.Contains("Recent film QC fails", StringComparison.OrdinalIgnoreCase))
-        {
-            return (
-                "- Keep candlelight and deep shadows consistent across chamber clips.\n" +
-                "- Match the Narrator's pale face and dark coat on every cut.\n" +
-                "- Heartbeat tension: hold tight on floorboards before the confession scream.\n" +
-                "- Prefer continuity from previous clip tail; flag jumps as fail when clear.");
-        }
-
-        // ── Visual literalize ──────────────────────────────────────────────
-        if (sys.Contains("literal", StringComparison.OrdinalIgnoreCase) ||
-            sys.Contains("figurative", StringComparison.OrdinalIgnoreCase) ||
-            (sys.Contains("wardrobe", StringComparison.OrdinalIgnoreCase) &&
-             sys.Contains("visual", StringComparison.OrdinalIgnoreCase)))
-        {
-            return (IsPoe(user) ? PoeCastJson : DefaultCastJson);
-        }
-
-        // ── Book → Fountain ────────────────────────────────────────────────
-        if (sys.Contains("Fountain", StringComparison.OrdinalIgnoreCase) ||
-            user.Contains("--- PAGE", StringComparison.OrdinalIgnoreCase) ||
-            user.Contains("BEGIN BOOK", StringComparison.OrdinalIgnoreCase) ||
-            sys.Contains("book_to_fountain", StringComparison.OrdinalIgnoreCase))
-        {
-            return (IsPoe(user) ? PoeFountain : DefaultFountain);
-        }
-
-        // ── Silent beat duration classes ───────────────────────────────────
-        if (sys.Contains("DURATION BUDGETING", StringComparison.OrdinalIgnoreCase) ||
-            mode == ChatCallModes.SilentBeatClassify)
-        {
-            return (BuildSilentBeatLabelsJson(user));
-        }
-
-        if (mode == ChatCallModes.AmbientSfxClassify ||
-            sys.Contains("ambient bed vs SFX", StringComparison.OrdinalIgnoreCase) ||
-            sys.Contains("ambient BED vs transient SFX", StringComparison.OrdinalIgnoreCase))
-        {
-            return (BuildIdLabels(user, id =>
-                $$"""{"id":"{{id}}","ambient":"","sfx":""}"""));
-        }
-
-        if (mode == ChatCallModes.OnScreenCastClassify ||
-            sys.Contains("ON CAMERA", StringComparison.OrdinalIgnoreCase))
-        {
-            return (BuildIdLabels(user, id =>
-                $$"""{"id":"{{id}}","keys":[]}"""));
-        }
-
-        if (mode == ChatCallModes.ExtendCutClassify ||
-            sys.Contains("hard_cut vs extend", StringComparison.OrdinalIgnoreCase))
-        {
-            return (BuildIdLabels(user, id =>
-            {
-                var cls = id.EndsWith("_b1") ? "hard_cut" : "extend";
-                return $$"""{"id":"{{id}}","class":"{{cls}}"}""";
-            }));
-        }
-
-        if (mode == ChatCallModes.SpeciesKindClassify ||
-            sys.Contains("animal|human|other", StringComparison.OrdinalIgnoreCase))
-        {
-            // key-based payload
-            var labels = new List<string>();
-            foreach (Match m in CommonRegex.Matches(user, @"""key""\s*:\s*""([^""]+)"""))
-            {
-                var key = m.Groups[1].Value;
-                var cls = key.Contains("Narrator", StringComparison.OrdinalIgnoreCase) ||
-                          key.Contains("Officer", StringComparison.OrdinalIgnoreCase) ||
-                          key.Contains("Man", StringComparison.OrdinalIgnoreCase) ||
-                          key.Contains("Mom", StringComparison.OrdinalIgnoreCase) ||
-                          key.Contains("Dad", StringComparison.OrdinalIgnoreCase)
-                    ? "human"
-                    : "other";
-                labels.Add($$"""{"key":"{{key}}","class":"{{cls}}"}""");
-            }
-            return ("""{"labels":[""" + string.Join(",", labels) + "]}");
-        }
-
-        if (mode == ChatCallModes.PlateRankClassify ||
-            sys.Contains("book image basenames", StringComparison.OrdinalIgnoreCase))
-        {
-            var names = CommonRegex.Matches(user, @"""([^""]+\.(?:png|jpe?g|webp))""", RegexOptions.IgnoreCase)
-                .Select(m => m.Groups[1].Value)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .Take(3)
-                .Select(n => "\"" + n.Replace("\\", "\\\\") + "\"")
-                .ToList();
-            return ("""{"ranked":[""" + string.Join(",", names) + "]}");
-        }
-
-        if (mode == ChatCallModes.ShotPlanRefineClassify ||
-            sys.Contains("cinematographer refining shot plans", StringComparison.OrdinalIgnoreCase))
-        {
-            return ("""{"refinements":[]}""");
-        }
-
-        if (mode == ChatCallModes.BeatPacingClassify ||
-            sys.Contains("duration pacing for screenplay beats", StringComparison.OrdinalIgnoreCase))
-        {
-            return ("""{"pacing":[]}""");
-        }
-
-        if (mode == ChatCallModes.CinematicLightingClassify ||
-            sys.Contains("cinematographer and lighting director", StringComparison.OrdinalIgnoreCase))
-        {
-            return ("""{"lighting_token":"Chiaroscuro flickering candlelight with deep obsidian shadows and desaturated cool-gray volumetric fog"}""");
-        }
-
-        if (mode == ChatCallModes.CameraDirectorClassify ||
-            sys.Contains("Virtuoso Film Director and Director of Photography", StringComparison.OrdinalIgnoreCase))
-        {
-            return ("""{"directives":[]}""");
-        }
-
-        if (mode == ChatCallModes.NegativePromptClassify ||
-            sys.Contains("Period Visual Continuity Guard", StringComparison.OrdinalIgnoreCase))
-        {
-            return ("""{"negative_tokens":"no modern wristwatches, no electric light bulbs, no plastic, no zippers, no printed text"}""");
-        }
-
-        if (mode == ChatCallModes.WardrobeContinuityClassify ||
-            sys.Contains("Costume Department Supervisor", StringComparison.OrdinalIgnoreCase))
-        {
-            return ("""{"wardrobe":[]}""");
-        }
-
-        if (mode == ChatCallModes.CharacterEmotionArcClassify ||
-            sys.Contains("Acting Coach and Performance Director", StringComparison.OrdinalIgnoreCase))
-        {
-            return ("""{"emotions":[]}""");
-        }
-
-        if (mode == ChatCallModes.SoundDesignComposerClassify ||
-            sys.Contains("Sound Designer and Audio Supervisor", StringComparison.OrdinalIgnoreCase))
-        {
-            return ("""{"sound_design":[]}""");
-        }
-
-        if (mode == ChatCallModes.DepthOfFieldClassify ||
-            sys.Contains("Focus Puller and Optical Cinematographer", StringComparison.OrdinalIgnoreCase))
-        {
-            return ("""{"dof":[]}""");
-        }
-
-        if (mode == ChatCallModes.ColorPaletteGradingClassify ||
-            sys.Contains("Master Colorist and Film Stock Director", StringComparison.OrdinalIgnoreCase))
-        {
-            return ("""{"film_stock":"Kodak Vision3 500T 5219 film stock, subtle 35mm grain","color_palette":"Desaturated cool-teal shadow tones with warm amber candle highlights","grading_prompt":"Color grading: Kodak Vision3 500T 5219 film stock, desaturated cool-teal shadows and warm amber candle highlights"}""");
-        }
+        var hit = TryRespondCast(sys, user);
+        if (hit is not null) return hit;
+        hit = TryRespondAutoReview(sys, user);
+        if (hit is not null) return hit;
+        hit = TryRespondLearning(sys, user);
+        if (hit is not null) return hit;
+        hit = TryRespondLiteralize(sys, user);
+        if (hit is not null) return hit;
+        hit = TryRespondFountain(sys, user);
+        if (hit is not null) return hit;
+        hit = TryRespondSilentBeat(sys, user, mode);
+        if (hit is not null) return hit;
+        hit = TryRespondClassifierPackA(sys, user, mode);
+        if (hit is not null) return hit;
+        hit = TryRespondClassifierPackB(sys, mode);
+        if (hit is not null) return hit;
 
         // ── Minimal Stage1-shaped stub ─────────────────────────────────────
         return ("""
@@ -264,6 +98,275 @@ public sealed class FakeGrokChatClient : IChatClient
             }
             """);
     }
+
+    // ── Cast from screenplay → cast_seeds-shaped JSON ──────────────────
+    private static string? TryRespondCast(string sys, string user)
+    {
+        if (sys.Contains("casting director", StringComparison.OrdinalIgnoreCase) ||
+            sys.Contains("CLOSED CAST", StringComparison.OrdinalIgnoreCase) ||
+            sys.Contains("fountain_to_cast", StringComparison.OrdinalIgnoreCase) ||
+            user.Contains("closed cast", StringComparison.OrdinalIgnoreCase) ||
+            user.Contains("character_seed_tokens", StringComparison.OrdinalIgnoreCase) ||
+            (sys.Contains("character", StringComparison.OrdinalIgnoreCase) &&
+             sys.Contains("seed", StringComparison.OrdinalIgnoreCase) &&
+             !sys.Contains("literal", StringComparison.OrdinalIgnoreCase)))
+        {
+            // Poe fixture keeps its hand-authored cast; any other screenplay gets a cast generated
+            // from its own character cues so speaking roles, species and groups line up with the
+            // fountain (lets varied fixtures — animals, crowds, big/solo casts — drive the real UI).
+            if (IsPoe(user)) return PoeCastJson;
+            var generated = BuildCastJsonFromScreenplay(user);
+            return (generated ?? DefaultCastJson);
+        }
+        return null;
+    }
+
+    // ── Auto-review / QC JSON ──────────────────────────────────────────
+    private static string? TryRespondAutoReview(string sys, string user)
+    {
+        if (sys.Contains("auto-review", StringComparison.OrdinalIgnoreCase) ||
+            sys.Contains("auto_review", StringComparison.OrdinalIgnoreCase) ||
+            sys.Contains("QC", StringComparison.Ordinal) ||
+            user.Contains("visual_prompt", StringComparison.OrdinalIgnoreCase) &&
+            user.Contains("clip", StringComparison.OrdinalIgnoreCase))
+        {
+            return (AutoReviewJson);
+        }
+        return null;
+    }
+
+    // ── Learning propose ───────────────────────────────────────────────
+    private static string? TryRespondLearning(string sys, string user)
+    {
+        if (sys.Contains("house rules", StringComparison.OrdinalIgnoreCase) ||
+            sys.Contains("QC fail", StringComparison.OrdinalIgnoreCase) ||
+            user.Contains("Recent film QC fails", StringComparison.OrdinalIgnoreCase))
+        {
+            return (
+                "- Keep candlelight and deep shadows consistent across chamber clips.\n" +
+                "- Match the Narrator's pale face and dark coat on every cut.\n" +
+                "- Heartbeat tension: hold tight on floorboards before the confession scream.\n" +
+                "- Prefer continuity from previous clip tail; flag jumps as fail when clear.");
+        }
+        return null;
+    }
+
+    // ── Visual literalize ──────────────────────────────────────────────
+    private static string? TryRespondLiteralize(string sys, string user)
+    {
+        if (sys.Contains("literal", StringComparison.OrdinalIgnoreCase) ||
+            sys.Contains("figurative", StringComparison.OrdinalIgnoreCase) ||
+            (sys.Contains("wardrobe", StringComparison.OrdinalIgnoreCase) &&
+             sys.Contains("visual", StringComparison.OrdinalIgnoreCase)))
+        {
+            return (IsPoe(user) ? PoeCastJson : DefaultCastJson);
+        }
+        return null;
+    }
+
+    // ── Book → Fountain ────────────────────────────────────────────────
+    private static string? TryRespondFountain(string sys, string user)
+    {
+        if (sys.Contains("Fountain", StringComparison.OrdinalIgnoreCase) ||
+            user.Contains("--- PAGE", StringComparison.OrdinalIgnoreCase) ||
+            user.Contains("BEGIN BOOK", StringComparison.OrdinalIgnoreCase) ||
+            sys.Contains("book_to_fountain", StringComparison.OrdinalIgnoreCase))
+        {
+            return (IsPoe(user) ? PoeFountain : DefaultFountain);
+        }
+        return null;
+    }
+
+    // ── Silent beat duration classes ───────────────────────────────────
+    private static string? TryRespondSilentBeat(string sys, string user, string? mode)
+    {
+        if (sys.Contains("DURATION BUDGETING", StringComparison.OrdinalIgnoreCase) ||
+            mode == ChatCallModes.SilentBeatClassify)
+        {
+            return (BuildSilentBeatLabelsJson(user));
+        }
+        return null;
+    }
+
+    private static string? TryRespondClassifierPackA(string sys, string user, string? mode)
+    {
+        var hit = TryRespondAmbientSfx(sys, user, mode);
+        if (hit is not null) return hit;
+        hit = TryRespondOnScreenCast(sys, user, mode);
+        if (hit is not null) return hit;
+        hit = TryRespondExtendCut(sys, user, mode);
+        if (hit is not null) return hit;
+        hit = TryRespondSpeciesKind(sys, user, mode);
+        if (hit is not null) return hit;
+        hit = TryRespondPlateRank(sys, user, mode);
+        if (hit is not null) return hit;
+        hit = TryRespondShotPlanRefine(sys, mode);
+        if (hit is not null) return hit;
+        hit = TryRespondBeatPacing(sys, mode);
+        if (hit is not null) return hit;
+        hit = TryRespondCinematicLighting(sys, mode);
+        if (hit is not null) return hit;
+        return null;
+    }
+
+    private static string? TryRespondClassifierPackB(string sys, string? mode)
+    {
+        var hit = TryRespondCameraDirector(sys, mode);
+        if (hit is not null) return hit;
+        hit = TryRespondNegativePrompt(sys, mode);
+        if (hit is not null) return hit;
+        hit = TryRespondWardrobeContinuity(sys, mode);
+        if (hit is not null) return hit;
+        hit = TryRespondCharacterEmotionArc(sys, mode);
+        if (hit is not null) return hit;
+        hit = TryRespondSoundDesign(sys, mode);
+        if (hit is not null) return hit;
+        hit = TryRespondDepthOfField(sys, mode);
+        if (hit is not null) return hit;
+        hit = TryRespondColorPalette(sys, mode);
+        if (hit is not null) return hit;
+        return null;
+    }
+
+    private static string? TryRespondAmbientSfx(string sys, string user, string? mode)
+    {
+        if (mode == ChatCallModes.AmbientSfxClassify ||
+            sys.Contains("ambient bed vs SFX", StringComparison.OrdinalIgnoreCase) ||
+            sys.Contains("ambient BED vs transient SFX", StringComparison.OrdinalIgnoreCase))
+        {
+            return (BuildIdLabels(user, id =>
+                $$"""{"id":"{{id}}","ambient":"","sfx":""}"""));
+        }
+        return null;
+    }
+
+    private static string? TryRespondOnScreenCast(string sys, string user, string? mode)
+    {
+        if (mode == ChatCallModes.OnScreenCastClassify ||
+            sys.Contains("ON CAMERA", StringComparison.OrdinalIgnoreCase))
+        {
+            return (BuildIdLabels(user, id =>
+                $$"""{"id":"{{id}}","keys":[]}"""));
+        }
+        return null;
+    }
+
+    private static string? TryRespondExtendCut(string sys, string user, string? mode)
+    {
+        if (mode == ChatCallModes.ExtendCutClassify ||
+            sys.Contains("hard_cut vs extend", StringComparison.OrdinalIgnoreCase))
+        {
+            return (BuildIdLabels(user, id =>
+            {
+                var cls = id.EndsWith("_b1") ? "hard_cut" : "extend";
+                return $$"""{"id":"{{id}}","class":"{{cls}}"}""";
+            }));
+        }
+        return null;
+    }
+
+    private static string? TryRespondSpeciesKind(string sys, string user, string? mode)
+    {
+        if (mode == ChatCallModes.SpeciesKindClassify ||
+            sys.Contains("animal|human|other", StringComparison.OrdinalIgnoreCase))
+        {
+            // key-based payload
+            var labels = new List<string>();
+            foreach (Match m in CommonRegex.Matches(user, @"""key""\s*:\s*""([^""]+)"""))
+            {
+                var key = m.Groups[1].Value;
+                labels.Add(BuildSpeciesKindLabel(key));
+            }
+            return ("""{"labels":[""" + string.Join(",", labels) + "]}");
+        }
+        return null;
+    }
+
+    private static string BuildSpeciesKindLabel(string key)
+    {
+        var cls = key.Contains("Narrator", StringComparison.OrdinalIgnoreCase) ||
+                  key.Contains("Officer", StringComparison.OrdinalIgnoreCase) ||
+                  key.Contains("Man", StringComparison.OrdinalIgnoreCase) ||
+                  key.Contains("Mom", StringComparison.OrdinalIgnoreCase) ||
+                  key.Contains("Dad", StringComparison.OrdinalIgnoreCase)
+            ? "human"
+            : "other";
+        return $$"""{"key":"{{key}}","class":"{{cls}}"}""";
+    }
+
+    private static string? TryRespondPlateRank(string sys, string user, string? mode)
+    {
+        if (mode == ChatCallModes.PlateRankClassify ||
+            sys.Contains("book image basenames", StringComparison.OrdinalIgnoreCase))
+        {
+            var names = CommonRegex.Matches(user, @"""([^""]+\.(?:png|jpe?g|webp))""", RegexOptions.IgnoreCase)
+                .Select(m => m.Groups[1].Value)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(3)
+                .Select(n => "\"" + n.Replace("\\", "\\\\") + "\"")
+                .ToList();
+            return ("""{"ranked":[""" + string.Join(",", names) + "]}");
+        }
+        return null;
+    }
+
+    private static string? TryRespondIfMode(string sys, string? mode, string modeId, string needle, string json)
+    {
+        if (mode == modeId || sys.Contains(needle, StringComparison.OrdinalIgnoreCase))
+            return (json);
+        return null;
+    }
+
+    private static string? TryRespondShotPlanRefine(string sys, string? mode) =>
+        TryRespondIfMode(sys, mode, ChatCallModes.ShotPlanRefineClassify,
+            "cinematographer refining shot plans",
+            """{"refinements":[]}""");
+
+    private static string? TryRespondBeatPacing(string sys, string? mode) =>
+        TryRespondIfMode(sys, mode, ChatCallModes.BeatPacingClassify,
+            "duration pacing for screenplay beats",
+            """{"pacing":[]}""");
+
+    private static string? TryRespondCinematicLighting(string sys, string? mode) =>
+        TryRespondIfMode(sys, mode, ChatCallModes.CinematicLightingClassify,
+            "cinematographer and lighting director",
+            """{"lighting_token":"Chiaroscuro flickering candlelight with deep obsidian shadows and desaturated cool-gray volumetric fog"}""");
+
+    private static string? TryRespondCameraDirector(string sys, string? mode) =>
+        TryRespondIfMode(sys, mode, ChatCallModes.CameraDirectorClassify,
+            "Virtuoso Film Director and Director of Photography",
+            """{"directives":[]}""");
+
+    private static string? TryRespondNegativePrompt(string sys, string? mode) =>
+        TryRespondIfMode(sys, mode, ChatCallModes.NegativePromptClassify,
+            "Period Visual Continuity Guard",
+            """{"negative_tokens":"no modern wristwatches, no electric light bulbs, no plastic, no zippers, no printed text"}""");
+
+    private static string? TryRespondWardrobeContinuity(string sys, string? mode) =>
+        TryRespondIfMode(sys, mode, ChatCallModes.WardrobeContinuityClassify,
+            "Costume Department Supervisor",
+            """{"wardrobe":[]}""");
+
+    private static string? TryRespondCharacterEmotionArc(string sys, string? mode) =>
+        TryRespondIfMode(sys, mode, ChatCallModes.CharacterEmotionArcClassify,
+            "Acting Coach and Performance Director",
+            """{"emotions":[]}""");
+
+    private static string? TryRespondSoundDesign(string sys, string? mode) =>
+        TryRespondIfMode(sys, mode, ChatCallModes.SoundDesignComposerClassify,
+            "Sound Designer and Audio Supervisor",
+            """{"sound_design":[]}""");
+
+    private static string? TryRespondDepthOfField(string sys, string? mode) =>
+        TryRespondIfMode(sys, mode, ChatCallModes.DepthOfFieldClassify,
+            "Focus Puller and Optical Cinematographer",
+            """{"dof":[]}""");
+
+    private static string? TryRespondColorPalette(string sys, string? mode) =>
+        TryRespondIfMode(sys, mode, ChatCallModes.ColorPaletteGradingClassify,
+            "Master Colorist and Film Stock Director",
+            """{"film_stock":"Kodak Vision3 500T 5219 film stock, subtle 35mm grain","color_palette":"Desaturated cool-teal shadow tones with warm amber candle highlights","grading_prompt":"Color grading: Kodak Vision3 500T 5219 film stock, desaturated cool-teal shadows and warm amber candle highlights"}""");
+
 
     /// <summary>Echo beat ids with deterministic classes for fakes/CI (heuristic-shaped).</summary>
     private static string BuildSilentBeatLabelsJson(string user) =>

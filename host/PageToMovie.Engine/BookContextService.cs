@@ -129,29 +129,66 @@ public static class BookContextService
             };
         }
 
+        var hit = TryMatchBodyPageTags(pages, sceneBody, sceneHeading, sceneIndex);
+        if (hit is not null) return hit;
+        hit = TryMatchHeadingPage(pages, sceneHeading, sceneIndex);
+        if (hit is not null) return hit;
+        hit = TryMatchFuzzyPage(pages, sceneBody, sceneHeading, sceneIndex);
+        if (hit is not null) return hit;
+
+        // 4) Sequential: scene i → page i
+        if (sceneIndex >= 1 && sceneIndex <= pages.Count)
+            return Result(pages[sceneIndex - 1], sceneHeading, sceneIndex, pages.Count, "scene_index");
+
+        var fallback = pages[Math.Clamp(sceneIndex - 1, 0, pages.Count - 1)];
+        return Result(fallback, sceneHeading, sceneIndex, pages.Count, "fallback");
+    }
+
+    private static BookContextResult? TryMatchBodyPageTags(
+        List<BookPage> pages, string? sceneBody, string? sceneHeading, int sceneIndex)
+    {
         // 1) Page tags in scene body: = page N  or  [[page N]]
         if (!string.IsNullOrWhiteSpace(sceneBody))
         {
-            var nm = NotePage.Match(sceneBody);
-            if (nm.Success && int.TryParse(nm.Groups[1].Value, out var notePn))
-            {
-                var page = pages.FirstOrDefault(p => p.PageNumber == notePn);
-                if (page is not null)
-                    return Result(page, sceneHeading, sceneIndex, pages.Count, "note_page");
-            }
+            var note = TryMatchNotePage(pages, sceneBody, sceneHeading, sceneIndex);
+            if (note is not null) return note;
+            return TryMatchSynopsisPage(pages, sceneBody, sceneHeading, sceneIndex);
+        }
+        return null;
+    }
 
-            foreach (var line in sceneBody.Replace("\r\n", "\n").Split('\n'))
+    private static BookContextResult? TryMatchNotePage(
+        List<BookPage> pages, string sceneBody, string? sceneHeading, int sceneIndex)
+    {
+        var nm = NotePage.Match(sceneBody);
+        if (nm.Success && int.TryParse(nm.Groups[1].Value, out var notePn))
+        {
+            var page = pages.FirstOrDefault(p => p.PageNumber == notePn);
+            if (page is not null)
+                return Result(page, sceneHeading, sceneIndex, pages.Count, "note_page");
+        }
+        return null;
+    }
+
+    private static BookContextResult? TryMatchSynopsisPage(
+        List<BookPage> pages, string sceneBody, string? sceneHeading, int sceneIndex)
+    {
+        foreach (var line in sceneBody.Replace("\r\n", "\n").Split('\n'))
+        {
+            var sm = SynopsisPage.Match(line.Trim());
+            if (sm.Success && int.TryParse(sm.Groups[1].Value, out var synPn))
             {
-                var sm = SynopsisPage.Match(line.Trim());
-                if (sm.Success && int.TryParse(sm.Groups[1].Value, out var synPn))
-                {
-                    var page = pages.FirstOrDefault(p => p.PageNumber == synPn);
-                    if (page is not null)
-                        return Result(page, sceneHeading, sceneIndex, pages.Count, "synopsis_page");
-                }
+                var page = pages.FirstOrDefault(p => p.PageNumber == synPn);
+                if (page is not null)
+                    return Result(page, sceneHeading, sceneIndex, pages.Count, "synopsis_page");
             }
         }
+        return null;
+    }
 
+    private static BookContextResult? TryMatchHeadingPage(
+        List<BookPage> pages, string? sceneHeading, int sceneIndex)
+    {
         // 2) Explicit PAGE n in heading
         if (!string.IsNullOrWhiteSpace(sceneHeading))
         {
@@ -164,7 +201,12 @@ public static class BookContextService
                     return Result(page, sceneHeading, sceneIndex, pages.Count, "heading_page");
             }
         }
+        return null;
+    }
 
+    private static BookContextResult? TryMatchFuzzyPage(
+        List<BookPage> pages, string? sceneBody, string? sceneHeading, int sceneIndex)
+    {
         // 3) Fuzzy match scene body to a book page
         if (!string.IsNullOrWhiteSpace(sceneBody) && sceneBody.Trim().Length >= 16)
         {
@@ -172,13 +214,7 @@ public static class BookContextService
             if (fuzzy is not null && fuzzy.Score >= 2)
                 return Result(fuzzy.Page, sceneHeading, sceneIndex, pages.Count, "text_match");
         }
-
-        // 4) Sequential: scene i → page i
-        if (sceneIndex >= 1 && sceneIndex <= pages.Count)
-            return Result(pages[sceneIndex - 1], sceneHeading, sceneIndex, pages.Count, "scene_index");
-
-        var fallback = pages[Math.Clamp(sceneIndex - 1, 0, pages.Count - 1)];
-        return Result(fallback, sceneHeading, sceneIndex, pages.Count, "fallback");
+        return null;
     }
 
     private static BookContextResult Result(

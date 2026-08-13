@@ -189,95 +189,19 @@ public partial class Scenes
         // Build the clip work list from context. Detail view: the open scene's checked clips (or its
         // unverified on-disk clips). All-scenes view: every on-disk clip across the selected scenes.
         // Only clips with video on disk can be checked — there's nothing to analyse otherwise.
-        var targets = new List<(int Scene, int Clip)>();
-
-        if (S.List._detail is not null)
-        {
-            if (S.ClipSel._selectedClips.Count > 0)
-            {
-                foreach (var cn in S.ClipSel._selectedClips.OrderBy(c => c))
-                    targets.Add((S.List._detail.SceneNumber, cn));
-            }
-            else
-            {
-                foreach (var c in S.List._detail.Clips
-                    .Where(c => c.OnDisk && (c.DialogueVerification is null || !string.Equals(c.DialogueVerification.Status, "verified", StringComparison.OrdinalIgnoreCase)))
-                    .OrderBy(c => c.ClipNumber))
-                    targets.Add((S.List._detail.SceneNumber, c.ClipNumber));
-            }
-        }
-        else if (S.List._selected.Count > 0)
-        {
-            // All-scenes view: gather each selected scene's on-disk clips (the button is gated so this
-            // path only runs when at least one selected scene actually has finished clips).
-            foreach (var sn in S.List._selected.OrderBy(x => x))
-            {
-                var det = (await S.Engine.GetSceneDetailAsync(S._projectId, sn))?.Scene;
-                if (det?.Clips is null) continue;
-                foreach (var c in det.Clips.Where(c => c.OnDisk).OrderBy(c => c.ClipNumber))
-                    targets.Add((sn, c.ClipNumber));
-            }
-        }
+        var targets = await CollectDialogueVerifyTargetsAsync();
 
         if (targets.Count == 0)
         {
             // Never a silent dead click — say why there's nothing to do.
-            S._message = S.List._detail is not null
-                ? "All clips verified. Tick specific clip boxes in the first column to force a re-check."
-                : S.List._selected.Count == 0
-                    ? "Select one or more scenes with finished clips to verify."
-                    : "Selected scenes have no finished clips to verify yet.";
+            S._message = EmptyVerifyTargetsMessage();
             return;
         }
 
         try
         {
-            _verifyingClip = true;
-            _verifyCurrent = 0;
-            _verifyTotal = targets.Count;
-            _verifyStatusLabel = $"Verifying dialogue for {targets.Count} clip(s)...";
-            S.StateHasChanged();
-
-            foreach (var (sceneNum, cn) in targets)
-            {
-                _verifyCurrent++;
-                _verifyingClipNumber = cn;
-                var clip = S.List._detail?.SceneNumber == sceneNum
-                    ? S.List._detail?.Clips?.FirstOrDefault(c => c.ClipNumber == cn)
-                    : null;
-                _verifyStatusLabel = $"Verifying dialogue for S{sceneNum:D2} C{cn:D2} (Speaker: {clip?.Speaker ?? "Unknown"})...";
-                S.StateHasChanged();
-
-                var expectedSize = await S.ClipRegen.ResolveExpectedClipSizeAsync(sceneNum, cn);
-                var videoBytes = await S.MediaFolder.GetClipBytesAsync(S._projectId, sceneNum, cn, expectedSize);
-                var ver = await S.Engine.VerifyClipDialogueAsync(S._projectId, sceneNum, cn, videoBytes: videoBytes, force: true);
-                if (ver is not null)
-                {
-                    if (clip is not null)
-                    {
-                        clip.DialogueVerification = ver;
-                        if (_showVerificationModal && _verifModalClipNumber == cn && _verifModalSceneNumber == sceneNum)
-                        {
-                            _verifModalResult = ver;
-                        }
-                    }
-                    if (string.Equals(ver.Status, "unverified", StringComparison.OrdinalIgnoreCase))
-                    {
-                        S._error = ver.SummaryNote ?? "Clip Dialogue Verification requires Google Gemini (GEMINI_API_KEY). Gemini is the only provider that supports native video & audio dialogue analysis. Please add your Gemini key in Configuration.";
-                    }
-                    S.StateHasChanged();
-                }
-            }
-
-            if (S.List._detail is not null)
-            {
-                S.List._detail = (await S.Engine.GetSceneDetailAsync(S._projectId, S.List._detail.SceneNumber))?.Scene;
-            }
-            var scenesDto = await S.Engine.GetScenesAsync(S._projectId);
-            if (scenesDto?.Scenes is not null)
-            {
-                S.List._scenes = scenesDto.Scenes;
-            }
+            await RunDialogueVerificationAsync(targets);
+            await RefreshScenesAfterVerificationAsync();
         }
         catch (Exception ex)
         {
@@ -290,6 +214,114 @@ public partial class Scenes
             _verifyCurrent = 0;
             _verifyTotal = 0;
             S.StateHasChanged();
+        }
+    }
+
+    private async Task<List<(int Scene, int Clip)>> CollectDialogueVerifyTargetsAsync()
+    {
+        var targets = new List<(int Scene, int Clip)>();
+        if (S.List._detail is not null)
+            CollectDetailViewTargets(S.List._detail, targets);
+        else if (S.List._selected.Count > 0)
+            await CollectSelectedScenesTargetsAsync(targets);
+        return targets;
+    }
+
+    private void CollectDetailViewTargets(SceneDetail detail, List<(int Scene, int Clip)> targets)
+    {
+        if (S.ClipSel._selectedClips.Count > 0)
+        {
+            foreach (var cn in S.ClipSel._selectedClips.OrderBy(c => c))
+                targets.Add((detail.SceneNumber, cn));
+        }
+        else
+        {
+            foreach (var c in detail.Clips
+                .Where(NeedsDialogueVerification)
+                .OrderBy(c => c.ClipNumber))
+                targets.Add((detail.SceneNumber, c.ClipNumber));
+        }
+    }
+
+    private static bool NeedsDialogueVerification(ClipSummary c) =>
+        c.OnDisk && (c.DialogueVerification is null || !string.Equals(c.DialogueVerification.Status, "verified", StringComparison.OrdinalIgnoreCase));
+
+    private async Task CollectSelectedScenesTargetsAsync(List<(int Scene, int Clip)> targets)
+    {
+        // All-scenes view: gather each selected scene's on-disk clips (the button is gated so this
+        // path only runs when at least one selected scene actually has finished clips).
+        foreach (var sn in S.List._selected.OrderBy(x => x))
+        {
+            var det = (await S.Engine.GetSceneDetailAsync(S._projectId, sn))?.Scene;
+            if (det?.Clips is null) continue;
+            foreach (var c in det.Clips.Where(c => c.OnDisk).OrderBy(c => c.ClipNumber))
+                targets.Add((sn, c.ClipNumber));
+        }
+    }
+
+    private string EmptyVerifyTargetsMessage() =>
+        S.List._detail is not null
+            ? "All clips verified. Tick specific clip boxes in the first column to force a re-check."
+            : S.List._selected.Count == 0
+                ? "Select one or more scenes with finished clips to verify."
+                : "Selected scenes have no finished clips to verify yet.";
+
+    private async Task RunDialogueVerificationAsync(List<(int Scene, int Clip)> targets)
+    {
+        _verifyingClip = true;
+        _verifyCurrent = 0;
+        _verifyTotal = targets.Count;
+        _verifyStatusLabel = $"Verifying dialogue for {targets.Count} clip(s)...";
+        S.StateHasChanged();
+
+        foreach (var (sceneNum, cn) in targets)
+            await VerifyOneClipDialogueAsync(sceneNum, cn);
+    }
+
+    private async Task VerifyOneClipDialogueAsync(int sceneNum, int cn)
+    {
+        _verifyCurrent++;
+        _verifyingClipNumber = cn;
+        var clip = S.List._detail?.SceneNumber == sceneNum
+            ? S.List._detail?.Clips?.FirstOrDefault(c => c.ClipNumber == cn)
+            : null;
+        _verifyStatusLabel = $"Verifying dialogue for S{sceneNum:D2} C{cn:D2} (Speaker: {clip?.Speaker ?? "Unknown"})...";
+        S.StateHasChanged();
+
+        var expectedSize = await S.ClipRegen.ResolveExpectedClipSizeAsync(sceneNum, cn);
+        var videoBytes = await S.MediaFolder.GetClipBytesAsync(S._projectId, sceneNum, cn, expectedSize);
+        var ver = await S.Engine.VerifyClipDialogueAsync(S._projectId, sceneNum, cn, videoBytes: videoBytes, force: true);
+        if (ver is not null)
+            ApplyVerificationResult(clip, sceneNum, cn, ver);
+    }
+
+    private void ApplyVerificationResult(ClipSummary? clip, int sceneNum, int cn, ClipDialogueVerificationResult ver)
+    {
+        if (clip is not null)
+        {
+            clip.DialogueVerification = ver;
+            if (_showVerificationModal && _verifModalClipNumber == cn && _verifModalSceneNumber == sceneNum)
+            {
+                _verifModalResult = ver;
+            }
+        }
+        if (string.Equals(ver.Status, "unverified", StringComparison.OrdinalIgnoreCase))
+        {
+            S._error = ver.SummaryNote ?? "Clip Dialogue Verification requires Google Gemini (GEMINI_API_KEY). Gemini is the only provider that supports native video & audio dialogue analysis. Please add your Gemini key in Configuration.";
+        }
+        S.StateHasChanged();
+    }
+
+    private async Task RefreshScenesAfterVerificationAsync()
+    {
+        if (S.List._detail is not null)
+        {
+            S.List._detail = (await S.Engine.GetSceneDetailAsync(S._projectId, S.List._detail.SceneNumber))?.Scene;
+        }
+        var scenesDto = await S.Engine.GetScenesAsync(S._projectId);
+        if (scenesDto?.Scenes is not null)
+        {
+            S.List._scenes = scenesDto.Scenes;
         }
     }
 

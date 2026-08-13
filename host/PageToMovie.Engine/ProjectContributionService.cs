@@ -131,133 +131,192 @@ public sealed class ProjectContributionService
         {
             ct.ThrowIfCancellationRequested();
             var originFilePath = Path.Combine(originDir, clip.RelativePath);
-            var originDirName = Path.GetDirectoryName(originFilePath);
-            if (!string.IsNullOrEmpty(originDirName))
-                Directory.CreateDirectory(originDirName);
+            EnsureParentDirectory(originFilePath);
 
-            bool originExists = File.Exists(originFilePath);
-            if (originExists)
-            {
-                if (!string.IsNullOrWhiteSpace(clip.Sha256))
-                {
-                    var hashMatches = false;
-                    try
-                    {
-                        var existingHash = await MediaRegistryService.HashFileAsync(originFilePath, ct).ConfigureAwait(false);
-                        hashMatches = string.Equals(existingHash, clip.Sha256, StringComparison.OrdinalIgnoreCase);
-                    }
-                    catch (Exception)
-                    {
-                        // Unreadable origin file is treated as a mismatch so we re-copy.
-                        hashMatches = false;
-                    }
-                    if (hashMatches)
-                    {
-                        result.VerifiedCount++;
-                        continue;
-                    }
-                }
-                else
-                {
-                    result.VerifiedCount++;
-                    continue;
-                }
-            }
+            if (await OriginAlreadyVerifiedAsync(originFilePath, clip, result, ct).ConfigureAwait(false))
+                continue;
 
-            bool synced = false;
-
-            // Path A: Try Provider CDN
-            if (!string.IsNullOrWhiteSpace(clip.ProviderCdnUrl) &&
-                Uri.TryCreate(clip.ProviderCdnUrl, UriKind.Absolute, out var uri) &&
-                (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
-            {
-                try
-                {
-                    var bytes = await http.GetByteArrayAsync(uri, ct).ConfigureAwait(false);
-                    if (bytes.Length > 0)
-                    {
-                        if (!string.IsNullOrWhiteSpace(clip.Sha256))
-                        {
-                            var downloadedHash = MediaRegistryService.HashBytes(bytes);
-                            if (string.Equals(downloadedHash, clip.Sha256, StringComparison.OrdinalIgnoreCase))
-                            {
-                                await File.WriteAllBytesAsync(originFilePath, bytes, ct).ConfigureAwait(false);
-                                result.CdnDownloadCount++;
-                                result.SyncedCount++;
-                                result.VerifiedCount++;
-                                synced = true;
-                            }
-                        }
-                        else
-                        {
-                            await File.WriteAllBytesAsync(originFilePath, bytes, ct).ConfigureAwait(false);
-                            result.CdnDownloadCount++;
-                            result.SyncedCount++;
-                            synced = true;
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogInformation(ex, "CDN download failed for clip {Path}, falling back to local proxy", clip.RelativePath);
-                }
-            }
+            var synced = await TryDownloadClipFromCdnAsync(clip, originFilePath, http!, result, ct).ConfigureAwait(false);
 
             // Path B: Fallback to local target proxy copy
             if (!synced)
-            {
-                var targetFilePath = Path.Combine(targetDir, clip.RelativePath);
-                if (File.Exists(targetFilePath))
-                {
-                    try
-                    {
-                        File.Copy(targetFilePath, originFilePath, overwrite: true);
-                        result.LocalCopyCount++;
-                        result.SyncedCount++;
+                synced = await TryCopyClipFromTargetAsync(clip, targetDir, originFilePath, result, ct).ConfigureAwait(false);
 
-                        if (!string.IsNullOrWhiteSpace(clip.Sha256))
-                        {
-                            var copiedHash = await MediaRegistryService.HashFileAsync(originFilePath, ct).ConfigureAwait(false);
-                            if (string.Equals(copiedHash, clip.Sha256, StringComparison.OrdinalIgnoreCase))
-                            {
-                                result.VerifiedCount++;
-                            }
-                        }
-                        synced = true;
-                    }
-                    catch (Exception ex)
-                    {
-                        result.Errors.Add($"Failed to copy local clip {clip.RelativePath}: {ex.Message}");
-                    }
-                }
-                else
-                {
-                    result.Errors.Add($"Clip file {clip.RelativePath} not found in target or CDN.");
-                }
-            }
-
-            if (synced && _mediaRegistry is not null && !string.IsNullOrWhiteSpace(clip.Sha256))
-            {
-                try
-                {
-                    var fi = new FileInfo(originFilePath);
-                    var originProjId = Path.GetFileName(originDir);
-                    await _mediaRegistry.UpsertAsync(
-                        originProjId,
-                        clip.RelativePath,
-                        clip.Sha256,
-                        fi.Length,
-                        "clip",
-                        clip.SceneIndex,
-                        clip.ClipIndex,
-                        userId: null,
-                        ct: ct).ConfigureAwait(false);
-                }
-                catch { /* best effort */ }
-            }
+            if (synced)
+                await TryUpsertMediaRegistryAsync(clip, originFilePath, originDir, ct).ConfigureAwait(false);
         }
 
         return result;
+    }
+
+    private static void EnsureParentDirectory(string originFilePath)
+    {
+        var originDirName = Path.GetDirectoryName(originFilePath);
+        if (!string.IsNullOrEmpty(originDirName))
+            Directory.CreateDirectory(originDirName);
+    }
+
+    private static async Task<bool> OriginAlreadyVerifiedAsync(
+        string originFilePath,
+        MediaClipContributionDto clip,
+        MediaSyncResultDto result,
+        CancellationToken ct)
+    {
+        bool originExists = File.Exists(originFilePath);
+        if (originExists)
+        {
+            if (!string.IsNullOrWhiteSpace(clip.Sha256))
+            {
+                var hashMatches = false;
+                try
+                {
+                    var existingHash = await MediaRegistryService.HashFileAsync(originFilePath, ct).ConfigureAwait(false);
+                    hashMatches = string.Equals(existingHash, clip.Sha256, StringComparison.OrdinalIgnoreCase);
+                }
+                catch (Exception)
+                {
+                    // Unreadable origin file is treated as a mismatch so we re-copy.
+                    hashMatches = false;
+                }
+                if (hashMatches)
+                {
+                    result.VerifiedCount++;
+                    return true;
+                }
+            }
+            else
+            {
+                result.VerifiedCount++;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private async Task<bool> TryDownloadClipFromCdnAsync(
+        MediaClipContributionDto clip,
+        string originFilePath,
+        HttpClient http,
+        MediaSyncResultDto result,
+        CancellationToken ct)
+    {
+        // Path A: Try Provider CDN
+        if (!string.IsNullOrWhiteSpace(clip.ProviderCdnUrl) &&
+            Uri.TryCreate(clip.ProviderCdnUrl, UriKind.Absolute, out var uri) &&
+            (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
+        {
+            try
+            {
+                var bytes = await http.GetByteArrayAsync(uri, ct).ConfigureAwait(false);
+                return await TryWriteCdnBytesIfValidAsync(clip, originFilePath, bytes, result, ct).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogInformation(ex, "CDN download failed for clip {Path}, falling back to local proxy", clip.RelativePath);
+            }
+        }
+
+        return false;
+    }
+
+    private static async Task<bool> TryWriteCdnBytesIfValidAsync(
+        MediaClipContributionDto clip,
+        string originFilePath,
+        byte[] bytes,
+        MediaSyncResultDto result,
+        CancellationToken ct)
+    {
+        if (bytes.Length > 0)
+        {
+            if (!string.IsNullOrWhiteSpace(clip.Sha256))
+            {
+                var downloadedHash = MediaRegistryService.HashBytes(bytes);
+                if (string.Equals(downloadedHash, clip.Sha256, StringComparison.OrdinalIgnoreCase))
+                {
+                    await File.WriteAllBytesAsync(originFilePath, bytes, ct).ConfigureAwait(false);
+                    result.CdnDownloadCount++;
+                    result.SyncedCount++;
+                    result.VerifiedCount++;
+                    return true;
+                }
+            }
+            else
+            {
+                await File.WriteAllBytesAsync(originFilePath, bytes, ct).ConfigureAwait(false);
+                result.CdnDownloadCount++;
+                result.SyncedCount++;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static async Task<bool> TryCopyClipFromTargetAsync(
+        MediaClipContributionDto clip,
+        string targetDir,
+        string originFilePath,
+        MediaSyncResultDto result,
+        CancellationToken ct)
+    {
+        var targetFilePath = Path.Combine(targetDir, clip.RelativePath);
+        if (File.Exists(targetFilePath))
+        {
+            try
+            {
+                File.Copy(targetFilePath, originFilePath, overwrite: true);
+                result.LocalCopyCount++;
+                result.SyncedCount++;
+
+                if (!string.IsNullOrWhiteSpace(clip.Sha256))
+                {
+                    var copiedHash = await MediaRegistryService.HashFileAsync(originFilePath, ct).ConfigureAwait(false);
+                    if (string.Equals(copiedHash, clip.Sha256, StringComparison.OrdinalIgnoreCase))
+                    {
+                        result.VerifiedCount++;
+                    }
+                }
+                return true;
+            }
+            catch (Exception ex)
+            {
+                result.Errors.Add($"Failed to copy local clip {clip.RelativePath}: {ex.Message}");
+            }
+        }
+        else
+        {
+            result.Errors.Add($"Clip file {clip.RelativePath} not found in target or CDN.");
+        }
+
+        return false;
+    }
+
+    private async Task TryUpsertMediaRegistryAsync(
+        MediaClipContributionDto clip,
+        string originFilePath,
+        string originDir,
+        CancellationToken ct)
+    {
+        if (_mediaRegistry is not null && !string.IsNullOrWhiteSpace(clip.Sha256))
+        {
+            try
+            {
+                var fi = new FileInfo(originFilePath);
+                var originProjId = Path.GetFileName(originDir);
+                await _mediaRegistry.UpsertAsync(
+                    originProjId,
+                    clip.RelativePath,
+                    clip.Sha256,
+                    fi.Length,
+                    "clip",
+                    clip.SceneIndex,
+                    clip.ClipIndex,
+                    userId: null,
+                    ct: ct).ConfigureAwait(false);
+            }
+            catch { /* best effort */ }
+        }
     }
 
     private static async Task<List<MediaClipContributionDto>> ComputeMediaClipsAsync(string targetDir, string originDir, CancellationToken ct = default)
@@ -309,35 +368,34 @@ public sealed class ProjectContributionService
             if (root.TryGetProperty("scenes", out var scenes) && scenes.ValueKind == JsonValueKind.Array)
             {
                 foreach (var scene in scenes.EnumerateArray())
-                {
-                    int sceneIdx = 1;
-                    if (scene.TryGetProperty("scene_index", out var sIdx)) sceneIdx = sIdx.GetInt32();
-                    else if (scene.TryGetProperty("scene", out var sIdx2)) sceneIdx = sIdx2.GetInt32();
-
-                    if (scene.TryGetProperty("veo_clips", out var vClips) && vClips.ValueKind == JsonValueKind.Array)
-                    {
-                        int cIndex = 1;
-                        foreach (var clip in vClips.EnumerateArray())
-                        {
-                            var dto = ParseClipElement(clip, sceneIdx, cIndex++, projectDir);
-                            if (dto is not null) clips.Add(dto);
-                        }
-                    }
-                    else if (scene.TryGetProperty("clips", out var sClips) && sClips.ValueKind == JsonValueKind.Array)
-                    {
-                        int cIndex = 1;
-                        foreach (var clip in sClips.EnumerateArray())
-                        {
-                            var dto = ParseClipElement(clip, sceneIdx, cIndex++, projectDir);
-                            if (dto is not null) clips.Add(dto);
-                        }
-                    }
-                }
+                    AppendClipsFromScene(scene, projectDir, clips);
             }
         }
         catch { /* best effort */ }
 
         return clips;
+    }
+
+    private static void AppendClipsFromScene(JsonElement scene, string projectDir, List<MediaClipContributionDto> clips)
+    {
+        int sceneIdx = 1;
+        if (scene.TryGetProperty("scene_index", out var sIdx)) sceneIdx = sIdx.GetInt32();
+        else if (scene.TryGetProperty("scene", out var sIdx2)) sceneIdx = sIdx2.GetInt32();
+
+        if (scene.TryGetProperty("veo_clips", out var vClips) && vClips.ValueKind == JsonValueKind.Array)
+            AppendClipsFromJsonArray(vClips, sceneIdx, projectDir, clips);
+        else if (scene.TryGetProperty("clips", out var sClips) && sClips.ValueKind == JsonValueKind.Array)
+            AppendClipsFromJsonArray(sClips, sceneIdx, projectDir, clips);
+    }
+
+    private static void AppendClipsFromJsonArray(JsonElement clipsArray, int sceneIdx, string projectDir, List<MediaClipContributionDto> clips)
+    {
+        int cIndex = 1;
+        foreach (var clip in clipsArray.EnumerateArray())
+        {
+            var dto = ParseClipElement(clip, sceneIdx, cIndex++, projectDir);
+            if (dto is not null) clips.Add(dto);
+        }
     }
 
     private static MediaClipContributionDto? ParseClipElement(JsonElement clip, int defaultScene, int defaultClip, string projectDir)

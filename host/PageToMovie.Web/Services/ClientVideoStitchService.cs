@@ -423,27 +423,7 @@ public sealed class ClientVideoStitchService
         var frames = new List<ClipAutoReviewClientFrame>();
         try
         {
-            if (clip > 1)
-            {
-                var prevUrl = await ResolveClipUrlAsync(projectId, scene, clip - 1, ct);
-                if (!string.IsNullOrWhiteSpace(prevUrl))
-                {
-                    var prev = await ExtractFramesRawAsync(prevUrl, mode: "tail", count: 3, ct);
-                    if (prev.Success && prev.Frames is { Count: > 0 })
-                    {
-                        foreach (var f in prev.Frames)
-                        {
-                            if (string.IsNullOrWhiteSpace(f.Base64)) continue;
-                            frames.Add(new ClipAutoReviewClientFrame
-                            {
-                                Label = "PREVIOUS_CLIP_TAIL",
-                                Mime = string.IsNullOrWhiteSpace(f.Mime) ? "image/jpeg" : f.Mime,
-                                Base64 = f.Base64,
-                            });
-                        }
-                    }
-                }
-            }
+            await AppendPreviousClipTailFramesAsync(projectId, scene, clip, frames, ct);
 
             var curUrl = await ResolveClipUrlAsync(projectId, scene, clip, ct);
             if (string.IsNullOrWhiteSpace(curUrl))
@@ -453,16 +433,7 @@ public sealed class ClientVideoStitchService
             if (!cur.Success || cur.Frames is null || cur.Frames.Count == 0)
                 return (frames, cur.Error ?? "Could not sample frames from current clip");
 
-            foreach (var f in cur.Frames)
-            {
-                if (string.IsNullOrWhiteSpace(f.Base64)) continue;
-                frames.Add(new ClipAutoReviewClientFrame
-                {
-                    Label = "CURRENT_CLIP",
-                    Mime = string.IsNullOrWhiteSpace(f.Mime) ? "image/jpeg" : f.Mime,
-                    Base64 = f.Base64,
-                });
-            }
+            AppendLabeledFrames(frames, cur.Frames, "CURRENT_CLIP");
 
             if (frames.Count == 0)
                 return (frames, "No frames produced");
@@ -471,6 +442,36 @@ public sealed class ClientVideoStitchService
         catch (Exception ex)
         {
             return (frames, ex.Message);
+        }
+    }
+
+    private async Task AppendPreviousClipTailFramesAsync(
+        string projectId, int scene, int clip, List<ClipAutoReviewClientFrame> frames, CancellationToken ct)
+    {
+        if (clip > 1)
+        {
+            var prevUrl = await ResolveClipUrlAsync(projectId, scene, clip - 1, ct);
+            if (!string.IsNullOrWhiteSpace(prevUrl))
+            {
+                var prev = await ExtractFramesRawAsync(prevUrl, mode: "tail", count: 3, ct);
+                if (prev.Success && prev.Frames is { Count: > 0 })
+                    AppendLabeledFrames(frames, prev.Frames, "PREVIOUS_CLIP_TAIL");
+            }
+        }
+    }
+
+    private static void AppendLabeledFrames(
+        List<ClipAutoReviewClientFrame> frames, IReadOnlyList<JsFrameItem> source, string label)
+    {
+        foreach (var f in source)
+        {
+            if (string.IsNullOrWhiteSpace(f.Base64)) continue;
+            frames.Add(new ClipAutoReviewClientFrame
+            {
+                Label = label,
+                Mime = string.IsNullOrWhiteSpace(f.Mime) ? "image/jpeg" : f.Mime,
+                Base64 = f.Base64,
+            });
         }
     }
 

@@ -187,17 +187,46 @@ public sealed class GrokImageClient : IImageClient
         // (same "fail loud" principle as Veo's MaxReferenceImages=0).
         var cap = ProviderMediaHelpers.ResolveReferenceImageCap(modelName, maxRefs);
 
-        var hasCostumeRef = !string.IsNullOrWhiteSpace(costumeRefPath) && File.Exists(costumeRefPath);
+        var hasCostumeRef = HasUsableCostumeRef(costumeRefPath);
         // Reserve one slot for the costume ref so identity refs + costume ref never exceed cap
         var identityCap = hasCostumeRef ? Math.Max(1, cap - 1) : cap;
 
-        var refs = referenceImagePaths
-            .Where(p => !string.IsNullOrWhiteSpace(p) && File.Exists(p))
-            .Take(identityCap)
-            .ToList();
+        var refs = SelectUsableReferencePaths(referenceImagePaths, identityCap);
         if (refs.Count == 0 && !hasCostumeRef)
             throw new InvalidOperationException("No usable reference images for character edit.");
 
+        var (imageUris, identityCount, costumeIndex, refNames) =
+            await LoadEditReferenceUrisAsync(refs, hasCostumeRef, costumeRefPath, ct).ConfigureAwait(false);
+
+        using var throttle = new SemaphoreSlim(3, 3);
+        var tasks = Enumerable.Range(0, n).Select(i => RunThrottledEditVariantAsync(
+            throttle, i, n, prompt, identityCount, costumeIndex, illustratedMedium,
+            modelName, aspectRatio, imageUris, refNames, onProgress, ct));
+
+        var results = await Task.WhenAll(tasks).ConfigureAwait(false);
+        var images = results.Where(b => b is { Length: > 0 }).ToList();
+
+        if (images.Count < 1)
+            throw new InvalidOperationException("Image edit returned no variants.");
+        return images.Take(n).ToList();
+    }
+
+    private static bool HasUsableCostumeRef(string? costumeRefPath) =>
+        !string.IsNullOrWhiteSpace(costumeRefPath) && File.Exists(costumeRefPath);
+
+    private static List<string> SelectUsableReferencePaths(IReadOnlyList<string> referenceImagePaths, int identityCap) =>
+        referenceImagePaths
+            .Where(p => !string.IsNullOrWhiteSpace(p) && File.Exists(p))
+            .Take(identityCap)
+            .ToList();
+
+    private async Task<(List<string> ImageUris, int IdentityCount, int CostumeIndex, List<string> RefNames)>
+        LoadEditReferenceUrisAsync(
+            IReadOnlyList<string> refs,
+            bool hasCostumeRef,
+            string? costumeRefPath,
+            CancellationToken ct)
+    {
         // Downscale book plates. Three full-page PNGs as data URIs often exceed the
         // request size limit; two images are more likely to succeed.
         var imageUris = new List<string>(refs.Count + (hasCostumeRef ? 1 : 0));
@@ -216,155 +245,205 @@ public sealed class GrokImageClient : IImageClient
         var refNames = refs.Select(Path.GetFileName).OfType<string>().ToList();
         if (hasCostumeRef && Path.GetFileName(costumeRefPath) is { } costumeFileName)
             refNames.Add(costumeFileName);
-        using var throttle = new SemaphoreSlim(3, 3);
-        var tasks = Enumerable.Range(0, n).Select(async i =>
+        return (imageUris, identityCount, costumeIndex, refNames);
+    }
+
+    private async Task<byte[]> RunThrottledEditVariantAsync(
+        SemaphoreSlim throttle,
+        int i,
+        int n,
+        string prompt,
+        int identityCount,
+        int costumeIndex,
+        bool illustratedMedium,
+        string modelName,
+        AspectRatio aspectRatio,
+        IReadOnlyList<string> imageUris,
+        List<string> refNames,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
+        await throttle.WaitAsync(ct).ConfigureAwait(false);
+        try
         {
-            await throttle.WaitAsync(ct).ConfigureAwait(false);
-            try
+            return await EditOneVariantAsync(
+                    i, n, prompt, identityCount, costumeIndex, illustratedMedium,
+                    modelName, aspectRatio, imageUris, refNames, onProgress, ct)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            throttle.Release();
+        }
+    }
+
+    private static string BuildEditVariantPrompt(
+        string prompt,
+        int identityCount,
+        int costumeIndex,
+        bool illustratedMedium,
+        int i,
+        int n)
+    {
+        var orderHint = BuildEditOrderHint(identityCount, costumeIndex);
+        var variantTail = BuildEditVariantTail(illustratedMedium, i, n);
+        var mediumClause = illustratedMedium
+            ? "Keep the children's picture-book illustration style from the refs — not photoreal photography. "
+            : "Keep the photoreal live-action look from the refs — NOT illustration, NOT cartoon, NOT painted/drawn medium. ";
+        return orderHint +
+            prompt +
+            variantTail +
+            mediumClause +
+            "If refs show no clothing, do not invent costumes. " +
+            "No labels, no redesign, no model sheet.";
+    }
+
+    private static string BuildEditOrderHint(int identityCount, int costumeIndex)
+    {
+        var orderHint = identityCount switch
+        {
+            > 1 => BuildMultiImageOrderHint(identityCount),
+            1 => costumeIndex >= 0
+                ? "<IMAGE_0> is the character identity AND art style reference (highest priority over text). "
+                : "Match the attached reference identity AND illustration style (highest priority over text). ",
+            _ => "",
+        };
+        if (costumeIndex >= 0)
+            orderHint += BuildCostumeRefHint(identityCount, costumeIndex);
+        return orderHint;
+    }
+
+    private static string BuildCostumeRefHint(int identityCount, int costumeIndex)
+    {
+        var identityLabel = identityCount switch
+        {
+            0 => "",
+            1 => "<IMAGE_0>",
+            _ => $"<IMAGE_0>..<IMAGE_{identityCount - 1}>",
+        };
+        return
+            $"<IMAGE_{costumeIndex}> is a COSTUME REFERENCE ONLY (shared wardrobe design) — " +
+            "copy its coat, hat/cap, badge, and garment details exactly. " +
+            "COMPLETELY IGNORE any face, body, or person shown in that image — " +
+            "this character's own face and identity must come from " +
+            (identityCount > 0 ? "the other reference image(s) and " : "") +
+            "the text description below, never from the costume reference. " +
+            (identityCount > 0
+                ? $"Conversely, IGNORE any hat/coat/badge visible in {identityLabel} — " +
+                  $"wardrobe comes ONLY from <IMAGE_{costumeIndex}>, even if {identityLabel} shows " +
+                  "different or older wardrobe. "
+                : "");
+    }
+
+    private static string BuildEditVariantTail(bool illustratedMedium, int i, int n) =>
+        illustratedMedium
+            ? (n > 1
+                ? $" Variation {i + 1} of {n}: tiny pose/expression change only; " +
+                  "same identity, markings, and illustrated medium as the book references. "
+                : " Single refined continuity portrait in the book’s illustration style. ")
+            : (n > 1
+                ? $" Variation {i + 1} of {n}: tiny pose/expression change only; " +
+                  "same identity, markings, and photoreal medium as the reference(s). "
+                : " Single refined photoreal continuity portrait matching the reference(s). ");
+
+    private async Task<byte[]> EditOneVariantAsync(
+        int i,
+        int n,
+        string prompt,
+        int identityCount,
+        int costumeIndex,
+        bool illustratedMedium,
+        string modelName,
+        AspectRatio aspectRatio,
+        IReadOnlyList<string> imageUris,
+        List<string> refNames,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        onProgress?.Invoke($"edit variant {i + 1}/{n}");
+
+        var variantPrompt = BuildEditVariantPrompt(
+            prompt, identityCount, costumeIndex, illustratedMedium, i, n);
+
+        var sw = Stopwatch.StartNew();
+        // Attempt below is the retry-attempt count (1 = succeeded first try), matching
+        // GrokChatClient/GrokVisionClient and what the analytics "retried" stat expects —
+        // NOT the variant index (that's already implicit in which task this is; the prompt
+        // itself says "Variation i+1 of n").
+        var retryAttempt = 1;
+        try
+        {
+            // Same whole-request transient retry as GenerateVariantsAsync — image gen is
+            // cheap enough that an extra retried edit isn't a real cost concern.
+            var body = await AiRetryPolicy.ExecuteWithTransientRetryAsync(
+                _ => PostImageEditAsync(modelName, variantPrompt, aspectRatio, imageUris, onProgress, ct),
+                isTransient: AiRetryPolicy.IsTransientChatFailure,
+                maxAttempts: AiRetryPolicy.DefaultTransientMaxAttempts,
+                backoffBaseMs: AiRetryPolicy.DefaultTransientBackoffMs,
+                onRetry: (attemptNum, ex) =>
+                {
+                    retryAttempt = attemptNum + 1;
+                    return _errorLogger.LogRetryAttemptAsync("grok_image_edit", modelName, $"variant={i + 1}/{n}", attemptNum, ex, ct);
+                },
+                ct: ct).ConfigureAwait(false);
+            if (body is null)
             {
-                ct.ThrowIfCancellationRequested();
-                onProgress?.Invoke($"edit variant {i + 1}/{n}");
-
-                var orderHint = identityCount switch
+                await _telemetry.LogApiCallAsync(new ApiCallTelemetry
                 {
-                    > 1 => BuildMultiImageOrderHint(identityCount),
-                    1 => costumeIndex >= 0
-                        ? "<IMAGE_0> is the character identity AND art style reference (highest priority over text). "
-                        : "Match the attached reference identity AND illustration style (highest priority over text). ",
-                    _ => "",
-                };
-                if (costumeIndex >= 0)
-                {
-                    var identityLabel = identityCount switch
-                    {
-                        0 => "",
-                        1 => "<IMAGE_0>",
-                        _ => $"<IMAGE_0>..<IMAGE_{identityCount - 1}>",
-                    };
-                    orderHint +=
-                        $"<IMAGE_{costumeIndex}> is a COSTUME REFERENCE ONLY (shared wardrobe design) — " +
-                        "copy its coat, hat/cap, badge, and garment details exactly. " +
-                        "COMPLETELY IGNORE any face, body, or person shown in that image — " +
-                        "this character's own face and identity must come from " +
-                        (identityCount > 0 ? "the other reference image(s) and " : "") +
-                        "the text description below, never from the costume reference. " +
-                        (identityCount > 0
-                            ? $"Conversely, IGNORE any hat/coat/badge visible in {identityLabel} — " +
-                              $"wardrobe comes ONLY from <IMAGE_{costumeIndex}>, even if {identityLabel} shows " +
-                              "different or older wardrobe. "
-                            : "");
-                }
-                var variantTail = illustratedMedium
-                    ? (n > 1
-                        ? $" Variation {i + 1} of {n}: tiny pose/expression change only; " +
-                          "same identity, markings, and illustrated medium as the book references. "
-                        : " Single refined continuity portrait in the book’s illustration style. ")
-                    : (n > 1
-                        ? $" Variation {i + 1} of {n}: tiny pose/expression change only; " +
-                          "same identity, markings, and photoreal medium as the reference(s). "
-                        : " Single refined photoreal continuity portrait matching the reference(s). ");
-                var mediumClause = illustratedMedium
-                    ? "Keep the children's picture-book illustration style from the refs — not photoreal photography. "
-                    : "Keep the photoreal live-action look from the refs — NOT illustration, NOT cartoon, NOT painted/drawn medium. ";
-                var variantPrompt =
-                    orderHint +
-                    prompt +
-                    variantTail +
-                    mediumClause +
-                    "If refs show no clothing, do not invent costumes. " +
-                    "No labels, no redesign, no model sheet.";
-
-                var sw = Stopwatch.StartNew();
-                // Attempt below is the retry-attempt count (1 = succeeded first try), matching
-                // GrokChatClient/GrokVisionClient and what the analytics "retried" stat expects —
-                // NOT the variant index (that's already implicit in which task this is; the prompt
-                // itself says "Variation i+1 of n").
-                var retryAttempt = 1;
-                try
-                {
-                    // Same whole-request transient retry as GenerateVariantsAsync — image gen is
-                    // cheap enough that an extra retried edit isn't a real cost concern.
-                    var body = await AiRetryPolicy.ExecuteWithTransientRetryAsync(
-                        _ => PostImageEditAsync(modelName, variantPrompt, aspectRatio, imageUris, onProgress, ct),
-                        isTransient: AiRetryPolicy.IsTransientChatFailure,
-                        maxAttempts: AiRetryPolicy.DefaultTransientMaxAttempts,
-                        backoffBaseMs: AiRetryPolicy.DefaultTransientBackoffMs,
-                        onRetry: (attemptNum, ex) =>
-                        {
-                            retryAttempt = attemptNum + 1;
-                            return _errorLogger.LogRetryAttemptAsync("grok_image_edit", modelName, $"variant={i + 1}/{n}", attemptNum, ex, ct);
-                        },
-                        ct: ct).ConfigureAwait(false);
-                    if (body is null)
-                    {
-                        await _telemetry.LogApiCallAsync(new ApiCallTelemetry
-                        {
-                            Kind = "image_edit",
-                            Endpoint = EndpointEdits,
-                            Model = modelName,
-                            DurationMs = sw.ElapsedMilliseconds,
-                            Prompt = variantPrompt,
-                            PromptChars = variantPrompt.Length,
-                            ReferenceImagePaths = refNames,
-                            RefsAttached = true,
-                            Attempt = retryAttempt,
-                            Error = "empty response",
-                            Ok = false,
-                        }, ct);
-                        throw new InvalidOperationException(
-                            $"Image edit failed (variant {i + 1}): empty response");
-                    }
-
-                    var batch = ParseImageResponse(body, 1, $"edits variant {i + 1}");
-                    await _telemetry.LogApiCallAsync(new ApiCallTelemetry
-                    {
-                        Kind = "image_edit",
-                        Endpoint = EndpointEdits,
-                        Model = modelName,
-                        DurationMs = sw.ElapsedMilliseconds,
-                        Prompt = variantPrompt,
-                        PromptChars = variantPrompt.Length,
-                        ReferenceImagePaths = refNames,
-                        RefsAttached = true,
-                        ImageCount = batch.Count,
-                        Attempt = retryAttempt,
-                        Ok = true,
-                    }, ct);
-                    return batch.FirstOrDefault() ?? Array.Empty<byte>();
-                }
-                // ChatHttpStatusException IS an InvalidOperationException, but unlike other
-                // InvalidOperationExceptions here (validation failures etc.) it comes from
-                // PostImageEditAsync's HTTP path and was previously silently uncaught/unlogged —
-                // net it into the same log-and-rethrow path as real transport exceptions.
-                catch (Exception ex) when (ex is not InvalidOperationException || ex is ChatHttpStatusException)
-                {
-                    await _telemetry.LogApiCallAsync(new ApiCallTelemetry
-                    {
-                        Kind = "image_edit",
-                        Endpoint = EndpointEdits,
-                        Model = modelName,
-                        DurationMs = sw.ElapsedMilliseconds,
-                        Prompt = variantPrompt,
-                        ReferenceImagePaths = refNames,
-                        Attempt = retryAttempt,
-                        Error = ex.Message,
-                        Ok = false,
-                    }, ct);
-                    throw;
-                }
+                    Kind = "image_edit",
+                    Endpoint = EndpointEdits,
+                    Model = modelName,
+                    DurationMs = sw.ElapsedMilliseconds,
+                    Prompt = variantPrompt,
+                    PromptChars = variantPrompt.Length,
+                    ReferenceImagePaths = refNames,
+                    RefsAttached = true,
+                    Attempt = retryAttempt,
+                    Error = "empty response",
+                    Ok = false,
+                }, ct);
+                throw new InvalidOperationException(
+                    $"Image edit failed (variant {i + 1}): empty response");
             }
-            finally
+
+            var batch = ParseImageResponse(body, 1, $"edits variant {i + 1}");
+            await _telemetry.LogApiCallAsync(new ApiCallTelemetry
             {
-                throttle.Release();
-            }
-        });
-
-        var results = await Task.WhenAll(tasks).ConfigureAwait(false);
-        var images = results.Where(b => b is { Length: > 0 }).ToList();
-
-        if (images.Count < 1)
-            throw new InvalidOperationException("Image edit returned no variants.");
-        return images.Take(n).ToList();
+                Kind = "image_edit",
+                Endpoint = EndpointEdits,
+                Model = modelName,
+                DurationMs = sw.ElapsedMilliseconds,
+                Prompt = variantPrompt,
+                PromptChars = variantPrompt.Length,
+                ReferenceImagePaths = refNames,
+                RefsAttached = true,
+                ImageCount = batch.Count,
+                Attempt = retryAttempt,
+                Ok = true,
+            }, ct);
+            return batch.FirstOrDefault() ?? Array.Empty<byte>();
+        }
+        // ChatHttpStatusException IS an InvalidOperationException, but unlike other
+        // InvalidOperationExceptions here (validation failures etc.) it comes from
+        // PostImageEditAsync's HTTP path and was previously silently uncaught/unlogged —
+        // net it into the same log-and-rethrow path as real transport exceptions.
+        catch (Exception ex) when (ex is not InvalidOperationException || ex is ChatHttpStatusException)
+        {
+            await _telemetry.LogApiCallAsync(new ApiCallTelemetry
+            {
+                Kind = "image_edit",
+                Endpoint = EndpointEdits,
+                Model = modelName,
+                DurationMs = sw.ElapsedMilliseconds,
+                Prompt = variantPrompt,
+                ReferenceImagePaths = refNames,
+                Attempt = retryAttempt,
+                Error = ex.Message,
+                Ok = false,
+            }, ct);
+            throw;
+        }
     }
 
     /// <summary>
