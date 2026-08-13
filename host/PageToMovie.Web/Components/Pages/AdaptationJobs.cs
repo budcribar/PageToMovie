@@ -51,28 +51,30 @@ public abstract partial class AdaptationPageBase
                 _pollCts = null;
                 if (snap.Status == "done" && ProgressTotal > 0)
                     ProgressIndex = ProgressTotal;
-                _ = S.InvokeAsync(async () =>
-                {
-                    await S.SoftLoadAsync();
-                    try { await S.ActiveProject.RefreshReadinessAsync(S.Engine, _pollCts?.Token ?? CancellationToken.None); } catch { /* nav gates */ }
-                    if (snap.Status == "done")
-                    {
-                        // Avoid flashing technical “Book ready · quality=good…” while Import
-                        // continues into draft generation (Busy stays true).
-                        if (!S.Busy)
-                            S.Message = AdaptationStepUi.OperatorJobDoneMessage(snap);
-                        try { await S.OnAdaptationJobTerminalAsync(snap); }
-                        catch (Exception ex) { S.Error ??= ex.Message; }
-                    }
-                    else if (snap.Status == JobStatusError)
-                        S.Error = snap.Error ?? snap.Message ?? "Job failed";
-                    S.StateHasChanged();
-                });
+                _ = S.InvokeAsync(() => NotifyTerminalJobAsync(snap));
             }
             else
             {
                 _ = S.InvokeAsync(S.StateHasChanged);
             }
+        }
+
+        private async Task NotifyTerminalJobAsync(JobSnapshot snap)
+        {
+            await S.SoftLoadAsync();
+            try { await S.ActiveProject.RefreshReadinessAsync(S.Engine, _pollCts?.Token ?? CancellationToken.None); } catch { /* nav gates */ }
+            if (snap.Status == "done")
+            {
+                // Avoid flashing technical “Book ready · quality=good…” while Import
+                // continues into draft generation (Busy stays true).
+                if (!S.Busy)
+                    S.Message = AdaptationStepUi.OperatorJobDoneMessage(snap);
+                try { await S.OnAdaptationJobTerminalAsync(snap); }
+                catch (Exception ex) { S.Error ??= ex.Message; }
+            }
+            else if (snap.Status == JobStatusError)
+                S.Error = snap.Error ?? snap.Message ?? "Job failed";
+            S.StateHasChanged();
         }
 
         public void OnJobLog(string line)

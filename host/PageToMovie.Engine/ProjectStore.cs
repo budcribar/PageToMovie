@@ -655,22 +655,43 @@ public sealed partial class ProjectStore
             try
             {
                 using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(sidecarPath));
-                var root = doc.RootElement;
-                item.VisualPrompt = root.TryGetProperty(StoreLit.VisualPrompt, out var vp) ? vp.GetString() ?? "" : root.TryGetProperty("prompt", out var p) ? p.GetString() ?? "" : "";
-                item.ScriptText = root.TryGetProperty("script_text", out var st) ? st.GetString() ?? "" : "";
-                item.Model = root.TryGetProperty("model", out var m) ? m.GetString() ?? "" : "";
-                item.Resolution = root.TryGetProperty("resolution", out var r) ? r.GetString() ?? "" : "";
-                if (root.TryGetProperty(StoreLit.DurationSeconds, out var d) && d.TryGetDouble(out var dur)) item.DurationSeconds = dur;
-                if (root.TryGetProperty("sha256", out var sha)) item.Sha256 = sha.GetString() ?? "";
-                if (root.TryGetProperty("edited_from_take", out var eft) && eft.TryGetInt32(out var eftVal)) item.EditedFromTake = eftVal;
-                if (root.TryGetProperty("source_file_id", out var sfid)) item.SourceFileId = sfid.GetString();
-                if (root.TryGetProperty("source_file_expires_at", out var sfexp) && sfexp.TryGetInt64(out var sfexpVal)) item.SourceFileExpiresAtUnixSeconds = sfexpVal;
+                ApplyClipSidecarJson(item, doc.RootElement);
             }
             catch { /* best effort sidecar parse */ }
         }
 
         return item;
     }
+
+    private static void ApplyClipSidecarJson(ClipVersionItem item, JsonElement root)
+    {
+        item.VisualPrompt = FirstJsonString(root, StoreLit.VisualPrompt, "prompt");
+        item.ScriptText = JsonStringOrEmpty(root, "script_text");
+        item.Model = JsonStringOrEmpty(root, "model");
+        item.Resolution = JsonStringOrEmpty(root, "resolution");
+        if (root.TryGetProperty(StoreLit.DurationSeconds, out var d) && d.TryGetDouble(out var dur))
+            item.DurationSeconds = dur;
+        if (root.TryGetProperty("sha256", out var sha))
+            item.Sha256 = sha.GetString() ?? "";
+        if (root.TryGetProperty("edited_from_take", out var eft) && eft.TryGetInt32(out var eftVal))
+            item.EditedFromTake = eftVal;
+        if (root.TryGetProperty("source_file_id", out var sfid))
+            item.SourceFileId = sfid.GetString();
+        if (root.TryGetProperty("source_file_expires_at", out var sfexp) && sfexp.TryGetInt64(out var sfexpVal))
+            item.SourceFileExpiresAtUnixSeconds = sfexpVal;
+    }
+
+    private static string FirstJsonString(JsonElement root, string primary, string fallback)
+    {
+        if (root.TryGetProperty(primary, out var vp))
+            return vp.GetString() ?? "";
+        if (root.TryGetProperty(fallback, out var p))
+            return p.GetString() ?? "";
+        return "";
+    }
+
+    private static string JsonStringOrEmpty(JsonElement root, string name) =>
+        root.TryGetProperty(name, out var el) ? el.GetString() ?? "" : "";
 
     /// <summary>
     /// Soft-deletes a take version by moving its .mp4 and sidecar files into assets/video/.trash/
@@ -1052,16 +1073,7 @@ public sealed partial class ProjectStore
             var curScenes = curRoot[StoreLit.Scenes] as System.Text.Json.Nodes.JsonArray;
             if (curScenes is null) return changes;
 
-            System.Text.Json.Nodes.JsonObject? curScene = null;
-            foreach (var s in curScenes)
-            {
-                if (s is System.Text.Json.Nodes.JsonObject sObj && ReadJsonNodeInt(sObj[JsonKeys.SceneNumber]) == sceneNumber)
-                {
-                    curScene = sObj;
-                    break;
-                }
-            }
-
+            var curScene = FindSceneObjectInArray(curScenes, sceneNumber);
             if (curScene is null) return changes;
 
             if (string.IsNullOrWhiteSpace(parentBpJson))
@@ -1072,19 +1084,7 @@ public sealed partial class ProjectStore
 
             var parRoot = System.Text.Json.Nodes.JsonNode.Parse(parentBpJson) as System.Text.Json.Nodes.JsonObject;
             var parScenes = parRoot?[StoreLit.Scenes] as System.Text.Json.Nodes.JsonArray;
-            System.Text.Json.Nodes.JsonObject? parScene = null;
-            if (parScenes is not null)
-            {
-                foreach (var s in parScenes)
-                {
-                    if (s is System.Text.Json.Nodes.JsonObject sObj && ReadJsonNodeInt(sObj[JsonKeys.SceneNumber]) == sceneNumber)
-                    {
-                        parScene = sObj;
-                        break;
-                    }
-                }
-            }
-
+            var parScene = parScenes is not null ? FindSceneObjectInArray(parScenes, sceneNumber) : null;
             if (parScene is null)
             {
                 changes.Add("Scene created");
@@ -1094,61 +1094,77 @@ public sealed partial class ProjectStore
             var curHeading = curScene["heading"]?.ToString() ?? "";
             var parHeading = parScene["heading"]?.ToString() ?? "";
             if (!string.Equals(curHeading, parHeading, StringComparison.OrdinalIgnoreCase))
-            {
                 changes.Add($"Heading updated: \"{curHeading}\"");
-            }
 
-            var curClips = curScene[StoreLit.VeoClips] as System.Text.Json.Nodes.JsonArray ?? curScene[StoreLit.Clips] as System.Text.Json.Nodes.JsonArray;
-            var parClips = parScene[StoreLit.VeoClips] as System.Text.Json.Nodes.JsonArray ?? parScene[StoreLit.Clips] as System.Text.Json.Nodes.JsonArray;
-
-            var curClipDict = (curClips ?? new System.Text.Json.Nodes.JsonArray())
-                .OfType<System.Text.Json.Nodes.JsonObject>()
-                .ToDictionary(c => ClipKeying.ClipNumber(c));
-            var parClipDict = (parClips ?? new System.Text.Json.Nodes.JsonArray())
-                .OfType<System.Text.Json.Nodes.JsonObject>()
-                .ToDictionary(c => ClipKeying.ClipNumber(c));
-
-            foreach (var (cNum, curC) in curClipDict)
-            {
-                if (!parClipDict.TryGetValue(cNum, out var parC))
-                {
-                    changes.Add($"Clip {cNum} added");
-                    continue;
-                }
-
-                var curPrompt = curC[StoreLit.VisualPrompt]?.ToString() ?? "";
-                var parPrompt = parC[StoreLit.VisualPrompt]?.ToString() ?? "";
-                if (!string.Equals(curPrompt, parPrompt, StringComparison.Ordinal))
-                {
-                    changes.Add($"Clip {cNum} prompt modified");
-                }
-
-                var curAudio = curC[StoreLit.AudioScript]?.ToString() ?? curC[JsonKeys.Dialogue]?.ToString() ?? "";
-                var parAudio = parC[StoreLit.AudioScript]?.ToString() ?? parC[JsonKeys.Dialogue]?.ToString() ?? "";
-                if (!string.Equals(curAudio, parAudio, StringComparison.Ordinal))
-                {
-                    changes.Add($"Clip {cNum} dialogue modified");
-                }
-
-                var curDur = curC[StoreLit.DurationSeconds]?.ToString() ?? "";
-                var parDur = parC[StoreLit.DurationSeconds]?.ToString() ?? "";
-                if (!string.Equals(curDur, parDur, StringComparison.Ordinal))
-                {
-                    changes.Add($"Clip {cNum} duration changed to {curDur}s");
-                }
-            }
-
-            foreach (var (cNum, _) in parClipDict)
-            {
-                if (!curClipDict.ContainsKey(cNum))
-                {
-                    changes.Add($"Clip {cNum} removed");
-                }
-            }
+            DiffSceneClipFields(changes, curScene, parScene);
         }
         catch { /* best effort diff */ }
 
         return changes;
+    }
+
+    private static System.Text.Json.Nodes.JsonObject? FindSceneObjectInArray(
+        System.Text.Json.Nodes.JsonArray scenes, int sceneNumber)
+    {
+        foreach (var s in scenes)
+        {
+            if (s is System.Text.Json.Nodes.JsonObject sObj && ReadJsonNodeInt(sObj[JsonKeys.SceneNumber]) == sceneNumber)
+                return sObj;
+        }
+        return null;
+    }
+
+    private static void DiffSceneClipFields(
+        List<string> changes,
+        System.Text.Json.Nodes.JsonObject curScene,
+        System.Text.Json.Nodes.JsonObject parScene)
+    {
+        var curClips = curScene[StoreLit.VeoClips] as System.Text.Json.Nodes.JsonArray ?? curScene[StoreLit.Clips] as System.Text.Json.Nodes.JsonArray;
+        var parClips = parScene[StoreLit.VeoClips] as System.Text.Json.Nodes.JsonArray ?? parScene[StoreLit.Clips] as System.Text.Json.Nodes.JsonArray;
+
+        var curClipDict = (curClips ?? new System.Text.Json.Nodes.JsonArray())
+            .OfType<System.Text.Json.Nodes.JsonObject>()
+            .ToDictionary(c => ClipKeying.ClipNumber(c));
+        var parClipDict = (parClips ?? new System.Text.Json.Nodes.JsonArray())
+            .OfType<System.Text.Json.Nodes.JsonObject>()
+            .ToDictionary(c => ClipKeying.ClipNumber(c));
+
+        foreach (var (cNum, curC) in curClipDict)
+            DiffOneSceneClip(changes, cNum, curC, parClipDict);
+
+        foreach (var (cNum, _) in parClipDict)
+        {
+            if (!curClipDict.ContainsKey(cNum))
+                changes.Add($"Clip {cNum} removed");
+        }
+    }
+
+    private static void DiffOneSceneClip(
+        List<string> changes,
+        int cNum,
+        System.Text.Json.Nodes.JsonObject curC,
+        Dictionary<int, System.Text.Json.Nodes.JsonObject> parClipDict)
+    {
+        if (!parClipDict.TryGetValue(cNum, out var parC))
+        {
+            changes.Add($"Clip {cNum} added");
+            return;
+        }
+
+        var curPrompt = curC[StoreLit.VisualPrompt]?.ToString() ?? "";
+        var parPrompt = parC[StoreLit.VisualPrompt]?.ToString() ?? "";
+        if (!string.Equals(curPrompt, parPrompt, StringComparison.Ordinal))
+            changes.Add($"Clip {cNum} prompt modified");
+
+        var curAudio = curC[StoreLit.AudioScript]?.ToString() ?? curC[JsonKeys.Dialogue]?.ToString() ?? "";
+        var parAudio = parC[StoreLit.AudioScript]?.ToString() ?? parC[JsonKeys.Dialogue]?.ToString() ?? "";
+        if (!string.Equals(curAudio, parAudio, StringComparison.Ordinal))
+            changes.Add($"Clip {cNum} dialogue modified");
+
+        var curDur = curC[StoreLit.DurationSeconds]?.ToString() ?? "";
+        var parDur = parC[StoreLit.DurationSeconds]?.ToString() ?? "";
+        if (!string.Equals(curDur, parDur, StringComparison.Ordinal))
+            changes.Add($"Clip {cNum} duration changed to {curDur}s");
     }
 
     /// <summary>
@@ -1387,36 +1403,12 @@ public sealed partial class ProjectStore
         if (slug.Length == 0)
             throw new InvalidOperationException("Project name has no usable characters");
 
-        var owner = string.IsNullOrWhiteSpace(ownerUserId) ? null : SanitizeUserSegment(ownerUserId);
-        var id = string.IsNullOrEmpty(owner) ? slug : $"{owner}/{slug}";
-        var dir = string.IsNullOrEmpty(owner)
-            ? Path.Combine(WorkspaceRoot, StoreLit.Projects, slug)
-            : Path.Combine(WorkspaceRoot, StoreLit.Projects, owner, slug);
+        var (owner, id, dir) = ResolveCreateProjectIdentity(slug, ownerUserId);
         if (Directory.Exists(dir))
         {
-            var metaFile = Path.Combine(dir, StoreLit.ProjectJson);
-            if (File.Exists(metaFile))
-            {
-                try
-                {
-                    var existing = await GetProjectAsync(id, ct).ConfigureAwait(false);
-                    if (existing is not null)
-                    {
-                        if (string.IsNullOrWhiteSpace(existing.OwnerUserId) && !string.IsNullOrWhiteSpace(ownerUserId))
-                        {
-                            var metaExisting = JsonSerializer.Deserialize<Dictionary<string, object?>>(
-                                await File.ReadAllTextAsync(metaFile, ct).ConfigureAwait(false), JsonOpts)
-                                ?? new Dictionary<string, object?>();
-                            metaExisting[StoreLit.OwnerUserId] = ownerUserId.Trim();
-                            await File.WriteAllTextAsync(metaFile, JsonSerializer.Serialize(metaExisting, JsonOpts) + "\n", ct).ConfigureAwait(false);
-                            InvalidateReadCaches(null);
-                        }
-                        return await ActivateAsync(existing.Id, ct).ConfigureAwait(false);
-                    }
-                }
-                catch { /* fall through to clean up leftover folder */ }
-            }
-            try { Directory.Delete(dir, recursive: true); } catch { /* non-fatal */ }
+            var existing = await TryReuseExistingCreateDirAsync(dir, id, ownerUserId, ct).ConfigureAwait(false);
+            if (existing is not null)
+                return existing;
         }
 
         Directory.CreateDirectory(dir);
@@ -1425,6 +1417,74 @@ public sealed partial class ProjectStore
         Directory.CreateDirectory(Path.Combine(dir, StoreLit.Assets, StoreLit.Scenes));
         Directory.CreateDirectory(Path.Combine(dir, StoreLit.Assets, StoreLit.Video));
 
+        await WriteNewProjectMetaAsync(dir, id, raw, title, owner, ownerUserId, studioPath, ct).ConfigureAwait(false);
+        await TryInitProjectGitAsync(dir, owner, ct).ConfigureAwait(false);
+
+        InvalidateReadCaches(null); // projects list
+
+        // Copy studio model picks from another project the same owner already configured.
+        // New projects used to start with empty pipeline_config → "no model selected" on first import.
+        try
+        {
+            await SeedModelConfigFromOwnerAsync(id, ownerUserId, ct).ConfigureAwait(false);
+        }
+        catch
+        {
+            // Non-fatal — import page still blocks until Settings is filled.
+        }
+
+        return await ActivateAsync(id, ct).ConfigureAwait(false);
+    }
+
+    private (string? Owner, string Id, string Dir) ResolveCreateProjectIdentity(string slug, string? ownerUserId)
+    {
+        var owner = string.IsNullOrWhiteSpace(ownerUserId) ? null : SanitizeUserSegment(ownerUserId);
+        var id = string.IsNullOrEmpty(owner) ? slug : $"{owner}/{slug}";
+        var dir = string.IsNullOrEmpty(owner)
+            ? Path.Combine(WorkspaceRoot, StoreLit.Projects, slug)
+            : Path.Combine(WorkspaceRoot, StoreLit.Projects, owner, slug);
+        return (owner, id, dir);
+    }
+
+    private async Task<ProjectInfo?> TryReuseExistingCreateDirAsync(
+        string dir, string id, string? ownerUserId, CancellationToken ct)
+    {
+        var metaFile = Path.Combine(dir, StoreLit.ProjectJson);
+        if (File.Exists(metaFile))
+        {
+            try
+            {
+                var existing = await GetProjectAsync(id, ct).ConfigureAwait(false);
+                if (existing is not null)
+                {
+                    await MaybeStampCreateOwnerAsync(metaFile, existing, ownerUserId, ct).ConfigureAwait(false);
+                    return await ActivateAsync(existing.Id, ct).ConfigureAwait(false);
+                }
+            }
+            catch { /* fall through to clean up leftover folder */ }
+        }
+        try { Directory.Delete(dir, recursive: true); } catch { /* non-fatal */ }
+        return null;
+    }
+
+    private async Task MaybeStampCreateOwnerAsync(
+        string metaFile, ProjectInfo existing, string? ownerUserId, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(existing.OwnerUserId) && !string.IsNullOrWhiteSpace(ownerUserId))
+        {
+            var metaExisting = JsonSerializer.Deserialize<Dictionary<string, object?>>(
+                await File.ReadAllTextAsync(metaFile, ct).ConfigureAwait(false), JsonOpts)
+                ?? new Dictionary<string, object?>();
+            metaExisting[StoreLit.OwnerUserId] = ownerUserId.Trim();
+            await File.WriteAllTextAsync(metaFile, JsonSerializer.Serialize(metaExisting, JsonOpts) + "\n", ct).ConfigureAwait(false);
+            InvalidateReadCaches(null);
+        }
+    }
+
+    private async Task WriteNewProjectMetaAsync(
+        string dir, string id, string raw, string? title, string? owner, string? ownerUserId,
+        StudioPath studioPath, CancellationToken ct)
+    {
         var displayTitle = string.IsNullOrWhiteSpace(title) ? raw : title.Trim();
         var meta = new Dictionary<string, object?>
         {
@@ -1447,7 +1507,10 @@ public sealed partial class ProjectStore
             Path.Combine(dir, StoreLit.ProjectJson),
             JsonSerializer.Serialize(meta, JsonOpts) + "\n",
             ct).ConfigureAwait(false);
+    }
 
+    private static async Task TryInitProjectGitAsync(string dir, string? owner, CancellationToken ct)
+    {
         // Git package (text only) — initial commit for history foundation
         try
         {
@@ -1460,21 +1523,6 @@ public sealed partial class ProjectStore
         {
             // Non-fatal: nested-repo or git unavailable must not block create
         }
-
-        InvalidateReadCaches(null); // projects list
-
-        // Copy studio model picks from another project the same owner already configured.
-        // New projects used to start with empty pipeline_config → "no model selected" on first import.
-        try
-        {
-            await SeedModelConfigFromOwnerAsync(id, ownerUserId, ct).ConfigureAwait(false);
-        }
-        catch
-        {
-            // Non-fatal — import page still blocks until Settings is filled.
-        }
-
-        return await ActivateAsync(id, ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -3660,86 +3708,99 @@ public sealed partial class ProjectStore
         string? description = null,
         string? visualLock = null)
     {
-        void PatchLockObject(System.Text.Json.Nodes.JsonObject locks)
-        {
-            System.Text.Json.Nodes.JsonObject? entry = null;
-            string? foundKey = null;
-            foreach (var (k, v) in locks)
-            {
-                if (string.Equals(k, wardrobeKey, StringComparison.OrdinalIgnoreCase) &&
-                    v is System.Text.Json.Nodes.JsonObject jo)
-                {
-                    entry = jo;
-                    foundKey = k;
-                    break;
-                }
-            }
-            if (entry is null || foundKey is null)
-            {
-                entry = new System.Text.Json.Nodes.JsonObject();
-                foundKey = wardrobeKey;
-                locks[foundKey] = entry;
-            }
-            if (description is not null)
-                entry[JsonKeys.Description] = CharacterVisualTextScrubber.ScrubVisualProse(description);
-            if (visualLock is not null)
-                entry[StoreLit.VisualLock] = CharacterVisualTextScrubber.ScrubVisualProse(visualLock);
-            locks[foundKey] = entry;
-        }
-
-        void PatchFile(string path, bool createCastShape)
-        {
-            try
-            {
-                System.Text.Json.Nodes.JsonObject root;
-                if (File.Exists(path))
-                {
-                    root = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))
-                           as System.Text.Json.Nodes.JsonObject
-                           ?? new System.Text.Json.Nodes.JsonObject();
-                }
-                else if (createCastShape)
-                {
-                    root = new System.Text.Json.Nodes.JsonObject { [StoreLit.SchemaVersion] = StoreLit.CastSeedsV1 };
-                }
-                else return;
-
-                System.Text.Json.Nodes.JsonObject? locks;
-                if (root[StoreLit.WardrobeLockTokens] is System.Text.Json.Nodes.JsonObject direct)
-                {
-                    locks = direct;
-                }
-                else
-                {
-                    var gpv = root[StoreLit.GlobalProductionVariables] as System.Text.Json.Nodes.JsonObject;
-                    if (gpv is not null && gpv[StoreLit.WardrobeLockTokens] is System.Text.Json.Nodes.JsonObject gpvLocks)
-                    {
-                        locks = gpvLocks;
-                    }
-                    else
-                    {
-                        locks = new System.Text.Json.Nodes.JsonObject();
-                        root[StoreLit.WardrobeLockTokens] = locks;
-                    }
-                }
-
-                PatchLockObject(locks);
-                Directory.CreateDirectory(Path.GetDirectoryName(path));
-                File.WriteAllText(path, root.ToJsonString(JsonDefaults.Indented) + "\n");
-            }
-            catch
-            {
-                /* non-fatal */
-            }
-        }
-
-        PatchFile(ScreenplayService.GetCastSeedsPath(this, projectId), createCastShape: true);
+        PatchWardrobeLockFile(
+            ScreenplayService.GetCastSeedsPath(this, projectId), wardrobeKey, description, visualLock, createCastShape: true);
         var bp = FindBlueprintPathSync(projectId);
         if (bp is not null)
-            PatchFile(bp, createCastShape: false);
+            PatchWardrobeLockFile(bp, wardrobeKey, description, visualLock, createCastShape: false);
         var scenesPath = ResolveScenesJsonPath(projectId);
         if (File.Exists(scenesPath))
-            PatchFile(scenesPath, createCastShape: false);
+            PatchWardrobeLockFile(scenesPath, wardrobeKey, description, visualLock, createCastShape: false);
+    }
+
+    private static void PatchWardrobeLockObject(
+        System.Text.Json.Nodes.JsonObject locks,
+        string wardrobeKey,
+        string? description,
+        string? visualLock)
+    {
+        System.Text.Json.Nodes.JsonObject? entry = null;
+        string? foundKey = null;
+        foreach (var (k, v) in locks)
+        {
+            if (string.Equals(k, wardrobeKey, StringComparison.OrdinalIgnoreCase) &&
+                v is System.Text.Json.Nodes.JsonObject jo)
+            {
+                entry = jo;
+                foundKey = k;
+                break;
+            }
+        }
+        if (entry is null || foundKey is null)
+        {
+            entry = new System.Text.Json.Nodes.JsonObject();
+            foundKey = wardrobeKey;
+            locks[foundKey] = entry;
+        }
+        if (description is not null)
+            entry[JsonKeys.Description] = CharacterVisualTextScrubber.ScrubVisualProse(description);
+        if (visualLock is not null)
+            entry[StoreLit.VisualLock] = CharacterVisualTextScrubber.ScrubVisualProse(visualLock);
+        locks[foundKey] = entry;
+    }
+
+    private static void PatchWardrobeLockFile(
+        string path,
+        string wardrobeKey,
+        string? description,
+        string? visualLock,
+        bool createCastShape)
+    {
+        try
+        {
+            if (!TryLoadWardrobeLockRoot(path, createCastShape, out var root))
+                return;
+            var locks = ResolveWardrobeLockObject(root);
+            PatchWardrobeLockObject(locks, wardrobeKey, description, visualLock);
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            File.WriteAllText(path, root.ToJsonString(JsonDefaults.Indented) + "\n");
+        }
+        catch
+        {
+            /* non-fatal */
+        }
+    }
+
+    private static bool TryLoadWardrobeLockRoot(
+        string path, bool createCastShape, out System.Text.Json.Nodes.JsonObject root)
+    {
+        if (File.Exists(path))
+        {
+            root = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))
+                   as System.Text.Json.Nodes.JsonObject
+                   ?? new System.Text.Json.Nodes.JsonObject();
+            return true;
+        }
+        if (createCastShape)
+        {
+            root = new System.Text.Json.Nodes.JsonObject { [StoreLit.SchemaVersion] = StoreLit.CastSeedsV1 };
+            return true;
+        }
+        root = null!;
+        return false;
+    }
+
+    private static System.Text.Json.Nodes.JsonObject ResolveWardrobeLockObject(
+        System.Text.Json.Nodes.JsonObject root)
+    {
+        if (root[StoreLit.WardrobeLockTokens] is System.Text.Json.Nodes.JsonObject direct)
+            return direct;
+        var gpv = root[StoreLit.GlobalProductionVariables] as System.Text.Json.Nodes.JsonObject;
+        if (gpv is not null && gpv[StoreLit.WardrobeLockTokens] is System.Text.Json.Nodes.JsonObject gpvLocks)
+            return gpvLocks;
+        var locks = new System.Text.Json.Nodes.JsonObject();
+        root[StoreLit.WardrobeLockTokens] = locks;
+        return locks;
     }
 
     /// <summary>

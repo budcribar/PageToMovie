@@ -41,41 +41,47 @@ public partial class Admin
         internal void OnAdminState(object? payload)
         {
             S.Jobs._hubLive = true;
-            if (payload is not null)
-            {
-                try
-                {
-                    AdminStateDto? dto = null;
-                    if (payload is System.Text.Json.JsonElement elem)
-                    {
-                        dto = System.Text.Json.JsonSerializer.Deserialize<AdminStateDto>(elem.GetRawText(), EngineApiClient.JsonOpts);
-                    }
-                    else
-                    {
-                        var json = System.Text.Json.JsonSerializer.Serialize(payload, EngineApiClient.JsonOpts);
-                        dto = System.Text.Json.JsonSerializer.Deserialize<AdminStateDto>(json, EngineApiClient.JsonOpts);
-                    }
-
-                    if (dto is not null)
-                    {
-                        _state = dto;
-                        if (dto.ApiInFlight > 0) _apiInFlight = dto.ApiInFlight;
-                        if (dto.CapacityRejects > 0) _capacityRejects = dto.CapacityRejects;
-                        if (dto.LockConflicts > 0) _lockConflicts = dto.LockConflicts;
-                        if (dto.Locks is { Count: > 0 }) S.Jobs._locks = dto.Locks;
-                        if (dto.LoadSim is not null) S.Telemetry._loadSim = dto.LoadSim;
-                        if (dto.ProcessHistory is { Count: > 0 }) S.Telemetry._processHistory = dto.ProcessHistory;
-                        _ = S.InvokeAsync(async () =>
-                        {
-                            await S.Telemetry.UpdateChartsAsync();
-                            S.StateHasChanged();
-                        });
-                        return;
-                    }
-                }
-                catch { /* fallback to HTTP refresh if payload shape differs */ }
-            }
+            if (payload is not null && TryApplyAdminStatePayload(payload))
+                return;
             _ = S.InvokeAsync(RefreshAsync);
+        }
+
+        private bool TryApplyAdminStatePayload(object payload)
+        {
+            try
+            {
+                var dto = DeserializeAdminStatePayload(payload);
+                if (dto is null)
+                    return false;
+                ApplyAdminStateDto(dto);
+                _ = S.InvokeAsync(async () =>
+                {
+                    await S.Telemetry.UpdateChartsAsync();
+                    S.StateHasChanged();
+                });
+                return true;
+            }
+            catch { /* fallback to HTTP refresh if payload shape differs */ }
+            return false;
+        }
+
+        private static AdminStateDto? DeserializeAdminStatePayload(object payload)
+        {
+            if (payload is System.Text.Json.JsonElement elem)
+                return System.Text.Json.JsonSerializer.Deserialize<AdminStateDto>(elem.GetRawText(), EngineApiClient.JsonOpts);
+            var json = System.Text.Json.JsonSerializer.Serialize(payload, EngineApiClient.JsonOpts);
+            return System.Text.Json.JsonSerializer.Deserialize<AdminStateDto>(json, EngineApiClient.JsonOpts);
+        }
+
+        private void ApplyAdminStateDto(AdminStateDto dto)
+        {
+            _state = dto;
+            if (dto.ApiInFlight > 0) _apiInFlight = dto.ApiInFlight;
+            if (dto.CapacityRejects > 0) _capacityRejects = dto.CapacityRejects;
+            if (dto.LockConflicts > 0) _lockConflicts = dto.LockConflicts;
+            if (dto.Locks is { Count: > 0 }) S.Jobs._locks = dto.Locks;
+            if (dto.LoadSim is not null) S.Telemetry._loadSim = dto.LoadSim;
+            if (dto.ProcessHistory is { Count: > 0 }) S.Telemetry._processHistory = dto.ProcessHistory;
         }
 
         internal async Task PollLoopAsync(CancellationToken ct)

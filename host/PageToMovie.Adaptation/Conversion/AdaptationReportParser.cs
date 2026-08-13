@@ -25,52 +25,64 @@ public static class AdaptationReportParser
             if (root.ValueKind != JsonValueKind.Object) return null;
 
             var report = new AdaptationReport { RawJson = t };
-
-            if (root.TryGetProperty("source_complete", out var sc) && sc.ValueKind == JsonValueKind.String)
-                report.SourceComplete = (sc.GetString() ?? "").Trim().ToLowerInvariant();
-
-            if (root.TryGetProperty("metrics", out var metrics) && metrics.ValueKind == JsonValueKind.Object)
-            {
-                report.Metrics = new AdaptationReportMetrics
-                {
-                    Scenes = GetInt(metrics, "scenes"),
-                    SpeakingCast = GetInt(metrics, "speaking_cast"),
-                    BodyWords = GetInt(metrics, "body_words"),
-                    EstRuntimeMin = GetDouble(metrics, "est_runtime_min"),
-                };
-            }
-
-            if (root.TryGetProperty("issues", out var issues) && issues.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var el in issues.EnumerateArray())
-                {
-                    if (el.ValueKind != JsonValueKind.Object) continue;
-                    report.Issues.Add(new AdaptationReportIssue
-                    {
-                        Type = GetString(el, "type"),
-                        Severity = GetString(el, "severity"),
-                        Where = GetString(el, "where"),
-                        Detail = GetString(el, "detail"),
-                        Resolution = GetString(el, "resolution"),
-                    });
-                }
-            }
-
-            if (root.TryGetProperty("spec_feedback", out var feedback) && feedback.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var el in feedback.EnumerateArray())
-                {
-                    if (el.ValueKind != JsonValueKind.String) continue;
-                    var s = (el.GetString() ?? "").Trim();
-                    if (s.Length > 0) report.SpecFeedback.Add(s);
-                }
-            }
-
+            TryApplySourceComplete(root, report);
+            TryApplyMetrics(root, report);
+            TryApplyIssues(root, report);
+            TryApplySpecFeedback(root, report);
             return report;
         }
         catch (JsonException)
         {
             return null;
+        }
+    }
+
+    private static void TryApplySourceComplete(JsonElement root, AdaptationReport report)
+    {
+        if (root.TryGetProperty("source_complete", out var sc) && sc.ValueKind == JsonValueKind.String)
+            report.SourceComplete = (sc.GetString() ?? "").Trim().ToLowerInvariant();
+    }
+
+    private static void TryApplyMetrics(JsonElement root, AdaptationReport report)
+    {
+        if (!root.TryGetProperty("metrics", out var metrics) || metrics.ValueKind != JsonValueKind.Object)
+            return;
+        report.Metrics = new AdaptationReportMetrics
+        {
+            Scenes = GetInt(metrics, "scenes"),
+            SpeakingCast = GetInt(metrics, "speaking_cast"),
+            BodyWords = GetInt(metrics, "body_words"),
+            EstRuntimeMin = GetDouble(metrics, "est_runtime_min"),
+        };
+    }
+
+    private static void TryApplyIssues(JsonElement root, AdaptationReport report)
+    {
+        if (!root.TryGetProperty("issues", out var issues) || issues.ValueKind != JsonValueKind.Array)
+            return;
+        foreach (var el in issues.EnumerateArray())
+        {
+            if (el.ValueKind != JsonValueKind.Object) continue;
+            report.Issues.Add(new AdaptationReportIssue
+            {
+                Type = GetString(el, "type"),
+                Severity = GetString(el, "severity"),
+                Where = GetString(el, "where"),
+                Detail = GetString(el, "detail"),
+                Resolution = GetString(el, "resolution"),
+            });
+        }
+    }
+
+    private static void TryApplySpecFeedback(JsonElement root, AdaptationReport report)
+    {
+        if (!root.TryGetProperty("spec_feedback", out var feedback) || feedback.ValueKind != JsonValueKind.Array)
+            return;
+        foreach (var el in feedback.EnumerateArray())
+        {
+            if (el.ValueKind != JsonValueKind.String) continue;
+            var s = (el.GetString() ?? "").Trim();
+            if (s.Length > 0) report.SpecFeedback.Add(s);
         }
     }
 

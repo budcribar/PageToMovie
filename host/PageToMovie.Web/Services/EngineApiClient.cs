@@ -2514,27 +2514,42 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
             if (!resp.IsSuccessStatusCode) return null;
             await using var stream = await resp.Content.ReadAsStreamAsync(ct);
             using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
-            var root = doc.RootElement;
-            return new WipMovieMetaDto
-            {
-                Ok = root.TryGetProperty("ok", out var ok) && ok.ValueKind == JsonValueKind.True,
-                Exists = root.TryGetProperty("exists", out var ex) && ex.ValueKind == JsonValueKind.True,
-                Stale = root.TryGetProperty("stale", out var st) && st.ValueKind == JsonValueKind.True,
-                CanBuild = root.TryGetProperty("canBuild", out var cb) && cb.ValueKind == JsonValueKind.True,
-                Reason = root.TryGetProperty("reason", out var r) ? r.GetString() : null,
-                ProjectId = root.TryGetProperty("projectId", out var p) ? p.GetString() : projectId,
-                Path = root.TryGetProperty("path", out var path) ? path.GetString() : null,
-                Bytes = root.TryGetProperty("bytes", out var b) && b.TryGetInt64(out var bv) ? bv : 0,
-                UpdatedAt = root.TryGetProperty("updatedAt", out var u) ? u.GetString() : null,
-                Url = root.TryGetProperty("url", out var urlEl) && urlEl.ValueKind == JsonValueKind.String
-                    ? urlEl.GetString()
-                    : null,
-                StaleScenes = root.TryGetProperty("staleScenes", out var ss) && ss.ValueKind == JsonValueKind.Array
-                    ? ss.EnumerateArray().Where(x => x.TryGetInt32(out _)).Select(x => x.GetInt32()).ToList()
-                    : new List<int>(),
-            };
+            return ParseWipMovieMetaFallback(doc.RootElement, projectId);
         }
     }
+
+    private static WipMovieMetaDto ParseWipMovieMetaFallback(JsonElement root, string projectId) =>
+        new()
+        {
+            Ok = JsonTrue(root, "ok"),
+            Exists = JsonTrue(root, "exists"),
+            Stale = JsonTrue(root, "stale"),
+            CanBuild = JsonTrue(root, "canBuild"),
+            Reason = JsonString(root, "reason"),
+            ProjectId = JsonString(root, "projectId") ?? projectId,
+            Path = JsonString(root, "path"),
+            Bytes = JsonInt64(root, "bytes"),
+            UpdatedAt = JsonString(root, "updatedAt"),
+            Url = JsonStringIfKind(root, "url", JsonValueKind.String),
+            StaleScenes = JsonInt32List(root, "staleScenes"),
+        };
+
+    private static bool JsonTrue(JsonElement root, string name) =>
+        root.TryGetProperty(name, out var el) && el.ValueKind == JsonValueKind.True;
+
+    private static string? JsonString(JsonElement root, string name) =>
+        root.TryGetProperty(name, out var el) ? el.GetString() : null;
+
+    private static string? JsonStringIfKind(JsonElement root, string name, JsonValueKind kind) =>
+        root.TryGetProperty(name, out var el) && el.ValueKind == kind ? el.GetString() : null;
+
+    private static long JsonInt64(JsonElement root, string name) =>
+        root.TryGetProperty(name, out var el) && el.TryGetInt64(out var v) ? v : 0;
+
+    private static List<int> JsonInt32List(JsonElement root, string name) =>
+        root.TryGetProperty(name, out var el) && el.ValueKind == JsonValueKind.Array
+            ? el.EnumerateArray().Where(x => x.TryGetInt32(out _)).Select(x => x.GetInt32()).ToList()
+            : new List<int>();
 
     /// <summary>
     /// Register film_build.v1 after client stitch (EDL + studio.sha256). Non-throwing wrapper returns ok/filmId.
@@ -3610,32 +3625,40 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
         if (dto?.Characters is not null)
         {
             foreach (var c in dto.Characters)
-            {
-                c.RefUrl = AbsolutizeMediaUrl(c.RefUrl)
-                           ?? (c.Locked ? CharacterRefUrl(projectId, c.Key) : null);
-                c.PreferredUrl = AbsolutizeMediaUrl(c.PreferredUrl)
-                                 ?? (c.HasPreferred
-                                     ? (c.Locked
-                                         ? CharacterRefUrl(projectId, c.Key)
-                                         : CharacterVariantUrl(projectId, c.Key, 1))
-                                     : null);
-                foreach (var b in c.BookRefs)
-                {
-                    b.Url = AbsolutizeMediaUrl(b.Url)
-                            ?? (b.Exists && b.Index is int bi
-                                ? CharacterBookRefUrl(projectId, c.Key, bi)
-                                : null);
-                }
-                foreach (var v in c.Variants)
-                {
-                    v.Url = AbsolutizeMediaUrl(v.Url)
-                            ?? (v.Exists && v.Index is int vi
-                                ? CharacterVariantUrl(projectId, c.Key, vi)
-                                : null);
-                }
-            }
+                AbsolutizeCharacterMedia(projectId, c);
         }
         return dto;
+    }
+
+    private void AbsolutizeCharacterMedia(string projectId, CharacterSummary c)
+    {
+        c.RefUrl = AbsolutizeMediaUrl(c.RefUrl)
+                   ?? (c.Locked ? CharacterRefUrl(projectId, c.Key) : null);
+        c.PreferredUrl = AbsolutizePreferredCharacterUrl(projectId, c);
+        foreach (var b in c.BookRefs)
+        {
+            b.Url = AbsolutizeMediaUrl(b.Url)
+                    ?? (b.Exists && b.Index is int bi
+                        ? CharacterBookRefUrl(projectId, c.Key, bi)
+                        : null);
+        }
+        foreach (var v in c.Variants)
+        {
+            v.Url = AbsolutizeMediaUrl(v.Url)
+                    ?? (v.Exists && v.Index is int vi
+                        ? CharacterVariantUrl(projectId, c.Key, vi)
+                        : null);
+        }
+    }
+
+    private string? AbsolutizePreferredCharacterUrl(string projectId, CharacterSummary c)
+    {
+        var abs = AbsolutizeMediaUrl(c.PreferredUrl);
+        if (abs is not null) return abs;
+        if (!c.HasPreferred) return null;
+        return c.Locked
+            ? CharacterRefUrl(projectId, c.Key)
+            : CharacterVariantUrl(projectId, c.Key, 1);
     }
 
     public async Task<LocationsDto?> GetLocationsAsync(string projectId, CancellationToken ct = default)
