@@ -123,64 +123,88 @@ public sealed class SunoClient : IAudioClient
             await Task.Delay(PollInterval, ct).ConfigureAwait(false);
             ct.ThrowIfCancellationRequested();
 
-            using var req = new HttpRequestMessage(HttpMethod.Get, $"generate/record-info?taskId={Uri.EscapeDataString(taskId)}");
-            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+            var body = await FetchPollBodyAsync(taskId, apiKey, ct).ConfigureAwait(false);
+            if (body is null) continue;
 
-            using var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
-            var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-            if (!resp.IsSuccessStatusCode)
-            {
-                _log.LogWarning("Suno (sunoapi.org) poll HTTP {Status}: {Body}", resp.StatusCode, body);
-                continue;
-            }
-
-            try
-            {
-                using var doc = JsonDocument.Parse(body);
-                if (!doc.RootElement.TryGetProperty("data", out var dataEl))
-                    continue;
-
-                var status = dataEl.TryGetProperty("status", out var statusEl) ? statusEl.GetString() : null;
-                onProgress?.Invoke($"Suno status: {status ?? "unknown"}");
-
-                if (string.Equals(status, "SUCCESS", StringComparison.OrdinalIgnoreCase))
-                {
-                    if (dataEl.TryGetProperty("response", out var responseEl) &&
-                        responseEl.TryGetProperty("sunoData", out var sunoDataEl) &&
-                        sunoDataEl.ValueKind == JsonValueKind.Array &&
-                        sunoDataEl.GetArrayLength() > 0)
-                    {
-                        var first = sunoDataEl[0];
-                        var audioUrl = first.TryGetProperty("audioUrl", out var urlEl) ? urlEl.GetString() : null;
-                        if (!string.IsNullOrWhiteSpace(audioUrl))
-                        {
-                            _log.LogInformation("Suno (sunoapi.org) audio ready: {Url}", audioUrl);
-                            return audioUrl;
-                        }
-                    }
-                    _log.LogError("Suno (sunoapi.org) status SUCCESS but no audioUrl found: {Body}", body);
-                    return null;
-                }
-
-                var isFailure = status is "CREATE_TASK_FAILED" or "GENERATE_AUDIO_FAILED"
-                    or "CALLBACK_EXCEPTION" or "SENSITIVE_WORD_ERROR";
-                if (isFailure)
-                {
-                    var errorMessage = dataEl.TryGetProperty("errorMessage", out var errEl) ? errEl.GetString() : null;
-                    _log.LogError("Suno (sunoapi.org) generation failed: {Status} {Error}", status, errorMessage);
-                    return null;
-                }
-                // PENDING / TEXT_SUCCESS / FIRST_SUCCESS — keep polling.
-            }
-            catch (JsonException ex)
-            {
-                _log.LogWarning(ex, "Suno (sunoapi.org) poll returned unparseable JSON: {Body}", body);
-            }
+            var outcome = TryHandlePollBody(body, onProgress);
+            if (outcome.Done)
+                return outcome.AudioUrl;
         }
 
         _log.LogError("Suno (sunoapi.org) generation timed out after {Timeout} for task {TaskId}", PollTimeout, taskId);
         onProgress?.Invoke("Suno generation timed out.");
         return null;
+    }
+
+    private async Task<string?> FetchPollBodyAsync(string taskId, string apiKey, CancellationToken ct)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"generate/record-info?taskId={Uri.EscapeDataString(taskId)}");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+
+        using var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
+        var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+        if (resp.IsSuccessStatusCode) return body;
+        _log.LogWarning("Suno (sunoapi.org) poll HTTP {Status}: {Body}", resp.StatusCode, body);
+        return null;
+    }
+
+    /// <summary>Done=true ends the poll loop (success URL, SUCCESS-without-URL, or vendor failure).</summary>
+    private (bool Done, string? AudioUrl) TryHandlePollBody(string body, Action<string>? onProgress)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            if (!doc.RootElement.TryGetProperty("data", out var dataEl))
+                return (false, null);
+
+            var status = dataEl.TryGetProperty("status", out var statusEl) ? statusEl.GetString() : null;
+            onProgress?.Invoke($"Suno status: {status ?? "unknown"}");
+
+            if (string.Equals(status, "SUCCESS", StringComparison.OrdinalIgnoreCase))
+                return HandleSuccessStatus(dataEl, body);
+            if (IsSunoFailureStatus(status))
+                return HandleFailureStatus(dataEl, status);
+            // PENDING / TEXT_SUCCESS / FIRST_SUCCESS — keep polling.
+        }
+        catch (JsonException ex)
+        {
+            _log.LogWarning(ex, "Suno (sunoapi.org) poll returned unparseable JSON: {Body}", body);
+        }
+        return (false, null);
+    }
+
+    private (bool Done, string? AudioUrl) HandleSuccessStatus(JsonElement dataEl, string body)
+    {
+        var audioUrl = TryReadFirstAudioUrl(dataEl);
+        if (!string.IsNullOrWhiteSpace(audioUrl))
+        {
+            _log.LogInformation("Suno (sunoapi.org) audio ready: {Url}", audioUrl);
+            return (true, audioUrl);
+        }
+        _log.LogError("Suno (sunoapi.org) status SUCCESS but no audioUrl found: {Body}", body);
+        return (true, null);
+    }
+
+    private static string? TryReadFirstAudioUrl(JsonElement dataEl)
+    {
+        if (!dataEl.TryGetProperty("response", out var responseEl) ||
+            !responseEl.TryGetProperty("sunoData", out var sunoDataEl) ||
+            sunoDataEl.ValueKind != JsonValueKind.Array ||
+            sunoDataEl.GetArrayLength() <= 0)
+            return null;
+        var first = sunoDataEl[0];
+        return first.TryGetProperty("audioUrl", out var urlEl) ? urlEl.GetString() : null;
+    }
+
+    private static bool IsSunoFailureStatus(string? status) =>
+        status is "CREATE_TASK_FAILED" or "GENERATE_AUDIO_FAILED"
+            or "CALLBACK_EXCEPTION" or "SENSITIVE_WORD_ERROR";
+
+    private (bool Done, string? AudioUrl) HandleFailureStatus(JsonElement dataEl, string? status)
+    {
+        var errorMessage = dataEl.TryGetProperty("errorMessage", out var errEl) ? errEl.GetString() : null;
+        _log.LogError("Suno (sunoapi.org) generation failed: {Status} {Error}", status, errorMessage);
+        return (true, null);
     }
 
     /// <summary>

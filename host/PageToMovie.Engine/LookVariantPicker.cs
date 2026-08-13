@@ -78,35 +78,69 @@ public static class LookVariantPicker
     public static int? ParseBestPosition(string raw, int count)
     {
         if (string.IsNullOrWhiteSpace(raw) || count < 1) return null;
-        raw = raw.Trim();
-        // strip fences
-        if (raw.StartsWith("```"))
-        {
-            var i = raw.IndexOf('\n');
-            if (i > 0) raw = raw[(i + 1)..];
-            var end = raw.LastIndexOf("```", StringComparison.Ordinal);
-            if (end > 0) raw = raw[..end];
-            raw = raw.Trim();
-        }
+        raw = StripCodeFences(raw.Trim());
+        if (TryReadPositionFromJson(raw, count, out var fromJson))
+            return fromJson;
+        return TryRegexBest(raw, count);
+    }
+
+    private static string StripCodeFences(string raw)
+    {
+        if (!raw.StartsWith("```")) return raw;
+        var i = raw.IndexOf('\n');
+        if (i > 0) raw = raw[(i + 1)..];
+        var end = raw.LastIndexOf("```", StringComparison.Ordinal);
+        if (end > 0) raw = raw[..end];
+        return raw.Trim();
+    }
+
+    /// <summary>
+    /// True when JSON yielded a conclusive <c>best</c>/<c>index</c> answer (including out-of-range → null).
+    /// False means fall through to the regex.
+    /// </summary>
+    private static bool TryReadPositionFromJson(string raw, int count, out int? position)
+    {
+        position = null;
         try
         {
             using var doc = JsonDocument.Parse(raw);
             var root = doc.RootElement;
-            if (root.TryGetProperty("best", out var b))
-            {
-                if (b.ValueKind == JsonValueKind.Number && b.TryGetInt32(out var n))
-                    return n is >= 1 && n <= count ? n : null;
-                if (b.ValueKind == JsonValueKind.String && int.TryParse(b.GetString(), out n))
-                    return n is >= 1 && n <= count ? n : null;
-            }
+            if (TryParseBestProperty(root, count, out position))
+                return true;
             if (root.TryGetProperty("index", out var idx) && idx.TryGetInt32(out var i2))
-                return i2 is >= 1 && i2 <= count ? i2 : null;
+            {
+                position = InRange(i2, count);
+                return true;
+            }
         }
-        catch { /* fall through */ }
+        catch { /* fall through to regex */ }
+        return false;
+    }
 
+    private static bool TryParseBestProperty(JsonElement root, int count, out int? position)
+    {
+        position = null;
+        if (!root.TryGetProperty("best", out var b)) return false;
+        if (b.ValueKind == JsonValueKind.Number && b.TryGetInt32(out var n))
+        {
+            position = InRange(n, count);
+            return true;
+        }
+        if (b.ValueKind == JsonValueKind.String && int.TryParse(b.GetString(), out n))
+        {
+            position = InRange(n, count);
+            return true;
+        }
+        return false;
+    }
+
+    private static int? InRange(int n, int count) => n is >= 1 && n <= count ? n : null;
+
+    private static int? TryRegexBest(string raw, int count)
+    {
         var m = CommonRegex.Match(raw, @"""best""\s*:\s*(\d+)");
-        if (m.Success && int.TryParse(m.Groups[1].Value, out var g) && g is >= 1 && g <= count)
-            return g;
+        if (m.Success && int.TryParse(m.Groups[1].Value, out var g))
+            return InRange(g, count);
         return null;
     }
 

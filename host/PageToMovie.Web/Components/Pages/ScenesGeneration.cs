@@ -190,34 +190,40 @@ public partial class Scenes
     /// <summary>Short outcome label for the live bar (no provider / path / status dump).</summary>
     internal static string LiveGenStatusLabel(JobSnapshot job)
     {
-        var kind = job.Kind ?? "";
         if (string.Equals(job.Status, StatusQueued, StringComparison.OrdinalIgnoreCase))
             return "Waiting…";
 
+        var kind = job.Kind ?? "";
         if (string.Equals(kind, "music", StringComparison.OrdinalIgnoreCase))
-            return !string.IsNullOrWhiteSpace(job.Message) ? job.Message : "Scoring background music…";
+            return NonEmptyOr(job.Message, "Scoring background music…");
         if (string.Equals(kind, "lip_sync", StringComparison.OrdinalIgnoreCase))
-            return !string.IsNullOrWhiteSpace(job.Message) ? job.Message : "Lip-syncing dialogue…";
-
+            return NonEmptyOr(job.Message, "Lip-syncing dialogue…");
         if (string.Equals(kind, KindRemux, StringComparison.OrdinalIgnoreCase))
-        {
-            var msg = job.Message ?? "";
-            // Engine already sends short operator lines for remux ("Combining scene 2 of 5…").
-            if (msg.StartsWith("Combining", StringComparison.OrdinalIgnoreCase) ||
-                msg.StartsWith("Measuring", StringComparison.OrdinalIgnoreCase))
-                return msg.Length > 80 ? msg[..77] + "…" : msg;
-            return "Combining video…";
-        }
-
+            return RemuxLiveLabel(job.Message);
         if (job.Total > 0 &&
             !string.Equals(kind, KindRemux, StringComparison.OrdinalIgnoreCase))
         {
-            // Clip gen: Index is current clip (1..Total).
             var display = job.Index <= 0 ? 1 : Math.Min(job.Index, job.Total);
             return $"Generating… {display} of {job.Total}";
         }
+        return SceneOrBatchLiveLabel(kind, job.Clip);
+    }
 
-        if (string.Equals(kind, KindScene, StringComparison.OrdinalIgnoreCase) && job.Clip is int)
+    private static string NonEmptyOr(string? message, string fallback) =>
+        !string.IsNullOrWhiteSpace(message) ? message : fallback;
+
+    private static string RemuxLiveLabel(string? message)
+    {
+        var msg = message ?? "";
+        if (msg.StartsWith("Combining", StringComparison.OrdinalIgnoreCase) ||
+            msg.StartsWith("Measuring", StringComparison.OrdinalIgnoreCase))
+            return msg.Length > 80 ? msg[..77] + "…" : msg;
+        return "Combining video…";
+    }
+
+    private static string SceneOrBatchLiveLabel(string kind, int? clip)
+    {
+        if (string.Equals(kind, KindScene, StringComparison.OrdinalIgnoreCase) && clip is int)
             return "Generating clip…";
         if (string.Equals(kind, KindScene, StringComparison.OrdinalIgnoreCase))
             return "Generating scene…";
@@ -622,7 +628,6 @@ public partial class Scenes
             S._error = S.List.CastBlockedTitle;
             return;
         }
-        // F5: single full-film/batch job — second caller monitors
         if (JobRunning && IsScenesWorkflowJob(_job?.Kind))
         {
             S._message = "GeneratingBusy: a video job is already running. Watch the progress card.";
@@ -633,45 +638,48 @@ public partial class Scenes
         S._error = null;
         S._message = null;
         _showAdminJobLog = false;
+        ResetLiveProgressFloor();
+        try
+        {
+            await RunSelectedBatchAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex) { S._error = ex.Message; }
+        finally { S._busy = false; }
+    }
+
+    private void ResetLiveProgressFloor()
+    {
         _progressFloor = 0;
         _progressFloorJobId = null;
         _lastListRefreshIndex = -1;
         _lastListRefreshScene = null;
         _lastListRefreshMessage = null;
-        try
+    }
+
+    private async Task RunSelectedBatchAsync()
+    {
+        var list = S.List._selected.OrderBy(x => x).ToList();
+        await EnsureHubAsync();
+
+        var creditsScenes = list.Where(IsCreditsSceneNum).ToList();
+        var videoScenes = list.Where(sn => !creditsScenes.Contains(sn)).ToList();
+
+        foreach (var sn in videoScenes)
+            await S.ClipRegen.EnsurePredecessorsUploadedAsync(await S.ClipRegen.MissingClipTargetsAsync(sn));
+        if (videoScenes.Count > 0)
         {
-            var list = S.List._selected.OrderBy(x => x).ToList();
-            await EnsureHubAsync();
-
-            // The end-credits card is rendered deterministically in the browser (canvas → ffmpeg.wasm),
-            // not by the hallucination-prone video model — split it out of the server video batch.
-            var creditsScenes = list.Where(IsCreditsSceneNum).ToList();
-            var videoScenes = list.Where(sn => !creditsScenes.Contains(sn)).ToList();
-
-            foreach (var sn in videoScenes)
-            {
-                await S.ClipRegen.EnsurePredecessorsUploadedAsync(await S.ClipRegen.MissingClipTargetsAsync(sn));
-            }
-            if (videoScenes.Count > 0)
-            {
-                var videoModelOverride = S.Session.IsAdmin && !string.IsNullOrWhiteSpace(_selectedVideoModel)
-                    ? _selectedVideoModel
-                    : null;
-                await S.Engine.StartBatchGenAsync(S._projectId, videoScenes, onlyMissing: true, resolution: _genResolution, videoModel: videoModelOverride, takeTrigger: VideoTakeKinds.FillHoles);
-                // Live progress card only — no duplicate "started" banner.
-                var jobs = await S.Engine.GetJobAsync();
-                _job = jobs?.Job;
-            }
-
-            foreach (var sn in creditsScenes)
-            {
-                await RenderCreditsSceneClientSideAsync(sn);
-            }
-            if (creditsScenes.Count > 0)
-                await SoftReloadAsync();
+            var videoModelOverride = S.Session.IsAdmin && !string.IsNullOrWhiteSpace(_selectedVideoModel)
+                ? _selectedVideoModel
+                : null;
+            await S.Engine.StartBatchGenAsync(S._projectId, videoScenes, onlyMissing: true, resolution: _genResolution, videoModel: videoModelOverride, takeTrigger: VideoTakeKinds.FillHoles);
+            var jobs = await S.Engine.GetJobAsync();
+            _job = jobs?.Job;
         }
-        catch (Exception ex) { S._error = ex.Message; }
-        finally { S._busy = false; }
+
+        foreach (var sn in creditsScenes)
+            await RenderCreditsSceneClientSideAsync(sn);
+        if (creditsScenes.Count > 0)
+            await SoftReloadAsync();
     }
 
 

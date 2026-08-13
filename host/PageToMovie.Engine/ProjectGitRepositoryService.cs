@@ -417,42 +417,70 @@ namespace PageToMovie.Engine
             int resolved = 0;
             foreach (var conflict in repo.Index.Conflicts.ToList())
             {
-                var path = conflict.Ancestor?.Path ?? conflict.Ours?.Path ?? conflict.Theirs?.Path;
-                if (string.IsNullOrEmpty(path)) { remaining.Add("?"); continue; }
-                var ext = Path.GetExtension(path).ToLowerInvariant();
-                if (ext is ".mp4" or ".webm" or ".mov" or ".wav" or ".avi" or ".png" or ".jpg"
-                    or ".jpeg" or ".gif" or ".webp" or ".bin" or ".pdf" or ".zip")
-                { remaining.Add(path); continue; }
-                try
-                {
-                    string? ReadStage(IndexEntry? entry)
-                    {
-                        if (entry is null || entry.Id == ObjectId.Zero) return null;
-                        var blob = repo.Lookup<Blob>(entry.Id);
-                        if (blob is null || blob.IsBinary) return null;
-                        return blob.GetContentText();
-                    }
-                    var baseText = ReadStage(conflict.Ancestor);
-                    var oursText = ReadStage(conflict.Ours);
-                    var theirsText = ReadStage(conflict.Theirs);
-                    if ((conflict.Ours is not null && oursText is null && conflict.Ours.Id != ObjectId.Zero)
-                        || (conflict.Theirs is not null && theirsText is null && conflict.Theirs.Id != ObjectId.Zero))
-                    { remaining.Add(path); continue; }
-
-                    var outcome = AutoTextMerger.Merge(baseText, oursText ?? "", theirsText ?? "", strategy);
-                    var resolvedPath = Path.Combine(projectPath, path.Replace('/', Path.DirectorySeparatorChar));
-                    var resolvedDir = Path.GetDirectoryName(resolvedPath);
-                    if (!string.IsNullOrEmpty(resolvedDir)) Directory.CreateDirectory(resolvedDir);
-                    File.WriteAllText(resolvedPath, outcome.MergedText);
-                    if (outcome.HasConflicts && strategy == AutoTextMerger.Strategy.Auto)
-                    { remaining.Add(path); continue; }
-                    repo.Index.Remove(path);
-                    Commands.Stage(repo, path);
-                    resolved++;
-                }
-                catch { remaining.Add(path); }
+                if (!TryResolveOneIndexConflict(repo, projectPath, strategy, conflict, remaining))
+                    continue;
+                resolved++;
             }
             return (resolved, remaining);
+        }
+
+        static bool TryResolveOneIndexConflict(
+            Repository repo,
+            string projectPath,
+            AutoTextMerger.Strategy strategy,
+            Conflict conflict,
+            List<string> remaining)
+        {
+            var path = conflict.Ancestor?.Path ?? conflict.Ours?.Path ?? conflict.Theirs?.Path;
+            if (string.IsNullOrEmpty(path)) { remaining.Add("?"); return false; }
+            if (IsNonTextConflictPath(path)) { remaining.Add(path); return false; }
+            try
+            {
+                return TryMergeConflictTexts(repo, projectPath, strategy, conflict, path, remaining);
+            }
+            catch { remaining.Add(path); return false; }
+        }
+
+        static bool IsNonTextConflictPath(string path)
+        {
+            var ext = Path.GetExtension(path).ToLowerInvariant();
+            return ext is ".mp4" or ".webm" or ".mov" or ".wav" or ".avi" or ".png" or ".jpg"
+                or ".jpeg" or ".gif" or ".webp" or ".bin" or ".pdf" or ".zip";
+        }
+
+        static bool TryMergeConflictTexts(
+            Repository repo,
+            string projectPath,
+            AutoTextMerger.Strategy strategy,
+            Conflict conflict,
+            string path,
+            List<string> remaining)
+        {
+            var baseText = ReadConflictStage(repo, conflict.Ancestor);
+            var oursText = ReadConflictStage(repo, conflict.Ours);
+            var theirsText = ReadConflictStage(repo, conflict.Theirs);
+            if ((conflict.Ours is not null && oursText is null && conflict.Ours.Id != ObjectId.Zero)
+                || (conflict.Theirs is not null && theirsText is null && conflict.Theirs.Id != ObjectId.Zero))
+            { remaining.Add(path); return false; }
+
+            var outcome = AutoTextMerger.Merge(baseText, oursText ?? "", theirsText ?? "", strategy);
+            var resolvedPath = Path.Combine(projectPath, path.Replace('/', Path.DirectorySeparatorChar));
+            var resolvedDir = Path.GetDirectoryName(resolvedPath);
+            if (!string.IsNullOrEmpty(resolvedDir)) Directory.CreateDirectory(resolvedDir);
+            File.WriteAllText(resolvedPath, outcome.MergedText);
+            if (outcome.HasConflicts && strategy == AutoTextMerger.Strategy.Auto)
+            { remaining.Add(path); return false; }
+            repo.Index.Remove(path);
+            Commands.Stage(repo, path);
+            return true;
+        }
+
+        static string? ReadConflictStage(Repository repo, IndexEntry? entry)
+        {
+            if (entry is null || entry.Id == ObjectId.Zero) return null;
+            var blob = repo.Lookup<Blob>(entry.Id);
+            if (blob is null || blob.IsBinary) return null;
+            return blob.GetContentText();
         }
 
 
