@@ -43,6 +43,28 @@ public sealed class ProjectContributionService
             return result;
         }
 
+        var filesToCompare = BuildFilesToCompare(targetDir);
+
+        bool overallHasConflicts = false;
+
+        foreach (var (relPath, category) in filesToCompare)
+        {
+            var item = await DiffOneFileAsync(targetDir, originDir, relPath, category, ct).ConfigureAwait(false);
+            if (item is null) continue;
+            if (item.Value.HasConflicts) overallHasConflicts = true;
+            result.FileDiffs.Add(item.Value.Dto);
+        }
+
+        result.HasConflicts = overallHasConflicts;
+
+        // Compute media clip status across target vs origin
+        result.MediaClips = await ComputeMediaClipsAsync(targetDir, originDir, ct).ConfigureAwait(false);
+
+        return result;
+    }
+
+    private static List<(string RelPath, string Category)> BuildFilesToCompare(string targetDir)
+    {
         var filesToCompare = new List<(string RelPath, string Category)>
         {
             ("source/screenplay.fountain", "Screenplay"),
@@ -53,59 +75,54 @@ public sealed class ProjectContributionService
 
         // Also check any additional .fountain files in source/
         var sourceDirTarget = Path.Combine(targetDir, "source");
-        if (Directory.Exists(sourceDirTarget))
+        if (!Directory.Exists(sourceDirTarget))
+            return filesToCompare;
+
+        foreach (var f in Directory.GetFiles(sourceDirTarget, "*.fountain"))
         {
-            foreach (var f in Directory.GetFiles(sourceDirTarget, "*.fountain"))
-            {
-                var rel = Path.Combine("source", Path.GetFileName(f)).Replace('\\', '/');
-                if (!filesToCompare.Any(x => string.Equals(x.RelPath, rel, StringComparison.OrdinalIgnoreCase)))
-                {
-                    filesToCompare.Add((rel, "Screenplay"));
-                }
-            }
+            var rel = Path.Combine("source", Path.GetFileName(f)).Replace('\\', '/');
+            if (!filesToCompare.Any(x => string.Equals(x.RelPath, rel, StringComparison.OrdinalIgnoreCase)))
+                filesToCompare.Add((rel, "Screenplay"));
         }
 
-        bool overallHasConflicts = false;
+        return filesToCompare;
+    }
 
-        foreach (var (relPath, category) in filesToCompare)
+    private static async Task<(ContributionDiffItemDto Dto, bool HasConflicts)?> DiffOneFileAsync(
+        string targetDir, string originDir, string relPath, string category, CancellationToken ct)
+    {
+        var oursFile = Path.Combine(targetDir, relPath);
+        var theirsFile = Path.Combine(originDir, relPath);
+
+        var oursExists = File.Exists(oursFile);
+        var theirsExists = File.Exists(theirsFile);
+
+        if (!oursExists && !theirsExists) return null;
+
+        var oursContent = oursExists ? await File.ReadAllTextAsync(oursFile, ct).ConfigureAwait(false) : "";
+        var theirsContent = theirsExists ? await File.ReadAllTextAsync(theirsFile, ct).ConfigureAwait(false) : "";
+
+        var status = ResolveDiffStatus(oursExists, theirsExists, oursContent, theirsContent);
+        var lines = ComputeLineDiff(oursContent, theirsContent, out bool fileHasConflicts);
+
+        var dto = new ContributionDiffItemDto
         {
-            var oursFile = Path.Combine(targetDir, relPath);
-            var theirsFile = Path.Combine(originDir, relPath);
+            FilePath = relPath,
+            Category = category,
+            Status = status,
+            OursContent = oursContent,
+            TheirsContent = theirsContent,
+            Lines = lines
+        };
+        return (dto, fileHasConflicts);
+    }
 
-            var oursExists = File.Exists(oursFile);
-            var theirsExists = File.Exists(theirsFile);
-
-            if (!oursExists && !theirsExists) continue;
-
-            var oursContent = oursExists ? await File.ReadAllTextAsync(oursFile, ct).ConfigureAwait(false) : "";
-            var theirsContent = theirsExists ? await File.ReadAllTextAsync(theirsFile, ct).ConfigureAwait(false) : "";
-
-            string status;
-            if (!oursExists) status = "deleted";
-            else if (!theirsExists) status = "added";
-            else if (string.Equals(oursContent, theirsContent, StringComparison.Ordinal)) status = "identical";
-            else status = "modified";
-
-            var lines = ComputeLineDiff(oursContent, theirsContent, out bool fileHasConflicts);
-            if (fileHasConflicts) overallHasConflicts = true;
-
-            result.FileDiffs.Add(new ContributionDiffItemDto
-            {
-                FilePath = relPath,
-                Category = category,
-                Status = status,
-                OursContent = oursContent,
-                TheirsContent = theirsContent,
-                Lines = lines
-            });
-        }
-
-        result.HasConflicts = overallHasConflicts;
-
-        // Compute media clip status across target vs origin
-        result.MediaClips = await ComputeMediaClipsAsync(targetDir, originDir, ct).ConfigureAwait(false);
-
-        return result;
+    private static string ResolveDiffStatus(bool oursExists, bool theirsExists, string oursContent, string theirsContent)
+    {
+        if (!oursExists) return "deleted";
+        if (!theirsExists) return "added";
+        if (string.Equals(oursContent, theirsContent, StringComparison.Ordinal)) return "identical";
+        return "modified";
     }
 
     public async Task<MediaSyncResultDto> SyncContributionMediaAsync(

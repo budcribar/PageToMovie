@@ -15,20 +15,7 @@ internal static class LookTweakSlots
         ArgumentException.ThrowIfNullOrWhiteSpace(dir);
         ArgumentNullException.ThrowIfNull(fileNameForIndex);
 
-        byte[]? preferredBytes = null;
-        if (!string.IsNullOrWhiteSpace(preferredPath) && File.Exists(preferredPath))
-        {
-            try
-            {
-                var bytes = File.ReadAllBytes(preferredPath);
-                if (bytes.Length >= 64)
-                    preferredBytes = bytes;
-            }
-            catch
-            {
-                preferredBytes = null;
-            }
-        }
+        var preferredBytes = TryReadPreferredBytes(preferredPath);
 
         var exists = new bool[MaxVariants + 1];
         for (var i = 1; i <= MaxVariants; i++)
@@ -37,34 +24,43 @@ internal static class LookTweakSlots
             exists[i] = File.Exists(full) && new FileInfo(full).Length >= 64;
         }
 
-        var previous = 0;
-        if (preferredBytes is not null)
-        {
-            for (var i = 1; i <= MaxVariants; i++)
-            {
-                if (!exists[i]) continue;
-                if (SameImage(Path.Combine(dir, fileNameForIndex(i)), preferredBytes))
-                {
-                    previous = i;
-                    break;
-                }
-            }
-
-            if (previous == 0)
-            {
-                previous = FirstEmpty(exists) ?? 1;
-                var dest = Path.Combine(dir, fileNameForIndex(previous));
-                File.WriteAllBytes(dest, preferredBytes);
-                exists[previous] = true;
-            }
-        }
-        else
-        {
-            previous = FirstExisting(exists) ?? 1;
-        }
+        var previous = preferredBytes is not null
+            ? ResolvePreviousFromPreferred(dir, fileNameForIndex, exists, preferredBytes)
+            : FirstExisting(exists) ?? 1;
 
         var next = FirstEmpty(exists, except: previous) ?? (previous == 1 ? 2 : 1);
         return new Pair(previous, next);
+    }
+
+    private static byte[]? TryReadPreferredBytes(string? preferredPath)
+    {
+        if (string.IsNullOrWhiteSpace(preferredPath) || !File.Exists(preferredPath))
+            return null;
+        try
+        {
+            var bytes = File.ReadAllBytes(preferredPath);
+            return bytes.Length >= 64 ? bytes : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static int ResolvePreviousFromPreferred(
+        string dir, Func<int, string> fileNameForIndex, bool[] exists, byte[] preferredBytes)
+    {
+        for (var i = 1; i <= MaxVariants; i++)
+        {
+            if (!exists[i]) continue;
+            if (SameImage(Path.Combine(dir, fileNameForIndex(i)), preferredBytes))
+                return i;
+        }
+
+        var previous = FirstEmpty(exists) ?? 1;
+        File.WriteAllBytes(Path.Combine(dir, fileNameForIndex(previous)), preferredBytes);
+        exists[previous] = true;
+        return previous;
     }
 
     private static int? FirstEmpty(bool[] exists, int except = 0)

@@ -101,20 +101,7 @@ public sealed class DepthOfFieldClassifier : BeatChatClassifierBase<DepthOfField
 
             var result = new Dictionary<string, DepthOfFieldDirective>(StringComparer.OrdinalIgnoreCase);
             foreach (var item in dofArray.EnumerateArray())
-            {
-                if (item.TryGetProperty("beat_id", out var bid))
-                {
-                    var id = bid.GetString() ?? "";
-                    var ap = item.TryGetProperty("aperture", out var a) ? a.GetString() ?? "" : "";
-                    var fp = item.TryGetProperty("focal_plane", out var f) ? f.GetString() ?? "" : "";
-                    var rf = item.TryGetProperty("rack_focus", out var r) ? r.GetString() ?? "" : "";
-
-                    if (!string.IsNullOrWhiteSpace(id))
-                    {
-                        result[id] = new DepthOfFieldDirective(ap, fp, rf);
-                    }
-                }
-            }
+                TryAddDofItem(result, item);
 
             return result.Count > 0 ? result : null;
         }
@@ -124,4 +111,20 @@ public sealed class DepthOfFieldClassifier : BeatChatClassifierBase<DepthOfField
             return null;
         }
     }
+
+    private static void TryAddDofItem(Dictionary<string, DepthOfFieldDirective> result, JsonElement item)
+    {
+        if (!item.TryGetProperty("beat_id", out var bid))
+            return;
+        var id = bid.GetString() ?? "";
+        if (string.IsNullOrWhiteSpace(id))
+            return;
+        result[id] = new DepthOfFieldDirective(
+            ReadJsonString(item, "aperture"),
+            ReadJsonString(item, "focal_plane"),
+            ReadJsonString(item, "rack_focus"));
+    }
+
+    private static string ReadJsonString(JsonElement item, string name) =>
+        item.TryGetProperty(name, out var el) ? el.GetString() ?? "" : "";
 }

@@ -42,25 +42,10 @@ public static class ActionConcurrencyAnalyzer
             return new ActionConcurrencyResult("cam_push_in", "act_generic_action", "serial", 0.0, "Empty action description; default to serial.");
         }
 
-        // 1. Extract Camera ID
-        string cameraId = "cam_push_in";
-        if (WhipPanRegex.IsMatch(text)) cameraId = "cam_whip_pan";
-        else if (TrackingDollyRegex.IsMatch(text)) cameraId = "cam_tracking_dolly";
-        else if (CraneCanopyRegex.IsMatch(text)) cameraId = "cam_crane_canopy";
+        var cameraId = ResolveCameraId(text);
+        var actionId = ResolveActionId(text);
 
-        // 2. Extract Action ID
-        string actionId = "act_generic_action";
-        if (KnifePullRegex.IsMatch(text)) actionId = "act_knife_pull";
-        else if (PillsSortingRegex.IsMatch(text)) actionId = "act_pills_sorting";
-        else if (StabbingRegex.IsMatch(text)) actionId = "act_stabbing";
-        else if (ChokeWallRegex.IsMatch(text)) actionId = "act_choke_wall";
-        else if (RunningPanicRegex.IsMatch(text)) actionId = "act_running_panic";
-        else if (CreepingStepRegex.IsMatch(text)) actionId = "act_creeping_step";
-        else if (HeavyCarryRegex.IsMatch(text)) actionId = "act_heavy_carry";
-        else if (VineSwingRegex.IsMatch(text)) actionId = "act_vine_swing";
-        else if (MuscleDriveRegex.IsMatch(text)) actionId = "car_muscle_drive";
-
-        // 3. Determine Concurrency Mode & Overlap Ratio Gamma
+        // Determine Concurrency Mode & Overlap Ratio Gamma
         if (SerialKeywordsRegex.IsMatch(text))
         {
             return new ActionConcurrencyResult(
@@ -97,5 +82,27 @@ public static class ActionConcurrencyAnalyzer
             Mode: "serial",
             OverlapRatioGamma: 0.0,
             Reason: "Standard action beat; default to serial execution.");
+    }
+
+    private static string ResolveCameraId(string text)
+    {
+        if (WhipPanRegex.IsMatch(text)) return "cam_whip_pan";
+        if (TrackingDollyRegex.IsMatch(text)) return "cam_tracking_dolly";
+        if (CraneCanopyRegex.IsMatch(text)) return "cam_crane_canopy";
+        return "cam_push_in";
+    }
+
+    private static string ResolveActionId(string text)
+    {
+        if (KnifePullRegex.IsMatch(text)) return "act_knife_pull";
+        if (PillsSortingRegex.IsMatch(text)) return "act_pills_sorting";
+        if (StabbingRegex.IsMatch(text)) return "act_stabbing";
+        if (ChokeWallRegex.IsMatch(text)) return "act_choke_wall";
+        if (RunningPanicRegex.IsMatch(text)) return "act_running_panic";
+        if (CreepingStepRegex.IsMatch(text)) return "act_creeping_step";
+        if (HeavyCarryRegex.IsMatch(text)) return "act_heavy_carry";
+        if (VineSwingRegex.IsMatch(text)) return "act_vine_swing";
+        if (MuscleDriveRegex.IsMatch(text)) return "car_muscle_drive";
+        return "act_generic_action";
     }
 }

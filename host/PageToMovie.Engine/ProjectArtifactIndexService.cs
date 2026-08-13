@@ -65,37 +65,8 @@ public sealed class ProjectArtifactIndexService
         await SnapshotTelemetryAsync(projectId, dir, ct).ConfigureAwait(false);
 
         var entries = new List<ArtifactIndexEntry>();
-        void Add(string rel, string role, bool requiredForManualReview = false)
-        {
-            var abs = Path.Combine(dir, rel.Replace('/', Path.DirectorySeparatorChar));
-            var exists = File.Exists(abs) || Directory.Exists(abs);
-            long? bytes = null;
-            int? fileCount = null;
-            if (File.Exists(abs))
-            {
-                try { bytes = new FileInfo(abs).Length; } catch { /* file may vanish between Exists and Length */ }
-            }
-            else if (Directory.Exists(abs))
-            {
-                try
-                {
-                    var fileInfos = new DirectoryInfo(abs).EnumerateFiles("*", SearchOption.AllDirectories).ToList();
-                    fileCount = fileInfos.Count;
-                    bytes = fileInfos.Sum(fi => { try { return fi.Length; } catch { return 0L; } });
-                }
-                catch { /* directory listing is best-effort */ }
-            }
-
-            entries.Add(new ArtifactIndexEntry
-            {
-                Path = rel.Replace('\\', '/'),
-                Role = role,
-                Exists = exists,
-                Bytes = bytes,
-                FileCount = fileCount,
-                RequiredForManualReview = requiredForManualReview,
-            });
-        }
+        void Add(string rel, string role, bool requiredForManualReview = false) =>
+            AddIndexEntry(entries, dir, rel, role, requiredForManualReview);
 
         // Core narrative
         Add("source/book_full.txt", "Source book / prose text", requiredForManualReview: true);
@@ -136,17 +107,7 @@ public sealed class ProjectArtifactIndexService
         Add("ARTIFACTS.md", "Human map of this project for Claude/manual review");
         Add("artifact_index.json", "Machine-readable artifact presence map");
 
-        // Scene sources (assembly gate)
-        var videoDir = Path.Combine(dir, AssetsFolder, "video");
-        if (Directory.Exists(videoDir))
-        {
-            foreach (var src in Directory.EnumerateFiles(videoDir, "scene_*.mp4.sources.json")
-                         .OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
-            {
-                var rel = Path.GetRelativePath(dir, src).Replace('\\', '/');
-                Add(rel, "Scene remux include/exclude manifest");
-            }
-        }
+        AddSceneSourceManifests(entries, dir);
 
         var missingRequired = entries
             .Where(e => e.RequiredForManualReview && !e.Exists)
@@ -188,6 +149,58 @@ public sealed class ProjectArtifactIndexService
             doc.ReadyForManualFinalReview);
 
         return doc;
+    }
+
+    private static void AddIndexEntry(
+        List<ArtifactIndexEntry> entries, string dir, string rel, string role, bool requiredForManualReview = false)
+    {
+        var abs = Path.Combine(dir, rel.Replace('/', Path.DirectorySeparatorChar));
+        var exists = File.Exists(abs) || Directory.Exists(abs);
+        long? bytes = null;
+        int? fileCount = null;
+        if (File.Exists(abs))
+        {
+            try { bytes = new FileInfo(abs).Length; } catch { /* file may vanish between Exists and Length */ }
+        }
+        else if (Directory.Exists(abs))
+        {
+            TryFillDirectoryStats(abs, out bytes, out fileCount);
+        }
+
+        entries.Add(new ArtifactIndexEntry
+        {
+            Path = rel.Replace('\\', '/'),
+            Role = role,
+            Exists = exists,
+            Bytes = bytes,
+            FileCount = fileCount,
+            RequiredForManualReview = requiredForManualReview,
+        });
+    }
+
+    private static void TryFillDirectoryStats(string abs, out long? bytes, out int? fileCount)
+    {
+        bytes = null;
+        fileCount = null;
+        try
+        {
+            var fileInfos = new DirectoryInfo(abs).EnumerateFiles("*", SearchOption.AllDirectories).ToList();
+            fileCount = fileInfos.Count;
+            bytes = fileInfos.Sum(fi => { try { return fi.Length; } catch { return 0L; } });
+        }
+        catch { /* directory listing is best-effort */ }
+    }
+
+    private static void AddSceneSourceManifests(List<ArtifactIndexEntry> entries, string dir)
+    {
+        var videoDir = Path.Combine(dir, AssetsFolder, "video");
+        if (!Directory.Exists(videoDir)) return;
+        foreach (var src in Directory.EnumerateFiles(videoDir, "scene_*.mp4.sources.json")
+                     .OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
+        {
+            var rel = Path.GetRelativePath(dir, src).Replace('\\', '/');
+            AddIndexEntry(entries, dir, rel, "Scene remux include/exclude manifest");
+        }
     }
 
     private async Task SnapshotTelemetryAsync(string projectId, string dir, CancellationToken ct)

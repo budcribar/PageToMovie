@@ -166,40 +166,47 @@ public sealed class CastVisualLiteralizeService
         Dictionary<string, object?> original,
         Dictionary<string, object?> parsed)
     {
-        Dictionary<string, object?>? cleanedSeeds = null;
-        if (parsed.TryGetValue("character_seed_tokens", out var s) && s is Dictionary<string, object?> d)
-            cleanedSeeds = d;
-        else if (parsed.TryGetValue("global_production_variables", out var g) &&
-                 g is Dictionary<string, object?> gpv &&
-                 gpv.TryGetValue("character_seed_tokens", out var s2) &&
-                 s2 is Dictionary<string, object?> d2)
-            cleanedSeeds = d2;
-
+        Dictionary<string, object?>? cleanedSeeds = TryReadCleanedSeeds(parsed);
         if (cleanedSeeds is null || cleanedSeeds.Count == 0)
             return original;
 
         var result = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
         foreach (var (key, val) in original)
-        {
-            if (val is not Dictionary<string, object?> seed)
-            {
-                result[key] = val;
-                continue;
-            }
-
-            var copy = new Dictionary<string, object?>(seed, StringComparer.OrdinalIgnoreCase);
-            if (cleanedSeeds.TryGetValue(key, out var cval) && cval is Dictionary<string, object?> clean)
-            {
-                if (clean.TryGetValue(DescriptionKey, out var desc) && desc is not null)
-                    copy[DescriptionKey] = desc.ToString()?.Trim();
-                if (clean.TryGetValue(VisualLockKey, out var vl) && vl is not null)
-                    copy[VisualLockKey] = vl.ToString()?.Trim();
-                if (clean.TryGetValue(WardrobeAlwaysKey, out var wa) && wa is List<object?> list)
-                    copy[WardrobeAlwaysKey] = list;
-            }
-            result[key] = copy;
-        }
-
+            result[key] = MergeOneLiteralized(key, val, cleanedSeeds);
         return result;
+    }
+
+    private static Dictionary<string, object?>? TryReadCleanedSeeds(Dictionary<string, object?> parsed)
+    {
+        if (parsed.TryGetValue("character_seed_tokens", out var s) && s is Dictionary<string, object?> d)
+            return d;
+        if (parsed.TryGetValue("global_production_variables", out var g) &&
+            g is Dictionary<string, object?> gpv &&
+            gpv.TryGetValue("character_seed_tokens", out var s2) &&
+            s2 is Dictionary<string, object?> d2)
+            return d2;
+        return null;
+    }
+
+    private static object? MergeOneLiteralized(
+        string key, object? val, Dictionary<string, object?> cleanedSeeds)
+    {
+        if (val is not Dictionary<string, object?> seed)
+            return val;
+
+        var copy = new Dictionary<string, object?>(seed, StringComparer.OrdinalIgnoreCase);
+        if (cleanedSeeds.TryGetValue(key, out var cval) && cval is Dictionary<string, object?> clean)
+            ApplyCleanedFields(copy, clean);
+        return copy;
+    }
+
+    private static void ApplyCleanedFields(Dictionary<string, object?> copy, Dictionary<string, object?> clean)
+    {
+        if (clean.TryGetValue(DescriptionKey, out var desc) && desc is not null)
+            copy[DescriptionKey] = desc.ToString()?.Trim();
+        if (clean.TryGetValue(VisualLockKey, out var vl) && vl is not null)
+            copy[VisualLockKey] = vl.ToString()?.Trim();
+        if (clean.TryGetValue(WardrobeAlwaysKey, out var wa) && wa is List<object?> list)
+            copy[WardrobeAlwaysKey] = list;
     }
 }

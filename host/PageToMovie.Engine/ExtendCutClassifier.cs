@@ -197,18 +197,20 @@ JSON: {"labels":[{"id":"s1_b3","class":"extend"}]}
 """;
 
     public static Dictionary<string, string> ParseLabels(string raw) =>
-        ClassifierLabelParser.Parse(raw, el =>
-        {
-            var id = el.GetProperty("id").GetString();
-            var cls = el.TryGetProperty("class", out var c) ? c.GetString()
-                : el.TryGetProperty("decision", out var d) ? d.GetString() : null;
-            if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(cls)) return (id, null);
-            cls = cls.Trim().ToLowerInvariant().Replace(' ', '_');
-            if (cls is HardCut or "hardcut" or "cut" or "none") cls = HardCut;
-            if (cls is Extend or "continue" or "continuous") cls = Extend;
-            if (cls is not (HardCut or Extend)) return (id, null);
-            return (id, cls);
-        });
+        ClassifierLabelParser.Parse(raw, TryParseLabelElement);
+
+    private static (string? id, string? cls) TryParseLabelElement(JsonElement el)
+    {
+        var id = el.GetProperty("id").GetString();
+        var cls = el.TryGetProperty("class", out var c) ? c.GetString()
+            : el.TryGetProperty("decision", out var d) ? d.GetString() : null;
+        if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(cls)) return (id, null);
+        cls = cls.Trim().ToLowerInvariant().Replace(' ', '_');
+        if (cls is HardCut or "hardcut" or "cut" or "none") cls = HardCut;
+        if (cls is Extend or "continue" or "continuous") cls = Extend;
+        if (cls is not (HardCut or Extend)) return (id, null);
+        return (id, cls);
+    }
 
     /// <summary>Public baseline used by eval (mirrors Stage2 ForceNone intent for same-location pairs).</summary>
     public static bool BaselineHardCut(string visual, string actionClass, bool sameLocation, bool isFirst)

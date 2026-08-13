@@ -383,6 +383,17 @@ public sealed class BookTextRegistryService
         await using var conn = new SqliteConnection(_connectionString);
         await conn.OpenAsync(ct).ConfigureAwait(false);
 
+        var (bookCount, artifactCount, providerFileCount, totalBookBytes) =
+            await ReadCacheCountsAsync(conn, ct).ConfigureAwait(false);
+        var books = await ReadBookAdminRowsAsync(conn, takeBooks, ct).ConfigureAwait(false);
+        var artifacts = await ReadArtifactAdminRowsAsync(conn, ct).ConfigureAwait(false);
+
+        return new BookCacheAdminSnapshot(bookCount, artifactCount, providerFileCount, totalBookBytes, books, artifacts);
+    }
+
+    private static async Task<(long BookCount, long ArtifactCount, long ProviderFileCount, long TotalBookBytes)>
+        ReadCacheCountsAsync(SqliteConnection conn, CancellationToken ct)
+    {
         long bookCount = 0, artifactCount = 0, providerFileCount = 0, totalBookBytes = 0;
         await using (var c = conn.CreateCommand())
         {
@@ -408,7 +419,12 @@ public sealed class BookTextRegistryService
             }
             catch { providerFileCount = 0; }
         }
+        return (bookCount, artifactCount, providerFileCount, totalBookBytes);
+    }
 
+    private static async Task<List<BookCacheAdminRow>> ReadBookAdminRowsAsync(
+        SqliteConnection conn, int takeBooks, CancellationToken ct)
+    {
         var books = new List<BookCacheAdminRow>();
         await using (var c = conn.CreateCommand())
         {
@@ -427,28 +443,36 @@ public sealed class BookTextRegistryService
             c.Parameters.AddWithValue("@take", takeBooks);
             await using var r = await c.ExecuteReaderAsync(ct).ConfigureAwait(false);
             while (await r.ReadAsync(ct).ConfigureAwait(false))
-            {
-                var textHead = r.IsDBNull(11) ? null : r.GetString(11);
-                var title = ExtractBookTitle(textHead);
-                var proj = r.IsDBNull(12) ? "" : r.GetString(12);
-
-                books.Add(new BookCacheAdminRow(
-                    r.GetString(0),
-                    r.GetString(1),
-                    r.GetInt32(2),
-                    r.GetString(3),
-                    r.GetInt32(4),
-                    r.GetInt32(5),
-                    r.IsDBNull(6) ? null : r.GetString(6),
-                    r.IsDBNull(7) ? null : r.GetString(7),
-                    r.IsDBNull(8) ? null : r.GetInt64(8),
-                    r.IsDBNull(9) ? null : r.GetString(9),
-                    r.IsDBNull(10) ? null : r.GetString(10),
-                    title,
-                    proj));
-            }
+                books.Add(ReadBookAdminRow(r));
         }
+        return books;
+    }
 
+    private static BookCacheAdminRow ReadBookAdminRow(SqliteDataReader r)
+    {
+        var textHead = r.IsDBNull(11) ? null : r.GetString(11);
+        var title = ExtractBookTitle(textHead);
+        var proj = r.IsDBNull(12) ? "" : r.GetString(12);
+
+        return new BookCacheAdminRow(
+            r.GetString(0),
+            r.GetString(1),
+            r.GetInt32(2),
+            r.GetString(3),
+            r.GetInt32(4),
+            r.GetInt32(5),
+            r.IsDBNull(6) ? null : r.GetString(6),
+            r.IsDBNull(7) ? null : r.GetString(7),
+            r.IsDBNull(8) ? null : r.GetInt64(8),
+            r.IsDBNull(9) ? null : r.GetString(9),
+            r.IsDBNull(10) ? null : r.GetString(10),
+            title,
+            proj);
+    }
+
+    private static async Task<List<ArtifactCacheAdminRow>> ReadArtifactAdminRowsAsync(
+        SqliteConnection conn, CancellationToken ct)
+    {
         var artifacts = new List<ArtifactCacheAdminRow>();
         await using (var c = conn.CreateCommand())
         {
@@ -467,8 +491,7 @@ public sealed class BookTextRegistryService
                     r.GetString(4), r.GetDouble(5), r.GetString(6), r.GetInt32(7)));
             }
         }
-
-        return new BookCacheAdminSnapshot(bookCount, artifactCount, providerFileCount, totalBookBytes, books, artifacts);
+        return artifacts;
     }
 
     public static string ExtractBookTitle(string? textHead)

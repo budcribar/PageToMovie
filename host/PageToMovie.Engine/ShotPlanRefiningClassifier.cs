@@ -78,14 +78,90 @@ public sealed class ShotPlanRefiningClassifier
     {
         if (!IsEnabled) return false;
 
+        var clips = TryGetStagnantClips(plannedScene);
+        if (clips is null) return false;
+
+        onProgress?.Invoke($"AI Shot Refiner: Variating camera framing across {clips.Count} clips…");
+
+        try
+        {
+            return await RefineClipsAsync(plannedScene, clips, model, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Failed to run AI shot plan refinement for scene {Scene}", plannedScene.GetValueOrDefault(JsonKeys.SceneNumber));
+            return false;
+        }
+    }
+
+    private async Task<bool> RefineClipsAsync(
+        Dictionary<string, object?> plannedScene,
+        List<Dictionary<string, object?>> clips,
+        string? model,
+        CancellationToken ct)
+    {
+        var userPrompt = BuildUserPrompt(plannedScene, clips);
+        var effectiveModel = !string.IsNullOrWhiteSpace(model) ? model : _opts.ShotPlanRefineClassifyModel;
+        var cacheKey = $"{userPrompt}|m:{effectiveModel}";
+        var requestedIds = clips
+            .Select(c => ToInt(c.GetValueOrDefault(JsonKeys.ClipNumber)).ToString())
+            .ToList();
+
+        // Cache only the first attempt's call — a coverage retry needs a fresh response,
+        // not the same (possibly incomplete) cached text replayed again.
+        var firstAttempt = true;
+        var retry = await AiRetryPolicy.RunWithCoverageRetryAsync(
+            requestedIds,
+            missingIds =>
+            {
+                var allowCache = firstAttempt;
+                firstAttempt = false;
+                return CompleteCachedAsync(
+                    userPrompt, requestedIds, missingIds, cacheKey, effectiveModel, allowCache, ct);
+            },
+            ParseRefinementsDict,
+            maxAttempts: AiRetryPolicy.DefaultCoverageMaxAttempts,
+            backoffBaseMs: AiRetryPolicy.DefaultCoverageBackoffMs,
+            ct: ct,
+            operationName: "stage2_shot_plan_refining",
+            promptVersion: "1",
+            model: effectiveModel).ConfigureAwait(false);
+
+        if (_errorLogger is not null)
+        {
+            var sceneNum = ClassifierValueHelpers.ToIntOrNull(plannedScene.GetValueOrDefault(JsonKeys.SceneNumber));
+            await _errorLogger.LogCoverageResultAsync(
+                "shot_plan_refining_classifier", effectiveModel, ClassifierValueHelpers.ResolveProvider(effectiveModel), sceneNum,
+                requestedIds, retry, ct).ConfigureAwait(false);
+        }
+
+        if (retry.Result is not { Count: > 0 } refDict) return false;
+
+        foreach (var clip in clips)
+        {
+            var key = ToInt(clip.GetValueOrDefault(JsonKeys.ClipNumber)).ToString();
+            if (refDict.TryGetValue(key, out var refTuple))
+            {
+                clip[KeyVisualPrompt] = refTuple.VisualPrompt;
+                clip["veo_continuation_source"] = refTuple.Continuation;
+            }
+        }
+
+        _log.LogInformation("AI Shot Refiner applied dynamic camera framings to {Count} clips in scene {Scene}",
+            refDict.Count, plannedScene.GetValueOrDefault(JsonKeys.SceneNumber));
+        return true;
+    }
+
+    private static List<Dictionary<string, object?>>? TryGetStagnantClips(Dictionary<string, object?> plannedScene)
+    {
         if (!plannedScene.TryGetValue("veo_clips", out var clipsObj) ||
             clipsObj is not List<object?> rawClips || rawClips.Count < 3)
         {
-            return false; // Skip single/dual clip scenes (no stagnation risk)
+            return null; // Skip single/dual clip scenes (no stagnation risk)
         }
 
         var clips = rawClips.OfType<Dictionary<string, object?>>().ToList();
-        if (clips.Count < 3) return false;
+        if (clips.Count < 3) return null;
 
         // Check if prompts are copy-pasted/duplicated across clips
         var prompts = clips.Select(c => CoerceString(c.TryGetValue(KeyVisualPrompt, out var vp) ? vp : null)).ToList();
@@ -93,85 +169,35 @@ public sealed class ShotPlanRefiningClassifier
         if (uniquePrompts > (clips.Count / 2))
         {
             // Scene already has sufficient visual diversity
-            return false;
+            return null;
         }
 
-        onProgress?.Invoke($"AI Shot Refiner: Variating camera framing across {clips.Count} clips…");
+        return clips;
+    }
 
-        try
-        {
-            var userPrompt = BuildUserPrompt(plannedScene, clips);
-            var effectiveModel = !string.IsNullOrWhiteSpace(model) ? model : _opts.ShotPlanRefineClassifyModel;
-            var cacheKey = $"{userPrompt}|m:{effectiveModel}";
-            var requestedIds = clips
-                .Select(c => ToInt(c.GetValueOrDefault(JsonKeys.ClipNumber)).ToString())
-                .ToList();
-
-            // Cache only the first attempt's call — a coverage retry needs a fresh response,
-            // not the same (possibly incomplete) cached text replayed again.
-            var firstAttempt = true;
-            async Task<string> CallChatAsync(IReadOnlyList<string> missingIds)
-            {
-                var focusedPrompt = AiRetryPolicy.FocusCoveragePrompt(userPrompt, requestedIds, missingIds);
-                if (firstAttempt)
-                {
-                    firstAttempt = false;
-                    if (Cache.TryGetValue(cacheKey, out var cachedResp))
-                        return cachedResp;
-                }
-                var raw = await _chat.CompleteAsync(
-                    SystemPrompt(),
-                    focusedPrompt,
-                    effectiveModel,
-                    // 0, not 0.2 — see BeatPacingClassifier for why (cacheable categorical labeling).
-                    temperature: 0,
-                    ct: ct,
-                    mode: ChatCallModes.ShotPlanRefineClassify).ConfigureAwait(false);
-                if (!string.IsNullOrWhiteSpace(raw))
-                    Cache[cacheKey] = raw;
-                return raw;
-            }
-
-            var retry = await AiRetryPolicy.RunWithCoverageRetryAsync(
-                requestedIds,
-                CallChatAsync,
-                ParseRefinementsDict,
-                maxAttempts: AiRetryPolicy.DefaultCoverageMaxAttempts,
-                backoffBaseMs: AiRetryPolicy.DefaultCoverageBackoffMs,
-                ct: ct,
-                operationName: "stage2_shot_plan_refining",
-                promptVersion: "1",
-                model: effectiveModel).ConfigureAwait(false);
-
-            if (_errorLogger is not null)
-            {
-                var sceneNum = ClassifierValueHelpers.ToIntOrNull(plannedScene.GetValueOrDefault(JsonKeys.SceneNumber));
-                await _errorLogger.LogCoverageResultAsync(
-                    "shot_plan_refining_classifier", effectiveModel, ClassifierValueHelpers.ResolveProvider(effectiveModel), sceneNum,
-                    requestedIds, retry, ct).ConfigureAwait(false);
-            }
-
-            if (retry.Result is not { Count: > 0 } refDict) return false;
-
-            foreach (var clip in clips)
-            {
-                var key = ToInt(clip.GetValueOrDefault(JsonKeys.ClipNumber)).ToString();
-                if (refDict.TryGetValue(key, out var refTuple))
-                {
-                    clip[KeyVisualPrompt] = refTuple.VisualPrompt;
-                    clip["veo_continuation_source"] = refTuple.Continuation;
-                }
-            }
-
-            _log.LogInformation("AI Shot Refiner applied dynamic camera framings to {Count} clips in scene {Scene}",
-                refDict.Count, plannedScene.GetValueOrDefault(JsonKeys.SceneNumber));
-            return true;
-        }
-        catch (Exception ex)
-        {
-            _log.LogWarning(ex, "Failed to run AI shot plan refinement for scene {Scene}", plannedScene.GetValueOrDefault(JsonKeys.SceneNumber));
-            return false;
-        }
+    private async Task<string> CompleteCachedAsync(
+        string userPrompt,
+        IReadOnlyList<string> requestedIds,
+        IReadOnlyList<string> missingIds,
+        string cacheKey,
+        string? effectiveModel,
+        bool allowCache,
+        CancellationToken ct)
+    {
+        var focusedPrompt = AiRetryPolicy.FocusCoveragePrompt(userPrompt, requestedIds, missingIds);
+        if (allowCache && Cache.TryGetValue(cacheKey, out var cachedResp))
+            return cachedResp;
+        var raw = await _chat.CompleteAsync(
+            SystemPrompt(),
+            focusedPrompt,
+            effectiveModel ?? "",
+            // 0, not 0.2 — see BeatPacingClassifier for why (cacheable categorical labeling).
+            temperature: 0,
+            ct: ct,
+            mode: ChatCallModes.ShotPlanRefineClassify).ConfigureAwait(false);
+        if (!string.IsNullOrWhiteSpace(raw))
+            Cache[cacheKey] = raw;
+        return raw;
     }
 
     private static string BuildUserPrompt(Dictionary<string, object?> scene, List<Dictionary<string, object?>> clips)

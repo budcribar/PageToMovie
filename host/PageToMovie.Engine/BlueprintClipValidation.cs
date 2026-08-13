@@ -24,22 +24,32 @@ public static class BlueprintClipValidation
             return dups;
 
         foreach (var s in scenes.EnumerateArray())
-        {
-            var sn = s.ValueKind == JsonValueKind.Object &&
-                     s.TryGetProperty("scene_number", out var snEl) && snEl.TryGetInt32(out var n) ? n : 0;
-            if (!s.TryGetProperty("veo_clips", out var vc) || vc.ValueKind != JsonValueKind.Array)
-                continue;
-
-            var seen = new HashSet<int>();
-            foreach (var c in vc.EnumerateArray())
-            {
-                var cn = c.ValueKind == JsonValueKind.Object &&
-                         c.TryGetProperty("clip_number", out var cnEl) && cnEl.TryGetInt32(out var m) ? m : 0;
-                if (cn <= 0) continue;
-                if (!seen.Add(cn)) dups.Add((sn, cn));
-            }
-        }
+            CollectDuplicateClipNumbersInScene(s, dups);
         return dups;
+    }
+
+    private static void CollectDuplicateClipNumbersInScene(
+        JsonElement s, List<(int Scene, int ClipNumber)> dups)
+    {
+        var sn = TryReadInt32(s, "scene_number");
+        if (!s.TryGetProperty("veo_clips", out var vc) || vc.ValueKind != JsonValueKind.Array)
+            return;
+
+        var seen = new HashSet<int>();
+        foreach (var c in vc.EnumerateArray())
+        {
+            var cn = TryReadInt32(c, "clip_number");
+            if (cn <= 0) continue;
+            if (!seen.Add(cn)) dups.Add((sn, cn));
+        }
+    }
+
+    private static int TryReadInt32(JsonElement el, string name)
+    {
+        if (el.ValueKind == JsonValueKind.Object &&
+            el.TryGetProperty(name, out var nEl) && nEl.TryGetInt32(out var n))
+            return n;
+        return 0;
     }
 
     /// <summary>Human-readable summary of duplicates (e.g. "scene 4 clip 2, scene 7 clip 3"), or null if clean.</summary>

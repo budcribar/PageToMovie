@@ -133,33 +133,33 @@ public static class BookOcrPlateShortlist
         var selected = new List<int>();
         var seen = new HashSet<int>();
 
-        void TryAdd(int page)
-        {
-            if (page < 1 || page > maxPage) return;
-            if (!byPage.TryGetValue(page, out var pt)) return;
-            if (!IsArtPage(pt)) return;
-            if (!seen.Add(page)) return;
-            selected.Add(page);
-        }
-
         foreach (var n in FindTextHitPages(pages, aliases))
         {
             foreach (var page in new[] { n + 1, n - 1, n })
-                TryAdd(page);
+                TryAddArtPage(byPage, maxPage, selected, seen, page);
             if (selected.Count >= maxPlates) break;
         }
 
-        // Fallback: remaining art pages (cast never named in OCR)
         if (selected.Count < maxPlates)
         {
             foreach (var p in pages.OrderBy(x => x.Page))
             {
                 if (!IsArtPage(p)) continue;
-                TryAdd(p.Page);
+                TryAddArtPage(byPage, maxPage, selected, seen, p.Page);
             }
         }
 
         return selected.Take(maxPlates).ToList();
+    }
+
+    private static void TryAddArtPage(
+        Dictionary<int, PageText> byPage, int maxPage, List<int> selected, HashSet<int> seen, int page)
+    {
+        if (page < 1 || page > maxPage) return;
+        if (!byPage.TryGetValue(page, out var pt)) return;
+        if (!IsArtPage(pt)) return;
+        if (!seen.Add(page)) return;
+        selected.Add(page);
     }
 
     public static bool IsArtPage(PageText p)

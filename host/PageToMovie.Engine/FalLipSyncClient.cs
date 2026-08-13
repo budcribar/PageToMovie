@@ -117,59 +117,77 @@ public sealed class FalLipSyncClient : ILipSyncClient
         {
             ct.ThrowIfCancellationRequested();
 
-            using var req = new HttpRequestMessage(HttpMethod.Get, statusUrl);
-            req.Headers.Authorization = new AuthenticationHeaderValue("Key", apiKey);
-            using var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
-            var statusBody = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-
-            if (!resp.IsSuccessStatusCode)
-            {
-                if (await FalPollingHelpers.HandleRateLimitAsync(resp, onProgress, ct).ConfigureAwait(false))
-                    continue;
-                _log.LogError("Fal.ai lip-sync status query failed HTTP {Status}: {Body}", resp.StatusCode, statusBody);
-                return null;
-            }
+            var (hardFail, statusBody) = await ReadStatusBodyAsync(statusUrl, apiKey, onProgress, ct).ConfigureAwait(false);
+            if (hardFail) return null;
+            if (statusBody is null) continue;
 
             using var doc = JsonDocument.Parse(statusBody);
             var status = doc.RootElement.TryGetProperty("status", out var stEl) ? stEl.GetString() ?? "" : "";
             onProgress?.Invoke($"Fal.ai lip-sync status: {status}");
 
             if (string.Equals(status, "COMPLETED", StringComparison.OrdinalIgnoreCase))
-            {
-                using var resultReq = new HttpRequestMessage(HttpMethod.Get, resultUrl);
-                resultReq.Headers.Authorization = new AuthenticationHeaderValue("Key", apiKey);
-                using var resultResp = await _http.SendAsync(resultReq, ct).ConfigureAwait(false);
-                var resultBody = await resultResp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                return await FetchCompletedVideoUrlAsync(resultUrl, apiKey, ct).ConfigureAwait(false);
 
-                if (!resultResp.IsSuccessStatusCode)
-                {
-                    _log.LogError("Fal.ai lip-sync result fetch failed HTTP {Status}: {Body}", resultResp.StatusCode, resultBody);
-                    return null;
-                }
-
-                using var resultDoc = JsonDocument.Parse(resultBody);
-                if (resultDoc.RootElement.TryGetProperty("video", out var vEl) &&
-                    vEl.TryGetProperty("url", out var urlEl) &&
-                    urlEl.GetString() is { Length: > 0 } videoUrl)
-                {
-                    return videoUrl;
-                }
-                _log.LogError("Fal.ai lip-sync result payload missing video.url: {Body}", resultBody);
+            if (TryLogFailedStatus(status, doc.RootElement))
                 return null;
-            }
-
-            if (string.Equals(status, "FAILED", StringComparison.OrdinalIgnoreCase))
-            {
-                var err = doc.RootElement.TryGetProperty("error", out var eEl) ? eEl.GetString() : "Job failed";
-                _log.LogError("Fal.ai lip-sync generation failed: {Error}", err);
-                return null;
-            }
 
             await Task.Delay(PollDelay, ct).ConfigureAwait(false);
         }
 
         _log.LogError("Fal.ai lip-sync job {RequestId} timed out after {Seconds}s", requestId, MaxPollAttempts * PollDelay.TotalSeconds);
         return null;
+    }
+
+    /// <summary>
+    /// HardFail means stop polling. A null body without HardFail means rate-limited — caller should continue.
+    /// </summary>
+    private async Task<(bool HardFail, string? Body)> ReadStatusBodyAsync(
+        string statusUrl, string apiKey, Action<string>? onProgress, CancellationToken ct)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Get, statusUrl);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Key", apiKey);
+        using var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
+        var statusBody = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+
+        if (resp.IsSuccessStatusCode)
+            return (false, statusBody);
+        if (await FalPollingHelpers.HandleRateLimitAsync(resp, onProgress, ct).ConfigureAwait(false))
+            return (false, null);
+        _log.LogError("Fal.ai lip-sync status query failed HTTP {Status}: {Body}", resp.StatusCode, statusBody);
+        return (true, null);
+    }
+
+    private async Task<string?> FetchCompletedVideoUrlAsync(string resultUrl, string apiKey, CancellationToken ct)
+    {
+        using var resultReq = new HttpRequestMessage(HttpMethod.Get, resultUrl);
+        resultReq.Headers.Authorization = new AuthenticationHeaderValue("Key", apiKey);
+        using var resultResp = await _http.SendAsync(resultReq, ct).ConfigureAwait(false);
+        var resultBody = await resultResp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+
+        if (!resultResp.IsSuccessStatusCode)
+        {
+            _log.LogError("Fal.ai lip-sync result fetch failed HTTP {Status}: {Body}", resultResp.StatusCode, resultBody);
+            return null;
+        }
+
+        using var resultDoc = JsonDocument.Parse(resultBody);
+        if (resultDoc.RootElement.TryGetProperty("video", out var vEl) &&
+            vEl.TryGetProperty("url", out var urlEl) &&
+            urlEl.GetString() is { Length: > 0 } videoUrl)
+        {
+            return videoUrl;
+        }
+        _log.LogError("Fal.ai lip-sync result payload missing video.url: {Body}", resultBody);
+        return null;
+    }
+
+    private bool TryLogFailedStatus(string status, JsonElement root)
+    {
+        if (!string.Equals(status, "FAILED", StringComparison.OrdinalIgnoreCase))
+            return false;
+        var err = root.TryGetProperty("error", out var eEl) ? eEl.GetString() : "Job failed";
+        _log.LogError("Fal.ai lip-sync generation failed: {Error}", err);
+        return true;
     }
 
     /// <summary>

@@ -59,6 +59,16 @@ public sealed class DemoYouTubePublisherService
         var isReplace = oldYoutubeId is not null;
         await _demos.SetYouTubeUploadStatusAsync(demoId, "uploading", ct: ct).ConfigureAwait(false);
 
+        var youtube = await TryGetYouTubeServiceAsync(demoId, ct).ConfigureAwait(false);
+        if (youtube is null)
+            return;
+
+        await UploadDemoMovieAsync(demoId, path, oldYoutubeId, isReplace, youtube, entry, ct).ConfigureAwait(false);
+    }
+
+    private async Task<Google.Apis.YouTube.v3.YouTubeService?> TryGetYouTubeServiceAsync(
+        string demoId, CancellationToken ct)
+    {
         Google.Apis.YouTube.v3.YouTubeService? youtube;
         try
         {
@@ -68,7 +78,7 @@ public sealed class DemoYouTubePublisherService
         {
             _log.LogWarning(ex, "YouTube auth failed publishing demo {Id}", demoId);
             await _demos.SetYouTubeUploadStatusAsync(demoId, FailedStatus, error: ex.Message, ct: ct).ConfigureAwait(false);
-            return;
+            return null;
         }
 
         if (youtube is null)
@@ -76,9 +86,21 @@ public sealed class DemoYouTubePublisherService
             await _demos.SetYouTubeUploadStatusAsync(
                 demoId, FailedStatus,
                 error: "YouTube channel not connected (admin: connect it from Review).", ct: ct).ConfigureAwait(false);
-            return;
+            return null;
         }
 
+        return youtube;
+    }
+
+    private async Task UploadDemoMovieAsync(
+        string demoId,
+        string path,
+        string? oldYoutubeId,
+        bool isReplace,
+        Google.Apis.YouTube.v3.YouTubeService youtube,
+        DemoCatalogService.DemoEntry entry,
+        CancellationToken ct)
+    {
         try
         {
             // Re-read entry for latest metadata (title/privacy) while uploading.
@@ -129,15 +151,7 @@ public sealed class DemoYouTubePublisherService
                 demoId, url, oldYoutubeId);
 
             // Best-effort cleanup of staged demo movie.mp4 to conserve server disk space
-            try
-            {
-                if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
-                    File.Delete(path);
-            }
-            catch (Exception ex)
-            {
-                _log.LogWarning(ex, "Failed to clean up demo movie file {Path} after YouTube publish", path);
-            }
+            TryDeleteLocalMovieFile(path);
 
             // Mode A: best-effort delete of the obsolete v1 video (requires youtube.force-ssl scope).
             if (isReplace &&
@@ -151,6 +165,19 @@ public sealed class DemoYouTubePublisherService
         {
             _log.LogWarning(ex, "YouTube upload failed for demo {Id}", demoId);
             await _demos.SetYouTubeUploadStatusAsync(demoId, FailedStatus, error: ex.Message, ct: ct).ConfigureAwait(false);
+        }
+    }
+
+    private void TryDeleteLocalMovieFile(string path)
+    {
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
+                File.Delete(path);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Failed to clean up demo movie file {Path} after YouTube publish", path);
         }
     }
 

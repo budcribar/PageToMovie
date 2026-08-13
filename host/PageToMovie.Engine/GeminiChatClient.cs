@@ -244,27 +244,40 @@ public sealed class GeminiChatClient : IChatClient, IVisionClient, IGeminiVideoA
     /// </summary>
     private static string ExtractMessageText(JsonElement result)
     {
-        if (result.TryGetProperty("candidates", out var candidates) &&
-            candidates.ValueKind == JsonValueKind.Array &&
-            candidates.GetArrayLength() > 0)
-        {
-            var c0 = candidates[0];
-            if (c0.ValueKind == JsonValueKind.Object &&
-                c0.TryGetProperty("content", out var content) &&
-                content.TryGetProperty(PartsKey, out var parts) &&
-                parts.ValueKind == JsonValueKind.Array)
-            {
-                var texts = new List<string>();
-                foreach (var p in parts.EnumerateArray())
-                {
-                    if (p.ValueKind == JsonValueKind.Object && p.TryGetProperty("text", out var t))
-                        texts.Add(t.GetString() ?? "");
-                }
-                if (texts.Count > 0)
-                    return string.Join("\n", texts);
-            }
-        }
+        var text = TryExtractCandidatePartsText(result);
+        if (text is not null)
+            return text;
         var raw = result.GetRawText();
         return ProviderHttpHelpers.Trim(raw, ChatClientHelpers.ResponsePreviewMax);
+    }
+
+    private static string? TryExtractCandidatePartsText(JsonElement result)
+    {
+        if (!result.TryGetProperty("candidates", out var candidates) ||
+            candidates.ValueKind != JsonValueKind.Array ||
+            candidates.GetArrayLength() == 0)
+            return null;
+
+        var c0 = candidates[0];
+        if (c0.ValueKind != JsonValueKind.Object ||
+            !c0.TryGetProperty("content", out var content) ||
+            !content.TryGetProperty(PartsKey, out var parts) ||
+            parts.ValueKind != JsonValueKind.Array)
+            return null;
+
+        return JoinPartTexts(parts);
+    }
+
+    private static string? JoinPartTexts(JsonElement parts)
+    {
+        var texts = new List<string>();
+        foreach (var p in parts.EnumerateArray())
+        {
+            if (p.ValueKind == JsonValueKind.Object && p.TryGetProperty("text", out var t))
+                texts.Add(t.GetString() ?? "");
+        }
+        if (texts.Count > 0)
+            return string.Join("\n", texts);
+        return null;
     }
 }

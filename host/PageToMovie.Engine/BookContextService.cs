@@ -255,16 +255,16 @@ public static class BookContextService
                 if (sb.Length > 0) sb.Append('\n');
                 continue;
             }
-            // Next scene heading
-            if (SceneStartRegex.IsMatch(t) ||
-                (t.StartsWith('.') && t.Length > 1 && char.IsLetterOrDigit(t[1])))
-                break;
-            if (t.StartsWith('#')) break;
+            if (IsNextSceneHeading(t) || t.StartsWith('#')) break;
             sb.AppendLine(t);
             if (sb.Length > 1200) break;
         }
         return sb.ToString().Trim();
     }
+
+    private static bool IsNextSceneHeading(string t) =>
+        SceneStartRegex.IsMatch(t) ||
+        (t.StartsWith('.') && t.Length > 1 && char.IsLetterOrDigit(t[1]));
 
     private sealed class FuzzyHit
     {

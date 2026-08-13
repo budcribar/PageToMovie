@@ -111,17 +111,7 @@ JSON: {"ranked":["page_03.png","cover.png","embedded_p02.jpg"]}
             else if (root.ValueKind == JsonValueKind.Array) arr = root;
             else return list;
             foreach (var el in arr.EnumerateArray())
-            {
-                var name = el.ValueKind == JsonValueKind.String ? el.GetString()
-                    : el.TryGetProperty("name", out var n) ? n.GetString() : null;
-                if (string.IsNullOrWhiteSpace(name)) continue;
-                var hit = allowed.FirstOrDefault(a =>
-                    a.Equals(name, StringComparison.OrdinalIgnoreCase) ||
-                    a.EndsWith(name, StringComparison.OrdinalIgnoreCase) ||
-                    name.EndsWith(a, StringComparison.OrdinalIgnoreCase));
-                if (hit is not null && !list.Contains(hit, StringComparer.OrdinalIgnoreCase))
-                    list.Add(hit);
-            }
+                TryAddRankedName(list, allowed, el);
         }
         catch
         {
@@ -131,7 +121,18 @@ JSON: {"ranked":["page_03.png","cover.png","embedded_p02.jpg"]}
         return list;
     }
 
-    /// <summary>Recall@K: fraction of gold top items appearing in pred top-K.</summary>
+    private static void TryAddRankedName(List<string> list, HashSet<string> allowed, JsonElement el)
+    {
+        var name = el.ValueKind == JsonValueKind.String ? el.GetString()
+            : el.TryGetProperty("name", out var n) ? n.GetString() : null;
+        if (string.IsNullOrWhiteSpace(name)) return;
+        var hit = allowed.FirstOrDefault(a =>
+            a.Equals(name, StringComparison.OrdinalIgnoreCase) ||
+            a.EndsWith(name, StringComparison.OrdinalIgnoreCase) ||
+            name.EndsWith(a, StringComparison.OrdinalIgnoreCase));
+        if (hit is not null && !list.Contains(hit, StringComparer.OrdinalIgnoreCase))
+            list.Add(hit);
+    }
     public static double RecallAtK(IReadOnlyList<string> pred, IReadOnlyList<string> gold, int k = 3)
     {
         if (gold.Count == 0) return pred.Count == 0 ? 1.0 : 0.0;

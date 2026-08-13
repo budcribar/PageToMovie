@@ -62,21 +62,7 @@ public sealed class OnScreenCastClassifier
             return result;
         }
 
-        // Baseline heuristic into beat field for fallback
-        var profiles = castKeys.ToDictionary(
-            k => k,
-            k => new ClipVideoPromptBuilder.CharacterProfile { DisplayName = k.Replace("Character_", "").Replace('_', ' ') },
-            StringComparer.OrdinalIgnoreCase);
-        foreach (var t in targets)
-        {
-            var inferred = ClipVideoPromptBuilder.InferKeysFromProse(t.VisualEvent + " " + t.Dialogue, profiles);
-            if (!string.IsNullOrWhiteSpace(t.SpeakerKey) &&
-                !inferred.Contains(t.SpeakerKey, StringComparer.OrdinalIgnoreCase) &&
-                !t.IsVoiceover)
-                inferred.Add(t.SpeakerKey);
-            t.HeuristicKeys = inferred;
-            t.Beat["characters_on_screen"] = inferred.Cast<object?>().ToList();
-        }
+        SeedHeuristicOnScreenKeys(targets, castKeys);
 
         if (!IsEnabled)
         {
@@ -97,74 +83,8 @@ public sealed class OnScreenCastClassifier
             chunks.Add(targets.Skip(offset).Take(batchSize).ToList());
 
         using var sem = new SemaphoreSlim(4);
-        var tasks = chunks.Select(async chunk =>
-        {
-            await sem.WaitAsync(ct).ConfigureAwait(false);
-            try
-            {
-                var chunkIds = chunk.Select(t => t.Id).ToList();
-                var byId = chunk.ToDictionary(t => t.Id, StringComparer.OrdinalIgnoreCase);
-                // Mutable: shrinks to only still-missing ids so each retry re-asks fewer beats —
-                // mirrors the pre-refactor hand-rolled loop exactly.
-                var retry = await AiRetryPolicy.RunWithCoverageRetryAsync<List<string>>(
-                    chunkIds,
-                    callChat: async missingIds =>
-                    {
-                        var payload = missingIds.Select(id =>
-                        {
-                            var t = byId[id];
-                            return new Dictionary<string, object?>
-                            {
-                                ["id"] = t.Id,
-                                ["visual_event"] = Trunc(t.VisualEvent, 60),
-                                ["dialogue"] = Trunc(t.Dialogue, 30),
-                                ["speaker_key"] = t.SpeakerKey,
-                                ["is_voiceover"] = t.IsVoiceover,
-                                ["heuristic_keys"] = t.HeuristicKeys,
-                            };
-                        }).ToList();
-                        var user = "Pick on-screen Character_* keys from the closed cast. JSON only.\n" +
-                                   JsonSerializer.Serialize(new { cast_keys = castKeys, beats = payload });
-                        var raw = await _chat.CompleteAsync(SystemPrompt(), user, effectiveModel, 0, ct, ChatCallModes.OnScreenCastClassify)
-                            .ConfigureAwait(false);
-                        lock (labeled) { result.ChatCalls++; }
-                        return raw;
-                    },
-                    parseResponse: raw =>
-                    {
-                        var parsed = ParseLabels(raw, castKeys);
-                        return parsed;
-                    },
-                    maxAttempts,
-                    backoffBaseMs,
-                    ct,
-                    operationName: "stage2_on_screen_cast",
-                    promptVersion: "1",
-                    model: effectiveModel).ConfigureAwait(false);
-
-                if (retry.LastError is not null)
-                {
-                    _log.LogWarning("OnScreenCast chunk failed: {Error}", retry.LastError);
-                    lock (labeled) { result.LastError = retry.LastError; }
-                }
-                if (retry.Result is not null)
-                {
-                    lock (labeled)
-                    {
-                        foreach (var kv in retry.Result)
-                        {
-                            if (!byId.TryGetValue(kv.Key, out var t)) continue;
-                            t.Beat["characters_on_screen"] = kv.Value.Cast<object?>().ToList();
-                            labeled.Add(kv.Key);
-                        }
-                    }
-                }
-            }
-            finally
-            {
-                sem.Release();
-            }
-        });
+        var tasks = chunks.Select(chunk => ClassifyChunkAsync(
+            chunk, castKeys, result, labeled, effectiveModel, maxAttempts, backoffBaseMs, sem, ct));
         await Task.WhenAll(tasks).ConfigureAwait(false);
 
         result.AiCount = labeled.Count;
@@ -220,19 +140,7 @@ JSON only:
             {
                 var id = el.GetProperty("id").GetString();
                 if (string.IsNullOrWhiteSpace(id)) continue;
-                var keys = new List<string>();
-                if (el.TryGetProperty("keys", out var kEl) && kEl.ValueKind == JsonValueKind.Array)
-                {
-                    foreach (var k in kEl.EnumerateArray())
-                    {
-                        var s = k.GetString();
-                        if (s is null) continue;
-                        var hit = allowed.FirstOrDefault(a => a.Equals(s, StringComparison.OrdinalIgnoreCase));
-                        if (hit is not null && !keys.Contains(hit, StringComparer.OrdinalIgnoreCase))
-                            keys.Add(hit);
-                    }
-                }
-                map[id] = keys;
+                map[id] = CollectAllowedKeys(el, allowed);
             }
         }
         catch (Exception)
@@ -253,6 +161,130 @@ JSON only:
         var prec = (double)inter / p.Count;
         var rec = (double)inter / g.Count;
         return prec + rec <= 0 ? 0 : 2 * prec * rec / (prec + rec);
+    }
+
+    private static void SeedHeuristicOnScreenKeys(List<Target> targets, IReadOnlyList<string> castKeys)
+    {
+        var profiles = castKeys.ToDictionary(
+            k => k,
+            k => new ClipVideoPromptBuilder.CharacterProfile { DisplayName = k.Replace("Character_", "").Replace('_', ' ') },
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var t in targets)
+        {
+            var inferred = ClipVideoPromptBuilder.InferKeysFromProse(t.VisualEvent + " " + t.Dialogue, profiles);
+            if (!string.IsNullOrWhiteSpace(t.SpeakerKey) &&
+                !inferred.Contains(t.SpeakerKey, StringComparer.OrdinalIgnoreCase) &&
+                !t.IsVoiceover)
+                inferred.Add(t.SpeakerKey);
+            t.HeuristicKeys = inferred;
+            t.Beat["characters_on_screen"] = inferred.Cast<object?>().ToList();
+        }
+    }
+
+    private async Task ClassifyChunkAsync(
+        List<Target> chunk,
+        IReadOnlyList<string> castKeys,
+        SimpleClassifyResult result,
+        HashSet<string> labeled,
+        string effectiveModel,
+        int maxAttempts,
+        int backoffBaseMs,
+        SemaphoreSlim sem,
+        CancellationToken ct)
+    {
+        await sem.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var chunkIds = chunk.Select(t => t.Id).ToList();
+            var byId = chunk.ToDictionary(t => t.Id, StringComparer.OrdinalIgnoreCase);
+            // Mutable: shrinks to only still-missing ids so each retry re-asks fewer beats —
+            // mirrors the pre-refactor hand-rolled loop exactly.
+            var retry = await AiRetryPolicy.RunWithCoverageRetryAsync<List<string>>(
+                chunkIds,
+                callChat: missingIds => CompleteChunkLabelsAsync(
+                    missingIds, byId, castKeys, result, labeled, effectiveModel, ct),
+                parseResponse: raw => ParseLabels(raw, castKeys),
+                maxAttempts,
+                backoffBaseMs,
+                ct,
+                operationName: "stage2_on_screen_cast",
+                promptVersion: "1",
+                model: effectiveModel).ConfigureAwait(false);
+
+            if (retry.LastError is not null)
+            {
+                _log.LogWarning("OnScreenCast chunk failed: {Error}", retry.LastError);
+                lock (labeled) { result.LastError = retry.LastError; }
+            }
+            if (retry.Result is not null)
+                ApplyChunkLabels(retry.Result, byId, labeled);
+        }
+        finally
+        {
+            sem.Release();
+        }
+    }
+
+    private async Task<string> CompleteChunkLabelsAsync(
+        IReadOnlyList<string> missingIds,
+        Dictionary<string, Target> byId,
+        IReadOnlyList<string> castKeys,
+        SimpleClassifyResult result,
+        HashSet<string> labeled,
+        string effectiveModel,
+        CancellationToken ct)
+    {
+        var payload = missingIds.Select(id => BuildChunkPayload(byId[id])).ToList();
+        var user = "Pick on-screen Character_* keys from the closed cast. JSON only.\n" +
+                   JsonSerializer.Serialize(new { cast_keys = castKeys, beats = payload });
+        var raw = await _chat.CompleteAsync(SystemPrompt(), user, effectiveModel, 0, ct, ChatCallModes.OnScreenCastClassify)
+            .ConfigureAwait(false);
+        lock (labeled) { result.ChatCalls++; }
+        return raw;
+    }
+
+    private static Dictionary<string, object?> BuildChunkPayload(Target t) => new()
+    {
+        ["id"] = t.Id,
+        ["visual_event"] = Trunc(t.VisualEvent, 60),
+        ["dialogue"] = Trunc(t.Dialogue, 30),
+        ["speaker_key"] = t.SpeakerKey,
+        ["is_voiceover"] = t.IsVoiceover,
+        ["heuristic_keys"] = t.HeuristicKeys,
+    };
+
+    private static void ApplyChunkLabels(
+        Dictionary<string, List<string>> labels, Dictionary<string, Target> byId, HashSet<string> labeled)
+    {
+        lock (labeled)
+        {
+            foreach (var kv in labels)
+            {
+                if (!byId.TryGetValue(kv.Key, out var t)) continue;
+                t.Beat["characters_on_screen"] = kv.Value.Cast<object?>().ToList();
+                labeled.Add(kv.Key);
+            }
+        }
+    }
+
+    private static List<string> CollectAllowedKeys(JsonElement el, HashSet<string> allowed)
+    {
+        var keys = new List<string>();
+        if (el.TryGetProperty("keys", out var kEl) && kEl.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var k in kEl.EnumerateArray())
+                TryAddAllowedKey(k, allowed, keys);
+        }
+        return keys;
+    }
+
+    private static void TryAddAllowedKey(JsonElement k, HashSet<string> allowed, List<string> keys)
+    {
+        var s = k.GetString();
+        if (s is null) return;
+        var hit = allowed.FirstOrDefault(a => a.Equals(s, StringComparison.OrdinalIgnoreCase));
+        if (hit is not null && !keys.Contains(hit, StringComparer.OrdinalIgnoreCase))
+            keys.Add(hit);
     }
 
     private static List<string> ExtractCastKeys(Dictionary<string, object?> stage1)

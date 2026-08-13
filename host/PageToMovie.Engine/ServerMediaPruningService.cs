@@ -175,52 +175,64 @@ namespace PageToMovie.Engine
             foreach (var projectDir in Directory.GetDirectories(projectsRoot))
             {
                 ct.ThrowIfCancellationRequested();
-                var projectId = Path.GetFileName(projectDir);
-                if (string.IsNullOrWhiteSpace(projectId)) continue;
-
-                string[] files;
-                try
-                {
-                    files = Directory.GetFiles(projectDir, "*", SearchOption.AllDirectories)
-                        .Where(f => MediaExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()))
-                        .ToArray();
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Failed to enumerate project media under {Dir} during pruning.", projectDir);
-                    continue;
-                }
-
-                foreach (var file in files)
-                {
-                    ct.ThrowIfCancellationRequested();
-                    var relativePath = Path.GetRelativePath(projectDir, file).Replace('\\', '/');
-
-                    MediaObjectDto? registered;
-                    try
-                    {
-                        registered = await _registry.TryGetAsync(projectId, relativePath, ct).ConfigureAwait(false);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogDebug(
-                            ex, "Media registry lookup failed for {Project}/{Path}; treating as unsynced.",
-                            projectId, relativePath);
-                        continue; // fail closed: never delete when sync status can't be confirmed
-                    }
-
-                    if (registered is null)
-                        continue; // no client confirmation — may be the only surviving copy; keep it
-
-                    DateTime lastWrite;
-                    try { lastWrite = File.GetLastWriteTimeUtc(file); }
-                    catch { continue; }
-
-                    result.Add(new MediaCandidate(projectId, relativePath, file, lastWrite));
-                }
+                await CollectProjectSyncedMediaAsync(projectDir, result, ct).ConfigureAwait(false);
             }
 
             return result;
+        }
+
+        private async Task CollectProjectSyncedMediaAsync(
+            string projectDir, List<MediaCandidate> result, CancellationToken ct)
+        {
+            var projectId = Path.GetFileName(projectDir);
+            if (string.IsNullOrWhiteSpace(projectId)) return;
+
+            string[] files;
+            try
+            {
+                files = Directory.GetFiles(projectDir, "*", SearchOption.AllDirectories)
+                    .Where(f => MediaExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()))
+                    .ToArray();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to enumerate project media under {Dir} during pruning.", projectDir);
+                return;
+            }
+
+            foreach (var file in files)
+            {
+                ct.ThrowIfCancellationRequested();
+                await TryAddSyncedMediaFileAsync(projectId, projectDir, file, result, ct).ConfigureAwait(false);
+            }
+        }
+
+        private async Task TryAddSyncedMediaFileAsync(
+            string projectId, string projectDir, string file, List<MediaCandidate> result, CancellationToken ct)
+        {
+            var relativePath = Path.GetRelativePath(projectDir, file).Replace('\\', '/');
+
+            MediaObjectDto? registered;
+            try
+            {
+                registered = await _registry.TryGetAsync(projectId, relativePath, ct).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(
+                    ex, "Media registry lookup failed for {Project}/{Path}; treating as unsynced.",
+                    projectId, relativePath);
+                return; // fail closed: never delete when sync status can't be confirmed
+            }
+
+            if (registered is null)
+                return; // no client confirmation — may be the only surviving copy; keep it
+
+            DateTime lastWrite;
+            try { lastWrite = File.GetLastWriteTimeUtc(file); }
+            catch { return; }
+
+            result.Add(new MediaCandidate(projectId, relativePath, file, lastWrite));
         }
 
         private bool TryDelete(MediaCandidate c)

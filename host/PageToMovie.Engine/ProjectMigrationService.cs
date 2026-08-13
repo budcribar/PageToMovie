@@ -151,22 +151,10 @@ public sealed class ProjectMigrationService
             case JsonObject obj:
                 foreach (var key in obj.Select(kv => kv.Key).ToList())
                 {
-                    var value = obj[key];
-                    if (string.Equals(key, "visual_prompt", StringComparison.OrdinalIgnoreCase) &&
-                        value is JsonValue jv && jv.TryGetValue<string>(out var s) &&
-                        !string.IsNullOrEmpty(s))
-                    {
-                        var migrated = MigrateVisualPromptLabelText(s);
-                        if (!string.Equals(migrated, s, StringComparison.Ordinal))
-                        {
-                            obj[key] = migrated;
-                            changed = true;
-                        }
-                    }
-                    else if (MigrateVisualPromptNode(value))
-                    {
+                    if (TryHandleVisualPromptProperty(obj, key, ref changed))
+                        continue;
+                    if (MigrateVisualPromptNode(obj[key]))
                         changed = true;
-                    }
                 }
                 break;
             case JsonArray arr:
@@ -175,6 +163,26 @@ public sealed class ProjectMigrationService
                 break;
         }
         return changed;
+    }
+
+    /// <summary>
+    /// Returns true when this key was a non-empty visual_prompt string (whether or not the text
+    /// changed), so the caller must not recurse into the value.
+    /// </summary>
+    private static bool TryHandleVisualPromptProperty(JsonObject obj, string key, ref bool changed)
+    {
+        if (!string.Equals(key, "visual_prompt", StringComparison.OrdinalIgnoreCase))
+            return false;
+        var value = obj[key];
+        if (value is not JsonValue jv || !jv.TryGetValue<string>(out var s) || string.IsNullOrEmpty(s))
+            return false;
+        var migrated = MigrateVisualPromptLabelText(s);
+        if (!string.Equals(migrated, s, StringComparison.Ordinal))
+        {
+            obj[key] = migrated;
+            changed = true;
+        }
+        return true;
     }
 
     /// <summary>

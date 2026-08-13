@@ -140,36 +140,42 @@ public sealed class VoiceAlignmentStore
             return result;
 
         foreach (var s in scenes.EnumerateArray())
-        {
-            var sn = ReadInt(s, "scene_number");
-            if (sn <= 0) continue;
-            if (!s.TryGetProperty("veo_clips", out var clips) || clips.ValueKind != JsonValueKind.Array)
-                continue;
-
-            foreach (var c in clips.EnumerateArray())
-            {
-                var cn = ReadInt(c, "clip_number");
-                if (cn <= 0) continue;
-
-                var lines = BuildClipDialogueLines(c);
-                if (matchesCharacter is not null)
-                    lines = lines.Where(l => matchesCharacter(l.CharacterKey)).ToList();
-                if (lines.Count == 0) continue;
-
-                result.Add(new ClipDialogueLines
-                {
-                    Scene = sn,
-                    Clip = cn,
-                    PlannedDurationSeconds = ReadDouble(c, "duration_seconds"),
-                    Lines = lines,
-                });
-            }
-        }
+            AppendSceneClipDialogue(result, s, matchesCharacter);
 
         return result;
     }
 
-    // ── Matching: detected non-silent windows → known dialogue lines ─────────────────────────
+    private static void AppendSceneClipDialogue(
+        List<ClipDialogueLines> result, JsonElement s, Func<string, bool>? matchesCharacter)
+    {
+        var sn = ReadInt(s, "scene_number");
+        if (sn <= 0) return;
+        if (!s.TryGetProperty("veo_clips", out var clips) || clips.ValueKind != JsonValueKind.Array)
+            return;
+
+        foreach (var c in clips.EnumerateArray())
+            TryAddClipDialogue(result, sn, c, matchesCharacter);
+    }
+
+    private static void TryAddClipDialogue(
+        List<ClipDialogueLines> result, int sn, JsonElement c, Func<string, bool>? matchesCharacter)
+    {
+        var cn = ReadInt(c, "clip_number");
+        if (cn <= 0) return;
+
+        var lines = BuildClipDialogueLines(c);
+        if (matchesCharacter is not null)
+            lines = lines.Where(l => matchesCharacter(l.CharacterKey)).ToList();
+        if (lines.Count == 0) return;
+
+        result.Add(new ClipDialogueLines
+        {
+            Scene = sn,
+            Clip = cn,
+            PlannedDurationSeconds = ReadDouble(c, "duration_seconds"),
+            Lines = lines,
+        });
+    }
 
     /// <summary>
     /// Map detected non-silent speech windows onto the clip's known dialogue lines by order/count.

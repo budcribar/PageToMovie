@@ -64,20 +64,8 @@ public sealed class MediaShareService
             // Reuse active share for this project if present
             foreach (var file in Directory.EnumerateFiles(SharesDir, "*.json"))
             {
-                try
-                {
-                    var text = await File.ReadAllTextAsync(file, ct).ConfigureAwait(false);
-                    var rec = JsonSerializer.Deserialize<ShareRecord>(text, JsonOpts);
-                    if (rec is null || rec.Revoked) continue;
-                    if (!string.Equals(rec.ProjectId, projectId, StringComparison.OrdinalIgnoreCase)) continue;
-                    if (!string.Equals(rec.Kind, "wip", StringComparison.OrdinalIgnoreCase)) continue;
-                    if (rec.ExpiresAt is { } exp && exp < DateTimeOffset.UtcNow) continue;
+                if (await TryReadActiveWipShareAsync(file, projectId, ct).ConfigureAwait(false) is { } rec)
                     return rec;
-                }
-                catch
-                {
-                    /* skip bad file */
-                }
             }
 
             var token = GenerateToken();
@@ -98,6 +86,24 @@ public sealed class MediaShareService
         finally
         {
             _semaphore.Release();
+        }
+    }
+
+    private async Task<ShareRecord?> TryReadActiveWipShareAsync(string file, string projectId, CancellationToken ct)
+    {
+        try
+        {
+            var text = await File.ReadAllTextAsync(file, ct).ConfigureAwait(false);
+            var rec = JsonSerializer.Deserialize<ShareRecord>(text, JsonOpts);
+            if (rec is null || rec.Revoked) return null;
+            if (!string.Equals(rec.ProjectId, projectId, StringComparison.OrdinalIgnoreCase)) return null;
+            if (!string.Equals(rec.Kind, "wip", StringComparison.OrdinalIgnoreCase)) return null;
+            if (rec.ExpiresAt is { } exp && exp < DateTimeOffset.UtcNow) return null;
+            return rec;
+        }
+        catch
+        {
+            return null;
         }
     }
 
