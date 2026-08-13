@@ -1295,7 +1295,7 @@ public sealed partial class ProjectStore
         return list.OrderBy(p => p.Id, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
-    private async Task TryAddProjectFromDirAsync(
+    private static async Task TryAddProjectFromDirAsync(
         List<ProjectInfo> list, string dir, string idOverride, CancellationToken ct)
     {
         var info = await ReadProjectInfoFromDirAsync(dir, idOverride, ct).ConfigureAwait(false);
@@ -1303,7 +1303,7 @@ public sealed partial class ProjectStore
             list.Add(info);
     }
 
-    private async Task AddNamespacedProjectsAsync(
+    private static async Task AddNamespacedProjectsAsync(
         List<ProjectInfo> list, string ownerDir, string ownerName, CancellationToken ct)
     {
         foreach (var child in Directory.GetDirectories(ownerDir))
