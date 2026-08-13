@@ -289,23 +289,7 @@ public sealed class DemoCatalogService
             if (fi.Length < MinUploadBytes)
                 throw new InvalidOperationException("Movie file is too small");
 
-            entry.SizeBytes = fi.Length;
-            entry.ContentType = "video/mp4";
-            if (!string.IsNullOrWhiteSpace(title))
-                entry.Title = title.Trim();
-            if (description is not null)
-                entry.Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
-            if (madeForKids is bool mfk)
-                entry.MadeForKids = mfk;
-            if (isAiSyntheticContent is bool ai)
-                entry.IsAiSyntheticContent = ai;
-            if (privacyStatus is DemoStatuses.Public or "unlisted" or "private")
-                entry.PrivacyStatus = privacyStatus;
-            if (tags is not null)
-                entry.Tags = tags.Count > 0 ? tags : null;
-            // New bytes on disk — YouTube pointer is stale until V2 publish finishes.
-            entry.YoutubeUploadStatus = string.IsNullOrWhiteSpace(entry.YoutubeId) ? "none" : "pending_replace";
-            entry.YoutubeUploadError = null;
+            ApplyAttachMovieMetadata(entry, fi, title, description, madeForKids, isAiSyntheticContent, privacyStatus, tags);
 
             await SaveUnlockedAsync(entry, ct).ConfigureAwait(false);
             _log.LogInformation(
@@ -684,6 +668,35 @@ public sealed class DemoCatalogService
 
         // Public demos: owner request → removed (hidden), admin can hard-delete later.
         return (await SetStatusAsync(id, DemoStatuses.Removed, requesterUserId, "Removed by publisher", ct).ConfigureAwait(false)) is not null;
+    }
+
+    private static void ApplyAttachMovieMetadata(
+        DemoEntry entry,
+        FileInfo fi,
+        string? title,
+        string? description,
+        bool? madeForKids,
+        bool? isAiSyntheticContent,
+        string? privacyStatus,
+        List<string>? tags)
+    {
+        entry.SizeBytes = fi.Length;
+        entry.ContentType = "video/mp4";
+        if (!string.IsNullOrWhiteSpace(title))
+            entry.Title = title.Trim();
+        if (description is not null)
+            entry.Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
+        if (madeForKids is bool mfk)
+            entry.MadeForKids = mfk;
+        if (isAiSyntheticContent is bool ai)
+            entry.IsAiSyntheticContent = ai;
+        if (privacyStatus is DemoStatuses.Public or "unlisted" or "private")
+            entry.PrivacyStatus = privacyStatus;
+        if (tags is not null)
+            entry.Tags = tags.Count > 0 ? tags : null;
+        // New bytes on disk — YouTube pointer is stale until V2 publish finishes.
+        entry.YoutubeUploadStatus = string.IsNullOrWhiteSpace(entry.YoutubeId) ? "none" : "pending_replace";
+        entry.YoutubeUploadError = null;
     }
 
     public static bool LooksLikeMp4(string path)

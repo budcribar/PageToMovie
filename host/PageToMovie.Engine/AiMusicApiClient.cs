@@ -170,27 +170,27 @@ public sealed class AiMusicApiClient : IAudioClient
     private static string? FindStringByAnyKey(JsonElement element, params string[] keys)
     {
         if (element.ValueKind == JsonValueKind.Object)
-        {
-            foreach (var key in keys)
-            {
-                if (element.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String)
-                {
-                    var s = v.GetString();
-                    if (!string.IsNullOrWhiteSpace(s)) return s;
-                }
-            }
-            foreach (var wrapperKey in new[] { "data", "result", "response" })
-            {
-                if (element.TryGetProperty(wrapperKey, out var wrapper))
-                {
-                    var found = FindStringByAnyKey(wrapper, keys);
-                    if (found is not null) return found;
-                }
-            }
-        }
-        else if (element.ValueKind == JsonValueKind.Array && element.GetArrayLength() > 0)
-        {
+            return FindStringOnObject(element, keys);
+        if (element.ValueKind == JsonValueKind.Array && element.GetArrayLength() > 0)
             return FindStringByAnyKey(element[0], keys);
+        return null;
+    }
+
+    private static string? FindStringOnObject(JsonElement element, string[] keys)
+    {
+        foreach (var key in keys)
+        {
+            if (!element.TryGetProperty(key, out var v) || v.ValueKind != JsonValueKind.String)
+                continue;
+            var s = v.GetString();
+            if (!string.IsNullOrWhiteSpace(s)) return s;
+        }
+
+        foreach (var wrapperKey in new[] { "data", "result", "response" })
+        {
+            if (!element.TryGetProperty(wrapperKey, out var wrapper)) continue;
+            var found = FindStringByAnyKey(wrapper, keys);
+            if (found is not null) return found;
         }
         return null;
     }

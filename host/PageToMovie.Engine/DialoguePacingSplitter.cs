@@ -193,50 +193,56 @@ public static class DialoguePacingSplitter
         var current = new StringBuilder();
 
         foreach (var chunk in rawChunks)
-        {
-            if (current.Length == 0)
-            {
-                current.Append(chunk);
-                continue;
-            }
-
-            var chunkWords = chunk.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
-            var currentWords = current.ToString().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
-
-            // If chunk is an orphan (< 4 words) or combining them stays under maxWords
-            if (chunkWords < 4 || (currentWords + chunkWords) <= maxWords)
-            {
-                current.Append(' ').Append(chunk);
-            }
-            else
-            {
-                merged.Add(current.ToString());
-                current.Clear();
-                current.Append(chunk);
-            }
-        }
+            MergeChunkIntoCurrent(current, merged, chunk, maxWords);
 
         if (current.Length > 0)
+            FlushTrailingChunk(current, merged);
+
+        return merged;
+    }
+
+    private static void MergeChunkIntoCurrent(StringBuilder current, List<string> merged, string chunk, int maxWords)
+    {
+        if (current.Length == 0)
         {
-            var currentText = current.ToString();
-            if (merged.Count > 0)
+            current.Append(chunk);
+            return;
+        }
+
+        var chunkWords = chunk.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
+        var currentWords = current.ToString().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
+
+        // If chunk is an orphan (< 4 words) or combining them stays under maxWords
+        if (chunkWords < 4 || (currentWords + chunkWords) <= maxWords)
+        {
+            current.Append(' ').Append(chunk);
+        }
+        else
+        {
+            merged.Add(current.ToString());
+            current.Clear();
+            current.Append(chunk);
+        }
+    }
+
+    private static void FlushTrailingChunk(StringBuilder current, List<string> merged)
+    {
+        var currentText = current.ToString();
+        if (merged.Count > 0)
+        {
+            var currentWords = currentText.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
+            if (currentWords < 4)
             {
-                var currentWords = currentText.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
-                if (currentWords < 4)
-                {
-                    merged[merged.Count - 1] = merged[merged.Count - 1] + " " + currentText;
-                }
-                else
-                {
-                    merged.Add(currentText);
-                }
+                merged[merged.Count - 1] = merged[merged.Count - 1] + " " + currentText;
             }
             else
             {
                 merged.Add(currentText);
             }
         }
-
-        return merged;
+        else
+        {
+            merged.Add(currentText);
+        }
     }
 }

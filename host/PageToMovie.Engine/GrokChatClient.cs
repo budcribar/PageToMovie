@@ -244,26 +244,45 @@ public sealed class GrokChatClient : IChatClient
             text = CommonRegex.Replace(text, @"\s*```\s*$", "");
         }
         // Prefer first balanced/parseable object — avoid matching braces in preamble like "{high}".
+        var parsed = TryParseBalancedJsonObject(text);
+        if (parsed is not null)
+            return parsed;
+        throw new InvalidOperationException("No JSON object in model output");
+    }
+
+    private static Dictionary<string, object?>? TryParseBalancedJsonObject(string text)
+    {
         for (var i = 0; i < text.Length; i++)
         {
-            if (text[i] != '{') continue;
-            for (var j = text.Length - 1; j > i; j--)
+            if (text[i] == '{')
             {
-                if (text[j] != '}') continue;
-                var blob = text[i..(j + 1)];
-                try
+                for (var j = text.Length - 1; j > i; j--)
                 {
-                    using var doc = JsonDocument.Parse(blob);
-                    if (doc.RootElement.ValueKind == JsonValueKind.Object)
-                        return JsonElementToDict(doc.RootElement);
-                }
-                catch
-                {
-                    /* try next span */
+                    if (text[j] == '}' && TryParseObjectBlob(text[i..(j + 1)], out var dict))
+                        return dict;
                 }
             }
         }
-        throw new InvalidOperationException("No JSON object in model output");
+        return null;
+    }
+
+    private static bool TryParseObjectBlob(string blob, out Dictionary<string, object?> dict)
+    {
+        dict = null!;
+        try
+        {
+            using var doc = JsonDocument.Parse(blob);
+            if (doc.RootElement.ValueKind == JsonValueKind.Object)
+            {
+                dict = JsonElementToDict(doc.RootElement);
+                return true;
+            }
+        }
+        catch
+        {
+            /* try next span */
+        }
+        return false;
     }
 
     private static Dictionary<string, object?> JsonElementToDict(JsonElement el)
@@ -291,36 +310,49 @@ public sealed class GrokChatClient : IChatClient
 
     private static string ExtractMessageText(JsonElement result)
     {
-        if (result.TryGetProperty("choices", out var choices) &&
-            choices.ValueKind == JsonValueKind.Array &&
-            choices.GetArrayLength() > 0)
-        {
-            var c0 = choices[0];
-            if (c0.ValueKind == JsonValueKind.Object &&
-                c0.TryGetProperty("message", out var msg) &&
-                msg.ValueKind == JsonValueKind.Object &&
-                msg.TryGetProperty("content", out var content))
-            {
-                if (content.ValueKind == JsonValueKind.String)
-                    return content.GetString() ?? "";
-                if (content.ValueKind == JsonValueKind.Array)
-                {
-                    var parts = new List<string>();
-                    foreach (var c in content.EnumerateArray())
-                    {
-                        if (c.ValueKind == JsonValueKind.String)
-                            parts.Add(c.GetString() ?? "");
-                        else if (c.TryGetProperty("text", out var t))
-                            parts.Add(t.GetString() ?? "");
-                    }
-                    return string.Join("\n", parts);
-                }
-            }
-        }
+        var fromChoices = TryExtractChoicesContent(result);
+        if (fromChoices is not null)
+            return fromChoices;
         if (result.TryGetProperty("output_text", out var ot) && ot.GetString() is { Length: > 0 } s)
             return s;
         var raw = result.GetRawText();
         return ProviderHttpHelpers.Trim(raw, ChatClientHelpers.ResponsePreviewMax);
+    }
+
+    private static string? TryExtractChoicesContent(JsonElement result)
+    {
+        if (!result.TryGetProperty("choices", out var choices) ||
+            choices.ValueKind != JsonValueKind.Array ||
+            choices.GetArrayLength() == 0)
+            return null;
+
+        var c0 = choices[0];
+        if (c0.ValueKind != JsonValueKind.Object ||
+            !c0.TryGetProperty("message", out var msg) ||
+            msg.ValueKind != JsonValueKind.Object ||
+            !msg.TryGetProperty("content", out var content))
+            return null;
+
+        return ExtractContentText(content);
+    }
+
+    private static string? ExtractContentText(JsonElement content)
+    {
+        if (content.ValueKind == JsonValueKind.String)
+            return content.GetString() ?? "";
+        if (content.ValueKind == JsonValueKind.Array)
+        {
+            var parts = new List<string>();
+            foreach (var c in content.EnumerateArray())
+            {
+                if (c.ValueKind == JsonValueKind.String)
+                    parts.Add(c.GetString() ?? "");
+                else if (c.TryGetProperty("text", out var t))
+                    parts.Add(t.GetString() ?? "");
+            }
+            return string.Join("\n", parts);
+        }
+        return null;
     }
 
     private static readonly Regex OpenAiReasoningModelRegex = new(@"^o\d", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);

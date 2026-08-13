@@ -44,12 +44,7 @@ public sealed class AmbientSfxClassifier
         CancellationToken ct = default,
         string? overrideModel = null)
     {
-        var model = !string.IsNullOrWhiteSpace(overrideModel)
-            ? overrideModel
-            : (string.IsNullOrWhiteSpace(_opts.AmbientSfxClassifyModel)
-                ? throw new InvalidOperationException(
-                    "Ambient SFX classify: no model configured. Set the project Script & planning model in Settings, or AmbientSfxClassifyModel.")
-                : _opts.AmbientSfxClassifyModel.Trim());
+        var model = ResolveClassifyModel(overrideModel);
         var temp = _opts.AmbientSfxClassifyTemperature;
         if (double.IsNaN(temp) || temp < 0) temp = 0.2;
         var maxAttempts = Math.Clamp(_opts.AmbientSfxClassifyMaxAttempts, 1, 5);
@@ -83,74 +78,100 @@ public sealed class AmbientSfxClassifier
         var byId = targets.ToDictionary(t => t.Id, StringComparer.OrdinalIgnoreCase);
         var labeled = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var backoffBaseMs = Math.Max(0, _opts.SilentBeatClassifyBackoffBaseMs);
-        var totalAttempts = 0;
 
         var chunks = new List<List<Target>>();
         for (var offset = 0; offset < targets.Count; offset += DefaultBatchSize)
             chunks.Add(targets.Skip(offset).Take(DefaultBatchSize).ToList());
 
         using var sem = new SemaphoreSlim(4);
-        var tasks = chunks.Select(async chunk =>
-        {
-            await sem.WaitAsync(ct).ConfigureAwait(false);
-            try
-            {
-                var chunkIds = chunk.Select(t => t.Id).ToList();
-                // Mutable: shrinks to only still-missing ids so each retry re-asks fewer beats —
-                // mirrors the pre-refactor hand-rolled loop exactly.
-                var retry = await AiRetryPolicy.RunWithCoverageRetryAsync<(string Ambient, string Sfx)>(
-                    chunkIds,
-                    callChat: async missingIds =>
-                    {
-                        var batch = missingIds.Select(id => byId[id]).ToList();
-                        var raw = await CallAsync(batch, model, temp, ct).ConfigureAwait(false);
-                        lock (labeled) { result.ChatCalls++; }
-                        return raw;
-                    },
-                    parseResponse: raw =>
-                    {
-                        var parsed = ParseLabels(raw);
-                        return parsed;
-                    },
-                    maxAttempts,
-                    backoffBaseMs,
-                    ct,
-                    operationName: "stage2_ambient_sfx",
-                    promptVersion: PromptVersion,
-                    model: model).ConfigureAwait(false);
-
-                Interlocked.Add(ref totalAttempts, retry.Attempts);
-                if (retry.LastError is not null)
-                {
-                    _log.LogWarning("AmbientSfx classify chunk failed: {Error}", retry.LastError);
-                    lock (labeled) { result.LastError = Trim(retry.LastError, 200); }
-                }
-                if (retry.Result is not null)
-                {
-                    lock (labeled)
-                    {
-                        foreach (var kv in retry.Result)
-                        {
-                            if (!byId.TryGetValue(kv.Key, out var t)) continue;
-                            Apply(t.Beat, kv.Value.Ambient, kv.Value.Sfx);
-                            labeled.Add(kv.Key);
-                        }
-                    }
-                }
-            }
-            finally
-            {
-                sem.Release();
-            }
-        });
+        var tasks = chunks.Select(chunk => ClassifyChunkAsync(
+            chunk, byId, labeled, result, model, temp, maxAttempts, backoffBaseMs, sem, ct));
         await Task.WhenAll(tasks).ConfigureAwait(false);
-
-        result.Attempts = totalAttempts;
         result.AiCount = labeled.Count;
         result.FallbackCount = targets.Count - labeled.Count;
         result.Note = $"AI {labeled.Count}/{targets.Count}; heuristic kept {result.FallbackCount}";
         onProgress?.Invoke($"Ambient/SFX: {result.Note}");
         return result;
+    }
+
+    private string ResolveClassifyModel(string? overrideModel)
+    {
+        if (!string.IsNullOrWhiteSpace(overrideModel))
+            return overrideModel;
+        if (string.IsNullOrWhiteSpace(_opts.AmbientSfxClassifyModel))
+            throw new InvalidOperationException(
+                "Ambient SFX classify: no model configured. Set the project Script & planning model in Settings, or AmbientSfxClassifyModel.");
+        return _opts.AmbientSfxClassifyModel.Trim();
+    }
+
+    private async Task ClassifyChunkAsync(
+        List<Target> chunk,
+        Dictionary<string, Target> byId,
+        HashSet<string> labeled,
+        AmbientSfxClassifyResult result,
+        string model,
+        double temp,
+        int maxAttempts,
+        int backoffBaseMs,
+        SemaphoreSlim sem,
+        CancellationToken ct)
+    {
+        await sem.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var chunkIds = chunk.Select(t => t.Id).ToList();
+            // Mutable: shrinks to only still-missing ids so each retry re-asks fewer beats —
+            // mirrors the pre-refactor hand-rolled loop exactly.
+            var retry = await AiRetryPolicy.RunWithCoverageRetryAsync<(string Ambient, string Sfx)>(
+                chunkIds,
+                callChat: async missingIds =>
+                {
+                    var batch = missingIds.Select(id => byId[id]).ToList();
+                    var raw = await CallAsync(batch, model, temp, ct).ConfigureAwait(false);
+                    lock (labeled) { result.ChatCalls++; }
+                    return raw;
+                },
+                parseResponse: raw =>
+                {
+                    var parsed = ParseLabels(raw);
+                    return parsed;
+                },
+                maxAttempts,
+                backoffBaseMs,
+                ct,
+                operationName: "stage2_ambient_sfx",
+                promptVersion: PromptVersion,
+                model: model).ConfigureAwait(false);
+
+            lock (labeled) { result.Attempts += retry.Attempts; }
+            if (retry.LastError is not null)
+            {
+                _log.LogWarning("AmbientSfx classify chunk failed: {Error}", retry.LastError);
+                lock (labeled) { result.LastError = Trim(retry.LastError, 200); }
+            }
+            if (retry.Result is not null)
+            {
+                lock (labeled)
+                    ApplyChunkLabels(retry.Result, byId, labeled);
+            }
+        }
+        finally
+        {
+            sem.Release();
+        }
+    }
+
+    private static void ApplyChunkLabels(
+        Dictionary<string, (string Ambient, string Sfx)> labels,
+        Dictionary<string, Target> byId,
+        HashSet<string> labeled)
+    {
+        foreach (var kv in labels)
+        {
+            if (!byId.TryGetValue(kv.Key, out var t)) continue;
+            Apply(t.Beat, kv.Value.Ambient, kv.Value.Sfx);
+            labeled.Add(kv.Key);
+        }
     }
 
     private async Task<string> CallAsync(

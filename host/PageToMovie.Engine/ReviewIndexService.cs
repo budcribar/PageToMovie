@@ -341,33 +341,41 @@ public sealed class ReviewIndexService
         var set = new HashSet<(int, int)>();
         if (!Directory.Exists(videoDir)) return new List<(int, int)>();
 
-        foreach (var fi in new DirectoryInfo(videoDir).EnumerateFiles("scene_*_clip_*.mp4"))
-        {
-            if (!ExactClipNameRe.IsMatch(fi.Name)) continue;
-            if (fi.Length < 512) continue;
-            var m = ExactClipNameRe.Match(fi.Name);
-            if (!int.TryParse(m.Groups[1].Value, out var sn) ||
-                !int.TryParse(m.Groups[2].Value, out var cn))
-                continue;
-            if (sceneFilter is int only && only > 0 && sn != only) continue;
-            set.Add((sn, cn));
-        }
-
-        // Client media folder: hash registered without server MP4 bytes
-        foreach (var fi in new DirectoryInfo(videoDir).EnumerateFiles("scene_*_clip_*.mp4.client.json"))
-        {
-            var m = ExactClipClientJsonRe.Match(fi.Name);
-            if (!m.Success) continue;
-            if (!int.TryParse(m.Groups[1].Value, out var sn) ||
-                !int.TryParse(m.Groups[2].Value, out var cn))
-                continue;
-            if (sceneFilter is int only && only > 0 && sn != only) continue;
-            set.Add((sn, cn));
-        }
+        AddOnDiskMp4Clips(new DirectoryInfo(videoDir), set, sceneFilter);
+        AddOnDiskClientJsonClips(new DirectoryInfo(videoDir), set, sceneFilter);
 
         return set
             .OrderBy(x => x.Item1)
             .ThenBy(x => x.Item2)
             .ToList();
+    }
+
+    private static void AddOnDiskMp4Clips(DirectoryInfo videoDir, HashSet<(int, int)> set, int? sceneFilter)
+    {
+        foreach (var fi in videoDir.EnumerateFiles("scene_*_clip_*.mp4"))
+        {
+            if (!ExactClipNameRe.IsMatch(fi.Name)) continue;
+            if (fi.Length < 512) continue;
+            TryAddClipCoord(set, ExactClipNameRe.Match(fi.Name), sceneFilter);
+        }
+    }
+
+    private static void AddOnDiskClientJsonClips(DirectoryInfo videoDir, HashSet<(int, int)> set, int? sceneFilter)
+    {
+        foreach (var fi in videoDir.EnumerateFiles("scene_*_clip_*.mp4.client.json"))
+        {
+            var m = ExactClipClientJsonRe.Match(fi.Name);
+            if (!m.Success) continue;
+            TryAddClipCoord(set, m, sceneFilter);
+        }
+    }
+
+    private static void TryAddClipCoord(HashSet<(int, int)> set, Match m, int? sceneFilter)
+    {
+        if (!int.TryParse(m.Groups[1].Value, out var sn) ||
+            !int.TryParse(m.Groups[2].Value, out var cn))
+            return;
+        if (sceneFilter is int only && only > 0 && sn != only) return;
+        set.Add((sn, cn));
     }
 }

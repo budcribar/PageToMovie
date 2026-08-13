@@ -21,55 +21,61 @@ public sealed class SmartClassifierModelRouter
         string? userConfiguredModel = null,
         Action<string>? onLog = null)
     {
-        // 1. If user explicitly specified a non-auto model, honor their manual lock
-        if (!string.IsNullOrWhiteSpace(userConfiguredModel) &&
-            !string.Equals(userConfiguredModel, "auto", StringComparison.OrdinalIgnoreCase))
-        {
-            var userChoice = userConfiguredModel.Trim();
-            onLog?.Invoke($"[SmartRouter] Task '{taskKey}' -> Using user override model '{userChoice}'.");
+        if (TryHonorUserOverride(taskKey, userConfiguredModel, onLog, out var userChoice))
             return userChoice;
-        }
 
-        // 2. Resolve ranked benchmark models for taskKey (catalog taskRankings only).
+        // Resolve ranked benchmark models for taskKey (catalog taskRankings only).
         if (!SupportedModelCatalog.TaskRankings.TryGetValue(taskKey, out var rankedModels) || rankedModels.Count == 0)
         {
-            if (!string.IsNullOrWhiteSpace(userConfiguredModel)
-                && !string.Equals(userConfiguredModel, "auto", StringComparison.OrdinalIgnoreCase))
-                return userConfiguredModel.Trim();
+            if (IsExplicitUserModel(userConfiguredModel))
+                return userConfiguredModel!.Trim();
             throw new InvalidOperationException(
                 $"Classifier task '{taskKey}': no model selected and no taskRankings in models_catalog.json. " +
                 "Open Settings and choose a Script & planning model.");
         }
 
-        // 3. Find highest-ranked model whose required API key is active
         foreach (var candidateId in rankedModels)
         {
             var entry = SupportedModelCatalog.Find(candidateId);
-            if (entry is null || !entry.Enabled) continue;
+            if (entry is null || !entry.Enabled || !HasRequiredKeys(entry)) continue;
 
-            bool keysPresent = true;
-            foreach (var reqKey in entry.RequiredEnvKeys)
-            {
-                var val = Environment.GetEnvironmentVariable(reqKey);
-                if (string.IsNullOrWhiteSpace(val))
-                {
-                    keysPresent = false;
-                    break;
-                }
-            }
-
-            if (keysPresent)
-            {
-                var msg = $"[SmartRouter] Task '{taskKey}' -> Assigned '{candidateId}' (Rank #{rankedModels.IndexOf(candidateId) + 1} for provider {entry.ProviderId}).";
-                _log?.LogInformation("{Message}", msg);
-                onLog?.Invoke(msg);
-                return candidateId;
-            }
+            var msg = $"[SmartRouter] Task '{taskKey}' -> Assigned '{candidateId}' (Rank #{rankedModels.IndexOf(candidateId) + 1} for provider {entry.ProviderId}).";
+            _log?.LogInformation("{Message}", msg);
+            onLog?.Invoke(msg);
+            return candidateId;
         }
 
         // 4. No ranked candidate has a key — do not invent another model.
         throw new InvalidOperationException(
             $"Classifier task '{taskKey}': no ranked catalog model has an available API key. " +
             "Add a key in Settings for one of: " + string.Join(", ", rankedModels) + ".");
+    }
+
+    private static bool IsExplicitUserModel(string? userConfiguredModel) =>
+        !string.IsNullOrWhiteSpace(userConfiguredModel) &&
+        !string.Equals(userConfiguredModel, "auto", StringComparison.OrdinalIgnoreCase);
+
+    private static bool TryHonorUserOverride(
+        string taskKey, string? userConfiguredModel, Action<string>? onLog, out string userChoice)
+    {
+        if (!IsExplicitUserModel(userConfiguredModel))
+        {
+            userChoice = "";
+            return false;
+        }
+
+        userChoice = userConfiguredModel!.Trim();
+        onLog?.Invoke($"[SmartRouter] Task '{taskKey}' -> Using user override model '{userChoice}'.");
+        return true;
+    }
+
+    private static bool HasRequiredKeys(SupportedModelEntry entry)
+    {
+        foreach (var reqKey in entry.RequiredEnvKeys)
+        {
+            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(reqKey)))
+                return false;
+        }
+        return true;
     }
 }

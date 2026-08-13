@@ -66,25 +66,11 @@ public sealed class FalVideoClient : IVideoClient
             ["prompt"] = prompt,
             ["aspect_ratio"] = ResolveAspectRatio(model),
         };
-        if (catalogEntry.ShortClipFrameCount is not null || catalogEntry.LongClipFrameCount is not null)
-        {
-            var numFrames = durationSeconds is > 0 and <= 4
-                ? catalogEntry.ShortClipFrameCount
-                    ?? throw new InvalidOperationException(
-                        $"Fal video: model '{catalogEntry.Id}' has longClipFrameCount but no shortClipFrameCount.")
-                : catalogEntry.LongClipFrameCount
-                    ?? throw new InvalidOperationException(
-                        $"Fal video: model '{catalogEntry.Id}' has shortClipFrameCount but no longClipFrameCount.");
-            payload["num_frames"] = numFrames;
-        }
+        ApplyFrameCountParams(payload, catalogEntry, durationSeconds);
         if (catalogEntry.NumInferenceSteps is { } steps)
             payload["num_inference_steps"] = steps;
 
-        var imagePath = !string.IsNullOrWhiteSpace(startFrameImagePath) && File.Exists(startFrameImagePath)
-            ? startFrameImagePath
-            : referenceImagePaths is { Count: > 0 } && File.Exists(referenceImagePaths[0])
-                ? referenceImagePaths[0]
-                : null;
+        var imagePath = ResolveInitImagePath(startFrameImagePath, referenceImagePaths);
 
         // Catalog endpointPath is SSoT (e.g. fal-ai/hunyuan-video). When an init image is present,
         // hunyuan's i2v path is the text endpoint + "-image-to-video"; other fal models already list
@@ -94,14 +80,7 @@ public sealed class FalVideoClient : IVideoClient
             : throw new InvalidOperationException(
                 $"Fal video: model '{catalogEntry.Id}' has no endpointPath in models_catalog.json.");
         if (!string.IsNullOrWhiteSpace(imagePath))
-        {
-            if (!endpoint.Contains("image-to-video", StringComparison.OrdinalIgnoreCase))
-                endpoint = endpoint.TrimEnd('/') + "-image-to-video";
-            var maxDim = catalogEntry.MaxReferenceImageDimension
-                ?? throw new InvalidOperationException(
-                    $"Fal video: model '{catalogEntry.Id}' has no maxReferenceImageDimension in models_catalog.json.");
-            payload["image_url"] = await PrepareOptimizedImageDataUriAsync(imagePath, maxDim, ct).ConfigureAwait(false);
-        }
+            endpoint = await AttachInitImageAsync(payload, catalogEntry, endpoint, imagePath, ct).ConfigureAwait(false);
 
         using var req = new HttpRequestMessage(HttpMethod.Post, endpoint);
         req.Headers.Authorization = new AuthenticationHeaderValue("Key", apiKey);
@@ -126,6 +105,45 @@ public sealed class FalVideoClient : IVideoClient
 
         _log.LogInformation("Fal.ai HunyuanVideo job submitted to {Endpoint}: {RequestId}", endpoint, reqId);
         return $"{endpoint}:{reqId}";
+    }
+
+    private static void ApplyFrameCountParams(
+        Dictionary<string, object?> payload, SupportedModelEntry catalogEntry, int durationSeconds)
+    {
+        if (catalogEntry.ShortClipFrameCount is not null || catalogEntry.LongClipFrameCount is not null)
+        {
+            var numFrames = durationSeconds is > 0 and <= 4
+                ? catalogEntry.ShortClipFrameCount
+                    ?? throw new InvalidOperationException(
+                        $"Fal video: model '{catalogEntry.Id}' has longClipFrameCount but no shortClipFrameCount.")
+                : catalogEntry.LongClipFrameCount
+                    ?? throw new InvalidOperationException(
+                        $"Fal video: model '{catalogEntry.Id}' has shortClipFrameCount but no longClipFrameCount.");
+            payload["num_frames"] = numFrames;
+        }
+    }
+
+    private static string? ResolveInitImagePath(string? startFrameImagePath, IReadOnlyList<string>? referenceImagePaths) =>
+        !string.IsNullOrWhiteSpace(startFrameImagePath) && File.Exists(startFrameImagePath)
+            ? startFrameImagePath
+            : referenceImagePaths is { Count: > 0 } && File.Exists(referenceImagePaths[0])
+                ? referenceImagePaths[0]
+                : null;
+
+    private static async Task<string> AttachInitImageAsync(
+        Dictionary<string, object?> payload,
+        SupportedModelEntry catalogEntry,
+        string endpoint,
+        string imagePath,
+        CancellationToken ct)
+    {
+        if (!endpoint.Contains("image-to-video", StringComparison.OrdinalIgnoreCase))
+            endpoint = endpoint.TrimEnd('/') + "-image-to-video";
+        var maxDim = catalogEntry.MaxReferenceImageDimension
+            ?? throw new InvalidOperationException(
+                $"Fal video: model '{catalogEntry.Id}' has no maxReferenceImageDimension in models_catalog.json.");
+        payload["image_url"] = await PrepareOptimizedImageDataUriAsync(imagePath, maxDim, ct).ConfigureAwait(false);
+        return endpoint;
     }
 
     public async Task<string> PollForVideoUrlAsync(string requestId, Action<string>? onProgress, CancellationToken ct)

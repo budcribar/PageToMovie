@@ -566,44 +566,54 @@ Use only the four class strings above.
     {
         var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         if (string.IsNullOrWhiteSpace(raw)) return map;
-        raw = raw.Trim();
-        if (raw.StartsWith("```", StringComparison.Ordinal))
-        {
-            raw = CommonRegex.Replace(raw, @"^```(?:json)?\s*", "", RegexOptions.IgnoreCase);
-            // Truncate at the closing fence wherever it falls — some models append prose
-            // (e.g. a "Reasoning:" section) after the fenced JSON instead of ending on it.
-            var fenceEnd = raw.IndexOf("```", StringComparison.Ordinal);
-            raw = (fenceEnd >= 0 ? raw[..fenceEnd] : raw).TrimEnd();
-        }
+        raw = StripMarkdownFence(raw.Trim());
 
         try
         {
             using var doc = JsonDocument.Parse(raw);
-            var root = doc.RootElement;
-            JsonElement arr;
-            if (root.ValueKind == JsonValueKind.Array)
-                arr = root;
-            else if (root.TryGetProperty("labels", out var l))
-                arr = l;
-            else
-                return map;
-
-            foreach (var el in arr.EnumerateArray())
-            {
-                var id = el.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
-                var cls = el.TryGetProperty("class", out var cEl) ? cEl.GetString()
-                    : el.TryGetProperty("action_class", out var aEl) ? aEl.GetString() : null;
-                if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(cls)) continue;
-                var n = NormalizeClass(cls);
-                if (n is null) continue;
-                map[id] = n;
-            }
+            TryWalkLabelArray(doc.RootElement, map);
         }
         catch
         {
             // leave empty → retry / fallback
         }
         return map;
+    }
+
+    private static string StripMarkdownFence(string raw)
+    {
+        if (!raw.StartsWith("```", StringComparison.Ordinal))
+            return raw;
+        raw = CommonRegex.Replace(raw, @"^```(?:json)?\s*", "", RegexOptions.IgnoreCase);
+        // Truncate at the closing fence wherever it falls — some models append prose
+        // (e.g. a "Reasoning:" section) after the fenced JSON instead of ending on it.
+        var fenceEnd = raw.IndexOf("```", StringComparison.Ordinal);
+        return (fenceEnd >= 0 ? raw[..fenceEnd] : raw).TrimEnd();
+    }
+
+    private static void TryWalkLabelArray(JsonElement root, Dictionary<string, string> map)
+    {
+        JsonElement arr;
+        if (root.ValueKind == JsonValueKind.Array)
+            arr = root;
+        else if (root.TryGetProperty("labels", out var l))
+            arr = l;
+        else
+            return;
+
+        foreach (var el in arr.EnumerateArray())
+            TryAddSilentBeatLabel(el, map);
+    }
+
+    private static void TryAddSilentBeatLabel(JsonElement el, Dictionary<string, string> map)
+    {
+        var id = el.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
+        var cls = el.TryGetProperty("class", out var cEl) ? cEl.GetString()
+            : el.TryGetProperty("action_class", out var aEl) ? aEl.GetString() : null;
+        if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(cls)) return;
+        var n = NormalizeClass(cls);
+        if (n is null) return;
+        map[id] = n;
     }
 
     public static string? NormalizeClass(string c)

@@ -180,37 +180,47 @@ public sealed class ProjectAclService : IProjectAclService
         var userRole = Enum.TryParse<UserRole>(role, ignoreCase: true, out var parsedRole) ? parsedRole : UserRole.Editor;
         role = userRole == UserRole.Viewer ? "viewer" : "editor";
 
-        ProjectUserInfo? user = null;
-        if (_users is not null)
-        {
-            user = await _users.FindByUsernameAsync(usernameOrEmail, ct)
-                   ?? await _users.FindByEmailAsync(usernameOrEmail, ct)
-                   ?? await _users.FindByIdAsync(usernameOrEmail, ct);
-        }
-
+        var user = await FindInviteUserAsync(usernameOrEmail, ct);
         if (user is not null && !string.IsNullOrWhiteSpace(user.UserId))
+            return await GrantExistingUserAsync(projectId, callerUserId, user, usernameOrEmail, role, ct);
+
+        return await CreatePendingInviteAsync(projectId, usernameOrEmail, role, callerUserId, publicBaseUrl, ct);
+    }
+
+    private async Task<ProjectUserInfo?> FindInviteUserAsync(string usernameOrEmail, CancellationToken ct)
+    {
+        if (_users is null)
+            return null;
+        return await _users.FindByUsernameAsync(usernameOrEmail, ct)
+               ?? await _users.FindByEmailAsync(usernameOrEmail, ct)
+               ?? await _users.FindByIdAsync(usernameOrEmail, ct);
+    }
+
+    private async Task<InviteResult> GrantExistingUserAsync(
+        string projectId, string callerUserId, ProjectUserInfo user, string usernameOrEmail, string role, CancellationToken ct)
+    {
+        if (role == "viewer")
+            await InviteViewerAsync(projectId, callerUserId, user.UserId, ct);
+        else
+            await InviteEditorAsync(projectId, callerUserId, user.UserId, ct);
+
+        var acl = await GetOrCreateAclAsync(projectId, callerUserId, ct);
+        acl.PendingInvites.RemoveAll(i => Matches(i, usernameOrEmail, user.UserId, user.Email));
+        acl.Rev++;
+        await SaveAclAsync(projectId, acl, ct);
+        return new InviteResult
         {
-            if (role == "viewer")
-                await InviteViewerAsync(projectId, callerUserId, user.UserId, ct);
-            else
-                await InviteEditorAsync(projectId, callerUserId, user.UserId, ct);
+            Ok = true, Status = "granted", UserId = user.UserId, Role = role,
+            Message = $"Granted {role} to {user.UserId}."
+        };
+    }
 
-            acl = await GetOrCreateAclAsync(projectId, callerUserId, ct);
-            acl.PendingInvites.RemoveAll(i => Matches(i, usernameOrEmail, user.UserId, user.Email));
-            acl.Rev++;
-            await SaveAclAsync(projectId, acl, ct);
-            return new InviteResult
-            {
-                Ok = true, Status = "granted", UserId = user.UserId, Role = role,
-                Message = $"Granted {role} to {user.UserId}."
-            };
-        }
-
-        // Pending
-        acl = await GetOrCreateAclAsync(projectId, callerUserId, ct);
-        var existing = acl.PendingInvites.FirstOrDefault(i =>
-            string.Equals(i.Username, usernameOrEmail, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(i.Email, usernameOrEmail, StringComparison.OrdinalIgnoreCase));
+    private async Task<InviteResult> CreatePendingInviteAsync(
+        string projectId, string usernameOrEmail, string role, string callerUserId,
+        string? publicBaseUrl, CancellationToken ct)
+    {
+        var acl = await GetOrCreateAclAsync(projectId, callerUserId, ct);
+        var existing = acl.PendingInvites.FirstOrDefault(i => MatchesUsernameOrEmail(i, usernameOrEmail));
         var token = existing?.Token ?? CreateToken();
         var isEmail = usernameOrEmail.Contains('@');
         var invite = new PendingInvite
@@ -223,10 +233,7 @@ public sealed class ProjectAclService : IProjectAclService
             CreatedUtc = existing?.CreatedUtc ?? DateTimeOffset.UtcNow,
             LastSentUtc = DateTimeOffset.UtcNow
         };
-        acl.PendingInvites.RemoveAll(i =>
-            string.Equals(i.Username, usernameOrEmail, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(i.Email, usernameOrEmail, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(i.Token, token, StringComparison.Ordinal));
+        acl.PendingInvites.RemoveAll(i => MatchesPendingInvite(i, usernameOrEmail, token));
         acl.PendingInvites.Add(invite);
         acl.Rev++;
         await SaveAclAsync(projectId, acl, ct);
@@ -235,18 +242,7 @@ public sealed class ProjectAclService : IProjectAclService
             ? $"/invite/{token}"
             : $"{publicBaseUrl.TrimEnd('/')}/invite/{token}";
 
-        var emailed = false;
-        if (isEmail && _email is not null)
-        {
-            var subject = $"You're invited to a PageToMovie project ({projectId})";
-            var body =
-                $"You've been invited as {role} on project \"{projectId}\".\n\n" +
-                $"Accept:\n{acceptUrl}\n\n" +
-                "Sign in first (if needed), then open the link while signed in.\n";
-            try { await _email.SendAsync(usernameOrEmail, subject, body, ct); emailed = true; }
-            catch { /* pending remains */ }
-        }
-
+        var emailed = await TrySendInviteEmailAsync(usernameOrEmail, role, projectId, acceptUrl, isEmail, ct);
         return new InviteResult
         {
             Ok = true,
@@ -255,13 +251,47 @@ public sealed class ProjectAclService : IProjectAclService
             Token = token,
             InviteLink = acceptUrl,
             EmailSent = emailed,
-            Message = emailed
-                ? $"Invite email sent to {usernameOrEmail}."
-                : isEmail
-                    ? $"Pending invite for {usernameOrEmail} (email not sent — check mail config)."
-                    : $"Pending invite for '{usernameOrEmail}'. Share the invite link."
+            Message = PendingInviteMessage(emailed, isEmail, usernameOrEmail)
         };
     }
+
+    private async Task<bool> TrySendInviteEmailAsync(
+        string usernameOrEmail, string role, string projectId, string acceptUrl, bool isEmail, CancellationToken ct)
+    {
+        if (!isEmail || _email is null)
+            return false;
+        var subject = $"You're invited to a PageToMovie project ({projectId})";
+        var body =
+            $"You've been invited as {role} on project \"{projectId}\".\n\n" +
+            $"Accept:\n{acceptUrl}\n\n" +
+            "Sign in first (if needed), then open the link while signed in.\n";
+        try
+        {
+            await _email.SendAsync(usernameOrEmail, subject, body, ct);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static string PendingInviteMessage(bool emailed, bool isEmail, string usernameOrEmail)
+    {
+        if (emailed)
+            return $"Invite email sent to {usernameOrEmail}.";
+        if (isEmail)
+            return $"Pending invite for {usernameOrEmail} (email not sent — check mail config).";
+        return $"Pending invite for '{usernameOrEmail}'. Share the invite link.";
+    }
+
+    private static bool MatchesUsernameOrEmail(PendingInvite i, string usernameOrEmail) =>
+        string.Equals(i.Username, usernameOrEmail, StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(i.Email, usernameOrEmail, StringComparison.OrdinalIgnoreCase);
+
+    private static bool MatchesPendingInvite(PendingInvite i, string usernameOrEmail, string token) =>
+        MatchesUsernameOrEmail(i, usernameOrEmail) ||
+        string.Equals(i.Token, token, StringComparison.Ordinal);
 
     public async Task<InviteResult> ResendInviteAsync(
         string projectId, string usernameOrEmail, string callerUserId,

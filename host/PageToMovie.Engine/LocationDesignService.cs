@@ -56,20 +56,70 @@ public sealed class LocationDesignService
         if (string.IsNullOrWhiteSpace(desc) && string.IsNullOrWhiteSpace(vlock))
             throw new InvalidOperationException("Location needs a description or visual lock before generating a plate.");
 
+        PersistLocationLookIfRequested(
+            projectId, locKey, desc, vlock, descriptionOverride, visualLockOverride, persistDescription, onProgress);
+
+        n = Math.Clamp(n <= 0 ? 3 : n, 1, 6);
+        var preferred = _projects.ResolveLocationRefPath(projectId, locKey);
+        var imageModel = ProjectModelSelection.RequireImage(
+            await _projects.GetConfigAsync(projectId, ct).ConfigureAwait(false),
+            "Location plate generation");
+
+        var (blobs, mode, tweakSlots, nOut) = await GenerateLocationBlobsAsync(
+            locDir, locKey, desc, vlock, preferred, imageEditInstruction, n, imageModel, onProgress, ct)
+            .ConfigureAwait(false);
+        n = nOut;
+
+        var paths = await SaveVariantFilesAsync(blobs, n, tweakSlots, locDir, locKey, onProgress, ct)
+            .ConfigureAwait(false);
+
+        // Tweak: keep current preferred locked. Operator picks new vs old from the tiles.
+        if (tweakSlots is { } kept)
+            onProgress?.Invoke($"New look is #{kept.Next} — current lock is #{kept.Previous}. Click a lock to choose.");
+
+        return new LocationDesignResult
+        {
+            Mode = mode,
+            Paths = paths,
+            LocKey = locKey,
+            LockedAsPreferred = false,
+            PreviousVariantIndex = tweakSlots?.Previous,
+            NewVariantIndex = tweakSlots?.Next,
+        };
+    }
+
+    private void PersistLocationLookIfRequested(
+        string projectId,
+        string locKey,
+        string desc,
+        string vlock,
+        string? descriptionOverride,
+        string? visualLockOverride,
+        bool persistDescription,
+        Action<string>? onProgress)
+    {
         if (persistDescription && (descriptionOverride is not null || visualLockOverride is not null))
         {
             _projects.UpdateLocationLook(projectId, locKey, descriptionOverride ?? desc, visualLockOverride ?? vlock);
             onProgress?.Invoke("Saved description / visual lock");
         }
+    }
 
-        n = Math.Clamp(n <= 0 ? 3 : n, 1, 6);
-        var preferred = _projects.ResolveLocationRefPath(projectId, locKey);
+    private async Task<(IReadOnlyList<byte[]> Blobs, string Mode, LookTweakSlots.Pair? TweakSlots, int N)>
+        GenerateLocationBlobsAsync(
+            string locDir,
+            string locKey,
+            string desc,
+            string vlock,
+            string? preferred,
+            string? imageEditInstruction,
+            int n,
+            string imageModel,
+            Action<string>? onProgress,
+            CancellationToken ct)
+    {
         // Iterative plate tweaks: one new look, keep the current lock as a sibling to pick from.
         LookTweakSlots.Pair? tweakSlots = null;
-        var imageModel = ProjectModelSelection.RequireImage(
-            await _projects.GetConfigAsync(projectId, ct).ConfigureAwait(false),
-            "Location plate generation");
-
         string prompt;
         IReadOnlyList<byte[]> blobs;
         string mode;
@@ -136,6 +186,18 @@ public sealed class LocationDesignService
                 prompt, n, aspectRatio: "16:9", model: imageModel, ct: ct).ConfigureAwait(false);
         }
 
+        return (blobs, mode, tweakSlots, n);
+    }
+
+    private static async Task<List<string>> SaveVariantFilesAsync(
+        IReadOnlyList<byte[]> blobs,
+        int n,
+        LookTweakSlots.Pair? tweakSlots,
+        string locDir,
+        string locKey,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
         var paths = new List<string>();
         for (var i = 0; i < blobs.Count && i < n; i++)
         {
@@ -146,20 +208,7 @@ public sealed class LocationDesignService
             paths.Add(full);
             onProgress?.Invoke($"saved variant {idx}/{n} → {fileName}");
         }
-
-        // Tweak: keep current preferred locked. Operator picks new vs old from the tiles.
-        if (tweakSlots is { } kept)
-            onProgress?.Invoke($"New look is #{kept.Next} — current lock is #{kept.Previous}. Click a lock to choose.");
-
-        return new LocationDesignResult
-        {
-            Mode = mode,
-            Paths = paths,
-            LocKey = locKey,
-            LockedAsPreferred = false,
-            PreviousVariantIndex = tweakSlots?.Previous,
-            NewVariantIndex = tweakSlots?.Next,
-        };
+        return paths;
     }
 
     public async Task<string> LockVariantAsync(

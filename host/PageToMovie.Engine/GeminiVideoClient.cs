@@ -202,94 +202,19 @@ public sealed class GeminiVideoClient : IVideoClient
             ct.ThrowIfCancellationRequested();
             polls++;
 
-            // Each poll GET is idempotent (safe to retry freely, no billing risk) — unlike submit,
-            // there's no reason NOT to retry a transient blip here. Previously one bad poll threw
-            // and abandoned tracking of an already-submitted, already-paying job entirely.
-            string body;
-            try
-            {
-                body = await AiRetryPolicy.ExecuteWithTransientRetryAsync(
-                    async _ =>
-                    {
-                        using var resp = await SendAsync(HttpMethod.Get, opPath, content: null, ct).ConfigureAwait(false);
-                        return await ProviderHttpHelpers.ReadSuccessBodyAsync(
-                            resp, ct, "Gemini operation poll").ConfigureAwait(false);
-                    },
-                    isTransient: AiRetryPolicy.IsTransientChatFailure,
-                    maxAttempts: AiRetryPolicy.DefaultTransientMaxAttempts,
-                    backoffBaseMs: AiRetryPolicy.DefaultTransientBackoffMs,
-                    onRetry: (attemptNum, ex) =>
-                    {
-                        retriedAnyPoll = true;
-                        return _errorLogger.LogRetryAttemptAsync("gemini_video_poll", null, $"requestId={requestId}; poll={polls}", attemptNum, ex, ct);
-                    },
-                    ct: ct).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                await _telemetry.LogApiCallAsync(new ApiCallTelemetry
-                {
-                    Kind = "video_poll",
-                    Endpoint = opPath,
-                    RequestId = requestId,
-                    HttpStatus = ex is ChatHttpStatusException hse ? hse.StatusCode : null,
-                    DurationMs = sw.ElapsedMilliseconds,
-                    Attempt = polls,
-                    Error = ProviderHttpHelpers.Trim(ex.Message, 400),
-                    Ok = false,
-                }, ct);
-                await _telemetry.LogOutcomeAsync(null, requestId, VideoJobOutcome.PollFailed, sw.ElapsedMilliseconds, polls, ok: false, ex.Message, ct);
-                throw;
-            }
+            var body = await FetchOperationBodyAsync(opPath, requestId, sw, polls, () => retriedAnyPoll = true, ct)
+                .ConfigureAwait(false);
 
             using var doc = JsonDocument.Parse(body);
             var root = doc.RootElement;
-            var done = root.TryGetProperty("done", out var doneEl) &&
-                       doneEl.ValueKind == JsonValueKind.True;
 
-            if (root.TryGetProperty("error", out var errEl) && errEl.ValueKind == JsonValueKind.Object)
-            {
-                var detail = errEl.ToString();
-                await _telemetry.LogApiCallAsync(new ApiCallTelemetry
-                {
-                    Kind = "video_poll",
-                    Endpoint = opPath,
-                    RequestId = requestId,
-                    HttpStatus = 200,
-                    DurationMs = sw.ElapsedMilliseconds,
-                    Attempt = polls,
-                    Mode = "failed",
-                    Error = ProviderHttpHelpers.Trim(detail, 500),
-                    Ok = false,
-                }, ct);
-                await _telemetry.LogOutcomeAsync(null, requestId, VideoJobOutcome.ProviderFailed, sw.ElapsedMilliseconds, polls, ok: false, ProviderHttpHelpers.Trim(detail, 500), ct);
-                throw new InvalidOperationException($"Gemini video operation failed: {ProviderHttpHelpers.Trim(detail, 400)}");
-            }
+            await ThrowIfOperationErrorAsync(root, opPath, requestId, sw, polls, ct).ConfigureAwait(false);
 
-            if (done)
+            if (root.TryGetProperty("done", out var doneEl) &&
+                doneEl.ValueKind == JsonValueKind.True)
             {
-                var url = ExtractVideoUri(root);
-                if (url is null)
-                {
-                    await _telemetry.LogOutcomeAsync(null, requestId, VideoJobOutcome.ProviderFailed, sw.ElapsedMilliseconds, polls, ok: false, "done with no video URI", ct);
-                    throw new InvalidOperationException(
-                        $"Gemini operation done but no video URI found in response " +
-                        $"(schema may differ from expected — see class-level CONFIDENCE NOTE): " +
-                        $"{ProviderHttpHelpers.Trim(body, 500)}");
-                }
-                await _telemetry.LogApiCallAsync(new ApiCallTelemetry
-                {
-                    Kind = "video_poll",
-                    Endpoint = opPath,
-                    RequestId = requestId,
-                    HttpStatus = 200,
-                    DurationMs = sw.ElapsedMilliseconds,
-                    Attempt = polls,
-                    Mode = "done",
-                    Ok = true,
-                }, ct);
-                await _telemetry.LogOutcomeAsync(null, requestId, retriedAnyPoll ? VideoJobOutcome.OkAfterRetry : VideoJobOutcome.Ok, sw.ElapsedMilliseconds, polls, ok: true, null, ct);
-                return url;
+                return await CompleteIfDoneAsync(root, body, opPath, requestId, sw, polls, retriedAnyPoll, ct)
+                    .ConfigureAwait(false);
             }
 
             onProgress?.Invoke($"operation not done (poll {polls})");
@@ -299,6 +224,101 @@ public sealed class GeminiVideoClient : IVideoClient
         return await VideoClientHelpers.ThrowTimedOutAsync(
             _telemetry, requestId, sw, polls, _opts.GrokTimeoutSeconds,
             $"Gemini video operation timed out after {_opts.GrokTimeoutSeconds}s", ct);
+    }
+
+    /// <summary>
+    /// Each poll GET is idempotent (safe to retry freely, no billing risk) — unlike submit,
+    /// there's no reason NOT to retry a transient blip here. Previously one bad poll threw
+    /// and abandoned tracking of an already-submitted, already-paying job entirely.
+    /// </summary>
+    private async Task<string> FetchOperationBodyAsync(
+        string opPath, string requestId, Stopwatch sw, int polls, Action onPollRetry, CancellationToken ct)
+    {
+        try
+        {
+            return await AiRetryPolicy.ExecuteWithTransientRetryAsync(
+                async _ =>
+                {
+                    using var resp = await SendAsync(HttpMethod.Get, opPath, content: null, ct).ConfigureAwait(false);
+                    return await ProviderHttpHelpers.ReadSuccessBodyAsync(
+                        resp, ct, "Gemini operation poll").ConfigureAwait(false);
+                },
+                isTransient: AiRetryPolicy.IsTransientChatFailure,
+                maxAttempts: AiRetryPolicy.DefaultTransientMaxAttempts,
+                backoffBaseMs: AiRetryPolicy.DefaultTransientBackoffMs,
+                onRetry: (attemptNum, ex) =>
+                {
+                    onPollRetry();
+                    return _errorLogger.LogRetryAttemptAsync("gemini_video_poll", null, $"requestId={requestId}; poll={polls}", attemptNum, ex, ct);
+                },
+                ct: ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            await _telemetry.LogApiCallAsync(new ApiCallTelemetry
+            {
+                Kind = "video_poll",
+                Endpoint = opPath,
+                RequestId = requestId,
+                HttpStatus = ex is ChatHttpStatusException hse ? hse.StatusCode : null,
+                DurationMs = sw.ElapsedMilliseconds,
+                Attempt = polls,
+                Error = ProviderHttpHelpers.Trim(ex.Message, 400),
+                Ok = false,
+            }, ct);
+            await _telemetry.LogOutcomeAsync(null, requestId, VideoJobOutcome.PollFailed, sw.ElapsedMilliseconds, polls, ok: false, ex.Message, ct);
+            throw;
+        }
+    }
+
+    private async Task ThrowIfOperationErrorAsync(
+        JsonElement root, string opPath, string requestId, Stopwatch sw, int polls, CancellationToken ct)
+    {
+        if (root.TryGetProperty("error", out var errEl) && errEl.ValueKind == JsonValueKind.Object)
+        {
+            var detail = errEl.ToString();
+            await _telemetry.LogApiCallAsync(new ApiCallTelemetry
+            {
+                Kind = "video_poll",
+                Endpoint = opPath,
+                RequestId = requestId,
+                HttpStatus = 200,
+                DurationMs = sw.ElapsedMilliseconds,
+                Attempt = polls,
+                Mode = "failed",
+                Error = ProviderHttpHelpers.Trim(detail, 500),
+                Ok = false,
+            }, ct);
+            await _telemetry.LogOutcomeAsync(null, requestId, VideoJobOutcome.ProviderFailed, sw.ElapsedMilliseconds, polls, ok: false, ProviderHttpHelpers.Trim(detail, 500), ct);
+            throw new InvalidOperationException($"Gemini video operation failed: {ProviderHttpHelpers.Trim(detail, 400)}");
+        }
+    }
+
+    private async Task<string> CompleteIfDoneAsync(
+        JsonElement root, string body, string opPath, string requestId, Stopwatch sw, int polls, bool retriedAnyPoll, CancellationToken ct)
+    {
+        var url = ExtractVideoUri(root);
+        if (url is null)
+        {
+            await _telemetry.LogOutcomeAsync(null, requestId, VideoJobOutcome.ProviderFailed, sw.ElapsedMilliseconds, polls, ok: false, "done with no video URI", ct);
+            throw new InvalidOperationException(
+                $"Gemini operation done but no video URI found in response " +
+                $"(schema may differ from expected — see class-level CONFIDENCE NOTE): " +
+                $"{ProviderHttpHelpers.Trim(body, 500)}");
+        }
+        await _telemetry.LogApiCallAsync(new ApiCallTelemetry
+        {
+            Kind = "video_poll",
+            Endpoint = opPath,
+            RequestId = requestId,
+            HttpStatus = 200,
+            DurationMs = sw.ElapsedMilliseconds,
+            Attempt = polls,
+            Mode = "done",
+            Ok = true,
+        }, ct);
+        await _telemetry.LogOutcomeAsync(null, requestId, retriedAnyPoll ? VideoJobOutcome.OkAfterRetry : VideoJobOutcome.Ok, sw.ElapsedMilliseconds, polls, ok: true, null, ct);
+        return url;
     }
 
     /// <summary>

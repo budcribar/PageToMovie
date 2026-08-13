@@ -163,6 +163,37 @@ public sealed class FalVoiceCloneClient : IVoiceCloneClient
         string apiKey,
         CancellationToken ct)
     {
+        var requestId = await SubmitQueueRequestAsync(endpoint, payload, apiKey, ct).ConfigureAwait(false);
+        if (requestId is null) return null;
+
+        var statusUrl = $"{endpoint}/requests/{requestId}/status";
+        var resultUrl = $"{endpoint}/requests/{requestId}";
+
+        for (var attempt = 0; attempt < MaxPollAttempts; attempt++)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var (hardFail, statusBody) = await ReadPollStatusAsync(endpoint, statusUrl, apiKey, ct).ConfigureAwait(false);
+            if (hardFail) return null;
+            if (statusBody is null) continue;
+
+            using var statusDoc = JsonDocument.Parse(statusBody);
+            var status = statusDoc.RootElement.TryGetProperty("status", out var stEl) ? stEl.GetString() ?? "" : "";
+
+            var (terminal, doc) = await TryTakeTerminalResultAsync(
+                endpoint, status, resultUrl, apiKey, statusDoc.RootElement, ct).ConfigureAwait(false);
+            if (terminal) return doc;
+
+            await Task.Delay(PollDelay, ct).ConfigureAwait(false);
+        }
+
+        _log.LogError("Fal.ai {Endpoint} request {RequestId} timed out after {Seconds}s", endpoint, requestId, MaxPollAttempts * PollDelay.TotalSeconds);
+        return null;
+    }
+
+    private async Task<string?> SubmitQueueRequestAsync(
+        string endpoint, Dictionary<string, object?> payload, string apiKey, CancellationToken ct)
+    {
         using var req = new HttpRequestMessage(HttpMethod.Post, endpoint);
         req.Headers.Authorization = new AuthenticationHeaderValue("Key", apiKey);
         req.Content = JsonContent.Create(payload);
@@ -184,60 +215,54 @@ public sealed class FalVoiceCloneClient : IVoiceCloneClient
             _log.LogError("Fal.ai {Endpoint} response missing request_id: {Body}", endpoint, body);
             return null;
         }
+        return requestId;
+    }
 
-        var statusUrl = $"{endpoint}/requests/{requestId}/status";
-        var resultUrl = $"{endpoint}/requests/{requestId}";
+    private async Task<(bool HardFail, string? Body)> ReadPollStatusAsync(
+        string endpoint, string statusUrl, string apiKey, CancellationToken ct)
+    {
+        using var statusReq = new HttpRequestMessage(HttpMethod.Get, statusUrl);
+        statusReq.Headers.Authorization = new AuthenticationHeaderValue("Key", apiKey);
+        using var statusResp = await _http.SendAsync(statusReq, ct).ConfigureAwait(false);
+        var statusBody = await statusResp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
 
-        for (var attempt = 0; attempt < MaxPollAttempts; attempt++)
+        if (statusResp.IsSuccessStatusCode)
+            return (false, statusBody);
+        if (statusResp.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
         {
-            ct.ThrowIfCancellationRequested();
+            await Task.Delay(TimeSpan.FromSeconds(5), ct).ConfigureAwait(false);
+            return (false, null);
+        }
+        _log.LogError("Fal.ai {Endpoint} status query failed HTTP {Status}: {Body}", endpoint, statusResp.StatusCode, statusBody);
+        return (true, null);
+    }
 
-            using var statusReq = new HttpRequestMessage(HttpMethod.Get, statusUrl);
-            statusReq.Headers.Authorization = new AuthenticationHeaderValue("Key", apiKey);
-            using var statusResp = await _http.SendAsync(statusReq, ct).ConfigureAwait(false);
-            var statusBody = await statusResp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+    private async Task<(bool Terminal, JsonDocument? Doc)> TryTakeTerminalResultAsync(
+        string endpoint, string status, string resultUrl, string apiKey, JsonElement statusRoot, CancellationToken ct)
+    {
+        if (string.Equals(status, "COMPLETED", StringComparison.OrdinalIgnoreCase))
+        {
+            using var resultReq = new HttpRequestMessage(HttpMethod.Get, resultUrl);
+            resultReq.Headers.Authorization = new AuthenticationHeaderValue("Key", apiKey);
+            using var resultResp = await _http.SendAsync(resultReq, ct).ConfigureAwait(false);
+            var resultBody = await resultResp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
 
-            if (!statusResp.IsSuccessStatusCode)
+            if (!resultResp.IsSuccessStatusCode)
             {
-                if (statusResp.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
-                {
-                    await Task.Delay(TimeSpan.FromSeconds(5), ct).ConfigureAwait(false);
-                    continue;
-                }
-                _log.LogError("Fal.ai {Endpoint} status query failed HTTP {Status}: {Body}", endpoint, statusResp.StatusCode, statusBody);
-                return null;
+                _log.LogError("Fal.ai {Endpoint} result fetch failed HTTP {Status}: {Body}", endpoint, resultResp.StatusCode, resultBody);
+                return (true, null);
             }
-
-            using var statusDoc = JsonDocument.Parse(statusBody);
-            var status = statusDoc.RootElement.TryGetProperty("status", out var stEl) ? stEl.GetString() ?? "" : "";
-
-            if (string.Equals(status, "COMPLETED", StringComparison.OrdinalIgnoreCase))
-            {
-                using var resultReq = new HttpRequestMessage(HttpMethod.Get, resultUrl);
-                resultReq.Headers.Authorization = new AuthenticationHeaderValue("Key", apiKey);
-                using var resultResp = await _http.SendAsync(resultReq, ct).ConfigureAwait(false);
-                var resultBody = await resultResp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-
-                if (!resultResp.IsSuccessStatusCode)
-                {
-                    _log.LogError("Fal.ai {Endpoint} result fetch failed HTTP {Status}: {Body}", endpoint, resultResp.StatusCode, resultBody);
-                    return null;
-                }
-                return JsonDocument.Parse(resultBody);
-            }
-
-            if (string.Equals(status, "FAILED", StringComparison.OrdinalIgnoreCase))
-            {
-                var err = statusDoc.RootElement.TryGetProperty("error", out var eEl) ? eEl.GetString() : "Job failed";
-                _log.LogError("Fal.ai {Endpoint} failed: {Error}", endpoint, err);
-                return null;
-            }
-
-            await Task.Delay(PollDelay, ct).ConfigureAwait(false);
+            return (true, JsonDocument.Parse(resultBody));
         }
 
-        _log.LogError("Fal.ai {Endpoint} request {RequestId} timed out after {Seconds}s", endpoint, requestId, MaxPollAttempts * PollDelay.TotalSeconds);
-        return null;
+        if (string.Equals(status, "FAILED", StringComparison.OrdinalIgnoreCase))
+        {
+            var err = statusRoot.TryGetProperty("error", out var eEl) ? eEl.GetString() : "Job failed";
+            _log.LogError("Fal.ai {Endpoint} failed: {Error}", endpoint, err);
+            return (true, null);
+        }
+
+        return (false, null);
     }
 
     private static async Task<string> ToDataUriAsync(string path, CancellationToken ct)

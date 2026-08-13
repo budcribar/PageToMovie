@@ -92,47 +92,14 @@ public sealed class GeminiImageClient : IImageClient
         // Catalog-backed cap, no silent fallback (same "fail loud" principle as Veo's MaxReferenceImages=0).
         var cap = ProviderMediaHelpers.ResolveReferenceImageCap(modelName, maxRefs);
 
-        var costumeRef = !string.IsNullOrWhiteSpace(costumeRefPath) && File.Exists(costumeRefPath)
-            ? costumeRefPath
-            : null;
-        var hasCostumeRef = costumeRef is not null;
-        var identityCap = hasCostumeRef ? Math.Max(1, cap - 1) : cap;
-
-        var refs = referenceImagePaths
-            .Where(p => !string.IsNullOrWhiteSpace(p) && File.Exists(p))
-            .Take(identityCap)
-            .ToList();
-        if (refs.Count == 0 && !hasCostumeRef)
-            throw new InvalidOperationException("No usable reference images for character edit.");
-
-        var allRefs = costumeRef is not null ? refs.Append(costumeRef).ToList() : refs;
-        var costumeClause = hasCostumeRef
-            ? " The LAST reference image is a COSTUME REFERENCE ONLY (shared wardrobe design) — " +
-              "copy its coat, hat, and badge exactly; completely ignore any face or person in it; " +
-              "this character's own face/identity comes from the other reference(s)/text, never from it." +
-              (refs.Count > 0
-                  ? " Conversely, ignore any hat/coat/badge visible in the OTHER reference(s) — " +
-                    "wardrobe comes ONLY from this last costume image, even if the others show " +
-                    "different or older wardrobe."
-                  : "")
-            : "";
+        var (allRefs, costumeClause) = ResolveEditReferences(referenceImagePaths, costumeRefPath, cap);
         var mediumClause = illustratedMedium
             ? " Keep the illustrated/picture-book medium from the refs — not photoreal photography."
             : " Keep the photoreal live-action medium from the refs — not illustration, not cartoon.";
 
-        var images = new List<byte[]>();
-        for (var i = 0; i < n; i++)
-        {
-            ct.ThrowIfCancellationRequested();
-            onProgress?.Invoke($"edit variant {i + 1}/{n}");
-            var variantPrompt = n > 1
-                ? $"{prompt}{costumeClause}{mediumClause} Variation {i + 1} of {n}: tiny pose/expression change only; same identity."
-                : $"{prompt}{costumeClause}{mediumClause}";
-            var one = await GenerateOneAsync(modelName, variantPrompt, aspectRatio, allRefs, ct)
-                .ConfigureAwait(false);
-            if (one is not null)
-                images.Add(one);
-        }
+        var images = await GenerateEditVariantsAsync(
+            modelName, prompt, costumeClause, mediumClause, aspectRatio, allRefs, n, onProgress, ct)
+            .ConfigureAwait(false);
         if (images.Count == 0)
             throw new InvalidOperationException("Gemini image edit returned 0 usable images");
         return images;
@@ -147,16 +114,7 @@ public sealed class GeminiImageClient : IImageClient
     {
         var parts = new List<object?>();
         if (referenceImagePaths is { Count: > 0 })
-        {
-            foreach (var path in referenceImagePaths)
-            {
-                var (mime, b64) = await ProviderMediaHelpers.FileToBase64Async(path, ct).ConfigureAwait(false);
-                parts.Add(new Dictionary<string, object?>
-                {
-                    ["inline_data"] = new Dictionary<string, object?> { ["mime_type"] = mime, ["data"] = b64 },
-                });
-            }
-        }
+            await AddReferenceImagePartsAsync(parts, referenceImagePaths, ct).ConfigureAwait(false);
         parts.Add(new Dictionary<string, object?> { ["text"] = prompt });
 
         var payload = new Dictionary<string, object?>
@@ -176,6 +134,9 @@ public sealed class GeminiImageClient : IImageClient
         var sw = Stopwatch.StartNew();
         var refNames = (referenceImagePaths ?? Array.Empty<string>())
             .Select(Path.GetFileName).OfType<string>().ToList();
+        var kind = ImageCallKind(referenceImagePaths);
+        var refNamesOrNull = refNames.Count > 0 ? refNames : null;
+        var refsAttached = refNames.Count > 0;
         try
         {
             // Per-request API key — never mutate shared DefaultRequestHeaders (multi-user race).
@@ -187,15 +148,15 @@ public sealed class GeminiImageClient : IImageClient
             {
                 await _telemetry.LogApiCallAsync(new ApiCallTelemetry
                 {
-                    Kind = referenceImagePaths is { Count: > 0 } ? "image_edit" : "image",
+                    Kind = kind,
                     Endpoint = endpoint,
                     Model = model,
                     HttpStatus = (int)resp.StatusCode,
                     DurationMs = sw.ElapsedMilliseconds,
                     Prompt = prompt,
                     PromptChars = prompt.Length,
-                    ReferenceImagePaths = refNames.Count > 0 ? refNames : null,
-                    RefsAttached = refNames.Count > 0,
+                    ReferenceImagePaths = refNamesOrNull,
+                    RefsAttached = refsAttached,
                     Error = ProviderHttpHelpers.Trim(body, 400),
                     Ok = false,
                 }, ct);
@@ -204,20 +165,21 @@ public sealed class GeminiImageClient : IImageClient
             }
 
             var image = ExtractInlineImage(body);
+            var (imageCount, imageOk, imageError) = ImageResultTelemetry(image);
             await _telemetry.LogApiCallAsync(new ApiCallTelemetry
             {
-                Kind = referenceImagePaths is { Count: > 0 } ? "image_edit" : "image",
+                Kind = kind,
                 Endpoint = endpoint,
                 Model = model,
                 HttpStatus = (int)resp.StatusCode,
                 DurationMs = sw.ElapsedMilliseconds,
                 Prompt = prompt,
                 PromptChars = prompt.Length,
-                ReferenceImagePaths = refNames.Count > 0 ? refNames : null,
-                RefsAttached = refNames.Count > 0,
-                ImageCount = image is null ? 0 : 1,
-                Ok = image is not null,
-                Error = image is null ? "no inline image data in response" : null,
+                ReferenceImagePaths = refNamesOrNull,
+                RefsAttached = refsAttached,
+                ImageCount = imageCount,
+                Ok = imageOk,
+                Error = imageError,
             }, ct);
             return image;
         }
@@ -225,7 +187,7 @@ public sealed class GeminiImageClient : IImageClient
         {
             await _telemetry.LogApiCallAsync(new ApiCallTelemetry
             {
-                Kind = referenceImagePaths is { Count: > 0 } ? "image_edit" : "image",
+                Kind = kind,
                 Endpoint = endpoint,
                 Model = model,
                 DurationMs = sw.ElapsedMilliseconds,
@@ -236,6 +198,87 @@ public sealed class GeminiImageClient : IImageClient
             throw;
         }
     }
+
+    private static (List<string> AllRefs, string CostumeClause) ResolveEditReferences(
+        IReadOnlyList<string> referenceImagePaths, string? costumeRefPath, int cap)
+    {
+        var costumeRef = !string.IsNullOrWhiteSpace(costumeRefPath) && File.Exists(costumeRefPath)
+            ? costumeRefPath
+            : null;
+        var hasCostumeRef = costumeRef is not null;
+        var identityCap = hasCostumeRef ? Math.Max(1, cap - 1) : cap;
+
+        var refs = referenceImagePaths
+            .Where(p => !string.IsNullOrWhiteSpace(p) && File.Exists(p))
+            .Take(identityCap)
+            .ToList();
+        if (refs.Count == 0 && !hasCostumeRef)
+            throw new InvalidOperationException("No usable reference images for character edit.");
+
+        var allRefs = costumeRef is not null ? refs.Append(costumeRef).ToList() : refs;
+        return (allRefs, BuildCostumeClause(hasCostumeRef, refs.Count));
+    }
+
+    private static string BuildCostumeClause(bool hasCostumeRef, int identityRefCount)
+    {
+        if (!hasCostumeRef) return "";
+        var clause = " The LAST reference image is a COSTUME REFERENCE ONLY (shared wardrobe design) — " +
+              "copy its coat, hat, and badge exactly; completely ignore any face or person in it; " +
+              "this character's own face/identity comes from the other reference(s)/text, never from it.";
+        if (identityRefCount > 0)
+        {
+            clause += " Conversely, ignore any hat/coat/badge visible in the OTHER reference(s) — " +
+                    "wardrobe comes ONLY from this last costume image, even if the others show " +
+                    "different or older wardrobe.";
+        }
+        return clause;
+    }
+
+    private async Task<List<byte[]>> GenerateEditVariantsAsync(
+        string modelName,
+        string prompt,
+        string costumeClause,
+        string mediumClause,
+        string aspectRatio,
+        IReadOnlyList<string> allRefs,
+        int n,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
+        var images = new List<byte[]>();
+        for (var i = 0; i < n; i++)
+        {
+            ct.ThrowIfCancellationRequested();
+            onProgress?.Invoke($"edit variant {i + 1}/{n}");
+            var variantPrompt = n > 1
+                ? $"{prompt}{costumeClause}{mediumClause} Variation {i + 1} of {n}: tiny pose/expression change only; same identity."
+                : $"{prompt}{costumeClause}{mediumClause}";
+            var one = await GenerateOneAsync(modelName, variantPrompt, aspectRatio, allRefs, ct)
+                .ConfigureAwait(false);
+            if (one is not null)
+                images.Add(one);
+        }
+        return images;
+    }
+
+    private static async Task AddReferenceImagePartsAsync(
+        List<object?> parts, IReadOnlyList<string> referenceImagePaths, CancellationToken ct)
+    {
+        foreach (var path in referenceImagePaths)
+        {
+            var (mime, b64) = await ProviderMediaHelpers.FileToBase64Async(path, ct).ConfigureAwait(false);
+            parts.Add(new Dictionary<string, object?>
+            {
+                ["inline_data"] = new Dictionary<string, object?> { ["mime_type"] = mime, ["data"] = b64 },
+            });
+        }
+    }
+
+    private static string ImageCallKind(IReadOnlyList<string>? referenceImagePaths) =>
+        referenceImagePaths is { Count: > 0 } ? "image_edit" : "image";
+
+    private static (int ImageCount, bool Ok, string? Error) ImageResultTelemetry(byte[]? image) =>
+        image is null ? (0, false, "no inline image data in response") : (1, true, null);
 
     /// <summary>
     /// Gemini image response: <c>candidates[0].content.parts[].inlineData.data</c> (base64).

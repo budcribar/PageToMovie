@@ -60,45 +60,57 @@ public static class Mp4DurationReader
         while (stream.Position + 8 <= end)
         {
             var boxStart = stream.Position;
-            if (stream.Read(header, 0, 8) != 8) return null;
-            var size32 = BinaryPrimitives.ReadUInt32BigEndian(header.AsSpan(0, 4));
-            var type = BinaryPrimitives.ReadUInt32BigEndian(header.AsSpan(4, 4));
-            long headerSize = 8;
-            long boxSize = size32;
-            if (size32 == 1)
-            {
-                if (stream.Read(header, 0, 8) != 8) return null;
-                boxSize = (long)BinaryPrimitives.ReadUInt64BigEndian(header.AsSpan(0, 8));
-                headerSize = 16;
-            }
-            else if (size32 == 0)
-            {
-                boxSize = end - boxStart;
-            }
-
-            if (boxSize < headerSize || boxStart + boxSize > end + 1)
+            if (!TryReadBoxHeader(stream, header, boxStart, end, out var headerSize, out var boxSize, out var type))
                 return null;
 
             var dataStart = boxStart + headerSize;
             var dataEnd = boxStart + boxSize;
-
-            // moov / trak / mdia — recurse
-            if (type is 0x6D6F6F76 or 0x7472616B or 0x6D646961) // moov, trak, mdia
-            {
-                stream.Position = dataStart;
-                var found = ScanBoxes(stream, dataEnd, depth + 1);
-                if (found is > 0) return found;
-            }
-            else if (type == 0x6D766864) // mvhd
-            {
-                stream.Position = dataStart;
-                var sec = ReadMvhd(stream, dataEnd - dataStart);
-                if (sec is > 0) return sec;
-            }
+            var found = TryReadNestedOrMvhd(stream, type, dataStart, dataEnd, depth);
+            if (found is > 0) return found;
 
             stream.Position = dataEnd;
         }
 
+        return null;
+    }
+
+    private static bool TryReadBoxHeader(
+        Stream stream, byte[] header, long boxStart, long end,
+        out long headerSize, out long boxSize, out uint type)
+    {
+        headerSize = 8;
+        boxSize = 0;
+        type = 0;
+        if (stream.Read(header, 0, 8) != 8) return false;
+        var size32 = BinaryPrimitives.ReadUInt32BigEndian(header.AsSpan(0, 4));
+        type = BinaryPrimitives.ReadUInt32BigEndian(header.AsSpan(4, 4));
+        boxSize = size32;
+        if (size32 == 1)
+        {
+            if (stream.Read(header, 0, 8) != 8) return false;
+            boxSize = (long)BinaryPrimitives.ReadUInt64BigEndian(header.AsSpan(0, 8));
+            headerSize = 16;
+        }
+        else if (size32 == 0)
+        {
+            boxSize = end - boxStart;
+        }
+
+        return boxSize >= headerSize && boxStart + boxSize <= end + 1;
+    }
+
+    private static double? TryReadNestedOrMvhd(Stream stream, uint type, long dataStart, long dataEnd, int depth)
+    {
+        if (type is 0x6D6F6F76 or 0x7472616B or 0x6D646961) // moov, trak, mdia
+        {
+            stream.Position = dataStart;
+            return ScanBoxes(stream, dataEnd, depth + 1);
+        }
+        if (type == 0x6D766864) // mvhd
+        {
+            stream.Position = dataStart;
+            return ReadMvhd(stream, dataEnd - dataStart);
+        }
         return null;
     }
 

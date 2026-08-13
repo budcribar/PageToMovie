@@ -110,20 +110,7 @@ public sealed class SoundDesignComposerClassifier : BeatChatClassifierBase<Sound
 
             var result = new Dictionary<string, SoundDesignDirective>(StringComparer.OrdinalIgnoreCase);
             foreach (var item in sdArray.EnumerateArray())
-            {
-                if (item.TryGetProperty("beat_id", out var bid))
-                {
-                    var id = bid.GetString() ?? "";
-                    var amb = item.TryGetProperty("ambient_layer", out var a) ? a.GetString() ?? "" : "";
-                    var fol = item.TryGetProperty("foley_layer", out var f) ? f.GetString() ?? "" : "";
-                    var scr = item.TryGetProperty("score_layer", out var s) ? s.GetString() ?? "" : "";
-
-                    if (!string.IsNullOrWhiteSpace(id))
-                    {
-                        result[id] = new SoundDesignDirective(amb, fol, scr);
-                    }
-                }
-            }
+                TryAddSoundItem(result, item);
 
             return result.Count > 0 ? result : null;
         }
@@ -133,4 +120,20 @@ public sealed class SoundDesignComposerClassifier : BeatChatClassifierBase<Sound
             return null;
         }
     }
+
+    private static void TryAddSoundItem(Dictionary<string, SoundDesignDirective> result, JsonElement item)
+    {
+        if (!item.TryGetProperty("beat_id", out var bid))
+            return;
+        var id = bid.GetString() ?? "";
+        if (string.IsNullOrWhiteSpace(id))
+            return;
+        result[id] = new SoundDesignDirective(
+            ReadJsonString(item, "ambient_layer"),
+            ReadJsonString(item, "foley_layer"),
+            ReadJsonString(item, "score_layer"));
+    }
+
+    private static string ReadJsonString(JsonElement item, string name) =>
+        item.TryGetProperty(name, out var el) ? el.GetString() ?? "" : "";
 }
