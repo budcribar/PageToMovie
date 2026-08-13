@@ -213,22 +213,26 @@ public sealed class AdminAuthService : IAdminAuthService
         string skipWarning,
         CancellationToken ct)
     {
-        _logger?.LogInformation(generatedLog, user.Email, user.UserId, link);
+        var toEmail = user.Email;
+        if (string.IsNullOrWhiteSpace(toEmail))
+            return;
+
+        _logger?.LogInformation(generatedLog, toEmail, user.UserId, link);
         if (_email is not null)
         {
             try
             {
-                await _email.SendAsync(user.Email!, subject, html, text, ct);
-                _logger?.LogInformation(sentLog, user.Email);
+                await _email.SendAsync(toEmail, subject, html, text, ct);
+                _logger?.LogInformation(sentLog, toEmail);
             }
             catch (Exception ex)
             {
-                throw new InvalidOperationException($"Failed to send {sendFailureNoun} to {user.Email}.", ex);
+                throw new InvalidOperationException($"Failed to send {sendFailureNoun} to {toEmail}.", ex);
             }
         }
         else
         {
-            _logger?.LogWarning(skipWarning, user.Email);
+            _logger?.LogWarning(skipWarning, toEmail);
         }
     }
 
