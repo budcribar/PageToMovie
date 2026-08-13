@@ -38,7 +38,7 @@ public sealed class AdaptationConvertManifestTests
             ---END_VISION_META---
             """);
 
-        var result = await new AdaptationService().ConvertAsync(
+        var result = await AdaptationService.ConvertAsync(
             new AdaptationRequest
             {
                 BookText = MaryBook,
@@ -81,7 +81,7 @@ public sealed class AdaptationConvertManifestTests
             THE END
             """);
 
-        var result = await new AdaptationService().ConvertAsync(
+        var result = await AdaptationService.ConvertAsync(
             new AdaptationRequest
             {
                 BookText = MaryBook,

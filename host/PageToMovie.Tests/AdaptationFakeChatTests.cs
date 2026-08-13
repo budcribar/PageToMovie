@@ -21,9 +21,8 @@ public sealed class AdaptationFakeChatTests
     public async Task ConvertAsync_with_recorded_fountain_returns_good_screenplay()
     {
         var chat = new RecordingChatClient(_ => GoodFountain(scenes: 3, withEnding: true));
-        var svc = new AdaptationService();
 
-        var result = await svc.ConvertAsync(
+        var result = await AdaptationService.ConvertAsync(
             new AdaptationRequest
             {
                 BookText = MaryBook,
@@ -52,7 +51,7 @@ public sealed class AdaptationFakeChatTests
 ---END_VISION_META---
 """;
         var chat = new RecordingChatClient(_ => body);
-        var result = await new AdaptationService().ConvertAsync(
+        var result = await AdaptationService.ConvertAsync(
             new AdaptationRequest
             {
                 BookText = MaryBook,
@@ -70,7 +69,7 @@ public sealed class AdaptationFakeChatTests
     public async Task ConvertAsync_garbage_response_may_use_heuristic_fallback()
     {
         var chat = new RecordingChatClient(_ => "not a screenplay at all");
-        var result = await new AdaptationService().ConvertAsync(
+        var result = await AdaptationService.ConvertAsync(
             new AdaptationRequest
             {
                 BookText = MaryBook,

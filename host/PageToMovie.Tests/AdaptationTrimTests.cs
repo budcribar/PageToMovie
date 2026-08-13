@@ -17,7 +17,7 @@ public sealed class AdaptationTrimTests
         var trimmed = Fountain(scenes: 3);
         var chat = new FakeChat(_ => trimmed);
 
-        var result = await new AdaptationService().TrimAsync(input, targetMinutes: 2, naturalMinutes: 5, chat);
+        var result = await AdaptationService.TrimAsync(input, targetMinutes: 2, naturalMinutes: 5, chat);
 
         Assert.True(result.Ok);
         Assert.Equal(6, result.SceneCountBefore);
@@ -32,7 +32,7 @@ public sealed class AdaptationTrimTests
         var condensed = Fountain(scenes: 3); // same scenes, condensed within
         var chat = new FakeChat(_ => condensed);
 
-        var result = await new AdaptationService().TrimAsync(input, targetMinutes: 3, naturalMinutes: 4, chat);
+        var result = await AdaptationService.TrimAsync(input, targetMinutes: 3, naturalMinutes: 4, chat);
 
         Assert.True(result.Ok);
         Assert.Equal(3, result.SceneCountAfter);
@@ -45,7 +45,7 @@ public sealed class AdaptationTrimTests
         var expanded = Fountain(scenes: 5); // model wrongly added scenes
         var chat = new FakeChat(_ => expanded);
 
-        var result = await new AdaptationService().TrimAsync(input, targetMinutes: 1, naturalMinutes: 4, chat);
+        var result = await AdaptationService.TrimAsync(input, targetMinutes: 1, naturalMinutes: 4, chat);
 
         Assert.False(result.Ok);
         Assert.False(result.StructurePreserved);
@@ -61,7 +61,7 @@ public sealed class AdaptationTrimTests
         string? seenSystem = null;
         var chat = new FakeChat((sys) => { seenSystem = sys; return Fountain(scenes: 2); });
 
-        await new AdaptationService().TrimAsync(input, targetMinutes: 7, naturalMinutes: 20, chat);
+        await AdaptationService.TrimAsync(input, targetMinutes: 7, naturalMinutes: 20, chat);
 
         Assert.NotNull(seenSystem);
         Assert.Contains("7", seenSystem!, StringComparison.Ordinal);

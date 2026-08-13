@@ -178,7 +178,7 @@ public static partial class Program
         try
         {
             var budget = ResolveRateLimitSafeBudgetOverride(modelId);
-            var adaptResult = await new AdaptationService().ConvertAsync(
+            var adaptResult = await AdaptationService.ConvertAsync(
                 new PageToMovie.Adaptation.Contracts.AdaptationRequest
                 {
                     BookText = bookText,

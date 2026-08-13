@@ -19,7 +19,7 @@ public sealed class AdaptationService
     /// <summary>
     /// Kind, words, quality notes, natural minutes via <see cref="BookTextAnalyzer"/>.
     /// </summary>
-    public BookAnalysisResult AnalyzeBook(string bookText)
+    public static BookAnalysisResult AnalyzeBook(string bookText)
     {
         var a = BookTextAnalyzer.Analyze(bookText ?? "");
         return new BookAnalysisResult
@@ -47,7 +47,7 @@ public sealed class AdaptationService
     /// Density-only natural runtime estimate via <see cref="AdaptationDensity"/> /
     /// <see cref="NaturalRuntime"/>.
     /// </summary>
-    public NaturalRuntimeEstimate EstimateNaturalRuntime(string bookText)
+    public static NaturalRuntimeEstimate EstimateNaturalRuntime(string bookText)
     {
         var e = AdaptationDensity.EstimateNatural(bookText ?? "");
         var natural = NaturalRuntime.ClampMinutes(e.NaturalFilmMinutes);
@@ -57,7 +57,7 @@ public sealed class AdaptationService
     /// <summary>
     /// Natural + optional override clamp (2–180). Pure — no store.
     /// </summary>
-    public NaturalRuntimeEstimate ResolveTargetMinutes(string bookText, int? overrideMinutes = null)
+    public static NaturalRuntimeEstimate ResolveTargetMinutes(string bookText, int? overrideMinutes = null)
     {
         var e = AdaptationDensity.EstimateNatural(bookText ?? "");
         var (natural, target, mode) = NaturalRuntime.Resolve(bookText, overrideMinutes);
@@ -73,7 +73,7 @@ public sealed class AdaptationService
     /// System prompt for book → Fountain (embedded <c>book_to_fountain.txt</c>).
     /// </summary>
     /// <param name="totalRuntimeMinutes">null or ≤0 = unlimited (default); positive = artificial target.</param>
-    public Task<string> BuildSystemPromptAsync(
+    public static Task<string> BuildSystemPromptAsync(
         int? totalRuntimeMinutes = null,
         CancellationToken ct = default,
         string? visualMedium = null) =>
@@ -85,26 +85,26 @@ public sealed class AdaptationService
     /// <summary>
     /// Offline / test heuristic path (no chat).
     /// </summary>
-    public string ConvertHeuristic(string title, string bookText, string? author = null) =>
+    public static string ConvertHeuristic(string title, string bookText, string? author = null) =>
         BookToFountainConverter.ConvertHeuristic(title, bookText, author);
 
     /// <summary>Normalize book text (Gutenberg strip + newlines) before convert/cache keys.</summary>
-    public string NormalizeBookText(string bookText) =>
+    public static string NormalizeBookText(string bookText) =>
         BookToFountainConverter.NormalizeBookText(bookText);
 
     /// <summary>Stamp/fix Draft date line on a Fountain draft.</summary>
-    public string FixDraftDate(string? fountain) =>
+    public static string FixDraftDate(string? fountain) =>
         BookToFountainConverter.FixDraftDate(fountain);
 
     /// <summary>Structural gate used by production quality checks.</summary>
-    public bool LooksLikeGoodFountain(string text, bool requirePageTags = false) =>
+    public static bool LooksLikeGoodFountain(string text, bool requirePageTags = false) =>
         BookToFountainConverter.LooksLikeGoodFountain(text, requirePageTags);
 
     /// <summary>
     /// Deterministic cast package gate: speaking Fountain cues must resolve to cast_seeds
     /// with usable look fields. Optional <paramref name="bookText"/> flags invented names.
     /// </summary>
-    public CastPackageCrossCheck.Report CrossCheckCast(
+    public static CastPackageCrossCheck.Report CrossCheckCast(
         string? fountainText,
         string? castSeedsJson,
         string? bookText = null) =>
@@ -115,7 +115,7 @@ public sealed class AdaptationService
     /// Optional <paramref name="bookSession"/> enables provider file_id + multi-turn
     /// (retry/coverage/merge/repair without re-billing full book tokens).
     /// </summary>
-    public async Task<AdaptationResult> ConvertAsync(
+    public static async Task<AdaptationResult> ConvertAsync(
         AdaptationRequest request,
         IChatClient chat,
         IProgress<string>? progress = null,
@@ -264,7 +264,7 @@ public sealed class AdaptationService
     /// Dialogue, character cues, scene headings, and scene count/order are preserved; if the model
     /// changes the scene count the original is kept and the result is flagged not-preserved.
     /// </summary>
-    public async Task<FountainEditResult> ReskinAsync(
+    public static async Task<FountainEditResult> ReskinAsync(
         string fountain,
         string? visualMedium,
         IChatClient chat,
@@ -290,7 +290,7 @@ public sealed class AdaptationService
     /// the best of the book's own language where <paramref name="bookText"/> is supplied. Dialogue, cues,
     /// scene headings, and scene count/order are preserved; on drift the original is kept.
     /// </summary>
-    public async Task<FountainEditResult> EmbellishAsync(
+    public static async Task<FountainEditResult> EmbellishAsync(
         string fountain,
         string? visualMedium,
         IChatClient chat,
@@ -487,7 +487,7 @@ public sealed class AdaptationService
     /// Unlike re-skin/embellish the scene count may shrink; it must not grow, and the output must be a
     /// valid screenplay. On any drift/failure the original is kept.
     /// </summary>
-    public async Task<FountainEditResult> TrimAsync(
+    public static async Task<FountainEditResult> TrimAsync(
         string fountain,
         int targetMinutes,
         int naturalMinutes,
