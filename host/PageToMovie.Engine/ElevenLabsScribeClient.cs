@@ -56,18 +56,7 @@ public sealed class ElevenLabsScribeClient
 
         try
         {
-            using var form = new MultipartFormDataContent
-            {
-                { new StringContent(DefaultModel), "model_id" },
-                { new StringContent("word"), "timestamps_granularity" },
-            };
-            if (!string.IsNullOrWhiteSpace(languageCode))
-                form.Add(new StringContent(languageCode.Trim()), "language_code");
-
-            var fileContent = new ByteArrayContent(audio);
-            fileContent.Headers.ContentType = new MediaTypeHeaderValue(GuessAudioMime(fileName));
-            form.Add(fileContent, "file", string.IsNullOrWhiteSpace(fileName) ? "segment.wav" : Path.GetFileName(fileName));
-
+            using var form = BuildScribeForm(audio, fileName, languageCode);
             using var req = new HttpRequestMessage(HttpMethod.Post, "speech-to-text");
             req.Headers.TryAddWithoutValidation("xi-api-key", apiKey);
             req.Content = form;
@@ -80,31 +69,57 @@ public sealed class ElevenLabsScribeClient
                 return ScribeResult.Fail($"Scribe failed ({(int)resp.StatusCode}): {Trunc(body, 160)}");
             }
 
-            using var doc = JsonDocument.Parse(body);
-            var root = doc.RootElement;
-            var text = root.TryGetProperty("text", out var t) ? t.GetString() : null;
-            var lang = root.TryGetProperty("language_code", out var l) ? l.GetString() : null;
-
-            var words = new List<ScribeWord>();
-            if (root.TryGetProperty("words", out var wordsEl) && wordsEl.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var w in wordsEl.EnumerateArray())
-                {
-                    var wt = w.TryGetProperty("text", out var wtEl) ? wtEl.GetString() ?? "" : "";
-                    var start = w.TryGetProperty("start", out var sEl) && sEl.TryGetDouble(out var sv) ? sv : 0;
-                    var end = w.TryGetProperty("end", out var eEl) && eEl.TryGetDouble(out var ev) ? ev : 0;
-                    var type = w.TryGetProperty("type", out var tyEl) ? tyEl.GetString() : "word";
-                    words.Add(new ScribeWord(wt, start, end, type));
-                }
-            }
-
-            return new ScribeResult(true, text ?? "", words, lang, null);
+            return ParseScribeResponse(body);
         }
         catch (Exception ex)
         {
             _log.LogError(ex, "Scribe STT exception");
             return ScribeResult.Fail(ex.Message);
         }
+    }
+
+    private static MultipartFormDataContent BuildScribeForm(byte[] audio, string fileName, string? languageCode)
+    {
+        var form = new MultipartFormDataContent
+        {
+            { new StringContent(DefaultModel), "model_id" },
+            { new StringContent("word"), "timestamps_granularity" },
+        };
+        if (!string.IsNullOrWhiteSpace(languageCode))
+            form.Add(new StringContent(languageCode.Trim()), "language_code");
+
+        var fileContent = new ByteArrayContent(audio);
+        fileContent.Headers.ContentType = new MediaTypeHeaderValue(GuessAudioMime(fileName));
+        form.Add(fileContent, "file", string.IsNullOrWhiteSpace(fileName) ? "segment.wav" : Path.GetFileName(fileName));
+        return form;
+    }
+
+    private static ScribeResult ParseScribeResponse(string body)
+    {
+        using var doc = JsonDocument.Parse(body);
+        var root = doc.RootElement;
+        var text = root.TryGetProperty("text", out var t) ? t.GetString() : null;
+        var lang = root.TryGetProperty("language_code", out var l) ? l.GetString() : null;
+        return new ScribeResult(true, text ?? "", ParseScribeWords(root), lang, null);
+    }
+
+    private static List<ScribeWord> ParseScribeWords(JsonElement root)
+    {
+        var words = new List<ScribeWord>();
+        if (!root.TryGetProperty("words", out var wordsEl) || wordsEl.ValueKind != JsonValueKind.Array)
+            return words;
+        foreach (var w in wordsEl.EnumerateArray())
+            words.Add(ReadScribeWord(w));
+        return words;
+    }
+
+    private static ScribeWord ReadScribeWord(JsonElement w)
+    {
+        var wt = w.TryGetProperty("text", out var wtEl) ? wtEl.GetString() ?? "" : "";
+        var start = w.TryGetProperty("start", out var sEl) && sEl.TryGetDouble(out var sv) ? sv : 0;
+        var end = w.TryGetProperty("end", out var eEl) && eEl.TryGetDouble(out var ev) ? ev : 0;
+        var type = w.TryGetProperty("type", out var tyEl) ? tyEl.GetString() : "word";
+        return new ScribeWord(wt, start, end, type);
     }
 
     private static string GuessAudioMime(string fileName) =>

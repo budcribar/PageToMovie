@@ -2576,81 +2576,9 @@ public sealed class FilmJobService
             await AppendLogAsync($"Enrich screenplay for {projectId} (visual detail from the book; dialogue unchanged)");
             await UpdateAsync(s => { s.Index = 0; s.Message = "Loading draft + book text…"; });
 
-            string? medium = null;
-            try
-            {
-                var dir = await _projects.GetProjectDirAsync(projectId, ct);
-                medium = ProjectVisionMeta.TryRead(dir)?.VisualMedium
-                         ?? ProjectVisionMeta.GetAdaptationMediumPreference(dir);
-            }
-            catch { /* enrich without medium */ }
-
-            await UpdateAsync(s =>
-            {
-                s.Index = 2;
-                s.Message = "Generating the full screenplay… one long rewrite (10–20 min is normal).";
-            });
-            await AppendLogAsync("Model call started — no per-scene ticks; the clock keeps running.");
-
-            using var hbCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            var started = DateTimeOffset.UtcNow;
-            var heartbeat = HeartbeatEnrichAsync(started, hbCts.Token);
-
-            ScreenplayService.DraftEditResult result;
-            try
-            {
-                result = await ScreenplayService.EmbellishDraftAsync(
-                    _projects,
-                    projectId,
-                    medium,
-                    _chat,
-                    model: "",
-                    onProgress: line =>
-                    {
-                        _ = AppendLogAsync(line);
-                        _ = UpdateAsync(s =>
-                        {
-                            s.Message = line;
-                            if (TryParseSceneProgress(line, out var idx, out var tot))
-                            {
-                                s.Index = idx;
-                                s.Total = tot;
-                            }
-                        });
-                    },
-                    ct: ct,
-                    responses: _xaiResponses,
-                    bookRegistry: _bookRegistry,
-                    bookFileSessions: _bookFileSessionFactory,
-                    useFakes: _opts.UseFakes);
-            }
-            finally
-            {
-                await hbCts.CancelAsync();
-                try { await heartbeat.ConfigureAwait(false); }
-                catch (OperationCanceledException)
-                {
-                    // Heartbeat task is cancelled together with the enrich job.
-                }
-            }
-
-            if (!result.Ok)
-            {
-                await FinishAsync(StatusError, result.Error ?? "Enrich failed.", result.Error);
-                return;
-            }
-
-            await UpdateAsync(s =>
-            {
-                if (s.Total > 0) s.Index = s.Total;
-                s.Message = "Saving enriched draft…";
-            });
-            if (result.Applied)
-                _projects.TriggerAutoGitCommit(projectId, "ptm:stage=embellish");
-            await FinishAsync(
-                StatusDone,
-                result.Message
-                ?? $"Enriched {projectId} ({result.SceneCountAfter} scenes). Re-approve, then Fit length if you use a target runtime.");
+            var medium = await TryReadEnrichMediumAsync(projectId, ct).ConfigureAwait(false);
+            var result = await RunEmbellishModelCallAsync(projectId, medium, ct).ConfigureAwait(false);
+            await FinishEmbellishResultAsync(projectId, result).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -2661,6 +2589,91 @@ public sealed class FilmJobService
             _log.LogError(ex, "Screenplay enrich failed");
             await FinishAsync(StatusError, ex.Message, ex.Message);
         }
+    }
+
+    private async Task<string?> TryReadEnrichMediumAsync(string projectId, CancellationToken ct)
+    {
+        try
+        {
+            var dir = await _projects.GetProjectDirAsync(projectId, ct);
+            return ProjectVisionMeta.TryRead(dir)?.VisualMedium
+                   ?? ProjectVisionMeta.GetAdaptationMediumPreference(dir);
+        }
+        catch { return null; /* enrich without medium */ }
+    }
+
+    private async Task<ScreenplayService.DraftEditResult> RunEmbellishModelCallAsync(
+        string projectId, string? medium, CancellationToken ct)
+    {
+        await UpdateAsync(s =>
+        {
+            s.Index = 2;
+            s.Message = "Generating the full screenplay… one long rewrite (10–20 min is normal).";
+        });
+        await AppendLogAsync("Model call started — no per-scene ticks; the clock keeps running.");
+
+        using var hbCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var started = DateTimeOffset.UtcNow;
+        var heartbeat = HeartbeatEnrichAsync(started, hbCts.Token);
+        try
+        {
+            return await ScreenplayService.EmbellishDraftAsync(
+                _projects,
+                projectId,
+                medium,
+                _chat,
+                model: "",
+                onProgress: line => ApplyEmbellishProgress(line),
+                ct: ct,
+                responses: _xaiResponses,
+                bookRegistry: _bookRegistry,
+                bookFileSessions: _bookFileSessionFactory,
+                useFakes: _opts.UseFakes);
+        }
+        finally
+        {
+            await hbCts.CancelAsync();
+            try { await heartbeat.ConfigureAwait(false); }
+            catch (OperationCanceledException)
+            {
+                // Heartbeat task is cancelled together with the enrich job.
+            }
+        }
+    }
+
+    private void ApplyEmbellishProgress(string line)
+    {
+        _ = AppendLogAsync(line);
+        _ = UpdateAsync(s =>
+        {
+            s.Message = line;
+            if (TryParseSceneProgress(line, out var idx, out var tot))
+            {
+                s.Index = idx;
+                s.Total = tot;
+            }
+        });
+    }
+
+    private async Task FinishEmbellishResultAsync(string projectId, ScreenplayService.DraftEditResult result)
+    {
+        if (!result.Ok)
+        {
+            await FinishAsync(StatusError, result.Error ?? "Enrich failed.", result.Error);
+            return;
+        }
+
+        await UpdateAsync(s =>
+        {
+            if (s.Total > 0) s.Index = s.Total;
+            s.Message = "Saving enriched draft…";
+        });
+        if (result.Applied)
+            _projects.TriggerAutoGitCommit(projectId, "ptm:stage=embellish");
+        await FinishAsync(
+            StatusDone,
+            result.Message
+            ?? $"Enriched {projectId} ({result.SceneCountAfter} scenes). Re-approve, then Fit length if you use a target runtime.");
     }
 
     private async Task HeartbeatEnrichAsync(DateTimeOffset started, CancellationToken token)
@@ -2714,21 +2727,7 @@ public sealed class FilmJobService
         await _projects.RequireProjectAsync(projectId, ct);
 
         var count = req.Count > 0 ? req.Count : 3;
-        var cast = req.IncludeCast
-            ? _projects.ListCharacters(projectId)
-                .Where(c => c.UsedInPlan && !c.IsGroup && !c.VoiceOnly)
-                .Where(c => !req.SkipAlreadyLocked || !c.Locked)
-                .OrderBy(c => c.DisplayName, StringComparer.OrdinalIgnoreCase)
-                .ToList()
-            : new List<CharacterSummary>();
-        var locs = req.IncludeLocations
-            ? _projects.ListLocations(projectId)
-                .Where(l => l.UsedInPlan)
-                .Where(l => !req.SkipAlreadyLocked || !l.Locked)
-                .OrderBy(l => l.DisplayName, StringComparer.OrdinalIgnoreCase)
-                .ToList()
-            : new List<LocationSummary>();
-
+        var (cast, locs) = CollectPlanLookTargets(req, projectId);
         var total = cast.Count + locs.Count;
         Snapshot = new JobSnapshot
         {
@@ -2752,107 +2751,9 @@ public sealed class FilmJobService
             return;
         }
 
-        var done = 0;
-        var lockedN = 0;
-        var failed = new List<string>();
-
         try
         {
-            await AppendLogAsync(
-                $"Plan looks: {cast.Count} cast · {locs.Count} locations · {count} variants each · auto-lock best");
-
-            foreach (var c in cast)
-            {
-                ct.ThrowIfCancellationRequested();
-                await UpdateAsync(s =>
-                {
-                    s.Message = $"Cast look {done + 1}/{total}: {c.DisplayName}";
-                    s.Index = done;
-                    s.CharKey = c.Key;
-                });
-                await AppendLogAsync($"── Cast {c.Key} ({c.DisplayName}) ──");
-                try
-                {
-                    var result = await _characters.GenerateVariantsAsync(
-                        projectId,
-                        c.Key,
-                        n: count,
-                        seedOptions: new StartCharacterVariantsRequest
-                        {
-                            ProjectId = projectId,
-                            CharKey = c.Key,
-                            Count = count,
-                            SeedMode = "auto",
-                            AutoLockBest = false,
-                        },
-                        onProgress: line => _ = AppendLogAsync("  " + line),
-                        ct: ct);
-                    if (result.Paths.Count == 0)
-                        throw new InvalidOperationException("no variants produced");
-                    var (best, _) = await _characters.AutoLockBestVariantAsync(
-                        projectId, c.Key, maxVariants: count,
-                        onProgress: line => _ = AppendLogAsync("  " + line),
-                        ct: ct);
-                    lockedN++;
-                    await AppendLogAsync($"  locked variant {best}");
-                }
-                catch (OperationCanceledException) { throw; }
-                catch (Exception ex)
-                {
-                    failed.Add($"{c.Key}: {ex.Message}");
-                    await AppendLogAsync($"  FAILED: {ex.Message}");
-                    _log.LogWarning(ex, "Plan looks cast failed {Key}", c.Key);
-                }
-                done++;
-                await UpdateAsync(s => s.Index = done);
-            }
-
-            foreach (var loc in locs)
-            {
-                ct.ThrowIfCancellationRequested();
-                await UpdateAsync(s =>
-                {
-                    s.Message = $"Place look {done + 1}/{total}: {loc.DisplayName}";
-                    s.Index = done;
-                    s.CharKey = loc.Key;
-                });
-                await AppendLogAsync($"── Location {loc.Key} ({loc.DisplayName}) ──");
-                try
-                {
-                    var result = await _locations.GenerateVariantsAsync(
-                        projectId,
-                        loc.Key,
-                        n: count,
-                        onProgress: line => _ = AppendLogAsync("  " + line),
-                        ct: ct);
-                    if (result.Paths.Count == 0)
-                        throw new InvalidOperationException("no variants produced");
-                    var (best, _) = await _locations.AutoLockBestVariantAsync(
-                        projectId, loc.Key, maxVariants: count,
-                        onProgress: line => _ = AppendLogAsync("  " + line),
-                        ct: ct);
-                    lockedN++;
-                    await AppendLogAsync($"  locked variant {best}");
-                }
-                catch (OperationCanceledException) { throw; }
-                catch (Exception ex)
-                {
-                    failed.Add($"{loc.Key}: {ex.Message}");
-                    await AppendLogAsync($"  FAILED: {ex.Message}");
-                    _log.LogWarning(ex, "Plan looks location failed {Key}", loc.Key);
-                }
-                done++;
-                await UpdateAsync(s => s.Index = done);
-            }
-
-            var summary = $"Plan looks done: locked {lockedN}/{total}"
-                + (failed.Count > 0 ? $" · {failed.Count} failed" : "");
-            if (failed.Count > 0 && lockedN == 0)
-                await FinishAsync(StatusError, summary, string.Join("; ", failed.Take(5)));
-            else if (failed.Count > 0)
-                await FinishAsync(StatusPartial, summary);
-            else
-                await FinishAsync(StatusDone, summary);
+            await GeneratePlanLooksAsync(projectId, count, cast, locs, total, ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -2863,6 +2764,155 @@ public sealed class FilmJobService
             _log.LogError(ex, "Plan looks batch failed");
             await FinishAsync(StatusError, ex.Message, ex.Message);
         }
+    }
+
+    private (List<CharacterSummary> Cast, List<LocationSummary> Locs) CollectPlanLookTargets(
+        StartPlanLooksRequest req, string projectId)
+    {
+        var cast = req.IncludeCast
+            ? _projects.ListCharacters(projectId)
+                .Where(c => c.UsedInPlan && !c.IsGroup && !c.VoiceOnly)
+                .Where(c => !req.SkipAlreadyLocked || !c.Locked)
+                .OrderBy(c => c.DisplayName, StringComparer.OrdinalIgnoreCase)
+                .ToList()
+            : new List<CharacterSummary>();
+        var locs = req.IncludeLocations
+            ? _projects.ListLocations(projectId)
+                .Where(l => l.UsedInPlan)
+                .Where(l => !req.SkipAlreadyLocked || !l.Locked)
+                .OrderBy(l => l.DisplayName, StringComparer.OrdinalIgnoreCase)
+                .ToList()
+            : new List<LocationSummary>();
+        return (cast, locs);
+    }
+
+    private async Task GeneratePlanLooksAsync(
+        string projectId,
+        int count,
+        List<CharacterSummary> cast,
+        List<LocationSummary> locs,
+        int total,
+        CancellationToken ct)
+    {
+        var done = 0;
+        var lockedN = 0;
+        var failed = new List<string>();
+        await AppendLogAsync(
+            $"Plan looks: {cast.Count} cast · {locs.Count} locations · {count} variants each · auto-lock best");
+
+        foreach (var c in cast)
+        {
+            ct.ThrowIfCancellationRequested();
+            lockedN += await GenerateOneCastPlanLookAsync(projectId, c, count, done, total, failed, ct)
+                .ConfigureAwait(false);
+            done++;
+            await UpdateAsync(s => s.Index = done);
+        }
+
+        foreach (var loc in locs)
+        {
+            ct.ThrowIfCancellationRequested();
+            lockedN += await GenerateOneLocationPlanLookAsync(projectId, loc, count, done, total, failed, ct)
+                .ConfigureAwait(false);
+            done++;
+            await UpdateAsync(s => s.Index = done);
+        }
+
+        await FinishPlanLooksAsync(lockedN, total, failed).ConfigureAwait(false);
+    }
+
+    private async Task<int> GenerateOneCastPlanLookAsync(
+        string projectId, CharacterSummary c, int count, int done, int total, List<string> failed, CancellationToken ct)
+    {
+        await UpdateAsync(s =>
+        {
+            s.Message = $"Cast look {done + 1}/{total}: {c.DisplayName}";
+            s.Index = done;
+            s.CharKey = c.Key;
+        });
+        await AppendLogAsync($"── Cast {c.Key} ({c.DisplayName}) ──");
+        try
+        {
+            var result = await _characters.GenerateVariantsAsync(
+                projectId,
+                c.Key,
+                n: count,
+                seedOptions: new StartCharacterVariantsRequest
+                {
+                    ProjectId = projectId,
+                    CharKey = c.Key,
+                    Count = count,
+                    SeedMode = "auto",
+                    AutoLockBest = false,
+                },
+                onProgress: line => _ = AppendLogAsync("  " + line),
+                ct: ct);
+            if (result.Paths.Count == 0)
+                throw new InvalidOperationException("no variants produced");
+            var (best, _) = await _characters.AutoLockBestVariantAsync(
+                projectId, c.Key, maxVariants: count,
+                onProgress: line => _ = AppendLogAsync("  " + line),
+                ct: ct);
+            await AppendLogAsync($"  locked variant {best}");
+            return 1;
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            failed.Add($"{c.Key}: {ex.Message}");
+            await AppendLogAsync($"  FAILED: {ex.Message}");
+            _log.LogWarning(ex, "Plan looks cast failed {Key}", c.Key);
+            return 0;
+        }
+    }
+
+    private async Task<int> GenerateOneLocationPlanLookAsync(
+        string projectId, LocationSummary loc, int count, int done, int total, List<string> failed, CancellationToken ct)
+    {
+        await UpdateAsync(s =>
+        {
+            s.Message = $"Place look {done + 1}/{total}: {loc.DisplayName}";
+            s.Index = done;
+            s.CharKey = loc.Key;
+        });
+        await AppendLogAsync($"── Location {loc.Key} ({loc.DisplayName}) ──");
+        try
+        {
+            var result = await _locations.GenerateVariantsAsync(
+                projectId,
+                loc.Key,
+                n: count,
+                onProgress: line => _ = AppendLogAsync("  " + line),
+                ct: ct);
+            if (result.Paths.Count == 0)
+                throw new InvalidOperationException("no variants produced");
+            var (best, _) = await _locations.AutoLockBestVariantAsync(
+                projectId, loc.Key, maxVariants: count,
+                onProgress: line => _ = AppendLogAsync("  " + line),
+                ct: ct);
+            await AppendLogAsync($"  locked variant {best}");
+            return 1;
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            failed.Add($"{loc.Key}: {ex.Message}");
+            await AppendLogAsync($"  FAILED: {ex.Message}");
+            _log.LogWarning(ex, "Plan looks location failed {Key}", loc.Key);
+            return 0;
+        }
+    }
+
+    private async Task FinishPlanLooksAsync(int lockedN, int total, List<string> failed)
+    {
+        var summary = $"Plan looks done: locked {lockedN}/{total}"
+            + (failed.Count > 0 ? $" · {failed.Count} failed" : "");
+        if (failed.Count > 0 && lockedN == 0)
+            await FinishAsync(StatusError, summary, string.Join("; ", failed.Take(5)));
+        else if (failed.Count > 0)
+            await FinishAsync(StatusPartial, summary);
+        else
+            await FinishAsync(StatusDone, summary);
     }
 
     private static int TryParseVariantProgress(string line)
@@ -3142,26 +3192,8 @@ public sealed class FilmJobService
 
         try
         {
-            var path = _projects.ResolveWipMoviePath(projectId);
-            if (path is null || !File.Exists(path))
-            {
-                var pDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
-                var altWip = Path.Combine(pDir, AssetsFolder, VideoFolder, "wip_movie.mp4");
-                if (File.Exists(altWip)) path = altWip;
-            }
-            if (path is null || !File.Exists(path))
-                throw new InvalidOperationException("No WIP movie file found on server — publish Demo from a browser stitch first.");
-
-            // E: hash-gate exact upload bytes vs film_build.studio.sha256 (Clipchamp detection).
-            byte[] uploadBytes;
-            try
-            {
-                uploadBytes = await File.ReadAllBytesAsync(path, ct).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                throw new InvalidOperationException("Could not read WIP movie for hash gate: " + ex.Message, ex);
-            }
+            var path = await ResolveWipMoviePathAsync(projectId, ct).ConfigureAwait(false);
+            var uploadBytes = await ReadUploadBytesAsync(path, ct).ConfigureAwait(false);
             var publishGate = await FilmBuildService.ApplyUploadHashGateAsync(_projects, projectId, uploadBytes, ct: ct).ConfigureAwait(false);
             await AppendLogAsync(
                 $"Film publish path: {publishGate.Path} (upload sha {publishGate.UploadSha256[..Math.Min(12, publishGate.UploadSha256.Length)]}…)");
@@ -3174,57 +3206,8 @@ public sealed class FilmJobService
                 ? req.PrivacyStatus
                 : "unlisted";
 
-            var video = new Video
-            {
-                Snippet = new VideoSnippet
-                {
-                    Title = title,
-                    Description = req.Description ?? "",
-                    CategoryId = "1", // Film & Animation
-                },
-                Status = new VideoStatus
-                {
-                    PrivacyStatus = privacy,
-                    Embeddable = true,
-                },
-            };
-
-            var bytes = new FileInfo(path).Length;
-            await AppendLogAsync($"Uploading {Path.GetFileName(path)} ({bytes / (1024 * 1024)} MB, {privacy})…");
-
-            await using var stream = File.OpenRead(path);
-            var upload = youtube.Videos.Insert(video, "snippet,status", stream, "video/mp4");
-            string? videoId = null;
-            upload.ResponseReceived += v => videoId = v.Id;
-            upload.ProgressChanged += p =>
-            {
-                var pct = bytes > 0 ? (int)Math.Clamp(p.BytesSent * 100 / bytes, 0, 100) : 0;
-                _ = UpdateAsync(s =>
-                {
-                    s.Index = pct;
-                    s.Total = 100;
-                    s.Message = p.Status switch
-                    {
-                        UploadStatus.Uploading => $"Uploading… {pct}%",
-                        UploadStatus.Completed => "Upload complete — finalizing…",
-                        UploadStatus.Failed => $"Upload failed: {p.Exception?.Message}",
-                        _ => s.Message,
-                    };
-                });
-            };
-
-            var result = await upload.UploadAsync(ct);
-            if (result.Status != UploadStatus.Completed || videoId is null)
-            {
-                if (ct.IsCancellationRequested)
-                    throw new OperationCanceledException(ct);
-                var errDetail = result.Exception is Google.GoogleApiException gerr
-                    ? $"Google API {gerr.HttpStatusCode}: {gerr.Message} — {gerr.Error?.Message}"
-                    : result.Exception?.Message ?? $"YouTube upload status: {result.Status}";
-                await AppendLogAsync($"❌ YouTube upload failed: {errDetail}");
-                throw result.Exception ?? new InvalidOperationException($"YouTube upload failed: {errDetail}");
-            }
-
+            var videoId = await UploadWipVideoAsync(youtube, path, title, privacy, req.Description ?? "", ct)
+                .ConfigureAwait(false);
             var url = $"https://youtu.be/{videoId}";
             await _projects.SaveYouTubeUploadInfoAsync(projectId, new YouTubeUploadInfo
             {
@@ -3235,42 +3218,8 @@ public sealed class FilmJobService
                 UploadedAt = DateTimeOffset.UtcNow,
             }, ct);
 
-            // Re-record publish block with YouTube ids; create learning package when intact.
-            try
-            {
-                var finalPublish = await FilmBuildService.ApplyUploadHashGateAsync(
-                    _projects, projectId, uploadBytes,
-                    youtubeVideoId: videoId, youtubeUrl: url, ct: ct).ConfigureAwait(false);
-                await AppendLogAsync($"Film build publish recorded ({finalPublish.Path}).");
-                if (string.Equals(finalPublish.Path, FilmBuildPublish.PathStudioIntact, StringComparison.Ordinal))
-                {
-                    var lp = await LearningPackageService.CreateFromProjectAsync(
-                        _projects, projectId, workspaceRoot: TryFindWorkspaceRoot(), ct: ct).ConfigureAwait(false);
-                    await AppendLogAsync($"Learning package {lp.PackageId} → {lp.ProjectRelativePath}");
-                }
-                else
-                {
-                    await AppendLogAsync(
-                        "Learning package skipped (upload not studio_intact — external edit suspected).");
-                }
-            }
-            catch (Exception lpEx)
-            {
-                _log.LogWarning(lpEx, "Publish provenance / learning package failed for {Project}", projectId);
-                await AppendLogAsync("Publish provenance note: " + lpEx.Message);
-            }
-
-            // Best-effort cleanup of temporary staged MP4 to conserve server disk space
-            try
-            {
-                if (File.Exists(path))
-                    File.Delete(path);
-            }
-            catch (Exception ex)
-            {
-                _log.LogWarning(ex, "Failed to clean up temporary staged movie file {Path} after YouTube upload", path);
-            }
-
+            await RecordPublishAndLearningAsync(projectId, uploadBytes, videoId, url, ct).ConfigureAwait(false);
+            TryDeleteStagedMovie(path);
             await FinishAsync(StatusDone, $"Uploaded to YouTube: {url}");
         }
         catch (OperationCanceledException)
@@ -3285,6 +3234,137 @@ public sealed class FilmJobService
                 : ex.Message;
             await AppendLogAsync($"❌ YouTube upload exception: {errMessage}");
             await FinishAsync(StatusError, errMessage, errMessage);
+        }
+    }
+
+    private async Task<string> ResolveWipMoviePathAsync(string projectId, CancellationToken ct)
+    {
+        var path = _projects.ResolveWipMoviePath(projectId);
+        if (path is null || !File.Exists(path))
+        {
+            var pDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
+            var altWip = Path.Combine(pDir, AssetsFolder, VideoFolder, "wip_movie.mp4");
+            if (File.Exists(altWip)) path = altWip;
+        }
+        if (path is null || !File.Exists(path))
+            throw new InvalidOperationException("No WIP movie file found on server — publish Demo from a browser stitch first.");
+        return path;
+    }
+
+    private static async Task<byte[]> ReadUploadBytesAsync(string path, CancellationToken ct)
+    {
+        try
+        {
+            return await File.ReadAllBytesAsync(path, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException("Could not read WIP movie for hash gate: " + ex.Message, ex);
+        }
+    }
+
+    private async Task<string> UploadWipVideoAsync(
+        Google.Apis.YouTube.v3.YouTubeService youtube,
+        string path,
+        string title,
+        string privacy,
+        string description,
+        CancellationToken ct)
+    {
+        var video = new Video
+        {
+            Snippet = new VideoSnippet
+            {
+                Title = title,
+                Description = description,
+                CategoryId = "1", // Film & Animation
+            },
+            Status = new VideoStatus
+            {
+                PrivacyStatus = privacy,
+                Embeddable = true,
+            },
+        };
+
+        var bytes = new FileInfo(path).Length;
+        await AppendLogAsync($"Uploading {Path.GetFileName(path)} ({bytes / (1024 * 1024)} MB, {privacy})…");
+
+        await using var stream = File.OpenRead(path);
+        var upload = youtube.Videos.Insert(video, "snippet,status", stream, "video/mp4");
+        string? videoId = null;
+        upload.ResponseReceived += v => videoId = v.Id;
+        upload.ProgressChanged += p => ApplyYouTubeUploadProgress(p, bytes);
+
+        var result = await upload.UploadAsync(ct);
+        if (result.Status == UploadStatus.Completed && videoId is not null)
+            return videoId;
+        if (ct.IsCancellationRequested)
+            throw new OperationCanceledException(ct);
+        var errDetail = FormatYouTubeUploadError(result);
+        await AppendLogAsync($"❌ YouTube upload failed: {errDetail}");
+        throw result.Exception ?? new InvalidOperationException($"YouTube upload failed: {errDetail}");
+    }
+
+    private void ApplyYouTubeUploadProgress(IUploadProgress p, long bytes)
+    {
+        var pct = bytes > 0 ? (int)Math.Clamp(p.BytesSent * 100 / bytes, 0, 100) : 0;
+        _ = UpdateAsync(s =>
+        {
+            s.Index = pct;
+            s.Total = 100;
+            s.Message = p.Status switch
+            {
+                UploadStatus.Uploading => $"Uploading… {pct}%",
+                UploadStatus.Completed => "Upload complete — finalizing…",
+                UploadStatus.Failed => $"Upload failed: {p.Exception?.Message}",
+                _ => s.Message,
+            };
+        });
+    }
+
+    private static string FormatYouTubeUploadError(IUploadProgress result) =>
+        result.Exception is Google.GoogleApiException gerr
+            ? $"Google API {gerr.HttpStatusCode}: {gerr.Message} — {gerr.Error?.Message}"
+            : result.Exception?.Message ?? $"YouTube upload status: {result.Status}";
+
+    private async Task RecordPublishAndLearningAsync(
+        string projectId, byte[] uploadBytes, string videoId, string url, CancellationToken ct)
+    {
+        try
+        {
+            var finalPublish = await FilmBuildService.ApplyUploadHashGateAsync(
+                _projects, projectId, uploadBytes,
+                youtubeVideoId: videoId, youtubeUrl: url, ct: ct).ConfigureAwait(false);
+            await AppendLogAsync($"Film build publish recorded ({finalPublish.Path}).");
+            if (string.Equals(finalPublish.Path, FilmBuildPublish.PathStudioIntact, StringComparison.Ordinal))
+            {
+                var lp = await LearningPackageService.CreateFromProjectAsync(
+                    _projects, projectId, workspaceRoot: TryFindWorkspaceRoot(), ct: ct).ConfigureAwait(false);
+                await AppendLogAsync($"Learning package {lp.PackageId} → {lp.ProjectRelativePath}");
+            }
+            else
+            {
+                await AppendLogAsync(
+                    "Learning package skipped (upload not studio_intact — external edit suspected).");
+            }
+        }
+        catch (Exception lpEx)
+        {
+            _log.LogWarning(lpEx, "Publish provenance / learning package failed for {Project}", projectId);
+            await AppendLogAsync("Publish provenance note: " + lpEx.Message);
+        }
+    }
+
+    private void TryDeleteStagedMovie(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Failed to clean up temporary staged movie file {Path} after YouTube upload", path);
         }
     }
 
@@ -3755,77 +3835,78 @@ public sealed class FilmJobService
     private async Task<(byte[]? Audio, string Ext, string? Error)> SynthesizeLineAsync(
         SpeakContext ctx, string projectId, string charKey, string text, string mode, CancellationToken ct)
     {
-        byte[]? audioBytes = null;
-        string ext = ".mp3";
-        string? err = null;
+        var (audioBytes, ext, err) = ctx.UseEleven
+            ? await SynthesizeViaElevenAsync(ctx, text, ct).ConfigureAwait(false)
+            : await SynthesizeViaCloneDownloadAsync(ctx, text, ct).ConfigureAwait(false);
 
-        if (ctx.UseEleven)
-        {
-            var tts = await _voiceClient.TextToSpeechAsync(ctx.VoiceId, text, ctx.SpeakModelId, ct)
-                .ConfigureAwait(false);
-            if (!tts.Ok || tts.AudioBytes is not { Length: > 0 })
-                err = tts.Error ?? "TTS failed";
-            else
-            {
-                audioBytes = tts.AudioBytes;
-                ext = tts.FileExtension ?? ".mp3";
-            }
-        }
-        else
-        {
-            var audioUrl = await _voiceClone.SynthesizeSpeechAsync(text, ctx.VoiceId, ctx.SpeakModelId, ct)
-                .ConfigureAwait(false);
-            if (string.IsNullOrWhiteSpace(audioUrl))
-                err = "Speech synthesis failed";
-            else
-            {
-                try
-                {
-                    var http = _httpFactory.CreateClient();
-                    using var resp = await http.GetAsync(audioUrl, ct).ConfigureAwait(false);
-                    if (resp.IsSuccessStatusCode)
-                    {
-                        audioBytes = await resp.Content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
-                        var ctHeader = resp.Content.Headers.ContentType?.MediaType ?? "";
-                        if (ctHeader.Contains("wav", StringComparison.OrdinalIgnoreCase))
-                            ext = ".wav";
-                        else if (ctHeader.Contains("mp4", StringComparison.OrdinalIgnoreCase) ||
-                                 ctHeader.Contains("m4a", StringComparison.OrdinalIgnoreCase))
-                            ext = ".m4a";
-                        else
-                            ext = ".mp3";
-                    }
-                    else
-                        err = $"Download TTS failed ({(int)resp.StatusCode})";
-                }
-                catch (Exception ex)
-                {
-                    err = ex.Message;
-                }
-            }
-        }
-
-        if (_telemetry is not null)
-        {
-            var estimatedUsd = ctx.Entry?.CostPerThousandCharsUsd is { } rate
-                ? Math.Round(rate * text.Length / 1000.0, 4)
-                : (double?)null;
-            await _telemetry.LogApiCallAsync(new ApiCallTelemetry
-            {
-                ProjectId = projectId,
-                Kind = "tts",
-                Mode = mode,
-                Model = ctx.SpeakModelId,
-                Provider = ctx.ProviderId,
-                CharKey = charKey,
-                PromptChars = text.Length,
-                EstimatedUsd = estimatedUsd,
-                Ok = audioBytes is { Length: > 0 },
-                Error = err,
-            }, ct).ConfigureAwait(false);
-        }
-
+        await LogTtsTelemetryAsync(ctx, projectId, charKey, text, mode, audioBytes, err, ct).ConfigureAwait(false);
         return (audioBytes, ext, err);
+    }
+
+    private async Task<(byte[]? Audio, string Ext, string? Error)> SynthesizeViaElevenAsync(
+        SpeakContext ctx, string text, CancellationToken ct)
+    {
+        var tts = await _voiceClient.TextToSpeechAsync(ctx.VoiceId, text, ctx.SpeakModelId, ct)
+            .ConfigureAwait(false);
+        if (!tts.Ok || tts.AudioBytes is not { Length: > 0 })
+            return (null, ".mp3", tts.Error ?? "TTS failed");
+        return (tts.AudioBytes, tts.FileExtension ?? ".mp3", null);
+    }
+
+    private async Task<(byte[]? Audio, string Ext, string? Error)> SynthesizeViaCloneDownloadAsync(
+        SpeakContext ctx, string text, CancellationToken ct)
+    {
+        var audioUrl = await _voiceClone.SynthesizeSpeechAsync(text, ctx.VoiceId, ctx.SpeakModelId, ct)
+            .ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(audioUrl))
+            return (null, ".mp3", "Speech synthesis failed");
+        try
+        {
+            var http = _httpFactory.CreateClient();
+            using var resp = await http.GetAsync(audioUrl, ct).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode)
+                return (null, ".mp3", $"Download TTS failed ({(int)resp.StatusCode})");
+            var audioBytes = await resp.Content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
+            var ctHeader = resp.Content.Headers.ContentType?.MediaType ?? "";
+            return (audioBytes, GuessTtsExtension(ctHeader), null);
+        }
+        catch (Exception ex)
+        {
+            return (null, ".mp3", ex.Message);
+        }
+    }
+
+    private static string GuessTtsExtension(string contentType)
+    {
+        if (contentType.Contains("wav", StringComparison.OrdinalIgnoreCase))
+            return ".wav";
+        if (contentType.Contains("mp4", StringComparison.OrdinalIgnoreCase) ||
+            contentType.Contains("m4a", StringComparison.OrdinalIgnoreCase))
+            return ".m4a";
+        return ".mp3";
+    }
+
+    private async Task LogTtsTelemetryAsync(
+        SpeakContext ctx, string projectId, string charKey, string text, string mode,
+        byte[]? audioBytes, string? err, CancellationToken ct)
+    {
+        if (_telemetry is null) return;
+        var estimatedUsd = ctx.Entry?.CostPerThousandCharsUsd is { } rate
+            ? Math.Round(rate * text.Length / 1000.0, 4)
+            : (double?)null;
+        await _telemetry.LogApiCallAsync(new ApiCallTelemetry
+        {
+            ProjectId = projectId,
+            Kind = "tts",
+            Mode = mode,
+            Model = ctx.SpeakModelId,
+            Provider = ctx.ProviderId,
+            CharKey = charKey,
+            PromptChars = text.Length,
+            EstimatedUsd = estimatedUsd,
+            Ok = audioBytes is { Length: > 0 },
+            Error = err,
+        }, ct).ConfigureAwait(false);
     }
 
     // ── Movie-wide "substitute my cloned voice" ─────────────────────────────────────────────────
@@ -3878,186 +3959,9 @@ public sealed class FilmJobService
 
         try
         {
-            if (_voiceAlignment is null)
-            {
-                await FinishAsync(StatusError, "Voice alignment store unavailable.", "no alignment store")
-                    .ConfigureAwait(false);
-                return;
-            }
-
-            var (ctx, ctxErr) = await ResolveSpeakContextAsync(projectId, charKey, req.Model, ct).ConfigureAwait(false);
-            if (ctx is null)
-            {
-                await FinishAsync(StatusError, ctxErr ?? VoiceNotConfigured, ctxErr ?? VoiceNotConfigured)
-                    .ConfigureAwait(false);
-                return;
-            }
-
-            using var blueprint = await _projects.LoadBlueprintAsync(projectId, ct).ConfigureAwait(false);
-            if (blueprint is null)
-            {
-                await FinishAsync(StatusError, "No shot plan for this project yet.", "no blueprint")
-                    .ConfigureAwait(false);
-                return;
-            }
-
-            // Associate lines with speakers straight from the blueprint (not guesswork).
-            Func<string, bool>? filter = req.NarratorOnly
-                ? spk => IsNarratorSpeaker(spk, charKey)
-                : null;
-            var clipLines = VoiceAlignmentStore.BuildDialogueLinesFromBlueprint(blueprint.RootElement, filter);
-            if (clipLines.Count == 0)
-            {
-                await FinishAsync(StatusDone, "No matching dialogue lines to substitute.").ConfigureAwait(false);
-                return;
-            }
-
-            // Which scenes contain a non-narrator speaker (e.g. the mom) baked into the clip audio —
-            // those keep their original audio; narrator-only scenes get muted + fully replaced by the
-            // clone. Only meaningful under NarratorOnly (otherwise every speaker is being replaced).
-            var scenesWithOtherSpeakers = req.NarratorOnly
-                ? VoiceAlignmentStore.BuildDialogueLinesFromBlueprint(blueprint.RootElement, null)
-                    .Where(cl => cl.Lines.Any(l => !IsNarratorSpeaker(l.CharacterKey, charKey)))
-                    .Select(cl => cl.Scene)
-                    .ToHashSet()
-                : new HashSet<int>();
-
-            // Per-SCENE strategy: concatenate every narrator line in a scene into one continuous read
-            // and synthesize it in a single TTS call, so the prosody flows across the whole scene
-            // instead of restarting every clip. The browser overlays one track onto the stitched scene.
-            var sceneGroups = clipLines
-                .GroupBy(c => c.Scene)
-                .OrderBy(g => g.Key)
-                .ToList();
-
-            var alignment = new ProjectVoiceAlignment
-            {
-                ProjectId = projectId,
-                CharKey = charKey,
-                SceneVoices = new List<SceneVoiceTrack>(sceneGroups.Count),
-            };
-
-            var maxLen = ctx.MaxLen;
-            var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
-            var totalScenes = sceneGroups.Count;
-            var totalLines = clipLines.Sum(c => c.Lines.Count);
-
-            await UpdateAsync(s =>
-            {
-                s.Total = totalLines;
-                s.Index = 0;
-                s.Message = $"Voice substitution: {totalLines} line(s) across {totalScenes} scene(s) · {ctx.ProviderId}";
-            }).ConfigureAwait(false);
-            await AppendLogAsync(Snapshot.Message ?? "").ConfigureAwait(false);
-
-            var done = 0;
-            var failed = 0;
-
-            foreach (var group in sceneGroups)
-            {
-                ct.ThrowIfCancellationRequested();
-                var sceneNo = group.Key;
-
-                var track = new SceneVoiceTrack
-                {
-                    Scene = sceneNo,
-                    HasOtherSpeakers = scenesWithOtherSpeakers.Contains(sceneNo),
-                };
-
-                // Each narrator line in the scene (clip order, then line order) is synthesized on its
-                // own so the browser can place + time-stretch it onto the detected speech window.
-                var sceneLines = group
-                    .OrderBy(c => c.Clip)
-                    .SelectMany(c => c.Lines)
-                    .Select(l => l.Text.Trim())
-                    .Where(t => t.Length > 0)
-                    .ToList();
-
-                var lineNo = 0;
-                foreach (var lineTextRaw in sceneLines)
-                {
-                    ct.ThrowIfCancellationRequested();
-                    var text = lineTextRaw;
-                    if (text.Length > maxLen)
-                    {
-                        await AppendLogAsync(
-                                $"  S{sceneNo:D2} L{lineNo:D2}: {text.Length} chars exceeds model limit {maxLen} — truncating.")
-                            .ConfigureAwait(false);
-                        text = text[..maxLen];
-                    }
-
-                    var svl = new SceneVoiceLine { Index = lineNo, Text = text };
-                    var relPath = MediaRegistryService.RevoiceSceneLineAudioRelativePath(sceneNo, lineNo);
-                    var absPath = Path.Combine(projectDir, relPath.Replace('/', Path.DirectorySeparatorChar));
-
-                    if (req.OnlyMissing && File.Exists(absPath))
-                    {
-                        svl.VoiceAudioRelativePath = relPath;
-                        track.Lines.Add(svl);
-                        var idxSkip = Interlocked.Increment(ref done);
-                        await UpdateAsync(s => { s.Index = idxSkip; s.Scene = sceneNo; }).ConfigureAwait(false);
-                        await AppendLogAsync($"  S{sceneNo:D2} L{lineNo:D2}: reuse existing → {relPath}").ConfigureAwait(false);
-                        lineNo++;
-                        continue;
-                    }
-
-                    var (audioBytes, ext, err) = await SynthesizeLineAsync(
-                        ctx, projectId, charKey, text, "voice_substitution", ct).ConfigureAwait(false);
-
-                    if (audioBytes is not { Length: > 0 })
-                    {
-                        await AppendLogAsync($"  S{sceneNo:D2} L{lineNo:D2}: fail — {err ?? "no audio"}").ConfigureAwait(false);
-                        Interlocked.Increment(ref failed);
-                        Interlocked.Increment(ref done);
-                        track.Lines.Add(svl);
-                        lineNo++;
-                        continue;
-                    }
-
-                    relPath = MediaRegistryService.RevoiceSceneLineAudioRelativePath(sceneNo, lineNo, ext);
-                    absPath = Path.Combine(projectDir, relPath.Replace('/', Path.DirectorySeparatorChar));
-                    Directory.CreateDirectory(Path.GetDirectoryName(absPath) ?? ".");
-                    await File.WriteAllBytesAsync(absPath, audioBytes, ct).ConfigureAwait(false);
-                    svl.VoiceAudioRelativePath = relPath;
-                    track.Lines.Add(svl);
-
-                    var ticket = _mediaProxy.Issue($"{projectId}:{relPath}", TimeSpan.FromMinutes(45));
-                    var clientUrl =
-                        $"/api/projects/{Uri.EscapeDataString(projectId)}/media/file" +
-                        $"?path={Uri.EscapeDataString(relPath)}&ticket={ticket}";
-
-                    var idx = Interlocked.Increment(ref done);
-                    await UpdateAsync(s =>
-                    {
-                        s.Index = idx;
-                        s.Scene = sceneNo;
-                        s.ClientMediaUrl = clientUrl;
-                        s.ClientRelativePath = relPath;
-                        s.Message = $"Voice substitution: S{sceneNo:D2} L{lineNo:D2} ({idx}/{totalLines})…";
-                    }).ConfigureAwait(false);
-                    await AppendLogAsync(
-                            $"  S{sceneNo:D2} L{lineNo:D2}: ready → {relPath} ({audioBytes.Length / 1024} KB)")
-                        .ConfigureAwait(false);
-                    lineNo++;
-                }
-
-                alignment.SceneVoices.Add(track);
-            }
-
-            // Persist the alignment (per-scene voice tracks) as a project file.
-            await _voiceAlignment.SaveAsync(projectId, alignment, ct).ConfigureAwait(false);
-            await AppendLogAsync($"Alignment saved → {VoiceAlignmentStore.RelativePath}").ConfigureAwait(false);
-
-            if (failed == 0)
-                await FinishAsync(StatusDone, $"Voice substitution ready — {totalLines} line(s) across {totalScenes} scene(s)").ConfigureAwait(false);
-            else if (failed >= totalLines)
-                await FinishAsync(StatusError, $"Voice substitution failed — all {failed} line(s) failed", "all failed")
-                    .ConfigureAwait(false);
-            else
-                await FinishAsync(
-                        StatusPartial,
-                        $"Voice substitution partial — {totalLines - failed} ok, {failed} failed")
-                    .ConfigureAwait(false);
+            var work = await TryPrepareVoiceSubstitutionAsync(req, projectId, charKey, ct).ConfigureAwait(false);
+            if (work is null) return;
+            await RunVoiceSubstitutionWorkAsync(req, work, ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -4068,6 +3972,235 @@ public sealed class FilmJobService
             _log.LogError(ex, "Voice substitution failed for {ProjectId}", projectId);
             await FinishAsync(StatusError, ex.Message, ex.Message).ConfigureAwait(false);
         }
+    }
+
+    private sealed class VoiceSubstitutionWork
+    {
+        public required SpeakContext Ctx { get; init; }
+        public required string ProjectId { get; init; }
+        public required string CharKey { get; init; }
+        public required string ProjectDir { get; init; }
+        public required List<IGrouping<int, VoiceAlignmentStore.ClipDialogueLines>> SceneGroups { get; init; }
+        public required HashSet<int> ScenesWithOtherSpeakers { get; init; }
+        public required int TotalLines { get; init; }
+        public required int TotalScenes { get; init; }
+        public required ProjectVoiceAlignment Alignment { get; init; }
+    }
+
+    private sealed class VoiceSubProgress
+    {
+        public int Done;
+        public int Failed;
+    }
+
+    private async Task<VoiceSubstitutionWork?> TryPrepareVoiceSubstitutionAsync(
+        StartVoiceSubstitutionRequest req, string projectId, string charKey, CancellationToken ct)
+    {
+        if (_voiceAlignment is null)
+        {
+            await FinishAsync(StatusError, "Voice alignment store unavailable.", "no alignment store")
+                .ConfigureAwait(false);
+            return null;
+        }
+
+        var (ctx, ctxErr) = await ResolveSpeakContextAsync(projectId, charKey, req.Model, ct).ConfigureAwait(false);
+        if (ctx is null)
+        {
+            await FinishAsync(StatusError, ctxErr ?? VoiceNotConfigured, ctxErr ?? VoiceNotConfigured)
+                .ConfigureAwait(false);
+            return null;
+        }
+
+        using var blueprint = await _projects.LoadBlueprintAsync(projectId, ct).ConfigureAwait(false);
+        if (blueprint is null)
+        {
+            await FinishAsync(StatusError, "No shot plan for this project yet.", "no blueprint")
+                .ConfigureAwait(false);
+            return null;
+        }
+
+        Func<string, bool>? filter = req.NarratorOnly
+            ? spk => IsNarratorSpeaker(spk, charKey)
+            : null;
+        var clipLines = VoiceAlignmentStore.BuildDialogueLinesFromBlueprint(blueprint.RootElement, filter);
+        if (clipLines.Count == 0)
+        {
+            await FinishAsync(StatusDone, "No matching dialogue lines to substitute.").ConfigureAwait(false);
+            return null;
+        }
+
+        var scenesWithOtherSpeakers = req.NarratorOnly
+            ? VoiceAlignmentStore.BuildDialogueLinesFromBlueprint(blueprint.RootElement, null)
+                .Where(cl => cl.Lines.Any(l => !IsNarratorSpeaker(l.CharacterKey, charKey)))
+                .Select(cl => cl.Scene)
+                .ToHashSet()
+            : new HashSet<int>();
+
+        var sceneGroups = clipLines
+            .GroupBy(c => c.Scene)
+            .OrderBy(g => g.Key)
+            .ToList();
+
+        var totalScenes = sceneGroups.Count;
+        var totalLines = clipLines.Sum(c => c.Lines.Count);
+        await UpdateAsync(s =>
+        {
+            s.Total = totalLines;
+            s.Index = 0;
+            s.Message = $"Voice substitution: {totalLines} line(s) across {totalScenes} scene(s) · {ctx.ProviderId}";
+        }).ConfigureAwait(false);
+        await AppendLogAsync(Snapshot.Message ?? "").ConfigureAwait(false);
+
+        return new VoiceSubstitutionWork
+        {
+            Ctx = ctx,
+            ProjectId = projectId,
+            CharKey = charKey,
+            ProjectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false),
+            SceneGroups = sceneGroups,
+            ScenesWithOtherSpeakers = scenesWithOtherSpeakers,
+            TotalLines = totalLines,
+            TotalScenes = totalScenes,
+            Alignment = new ProjectVoiceAlignment
+            {
+                ProjectId = projectId,
+                CharKey = charKey,
+                SceneVoices = new List<SceneVoiceTrack>(sceneGroups.Count),
+            },
+        };
+    }
+
+    private async Task RunVoiceSubstitutionWorkAsync(
+        StartVoiceSubstitutionRequest req, VoiceSubstitutionWork work, CancellationToken ct)
+    {
+        var progress = new VoiceSubProgress();
+        foreach (var group in work.SceneGroups)
+        {
+            ct.ThrowIfCancellationRequested();
+            var track = new SceneVoiceTrack
+            {
+                Scene = group.Key,
+                HasOtherSpeakers = work.ScenesWithOtherSpeakers.Contains(group.Key),
+            };
+            await ProcessSceneVoiceLinesAsync(req, work, group, track, progress, ct).ConfigureAwait(false);
+            work.Alignment.SceneVoices.Add(track);
+        }
+
+        await _voiceAlignment!.SaveAsync(work.ProjectId, work.Alignment, ct).ConfigureAwait(false);
+        await AppendLogAsync($"Alignment saved → {VoiceAlignmentStore.RelativePath}").ConfigureAwait(false);
+        await FinishVoiceSubstitutionAsync(progress.Failed, work.TotalLines, work.TotalScenes).ConfigureAwait(false);
+    }
+
+    private async Task ProcessSceneVoiceLinesAsync(
+        StartVoiceSubstitutionRequest req,
+        VoiceSubstitutionWork work,
+        IGrouping<int, VoiceAlignmentStore.ClipDialogueLines> group,
+        SceneVoiceTrack track,
+        VoiceSubProgress progress,
+        CancellationToken ct)
+    {
+        var sceneNo = group.Key;
+        var sceneLines = group
+            .OrderBy(c => c.Clip)
+            .SelectMany(c => c.Lines)
+            .Select(l => l.Text.Trim())
+            .Where(t => t.Length > 0)
+            .ToList();
+
+        var lineNo = 0;
+        foreach (var lineTextRaw in sceneLines)
+        {
+            ct.ThrowIfCancellationRequested();
+            await ProcessOneVoiceSubstitutionLineAsync(
+                    req, work, sceneNo, lineNo, lineTextRaw, track, progress, ct)
+                .ConfigureAwait(false);
+            lineNo++;
+        }
+    }
+
+    private async Task ProcessOneVoiceSubstitutionLineAsync(
+        StartVoiceSubstitutionRequest req,
+        VoiceSubstitutionWork work,
+        int sceneNo,
+        int lineNo,
+        string lineTextRaw,
+        SceneVoiceTrack track,
+        VoiceSubProgress progress,
+        CancellationToken ct)
+    {
+        var text = lineTextRaw;
+        if (text.Length > work.Ctx.MaxLen)
+        {
+            await AppendLogAsync(
+                    $"  S{sceneNo:D2} L{lineNo:D2}: {text.Length} chars exceeds model limit {work.Ctx.MaxLen} — truncating.")
+                .ConfigureAwait(false);
+            text = text[..work.Ctx.MaxLen];
+        }
+
+        var svl = new SceneVoiceLine { Index = lineNo, Text = text };
+        var relPath = MediaRegistryService.RevoiceSceneLineAudioRelativePath(sceneNo, lineNo);
+        var absPath = Path.Combine(work.ProjectDir, relPath.Replace('/', Path.DirectorySeparatorChar));
+
+        if (req.OnlyMissing && File.Exists(absPath))
+        {
+            svl.VoiceAudioRelativePath = relPath;
+            track.Lines.Add(svl);
+            var idxSkip = Interlocked.Increment(ref progress.Done);
+            await UpdateAsync(s => { s.Index = idxSkip; s.Scene = sceneNo; }).ConfigureAwait(false);
+            await AppendLogAsync($"  S{sceneNo:D2} L{lineNo:D2}: reuse existing → {relPath}").ConfigureAwait(false);
+            return;
+        }
+
+        var (audioBytes, ext, err) = await SynthesizeLineAsync(
+            work.Ctx, work.ProjectId, work.CharKey, text, "voice_substitution", ct).ConfigureAwait(false);
+
+        if (audioBytes is not { Length: > 0 })
+        {
+            await AppendLogAsync($"  S{sceneNo:D2} L{lineNo:D2}: fail — {err ?? "no audio"}").ConfigureAwait(false);
+            Interlocked.Increment(ref progress.Failed);
+            Interlocked.Increment(ref progress.Done);
+            track.Lines.Add(svl);
+            return;
+        }
+
+        relPath = MediaRegistryService.RevoiceSceneLineAudioRelativePath(sceneNo, lineNo, ext);
+        absPath = Path.Combine(work.ProjectDir, relPath.Replace('/', Path.DirectorySeparatorChar));
+        Directory.CreateDirectory(Path.GetDirectoryName(absPath) ?? ".");
+        await File.WriteAllBytesAsync(absPath, audioBytes, ct).ConfigureAwait(false);
+        svl.VoiceAudioRelativePath = relPath;
+        track.Lines.Add(svl);
+
+        var ticket = _mediaProxy.Issue($"{work.ProjectId}:{relPath}", TimeSpan.FromMinutes(45));
+        var clientUrl =
+            $"/api/projects/{Uri.EscapeDataString(work.ProjectId)}/media/file" +
+            $"?path={Uri.EscapeDataString(relPath)}&ticket={ticket}";
+
+        var idx = Interlocked.Increment(ref progress.Done);
+        await UpdateAsync(s =>
+        {
+            s.Index = idx;
+            s.Scene = sceneNo;
+            s.ClientMediaUrl = clientUrl;
+            s.ClientRelativePath = relPath;
+            s.Message = $"Voice substitution: S{sceneNo:D2} L{lineNo:D2} ({idx}/{work.TotalLines})…";
+        }).ConfigureAwait(false);
+        await AppendLogAsync(
+                $"  S{sceneNo:D2} L{lineNo:D2}: ready → {relPath} ({audioBytes.Length / 1024} KB)")
+            .ConfigureAwait(false);
+    }
+
+    private async Task FinishVoiceSubstitutionAsync(int failed, int totalLines, int totalScenes)
+    {
+        if (failed == 0)
+            await FinishAsync(StatusDone, $"Voice substitution ready — {totalLines} line(s) across {totalScenes} scene(s)").ConfigureAwait(false);
+        else if (failed >= totalLines)
+            await FinishAsync(StatusError, $"Voice substitution failed — all {failed} line(s) failed", "all failed")
+                .ConfigureAwait(false);
+        else
+            await FinishAsync(
+                    StatusPartial,
+                    $"Voice substitution partial — {totalLines - failed} ok, {failed} failed")
+                .ConfigureAwait(false);
     }
 
     /// <summary>

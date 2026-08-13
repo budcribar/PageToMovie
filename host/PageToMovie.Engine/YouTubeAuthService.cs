@@ -218,6 +218,19 @@ public sealed class YouTubeAuthService
             ?? throw new InvalidOperationException(
                 "YouTube channel is not connected. Connect it from Admin → Demo gallery first.");
 
+        var uploadsPlaylist = await ResolveUploadsPlaylistIdAsync(youtube, ct).ConfigureAwait(false);
+        var list = await CollectUploadsPlaylistAsync(youtube, uploadsPlaylist, maxResults, ct).ConfigureAwait(false);
+
+        // Owner videos.list restores real titles/thumbs when playlistItems only said "Private video".
+        if (list.Count > 0)
+            list = await EnrichUploadsFromVideosListAsync(youtube, list, ct).ConfigureAwait(false);
+
+        return list;
+    }
+
+    private static async Task<string> ResolveUploadsPlaylistIdAsync(
+        Google.Apis.YouTube.v3.YouTubeService youtube, CancellationToken ct)
+    {
         var chReq = youtube.Channels.List("contentDetails,snippet");
         chReq.Mine = true;
         var chResp = await chReq.ExecuteAsync(ct).ConfigureAwait(false);
@@ -226,7 +239,15 @@ public sealed class YouTubeAuthService
         var uploadsPlaylist = channel.ContentDetails?.RelatedPlaylists?.Uploads;
         if (string.IsNullOrWhiteSpace(uploadsPlaylist))
             throw new InvalidOperationException("Channel has no uploads playlist.");
+        return uploadsPlaylist;
+    }
 
+    private static async Task<List<ChannelUploadVideo>> CollectUploadsPlaylistAsync(
+        Google.Apis.YouTube.v3.YouTubeService youtube,
+        string uploadsPlaylist,
+        int maxResults,
+        CancellationToken ct)
+    {
         var list = new List<ChannelUploadVideo>();
         string? pageToken = null;
         while (list.Count < maxResults)
@@ -238,54 +259,64 @@ public sealed class YouTubeAuthService
                 plReq.PageToken = pageToken;
 
             var plResp = await plReq.ExecuteAsync(ct).ConfigureAwait(false);
-            foreach (var item in plResp.Items ?? Array.Empty<Google.Apis.YouTube.v3.Data.PlaylistItem>())
-            {
-                var videoId = item.ContentDetails?.VideoId
-                    ?? item.Snippet?.ResourceId?.VideoId;
-                if (string.IsNullOrWhiteSpace(videoId))
-                    continue;
-                var sn = item.Snippet;
-                var title = (sn?.Title ?? "").Trim();
-                // Deleted = gone from channel. "Private video" still has an id for the owner —
-                // keep it and enrich via videos.list below (skipping used to empty the gallery).
-                if (title.Equals("Deleted video", StringComparison.OrdinalIgnoreCase))
-                    continue;
-                if (title.Length == 0 || title.Equals("Private video", StringComparison.OrdinalIgnoreCase))
-                    title = videoId.Trim(); // placeholder until videos.list fills real title
-
-                DateTimeOffset? published = null;
-                try
-                {
-                    var prop = sn?.GetType().GetProperty("PublishedAtDateTimeOffset");
-                    if (prop?.GetValue(sn) is DateTimeOffset dto)
-                        published = dto;
-                    else if (sn?.PublishedAt is DateTime dt)
-                        published = new DateTimeOffset(DateTime.SpecifyKind(dt, DateTimeKind.Utc));
-                }
-                catch { /* optional */ }
-
-                var thumb = sn?.Thumbnails?.Medium?.Url
-                    ?? sn?.Thumbnails?.High?.Url
-                    ?? sn?.Thumbnails?.Default__?.Url;
-
-                list.Add(new ChannelUploadVideo(
-                    videoId.Trim(),
-                    title,
-                    string.IsNullOrWhiteSpace(sn?.Description) ? null : sn.Description.Trim(),
-                    published,
-                    thumb));
-            }
-
+            AppendPlaylistItems(list, plResp.Items);
             pageToken = plResp.NextPageToken;
             if (string.IsNullOrEmpty(pageToken))
                 break;
         }
-
-        // Owner videos.list restores real titles/thumbs when playlistItems only said "Private video".
-        if (list.Count > 0)
-            list = await EnrichUploadsFromVideosListAsync(youtube, list, ct).ConfigureAwait(false);
-
         return list;
+    }
+
+    private static void AppendPlaylistItems(
+        List<ChannelUploadVideo> list,
+        IList<Google.Apis.YouTube.v3.Data.PlaylistItem>? items)
+    {
+        foreach (var item in items ?? Array.Empty<Google.Apis.YouTube.v3.Data.PlaylistItem>())
+        {
+            if (TryMapPlaylistItem(item) is { } mapped)
+                list.Add(mapped);
+        }
+    }
+
+    private static ChannelUploadVideo? TryMapPlaylistItem(Google.Apis.YouTube.v3.Data.PlaylistItem item)
+    {
+        var videoId = item.ContentDetails?.VideoId
+            ?? item.Snippet?.ResourceId?.VideoId;
+        if (string.IsNullOrWhiteSpace(videoId))
+            return null;
+        var sn = item.Snippet;
+        var title = (sn?.Title ?? "").Trim();
+        // Deleted = gone from channel. "Private video" still has an id for the owner —
+        // keep it and enrich via videos.list below (skipping used to empty the gallery).
+        if (title.Equals("Deleted video", StringComparison.OrdinalIgnoreCase))
+            return null;
+        if (title.Length == 0 || title.Equals("Private video", StringComparison.OrdinalIgnoreCase))
+            title = videoId.Trim(); // placeholder until videos.list fills real title
+
+        var thumb = sn?.Thumbnails?.Medium?.Url
+            ?? sn?.Thumbnails?.High?.Url
+            ?? sn?.Thumbnails?.Default__?.Url;
+
+        return new ChannelUploadVideo(
+            videoId.Trim(),
+            title,
+            string.IsNullOrWhiteSpace(sn?.Description) ? null : sn.Description.Trim(),
+            TryReadPlaylistPublishedAt(sn),
+            thumb);
+    }
+
+    private static DateTimeOffset? TryReadPlaylistPublishedAt(Google.Apis.YouTube.v3.Data.PlaylistItemSnippet? sn)
+    {
+        try
+        {
+            var prop = sn?.GetType().GetProperty("PublishedAtDateTimeOffset");
+            if (prop?.GetValue(sn) is DateTimeOffset dto)
+                return dto;
+            if (sn?.PublishedAt is DateTime dt)
+                return new DateTimeOffset(DateTime.SpecifyKind(dt, DateTimeKind.Utc));
+        }
+        catch { /* optional */ }
+        return null;
     }
 
     static async Task<List<ChannelUploadVideo>> EnrichUploadsFromVideosListAsync(

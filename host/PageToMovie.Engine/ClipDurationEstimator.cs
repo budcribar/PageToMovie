@@ -583,48 +583,80 @@ public static class ClipDurationEstimator
         {
             if (beat is null)
                 continue;
-
-            var dialogue = Coerce(beat, JsonKeys.Dialogue);
-            if (string.IsNullOrWhiteSpace(dialogue) &&
-                beat.TryGetValue("audio", out var a0) && a0 is Dictionary<string, object?> audio0)
-                dialogue = Coerce(audio0, JsonKeys.Dialogue);
-
-            var delivery = Coerce(beat, "delivery");
-            if (string.IsNullOrWhiteSpace(delivery) &&
-                beat.TryGetValue("audio", out var a1) && a1 is Dictionary<string, object?> audio1)
-                delivery = Coerce(audio1, "delivery");
-            if (string.IsNullOrWhiteSpace(delivery))
-                delivery = "spoken_on_camera";
-
-            var sourceId = Coerce(beat, "beat_id");
-            if (string.IsNullOrWhiteSpace(sourceId))
-            {
-                sourceId = PageToMovie.Core.Utils.StableBeatId.ForContent(
-                    "",
-                    string.IsNullOrWhiteSpace(dialogue) ? "action" : JsonKeys.Dialogue,
-                    Coerce(beat, "speaker"),
-                    string.IsNullOrWhiteSpace(dialogue) ? Coerce(beat, "visual_event") : dialogue);
-            }
-
-            if (string.IsNullOrWhiteSpace(dialogue) ||
-                !DialogueExceedsModelMax(dialogue, delivery, modelMaxSeconds, paddingSeconds))
-            {
-                result.Add(CloneBeatWithId(beat, sourceId, dialogueOverride: null, partIndex: 0, partCount: 1));
-                continue;
-            }
-
-            var parts = SplitDialogueToFitModelMax(dialogue, delivery, modelMaxSeconds, paddingSeconds);
-            var root = PageToMovie.Core.Utils.StableBeatId.Root(sourceId);
-            for (var p = 0; p < parts.Count; p++)
-            {
-                var partId = PageToMovie.Core.Utils.StableBeatId.ForPart(root, p, parts.Count);
-                var copy = CloneBeatWithId(beat, partId, parts[p], p, parts.Count);
-                copy["source_beat_ids"] = new List<object?> { root };
-                result.Add(copy);
-            }
+            ExpandOneDialogueBeat(beat, modelMaxSeconds, paddingSeconds, result);
         }
 
         return result;
+    }
+
+    private static void ExpandOneDialogueBeat(
+        Dictionary<string, object?> beat,
+        int modelMaxSeconds,
+        double paddingSeconds,
+        List<Dictionary<string, object?>> result)
+    {
+        var dialogue = ReadBeatDialogue(beat);
+        var delivery = ReadBeatDelivery(beat);
+        var sourceId = ResolveBeatSourceId(beat, dialogue);
+
+        if (string.IsNullOrWhiteSpace(dialogue) ||
+            !DialogueExceedsModelMax(dialogue, delivery, modelMaxSeconds, paddingSeconds))
+        {
+            result.Add(CloneBeatWithId(beat, sourceId, dialogueOverride: null, partIndex: 0, partCount: 1));
+            return;
+        }
+
+        AppendSplitDialogueParts(beat, dialogue, delivery, sourceId, modelMaxSeconds, paddingSeconds, result);
+    }
+
+    private static string ReadBeatDialogue(Dictionary<string, object?> beat)
+    {
+        var dialogue = Coerce(beat, JsonKeys.Dialogue);
+        if (string.IsNullOrWhiteSpace(dialogue) &&
+            beat.TryGetValue("audio", out var a0) && a0 is Dictionary<string, object?> audio0)
+            dialogue = Coerce(audio0, JsonKeys.Dialogue);
+        return dialogue;
+    }
+
+    private static string ReadBeatDelivery(Dictionary<string, object?> beat)
+    {
+        var delivery = Coerce(beat, "delivery");
+        if (string.IsNullOrWhiteSpace(delivery) &&
+            beat.TryGetValue("audio", out var a1) && a1 is Dictionary<string, object?> audio1)
+            delivery = Coerce(audio1, "delivery");
+        return string.IsNullOrWhiteSpace(delivery) ? "spoken_on_camera" : delivery;
+    }
+
+    private static string ResolveBeatSourceId(Dictionary<string, object?> beat, string dialogue)
+    {
+        var sourceId = Coerce(beat, "beat_id");
+        if (!string.IsNullOrWhiteSpace(sourceId))
+            return sourceId;
+        return PageToMovie.Core.Utils.StableBeatId.ForContent(
+            "",
+            string.IsNullOrWhiteSpace(dialogue) ? "action" : JsonKeys.Dialogue,
+            Coerce(beat, "speaker"),
+            string.IsNullOrWhiteSpace(dialogue) ? Coerce(beat, "visual_event") : dialogue);
+    }
+
+    private static void AppendSplitDialogueParts(
+        Dictionary<string, object?> beat,
+        string dialogue,
+        string delivery,
+        string sourceId,
+        int modelMaxSeconds,
+        double paddingSeconds,
+        List<Dictionary<string, object?>> result)
+    {
+        var parts = SplitDialogueToFitModelMax(dialogue, delivery, modelMaxSeconds, paddingSeconds);
+        var root = PageToMovie.Core.Utils.StableBeatId.Root(sourceId);
+        for (var p = 0; p < parts.Count; p++)
+        {
+            var partId = PageToMovie.Core.Utils.StableBeatId.ForPart(root, p, parts.Count);
+            var copy = CloneBeatWithId(beat, partId, parts[p], p, parts.Count);
+            copy["source_beat_ids"] = new List<object?> { root };
+            result.Add(copy);
+        }
     }
 
     /// <summary>

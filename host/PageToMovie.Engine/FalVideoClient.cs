@@ -133,13 +133,7 @@ public sealed class FalVideoClient : IVideoClient
         var apiKey = ResolveApiKey()
             ?? throw new InvalidOperationException($"Fal.ai API key is missing ({SupportedModelCatalog.FalApiKeyEnv}).");
 
-        var parts = requestId.Split(':', 2);
-        if (parts.Length != 2 || string.IsNullOrWhiteSpace(parts[0]) || string.IsNullOrWhiteSpace(parts[1]))
-            throw new InvalidOperationException(
-                $"Fal video poll: request id must be 'endpoint:requestId' (got '{requestId}').");
-        var endpoint = parts[0];
-        var actualReqId = parts[1];
-
+        var (endpoint, actualReqId) = SplitPollRequestId(requestId);
         var statusUrl = $"{endpoint}/requests/{actualReqId}/status";
         var resultUrl = $"{endpoint}/requests/{actualReqId}";
 
@@ -149,60 +143,74 @@ public sealed class FalVideoClient : IVideoClient
         for (var attempt = 0; attempt < maxAttempts; attempt++)
         {
             ct.ThrowIfCancellationRequested();
-
-            using var req = new HttpRequestMessage(HttpMethod.Get, statusUrl);
-            req.Headers.Authorization = new AuthenticationHeaderValue("Key", apiKey);
-
-            using var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
-            var statusBody = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-
-            if (!resp.IsSuccessStatusCode)
-            {
-                if (await FalPollingHelpers.HandleRateLimitAsync(resp, onProgress, ct).ConfigureAwait(false))
-                    continue;
-
-                _log.LogError("Fal.ai status query failed HTTP {Status} for request {RequestId}: {Body}", resp.StatusCode, requestId, statusBody);
-                throw new InvalidOperationException($"Fal.ai status query error HTTP {resp.StatusCode}: {statusBody}");
-            }
+            var statusBody = await GetStatusBodyAsync(statusUrl, apiKey, requestId, onProgress, ct).ConfigureAwait(false);
+            if (statusBody is null)
+                continue;
 
             using var doc = JsonDocument.Parse(statusBody);
             var status = doc.RootElement.TryGetProperty("status", out var stEl) ? stEl.GetString() ?? "" : "";
             var queuePos = doc.RootElement.TryGetProperty("queue_position", out var qEl) ? qEl.GetInt32().ToString() : null;
-
             onProgress?.Invoke(queuePos is not null ? $"Fal.ai status: {status} (queue position: {queuePos})" : $"Fal.ai status: {status}");
 
             if (string.Equals(status, "COMPLETED", StringComparison.OrdinalIgnoreCase))
-            {
-                using var resultReq = new HttpRequestMessage(HttpMethod.Get, resultUrl);
-                resultReq.Headers.Authorization = new AuthenticationHeaderValue("Key", apiKey);
-                using var resultResp = await _http.SendAsync(resultReq, ct).ConfigureAwait(false);
-                var resultBody = await resultResp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-
-                if (!resultResp.IsSuccessStatusCode)
-                {
-                    throw new InvalidOperationException($"Fal.ai result fetch failed HTTP {resultResp.StatusCode}: {resultBody}");
-                }
-
-                using var resultDoc = JsonDocument.Parse(resultBody);
-                if (resultDoc.RootElement.TryGetProperty("video", out var vEl) &&
-                    vEl.TryGetProperty("url", out var urlEl) &&
-                    urlEl.GetString() is { Length: > 0 } videoUrl)
-                {
-                    return videoUrl;
-                }
-                throw new InvalidOperationException($"Fal.ai result payload missing video.url: {resultBody}");
-            }
-
-            if (string.Equals(status, "FAILED", StringComparison.OrdinalIgnoreCase))
-            {
-                var err = doc.RootElement.TryGetProperty("error", out var eEl) ? eEl.GetString() : "Job failed";
-                throw new InvalidOperationException($"Fal.ai generation failed on GPU: {err}");
-            }
+                return await FetchCompletedVideoUrlAsync(resultUrl, apiKey, ct).ConfigureAwait(false);
+            ThrowIfFalFailed(status, doc.RootElement);
 
             await Task.Delay(delay, ct).ConfigureAwait(false);
         }
 
         throw new TimeoutException($"Fal.ai job {requestId} timed out after {maxAttempts * 3}s");
+    }
+
+    private static (string Endpoint, string RequestId) SplitPollRequestId(string requestId)
+    {
+        var parts = requestId.Split(':', 2);
+        if (parts.Length != 2 || string.IsNullOrWhiteSpace(parts[0]) || string.IsNullOrWhiteSpace(parts[1]))
+            throw new InvalidOperationException(
+                $"Fal video poll: request id must be 'endpoint:requestId' (got '{requestId}').");
+        return (parts[0], parts[1]);
+    }
+
+    /// <summary>Null means the caller should <c>continue</c> (rate-limited 429).</summary>
+    private async Task<string?> GetStatusBodyAsync(
+        string statusUrl, string apiKey, string requestId, Action<string>? onProgress, CancellationToken ct)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Get, statusUrl);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Key", apiKey);
+
+        using var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
+        var statusBody = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+        if (resp.IsSuccessStatusCode) return statusBody;
+        if (await FalPollingHelpers.HandleRateLimitAsync(resp, onProgress, ct).ConfigureAwait(false))
+            return null;
+        _log.LogError("Fal.ai status query failed HTTP {Status} for request {RequestId}: {Body}", resp.StatusCode, requestId, statusBody);
+        throw new InvalidOperationException($"Fal.ai status query error HTTP {resp.StatusCode}: {statusBody}");
+    }
+
+    private async Task<string> FetchCompletedVideoUrlAsync(string resultUrl, string apiKey, CancellationToken ct)
+    {
+        using var resultReq = new HttpRequestMessage(HttpMethod.Get, resultUrl);
+        resultReq.Headers.Authorization = new AuthenticationHeaderValue("Key", apiKey);
+        using var resultResp = await _http.SendAsync(resultReq, ct).ConfigureAwait(false);
+        var resultBody = await resultResp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+
+        if (!resultResp.IsSuccessStatusCode)
+            throw new InvalidOperationException($"Fal.ai result fetch failed HTTP {resultResp.StatusCode}: {resultBody}");
+
+        using var resultDoc = JsonDocument.Parse(resultBody);
+        if (resultDoc.RootElement.TryGetProperty("video", out var vEl) &&
+            vEl.TryGetProperty("url", out var urlEl) &&
+            urlEl.GetString() is { Length: > 0 } videoUrl)
+            return videoUrl;
+        throw new InvalidOperationException($"Fal.ai result payload missing video.url: {resultBody}");
+    }
+
+    private static void ThrowIfFalFailed(string status, JsonElement root)
+    {
+        if (!string.Equals(status, "FAILED", StringComparison.OrdinalIgnoreCase))
+            return;
+        var err = root.TryGetProperty("error", out var eEl) ? eEl.GetString() : "Job failed";
+        throw new InvalidOperationException($"Fal.ai generation failed on GPU: {err}");
     }
 
     /// <summary>Fal never requests xAI-style Files API storage — file_id reuse is a Grok-only

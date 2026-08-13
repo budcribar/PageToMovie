@@ -497,7 +497,23 @@ public sealed class BookPrepareService
         var picture = kind == BookKind.PictureBook || density == TextDensity.Sparse;
         var textClearlyClean = quality == TextQuality.Good && garbage < 0.2 && words >= 80 && density != TextDensity.Sparse;
 
-        if (picture && hasImages && hasXai && !textClearlyClean)
+        if (TryPictureBookStrategy(picture, hasImages, hasXai, textClearlyClean, quality, garbage) is { } pictureStrategy)
+            return pictureStrategy;
+        if (quality == TextQuality.Good && garbage < 0.25)
+            return UseEmbeddedText("Text looks clean enough for Stage 1.");
+
+        var needsBetter = quality is TextQuality.Poor or TextQuality.Empty || garbage >= 0.25;
+        if (!needsBetter)
+            return UseEmbeddedText($"Text quality '{quality.ToApiString()}' is acceptable for Stage 1.");
+        return PoorTextStrategy(quality, hasImages, hasXai);
+    }
+
+    private static BookStrategy? TryPictureBookStrategy(
+        bool picture, bool hasImages, bool hasXai, bool textClearlyClean, TextQuality quality, double garbage)
+    {
+        if (!picture || !hasImages || textClearlyClean)
+            return null;
+        if (hasXai)
         {
             return new BookStrategy
             {
@@ -509,65 +525,51 @@ public sealed class BookPrepareService
             };
         }
 
-        if (picture && hasImages && !hasXai && !textClearlyClean)
+        return new BookStrategy
+        {
+            Action = "need_xai_for_vision",
+            Reason =
+                "Picture book images ready, but embedded PDF text is unreliable. " +
+                "Set XAI_API_KEY and re-run prepare.",
+            ReadyForStage1 = false,
+            NeedsUser = true,
+        };
+    }
+
+    private static BookStrategy UseEmbeddedText(string reason) => new()
+    {
+        Action = "use_embedded_text",
+        Reason = reason,
+        ReadyForStage1 = true,
+    };
+
+    private static BookStrategy PoorTextStrategy(TextQuality quality, bool hasImages, bool hasXai)
+    {
+        if (!hasImages)
         {
             return new BookStrategy
             {
-                Action = "need_xai_for_vision",
-                Reason =
-                    "Picture book images ready, but embedded PDF text is unreliable. " +
-                    "Set XAI_API_KEY and re-run prepare.",
+                Action = "manual_or_ocr",
+                Reason = "Poor text and no page images. Upload PDF with images or paste book_full.txt.",
                 ReadyForStage1 = false,
                 NeedsUser = true,
             };
         }
 
-        if (quality == TextQuality.Good && garbage < 0.25)
+        if (hasXai)
         {
             return new BookStrategy
             {
-                Action = "use_embedded_text",
-                Reason = "Text looks clean enough for Stage 1.",
-                ReadyForStage1 = true,
-            };
-        }
-
-        var needsBetter = quality is TextQuality.Poor or TextQuality.Empty || garbage >= 0.25;
-        if (!needsBetter)
-        {
-            return new BookStrategy
-            {
-                Action = "use_embedded_text",
-                Reason = $"Text quality '{quality.ToApiString()}' is acceptable for Stage 1.",
-                ReadyForStage1 = true,
-            };
-        }
-
-        if (hasImages)
-        {
-            if (hasXai)
-            {
-                return new BookStrategy
-                {
-                    Action = GrokVisionTranscribeAction,
-                    Reason = $"Text quality is '{quality}'. Rebuilding with Grok vision.",
-                    ReadyForStage1 = false,
-                };
-            }
-
-            return new BookStrategy
-            {
-                Action = "need_xai_for_vision",
-                Reason = $"Text quality is '{quality}'. Set XAI_API_KEY for vision OCR.",
+                Action = GrokVisionTranscribeAction,
+                Reason = $"Text quality is '{quality}'. Rebuilding with Grok vision.",
                 ReadyForStage1 = false,
-                NeedsUser = true,
             };
         }
 
         return new BookStrategy
         {
-            Action = "manual_or_ocr",
-            Reason = "Poor text and no page images. Upload PDF with images or paste book_full.txt.",
+            Action = "need_xai_for_vision",
+            Reason = $"Text quality is '{quality}'. Set XAI_API_KEY for vision OCR.",
             ReadyForStage1 = false,
             NeedsUser = true,
         };
@@ -603,14 +605,21 @@ public sealed class BookPrepareService
         string sourceDir,
         CancellationToken ct = default)
     {
-        var textParts = new List<string>();
-        var imageRows = new List<Dictionary<string, object?>>();
-        int pageIndex = 0;
-
         using var fs = new FileStream(epubPath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, useAsync: true);
         using var archive = new System.IO.Compression.ZipArchive(fs, System.IO.Compression.ZipArchiveMode.Read);
 
-        // 1. Extract image files
+        var imageRows = await ExtractEpubImagesAsync(archive, imgDir, sourceDir, ct).ConfigureAwait(false);
+        var (fullText, pageIndex) = await ExtractEpubHtmlTextAsync(archive, ct).ConfigureAwait(false);
+        return (fullText, imageRows, Math.Max(1, pageIndex));
+    }
+
+    private static async Task<List<Dictionary<string, object?>>> ExtractEpubImagesAsync(
+        System.IO.Compression.ZipArchive archive,
+        string imgDir,
+        string sourceDir,
+        CancellationToken ct)
+    {
+        var imageRows = new List<Dictionary<string, object?>>();
         var imageEntries = archive.Entries
             .Where(e => CommonRegex.IsMatch(e.FullName, @"\.(png|jpe?g|webp)$", RegexOptions.IgnoreCase))
             .OrderBy(e => e.FullName, StringComparer.OrdinalIgnoreCase)
@@ -623,29 +632,46 @@ public sealed class BookPrepareService
             imgIndex++;
             try
             {
-                var ext = Path.GetExtension(entry.FullName).TrimStart('.').ToLowerInvariant();
-                var name = $"embedded_epub_x{imgIndex:D3}.{ext}";
-                var fullPath = Path.Combine(imgDir, name);
-
-                await using (var stream = entry.Open())
-                await using (var outStream = new FileStream(fullPath, FileMode.Create, FileAccess.Write, FileShare.None, 4096, useAsync: true))
-                {
-                    await stream.CopyToAsync(outStream, ct).ConfigureAwait(false);
-                }
-
-                var rel = Path.GetRelativePath(sourceDir, fullPath).Replace('\\', '/');
-                imageRows.Add(new Dictionary<string, object?>
-                {
-                    ["kind"] = EmbeddedKind,
-                    ["page"] = imgIndex,
-                    ["path"] = rel.StartsWith(BookImagesFolder) ? rel : $"book_images/{name}",
-                    [RelevanceKey] = imgIndex == 1 ? "cover" : "embedded_figure",
-                });
+                imageRows.Add(await WriteEpubImageEntryAsync(entry, imgIndex, imgDir, sourceDir, ct).ConfigureAwait(false));
             }
             catch { /* ignore bad images */ }
         }
+        return imageRows;
+    }
 
-        // 2. Extract story text from HTML/XHTML entries
+    private static async Task<Dictionary<string, object?>> WriteEpubImageEntryAsync(
+        System.IO.Compression.ZipArchiveEntry entry,
+        int imgIndex,
+        string imgDir,
+        string sourceDir,
+        CancellationToken ct)
+    {
+        var ext = Path.GetExtension(entry.FullName).TrimStart('.').ToLowerInvariant();
+        var name = $"embedded_epub_x{imgIndex:D3}.{ext}";
+        var fullPath = Path.Combine(imgDir, name);
+
+        await using (var stream = entry.Open())
+        await using (var outStream = new FileStream(fullPath, FileMode.Create, FileAccess.Write, FileShare.None, 4096, useAsync: true))
+        {
+            await stream.CopyToAsync(outStream, ct).ConfigureAwait(false);
+        }
+
+        var rel = Path.GetRelativePath(sourceDir, fullPath).Replace('\\', '/');
+        return new Dictionary<string, object?>
+        {
+            ["kind"] = EmbeddedKind,
+            ["page"] = imgIndex,
+            ["path"] = rel.StartsWith(BookImagesFolder) ? rel : $"book_images/{name}",
+            [RelevanceKey] = imgIndex == 1 ? "cover" : "embedded_figure",
+        };
+    }
+
+    private static async Task<(string Text, int PageIndex)> ExtractEpubHtmlTextAsync(
+        System.IO.Compression.ZipArchive archive,
+        CancellationToken ct)
+    {
+        var textParts = new List<string>();
+        int pageIndex = 0;
         var htmlEntries = archive.Entries
             .Where(e => HtmlEntryExtRegex.IsMatch(e.FullName) &&
                         !e.Name.Contains("toc", StringComparison.OrdinalIgnoreCase) &&
@@ -658,23 +684,27 @@ public sealed class BookPrepareService
             ct.ThrowIfCancellationRequested();
             try
             {
-                await using var stream = entry.Open();
-                using var reader = new StreamReader(stream, Encoding.UTF8, true);
-                var html = await reader.ReadToEndAsync(ct).ConfigureAwait(false);
-                var rawText = HtmlTagsRegex.Replace(html, " ");
-                var clean = System.Net.WebUtility.HtmlDecode(rawText);
-                clean = WhitespaceNormalizeRegex.Replace(clean, " ").Trim();
-                if (clean.Length > 50)
-                {
-                    pageIndex++;
-                    textParts.Add($"--- PAGE {pageIndex} ---\n{clean}");
-                }
+                if (await TryReadEpubHtmlPageAsync(entry, ct).ConfigureAwait(false) is not { } clean)
+                    continue;
+                pageIndex++;
+                textParts.Add($"--- PAGE {pageIndex} ---\n{clean}");
             }
             catch { /* ignore */ }
         }
 
-        var fullText = string.Join("\n\n", textParts);
-        return (fullText, imageRows, Math.Max(1, pageIndex));
+        return (string.Join("\n\n", textParts), pageIndex);
+    }
+
+    private static async Task<string?> TryReadEpubHtmlPageAsync(
+        System.IO.Compression.ZipArchiveEntry entry, CancellationToken ct)
+    {
+        await using var stream = entry.Open();
+        using var reader = new StreamReader(stream, Encoding.UTF8, true);
+        var html = await reader.ReadToEndAsync(ct).ConfigureAwait(false);
+        var rawText = HtmlTagsRegex.Replace(html, " ");
+        var clean = System.Net.WebUtility.HtmlDecode(rawText);
+        clean = WhitespaceNormalizeRegex.Replace(clean, " ").Trim();
+        return clean.Length > 50 ? clean : null;
     }
 
     private static (string Text, int PageCount) ExtractTextPdfPig(string pdfPath)

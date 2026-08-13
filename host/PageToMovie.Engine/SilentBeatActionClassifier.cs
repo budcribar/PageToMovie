@@ -56,12 +56,7 @@ public sealed class SilentBeatActionClassifier
         CancellationToken ct = default,
         string? overrideModel = null)
     {
-        var model = !string.IsNullOrWhiteSpace(overrideModel)
-            ? overrideModel.Trim()
-            : (string.IsNullOrWhiteSpace(_opts.SilentBeatClassifyModel)
-                ? throw new InvalidOperationException(
-                    "Silent beat classify: no model configured. Set the project Script & planning model in Settings, or SilentBeatClassifyModel.")
-                : _opts.SilentBeatClassifyModel.Trim());
+        var model = ResolveClassifyModel(overrideModel);
         var temp = _opts.SilentBeatClassifyTemperature;
         if (double.IsNaN(temp) || temp < 0)
             temp = DefaultTemperature;
@@ -82,42 +77,73 @@ public sealed class SilentBeatActionClassifier
             return result;
         }
 
-        // Always seed heuristic first so every beat has a valid class if AI is skipped
+        SeedHeuristicClasses(targets);
+
+        if (!IsEnabled)
+            return FinishHeuristicOnly(result, targets, onProgress);
+
+        onProgress?.Invoke($"Classifying {targets.Count} silent beat(s) for duration (chat)…");
+        var aiLabels = await ClassifySilentBeatChunksAsync(targets, stage1, model, temp, result, onProgress, ct)
+            .ConfigureAwait(false);
+        ApplyAiOrHeuristicLabels(targets, aiLabels, result);
+        onProgress?.Invoke($"Silent beat classes: {result.Note} (prompt={PromptVersion}, model={model})");
+        _log.LogInformation(
+            "SilentBeat classify project beats={Total} ai={Ai} fallback={Fb} attempts={Att} model={Model} prompt={Prompt}",
+            targets.Count, result.AiCount, result.FallbackCount, result.Attempts, model, PromptVersion);
+        return result;
+    }
+
+    private string ResolveClassifyModel(string? overrideModel)
+    {
+        if (!string.IsNullOrWhiteSpace(overrideModel))
+            return overrideModel.Trim();
+        if (string.IsNullOrWhiteSpace(_opts.SilentBeatClassifyModel))
+            throw new InvalidOperationException(
+                "Silent beat classify: no model configured. Set the project Script & planning model in Settings, or SilentBeatClassifyModel.");
+        return _opts.SilentBeatClassifyModel.Trim();
+    }
+
+    private static void SeedHeuristicClasses(List<SilentTarget> targets)
+    {
         foreach (var t in targets)
         {
             var h = FountainStage1Importer.InferActionClass(t.VisualEvent, t.IsFirstSilentInScene);
             t.Beat["action_class"] = h;
             t.Heuristic = h;
         }
+    }
 
-        if (!IsEnabled)
-        {
-            result.FallbackCount = targets.Count;
-            result.Note = _opts.ClassifySilentBeatsWithChat
-                ? "chat not configured — heuristic only"
-                : "ClassifySilentBeatsWithChat=false — heuristic only";
-            onProgress?.Invoke($"Silent beat classes: heuristic only ({targets.Count})");
-            return result;
-        }
+    private SilentBeatClassifyResult FinishHeuristicOnly(
+        SilentBeatClassifyResult result, List<SilentTarget> targets, Action<string>? onProgress)
+    {
+        result.FallbackCount = targets.Count;
+        result.Note = _opts.ClassifySilentBeatsWithChat
+            ? "chat not configured — heuristic only"
+            : "ClassifySilentBeatsWithChat=false — heuristic only";
+        onProgress?.Invoke($"Silent beat classes: heuristic only ({targets.Count})");
+        return result;
+    }
 
-        onProgress?.Invoke($"Classifying {targets.Count} silent beat(s) for duration (chat)…");
-
+    private async Task<Dictionary<string, string>> ClassifySilentBeatChunksAsync(
+        List<SilentTarget> targets,
+        Dictionary<string, object?> stage1,
+        string model,
+        double temp,
+        SilentBeatClassifyResult result,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
         var byId = targets.ToDictionary(t => t.Id, StringComparer.OrdinalIgnoreCase);
         var aiLabels = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var maxAttempts = Math.Clamp(_opts.SilentBeatClassifyMaxAttempts, 1, 5);
         var backoffBaseMs = Math.Max(0, _opts.SilentBeatClassifyBackoffBaseMs);
         var totalAttempts = 0;
 
-        // Chunk all silent beats; per chunk: retry-until-covered via AiRetryPolicy, then leave
-        // whatever's still unlabeled → heuristic.
         for (var offset = 0; offset < targets.Count; offset += DefaultBatchSize)
         {
             ct.ThrowIfCancellationRequested();
             var chunk = targets.Skip(offset).Take(DefaultBatchSize).ToList();
             var chunkIds = chunk.Select(t => t.Id).ToList();
-            // Mutable: shrinks to only still-missing ids so each retry re-asks (and re-pays
-            // tokens for) fewer beats — mirrors the pre-refactor hand-rolled loop exactly.
-
             onProgress?.Invoke(
                 $"  Chat batch {chunk.Count} beat(s) ({offset + 1}–{offset + chunk.Count}/{targets.Count})…");
 
@@ -130,11 +156,7 @@ public sealed class SilentBeatActionClassifier
                     result.ChatCalls++;
                     return raw;
                 },
-                parseResponse: raw =>
-                {
-                    var parsed = ParseLabels(raw);
-                    return parsed;
-                },
+                parseResponse: raw => ParseLabels(raw),
                 maxAttempts,
                 backoffBaseMs,
                 ct,
@@ -154,26 +176,25 @@ public sealed class SilentBeatActionClassifier
         }
 
         result.Attempts = totalAttempts;
+        return aiLabels;
+    }
+
+    private static void ApplyAiOrHeuristicLabels(
+        List<SilentTarget> targets,
+        Dictionary<string, string> aiLabels,
+        SilentBeatClassifyResult result)
+    {
         var aiCount = 0;
         var fbCount = 0;
         foreach (var t in targets)
         {
             if (aiLabels.TryGetValue(t.Id, out var cls))
             {
-                cls = PostProcessActionClass(cls, t.VisualEvent);
-                t.Beat["action_class"] = cls;
-                // Establishing often wants a wider scale hint when AI reclassifies
-                if (string.Equals(cls, "establishing", StringComparison.OrdinalIgnoreCase))
-                    t.Beat["shot_scale_hint"] = ShotScale.Wide.ToSnakeCase();
-                else if (t.Beat.TryGetValue("shot_scale_hint", out var sh) &&
-                         string.Equals(sh?.ToString(), ShotScale.Wide.ToSnakeCase(), StringComparison.OrdinalIgnoreCase) &&
-                         string.Equals(t.Heuristic, "establishing", StringComparison.OrdinalIgnoreCase))
-                    t.Beat["shot_scale_hint"] = ShotScale.Medium.ToSnakeCase();
+                ApplyAiLabelToBeat(t, cls);
                 aiCount++;
             }
             else
             {
-                // Heuristic already written
                 fbCount++;
             }
         }
@@ -183,11 +204,18 @@ public sealed class SilentBeatActionClassifier
         result.Note = fbCount == 0
             ? $"AI labels {aiCount}/{targets.Count}"
             : $"AI labels {aiCount}/{targets.Count}; heuristic fallback {fbCount}";
-        onProgress?.Invoke($"Silent beat classes: {result.Note} (prompt={PromptVersion}, model={model})");
-        _log.LogInformation(
-            "SilentBeat classify project beats={Total} ai={Ai} fallback={Fb} attempts={Att} model={Model} prompt={Prompt}",
-            targets.Count, aiCount, fbCount, totalAttempts, model, PromptVersion);
-        return result;
+    }
+
+    private static void ApplyAiLabelToBeat(SilentTarget t, string cls)
+    {
+        cls = PostProcessActionClass(cls, t.VisualEvent);
+        t.Beat["action_class"] = cls;
+        if (string.Equals(cls, "establishing", StringComparison.OrdinalIgnoreCase))
+            t.Beat["shot_scale_hint"] = ShotScale.Wide.ToSnakeCase();
+        else if (t.Beat.TryGetValue("shot_scale_hint", out var sh) &&
+                 string.Equals(sh?.ToString(), ShotScale.Wide.ToSnakeCase(), StringComparison.OrdinalIgnoreCase) &&
+                 string.Equals(t.Heuristic, "establishing", StringComparison.OrdinalIgnoreCase))
+            t.Beat["shot_scale_hint"] = ShotScale.Medium.ToSnakeCase();
     }
 
     private async Task<string> CallChatAsync(
