@@ -1053,6 +1053,19 @@ public sealed class AdaptationStatus
     public BookSubstepStatus BookSubsteps { get; set; } = new();
     /// <summary>Max-master beat sheet counts (Estimate). Null when no index exists yet.</summary>
     public ScreenplayIndexSummary? Index { get; set; }
+    /// <summary>Last Fit-length view of the index. Null when the working draft is still the full master.</summary>
+    public ScreenplayCutSummary? Cut { get; set; }
+}
+
+/// <summary>Rollup of <c>source/screenplay.cut.json</c> — sequences kept in the working draft.</summary>
+public sealed class ScreenplayCutSummary
+{
+    public bool HasCut { get; set; }
+    public bool KeepAll { get; set; }
+    public int KeptSequences { get; set; }
+    public int TotalSequences { get; set; }
+    public int KeptCards { get; set; }
+    public int TargetMinutes { get; set; }
 }
 
 /// <summary>Rollup of <c>source/screenplay.index.json</c> for Estimate (counts only for operators).</summary>

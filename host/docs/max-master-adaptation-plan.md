@@ -175,9 +175,11 @@ Short books that fit a single pass skip the extra call. Index is skipped (not fa
 
 ### P4 — Trim is a view
 
-- Fit Length / target minutes / “miniseries keep all sequences” read the **index**, snapshot max, write `screenplay.fountain`.
-- Do not destroy `screenplay.max` or the index.
-- Estimate: one **total** (max or current cut) + **spent**. No second “finish for $X” number that confuses sidecar runtime.
+- [x] Fit Length reads the **index**, snapshots max (already), writes `screenplay.fountain`.
+- [x] Do not destroy `screenplay.max` or the index. Fresh max clears the cut sidecar.
+- [x] Natural / miniseries = keep every sequence (no model call). Reduced target keeps opening + ending, drops middle sequences to fit.
+- [x] Estimate: still estimate + spent; shows “N of M sequences” when cut.
+- [x] No index or weak heading match → existing model trim.
 
 ### P5 — Share the master
 

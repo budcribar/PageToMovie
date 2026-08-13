@@ -6311,6 +6311,7 @@ public sealed partial class ProjectStore
             NextStep = next,
             BookSubsteps = ReadBookSubsteps(projectId),
             Index = ProjectScreenplayIndex.TryReadSummary(dir),
+            Cut = ProjectScreenplayCut.TryReadSummary(dir),
         };
     }
 

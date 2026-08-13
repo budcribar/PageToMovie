@@ -70,6 +70,10 @@ else
             {
                 <div class="text-muted small text-center mt-2" data-testid="cost-index-counts">
                     @ix.SceneCards scenes · @ix.Locations locations · @ix.SpeakingCast speaking
+                    @if (ActiveProject.Status?.Cut is { HasCut: true, KeepAll: false } cut && cut.TotalSequences > 0)
+                    {
+                        <span> · @cut.KeptSequences of @cut.TotalSequences sequences</span>
+                    }
                 </div>
                 @if (Session.IsAdmin && ix.Warnings.Count > 0)
                 {

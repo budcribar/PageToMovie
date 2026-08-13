@@ -550,8 +550,19 @@ public static string NormalizeText(string text)
             if (Path.GetDirectoryName(path) is { } dir)
                 Directory.CreateDirectory(dir);
             File.WriteAllText(path, NormalizeText(fountain));
+            TryDeleteCut(store, projectId);
         }
         catch { /* base is an optimization; trim can re-seed from the draft if missing */ }
+    }
+
+    private static void TryDeleteCut(ProjectStore store, string projectId)
+    {
+        try
+        {
+            var cut = ProjectScreenplayCut.GetPath(store.GetProjectDir(projectId));
+            if (File.Exists(cut)) File.Delete(cut);
+        }
+        catch { /* cut sidecar is optional */ }
     }
 
     /// <summary>
@@ -592,8 +603,28 @@ public static string NormalizeText(string text)
         var runtime = await FilmRuntime.ResolveAsync(store, projectId, ct: ct).ConfigureAwait(false);
         var target = runtime.TargetMinutes > 0 ? runtime.TargetMinutes : runtime.NaturalMinutes;
         var natural = runtime.NaturalMinutes > 0 ? runtime.NaturalMinutes : target;
-
         var projectDir = await store.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
+
+        var index = await ProjectScreenplayIndex.TryReadAsync(projectDir, ct).ConfigureAwait(false);
+        if (index is not null)
+        {
+            var plan = ScreenplayIndexCutter.Plan(index, target, runtime.Mode);
+            var fromIndex = AdaptationService.TrimFromIndex(baseFountain, index, target, runtime.Mode);
+            if (fromIndex.Ok)
+            {
+                await ProjectScreenplayCut.WriteAsync(projectDir, plan, ct).ConfigureAwait(false);
+                var msg = plan.KeepAll
+                    ? "Keeping the full screenplay (every sequence)."
+                    : $"Cut to {plan.KeptSequenceIds.Count} of {plan.KeptSequenceIds.Count + plan.DroppedSequenceIds.Count} sequences (~{target} min, {fromIndex.SceneCountAfter} scenes).";
+                return ApplyDraftEdit(store, projectId, fromIndex,
+                    appliedMessage: msg,
+                    updateBase: false,
+                    substep: ProjectStore.BookSubstepKeys.FitLength, substepTargetMinutes: target);
+            }
+
+            onProgress?.Invoke(fromIndex.Warning ?? "Index cut missed scenes — asking the model to trim…");
+        }
+
         model = await ResolvePlanningModelAsync(store, projectId, model, "Fit screenplay to length", ct).ConfigureAwait(false);
         var progress = onProgress is null ? null : new Progress<string>(onProgress);
         var viaFiles = FilesCompleter(

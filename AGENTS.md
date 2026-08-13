@@ -435,7 +435,7 @@ When debugging runtime behavior on the live Railway server across coding agent s
 
 ---
 
-*Last updated: 2026-08-13 — P3 write from index; P2 beat sheet; P1 fountain file_id; P0 honest runtime.*
+*Last updated: 2026-08-13 — P4 trim-is-a-view; P3 write from index; P2 beat sheet.*
 
 
 ## Stage‑1 prompt tokens (book → Fountain)

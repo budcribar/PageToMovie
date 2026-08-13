@@ -556,6 +556,40 @@ public sealed class AdaptationService
     }
 
     /// <summary>
+    /// Deterministic trim from the index (no model). Keep-all when the target covers the master
+    /// or runtime mode is natural. Returns null plan when there is no usable index.
+    /// </summary>
+    public static FountainEditResult TrimFromIndex(
+        string maxFountain,
+        ScreenplayIndex index,
+        int targetMinutes,
+        string? runtimeMode = null)
+    {
+        maxFountain ??= "";
+        var before = SafeSceneCount(maxFountain);
+        var plan = ScreenplayIndexCutter.Plan(index, targetMinutes, runtimeMode);
+        if (plan.Reason == "no_index")
+            return new FountainEditResult(false, maxFountain, before, before, true, "No index to cut from.");
+
+        if (plan.KeepAll)
+        {
+            return new FountainEditResult(
+                true, maxFountain, before, before, true, "Keeping the full master.");
+        }
+
+        var cut = ScreenplayIndexCutter.ApplyToFountain(maxFountain, plan);
+        if (string.IsNullOrWhiteSpace(cut) || !BookToFountainConverter.LooksLikeGoodFountain(cut))
+            return new FountainEditResult(
+                false, maxFountain, before, before, false,
+                "Index cut could not match scenes; use the model trim.");
+
+        var after = SafeSceneCount(cut);
+        return new FountainEditResult(
+            true, cut, before, after, true,
+            $"Kept {plan.KeptSequenceIds.Count} sequences (~{plan.KeptMinutes:0} min).");
+    }
+
+    /// <summary>
     /// Trim an existing Fountain screenplay toward a target runtime — condense / merge / cut only.
     /// Unlike re-skin/embellish the scene count may shrink; it must not grow, and the output must be a
     /// valid screenplay. On any drift/failure the original is kept.
