@@ -60,6 +60,33 @@ public class UserDatabaseService
               AND ({ParamUserId} = '' OR user_id = {ParamUserId})
               AND ({ParamProjectId} = '' OR project_id = {ParamProjectId})
             """;
+        public const string SpendUserUsdWhere = $"""
+            FROM {UserApiCalls}
+            WHERE ok = 1
+              AND user_id = {ParamUserId}
+              AND estimated_usd IS NOT NULL
+              AND estimated_usd > 0
+              AND ({ParamProjectId} = '' OR project_id = {ParamProjectId})
+            """;
+        public const string SpendByProjectSql = $"""
+            SELECT
+                COALESCE(NULLIF(TRIM(project_id), ''), '(no project)') AS proj,
+                COUNT(*),
+                COALESCE(SUM(estimated_usd), 0),
+                COALESCE(SUM(estimated_usd), 0) * {ParamChargeMult}
+            {SpendUserUsdWhere}
+            GROUP BY proj
+            ORDER BY 4 DESC
+            """;
+        public const string SpendByCategorySql = $"""
+            SELECT
+                {CategoryCoalesce} AS cat,
+                COUNT(*),
+                COALESCE(SUM(estimated_usd), 0),
+                COALESCE(SUM(estimated_usd), 0) * {ParamChargeMult}
+            {SpendUserUsdWhere}
+            GROUP BY cat
+            """;
     }
 
     private readonly string _dbPath;
@@ -2201,12 +2228,10 @@ public class UserDatabaseService
     {
         await QuerySpendGroupsAsync(
             conn,
-            "COALESCE(NULLIF(TRIM(project_id), ''), '(no project)')",
-            "proj",
+            SqlLit.SpendByProjectSql,
             summary.UserId,
             pidFilter,
             chargeMult,
-            "ORDER BY 4 DESC",
             (key, count, listSum, chargeSum) =>
             {
                 summary.ByProject.Add(new ProjectSpendRow
@@ -2228,12 +2253,10 @@ public class UserDatabaseService
     {
         await QuerySpendGroupsAsync(
             conn,
-            SqlLit.CategoryCoalesce,
-            "cat",
+            SqlLit.SpendByCategorySql,
             summary.UserId,
             pidFilter,
             chargeMult,
-            orderBy: "",
             (key, count, listSum, chargeSum) =>
             {
                 var cat = CostCategories.Resolve(key, null, key);
@@ -2330,31 +2353,15 @@ public class UserDatabaseService
 
     private static async Task QuerySpendGroupsAsync(
         SqliteConnection conn,
-        string groupExpr,
-        string groupAlias,
+        string sql,
         string userId,
         string pidFilter,
         double chargeMult,
-        string orderBy,
         Action<string, int, double, double> onRow,
         CancellationToken ct)
     {
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = $"""
-            SELECT
-                {groupExpr} AS {groupAlias},
-                COUNT(*),
-                COALESCE(SUM(estimated_usd), 0),
-                COALESCE(SUM(estimated_usd), 0) * {SqlLit.ParamChargeMult}
-            FROM {SqlLit.UserApiCalls}
-            WHERE ok = 1
-              AND user_id = {SqlLit.ParamUserId}
-              AND estimated_usd IS NOT NULL
-              AND estimated_usd > 0
-              AND ({SqlLit.ParamProjectId} = '' OR project_id = {SqlLit.ParamProjectId})
-            GROUP BY {groupAlias}
-            {orderBy}
-            """;
+        cmd.CommandText = sql;
         cmd.Parameters.AddWithValue(SqlLit.ParamUserId, userId);
         cmd.Parameters.AddWithValue(SqlLit.ParamProjectId, pidFilter);
         cmd.Parameters.AddWithValue(SqlLit.ParamChargeMult, chargeMult);
