@@ -35,29 +35,31 @@ public partial class SimpleVoice
     internal bool _busy;
     internal string? _error;
     internal string? _message;
+    private bool _sessionReady;
 
     /// <summary>Child phase components mutate host state; ensure shell re-renders (phase switch).</summary>
     internal void Notify() => StateHasChanged();
 
-    protected override async Task OnInitializedAsync()
+    /// <summary>
+    /// Public catalog — do not wait on JS session hydrate. Login forceLoad lands here before
+    /// interactive JS is safe; awaiting sessionStorage in OnInitializedAsync hangs forever
+    /// ("Loading stories…") because the try/catch never sees a throw.
+    /// </summary>
+    protected override Task OnInitializedAsync() => LoadStoriesAsync();
+
+    /// <summary>
+    /// Restore session after first interactive render (JS available), then optionally resume
+    /// an in-progress simple-voice project. Stories have already started loading.
+    /// </summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (!firstRender || _sessionReady)
+            return;
+        _sessionReady = true;
         try { await Session.EnsureHydratedAsync(); }
-        catch { /* list is public */ }
-
-        await LoadStoriesAsync();
-
-        if (Session.IsLoggedIn
-            && ActiveProject.IsSimpleVoice
-            && !string.IsNullOrEmpty(ActiveProject.ProjectId))
-        {
-            _projectId = ActiveProject.ProjectId;
-            _projectLabel = ActiveProject.Label;
-            _phase = Phase.Record;
-            await EnsureVoiceModelAsync();
-            await ResolveNarratorKeyAsync();
-            if (!_needsCharacterPick)
-                await RefreshSampleStateAsync();
-        }
+        catch { /* JS session restore; the public list does not need it */ }
+        await TryResumeExistingProjectAsync();
+        Notify();
     }
 
     internal async Task LoadStoriesAsync()
@@ -81,10 +83,26 @@ public partial class SimpleVoice
         }
     }
 
-    private static string TimeoutOrFail(Exception ex) =>
+    internal static string TimeoutOrFail(Exception ex) =>
         ex is OperationCanceledException or TaskCanceledException or TimeoutException
             ? "Stories took too long to load. Try again."
             : "Could not load stories. Try again.";
+
+    internal static bool ShouldResumeRecordPhase(bool isLoggedIn, bool isSimpleVoiceProject, string? projectId) =>
+        isLoggedIn && isSimpleVoiceProject && !string.IsNullOrEmpty(projectId);
+
+    private async Task TryResumeExistingProjectAsync()
+    {
+        if (!ShouldResumeRecordPhase(Session.IsLoggedIn, ActiveProject.IsSimpleVoice, ActiveProject.ProjectId))
+            return;
+        _projectId = ActiveProject.ProjectId;
+        _projectLabel = ActiveProject.Label;
+        _phase = Phase.Record;
+        await EnsureVoiceModelAsync();
+        await ResolveNarratorKeyAsync();
+        if (!_needsCharacterPick)
+            await RefreshSampleStateAsync();
+    }
 
     internal async Task SelectStoryAsync(ForkableStoryDto story)
     {
