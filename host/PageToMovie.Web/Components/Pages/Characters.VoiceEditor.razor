@@ -73,8 +73,8 @@
             @if (!Caps.VoiceCloneReady)
             {
                 <InlineAlert Variant="warning" CssClass="py-2 small mb-2" data-testid="voice-clone-setup-hint">
-                    <div class="mb-1">@Caps.VoiceCloneBlockedReason</div>
-                    <a class="alert-link" href="@Caps.VoiceCloneSettingsHref">Open Settings →</a>
+                    <div class="mb-1">@StudioCapabilityState.VoiceCloneBlockedReason</div>
+                    <a class="alert-link" href="@StudioCapabilityState.VoiceCloneSettingsHref">Open Settings →</a>
                     <div class="text-muted mt-1 mb-0">
                         You can still record a sample now — the key is only needed when we apply your voice to the film.
                     </div>

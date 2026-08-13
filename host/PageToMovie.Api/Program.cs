@@ -8000,7 +8000,7 @@ app.MapPost("/api/demos/{demoId}/upvote", async (
     if (AuthGate.RequireLogin(user, opts) is { } denied)
         return denied;
     var d = await demos.TryGetAsync(demoId, ct);
-    if (d is null || !demos.IsPubliclyStreamable(d))
+    if (d is null || !DemoCatalogService.IsPubliclyStreamable(d))
         return Results.NotFound(new { ok = false, error = ApiText.DemoNotFound });
     if (!string.IsNullOrWhiteSpace(d.CreatedBy) &&
         string.Equals(d.CreatedBy, user.UserId, StringComparison.OrdinalIgnoreCase))
@@ -8042,7 +8042,7 @@ app.MapPost("/api/demos/{demoId}/fork", async (
         return denied;
 
     var d = await demos.TryGetAsync(demoId, ct);
-    if (d is null || !demos.IsPubliclyStreamable(d))
+    if (d is null || !DemoCatalogService.IsPubliclyStreamable(d))
         return Results.NotFound(new { ok = false, error = ApiText.DemoNotFound });
 
     var sourceId = (d.ProjectId ?? "").Trim();
@@ -8069,7 +8069,7 @@ app.MapPost("/api/demos/{demoId}/fork", async (
             });
         }
 
-        // A demo already confirmed public via demos.IsPubliclyStreamable(d) above is exactly the
+        // A demo already confirmed public via DemoCatalogService.IsPubliclyStreamable(d) above is exactly the
         // "explicit authorization to fork" this endpoint's own doc comment promises — same bypass
         // ForkProjectAsync gives real invite-accepts, regardless of the source project's own
         // (possibly still-Private) VisibilityMode.
@@ -8103,7 +8103,7 @@ app.MapDelete("/api/demos/{demoId}/upvote", async (
     if (AuthGate.RequireLogin(user, opts) is { } denied)
         return denied;
     var d = await demos.TryGetAsync(demoId, ct);
-    if (d is null || !demos.IsPubliclyStreamable(d))
+    if (d is null || !DemoCatalogService.IsPubliclyStreamable(d))
         return Results.NotFound(new { ok = false, error = ApiText.DemoNotFound });
 
     await upvotes.TryRemoveAsync(demoId, user.UserId, ct);

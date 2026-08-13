@@ -108,7 +108,7 @@ public partial class Scenes
         
         if (!S.Caps.MusicReady)
         {
-            S._error = S.Caps.MusicBlockedReason;
+            S._error = StudioCapabilityState.MusicBlockedReason;
             return;
         }
         if (string.IsNullOrWhiteSpace(S._projectId))

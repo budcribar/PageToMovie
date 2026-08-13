@@ -521,7 +521,7 @@ public static class FountainStage1Importer
         StringBuilder actionBuf,
         Func<string, Dictionary<string, object?>> openScene,
         Func<Dictionary<string, object?>?> closeScene,
-        ICollection<Dictionary<string, object?>> scenes)
+        ICollection<object?> scenes)
     {
         // Entire file was action without headings — one scene
         openScene(UnspecifiedIntDay);

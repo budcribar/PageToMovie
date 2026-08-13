@@ -970,7 +970,7 @@ public sealed class ClientMediaFolderService
             if (trim is not { Success: true } || string.IsNullOrWhiteSpace(trim.Url)) return false;
             trimUrl = trim.Url;
 
-            var uploadUrl = _api.ClipUploadUrl(projectId, scene, clip, kind: "extend-source");
+            var uploadUrl = EngineApiClient.ClipUploadUrl(projectId, scene, clip, kind: "extend-source");
             var up = await _js.InvokeAsync<JsUploadResult>(
                 "PageToMovieMedia.uploadUrlToServerAsync", trimUrl, uploadUrl);
             if (up is not { Success: true }) return false;

@@ -80,8 +80,8 @@
             <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
                 <div class="d-flex align-items-center gap-2 flex-wrap">
                     <CapabilityLockedControl Enabled="Caps.VideoReady"
-                                             BlockedReason="@Caps.VideoBlockedReason"
-                                             SettingsHref="@Caps.VideoSettingsHref"
+                                             BlockedReason="@StudioCapabilityState.VideoBlockedReason"
+                                             SettingsHref="@StudioCapabilityState.VideoSettingsHref"
                                              TestId="scenes-generate-batch-cap">
                     <button type="button"
                             data-testid="scenes-generate-batch"
@@ -136,8 +136,8 @@
                         ▶ @L["ScenesPage.PlaySelected"]@(Host.List._selected.Count > 0 ? $" ({Host.List._selected.Count})" : "")
                     </button>
                     <CapabilityLockedControl Enabled="Caps.VideoReviewReady"
-                                             BlockedReason="@Caps.VideoReviewBlockedReason"
-                                             SettingsHref="@Caps.VideoReviewSettingsHref"
+                                             BlockedReason="@StudioCapabilityState.VideoReviewBlockedReason"
+                                             SettingsHref="@StudioCapabilityState.VideoReviewSettingsHref"
                                              TestId="scenes-verify-dialogue-cap">
                     <button type="button"
                             class="btn btn-outline-primary btn-sm"
@@ -306,7 +306,7 @@
                                 }
                             </td>
                             <td @onclick="() => Host.List.OpenSceneAsync(sn)" class="text-nowrap">
-                                @{ var (pg, pgCls, pgTitle) = Host.List.SceneProgressGlyph(s); }
+                                @{ var (pg, pgCls, pgTitle) = Scenes.ScenesListState.SceneProgressGlyph(s); }
                                 <span class="@pgCls me-1" title="@pgTitle" aria-label="@pgTitle">@pg</span>
                                 <span class="@(s.ClipsComplete ? "text-success" : s.ClipsOnDisk > 0 ? "text-warning" : "text-muted")">
                                     @s.ClipsOnDisk/@s.ClipCount
@@ -335,7 +335,7 @@
                                         class="btn btn-sm btn-warning text-black fw-bold py-0 px-2"
                                         data-testid="scene-row-score-music"
                                         disabled="@(Host._busy || Host.Gen.JobRunning || Music._scoringMusic || !Caps.MusicReady || s.LockedByOther)"
-                                        title="@(Caps.MusicReady ? "Score background music for this scene" : Caps.MusicBlockedReason)"
+                                        title="@(Caps.MusicReady ? "Score background music for this scene" : StudioCapabilityState.MusicBlockedReason)"
                                         @onclick="() => Music.OpenScoreMenu(sn)">
                                     🎵 Score
                                 </button>

@@ -488,7 +488,7 @@ public sealed class AdminAuthService : IAdminAuthService
         {
             var dbUser = await _userDb.GetUserByUsernameAsync(callerUserId, ct).ConfigureAwait(false)
                          ?? await _userDb.GetUserByIdAsync(callerUserId, ct).ConfigureAwait(false);
-            if (dbUser is not null && _userDb.VerifyPasswordHash(dbUser, password))
+            if (dbUser is not null && UserDatabaseService.VerifyPasswordHash(dbUser, password))
                 return true;
         }
 

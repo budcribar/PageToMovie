@@ -147,8 +147,8 @@
                                                                TestId="char-tweak-preferred">
                                                 <Actions>
                                                     <CapabilityLockedControl Enabled="Caps.ImageReady"
-                                                                             BlockedReason="@Caps.ImageBlockedReason"
-                                                                             SettingsHref="@Caps.ImageSettingsHref"
+                                                                             BlockedReason="@StudioCapabilityState.ImageBlockedReason"
+                                                                             SettingsHref="@StudioCapabilityState.ImageSettingsHref"
                                                                              TestId="char-tweak-preferred-cap">
                                                         <button type="button" class="btn btn-primary btn-sm"
                                                                 disabled="@(Host._busy || Jobs.JobRunning || string.IsNullOrWhiteSpace(LookEdit._imageEditInstruction))"
@@ -215,8 +215,8 @@
                                                        TestId="char-look-panel">
                                         <Actions>
                                             <CapabilityLockedControl Enabled="Caps.ImageReady"
-                                                                     BlockedReason="@Caps.ImageBlockedReason"
-                                                                     SettingsHref="@Caps.ImageSettingsHref"
+                                                                     BlockedReason="@StudioCapabilityState.ImageBlockedReason"
+                                                                     SettingsHref="@StudioCapabilityState.ImageSettingsHref"
                                                                      TestId="char-generate-looks-cap">
                                                 <button type="button" class="btn btn-primary btn-sm"
                                                         disabled="@(Host._busy || Jobs.JobRunning || (string.IsNullOrWhiteSpace(LookEdit._editDescription) && string.IsNullOrWhiteSpace(LookEdit._imageEditInstruction)))"

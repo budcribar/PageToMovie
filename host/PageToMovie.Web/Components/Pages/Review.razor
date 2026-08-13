@@ -102,8 +102,8 @@ else
         @if (List._activeTab == ReviewTab.Review)
         {
             <CapabilityLockedControl Enabled="Caps.VideoReviewReady"
-                                     BlockedReason="@Caps.VideoReviewBlockedReason"
-                                     SettingsHref="@Caps.VideoReviewSettingsHref"
+                                     BlockedReason="@StudioCapabilityState.VideoReviewBlockedReason"
+                                     SettingsHref="@StudioCapabilityState.VideoReviewSettingsHref"
                                      TestId="review-auto-all-cap">
                 <button class="btn btn-sm btn-outline-info fw-semibold" data-testid="review-auto-all"
                         disabled="@(_busy || Jobs.JobRunning || AutoReview._isReviewing || !Playback.HasGeneratedClips)"
