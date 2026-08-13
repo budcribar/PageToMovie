@@ -36,9 +36,9 @@ public static class BookToIndexConverter
         Stage1BookSessionScope.Current = useFile ? bookSession : null;
         try
         {
-            if (useFile)
+            if (bookSession is { IsAvailable: true } availableSession)
             {
-                await bookSession!.EnsureUploadedAsync(ct).ConfigureAwait(false);
+                await availableSession.EnsureUploadedAsync(ct).ConfigureAwait(false);
                 onProgress?.Invoke("Indexing the book via file_id…");
             }
             else

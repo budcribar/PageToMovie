@@ -27,19 +27,8 @@ public static class ScreenplayIndexCutter
 
     public static double SequenceMinutes(ScreenplayIndexSequence seq)
     {
-        var sum = 0.0;
-        var any = false;
-        foreach (var card in seq.Scenes ?? [])
-        {
-            if (card.ApproxMinutes is > 0)
-            {
-                sum += card.ApproxMinutes.Value;
-                any = true;
-            }
-            else
-                sum += DefaultCardMinutes;
-        }
-        return any || (seq.Scenes?.Count ?? 0) > 0 ? sum : 0;
+        var scenes = seq.Scenes ?? [];
+        return scenes.Sum(card => card.ApproxMinutes is > 0 ? card.ApproxMinutes.Value : DefaultCardMinutes);
     }
 
     public static CutPlan Plan(ScreenplayIndex? index, int targetMinutes, string? runtimeMode = null)
@@ -238,11 +227,10 @@ public static class ScreenplayIndexCutter
 
     private static string FirstHeading(string scene)
     {
-        foreach (var line in scene.Replace("\r\n", "\n").Split('\n'))
-        {
-            if (IsSceneHeading(line)) return line.Trim();
-        }
-        return "";
+        return scene.Replace("\r\n", "\n").Split('\n')
+            .Where(IsSceneHeading)
+            .Select(static line => line.Trim())
+            .FirstOrDefault() ?? "";
     }
 
     private static bool IsSceneHeading(string line)

@@ -202,8 +202,9 @@ public static class BookToIndexWriter
 
     private static string TailLines(string text, int count)
     {
-        var lines = (text ?? "").Replace("\r\n", "\n").Split('\n');
-        if (lines.Length <= count) return text.Trim();
+        var coalesced = text ?? "";
+        var lines = coalesced.Replace("\r\n", "\n").Split('\n');
+        if (lines.Length <= count) return coalesced.Trim();
         return string.Join('\n', lines.TakeLast(count)).Trim();
     }
 }
