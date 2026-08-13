@@ -31,6 +31,7 @@ public partial class AdminModelsCatalog
 
         internal string _filterStatus = "";
 
+        private const string Deprecated = "deprecated";
 
         internal void ResetFilters()
         {
@@ -68,7 +69,7 @@ public partial class AdminModelsCatalog
             if (_filterStatus == "enabled") return isEnabled && !isDeprecated;
             if (_filterStatus == "disabled") return !isEnabled && !isDeprecated;
             if (_filterStatus == "lab") return isLab && !isDeprecated;
-            if (_filterStatus == "deprecated") return isDeprecated;
+            if (_filterStatus == Deprecated) return isDeprecated;
             if (_filterStatus == "all") return true;
 
             // Default (empty filterStatus): hide deprecated models!
@@ -80,21 +81,21 @@ public partial class AdminModelsCatalog
             .Where(p => !string.IsNullOrWhiteSpace(p))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(p => p)
-            .ToList()!;
+            .ToList();
 
         internal static bool IsEnabled(JsonObject m) =>
             m.TryGetPropertyValue("enabled", out var en) && en?.GetValue<bool>() == true;
 
         internal static bool IsDeprecated(JsonObject m) =>
-            m.TryGetPropertyValue("deprecated", out var dep) && dep?.GetValue<bool>() == true;
+            m.TryGetPropertyValue(Deprecated, out var dep) && dep?.GetValue<bool>() == true;
 
         internal void ToggleModelDeprecated(JsonObject m)
         {
             var isDep = IsDeprecated(m);
             if (isDep)
-                m.Remove("deprecated");
+                m.Remove(Deprecated);
             else
-                m["deprecated"] = true;
+                m[Deprecated] = true;
             S.Raw.SyncModelListToRawJson();
             S._message = isDep ? $"Restored model '{m["id"]}' (undeprecated)." : $"Deprecated model '{m["id"]}'. Save to persist.";
         }

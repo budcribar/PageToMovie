@@ -58,7 +58,11 @@ public partial class Configuration : IDisposable, IAsyncDisposable
             }
 
             try { Keys._userSettings = await Engine.GetUserSettingsAsync(); }
-            catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex); }
+            catch (Exception ex)
+            {
+                // User settings are optional; configuration can still load without them.
+                System.Diagnostics.Debug.WriteLine(ex);
+            }
             await Catalog.LoadCatalogAsync();
 
             var projs = await Engine.GetProjectsAsync();
@@ -91,7 +95,7 @@ public partial class Configuration : IDisposable, IAsyncDisposable
             if (Coverage.FocusActive)
             {
                 Coverage.StudioCoverageOpen = true;
-                Keys.BeginAddKey(Coverage._focusCapability!);
+                Keys.BeginAddKey(Coverage._focusCapability);
             }
         }
         catch (Exception ex)
@@ -115,7 +119,7 @@ public partial class Configuration : IDisposable, IAsyncDisposable
         GC.SuppressFinalize(this);
     }
 
-    protected virtual void Dispose(bool disposing)
+    private void Dispose(bool disposing)
     {
         if (_disposed) return;
         if (disposing)

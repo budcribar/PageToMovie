@@ -293,6 +293,8 @@ public enum MaintenanceWindowModeKind
 /// </summary>
 public static class OperationsAdminExtendedEnumExtensions
 {
+    private const string CriticalApi = "critical";
+
     public static AdminDashboardTabKind ParseAdminDashboardTabKind(string? value) =>
             (value ?? "").Trim().ToLowerInvariant() switch
             {
@@ -384,7 +386,7 @@ public static class OperationsAdminExtendedEnumExtensions
     public static IncidentSeverityKind ParseIncidentSeverityKind(string? value) =>
             (value ?? "").Trim().ToLowerInvariant() switch
             {
-                "sev0" or "critical" => IncidentSeverityKind.Sev0Critical,
+                "sev0" or CriticalApi => IncidentSeverityKind.Sev0Critical,
                 "sev1" or "high" => IncidentSeverityKind.Sev1High,
                 "sev2" or "medium" => IncidentSeverityKind.Sev2Medium,
                 "sev3" or "low" => IncidentSeverityKind.Sev3Low,
@@ -473,7 +475,7 @@ public static class OperationsAdminExtendedEnumExtensions
                 "normal" => MemoryPressureLevelKind.Normal,
                 "elevated" => MemoryPressureLevelKind.Elevated,
                 "high" => MemoryPressureLevelKind.High,
-                "critical" => MemoryPressureLevelKind.Critical,
+                CriticalApi => MemoryPressureLevelKind.Critical,
                 "oom_danger" or "oom" => MemoryPressureLevelKind.OutOfMemoryDanger,
                 _ => MemoryPressureLevelKind.Normal
             };
@@ -520,7 +522,7 @@ public static class OperationsAdminExtendedEnumExtensions
             {
                 "healthy" => SystemHealthStateKind.Healthy,
                 "degraded" => SystemHealthStateKind.Degraded,
-                "critical" => SystemHealthStateKind.Critical,
+                CriticalApi => SystemHealthStateKind.Critical,
                 "unhealthy" => SystemHealthStateKind.Unhealthy,
                 "maintenance" => SystemHealthStateKind.Maintenance,
                 "unknown" => SystemHealthStateKind.Unknown,
@@ -608,7 +610,7 @@ public static class OperationsAdminExtendedEnumExtensions
         {
             SystemHealthStateKind.Healthy => "healthy",
             SystemHealthStateKind.Degraded => "degraded",
-            SystemHealthStateKind.Critical => "critical",
+            SystemHealthStateKind.Critical => CriticalApi,
             SystemHealthStateKind.Unhealthy => "unhealthy",
             SystemHealthStateKind.Maintenance => "maintenance",
             SystemHealthStateKind.Unknown => "unknown",
@@ -654,7 +656,7 @@ public static class OperationsAdminExtendedEnumExtensions
             MemoryPressureLevelKind.Normal => "normal",
             MemoryPressureLevelKind.Elevated => "elevated",
             MemoryPressureLevelKind.High => "high",
-            MemoryPressureLevelKind.Critical => "critical",
+            MemoryPressureLevelKind.Critical => CriticalApi,
             MemoryPressureLevelKind.OutOfMemoryDanger => "oom_danger",
             _ => "normal"
         };

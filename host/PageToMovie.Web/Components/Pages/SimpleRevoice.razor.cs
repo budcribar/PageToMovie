@@ -99,7 +99,7 @@ public partial class SimpleRevoice : IAsyncDisposable
 
                 _hasClone = chars?.Characters?.Any(c =>
                     string.Equals(c.Key, _narratorKey, StringComparison.OrdinalIgnoreCase) &&
-                    !string.IsNullOrWhiteSpace(c.VoiceProviderVoiceId)) == true;
+                    !string.IsNullOrWhiteSpace(c.VoiceProviderVoiceId)) ?? false;
             }
             catch
             {
@@ -288,7 +288,7 @@ public partial class SimpleRevoice : IAsyncDisposable
 
                     if (!string.IsNullOrEmpty(_previewUrl) && _previewUrl.StartsWith("blob:", StringComparison.Ordinal))
                     {
-                        try { await Js.InvokeVoidAsync("PageToMovieMedia.revokeUrl", _previewUrl); } catch { /* */ }
+                        try { await Js.InvokeVoidAsync("PageToMovieMedia.revokeUrl", _previewUrl); } catch { /* blob URL may already be revoked */ }
                     }
                     _previewUrl = outUrl;
                     _blobUrls.Add(outUrl);
@@ -334,7 +334,7 @@ public partial class SimpleRevoice : IAsyncDisposable
         {
             try
             {
-                var local = await MediaFolder.GetCurrentBlobUrlAsync(_projectId!, row.RelativePath, null);
+                var local = await MediaFolder.GetCurrentBlobUrlAsync(_projectId, row.RelativePath, null);
                 if (!string.IsNullOrWhiteSpace(local))
                     return local;
             }
@@ -345,7 +345,7 @@ public partial class SimpleRevoice : IAsyncDisposable
         if (!string.IsNullOrWhiteSpace(row.VideoUrl))
             return Engine.BrowserMediaPath(row.VideoUrl);
 
-        return Engine.BrowserMediaPath(Engine.ClipVideoUrl(_projectId!, row.Scene, row.Clip));
+        return Engine.BrowserMediaPath(Engine.ClipVideoUrl(_projectId, row.Scene, row.Clip));
     }
 
     private async Task<string?> AudioUrlFromSpeakAsync(SpeakVoiceDto speak)
@@ -397,12 +397,9 @@ public partial class SimpleRevoice : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        foreach (var u in _blobUrls.Distinct())
+        foreach (var u in _blobUrls.Distinct().Where(u => u.StartsWith("blob:", StringComparison.Ordinal)))
         {
-            if (u.StartsWith("blob:", StringComparison.Ordinal))
-            {
-                try { await Js.InvokeVoidAsync("PageToMovieMedia.revokeUrl", u); } catch { /* */ }
-            }
+            try { await Js.InvokeVoidAsync("PageToMovieMedia.revokeUrl", u); } catch { /* blob URL may already be revoked */ }
         }
     }
 

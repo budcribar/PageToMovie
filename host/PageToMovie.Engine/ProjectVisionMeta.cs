@@ -15,6 +15,7 @@ public static class ProjectVisionMeta
 {
     public const string FileName = "vision_meta.json";
     public const string CurrentSchemaVersion = "vision_meta.v1";
+    private const string Adaptation = "adaptation";
 
     public const string MediumAuto = "auto";
     public const string MediumPhotoreal = VisualMediumStyles.MediumPhotoreal;
@@ -40,7 +41,7 @@ public static class ProjectVisionMeta
 
         /// <summary>adaptation | cast_extract | user</summary>
         [JsonPropertyName("decided_by")]
-        public string DecidedBy { get; set; } = "adaptation";
+        public string DecidedBy { get; set; } = Adaptation;
 
         [JsonPropertyName("decided_at")]
         public string? DecidedAt { get; set; }
@@ -63,7 +64,7 @@ public static class ProjectVisionMeta
         // 1) Optional overlay (tests / explicit writes)
         var overlay = TryReadVisionFile(GetPath(projectDir));
         if (overlay is not null &&
-            string.Equals(overlay.DecidedBy, "adaptation", StringComparison.OrdinalIgnoreCase))
+            string.Equals(overlay.DecidedBy, Adaptation, StringComparison.OrdinalIgnoreCase))
             return overlay;
 
         // 2) Import extract_meta.json (book_full + analysis at prepare time)
@@ -136,8 +137,8 @@ public static class ProjectVisionMeta
             return new Document
             {
                 VisualMedium = med,
-                RenderStyleLock = string.IsNullOrWhiteSpace(style) ? DefaultStyleLock(med) : style!.Trim(),
-                DecidedBy = source is "adaptation" or "adaptation_llm" ? "adaptation"
+                RenderStyleLock = string.IsNullOrWhiteSpace(style) ? DefaultStyleLock(med) : style.Trim(),
+                DecidedBy = source is Adaptation or "adaptation_llm" ? Adaptation
                     : source is "cast_extract" ? "cast_extract"
                     : "import",
                 Notes = notes,
@@ -200,7 +201,7 @@ public static class ProjectVisionMeta
 
         root["visual_medium"] = doc.VisualMedium;
         root["render_style_lock"] = doc.RenderStyleLock;
-        root["medium_source"] = doc.DecidedBy == "adaptation" ? "adaptation" : (doc.DecidedBy ?? "import");
+        root["medium_source"] = doc.DecidedBy == Adaptation ? Adaptation : (doc.DecidedBy ?? "import");
         root["medium_decided_at"] = doc.DecidedAt;
         if (!string.IsNullOrWhiteSpace(doc.Notes))
             root["medium_notes"] = doc.Notes;
@@ -236,7 +237,7 @@ public static class ProjectVisionMeta
             DecidedAt = DateTime.UtcNow.ToString("o"),
         };
         doc.VisualMedium = med;
-        doc.DecidedBy = string.IsNullOrWhiteSpace(decidedBy) ? "user" : decidedBy!;
+        doc.DecidedBy = string.IsNullOrWhiteSpace(decidedBy) ? "user" : decidedBy;
         doc.DecidedAt = DateTime.UtcNow.ToString("o");
         if (med is MediumAuto)
         {
@@ -307,7 +308,7 @@ public static class ProjectVisionMeta
             RenderStyleLock = DefaultStyleLock(MediumPhotoreal),
             Notes = "fallback: model JSON unparseable",
         };
-        doc.DecidedBy = "adaptation";
+        doc.DecidedBy = Adaptation;
         Write(projectDir, doc);
         onProgress?.Invoke($"Visual medium: {doc.VisualMedium}");
         return doc;
@@ -321,7 +322,7 @@ public static class ProjectVisionMeta
         return new Document
         {
             VisualMedium = med,
-            RenderStyleLock = string.IsNullOrWhiteSpace(style) ? DefaultStyleLock(med) : style!.Trim(),
+            RenderStyleLock = string.IsNullOrWhiteSpace(style) ? DefaultStyleLock(med) : style.Trim(),
             Notes = notes,
         };
     }
@@ -334,7 +335,7 @@ public static class ProjectVisionMeta
         var existing = TryRead(projectDir);
         // Do not overwrite adaptation decision with cast unless missing.
         if (existing is not null &&
-            string.Equals(existing.DecidedBy, "adaptation", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(existing.DecidedBy, Adaptation, StringComparison.OrdinalIgnoreCase) &&
             !string.IsNullOrWhiteSpace(existing.RenderStyleLock))
         {
             if (!string.IsNullOrWhiteSpace(performanceLock) && string.IsNullOrWhiteSpace(existing.PerformanceLock))
@@ -348,7 +349,7 @@ public static class ProjectVisionMeta
         var med = existing?.VisualMedium ?? MediumPhotoreal;
         if (!string.IsNullOrWhiteSpace(renderStyleLock))
         {
-            var r = renderStyleLock!;
+            var r = renderStyleLock;
             if (r.Contains("picture", StringComparison.OrdinalIgnoreCase) ||
                 r.Contains("illustrat", StringComparison.OrdinalIgnoreCase) ||
                 r.Contains("cartoon", StringComparison.OrdinalIgnoreCase))

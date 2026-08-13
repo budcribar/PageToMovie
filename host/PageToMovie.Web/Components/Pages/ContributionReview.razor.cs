@@ -27,7 +27,7 @@ public partial class ContributionReview
     private bool _lastSyncWasFromOrigin = true;
 
     private string? OriginId =>
-        !string.IsNullOrWhiteSpace(_diff?.OriginProjectId) ? _diff!.OriginProjectId
+        !string.IsNullOrWhiteSpace(_diff?.OriginProjectId) ? _diff.OriginProjectId
         : _diff?.ParentProjectId;
 
     protected override async Task OnParametersSetAsync()
@@ -153,8 +153,8 @@ public partial class ContributionReview
     private sealed class DiffDto
     {
         public string? ProjectId { get; set; }
-        public string? ParentProjectId { get; set; }
-        public string? OriginProjectId { get; set; }
+        public string? ParentProjectId { get; set; } = null;
+        public string? OriginProjectId { get; set; } = null;
         public List<SceneDto> Scenes { get; set; } = new();
     }
 

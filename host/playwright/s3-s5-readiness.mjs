@@ -26,7 +26,7 @@ async function api(method, p, body, isForm = false) {
     "X-FilmStudio-User": "s3s5-audit",
     "X-FilmStudio-Role": "admin",
   };
-  let b = undefined;
+  let b;
   if (body && !isForm) {
     headers["Content-Type"] = "application/json";
     b = JSON.stringify(body);

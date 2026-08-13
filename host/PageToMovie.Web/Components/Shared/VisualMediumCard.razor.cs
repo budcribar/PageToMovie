@@ -48,7 +48,7 @@ public partial class VisualMediumCard
             _loadedFor = ProjectId;
             if (dto?.Options is { Count: > 0 })
                 _options = dto.Options.Select(o => new MediumOption(o.Id ?? "", o.Label ?? o.Id ?? "")).ToList();
-            _edit = string.IsNullOrWhiteSpace(dto?.VisualMedium) ? "auto" : dto!.VisualMedium!;
+            _edit = string.IsNullOrWhiteSpace(dto?.VisualMedium) ? "auto" : dto.VisualMedium;
             _label = _options.FirstOrDefault(o => o.Id == _edit)?.Label ?? _edit;
         }
         catch (Exception ex)

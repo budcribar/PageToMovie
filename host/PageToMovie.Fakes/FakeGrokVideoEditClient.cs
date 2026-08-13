@@ -111,7 +111,7 @@ public sealed class FakeGrokVideoEditClient : IVideoEditClient
             throw new FileNotFoundException(
                 "Fake video edit fixture missing. Expected a real MP4 under PageToMovie.Fakes/Fixtures/.", fixture);
 
-        Directory.CreateDirectory(Path.GetDirectoryName(destPath)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(destPath));
         File.Copy(fixture, destPath, overwrite: true);
         _log.LogInformation("Fake video edit download {Bytes} bytes → {Path}", new FileInfo(destPath).Length, destPath);
     }

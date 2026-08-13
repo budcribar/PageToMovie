@@ -110,13 +110,11 @@ public static class AuthGate
             }
             else
             {
-                foreach (var env in requireVisionKey
+                var envKeys = requireVisionKey
                     ? new[] { "XAI_API_KEY" }
-                    : new[] { "XAI_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY" })
-                {
-                    if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(env)))
-                        return null;
-                }
+                    : new[] { "XAI_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY" };
+                if (envKeys.Any(env => !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(env))))
+                    return null;
             }
         }
 

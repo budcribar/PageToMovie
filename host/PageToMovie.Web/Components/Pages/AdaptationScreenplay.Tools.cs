@@ -13,12 +13,12 @@ public partial class AdaptationScreenplay
 
         internal double? EstimateUsd;
 
-        internal bool LookDone => S.Status?.BookSubsteps?.LookDone == true;
-        internal bool EnrichDone => S.Status?.BookSubsteps?.EnrichDone == true;
-        internal bool FitDone => S.Status?.BookSubsteps?.FitLengthDone == true;
+        internal bool LookDone => S.Status?.BookSubsteps?.LookDone ?? false;
+        internal bool EnrichDone => S.Status?.BookSubsteps?.EnrichDone ?? false;
+        internal bool FitDone => S.Status?.BookSubsteps?.FitLengthDone ?? false;
         internal double? FitMins => S.Status?.BookSubsteps?.FitLengthTargetMinutes;
         internal bool DraftExists =>
-            S.Status?.Screenplay.DraftExists == true
+            (S.Status?.Screenplay.DraftExists ?? false)
             || !string.IsNullOrWhiteSpace(S.Editor._text);
 
         internal void Toggle(string panel)
@@ -43,7 +43,7 @@ public partial class AdaptationScreenplay
         internal async Task OnLookChangedAsync()
         {
             // Saving the medium re-applies look to an existing draft (one action).
-            if (S.Status?.Screenplay.DraftExists == true)
+            if (S.Status?.Screenplay.DraftExists ?? false)
             {
                 await ReskinAsync();
                 return;

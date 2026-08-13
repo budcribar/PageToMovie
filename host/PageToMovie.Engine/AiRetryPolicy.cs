@@ -82,10 +82,8 @@ public static class AiRetryPolicy
         }
 
         var returned = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var id in returnedIds ?? Enumerable.Empty<string>())
-        {
-            if (!string.IsNullOrWhiteSpace(id)) returned.Add(id);
-        }
+        foreach (var id in (returnedIds ?? Enumerable.Empty<string>()).Where(id => !string.IsNullOrWhiteSpace(id)))
+            returned.Add(id);
 
         var missing = requested.Where(id => !returned.Contains(id)).ToList();
         return (missing, missing.Count == 0);

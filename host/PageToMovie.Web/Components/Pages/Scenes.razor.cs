@@ -87,33 +87,33 @@ public partial class Scenes : IAsyncDisposable
         {
             foreach (var s in List._scenes)
             {
-                foreach (var c in s.CharactersOnScreen)
-                    if (!string.IsNullOrWhiteSpace(c)) set.Add(c);
+                foreach (var c in s.CharactersOnScreen.Where(c => !string.IsNullOrWhiteSpace(c)))
+                    set.Add(c);
             }
         }
         if (List._detail is not null)
         {
-            foreach (var c in List._detail.CharactersOnScreen)
-                if (!string.IsNullOrWhiteSpace(c)) set.Add(c);
+            foreach (var c in List._detail.CharactersOnScreen.Where(c => !string.IsNullOrWhiteSpace(c)))
+                set.Add(c);
 
             if (List._detail.Clips is not null)
             {
                 foreach (var cl in List._detail.Clips)
                 {
-                    foreach (var c in cl.CharactersOnScreen)
-                        if (!string.IsNullOrWhiteSpace(c)) set.Add(c);
+                    foreach (var c in cl.CharactersOnScreen.Where(c => !string.IsNullOrWhiteSpace(c)))
+                        set.Add(c);
                 }
             }
         }
         if (ClipForm._clipEditorCast is not null)
         {
-            foreach (var c in ClipForm._clipEditorCast)
-                if (!string.IsNullOrWhiteSpace(c)) set.Add(c);
+            foreach (var c in ClipForm._clipEditorCast.Where(c => !string.IsNullOrWhiteSpace(c)))
+                set.Add(c);
         }
         if (List._castMissing is not null)
         {
-            foreach (var c in List._castMissing)
-                if (!string.IsNullOrWhiteSpace(c)) set.Add(c);
+            foreach (var c in List._castMissing.Where(c => !string.IsNullOrWhiteSpace(c)))
+                set.Add(c);
         }
         return set.OrderBy(c => ShortChar(c), StringComparer.OrdinalIgnoreCase).ToList();
     }
@@ -128,7 +128,7 @@ public partial class Scenes : IAsyncDisposable
                 {
                     var list = new List<string>(s.LocationIds);
                     if (!string.IsNullOrWhiteSpace(s.PrimaryLocationId))
-                        list.Add(s.PrimaryLocationId!);
+                        list.Add(s.PrimaryLocationId);
                     return list;
                 })
                 .Where(l => !string.IsNullOrWhiteSpace(l))

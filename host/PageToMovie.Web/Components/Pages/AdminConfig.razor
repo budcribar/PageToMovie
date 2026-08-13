@@ -70,7 +70,7 @@
                     <div class="card">
                         <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-1">
                             <span>Fakes</span>
-                            @if (_cfg.RestartRequired?.Contains("UseFakes") == true)
+                            @if (_cfg.RestartRequired?.Contains("UseFakes") ?? false)
                             {
                                 <span class="badge text-bg-warning">UseFakes: restart for full DI effect</span>
                             }

@@ -171,7 +171,7 @@
   white-space: normal;
   overflow: visible;
   text-overflow: unset;
-  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .fe-scene-btn:hover {
