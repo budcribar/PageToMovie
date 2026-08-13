@@ -87,7 +87,7 @@ public sealed class FilmBuildAndStageCommitTests
     public async Task RegisterFromWipFile_accepts_percent2F_encoded_composite_project_id()
     {
         await using var fx = await WipFixture.CreateAsync();
-        Assert.Contains('/', fx.ProjectId, StringComparison.Ordinal);
+        Assert.Contains("/", fx.ProjectId);
         var encoded = fx.ProjectId.Replace("/", "%2F", StringComparison.Ordinal);
 
         var doc = await FilmBuildService.RegisterFromWipFileAsync(fx.Store, encoded);
