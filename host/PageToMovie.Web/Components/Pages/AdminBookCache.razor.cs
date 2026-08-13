@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
@@ -69,7 +70,7 @@ public partial class AdminBookCache
     private static string FormatWhen(string? iso)
     {
         if (string.IsNullOrWhiteSpace(iso)) return "—";
-        if (DateTimeOffset.TryParse(iso, out var dt))
+        if (DateTimeOffset.TryParse(iso, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var dt))
             return dt.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
         return iso.Length > 16 ? iso[..16] : iso;
     }

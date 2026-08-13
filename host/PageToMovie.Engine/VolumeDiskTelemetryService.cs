@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Options;
@@ -163,7 +164,7 @@ public sealed class VolumeDiskTelemetryService
                 var used = r.GetInt64(5);
                 var pct = r.GetDouble(6);
 
-                DateTimeOffset.TryParse(recAtStr, out var recAt);
+                DateTimeOffset.TryParse(recAtStr, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var recAt);
 
                 long? delta = null;
                 string? formattedDelta = null;

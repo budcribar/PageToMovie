@@ -65,7 +65,7 @@ public sealed class CharacterDesignService
         var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         var seeds = _projects.GetCharacterSeed(projectId, charKey)
             ?? throw new InvalidOperationException($"Unknown character seed: {charKey}");
-        if (IsVoiceOnly(charKey, seeds))
+        if (IsVoiceOnly(seeds))
             throw new InvalidOperationException($"{charKey} is voice-only — no portrait variants.");
 
         var wardrobeLockKey = ProjectStore.GetWardrobeLockKey(seeds);
@@ -123,7 +123,7 @@ public sealed class CharacterDesignService
 
         var allBookRefs = ResolveBookRefPaths(projectDir, seeds, maxRefs: 12);
         var editRefs = ResolveEditRefs(
-            projectId, charKey, charDir, preferredPath, allBookRefs, opts, maxRefs, maxBook, onProgress);
+            charKey, charDir, preferredPath, allBookRefs, opts, maxRefs, maxBook, onProgress);
 
         // Wardrobe-locked characters: face/build from text + wardrobe from the shared costume
         // plate only — never also feed in this character's own previous portrait or candidate
@@ -240,13 +240,12 @@ public sealed class CharacterDesignService
             projectRenderStyleLock: projectStyle,
             wardrobeLockDescription: wardrobeDescription,
             hasIdentityRefs: editRefs.Count > 0,
-            hasCostumeRef: costumeRefPath is not null,
-            hasBookIllustrations: ProjectHasBookIllustrations(projectDir));
+            hasCostumeRef: costumeRefPath is not null);
 
         onProgress?.Invoke(
             $"design prompt ready ({prompt.Length} chars) · image_provider={ImageApiLimits.ResolveProvider(imageProvider, imageModel)} max_refs={maxRefs}");
         IReadOnlyList<byte[]> blobs;
-        var mode = "text_only";
+        string mode;
         string? editError = null;
 
         // If preferred lives in variant_01, snapshot it so we can overwrite variant slots safely
@@ -404,7 +403,6 @@ public sealed class CharacterDesignService
     /// Preferred first (when included), then book / explicit selections, capped at maxRefs.
     /// </summary>
     private List<string> ResolveEditRefs(
-        string projectId,
         string charKey,
         string charDir,
         string? preferredPath,
@@ -601,7 +599,7 @@ public sealed class CharacterDesignService
     {
         var seeds = _projects.GetCharacterSeed(projectId, charKey)
             ?? throw new InvalidOperationException($"Unknown character seed: {charKey}");
-        if (IsVoiceOnly(charKey, seeds))
+        if (IsVoiceOnly(seeds))
             throw new InvalidOperationException($"{charKey} is voice-only — no reference image to lock.");
 
         if (!File.Exists(sourcePath))
@@ -635,7 +633,7 @@ public sealed class CharacterDesignService
     {
         var seeds = _projects.GetCharacterSeed(projectId, charKey)
             ?? throw new InvalidOperationException($"Unknown character seed: {charKey}");
-        if (IsVoiceOnly(charKey, seeds))
+        if (IsVoiceOnly(seeds))
             throw new InvalidOperationException($"{charKey} is voice-only — no reference image to lock.");
 
         if (content is null || !content.CanRead)
@@ -727,10 +725,9 @@ public sealed class CharacterDesignService
 
         // Vision clients only attach known extensions — upload staging uses ".bin".
         string? tempForVision = null;
-        var visionPath = imagePath;
         try
         {
-            visionPath = MaterializeImagePathForVision(imagePath, out tempForVision);
+            var visionPath = MaterializeImagePathForVision(imagePath, out tempForVision);
             if (new FileInfo(visionPath).Length < 64)
                 throw new InvalidOperationException(
                     $"Cannot lock {charKey}: portrait image is empty or unreadable.");
@@ -1040,7 +1037,7 @@ public sealed class CharacterDesignService
     {
         var seeds = _projects.GetCharacterSeed(projectId, charKey)
             ?? throw new InvalidOperationException($"Unknown character: {charKey}");
-        if (IsVoiceOnly(charKey, seeds))
+        if (IsVoiceOnly(seeds))
             throw new InvalidOperationException($"{charKey} is voice-only — no image to delete.");
 
         var projectDir = _projects.GetProjectDir(projectId);
@@ -1101,7 +1098,7 @@ public sealed class CharacterDesignService
     {
         var seeds = _projects.GetCharacterSeed(projectId, charKey);
         if (seeds is null) return false;
-        if (IsVoiceOnly(charKey, seeds.Value))
+        if (IsVoiceOnly(seeds.Value))
             throw new InvalidOperationException($"{charKey} is voice-only — nothing to unlock.");
 
         var projectDir = _projects.GetProjectDir(projectId);
@@ -1254,26 +1251,6 @@ public sealed class CharacterDesignService
         return null;
     }
 
-    /// <summary>True when source/book_images contains real image files (reference plates only).</summary>
-    internal static bool ProjectHasBookIllustrations(string projectDir)
-    {
-        var imgDir = Path.Combine(projectDir, "source", "book_images");
-        if (!Directory.Exists(imgDir)) return false;
-        try
-        {
-            return Directory.EnumerateFiles(imgDir, "*.*", SearchOption.AllDirectories).Any(f =>
-            {
-                var e = Path.GetExtension(f);
-                return e.Equals(".png", StringComparison.OrdinalIgnoreCase)
-                       || e.Equals(".jpg", StringComparison.OrdinalIgnoreCase)
-                       || e.Equals(".jpeg", StringComparison.OrdinalIgnoreCase)
-                       || e.Equals(".webp", StringComparison.OrdinalIgnoreCase)
-                       || e.Equals(".gif", StringComparison.OrdinalIgnoreCase);
-            });
-        }
-        catch { return false; }
-    }
-
     public static bool PrefersIllustratedPortraitStyle(
         string? projectRenderStyleLock,
         bool hasImageHints,
@@ -1312,8 +1289,7 @@ public sealed class CharacterDesignService
         string? projectRenderStyleLock = null,
         string? wardrobeLockDescription = null,
         bool hasIdentityRefs = true,
-        bool hasCostumeRef = false,
-        bool hasBookIllustrations = false)
+        bool hasCostumeRef = false)
     {
         var description = !string.IsNullOrWhiteSpace(descriptionOverride)
             ? descriptionOverride!
@@ -1583,7 +1559,7 @@ public sealed class CharacterDesignService
         return fallback;
     }
 
-    private static bool IsVoiceOnly(string key, JsonElement info)
+    private static bool IsVoiceOnly(JsonElement info)
     {
         // Prefer cast seed policy. Do not force voice-only just because key is "Narrator"
         // (on-camera confessor / POV roles are common). Shared mechanism:

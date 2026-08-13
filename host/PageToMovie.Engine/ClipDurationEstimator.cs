@@ -803,12 +803,9 @@ public static class ClipDurationEstimator
             var words = CountWords(dialogueOverride);
             copy["time_weight"] = Math.Clamp(words / 8.0, 0.5, 4.0);
 
-            if (partCount > 1)
-            {
-                if (partIndex > 0)
-                    copy["continuity"] = "continuous_from_previous_beat";
-                // Keep visual_event stable (e.g. "NARRATOR speaks.") for monologue parts
-            }
+            if (partCount > 1 && partIndex > 0)
+                copy["continuity"] = "continuous_from_previous_beat";
+            // Keep visual_event stable (e.g. "NARRATOR speaks.") for monologue parts
         }
 
         return copy;

@@ -140,16 +140,21 @@ public sealed class ProjectContributionService
             {
                 if (!string.IsNullOrWhiteSpace(clip.Sha256))
                 {
+                    var hashMatches = false;
                     try
                     {
                         var existingHash = await MediaRegistryService.HashFileAsync(originFilePath, ct).ConfigureAwait(false);
-                        if (string.Equals(existingHash, clip.Sha256, StringComparison.OrdinalIgnoreCase))
-                        {
-                            result.VerifiedCount++;
-                            continue;
-                        }
+                        hashMatches = string.Equals(existingHash, clip.Sha256, StringComparison.OrdinalIgnoreCase);
                     }
-                    catch { }
+                    catch (Exception)
+                    {
+                        hashMatches = false;
+                    }
+                    if (hashMatches)
+                    {
+                        result.VerifiedCount++;
+                        continue;
+                    }
                 }
                 else
                 {
@@ -372,7 +377,10 @@ public sealed class ProjectContributionService
                     var hashBytes = System.Security.Cryptography.SHA256.HashData(fs);
                     sha = Convert.ToHexString(hashBytes).ToLowerInvariant();
                 }
-                catch { }
+                catch (Exception)
+                {
+                    sha = "";
+                }
             }
         }
 

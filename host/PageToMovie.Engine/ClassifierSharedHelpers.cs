@@ -90,7 +90,10 @@ internal static class ClassifierLabelParser
                     map[key!] = value!;
             }
         }
-        catch { }
+        catch (Exception)
+        {
+            return map;
+        }
         return map;
     }
 }

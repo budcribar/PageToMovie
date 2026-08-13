@@ -75,28 +75,16 @@ public static class SpanFountainScanner
             {
                 elementCount++;
             }
-            // 1. Scene Heading
-            else if (IsSceneHeading(line))
+            // Scene heading, centered text, or transition — same bookkeeping.
+            else if (IsSceneHeading(line) ||
+                     (line.Length >= 2 && line[0] == '>' && line[line.Length - 1] == '<') ||
+                     IsTransition(line))
             {
                 inDialogue = false;
                 inTitlePage = false;
                 elementCount++;
             }
-            // 2. Centered Text
-            else if (line.Length >= 2 && line[0] == '>' && line[line.Length - 1] == '<')
-            {
-                inDialogue = false;
-                inTitlePage = false;
-                elementCount++;
-            }
-            // 3. Forced Transition or Transition ending in TO: / OUT.
-            else if (IsTransition(line))
-            {
-                inDialogue = false;
-                inTitlePage = false;
-                elementCount++;
-            }
-            // 4. Note [[...]]
+            // Note [[...]]
             else if (line.Length >= 4 && line.StartsWith("[[") && line.EndsWith("]]"))
             {
                 elementCount++;

@@ -492,7 +492,10 @@ public partial class Admin
                     await Task.Delay(1000, token);
                 }
             }
-            catch (TaskCanceledException) { }
+            catch (TaskCanceledException)
+            {
+                return;
+            }
         }
 
         private async Task PollEnrichJobAsync(CancellationToken token)
@@ -573,7 +576,10 @@ public partial class Admin
                     await S.NotifyChangedAsync();
                 }
             }
-            catch (TaskCanceledException) { }
+            catch (TaskCanceledException)
+            {
+                return;
+            }
             catch (Exception ex)
             {
                 _archiveError = ex.Message;

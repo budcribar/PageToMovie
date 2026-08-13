@@ -485,8 +485,7 @@ public class ScreenplayModel
                 if (force || string.IsNullOrWhiteSpace(scene.GroupTitle))
                     scene.GroupTitle = prevGroup ?? (string.IsNullOrWhiteSpace(loc) ? $"Sequence {seq}" : loc);
                 else if (!string.IsNullOrWhiteSpace(prevGroup)
-                         && !scene.GroupTitle.Equals(prevGroup, StringComparison.OrdinalIgnoreCase)
-                         && !force)
+                         && !scene.GroupTitle.Equals(prevGroup, StringComparison.OrdinalIgnoreCase))
                 {
                     // Keep user's per-scene title if they split manually; still track
                     prevGroup = scene.GroupTitle;
