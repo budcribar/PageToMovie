@@ -15,7 +15,6 @@ using PageToMovie.Adaptation.Validation;
 using PageToMovie.Adaptation.Conversion;
 using AdaptationFountain = PageToMovie.Adaptation.Conversion.BookToFountainConverter;
 using EngineConversionResult = PageToMovie.Engine.ProjectAdaptationConversionResult;
-using EngineFountainMap = PageToMovie.Engine.BookToFountainConverter;
 using VisionMetaStatus = PageToMovie.Engine.ProjectVisionMetaStatus;
 using CastPackageCrossCheck = PageToMovie.Adaptation.Validation.CastPackageCrossCheck;
 using PageToMovie.Engine;

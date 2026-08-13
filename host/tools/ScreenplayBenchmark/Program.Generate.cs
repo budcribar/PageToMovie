@@ -13,7 +13,6 @@ using PageToMovie.Engine;
 using PageToMovie.Engine.Abstractions;
 using CastPackageCrossCheck = PageToMovie.Adaptation.Validation.CastPackageCrossCheck;
 using EngineConversionResult = PageToMovie.Engine.ProjectAdaptationConversionResult;
-using EngineFountainMap = PageToMovie.Engine.BookToFountainConverter;
 using VisionMetaStatus = PageToMovie.Engine.ProjectVisionMetaStatus;
 
 namespace ScreenplayBenchmark;
@@ -195,7 +194,7 @@ public static partial class Program
             if (adaptResult.UsedHeuristicFallback)
                 generationFallbacks[modelId] = "adaptation_heuristic_fallback";
             var screenplayText = adaptResult.Fountain;
-            var visionMeta = EngineFountainMap.MapVision(adaptResult.VisionMeta);
+            var visionMeta = ProjectVisionMeta.MapVision(adaptResult.VisionMeta);
             var conversion = new EngineConversionResult
             {
                 Fountain = screenplayText,

@@ -524,8 +524,8 @@ public class BookToFountainPathTests
         var mapped = new PageToMovie.Engine.ProjectAdaptationConversionResult
         {
             Fountain = result.Fountain,
-            VisionMeta = PageToMovie.Engine.BookToFountainConverter.MapVision(result.VisionMeta),
-            VisionMetaStatus = PageToMovie.Engine.BookToFountainConverter.MapStatus(result.VisionMetaStatus),
+            VisionMeta = PageToMovie.Engine.ProjectVisionMeta.MapVision(result.VisionMeta),
+            VisionMetaStatus = PageToMovie.Engine.ProjectVisionMeta.MapStatus(result.VisionMetaStatus),
             VisionMetaError = result.VisionMetaError,
         };
         return (result.Fountain, mapped);

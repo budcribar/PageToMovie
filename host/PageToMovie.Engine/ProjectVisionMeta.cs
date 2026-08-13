@@ -2,8 +2,22 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using PageToMovie.Adaptation.Contracts;
 using PageToMovie.Engine.Abstractions;
+using AdaptationConverter = PageToMovie.Adaptation.Conversion.BookToFountainConverter;
 
 namespace PageToMovie.Engine;
+
+/// <summary>
+/// Status of the VISION_META trailer parsed from a Stage 1 model response — mirrors
+/// <see cref="AdaptationVisionMetaStatus"/> (Adaptation's transport-shaped status) at the Engine/project layer.
+/// </summary>
+public enum ProjectVisionMetaStatus
+{
+    PrimaryResponse,
+    RepairResponse,
+    Missing,
+    Malformed,
+    InvalidValue,
+}
 
 /// <summary>
 /// Structured visual medium decided at book→screenplay (adaptation) time.
@@ -227,6 +241,49 @@ public static class ProjectVisionMeta
 
     public static string NormalizeMedium(string? raw) =>
         VisualMediumStyles.NormalizeMedium(raw, allowAuto: true, mapMixedToPhotoreal: false);
+
+    /// <summary>
+    /// Split a model response that may include a VISION_META trailer, mapping the trailer's vision
+    /// fields to <see cref="Document"/>. Delegates the pure split to
+    /// <see cref="PageToMovie.Adaptation.Conversion.BookToFountainConverter.SplitVisionMetaTrailer"/>.
+    /// </summary>
+    public static (string Fountain, Document? Vision) SplitVisionMetaTrailer(string? text)
+    {
+        var (fountain, vision) = AdaptationConverter.SplitVisionMetaTrailer(text);
+        return (fountain, MapVision(vision));
+    }
+
+    /// <summary>Maps Adaptation's transport vision DTO onto the project-shaped <see cref="Document"/>.</summary>
+    public static Document? MapVision(AdaptationVisionMeta? v)
+    {
+        if (v is null) return null;
+        return new Document
+        {
+            SchemaVersion = string.IsNullOrWhiteSpace(v.SchemaVersion)
+                ? CurrentSchemaVersion
+                : v.SchemaVersion,
+            VisualMedium = NormalizeMedium(v.VisualMedium),
+            RenderStyleLock = v.RenderStyleLock,
+            PerformanceLock = v.PerformanceLock,
+            DecidedBy = string.IsNullOrWhiteSpace(v.DecidedBy) ? Adaptation : v.DecidedBy,
+            DecidedAt = v.DecidedAt,
+            Notes = v.Notes,
+        };
+    }
+
+    /// <summary>
+    /// Canonical <see cref="AdaptationVisionMetaStatus"/> → <see cref="ProjectVisionMetaStatus"/> map.
+    /// Public so production (ScreenplayService) and tests share one mapping instead of copies.
+    /// </summary>
+    public static ProjectVisionMetaStatus MapStatus(AdaptationVisionMetaStatus s) => s switch
+    {
+        AdaptationVisionMetaStatus.PrimaryResponse => ProjectVisionMetaStatus.PrimaryResponse,
+        AdaptationVisionMetaStatus.RepairResponse => ProjectVisionMetaStatus.RepairResponse,
+        AdaptationVisionMetaStatus.Missing => ProjectVisionMetaStatus.Missing,
+        AdaptationVisionMetaStatus.Malformed => ProjectVisionMetaStatus.Malformed,
+        AdaptationVisionMetaStatus.InvalidValue => ProjectVisionMetaStatus.InvalidValue,
+        _ => ProjectVisionMetaStatus.Missing,
+    };
 
     /// <summary>
     /// User/UI preference for Stage‑1 MEDIUM DIRECTIVE. <see cref="MediumAuto"/> = model infers.

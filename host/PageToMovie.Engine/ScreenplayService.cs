@@ -1082,13 +1082,13 @@ public static string NormalizeText(string text)
             bookSession: bookSession).ConfigureAwait(false);
 
         var fountain = result.Fountain;
-        var visionFromScript = BookToFountainConverter.MapVision(result.VisionMeta);
+        var visionFromScript = ProjectVisionMeta.MapVision(result.VisionMeta);
         // Cache package shape remains Engine ProjectAdaptationConversionResult for registry compatibility.
         var conversion = new ProjectAdaptationConversionResult
         {
             Fountain = fountain,
             VisionMeta = visionFromScript,
-            VisionMetaStatus = BookToFountainConverter.MapStatus(result.VisionMetaStatus),
+            VisionMetaStatus = ProjectVisionMeta.MapStatus(result.VisionMetaStatus),
             VisionMetaError = result.VisionMetaError,
         };
 
@@ -1514,4 +1514,17 @@ public static string NormalizeText(string text)
 
         return new Stage1Status { Present = false };
     }
+}
+
+/// <summary>
+/// Project-shaped Stage 1 conversion result (Fountain + vision meta mapped onto
+/// <see cref="ProjectVisionMeta.Document"/>) — the cache-registry payload for the shared adaptation
+/// artifact cache in <see cref="ScreenplayService"/> (see <c>adaptation_conversion</c> artifacts).
+/// </summary>
+public sealed record ProjectAdaptationConversionResult
+{
+    public required string Fountain { get; init; }
+    public ProjectVisionMeta.Document? VisionMeta { get; init; }
+    public ProjectVisionMetaStatus VisionMetaStatus { get; init; }
+    public string? VisionMetaError { get; init; }
 }

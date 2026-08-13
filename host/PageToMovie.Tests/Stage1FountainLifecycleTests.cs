@@ -80,7 +80,7 @@ public sealed class Stage1FountainLifecycleTests
 
     private static IReadOnlyList<ModelValidationIssue> ValidatePackage(string package)
     {
-        var split = PageToMovie.Engine.BookToFountainConverter.SplitVisionMetaTrailer(package);
+        var split = PageToMovie.Engine.ProjectVisionMeta.SplitVisionMetaTrailer(package);
         var issues = new List<ModelValidationIssue>();
         if (!AdaptationFountain.LooksLikeGoodFountain(split.Fountain))
             issues.Add(new("invalid_fountain", "Fountain is invalid.", "$.fountain"));

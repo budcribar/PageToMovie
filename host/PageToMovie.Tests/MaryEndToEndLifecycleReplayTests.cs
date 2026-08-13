@@ -117,7 +117,7 @@ public sealed class MaryEndToEndLifecycleReplayTests
     {
         if (name == "stage1")
         {
-            var split = PageToMovie.Engine.BookToFountainConverter.SplitVisionMetaTrailer(json);
+            var split = PageToMovie.Engine.ProjectVisionMeta.SplitVisionMetaTrailer(json);
             var issues = new List<ModelValidationIssue>();
             if (!AdaptationFountain.LooksLikeGoodFountain(split.Fountain)) issues.Add(new("invalid_fountain", "Fountain is invalid."));
             if (split.Vision is null) issues.Add(new("missing_vision_meta", "VISION_META is required."));
