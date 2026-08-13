@@ -949,7 +949,7 @@ public static class AdminEndpoints
         return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired }, statusCode: StatusCodes.Status403Forbidden);
 
     using var reader = new StreamReader(http.Request.Body);
-    var rawJson = await reader.ReadToEndAsync();
+    var rawJson = await reader.ReadToEndAsync(http.RequestAborted);
     try
     {
         if (!SupportedModelCatalog.TryLoadFromJson(rawJson))

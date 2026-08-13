@@ -321,7 +321,7 @@ public static class CharacterEndpoints
         }
         var (index, overrideStyle, overrideReason, overrideNote) =
             await ApiEndpointHelpers.ParseCharacterLockBodyAsync(req, defaultIndex: 1, acceptVariantIndexAlias: true);
-        var result = await jobService.RunCharacterDesignActionAsync(id, "lock-variant", charKey, index, allowStyleOverride: overrideStyle);
+        var result = await jobService.RunCharacterDesignActionAsync(id, "lock-variant", charKey, index, allowStyleOverride: overrideStyle, ct: ct);
         if (overrideStyle)
             await ApiEndpointHelpers.LogStyleOverrideAsync(telemetry, opts, id, charKey, overrideReason, overrideNote);
         return Results.Ok(new { ok = true, message = result, projectId = id, charKey, index });
@@ -413,7 +413,7 @@ public static class CharacterEndpoints
                     holderUserId = lease.HolderUserId,
                 }, statusCode: StatusCodes.Status423Locked);
         }
-        var result = await jobService.RunCharacterDesignActionAsync(id, "unlock", charKey);
+        var result = await jobService.RunCharacterDesignActionAsync(id, "unlock", charKey, ct: ct);
         return Results.Ok(new { ok = true, message = result, projectId = id, charKey });
     }
     catch (Exception ex)

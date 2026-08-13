@@ -115,13 +115,13 @@ public static class AuthEndpoints
     {
         try
         {
-            await userDb.NotePasswordResetRequestedAsync(name);
-            var user = await userDb.ResolveUserAsync(name)
-                       ?? await userDb.GetUserByEmailAsync(name);
+            await userDb.NotePasswordResetRequestedAsync(name, http.RequestAborted);
+            var user = await userDb.ResolveUserAsync(name, http.RequestAborted)
+                       ?? await userDb.GetUserByEmailAsync(name, http.RequestAborted);
             if (user is not null && !user.IsDisabled && !string.IsNullOrWhiteSpace(user.Email) &&
                 auth is AdminAuthService concrete)
             {
-                await concrete.SendPasswordResetEmailAsync(user);
+                await concrete.SendPasswordResetEmailAsync(user, http.RequestAborted);
             }
         }
         catch { /* never leak */ }
@@ -178,9 +178,9 @@ public static class AuthEndpoints
 
     try
     {
-        var user = await userDb.ResolveUserAsync(name) ?? await userDb.GetUserByEmailAsync(name);
+        var user = await userDb.ResolveUserAsync(name, http.RequestAborted) ?? await userDb.GetUserByEmailAsync(name, http.RequestAborted);
         if (user is not null && !UserDatabaseService.IsEmailConfirmed(user) && auth is AdminAuthService concrete)
-            await concrete.SendEmailConfirmAsync(user);
+            await concrete.SendEmailConfirmAsync(user, http.RequestAborted);
     }
     catch (Exception ex)
     {
