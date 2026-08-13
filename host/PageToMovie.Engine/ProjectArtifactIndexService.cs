@@ -20,47 +20,41 @@ public sealed class ProjectArtifactIndexService
         PropertyNameCaseInsensitive = true,
     };
 
-    private static readonly (string Rel, string Role, bool Required)[] IndexedArtifacts =
-    [
-        // Core narrative
-        ("source/book_full.txt", "Source book / prose text", true),
-        ("source/screenplay.fountain", "Signed/working Fountain screenplay", true),
-        ("source/screenplay_meta.json", "Screenplay sign-off metadata", false),
-        ("source/cast_seeds.json", "Cast seeds (looks, locks, voices)", true),
-        ("source/tell_tale_heart.fountain", "Imported Poe fountain (if used)", false),
-
-        // Project config / state
-        ("project.json", "Project id/title", false),
-        ("project_rules.json", "Approved house rules / style locks", true),
-        ("pipeline_state.json", "Clip reviews, auto-review state, cost_ledger", true),
-        ("pipeline_config.json", "Per-project gen config (model, resolution)", false),
-        ("edit_feedback_log.json", "Human edit / pass-fail log", false),
-        ("blueprint.clips.grok.json", "Stage 2 shot plan / clips", true),
-
-        // Media
-        ("assets/movie_wip.mp4", "Full cut (WIP)", true),
-        ("assets/movie_wip.mp4.sources.json", "WIP concat sources + assembly note", false),
-        ("assets/movie_wip.film.json", "Film build EDL + studio.sha256 (provenance)", false),
-        ("assets/characters", "Locked character plates + variants", true),
-        ("assets/video", "Clips + scene composites + duration sidecars", true),
-        ("assets/video/prompts", "Full prompt .txt + .meta.json per clip", true),
-
-        // Review
-        ("assets/review", "Auto-review drafts, frames, index", true),
-        ("assets/review/index.json", "Per-clip review index (rebuild via batch review)", true),
-        ("assets/review/frames", "Durable auto-review sample frames", false),
-        ("assets/review/final_review.json", "Manual/AI final rubric scores (when filled)", false),
-        ("assets/review/FINAL_REVIEW_TEMPLATE.json", "Rubric template for manual final review", false),
-
-        // Telemetry (live streams + snapshots)
-        ("telemetry/cost_ledger.json", "Cost events snapshot (from pipeline_state)", true),
-        ("telemetry/models.json", "Resolved models/options snapshot", false),
-        ("telemetry/api_calls.jsonl", "Live API call log (full prompts)", false),
-        ("telemetry/media_ops.jsonl", "Optional local media-op log (legacy: ffmpeg.jsonl)", false),
-        // Written by this rebuild — not "required" for readiness (would always be missing mid-scan)
-        ("ARTIFACTS.md", "Human map of this project for Claude/manual review", false),
-        ("artifact_index.json", "Machine-readable artifact presence map", false),
-    ];
+    /// <summary>
+    /// Catalog of project-local paths to index. Lines are <c>R|path|role</c> (required for
+    /// manual review) or <c>.|path|role</c> (optional). Kept as one text blob so similar
+    /// path/role rows are data, not duplicated statements.
+    /// </summary>
+    private const string IndexedArtifactCatalog = """
+        R|source/book_full.txt|Source book / prose text
+        R|source/screenplay.fountain|Signed/working Fountain screenplay
+        .|source/screenplay_meta.json|Screenplay sign-off metadata
+        R|source/cast_seeds.json|Cast seeds (looks, locks, voices)
+        .|source/tell_tale_heart.fountain|Imported Poe fountain (if used)
+        .|project.json|Project id/title
+        R|project_rules.json|Approved house rules / style locks
+        R|pipeline_state.json|Clip reviews, auto-review state, cost_ledger
+        .|pipeline_config.json|Per-project gen config (model, resolution)
+        .|edit_feedback_log.json|Human edit / pass-fail log
+        R|blueprint.clips.grok.json|Stage 2 shot plan / clips
+        R|assets/movie_wip.mp4|Full cut (WIP)
+        .|assets/movie_wip.mp4.sources.json|WIP concat sources + assembly note
+        .|assets/movie_wip.film.json|Film build EDL + studio.sha256 (provenance)
+        R|assets/characters|Locked character plates + variants
+        R|assets/video|Clips + scene composites + duration sidecars
+        R|assets/video/prompts|Full prompt .txt + .meta.json per clip
+        R|assets/review|Auto-review drafts, frames, index
+        R|assets/review/index.json|Per-clip review index (rebuild via batch review)
+        .|assets/review/frames|Durable auto-review sample frames
+        .|assets/review/final_review.json|Manual/AI final rubric scores (when filled)
+        .|assets/review/FINAL_REVIEW_TEMPLATE.json|Rubric template for manual final review
+        R|telemetry/cost_ledger.json|Cost events snapshot (from pipeline_state)
+        .|telemetry/models.json|Resolved models/options snapshot
+        .|telemetry/api_calls.jsonl|Live API call log (full prompts)
+        .|telemetry/media_ops.jsonl|Optional local media-op log (legacy: ffmpeg.jsonl)
+        .|ARTIFACTS.md|Human map of this project for Claude/manual review
+        .|artifact_index.json|Machine-readable artifact presence map
+        """;
 
     private const string AssetsFolder = "assets";
     private readonly ProjectStore _projects;
@@ -107,8 +101,7 @@ public sealed class ProjectArtifactIndexService
         await SnapshotTelemetryAsync(projectId, dir, ct).ConfigureAwait(false);
 
         var entries = new List<ArtifactIndexEntry>();
-        foreach (var (rel, role, required) in IndexedArtifacts)
-            AddIndexEntry(entries, dir, rel, role, required);
+        AddCatalogEntries(entries, dir);
 
         AddSceneSourceManifests(entries, dir);
 
@@ -152,6 +145,22 @@ public sealed class ProjectArtifactIndexService
             doc.ReadyForManualFinalReview);
 
         return doc;
+    }
+
+    private static void AddCatalogEntries(List<ArtifactIndexEntry> entries, string dir)
+    {
+        foreach (var raw in IndexedArtifactCatalog.Split('\n'))
+        {
+            var line = raw.Trim();
+            if (line.Length < 3) continue;
+            var firstBar = line.IndexOf('|');
+            var secondBar = line.IndexOf('|', firstBar + 1);
+            if (firstBar <= 0 || secondBar < 0) continue;
+            var required = line[0] == 'R';
+            var rel = line[(firstBar + 1)..secondBar];
+            var role = line[(secondBar + 1)..];
+            AddIndexEntry(entries, dir, rel, role, required);
+        }
     }
 
     private static void AddIndexEntry(
