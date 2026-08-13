@@ -1,0 +1,9 @@
+{
+  "schema_version": "vision_meta.v1",
+  "visual_medium": "photoreal_live_action",
+  "render_style_lock": "STYLE LOCK: photoreal live-action contemporary Midwest and Seattle drama; naturalistic faces, real skin, fabric weave, available light, and period-correct 1990s-2000s wardrobe and interiors for every human cast member and prop; no illustration and no stylized 3D.",
+  "performance_lock": null,
+  "decided_by": "adaptation",
+  "decided_at": null,
+  "notes": "Literary contemporary family drama held as photoreal_live_action. Location groups left as distinct filmable places."
+}
