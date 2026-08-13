@@ -70,35 +70,8 @@ internal static class Stage1ChatExecutor
 
         // Fountain file (merge/repairs) wins over book chain — do not paste 60k words
         // into a book follow-up.
-        string? primaryRaw;
-        if (fountainSession is { IsAvailable: true })
-        {
-            primaryRaw = await fountainSession.CompleteAsync(
-                request.SystemPrompt, request.UserPrompt, request.Model,
-                request.Temperature, ct).ConfigureAwait(false);
-        }
-        else if (bookSession is { IsAvailable: true })
-        {
-            // Later Stage‑1 ops (chunk 2+, merge, repair) reuse previous_response_id.
-            if (!string.IsNullOrWhiteSpace(bookSession.LastResponseId))
-            {
-                primaryRaw = await bookSession.CompleteFollowUpAsync(
-                    request.UserPrompt, request.Model, request.Temperature, ct,
-                    request.Mode, request.ReasoningEffort).ConfigureAwait(false);
-            }
-            else
-            {
-                primaryRaw = await bookSession.CompletePrimaryAsync(
-                    request.SystemPrompt, request.UserPrompt, request.Model,
-                    request.Temperature, ct, request.Mode, request.ReasoningEffort).ConfigureAwait(false);
-            }
-        }
-        else
-        {
-            primaryRaw = await CompleteWithTransientRetryAsync(
-                chat, request.SystemPrompt, request.UserPrompt, request.Model,
-                request.Temperature, request.Mode, request.ReasoningEffort, ct).ConfigureAwait(false);
-        }
+        var primaryRaw = await CompletePrimaryRawAsync(
+            chat, request, fountainSession, bookSession, ct).ConfigureAwait(false);
 
         var primaryCleaned = BookToFountainConverter.StripBookPageTags(
             BookToFountainConverter.StripFences(primaryRaw ?? ""));
@@ -106,73 +79,21 @@ internal static class Stage1ChatExecutor
             .Where(i => !string.IsNullOrWhiteSpace(i.Code))
             .ToList();
 
-        if (!string.IsNullOrWhiteSpace(primaryCleaned) && primaryIssues.Count == 0)
+        if (IsUsableResponse(primaryCleaned, primaryIssues))
         {
             return new Result(new Response(primaryCleaned), Stage1ResultSource.PrimaryResponse, Success: true);
         }
 
-        // One corrective attempt
-        var correctionUser = request.UserPrompt + $"""
-
-
-            CORRECTIVE ATTEMPT ({request.PromptVersion})
-            {request.CorrectionInstruction}
-            Validation findings:
-            {string.Join("\n", primaryIssues.Select(i => $"- {i.Path ?? "$"}: {i.Message}"))}
-            Return the complete corrected Fountain package only. Do not return a patch list.
-            Previous response:
-            --- BEGIN PREVIOUS RESPONSE ---
-            {primaryRaw}
-            --- END PREVIOUS RESPONSE ---
-            """;
-
-        var corrTemp = Math.Min(request.Temperature, 0.15);
-        string? correctiveRaw = null;
-        try
-        {
-            if (fountainSession is { IsAvailable: true })
-            {
-                var findings = string.Join("\n", primaryIssues.Select(i => $"- {i.Path ?? "$"}: {i.Message}"));
-                var shortCorrection =
-                    $"CORRECTIVE ATTEMPT ({request.PromptVersion})\n" +
-                    $"{request.CorrectionInstruction}\n" +
-                    $"Validation findings:\n{findings}\n" +
-                    "The Fountain is still attached. Return the complete corrected Fountain only.";
-                correctiveRaw = await fountainSession.CompleteAsync(
-                    request.SystemPrompt, shortCorrection, request.Model, corrTemp, ct)
-                    .ConfigureAwait(false);
-            }
-            else if (bookSession is { IsAvailable: true })
-            {
-                // Follow-up: only correction instructions — no book body re-send.
-                var findings = string.Join("\n", primaryIssues.Select(i => $"- {i.Path ?? "$"}: {i.Message}"));
-                var shortCorrection =
-                    $"CORRECTIVE ATTEMPT ({request.PromptVersion})\n" +
-                    $"{request.CorrectionInstruction}\n" +
-                    $"Validation findings:\n{findings}\n" +
-                    "Return the complete corrected Fountain package only. Do not return a patch list.";
-                correctiveRaw = await bookSession.CompleteFollowUpAsync(
-                    shortCorrection, request.Model, corrTemp, ct,
-                    request.Mode + "_correction", request.ReasoningEffort).ConfigureAwait(false);
-            }
-            else
-            {
-                correctiveRaw = await CompleteWithTransientRetryAsync(
-                    chat, request.SystemPrompt, correctionUser, request.Model,
-                    corrTemp, request.Mode + "_correction", request.ReasoningEffort, ct).ConfigureAwait(false);
-            }
-        }
-        catch
-        {
-            /* fall through to deterministic */
-        }
+        var correctiveRaw = await TryCompleteCorrectionAsync(
+            chat, request, fountainSession, bookSession, primaryRaw, primaryIssues, ct)
+            .ConfigureAwait(false);
 
         if (correctiveRaw is not null)
         {
             var corrCleaned = BookToFountainConverter.StripBookPageTags(
                 BookToFountainConverter.StripFences(correctiveRaw));
             var corrIssues = validate(corrCleaned);
-            if (!string.IsNullOrWhiteSpace(corrCleaned) && corrIssues.Count == 0)
+            if (IsUsableResponse(corrCleaned, corrIssues))
             {
                 return new Result(new Response(corrCleaned), Stage1ResultSource.CorrectiveResponse, Success: true);
             }
@@ -187,6 +108,111 @@ internal static class Stage1ChatExecutor
         }
 
         return new Result(null, Stage1ResultSource.Failed, Success: false);
+    }
+
+    private static bool IsUsableResponse(string cleaned, IReadOnlyList<Stage1ValidationIssue> issues) =>
+        !string.IsNullOrWhiteSpace(cleaned) && issues.Count == 0;
+
+    private static string FormatFindings(IReadOnlyList<Stage1ValidationIssue> issues) =>
+        string.Join("\n", issues.Select(i => $"- {i.Path ?? "$"}: {i.Message}"));
+
+    private static string BuildShortCorrection(Request request, string findings, string closingLine) =>
+        $"CORRECTIVE ATTEMPT ({request.PromptVersion})\n" +
+        $"{request.CorrectionInstruction}\n" +
+        $"Validation findings:\n{findings}\n" +
+        closingLine;
+
+    private static async Task<string> CompletePrimaryRawAsync(
+        IChatClient chat,
+        Request request,
+        IFountainFileSession? fountainSession,
+        IBookFileSession? bookSession,
+        CancellationToken ct)
+    {
+        if (fountainSession is { IsAvailable: true })
+        {
+            return await fountainSession.CompleteAsync(
+                request.SystemPrompt, request.UserPrompt, request.Model,
+                request.Temperature, ct).ConfigureAwait(false);
+        }
+
+        if (bookSession is { IsAvailable: true })
+        {
+            // Later Stage‑1 ops (chunk 2+, merge, repair) reuse previous_response_id.
+            if (!string.IsNullOrWhiteSpace(bookSession.LastResponseId))
+            {
+                return await bookSession.CompleteFollowUpAsync(
+                    request.UserPrompt, request.Model, request.Temperature, ct,
+                    request.Mode, request.ReasoningEffort).ConfigureAwait(false);
+            }
+
+            return await bookSession.CompletePrimaryAsync(
+                request.SystemPrompt, request.UserPrompt, request.Model,
+                request.Temperature, ct, request.Mode, request.ReasoningEffort).ConfigureAwait(false);
+        }
+
+        return await CompleteWithTransientRetryAsync(
+            chat, request.SystemPrompt, request.UserPrompt, request.Model,
+            request.Temperature, request.Mode, request.ReasoningEffort, ct).ConfigureAwait(false);
+    }
+
+    private static async Task<string?> TryCompleteCorrectionAsync(
+        IChatClient chat,
+        Request request,
+        IFountainFileSession? fountainSession,
+        IBookFileSession? bookSession,
+        string? primaryRaw,
+        IReadOnlyList<Stage1ValidationIssue> primaryIssues,
+        CancellationToken ct)
+    {
+        var findings = FormatFindings(primaryIssues);
+        var correctionUser = request.UserPrompt + $"""
+
+
+            CORRECTIVE ATTEMPT ({request.PromptVersion})
+            {request.CorrectionInstruction}
+            Validation findings:
+            {findings}
+            Return the complete corrected Fountain package only. Do not return a patch list.
+            Previous response:
+            --- BEGIN PREVIOUS RESPONSE ---
+            {primaryRaw}
+            --- END PREVIOUS RESPONSE ---
+            """;
+
+        var corrTemp = Math.Min(request.Temperature, 0.15);
+        try
+        {
+            if (fountainSession is { IsAvailable: true })
+            {
+                var shortCorrection = BuildShortCorrection(
+                    request, findings,
+                    "The Fountain is still attached. Return the complete corrected Fountain only.");
+                return await fountainSession.CompleteAsync(
+                    request.SystemPrompt, shortCorrection, request.Model, corrTemp, ct)
+                    .ConfigureAwait(false);
+            }
+
+            if (bookSession is { IsAvailable: true })
+            {
+                // Follow-up: only correction instructions — no book body re-send.
+                var shortCorrection = BuildShortCorrection(
+                    request, findings,
+                    "Return the complete corrected Fountain package only. Do not return a patch list.");
+                return await bookSession.CompleteFollowUpAsync(
+                    shortCorrection, request.Model, corrTemp, ct,
+                    request.Mode + "_correction", request.ReasoningEffort).ConfigureAwait(false);
+            }
+
+            return await CompleteWithTransientRetryAsync(
+                chat, request.SystemPrompt, correctionUser, request.Model,
+                corrTemp, request.Mode + "_correction", request.ReasoningEffort, ct).ConfigureAwait(false);
+        }
+        catch
+        {
+            /* fall through to deterministic */
+            return null;
+        }
     }
 
     private static async Task<string> CompleteWithTransientRetryAsync(
