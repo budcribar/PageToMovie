@@ -43,58 +43,7 @@ public static class MediaEndpoints
     {
         await store.RequireProjectAsync(id, ct);
         var projectDir = await store.GetProjectDirAsync(id, ct);
-        // Media that may have arrived via full project import (video, music, audio, history).
-        var list = new List<object>();
-        var assetsRoot = Path.Combine(projectDir, ApiText.AssetsFolder);
-        var mediaExts = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ".mp4", ".webm", ".mov", ".mkv", ".m4v",
-            ".mp3", ".wav", ".m4a", ".ogg", ".aac", ".flac", ".opus",
-            ".png", ".jpg", ApiText.JpegExtension, ".webp", ".gif",
-        };
-
-        if (Directory.Exists(assetsRoot))
-        {
-            foreach (var file in Directory.EnumerateFiles(assetsRoot, "*", SearchOption.AllDirectories))
-            {
-                var name = Path.GetFileName(file);
-                if (name is "Thumbs.db" or ".DS_Store") continue;
-                var ext = Path.GetExtension(file);
-                var isClipJson = name.EndsWith(".clip.json", StringComparison.OrdinalIgnoreCase);
-                if (!isClipJson && !mediaExts.Contains(ext))
-                    continue;
-
-                var relPath = Path.GetRelativePath(projectDir, file).Replace('\\', '/');
-                var fi = new FileInfo(file);
-                var isMp4 = ext.Equals(".mp4", StringComparison.OrdinalIgnoreCase);
-
-                string? sha256 = null;
-                try
-                {
-                    if (fi.Length <= 64L * 1024 * 1024)
-                    {
-                        using var fs = File.OpenRead(file);
-                        var hashBytes = await System.Security.Cryptography.SHA256.HashDataAsync(fs, ct).ConfigureAwait(false);
-                        sha256 = Convert.ToHexString(hashBytes).ToLowerInvariant();
-                    }
-                }
-                catch { /* best-effort sha256 */ }
-
-                var ticketToken = tickets.Issue($"{id}:{relPath}", TimeSpan.FromHours(2));
-                var streamUrl = $"/api/projects/{Uri.EscapeDataString(id)}/media/file?path={Uri.EscapeDataString(relPath)}&ticket={ticketToken}";
-
-                list.Add(new
-                {
-                    relativePath = relPath,
-                    fileName = name,
-                    sizeBytes = fi.Length,
-                    sha256,
-                    isMp4,
-                    streamUrl,
-                });
-            }
-        }
-
+        var list = await CollectProjectMediaFilesAsync(id, projectDir, tickets, ct);
         return Results.Ok(new { ok = true, projectId = id, files = list });
     }
     catch (Exception ex)
@@ -102,6 +51,72 @@ public static class MediaEndpoints
         return Results.BadRequest(new { ok = false, error = ex.Message });
     }
 }
+
+    private static readonly HashSet<string> MediaSyncExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".mp4", ".webm", ".mov", ".mkv", ".m4v",
+        ".mp3", ".wav", ".m4a", ".ogg", ".aac", ".flac", ".opus",
+        ".png", ".jpg", ApiText.JpegExtension, ".webp", ".gif",
+    };
+
+    private static async Task<List<object>> CollectProjectMediaFilesAsync(
+        string id, string projectDir, MediaProxyTicketStore tickets, CancellationToken ct)
+    {
+        var list = new List<object>();
+        var assetsRoot = Path.Combine(projectDir, ApiText.AssetsFolder);
+        if (!Directory.Exists(assetsRoot))
+            return list;
+
+        foreach (var file in Directory.EnumerateFiles(assetsRoot, "*", SearchOption.AllDirectories))
+        {
+            var item = await TryDescribeMediaFileAsync(id, projectDir, file, tickets, ct);
+            if (item is not null)
+                list.Add(item);
+        }
+        return list;
+    }
+
+    private static async Task<object?> TryDescribeMediaFileAsync(
+        string id, string projectDir, string file, MediaProxyTicketStore tickets, CancellationToken ct)
+    {
+        var name = Path.GetFileName(file);
+        if (name is "Thumbs.db" or ".DS_Store")
+            return null;
+        var ext = Path.GetExtension(file);
+        var isClipJson = name.EndsWith(".clip.json", StringComparison.OrdinalIgnoreCase);
+        if (!isClipJson && !MediaSyncExtensions.Contains(ext))
+            return null;
+
+        var relPath = Path.GetRelativePath(projectDir, file).Replace('\\', '/');
+        var fi = new FileInfo(file);
+        var isMp4 = ext.Equals(".mp4", StringComparison.OrdinalIgnoreCase);
+        var sha256 = await TryHashMediaFileAsync(file, fi.Length, ct);
+        var ticketToken = tickets.Issue($"{id}:{relPath}", TimeSpan.FromHours(2));
+        var streamUrl = $"/api/projects/{Uri.EscapeDataString(id)}/media/file?path={Uri.EscapeDataString(relPath)}&ticket={ticketToken}";
+        return new
+        {
+            relativePath = relPath,
+            fileName = name,
+            sizeBytes = fi.Length,
+            sha256,
+            isMp4,
+            streamUrl,
+        };
+    }
+
+    private static async Task<string?> TryHashMediaFileAsync(string file, long length, CancellationToken ct)
+    {
+        try
+        {
+            if (length > 64L * 1024 * 1024)
+                return null;
+            using var fs = File.OpenRead(file);
+            var hashBytes = await System.Security.Cryptography.SHA256.HashDataAsync(fs, ct).ConfigureAwait(false);
+            return Convert.ToHexString(hashBytes).ToLowerInvariant();
+        }
+        catch { /* best-effort sha256 */ }
+        return null;
+    }
 
     private static async Task<IResult> GetProjectsIdMediaFile(string id,
     string path,
@@ -190,6 +205,18 @@ public static class MediaEndpoints
             user.UserId,
             ct);
 
+        await MaybeOffloadServerMediaAsync(id, dto, user.UserId, store, ct);
+        return Results.Ok(new { ok = true, media = dto });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { ok = false, error = ex.Message });
+    }
+}
+
+    private static async Task MaybeOffloadServerMediaAsync(
+        string id, MediaObjectDto dto, string? userId, ProjectStore store, CancellationToken ct)
+    {
         // Character reference images are kept server-side (small; Cast readiness + thumbnails depend on
         // the ref file surviving reload). Client-storage offload is for large video clips only.
         var isCharacterImage = dto.RelativePath.Replace('\\', '/')
@@ -203,56 +230,53 @@ public static class MediaEndpoints
             var full = Path.Combine(dir, rel);
             Directory.CreateDirectory(Path.GetDirectoryName(full) ?? ".");
 
-            // Curated/forkable source projects opt out of offload (project.json "keep_media_on_server":
-            // true) so their clips stay server-side and remain available to forks + the voice-dub input.
-            // A stopgap for clips generated before source_url capture; rebuilt movies re-fetch by URL.
-            var keepMediaOnServer = false;
-            try
-            {
-                var pjPath = Path.Combine(dir, "project.json");
-                if (File.Exists(pjPath))
-                {
-                    using var pjDoc = System.Text.Json.JsonDocument.Parse(await File.ReadAllTextAsync(pjPath, ct));
-                    keepMediaOnServer = pjDoc.RootElement.TryGetProperty("keep_media_on_server", out var kEl)
-                        && kEl.ValueKind == System.Text.Json.JsonValueKind.True;
-                }
-            }
-            catch { /* default: offload as usual */ }
-
+            var keepMediaOnServer = await ReadKeepMediaOnServerAsync(dir, ct);
             if (!isCharacterImage && !keepMediaOnServer)
-            {
-                var marker = full + ".client.json";
-                await File.WriteAllTextAsync(marker, System.Text.Json.JsonSerializer.Serialize(new
-                {
-                    storage = "client",
-                    sha256 = dto.Sha256,
-                    sizeBytes = dto.SizeBytes,
-                    registeredAt = dto.CreatedAt,
-                    userId = user.UserId,
-                }) + "\n", ct);
-
-                // Reclaim server volume storage: if server MP4 exists and matches verified client registration size, delete server copy.
-                if (File.Exists(full))
-                {
-                    var fi = new FileInfo(full);
-                    if (dto.SizeBytes <= 0 || fi.Length == dto.SizeBytes)
-                    {
-                        File.Delete(full);
-                    }
-                }
-            }
+                await WriteClientStorageMarkerAndDeleteServerCopyAsync(full, dto, userId, ct);
 
             store.InvalidateSceneListCache(id);
         }
         catch { /* non-fatal */ }
+    }
 
-        return Results.Ok(new { ok = true, media = dto });
-    }
-    catch (Exception ex)
+    private static async Task<bool> ReadKeepMediaOnServerAsync(string projectDir, CancellationToken ct)
     {
-        return Results.BadRequest(new { ok = false, error = ex.Message });
+        // Curated/forkable source projects opt out of offload (project.json "keep_media_on_server":
+        // true) so their clips stay server-side and remain available to forks + the voice-dub input.
+        // A stopgap for clips generated before source_url capture; rebuilt movies re-fetch by URL.
+        try
+        {
+            var pjPath = Path.Combine(projectDir, "project.json");
+            if (!File.Exists(pjPath))
+                return false;
+            using var pjDoc = System.Text.Json.JsonDocument.Parse(await File.ReadAllTextAsync(pjPath, ct));
+            return pjDoc.RootElement.TryGetProperty("keep_media_on_server", out var kEl)
+                && kEl.ValueKind == System.Text.Json.JsonValueKind.True;
+        }
+        catch { /* default: offload as usual */ }
+        return false;
     }
-}
+
+    private static async Task WriteClientStorageMarkerAndDeleteServerCopyAsync(
+        string full, MediaObjectDto dto, string? userId, CancellationToken ct)
+    {
+        var marker = full + ".client.json";
+        await File.WriteAllTextAsync(marker, System.Text.Json.JsonSerializer.Serialize(new
+        {
+            storage = "client",
+            sha256 = dto.Sha256,
+            sizeBytes = dto.SizeBytes,
+            registeredAt = dto.CreatedAt,
+            userId,
+        }) + "\n", ct);
+
+        // Reclaim server volume storage: if server MP4 exists and matches verified client registration size, delete server copy.
+        if (!File.Exists(full))
+            return;
+        var fi = new FileInfo(full);
+        if (dto.SizeBytes <= 0 || fi.Length == dto.SizeBytes)
+            File.Delete(full);
+    }
 
     private static async Task<IResult> GetProjectsIdMedia(string id,
     IUserContext user,
@@ -285,10 +309,19 @@ public static class MediaEndpoints
     if (string.IsNullOrWhiteSpace(url))
         return Results.NotFound(new { ok = false, error = "Media ticket expired or invalid" });
 
-    // Inline provider bytes (e.g. ElevenLabs Music streams audio back rather than hosting a URL):
-    // decode the self-contained data: URL and serve it, so no media is persisted on the API host.
-    if (url.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+    if (TryServeDataUrl(url) is { } dataResult)
+        return dataResult;
+    if (TryServeFixture(url) is { } fixtureResult)
+        return fixtureResult;
+    return await ProxyUpstreamMediaAsync(url, httpFactory, httpContext, ct);
+}
+
+    private static IResult? TryServeDataUrl(string url)
     {
+        // Inline provider bytes (e.g. ElevenLabs Music streams audio back rather than hosting a URL):
+        // decode the self-contained data: URL and serve it, so no media is persisted on the API host.
+        if (!url.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+            return null;
         var comma = url.IndexOf(',');
         var meta = comma > 0 ? url[5..comma] : "";
         if (comma < 0 || !meta.Contains("base64", StringComparison.OrdinalIgnoreCase))
@@ -303,10 +336,12 @@ public static class MediaEndpoints
         return Results.Bytes(dataBytes, contentType: dataCtype, fileDownloadName: "track" + ext);
     }
 
-    // Fakes-mode local fixture (no upstream provider to fetch from) — same ticket
-    // mechanism as a real provider URL, just served from disk instead of proxied over HTTP.
-    if (url.StartsWith("fixture:", StringComparison.OrdinalIgnoreCase))
+    private static IResult? TryServeFixture(string url)
     {
+        // Fakes-mode local fixture (no upstream provider to fetch from) — same ticket
+        // mechanism as a real provider URL, just served from disk instead of proxied over HTTP.
+        if (!url.StartsWith("fixture:", StringComparison.OrdinalIgnoreCase))
+            return null;
         var fixturePath = url["fixture:".Length..];
         if (!File.Exists(fixturePath))
             return Results.NotFound(new { ok = false, error = "Fixture file not found" });
@@ -321,32 +356,35 @@ public static class MediaEndpoints
         return Results.Stream(fixtureStream, contentType: fixtureCtype, fileDownloadName: Path.GetFileName(fixturePath));
     }
 
-    var http = httpFactory.CreateClient("media-proxy");
-    HttpResponseMessage? resp = null;
-    try
+    private static async Task<IResult> ProxyUpstreamMediaAsync(
+        string url, IHttpClientFactory httpFactory, HttpContext httpContext, CancellationToken ct)
     {
-        resp = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
-        if (!resp.IsSuccessStatusCode)
+        var http = httpFactory.CreateClient("media-proxy");
+        HttpResponseMessage? resp = null;
+        try
         {
-            var code = (int)resp.StatusCode;
-            return Results.Json(new { ok = false, error = $"Upstream HTTP {code}" }, statusCode: code);
-        }
+            resp = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
+            if (!resp.IsSuccessStatusCode)
+            {
+                var code = (int)resp.StatusCode;
+                return Results.Json(new { ok = false, error = $"Upstream HTTP {code}" }, statusCode: code);
+            }
 
-        var stream = await resp.Content.ReadAsStreamAsync(ct);
-        var ctype = resp.Content.Headers.ContentType?.ToString() ?? SpecializedMimeType.VideoMp4.ToMimeTypeString();
-        // Results.Stream has no completion callback — RegisterForDisposeAsync guarantees resp is
-        // disposed once the response body finishes writing, on every exit path (success or client abort).
-        httpContext.Response.RegisterForDispose(resp);
-        resp = null;
-        return Results.Stream(stream, contentType: ctype, fileDownloadName: "clip.mp4");
+            var stream = await resp.Content.ReadAsStreamAsync(ct);
+            var ctype = resp.Content.Headers.ContentType?.ToString() ?? SpecializedMimeType.VideoMp4.ToMimeTypeString();
+            // Results.Stream has no completion callback — RegisterForDisposeAsync guarantees resp is
+            // disposed once the response body finishes writing, on every exit path (success or client abort).
+            httpContext.Response.RegisterForDispose(resp);
+            resp = null;
+            return Results.Stream(stream, contentType: ctype, fileDownloadName: "clip.mp4");
+        }
+        catch (Exception ex)
+        {
+            return Results.BadRequest(new { ok = false, error = ex.Message });
+        }
+        finally
+        {
+            resp?.Dispose();
+        }
     }
-    catch (Exception ex)
-    {
-        return Results.BadRequest(new { ok = false, error = ex.Message });
-    }
-    finally
-    {
-        resp?.Dispose();
-    }
-}
 }

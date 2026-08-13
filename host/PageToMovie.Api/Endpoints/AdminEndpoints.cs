@@ -786,45 +786,90 @@ public static class AdminEndpoints
         return Results.Json(new { ok = false, error = ApiText.AdminRoleRequired },
             statusCode: StatusCodes.Status403Forbidden);
 
-    if (body is null || string.IsNullOrWhiteSpace(body.UserId))
-        return Results.BadRequest(new { ok = false, error = ApiText.UserIdRequired });
-    if (string.IsNullOrWhiteSpace(body.ConfirmUsername))
-        return Results.BadRequest(new { ok = false, error = "confirmUsername is required" });
-    if (string.IsNullOrEmpty(body.AdminPassword))
-        return Results.BadRequest(new { ok = false, error = "adminPassword is required" });
-
-    if (!await auth.VerifyCallerPasswordAsync(user.UserId, body.AdminPassword, ct))
-        return Results.Json(new { ok = false, error = "Admin password is incorrect." },
-            statusCode: StatusCodes.Status403Forbidden);
-
-    var target = await userDb.ResolveUserAsync(body.UserId.Trim(), ct);
-    if (target is null)
+    var targetUser = await ValidateAdminUserDeleteAsync(body, user, auth, userDb, ct);
+    if (targetUser is IResult denied)
+        return denied;
+    if (targetUser is not UserEntity target)
         return Results.NotFound(new { ok = false, error = ApiText.UserNotFound });
 
-    if (!string.Equals(body.ConfirmUsername.Trim(), target.Username, StringComparison.OrdinalIgnoreCase) &&
-        !string.Equals(body.ConfirmUsername.Trim(), target.UserId, StringComparison.OrdinalIgnoreCase))
-        return Results.BadRequest(new
-        {
-            ok = false,
-            error = "confirmUsername must match the target username exactly.",
-        });
+    var (deletedProjects, projectErrors) = await DeleteOwnedProjectsIfRequestedAsync(
+        body.DeleteOwnedProjects, target, projects, ct);
 
-    if (string.Equals(target.UserId, user.UserId, StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(target.Username, user.UserId, StringComparison.OrdinalIgnoreCase))
-        return Results.BadRequest(new { ok = false, error = "You cannot delete your own account." });
+    var deletedDemos = await DeleteDemosForUserAsync(demos, target, ct);
 
-    if (string.Equals(target.Role, "Admin", StringComparison.OrdinalIgnoreCase))
+    var removed = await userDb.HardDeleteUserAsync(target.UserId, ct);
+    if (!removed)
+        return Results.NotFound(new { ok = false, error = "user not found or already deleted" });
+
+    return Results.Ok(new
     {
-        var activeAdmins = await userDb.CountActiveAdminsAsync(ct);
-        var countsAsActive = !target.IsDisabled;
-        if (countsAsActive && activeAdmins <= 1)
+        ok = true,
+        userId = target.UserId,
+        username = target.Username,
+        deletedProjects,
+        deletedDemos,
+        projectErrors = projectErrors.Count > 0 ? projectErrors : null,
+        message = $"Deleted {target.Username} (projects: {deletedProjects}, demos: {deletedDemos}).",
+    });
+}
+
+    private static async Task<object> ValidateAdminUserDeleteAsync(
+        AdminDeleteUserRequest body,
+        IUserContext user,
+        IAdminAuthService auth,
+        UserDatabaseService userDb,
+        CancellationToken ct)
+    {
+        if (body is null || string.IsNullOrWhiteSpace(body.UserId))
+            return Results.BadRequest(new { ok = false, error = ApiText.UserIdRequired });
+        if (string.IsNullOrWhiteSpace(body.ConfirmUsername))
+            return Results.BadRequest(new { ok = false, error = "confirmUsername is required" });
+        if (string.IsNullOrEmpty(body.AdminPassword))
+            return Results.BadRequest(new { ok = false, error = "adminPassword is required" });
+
+        if (!await auth.VerifyCallerPasswordAsync(user.UserId, body.AdminPassword, ct))
+            return Results.Json(new { ok = false, error = "Admin password is incorrect." },
+                statusCode: StatusCodes.Status403Forbidden);
+
+        var target = await userDb.ResolveUserAsync(body.UserId.Trim(), ct);
+        if (target is null)
+            return Results.NotFound(new { ok = false, error = ApiText.UserNotFound });
+
+        if (!string.Equals(body.ConfirmUsername.Trim(), target.Username, StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(body.ConfirmUsername.Trim(), target.UserId, StringComparison.OrdinalIgnoreCase))
+            return Results.BadRequest(new
+            {
+                ok = false,
+                error = "confirmUsername must match the target username exactly.",
+            });
+
+        if (string.Equals(target.UserId, user.UserId, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(target.Username, user.UserId, StringComparison.OrdinalIgnoreCase))
+            return Results.BadRequest(new { ok = false, error = "You cannot delete your own account." });
+
+        if (await WouldRemoveLastActiveAdminAsync(target, userDb, ct))
             return Results.BadRequest(new { ok = false, error = "Cannot delete the last active admin." });
+
+        return target;
     }
 
-    var deletedProjects = 0;
-    var projectErrors = new List<string>();
-    if (body.DeleteOwnedProjects)
+    private static async Task<bool> WouldRemoveLastActiveAdminAsync(UserEntity target, UserDatabaseService userDb, CancellationToken ct)
     {
+        if (!string.Equals(target.Role, "Admin", StringComparison.OrdinalIgnoreCase))
+            return false;
+        var activeAdmins = await userDb.CountActiveAdminsAsync(ct);
+        var countsAsActive = !target.IsDisabled;
+        return countsAsActive && activeAdmins <= 1;
+    }
+
+    private static async Task<(int Deleted, List<string> Errors)> DeleteOwnedProjectsIfRequestedAsync(
+        bool deleteOwned, UserEntity target, ProjectStore projects, CancellationToken ct)
+    {
+        var deletedProjects = 0;
+        var projectErrors = new List<string>();
+        if (!deleteOwned)
+            return (deletedProjects, projectErrors);
+
         var all = await projects.ListProjectsAsync(ct);
         var owned = all.Where(p =>
             !string.IsNullOrWhiteSpace(p.OwnerUserId) &&
@@ -843,28 +888,17 @@ public static class AdminEndpoints
                 projectErrors.Add($"{id}: {ex.Message}");
             }
         }
+        return (deletedProjects, projectErrors);
     }
 
-    var deletedDemos = await demos.HardDeleteAllByUserAsync(target.UserId, ct);
-    // Also match demos stored under username if different from user_id.
-    if (!string.Equals(target.UserId, target.Username, StringComparison.OrdinalIgnoreCase))
-        deletedDemos += await demos.HardDeleteAllByUserAsync(target.Username, ct);
-
-    var removed = await userDb.HardDeleteUserAsync(target.UserId, ct);
-    if (!removed)
-        return Results.NotFound(new { ok = false, error = "user not found or already deleted" });
-
-    return Results.Ok(new
+    private static async Task<int> DeleteDemosForUserAsync(DemoCatalogService demos, UserEntity target, CancellationToken ct)
     {
-        ok = true,
-        userId = target.UserId,
-        username = target.Username,
-        deletedProjects,
-        deletedDemos,
-        projectErrors = projectErrors.Count > 0 ? projectErrors : null,
-        message = $"Deleted {target.Username} (projects: {deletedProjects}, demos: {deletedDemos}).",
-    });
-}
+        var deletedDemos = await demos.HardDeleteAllByUserAsync(target.UserId, ct);
+        // Also match demos stored under username if different from user_id.
+        if (!string.Equals(target.UserId, target.Username, StringComparison.OrdinalIgnoreCase))
+            deletedDemos += await demos.HardDeleteAllByUserAsync(target.Username, ct);
+        return deletedDemos;
+    }
 
     private static IResult GetAdminConfig(IUserContext user, IRuntimeConfigStore config)
     {

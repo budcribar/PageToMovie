@@ -127,26 +127,36 @@ internal static class ApiEndpointHelpers
     public static async Task<(int Index, bool OverrideStyle, string? Reason, string? Note)> ParseCharacterLockBodyAsync(
         HttpRequest req, int defaultIndex, bool acceptVariantIndexAlias = false)
     {
-        var index = defaultIndex;
+        if (!req.HasJsonContentType())
+            return (defaultIndex, false, null, null);
+        using var doc = await JsonDocument.ParseAsync(req.Body);
+        return ReadLockBodyFromJson(doc.RootElement, defaultIndex, acceptVariantIndexAlias);
+    }
+
+    private static (int Index, bool OverrideStyle, string? Reason, string? Note) ReadLockBodyFromJson(
+        JsonElement root, int defaultIndex, bool acceptVariantIndexAlias)
+    {
+        var index = ReadLockIndex(root, defaultIndex, acceptVariantIndexAlias);
         var overrideStyle = false;
         string? overrideReason = null, overrideNote = null;
-        if (req.HasJsonContentType())
-        {
-            using var doc = await JsonDocument.ParseAsync(req.Body);
-            if (doc.RootElement.TryGetProperty("index", out var ix) && ix.TryGetInt32(out var n))
-                index = n;
-            else if (acceptVariantIndexAlias
-                     && doc.RootElement.TryGetProperty("variantIndex", out var vx)
-                     && vx.TryGetInt32(out var n2))
-                index = n2;
-            if (doc.RootElement.TryGetProperty("overrideStyle", out var os) && os.ValueKind is JsonValueKind.True or JsonValueKind.False)
-                overrideStyle = os.GetBoolean();
-            if (doc.RootElement.TryGetProperty("overrideReason", out var orr) && orr.ValueKind == JsonValueKind.String)
-                overrideReason = orr.GetString();
-            if (doc.RootElement.TryGetProperty("overrideNote", out var onote) && onote.ValueKind == JsonValueKind.String)
-                overrideNote = onote.GetString();
-        }
+        if (root.TryGetProperty("overrideStyle", out var os) && os.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            overrideStyle = os.GetBoolean();
+        if (root.TryGetProperty("overrideReason", out var orr) && orr.ValueKind == JsonValueKind.String)
+            overrideReason = orr.GetString();
+        if (root.TryGetProperty("overrideNote", out var onote) && onote.ValueKind == JsonValueKind.String)
+            overrideNote = onote.GetString();
         return (index, overrideStyle, overrideReason, overrideNote);
+    }
+
+    private static int ReadLockIndex(JsonElement root, int defaultIndex, bool acceptVariantIndexAlias)
+    {
+        if (root.TryGetProperty("index", out var ix) && ix.TryGetInt32(out var n))
+            return n;
+        if (acceptVariantIndexAlias
+            && root.TryGetProperty("variantIndex", out var vx)
+            && vx.TryGetInt32(out var n2))
+            return n2;
+        return defaultIndex;
     }
 
     /// <summary>

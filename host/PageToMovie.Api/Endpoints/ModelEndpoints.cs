@@ -37,46 +37,56 @@ public static class ModelEndpoints
             return Results.Text(raw, JsonKeys.ApplicationJson);
 
         // Non-admin: strip labMode models so WASM bootstrap cannot offer them.
-        using var doc = System.Text.Json.JsonDocument.Parse(raw);
-        if (doc.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object
-            || !doc.RootElement.TryGetProperty("models", out var modelsEl)
-            || modelsEl.ValueKind != System.Text.Json.JsonValueKind.Array)
-            return Results.Text(raw, JsonKeys.ApplicationJson);
-
-        using var streamOut = new MemoryStream();
-        using (var writer = new System.Text.Json.Utf8JsonWriter(streamOut, new System.Text.Json.JsonWriterOptions { Indented = true }))
-        {
-            writer.WriteStartObject();
-            foreach (var prop in doc.RootElement.EnumerateObject())
-            {
-                if (prop.NameEquals("models"))
-                {
-                    writer.WritePropertyName("models");
-                    writer.WriteStartArray();
-                    foreach (var m in modelsEl.EnumerateArray())
-                    {
-                        if (m.ValueKind == System.Text.Json.JsonValueKind.Object
-                            && m.TryGetProperty("labMode", out var lab)
-                            && lab.ValueKind == System.Text.Json.JsonValueKind.True)
-                            continue;
-                        m.WriteTo(writer);
-                    }
-                    writer.WriteEndArray();
-                }
-                else
-                {
-                    prop.WriteTo(writer);
-                }
-            }
-            writer.WriteEndObject();
-        }
-        return Results.Text(System.Text.Encoding.UTF8.GetString(streamOut.ToArray()), JsonKeys.ApplicationJson);
+        return Results.Text(StripLabModeModels(raw), JsonKeys.ApplicationJson);
     }
     catch (Exception ex)
     {
         return Results.Json(new { ok = false, error = ex.Message }, statusCode: 500);
     }
 }
+
+    private static string StripLabModeModels(string raw)
+    {
+        using var doc = System.Text.Json.JsonDocument.Parse(raw);
+        if (doc.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object
+            || !doc.RootElement.TryGetProperty("models", out var modelsEl)
+            || modelsEl.ValueKind != System.Text.Json.JsonValueKind.Array)
+            return raw;
+
+        using var streamOut = new MemoryStream();
+        using (var writer = new System.Text.Json.Utf8JsonWriter(streamOut, new System.Text.Json.JsonWriterOptions { Indented = true }))
+        {
+            writer.WriteStartObject();
+            foreach (var prop in doc.RootElement.EnumerateObject())
+                WriteCatalogProperty(writer, prop, modelsEl);
+            writer.WriteEndObject();
+        }
+        return System.Text.Encoding.UTF8.GetString(streamOut.ToArray());
+    }
+
+    private static void WriteCatalogProperty(
+        System.Text.Json.Utf8JsonWriter writer, System.Text.Json.JsonProperty prop, System.Text.Json.JsonElement modelsEl)
+    {
+        if (!prop.NameEquals("models"))
+        {
+            prop.WriteTo(writer);
+            return;
+        }
+        writer.WritePropertyName("models");
+        writer.WriteStartArray();
+        foreach (var m in modelsEl.EnumerateArray())
+        {
+            if (IsLabModeModel(m))
+                continue;
+            m.WriteTo(writer);
+        }
+        writer.WriteEndArray();
+    }
+
+    private static bool IsLabModeModel(System.Text.Json.JsonElement m) =>
+        m.ValueKind == System.Text.Json.JsonValueKind.Object
+        && m.TryGetProperty("labMode", out var lab)
+        && lab.ValueKind == System.Text.Json.JsonValueKind.True;
 
     private static IResult GetModels(string? capability, IUserContext user)
     {

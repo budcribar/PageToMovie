@@ -57,24 +57,9 @@ internal static class ApiServiceConfiguration
 
         // Default workspace = repo root (two levels up from host/PageToMovie.Api)
         var repoGuess = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", ".."));
+        var isDevelopment = builder.Environment.IsDevelopment();
         builder.Services.PostConfigure<PageToMovieOptions>(o =>
-        {
-            if (string.IsNullOrWhiteSpace(o.WorkspaceRoot) || !Directory.Exists(o.WorkspaceRoot))
-                o.WorkspaceRoot = repoGuess;
-
-            o.Auth ??= new AuthOptions();
-            var envKey = Environment.GetEnvironmentVariable("PageToMovie_JWT_KEY")
-                         ?? Environment.GetEnvironmentVariable("PAGETOMOVIE_JWT_KEY")
-                         ?? Environment.GetEnvironmentVariable("PageToMovie__Auth__JwtSigningKey")
-                         ?? Environment.GetEnvironmentVariable("FILMSTUDIO_JWT_KEY");
-
-            var effective = !string.IsNullOrWhiteSpace(envKey) ? envKey.Trim() : o.Auth.JwtSigningKey;
-            if (!builder.Environment.IsDevelopment() && AuthOptions.IsInsecureDefaultJwtSigningKey(effective))
-            {
-                var secureKey = System.Security.Cryptography.RandomNumberGenerator.GetString("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*", 64);
-                o.Auth.JwtSigningKey = secureKey;
-            }
-        });
+            ApplyWorkspaceAndJwtDefaults(o, repoGuess, isDevelopment));
 
         builder.Services.AddSingleton<MediaDurationProbe>();
         builder.Services.AddSingleton<SceneListCache>();
@@ -193,14 +178,7 @@ internal static class ApiServiceConfiguration
         var dataRoot = UserDatabaseService.ResolveDataDirectory(
             string.IsNullOrWhiteSpace(configuredWorkspaceRoot) ? repoGuess : configuredWorkspaceRoot);
         var dpKeysDir = Path.Combine(dataRoot, "keys");
-        var legacyDpKeysDir = Path.Combine(Path.GetTempPath(), "ptm-dp-keys");
-        if (!Directory.Exists(dpKeysDir) && !string.Equals(dpKeysDir, legacyDpKeysDir, StringComparison.OrdinalIgnoreCase) &&
-            Directory.Exists(legacyDpKeysDir))
-        {
-            Directory.CreateDirectory(dpKeysDir);
-            foreach (var keyFile in Directory.EnumerateFiles(legacyDpKeysDir, "*", SearchOption.TopDirectoryOnly))
-                File.Copy(keyFile, Path.Combine(dpKeysDir, Path.GetFileName(keyFile)), overwrite: false);
-        }
+        MigrateLegacyDataProtectionKeys(dpKeysDir);
         Directory.CreateDirectory(dpKeysDir);
         builder.Services.AddDataProtection()
             .PersistKeysToFileSystem(new DirectoryInfo(dpKeysDir));
@@ -226,15 +204,7 @@ internal static class ApiServiceConfiguration
             c.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "PageToMovie/1.0");
         }));
         ConfigurePooledSocketsHandler(builder.Services.AddHttpClient("media-proxy", c => c.Timeout = TimeSpan.FromMinutes(10)));
-        builder.Services.AddSingleton<IEmailSender>(sp =>
-        {
-            var mail = sp.GetRequiredService<IOptions<PageToMovieOptions>>().Value.Mail;
-            if (!string.IsNullOrWhiteSpace(MailOptions.ResolveResendApiKey(mail)))
-                return ActivatorUtilities.CreateInstance<ResendEmailSender>(sp);
-            if (!string.IsNullOrWhiteSpace(mail?.SmtpHost))
-                return ActivatorUtilities.CreateInstance<SmtpEmailSender>(sp);
-            return ActivatorUtilities.CreateInstance<LoggingEmailSender>(sp);
-        });
+        builder.Services.AddSingleton<IEmailSender>(CreateEmailSender);
         builder.Services.AddSingleton<IAdminAuthService, AdminAuthService>();
         builder.Services.AddSingleton<FilmJobService>();
         builder.Services.AddSingleton<IJobProgressSink, SignalRJobProgressSink>();
@@ -245,9 +215,7 @@ internal static class ApiServiceConfiguration
         builder.Services.AddSingleton<ProcessHistoryStore>();
 
         // Grok clients: real HttpClient or fakes (PageToMovie:UseFakes)
-        var useFakes = builder.Configuration.GetValue("PageToMovie:UseFakes", false)
-            || string.Equals(Environment.GetEnvironmentVariable("PageToMovie_USE_FAKES"), "1", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(Environment.GetEnvironmentVariable("PageToMovie_USE_FAKES"), "true", StringComparison.OrdinalIgnoreCase);
+        var useFakes = ResolveUseFakes(builder);
         ApiRuntime.UseFakes = useFakes;
         RegisterAiClients(builder, useFakes);
 
@@ -305,6 +273,52 @@ internal static class ApiServiceConfiguration
 
         return builder;
     }
+
+    private static void ApplyWorkspaceAndJwtDefaults(PageToMovieOptions o, string repoGuess, bool isDevelopment)
+    {
+        if (string.IsNullOrWhiteSpace(o.WorkspaceRoot) || !Directory.Exists(o.WorkspaceRoot))
+            o.WorkspaceRoot = repoGuess;
+
+        o.Auth ??= new AuthOptions();
+        var envKey = Environment.GetEnvironmentVariable("PageToMovie_JWT_KEY")
+                     ?? Environment.GetEnvironmentVariable("PAGETOMOVIE_JWT_KEY")
+                     ?? Environment.GetEnvironmentVariable("PageToMovie__Auth__JwtSigningKey")
+                     ?? Environment.GetEnvironmentVariable("FILMSTUDIO_JWT_KEY");
+
+        var effective = !string.IsNullOrWhiteSpace(envKey) ? envKey.Trim() : o.Auth.JwtSigningKey;
+        if (!isDevelopment && AuthOptions.IsInsecureDefaultJwtSigningKey(effective))
+        {
+            var secureKey = System.Security.Cryptography.RandomNumberGenerator.GetString("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*", 64);
+            o.Auth.JwtSigningKey = secureKey;
+        }
+    }
+
+    private static void MigrateLegacyDataProtectionKeys(string dpKeysDir)
+    {
+        var legacyDpKeysDir = Path.Combine(Path.GetTempPath(), "ptm-dp-keys");
+        if (Directory.Exists(dpKeysDir) ||
+            string.Equals(dpKeysDir, legacyDpKeysDir, StringComparison.OrdinalIgnoreCase) ||
+            !Directory.Exists(legacyDpKeysDir))
+            return;
+        Directory.CreateDirectory(dpKeysDir);
+        foreach (var keyFile in Directory.EnumerateFiles(legacyDpKeysDir, "*", SearchOption.TopDirectoryOnly))
+            File.Copy(keyFile, Path.Combine(dpKeysDir, Path.GetFileName(keyFile)), overwrite: false);
+    }
+
+    private static IEmailSender CreateEmailSender(IServiceProvider sp)
+    {
+        var mail = sp.GetRequiredService<IOptions<PageToMovieOptions>>().Value.Mail;
+        if (!string.IsNullOrWhiteSpace(MailOptions.ResolveResendApiKey(mail)))
+            return ActivatorUtilities.CreateInstance<ResendEmailSender>(sp);
+        if (!string.IsNullOrWhiteSpace(mail?.SmtpHost))
+            return ActivatorUtilities.CreateInstance<SmtpEmailSender>(sp);
+        return ActivatorUtilities.CreateInstance<LoggingEmailSender>(sp);
+    }
+
+    private static bool ResolveUseFakes(WebApplicationBuilder builder) =>
+        builder.Configuration.GetValue("PageToMovie:UseFakes", false)
+        || string.Equals(Environment.GetEnvironmentVariable("PageToMovie_USE_FAKES"), "1", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(Environment.GetEnvironmentVariable("PageToMovie_USE_FAKES"), "true", StringComparison.OrdinalIgnoreCase);
 
     private static void RegisterAiClients(WebApplicationBuilder builder, bool useFakes)
     {

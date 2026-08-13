@@ -277,68 +277,15 @@ public static class AdaptationEndpoints
     try
     {
         var uid = user.UserId ?? "";
-        if (!string.IsNullOrWhiteSpace(uid)
-            && await acl.CanAccessAsync(id, uid, PageToMovie.Engine.Collaboration.ProjectAccessLevel.Editor, ct))
-        {
-            var (acquired, lease) = await leases.TryAcquireAsync(
-                id, PageToMovie.Engine.Collaboration.ProjectLeaseKeys.Script, uid,
-                PageToMovie.Api.Collaboration.CollaborationEndpoints.DefaultLeaseTtl, ct);
-            if (!acquired)
-            {
-                return Results.Json(new {
-                    ok = false,
-                    error = "script_locked",
-                    message = $"Script is being edited by {lease.HolderUserId}.",
-                    holderUserId = lease.HolderUserId,
-                }, statusCode: StatusCodes.Status423Locked);
-            }
-        }
-        string text;
-        if (req.HasFormContentType)
-        {
-            var form = await req.ReadFormAsync(ct);
-            text = form["text"].ToString() ?? form["content"].ToString() ?? "";
-            if (string.IsNullOrEmpty(text) && form.Files.Count > 0)
-            {
-                using var reader = new StreamReader(form.Files[0].OpenReadStream());
-                text = await reader.ReadToEndAsync(ct);
-            }
-        }
-        else
-        {
-            using var reader = new StreamReader(req.Body);
-            var body = await reader.ReadToEndAsync(ct);
-            // Accept raw text or JSON { "text": "..." }
-            text = body;
-            if (body.TrimStart().StartsWith('{'))
-            {
-                try
-                {
-                    using var doc = System.Text.Json.JsonDocument.Parse(body);
-                    if (doc.RootElement.TryGetProperty("text", out var t))
-                        text = t.GetString() ?? "";
-                    else if (doc.RootElement.TryGetProperty("content", out var c))
-                        text = c.GetString() ?? "";
-                }
-                catch { /* treat as raw */ }
-            }
-        }
+        if (await TryAcquireScriptLeaseAsync(id, uid, leases, acl, ct) is { } locked)
+            return locked;
+        var text = await ReadScreenplayTextAsync(req, ct);
 
         var result = ScreenplayService.SaveDraft(store, id, text);
         if (!result.Ok)
             return Results.BadRequest(new { ok = false, error = result.Error });
 
-        // I12: PlanDirty — collaborators re-fetch estimate
-        try
-        {
-            var doc = await acl.GetOrCreateAclAsync(id, uid, ct);
-            doc.Rev++;
-            await acl.SaveAclAsync(id, doc, ct);
-            if (hub is not null)
-                await hub.Clients.Group(PageToMovie.Api.Collaboration.ProjectHub.GroupName(id))
-                    .SendAsync("PlanDirty", id, doc.Rev, uid, ct);
-        }
-        catch { /* soft */ }
+        await NotifyPlanDirtyAsync(id, uid, acl, hub, ct);
 
         return Results.Ok(new
         {
@@ -355,6 +302,85 @@ public static class AdaptationEndpoints
     }
 }
 
+    private static async Task<IResult?> TryAcquireScriptLeaseAsync(
+        string id,
+        string uid,
+        PageToMovie.Engine.Collaboration.IProjectLeaseService leases,
+        PageToMovie.Engine.Collaboration.IProjectAclService acl,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(uid)
+            || !await acl.CanAccessAsync(id, uid, PageToMovie.Engine.Collaboration.ProjectAccessLevel.Editor, ct))
+            return null;
+        var (acquired, lease) = await leases.TryAcquireAsync(
+            id, PageToMovie.Engine.Collaboration.ProjectLeaseKeys.Script, uid,
+            PageToMovie.Api.Collaboration.CollaborationEndpoints.DefaultLeaseTtl, ct);
+        if (acquired)
+            return null;
+        return Results.Json(new {
+            ok = false,
+            error = "script_locked",
+            message = $"Script is being edited by {lease.HolderUserId}.",
+            holderUserId = lease.HolderUserId,
+        }, statusCode: StatusCodes.Status423Locked);
+    }
+
+    private static async Task<string> ReadScreenplayTextAsync(HttpRequest req, CancellationToken ct)
+    {
+        if (req.HasFormContentType)
+            return await ReadScreenplayFormTextAsync(req, ct);
+        return await ReadScreenplayBodyTextAsync(req, ct);
+    }
+
+    private static async Task<string> ReadScreenplayFormTextAsync(HttpRequest req, CancellationToken ct)
+    {
+        var form = await req.ReadFormAsync(ct);
+        var text = form["text"].ToString() ?? form["content"].ToString() ?? "";
+        if (!string.IsNullOrEmpty(text) || form.Files.Count == 0)
+            return text;
+        using var reader = new StreamReader(form.Files[0].OpenReadStream());
+        return await reader.ReadToEndAsync(ct);
+    }
+
+    private static async Task<string> ReadScreenplayBodyTextAsync(HttpRequest req, CancellationToken ct)
+    {
+        using var reader = new StreamReader(req.Body);
+        var body = await reader.ReadToEndAsync(ct);
+        // Accept raw text or JSON { "text": "..." }
+        if (!body.TrimStart().StartsWith('{'))
+            return body;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("text", out var t))
+                return t.GetString() ?? "";
+            if (doc.RootElement.TryGetProperty("content", out var c))
+                return c.GetString() ?? "";
+        }
+        catch { /* treat as raw */ }
+        return body;
+    }
+
+    private static async Task NotifyPlanDirtyAsync(
+        string id,
+        string uid,
+        PageToMovie.Engine.Collaboration.IProjectAclService acl,
+        IHubContext<PageToMovie.Api.Collaboration.ProjectHub>? hub,
+        CancellationToken ct)
+    {
+        // I12: PlanDirty — collaborators re-fetch estimate
+        try
+        {
+            var doc = await acl.GetOrCreateAclAsync(id, uid, ct);
+            doc.Rev++;
+            await acl.SaveAclAsync(id, doc, ct);
+            if (hub is not null)
+                await hub.Clients.Group(PageToMovie.Api.Collaboration.ProjectHub.GroupName(id))
+                    .SendAsync("PlanDirty", id, doc.Rev, uid, ct);
+        }
+        catch { /* soft */ }
+    }
+
     private static async Task<IResult> PostProjectsIdScreenplaySignOff(string id,
     HttpRequest req,
     ProjectStore store,
@@ -365,61 +391,12 @@ public static class AdaptationEndpoints
     {
     try
     {
-        string? text = null;
-        if (req.ContentLength is > 0 || req.ContentType is not null)
-        {
-            using var reader = new StreamReader(req.Body);
-            var body = await reader.ReadToEndAsync(ct);
-            if (!string.IsNullOrWhiteSpace(body))
-            {
-                if (body.TrimStart().StartsWith('{'))
-                {
-                    try
-                    {
-                        using var doc = System.Text.Json.JsonDocument.Parse(body);
-                        if (doc.RootElement.TryGetProperty("text", out var t))
-                            text = t.GetString();
-                    }
-                    catch { text = body; }
-                }
-                else
-                {
-                    text = body;
-                }
-            }
-        }
-
+        var text = await ReadOptionalScreenplayTextAsync(req, ct);
         var result = ScreenplayService.SignOff(store, id, text);
         if (!result.Ok)
             return Results.BadRequest(new { ok = false, error = result.Error });
 
-        // AI cast sidecar after approve (closed cast for Characters / plates)
-        object? cast = null;
-        if (chat.IsConfigured)
-        {
-            try
-            {
-                // force:false — respects ExtractAsync's own skip-if-present guard. Sign-off still
-                // auto-populates cast the first time (file doesn't exist yet), but never blows away
-                // an existing cast_seeds.json (voice clones, portrait locks, curated looks) just
-                // because the Fountain changed. Use the explicit "Extract Cast" button/endpoint
-                // (force:true) to intentionally rebuild after adding a character.
-                var castResult = await castService.ExtractAsync(id, force: false, ct: ct);
-                cast = new
-                {
-                    ok = castResult.Ok,
-                    characterCount = castResult.CharacterCount,
-                    characters = castResult.CharacterKeys,
-                    error = castResult.Error,
-                    path = castResult.OutPath,
-                };
-            }
-            catch (Exception ex)
-            {
-                cast = new { ok = false, error = ex.Message };
-            }
-        }
-
+        var cast = await TryExtractCastAsync(id, castService, chat, ct);
         return Results.Ok(new
         {
             ok = true,
@@ -440,6 +417,55 @@ public static class AdaptationEndpoints
         return Results.BadRequest(new { ok = false, error = ex.Message });
     }
 }
+
+    private static async Task<string?> ReadOptionalScreenplayTextAsync(HttpRequest req, CancellationToken ct)
+    {
+        if (req.ContentLength is not > 0 && req.ContentType is null)
+            return null;
+        using var reader = new StreamReader(req.Body);
+        var body = await reader.ReadToEndAsync(ct);
+        if (string.IsNullOrWhiteSpace(body))
+            return null;
+        if (!body.TrimStart().StartsWith('{'))
+            return body;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("text", out var t))
+                return t.GetString();
+        }
+        catch { return body; }
+        return null;
+    }
+
+    private static async Task<object?> TryExtractCastAsync(
+        string id, CastFromScreenplayService castService, PageToMovie.Core.Abstractions.IChatClient chat, CancellationToken ct)
+    {
+        // AI cast sidecar after approve (closed cast for Characters / plates)
+        if (!chat.IsConfigured)
+            return null;
+        try
+        {
+            // force:false — respects ExtractAsync's own skip-if-present guard. Sign-off still
+            // auto-populates cast the first time (file doesn't exist yet), but never blows away
+            // an existing cast_seeds.json (voice clones, portrait locks, curated looks) just
+            // because the Fountain changed. Use the explicit "Extract Cast" button/endpoint
+            // (force:true) to intentionally rebuild after adding a character.
+            var castResult = await castService.ExtractAsync(id, force: false, ct: ct);
+            return new
+            {
+                ok = castResult.Ok,
+                characterCount = castResult.CharacterCount,
+                characters = castResult.CharacterKeys,
+                error = castResult.Error,
+                path = castResult.OutPath,
+            };
+        }
+        catch (Exception ex)
+        {
+            return new { ok = false, error = ex.Message };
+        }
+    }
 
     private static async Task<IResult> GetProjectsIdVisualMedium(string id,
     ProjectStore store,

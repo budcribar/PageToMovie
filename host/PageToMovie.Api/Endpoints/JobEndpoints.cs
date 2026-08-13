@@ -330,59 +330,10 @@ public static class JobEndpoints
     {
     if (AuthGate.RequireLogin(user, opts) is { } denied)
         return denied;
-    var userActiveId = await userDb.GetUserActiveProjectAsync(user.UserId, ct);
-    // Per-user only — store.ActiveProjectId is process-wide and must not be used here.
-    var id = userActiveId;
-    if (string.IsNullOrWhiteSpace(id))
-        return Results.Ok(new { ok = true, stage2_ready = false });
-    // Drop if this user cannot see the project (stale id from another account).
-    if (!user.IsAdmin)
-    {
-        try
-        {
-            var info = await store.GetProjectAsync(id, ct);
-            if (info is null)
-                return Results.Ok(new { ok = true, stage2_ready = false });
-            UserEntity? me = null;
-            try
-            {
-                me = await userDb.GetUserByIdAsync(user.UserId, ct).ConfigureAwait(false)
-                     ?? await userDb.GetUserByUsernameAsync(user.UserId, ct).ConfigureAwait(false);
-            }
-            catch { /* user lookup is best-effort */ }
-            var aliases = ProjectOwnership.CollectAliases(
-                user.UserId, canonicalUserId: me?.UserId, username: me?.Username, email: me?.Email);
-            if (!ProjectOwnership.IsOwnedBy(info, aliases))
-                return Results.Ok(new { ok = true, stage2_ready = false });
-        }
-        catch { /* treat as no stage2 */ }
-    }
+    var id = await ResolveVisibleActiveProjectIdAsync(store, user, userDb, ct);
     if (string.IsNullOrEmpty(id))
         return Results.Ok(new { ok = true, stage2_ready = false });
-    var bp = await store.FindBlueprintPathAsync(id, ct);
-    var ready = bp is not null && File.Exists(bp);
-    var scenes = 0;
-    var clips = 0;
-    if (ready)
-    {
-        try
-        {
-            using var doc = await store.LoadBlueprintAsync(id, ct);
-            if (doc is not null &&
-                doc.RootElement.TryGetProperty("scenes", out var sc) &&
-                sc.ValueKind == JsonValueKind.Array)
-            {
-                scenes = sc.GetArrayLength();
-                foreach (var s in sc.EnumerateArray())
-                {
-                    if (s.TryGetProperty("veo_clips", out var vc) &&
-                        vc.ValueKind == JsonValueKind.Array)
-                        clips += vc.GetArrayLength();
-                }
-            }
-        }
-        catch { /* ignore */ }
-    }
+    var (ready, scenes, clips, bp) = await LoadStage2CountsAsync(store, id, ct);
     return Results.Ok(new
     {
         ok = true,
@@ -393,6 +344,88 @@ public static class JobEndpoints
         project_id = id,
     });
 }
+
+    private static async Task<string?> ResolveVisibleActiveProjectIdAsync(
+        ProjectStore store, IUserContext user, UserDatabaseService userDb, CancellationToken ct)
+    {
+        var userActiveId = await userDb.GetUserActiveProjectAsync(user.UserId, ct);
+        // Per-user only — store.ActiveProjectId is process-wide and must not be used here.
+        var id = userActiveId;
+        if (string.IsNullOrWhiteSpace(id))
+            return null;
+        if (!user.IsAdmin && !await UserOwnsProjectAsync(store, user, userDb, id, ct))
+            return null;
+        if (string.IsNullOrEmpty(id))
+            return null;
+        return id;
+    }
+
+    private static async Task<bool> UserOwnsProjectAsync(
+        ProjectStore store, IUserContext user, UserDatabaseService userDb, string id, CancellationToken ct)
+    {
+        try
+        {
+            var info = await store.GetProjectAsync(id, ct);
+            if (info is null)
+                return false;
+            var me = await TryLoadUserEntityAsync(userDb, user.UserId, ct);
+            var aliases = ProjectOwnership.CollectAliases(
+                user.UserId, canonicalUserId: me?.UserId, username: me?.Username, email: me?.Email);
+            return ProjectOwnership.IsOwnedBy(info, aliases);
+        }
+        catch
+        {
+            /* treat as no stage2 */
+            return false;
+        }
+    }
+
+    private static async Task<UserEntity?> TryLoadUserEntityAsync(UserDatabaseService userDb, string userId, CancellationToken ct)
+    {
+        try
+        {
+            return await userDb.GetUserByIdAsync(userId, ct).ConfigureAwait(false)
+                 ?? await userDb.GetUserByUsernameAsync(userId, ct).ConfigureAwait(false);
+        }
+        catch { /* user lookup is best-effort */ }
+        return null;
+    }
+
+    private static async Task<(bool Ready, int Scenes, int Clips, string? BlueprintPath)> LoadStage2CountsAsync(
+        ProjectStore store, string id, CancellationToken ct)
+    {
+        var bp = await store.FindBlueprintPathAsync(id, ct);
+        var ready = bp is not null && File.Exists(bp);
+        var scenes = 0;
+        var clips = 0;
+        if (!ready)
+            return (ready, scenes, clips, bp);
+        try
+        {
+            using var doc = await store.LoadBlueprintAsync(id, ct);
+            if (doc is not null &&
+                doc.RootElement.TryGetProperty("scenes", out var sc) &&
+                sc.ValueKind == JsonValueKind.Array)
+            {
+                scenes = sc.GetArrayLength();
+                clips = CountVeoClips(sc);
+            }
+        }
+        catch { /* ignore */ }
+        return (ready, scenes, clips, bp);
+    }
+
+    private static int CountVeoClips(JsonElement scenes)
+    {
+        var clips = 0;
+        foreach (var s in scenes.EnumerateArray())
+        {
+            if (s.TryGetProperty("veo_clips", out var vc) &&
+                vc.ValueKind == JsonValueKind.Array)
+                clips += vc.GetArrayLength();
+        }
+        return clips;
+    }
 
     private static async Task<IResult> PostJobsVideoEdit(StartVideoEditRequest body, FilmJobService jobService)
     {
