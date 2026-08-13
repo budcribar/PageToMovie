@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
@@ -152,7 +153,7 @@ public sealed class ProjectInviteService
             }
         }
 
-        if (!DateTimeOffset.TryParse(expiresRaw, out var expires) || expires < DateTimeOffset.UtcNow)
+        if (!DateTimeOffset.TryParse(expiresRaw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var expires) || expires < DateTimeOffset.UtcNow)
         {
             await tx.RollbackAsync(ct).ConfigureAwait(false);
             return new InviteOutcome(false, null, "This invite link has expired.");

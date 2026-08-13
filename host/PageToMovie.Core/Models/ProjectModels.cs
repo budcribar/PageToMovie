@@ -178,7 +178,7 @@ public static class JobListHelpers
         if (queued is not null) return queued;
         return jobs
             .OrderByDescending(j => j.FinishedAt ?? j.StartedAt ?? j.QueuedAt)
-            .FirstOrDefault();
+            .First();
     }
 }
 

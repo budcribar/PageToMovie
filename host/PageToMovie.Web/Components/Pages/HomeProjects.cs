@@ -147,7 +147,7 @@ public partial class Home
                 _newName = "";
                 S.StateHasChanged();
                 await Task.Yield();
-                try { await _nameInputRef.FocusAsync(); } catch { }
+                try { await _nameInputRef.FocusAsync(); } catch { /* input may have unmounted */ }
             }
         }
 

@@ -147,10 +147,11 @@ public sealed class ClipDialogueVerificationService
         if (!force && string.IsNullOrWhiteSpace(overrideVideoPath))
         {
             var existing = await LoadVerificationAsync(projectId, sceneNumber, clipNumber, ct).ConfigureAwait(false);
-            if (existing is not null && !string.Equals(existing.Status, "unverified", StringComparison.OrdinalIgnoreCase))
+            if (existing is not null &&
+                !string.Equals(existing.Status, "unverified", StringComparison.OrdinalIgnoreCase) &&
+                !string.IsNullOrWhiteSpace(clipPath) &&
+                File.Exists(clipPath))
             {
-                if (!string.IsNullOrWhiteSpace(clipPath) && File.Exists(clipPath))
-                {
                     var videoMTime = File.GetLastWriteTimeUtc(clipPath);
                     if (existing.VerifiedAt >= videoMTime &&
                         string.Equals(existing.ExpectedDialogue, expectedDialogue, StringComparison.Ordinal) &&
@@ -159,7 +160,6 @@ public sealed class ClipDialogueVerificationService
                         _log.LogInformation("Dialogue verification for {Project} S{Scene} C{Clip} is up-to-date (cached)", projectId, sceneNumber, clipNumber);
                         return existing;
                     }
-                }
             }
         }
 
@@ -469,7 +469,7 @@ Status options: 'verified' (dialogue & speaker match), 'mismatch' (dialogue inco
         int matches = 0;
         foreach (var ew in expWords)
         {
-            if (actWords.Any(aw => IsWordEquivalent(ew, ew, aw)))
+            if (actWords.Any(aw => IsWordEquivalent(ew, aw)))
             {
                 matches++;
             }
@@ -478,7 +478,7 @@ Status options: 'verified' (dialogue & speaker match), 'mismatch' (dialogue inco
         return (double)matches / expWords.Count;
     }
 
-    private static bool IsWordEquivalent(string rawExp, string normExp, string normAct)
+    private static bool IsWordEquivalent(string normExp, string normAct)
     {
         if (string.Equals(normExp, normAct, StringComparison.OrdinalIgnoreCase)) return true;
 
@@ -536,13 +536,11 @@ Status options: 'verified' (dialogue & speaker match), 'mismatch' (dialogue inco
             {
                 foreach (var name in names)
                 {
-                    if (string.Equals(prop.Name.Replace("_", ""), name.Replace("_", ""), StringComparison.OrdinalIgnoreCase))
+                    if (string.Equals(prop.Name.Replace("_", ""), name.Replace("_", ""), StringComparison.OrdinalIgnoreCase) &&
+                        prop.Value.ValueKind == JsonValueKind.String)
                     {
-                        if (prop.Value.ValueKind == JsonValueKind.String)
-                        {
                             var val = prop.Value.GetString();
                             if (!string.IsNullOrWhiteSpace(val)) return val.Trim();
-                        }
                     }
                 }
             }
@@ -554,9 +552,9 @@ Status options: 'verified' (dialogue & speaker match), 'mismatch' (dialogue inco
     {
         foreach (var name in names)
         {
-            if (root.TryGetProperty(name, out var el))
+            if (root.TryGetProperty(name, out var el) &&
+                el.ValueKind is JsonValueKind.True or JsonValueKind.False)
             {
-                if (el.ValueKind is JsonValueKind.True or JsonValueKind.False)
                     return el.GetBoolean();
             }
         }
@@ -566,9 +564,9 @@ Status options: 'verified' (dialogue & speaker match), 'mismatch' (dialogue inco
             {
                 foreach (var name in names)
                 {
-                    if (string.Equals(prop.Name.Replace("_", ""), name.Replace("_", ""), StringComparison.OrdinalIgnoreCase))
+                    if (string.Equals(prop.Name.Replace("_", ""), name.Replace("_", ""), StringComparison.OrdinalIgnoreCase) &&
+                        prop.Value.ValueKind is JsonValueKind.True or JsonValueKind.False)
                     {
-                        if (prop.Value.ValueKind is JsonValueKind.True or JsonValueKind.False)
                             return prop.Value.GetBoolean();
                     }
                 }
@@ -590,9 +588,10 @@ Status options: 'verified' (dialogue & speaker match), 'mismatch' (dialogue inco
             {
                 foreach (var name in names)
                 {
-                    if (string.Equals(prop.Name.Replace("_", ""), name.Replace("_", ""), StringComparison.OrdinalIgnoreCase))
+                    if (string.Equals(prop.Name.Replace("_", ""), name.Replace("_", ""), StringComparison.OrdinalIgnoreCase) &&
+                        prop.Value.ValueKind == JsonValueKind.Number &&
+                        prop.Value.TryGetDouble(out var v))
                     {
-                        if (prop.Value.ValueKind == JsonValueKind.Number && prop.Value.TryGetDouble(out var v))
                             return v;
                     }
                 }

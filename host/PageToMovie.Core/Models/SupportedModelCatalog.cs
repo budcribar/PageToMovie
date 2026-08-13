@@ -895,7 +895,7 @@ public static class SupportedModelCatalog
                 SupportsImageVision = supportsImageVision,
                 RequiredEnvKeys = required,
                 // Provider cards are for API keys — never dump per-model engineering notes here.
-                Notes = ShortProviderBlurb(pId),
+                Notes = ShortProviderBlurb(),
             });
         }
         return rows;
@@ -973,7 +973,7 @@ public static class SupportedModelCatalog
         return id;
     }
 
-    private static string? ShortProviderBlurb(string pId)
+    private static string? ShortProviderBlurb()
     {
         // Optional notes live on models; provider rows keep a short capability summary only.
         return null;

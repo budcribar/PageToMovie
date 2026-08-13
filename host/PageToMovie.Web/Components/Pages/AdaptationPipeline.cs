@@ -113,8 +113,6 @@ public abstract partial class AdaptationPageBase
                 await S.Jobs.EnsureHubAsync();
                 S.Jobs.ProgressIndex = 0;
                 S.Jobs.ProgressTotal = 10;
-                // Resolution comes from project Configuration (shot plan structure is resolution-independent;
-                // config is only used as a default tag if the planner still stamps prompts).
                 await S.Engine.StartStage2Async(new StartStage2Request
                 {
                     ProjectId = S.ProjectId,

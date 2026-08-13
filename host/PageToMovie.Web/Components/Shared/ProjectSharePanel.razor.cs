@@ -9,8 +9,8 @@ public partial class ProjectSharePanel
     ProjectAclClientDto? _acl;
     List<ProjectPresenceClientDto>? _presence;
     string _inviteUserId = "";
-    string _inviteRole = "editor";
-    int _sceneNumber = 1;
+    string _inviteRole { get; set; } = "editor";
+    int _sceneNumber { get; set; } = 1;
     string? _leaseStatus;
     string? _error;
     string? _info;

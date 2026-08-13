@@ -234,9 +234,8 @@ public sealed class BookTextRegistryService
 
     /// <summary>
     /// Fetch a derived-artifact row keyed on a single access-gated column, mapped to
-    /// <see cref="DerivedBookArtifact"/> (or null). <paramref name="keyColumn"/> and
-    /// <paramref name="keyParam"/> are compile-time-constant internal identifiers (not user
-    /// input), so interpolating them into the SQL carries no injection risk.
+    /// <see cref="DerivedBookArtifact"/> (or null). SQL text is a compile-time constant
+    /// selected from an allow-list; values bind through parameters.
     /// </summary>
     private async Task<DerivedBookArtifact?> QueryDerivedArtifactAsync(
         string keyColumn, string keyParam, string keyValue, string userId, CancellationToken ct)
@@ -244,14 +243,7 @@ public sealed class BookTextRegistryService
         await using var conn = new SqliteConnection(_connectionString);
         await conn.OpenAsync(ct).ConfigureAwait(false);
         await using var cmd = conn.CreateCommand();
-        cmd.CommandText = $"""
-            SELECT d.artifact_id, d.derivation_sha256, d.book_id, d.artifact_kind,
-                   d.content_sha256, d.content
-            FROM book_derived_artifacts d
-            JOIN book_text_access a ON a.book_id=d.book_id
-            WHERE d.{keyColumn}={keyParam}
-              AND (a.user_id=@user OR a.visibility_mode IN ('Public', 'Forkable')) LIMIT 1;
-            """;
+        cmd.CommandText = DerivedArtifactSql(keyColumn, keyParam);
         cmd.Parameters.AddWithValue(keyParam, keyValue);
         cmd.Parameters.AddWithValue("@user", userId);
         await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
@@ -259,6 +251,28 @@ public sealed class BookTextRegistryService
             ? new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5))
             : null;
     }
+
+    private static string DerivedArtifactSql(string keyColumn, string keyParam) =>
+        (keyColumn, keyParam) switch
+        {
+            ("artifact_id", "@id") => """
+                SELECT d.artifact_id, d.derivation_sha256, d.book_id, d.artifact_kind,
+                       d.content_sha256, d.content
+                FROM book_derived_artifacts d
+                JOIN book_text_access a ON a.book_id=d.book_id
+                WHERE d.artifact_id=@id
+                  AND (a.user_id=@user OR a.visibility_mode IN ('Public', 'Forkable')) LIMIT 1;
+                """,
+            ("derivation_sha256", "@hash") => """
+                SELECT d.artifact_id, d.derivation_sha256, d.book_id, d.artifact_kind,
+                       d.content_sha256, d.content
+                FROM book_derived_artifacts d
+                JOIN book_text_access a ON a.book_id=d.book_id
+                WHERE d.derivation_sha256=@hash
+                  AND (a.user_id=@user OR a.visibility_mode IN ('Public', 'Forkable')) LIMIT 1;
+                """,
+            _ => throw new ArgumentOutOfRangeException(nameof(keyColumn), keyColumn, "Unsupported derived-artifact lookup key."),
+        };
 
 
     // ── Provider file handles (xAI file_id, etc.) ─────────────────────────

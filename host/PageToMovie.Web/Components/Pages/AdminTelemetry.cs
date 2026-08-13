@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Components;
@@ -192,7 +193,7 @@ public partial class Admin
 
         internal static string FormatTrendTimestamp(string ts)
         {
-            if (DateTime.TryParse(ts, out var dt))
+            if (DateTime.TryParse(ts, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var dt))
                 return dt.ToString("MM/dd");
             return ts;
         }

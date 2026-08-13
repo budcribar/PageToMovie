@@ -274,7 +274,7 @@ label,
 
 .btn-primary {
     color: #fff;
-    background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+    background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%);
     border: none;
     box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35);
 }
@@ -1338,7 +1338,7 @@ h1:focus {
     color: #f1f5f9;
 }
 .home-landing__actions .btn-outline-light:hover {
-    background: rgba(248, 250, 252, 0.1);
+    background: rgba(15, 23, 42, 0.72);
     border-color: #e2e8f0;
     color: #fff;
 }
@@ -1671,8 +1671,8 @@ h1:focus {
     border-left: 3px solid #38bdf8;
     margin: 0.75rem 0;
     padding: 0.4rem 0.8rem;
-    background: rgba(56, 189, 248, 0.05);
-    color: #cbd5e1;
+    background: #1e293b;
+    color: #e2e8f0;
     border-radius: 0 4px 4px 0;
 }
 
@@ -1720,7 +1720,7 @@ h1:focus {
     background:
         radial-gradient(ellipse 80% 70% at 85% -20%, rgba(107, 140, 174, 0.18), transparent 55%),
         var(--fs-bg-card);
-    padding: 1.25rem 1.35rem;
+    padding: 0.85rem 1rem;
     box-shadow: var(--fs-shadow-card);
 }
 .home-hero--cinema .display-6 {
@@ -1919,10 +1919,6 @@ h1:focus {
     overflow: hidden;
     text-overflow: ellipsis;
     color: var(--fs-text-primary);
-}
-/* De-emphasize bulky home hero leftover if any */
-.home-hero--cinema {
-    padding: 0.85rem 1rem;
 }
 
 /* Book import — drop your book here */

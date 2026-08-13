@@ -57,13 +57,11 @@ public static class GutenbergCleaner
                 for (var i = 0; i < Math.Min(lines.Length, 120); i++)
                 {
                     var line = lines[i].Trim();
-                    if (inPreamble)
+                    if (inPreamble &&
+                        (line.StartsWith("***") || line.StartsWith("Produced by", StringComparison.OrdinalIgnoreCase)))
                     {
-                        if (line.StartsWith("***") || line.StartsWith("Produced by", StringComparison.OrdinalIgnoreCase))
-                        {
-                            contentStartIndex = i + 1;
-                            inPreamble = false;
-                        }
+                        contentStartIndex = i + 1;
+                        inPreamble = false;
                     }
                 }
 

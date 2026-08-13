@@ -5,8 +5,8 @@
  * S5: stage2 job when possible → Film/Generate state
  */
 import { chromium } from "playwright";
-import fs from "fs";
-import path from "path";
+import fs from "node:fs";
+import path from "node:path";
 
 const BASE = (process.env.WEB_URL || "http://127.0.0.1:5088").replace(/\/$/, "");
 const API = (process.env.API_URL || "http://127.0.0.1:5088").replace(/\/$/, "");
@@ -232,7 +232,9 @@ async function main() {
   log("\n" + md);
 }
 
-main().catch((e) => {
+try {
+  await main();
+} catch (e) {
   console.error(e);
   process.exit(1);
-});
+}
