@@ -15,7 +15,7 @@ public sealed class XaiFountainFileSession : IFountainFileSession
     private readonly XaiResponsesClient _client;
     private readonly string _projectDir;
     private readonly Action<string>? _onProgress;
-    private string _kind = ProjectXaiArtifactFiles.KindScreenplayStitch;
+    private readonly string _kind = ProjectXaiArtifactFiles.KindScreenplayStitch;
 
     public XaiFountainFileSession(
         XaiResponsesClient client,
