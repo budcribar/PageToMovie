@@ -33,7 +33,7 @@ Implications:
 5. **One-shot when it fits; index+batched writes for novels.** Short books: one file_id pass. Novels: index (small output) → write sequences in batches (not 175 one-scene calls, not 8 fat text chunks). File_id single-pass that times out may fall back to index+write, not to blind 40k slices.
 6. **Hierarchy makes trim cheap.** Drop a sequence (Telemachus in Sparta) rather than random lines. Estimate / miniseries / 120‑minute cut are filters on the same index.
 
-Canonical plan: [`host/docs/max-master-adaptation-plan.md`](host/docs/max-master-adaptation-plan.md). Aligns with Mary4 D0 (`screenplay.max` as shareable artifact).
+Canonical plan: [`docs/max-master-adaptation-plan.md`](docs/max-master-adaptation-plan.md). Aligns with Mary4 D0 (`screenplay.max` as shareable artifact).
 
 ---
 
@@ -115,7 +115,7 @@ Buster (and other fixtures) are **eval / demo projects**, not product requiremen
 
 Loader: `SupportedModelCatalog.TryLoadFromJson` / `EnsureLoaded`. WASM hydrates via `GetModelsCatalogJsonAsync` before relying on static catalog APIs.
 
-See also: `host/docs/supported-models.md`.
+See also: `docs/supported-models.md`.
 
 ---
 
@@ -334,13 +334,13 @@ Current over-ceiling backlog and agent pairing live in the working tree under sp
 |-----|---------|
 | `docs/README.md` | **Map** — product story + living vs archive |
 | `docs/studio-decision-flow.md` | Book → Estimate → Film; [state machine](docs/studio-decision-flow.md#4-state-machine) |
-| `host/docs/max-master-adaptation-plan.md` | Index, write, auto-enrich, trim, share |
-| `host/docs/backlog.md` | Open work (includes leftover AI-call loop items) |
+| `docs/max-master-adaptation-plan.md` | Index, write, auto-enrich, trim, share |
+| `docs/backlog.md` | Open work (includes leftover AI-call loop items) |
 | `host/evals/README.md` | App eval root (not story projects) |
 | `host/evals/screenplay_benchmark/README.md` | Screenplay benchmark guide |
 | `host/evals/classifier_benchmarks/README.md` | Classifier AI vs baseline suite |
 | `host/evals/beat_label_eval/README.md` | Silent-beat action_class ground truth |
-| `host/docs/loadsim-soak.md` | How to run LoadSim |
+| `docs/loadsim-soak.md` | How to run LoadSim |
 | `docs/archive/` | Dated snapshots and completed plans |
 
 ---

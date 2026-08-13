@@ -91,7 +91,7 @@ Look (re-skin the medium) is optional. Fit length only writes the working `scree
 | `projects/` | Per-film fountain, max, index, cast, clips, WIP |
 | `prompts/` | Product prompts |
 | `docs/` | [Documentation map](docs/README.md) and [state machine](docs/studio-decision-flow.md#4-state-machine) |
-| `host/docs/max-master-adaptation-plan.md` | Full screenplay, cut later |
+| `docs/max-master-adaptation-plan.md` | Full screenplay, cut later |
 
 ## Tests
 
@@ -116,11 +116,11 @@ Playwright pilot (against a running API): `host/playwright/README.md`.
 | [**Documentation map**](docs/README.md) | Product story + links + what to archive |
 | [**State machine**](docs/studio-decision-flow.md#4-state-machine) | Phases, guards, Generate vs Edit |
 | [`docs/studio-decision-flow.md`](docs/studio-decision-flow.md) | Book → Estimate → Film (full plan) |
-| [`host/docs/max-master-adaptation-plan.md`](host/docs/max-master-adaptation-plan.md) | Index, write, auto-enrich, trim, share |
+| [`docs/max-master-adaptation-plan.md`](docs/max-master-adaptation-plan.md) | Index, write, auto-enrich, trim, share |
 | [`docs/architecture/MODEL_CALL_INVENTORY.md`](docs/architecture/MODEL_CALL_INVENTORY.md) | Every model call |
-| [`host/docs/supported-models.md`](host/docs/supported-models.md) | Catalog / how models are chosen |
-| [`host/docs/voice-substitution-design.md`](host/docs/voice-substitution-design.md) | Easy Start / “speak as you” |
-| [`host/docs/public-community-plan.md`](host/docs/public-community-plan.md) | Public (Forkable) library |
+| [`docs/supported-models.md`](docs/supported-models.md) | Catalog / how models are chosen |
+| [`docs/voice-substitution-design.md`](docs/voice-substitution-design.md) | Easy Start / “speak as you” |
+| [`docs/public-community-plan.md`](docs/public-community-plan.md) | Public (Forkable) library |
 | [`host/README.md`](host/README.md) | API routes, SignalR, YouTube, LoadSim |
 | [`AGENTS.md`](AGENTS.md) | North star for contributors |
 

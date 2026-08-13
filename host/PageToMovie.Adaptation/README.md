@@ -101,7 +101,7 @@ See XML docs on `AdaptationVersion.ComputeId`.
 
 ## Plan
 
-See [docs/archive/adaptation-module-implementation-plan.md](../../docs/archive/adaptation-module-implementation-plan.md) (completed). Living contract is this README + [max-master](../docs/max-master-adaptation-plan.md).
+See [docs/archive/adaptation-module-implementation-plan.md](../../docs/archive/adaptation-module-implementation-plan.md) (completed). Living contract is this README + [max-master](../../docs/max-master-adaptation-plan.md).
 
 
 ## Phase contents

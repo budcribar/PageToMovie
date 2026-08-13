@@ -71,7 +71,7 @@ implementing the relevant interface(s) and register it in the corresponding `Mul
 
 Ingestion (`BookPrepareService`) → **Stage 1** (`AdaptationService`: index → max Fountain → **auto-enrich**; Look / Fit length optional) →
 cast + plates → **Stage 2** shot plan → video → advisory auto-review → music → browser stitch.
-Novels: index then write sequences (`file_id`). The 40k chunker is a fallback. See [max-master](host/docs/max-master-adaptation-plan.md).
+Novels: index then write sequences (`file_id`). The 40k chunker is a fallback. See [max-master](docs/max-master-adaptation-plan.md).
 
 ### Jobs
 
@@ -126,4 +126,4 @@ These apply to *product code* under `host/` (Engine/Api/Web), not to one-off scr
   money — never call paid APIs from a non-`LiveApi` unit test.
 - `host/evals/` + `host/tools/{ClassifierBenchmarks,BeatLabelEval,HeuristicAiEval,AmbientBlind}` hold AI-vs-baseline
   classifier benchmark history for product classifiers — separate from story-project test fixtures.
-- Prefer Release build + fakes + a single Api/LoadSim process pair for perf soaks (see `host/docs/loadsim-soak.md`).
+- Prefer Release build + fakes + a single Api/LoadSim process pair for perf soaks (see `docs/loadsim-soak.md`).

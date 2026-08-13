@@ -11,7 +11,7 @@ This is the **map**. Read top-down. Each section is the product story in a page 
 | Principle | One line | Detail |
 |-----------|----------|--------|
 | Excellent film, little input | Select a story → strong film. Automate judgment; keep budgets deterministic. | [AGENTS.md · north star](../AGENTS.md#product-north-star-always-decide-with-this-in-mind) |
-| **Max master, cut later** | Write the whole book once. 120 minutes or miniseries is a **view**, not a second adapt. | [Max-master plan](../host/docs/max-master-adaptation-plan.md) |
+| **Max master, cut later** | Write the whole book once. 120 minutes or miniseries is a **view**, not a second adapt. | [Max-master plan](max-master-adaptation-plan.md) |
 | Book → Estimate → Film | Cast is optional craft, not a required stop before you see $ and minutes. | [Studio decision flow](studio-decision-flow.md) |
 | Enrich is automatic | After the Fountain exists, deepen visuals from the book. Dialogue and scene count stay. | Same max-master plan; admin can re-run a one-off |
 | One process | `dotnet run --project PageToMovie.Api` serves UI + API. No second Blazor site. | [root README · Run](../README.md#run) · [host README](../host/README.md) |
@@ -29,9 +29,9 @@ This is the **map**. Read top-down. Each section is the product story in a page 
 3. Record one sample (or choose the speaker).
 4. Make movie — narrator lines only; pictures stay.
 
-How voice lands on clips: [Voice](../host/docs/voice-substitution-design.md).
+How voice lands on clips: [Voice](voice-substitution-design.md).
 
-How a title gets on the shelf: mark **Public (Forkable)** — [Public community](../host/docs/public-community-plan.md) (status table; title still says “plan” but fork/visibility/invite are built).
+How a title gets on the shelf: mark **Public (Forkable)** — [Public library](public-community-plan.md).
 
 ### Full studio — you are making the film
 
@@ -76,16 +76,16 @@ Ingest → Index → Write max Fountain → Auto-enrich
 
 | Stage | What to read |
 |-------|----------------|
-| Ingest (txt / PDF / Fountain, OCR) | [Max master](../host/docs/max-master-adaptation-plan.md) (session notes: [archive](archive/adaptation-session-pipeline.md)) |
-| Index + write + enrich + trim | [Max master](../host/docs/max-master-adaptation-plan.md) · [Adaptation module](../host/PageToMovie.Adaptation/README.md) |
+| Ingest (txt / PDF / Fountain, OCR) | [Max master](max-master-adaptation-plan.md) (session notes: [archive](archive/adaptation-session-pipeline.md)) |
+| Index + write + enrich + trim | [Max master](max-master-adaptation-plan.md) · [Adaptation module](../host/PageToMovie.Adaptation/README.md) |
 | Prompts | [prompts/README](../prompts/README.md) |
 | Every model call | [MODEL_CALL_INVENTORY](architecture/MODEL_CALL_INVENTORY.md) |
-| Shot plan / action timing | [Action timing](../host/docs/action-timing-plan.md) |
+| Shot plan / action timing | [Action timing](action-timing-plan.md) |
 | Estimate / $ / minutes | [Decision flow §2](studio-decision-flow.md#2-progressive-costing-model) |
-| Cast / plates / voice | Decision flow + [voice substitution](../host/docs/voice-substitution-design.md) |
+| Cast / plates / voice | Decision flow + [voice substitution](voice-substitution-design.md) |
 | Review / stitch / ffmpeg.wasm | [host README](../host/README.md) (browser media) |
-| What is on disk | [Project artifacts](../host/docs/project_artifacts.md) |
-| Models / providers / keys | [Supported models](../host/docs/supported-models.md) · catalog JSON is SSoT |
+| What is on disk | [Project artifacts](project_artifacts.md) |
+| Models / providers / keys | [Supported models](supported-models.md) · catalog JSON is SSoT |
 
 Default planning chat model: **Grok 4.6** (`models_catalog.json`). Do not list models in prose.
 
@@ -95,9 +95,9 @@ Default planning chat model: **Grok 4.6** (`models_catalog.json`). Do not list m
 
 | Topic | Detail |
 |-------|--------|
-| Visibility + fork + invite + contribution | [Public community](../host/docs/public-community-plan.md) |
-| Same-project ACL, leases, presence | [Multi-user collaboration](../host/docs/multi-user-collaboration.md) |
-| Scale / 100-user soak (plan + LoadSim) | [multi-user-100](../host/docs/multi-user-100-plan.md) · [LoadSim](../host/docs/loadsim-soak.md) |
+| Visibility + fork + invite + contribution | [Public community](public-community-plan.md) |
+| Same-project ACL, leases, presence | [Multi-user collaboration](multi-user-collaboration.md) |
+| Scale / 100-user soak (plan + LoadSim) | [multi-user-100](multi-user-100-plan.md) · [LoadSim](loadsim-soak.md) |
 
 Easy Start **is** the public-fork path with a voice step. Do not invent a third sharing model.
 
@@ -107,8 +107,8 @@ Easy Start **is** the public-fork path with a voice step. Do not invent a third 
 
 | Topic | Detail |
 |-------|--------|
-| Review notes → prompts (operator loop) | [learning-loop](../host/docs/learning-loop.md) · [film-provenance](../host/docs/film-provenance-critic-learning-architecture.md) |
-| Provenance / critic (architecture) | [film-provenance…](../host/docs/film-provenance-critic-learning-architecture.md) (design; not all shipped) |
+| Review notes → prompts (operator loop) | [learning-loop](learning-loop.md) · [film-provenance](film-provenance-critic-learning-architecture.md) |
+| Provenance / critic (architecture) | [film-provenance…](film-provenance-critic-learning-architecture.md) (design; not all shipped) |
 | Copy / jargon | [AGENTS.md](../AGENTS.md) (archived scan: [USER_COPY_JARGON_AUDIT](archive/USER_COPY_JARGON_AUDIT.md)) |
 
 ---
@@ -122,7 +122,7 @@ Easy Start **is** the public-fork path with a voice step. Do not invent a third 
 | Tests | [root README · Tests](../README.md#tests) |
 | Playwright | [host/playwright/README](../host/playwright/README.md) |
 | Screenplay benchmark | [host/evals/screenplay_benchmark/README](../host/evals/screenplay_benchmark/README.md) |
-| Open work | [Backlog](../host/docs/backlog.md) |
+| Open work | [Backlog](backlog.md) |
 | Agent rules | [AGENTS.md](../AGENTS.md) |
 
 `CLAUDE.md` run block matches one-process. Durable rules stay in [AGENTS.md](../AGENTS.md).
@@ -133,6 +133,6 @@ Easy Start **is** the public-fork path with a voice step. Do not invent a third 
 
 Living docs are the ones linked in §§1–7. Everything else is under [archive/](archive/README.md).
 
-**Rule:** no new `*-YYYY-MM-DD.md` under `host/docs/`. Update a living doc or add a [backlog](../host/docs/backlog.md) line.
+**Rule:** no new dated working notes. Update a living doc here or add a [backlog](backlog.md) line. Engine issue notes stay in [`host/docs/issues/`](../host/docs/issues/).
 
 Decision flow, max-master, and the model inventory stay separate. No mega-doc.

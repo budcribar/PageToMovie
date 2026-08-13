@@ -23,7 +23,7 @@ Cost is never a hard dollar gate. Preferences bias defaults; the user always cho
 | 8 | **Regen feedback loop** — measure real takes-per-clip and reasons so estimates (and ranges) improve with usage. |
 | 9 | **Two import paths:** book→screenplay *or* **import fountain** (skip write) — both land on the same DecisionCard. |
 | 10 | **Shared projects:** Owner full-film / Editor scene gen; job service; `keyMode` shared\|personal; leases on script, scene, cast, loc; no steal while online. |
-| 11 | **Max master, cut later.** First write is the complete book (`screenplay.max` + scene index). Runtime / miniseries / 120‑minute cuts are trims of that artifact — never a second adapt. See `host/docs/max-master-adaptation-plan.md`. |
+| 11 | **Max master, cut later.** First write is the complete book (`screenplay.max` + scene index). Runtime / miniseries / 120‑minute cuts are trims of that artifact — never a second adapt. See `docs/max-master-adaptation-plan.md`. |
 
 
 ---
@@ -98,7 +98,7 @@ Related but different:
 
 | System | Learns | Feeds |
 |--------|--------|--------|
-| [learning-loop.md](../host/docs/learning-loop.md) | *What* was wrong (prompts, stage1/2) | Better next plan/render quality |
+| [learning-loop.md](learning-loop.md) | *What* was wrong (prompts, stage1/2) | Better next plan/render quality |
 | **Regen cost loop (here)** | *How many takes* and cost impact | Better $ forecasts / ranges |
 | QA auto-retry (existing) | Fail rates → video multiplier | Automatic quality regens |
 
@@ -752,7 +752,7 @@ Use this as the build/acceptance tracker. Check items off in PRs; leave dates/no
 | Leases | `host/PageToMovie.Engine/Collaboration/ProjectLeaseService.cs` (`project` \| `scene:N` \| `script`) |
 | Presence | `host/PageToMovie.Engine/Collaboration/IProjectPresenceService.cs` |
 | Scene lock fields | `SceneSummary.LockOwnerUserId`, `LockedByOther` |
-| Quality / prompt learning (separate) | [host/docs/learning-loop.md](../host/docs/learning-loop.md) |
+| Quality / prompt learning (separate) | [learning-loop.md](learning-loop.md) |
 | API cost history stats | `UserDatabaseService.GetApiCostHistoryStatsAsync` |
 
 ---

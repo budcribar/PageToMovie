@@ -14,7 +14,7 @@ host/
   PageToMovie.Fakes/        # fake clients + fixtures
   PageToMovie.LoadSim/      # concurrent virtual-user load client
   PageToMovie.Tests/        # unit tests
-  docs/                     # plans, soak, max-master
+  docs/                     # engine issue notes only — product docs are ../docs/
 ```
 
 Product flow and north star: repo-root [README.md](../README.md) and [AGENTS.md](../AGENTS.md).
@@ -111,7 +111,7 @@ dotnet run --project PageToMovie.Api
 dotnet run --project PageToMovie.LoadSim -- --users 25 --duration 90 --scenario mixed --out loadsim-results.json
 ```
 
-Uses checked-in **`projects/LoadSimBuster`** (isolated from real Buster). See `docs/loadsim-soak.md`.
+Uses checked-in **`projects/LoadSimBuster`** (isolated from real Buster). See [`docs/loadsim-soak.md`](../docs/loadsim-soak.md).
 
 ## Capability matrix (native C#)
 

@@ -572,7 +572,7 @@ Optional: write .duration.json sidecar with fixture duration for fast UI probe
 ### Phase E — LoadSim + soak (+ admin validation) — **IMPLEMENTED (2026-07-17)**
 
 - Ship `PageToMovie.LoadSim` ✅ — console client, CLI, gates, `loadsim-results.json`.
-- Manual soak: see `host/docs/loadsim-soak.md` (100×10 min procedure).
+- Manual soak: see `docs/loadsim-soak.md` (100×10 min procedure).
 - **Admin check:** documented in soak guide (watch `/admin` during run; hot-tune capacity).
 
 **E1. Automated LoadSim pass/fail gates (CI)** ✅

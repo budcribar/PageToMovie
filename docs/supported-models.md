@@ -1,6 +1,6 @@
 # Supported models (master catalog)
 
-**Single source of truth:** [`host/PageToMovie.Core/config/models_catalog.json`](../PageToMovie.Core/config/models_catalog.json)
+**Single source of truth:** [`host/PageToMovie.Core/config/models_catalog.json`](../host/PageToMovie.Core/config/models_catalog.json)
 
 Code must **not** hardcode model lists, provider labels, pricing, or “default model” ids. Everything selectable in Settings / used for keys and costing is driven by this file (loaded by `SupportedModelCatalog`, served as `GET /api/models` and `GET /api/models/catalog-json`).
 
@@ -55,4 +55,4 @@ Do **not** enable half-working models. Prefer a disabled row + `featureRequestUr
 
 ## Admin catalog UI
 
-`/admin/models-catalog` edits the same JSON (add/enable/disable, scan, labMode for incomplete rows). Cost rates come only from the catalog — no C# fallbacks. Dated 2026-08-05 notes: [docs/archive](../../docs/archive/README.md).
+`/admin/models-catalog` edits the same JSON (add/enable/disable, scan, labMode for incomplete rows). Cost rates come only from the catalog — no C# fallbacks. Dated 2026-08-05 notes: [docs/archive](archive/README.md).

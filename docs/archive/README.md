@@ -2,7 +2,7 @@
 
 Snapshots and completed plans. **Not the product story.** Start at [docs/README.md](../README.md).
 
-Moved here 2026-08-13. Do not add new dated working notes — update a living doc or [backlog](../../host/docs/backlog.md).
+Moved here 2026-08-13. Living product docs are the parent folder. Do not add new dated notes — update a living doc or [backlog](../backlog.md).
 
 | Kind | Files |
 |------|--------|

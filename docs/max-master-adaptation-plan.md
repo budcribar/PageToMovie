@@ -2,8 +2,8 @@
 
 **Status:** on master (P0–P5). Default Stage‑1 path: index → write max Fountain → **auto-enrich**. Trim is a view.  
 **Date:** 2026-08-13  
-**North star:** [`AGENTS.md`](../../AGENTS.md) § *Build the full screenplay — cut later*  
-**Related:** [`docs/studio-decision-flow.md`](../../docs/studio-decision-flow.md) principle 11 · [map](../../docs/README.md)
+**North star:** [`AGENTS.md`](../AGENTS.md) § *Build the full screenplay — cut later*  
+**Related:** [`studio-decision-flow.md`](studio-decision-flow.md) principle 11 · [map](README.md)
 
 ## Law
 
@@ -44,7 +44,7 @@ File_id one-shot stays the **happy path for books that finish in one pass**. Nov
 
 Do **not** invent a second file-handle store. Extend `ProjectXaiArtifactFiles`.
 
-**Reuse, don't resend.** Chat/enrich/merge attach the book and Fountain by `file_id` when the SHA matches (`BookTextRegistryService`, `IFountainFileSession`). Do not upload the same book body again. Session sidecar notes: [archive/adaptation-session-pipeline.md](../../docs/archive/adaptation-session-pipeline.md).
+**Reuse, don't resend.** Chat/enrich/merge attach the book and Fountain by `file_id` when the SHA matches (`BookTextRegistryService`, `IFountainFileSession`). Do not upload the same book body again. Session sidecar notes: [archive/adaptation-session-pipeline.md](archive/adaptation-session-pipeline.md).
 
 ### Index schema (v1, draft)
 

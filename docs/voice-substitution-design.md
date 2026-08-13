@@ -2,7 +2,7 @@
 
 **Status:** implemented. Easy Start (`/simple-voice`) forks a public film and re-voices the narrator. The same overlay path can replace any speaking character on an already-generated movie.
 
-Optional STT word-alignment is a future plug-in. Clone-sample “listen and copy” design: [archive/voice-capture-karaoke.md](../../docs/archive/voice-capture-karaoke.md).
+Optional STT word-alignment is a future plug-in. Clone-sample “listen and copy” design: [archive/voice-capture-karaoke.md](archive/voice-capture-karaoke.md).
 
 ## Easy Start
 

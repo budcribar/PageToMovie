@@ -2,7 +2,7 @@
 
 **Status:** architecture + implementation plan (2026-08-03)  
 **North Star:** drop a book → get a movie, with less human post-processing over time.  
-**Related:** [learning-loop.md](./learning-loop.md), [project_artifacts.md](./project_artifacts.md), [archive/github-projects-backup-checklist.md](../../docs/archive/github-projects-backup-checklist.md)
+**Related:** [learning-loop.md](./learning-loop.md), [project_artifacts.md](./project_artifacts.md), [archive/github-projects-backup-checklist.md](archive/github-projects-backup-checklist.md)
 
 This document crystallizes decisions from product discussion: **where truth lives**, **how stitch/YouTube provenance works**, **pre- vs post-publish critics**, and a **prioritized build order**.
 

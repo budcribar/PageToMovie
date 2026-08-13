@@ -337,7 +337,7 @@ Single prioritized backlog. Older checklist docs were merged here and removed (2
 
 ## Folded from north-star checklists (2026-08-13)
 
-Open leftovers (full history: [archive/north-star-checklists.md](../../docs/archive/north-star-checklists.md)):
+Open leftovers (full history: [archive/north-star-checklists.md](archive/north-star-checklists.md)):
 
 - Migrate remaining bespoke vision/chat sites onto `ValidatedModelOperation` (dialogue-verify, cast-on-image, music, OCR — see `KnownBespokeDebt`)
 - `AiCallAnalyzer` CLI + replay for vision/video/image

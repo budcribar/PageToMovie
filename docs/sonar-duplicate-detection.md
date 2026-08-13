@@ -93,6 +93,6 @@ The CPD sensor and the properties above work the same way.
 | `.github/workflows/sonarcloud.yml` | CI analysis + upload |
 | `sonar-project.properties` | Documented settings (kept in sync with the workflow) |
 | `host/scripts/run-sonar-local.sh` | One-command local analysis |
-| `host/docs/sonar-duplicate-detection.md` | This guide |
+| `docs/sonar-duplicate-detection.md` | This guide |
 
 No product code changes are required to start receiving reports.
