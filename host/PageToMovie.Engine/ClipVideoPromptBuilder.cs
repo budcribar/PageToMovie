@@ -35,6 +35,22 @@ public static class ClipVideoPromptBuilder
     /// </summary>
     public const int MaxPromptChars = VideoPromptHardCapChars;
 
+    private static readonly string[] PromptTooLongPhrases =
+    {
+        "prompt too long",
+        "prompt length exceeds",
+        "exceeds the maximum allowed length",
+        "context length",
+        "maximum context",
+        "max context",
+        "token limit",
+        "too many tokens",
+        "context_length_exceeded",
+        "maximum allowed length",
+        "payload too large",
+        "request entity too large",
+    };
+
     public sealed class CharacterProfile
     {
         public string Key { get; init; } = "";
@@ -936,46 +952,51 @@ public static class ClipVideoPromptBuilder
         var list = new List<string>();
         if (string.IsNullOrWhiteSpace(prose) || characters.Count == 0) return list;
         var text = prose.ToLowerInvariant();
-
-        var officerKeys = characters.Keys
-            .Where(k => k.Contains("Officer", StringComparison.OrdinalIgnoreCase))
-            .OrderBy(k => k, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-        if (officerKeys.Count > 0 &&
-            CommonRegex.IsMatch(text, @"\b(three|3)\s+officers?\b|\bofficers?\s+sit\b|\bthe officers\b"))
-        {
-            foreach (var k in officerKeys.Where(k => !list.Contains(k, StringComparer.OrdinalIgnoreCase)))
-                list.Add(k);
-        }
-
+        AddOfficerKeysFromProse(text, characters, list);
         foreach (var (key, prof) in characters)
         {
             if (list.Contains(key, StringComparer.OrdinalIgnoreCase)) continue;
-            var names = new List<string>();
-            if (!string.IsNullOrWhiteSpace(prof.DisplayName))
-                names.Add(prof.DisplayName.Trim());
-            var suffix = key.Replace(JsonKeys.CharacterPrefix, "", StringComparison.OrdinalIgnoreCase)
-                .Replace('_', ' ').Trim();
-            if (suffix.Length > 0) names.Add(suffix);
-            if (key.Contains("Old_Man", StringComparison.OrdinalIgnoreCase) ||
-                key.Contains("OldMan", StringComparison.OrdinalIgnoreCase))
-                names.Add("old man");
-            if (key.Contains("Narrator", StringComparison.OrdinalIgnoreCase))
-                names.Add("narrator");
-
-            foreach (var n in names)
-            {
-                if (n.Length < 3) continue;
-                if (text.Contains(n.ToLowerInvariant(), StringComparison.Ordinal))
-                {
-                    list.Add(key);
-                    break;
-                }
-            }
+            if (ProseMentionsAnyName(text, ProseNameHints(key, prof)))
+                list.Add(key);
         }
 
         return list;
     }
+
+    private static void AddOfficerKeysFromProse(
+        string text,
+        IReadOnlyDictionary<string, CharacterProfile> characters,
+        List<string> list)
+    {
+        var officerKeys = characters.Keys
+            .Where(k => k.Contains("Officer", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(k => k, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (officerKeys.Count == 0 ||
+            !CommonRegex.IsMatch(text, @"\b(three|3)\s+officers?\b|\bofficers?\s+sit\b|\bthe officers\b"))
+            return;
+        foreach (var k in officerKeys.Where(k => !list.Contains(k, StringComparer.OrdinalIgnoreCase)))
+            list.Add(k);
+    }
+
+    private static List<string> ProseNameHints(string key, CharacterProfile prof)
+    {
+        var names = new List<string>();
+        if (!string.IsNullOrWhiteSpace(prof.DisplayName))
+            names.Add(prof.DisplayName.Trim());
+        var suffix = key.Replace(JsonKeys.CharacterPrefix, "", StringComparison.OrdinalIgnoreCase)
+            .Replace('_', ' ').Trim();
+        if (suffix.Length > 0) names.Add(suffix);
+        if (key.Contains("Old_Man", StringComparison.OrdinalIgnoreCase) ||
+            key.Contains("OldMan", StringComparison.OrdinalIgnoreCase))
+            names.Add("old man");
+        if (key.Contains("Narrator", StringComparison.OrdinalIgnoreCase))
+            names.Add("narrator");
+        return names;
+    }
+
+    private static bool ProseMentionsAnyName(string text, List<string> names) =>
+        names.Any(n => n.Length >= 3 && text.Contains(n.ToLowerInvariant(), StringComparison.Ordinal));
 
     /// <summary>Pull leading STYLE LOCK sentence from plan visual if present.</summary>
     public static string? ExtractStyleHead(string visual)
@@ -1192,40 +1213,57 @@ public static class ClipVideoPromptBuilder
         if (onScreen.Count <= 1)
             return new HashSet<string>(onScreen, StringComparer.OrdinalIgnoreCase);
 
-        // Prefer explicit Stage 2 list when present
-        if (clipEl.TryGetProperty("focus_keys", out var fk) && fk.ValueKind == JsonValueKind.Array)
-        {
-            var fromPlan = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var el in fk.EnumerateArray())
-            {
-                if (el.ValueKind == JsonValueKind.String &&
-                    el.GetString() is { Length: > 0 } k &&
-                    onScreen.Any(o => string.Equals(o, k, StringComparison.OrdinalIgnoreCase)))
-                    fromPlan.Add(k);
-            }
-            if (fromPlan.Count > 0)
-                return fromPlan;
-        }
+        var fromPlan = TryFocusKeysFromPlan(onScreen, clipEl);
+        if (fromPlan is not null)
+            return fromPlan;
 
-        string? primary = null;
-        if (clipEl.TryGetProperty(PrimarySubjectKey, out var psEl) && psEl.ValueKind == JsonValueKind.String)
-            primary = psEl.GetString();
+        return ResolveFocusKeys(
+            onScreen,
+            ReadClipString(clipEl, PrimarySubjectKey),
+            ReadAudioPayloadString(clipEl, "speaker"),
+            ReadClipString(clipEl, "action_class"),
+            ReadAudioPayloadString(clipEl, "secondary_speaker"));
+    }
 
-        string? speaker = null;
-        string? secondarySpeaker = null;
-        if (clipEl.TryGetProperty(JsonKeys.AudioPayload, out var ap) && ap.ValueKind == JsonValueKind.Object)
-        {
-            if (ap.TryGetProperty("speaker", out var spEl) && spEl.ValueKind == JsonValueKind.String)
-                speaker = spEl.GetString();
-            if (ap.TryGetProperty("secondary_speaker", out var ssEl) && ssEl.ValueKind == JsonValueKind.String)
-                secondarySpeaker = ssEl.GetString();
-        }
+    private static HashSet<string>? TryFocusKeysFromPlan(
+        IReadOnlyList<string> onScreen,
+        JsonElement clipEl)
+    {
+        if (!clipEl.TryGetProperty("focus_keys", out var fk) || fk.ValueKind != JsonValueKind.Array)
+            return null;
+        var fromPlan = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var el in fk.EnumerateArray())
+            TryAddPlannedFocusKey(fromPlan, onScreen, el);
+        return fromPlan.Count > 0 ? fromPlan : null;
+    }
 
-        string? actionClass = null;
-        if (clipEl.TryGetProperty("action_class", out var acEl) && acEl.ValueKind == JsonValueKind.String)
-            actionClass = acEl.GetString();
+    private static void TryAddPlannedFocusKey(
+        HashSet<string> dest,
+        IReadOnlyList<string> onScreen,
+        JsonElement el)
+    {
+        if (el.ValueKind != JsonValueKind.String)
+            return;
+        var k = el.GetString();
+        if (k is not { Length: > 0 })
+            return;
+        if (!onScreen.Any(o => string.Equals(o, k, StringComparison.OrdinalIgnoreCase)))
+            return;
+        dest.Add(k);
+    }
 
-        return ResolveFocusKeys(onScreen, primary, speaker, actionClass, secondarySpeaker);
+    private static string? ReadClipString(JsonElement parent, string name)
+    {
+        if (!parent.TryGetProperty(name, out var el) || el.ValueKind != JsonValueKind.String)
+            return null;
+        return el.GetString();
+    }
+
+    private static string? ReadAudioPayloadString(JsonElement clipEl, string name)
+    {
+        if (!clipEl.TryGetProperty(JsonKeys.AudioPayload, out var ap) || ap.ValueKind != JsonValueKind.Object)
+            return null;
+        return ReadClipString(ap, name);
     }
 
     /// <summary>
@@ -1708,30 +1746,27 @@ public static class ClipVideoPromptBuilder
     {
         if (string.IsNullOrWhiteSpace(message)) return false;
         var m = message;
-        // Common xAI / OpenAI-style and HTTP body phrases
-        if (m.Contains("prompt too long", StringComparison.OrdinalIgnoreCase)) return true;
-        if (m.Contains("prompt length exceeds", StringComparison.OrdinalIgnoreCase)) return true;
-        if (m.Contains("exceeds the maximum allowed length", StringComparison.OrdinalIgnoreCase)) return true;
-        if (m.Contains("context length", StringComparison.OrdinalIgnoreCase)) return true;
-        if (m.Contains("maximum context", StringComparison.OrdinalIgnoreCase)) return true;
-        if (m.Contains("max context", StringComparison.OrdinalIgnoreCase)) return true;
-        if (m.Contains("token limit", StringComparison.OrdinalIgnoreCase)) return true;
-        if (m.Contains("too many tokens", StringComparison.OrdinalIgnoreCase)) return true;
-        if (m.Contains("context_length_exceeded", StringComparison.OrdinalIgnoreCase)) return true;
-        if (m.Contains("maximum length", StringComparison.OrdinalIgnoreCase) &&
-            m.Contains("prompt", StringComparison.OrdinalIgnoreCase)) return true;
-        if (m.Contains("maximum allowed length", StringComparison.OrdinalIgnoreCase)) return true;
-        if (m.Contains("payload too large", StringComparison.OrdinalIgnoreCase)) return true;
-        if (m.Contains("request entity too large", StringComparison.OrdinalIgnoreCase)) return true;
-        // xAI video often returns 4096 char hard cap in the error body
-        if (m.Contains("4096", StringComparison.Ordinal) &&
-            m.Contains("length", StringComparison.OrdinalIgnoreCase)) return true;
-        if (CommonRegex.IsMatch(m, @"\b413\b") &&
-            (m.Contains("large", StringComparison.OrdinalIgnoreCase) ||
-             m.Contains("size", StringComparison.OrdinalIgnoreCase)))
-            return true;
-        return false;
+        if (ContainsAnyIgnoreCase(m, PromptTooLongPhrases)) return true;
+        if (ContainsBothIgnoreCase(m, "maximum length", "prompt")) return true;
+        if (Contains4096LengthCap(m)) return true;
+        return IsHttp413TooLarge(m);
     }
+
+    private static bool ContainsAnyIgnoreCase(string message, string[] phrases) =>
+        phrases.Any(phrase => message.Contains(phrase, StringComparison.OrdinalIgnoreCase));
+
+    private static bool ContainsBothIgnoreCase(string message, string a, string b) =>
+        message.Contains(a, StringComparison.OrdinalIgnoreCase) &&
+        message.Contains(b, StringComparison.OrdinalIgnoreCase);
+
+    private static bool Contains4096LengthCap(string message) =>
+        message.Contains("4096", StringComparison.Ordinal) &&
+        message.Contains("length", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsHttp413TooLarge(string message) =>
+        CommonRegex.IsMatch(message, @"\b413\b") &&
+        (message.Contains("large", StringComparison.OrdinalIgnoreCase) ||
+         message.Contains("size", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// Progressive shorten for API length retries. Prefer dropping HOUSE RULES / project

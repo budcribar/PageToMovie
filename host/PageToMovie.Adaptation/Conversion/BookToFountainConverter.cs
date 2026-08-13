@@ -2660,33 +2660,44 @@ public static class BookToFountainConverter
 
         if (parts.Count == 1) return NormalizeFountainText(parts[0]);
 
-        var sb = new StringBuilder();
-        for (var i = 0; i < parts.Count; i++)
-        {
-            var part = StripFences(parts[i] ?? "");
-            if (string.IsNullOrWhiteSpace(part)) continue;
-
-            if (i == 0)
-            {
-                part = StripTrailingEndMarkers(part);
-                sb.Append(part.TrimEnd());
-            }
-            else
-            {
-                part = StripTitlePage(part);
-                part = StripTrailingEndMarkers(part);
-                if (i < parts.Count - 1)
-                    part = StripTrailingEndMarkers(part);
-                if (string.IsNullOrWhiteSpace(part)) continue;
-                sb.Append("\n\n");
-                sb.Append(part.Trim());
-            }
-        }
-
-        var merged = sb.ToString().Trim();
+        var merged = ConcatFountainParts(parts);
         if (!CommonRegex.IsMatch(merged, @"(?im)^(FADE OUT\.|THE END)\s*$"))
             merged += "\n\nFADE OUT.\n\nTHE END\n";
         return NormalizeFountainText(merged);
+    }
+
+    private static string ConcatFountainParts(IReadOnlyList<string> parts)
+    {
+        var sb = new StringBuilder();
+        for (var i = 0; i < parts.Count; i++)
+            AppendFountainPart(sb, parts[i], i, parts.Count);
+        return sb.ToString().Trim();
+    }
+
+    private static void AppendFountainPart(StringBuilder sb, string? raw, int i, int count)
+    {
+        var part = StripFences(raw ?? "");
+        if (string.IsNullOrWhiteSpace(part)) return;
+
+        if (i == 0)
+        {
+            sb.Append(StripTrailingEndMarkers(part).TrimEnd());
+            return;
+        }
+
+        part = PrepareContinuationPart(part, i, count);
+        if (string.IsNullOrWhiteSpace(part)) return;
+        sb.Append("\n\n");
+        sb.Append(part.Trim());
+    }
+
+    private static string PrepareContinuationPart(string part, int i, int count)
+    {
+        part = StripTitlePage(part);
+        part = StripTrailingEndMarkers(part);
+        if (i < count - 1)
+            part = StripTrailingEndMarkers(part);
+        return part;
     }
 
     /// <summary>
