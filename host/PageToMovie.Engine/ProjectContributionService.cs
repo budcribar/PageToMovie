@@ -410,7 +410,7 @@ public sealed class ProjectContributionService
 
         string relPath = $"assets/video/scene_{scene:D2}_clip_{clipIdx:D2}.mp4";
         if (clip.TryGetProperty("relative_path", out var rp) && !string.IsNullOrWhiteSpace(rp.GetString()))
-            relPath = rp.GetString().Replace('\\', '/');
+            relPath = rp.GetString()!.Replace('\\', '/');
 
         string? cdnUrl = null;
         if (clip.TryGetProperty("video_url", out var vu)) cdnUrl = vu.GetString();

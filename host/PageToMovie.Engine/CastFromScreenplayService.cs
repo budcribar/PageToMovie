@@ -175,7 +175,8 @@ public sealed class CastFromScreenplayService
             $"Writing {seedsObj.Count} character seed(s)" +
             (locSeeds.Count > 0 ? $" · {locSeeds.Count} location(s)" : "") +
             "…");
-            Directory.CreateDirectory(Path.GetDirectoryName(outPath));
+            if (Path.GetDirectoryName(outPath) is { } dir)
+                Directory.CreateDirectory(dir);
         await BackupExistingCastFileAsync(outPath, ct).ConfigureAwait(false);
 
         var castIssues = StructuredOperationArtifacts.RequireJsonProperties(
@@ -1161,14 +1162,14 @@ public sealed class CastFromScreenplayService
         if (parsed.TryGetValue(KeyRenderStyleLock, out var rsl) && rsl is not null && !string.IsNullOrWhiteSpace(rsl.ToString()))
         {
             // Medium comes from cast model reading the screenplay — never from file type.
-            outDoc[KeyRenderStyleLock] = rsl.ToString().Trim();
+            outDoc[KeyRenderStyleLock] = rsl.ToString()!.Trim();
         }
         // If omitted, leave unset; CharacterDesignService reads Fountain Notes as fallback.
 
         // Film-level audience/performance conventions inferred from book (not hardcoded gaze recipes)
         if (parsed.TryGetValue(KeyPerformanceLock, out var pl) && pl is not null &&
             !string.IsNullOrWhiteSpace(pl.ToString()))
-            outDoc[KeyPerformanceLock] = pl.ToString().Trim();
+            outDoc[KeyPerformanceLock] = pl.ToString()!.Trim();
     }
 
     private static Dictionary<string, object?> NormalizeCharacterSeeds(Dictionary<string, object?> seedsIn)
@@ -1204,7 +1205,7 @@ public sealed class CastFromScreenplayService
             [KeyCanonicalGivenName] = name,
             ["display_name_policy"] = off ? "never_on_screen" : "ok_anytime",
             ["species_kind"] = CoerceString(seed, "species_kind"),
-            ["voice_label"] = CoerceString(seed, "voice_label") ?? name.Replace(' ', '_'),
+            ["voice_label"] = CoerceString(seed, "voice_label") ?? (name ?? "").Replace(' ', '_'),
             ["voice_profile"] = CoerceString(seed, "voice_profile")
                 ?? "Consistent character voice every scene.",
             [KeyReferenceImagePlaceholder] = CoerceString(seed, KeyReferenceImagePlaceholder)

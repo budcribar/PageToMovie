@@ -400,7 +400,7 @@ public sealed class BookPrepareService
     {
         try
         {
-            var pageText = await _vision.TranscribePageAsync(path, page, visionModel, ct);
+            var pageText = await _vision.TranscribePageAsync(path, page, visionModel ?? "", ct);
             if (string.IsNullOrWhiteSpace(pageText))
                 pageText = "(illustration only)";
             AppendVisionPageBlock(sb, page, pageText.Trim());

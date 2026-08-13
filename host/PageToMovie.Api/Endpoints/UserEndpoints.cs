@@ -89,8 +89,8 @@ public static class UserEndpoints
 
     try
     {
-        var fork = await store.ForkProjectAsync(outcome.ProjectId, user.UserId, isInvite: true, ct);
-        await books.LinkForkAsync(outcome.ProjectId, user.UserId, fork.Id, invitationAuthorized: true, ct);
+        var fork = await store.ForkProjectAsync(outcome.ProjectId, user.UserId!, isInvite: true, ct);
+        await books.LinkForkAsync(outcome.ProjectId, user.UserId!, fork.Id, invitationAuthorized: true, ct);
         return Results.Ok(new { ok = true, projectId = fork.Id, title = fork.Title });
     }
     catch (Exception ex)

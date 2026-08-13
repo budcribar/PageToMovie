@@ -125,7 +125,7 @@ public static class ClipDurationEstimator
     {
         // ResolveBoundsForModel throws on unknown/empty/incomplete catalog rows.
         var (min, max, _) = ResolveBoundsForModel(modelId);
-        var entry = SupportedModelCatalog.Find(modelId.Trim(), ModelCapability.Video);
+        var entry = SupportedModelCatalog.Find(modelId!.Trim(), ModelCapability.Video)!;
 
         int resolved;
         if (entry.AllowedDurationsSeconds is { Count: > 0 } allowed)
@@ -171,7 +171,7 @@ public static class ClipDurationEstimator
         // Unknown/empty model throws. No continue → 0 (never read maxExtensionSeconds).
         // Continue models must declare a positive maxExtensionSeconds in the catalog.
         _ = ResolveBoundsForModel(modelId);
-        var entry = SupportedModelCatalog.Find(modelId.Trim(), ModelCapability.Video);
+        var entry = SupportedModelCatalog.Find(modelId!.Trim(), ModelCapability.Video)!;
         if (!entry.SupportsVideoContinue)
             return 0;
         if (entry.MaxExtensionSeconds is not { } ext || ext <= 0)

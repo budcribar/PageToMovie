@@ -89,7 +89,7 @@ public sealed class ResendEmailSender : IEmailSender
         if (!resp.IsSuccessStatusCode)
         {
             if (await TrySendViaOnboardingSandboxAsync(
-                    client, payload, fromAddr, fromName, toEmail, subject, body, resp.StatusCode, ct)
+                    client, payload, fromAddr, fromName, toEmail, subject ?? "", body, resp.StatusCode, ct)
                     .ConfigureAwait(false))
                 return;
 

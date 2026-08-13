@@ -222,7 +222,7 @@ public static class JobEndpoints
         if ((body.Scenes is null || body.Scenes.Count == 0) && !hasClips)
             return Results.BadRequest(new { ok = false, error = "scenes or clips required" });
         var job = await jobService.StartBatchGenAsync(body);
-        var count = hasClips ? body.Clips.Count : body.Scenes?.Count ?? 0;
+        var count = hasClips ? body.Clips!.Count : body.Scenes?.Count ?? 0;
         var unit = hasClips ? "clip" : "scene";
         return Results.Accepted($"/api/jobs/{job.JobId}", new
         {

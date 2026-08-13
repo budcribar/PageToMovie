@@ -164,7 +164,7 @@ public static class AdaptationEndpoints
     static string Required(JsonElement el, string name) =>
         el.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String &&
         !string.IsNullOrWhiteSpace(value.GetString())
-            ? value.GetString()
+            ? value.GetString()!
             : throw new ArgumentException($"{name} required");
     var artifact = await books.RegisterArtifactAsync(
         bookId, user.UserId,

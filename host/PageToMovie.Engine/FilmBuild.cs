@@ -241,7 +241,8 @@ public static class FilmBuildService
     {
         ArgumentNullException.ThrowIfNull(doc);
         var path = GetPath(projectDir);
-        Directory.CreateDirectory(Path.GetDirectoryName(path));
+        if (Path.GetDirectoryName(path) is { } dir)
+            Directory.CreateDirectory(dir);
         var json = JsonSerializer.Serialize(doc, JsonDefaults.Indented);
         await File.WriteAllTextAsync(path, json + "\n", ct).ConfigureAwait(false);
     }

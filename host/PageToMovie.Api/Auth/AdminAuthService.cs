@@ -109,7 +109,7 @@ public sealed class AdminAuthService : IAdminAuthService
         var existing = await _userDb.GetUserByUsernameAsync(username, ct).ConfigureAwait(false);
         if (existing is not null)
             return Fail("Username is already taken");
-        var byEmail = await _userDb.GetUserByEmailAsync(email, ct).ConfigureAwait(false);
+        var byEmail = await _userDb.GetUserByEmailAsync(email!, ct).ConfigureAwait(false);
         if (byEmail is not null)
             return Fail("That email is already registered");
 

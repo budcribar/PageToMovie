@@ -1372,7 +1372,8 @@ public sealed partial class ProjectStore
         var p = await RequireProjectAsync(projectId, ct).ConfigureAwait(false);
         _activeProjectId = p.Id;
         var wsPath = Path.Combine(WorkspaceRoot, StoreLit.Projects, StoreLit.WorkspaceJson);
-        Directory.CreateDirectory(Path.GetDirectoryName(wsPath));
+        if (Path.GetDirectoryName(wsPath) is { } dir)
+            Directory.CreateDirectory(dir);
         await File.WriteAllTextAsync(
             wsPath,
             JsonSerializer.Serialize(new WorkspaceState { ActiveProject = p.Id }, JsonOpts),
@@ -1697,7 +1698,8 @@ public sealed partial class ProjectStore
                 continue; // never copy the source's own Git history into the fork
 
             var destPath = Path.Combine(newDir, rel);
-            Directory.CreateDirectory(Path.GetDirectoryName(destPath));
+            if (Path.GetDirectoryName(destPath) is { } dir)
+                Directory.CreateDirectory(dir);
             File.Copy(file, destPath, overwrite: true);
         }
 
@@ -2859,9 +2861,9 @@ public sealed partial class ProjectStore
         foreach (var field in new[] { JsonKeys.Description, StoreLit.VisualLock })
             PreferStrongerLocationField(cur, incomingNode, field, display, key);
         if (cur[StoreLit.DisplayName] is null && incomingNode[StoreLit.DisplayName] is not null)
-            cur[StoreLit.DisplayName] = incomingNode[StoreLit.DisplayName].DeepClone();
+            cur[StoreLit.DisplayName] = incomingNode[StoreLit.DisplayName]!.DeepClone();
         if (cur[StoreLit.LocationType] is null && incomingNode[StoreLit.LocationType] is not null)
-            cur[StoreLit.LocationType] = incomingNode[StoreLit.LocationType].DeepClone();
+            cur[StoreLit.LocationType] = incomingNode[StoreLit.LocationType]!.DeepClone();
     }
 
     private static void PreferStrongerLocationField(
@@ -3236,7 +3238,8 @@ public sealed partial class ProjectStore
             }
             else
             {
-                Directory.CreateDirectory(Path.GetDirectoryName(castPath));
+                if (Path.GetDirectoryName(castPath) is { } dir)
+                    Directory.CreateDirectory(dir);
                 root = new System.Text.Json.Nodes.JsonObject { [StoreLit.SchemaVersion] = StoreLit.CastSeedsV1 };
             }
 
@@ -3665,7 +3668,8 @@ public sealed partial class ProjectStore
             // dropped with no visible error.
             if (createCastShape && gpv is not null)
                 root[StoreLit.CharacterSeedTokens] = System.Text.Json.Nodes.JsonNode.Parse(seeds.ToJsonString());
-            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            if (Path.GetDirectoryName(path) is { } dir)
+                Directory.CreateDirectory(dir);
             File.WriteAllText(path, root.ToJsonString(JsonDefaults.Indented) + "\n");
         }
         catch
@@ -3782,7 +3786,8 @@ public sealed partial class ProjectStore
                 return;
             var locks = ResolveWardrobeLockObject(root);
             PatchWardrobeLockObject(locks, wardrobeKey, description, visualLock);
-            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            if (Path.GetDirectoryName(path) is { } dir)
+                Directory.CreateDirectory(dir);
             File.WriteAllText(path, root.ToJsonString(JsonDefaults.Indented) + "\n");
         }
         catch
@@ -4166,35 +4171,42 @@ public sealed partial class ProjectStore
 
     private static void ValidateClipEditAudio(ClipEditRequest fields)
     {
+        var delivery = fields.Delivery ?? "";
+        var dialogue = fields.Dialogue ?? "";
+        var speaker = fields.Speaker ?? "";
+
         // Delivery allowlist when set
-        if (fields.Delivery.Length > 0 && !AllowedDeliveries.Contains(fields.Delivery))
+        if (delivery.Length > 0 && !AllowedDeliveries.Contains(delivery))
             throw new InvalidOperationException(
                 "Delivery must be spoken_on_camera, voiceover_internal, off_camera, or none.");
 
-        var deliveryNone = fields.Delivery.Length == 0 ||
-                           string.Equals(fields.Delivery, "none", StringComparison.OrdinalIgnoreCase);
+        var deliveryNone = delivery.Length == 0 ||
+                           string.Equals(delivery, "none", StringComparison.OrdinalIgnoreCase);
 
         // Audio consistency
-        if (fields.Dialogue.Length > 0 && fields.Speaker.Length == 0)
+        if (dialogue.Length > 0 && speaker.Length == 0)
             throw new InvalidOperationException(
                 "Dialogue needs a speaker. Pick who says the line, or clear the dialogue text.");
 
-        if (fields.Dialogue.Length > 0 && deliveryNone)
+        if (dialogue.Length > 0 && deliveryNone)
             throw new InvalidOperationException(
                 "Dialogue needs a delivery (spoken_on_camera, voiceover_internal, or off_camera) — not none.");
 
-        if (fields.Speaker.Length > 0 && fields.Dialogue.Length == 0)
+        if (speaker.Length > 0 && dialogue.Length == 0)
             throw new InvalidOperationException(
                 "Speaker is set but dialogue is empty. Add the line, or set speaker to none.");
     }
 
     private static void ValidateClipEditCastKeys(ClipEditRequest fields, IReadOnlyCollection<string>? knownCastKeys)
     {
+        var speaker = fields.Speaker ?? "";
+        var primarySubject = fields.PrimarySubject ?? "";
+
         // Cast identity: Character_* keys only (no free-text display names)
-        if (fields.Speaker.Length > 0)
-            RequireCharacterKey(fields.Speaker, "Speaker");
-        if (fields.PrimarySubject.Length > 0)
-            RequireCharacterKey(fields.PrimarySubject, "Primary subject");
+        if (speaker.Length > 0)
+            RequireCharacterKey(speaker, "Speaker");
+        if (primarySubject.Length > 0)
+            RequireCharacterKey(primarySubject, "Primary subject");
         foreach (var ck in fields.CharactersOnScreen)
             RequireCharacterKey(ck, "On-screen character");
 
@@ -4203,12 +4215,12 @@ public sealed partial class ProjectStore
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         if (cast is not { Count: > 0 })
             return;
-        if (fields.Speaker.Length > 0 && !cast.Contains(fields.Speaker))
+        if (speaker.Length > 0 && !cast.Contains(speaker))
             throw new InvalidOperationException(
-                $"Speaker must be a cast member (unknown key: {fields.Speaker}).");
-        if (fields.PrimarySubject.Length > 0 && !cast.Contains(fields.PrimarySubject))
+                $"Speaker must be a cast member (unknown key: {speaker}).");
+        if (primarySubject.Length > 0 && !cast.Contains(primarySubject))
             throw new InvalidOperationException(
-                $"Primary subject must be a cast member (unknown key: {fields.PrimarySubject}).");
+                $"Primary subject must be a cast member (unknown key: {primarySubject}).");
         var unknownOnScreen = fields.CharactersOnScreen.FirstOrDefault(ck => !cast.Contains(ck));
         if (unknownOnScreen is not null)
         {
@@ -4219,21 +4231,24 @@ public sealed partial class ProjectStore
 
     private static void AutoIncludeOnScreenCast(ClipEditRequest fields)
     {
+        var primarySubject = fields.PrimarySubject ?? "";
+        var speaker = fields.Speaker ?? "";
+
         // Auto-include primary + on-camera speaker in on-screen list
-        if (fields.PrimarySubject.Length > 0 &&
+        if (primarySubject.Length > 0 &&
             !fields.CharactersOnScreen.Any(c =>
-                string.Equals(c, fields.PrimarySubject, StringComparison.OrdinalIgnoreCase)))
+                string.Equals(c, primarySubject, StringComparison.OrdinalIgnoreCase)))
         {
-            fields.CharactersOnScreen.Add(fields.PrimarySubject);
+            fields.CharactersOnScreen.Add(primarySubject);
         }
 
         var onCam = Stage2PlannerService.IsOnCameraDelivery(fields.Delivery);
         if (onCam &&
-            fields.Speaker.Length > 0 &&
+            speaker.Length > 0 &&
             !fields.CharactersOnScreen.Any(c =>
-                string.Equals(c, fields.Speaker, StringComparison.OrdinalIgnoreCase)))
+                string.Equals(c, speaker, StringComparison.OrdinalIgnoreCase)))
         {
-            fields.CharactersOnScreen.Add(fields.Speaker);
+            fields.CharactersOnScreen.Add(speaker);
         }
     }
 
@@ -4566,9 +4581,8 @@ public sealed partial class ProjectStore
         }
 
         int next;
-        if (creditsIndex >= 0)
+        if (creditsIndex >= 0 && scenes[creditsIndex] is System.Text.Json.Nodes.JsonObject creditsObj)
         {
-            var creditsObj = (System.Text.Json.Nodes.JsonObject)scenes[creditsIndex];
             next = ReadJsonNodeInt(creditsObj[JsonKeys.SceneNumber]);
             for (var i = creditsIndex; i < scenes.Count; i++)
                 if (scenes[i] is System.Text.Json.Nodes.JsonObject so)

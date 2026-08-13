@@ -608,7 +608,8 @@ public static string NormalizeText(string text)
         try
         {
             var path = GetMaxBasePath(store, projectId);
-            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            if (Path.GetDirectoryName(path) is { } dir)
+                Directory.CreateDirectory(dir);
             File.WriteAllText(path, NormalizeText(fountain));
         }
         catch { /* base is an optimization; trim can re-seed from the draft if missing */ }
@@ -644,7 +645,8 @@ public static string NormalizeText(string text)
             baseFountain = Get(store, projectId).Text;
             if (string.IsNullOrWhiteSpace(baseFountain))
                 return new DraftEditResult { Ok = false, Error = "No screenplay draft to trim yet." };
-            Directory.CreateDirectory(Path.GetDirectoryName(basePath));
+            if (Path.GetDirectoryName(basePath) is { } dir)
+                Directory.CreateDirectory(dir);
             await File.WriteAllTextAsync(basePath, baseFountain, ct).ConfigureAwait(false);
         }
 
@@ -1495,7 +1497,8 @@ public static string NormalizeText(string text)
     private static void WriteMeta(ProjectStore store, string projectId, MetaDto meta)
     {
         var path = GetMetaPath(store, projectId);
-        Directory.CreateDirectory(Path.GetDirectoryName(path));
+        if (Path.GetDirectoryName(path) is { } dir)
+            Directory.CreateDirectory(dir);
         var json = JsonSerializer.Serialize(meta, JsonDefaults.Indented);
         File.WriteAllText(path, json + "\n");
     }

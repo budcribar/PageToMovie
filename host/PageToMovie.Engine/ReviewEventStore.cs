@@ -304,7 +304,7 @@ public sealed class ReviewEventStore
     }
 
     private static HumanVsAiComparisonItem? TryBuildComparisonItem(
-        IGrouping<(string? ProjectId, int Scene, int Clip), ReviewLearningEvent> g)
+        IGrouping<(string ProjectId, int Scene, int Clip), ReviewLearningEvent> g)
     {
         var humanEv = g.FirstOrDefault(IsHumanReviewEvent);
         var aiEv = g.FirstOrDefault(IsAiReviewEvent);
@@ -315,7 +315,7 @@ public sealed class ReviewEventStore
         var aiPass = AiReviewPassed(aiEv);
         return new HumanVsAiComparisonItem
         {
-            ProjectId = g.Key.ProjectId,
+            ProjectId = g.Key.ProjectId ?? "",
             SceneNumber = g.Key.Scene,
             ClipNumber = g.Key.Clip,
             HumanVerdict = humanPass ? "pass" : "fail",

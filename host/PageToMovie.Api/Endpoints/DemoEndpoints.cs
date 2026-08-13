@@ -70,11 +70,11 @@ public static class DemoEndpoints
     {
         try
         {
-            var proj = await store.GetProjectAsync(d.ProjectId, ct);
+            var proj = await store.GetProjectAsync(d.ProjectId ?? "", ct);
             if (proj is not null)
             {
                 visibilityMap[d.Id] = proj.VisibilityMode.ToString();
-                forkableProjectIds.Add(d.ProjectId);
+                forkableProjectIds.Add(d.ProjectId!);
             }
         }
         catch { /* project lookup is best-effort for the public gallery */ }
@@ -434,7 +434,7 @@ public static class DemoEndpoints
             if (canReplace)
             {
                 entry = await demos.AttachMovieFromStreamAsync(
-                    existingPublic.Id,
+                    existingPublic!.Id,
                     stream,
                     title ?? existingPublic.Title,
                     description,
@@ -495,14 +495,14 @@ public static class DemoEndpoints
                 // Always overwrite assets/movie_wip.mp4 on server disk so WIP movie matches the fresh cut!
                 try
                 {
-                    var wipPath = Path.Combine(await store.GetProjectDirAsync(projectId, ct), ApiText.AssetsFolder, "movie_wip.mp4");
+                    var wipPath = Path.Combine(await store.GetProjectDirAsync(projectId ?? "", ct), ApiText.AssetsFolder, "movie_wip.mp4");
                     Directory.CreateDirectory(Path.GetDirectoryName(wipPath) ?? ".");
                     await File.WriteAllBytesAsync(wipPath, bytes, ct);
                     try
                     {
                         await FilmBuildService.RegisterAsync(
                             store,
-                            projectId,
+                            projectId ?? "",
                             FilmBuildService.HashBytes(bytes),
                             durationSeconds: 0,
                             segments: null,
@@ -517,7 +517,7 @@ public static class DemoEndpoints
                 try
                 {
                     await media.UpsertAsync(
-                        projectId,
+                        projectId ?? "",
                         $"_demos/{entry.Id}/movie.mp4",
                         sha,
                         bytes.LongLength,
@@ -536,7 +536,7 @@ public static class DemoEndpoints
         else if (canReplace)
         {
             entry = await demos.AttachMovieFromWipAsync(
-                existingPublic.Id,
+                existingPublic!.Id,
                 projectId,
                 title ?? existingPublic.Title,
                 description,

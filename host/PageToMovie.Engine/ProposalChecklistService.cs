@@ -75,7 +75,8 @@ public sealed class ProposalChecklistService
     {
         doc.UpdatedAt = DateTimeOffset.UtcNow;
         var path = ChecklistPath;
-        Directory.CreateDirectory(Path.GetDirectoryName(path));
+        if (Path.GetDirectoryName(path) is { } dir)
+            Directory.CreateDirectory(dir);
         File.WriteAllText(path, JsonSerializer.Serialize(doc, JsonOpts) + "\n");
         return doc;
     }

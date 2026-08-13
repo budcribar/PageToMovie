@@ -21,7 +21,8 @@ public static class ProjectStage1ConvertManifest
     {
         ArgumentNullException.ThrowIfNull(manifest);
         var path = GetPath(projectDir);
-        Directory.CreateDirectory(Path.GetDirectoryName(path));
+        if (Path.GetDirectoryName(path) is { } dir)
+            Directory.CreateDirectory(dir);
 
         var payload = new
         {
