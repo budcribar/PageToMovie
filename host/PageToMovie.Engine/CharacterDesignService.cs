@@ -633,7 +633,7 @@ public sealed class CharacterDesignService
     /// Build ordered image seeds for Grok from flexible policy.
     /// Preferred first (when included), then book / explicit selections, capped at maxRefs.
     /// </summary>
-    private List<string> ResolveEditRefs(
+    private static List<string> ResolveEditRefs(
         string charKey,
         string charDir,
         string? preferredPath,
@@ -1557,8 +1557,9 @@ public sealed class CharacterDesignService
     {
         // Structured metadata from adaptation (or cast) — never regex over Fountain prose.
         var vision = ProjectVisionMeta.TryRead(projectDir);
-        if (!string.IsNullOrWhiteSpace(vision?.RenderStyleLock))
-            return vision?.RenderStyleLock?.Trim();
+        var renderStyleLock = vision?.RenderStyleLock;
+        if (!string.IsNullOrWhiteSpace(renderStyleLock))
+            return renderStyleLock.Trim();
 
         try
         {

@@ -98,8 +98,7 @@ namespace PageToMovie.Engine
         public Task<GitCommitInfo> CommitProjectStateAsync(
             string projectPath, string author, string commitMessage, bool forceCommit = false)
         {
-            if (string.IsNullOrWhiteSpace(projectPath) || !Directory.Exists(projectPath))
-                throw new DirectoryNotFoundException($"Project directory not found: {projectPath}");
+            projectPath = RequireExistingProjectDirectory(projectPath);
 
             EnsureRepository(projectPath);
 
@@ -622,7 +621,7 @@ namespace PageToMovie.Engine
         public static bool TryEnsureRepository(string projectPath, out string? skipReason)
         {
             skipReason = null;
-            if (string.IsNullOrWhiteSpace(projectPath) || !Directory.Exists(projectPath))
+            if (!TryCanonicalProjectDirectory(projectPath, out projectPath))
             {
                 skipReason = "project directory missing";
                 return false;
@@ -682,9 +681,51 @@ namespace PageToMovie.Engine
             return false;
         }
 
+        /// <summary>
+        /// Canonical existing directory, with <c>..</c> segments rejected after
+        /// <see cref="Path.GetFullPath(string)"/> so callers cannot traverse out of the folder.
+        /// </summary>
+        private static string RequireExistingProjectDirectory(string projectPath)
+        {
+            if (!TryCanonicalProjectDirectory(projectPath, out var full))
+                throw new DirectoryNotFoundException($"Project directory not found: {projectPath}");
+            return full;
+        }
+
+        private static bool TryCanonicalProjectDirectory(string projectPath, out string fullPath)
+        {
+            fullPath = "";
+            if (string.IsNullOrWhiteSpace(projectPath))
+                return false;
+            try
+            {
+                fullPath = Path.GetFullPath(projectPath);
+            }
+            catch
+            {
+                return false; // malformed / too-long path
+            }
+            if (HasDotDotSegment(fullPath))
+                return false;
+            return Directory.Exists(fullPath);
+        }
+
+        private static bool HasDotDotSegment(string fullPath) =>
+            fullPath.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                .Any(segment => segment == "..");
+
         private static void EnsureGitignore(string projectPath)
         {
-            var gitignorePath = Path.Combine(projectPath, ".gitignore");
+            const string gitignoreName = ".gitignore";
+            var root = Path.GetFullPath(projectPath)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            if (HasDotDotSegment(root))
+                throw new InvalidOperationException("Invalid project path.");
+            var gitignorePath = Path.GetFullPath(Path.Combine(root, gitignoreName));
+            var rootPrefix = root + Path.DirectorySeparatorChar;
+            if (!gitignorePath.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(Path.GetFileName(gitignorePath), gitignoreName, StringComparison.Ordinal))
+                throw new InvalidOperationException("Invalid gitignore path.");
             if (!File.Exists(gitignorePath))
                 File.WriteAllText(gitignorePath, string.Join("\n", IgnoredGlobs) + "\n");
         }

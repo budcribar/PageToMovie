@@ -260,7 +260,7 @@ public sealed class BookPrepareService
         if (rows.Count > 0)
             await WriteManifestAsync(imgDir, rows, pages, ct).ConfigureAwait(false);
         else
-            await EnsureManifestFromDiskAsync(sourceDir, imgDir, pages, ct).ConfigureAwait(false);
+            await EnsureManifestFromDiskAsync(imgDir, pages, ct).ConfigureAwait(false);
     }
 
     private void ClearCharacterPlatesSortedFlag(string projectId, Action<string>? onProgress)
@@ -650,7 +650,7 @@ public sealed class BookPrepareService
         var name = $"embedded_epub_x{imgIndex:D3}.{ext}";
         var fullPath = Path.Combine(imgDir, name);
 
-        await using (var stream = entry.Open())
+        await using (var stream = await entry.OpenAsync(ct).ConfigureAwait(false))
         await using (var outStream = new FileStream(fullPath, FileMode.Create, FileAccess.Write, FileShare.None, 4096, useAsync: true))
         {
             await stream.CopyToAsync(outStream, ct).ConfigureAwait(false);
@@ -698,7 +698,7 @@ public sealed class BookPrepareService
     private static async Task<string?> TryReadEpubHtmlPageAsync(
         System.IO.Compression.ZipArchiveEntry entry, CancellationToken ct)
     {
-        await using var stream = entry.Open();
+        await using var stream = await entry.OpenAsync(ct).ConfigureAwait(false);
         using var reader = new StreamReader(stream, Encoding.UTF8, true);
         var html = await reader.ReadToEndAsync(ct).ConfigureAwait(false);
         var rawText = HtmlTagsRegex.Replace(html, " ");
@@ -897,7 +897,6 @@ public sealed class BookPrepareService
     /// Rebuild manifest from files already on disk when PdfPig could not pull new embeds.
     /// </summary>
     private static async Task EnsureManifestFromDiskAsync(
-        string sourceDir,
         string imgDir,
         int pages,
         CancellationToken ct = default)
@@ -920,11 +919,11 @@ public sealed class BookPrepareService
 
         if (!Directory.Exists(imgDir)) return;
         var rows = new List<Dictionary<string, object?>>();
-        foreach (var fi in new DirectoryInfo(imgDir).EnumerateFiles()
+        foreach (var name in new DirectoryInfo(imgDir).EnumerateFiles()
                      .Where(f => ImageFileExtRegex.IsMatch(f.Name))
-                     .OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase))
+                     .OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase)
+                     .Select(fi => fi.Name))
         {
-            var name = fi.Name;
             var m = EmbeddedPageNumRegex.Match(name);
             var kind = EmbeddedKind;
             int page = 0;
