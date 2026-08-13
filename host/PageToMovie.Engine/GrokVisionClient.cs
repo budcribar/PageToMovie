@@ -116,46 +116,10 @@ public sealed class GrokVisionClient : IVisionClient
         }
         return text;
 
-        async Task<string> DoRequestAsync(int attemptNum)
-        {
-            using var resp = await SendJsonAsync(HttpMethod.Post, EndpointResponses, payload, ct);
-            var body = await resp.Content.ReadAsStringAsync(ct);
-            if (!resp.IsSuccessStatusCode)
-            {
-                await _telemetry.LogApiCallAsync(new ApiCallTelemetry
-                {
-                    Kind = KindVision,
-                    Mode = "transcribe_page",
-                    Endpoint = EndpointResponses,
-                    Model = model,
-                    HttpStatus = (int)resp.StatusCode,
-                    DurationMs = sw.ElapsedMilliseconds,
-                    Attempt = attemptNum,
-                    Error = Trim(body, 500),
-                    Ok = false,
-                }, ct);
-                throw ChatHttpStatusException.FromResponse(resp,
-                    $"Grok vision HTTP {(int)resp.StatusCode}: {Trim(body, 500)}");
-            }
-
-            using var doc = JsonDocument.Parse(body);
-            var t = ExtractResponseText(doc.RootElement);
-            t = CommonRegex.Replace(t.Trim(), @"^```(?:\w+)?\s*", "");
-            t = CommonRegex.Replace(t, @"\s*```$", "").Trim();
-            await _telemetry.LogApiCallAsync(new ApiCallTelemetry
-            {
-                Kind = KindVision,
-                Mode = "transcribe_page",
-                Endpoint = EndpointResponses,
-                Model = model,
-                HttpStatus = (int)resp.StatusCode,
-                DurationMs = sw.ElapsedMilliseconds,
-                Attempt = attemptNum,
-                ResponseChars = t.Length,
-                Ok = true,
-            }, ct);
-            return t;
-        }
+        Task<string> DoRequestAsync(int attemptNum) =>
+            SendVisionRequestAsync(
+                payload, "transcribe_page", model, attemptNum, sw,
+                "Grok vision HTTP", @"^```(?:\w+)?\s*", RegexOptions.None, ct);
     }
 
     /// <summary>
@@ -263,46 +227,63 @@ public sealed class GrokVisionClient : IVisionClient
         }
         return res;
 
-        async Task<string> DoRequestAsync(int attemptNum)
-        {
-            using var resp = await SendJsonAsync(HttpMethod.Post, EndpointResponses, payload, ct);
-            var body = await resp.Content.ReadAsStringAsync(ct);
-            if (!resp.IsSuccessStatusCode)
-            {
-                await _telemetry.LogApiCallAsync(new ApiCallTelemetry
-                {
-                    Kind = KindVision,
-                    Mode = "classify_characters",
-                    Endpoint = EndpointResponses,
-                    Model = model,
-                    HttpStatus = (int)resp.StatusCode,
-                    DurationMs = sw.ElapsedMilliseconds,
-                    Attempt = attemptNum,
-                    Error = Trim(body, 500),
-                    Ok = false,
-                }, ct);
-                throw ChatHttpStatusException.FromResponse(resp,
-                    $"Grok vision classify HTTP {(int)resp.StatusCode}: {Trim(body, 500)}");
-            }
+        Task<string> DoRequestAsync(int attemptNum) =>
+            SendVisionRequestAsync(
+                payload, "classify_characters", model, attemptNum, sw,
+                "Grok vision classify HTTP", @"^```(?:json)?\s*", RegexOptions.IgnoreCase, ct);
+    }
 
-            using var doc = JsonDocument.Parse(body);
-            var t = ExtractResponseText(doc.RootElement);
-            t = CommonRegex.Replace(t.Trim(), @"^```(?:json)?\s*", "", RegexOptions.IgnoreCase);
-            t = CommonRegex.Replace(t, @"\s*```$", "").Trim();
-            await _telemetry.LogApiCallAsync(new ApiCallTelemetry
-            {
-                Kind = KindVision,
-                Mode = "classify_characters",
-                Endpoint = EndpointResponses,
-                Model = model,
-                HttpStatus = (int)resp.StatusCode,
-                DurationMs = sw.ElapsedMilliseconds,
-                Attempt = attemptNum,
-                ResponseChars = t.Length,
-                Ok = true,
-            }, ct);
-            return t;
+    private async Task<string> SendVisionRequestAsync(
+        object payload,
+        string mode,
+        string model,
+        int attemptNum,
+        Stopwatch sw,
+        string httpErrorPrefix,
+        string fenceOpenPattern,
+        RegexOptions fenceOptions,
+        CancellationToken ct)
+    {
+        using var resp = await SendJsonAsync(HttpMethod.Post, EndpointResponses, payload, ct);
+        var body = await resp.Content.ReadAsStringAsync(ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            await _telemetry.LogApiCallAsync(
+                VisionHttpTelemetry(mode, model, (int)resp.StatusCode, sw.ElapsedMilliseconds, attemptNum,
+                    error: Trim(body, 500), ok: false), ct);
+            throw ChatHttpStatusException.FromResponse(resp,
+                $"{httpErrorPrefix} {(int)resp.StatusCode}: {Trim(body, 500)}");
         }
+
+        using var doc = JsonDocument.Parse(body);
+        var text = StripMarkdownFence(ExtractResponseText(doc.RootElement), fenceOpenPattern, fenceOptions);
+        await _telemetry.LogApiCallAsync(
+            VisionHttpTelemetry(mode, model, (int)resp.StatusCode, sw.ElapsedMilliseconds, attemptNum,
+                responseChars: text.Length, ok: true), ct);
+        return text;
+    }
+
+    private static ApiCallTelemetry VisionHttpTelemetry(
+        string mode, string model, int httpStatus, long durationMs, int attempt,
+        string? error = null, int? responseChars = null, bool ok = false) =>
+        new()
+        {
+            Kind = KindVision,
+            Mode = mode,
+            Endpoint = EndpointResponses,
+            Model = model,
+            HttpStatus = httpStatus,
+            DurationMs = durationMs,
+            Attempt = attempt,
+            Error = error,
+            ResponseChars = responseChars,
+            Ok = ok,
+        };
+
+    private static string StripMarkdownFence(string text, string openPattern, RegexOptions options)
+    {
+        text = CommonRegex.Replace(text.Trim(), openPattern, "", options);
+        return CommonRegex.Replace(text, @"\s*```$", "").Trim();
     }
 
     private static Dictionary<string, object?> BuildVisionPayload(

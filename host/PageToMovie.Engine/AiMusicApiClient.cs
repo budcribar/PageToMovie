@@ -1,5 +1,3 @@
-using System.Net.Http.Headers;
-using System.Net.Http.Json;
 using System.Text.Json;
 using PageToMovie.Core.Models;
 using PageToMovie.Engine.Abstractions;
@@ -21,8 +19,6 @@ namespace PageToMovie.Engine;
 public sealed class AiMusicApiClient : IAudioClient
 {
     public const string ApiBase = "https://api.aimusicapi.ai/api/v1/";
-    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(6);
-    private static readonly TimeSpan PollTimeout = TimeSpan.FromMinutes(6);
 
     private readonly HttpClient _http;
     private readonly ILogger<AiMusicApiClient> _log;
@@ -31,8 +27,7 @@ public sealed class AiMusicApiClient : IAudioClient
     {
         _http = http;
         _log = log;
-        if (_http.BaseAddress is null)
-            _http.BaseAddress = new Uri(ApiBase);
+        ProviderHttpHelpers.EnsureTrailingSlashBaseAddress(_http, ApiBase);
     }
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(ResolveApiKey());
@@ -74,92 +69,56 @@ public sealed class AiMusicApiClient : IAudioClient
             ["mv"] = wireModel,
         };
 
-        using var req = new HttpRequestMessage(HttpMethod.Post, "suno/create");
-        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
-        req.Content = JsonContent.Create(payload);
+        return await SubmitToAiMusicApiAsync(payload, apiKey, onProgress, ct).ConfigureAwait(false);
+    }
 
-        onProgress?.Invoke("Submitting to AIMusicAPI (aimusicapi.ai)…");
-        using var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
-        var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-        if (!resp.IsSuccessStatusCode)
-        {
-            _log.LogError("AIMusicAPI submit failed HTTP {Status}: {Body}", resp.StatusCode, body);
-            onProgress?.Invoke($"AIMusicAPI submit failed: HTTP {(int)resp.StatusCode}");
-            return null;
-        }
+    private Task<string?> SubmitToAiMusicApiAsync(
+        Dictionary<string, object?> payload, string apiKey, Action<string>? onProgress, CancellationToken ct) =>
+        MusicResellerHttp.SubmitAndPollAsync(
+            _http, "suno/create", payload, apiKey, _log, onProgress,
+            "Submitting to AIMusicAPI (aimusicapi.ai)…",
+            "AIMusicAPI submit failed HTTP {Status}: {Body}",
+            "AIMusicAPI submit failed: HTTP ",
+            root => FindStringByAnyKey(root, "task_id", "taskId", "id"),
+            "AIMusicAPI submit returned unparseable JSON: {Body}",
+            "AIMusicAPI submit response had no task id: {Body}",
+            (taskId, pollCt) => MusicResellerHttp.TickGetAndHandleAsync(
+                _http, $"suno/task/{Uri.EscapeDataString(taskId)}", apiKey, _log,
+                "AIMusicAPI poll HTTP {Status}: {Body}",
+                body => TryHandlePollBody(body, onProgress), pollCt),
+            "AIMusicAPI generation timed out after {Timeout} for task {TaskId}",
+            "AIMusicAPI generation timed out.",
+            ct);
 
-        string? taskId;
+    private (bool Done, string? AudioUrl) TryHandlePollBody(string body, Action<string>? onProgress)
+    {
         try
         {
             using var doc = JsonDocument.Parse(body);
-            taskId = FindStringByAnyKey(doc.RootElement, "task_id", "taskId", "id");
+            var status = FindStringByAnyKey(doc.RootElement, "status", "state");
+            onProgress?.Invoke($"AIMusicAPI status: {status ?? "unknown"}");
+
+            var audioUrl = FindStringByAnyKey(doc.RootElement, "audio_url", "audioUrl", "url");
+            if (!string.IsNullOrWhiteSpace(audioUrl))
+            {
+                _log.LogInformation("AIMusicAPI audio ready: {Url}", audioUrl);
+                return (true, audioUrl);
+            }
+
+            if (status is not null &&
+                (status.Contains("fail", StringComparison.OrdinalIgnoreCase) ||
+                 status.Contains("error", StringComparison.OrdinalIgnoreCase)))
+            {
+                _log.LogError("AIMusicAPI generation failed: {Status} — {Body}", status, body);
+                return (true, null);
+            }
+            // Still pending — keep polling.
         }
         catch (JsonException ex)
         {
-            _log.LogError(ex, "AIMusicAPI submit returned unparseable JSON: {Body}", body);
-            return null;
+            _log.LogWarning(ex, "AIMusicAPI poll returned unparseable JSON: {Body}", body);
         }
-
-        if (string.IsNullOrWhiteSpace(taskId))
-        {
-            _log.LogError("AIMusicAPI submit response had no task id: {Body}", body);
-            return null;
-        }
-
-        return await PollForAudioUrlAsync(taskId, apiKey, onProgress, ct).ConfigureAwait(false);
-    }
-
-    private async Task<string?> PollForAudioUrlAsync(
-        string taskId, string apiKey, Action<string>? onProgress, CancellationToken ct)
-    {
-        var deadline = DateTime.UtcNow + PollTimeout;
-        while (DateTime.UtcNow < deadline)
-        {
-            await Task.Delay(PollInterval, ct).ConfigureAwait(false);
-            ct.ThrowIfCancellationRequested();
-
-            using var req = new HttpRequestMessage(HttpMethod.Get, $"suno/task/{Uri.EscapeDataString(taskId)}");
-            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
-
-            using var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
-            var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-            if (!resp.IsSuccessStatusCode)
-            {
-                _log.LogWarning("AIMusicAPI poll HTTP {Status}: {Body}", resp.StatusCode, body);
-                continue;
-            }
-
-            try
-            {
-                using var doc = JsonDocument.Parse(body);
-                var status = FindStringByAnyKey(doc.RootElement, "status", "state");
-                onProgress?.Invoke($"AIMusicAPI status: {status ?? "unknown"}");
-
-                var audioUrl = FindStringByAnyKey(doc.RootElement, "audio_url", "audioUrl", "url");
-                if (!string.IsNullOrWhiteSpace(audioUrl))
-                {
-                    _log.LogInformation("AIMusicAPI audio ready: {Url}", audioUrl);
-                    return audioUrl;
-                }
-
-                if (status is not null &&
-                    (status.Contains("fail", StringComparison.OrdinalIgnoreCase) ||
-                     status.Contains("error", StringComparison.OrdinalIgnoreCase)))
-                {
-                    _log.LogError("AIMusicAPI generation failed: {Status} — {Body}", status, body);
-                    return null;
-                }
-                // Still pending — keep polling.
-            }
-            catch (JsonException ex)
-            {
-                _log.LogWarning(ex, "AIMusicAPI poll returned unparseable JSON: {Body}", body);
-            }
-        }
-
-        _log.LogError("AIMusicAPI generation timed out after {Timeout} for task {TaskId}", PollTimeout, taskId);
-        onProgress?.Invoke("AIMusicAPI generation timed out.");
-        return null;
+        return (false, null);
     }
 
     /// <summary>

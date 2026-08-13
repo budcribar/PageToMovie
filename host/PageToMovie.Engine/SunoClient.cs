@@ -1,5 +1,3 @@
-using System.Net.Http.Headers;
-using System.Net.Http.Json;
 using System.Text.Json;
 using PageToMovie.Core.Models;
 using PageToMovie.Engine.Abstractions;
@@ -18,8 +16,6 @@ namespace PageToMovie.Engine;
 public sealed class SunoClient : IAudioClient
 {
     public const string ApiBase = "https://api.sunoapi.org/api/v1/";
-    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(6);
-    private static readonly TimeSpan PollTimeout = TimeSpan.FromMinutes(6);
 
     private readonly HttpClient _http;
     private readonly ILogger<SunoClient> _log;
@@ -28,8 +24,7 @@ public sealed class SunoClient : IAudioClient
     {
         _http = http;
         _log = log;
-        if (_http.BaseAddress is null)
-            _http.BaseAddress = new Uri(ApiBase);
+        ProviderHttpHelpers.EnsureTrailingSlashBaseAddress(_http, ApiBase);
     }
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(ResolveApiKey());
@@ -76,77 +71,32 @@ public sealed class SunoClient : IAudioClient
             ["callBackUrl"] = "",
         };
 
-        using var req = new HttpRequestMessage(HttpMethod.Post, "generate");
-        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
-        req.Content = JsonContent.Create(payload);
-
-        onProgress?.Invoke("Submitting to Suno (sunoapi.org)…");
-        using var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
-        var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-        if (!resp.IsSuccessStatusCode)
-        {
-            _log.LogError("Suno (sunoapi.org) submit failed HTTP {Status}: {Body}", resp.StatusCode, body);
-            onProgress?.Invoke($"Suno submit failed: HTTP {(int)resp.StatusCode}");
-            return null;
-        }
-
-        string? taskId;
-        try
-        {
-            using var doc = JsonDocument.Parse(body);
-            taskId = doc.RootElement.TryGetProperty("data", out var dataEl)
-                     && dataEl.TryGetProperty("taskId", out var idEl)
-                ? idEl.GetString()
-                : null;
-        }
-        catch (JsonException ex)
-        {
-            _log.LogError(ex, "Suno (sunoapi.org) submit returned unparseable JSON: {Body}", body);
-            return null;
-        }
-
-        if (string.IsNullOrWhiteSpace(taskId))
-        {
-            _log.LogError("Suno (sunoapi.org) submit response had no taskId: {Body}", body);
-            return null;
-        }
-
-        return await PollForAudioUrlAsync(taskId, apiKey, onProgress, ct).ConfigureAwait(false);
+        return await SubmitToSunoAsync(payload, apiKey, onProgress, ct).ConfigureAwait(false);
     }
 
-    private async Task<string?> PollForAudioUrlAsync(
-        string taskId, string apiKey, Action<string>? onProgress, CancellationToken ct)
-    {
-        var deadline = DateTime.UtcNow + PollTimeout;
-        while (DateTime.UtcNow < deadline)
-        {
-            await Task.Delay(PollInterval, ct).ConfigureAwait(false);
-            ct.ThrowIfCancellationRequested();
+    private Task<string?> SubmitToSunoAsync(
+        Dictionary<string, object?> payload, string apiKey, Action<string>? onProgress, CancellationToken ct) =>
+        MusicResellerHttp.SubmitAndPollAsync(
+            _http, "generate", payload, apiKey, _log, onProgress,
+            "Submitting to Suno (sunoapi.org)…",
+            "Suno (sunoapi.org) submit failed HTTP {Status}: {Body}",
+            "Suno submit failed: HTTP ",
+            ReadSunoSubmitTaskId,
+            "Suno (sunoapi.org) submit returned unparseable JSON: {Body}",
+            "Suno (sunoapi.org) submit response had no taskId: {Body}",
+            (taskId, pollCt) => MusicResellerHttp.TickGetAndHandleAsync(
+                _http, $"generate/record-info?taskId={Uri.EscapeDataString(taskId)}", apiKey, _log,
+                "Suno (sunoapi.org) poll HTTP {Status}: {Body}",
+                body => TryHandlePollBody(body, onProgress), pollCt),
+            "Suno (sunoapi.org) generation timed out after {Timeout} for task {TaskId}",
+            "Suno generation timed out.",
+            ct);
 
-            var body = await FetchPollBodyAsync(taskId, apiKey, ct).ConfigureAwait(false);
-            if (body is null) continue;
-
-            var outcome = TryHandlePollBody(body, onProgress);
-            if (outcome.Done)
-                return outcome.AudioUrl;
-        }
-
-        _log.LogError("Suno (sunoapi.org) generation timed out after {Timeout} for task {TaskId}", PollTimeout, taskId);
-        onProgress?.Invoke("Suno generation timed out.");
-        return null;
-    }
-
-    private async Task<string?> FetchPollBodyAsync(string taskId, string apiKey, CancellationToken ct)
-    {
-        using var req = new HttpRequestMessage(HttpMethod.Get, $"generate/record-info?taskId={Uri.EscapeDataString(taskId)}");
-        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
-
-        using var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
-        var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-        if (resp.IsSuccessStatusCode) return body;
-        _log.LogWarning("Suno (sunoapi.org) poll HTTP {Status}: {Body}", resp.StatusCode, body);
-        return null;
-    }
+    private static string? ReadSunoSubmitTaskId(JsonElement root) =>
+        root.TryGetProperty("data", out var dataEl)
+        && dataEl.TryGetProperty("taskId", out var idEl)
+            ? idEl.GetString()
+            : null;
 
     /// <summary>Done=true ends the poll loop (success URL, SUCCESS-without-URL, or vendor failure).</summary>
     private (bool Done, string? AudioUrl) TryHandlePollBody(string body, Action<string>? onProgress)

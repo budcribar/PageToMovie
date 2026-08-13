@@ -55,7 +55,7 @@ public sealed class GrokVideoClient : IVideoClient
         ProviderHttpHelpers.EnsureTrailingSlashBaseAddress(_http, ApiBase);
     }
 
-    public bool IsConfigured => !string.IsNullOrWhiteSpace(ResolveApiKey());
+    public bool IsConfigured => !string.IsNullOrWhiteSpace(GrokProviderHttp.ResolveApiKey());
 
     /// <param name="referenceImagePaths">Character/style refs → API <c>reference_images</c> + prompt <c>&lt;IMAGE_n&gt;</c> tags.</param>
     /// <param name="startFrameImagePath">Optional first-frame still (image-to-video). Prefer video continue when possible.</param>
@@ -346,7 +346,7 @@ public sealed class GrokVideoClient : IVideoClient
         return await AiRetryPolicy.ExecuteWithTransientRetryAsync(
             async _ =>
             {
-                using var extResp = await SendJsonAsync(HttpMethod.Post, "videos/extensions", extPayload, ct);
+                using var extResp = await GrokProviderHttp.SendJsonAsync(_http, HttpMethod.Post, "videos/extensions", extPayload, ct);
                 return await ProviderHttpHelpers.ReadRequiredJsonStringAsync(
                     extResp, ct, "request_id",
                     "Grok video extend",
@@ -415,7 +415,7 @@ public sealed class GrokVideoClient : IVideoClient
         return await AiRetryPolicy.ExecuteWithTransientRetryAsync(
             async _ =>
             {
-                using var resp = await SendJsonAsync(HttpMethod.Post, "videos/generations", payload, ct);
+                using var resp = await GrokProviderHttp.SendJsonAsync(_http, HttpMethod.Post, "videos/generations", payload, ct);
                 return await ProviderHttpHelpers.ReadRequiredJsonStringAsync(
                     resp, ct, "request_id",
                     "Grok submit",
@@ -522,7 +522,7 @@ public sealed class GrokVideoClient : IVideoClient
 
     private async Task<string> GetPollResponseAsync(string requestId, CancellationToken ct)
     {
-        using var resp = await SendAsync(HttpMethod.Get, $"videos/{requestId}", content: null, ct);
+        using var resp = await GrokProviderHttp.SendAsync(_http, HttpMethod.Get, $"videos/{requestId}", content: null, ct);
         return await ProviderHttpHelpers.ReadSuccessBodyAsync(resp, ct, "Grok poll");
     }
 
@@ -604,24 +604,4 @@ public sealed class GrokVideoClient : IVideoClient
 
     public Task DownloadToFileAsync(string url, string destPath, CancellationToken ct) =>
         ProviderHttpHelpers.DownloadToFileAsync(_http, url, destPath, ct, _log);
-
-    /// <summary>
-    /// Prefer ambient job/request key (multi-user), else process env.
-    /// Auth is applied per <see cref="HttpRequestMessage"/> — never on the shared
-    /// <see cref="HttpClient.DefaultRequestHeaders"/> (concurrent jobs would race).
-    /// </summary>
-    private static string? ResolveApiKey() =>
-        ApiKeyScope.Current ?? Environment.GetEnvironmentVariable("XAI_API_KEY");
-
-    private Task<HttpResponseMessage> SendJsonAsync(
-        HttpMethod method, string uri, object payload, CancellationToken ct) =>
-        ProviderHttpHelpers.SendJsonAsync(
-            _http, method, uri, payload, ct,
-            req => ProviderHttpHelpers.ApplyBearer(req, ResolveApiKey()));
-
-    private Task<HttpResponseMessage> SendAsync(
-        HttpMethod method, string uri, HttpContent? content, CancellationToken ct) =>
-        ProviderHttpHelpers.SendAsync(
-            _http, method, uri, content, ct,
-            req => ProviderHttpHelpers.ApplyBearer(req, ResolveApiKey()));
 }

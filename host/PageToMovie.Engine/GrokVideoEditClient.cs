@@ -40,7 +40,7 @@ public sealed class GrokVideoEditClient : IVideoEditClient
         ProviderHttpHelpers.EnsureTrailingSlashBaseAddress(_http, ApiBase);
     }
 
-    public bool IsConfigured => !string.IsNullOrWhiteSpace(ResolveApiKey());
+    public bool IsConfigured => !string.IsNullOrWhiteSpace(GrokProviderHttp.ResolveApiKey());
 
     public async Task<string> EditClipAsync(
         string videoPath,
@@ -111,7 +111,7 @@ public sealed class GrokVideoEditClient : IVideoEditClient
             var requestId = await AiRetryPolicy.ExecuteWithTransientRetryAsync(
                 async _ =>
                 {
-                    using var resp = await SendJsonAsync(HttpMethod.Post, "videos/edits", payload, ct);
+                    using var resp = await GrokProviderHttp.SendJsonAsync(_http, HttpMethod.Post, "videos/edits", payload, ct);
                     return await ProviderHttpHelpers.ReadRequiredJsonStringAsync(
                         resp, ct, "request_id",
                         "Grok video edit submit",
@@ -214,7 +214,7 @@ public sealed class GrokVideoEditClient : IVideoEditClient
 
     private async Task<string> GetEditPollResponseAsync(string requestId, CancellationToken ct)
     {
-        using var resp = await SendAsync(HttpMethod.Get, $"videos/{requestId}", content: null, ct);
+        using var resp = await GrokProviderHttp.SendAsync(_http, HttpMethod.Get, $"videos/{requestId}", content: null, ct);
         return await ProviderHttpHelpers.ReadSuccessBodyAsync(resp, ct, "Grok video edit poll");
     }
 
@@ -252,21 +252,4 @@ public sealed class GrokVideoEditClient : IVideoEditClient
         ProviderHttpHelpers.DownloadToFileAsync(
             _http, url, destPath, ct, _log,
             logMessage: "Downloaded edited clip {Bytes} bytes → {Path}");
-
-    /// <summary>Same key source as <see cref="GrokVideoClient"/> — no separate "video-edit key"
-    /// concept; edits reuse the existing xAI/Grok key already used for generation.</summary>
-    private static string? ResolveApiKey() =>
-        ApiKeyScope.Current ?? Environment.GetEnvironmentVariable("XAI_API_KEY");
-
-    private Task<HttpResponseMessage> SendJsonAsync(
-        HttpMethod method, string uri, object payload, CancellationToken ct) =>
-        ProviderHttpHelpers.SendJsonAsync(
-            _http, method, uri, payload, ct,
-            req => ProviderHttpHelpers.ApplyBearer(req, ResolveApiKey()));
-
-    private Task<HttpResponseMessage> SendAsync(
-        HttpMethod method, string uri, HttpContent? content, CancellationToken ct) =>
-        ProviderHttpHelpers.SendAsync(
-            _http, method, uri, content, ct,
-            req => ProviderHttpHelpers.ApplyBearer(req, ResolveApiKey()));
 }

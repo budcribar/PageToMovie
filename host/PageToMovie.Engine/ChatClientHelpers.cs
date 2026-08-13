@@ -1,4 +1,5 @@
 using System.Text.Json;
+using PageToMovie.Engine.Abstractions;
 
 namespace PageToMovie.Engine;
 
@@ -109,4 +110,36 @@ internal static class ChatClientHelpers
             Error = ex.Message,
             Ok = false,
         }, ct);
+
+    /// <summary>Filename list logged on clip auto-review vision calls (Anthropic/Gemini).</summary>
+    public static string ImageNamesForLog(IReadOnlyList<string> imagePaths) =>
+        string.Join(", ", imagePaths.Select(Path.GetFileName));
+}
+
+/// <summary>
+/// Book-page OCR / cast classification stay on <see cref="GrokVisionClient"/>.
+/// Anthropic and Gemini implement <see cref="IVisionClient"/> by inheriting this
+/// so the stub methods are not cloned across clients.
+/// </summary>
+public abstract class ChatProviderWithoutBookVision : IVisionClient
+{
+    protected abstract string UnsupportedVisionProvider { get; }
+
+    public abstract bool IsConfigured { get; }
+
+    public Task<string> TranscribePageAsync(
+        string imagePath, int page, string model = "", CancellationToken ct = default) =>
+        ChatClientHelpers.TranscribePageNotSupported(UnsupportedVisionProvider);
+
+    public Task<CharacterPageClassification> ClassifyCharactersOnImageAsync(
+        string imagePath, int page, IReadOnlyList<CharacterClassifyHint> cast,
+        string model = "", CancellationToken ct = default) =>
+        ChatClientHelpers.ClassifyCharactersNotSupported(UnsupportedVisionProvider);
+
+    public abstract Task<string> CompleteWithImagesAsync(
+        string prompt,
+        IReadOnlyList<string> imagePaths,
+        string model = "",
+        string detail = "low",
+        CancellationToken ct = default);
 }
