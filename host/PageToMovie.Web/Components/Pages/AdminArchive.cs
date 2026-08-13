@@ -340,7 +340,7 @@ public partial class Admin
         private async Task ImportProjectFromFileAsync(IBrowserFile file)
         {
             // Buffer once — server import + client media extract both need the bytes.
-            await using var upload = file.OpenReadStream(maxAllowedSize: MaxImportBytes, CancellationToken.None);
+            await using var upload = file.OpenReadStream(maxAllowedSize: file.Size, CancellationToken.None);
             using var ms = new MemoryStream();
             await upload.CopyToAsync(ms, CancellationToken.None);
             ms.Position = 0;

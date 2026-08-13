@@ -91,7 +91,7 @@ public partial class AdaptationImport
                     _inputFileKey++;
                     return;
                 }
-                await using var stream = file.OpenReadStream(maxAllowedSize: maxBook);
+                await using var stream = file.OpenReadStream(maxAllowedSize: file.Size);
                 using var ms = new MemoryStream();
                 await stream.CopyToAsync(ms);
                 bytes = ms.ToArray();

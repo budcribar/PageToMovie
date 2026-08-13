@@ -580,7 +580,7 @@ public partial class Characters
                     _voiceCloneError = $"File too large ({file.Size / (1024.0 * 1024):F0} MB). Max is 15 MB.";
                     return;
                 }
-                await using var stream = file.OpenReadStream(maxAllowedSize: max, cancellationToken: _voiceSaveCts?.Token ?? CancellationToken.None);
+                await using var stream = file.OpenReadStream(maxAllowedSize: file.Size, cancellationToken: _voiceSaveCts?.Token ?? CancellationToken.None);
                 using var ms = new MemoryStream();
                 await stream.CopyToAsync(ms, _voiceSaveCts?.Token ?? CancellationToken.None);
                 await PersistVoiceCloneSampleAsync(ms.ToArray(), file.Name);

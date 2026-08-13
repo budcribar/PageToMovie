@@ -34,7 +34,8 @@ public static class VoiceEndpoints
         // Multipart field: file. Stored under assets/characters/{key}/voice_clone_sample.*.
         // Used as a reference for future TTS clone providers; does not replace voice_profile text.
         // </summary>
-        app.MapPost("/api/projects/{id}/characters/{charKey}/voice/clone-sample", PostProjectsIdCharactersCharKeyVoiceCloneSample);
+        app.MapPost("/api/projects/{id}/characters/{charKey}/voice/clone-sample", PostProjectsIdCharactersCharKeyVoiceCloneSample)
+            .WithUploadSizeLimit(ApiEndpointHelpers.VoiceSampleBytes);
         app.MapGet("/api/projects/{id}/characters/{charKey}/voice/clone-sample", GetProjectsIdCharactersCharKeyVoiceCloneSample);
         app.MapDelete("/api/projects/{id}/characters/{charKey}/voice/clone-sample", DeleteProjectsIdCharactersCharKeyVoiceCloneSample);
         // <summary>
@@ -164,7 +165,7 @@ public static class VoiceEndpoints
         var file = form.Files.GetFile("file") ?? form.Files.FirstOrDefault();
         if (file is null || file.Length == 0)
             return Results.BadRequest(new { ok = false, error = "No audio file (field: file)" });
-        if (file.Length > 15 * 1024 * 1024)
+        if (file.Length > ApiEndpointHelpers.VoiceSampleBytes)
             return Results.BadRequest(new { ok = false, error = "Audio too large (max 15 MB)." });
 
         await using var stream = file.OpenReadStream();

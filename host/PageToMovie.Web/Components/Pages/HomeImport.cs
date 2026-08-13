@@ -271,7 +271,12 @@ public partial class Home
             {
                 // Match the server/Kestrel multipart cap (512 MB) — project zips carry video.
                 const long maxBytes = 512L * 1024 * 1024;
-                await using var stream = file.OpenReadStream(maxBytes);
+                if (file.Size > maxBytes)
+                {
+                    S._error = $"File too large ({file.Size / (1024.0 * 1024):F0} MB). Max is 512 MB.";
+                    return;
+                }
+                await using var stream = file.OpenReadStream(maxAllowedSize: file.Size);
                 var res = await S.Engine.ImportProjectZipAsUserAsync(
                     stream, file.Name, name: string.IsNullOrWhiteSpace(_importName) ? null : _importName.Trim());
                 _showImport = false;

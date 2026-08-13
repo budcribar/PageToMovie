@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using PageToMovie.Api.Auth;
 using PageToMovie.Core.Auth;
@@ -12,6 +13,20 @@ namespace PageToMovie.Api;
 
 internal static class ApiEndpointHelpers
 {
+    /// <summary>Picture-book PDF / fountain / txt import. Matches Adaptation Import UI (80 MB).</summary>
+    public const long BookImportBytes = 80L * 1024 * 1024;
+
+    /// <summary>Voice-clone sample audio. Matches Characters voice UI (15 MB).</summary>
+    public const long VoiceSampleBytes = 15L * 1024 * 1024;
+
+    /// <summary>
+    /// Per-route Kestrel + multipart cap. Tightens the app-wide 512 MB ceiling for this endpoint.
+    /// </summary>
+    public static RouteHandlerBuilder WithUploadSizeLimit(this RouteHandlerBuilder builder, long bytes) =>
+        builder
+            .WithMetadata(new RequestSizeLimitAttribute(bytes))
+            .WithMetadata(new RequestFormLimitsAttribute { MultipartBodyLengthLimit = bytes });
+
     public static string WindowsExplorerPath() =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe");
 

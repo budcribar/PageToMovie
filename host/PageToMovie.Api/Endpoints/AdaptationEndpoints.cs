@@ -20,7 +20,8 @@ public static class AdaptationEndpoints
     public static IEndpointRouteBuilder MapAdaptationEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/api/projects/{id}/adaptation", GetProjectsIdAdaptation);
-        app.MapPost("/api/projects/{id}/adaptation/upload", PostProjectsIdAdaptationUpload);
+        app.MapPost("/api/projects/{id}/adaptation/upload", PostProjectsIdAdaptationUpload)
+            .WithUploadSizeLimit(ApiEndpointHelpers.BookImportBytes);
         app.MapGet("/api/books/{idOrHash}", GetBooksIdOrHash);
         app.MapPost("/api/books/{bookId}/projects/{projectId}", PostBooksBookIdProjectsProjectId);
         app.MapPost("/api/books/{bookId}/artifacts", PostBooksBookIdArtifacts);
@@ -29,7 +30,8 @@ public static class AdaptationEndpoints
         // Import a Fountain file as the editable screenplay draft (does not approve / Stage 1 yet).
         // User reviews on Screenplay, then sign-off materialises Stage 1.
         // </summary>
-        app.MapPost("/api/projects/{id}/adaptation/import-fountain", PostProjectsIdAdaptationImportFountain);
+        app.MapPost("/api/projects/{id}/adaptation/import-fountain", PostProjectsIdAdaptationImportFountain)
+            .WithUploadSizeLimit(ApiEndpointHelpers.BookImportBytes);
         // <summary>Get the editable Fountain draft + status.</summary>
         app.MapGet("/api/projects/{id}/screenplay", GetProjectsIdScreenplay);
         // <summary>Save Fountain draft (no Stage 1 write). I6: requires script lease when collab.</summary>
@@ -101,6 +103,8 @@ public static class AdaptationEndpoints
         var file = form.Files.GetFile("file") ?? form.Files.FirstOrDefault();
         if (file is null || file.Length == 0)
             return Results.BadRequest(new { ok = false, error = "file required" });
+        if (file.Length > ApiEndpointHelpers.BookImportBytes)
+            return Results.BadRequest(new { ok = false, error = "File too large (max 80 MB)." });
         await using var stream = file.OpenReadStream();
         var path = await store.SaveBookUploadAsync(id, file.FileName, stream);
         BookTextIdentity? bookIdentity = null;
@@ -204,6 +208,8 @@ public static class AdaptationEndpoints
             var file = form.Files.GetFile("file") ?? form.Files.FirstOrDefault();
             if (file is null || file.Length == 0)
                 return Results.BadRequest(new { ok = false, error = "file required" });
+            if (file.Length > ApiEndpointHelpers.BookImportBytes)
+                return Results.BadRequest(new { ok = false, error = "File too large (max 80 MB)." });
             fileName = file.FileName;
             using var reader = new StreamReader(file.OpenReadStream());
             text = await reader.ReadToEndAsync(ct);
