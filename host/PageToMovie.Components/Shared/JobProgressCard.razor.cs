@@ -8,7 +8,7 @@ using PageToMovie.Core.Utils;
 
 namespace PageToMovie.Web.Components;
 
-public partial class JobProgressCard : IDisposable
+public sealed partial class JobProgressCard : IDisposable
 {
     [Parameter] public bool Visible { get; set; } = true;
     [Parameter] public string Status { get; set; } = "";
@@ -111,7 +111,14 @@ public partial class JobProgressCard : IDisposable
             _elapsedTimer ??= new Timer(
                 _ =>
                 {
-                    try { _ = InvokeAsync(StateHasChanged); }
+                    try
+                    {
+                        InvokeAsync(StateHasChanged).ContinueWith(
+                            static t => t.Exception?.Handle(static _ => true),
+                            CancellationToken.None,
+                            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                            TaskScheduler.Default);
+                    }
                     catch { /* disposed */ }
                 },
                 null,
@@ -129,5 +136,9 @@ public partial class JobProgressCard : IDisposable
         _elapsedTimer = null;
     }
 
-    public void Dispose() => StopElapsedTimer();
+    public void Dispose()
+    {
+        StopElapsedTimer();
+        GC.SuppressFinalize(this);
+    }
 }
