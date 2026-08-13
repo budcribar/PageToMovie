@@ -115,33 +115,156 @@ public static class FountainStage1Importer
         int minSeconds = ClipDurationEstimator.MinSeconds,
         int maxSeconds = ClipDurationEstimator.MaxSeconds,
         int absMaxSeconds = ClipDurationEstimator.AbsMaxSeconds)
+        => new Stage1BuildContext(parsed, minSeconds, maxSeconds, absMaxSeconds).Build();
+
+    private sealed class Stage1BuildContext
     {
-        var title = FirstTitle(parsed, "Title") ?? FirstTitle(parsed, "title") ?? "Untitled";
-        title = CleanEmphasis(title).Replace("\n", " ").Trim();
-        if (title.Length == 0) title = "Untitled";
+        private readonly FountainParser.ParseResult parsed;
+        private readonly int maxSeconds;
 
-        var author = FirstTitle(parsed, "Author") ?? FirstTitle(parsed, "Authors");
-
-        var scenes = new List<object?>();
-        var charSeeds = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-        var locSeeds = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-
-        Dictionary<string, object?>? curScene = null;
-        List<object?>? beats = null;
-        string? pendingChar = null;
-        /// <summary>Character-cue extension from parser Meta (V.O. / O.S. / CONT'D), not performance paren.</summary>
-        string? pendingMeta = null;
-        string? pendingParen = null;
-        /// <summary>Last filmable action visual in the open scene — reused as picture under V.O.</summary>
-        string? lastPictureVisual = null;
-        var actionBuf = new StringBuilder();
-        var dialogueBuf = new StringBuilder();
-        var beatIndex = 0;
-        var sceneNum = 0;
+        private readonly List<object?> scenes = new();
+        private readonly Dictionary<string, object?> charSeeds = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, object?> locSeeds = new(StringComparer.OrdinalIgnoreCase);
+        private readonly StringBuilder actionBuf = new();
+        private readonly StringBuilder dialogueBuf = new();
         // Disambiguate identical content within a scene for stable ids (0-based).
-        var contentOccurrence = new Dictionary<string, int>(StringComparer.Ordinal);
+        private readonly Dictionary<string, int> contentOccurrence = new(StringComparer.Ordinal);
 
-        string SceneKey()
+        private Dictionary<string, object?>? curScene;
+        private List<object?>? beats;
+        private string? pendingChar;
+        // Character-cue extension from parser Meta (V.O. / O.S. / CONT'D), not performance paren.
+        private string? pendingMeta;
+        private string? pendingParen;
+        // Last filmable action visual in the open scene — reused as picture under V.O.
+        private string? lastPictureVisual;
+        private int beatIndex;
+        private int sceneNum;
+
+        public Stage1BuildContext(
+            FountainParser.ParseResult parsed,
+            int minSeconds,
+            int maxSeconds,
+            int absMaxSeconds)
+        {
+            this.parsed = parsed;
+            this.maxSeconds = maxSeconds;
+            _ = minSeconds;
+            _ = absMaxSeconds;
+        }
+
+        public Dictionary<string, object?> Build()
+        {
+            var title = ResolveTitle(parsed);
+            var author = FirstTitle(parsed, "Author") ?? FirstTitle(parsed, "Authors");
+
+            foreach (var el in parsed.Elements)
+                HandleElement(el);
+
+            AddClosedScene(CloseScene());
+
+            if (scenes.Count == 0)
+                ImportHeadinglessFileAsSingleScene(parsed, actionBuf, OpenScene, CloseScene, scenes);
+
+            EnsureNarratorDefault();
+            return BuildResult(title, author);
+        }
+
+        private static string ResolveTitle(FountainParser.ParseResult source)
+        {
+            var title = FirstTitle(source, "Title") ?? FirstTitle(source, "title") ?? "Untitled";
+            title = CleanEmphasis(title).Replace("\n", " ").Trim();
+            if (title.Length == 0) title = "Untitled";
+            return title;
+        }
+
+        private void HandleElement(FountainParser.Element el)
+        {
+            switch (el.Type)
+            {
+                case FountainParser.ElementType.SceneHeading:
+                    curScene = OpenScene(el.Text);
+                    break;
+                case FountainParser.ElementType.Action:
+                case FountainParser.ElementType.Lyric:
+                    HandleActionOrLyric(el);
+                    break;
+                case FountainParser.ElementType.Character:
+                    HandleCharacter(el);
+                    break;
+                case FountainParser.ElementType.Parenthetical:
+                    pendingParen = el.Text;
+                    break;
+                case FountainParser.ElementType.Dialogue:
+                    HandleDialogue(el);
+                    break;
+                case FountainParser.ElementType.Transition:
+                    HandleTransition();
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        private void HandleActionOrLyric(FountainParser.Element el)
+        {
+            var actionText = CleanEmphasis(el.Text);
+            // Do not invent INT. UNSPECIFIED just for FADE IN / CUT TO before the first heading
+            if (curScene is null &&
+                (FountainParser.IsStandaloneTransitionLine(actionText) ||
+                 IsNoopTransitionText(actionText)))
+                return;
+            EnsureSceneOpen();
+            FlushDialogue();
+            pendingChar = null;
+            if (actionBuf.Length > 0) actionBuf.Append(' ');
+            actionBuf.Append(actionText);
+        }
+
+        private void HandleCharacter(FountainParser.Element el)
+        {
+            EnsureSceneOpen();
+            FlushAction();
+            FlushDialogue();
+            pendingChar = el.Text.Trim();
+            // Meta holds (V.O.) / (O.S.) / CONT'D from SplitCharacter — keep separate from
+            // performance parentheticals that follow on their own line.
+            pendingMeta = string.IsNullOrWhiteSpace(el.Meta) ? null : el.Meta.Trim();
+            pendingParen = null;
+            EnsureCharacter(charSeeds, pendingChar, pendingMeta);
+            // Voice-over / O.S. speakers are not forced into the on-screen cast list
+            if (!IsOffScreenCue(pendingChar, pendingMeta))
+                EnsureOnScreen(curScene, CharacterKey(pendingChar));
+        }
+
+        private void HandleDialogue(FountainParser.Element el)
+        {
+            EnsureSceneOpen();
+            FlushAction();
+            if (dialogueBuf.Length > 0) dialogueBuf.Append(' ');
+            dialogueBuf.Append(CleanEmphasis(el.Text));
+        }
+
+        private void HandleTransition()
+        {
+            FlushAction();
+            FlushDialogue();
+            pendingChar = null;
+        }
+
+        private void EnsureSceneOpen()
+        {
+            if (curScene is null)
+                curScene = OpenScene(UnspecifiedIntDay);
+        }
+
+        private void AddClosedScene(Dictionary<string, object?>? closed)
+        {
+            if (closed is not null)
+                scenes.Add(closed);
+        }
+
+        private string SceneKey()
         {
             if (curScene is not null && curScene.TryGetValue("setting", out var st) && st is string s && s.Length > 0)
                 return s;
@@ -150,7 +273,7 @@ public static class FountainStage1Importer
             return sceneNum > 0 ? $"scene:{sceneNum}" : "scene:0";
         }
 
-        string NextStableBeatId(string kind, string? speaker, string? body)
+        private string NextStableBeatId(string kind, string? speaker, string? body)
         {
             var key = string.Join(
                 '\u001f',
@@ -162,7 +285,7 @@ public static class FountainStage1Importer
             return StableBeatId.ForContent(SceneKey(), kind, speaker, body, n);
         }
 
-        void FlushAction()
+        private void FlushAction()
         {
             if (actionBuf.Length == 0 || beats is null) return;
             var text = actionBuf.ToString().Trim();
@@ -171,9 +294,14 @@ public static class FountainStage1Importer
             // Pure transitions are not filmable beats (would become empty clips)
             if (FountainParser.IsStandaloneTransitionLine(text) || IsNoopTransitionText(text))
                 return;
+            AddActionBeat(text);
+        }
+
+        private void AddActionBeat(string text)
+        {
             beatIndex++;
             var (ambient, sfx) = InferAmbientAndSfx(text);
-            var isFirstInScene = beats.Count == 0;
+            var isFirstInScene = beats!.Count == 0;
             var actionClass = InferActionClass(text, isFirstInScene);
             lastPictureVisual = text;
             var kind = string.IsNullOrWhiteSpace(actionClass) ? "action" : actionClass;
@@ -203,7 +331,7 @@ public static class FountainStage1Importer
             });
         }
 
-        void FlushDialogue()
+        private void FlushDialogue()
         {
             if (pendingChar is null || dialogueBuf.Length == 0 || beats is null) return;
             var text = dialogueBuf.ToString().Trim();
@@ -228,14 +356,10 @@ public static class FountainStage1Importer
                 ? BuildVoiceoverVisualEvent(lastPictureVisual)
                 : BuildDialogueVisualEvent(displayName, pendingParen, pendingChar);
             var delivery = offScreen ? "voiceover_internal" : "spoken_on_camera";
-            // Parenthetical may carry light sfx ("whispering", rare); usually empty for dialogue
             var (_, parenSfx) = InferAmbientAndSfx(pendingParen ?? "");
 
             // Long monologues → multiple beats so each clip fits the video model max
-            var parts = ClipDurationEstimator.SplitDialogueToFitModelMax(text, delivery, modelMaxSeconds: maxSeconds);
-            if (parts.Count == 0)
-                parts = new[] { text };
-
+            var parts = DialogueParts(text, delivery);
             // Picture cast for V.O.: who was already on screen — do not force speaker into frame
             var pictureCast = CurrentOnScreen(curScene);
             var primary = offScreen
@@ -248,51 +372,80 @@ public static class FountainStage1Importer
 
             for (var p = 0; p < parts.Count; p++)
             {
-                var part = parts[p];
-                beatIndex++;
-                var isFirst = beatIndex == 1;
-                var beatId = StableBeatId.ForPart(monologueRoot, p, parts.Count);
-                beats.Add(new Dictionary<string, object?>
-                {
-                    ["beat_id"] = beatId,
-                    ["intent"] = Trunc(
-                        parts.Count > 1
-                            ? (offScreen
-                                ? $"V.O.: {displayName} ({p + 1}/{parts.Count})"
-                                : $"Dialogue: {displayName} ({p + 1}/{parts.Count})")
-                            : (offScreen ? $"V.O.: {displayName}" : $"Dialogue: {displayName}"),
-                        120),
-                    [VisualEvent] = visual,
-                    ["shot_scale_hint"] = offScreen ? ShotScale.Medium.ToSnakeCase() : "medium close",
-                    ["action_class"] = offScreen ? "hold" : JsonKeys.Dialogue,
-                    ["continuity"] = isFirst
-                        ? "new_setup"
-                        : "continuous_from_previous_beat",
-                    [TimeWeight] = Math.Clamp(
-                        ClipDurationEstimator.CountWords(part) / 8.0, 0.5, 4.0),
-                    [Delivery] = delivery,
-                    [JsonKeys.Speaker] = charKey,
-                    [JsonKeys.Dialogue] = part,
-                    [Ambient] = "",
-                    ["sfx"] = parenSfx,
-                    ["audio"] = new Dictionary<string, object?>
-                    {
-                        [Delivery] = delivery,
-                        [JsonKeys.Speaker] = charKey,
-                        [JsonKeys.Dialogue] = part,
-                        [Ambient] = "",
-                        ["sfx"] = parenSfx,
-                    },
-                    ["primary_subject"] = primary is { Length: > 0 } ? primary : null,
-                    [CharactersOnScreen] = pictureCast.ToList(),
-                });
+                beats.Add(BuildDialogueBeat(
+                    parts[p], p, parts.Count, monologueRoot,
+                    offScreen, displayName, visual, delivery,
+                    charKey, parenSfx, primary, pictureCast));
             }
 
             pendingParen = null;
             pendingMeta = null;
         }
 
-        Dictionary<string, object?>? CloseScene()
+        private IReadOnlyList<string> DialogueParts(string text, string delivery)
+        {
+            var parts = ClipDurationEstimator.SplitDialogueToFitModelMax(text, delivery, modelMaxSeconds: maxSeconds);
+            if (parts.Count == 0)
+                return new[] { text };
+            return parts;
+        }
+
+        private Dictionary<string, object?> BuildDialogueBeat(
+            string part,
+            int p,
+            int partCount,
+            string monologueRoot,
+            bool offScreen,
+            string displayName,
+            string visual,
+            string delivery,
+            string charKey,
+            string parenSfx,
+            string? primary,
+            List<object?> pictureCast)
+        {
+            beatIndex++;
+            var isFirst = beatIndex == 1;
+            var beatId = StableBeatId.ForPart(monologueRoot, p, partCount);
+            return new Dictionary<string, object?>
+            {
+                ["beat_id"] = beatId,
+                ["intent"] = Trunc(DialogueIntentLabel(offScreen, displayName, p, partCount), 120),
+                [VisualEvent] = visual,
+                ["shot_scale_hint"] = offScreen ? ShotScale.Medium.ToSnakeCase() : "medium close",
+                ["action_class"] = offScreen ? "hold" : JsonKeys.Dialogue,
+                ["continuity"] = isFirst
+                    ? "new_setup"
+                    : "continuous_from_previous_beat",
+                [TimeWeight] = Math.Clamp(
+                    ClipDurationEstimator.CountWords(part) / 8.0, 0.5, 4.0),
+                [Delivery] = delivery,
+                [JsonKeys.Speaker] = charKey,
+                [JsonKeys.Dialogue] = part,
+                [Ambient] = "",
+                ["sfx"] = parenSfx,
+                ["audio"] = new Dictionary<string, object?>
+                {
+                    [Delivery] = delivery,
+                    [JsonKeys.Speaker] = charKey,
+                    [JsonKeys.Dialogue] = part,
+                    [Ambient] = "",
+                    ["sfx"] = parenSfx,
+                },
+                ["primary_subject"] = primary is { Length: > 0 } ? primary : null,
+                [CharactersOnScreen] = pictureCast.ToList(),
+            };
+        }
+
+        private static string DialogueIntentLabel(bool offScreen, string displayName, int p, int partCount)
+        {
+            var prefix = offScreen ? "V.O." : "Dialogue";
+            if (partCount > 1)
+                return $"{prefix}: {displayName} ({p + 1}/{partCount})";
+            return $"{prefix}: {displayName}";
+        }
+
+        private Dictionary<string, object?>? CloseScene()
         {
             FlushAction();
             FlushDialogue();
@@ -303,78 +456,107 @@ public static class FountainStage1Importer
             if (curScene is null || beats is null) return null;
 
             // Drop pure transition noise that slipped in as action
-            beats.RemoveAll(b =>
-                b is Dictionary<string, object?> d &&
-                IsNoopBeatDict(d));
+            beats.RemoveAll(IsNoopBeatObject);
 
-            if (beats.Count == 0)
+            // Empty real heading → establishing beat; phantom UNSPECIFIED (FADE IN only) is discarded.
+            if (beats.Count == 0 && !TryAddEstablishingBeat())
+                return null;
+
+            ApplySceneDurationAndSummary();
+            var completed = curScene;
+            ResetOpenScene();
+            return completed;
+        }
+
+        private static bool IsNoopBeatObject(object? b) =>
+            b is Dictionary<string, object?> d && IsNoopBeatDict(d);
+
+        private bool TryAddEstablishingBeat()
+        {
+            var setting = SceneSetting();
+            if (setting.Contains("UNSPECIFIED", StringComparison.OrdinalIgnoreCase))
             {
-                // Real scene heading with no content yet → short establishing beat.
-                // Phantom unspecified scenes that only had FADE IN are discarded.
-                var setting = curScene.TryGetValue("setting", out var st) ? st?.ToString() ?? "" : "";
-                if (setting.Contains("UNSPECIFIED", StringComparison.OrdinalIgnoreCase))
-                {
-                    curScene = null;
-                    beats = null;
-                    beatIndex = 0;
-                    contentOccurrence.Clear();
-                    return null;
-                }
+                ResetOpenScene();
+                return false;
+            }
 
-                beatIndex++;
-                beats.Add(new Dictionary<string, object?>
+            AddEstablishingBeat(setting);
+            return true;
+        }
+
+        private string SceneSetting() =>
+            curScene!.TryGetValue("setting", out var st) ? st?.ToString() ?? "" : "";
+
+        private void AddEstablishingBeat(string setting)
+        {
+            beatIndex++;
+            beats!.Add(new Dictionary<string, object?>
+            {
+                ["beat_id"] = NextStableBeatId(Establishing, "", setting),
+                ["intent"] = "Establish scene",
+                [VisualEvent] = string.IsNullOrWhiteSpace(setting) ? "Scene" : setting,
+                ["shot_scale_hint"] = ShotScale.Wide.ToSnakeCase(),
+                ["action_class"] = Establishing,
+                ["continuity"] = "new_setup",
+                [TimeWeight] = 1.0,
+                [Delivery] = "none",
+                [JsonKeys.Speaker] = "",
+                [JsonKeys.Dialogue] = "",
+                [Ambient] = "",
+                ["sfx"] = "",
+                ["audio"] = new Dictionary<string, object?>
                 {
-                    ["beat_id"] = NextStableBeatId(Establishing, "", setting),
-                    ["intent"] = "Establish scene",
-                    [VisualEvent] = string.IsNullOrWhiteSpace(setting) ? "Scene" : setting,
-                    ["shot_scale_hint"] = ShotScale.Wide.ToSnakeCase(),
-                    ["action_class"] = Establishing,
-                    ["continuity"] = "new_setup",
-                    [TimeWeight] = 1.0,
                     [Delivery] = "none",
                     [JsonKeys.Speaker] = "",
                     [JsonKeys.Dialogue] = "",
                     [Ambient] = "",
                     ["sfx"] = "",
-                    ["audio"] = new Dictionary<string, object?>
-                    {
-                        [Delivery] = "none",
-                        [JsonKeys.Speaker] = "",
-                        [JsonKeys.Dialogue] = "",
-                        [Ambient] = "",
-                        ["sfx"] = "",
-                    },
-                    [CharactersOnScreen] = CurrentOnScreen(curScene),
-                });
-            }
+                },
+                [CharactersOnScreen] = CurrentOnScreen(curScene),
+            });
+        }
 
-            var dur = beats.OfType<Dictionary<string, object?>>()
-                .Sum(b =>
-                {
-                    if (b.TryGetValue(TimeWeight, out var tw) && tw is double d) return d * 4.0;
-                    return 4.0;
-                });
-            curScene["duration_target_seconds"] = (int)Math.Clamp(Math.Round(dur), 8, 180);
+        private void ApplySceneDurationAndSummary()
+        {
+            var dur = ComputeSceneDuration();
+            curScene!["duration_target_seconds"] = (int)Math.Clamp(Math.Round(dur), 8, 180);
             curScene["story_beats"] = beats;
-            EnrichLocationSeedFromScene(locSeeds, curScene, beats);
-            curScene["summary"] = Trunc(
-                string.Join(" ", beats.OfType<Dictionary<string, object?>>()
-                    .Select(b => b.TryGetValue(VisualEvent, out var v) ? v?.ToString() : null)
-                    .Where(s => !string.IsNullOrWhiteSpace(s))),
+            EnrichLocationSeedFromScene(locSeeds, curScene, beats!);
+            curScene["summary"] = SceneSummary();
+        }
+
+        private double ComputeSceneDuration() =>
+            beats!.OfType<Dictionary<string, object?>>().Sum(BeatDurationSeconds);
+
+        private static double BeatDurationSeconds(Dictionary<string, object?> b)
+        {
+            if (b.TryGetValue(TimeWeight, out var tw) && tw is double d) return d * 4.0;
+            return 4.0;
+        }
+
+        private string SceneSummary() =>
+            Trunc(
+                string.Join(" ", beats!.OfType<Dictionary<string, object?>>()
+                    .Select(VisualEventText)
+                    .Where(HasText)),
                 280);
-            var completed = curScene;
+
+        private static string? VisualEventText(Dictionary<string, object?> b) =>
+            b.TryGetValue(VisualEvent, out var v) ? v?.ToString() : null;
+
+        private static bool HasText(string? s) => !string.IsNullOrWhiteSpace(s);
+
+        private void ResetOpenScene()
+        {
             curScene = null;
             beats = null;
             beatIndex = 0;
             contentOccurrence.Clear();
-            return completed;
         }
 
-        Dictionary<string, object?> OpenScene(string heading)
+        private Dictionary<string, object?> OpenScene(string heading)
         {
-            var closed = CloseScene();
-            if (closed is not null)
-                scenes.Add(closed);
+            AddClosedScene(CloseScene());
             sceneNum++;
             var (locType, locName, setting) = ParseHeading(heading);
             var locId = EnsureLocation(locSeeds, locName, locType, setting);
@@ -399,121 +581,54 @@ public static class FountainStage1Importer
             return curScene;
         }
 
-        foreach (var el in parsed.Elements)
+        private void EnsureNarratorDefault()
         {
-            switch (el.Type)
+            if (charSeeds.Count == 0)
             {
-                case FountainParser.ElementType.SceneHeading:
-                    curScene = OpenScene(el.Text);
-                    break;
-
-                case FountainParser.ElementType.Action:
-                case FountainParser.ElementType.Lyric:
+                charSeeds["Character_Narrator"] = new Dictionary<string, object?>
                 {
-                    var actionText = CleanEmphasis(el.Text);
-                    // Do not invent INT. UNSPECIFIED just for FADE IN / CUT TO before the first heading
-                    if (curScene is null &&
-                        (FountainParser.IsStandaloneTransitionLine(actionText) ||
-                         IsNoopTransitionText(actionText)))
-                        break;
-                    if (curScene is null)
-                        curScene = OpenScene(UnspecifiedIntDay);
-                    FlushDialogue();
-                    pendingChar = null;
-                    if (actionBuf.Length > 0) actionBuf.Append(' ');
-                    actionBuf.Append(actionText);
-                    break;
-                }
-
-                case FountainParser.ElementType.Character:
-                    if (curScene is null)
-                        curScene = OpenScene(UnspecifiedIntDay);
-                    FlushAction();
-                    FlushDialogue();
-                    pendingChar = el.Text.Trim();
-                    // Meta holds (V.O.) / (O.S.) / CONT'D from SplitCharacter — keep separate from
-                    // performance parentheticals that follow on their own line.
-                    pendingMeta = string.IsNullOrWhiteSpace(el.Meta) ? null : el.Meta.Trim();
-                    pendingParen = null;
-                    EnsureCharacter(charSeeds, pendingChar, pendingMeta);
-                    // Voice-over / O.S. speakers are not forced into the on-screen cast list
-                    if (!IsOffScreenCue(pendingChar, pendingMeta))
-                        EnsureOnScreen(curScene, CharacterKey(pendingChar));
-                    break;
-
-                case FountainParser.ElementType.Parenthetical:
-                    // Performance direction only — must not overwrite V.O./O.S. meta on the cue
-                    pendingParen = el.Text;
-                    break;
-
-                case FountainParser.ElementType.Dialogue:
-                    if (curScene is null)
-                        curScene = OpenScene(UnspecifiedIntDay);
-                    FlushAction();
-                    if (dialogueBuf.Length > 0) dialogueBuf.Append(' ');
-                    dialogueBuf.Append(CleanEmphasis(el.Text));
-                    break;
-
-                case FountainParser.ElementType.Transition:
-                    FlushAction();
-                    FlushDialogue();
-                    pendingChar = null;
-                    break;
-
-                default:
-                    break;
+                    [JsonKeys.Description] = "Off-screen narrator.",
+                    [DisplayNamePolicy] = "never_on_screen",
+                    ["voice_profile"] = "Warm clear narrator.",
+                    ["voice_label"] = "Narrator",
+                };
             }
         }
 
+        private Dictionary<string, object?> BuildResult(string title, string? author)
         {
-            var closed = CloseScene();
-            if (closed is not null)
-                scenes.Add(closed);
-        }
+            var totalSec = scenes.OfType<Dictionary<string, object?>>()
+                .Sum(SceneDurationOrDefault);
 
-        if (scenes.Count == 0)
-            ImportHeadinglessFileAsSingleScene(parsed, actionBuf, OpenScene, CloseScene, scenes);
-
-        // Ensure at least narrator if only action
-        if (charSeeds.Count == 0)
-        {
-            charSeeds["Character_Narrator"] = new Dictionary<string, object?>
+            return new Dictionary<string, object?>
             {
-                [JsonKeys.Description] = "Off-screen narrator.",
-                [DisplayNamePolicy] = "never_on_screen",
-                ["voice_profile"] = "Warm clear narrator.",
-                ["voice_label"] = "Narrator",
+                ["schema_version"] = "stage1.v1",
+                [JsonKeys.MovieTitle] = title,
+                ["source_book_title"] = title,
+                ["generation"] = new Dictionary<string, object?>
+                {
+                    ["method"] = "FountainStage1Importer",
+                    ["format"] = "fountain",
+                    ["author"] = author,
+                    ["ts"] = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss"),
+                },
+                ["global_production_variables"] = new Dictionary<string, object?>
+                {
+                    ["target_aspect_ratio"] = "16:9",
+                    ["resolution"] = "720p",
+                    ["frame_rate"] = 24,
+                    ["directorial_treatment"] = "Cinematic lighting, clear coverage, natural performances.",
+                    ["total_runtime_target_seconds"] = totalSec > 0 ? totalSec : 900,
+                    ["character_seed_tokens"] = charSeeds,
+                    ["location_seed_tokens"] = locSeeds,
+                },
+                ["scenes"] = scenes,
+                ["cumulative_duration_target_seconds"] = totalSec,
             };
         }
 
-        var totalSec = scenes.OfType<Dictionary<string, object?>>()
-            .Sum(s => ToInt(s.TryGetValue("duration_target_seconds", out var d) ? d : 30));
-
-        return new Dictionary<string, object?>
-        {
-            ["schema_version"] = "stage1.v1",
-            [JsonKeys.MovieTitle] = title,
-            ["source_book_title"] = title,
-            ["generation"] = new Dictionary<string, object?>
-            {
-                ["method"] = "FountainStage1Importer",
-                ["format"] = "fountain",
-                ["author"] = author,
-                ["ts"] = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss"),
-            },
-            ["global_production_variables"] = new Dictionary<string, object?>
-            {
-                ["target_aspect_ratio"] = "16:9",
-                ["resolution"] = "720p",
-                ["frame_rate"] = 24,
-                ["directorial_treatment"] = "Cinematic lighting, clear coverage, natural performances.",
-                ["total_runtime_target_seconds"] = totalSec > 0 ? totalSec : 900,
-                ["character_seed_tokens"] = charSeeds,
-                ["location_seed_tokens"] = locSeeds,
-            },
-            ["scenes"] = scenes,
-            ["cumulative_duration_target_seconds"] = totalSec,
-        };
+        private static int SceneDurationOrDefault(Dictionary<string, object?> s) =>
+            ToInt(s.TryGetValue("duration_target_seconds", out var d) ? d : 30);
     }
 
     private static void ImportHeadinglessFileAsSingleScene(
@@ -748,49 +863,85 @@ public static class FountainStage1Importer
             return;
 
         var display = seed.TryGetValue("display_name", out var dn) ? dn?.ToString() ?? locId : locId;
+        var snippets = CollectLocationSnippets(beats, display);
+        ApplyLocationSketch(seed, display, locId, snippets);
+    }
+
+    private static List<string> CollectLocationSnippets(List<object?> beats, string display)
+    {
         var snippets = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var b in beats.OfType<Dictionary<string, object?>>())
         {
-            var dlg = b.TryGetValue(JsonKeys.Dialogue, out var d) ? d?.ToString() : null;
-            if (!string.IsNullOrWhiteSpace(dlg)) continue;
-            var ve = b.TryGetValue(VisualEvent, out var v) ? v?.ToString()?.Trim() : null;
-            if (string.IsNullOrWhiteSpace(ve)) continue;
-            ve = CleanActionSnippetForLocation(ve, display);
-            if (string.IsNullOrWhiteSpace(ve)) continue;
-            if (ve.Length > 160) ve = ve[..157] + "…";
-            if (!snippets.Exists(s => s.Equals(ve, StringComparison.OrdinalIgnoreCase)))
+            if (!TryGetLocationSnippet(b, display, out var ve))
+                continue;
+            if (seen.Add(ve))
                 snippets.Add(ve);
             if (snippets.Count >= 3) break;
         }
+        return snippets;
+    }
+
+    private static bool TryGetLocationSnippet(Dictionary<string, object?> beat, string display, out string snippet)
+    {
+        snippet = "";
+        var dlg = beat.TryGetValue(JsonKeys.Dialogue, out var d) ? d?.ToString() : null;
+        if (!string.IsNullOrWhiteSpace(dlg)) return false;
+        var ve = beat.TryGetValue(VisualEvent, out var v) ? v?.ToString()?.Trim() : null;
+        if (string.IsNullOrWhiteSpace(ve)) return false;
+        ve = CleanActionSnippetForLocation(ve, display);
+        if (string.IsNullOrWhiteSpace(ve)) return false;
+        snippet = ve.Length > 160 ? ve[..157] + "…" : ve;
+        return true;
+    }
+
+    private static bool IsLocationStubDescription(string existing, string display, string locId) =>
+        string.IsNullOrWhiteSpace(existing)
+        || existing.Equals(display, StringComparison.OrdinalIgnoreCase)
+        || existing.Equals(locId, StringComparison.OrdinalIgnoreCase)
+        || LooksLikeHeadingEcho(existing, display);
+
+    private static void ApplyLocationSketch(
+        Dictionary<string, object?> seed,
+        string display,
+        string locId,
+        List<string> snippets)
+    {
         if (snippets.Count == 0) return;
 
         var existing = seed.TryGetValue(JsonKeys.Description, out var ed) ? ed?.ToString()?.Trim() ?? "" : "";
-        var isStub = string.IsNullOrWhiteSpace(existing)
-                     || existing.Equals(display, StringComparison.OrdinalIgnoreCase)
-                     || existing.Equals(locId, StringComparison.OrdinalIgnoreCase)
-                     || LooksLikeHeadingEcho(existing, display);
-
+        var isStub = IsLocationStubDescription(existing, display, locId);
         var sketch = isStub
             ? $"{display}. {snippets[0]}"
-            : existing;
-        if (!isStub)
-        {
-            foreach (var s in snippets.Where(s => !sketch.Contains(s, StringComparison.OrdinalIgnoreCase)))
-                sketch = $"{sketch} {s}".Trim();
-        }
+            : AppendNewSnippets(existing, snippets);
         if (sketch.Length > 480) sketch = sketch[..477] + "…";
         seed[JsonKeys.Description] = sketch;
 
-        var vl = seed.TryGetValue(VisualLock, out var vlo) ? vlo?.ToString()?.Trim() ?? "" : "";
-        if (string.IsNullOrWhiteSpace(vl)
-            || vl.Equals(display, StringComparison.OrdinalIgnoreCase)
-            || vl.Equals(locId, StringComparison.OrdinalIgnoreCase)
-            || LooksLikeHeadingEcho(vl, display))
+        ApplyLocationVisualLockIfStub(seed, display, locId, snippets[0]);
+    }
+
+    private static string AppendNewSnippets(string sketch, List<string> snippets)
+    {
+        foreach (var s in snippets)
         {
-            seed[VisualLock] = snippets[0].Length <= 120
-                ? $"{display}: {snippets[0]}"
-                : snippets[0];
+            if (!sketch.Contains(s, StringComparison.OrdinalIgnoreCase))
+                sketch = $"{sketch} {s}".Trim();
         }
+        return sketch;
+    }
+
+    private static void ApplyLocationVisualLockIfStub(
+        Dictionary<string, object?> seed,
+        string display,
+        string locId,
+        string snippet)
+    {
+        var vl = seed.TryGetValue(VisualLock, out var vlo) ? vlo?.ToString()?.Trim() ?? "" : "";
+        if (!IsLocationStubDescription(vl, display, locId))
+            return;
+        seed[VisualLock] = snippet.Length <= 120
+            ? $"{display}: {snippet}"
+            : snippet;
     }
 
     private static bool LooksLikeHeadingEcho(string text, string display)

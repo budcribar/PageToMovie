@@ -73,123 +73,239 @@ public sealed class BookPrepareService
         onProgress?.Invoke("Looking for PDF / EPUB / book_full.txt…");
         var pdf = FindPdf(source);
         var epub = pdf is null ? FindEpub(source) : null;
-        result.PdfName = pdf is not null ? Path.GetFileName(pdf) : (epub is not null ? Path.GetFileName(epub) : null);
+        result.PdfName = SourceDisplayName(pdf, epub);
 
-        BookTextAnalysis analysis;
-        string engine;
-
-        if (epub is not null && (forceExtract || !File.Exists(bookTxt)))
-        {
-            onProgress?.Invoke($"Extracting text and images from {Path.GetFileName(epub)} (EPUB)…");
-            var (epubRawText, epubImgRows, epubPages) = await ExtractTextAndImagesEpubAsync(epub, imgDir, source, ct).ConfigureAwait(false);
-            var text = GutenbergCleaner.StripHeaderAndFooter(epubRawText);
-            engine = "epub";
-            analysis = BookTextAnalyzer.Analyze(text, epubPages);
-            analysis.TextEngine = engine;
-            result.ImagesExtracted = epubImgRows.Count;
-
-            await File.WriteAllTextAsync(bookTxt, text + "\n", ct).ConfigureAwait(false);
-            if (epubImgRows.Count > 0)
-                await WriteManifestAsync(imgDir, epubImgRows, epubPages, ct).ConfigureAwait(false);
-            else
-                await EnsureManifestFromDiskAsync(source, imgDir, epubPages, ct).ConfigureAwait(false);
-        }
-        else if (pdf is not null && (forceExtract || !File.Exists(bookTxt)))
-        {
-            onProgress?.Invoke($"Extracting text from {Path.GetFileName(pdf)} (PdfPig)…");
-            var (rawExtractText, pageCount) = ExtractTextPdfPig(pdf);
-            var text = GutenbergCleaner.StripHeaderAndFooter(rawExtractText);
-            engine = "pdfpig";
-            analysis = BookTextAnalyzer.Analyze(text, pageCount);
-            analysis.TextEngine = engine;
-
-            onProgress?.Invoke("Extracting embedded images…");
-            var imageRows = await ExtractEmbeddedImagesAsync(pdf, imgDir, source, ct).ConfigureAwait(false);
-            result.ImagesExtracted = imageRows.Count;
-
-            // Fallback: render full pages when embeds are sparse (vision needs plates)
-            if (imageRows.Count < Math.Max(1, pageCount / 2))
-            {
-                onProgress?.Invoke("Rendering page images (PDFtoImage) for vision plates…");
-#pragma warning disable CA1416 // PDFtoImage is desktop/mobile OS only (Windows/Linux/macOS)
-                var (rendered, renderError) = RenderPdfPages(pdf, imgDir, source, pageCount, analysis);
-#pragma warning restore CA1416
-                if (rendered.Count > 0)
-                {
-                    // Prefer rendered pages as cover; keep embeds too
-                    imageRows = rendered.Concat(imageRows).ToList();
-                    result.ImagesExtracted = imageRows.Count;
-                    onProgress?.Invoke($"Rendered {rendered.Count} page plate(s)");
-                }
-                else if (!string.IsNullOrWhiteSpace(renderError))
-                {
-                    _log.LogWarning("PDF page render produced 0 images: {Error}", renderError);
-                    onProgress?.Invoke($"Page render failed: {renderError}");
-                    result.Notes.Add($"PDF page render failed: {renderError}");
-                }
-                else
-                {
-                    onProgress?.Invoke("Page render produced 0 images (no error detail).");
-                }
-            }
-
-            // Picture books without plates cannot OCR — fail loudly instead of a vague later error.
-            var looksPicture = analysis.BookKind == BookKind.PictureBook || analysis.TextDensity == TextDensity.Sparse;
-            if (looksPicture && imageRows.Count == 0)
-            {
-                throw new InvalidOperationException(
-                    "Could not extract or render page images from this PDF (needed for picture-book OCR). " +
-                    "On Linux/Docker install fontconfig + freetype and ensure libpdfium/libSkiaSharp native " +
-                    "assets are in the publish output (runtimes/*/native). " +
-                    "Local: confirm PDFtoImage works; Railway: check deploy logs for DllNotFoundException.");
-            }
-
-            if (imageRows.Count > 0)
-                await WriteManifestAsync(imgDir, imageRows, pageCount, ct).ConfigureAwait(false);
-            else
-                await EnsureManifestFromDiskAsync(source, imgDir, pageCount, ct).ConfigureAwait(false);
-
-            // New inventory invalidates prior character plate sort; Stage1/attach re-sorts into scenes.json
-            try
-            {
-                _projects.ClearCharacterPlatesSorted(projectId);
-                onProgress?.Invoke("Cleared character_plates sorted flag (book images refreshed)");
-            }
-            catch { /* non-fatal */ }
-
-            await File.WriteAllTextAsync(bookTxt, text + "\n", ct);
-            result.Pages = pageCount;
-            result.TextEngine = engine;
-            onProgress?.Invoke(
-                $"Extract: pages={pageCount} words={analysis.TextWords} quality={analysis.TextQuality} images={imageRows.Count}");
-        }
-        else if (File.Exists(bookTxt))
-        {
-            onProgress?.Invoke("Using existing book_full.txt…");
-            var text = await File.ReadAllTextAsync(bookTxt, ct);
-            // TXT uploads and older projects may still hold a Gutenberg license block on disk.
-            if (GutenbergCleaner.HasGutenbergHeader(text))
-            {
-                onProgress?.Invoke("Stripping Project Gutenberg header/footer from book_full.txt…");
-                text = GutenbergCleaner.StripHeaderAndFooter(text);
-                text = text.Replace("\r\n", "\n").Replace('\r', '\n').Trim() + "\n";
-                await File.WriteAllTextAsync(bookTxt, text, ct).ConfigureAwait(false);
-            }
-            analysis = BookTextAnalyzer.Analyze(text);
-            analysis.TextEngine = "existing_book_full";
-            result.TextEngine = analysis.TextEngine;
-            result.Pages = analysis.Pages;
-        }
-        else
-        {
-            throw new InvalidOperationException(
-                $"No PDF and no book_full.txt under {source}. Upload a PDF first.");
-        }
+        var analysis = await ExtractBookTextAsync(
+            projectId, source, bookTxt, imgDir, pdf, epub, forceExtract, result, onProgress, ct)
+            .ConfigureAwait(false);
 
         var pageImages = await CollectPageImagesAsync(source, ct).ConfigureAwait(false);
         result.PageImageCount = pageImages.Count;
-        var strategy = DecideStrategy(analysis, pageImages.Count > 0, hasXai);
-        if (forceVision && pageImages.Count > 0 && hasXai)
+        var strategy = DecidePrepareStrategy(analysis, pageImages.Count > 0, hasXai, forceVision, autoVision);
+        result.Strategy = strategy.Action;
+        result.StrategyReason = strategy.Reason;
+        onProgress?.Invoke($"Strategy: {strategy.Action} — {strategy.Reason}");
+
+        analysis = await MaybeRunVisionOcrAsync(
+            strategy, hasXai, pageImages, bookTxt, visionModel, analysis, result, onProgress, ct)
+            .ConfigureAwait(false);
+
+        await ApplyNaturalRuntimeAsync(analysis, bookTxt, ct).ConfigureAwait(false);
+        CopyAnalysisToResult(result, analysis);
+        SetReadyForStage1(result, analysis, strategy);
+        result.Ok = true;
+
+        await WriteExtractMetaAsync(source, result, analysis, strategy, visionModel, ct).ConfigureAwait(false);
+        onProgress?.Invoke(ReadyForStage1Progress(result));
+        // Stage-end package history (text only; video ignored by project git).
+        _projects.TriggerAutoGitCommit(projectId, ProjectStageCommits.BookPrepared);
+        return result;
+    }
+
+    private static string? SourceDisplayName(string? pdf, string? epub) =>
+        pdf is not null ? Path.GetFileName(pdf) : (epub is not null ? Path.GetFileName(epub) : null);
+
+    private static string ReadyForStage1Progress(BookPrepareResult result) =>
+        result.ReadyForStage1
+            ? $"Book ready for Stage 1 (~{result.SuggestedTotalMinutes} min)"
+            : "Book needs attention before Stage 1";
+
+    private async Task<BookTextAnalysis> ExtractBookTextAsync(
+        string projectId,
+        string source,
+        string bookTxt,
+        string imgDir,
+        string? pdf,
+        string? epub,
+        bool forceExtract,
+        BookPrepareResult result,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
+        if (epub is not null && ShouldExtractFromSource(forceExtract, bookTxt))
+            return await ExtractFromEpubAsync(epub, imgDir, source, bookTxt, result, onProgress, ct)
+                .ConfigureAwait(false);
+        if (pdf is not null && ShouldExtractFromSource(forceExtract, bookTxt))
+            return await ExtractFromPdfAsync(projectId, pdf, imgDir, source, bookTxt, result, onProgress, ct)
+                .ConfigureAwait(false);
+        if (File.Exists(bookTxt))
+            return await LoadExistingBookTxtAsync(bookTxt, result, onProgress, ct).ConfigureAwait(false);
+        throw new InvalidOperationException(
+            $"No PDF and no book_full.txt under {source}. Upload a PDF first.");
+    }
+
+    private static bool ShouldExtractFromSource(bool forceExtract, string bookTxt) =>
+        forceExtract || !File.Exists(bookTxt);
+
+    private static async Task<BookTextAnalysis> ExtractFromEpubAsync(
+        string epub,
+        string imgDir,
+        string source,
+        string bookTxt,
+        BookPrepareResult result,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
+        onProgress?.Invoke($"Extracting text and images from {Path.GetFileName(epub)} (EPUB)…");
+        var (epubRawText, epubImgRows, epubPages) = await ExtractTextAndImagesEpubAsync(epub, imgDir, source, ct)
+            .ConfigureAwait(false);
+        var text = GutenbergCleaner.StripHeaderAndFooter(epubRawText);
+        var engine = "epub";
+        var analysis = BookTextAnalyzer.Analyze(text, epubPages);
+        analysis.TextEngine = engine;
+        result.ImagesExtracted = epubImgRows.Count;
+
+        await File.WriteAllTextAsync(bookTxt, text + "\n", ct).ConfigureAwait(false);
+        await WriteManifestOrEnsureFromDiskAsync(source, imgDir, epubImgRows, epubPages, ct)
+            .ConfigureAwait(false);
+        return analysis;
+    }
+
+    private async Task<BookTextAnalysis> ExtractFromPdfAsync(
+        string projectId,
+        string pdf,
+        string imgDir,
+        string source,
+        string bookTxt,
+        BookPrepareResult result,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
+        onProgress?.Invoke($"Extracting text from {Path.GetFileName(pdf)} (PdfPig)…");
+        var (rawExtractText, pageCount) = ExtractTextPdfPig(pdf);
+        var text = GutenbergCleaner.StripHeaderAndFooter(rawExtractText);
+        var engine = "pdfpig";
+        var analysis = BookTextAnalyzer.Analyze(text, pageCount);
+        analysis.TextEngine = engine;
+
+        onProgress?.Invoke("Extracting embedded images…");
+        var imageRows = await ExtractEmbeddedImagesAsync(pdf, imgDir, source, ct).ConfigureAwait(false);
+        result.ImagesExtracted = imageRows.Count;
+
+        imageRows = ApplyPdfRenderFallback(pdf, imgDir, source, pageCount, analysis, imageRows, result, onProgress);
+        ThrowIfPictureBookHasNoImages(analysis, imageRows);
+        await WriteManifestOrEnsureFromDiskAsync(source, imgDir, imageRows, pageCount, ct)
+            .ConfigureAwait(false);
+        ClearCharacterPlatesSortedFlag(projectId, onProgress);
+
+        await File.WriteAllTextAsync(bookTxt, text + "\n", ct);
+        result.Pages = pageCount;
+        result.TextEngine = engine;
+        onProgress?.Invoke(
+            $"Extract: pages={pageCount} words={analysis.TextWords} quality={analysis.TextQuality} images={imageRows.Count}");
+        return analysis;
+    }
+
+    private List<Dictionary<string, object?>> ApplyPdfRenderFallback(
+        string pdf,
+        string imgDir,
+        string source,
+        int pageCount,
+        BookTextAnalysis analysis,
+        List<Dictionary<string, object?>> imageRows,
+        BookPrepareResult result,
+        Action<string>? onProgress)
+    {
+        // Fallback: render full pages when embeds are sparse (vision needs plates)
+        if (imageRows.Count >= Math.Max(1, pageCount / 2))
+            return imageRows;
+
+        onProgress?.Invoke("Rendering page images (PDFtoImage) for vision plates…");
+#pragma warning disable CA1416 // PDFtoImage is desktop/mobile OS only (Windows/Linux/macOS)
+        var (rendered, renderError) = RenderPdfPages(pdf, imgDir, source, pageCount, analysis);
+#pragma warning restore CA1416
+        if (rendered.Count > 0)
+        {
+            // Prefer rendered pages as cover; keep embeds too
+            imageRows = rendered.Concat(imageRows).ToList();
+            result.ImagesExtracted = imageRows.Count;
+            onProgress?.Invoke($"Rendered {rendered.Count} page plate(s)");
+            return imageRows;
+        }
+
+        if (!string.IsNullOrWhiteSpace(renderError))
+        {
+            _log.LogWarning("PDF page render produced 0 images: {Error}", renderError);
+            onProgress?.Invoke($"Page render failed: {renderError}");
+            result.Notes.Add($"PDF page render failed: {renderError}");
+            return imageRows;
+        }
+
+        onProgress?.Invoke("Page render produced 0 images (no error detail).");
+        return imageRows;
+    }
+
+    private static void ThrowIfPictureBookHasNoImages(
+        BookTextAnalysis analysis,
+        List<Dictionary<string, object?>> imageRows)
+    {
+        var looksPicture = analysis.BookKind == BookKind.PictureBook || analysis.TextDensity == TextDensity.Sparse;
+        if (looksPicture && imageRows.Count == 0)
+        {
+            throw new InvalidOperationException(
+                "Could not extract or render page images from this PDF (needed for picture-book OCR). " +
+                "On Linux/Docker install fontconfig + freetype and ensure libpdfium/libSkiaSharp native " +
+                "assets are in the publish output (runtimes/*/native). " +
+                "Local: confirm PDFtoImage works; Railway: check deploy logs for DllNotFoundException.");
+        }
+    }
+
+    private static async Task WriteManifestOrEnsureFromDiskAsync(
+        string sourceDir,
+        string imgDir,
+        List<Dictionary<string, object?>> rows,
+        int pages,
+        CancellationToken ct)
+    {
+        if (rows.Count > 0)
+            await WriteManifestAsync(imgDir, rows, pages, ct).ConfigureAwait(false);
+        else
+            await EnsureManifestFromDiskAsync(sourceDir, imgDir, pages, ct).ConfigureAwait(false);
+    }
+
+    private void ClearCharacterPlatesSortedFlag(string projectId, Action<string>? onProgress)
+    {
+        // New inventory invalidates prior character plate sort; Stage1/attach re-sorts into scenes.json
+        try
+        {
+            _projects.ClearCharacterPlatesSorted(projectId);
+            onProgress?.Invoke("Cleared character_plates sorted flag (book images refreshed)");
+        }
+        catch { /* non-fatal */ }
+    }
+
+    private static async Task<BookTextAnalysis> LoadExistingBookTxtAsync(
+        string bookTxt,
+        BookPrepareResult result,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
+        onProgress?.Invoke("Using existing book_full.txt…");
+        var text = await File.ReadAllTextAsync(bookTxt, ct);
+        // TXT uploads and older projects may still hold a Gutenberg license block on disk.
+        if (GutenbergCleaner.HasGutenbergHeader(text))
+        {
+            onProgress?.Invoke("Stripping Project Gutenberg header/footer from book_full.txt…");
+            text = GutenbergCleaner.StripHeaderAndFooter(text);
+            text = text.Replace("\r\n", "\n").Replace('\r', '\n').Trim() + "\n";
+            await File.WriteAllTextAsync(bookTxt, text, ct).ConfigureAwait(false);
+        }
+        var analysis = BookTextAnalyzer.Analyze(text);
+        analysis.TextEngine = "existing_book_full";
+        result.TextEngine = analysis.TextEngine;
+        result.Pages = analysis.Pages;
+        return analysis;
+    }
+
+    private static BookStrategy DecidePrepareStrategy(
+        BookTextAnalysis analysis,
+        bool hasImages,
+        bool hasXai,
+        bool forceVision,
+        bool autoVision)
+    {
+        var strategy = DecideStrategy(analysis, hasImages, hasXai);
+        if (forceVision && hasImages && hasXai)
         {
             strategy = new BookStrategy
             {
@@ -209,64 +325,108 @@ public sealed class BookPrepareService
                 NeedsUser = analysis.TextQuality != TextQuality.Good,
             };
         }
+        return strategy;
+    }
 
-        result.Strategy = strategy.Action;
-        result.StrategyReason = strategy.Reason;
-        onProgress?.Invoke($"Strategy: {strategy.Action} — {strategy.Reason}");
+    private async Task<BookTextAnalysis> MaybeRunVisionOcrAsync(
+        BookStrategy strategy,
+        bool hasXai,
+        List<(int Page, string Path)> pageImages,
+        string bookTxt,
+        string? visionModel,
+        BookTextAnalysis analysis,
+        BookPrepareResult result,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
+        if (strategy.Action != GrokVisionTranscribeAction)
+            return analysis;
+        if (!hasXai)
+            throw new InvalidOperationException("XAI_API_KEY required for Grok vision OCR.");
+        if (pageImages.Count == 0)
+            throw new InvalidOperationException(
+                "No page images for vision. Re-extract PDF (embedded images) first.");
 
-        if (strategy.Action == GrokVisionTranscribeAction)
+        BackupBookTxtPreVision(bookTxt, onProgress);
+        var (visionText, failed) = await TranscribeVisionPagesAsync(pageImages, visionModel, onProgress, ct)
+            .ConfigureAwait(false);
+
+        await File.WriteAllTextAsync(bookTxt, visionText, ct);
+        analysis = BookTextAnalyzer.Analyze(visionText, pageImages.Count);
+        analysis.TextEngine = GrokVisionEngine;
+        result.TextEngine = GrokVisionEngine;
+        result.VisionPages = pageImages.Count;
+        result.VisionFailedPages = failed;
+        onProgress?.Invoke(
+            $"Vision done: {pageImages.Count - failed}/{pageImages.Count} pages, quality={analysis.TextQuality}");
+        return analysis;
+    }
+
+    private static void BackupBookTxtPreVision(string bookTxt, Action<string>? onProgress)
+    {
+        if (!File.Exists(bookTxt))
+            return;
+        var bak = bookTxt + $".bak_pre_vision_{DateTime.Now:yyyyMMdd_HHmmss}";
+        File.Copy(bookTxt, bak, overwrite: true);
+        onProgress?.Invoke($"Backed up book_full.txt → {Path.GetFileName(bak)}");
+    }
+
+    private async Task<(string Text, int Failed)> TranscribeVisionPagesAsync(
+        List<(int Page, string Path)> pageImages,
+        string? visionModel,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
+        var sb = new StringBuilder();
+        var failed = 0;
+        for (var i = 0; i < pageImages.Count; i++)
         {
-            if (!hasXai)
-                throw new InvalidOperationException("XAI_API_KEY required for Grok vision OCR.");
-            if (pageImages.Count == 0)
-                throw new InvalidOperationException(
-                    "No page images for vision. Re-extract PDF (embedded images) first.");
-
-            // Backup prior text
-            if (File.Exists(bookTxt))
-            {
-                var bak = bookTxt + $".bak_pre_vision_{DateTime.Now:yyyyMMdd_HHmmss}";
-                File.Copy(bookTxt, bak, overwrite: true);
-                onProgress?.Invoke($"Backed up book_full.txt → {Path.GetFileName(bak)}");
-            }
-
-            var sb = new StringBuilder();
-            var failed = 0;
-            for (var i = 0; i < pageImages.Count; i++)
-            {
-                ct.ThrowIfCancellationRequested();
-                var (page, path) = pageImages[i];
-                onProgress?.Invoke($"Vision OCR page {page} ({i + 1}/{pageImages.Count})…");
-                try
-                {
-                    var pageText = await _vision.TranscribePageAsync(path, page, visionModel, ct);
-                    if (string.IsNullOrWhiteSpace(pageText))
-                        pageText = "(illustration only)";
-                    sb.AppendLine($"--- PAGE {page} ---");
-                    sb.AppendLine(pageText.Trim());
-                    sb.AppendLine();
-                }
-                catch (Exception ex)
-                {
-                    failed++;
-                    _log.LogWarning(ex, "Vision failed page {Page}", page);
-                    onProgress?.Invoke($"Page {page} vision failed: {ex.Message}");
-                    sb.AppendLine($"--- PAGE {page} ---");
-                    sb.AppendLine("(illustration only)");
-                    sb.AppendLine();
-                }
-            }
-
-            await File.WriteAllTextAsync(bookTxt, sb.ToString(), ct);
-            analysis = BookTextAnalyzer.Analyze(sb.ToString(), pageImages.Count);
-            analysis.TextEngine = GrokVisionEngine;
-            result.TextEngine = GrokVisionEngine;
-            result.VisionPages = pageImages.Count;
-            result.VisionFailedPages = failed;
-            onProgress?.Invoke(
-                $"Vision done: {pageImages.Count - failed}/{pageImages.Count} pages, quality={analysis.TextQuality}");
+            ct.ThrowIfCancellationRequested();
+            var (page, path) = pageImages[i];
+            onProgress?.Invoke($"Vision OCR page {page} ({i + 1}/{pageImages.Count})…");
+            failed += await AppendVisionPageAsync(sb, page, path, visionModel, onProgress, ct)
+                .ConfigureAwait(false);
         }
+        return (sb.ToString(), failed);
+    }
 
+    private async Task<int> AppendVisionPageAsync(
+        StringBuilder sb,
+        int page,
+        string path,
+        string? visionModel,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
+        try
+        {
+            var pageText = await _vision.TranscribePageAsync(path, page, visionModel, ct);
+            if (string.IsNullOrWhiteSpace(pageText))
+                pageText = "(illustration only)";
+            AppendVisionPageBlock(sb, page, pageText.Trim());
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Vision failed page {Page}", page);
+            onProgress?.Invoke($"Page {page} vision failed: {ex.Message}");
+            AppendVisionPageBlock(sb, page, "(illustration only)");
+            return 1;
+        }
+    }
+
+    private static void AppendVisionPageBlock(StringBuilder sb, int page, string body)
+    {
+        sb.AppendLine($"--- PAGE {page} ---");
+        sb.AppendLine(body);
+        sb.AppendLine();
+    }
+
+    private static async Task ApplyNaturalRuntimeAsync(
+        BookTextAnalysis analysis,
+        string bookTxt,
+        CancellationToken ct)
+    {
         // Natural film minutes from Adaptation façade (A3.3) — not Engine-local math.
         // AnalyzeBook / EstimateNaturalRuntime are pure density; FilmRuntime only persists.
         var bookForNatural = File.Exists(bookTxt)
@@ -279,7 +439,10 @@ public sealed class BookPrepareService
             : adaptation.EstimateNaturalRuntime(bookForNatural).NaturalMinutes;
         if (naturalMinutes > 0)
             analysis.SuggestedTotalMinutes = naturalMinutes;
+    }
 
+    private static void CopyAnalysisToResult(BookPrepareResult result, BookTextAnalysis analysis)
+    {
         result.TextQuality = analysis.TextQuality.ToApiString();
         result.GarbageScore = analysis.GarbageScore;
         result.TextWords = analysis.TextWords;
@@ -287,7 +450,13 @@ public sealed class BookPrepareService
         result.SuggestedTotalMinutes = analysis.SuggestedTotalMinutes;
         result.SuggestedChunkPages = analysis.SuggestedChunkPages;
         result.Notes = analysis.Notes.ToList();
+    }
 
+    private static void SetReadyForStage1(
+        BookPrepareResult result,
+        BookTextAnalysis analysis,
+        BookStrategy strategy)
+    {
         if (result.TextEngine == GrokVisionEngine)
         {
             var failed = result.VisionFailedPages;
@@ -295,27 +464,17 @@ public sealed class BookPrepareService
             result.ReadyForStage1 = failed < total;
             if (result.ReadyForStage1)
                 analysis.ReadyForStage1 = true;
+            return;
         }
-        else if (strategy.NeedsUser ||
-                 strategy.Action is "need_xai_for_vision" or "manual_or_ocr" or "vision_skipped")
+
+        if (strategy.NeedsUser ||
+            strategy.Action is "need_xai_for_vision" or "manual_or_ocr" or "vision_skipped")
         {
             result.ReadyForStage1 = false;
-        }
-        else
-        {
-            result.ReadyForStage1 = analysis.ReadyForStage1 && analysis.GarbageScore < 0.45;
+            return;
         }
 
-        result.Ok = true;
-
-        await WriteExtractMetaAsync(source, result, analysis, strategy, visionModel, ct).ConfigureAwait(false);
-        onProgress?.Invoke(
-            result.ReadyForStage1
-                ? $"Book ready for Stage 1 (~{result.SuggestedTotalMinutes} min)"
-                : "Book needs attention before Stage 1");
-        // Stage-end package history (text only; video ignored by project git).
-        _projects.TriggerAutoGitCommit(projectId, ProjectStageCommits.BookPrepared);
-        return result;
+        result.ReadyForStage1 = analysis.ReadyForStage1 && analysis.GarbageScore < 0.45;
     }
 
     private async Task<string> ResolveBookPrepareVisionModelAsync(
@@ -773,72 +932,122 @@ public sealed class BookPrepareService
     {
         var imgDir = Path.Combine(sourceDir, BookImagesFolder);
         var byPage = new Dictionary<int, (string? Emb, string? Ren)>();
-        var manPath = Path.Combine(imgDir, "manifest.json");
-        if (File.Exists(manPath))
-        {
-            try
-            {
-                await using var stream = File.OpenRead(manPath);
-                using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct)
-                    .ConfigureAwait(false);
-                if (doc.RootElement.TryGetProperty("images", out var imgs) &&
-                    imgs.ValueKind == JsonValueKind.Array)
-                {
-                    foreach (var row in imgs.EnumerateArray())
-                    {
-                        var page = row.TryGetProperty("page", out var p) && p.TryGetInt32(out var pn) ? pn : 0;
-                        if (page <= 0) continue;
-                        var rel = row.TryGetProperty("path", out var pr) ? pr.GetString() ?? "" : "";
-                        var full = Path.IsPathRooted(rel)
-                            ? rel
-                            : Path.Combine(sourceDir, rel.Replace('/', Path.DirectorySeparatorChar));
-                        if (!File.Exists(full))
-                            full = Path.Combine(imgDir, Path.GetFileName(rel));
-                        if (!File.Exists(full)) continue;
-                        var kind = row.TryGetProperty("kind", out var k) ? k.GetString() ?? "" : "";
-                        byPage.TryGetValue(page, out var slot);
-                        if (kind == EmbeddedKind)
-                            slot.Emb = full;
-                        else
-                            slot.Ren ??= full;
-                        byPage[page] = slot;
-                    }
-                }
-            }
-            catch { /* fall through */ }
-        }
-
-        if (byPage.Count == 0 && Directory.Exists(imgDir))
-        {
-            foreach (var fi in new DirectoryInfo(imgDir).EnumerateFiles())
-            {
-                var name = fi.Name;
-                var f = fi.FullName;
-                var m = EmbeddedPageNumRegex.Match(name);
-                if (m.Success && int.TryParse(m.Groups[1].Value, out var page))
-                {
-                    byPage.TryGetValue(page, out var slot);
-                    slot.Emb = f;
-                    byPage[page] = slot;
-                    continue;
-                }
-                m = RenderedPageNumRegex.Match(name);
-                if (m.Success && int.TryParse(m.Groups[1].Value, out page))
-                {
-                    byPage.TryGetValue(page, out var slot);
-                    slot.Ren ??= f;
-                    byPage[page] = slot;
-                }
-            }
-        }
-
+        await TryLoadManifestPageImages(sourceDir, imgDir, byPage, ct).ConfigureAwait(false);
+        if (byPage.Count == 0)
+            ScanDiskPageImages(imgDir, byPage);
         // Prefer full-page renders for vision OCR; fall back to embeds
-        return byPage
+        return PreferRenderedPageList(byPage);
+    }
+
+    private static async Task TryLoadManifestPageImages(
+        string sourceDir,
+        string imgDir,
+        Dictionary<int, (string? Emb, string? Ren)> byPage,
+        CancellationToken ct)
+    {
+        var manPath = Path.Combine(imgDir, "manifest.json");
+        if (!File.Exists(manPath))
+            return;
+        try
+        {
+            await using var stream = File.OpenRead(manPath);
+            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct)
+                .ConfigureAwait(false);
+            ApplyManifestImageRows(doc.RootElement, sourceDir, imgDir, byPage);
+        }
+        catch { /* fall through */ }
+    }
+
+    private static void ApplyManifestImageRows(
+        JsonElement root,
+        string sourceDir,
+        string imgDir,
+        Dictionary<int, (string? Emb, string? Ren)> byPage)
+    {
+        if (!root.TryGetProperty("images", out var imgs) || imgs.ValueKind != JsonValueKind.Array)
+            return;
+        foreach (var row in imgs.EnumerateArray())
+            ApplyManifestImageRow(row, sourceDir, imgDir, byPage);
+    }
+
+    private static void ApplyManifestImageRow(
+        JsonElement row,
+        string sourceDir,
+        string imgDir,
+        Dictionary<int, (string? Emb, string? Ren)> byPage)
+    {
+        var page = ManifestRowPage(row);
+        if (page <= 0)
+            return;
+        var full = ResolveManifestImagePath(row, sourceDir, imgDir);
+        if (full is null)
+            return;
+        byPage.TryGetValue(page, out var slot);
+        if (ManifestRowKind(row) == EmbeddedKind)
+            slot.Emb = full;
+        else
+            slot.Ren ??= full;
+        byPage[page] = slot;
+    }
+
+    private static int ManifestRowPage(JsonElement row) =>
+        row.TryGetProperty("page", out var p) && p.TryGetInt32(out var pn) ? pn : 0;
+
+    private static string ManifestRowKind(JsonElement row) =>
+        row.TryGetProperty("kind", out var k) ? k.GetString() ?? "" : "";
+
+    private static string? ResolveManifestImagePath(JsonElement row, string sourceDir, string imgDir)
+    {
+        var rel = row.TryGetProperty("path", out var pr) ? pr.GetString() ?? "" : "";
+        var full = Path.IsPathRooted(rel)
+            ? rel
+            : Path.Combine(sourceDir, rel.Replace('/', Path.DirectorySeparatorChar));
+        if (!File.Exists(full))
+            full = Path.Combine(imgDir, Path.GetFileName(rel));
+        if (!File.Exists(full))
+            return null;
+        return full;
+    }
+
+    private static void ScanDiskPageImages(
+        string imgDir,
+        Dictionary<int, (string? Emb, string? Ren)> byPage)
+    {
+        if (!Directory.Exists(imgDir))
+            return;
+        foreach (var fi in new DirectoryInfo(imgDir).EnumerateFiles())
+            TryAddEmbeddedOrRenderedFile(fi.Name, fi.FullName, byPage);
+    }
+
+    private static void TryAddEmbeddedOrRenderedFile(
+        string name,
+        string full,
+        Dictionary<int, (string? Emb, string? Ren)> byPage)
+    {
+        var m = EmbeddedPageNumRegex.Match(name);
+        if (m.Success && int.TryParse(m.Groups[1].Value, out var page))
+        {
+            byPage.TryGetValue(page, out var slot);
+            slot.Emb = full;
+            byPage[page] = slot;
+            return;
+        }
+        m = RenderedPageNumRegex.Match(name);
+        if (m.Success && int.TryParse(m.Groups[1].Value, out page))
+        {
+            byPage.TryGetValue(page, out var slot);
+            slot.Ren ??= full;
+            byPage[page] = slot;
+        }
+    }
+
+    private static List<(int Page, string Path)> PreferRenderedPageList(
+        Dictionary<int, (string? Emb, string? Ren)> byPage) =>
+        byPage
             .OrderBy(kv => kv.Key)
             .Select(kv => (kv.Key, kv.Value.Ren ?? kv.Value.Emb ?? string.Empty))
             .Where(t => !string.IsNullOrEmpty(t.Item2) && File.Exists(t.Item2))
             .ToList();
-    }
 
     private static async Task WriteExtractMetaAsync(
         string sourceDir,

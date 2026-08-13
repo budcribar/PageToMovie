@@ -349,72 +349,13 @@ public sealed class GrokVisionClient : IVisionClient
 
         try
         {
-            // Extract first JSON object if model added preamble
-            var start = text.IndexOf('{');
-            var end = text.LastIndexOf('}');
-            if (start < 0 || end <= start)
-                return result;
-            using var doc = JsonDocument.Parse(text[start..(end + 1)]);
-            var root = doc.RootElement;
-            if (root.TryGetProperty("page_kind", out var pk))
-                result.PageKind = (pk.GetString() ?? "unknown").Trim().ToLowerInvariant();
-            if (root.TryGetProperty("primary_character_key", out var prim) &&
-                prim.ValueKind == JsonValueKind.String &&
-                prim.GetString() is { Length: > 0 } pkey &&
-                allowed.Contains(pkey))
-                result.PrimaryCharacterKey = pkey;
-
-            if (root.TryGetProperty("characters", out var arr) && arr.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var item in arr.EnumerateArray())
-                {
-                    if (item.ValueKind != JsonValueKind.Object) continue;
-                    var key = item.TryGetProperty("key", out var k) ? k.GetString() ?? "" : "";
-                    if (string.IsNullOrWhiteSpace(key) || !allowed.Contains(key)) continue;
-                    var visible = true;
-                    if (item.TryGetProperty("visible", out var v))
-                    {
-                        visible = v.ValueKind switch
-                        {
-                            JsonValueKind.True => true,
-                            JsonValueKind.False => false,
-                            JsonValueKind.String => !string.Equals(v.GetString(), "false", StringComparison.OrdinalIgnoreCase),
-                            _ => true,
-                        };
-                    }
-                    if (!visible) continue;
-                    var conf = 0.5;
-                    if (item.TryGetProperty("confidence", out var c) && c.TryGetDouble(out var cd))
-                        conf = Math.Clamp(cd, 0, 1);
-                    var notes = item.TryGetProperty("notes", out var n) ? n.GetString() ?? "" : "";
-                    result.Matches.Add(new CharacterPageMatch
-                    {
-                        Key = key,
-                        Confidence = conf,
-                        Notes = notes,
-                    });
-                }
-            }
-
-            // Promote primary if listed with no matches
-            if (result.Matches.Count == 0 &&
-                result.PrimaryCharacterKey is { Length: > 0 } pk2 &&
-                result.PageKind is not ("text_heavy" or "text"))
-            {
-                result.Matches.Add(new CharacterPageMatch
-                {
-                    Key = pk2,
-                    Confidence = 0.55,
-                    Notes = "primary_only",
-                });
-            }
+            ApplyClassificationJson(result, text, allowed);
         }
         catch (Exception)
         {
             result.PageKind = "parse_error";
         }
 
-        // Never keep matches on hard text-only pages
         if (result.PageKind is "text_heavy" or "text")
         {
             result.Matches.Clear();
@@ -424,42 +365,168 @@ public sealed class GrokVisionClient : IVisionClient
         return result;
     }
 
+    private static void ApplyClassificationJson(
+        CharacterPageClassification result,
+        string text,
+        HashSet<string> allowed)
+    {
+        var start = text.IndexOf('{');
+        var end = text.LastIndexOf('}');
+        if (start < 0 || end <= start)
+            return;
+
+        using var doc = JsonDocument.Parse(text[start..(end + 1)]);
+        var root = doc.RootElement;
+        if (root.TryGetProperty("page_kind", out var pk))
+            result.PageKind = (pk.GetString() ?? "unknown").Trim().ToLowerInvariant();
+        TryReadPrimaryKey(result, root, allowed);
+
+        if (root.TryGetProperty("characters", out var arr) && arr.ValueKind == JsonValueKind.Array)
+            AddCharacterMatches(result, arr, allowed);
+
+        PromotePrimaryIfNoMatches(result);
+    }
+
+    private static void TryReadPrimaryKey(
+        CharacterPageClassification result,
+        JsonElement root,
+        HashSet<string> allowed)
+    {
+        if (root.TryGetProperty("primary_character_key", out var prim) &&
+            prim.ValueKind == JsonValueKind.String &&
+            prim.GetString() is { Length: > 0 } pkey &&
+            allowed.Contains(pkey))
+            result.PrimaryCharacterKey = pkey;
+    }
+
+    private static void AddCharacterMatches(
+        CharacterPageClassification result,
+        JsonElement arr,
+        HashSet<string> allowed)
+    {
+        foreach (var item in arr.EnumerateArray())
+            TryAddCharacterMatch(result, item, allowed);
+    }
+
+    private static void TryAddCharacterMatch(
+        CharacterPageClassification result,
+        JsonElement item,
+        HashSet<string> allowed)
+    {
+        if (item.ValueKind != JsonValueKind.Object)
+            return;
+        var key = item.TryGetProperty("key", out var k) ? k.GetString() ?? "" : "";
+        if (string.IsNullOrWhiteSpace(key) || !allowed.Contains(key))
+            return;
+        var visible = true;
+        if (item.TryGetProperty("visible", out var v))
+            visible = ReadVisible(v);
+        if (!visible)
+            return;
+        var conf = 0.5;
+        if (item.TryGetProperty("confidence", out var c) && c.TryGetDouble(out var cd))
+            conf = Math.Clamp(cd, 0, 1);
+        var notes = item.TryGetProperty("notes", out var n) ? n.GetString() ?? "" : "";
+        result.Matches.Add(new CharacterPageMatch
+        {
+            Key = key,
+            Confidence = conf,
+            Notes = notes,
+        });
+    }
+
+    private static bool ReadVisible(JsonElement v) => v.ValueKind switch
+    {
+        JsonValueKind.True => true,
+        JsonValueKind.False => false,
+        JsonValueKind.String => !string.Equals(v.GetString(), "false", StringComparison.OrdinalIgnoreCase),
+        _ => true,
+    };
+
+    private static void PromotePrimaryIfNoMatches(CharacterPageClassification result)
+    {
+        if (result.Matches.Count == 0 &&
+            result.PrimaryCharacterKey is { Length: > 0 } pk2 &&
+            result.PageKind is not ("text_heavy" or "text"))
+        {
+            result.Matches.Add(new CharacterPageMatch
+            {
+                Key = pk2,
+                Confidence = 0.55,
+                Notes = "primary_only",
+            });
+        }
+    }
+
     private static string ExtractResponseText(JsonElement result)
+    {
+        if (TryGetOutputText(result, out var direct))
+            return direct;
+        if (TryCollectOutputArrayTexts(result, out var texts))
+            return string.Join("\n", texts);
+        if (TryFromChatChoices(result, out var fromChoices))
+            return fromChoices;
+        var raw = result.GetRawText();
+        return raw[..Math.Min(500, raw.Length)];
+    }
+
+    private static bool TryGetOutputText(JsonElement result, out string text)
     {
         if (result.TryGetProperty("output_text", out var ot) &&
             ot.GetString() is { Length: > 0 } direct)
-            return direct;
-
-        if (result.TryGetProperty("output", out var output) &&
-            output.ValueKind == JsonValueKind.Array)
         {
-            var texts = new List<string>();
-            foreach (var item in output.EnumerateArray())
-            {
-                if (item.ValueKind != JsonValueKind.Object) continue;
-                if (!item.TryGetProperty(ContentKey, out var content)) continue;
-                if (content.ValueKind == JsonValueKind.Array)
-                {
-                    foreach (var part in content.EnumerateArray())
-                    {
-                        if (part.ValueKind != JsonValueKind.Object) continue;
-                        var type = part.TryGetProperty("type", out var t) ? t.GetString() : null;
-                        if (type is "output_text" or "text" &&
-                            part.TryGetProperty("text", out var tx) &&
-                            tx.GetString() is { Length: > 0 } s)
-                            texts.Add(s);
-                    }
-                }
-                else if (content.ValueKind == JsonValueKind.String &&
-                         content.GetString() is { Length: > 0 } cs)
-                {
-                    texts.Add(cs);
-                }
-            }
-            if (texts.Count > 0)
-                return string.Join("\n", texts);
+            text = direct;
+            return true;
         }
 
+        text = "";
+        return false;
+    }
+
+    private static bool TryCollectOutputArrayTexts(JsonElement result, out List<string> texts)
+    {
+        texts = new List<string>();
+        if (!result.TryGetProperty("output", out var output) ||
+            output.ValueKind != JsonValueKind.Array)
+            return false;
+
+        foreach (var item in output.EnumerateArray())
+            AddOutputItemTexts(item, texts);
+
+        return texts.Count > 0;
+    }
+
+    private static void AddOutputItemTexts(JsonElement item, List<string> texts)
+    {
+        if (item.ValueKind != JsonValueKind.Object)
+            return;
+        if (!item.TryGetProperty(ContentKey, out var content))
+            return;
+        if (content.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var part in content.EnumerateArray())
+                TryAddContentPartText(part, texts);
+        }
+        else if (content.ValueKind == JsonValueKind.String &&
+                 content.GetString() is { Length: > 0 } cs)
+        {
+            texts.Add(cs);
+        }
+    }
+
+    private static void TryAddContentPartText(JsonElement part, List<string> texts)
+    {
+        if (part.ValueKind != JsonValueKind.Object)
+            return;
+        var type = part.TryGetProperty("type", out var t) ? t.GetString() : null;
+        if (type is "output_text" or "text" &&
+            part.TryGetProperty("text", out var tx) &&
+            tx.GetString() is { Length: > 0 } s)
+            texts.Add(s);
+    }
+
+    private static bool TryFromChatChoices(JsonElement result, out string text)
+    {
         if (result.TryGetProperty("choices", out var choices) &&
             choices.ValueKind == JsonValueKind.Array &&
             choices.GetArrayLength() > 0)
@@ -468,10 +535,14 @@ public sealed class GrokVisionClient : IVisionClient
             if (c0.TryGetProperty("message", out var msg) &&
                 msg.TryGetProperty(ContentKey, out var mc) &&
                 mc.GetString() is { Length: > 0 } mcs)
-                return mcs;
+            {
+                text = mcs;
+                return true;
+            }
         }
 
-        return result.GetRawText()[..Math.Min(500, result.GetRawText().Length)];
+        text = "";
+        return false;
     }
 
     private static readonly HashSet<string> AllowedImageExtensions = new(StringComparer.OrdinalIgnoreCase)

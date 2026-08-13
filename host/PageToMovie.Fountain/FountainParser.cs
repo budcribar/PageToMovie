@@ -45,6 +45,41 @@ public static class FountainParser
         public List<Element> Elements { get; } = new();
     }
 
+    /// <summary>Mutable cursor for one body-line classification pass.</summary>
+    private sealed class BodyParseState
+    {
+        public required string[] Lines;
+        public required ParseResult Result;
+        public int I;
+        public bool PendingDual;
+        public string Raw = "";
+        public string Trimmed = "";
+    }
+
+    /// <summary>Accumulates title-page Key: value pairs, including multiline values.</summary>
+    private sealed class TitlePageParseState
+    {
+        public string? CurrentKey;
+        public readonly StringBuilder ValueBuf = new();
+        public required ParseResult Result;
+
+        public void Flush()
+        {
+            if (CurrentKey is null) return;
+            var v = ValueBuf.ToString().Trim();
+            if (v.Length > 0)
+            {
+                v = FountainLexer.UnescapeFountain(v);
+                if (Result.TitlePage.TryGetValue(CurrentKey, out var existing) && existing.Length > 0)
+                    Result.TitlePage[CurrentKey] = existing + "\n" + v;
+                else
+                    Result.TitlePage[CurrentKey] = v;
+            }
+            CurrentKey = null;
+            ValueBuf.Clear();
+        }
+    }
+
     // Parser-internal disambiguation for title-page Key: lines ("CUT TO:" is a transition, not a key).
     private static readonly Regex TransitionEnd = new(@"TO:$", RegexOptions.IgnoreCase | RegexOptions.Compiled, FountainRegex.Timeout);
 
@@ -68,11 +103,7 @@ public static class FountainParser
 
         // Extract and remove notes [[...]] (may span lines; empty line inside needs two spaces per spec)
         var notes = new List<string>();
-        text = NoteRegex.Replace(text, m =>
-        {
-            notes.Add(m.Groups[1].Value.Trim());
-            return "";
-        });
+        text = ExtractNotes(text, notes);
 
         var lines = text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
         // Tabs → 4 spaces (Fountain: tabs converted to four spaces in Action)
@@ -91,210 +122,7 @@ public static class FountainParser
         var pendingDual = false;
 
         while (i < lines.Length)
-        {
-            var raw = lines[i];
-            // Keep right-trim only for classification; Action may keep leading spaces
-            var line = raw.TrimEnd();
-            var trimmed = line.Trim();
-
-            if (trimmed.Length == 0)
-            {
-                i++;
-                continue;
-            }
-
-            // Dual dialogue marker alone on a line (non-spec but common) → next Character is dual
-            if (trimmed == "^")
-            {
-                pendingDual = true;
-                i++;
-                continue;
-            }
-
-            // Page break: ===
-            if (FountainRegex.IsMatch(trimmed, @"^={3,}\s*$"))
-            {
-                result.Elements.Add(new Element { Type = ElementType.PageBreak, Text = trimmed });
-                i++;
-                continue;
-            }
-
-            // Section: # ...
-            if (trimmed.StartsWith('#'))
-            {
-                var depth = trimmed.TakeWhile(c => c == '#').Count();
-                result.Elements.Add(new Element
-                {
-                    Type = ElementType.Section,
-                    Text = trimmed.TrimStart('#').Trim(),
-                    Meta = depth.ToString(),
-                });
-                i++;
-                continue;
-            }
-
-            // Synopsis: = ...  (not === page break)
-            if (trimmed.StartsWith('=') && !trimmed.StartsWith("==="))
-            {
-                result.Elements.Add(new Element
-                {
-                    Type = ElementType.Synopsis,
-                    Text = trimmed.TrimStart('=').Trim(),
-                });
-                i++;
-                continue;
-            }
-
-            // Lyrics: ~...
-            if (trimmed.StartsWith('~'))
-            {
-                result.Elements.Add(new Element
-                {
-                    Type = ElementType.Lyric,
-                    Text = FountainLexer.UnescapeFountain(trimmed.TrimStart('~').TrimStart()),
-                });
-                i++;
-                continue;
-            }
-
-            // Forced action: !...
-            if (trimmed.StartsWith('!'))
-            {
-                result.Elements.Add(new Element
-                {
-                    Type = ElementType.Action,
-                    Text = PreserveActionIndent(raw, FountainLexer.UnescapeFountain(trimmed[1..].TrimStart())),
-                });
-                i++;
-                continue;
-            }
-
-            // Forced scene heading: .ALNUM... (single period, not ellipsis)
-            if (trimmed.StartsWith('.') &&
-                trimmed.Length > 1 &&
-                char.IsLetterOrDigit(trimmed[1]))
-            {
-                var (heading, sceneNo) = SplitSceneNumber(trimmed[1..].Trim());
-                result.Elements.Add(new Element
-                {
-                    Type = ElementType.SceneHeading,
-                    Text = heading,
-                    Meta = sceneNo,
-                });
-                i++;
-                continue;
-            }
-
-            // Forced character: @Name
-            if (trimmed.StartsWith('@'))
-            {
-                var dual = pendingDual || trimmed.TrimEnd().EndsWith('^');
-                pendingDual = false;
-                var (name, ext) = FountainLexer.SplitCharacter(trimmed[1..].Trim().TrimEnd('^').Trim());
-                result.Elements.Add(new Element
-                {
-                    Type = ElementType.Character,
-                    Text = name,
-                    Meta = BuildCharMeta(ext, dual),
-                });
-                i++;
-                i = ConsumeDialogueBlock(lines, i, result);
-                continue;
-            }
-
-            // Centered: > text <  (Action, leading spaces not preserved)
-            if (IsCentered(trimmed))
-            {
-                var inner = trimmed.Trim().TrimStart('>').TrimEnd('<').Trim();
-                result.Elements.Add(new Element
-                {
-                    Type = ElementType.Centered,
-                    Text = FountainLexer.UnescapeFountain(inner),
-                });
-                i++;
-                continue;
-            }
-
-            // Forced transition: >...  (not centered)
-            if (trimmed.StartsWith('>') && !IsCentered(trimmed))
-            {
-                result.Elements.Add(new Element
-                {
-                    Type = ElementType.Transition,
-                    Text = FountainLexer.UnescapeFountain(trimmed.TrimStart('>').Trim()),
-                });
-                i++;
-                continue;
-            }
-
-            var prevBlank = FountainLexer.PrevBlank(lines, i);
-            var nextBlank = FountainLexer.NextBlank(lines, i);
-            var classify = trimmed; // already trimmed; indent ignored for non-action
-
-            // Automatic scene heading: blank before + INT/EXT/...
-            // Fountain prefers a blank after; we also accept page-tag / synopsis lines
-            // immediately under the heading (= page N, = synopsis) for book tooling.
-            if (prevBlank && FountainLexer.IsSceneHeadingStart(classify) &&
-                (nextBlank || NextIsPageTagOrSynopsis(lines, i)))
-            {
-                var (heading, sceneNo) = SplitSceneNumber(classify);
-                result.Elements.Add(new Element
-                {
-                    Type = ElementType.SceneHeading,
-                    Text = heading,
-                    Meta = sceneNo,
-                });
-                i++;
-                continue;
-            }
-
-            // Transition: uppercase, blank before/after.
-            // Classic Fountain: ends with TO: (spaces after colon → Action).
-            // Also: FADE IN / FADE OUT / FADE TO BLACK (common and would otherwise
-            // invent a phantom scene if treated as Action before the first heading).
-            if (prevBlank && nextBlank)
-            {
-                var transCandidate = raw.TrimStart(); // keep trailing spaces after colon for TO: rule
-                if (FountainLexer.IsStandaloneTransitionLine(transCandidate))
-                {
-                    result.Elements.Add(new Element
-                    {
-                        Type = ElementType.Transition,
-                        Text = FountainLexer.UnescapeFountain(transCandidate.Trim()),
-                    });
-                    i++;
-                    continue;
-                }
-            }
-
-            // Character + dialogue: blank before, NOT blank after, all-caps name
-            // Also accept when a prior standalone ^ dual-marker left no blank "before"
-            // (marker line is not blank, so prevBlank is false) — use pendingDual.
-            if ((prevBlank || pendingDual) && !nextBlank && FountainLexer.IsCharacterLine(classify))
-            {
-                var dual = pendingDual || classify.TrimEnd().EndsWith('^');
-                pendingDual = false;
-                var (name, ext) = FountainLexer.SplitCharacter(classify.TrimEnd('^', ' ', '\t'));
-                result.Elements.Add(new Element
-                {
-                    Type = ElementType.Character,
-                    Text = name,
-                    Meta = BuildCharMeta(ext, dual),
-                });
-                i++;
-                i = ConsumeDialogueBlock(lines, i, result);
-                continue;
-            }
-
-            // Default: Action (preserve leading indentation)
-            pendingDual = false; // orphan dual marker shouldn't stick forever
-            result.Elements.Add(new Element
-            {
-                Type = ElementType.Action,
-                Text = PreserveActionIndent(raw, FountainLexer.UnescapeFountain(trimmed)),
-            });
-            i++;
-        }
+            TryConsumeBodyLine(lines, result, ref i, ref pendingDual);
 
         return result;
     }
@@ -318,6 +146,302 @@ public static class FountainParser
     /// </summary>
     public static string NormalizeTypographicPunctuation(string text) =>
         FountainLexer.NormalizeTypographicPunctuation(text);
+
+    private static string ExtractNotes(string text, List<string> notes)
+    {
+        return NoteRegex.Replace(text, m => NoteCapture(notes, m));
+    }
+
+    private static string NoteCapture(List<string> notes, Match m)
+    {
+        notes.Add(m.Groups[1].Value.Trim());
+        return "";
+    }
+
+    private static int CountLeadingHashes(string trimmed)
+    {
+        var depth = 0;
+        while (depth < trimmed.Length && trimmed[depth] == '#')
+            depth++;
+        return depth;
+    }
+
+    private static bool TryConsumeBodyLine(string[] lines, ParseResult result, ref int i, ref bool pendingDual)
+    {
+        var state = new BodyParseState
+        {
+            Lines = lines,
+            Result = result,
+            I = i,
+            PendingDual = pendingDual,
+            Raw = lines[i],
+        };
+        // Keep right-trim only for classification; Action may keep leading spaces
+        state.Trimmed = state.Raw.TrimEnd().Trim();
+
+        var consumed = TryConsumeBlankOrDualCaret(state)
+            || TryConsumePageBreakSectionSynopsisLyric(state)
+            || TryConsumeForcedActionSceneChar(state)
+            || TryConsumeCenteredOrForcedTransition(state)
+            || TryConsumeAutomaticSceneOrTransition(state)
+            || TryConsumeCharacterDialogue(state)
+            || ConsumeDefaultAction(state);
+
+        i = state.I;
+        pendingDual = state.PendingDual;
+        return consumed;
+    }
+
+    private static bool TryConsumeBlankOrDualCaret(BodyParseState state)
+    {
+        if (state.Trimmed.Length == 0)
+        {
+            state.I++;
+            return true;
+        }
+
+        // Dual dialogue marker alone on a line (non-spec but common) → next Character is dual
+        if (state.Trimmed == "^")
+        {
+            state.PendingDual = true;
+            state.I++;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryConsumePageBreakSectionSynopsisLyric(BodyParseState state)
+    {
+        var trimmed = state.Trimmed;
+        var result = state.Result;
+
+        // Page break: ===
+        if (FountainRegex.IsMatch(trimmed, @"^={3,}\s*$"))
+        {
+            result.Elements.Add(new Element { Type = ElementType.PageBreak, Text = trimmed });
+            state.I++;
+            return true;
+        }
+
+        // Section: # ...
+        if (trimmed.StartsWith('#'))
+        {
+            var depth = CountLeadingHashes(trimmed);
+            result.Elements.Add(new Element
+            {
+                Type = ElementType.Section,
+                Text = trimmed.TrimStart('#').Trim(),
+                Meta = depth.ToString(),
+            });
+            state.I++;
+            return true;
+        }
+
+        // Synopsis: = ...  (not === page break)
+        if (trimmed.StartsWith('=') && !trimmed.StartsWith("==="))
+        {
+            result.Elements.Add(new Element
+            {
+                Type = ElementType.Synopsis,
+                Text = trimmed.TrimStart('=').Trim(),
+            });
+            state.I++;
+            return true;
+        }
+
+        // Lyrics: ~...
+        if (trimmed.StartsWith('~'))
+        {
+            result.Elements.Add(new Element
+            {
+                Type = ElementType.Lyric,
+                Text = FountainLexer.UnescapeFountain(trimmed.TrimStart('~').TrimStart()),
+            });
+            state.I++;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryConsumeForcedActionSceneChar(BodyParseState state)
+    {
+        var trimmed = state.Trimmed;
+        var result = state.Result;
+
+        // Forced action: !...
+        if (trimmed.StartsWith('!'))
+        {
+            result.Elements.Add(new Element
+            {
+                Type = ElementType.Action,
+                Text = PreserveActionIndent(state.Raw, FountainLexer.UnescapeFountain(trimmed[1..].TrimStart())),
+            });
+            state.I++;
+            return true;
+        }
+
+        // Forced scene heading: .ALNUM... (single period, not ellipsis)
+        if (trimmed.StartsWith('.') &&
+            trimmed.Length > 1 &&
+            char.IsLetterOrDigit(trimmed[1]))
+        {
+            var (heading, sceneNo) = SplitSceneNumber(trimmed[1..].Trim());
+            result.Elements.Add(new Element
+            {
+                Type = ElementType.SceneHeading,
+                Text = heading,
+                Meta = sceneNo,
+            });
+            state.I++;
+            return true;
+        }
+
+        // Forced character: @Name
+        if (trimmed.StartsWith('@'))
+        {
+            var dual = state.PendingDual || trimmed.TrimEnd().EndsWith('^');
+            state.PendingDual = false;
+            var (name, ext) = FountainLexer.SplitCharacter(trimmed[1..].Trim().TrimEnd('^').Trim());
+            result.Elements.Add(new Element
+            {
+                Type = ElementType.Character,
+                Text = name,
+                Meta = BuildCharMeta(ext, dual),
+            });
+            state.I++;
+            state.I = ConsumeDialogueBlock(state.Lines, state.I, result);
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryConsumeCenteredOrForcedTransition(BodyParseState state)
+    {
+        var trimmed = state.Trimmed;
+        var result = state.Result;
+
+        // Centered: > text <  (Action, leading spaces not preserved)
+        if (IsCentered(trimmed))
+        {
+            var inner = trimmed.Trim().TrimStart('>').TrimEnd('<').Trim();
+            result.Elements.Add(new Element
+            {
+                Type = ElementType.Centered,
+                Text = FountainLexer.UnescapeFountain(inner),
+            });
+            state.I++;
+            return true;
+        }
+
+        // Forced transition: >...  (not centered)
+        if (trimmed.StartsWith('>') && !IsCentered(trimmed))
+        {
+            result.Elements.Add(new Element
+            {
+                Type = ElementType.Transition,
+                Text = FountainLexer.UnescapeFountain(trimmed.TrimStart('>').Trim()),
+            });
+            state.I++;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryConsumeAutomaticSceneOrTransition(BodyParseState state)
+    {
+        var lines = state.Lines;
+        var i = state.I;
+        var trimmed = state.Trimmed;
+        var result = state.Result;
+        var prevBlank = FountainLexer.PrevBlank(lines, i);
+        var nextBlank = FountainLexer.NextBlank(lines, i);
+        var classify = trimmed; // already trimmed; indent ignored for non-action
+
+        // Automatic scene heading: blank before + INT/EXT/...
+        // Fountain prefers a blank after; we also accept page-tag / synopsis lines
+        // immediately under the heading (= page N, = synopsis) for book tooling.
+        if (prevBlank && FountainLexer.IsSceneHeadingStart(classify) &&
+            (nextBlank || NextIsPageTagOrSynopsis(lines, i)))
+        {
+            var (heading, sceneNo) = SplitSceneNumber(classify);
+            result.Elements.Add(new Element
+            {
+                Type = ElementType.SceneHeading,
+                Text = heading,
+                Meta = sceneNo,
+            });
+            state.I++;
+            return true;
+        }
+
+        // Transition: uppercase, blank before/after.
+        // Classic Fountain: ends with TO: (spaces after colon → Action).
+        // Also: FADE IN / FADE OUT / FADE TO BLACK (common and would otherwise
+        // invent a phantom scene if treated as Action before the first heading).
+        if (prevBlank && nextBlank)
+        {
+            var transCandidate = state.Raw.TrimStart(); // keep trailing spaces after colon for TO: rule
+            if (FountainLexer.IsStandaloneTransitionLine(transCandidate))
+            {
+                result.Elements.Add(new Element
+                {
+                    Type = ElementType.Transition,
+                    Text = FountainLexer.UnescapeFountain(transCandidate.Trim()),
+                });
+                state.I++;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryConsumeCharacterDialogue(BodyParseState state)
+    {
+        var lines = state.Lines;
+        var i = state.I;
+        var classify = state.Trimmed;
+        var prevBlank = FountainLexer.PrevBlank(lines, i);
+        var nextBlank = FountainLexer.NextBlank(lines, i);
+
+        // Character + dialogue: blank before, NOT blank after, all-caps name
+        // Also accept when a prior standalone ^ dual-marker left no blank "before"
+        // (marker line is not blank, so prevBlank is false) — use pendingDual.
+        if ((prevBlank || state.PendingDual) && !nextBlank && FountainLexer.IsCharacterLine(classify))
+        {
+            var dual = state.PendingDual || classify.TrimEnd().EndsWith('^');
+            state.PendingDual = false;
+            var (name, ext) = FountainLexer.SplitCharacter(classify.TrimEnd('^', ' ', '\t'));
+            state.Result.Elements.Add(new Element
+            {
+                Type = ElementType.Character,
+                Text = name,
+                Meta = BuildCharMeta(ext, dual),
+            });
+            state.I++;
+            state.I = ConsumeDialogueBlock(lines, state.I, state.Result);
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool ConsumeDefaultAction(BodyParseState state)
+    {
+        // Default: Action (preserve leading indentation)
+        state.PendingDual = false; // orphan dual marker shouldn't stick forever
+        state.Result.Elements.Add(new Element
+        {
+            Type = ElementType.Action,
+            Text = PreserveActionIndent(state.Raw, FountainLexer.UnescapeFountain(state.Trimmed)),
+        });
+        state.I++;
+        return true;
+    }
 
     private static bool LooksLikeTitlePageKeyLine(string line)
     {
@@ -348,69 +472,76 @@ public static class FountainParser
         if (!LooksLikeTitlePageKeyLine(lines[i]))
             return i;
 
-        string? currentKey = null;
-        var valueBuf = new StringBuilder();
-
-        void Flush()
+        var state = new TitlePageParseState { Result = result };
+        while (i < lines.Length && TryContinueTitlePage(lines, ref i, state))
         {
-            if (currentKey is null) return;
-            var v = valueBuf.ToString().Trim();
-            if (v.Length > 0)
-            {
-                v = FountainLexer.UnescapeFountain(v);
-                if (result.TitlePage.TryGetValue(currentKey, out var existing) && existing.Length > 0)
-                    result.TitlePage[currentKey] = existing + "\n" + v;
-                else
-                    result.TitlePage[currentKey] = v;
-            }
-            currentKey = null;
-            valueBuf.Clear();
         }
 
-        while (i < lines.Length)
-        {
-            var raw = lines[i];
-            var trimmed = raw.TrimEnd();
-            if (string.IsNullOrWhiteSpace(trimmed))
-            {
-                if (result.TitlePage.Count > 0 || currentKey is not null)
-                {
-                    Flush();
-                    i++;
-                    break; // blank line ends title page
-                }
-                i++;
-                continue;
-            }
-
-            if (LooksLikeTitlePageKeyLine(trimmed))
-            {
-                Flush();
-                var m = TitleKeyLine.Match(trimmed.Trim());
-                currentKey = m.Groups[1].Value.Trim();
-                var rest = m.Groups[2].Value.Trim();
-                if (rest.Length > 0)
-                    valueBuf.Append(rest);
-                i++;
-                continue;
-            }
-
-            // Multiline value: 3+ spaces or was tab (already expanded)
-            if (currentKey is not null &&
-                (raw.StartsWith("   ", StringComparison.Ordinal) || raw.StartsWith('\t')))
-            {
-                if (valueBuf.Length > 0) valueBuf.Append('\n');
-                valueBuf.Append(raw.Trim());
-                i++;
-                continue;
-            }
-
-            Flush();
-            break;
-        }
-
-        Flush();
+        state.Flush();
         return i;
+    }
+
+    private static bool TryContinueTitlePage(string[] lines, ref int i, TitlePageParseState state)
+    {
+        if (HandleTitleBlank(lines, ref i, state, out var ended))
+            return !ended;
+        if (HandleTitleKeyLine(lines, ref i, state))
+            return true;
+        if (HandleMultilineValue(lines, ref i, state))
+            return true;
+        state.Flush();
+        return false;
+    }
+
+    private static bool HandleTitleBlank(string[] lines, ref int i, TitlePageParseState state, out bool ended)
+    {
+        ended = false;
+        var trimmed = lines[i].TrimEnd();
+        if (!string.IsNullOrWhiteSpace(trimmed))
+            return false;
+
+        if (state.Result.TitlePage.Count > 0 || state.CurrentKey is not null)
+        {
+            state.Flush();
+            i++;
+            ended = true;
+            return true;
+        }
+
+        i++;
+        return true;
+    }
+
+    private static bool HandleTitleKeyLine(string[] lines, ref int i, TitlePageParseState state)
+    {
+        var trimmed = lines[i].TrimEnd();
+        if (!LooksLikeTitlePageKeyLine(trimmed))
+            return false;
+
+        state.Flush();
+        var m = TitleKeyLine.Match(trimmed.Trim());
+        state.CurrentKey = m.Groups[1].Value.Trim();
+        var rest = m.Groups[2].Value.Trim();
+        if (rest.Length > 0)
+            state.ValueBuf.Append(rest);
+        i++;
+        return true;
+    }
+
+    private static bool HandleMultilineValue(string[] lines, ref int i, TitlePageParseState state)
+    {
+        var raw = lines[i];
+        // Multiline value: 3+ spaces or was tab (already expanded)
+        if (state.CurrentKey is not null &&
+            (raw.StartsWith("   ", StringComparison.Ordinal) || raw.StartsWith('\t')))
+        {
+            if (state.ValueBuf.Length > 0) state.ValueBuf.Append('\n');
+            state.ValueBuf.Append(raw.Trim());
+            i++;
+            return true;
+        }
+
+        return false;
     }
 
     private static int ConsumeDialogueBlock(string[] lines, int i, ParseResult result)
