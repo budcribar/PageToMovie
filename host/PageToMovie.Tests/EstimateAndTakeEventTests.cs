@@ -365,4 +365,53 @@ public sealed class EstimateAndTakeEventTests
     {
         Assert.Equal(expected, VideoTakeReasons.NormalizeOptional(input));
     }
+
+    [Fact]
+    public async Task H4_RecordVideoGeneration_records_probed_duration_and_requested_duration_audit()
+    {
+        var store = TestProjects.CreateStore("take_h4_", out var root);
+        try
+        {
+            const string projectId = "ProbedTest";
+            await store.CreateProjectAsync(projectId);
+            await store.SaveConfigAsync(projectId, JsonSerializer.SerializeToElement(new Dictionary<string, object?>
+            {
+                ["model_name"] = "grok-imagine-video",
+                ["image_model_name"] = "grok-imagine-image-quality",
+                ["planning_model_name"] = "grok-4",
+                ["resolution"] = "720p",
+            }));
+            var costs = new CostReportService(store);
+
+            await costs.RecordVideoGenerationAsync(
+                projectId,
+                scene: 2,
+                clip: 1,
+                durationSec: 6.2,
+                resolution: "720p",
+                model: "grok-imagine-video",
+                hasRefImage: false,
+                isExtend: false,
+                requestId: "req-probed-1",
+                requestedDurationSec: 8.0);
+
+            var ledger = await costs.GetCostLedgerAsync(projectId);
+            var evt = Assert.Single(ledger);
+            Assert.Equal(6.2, evt.DurationSec);
+
+            var projDir = await store.GetProjectDirAsync(projectId);
+            var statePath = Path.Combine(projDir, "pipeline_state.json");
+            Assert.True(File.Exists(statePath));
+            var stateText = await File.ReadAllTextAsync(statePath);
+            var stateNode = System.Text.Json.Nodes.JsonNode.Parse(stateText)!.AsObject();
+            var ledgerArr = stateNode["cost_ledger"]!.AsArray();
+            var rawNode = ledgerArr.Single()!.AsObject();
+            Assert.Equal("probed", rawNode["duration_source"]?.ToString());
+            Assert.Equal(8.0, Convert.ToDouble(rawNode["request_duration_sec"]?.ToString()));
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); } catch { /* best effort */ }
+        }
+    }
 }
