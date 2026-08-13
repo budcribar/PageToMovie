@@ -17,6 +17,8 @@ public sealed class FakeGrokVisionClient : IVisionClient
 
     public bool IsConfigured => true;
 
+    private const string KindVision = "vision";
+
     public async Task<string> TranscribePageAsync(
         string imagePath,
         int page,
@@ -29,7 +31,7 @@ public sealed class FakeGrokVisionClient : IVisionClient
         {
             await _telemetry.LogApiCallAsync(new ApiCallTelemetry
             {
-                Kind = "vision",
+                Kind = KindVision,
                 Mode = "transcribe_page",
                 Model = model,
                 ResponseChars = result.Length,
@@ -53,7 +55,7 @@ public sealed class FakeGrokVisionClient : IVisionClient
         {
             await _telemetry.LogApiCallAsync(new ApiCallTelemetry
             {
-                Kind = "vision",
+                Kind = KindVision,
                 Mode = "classify_characters",
                 Model = model,
                 Fakes = true,
@@ -89,7 +91,7 @@ public sealed class FakeGrokVisionClient : IVisionClient
             (prompt.Contains("Classify the image medium", StringComparison.OrdinalIgnoreCase) ||
              prompt.Contains("Expected medium for this project", StringComparison.OrdinalIgnoreCase)))
         {
-            kind = "vision";
+            kind = KindVision;
             var expectedIllustration = prompt.Contains("Expected medium for this project: illustration", StringComparison.OrdinalIgnoreCase);
             // Test hook: force a style-mismatch verdict so the "Use this look anyway" override path is
             // reachable in fakes mode (the gate otherwise always passes). Reports the OPPOSITE medium.
@@ -112,13 +114,13 @@ public sealed class FakeGrokVisionClient : IVisionClient
                   || prompt.Contains("\"best\":1", StringComparison.OrdinalIgnoreCase)
                   || prompt.Contains("Pick the single image that best matches", StringComparison.OrdinalIgnoreCase)))
         {
-            kind = "vision";
+            kind = KindVision;
             // Prefer first image — stable for tests; real vision ranks quality.
             result = """{"best":1,"reason":"Fake look pick — first variant."}""";
         }
         else if (!string.IsNullOrEmpty(prompt) && prompt.Contains("music supervisor", StringComparison.OrdinalIgnoreCase))
         {
-            kind = "vision";
+            kind = KindVision;
             result = """
                 {
                   "1": { "prompt": "Dark orchestral theme with low cello and tense pulse.", "genre": "Thriller", "mood": "Tense", "tempo": "90 BPM" },

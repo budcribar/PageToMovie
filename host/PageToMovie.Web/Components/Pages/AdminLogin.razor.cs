@@ -68,7 +68,7 @@ public partial class AdminLogin
                 return;
             }
 
-            await Session.SetSessionAsync(resp.Token!, resp.UserId, resp.Roles, resp.ExpiresAt);
+            await Session.SetSessionAsync(resp.Token, resp.UserId, resp.Roles, resp.ExpiresAt);
 
             if (!Session.IsAdmin)
             {

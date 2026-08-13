@@ -212,7 +212,7 @@ public sealed class VoiceCloneApplyService
     {
         if (sampleOverride is { Length: > 0 })
         {
-            var fileName = string.IsNullOrWhiteSpace(sampleFileName) ? "voice_clone_sample.wav" : sampleFileName!;
+            var fileName = string.IsNullOrWhiteSpace(sampleFileName) ? "voice_clone_sample.wav" : sampleFileName;
             await using var ms = new MemoryStream(sampleOverride);
             return await _projects.SaveVoiceCloneSampleAsync(projectId, charKey, ms, fileName, ct)
                 .ConfigureAwait(false);

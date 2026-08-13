@@ -30,7 +30,7 @@ public partial class CharacterLookPanel
     /// <summary>Fired after a chip or Dictate-edit apply — parent should start the one-shot tweak.</summary>
     [Parameter] public EventCallback<string> OnTweakRequested { get; set; }
 
-    private string Prefix => string.IsNullOrWhiteSpace(TestId) ? "look" : TestId!;
+    private string Prefix => string.IsNullOrWhiteSpace(TestId) ? "look" : TestId;
     private string ImgEditFieldId => Prefix + "-imgedit";
     private string ImgEditVoiceTestId => Prefix + "-imgedit-voice";
 

@@ -65,7 +65,7 @@
                 <div>
                     <strong class="small">@(SimpleMode ? "Your voice" : "Voice sample")</strong>
                 </div>
-                @if (Selected?.HasVoiceCloneSample == true)
+                @if (Selected?.HasVoiceCloneSample is true)
                 {
                     <span class="badge text-bg-success" style="font-size:0.65rem">Ready</span>
                 }
@@ -134,7 +134,7 @@
                         data-testid="voice-clone-from-folder">
                     Use existing audio
                 </button>
-                @if (Selected?.HasVoiceCloneSample == true)
+                @if (Selected?.HasVoiceCloneSample is true)
                 {
                     <button type="button" class="btn btn-sm btn-primary"
                             disabled="@(Busy || VoiceCloneBusy || VoiceJobRunning)"

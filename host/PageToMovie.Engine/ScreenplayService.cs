@@ -27,6 +27,7 @@ public static class ScreenplayService
     public const string MetaFileName = "screenplay_meta.json";
     /// <summary>Optional cast seed cache (plates / voice edits) under source/.</summary>
     public const string CastSeedsFileName = "cast_seeds.json";
+    private const string SourceDir = "source";
 
     public sealed class ScreenplayDoc
     {
@@ -66,13 +67,13 @@ public static class ScreenplayService
     }
 
     public static string GetDraftPath(ProjectStore store, string projectId) =>
-        Path.Combine(store.GetProjectDir(projectId), "source", CanonicalFileName);
+        Path.Combine(store.GetProjectDir(projectId), SourceDir, CanonicalFileName);
 
     public static string GetMetaPath(ProjectStore store, string projectId) =>
-        Path.Combine(store.GetProjectDir(projectId), "source", MetaFileName);
+        Path.Combine(store.GetProjectDir(projectId), SourceDir, MetaFileName);
 
     public static string GetCastSeedsPath(ProjectStore store, string projectId) =>
-        Path.Combine(store.GetProjectDir(projectId), "source", CastSeedsFileName);
+        Path.Combine(store.GetProjectDir(projectId), SourceDir, CastSeedsFileName);
 
     /// <summary>
     /// Parse Fountain into the in-memory screenplay model used by Stage 2 / cast tooling
@@ -347,7 +348,7 @@ public static string NormalizeText(string text)
             return false;
 
         var projectDir = store.GetProjectDir(projectId);
-        var sourceDir = Path.Combine(projectDir, "source");
+        var sourceDir = Path.Combine(projectDir, SourceDir);
         Directory.CreateDirectory(sourceDir);
 
         var recoveredPath = FindNewestRecoverableScreenplay(projectDir, sourceDir);
@@ -427,7 +428,7 @@ public static string NormalizeText(string text)
         // Do NOT FixDraftDate on every save — stamping "today" changed the file after
         // approval and falsely set Dirty / "Edited since approval". Date is set at
         // draft creation / import only (CreateDraftFromBookAsync, ImportAsDraft).
-        var sourceDir = Path.Combine(store.GetProjectDir(projectId), "source");
+        var sourceDir = Path.Combine(store.GetProjectDir(projectId), SourceDir);
         Directory.CreateDirectory(sourceDir);
         var draftPath = GetDraftPath(store, projectId);
         File.WriteAllText(draftPath, text);
@@ -530,7 +531,7 @@ public static string NormalizeText(string text)
 
         string? bookText = null;
         var projectDir = await store.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
-        var bookPath = Path.Combine(projectDir, "source", "book_full.txt");
+        var bookPath = Path.Combine(projectDir, SourceDir, "book_full.txt");
         if (File.Exists(bookPath))
         {
             try { bookText = await File.ReadAllTextAsync(bookPath, ct).ConfigureAwait(false); }
@@ -555,7 +556,7 @@ public static string NormalizeText(string text)
 
     /// <summary>Path to the immutable full-length base (may not exist until the first trim / a max generation).</summary>
     public static string GetMaxBasePath(ProjectStore store, string projectId) =>
-        Path.Combine(store.GetProjectDir(projectId), "source", MaxBaseFileName);
+        Path.Combine(store.GetProjectDir(projectId), SourceDir, MaxBaseFileName);
 
     /// <summary>
     /// True when a full-length base exists for this project (Track D0/D6). A fork inherits this file with
@@ -581,7 +582,7 @@ public static string NormalizeText(string text)
         try
         {
             var path = GetMaxBasePath(store, projectId);
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
             File.WriteAllText(path, NormalizeText(fountain));
         }
         catch { /* base is an optimization; trim can re-seed from the draft if missing */ }
@@ -617,7 +618,7 @@ public static string NormalizeText(string text)
             baseFountain = Get(store, projectId).Text;
             if (string.IsNullOrWhiteSpace(baseFountain))
                 return new DraftEditResult { Ok = false, Error = "No screenplay draft to trim yet." };
-            Directory.CreateDirectory(Path.GetDirectoryName(basePath)!);
+            Directory.CreateDirectory(Path.GetDirectoryName(basePath));
             await File.WriteAllTextAsync(basePath, baseFountain, ct).ConfigureAwait(false);
         }
 
@@ -791,7 +792,7 @@ public static string NormalizeText(string text)
                 if (!safe.EndsWith(".fountain", StringComparison.OrdinalIgnoreCase) &&
                     !safe.EndsWith(".spmd", StringComparison.OrdinalIgnoreCase))
                     safe = Path.GetFileNameWithoutExtension(safe) + ".fountain";
-                var copyPath = Path.Combine(store.GetProjectDir(projectId), "source", safe);
+                var copyPath = Path.Combine(store.GetProjectDir(projectId), SourceDir, safe);
                 try { File.WriteAllText(copyPath, NormalizeText(text)); } catch { /* ignore */ }
             }
         }
@@ -835,7 +836,7 @@ public static string NormalizeText(string text)
         bool useFakes = false)
     {
         var projectDir = await store.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
-        var bookPath = Path.Combine(projectDir, "source", "book_full.txt");
+        var bookPath = Path.Combine(projectDir, SourceDir, "book_full.txt");
         if (!File.Exists(bookPath))
             return new SaveResult { Ok = false, Error = "No prepared book text yet" };
 
@@ -866,7 +867,6 @@ public static string NormalizeText(string text)
         }
 
         var (title, author) = ReadProjectTitleAuthor(projectDir, projectId);
-        var analysis = BookTextAnalyzer.Analyze(book);
         // Resolve + persist the target (Trim/Fit-length reads it) but do NOT constrain generation with it.
         var runtime = await FilmRuntime.ResolveAsync(store, projectId, book, overrideTargetMinutes: totalRuntimeMinutes, ct)
             .ConfigureAwait(false);
@@ -1298,7 +1298,7 @@ public static string NormalizeText(string text)
     private static void WriteMeta(ProjectStore store, string projectId, MetaDto meta)
     {
         var path = GetMetaPath(store, projectId);
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(path));
         var json = JsonSerializer.Serialize(meta, JsonDefaults.Indented);
         File.WriteAllText(path, json + "\n");
     }

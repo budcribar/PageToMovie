@@ -5,6 +5,7 @@ using PageToMovie.Engine.Abstractions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
+using PageToMovie.Core.Utils;
 namespace PageToMovie.Engine.ModelBacked;
 
 /// <summary>
@@ -15,6 +16,8 @@ namespace PageToMovie.Engine.ModelBacked;
 public sealed class ShotPlanRefiningClassifier
 {
     public const string PromptVersion = "v1_product";
+
+    private const string KeyVisualPrompt = "visual_prompt";
 
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> Cache = new(StringComparer.OrdinalIgnoreCase);
 
@@ -85,7 +88,7 @@ public sealed class ShotPlanRefiningClassifier
         if (clips.Count < 3) return false;
 
         // Check if prompts are copy-pasted/duplicated across clips
-        var prompts = clips.Select(c => CoerceString(c.TryGetValue("visual_prompt", out var vp) ? vp : null)).ToList();
+        var prompts = clips.Select(c => CoerceString(c.TryGetValue(KeyVisualPrompt, out var vp) ? vp : null)).ToList();
         var uniquePrompts = prompts.Distinct(StringComparer.OrdinalIgnoreCase).Count();
         if (uniquePrompts > (clips.Count / 2))
         {
@@ -101,7 +104,7 @@ public sealed class ShotPlanRefiningClassifier
             var effectiveModel = !string.IsNullOrWhiteSpace(model) ? model : _opts.ShotPlanRefineClassifyModel;
             var cacheKey = $"{userPrompt}|m:{effectiveModel}";
             var requestedIds = clips
-                .Select(c => ToInt(c.GetValueOrDefault("clip_number")).ToString())
+                .Select(c => ToInt(c.GetValueOrDefault(JsonKeys.ClipNumber)).ToString())
                 .ToList();
 
             // Cache only the first attempt's call — a coverage retry needs a fresh response,
@@ -142,7 +145,7 @@ public sealed class ShotPlanRefiningClassifier
 
             if (_errorLogger is not null)
             {
-                var sceneNum = ClassifierValueHelpers.ToIntOrNull(plannedScene.GetValueOrDefault("scene_number"));
+                var sceneNum = ClassifierValueHelpers.ToIntOrNull(plannedScene.GetValueOrDefault(JsonKeys.SceneNumber));
                 await _errorLogger.LogCoverageResultAsync(
                     "shot_plan_refining_classifier", effectiveModel, ClassifierValueHelpers.ResolveProvider(effectiveModel), sceneNum,
                     requestedIds, retry, ct).ConfigureAwait(false);
@@ -152,21 +155,21 @@ public sealed class ShotPlanRefiningClassifier
 
             foreach (var clip in clips)
             {
-                var key = ToInt(clip.GetValueOrDefault("clip_number")).ToString();
+                var key = ToInt(clip.GetValueOrDefault(JsonKeys.ClipNumber)).ToString();
                 if (refDict.TryGetValue(key, out var refTuple))
                 {
-                    clip["visual_prompt"] = refTuple.VisualPrompt;
+                    clip[KeyVisualPrompt] = refTuple.VisualPrompt;
                     clip["veo_continuation_source"] = refTuple.Continuation;
                 }
             }
 
             _log.LogInformation("AI Shot Refiner applied dynamic camera framings to {Count} clips in scene {Scene}",
-                refDict.Count, plannedScene.GetValueOrDefault("scene_number"));
+                refDict.Count, plannedScene.GetValueOrDefault(JsonKeys.SceneNumber));
             return true;
         }
         catch (Exception ex)
         {
-            _log.LogWarning(ex, "Failed to run AI shot plan refinement for scene {Scene}", plannedScene.GetValueOrDefault("scene_number"));
+            _log.LogWarning(ex, "Failed to run AI shot plan refinement for scene {Scene}", plannedScene.GetValueOrDefault(JsonKeys.SceneNumber));
             return false;
         }
     }
@@ -174,19 +177,19 @@ public sealed class ShotPlanRefiningClassifier
     private static string BuildUserPrompt(Dictionary<string, object?> scene, List<Dictionary<string, object?>> clips)
     {
         var sb = new System.Text.StringBuilder();
-        sb.AppendLine($"SCENE {scene.GetValueOrDefault("scene_number")}: {scene.GetValueOrDefault("setting")}");
+        sb.AppendLine($"SCENE {scene.GetValueOrDefault(JsonKeys.SceneNumber)}: {scene.GetValueOrDefault("setting")}");
         sb.AppendLine($"CHARACTERS ON SCREEN: {JsonSerializer.Serialize(scene.GetValueOrDefault("characters_on_screen"))}");
         sb.AppendLine();
         sb.AppendLine("PLANNED CLIPS:");
 
         foreach (var c in clips)
         {
-            var cNum = c.GetValueOrDefault("clip_number");
+            var cNum = c.GetValueOrDefault(JsonKeys.ClipNumber);
             var dur = c.GetValueOrDefault("duration_seconds");
             var audio = c.TryGetValue("audio_payload", out var aObj) && aObj is Dictionary<string, object?> aDict
                 ? CoerceString(aDict.GetValueOrDefault("dialogue"))
                 : "";
-            var prompt = c.GetValueOrDefault("visual_prompt");
+            var prompt = c.GetValueOrDefault(KeyVisualPrompt);
 
             sb.AppendLine($"Clip {cNum} ({dur}s):");
             if (!string.IsNullOrWhiteSpace(audio))
@@ -217,8 +220,8 @@ public sealed class ShotPlanRefiningClassifier
             var refDict = new Dictionary<string, (string, string)>(StringComparer.OrdinalIgnoreCase);
             foreach (var item in refArray.EnumerateArray())
             {
-                if (item.TryGetProperty("clip_number", out var cn) &&
-                    item.TryGetProperty("visual_prompt", out var vp))
+                if (item.TryGetProperty(JsonKeys.ClipNumber, out var cn) &&
+                    item.TryGetProperty(KeyVisualPrompt, out var vp))
                 {
                     var num = cn.GetInt32();
                     var prompt = vp.GetString() ?? "";

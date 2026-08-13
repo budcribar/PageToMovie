@@ -19,6 +19,12 @@ public sealed class ProjectRulesService
     /// <summary>Minimum fails in one category before auto-suggest.</summary>
     public const int DefaultMinFailsForSuggest = 3;
 
+    private const string CategoryOther = "other";
+    private const string CategoryStyle = "style";
+    private const string CategoryPerformance = "performance";
+    private const string ApproverCastExtract = "cast_extract";
+    private const string ApproverSystem = "system";
+
     private readonly ProjectStore _projects;
     private readonly ReviewEventStore _learning;
     private readonly ILogger<ProjectRulesService> _log;
@@ -76,12 +82,12 @@ public sealed class ProjectRulesService
         var doc = await LoadAsync(projectId, ct).ConfigureAwait(false);
         var lines = doc.Active
             .Where(r => !string.IsNullOrWhiteSpace(r.Text))
-            .Select(r => $"- [{(string.IsNullOrWhiteSpace(r.Category) ? "other" : r.Category!.Trim())}] {r.Text!.Trim()}")
+            .Select(r => $"- [{(string.IsNullOrWhiteSpace(r.Category) ? CategoryOther : r.Category.Trim())}] {r.Text.Trim()}")
             .ToList();
 
         // Fallback: cast_seeds locks if no matching rules yet (gen/auto-review still see them)
         if (!doc.Active.Any(r =>
-                string.Equals(r.Category, "style", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(r.Category, CategoryStyle, StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(r.Id, StyleRuleId, StringComparison.OrdinalIgnoreCase)))
         {
             var fromCast = await TryReadCastFieldAsync(projectId, "render_style_lock", ct).ConfigureAwait(false);
@@ -90,7 +96,7 @@ public sealed class ProjectRulesService
         }
 
         if (!doc.Active.Any(r =>
-                string.Equals(r.Category, "performance", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(r.Category, CategoryPerformance, StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(r.Id, PerformanceRuleId, StringComparison.OrdinalIgnoreCase)))
         {
             var perf = await TryReadCastFieldAsync(projectId, "performance_lock", ct).ConfigureAwait(false);
@@ -109,7 +115,7 @@ public sealed class ProjectRulesService
     public async Task<bool> EnsureStyleRuleFromRenderLockAsync(
         string projectId,
         string? renderStyleLock,
-        string approvedBy = "cast_extract",
+        string approvedBy = ApproverCastExtract,
         CancellationToken ct = default)
     {
         var text = NormalizeStyleRuleText(renderStyleLock);
@@ -124,7 +130,7 @@ public sealed class ProjectRulesService
             if (string.Equals(systemOwned.Text?.Trim(), text, StringComparison.OrdinalIgnoreCase))
                 return false;
             systemOwned.Text = text;
-            systemOwned.Category = "style";
+            systemOwned.Category = CategoryStyle;
             systemOwned.ApprovedAt = DateTimeOffset.UtcNow;
             systemOwned.ApprovedBy = approvedBy;
             await SaveAsync(projectId, doc, ct).ConfigureAwait(false);
@@ -133,24 +139,24 @@ public sealed class ProjectRulesService
 
         // User already has an active style rule they approved — leave it
         var userStyle = doc.Active.FirstOrDefault(r =>
-            string.Equals(r.Category, "style", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(r.Category, CategoryStyle, StringComparison.OrdinalIgnoreCase) &&
             !string.Equals(r.Id, StyleRuleId, StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(r.ApprovedBy, "cast_extract", StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(r.ApprovedBy, "system", StringComparison.OrdinalIgnoreCase));
+            !string.Equals(r.ApprovedBy, ApproverCastExtract, StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(r.ApprovedBy, ApproverSystem, StringComparison.OrdinalIgnoreCase));
         if (userStyle is not null)
             return false;
 
         // Remove any other auto style duplicates, then add
         doc.Active.RemoveAll(r =>
-            string.Equals(r.Category, "style", StringComparison.OrdinalIgnoreCase) &&
-            (string.Equals(r.ApprovedBy, "cast_extract", StringComparison.OrdinalIgnoreCase) ||
-             string.Equals(r.ApprovedBy, "system", StringComparison.OrdinalIgnoreCase)));
+            string.Equals(r.Category, CategoryStyle, StringComparison.OrdinalIgnoreCase) &&
+            (string.Equals(r.ApprovedBy, ApproverCastExtract, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(r.ApprovedBy, ApproverSystem, StringComparison.OrdinalIgnoreCase)));
 
         doc.Active.Add(new ProjectRule
         {
             Id = StyleRuleId,
             Text = text,
-            Category = "style",
+            Category = CategoryStyle,
             ApprovedAt = DateTimeOffset.UtcNow,
             ApprovedBy = approvedBy,
             SourceFailCount = 0,
@@ -185,7 +191,7 @@ public sealed class ProjectRulesService
     public async Task<bool> EnsurePerformanceRuleFromLockAsync(
         string projectId,
         string? performanceLock,
-        string approvedBy = "cast_extract",
+        string approvedBy = ApproverCastExtract,
         CancellationToken ct = default)
     {
         var text = NormalizePerformanceRuleText(performanceLock);
@@ -200,7 +206,7 @@ public sealed class ProjectRulesService
             if (string.Equals(systemOwned.Text?.Trim(), text, StringComparison.OrdinalIgnoreCase))
                 return false;
             systemOwned.Text = text;
-            systemOwned.Category = "performance";
+            systemOwned.Category = CategoryPerformance;
             systemOwned.ApprovedAt = DateTimeOffset.UtcNow;
             systemOwned.ApprovedBy = approvedBy;
             await SaveAsync(projectId, doc, ct).ConfigureAwait(false);
@@ -208,23 +214,23 @@ public sealed class ProjectRulesService
         }
 
         var userOwned = doc.Active.FirstOrDefault(r =>
-            string.Equals(r.Category, "performance", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(r.Category, CategoryPerformance, StringComparison.OrdinalIgnoreCase) &&
             !string.Equals(r.Id, PerformanceRuleId, StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(r.ApprovedBy, "cast_extract", StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(r.ApprovedBy, "system", StringComparison.OrdinalIgnoreCase));
+            !string.Equals(r.ApprovedBy, ApproverCastExtract, StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(r.ApprovedBy, ApproverSystem, StringComparison.OrdinalIgnoreCase));
         if (userOwned is not null)
             return false;
 
         doc.Active.RemoveAll(r =>
-            string.Equals(r.Category, "performance", StringComparison.OrdinalIgnoreCase) &&
-            (string.Equals(r.ApprovedBy, "cast_extract", StringComparison.OrdinalIgnoreCase) ||
-             string.Equals(r.ApprovedBy, "system", StringComparison.OrdinalIgnoreCase)));
+            string.Equals(r.Category, CategoryPerformance, StringComparison.OrdinalIgnoreCase) &&
+            (string.Equals(r.ApprovedBy, ApproverCastExtract, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(r.ApprovedBy, ApproverSystem, StringComparison.OrdinalIgnoreCase)));
 
         doc.Active.Add(new ProjectRule
         {
             Id = PerformanceRuleId,
             Text = text,
-            Category = "performance",
+            Category = CategoryPerformance,
             ApprovedAt = DateTimeOffset.UtcNow,
             ApprovedBy = approvedBy,
             SourceFailCount = 0,
@@ -291,7 +297,7 @@ public sealed class ProjectRulesService
             .ToList();
 
         var byCat = fails
-            .GroupBy(e => string.IsNullOrWhiteSpace(e.Category) ? "other" : e.Category!.Trim().ToLowerInvariant())
+            .GroupBy(e => string.IsNullOrWhiteSpace(e.Category) ? CategoryOther : e.Category.Trim().ToLowerInvariant())
             .Select(g => new
             {
                 Category = g.Key,
@@ -311,7 +317,7 @@ public sealed class ProjectRulesService
             doc.Pending.Select(p => (p.Text ?? "").Trim()).Where(t => t.Length > 0),
             StringComparer.OrdinalIgnoreCase);
         var activeCategories = new HashSet<string>(
-            doc.Active.Select(a => (a.Category ?? "other").Trim().ToLowerInvariant()),
+            doc.Active.Select(a => (a.Category ?? CategoryOther).Trim().ToLowerInvariant()),
             StringComparer.OrdinalIgnoreCase);
 
         foreach (var g in byCat)
@@ -364,7 +370,7 @@ public sealed class ProjectRulesService
         {
             Id = Guid.NewGuid().ToString("N")[..10],
             Text = text,
-            Category = string.IsNullOrWhiteSpace(sug.Category) ? "other" : sug.Category.Trim(),
+            Category = string.IsNullOrWhiteSpace(sug.Category) ? CategoryOther : sug.Category.Trim(),
             ApprovedAt = DateTimeOffset.UtcNow,
             ApprovedBy = approvedBy,
             SourceFailCount = sug.FailCount,
@@ -390,7 +396,7 @@ public sealed class ProjectRulesService
         {
             "wrong_voice" => "Keep each character's voice consistent with their voice_profile (gender, pitch, age).",
             "wrong_look" => "Match locked character appearance and visual_lock on every clip; no identity drift.",
-            "wrong_style" or "style" =>
+            "wrong_style" or CategoryStyle =>
                 "Hold the project render medium on every clip (picture-book CG vs photoreal, etc.); no medium drift mid-film.",
             "continuity" => "When continuing from previous clip, match wardrobe, place, and pose from the last frames.",
             "silent" => "Dialogue clips must have clear audible speech and lip sync for the speaker.",

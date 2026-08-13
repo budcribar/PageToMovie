@@ -163,28 +163,6 @@ public static class EnumExtensions
         _ => "No extension — standard on-screen dialogue."
     };
 
-    public static TimeOfDay ParseTimeOfDay(string text)
-    {
-        if (string.IsNullOrWhiteSpace(text)) return TimeOfDay.DAY;
-        var upper = text.Trim().ToUpperInvariant();
-        if (upper.Contains("NIGHT")) return TimeOfDay.NIGHT;
-        if (upper.Contains("MOMENT")) return TimeOfDay.MOMENTS_LATER;
-        if (upper.Contains("CONTINUOUS")) return TimeOfDay.CONTINUOUS;
-        if (upper.Contains("DAWN")) return TimeOfDay.DAWN;
-        if (upper.Contains("DUSK")) return TimeOfDay.DUSK;
-        return TimeOfDay.DAY;
-    }
-
-    public static SpeakerExtension ParseSpeakerExtension(string text)
-    {
-        if (string.IsNullOrWhiteSpace(text)) return SpeakerExtension.None;
-        var upper = text.Trim().ToUpperInvariant();
-        if (upper.Contains("V.O")) return SpeakerExtension.VO;
-        if (upper.Contains("O.S")) return SpeakerExtension.OS;
-        if (upper.Contains("CONT")) return SpeakerExtension.CONTD;
-        return SpeakerExtension.None;
-    }
-
     public static string GetJargonHint(this TransitionPreset preset) => preset switch
     {
         TransitionPreset.CutTo => "CUT TO: — Hard cut to the next shot or scene.",
@@ -207,6 +185,28 @@ public static class EnumExtensions
         BeatType.Centered => "Centered — Centered title or intertitle text on the page.",
         _ => "Beat — one unit of the scene (action, dialogue, sound, or transition)."
     };
+
+    public static TimeOfDay ParseTimeOfDay(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return TimeOfDay.DAY;
+        var upper = text.Trim().ToUpperInvariant();
+        if (upper.Contains("NIGHT")) return TimeOfDay.NIGHT;
+        if (upper.Contains("MOMENT")) return TimeOfDay.MOMENTS_LATER;
+        if (upper.Contains("CONTINUOUS")) return TimeOfDay.CONTINUOUS;
+        if (upper.Contains("DAWN")) return TimeOfDay.DAWN;
+        if (upper.Contains("DUSK")) return TimeOfDay.DUSK;
+        return TimeOfDay.DAY;
+    }
+
+    public static SpeakerExtension ParseSpeakerExtension(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return SpeakerExtension.None;
+        var upper = text.Trim().ToUpperInvariant();
+        if (upper.Contains("V.O")) return SpeakerExtension.VO;
+        if (upper.Contains("O.S")) return SpeakerExtension.OS;
+        if (upper.Contains("CONT")) return SpeakerExtension.CONTD;
+        return SpeakerExtension.None;
+    }
 
     public static TransitionPreset ParseTransitionPreset(string text)
     {
@@ -407,14 +407,10 @@ public class ScreenplayModel
     public List<string> GetAllLocations()
     {
         var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var loc in LocationProfiles)
-        {
-            if (!string.IsNullOrWhiteSpace(loc.Name)) set.Add(loc.Name.Trim().ToUpperInvariant());
-        }
-        foreach (var scene in Scenes)
-        {
-            if (!string.IsNullOrWhiteSpace(scene.Location)) set.Add(scene.Location.Trim().ToUpperInvariant());
-        }
+        foreach (var loc in LocationProfiles.Where(loc => !string.IsNullOrWhiteSpace(loc.Name)))
+            set.Add(loc.Name.Trim().ToUpperInvariant());
+        foreach (var scene in Scenes.Where(scene => !string.IsNullOrWhiteSpace(scene.Location)))
+            set.Add(scene.Location.Trim().ToUpperInvariant());
         return set.OrderBy(x => x).ToList();
     }
 
@@ -501,19 +497,13 @@ public class ScreenplayModel
     {
         if (string.IsNullOrWhiteSpace(oldTitle) || string.IsNullOrWhiteSpace(newTitle)) return;
         var nt = newTitle.Trim();
-        foreach (var s in Scenes)
-        {
-            if (s.GroupTitle.Equals(oldTitle, StringComparison.OrdinalIgnoreCase))
-                s.GroupTitle = nt;
-        }
+        foreach (var s in Scenes.Where(s => s.GroupTitle.Equals(oldTitle, StringComparison.OrdinalIgnoreCase)))
+            s.GroupTitle = nt;
     }
 
     public void SetGroupCollapsed(string groupTitle, bool collapsed)
     {
-        foreach (var s in Scenes)
-        {
-            if (s.GroupTitle.Equals(groupTitle, StringComparison.OrdinalIgnoreCase))
-                s.IsGroupCollapsed = collapsed;
-        }
+        foreach (var s in Scenes.Where(s => s.GroupTitle.Equals(groupTitle, StringComparison.OrdinalIgnoreCase)))
+            s.IsGroupCollapsed = collapsed;
     }
 }

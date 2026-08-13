@@ -5,11 +5,11 @@ namespace PageToMovie.Engine;
 /// </summary>
 public class UserMediaStorage
 {
-    public StorageTier Tier { get; set; } = StorageTier.Hot;
-    public StorageTierKind StorageTierKind { get; set; } = StorageTierKind.Hot;
-    public VideoResolution DefaultResolution { get; set; } = VideoResolution.Res1080p;
-    public VideoResolutionPreset ResolutionPreset { get; set; } = VideoResolutionPreset.Res1080p;
-    public ExportQualityLevel ExportQuality { get; set; } = ExportQualityLevel.High;
+    public StorageTier Tier { get; set; }
+    public StorageTierKind StorageTierKind { get; set; }
+    public VideoResolution DefaultResolution { get; set; }
+    public VideoResolutionPreset ResolutionPreset { get; set; }
+    public ExportQualityLevel ExportQuality { get; set; }
 
     public UserMediaStorage(StorageTier tier = StorageTier.Hot, VideoResolution resolution = VideoResolution.Res1080p)
     {
@@ -17,6 +17,7 @@ public class UserMediaStorage
         DefaultResolution = resolution;
         StorageTierKind = tier.ParseStorageTierKind();
         ResolutionPreset = resolution.ParseVideoResolutionPreset();
+        ExportQuality = ExportQualityLevel.High;
     }
 
     public UserMediaStorage(StorageTierKind tierKind, VideoResolutionPreset resolutionPreset, ExportQualityLevel exportQuality = ExportQualityLevel.High)

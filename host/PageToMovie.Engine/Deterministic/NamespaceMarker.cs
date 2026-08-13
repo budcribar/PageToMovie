@@ -6,4 +6,6 @@ namespace PageToMovie.Engine.Deterministic;
 /// </summary>
 public static class NamespaceMarker
 {
+    /// <summary>Stable kind token for architecture tests that scan this namespace.</summary>
+    public const string Kind = "deterministic";
 }

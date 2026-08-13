@@ -197,7 +197,7 @@ public partial class Configuration
                         : ModelCapability.Chat;
                 return SupportedModelCatalog.ProviderIdFor(modelId, cap);
             }
-            return string.IsNullOrWhiteSpace(m.ProviderId) ? m.Provider : m.ProviderId!;
+            return string.IsNullOrWhiteSpace(m.ProviderId) ? m.Provider : m.ProviderId;
         }
 
 

@@ -192,7 +192,7 @@
                                     <p class="small text-muted mb-2">No YouTube id — not visible on the public wall.</p>
                                 }
                                 <div class="d-flex flex-wrap gap-2 mt-2">
-                                    @if (string.IsNullOrWhiteSpace(d.YoutubeId) == false
+                                    @if (!string.IsNullOrWhiteSpace(d.YoutubeId)
                                          && !string.Equals(d.Status, "public", StringComparison.OrdinalIgnoreCase))
                                     {
                                         <button type="button" class="btn btn-sm btn-success" disabled="@_busy"
