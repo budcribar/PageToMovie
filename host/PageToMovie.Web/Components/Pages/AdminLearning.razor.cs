@@ -14,15 +14,15 @@ public partial class AdminLearning
     internal bool _busy;
     internal string? _error;
     internal string? _message;
-    private string _projectFilter = "";
+    private string _projectFilter { get; set; } = "";
     internal LearningInsightsDto? _insights;
     internal ReviewComparisonInsightsDto? _comparison;
     internal List<ReviewLearningEvent> _events = new();
-    private int _proposeN = 50;
+    private int _proposeN { get; set; } = 50;
     internal string? _proposal;
     private ProposalChecklistDocument? _checklist;
     private bool _showDoneItems;
-    private string _rulesProject = "";
+    private string _rulesProject { get; set; } = "";
     internal ProjectRulesDocument? _rules;
 
     private static bool IsChecklistDone(ProposalChecklistItem item) =>

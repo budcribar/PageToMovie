@@ -86,7 +86,11 @@ public partial class Configuration
             S._message = null;
             try
             {
-                try { S.Keys._userSettings = await S.Engine.GetUserSettingsAsync(); } catch { }
+                try { S.Keys._userSettings = await S.Engine.GetUserSettingsAsync(); }
+                catch (Exception)
+                {
+                    System.Diagnostics.Debug.WriteLine("User settings unavailable; continuing project load.");
+                }
 
                 if (string.IsNullOrWhiteSpace(S._projectId))
                 {

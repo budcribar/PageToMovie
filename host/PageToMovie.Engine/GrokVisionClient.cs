@@ -61,7 +61,11 @@ public sealed class GrokVisionClient : IVisionClient
         CancellationToken ct = default)
     {
         FileInfo? fi = null;
-        try { fi = new FileInfo(imagePath); } catch { }
+        try { fi = new FileInfo(imagePath); }
+        catch (Exception)
+        {
+            fi = null;
+        }
         var cacheKey = $"{imagePath}|p{page}|m:{model}";
         if (fi is not null && fi.Exists &&
             TranscribeCache.TryGetValue(cacheKey, out var hit) &&
@@ -168,7 +172,11 @@ public sealed class GrokVisionClient : IVisionClient
             return new CharacterPageClassification { Page = page, PageKind = "unknown" };
 
         FileInfo? fi = null;
-        try { fi = new FileInfo(imagePath); } catch { }
+        try { fi = new FileInfo(imagePath); }
+        catch (Exception)
+        {
+            fi = null;
+        }
         var castKey = string.Join(";", cast.Select(c => $"{c.Key}:{c.DisplayName}:{c.Description}"));
         var cacheKey = $"{imagePath}|p{page}|m:{model}|c:{castKey}";
         if (fi is not null && fi.Exists &&

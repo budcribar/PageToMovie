@@ -99,10 +99,10 @@ public sealed class GrokChatClient : IChatClient
         var sw = Stopwatch.StartNew();
         try
         {
-            // Transient-retry wraps the outside of the existing param-shape self-heal loop below
-            // (400 due to unsupported temperature/reasoning_effort) — that loop is unmodified;
-            // this only retries the whole call again on 429/5xx or a network/timeout failure,
-            // which previously propagated to the caller immediately with zero retries.
+            // Transient-retry wraps the existing param-shape self-heal loop. That inner loop
+            // still strips unsupported temperature or reasoning_effort on HTTP 400. This wrapper
+            // only retries the whole call on 429, 5xx, or a network/timeout failure, which
+            // previously propagated to the caller immediately with zero retries.
             return await AiRetryPolicy.ExecuteWithTransientRetryAsync(
                 DoRequestAsync,
                 isTransient: AiRetryPolicy.IsTransientChatFailure,

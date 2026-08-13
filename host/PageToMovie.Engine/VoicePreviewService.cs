@@ -135,7 +135,7 @@ public sealed class VoicePreviewService
                 storedFp = root.TryGetProperty("fingerprint", out var f) ? f.GetString() : null;
                 if (root.TryGetProperty("generatedAt", out var g) &&
                     g.GetString() is { Length: > 0 } gs &&
-                    DateTimeOffset.TryParse(gs, out var dt))
+                    DateTimeOffset.TryParse(gs, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.RoundtripKind, out var dt))
                     generatedAt = dt;
             }
         }

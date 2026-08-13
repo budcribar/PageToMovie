@@ -195,8 +195,8 @@ public sealed class GrokImageClient : IImageClient
         if (refs.Count == 0 && !hasCostumeRef)
             throw new InvalidOperationException("No usable reference images for character edit.");
 
-        // Downscale book plates — three full-page PNGs as data URIs (~7MB+) often fail;
-        // two can succeed by luck under the request size limit.
+        // Downscale book plates. Three full-page PNGs as data URIs often exceed the
+        // request size limit; two images are more likely to succeed.
         var imageUris = new List<string>(refs.Count + (hasCostumeRef ? 1 : 0));
         foreach (var path in refs)
             imageUris.Add(await FileToDataUriAsync(path, ct, maxEdge: 1024, jpegQuality: 85)
@@ -423,19 +423,11 @@ public sealed class GrokImageClient : IImageClient
                 onProgress?.Invoke(
                     $"3 reference images rejected by API — retrying with first 2…");
                 var two = imageUris.Take(2).ToList();
-                var prompt2 = variantPrompt
-                    .Replace("<IMAGE_2>", "", StringComparison.Ordinal)
-                    .Replace("Image 3", "Image 2", StringComparison.OrdinalIgnoreCase);
-                // Rebuild shorter multi prompt tip
-                prompt2 = BuildMultiImageOrderHint(2) +
-                          // strip old multi-hint if present by only using short prompt tail after first period? keep full
-                          variantPrompt;
-                // Simpler: just use 2-image order hint + original user prompt body
                 var cut = variantPrompt.IndexOf("CHARACTER CONTINUITY", StringComparison.OrdinalIgnoreCase);
                 if (cut < 0)
                     cut = variantPrompt.IndexOf("IDENTITY", StringComparison.OrdinalIgnoreCase);
                 var core = cut >= 0 ? variantPrompt[cut..] : variantPrompt;
-                prompt2 = BuildMultiImageOrderHint(2) + core;
+                var prompt2 = BuildMultiImageOrderHint(2) + core;
 
                 return await PostImageEditAsync(
                     modelName, prompt2, aspectRatio, two, onProgress, ct).ConfigureAwait(false);

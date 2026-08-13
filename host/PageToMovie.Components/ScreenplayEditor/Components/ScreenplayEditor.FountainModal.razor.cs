@@ -59,7 +59,7 @@ public partial class ScreenplayEditor_FountainModal
             if (file != null)
             {
                 SelectedFileName = file.Name;
-                using var stream = file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
+                using var stream = file.OpenReadStream(maxAllowedSize: 8_000_000);
                 using var reader = new StreamReader(stream);
                 FountainText = await reader.ReadToEndAsync();
                 await Import(); // 1-Click Instant Import!

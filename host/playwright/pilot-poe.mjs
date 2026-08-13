@@ -15,10 +15,10 @@
  *   ARTIFACTS=./artifacts
  */
 import { chromium } from "playwright";
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
-import { spawn } from "child_process";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { spawn } from "node:child_process";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_URL = (process.env.WEB_URL || "http://localhost:5079").replace(/\/$/, "");
@@ -818,8 +818,6 @@ async function main() {
     if (msg.type() === "error") log("browser-console", msg.text());
   });
 
-  let projectId = PROJECT_NAME;
-
   try {
     await step("01_home_create_project", async () => {
       await page.goto(`${WEB_URL}/?admin=1`, { waitUntil: "networkidle" });
@@ -1114,7 +1112,9 @@ async function main() {
   }
 }
 
-main().catch((e) => {
+try {
+  await main();
+} catch (e) {
   console.error(e);
   process.exit(1);
-});
+}

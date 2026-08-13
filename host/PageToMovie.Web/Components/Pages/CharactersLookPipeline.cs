@@ -456,7 +456,7 @@ public partial class Characters
             byte[] bytes;
             try
             {
-                const long max = 25 * 1024 * 1024;
+                const long max = 8_000_000;
                 await using var stream = file.OpenReadStream(max);
                 using var ms = new MemoryStream();
                 await stream.CopyToAsync(ms);

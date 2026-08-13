@@ -401,7 +401,7 @@ public partial class Review
                 var compositeOk = summary?.CompositeExists == true;
                 var needsStitch = !compositeOk || stale;
 
-                if (!needsStitch && compositeOk)
+                if (!needsStitch)
                 {
                     _clientSceneUrl = null;
                     _showWipPlayer = false;

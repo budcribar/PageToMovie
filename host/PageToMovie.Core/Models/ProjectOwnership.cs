@@ -19,11 +19,8 @@ public static class ProjectOwnership
         {
             if (char.IsAsciiLetterOrDigit(ch) || ch is '_' or '-')
                 sb.Append(ch);
-            else if (char.IsWhiteSpace(ch) || ch is '.' or '/' or '@')
-            {
-                if (sb.Length > 0 && sb[^1] != '_')
-                    sb.Append('_');
-            }
+            else if ((char.IsWhiteSpace(ch) || ch is '.' or '/' or '@') && sb.Length > 0 && sb[^1] != '_')
+                sb.Append('_');
         }
         var id = sb.ToString().Trim('_').ToLowerInvariant();
         if (id.Length > 64) id = id[..64].Trim('_');
