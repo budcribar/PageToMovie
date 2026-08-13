@@ -19,9 +19,11 @@ namespace PageToMovie.Core.Utils;
 public static partial class CommonRegex
 #endif
 {
+    private const int MatchTimeoutSeconds = 5;
+
 #if PAGETOMOVIE_FOUNTAIN
     /// <summary>Default match budget for every helper and compiled pattern here.</summary>
-    public static readonly TimeSpan Timeout = TimeSpan.FromSeconds(5);
+    public static readonly TimeSpan Timeout = TimeSpan.FromSeconds(MatchTimeoutSeconds);
 #endif
 
     public static Regex Create(string pattern, RegexOptions options = RegexOptions.None) =>

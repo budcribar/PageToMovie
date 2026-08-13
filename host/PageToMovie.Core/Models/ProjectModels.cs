@@ -125,7 +125,7 @@ public class JobProgress
     protected JobProgress(string status) => Status = status;
 
     /// <summary>idle|queued|running|done|error|cancelled|partial — default set by the derived type.</summary>
-    public string Status { get; set; } = "";
+    public string Status { get; set; }
     public string? Kind { get; set; }
     public string? Message { get; set; }
     public string? ProjectId { get; set; }

@@ -11,22 +11,14 @@ namespace PageToMovie.Core.Utils;
 public static partial class CommonRegex
 {
     /// <summary>Default match budget for every helper and compiled pattern here.</summary>
-    public static readonly TimeSpan Timeout;
+    public static readonly TimeSpan Timeout = TimeSpan.FromSeconds(MatchTimeoutSeconds);
 
     /// <summary>Matches consecutive whitespace characters (\s+).</summary>
-    public static readonly Regex WhitespaceCollapse;
+    public static readonly Regex WhitespaceCollapse = new(@"\s+", RegexOptions.Compiled, TimeSpan.FromSeconds(MatchTimeoutSeconds));
 
     /// <summary>Matches consecutive dots or dots with surrounding spaces (\s*\.\s*\.+).</summary>
-    public static readonly Regex DotCollapse;
+    public static readonly Regex DotCollapse = new(@"\s*\.\s*\.+", RegexOptions.Compiled, TimeSpan.FromSeconds(MatchTimeoutSeconds));
 
     /// <summary>Matches standard HTML tags (<[^>]+>).</summary>
-    public static readonly Regex HtmlTags;
-
-    static CommonRegex()
-    {
-        Timeout = TimeSpan.FromSeconds(5);
-        WhitespaceCollapse = new(@"\s+", RegexOptions.Compiled, Timeout);
-        DotCollapse = new(@"\s*\.\s*\.+", RegexOptions.Compiled, Timeout);
-        HtmlTags = new(@"<[^>]+>", RegexOptions.Compiled, Timeout);
-    }
+    public static readonly Regex HtmlTags = new(@"<[^>]+>", RegexOptions.Compiled, TimeSpan.FromSeconds(MatchTimeoutSeconds));
 }
