@@ -32,6 +32,7 @@ public partial class Login : IDisposable
     internal bool _busy;
     private bool _started;
     internal bool _checkedSession;
+    private Action<System.Globalization.CultureInfo>? _onCultureChanged;
 
     private string PageTitleText =>
         _resetTokenMode ? "Reset password"
@@ -188,12 +189,11 @@ public partial class Login : IDisposable
 
     protected override void OnInitialized()
     {
-        L.CultureChanged += OnCultureChanged;
+        _onCultureChanged = _ => _ = InvokeAsync(StateHasChanged);
+        L.CultureChanged += _onCultureChanged;
         var relative = Nav.ToBaseRelativePath(Nav.Uri);
         _isSignup = relative.StartsWith("signup", StringComparison.OrdinalIgnoreCase);
     }
-
-    private void OnCultureChanged(System.Globalization.CultureInfo _culture) => _ = InvokeAsync(StateHasChanged);
 
     public void Dispose()
     {
@@ -203,8 +203,8 @@ public partial class Login : IDisposable
 
     protected virtual void Dispose(bool disposing)
     {
-        if (disposing)
-            L.CultureChanged -= OnCultureChanged;
+        if (disposing && _onCultureChanged is not null)
+            L.CultureChanged -= _onCultureChanged;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

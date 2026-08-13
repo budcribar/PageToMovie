@@ -55,6 +55,8 @@ public partial class Home : IAsyncDisposable
 
     internal string? _message;
 
+    private Action<System.Globalization.CultureInfo>? _onCultureChanged;
+
 
     internal static string ShortHash(string? hash)
     {
@@ -81,7 +83,8 @@ public partial class Home : IAsyncDisposable
     protected override async Task OnInitializedAsync()
     {
         EnsureDomains();
-        L.CultureChanged += OnCultureChanged;
+        _onCultureChanged = _ => InvokeAsync(StateHasChanged);
+        L.CultureChanged += _onCultureChanged;
         Hub.JobUpdated += Jobs.OnJobUpdated;
         Hub.JobLog += Jobs.OnJobLog;
         try { await Session.EnsureHydratedAsync(); } catch { /* optional */ }
@@ -114,15 +117,10 @@ public partial class Home : IAsyncDisposable
     }
 
 
-    private void OnCultureChanged(System.Globalization.CultureInfo _)
-    {
-        InvokeAsync(StateHasChanged);
-    }
-
-
     public async ValueTask DisposeAsync()
     {
-        L.CultureChanged -= OnCultureChanged;
+        if (_onCultureChanged is not null)
+            L.CultureChanged -= _onCultureChanged;
         Hub.JobUpdated -= Jobs.OnJobUpdated;
         Hub.JobLog -= Jobs.OnJobLog;
         await Hub.DisposeAsync();
