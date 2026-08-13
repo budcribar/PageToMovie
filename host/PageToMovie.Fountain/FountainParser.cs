@@ -122,7 +122,7 @@ public static class FountainParser
         var pendingDual = false;
 
         while (i < lines.Length)
-            TryConsumeBodyLine(lines, result, ref i, ref pendingDual);
+            ConsumeBodyLine(lines, result, ref i, ref pendingDual);
 
         return result;
     }
@@ -166,7 +166,7 @@ public static class FountainParser
         return depth;
     }
 
-    private static bool TryConsumeBodyLine(string[] lines, ParseResult result, ref int i, ref bool pendingDual)
+    private static void ConsumeBodyLine(string[] lines, ParseResult result, ref int i, ref bool pendingDual)
     {
         var state = new BodyParseState
         {
@@ -179,7 +179,7 @@ public static class FountainParser
         // Keep right-trim only for classification; Action may keep leading spaces
         state.Trimmed = state.Raw.TrimEnd().Trim();
 
-        var consumed = TryConsumeBlankOrDualCaret(state)
+        _ = TryConsumeBlankOrDualCaret(state)
             || TryConsumePageBreakSectionSynopsisLyric(state)
             || TryConsumeForcedActionSceneChar(state)
             || TryConsumeCenteredOrForcedTransition(state)
@@ -189,7 +189,6 @@ public static class FountainParser
 
         i = state.I;
         pendingDual = state.PendingDual;
-        return consumed;
     }
 
     private static bool TryConsumeBlankOrDualCaret(BodyParseState state)
@@ -473,8 +472,10 @@ public static class FountainParser
             return i;
 
         var state = new TitlePageParseState { Result = result };
-        while (i < lines.Length && TryContinueTitlePage(lines, ref i, state))
+        while (i < lines.Length)
         {
+            if (!TryContinueTitlePage(lines, ref i, state))
+                break;
         }
 
         state.Flush();

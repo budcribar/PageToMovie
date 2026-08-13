@@ -378,7 +378,7 @@ public partial class Locations : IDisposable
         }
         catch (TaskCanceledException)
         {
-            return;
+            // Debounce cancelled before save ran.
         }
         catch (Exception ex)
         {

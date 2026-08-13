@@ -411,7 +411,7 @@ public abstract partial class AdaptationPageBase
                 return;
             // Don't reattach a ghost — verify asynchronously then either poll or clear.
             var id = Job.JobId;
-            _ = Task.Run(() => ReattachRunningJobAsync(id));
+            _ = Task.Run(() => ReattachRunningJobAsync(id), _pollCts?.Token ?? CancellationToken.None);
         }
 
         private async Task ReattachRunningJobAsync(string? id)
