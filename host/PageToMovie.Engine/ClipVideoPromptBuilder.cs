@@ -617,8 +617,7 @@ public static class ClipVideoPromptBuilder
 
         // "Character_Narrator He steadies…" → "Character_Narrator steadies…"
         v = PronounGlueRegex1.Replace(v, "$1 ");
-        // "Character_Narrator His hands…" → "Character_Narrator hands…" is wrong;
-        // drop possessive pronoun after key: "Character_X His " → "Character_X "
+        // Possessive after a character key is dropped: "Character_X His hands" becomes "Character_X hands".
         v = PronounGlueRegex2.Replace(v, "$1 ");
 
         // Duplicate token: "Character_X Character_X"
@@ -1004,10 +1003,10 @@ public static class ClipVideoPromptBuilder
             Scan(vp.GetString());
         if (clipEl.TryGetProperty("primary_subject", out var ps))
             Scan(ps.GetString());
-        if (clipEl.TryGetProperty("audio_payload", out var ap) && ap.ValueKind == JsonValueKind.Object)
+        if (clipEl.TryGetProperty("audio_payload", out var ap) && ap.ValueKind == JsonValueKind.Object &&
+            ap.TryGetProperty("speaker", out var sp))
         {
-            if (ap.TryGetProperty("speaker", out var sp))
-                Scan(sp.GetString());
+            Scan(sp.GetString());
         }
         if (clipEl.TryGetProperty("characters_on_screen", out var cos) && cos.ValueKind == JsonValueKind.Array)
         {
@@ -1159,18 +1158,18 @@ public static class ClipVideoPromptBuilder
             return new HashSet<string>(onScreen, StringComparer.OrdinalIgnoreCase);
 
         var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        void TryAdd(string? key)
+        static void TryAdd(HashSet<string> dest, IReadOnlyList<string> keys, string? key)
         {
             if (string.IsNullOrWhiteSpace(key)) return;
-            var hit = onScreen.FirstOrDefault(o =>
+            var hit = keys.FirstOrDefault(o =>
                 string.Equals(o, key, StringComparison.OrdinalIgnoreCase));
             if (hit is not null)
-                set.Add(hit);
+                dest.Add(hit);
         }
 
-        TryAdd(primarySubject);
-        TryAdd(speaker);
-        TryAdd(secondarySpeaker);
+        TryAdd(set, onScreen, primarySubject);
+        TryAdd(set, onScreen, speaker);
+        TryAdd(set, onScreen, secondarySpeaker);
 
         if (set.Count == 0)
             set.Add(onScreen[0]);
@@ -1393,20 +1392,20 @@ public static class ClipVideoPromptBuilder
 
         // Dedupe tokens across global + story
         var items = new List<string>();
-        void AddCsv(string csv)
+        static void AddCsv(List<string> dest, string csv)
         {
             foreach (var p in csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             {
                 if (p.Length == 0) continue;
-                if (items.Any(x => x.Equals(p, StringComparison.OrdinalIgnoreCase))) continue;
-                items.Add(p);
+                if (dest.Any(x => x.Equals(p, StringComparison.OrdinalIgnoreCase))) continue;
+                dest.Add(p);
             }
         }
-        if (global.Length > 0) AddCsv(global);
-        if (story.Length > 0) AddCsv(story);
-        return items.Count == 0
-            ? ""
-            : PromptTags.Wrap("Negative", string.Join(", ", items));
+        if (global.Length > 0) AddCsv(items, global);
+        if (story.Length > 0) AddCsv(items, story);
+        if (items.Count == 0)
+            return "";
+        return PromptTags.Wrap("Negative", string.Join(", ", items));
     }
 
     private static string SimplifyVisual(string visual)

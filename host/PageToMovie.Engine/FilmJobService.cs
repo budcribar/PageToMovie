@@ -337,8 +337,8 @@ public sealed class FilmJobService
     private void EnsureCanStart(string? userId)
     {
         var cap = Capacity;
-        // Soft gate: running at global max still allows queue until per-user max;
-        // worker pool will wait for a slot. Reject only when user queue is full.
+        // Soft gate: a full global worker pool still accepts work until the per-user queue is full.
+        // Workers wait for a slot. Reject only when this user's queue is full.
         if (!string.IsNullOrWhiteSpace(userId) &&
             _jobs.CountQueuedForUser(userId!) >= Math.Max(1, cap.MaxQueuePerUser))
         {
@@ -2466,8 +2466,12 @@ public sealed class FilmJobService
             }
             finally
             {
-                hbCts.Cancel();
-                try { await heartbeat.ConfigureAwait(false); } catch (OperationCanceledException) { }
+                await hbCts.CancelAsync();
+                try { await heartbeat.ConfigureAwait(false); }
+                catch (OperationCanceledException)
+                {
+                    // Heartbeat task is cancelled together with the enrich job.
+                }
             }
 
             if (!result.Ok)
@@ -3528,7 +3532,7 @@ public sealed class FilmJobService
             Entry = entry,
             ProviderId = providerId,
             UseEleven = useEleven,
-            SpeakModelId = speakModelId ?? "",
+            SpeakModelId = speakModelId,
             MaxLen = maxLen,
         }, null);
     }
@@ -4005,7 +4009,6 @@ public sealed class FilmJobService
             // Fail before any API spend if the selected video model cannot do multi-clip / plates.
             await EnsureVideoModelCapabilitiesAsync(
                     projectId,
-                    needContinue: work.Any(w => w.Clip > 1),
                     needReferenceImages: req.RequireLockedCharacters,
                     ct,
                     modelOverride: req.VideoModel)
@@ -4184,7 +4187,6 @@ public sealed class FilmJobService
             // Fail before any API spend if the selected video model cannot do multi-clip / plates.
             await EnsureVideoModelCapabilitiesAsync(
                     projectId,
-                    needContinue: todo.Any(t => t.ClipNum > 1),
                     needReferenceImages: req.RequireLockedCharacters,
                     ct)
                 .ConfigureAwait(false);
@@ -4755,10 +4757,9 @@ public sealed class FilmJobService
                 ct);
 
             // Save MP4 file to server project directory so client media sync delivers MP4 files to client folder.
-            // Via IVideoClient.DownloadToFileAsync, not a raw HttpClient GET — the URL a fake
-            // provider returns isn't necessarily real http(s) (FakeGrokVideoClient.DownloadToFileAsync
-            // resolves its own "fake-fixture:" scheme to a local file instead of attempting a request;
-            // a bare GetByteArrayAsync silently failed on that scheme and this whole save was skipped).
+            // Via IVideoClient.DownloadToFileAsync, not a raw HttpClient GET. Fake providers may return a
+            // non-http URL (a local fixture scheme) that DownloadToFileAsync resolves on disk. A bare
+            // GetByteArrayAsync would skip the save on that scheme.
             var mp4Path = Path.Combine(videoDir, $"scene_{scene:D2}_clip_{clip:D2}.mp4");
             try
             {
@@ -5478,11 +5479,10 @@ public sealed class FilmJobService
     }
 
     /// <summary>
-    /// Fail closed before video spend when the selected model lacks continue/refs required for this job.
+    /// Fail closed before video spend when the selected model cannot attach locked character plates.
     /// </summary>
     private async Task EnsureVideoModelCapabilitiesAsync(
         string projectId,
-        bool needContinue,
         bool needReferenceImages,
         CancellationToken ct,
         string? modelOverride = null)
@@ -5493,7 +5493,7 @@ public sealed class FilmJobService
         var modelId = await ResolveVideoModelAsync(projectId, ct, modelOverride).ConfigureAwait(false);
         var entry = SupportedModelCatalog.ResolveOrDefault(modelId, ModelCapability.Video);
 
-        if (needReferenceImages && !entry.SupportsReferenceImages)
+        if (!entry.SupportsReferenceImages)
         {
             throw new InvalidOperationException(
                 $"Video model '{entry.Id}' cannot attach locked character reference plates. " +

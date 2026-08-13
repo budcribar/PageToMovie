@@ -123,7 +123,7 @@ JSON: {"ranked":["page_03.png","cover.png","embedded_p02.jpg"]}
                     list.Add(hit);
             }
         }
-        catch { }
+        catch { System.Diagnostics.Debug.WriteLine("PlateRank JSON was not a usable ranked list"); }
         return list;
     }
 

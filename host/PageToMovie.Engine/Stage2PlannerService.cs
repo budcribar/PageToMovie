@@ -247,13 +247,13 @@ public sealed class Stage2PlannerService
                 // sets auth per-request now (not on shared HttpClient.DefaultRequestHeaders), so
                 // this fan-out is safe there too.
                 var pacingTask = _beatPacingClassifier is not null
-                    ? _beatPacingClassifier.ClassifyScenePacingAsync(s, BuildSceneBeats(s, durMinSeconds, durMaxSeconds, durAbsMaxSeconds), line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
+                    ? _beatPacingClassifier.ClassifyScenePacingAsync(s, BuildSceneBeats(s, durMaxSeconds), line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
                     : Task.FromResult<Dictionary<string, int>?>(null);
                 var lightingTask = _lightingClassifier is not null
                     ? _lightingClassifier.ClassifySceneLightingAsync(s, line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
                     : Task.FromResult<string?>(null);
                 var cameraTask = _cameraClassifier is not null
-                    ? _cameraClassifier.ClassifySceneCameraAsync(s, BuildSceneBeats(s, durMinSeconds, durMaxSeconds, durAbsMaxSeconds), line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
+                    ? _cameraClassifier.ClassifySceneCameraAsync(s, BuildSceneBeats(s, durMaxSeconds), line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
                     : Task.FromResult<Dictionary<string, CameraDirective>?>(null);
                 var negativeTask = _negativeClassifier is not null
                     ? _negativeClassifier.ClassifySceneNegativeAsync(s, line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
@@ -262,13 +262,13 @@ public sealed class Stage2PlannerService
                     ? _wardrobeClassifier.ClassifySceneWardrobeAsync(s, UnionCharactersOnScreen(s), line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
                     : Task.FromResult<Dictionary<string, string>?>(null);
                 var emotionTask = _emotionClassifier is not null
-                    ? _emotionClassifier.ClassifySceneEmotionAsync(s, BuildSceneBeats(s, durMinSeconds, durMaxSeconds, durAbsMaxSeconds), line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
+                    ? _emotionClassifier.ClassifySceneEmotionAsync(s, BuildSceneBeats(s, durMaxSeconds), line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
                     : Task.FromResult<Dictionary<string, EmotionDirective>?>(null);
                 var soundTask = _soundComposerClassifier is not null
-                    ? _soundComposerClassifier.ClassifySceneSoundDesignAsync(s, BuildSceneBeats(s, durMinSeconds, durMaxSeconds, durAbsMaxSeconds), line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
+                    ? _soundComposerClassifier.ClassifySceneSoundDesignAsync(s, BuildSceneBeats(s, durMaxSeconds), line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
                     : Task.FromResult<Dictionary<string, SoundDesignDirective>?>(null);
                 var dofTask = _dofClassifier is not null
-                    ? _dofClassifier.ClassifySceneDepthOfFieldAsync(s, BuildSceneBeats(s, durMinSeconds, durMaxSeconds, durAbsMaxSeconds), line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
+                    ? _dofClassifier.ClassifySceneDepthOfFieldAsync(s, BuildSceneBeats(s, durMaxSeconds), line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
                     : Task.FromResult<Dictionary<string, DepthOfFieldDirective>?>(null);
                 var colorTask = _colorGradingClassifier is not null
                     ? _colorGradingClassifier.ClassifySceneColorGradingAsync(s, line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
@@ -279,7 +279,7 @@ public sealed class Stage2PlannerService
                     emotionTask, soundTask, dofTask, colorTask).ConfigureAwait(false);
 
                 var plannedScene = PlanScene(
-                    s, resolution, locSeeds, charSeeds, styleLock,
+                    s, locSeeds, charSeeds, styleLock,
                     pacingTask.Result, lightingTask.Result, cameraTask.Result, negativeTask.Result,
                     wardrobeTask.Result, emotionTask.Result, soundTask.Result, dofTask.Result, colorTask.Result,
                     durMinSeconds, durMaxSeconds, durAbsMaxSeconds, durExtensionMaxSeconds, maxSpeakersPerClip);
@@ -662,7 +662,6 @@ public sealed class Stage2PlannerService
     /// </summary>
     private static Dictionary<string, object?>? PlanScene(
         Dictionary<string, object?> scene,
-        string resolution,
         Dictionary<string, object?> locSeeds,
         Dictionary<string, object?> charSeeds,
         string? styleLock,
@@ -853,16 +852,16 @@ public sealed class Stage2PlannerService
                 vp = $"{vp} {PromptTags.Wrap("Camera", PromptTags.SanitizeValue(framing))}";
             }
 
-            if (aiEmotion is not null && aiEmotion.TryGetValue(beatIdStr, out var emoDir))
+            if (aiEmotion is not null && aiEmotion.TryGetValue(beatIdStr, out var emoDir) &&
+                !string.IsNullOrWhiteSpace(emoDir.ActingPrompt))
             {
-                if (!string.IsNullOrWhiteSpace(emoDir.ActingPrompt))
-                    vp = $"{vp} {PromptTags.Wrap("Performance", PromptTags.SanitizeValue(emoDir.ActingPrompt))}";
+                vp = $"{vp} {PromptTags.Wrap("Performance", PromptTags.SanitizeValue(emoDir.ActingPrompt))}";
             }
 
-            if (aiDof is not null && aiDof.TryGetValue(beatIdStr, out var dofDir))
+            if (aiDof is not null && aiDof.TryGetValue(beatIdStr, out var dofDir) &&
+                !string.IsNullOrWhiteSpace(dofDir.Aperture))
             {
-                if (!string.IsNullOrWhiteSpace(dofDir.Aperture))
-                    vp = $"{vp} {PromptTags.Wrap("Optics", PromptTags.SanitizeValue(dofDir.Aperture))}";
+                vp = $"{vp} {PromptTags.Wrap("Optics", PromptTags.SanitizeValue(dofDir.Aperture))}";
             }
 
             if (aiColor is not null && !string.IsNullOrWhiteSpace(aiColor.GradingPrompt))
@@ -980,9 +979,7 @@ public sealed class Stage2PlannerService
     /// </summary>
     private static List<Dictionary<string, object?>> BuildSceneBeats(
         Dictionary<string, object?> scene,
-        int minSeconds = ClipDurationEstimator.MinSeconds,
-        int maxSeconds = ClipDurationEstimator.MaxSeconds,
-        int absMaxSeconds = ClipDurationEstimator.AbsMaxSeconds)
+        int maxSeconds = ClipDurationEstimator.MaxSeconds)
     {
         var beats = GetList(scene, "story_beats").OfType<Dictionary<string, object?>>()
             .Where(b => !IsNoopTransitionBeat(b))
@@ -1381,11 +1378,11 @@ public sealed class Stage2PlannerService
                  "traffic or passersby, a sign or light flickering, wind moving debris/foliage/fabric) " +
                  "so the shot feels alive, not a still photo";
 
-        var speech = SpeechClause(beat, cast);
+        var speech = SpeechClause(beat);
         var mustNot = GetList(beat, "must_not").Select(x => x?.ToString() ?? "").Where(x => x.Length > 0).Take(3).ToList();
         var mustBit = mustNot.Count > 0 ? $"must not: {string.Join("; ", mustNot)}" : "";
         // Same wardrobe phrase length for all clips in the scene (consistent continuity language).
-        var ward = WardrobeContinuityClause(wardrobe, cast, clipIndex, primary);
+        var ward = WardrobeContinuityClause(wardrobe, cast, primary);
 
         // Join full slots — no length budget, no dropping fields, no ellipsis packing.
         // Identity cues omitted: gen-time CHARACTER VARIABLES + locked refs own identity.
@@ -1720,7 +1717,7 @@ public sealed class Stage2PlannerService
         return payload;
     }
 
-    private static string SpeechClause(Dictionary<string, object?> beat, List<string> cast)
+    private static string SpeechClause(Dictionary<string, object?> beat)
     {
         var ap = BuildAudioPayload(beat);
         var delivery = (ap["delivery"] as string ?? "none").ToLowerInvariant();
@@ -1748,19 +1745,6 @@ public sealed class Stage2PlannerService
         Dictionary<string, object?>? charSeeds = null)
     {
         var found = new List<string>();
-        void Add(string? key)
-        {
-            if (string.IsNullOrWhiteSpace(key)) return;
-            if (!key.StartsWith(JsonKeys.CharacterPrefix, StringComparison.Ordinal)) return;
-            if (!found.Contains(key)) found.Add(key);
-        }
-
-        void AddFrom(string? text)
-        {
-            if (string.IsNullOrEmpty(text)) return;
-            foreach (Match m in CharacterTokenRegex.Matches(text))
-                Add(m.Value);
-        }
         // AI / enricher closed-set list preferred when present.
         // Bug fix: previously short-circuited as soon as *any* character was found in
         // characters_on_screen, even when all found characters are pure voice-only
@@ -1772,7 +1756,7 @@ public sealed class Stage2PlannerService
         if (beat.TryGetValue("characters_on_screen", out var cos) && cos is List<object?> cosList && cosList.Count > 0)
         {
             foreach (var x in cosList)
-                Add(x?.ToString());
+                AddCharacterKey(found, x?.ToString());
             // Short-circuit only when at least one found character is actually on screen.
             // If every character listed is a never_on_screen voice-only role, fall through
             // and also scan visual_event prose for additional visible characters.
@@ -1780,10 +1764,10 @@ public sealed class Stage2PlannerService
                 return found;
         }
         var veText = CoerceString(beat.TryGetValue("visual_event", out var ve) ? ve : null) ?? "";
-        AddFrom(veText);
-        AddFrom(CoerceString(beat.TryGetValue("primary_subject", out var ps) ? ps : null));
-        AddFrom(CoerceString(beat.TryGetValue("speaker", out var sp) ? sp : null));
-        AddFrom(CoerceString(beat.TryGetValue("blocking_notes", out var bn) ? bn : null));
+        AddCharacterKeysFromText(found, veText);
+        AddCharacterKey(found, CoerceString(beat.TryGetValue("primary_subject", out var ps) ? ps : null));
+        AddCharacterKey(found, CoerceString(beat.TryGetValue("speaker", out var sp) ? sp : null));
+        AddCharacterKeysFromText(found, CoerceString(beat.TryGetValue("blocking_notes", out var bn) ? bn : null));
 
         // Promote free-text names (OLD MAN, three officers) using cast seed keys
         if (charSeeds is { Count: > 0 })
@@ -1806,7 +1790,7 @@ public sealed class Stage2PlannerService
                 CoerceString(beat.TryGetValue("blocking_notes", out var bn2) ? bn2 : null) ?? "",
             });
             foreach (var key in ClipVideoPromptBuilder.InferKeysFromProse(prose, profiles))
-                Add(key);
+                AddCharacterKey(found, key);
         }
 
         if (found.Count == 0)
@@ -1814,24 +1798,32 @@ public sealed class Stage2PlannerService
         return found;
     }
 
+    private static void AddCharacterKey(List<string> found, string? key)
+    {
+        if (string.IsNullOrWhiteSpace(key)) return;
+        if (!key.StartsWith(JsonKeys.CharacterPrefix, StringComparison.Ordinal)) return;
+        if (!found.Contains(key)) found.Add(key);
+    }
+
+    private static void AddCharacterKeysFromText(List<string> found, string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+        foreach (Match m in CharacterTokenRegex.Matches(text))
+            AddCharacterKey(found, m.Value);
+    }
+
     private static List<string> UnionCharactersOnScreen(Dictionary<string, object?> scene)
     {
         var set = new List<string>();
-        void Add(string? t)
-        {
-            if (string.IsNullOrWhiteSpace(t)) return;
-            if (!t.StartsWith(JsonKeys.CharacterPrefix, StringComparison.Ordinal)) return;
-            if (!set.Contains(t)) set.Add(t);
-        }
         foreach (var x in GetList(scene, "characters_on_screen"))
-            Add(x?.ToString());
+            AddCharacterKey(set, x?.ToString());
         foreach (var b in GetList(scene, "story_beats").OfType<Dictionary<string, object?>>())
         {
-            Add(CoerceString(b.TryGetValue("primary_subject", out var ps) ? ps : null));
-            Add(CoerceString(b.TryGetValue("speaker", out var sp) ? sp : null));
+            AddCharacterKey(set, CoerceString(b.TryGetValue("primary_subject", out var ps) ? ps : null));
+            AddCharacterKey(set, CoerceString(b.TryGetValue("speaker", out var sp) ? sp : null));
             var ve = CoerceString(b.TryGetValue("visual_event", out var vev) ? vev : null) ?? "";
             foreach (Match m in CommonRegex.Matches(ve, @"Character_[A-Za-z0-9_]+"))
-                Add(m.Value);
+                AddCharacterKey(set, m.Value);
         }
         return set;
     }
@@ -1981,7 +1973,6 @@ public sealed class Stage2PlannerService
     private static string WardrobeContinuityClause(
         Dictionary<string, List<string>> state,
         List<string> cast,
-        int clipIndex,
         string primary)
     {
         // Full sticky list, importance-ordered. Primary subject first among cast.

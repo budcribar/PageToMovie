@@ -250,7 +250,7 @@ public static class BookContextService
             var set = new HashSet<string>(pageTokens, StringComparer.OrdinalIgnoreCase);
             var score = tokens.Count(t => set.Contains(t));
             // Bonus for longer shared words
-            score += tokens.Where(t => t.Length >= 6 && set.Contains(t)).Count();
+            score += tokens.Count(t => t.Length >= 6 && set.Contains(t));
             if (best is null || score > best.Score)
                 best = new FuzzyHit { Page = page, Score = score };
         }

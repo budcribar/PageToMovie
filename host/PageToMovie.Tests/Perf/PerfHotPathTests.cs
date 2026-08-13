@@ -38,14 +38,14 @@ public class PerfHotPathTests
         var cache = new ProjectReadCache();
         cache.Enabled = true;
         var builds = 0;
-        Task<IReadOnlyList<ProjectInfo>> Build(CancellationToken _)
+        async Task<IReadOnlyList<ProjectInfo>> Build(CancellationToken _)
         {
             builds++;
-            Thread.Sleep(5); // simulate I/O
-            return Task.FromResult<IReadOnlyList<ProjectInfo>>(new[]
+            await Task.Delay(5);
+            return new[]
             {
                 new ProjectInfo { Id = "P", Path = "/p" },
-            });
+            };
         }
 
         var sw = Stopwatch.StartNew();

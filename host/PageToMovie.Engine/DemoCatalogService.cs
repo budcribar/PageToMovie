@@ -397,10 +397,9 @@ public sealed class DemoCatalogService
             var since = DateTimeOffset.UtcNow.AddHours(-24);
             var all = await LoadAllUnlockedAsync(ct).ConfigureAwait(false);
             var mineToday = all
-                .Where(e =>
+                .Count(e =>
                     string.Equals(e.CreatedBy, userId, StringComparison.OrdinalIgnoreCase)
-                    && e.CreatedAt >= since)
-                .Count();
+                    && e.CreatedAt >= since);
             if (mineToday >= MaxPublishesPerUserPerDay)
             {
                 throw new InvalidOperationException(

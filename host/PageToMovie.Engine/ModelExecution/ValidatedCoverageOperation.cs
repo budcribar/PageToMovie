@@ -22,7 +22,7 @@ public static class ValidatedCoverageOperation
         var input = new CoverageInput(requestedIds.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
         var parser = new MergingParser<T>(parse);
         var pipeline = new ValidatedModelOperation<CoverageInput, string, Dictionary<string, T>>(
-            new CoverageOperation<T>(operationName, promptVersion, call),
+            new CoverageOperation(operationName, promptVersion, call),
             parser,
             new CoverageValidator<T>(input.RequestedIds),
             new PartialCoverageFallback<T>(parser),
@@ -54,7 +54,7 @@ public static class ValidatedCoverageOperation
 
 file sealed record CoverageInput(IReadOnlyList<string> RequestedIds);
 
-file sealed class CoverageOperation<T>(
+file sealed class CoverageOperation(
     string operationName,
     string promptVersion,
     Func<ModelAttemptContext<string>, IReadOnlyList<string>, Task<ModelResponse<string>>> call)

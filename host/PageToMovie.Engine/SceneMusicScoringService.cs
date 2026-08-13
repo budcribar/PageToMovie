@@ -139,10 +139,10 @@ public sealed class SceneMusicScoringService
 
     public static bool GetConfigBool(Dictionary<string, JsonElement>? cfg, string key, bool fallback)
     {
-        if (cfg is not null && cfg.TryGetValue(key, out var el))
+        if (cfg is not null && cfg.TryGetValue(key, out var el) &&
+            el.ValueKind is JsonValueKind.True or JsonValueKind.False)
         {
-            if (el.ValueKind is JsonValueKind.True or JsonValueKind.False)
-                return el.GetBoolean();
+            return el.GetBoolean();
         }
         return fallback;
     }

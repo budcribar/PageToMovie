@@ -199,11 +199,8 @@ public partial class Characters
                 _ = S.InvokeAsync(async () =>
                 {
                     // Leave "Generating…" as soon as the job finishes (even if files need a moment)
-                    if (snap.Status is "done" or "error" or "cancelled")
-                    {
-                        if (S.LookPipe._mode == Mode.WaitingGenerate)
-                            S.LookPipe._mode = Mode.PickSource;
-                    }
+                    if (S.LookPipe._mode == Mode.WaitingGenerate)
+                        S.LookPipe._mode = Mode.PickSource;
 
                     await S.List.SoftReloadAsync();
                     if (snap.Status == "done" &&

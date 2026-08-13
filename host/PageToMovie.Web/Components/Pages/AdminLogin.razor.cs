@@ -11,8 +11,8 @@ namespace PageToMovie.Web.Components.Pages;
 public partial class AdminLogin
 {
 
-    private string _username = "admin";
-    private string _password = "admin";
+    private string _username { get; set; } = "admin";
+    private string _password { get; set; } = string.Empty;
     private bool _showPassword;
     internal string? _error;
     internal string _status = "Checking session…";
