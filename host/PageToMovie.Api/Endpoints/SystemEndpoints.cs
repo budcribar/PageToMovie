@@ -169,11 +169,11 @@ public static class SystemEndpoints
     {
         targetPath = targetPath.Replace('/', '\\');
 
-        if (string.Equals(editorName, "ClipChamp", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(editorName, "Clipchamp", StringComparison.OrdinalIgnoreCase))
+        if ((string.Equals(editorName, "ClipChamp", StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(editorName, "Clipchamp", StringComparison.OrdinalIgnoreCase)) &&
+            TryOpenClipchamp(targetPath, relativeVideoUrl) is { } clipchampResult)
         {
-            if (TryOpenClipchamp(targetPath, relativeVideoUrl) is { } clipchampResult)
-                return clipchampResult;
+            return clipchampResult;
         }
 
         try

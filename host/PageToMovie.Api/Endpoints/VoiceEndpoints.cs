@@ -289,14 +289,31 @@ public static class VoiceEndpoints
         var text = body?.Text?.Trim();
         if (string.IsNullOrWhiteSpace(text))
             return Results.BadRequest(new { ok = false, error = "text required" });
-        return await ExecuteSpeakAsync(
-            id, charKey, text, body, store, voiceClone, voiceClient, httpFactory, tickets, telemetry, ct);
+        return await ExecuteSpeakAsync(id, charKey, text, body, new SpeakRuntime
+        {
+            Store = store,
+            VoiceClone = voiceClone,
+            VoiceClient = voiceClient,
+            HttpFactory = httpFactory,
+            Tickets = tickets,
+            Telemetry = telemetry,
+        }, ct);
     }
     catch (Exception ex)
     {
         return Results.BadRequest(new { ok = false, error = ex.Message });
     }
 }
+
+    private sealed class SpeakRuntime
+    {
+        public required ProjectStore Store { get; init; }
+        public required IVoiceCloneClient VoiceClone { get; init; }
+        public required IVoiceClient VoiceClient { get; init; }
+        public required IHttpClientFactory HttpFactory { get; init; }
+        public required MediaProxyTicketStore Tickets { get; init; }
+        public required ProjectTelemetryService Telemetry { get; init; }
+    }
 
     private sealed class SpeakSynthResult
     {
@@ -314,22 +331,17 @@ public static class VoiceEndpoints
         string charKey,
         string text,
         SpeakVoiceApiRequest? body,
-        ProjectStore store,
-        IVoiceCloneClient voiceClone,
-        IVoiceClient voiceClient,
-        IHttpClientFactory httpFactory,
-        MediaProxyTicketStore tickets,
-        ProjectTelemetryService telemetry,
+        SpeakRuntime runtime,
         CancellationToken ct)
     {
         var voiceId = body?.VoiceId;
         if (string.IsNullOrWhiteSpace(voiceId))
-            voiceId = store.GetVoiceCloneProviderId(id, charKey);
+            voiceId = runtime.Store.GetVoiceCloneProviderId(id, charKey);
         if (string.IsNullOrWhiteSpace(voiceId))
             return Results.BadRequest(new { ok = false, error = "No cloned voice yet — record and apply a voice sample first." });
 
-        var seedProvider = store.GetVoiceProviderId(id, charKey) ?? "";
-        var (entry, model) = await ResolveSpeakCatalogEntryAsync(id, body?.Model, seedProvider, store, ct);
+        var seedProvider = runtime.Store.GetVoiceProviderId(id, charKey) ?? "";
+        var (entry, model) = await ResolveSpeakCatalogEntryAsync(id, body?.Model, seedProvider, runtime.Store, ct);
         var maxLen = entry?.MaxPromptLength ?? 5000;
         if (text.Length > maxLen)
             return Results.BadRequest(new { ok = false, error = $"Text is {text.Length} characters — this voice model's limit is {maxLen} per call. Split into multiple calls." });
@@ -342,8 +354,8 @@ public static class VoiceEndpoints
                         || voiceId.StartsWith("mock_", StringComparison.OrdinalIgnoreCase);
 
         var synth = useEleven
-            ? await SpeakWithElevenLabsAsync(voiceClient, voiceId, text, entry, model, ct)
-            : await SpeakWithFalAsync(voiceClone, httpFactory, tickets, voiceId, text, entry, model, ct);
+            ? await SpeakWithElevenLabsAsync(runtime.VoiceClient, voiceId, text, entry, model, ct)
+            : await SpeakWithFalAsync(runtime, voiceId, text, entry, model, ct);
         if (synth.EarlyError is not null)
             return synth.EarlyError;
 
@@ -351,7 +363,7 @@ public static class VoiceEndpoints
             ? Math.Round(rate * text.Length / 1000.0, 4)
             : (double?)null;
         var ok = synth.AudioBytes is { Length: > 0 } || !string.IsNullOrWhiteSpace(synth.ClientUrl);
-        await telemetry.LogApiCallAsync(new ApiCallTelemetry
+        await runtime.Telemetry.LogApiCallAsync(new ApiCallTelemetry
         {
             ProjectId = id,
             Kind = "tts",
@@ -451,9 +463,7 @@ public static class VoiceEndpoints
     }
 
     private static async Task<SpeakSynthResult> SpeakWithFalAsync(
-        IVoiceCloneClient voiceClone,
-        IHttpClientFactory httpFactory,
-        MediaProxyTicketStore tickets,
+        SpeakRuntime runtime,
         string voiceId,
         string text,
         SupportedModelEntry? entry,
@@ -461,7 +471,7 @@ public static class VoiceEndpoints
         CancellationToken ct)
     {
         var result = new SpeakSynthResult();
-        if (!voiceClone.IsConfigured)
+        if (!runtime.VoiceClone.IsConfigured)
         {
             result.EarlyError = Results.BadRequest(new { ok = false, error = "Connect a voice service (Fal) in Settings for MiniMax speech." });
             return result;
@@ -469,13 +479,13 @@ public static class VoiceEndpoints
         var speakModelId = entry?.Id
                            ?? SupportedModelCatalog.Find("fal-ai/minimax/speech-02-hd", ModelCapability.Voice)?.Id
                            ?? model;
-        var audioUrl = await voiceClone.SynthesizeSpeechAsync(text, voiceId, speakModelId, ct);
+        var audioUrl = await runtime.VoiceClone.SynthesizeSpeechAsync(text, voiceId, speakModelId, ct);
         if (string.IsNullOrWhiteSpace(audioUrl))
         {
             result.Error = "Speech synthesis failed — see server logs.";
             return result;
         }
-        await TryDownloadOrProxySpeechAsync(httpFactory, tickets, audioUrl, result, ct);
+        await TryDownloadOrProxySpeechAsync(runtime.HttpFactory, runtime.Tickets, audioUrl, result, ct);
         return result;
     }
 
@@ -520,8 +530,13 @@ public static class VoiceEndpoints
     string? audioTemp = null;
     try
     {
-        return await RunLipSyncAsync(id, req, store, lipSync, tickets, telemetry, ct,
-            v => videoTemp = v, a => audioTemp = a);
+        return await RunLipSyncAsync(id, req, new LipSyncRuntime
+        {
+            Store = store,
+            LipSync = lipSync,
+            Tickets = tickets,
+            Telemetry = telemetry,
+        }, ct, v => videoTemp = v, a => audioTemp = a);
     }
     catch (Exception ex)
     {
@@ -533,19 +548,24 @@ public static class VoiceEndpoints
     }
 }
 
+    private sealed class LipSyncRuntime
+    {
+        public required ProjectStore Store { get; init; }
+        public required ILipSyncClient LipSync { get; init; }
+        public required MediaProxyTicketStore Tickets { get; init; }
+        public required ProjectTelemetryService Telemetry { get; init; }
+    }
+
     private static async Task<IResult> RunLipSyncAsync(
         string id,
         HttpRequest req,
-        ProjectStore store,
-        ILipSyncClient lipSync,
-        MediaProxyTicketStore tickets,
-        ProjectTelemetryService telemetry,
+        LipSyncRuntime runtime,
         CancellationToken ct,
         Action<string> setVideoTemp,
         Action<string> setAudioTemp)
     {
-        await store.RequireProjectAsync(id, ct);
-        if (!lipSync.IsConfigured)
+        await runtime.Store.RequireProjectAsync(id, ct);
+        if (!runtime.LipSync.IsConfigured)
             return Results.BadRequest(new { ok = false, error = "Connect a lip-sync service (FAL_API_KEY) in Configuration." });
 
         var form = await req.ReadFormAsync(ct);
@@ -569,11 +589,11 @@ public static class VoiceEndpoints
         await using (var afs = File.Create(audioTemp))
             await audioFile.CopyToAsync(afs, ct);
 
-        var resultUrl = await lipSync.GenerateLipSyncAsync(
+        var resultUrl = await runtime.LipSync.GenerateLipSyncAsync(
             videoTemp, audioTemp, model,
             string.IsNullOrWhiteSpace(syncMode) ? "cut_off" : syncMode,
             onProgress: null, ct);
-        await telemetry.LogApiCallAsync(new ApiCallTelemetry
+        await runtime.Telemetry.LogApiCallAsync(new ApiCallTelemetry
         {
             ProjectId = id,
             Kind = "lip_sync",
@@ -585,7 +605,7 @@ public static class VoiceEndpoints
         if (string.IsNullOrWhiteSpace(resultUrl))
             return Results.BadRequest(new { ok = false, error = "Lip-sync failed — see server logs." });
 
-        var ticket = tickets.Issue(resultUrl, TimeSpan.FromMinutes(45));
+        var ticket = runtime.Tickets.Issue(resultUrl, TimeSpan.FromMinutes(45));
         var clientUrl = $"/api/media/proxy/{ticket}";
 
         return Results.Ok(new

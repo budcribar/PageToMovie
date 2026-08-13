@@ -304,7 +304,15 @@ public static class DemoEndpoints
             return invalid;
         if (await AuthorizePublishDemoAsync(projectId, user, store, demos, ct) is { } forbidden)
             return forbidden;
-        return await PublishDemoAsync(parsed, projectId, user, demos, store, media, youTubePublisher, ct);
+        var runtime = new DemoPublishRuntime
+        {
+            User = user,
+            Demos = demos,
+            Store = store,
+            Media = media,
+            YouTube = youTubePublisher,
+        };
+        return await PublishDemoAsync(parsed, projectId, runtime, ct);
     }
     catch (Exception ex)
     {
@@ -324,6 +332,23 @@ public static class DemoEndpoints
         public List<string>? Tags { get; set; }
         public bool ReplaceExisting { get; set; } = true;
         public IFormFile? File { get; set; }
+    }
+
+    private sealed class DemoPublishRuntime
+    {
+        public required IUserContext User { get; init; }
+        public required DemoCatalogService Demos { get; init; }
+        public required ProjectStore Store { get; init; }
+        public required MediaRegistryService Media { get; init; }
+        public required DemoYouTubePublisherService YouTube { get; init; }
+    }
+
+    private sealed class DemoMovieUpload
+    {
+        public required IFormFile File { get; init; }
+        public required byte[] Bytes { get; init; }
+        public required string Sha { get; init; }
+        public required Stream Stream { get; init; }
     }
 
     private static async Task<PublishDemoRequest> ParsePublishDemoRequestAsync(HttpRequest request, CancellationToken ct)
@@ -453,38 +478,26 @@ public static class DemoEndpoints
     private static async Task<IResult> PublishDemoAsync(
         PublishDemoRequest parsed,
         string projectId,
-        IUserContext user,
-        DemoCatalogService demos,
-        ProjectStore store,
-        MediaRegistryService media,
-        DemoYouTubePublisherService youTubePublisher,
+        DemoPublishRuntime runtime,
         CancellationToken ct)
     {
         // Item 11: re-publish → attach new movie to existing public demo and V2 YouTube replace.
         var existingPublic = parsed.ReplaceExisting
-            ? await demos.FindPublicDemoForProjectAsync(projectId, user.UserId, ct)
+            ? await runtime.Demos.FindPublicDemoForProjectAsync(projectId, runtime.User.UserId, ct)
             : null;
-        var canReplace = existingPublic is not null
-                         && !string.IsNullOrWhiteSpace(existingPublic.YoutubeId);
 
         if (parsed.File is not null && parsed.File.Length > 0)
-            return await PublishDemoFromUploadAsync(
-                parsed, projectId, existingPublic, canReplace, user, demos, store, media, youTubePublisher, ct);
-        if (canReplace && existingPublic is not null)
-            return await RepublishDemoFromWipAsync(parsed, projectId, existingPublic, user, demos, youTubePublisher, ct);
-        return await PublishNewDemoFromWipAsync(parsed, projectId, user, demos, youTubePublisher, ct);
+            return await PublishDemoFromUploadAsync(parsed, projectId, existingPublic, runtime, ct);
+        if (existingPublic is not null && !string.IsNullOrWhiteSpace(existingPublic.YoutubeId))
+            return await RepublishDemoFromWipAsync(parsed, projectId, existingPublic, runtime, ct);
+        return await PublishNewDemoFromWipAsync(parsed, projectId, runtime, ct);
     }
 
     private static async Task<IResult> PublishDemoFromUploadAsync(
         PublishDemoRequest parsed,
         string projectId,
         DemoCatalogService.DemoEntry? existingPublic,
-        bool canReplace,
-        IUserContext user,
-        DemoCatalogService demos,
-        ProjectStore store,
-        MediaRegistryService media,
-        DemoYouTubePublisherService youTubePublisher,
+        DemoPublishRuntime runtime,
         CancellationToken ct)
     {
         var file = parsed.File;
@@ -508,31 +521,32 @@ public static class DemoEndpoints
         await using var ms = new MemoryStream();
         await file.CopyToAsync(ms, ct);
         var bytes = ms.ToArray();
-        var sha = MediaRegistryService.HashBytes(bytes);
-
-        await using var stream = new MemoryStream(bytes);
-        if (canReplace && existingPublic is not null)
-            return await ReplaceDemoFromStreamAsync(
-                parsed, projectId, existingPublic, bytes, stream, user, demos, store, youTubePublisher, ct);
-        return await PublishNewDemoFromStreamAsync(
-            parsed, projectId, file, bytes, sha, stream, user, demos, store, media, youTubePublisher, ct);
+        var upload = new DemoMovieUpload
+        {
+            File = file,
+            Bytes = bytes,
+            Sha = MediaRegistryService.HashBytes(bytes),
+            Stream = new MemoryStream(bytes),
+        };
+        await using (upload.Stream)
+        {
+            if (existingPublic is not null && !string.IsNullOrWhiteSpace(existingPublic.YoutubeId))
+                return await ReplaceDemoFromStreamAsync(parsed, projectId, existingPublic, upload, runtime, ct);
+            return await PublishNewDemoFromStreamAsync(parsed, projectId, upload, runtime, ct);
+        }
     }
 
     private static async Task<IResult> ReplaceDemoFromStreamAsync(
         PublishDemoRequest parsed,
         string projectId,
         DemoCatalogService.DemoEntry existingPublic,
-        byte[] bytes,
-        Stream stream,
-        IUserContext user,
-        DemoCatalogService demos,
-        ProjectStore store,
-        DemoYouTubePublisherService youTubePublisher,
+        DemoMovieUpload upload,
+        DemoPublishRuntime runtime,
         CancellationToken ct)
     {
-        var entry = await demos.AttachMovieFromStreamAsync(
+        var entry = await runtime.Demos.AttachMovieFromStreamAsync(
             existingPublic.Id,
-            stream,
+            upload.Stream,
             parsed.Title ?? existingPublic.Title,
             parsed.Description,
             parsed.MadeForKids,
@@ -540,32 +554,25 @@ public static class DemoEndpoints
             parsed.PrivacyStatus,
             parsed.Tags,
             ct);
-        await TryWriteWipMovieAsync(store, projectId, bytes, ct);
-        entry = await EnsureDemoPublicAsync(demos, entry, user.UserId, "Re-publish: YouTube V2 replace", ct);
-        QueueYouTubePublish(youTubePublisher, entry.Id);
+        await TryWriteWipMovieAsync(runtime.Store, projectId, upload.Bytes, ct);
+        entry = await EnsureDemoPublicAsync(runtime.Demos, entry, runtime.User.UserId, "Re-publish: YouTube V2 replace", ct);
+        QueueYouTubePublish(runtime.YouTube, entry.Id);
         return BuildPublishDemoResult(entry, replacedExisting: true);
     }
 
     private static async Task<IResult> PublishNewDemoFromStreamAsync(
         PublishDemoRequest parsed,
         string projectId,
-        IFormFile file,
-        byte[] bytes,
-        string sha,
-        Stream stream,
-        IUserContext user,
-        DemoCatalogService demos,
-        ProjectStore store,
-        MediaRegistryService media,
-        DemoYouTubePublisherService youTubePublisher,
+        DemoMovieUpload upload,
+        DemoPublishRuntime runtime,
         CancellationToken ct)
     {
-        var entry = await demos.PublishFromStreamAsync(
-            stream,
-            parsed.Title ?? projectId ?? file.FileName ?? "Demo",
+        var entry = await runtime.Demos.PublishFromStreamAsync(
+            upload.Stream,
+            parsed.Title ?? projectId ?? upload.File.FileName ?? "Demo",
             parsed.Description,
             projectId,
-            user.UserId,
+            runtime.User.UserId,
             acceptedGuidelines: true,
             madeForKids: parsed.MadeForKids,
             isAiSyntheticContent: parsed.IsAiSynthetic,
@@ -573,12 +580,12 @@ public static class DemoEndpoints
             tags: parsed.Tags,
             ct: ct);
 
-        await demos.SetStatusAsync(entry.Id, DemoCatalogService.DemoStatuses.Public, user.UserId,
+        await runtime.Demos.SetStatusAsync(entry.Id, DemoCatalogService.DemoStatuses.Public, runtime.User.UserId,
             "Auto-public: creator publish", ct);
-        entry = await demos.TryGetAsync(entry.Id, ct) ?? entry;
-        await TryWriteWipMovieAsync(store, projectId ?? "", bytes, ct);
-        await TryRegisterDemoMediaAsync(media, projectId ?? "", entry.Id, sha, bytes.LongLength, user.UserId, ct);
-        QueueYouTubePublish(youTubePublisher, entry.Id);
+        entry = await runtime.Demos.TryGetAsync(entry.Id, ct) ?? entry;
+        await TryWriteWipMovieAsync(runtime.Store, projectId ?? "", upload.Bytes, ct);
+        await TryRegisterDemoMediaAsync(runtime.Media, projectId ?? "", entry.Id, upload.Sha, upload.Bytes.LongLength, runtime.User.UserId, ct);
+        QueueYouTubePublish(runtime.YouTube, entry.Id);
         return BuildPublishDemoResult(entry, replacedExisting: false);
     }
 
@@ -586,12 +593,10 @@ public static class DemoEndpoints
         PublishDemoRequest parsed,
         string projectId,
         DemoCatalogService.DemoEntry existingPublic,
-        IUserContext user,
-        DemoCatalogService demos,
-        DemoYouTubePublisherService youTubePublisher,
+        DemoPublishRuntime runtime,
         CancellationToken ct)
     {
-        var entry = await demos.AttachMovieFromWipAsync(
+        var entry = await runtime.Demos.AttachMovieFromWipAsync(
             existingPublic.Id,
             projectId,
             parsed.Title ?? existingPublic.Title,
@@ -601,24 +606,22 @@ public static class DemoEndpoints
             parsed.PrivacyStatus,
             parsed.Tags,
             ct);
-        entry = await EnsureDemoPublicAsync(demos, entry, user.UserId, "Re-publish: YouTube V2 replace", ct);
-        QueueYouTubePublish(youTubePublisher, entry.Id);
+        entry = await EnsureDemoPublicAsync(runtime.Demos, entry, runtime.User.UserId, "Re-publish: YouTube V2 replace", ct);
+        QueueYouTubePublish(runtime.YouTube, entry.Id);
         return BuildPublishDemoResult(entry, replacedExisting: true);
     }
 
     private static async Task<IResult> PublishNewDemoFromWipAsync(
         PublishDemoRequest parsed,
         string projectId,
-        IUserContext user,
-        DemoCatalogService demos,
-        DemoYouTubePublisherService youTubePublisher,
+        DemoPublishRuntime runtime,
         CancellationToken ct)
     {
-        var entry = await demos.PublishFromWipAsync(
+        var entry = await runtime.Demos.PublishFromWipAsync(
             projectId,
             parsed.Title ?? projectId,
             parsed.Description,
-            user.UserId,
+            runtime.User.UserId,
             acceptedGuidelines: true,
             madeForKids: parsed.MadeForKids,
             isAiSyntheticContent: parsed.IsAiSynthetic,
@@ -626,7 +629,7 @@ public static class DemoEndpoints
             tags: parsed.Tags,
             ct: ct);
         // Always push to YouTube — gallery only lists films with a YouTube id.
-        QueueYouTubePublish(youTubePublisher, entry.Id);
+        QueueYouTubePublish(runtime.YouTube, entry.Id);
         return BuildPublishDemoResult(entry, replacedExisting: false);
     }
 

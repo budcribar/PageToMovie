@@ -32,7 +32,21 @@ internal static class ApiServiceConfiguration
             return new ProjectAclService(root, null, email, store);
         });
 
-        builder.WebHost.UseUrls(BuildListenUrls());
+        var listenPorts = new HashSet<string> { "5088", "8080", "80" };
+        // Testability/deploy override: replace the default bind ports entirely (comma-separated). Lets a
+        // second local instance (e.g. UI tests with capabilities forced off) bind a distinct port without
+        // colliding on 5088. Unset in normal runs → the defaults above apply.
+        var bindPortsOverride = Environment.GetEnvironmentVariable("PAGETOMOVIE_BIND_PORTS");
+        if (!string.IsNullOrWhiteSpace(bindPortsOverride))
+            listenPorts = new HashSet<string>(
+                bindPortsOverride.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        var railwayEnvPort = Environment.GetEnvironmentVariable("PORT");
+        if (!string.IsNullOrWhiteSpace(railwayEnvPort))
+        {
+            listenPorts.Add(railwayEnvPort.Trim());
+        }
+        var bindUrls = string.Join(";", listenPorts.Select(p => $"http://0.0.0.0:{p}"));
+        builder.WebHost.UseUrls(bindUrls);
 
         builder.Services.Configure<PageToMovieOptions>(
             builder.Configuration.GetSection(PageToMovieOptions.SectionName));
@@ -257,22 +271,6 @@ internal static class ApiServiceConfiguration
         });
 
         return builder;
-    }
-
-    private static string BuildListenUrls()
-    {
-        var listenPorts = new HashSet<string> { "5088", "8080", "80" };
-        // Testability/deploy override: replace the default bind ports entirely (comma-separated). Lets a
-        // second local instance (e.g. UI tests with capabilities forced off) bind a distinct port without
-        // colliding on 5088. Unset in normal runs → the defaults above apply.
-        var bindPortsOverride = Environment.GetEnvironmentVariable("PAGETOMOVIE_BIND_PORTS");
-        if (!string.IsNullOrWhiteSpace(bindPortsOverride))
-            listenPorts = new HashSet<string>(
-                bindPortsOverride.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
-        var railwayEnvPort = Environment.GetEnvironmentVariable("PORT");
-        if (!string.IsNullOrWhiteSpace(railwayEnvPort))
-            listenPorts.Add(railwayEnvPort.Trim());
-        return string.Join(";", listenPorts.Select(p => $"http://0.0.0.0:{p}"));
     }
 
     private static void ApplyWorkspaceAndJwtDefaults(PageToMovieOptions o, string repoGuess, bool isDevelopment)

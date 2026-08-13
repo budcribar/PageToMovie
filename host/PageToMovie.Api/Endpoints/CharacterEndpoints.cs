@@ -162,7 +162,7 @@ public static class CharacterEndpoints
         }
 
         var scrubbed = false;
-        (desc, vis, scrubbed) = await MaybeScrubLookAsync(id, charKey, body, desc, vis, store, literalize, ct);
+        (desc, vis, scrubbed) = await MaybeScrubLookAsync(id, charKey, body, store, literalize, ct);
         store.UpdateCharacterSeedText(id, charKey, description: desc, visualLock: vis);
         var (savedDesc, savedVis) = ReadSeedLookFields(store.GetCharacterSeed(id, charKey));
 
@@ -207,12 +207,12 @@ public static class CharacterEndpoints
         string id,
         string charKey,
         UpdateCharacterLookRequest body,
-        string? desc,
-        string? vis,
         ProjectStore store,
         CastVisualLiteralizeService literalize,
         CancellationToken ct)
     {
+        var desc = body.Description;
+        var vis = body.VisualLock;
         if (!body.ScrubWithAi || (desc is null && vis is null))
             return (desc, vis, false);
 
