@@ -1,0 +1,9 @@
+{
+  "schema_version": "vision_meta.v1",
+  "visual_medium": "photoreal_live_action",
+  "render_style_lock": "STYLE LOCK: photoreal live-action Bronze Age epic; naturalistic human faces and skin; linen, wool, bronze, and weathered wood under Mediterranean sun and firelight; no illustration, no stylized 3D, one consistent real-world camera grammar for all cast and places",
+  "performance_lock": null,
+  "decided_by": "adaptation",
+  "decided_at": null,
+  "notes": "Classical Homeric epic; period dress, ships, and palaces held photoreal throughout"
+}
