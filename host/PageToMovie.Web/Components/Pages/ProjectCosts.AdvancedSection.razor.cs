@@ -15,5 +15,5 @@ namespace PageToMovie.Web.Components.Pages;
 
 public partial class ProjectCosts_AdvancedSection
 {
-    [CascadingParameter] public ProjectCosts Host { get; set; } = default!;
+    [CascadingParameter] public required ProjectCosts Host { get; set; }
 }

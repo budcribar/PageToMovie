@@ -16,6 +16,8 @@ namespace PageToMovie.Engine.ModelBacked;
 public sealed class ExtendCutClassifier
 {
     public const string PromptVersion = "v1";
+    private const string HardCut = "hard_cut";
+    private const string Extend = "extend";
 
     private readonly IChatClient _chat;
     private readonly PageToMovieOptions _opts;
@@ -52,7 +54,7 @@ public sealed class ExtendCutClassifier
         foreach (var p in pairs)
         {
             var hard = BaselineHardCut(p);
-            p.Beat["cut_decision"] = hard ? "hard_cut" : "extend";
+            p.Beat["cut_decision"] = hard ? HardCut : Extend;
             if (hard)
                 p.Beat["continuity"] = "new_setup";
         }
@@ -101,7 +103,7 @@ public sealed class ExtendCutClassifier
                                 ["visual_event"] = Trunc(p.VisualEvent, 50),
                                 ["speaker"] = p.Speaker,
                                 ["action_class"] = p.ActionClass,
-                                ["heuristic"] = BaselineHardCut(p) ? "hard_cut" : "extend",
+                                ["heuristic"] = BaselineHardCut(p) ? HardCut : Extend,
                             };
                         }).ToList();
                         var user = "Label hard_cut vs extend for video continuity. JSON only.\n" +
@@ -136,7 +138,7 @@ public sealed class ExtendCutClassifier
                         {
                             if (!byId.TryGetValue(kv.Key, out var p)) continue;
                             p.Beat["cut_decision"] = kv.Value;
-                            p.Beat["continuity"] = kv.Value == "hard_cut" ? "new_setup" : "continuous_from_previous_beat";
+                            p.Beat["continuity"] = kv.Value == HardCut ? "new_setup" : "continuous_from_previous_beat";
                             labeled.Add(kv.Key);
                         }
                     }
@@ -172,10 +174,10 @@ JSON: {"labels":[{"id":"s1_b3","class":"extend"}]}
             var cls = el.TryGetProperty("class", out var c) ? c.GetString()
                 : el.TryGetProperty("decision", out var d) ? d.GetString() : null;
             if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(cls)) return (id, null);
-            cls = cls!.Trim().ToLowerInvariant().Replace(' ', '_');
-            if (cls is "hard_cut" or "hardcut" or "cut" or "none") cls = "hard_cut";
-            if (cls is "extend" or "continue" or "continuous") cls = "extend";
-            if (cls is not ("hard_cut" or "extend")) return (id, null);
+            cls = cls.Trim().ToLowerInvariant().Replace(' ', '_');
+            if (cls is HardCut or "hardcut" or "cut" or "none") cls = HardCut;
+            if (cls is Extend or "continue" or "continuous") cls = Extend;
+            if (cls is not (HardCut or Extend)) return (id, null);
             return (id, cls);
         });
 

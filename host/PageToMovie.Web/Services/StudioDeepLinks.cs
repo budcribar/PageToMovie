@@ -9,6 +9,7 @@ namespace PageToMovie.Web.Services;
 /// </summary>
 public static class StudioDeepLinks
 {
+    private const string CharacterKeyPrefix = "Character_";
     public static string Characters(string? charKeyOrName = null, int? returnScene = null, int? returnClip = null)
     {
         var path = "characters";
@@ -118,8 +119,8 @@ public static class StudioDeepLinks
         if (byDisplay is not null) return byDisplay;
 
         var bare = q;
-        if (bare.StartsWith("Character_", StringComparison.OrdinalIgnoreCase))
-            bare = bare["Character_".Length..];
+        if (bare.StartsWith(CharacterKeyPrefix, StringComparison.OrdinalIgnoreCase))
+            bare = bare[CharacterKeyPrefix.Length..];
         bare = bare.Replace('_', ' ').Trim();
 
         byDisplay = list.FirstOrDefault(c =>
@@ -127,7 +128,7 @@ public static class StudioDeepLinks
             || string.Equals((c.DisplayName ?? "").Replace(" ", ""), bare.Replace(" ", ""), StringComparison.OrdinalIgnoreCase));
         if (byDisplay is not null) return byDisplay;
 
-        var wantKey = "Character_" + bare.Replace(' ', '_');
+        var wantKey = CharacterKeyPrefix + bare.Replace(' ', '_');
         return list.FirstOrDefault(c =>
             string.Equals(c.Key, wantKey, StringComparison.OrdinalIgnoreCase)
             || c.Key.EndsWith("_" + bare.Replace(' ', '_'), StringComparison.OrdinalIgnoreCase));
@@ -172,7 +173,7 @@ public static class StudioDeepLinks
     {
         if (string.IsNullOrWhiteSpace(name)) return "";
         var t = name.Trim();
-        if (t.StartsWith("Character_", StringComparison.OrdinalIgnoreCase))
+        if (t.StartsWith(CharacterKeyPrefix, StringComparison.OrdinalIgnoreCase))
             return t;
         return t; // Cast page matches DisplayName / fuzzy
     }

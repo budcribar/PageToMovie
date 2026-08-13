@@ -37,7 +37,7 @@ public partial class AdminLearning
 
     protected override async Task OnInitializedAsync()
     {
-        try { await Session.EnsureHydratedAsync(); } catch { /* */ }
+        try { await Session.EnsureHydratedAsync(); } catch { /* session hydrate is best-effort on first paint */ }
         if (!Session.IsAdmin) return;
         await RefreshAsync();
     }

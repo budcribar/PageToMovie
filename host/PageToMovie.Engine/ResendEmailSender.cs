@@ -15,6 +15,7 @@ namespace PageToMovie.Engine;
 /// </summary>
 public sealed class ResendEmailSender : IEmailSender
 {
+    public const string EmailsEndpoint = "https://api.resend.com/emails";
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
@@ -68,7 +69,7 @@ public sealed class ResendEmailSender : IEmailSender
             payload.Text = subject ?? "(no body)";
 
         var client = _httpFactory.CreateClient("resend");
-        using var req = new HttpRequestMessage(HttpMethod.Post, "https://api.resend.com/emails")
+        using var req = new HttpRequestMessage(HttpMethod.Post, EmailsEndpoint)
         {
             Content = JsonContent.Create(payload, options: JsonOpts),
         };
@@ -93,7 +94,7 @@ public sealed class ResendEmailSender : IEmailSender
             {
                 _log.LogWarning("Resend domain {FromAddr} is not verified. Retrying with onboarding@resend.dev sandbox address.", fromAddr);
                 payload.From = $"{fromName} <onboarding@resend.dev>";
-                using var retryReq = new HttpRequestMessage(HttpMethod.Post, "https://api.resend.com/emails")
+                using var retryReq = new HttpRequestMessage(HttpMethod.Post, EmailsEndpoint)
                 {
                     Content = JsonContent.Create(payload, options: JsonOpts),
                 };
@@ -105,6 +106,7 @@ public sealed class ResendEmailSender : IEmailSender
                     _log.LogInformation("Resend email sent via onboarding@resend.dev sandbox To={To} Subject={Subject}", toEmail, subject);
                     return;
                 }
+                _log.LogWarning("Resend sandbox retry failed Status={Status} Body={Body}", (int)retryResp.StatusCode, retryBody);
             }
 
             _log.LogError(

@@ -83,7 +83,7 @@ public sealed class ClientVoiceSubstitutionService
         try
         {
             var cached = await _engine.GetVoiceCapturePhrasesAsync(projectId, ct);
-            var cachedKey = string.IsNullOrWhiteSpace(cached?.CharKey) ? "Character_Narrator" : cached!.CharKey!.Trim();
+            var cachedKey = string.IsNullOrWhiteSpace(cached?.CharKey) ? "Character_Narrator" : cached.CharKey.Trim();
             var wantKey = string.IsNullOrWhiteSpace(charKey) ? "Character_Narrator" : charKey.Trim();
             if (cached is null || !string.Equals(cachedKey, wantKey, StringComparison.OrdinalIgnoreCase))
                 await _capture.BuildPhrasesAsync(projectId, onProgress, charKey, ct);
@@ -95,7 +95,7 @@ public sealed class ClientVoiceSubstitutionService
         var ordered = overlays
             .Where(o => o.Success && !string.IsNullOrWhiteSpace(o.Url))
             .OrderBy(o => o.Scene)
-            .Select(o => o.Url!)
+            .Select(o => o.Url ?? "")
             .ToList();
         var failed = overlays.Count(o => !o.Success);
         if (ordered.Count == 0)
@@ -173,7 +173,7 @@ public sealed class ClientVoiceSubstitutionService
                         prepared.Add(new PreparedScene(sv.Scene) { Error = stitched.Error ?? "scene stitch failed" });
                         continue;
                     }
-                    sceneVideoUrl = stitched.Url!;
+                    sceneVideoUrl = stitched.Url;
                 }
 
                 // Mixed scene (mom baked in) or nothing to voice → passthrough with original audio kept.
@@ -277,7 +277,7 @@ public sealed class ClientVoiceSubstitutionService
                 double cumWords = 0;
                 for (var i = 0; i < lines.Count; i++)
                 {
-                    var lineUrl = await _media.GetLocalBlobUrlAsync(projectId, lines[i].VoiceAudioRelativePath!);
+                    var lineUrl = await _media.GetLocalBlobUrlAsync(projectId, lines[i].VoiceAudioRelativePath ?? "");
                     if (!string.IsNullOrWhiteSpace(lineUrl))
                     {
                         double startSec, endSec;
@@ -326,7 +326,7 @@ public sealed class ClientVoiceSubstitutionService
                 // (muteBase) — one narrator (you), timed to where the original spoke, no double voice.
                 var overlay = await _js.InvokeAsync<JsOverlayResult>(
                     "PageToMovieFfmpeg.overlayVoiceSegmentsAsync",
-                    ct, p.SceneVideoUrl!, segs.ToArray(), new { muteBase = true });
+                    ct, p.SceneVideoUrl ?? "", segs.ToArray(), new { muteBase = true });
 
                 if (overlay is { Success: true } && !string.IsNullOrWhiteSpace(overlay.Url))
                     results.Add(new SceneOverlayResult(p.Scene, true, overlay.Url, null));
@@ -384,9 +384,9 @@ public sealed class ClientVoiceSubstitutionService
 
     private sealed class JsOverlayResult
     {
-        public bool Success { get; set; }
-        public string? Url { get; set; }
-        public string? Error { get; set; }
+        public bool Success { get; set; } = false;
+        public string? Url { get; set; } = null;
+        public string? Error { get; set; } = null;
     }
 
 }

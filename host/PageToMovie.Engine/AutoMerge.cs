@@ -39,23 +39,23 @@ public static class AutoTextMerger
                     }
                 }
                 int baseEnd = nextSync >= 0 ? nextSync : bas.Count;
-                for (int bi = i; bi < baseEnd; bi++) bc.Add(bas[bi]);
+                bc.AddRange(bas.Skip(i).Take(Math.Max(0, baseEnd - i)));
                 int oEnd = nextSync >= 0 ? Idx(ours, bas[nextSync], oi) : ours.Count;
                 int tEnd = nextSync >= 0 ? Idx(theirs, bas[nextSync], ti) : theirs.Count;
                 if (oEnd < 0)
                     oEnd = ours.Count;
                 if (tEnd < 0)
                     tEnd = theirs.Count;
-                for (int x = oi; x < oEnd; x++) oc.Add(ours[x]);
-                for (int x = ti; x < tEnd; x++) tc.Add(theirs[x]);
+                oc.AddRange(ours.Skip(oi).Take(Math.Max(0, oEnd - oi)));
+                tc.AddRange(theirs.Skip(ti).Take(Math.Max(0, tEnd - ti)));
                 i = baseEnd; oi = oEnd; ti = tEnd;
             }
             else
             {
-                while (oi < ours.Count)
-                    oc.Add(ours[oi++]);
-                while (ti < theirs.Count)
-                    tc.Add(theirs[ti++]);
+                oc.AddRange(ours.Skip(oi));
+                oi = ours.Count;
+                tc.AddRange(theirs.Skip(ti));
+                ti = theirs.Count;
             }
             if (oc.Count == 0 && tc.Count == 0 && bc.Count == 0) break;
             if (Eq(oc, tc)) { merged.AddRange(oc); if (!Eq(oc, bc)) auto++; }
@@ -72,11 +72,7 @@ public static class AutoTextMerger
                     case Strategy.PreferTheirs: merged.AddRange(tc); auto++; break;
                     case Strategy.Union:
                         merged.AddRange(oc);
-                        foreach (var l in tc)
-                        {
-                            if (!oc.Contains(l))
-                                merged.Add(l);
-                        }
+                        merged.AddRange(tc.Where(l => !oc.Contains(l)));
                         auto++;
                         break;
                     default:
@@ -130,7 +126,7 @@ public static class AutoTextMerger
             if (ol == tl) resolved.Add(ol);
             else if (ol == bl) resolved.Add(tl);
             else if (tl == bl) resolved.Add(ol);
-            else { resolved = null!; return false; }
+            else { return false; }
         }
         return true;
     }

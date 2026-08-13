@@ -140,7 +140,7 @@ else
         Jobs._job.Total > 0 && string.Equals(Jobs._job.Status, "running", StringComparison.OrdinalIgnoreCase)
             && KeyFormatting.EstimateTimeRemaining(Jobs._job.StartedAt, Jobs._job.Index, Jobs._job.Total) is { } eta
             ? eta : null
-    }.Where(s => !string.IsNullOrWhiteSpace(s))!);
+    }.Where(s => !string.IsNullOrWhiteSpace(s)));
     <JobProgressCard Status="@Jobs._job.Status"
                      Message="@(string.IsNullOrWhiteSpace(reviewJobMsg) ? Jobs._job.Status : reviewJobMsg)"
                      Index="Jobs._job.Index"

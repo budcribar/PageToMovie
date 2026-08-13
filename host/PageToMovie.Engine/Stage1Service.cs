@@ -75,12 +75,10 @@ public sealed class Stage1Service
             throw new InvalidOperationException(
                 "Connect service (API key) to build a screenplay draft from the book.");
 
-        {
-            var cfg = await _projects.GetConfigAsync(projectId, ct).ConfigureAwait(false);
-            model = string.IsNullOrWhiteSpace(model)
-                ? ProjectModelSelection.RequirePlanning(cfg, "Screenplay draft")
-                : ProjectModelSelection.RequireExplicit(model, ModelCapability.Chat, "Screenplay draft");
-        }
+        var cfg = await _projects.GetConfigAsync(projectId, ct).ConfigureAwait(false);
+        model = string.IsNullOrWhiteSpace(model)
+            ? ProjectModelSelection.RequirePlanning(cfg, "Screenplay draft")
+            : ProjectModelSelection.RequireExplicit(model, ModelCapability.Chat, "Screenplay draft");
 
         var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         var bookPath = Path.Combine(projectDir, "source", "book_full.txt");

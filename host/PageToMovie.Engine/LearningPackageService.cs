@@ -14,7 +14,9 @@ public static class LearningPackageService
     public const string SchemaVersion = "learning_package.v1";
 
     public static string PackagesRoot(string projectDir) =>
-        Path.Combine(projectDir, "artifacts", "learning_packages");
+        Path.Combine(projectDir, "artifacts", PackagesFolder);
+
+    private const string PackagesFolder = "learning_packages";
 
     public static async Task<LearningPackageResult> CreateFromProjectAsync(
         ProjectStore store,
@@ -114,11 +116,11 @@ public static class LearningPackageService
         {
             try
             {
-                var labDir = Path.Combine(workspaceRoot, "evals", "learning_packages", packageId);
+                var labDir = Path.Combine(workspaceRoot, "evals", PackagesFolder, packageId);
                 Directory.CreateDirectory(labDir);
                 File.Copy(packagePath, Path.Combine(labDir, "package.json"), overwrite: true);
                 File.Copy(trajectoryPath, Path.Combine(labDir, "trajectory.jsonl"), overwrite: true);
-                labPath = Path.Combine("evals", "learning_packages", packageId);
+                labPath = Path.Combine("evals", PackagesFolder, packageId);
             }
             catch
             {
@@ -135,7 +137,7 @@ public static class LearningPackageService
         return new LearningPackageResult
         {
             PackageId = packageId,
-            ProjectRelativePath = Path.Combine("artifacts", "learning_packages", packageId).Replace('\\', '/'),
+            ProjectRelativePath = Path.Combine("artifacts", PackagesFolder, packageId).Replace('\\', '/'),
             LabRelativePath = labPath,
             PublishPath = publishPath,
             FilmId = film?.FilmId,

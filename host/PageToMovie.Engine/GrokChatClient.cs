@@ -17,6 +17,7 @@ namespace PageToMovie.Engine;
 public sealed class GrokChatClient : IChatClient
 {
     public const string ApiBase = SupportedModelCatalog.XaiApiBase;
+    private const string ChatCompletionsPath = "chat/completions";
 
     private readonly HttpClient _http;
     private readonly ProjectTelemetryService _telemetry;
@@ -42,6 +43,14 @@ public sealed class GrokChatClient : IChatClient
     /// <summary>Maps the provider-neutral <c>reasoningEffort</c> scale to OpenAI/xAI's
     /// <c>reasoning_effort</c> values (confirmed live: OpenAI accepts none/low/medium/high/xhigh;
     /// xAI accepts the same set without erroring).</summary>
+    private static string CombineApiUrl(string apiBase, string endpointPath)
+    {
+        var slash = Path.AltDirectorySeparatorChar;
+        return apiBase.TrimEnd(slash, Path.DirectorySeparatorChar)
+               + slash
+               + endpointPath.TrimStart(slash, Path.DirectorySeparatorChar);
+    }
+
     private static string? MapReasoningEffort(string? effort) => effort?.Trim().ToLowerInvariant() switch
     {
         null or "" => null,
@@ -66,8 +75,8 @@ public sealed class GrokChatClient : IChatClient
 
         var entry = PageToMovie.Core.Models.SupportedModelCatalog.Find(model);
         var targetUrl = entry is not null && !string.IsNullOrWhiteSpace(entry.ApiBase)
-            ? $"{entry.ApiBase.TrimEnd('/')}/{(string.IsNullOrWhiteSpace(entry.EndpointPath) ? "chat/completions" : entry.EndpointPath).TrimStart('/')}"
-            : "https://api.x.ai/v1/chat/completions";
+            ? CombineApiUrl(entry.ApiBase, string.IsNullOrWhiteSpace(entry.EndpointPath) ? ChatCompletionsPath : entry.EndpointPath)
+            : CombineApiUrl(ApiBase, ChatCompletionsPath);
 
         var mappedEffort = MapReasoningEffort(reasoningEffort);
 
@@ -117,7 +126,7 @@ public sealed class GrokChatClient : IChatClient
             {
                 Kind = "chat",
                 Mode = modeTag,
-                Endpoint = "chat/completions",
+                Endpoint = ChatCompletionsPath,
                 Model = model,
                 DurationMs = sw.ElapsedMilliseconds,
                 SystemPrompt = systemPrompt,
@@ -197,7 +206,7 @@ public sealed class GrokChatClient : IChatClient
                 {
                     Kind = "chat",
                     Mode = modeTag,
-                    Endpoint = "chat/completions",
+                    Endpoint = ChatCompletionsPath,
                     Model = model,
                     HttpStatus = (int)resp.StatusCode,
                     DurationMs = sw.ElapsedMilliseconds,
@@ -218,7 +227,7 @@ public sealed class GrokChatClient : IChatClient
             {
                 Kind = "chat",
                 Mode = modeTag,
-                Endpoint = "chat/completions",
+                Endpoint = ChatCompletionsPath,
                 Model = model,
                 HttpStatus = (int)resp.StatusCode,
                 DurationMs = sw.ElapsedMilliseconds,
