@@ -312,7 +312,6 @@ public sealed class Stage2PlannerService
         {
             TotalScenes = scenesIn.Count,
             SceneGate = new SemaphoreSlim(maxParallelScenes),
-            ProgressGate = new object(),
             OnProgress = onProgress,
             PlannedBag = new System.Collections.Concurrent.ConcurrentBag<(int SceneNumber, Dictionary<string, object?> Scene)>(),
         };
@@ -2622,7 +2621,7 @@ public sealed class Stage2PlannerService
         public int CompletedScenes;
         public required int TotalScenes;
         public required SemaphoreSlim SceneGate;
-        public required readonly object ProgressGate;
+        public readonly object ProgressGate = new();
         public Action<string>? OnProgress;
         public required System.Collections.Concurrent.ConcurrentBag<(int SceneNumber, Dictionary<string, object?> Scene)> PlannedBag;
 
