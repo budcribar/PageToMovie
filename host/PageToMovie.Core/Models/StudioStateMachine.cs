@@ -130,46 +130,61 @@ public static class StudioStateMachine
         bool castReady = true,
         bool isStage2Stale = false)
     {
-        switch (targetStep)
+        return targetStep switch
         {
-            case StudioStep.Setup:
-                return (true, string.Empty);
+            StudioStep.Setup => (true, string.Empty),
+            StudioStep.Book => CanNavigateToBook(currentPhase),
+            StudioStep.Cast => CanNavigateToCast(currentPhase),
+            StudioStep.Estimate => CanNavigateToEstimate(currentPhase),
+            StudioStep.Film => CanNavigateToFilm(currentPhase, castReady, isStage2Stale),
+            StudioStep.Review => CanNavigateToReview(currentPhase),
+            _ => (true, string.Empty),
+        };
+    }
 
-            case StudioStep.Book:
-                if (currentPhase == StudioPhase.SetupRequired)
-                    return (false, "Connect your API keys in Setup first");
-                return (true, string.Empty);
+    private static (bool Allowed, string BlockedReason) CanNavigateToBook(StudioPhase currentPhase)
+    {
+        if (currentPhase == StudioPhase.SetupRequired)
+            return (false, "Connect your API keys in Setup first");
+        return (true, string.Empty);
+    }
 
-            case StudioStep.Cast:
-                if (currentPhase == StudioPhase.TextExtractionPending)
-                    return (false, "PDF text / OCR extraction in progress. Complete import first");
-                if (currentPhase < StudioPhase.ScreenplayApproved)
-                    return (false, "Approve the screenplay first");
-                return (true, string.Empty);
+    private static (bool Allowed, string BlockedReason) CanNavigateToCast(StudioPhase currentPhase)
+    {
+        if (currentPhase == StudioPhase.TextExtractionPending)
+            return (false, "PDF text / OCR extraction in progress. Complete import first");
+        if (currentPhase < StudioPhase.ScreenplayApproved)
+            return (false, "Approve the screenplay first");
+        return (true, string.Empty);
+    }
 
-            case StudioStep.Estimate:
-                if (currentPhase < StudioPhase.ScreenplayApproved)
-                    return (false, "Finish importing the book and approve the screenplay first");
-                return (true, string.Empty);
+    private static (bool Allowed, string BlockedReason) CanNavigateToEstimate(StudioPhase currentPhase)
+    {
+        if (currentPhase < StudioPhase.ScreenplayApproved)
+            return (false, "Finish importing the book and approve the screenplay first");
+        return (true, string.Empty);
+    }
 
-            case StudioStep.Film:
-                if (currentPhase < StudioPhase.ScreenplayApproved)
-                    return (false, "Approve the screenplay first");
-                if (isStage2Stale)
-                    return (false, "Update the shot plan first");
-                if (currentPhase < StudioPhase.ShotPlanReady)
-                    return (false, "Finish the shot plan first");
-                if (!castReady)
-                    return (false, "Approve every character voice + locked image before generating video");
-                return (true, string.Empty);
+    private static (bool Allowed, string BlockedReason) CanNavigateToFilm(
+        StudioPhase currentPhase,
+        bool castReady,
+        bool isStage2Stale)
+    {
+        if (currentPhase < StudioPhase.ScreenplayApproved)
+            return (false, "Approve the screenplay first");
+        if (isStage2Stale)
+            return (false, "Update the shot plan first");
+        if (currentPhase < StudioPhase.ShotPlanReady)
+            return (false, "Finish the shot plan first");
+        if (!castReady)
+            return (false, "Approve every character voice + locked image before generating video");
+        return (true, string.Empty);
+    }
 
-            case StudioStep.Review:
-                if (currentPhase < StudioPhase.ShotPlanReady)
-                    return (false, "Finish the shot plan first");
-                return (true, string.Empty);
-
-            default:
-                return (true, string.Empty);
-        }
+    private static (bool Allowed, string BlockedReason) CanNavigateToReview(StudioPhase currentPhase)
+    {
+        if (currentPhase < StudioPhase.ShotPlanReady)
+            return (false, "Finish the shot plan first");
+        return (true, string.Empty);
     }
 }

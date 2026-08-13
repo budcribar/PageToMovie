@@ -57,35 +57,45 @@ public partial class StudioProcessStrip
     private string ActiveKey => (Active ?? "book").Trim().ToLowerInvariant();
 
     /// <summary>Previous primary step (setup/book/estimate/film/review spine).</summary>
-    private (string? Href, string Label, string? BlockedReason) PrevStep
-    {
-        get
-        {
-            if (UseSimple)
-            {
-                return ActiveKey switch
-                {
-                    "cast" => ("simple-voice", "Story", null),
-                    "film" => ("simple-voice", "Your voice", null),
-                    ReviewStep => (ActiveProject.CanScenes ? "scenes?simple=1" : null, "Movie",
-                        ActiveProject.CanScenes ? null : ActiveProject.ScenesBlockedReason),
-                    _ => (null, "Back", null),
-                };
-            }
+    private (string? Href, string Label, string? BlockedReason) PrevStep => ComputePrevStep();
 
-            return ActiveKey switch
-            {
-                "setup" => (null, "Back", null),
-                "book" => NeedsSetup ? ("configuration", "Setup", null) : (null, "Back", null),
-                "estimate" or "cast" or "characters" or "locations" =>
-                    (BookLocked ? null : "adaptation", "Book", BookLocked ? "Connect API keys in Setup first" : null),
-                "film" => (ActiveProject.CanEstimate ? "cost" : null, "Estimate",
-                    ActiveProject.CanEstimate ? null : ActiveProject.EstimateBlockedReason),
-                ReviewStep => (ActiveProject.CanScenes ? "scenes" : "cost", "Film", null),
-                _ => (null, "Back", null),
-            };
-        }
+    private (string? Href, string Label, string? BlockedReason) ComputePrevStep()
+    {
+        if (UseSimple) return PrevStepSimple();
+        return PrevStepFull();
     }
+
+    private (string? Href, string Label, string? BlockedReason) PrevStepSimple() => ActiveKey switch
+    {
+        "cast" => ("simple-voice", "Story", null),
+        "film" => ("simple-voice", "Your voice", null),
+        ReviewStep => (ActiveProject.CanScenes ? "scenes?simple=1" : null, "Movie",
+            ActiveProject.CanScenes ? null : ActiveProject.ScenesBlockedReason),
+        _ => (null, "Back", null),
+    };
+
+    private (string? Href, string Label, string? BlockedReason) PrevStepFull() => ActiveKey switch
+    {
+        "setup" => (null, "Back", null),
+        "book" => PrevFromBook(),
+        "estimate" or "cast" or "characters" or "locations" => PrevFromEstimateOrCast(),
+        "film" => PrevFromFilm(),
+        ReviewStep => PrevFromReview(),
+        _ => (null, "Back", null),
+    };
+
+    private (string? Href, string Label, string? BlockedReason) PrevFromBook() =>
+        NeedsSetup ? ("configuration", "Setup", null) : (null, "Back", null);
+
+    private (string? Href, string Label, string? BlockedReason) PrevFromEstimateOrCast() =>
+        (BookLocked ? null : "adaptation", "Book", BookLocked ? "Connect API keys in Setup first" : null);
+
+    private (string? Href, string Label, string? BlockedReason) PrevFromFilm() =>
+        (ActiveProject.CanEstimate ? "cost" : null, "Estimate",
+            ActiveProject.CanEstimate ? null : ActiveProject.EstimateBlockedReason);
+
+    private (string? Href, string Label, string? BlockedReason) PrevFromReview() =>
+        (ActiveProject.CanScenes ? "scenes" : "cost", "Film", null);
 
     private (string? Href, string Label, string? BlockedReason) NextStep
     {

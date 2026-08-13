@@ -87,28 +87,35 @@ public static partial class StableBeatId
     {
         var result = new List<string>();
         if (beat.TryGetValue("source_beat_ids", out var raw) && raw is not null)
-        {
-            if (raw is List<object?> list)
-            {
-                foreach (var item in list)
-                    AddUnique(result, item?.ToString());
-            }
-            else if (raw is IEnumerable<object?> enumObj)
-            {
-                foreach (var item in enumObj)
-                    AddUnique(result, item?.ToString());
-            }
-            else if (raw is IEnumerable<string> enumStr)
-            {
-                foreach (var item in enumStr)
-                    AddUnique(result, item);
-            }
-        }
+            TryAddFromSourceBeatIds(result, raw);
 
         if (result.Count == 0 && beat.TryGetValue("beat_id", out var bid))
             AddUnique(result, bid?.ToString());
 
         return result;
+    }
+
+    private static void TryAddFromSourceBeatIds(List<string> result, object raw)
+    {
+        if (raw is List<object?> list)
+        {
+            foreach (var item in list)
+                AddUnique(result, item?.ToString());
+            return;
+        }
+
+        if (raw is IEnumerable<object?> enumObj)
+        {
+            foreach (var item in enumObj)
+                AddUnique(result, item?.ToString());
+            return;
+        }
+
+        if (raw is IEnumerable<string> enumStr)
+        {
+            foreach (var item in enumStr)
+                AddUnique(result, item);
+        }
     }
 
     /// <summary>Merge source ids from <paramref name="next"/> into <paramref name="cur"/> (primary <c>beat_id</c> unchanged).</summary>

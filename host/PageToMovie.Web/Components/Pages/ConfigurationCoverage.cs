@@ -559,18 +559,27 @@ public partial class Configuration
             SetCoverageModelId(coverageId, modelId);
             _coverageEditId = null;
             S._message = null;
-            if (!string.IsNullOrEmpty(S._projectId) && S._cfg is not null)
+            await PersistCoverageModelChangeAsync();
+            PromptAddKeyIfCoverageNeedsIt(coverageId);
+        }
+
+        private async Task PersistCoverageModelChangeAsync()
+        {
+            if (string.IsNullOrEmpty(S._projectId) || S._cfg is null)
+                return;
+            try
             {
-                try
-                {
-                    await S.Form.SaveAsync();
-                    S._message = "Model saved.";
-                }
-                catch (Exception ex)
-                {
-                    S._error = ex.Message;
-                }
+                await S.Form.SaveAsync();
+                S._message = "Model saved.";
             }
+            catch (Exception ex)
+            {
+                S._error = ex.Message;
+            }
+        }
+
+        private void PromptAddKeyIfCoverageNeedsIt(string coverageId)
+        {
             var row = BuildCoverageRows().FirstOrDefault(c => string.Equals(c.Id, coverageId, StringComparison.OrdinalIgnoreCase));
             if (row is { KeyReady: false, OptionalOff: false } && !string.IsNullOrWhiteSpace(row.ProviderId))
                 S.Keys.BeginAddKey(coverageId, row.ProviderId);
@@ -615,96 +624,106 @@ public partial class Configuration
         internal void EnsureVoiceModelForProvider(string providerId)
         {
             var pid = SupportedModelCatalog.NormalizeProviderId(providerId);
-            var currentProvider = ResolveProviderIdForModel(_voiceModel, CapVoice, preferVideoReview: false);
-            var off = string.IsNullOrWhiteSpace(_voiceModel)
-                      || _voiceModel.Equals("none", StringComparison.OrdinalIgnoreCase)
-                      || _voiceModel.Equals(ModelDisabled, StringComparison.OrdinalIgnoreCase);
+            if (VoiceCloneModelAlreadyMatchesProvider(pid))
+                return;
 
-            if (!off && string.Equals(currentProvider, pid, StringComparison.OrdinalIgnoreCase))
-            {
-                var cur = S.Catalog._voiceModels.FirstOrDefault(m => string.Equals(m.Id, _voiceModel, StringComparison.OrdinalIgnoreCase));
-                if (cur is { IsVoiceCloneStep: true })
-                    return;
-                // Prefer clone-step over TTS-only when switching within same provider.
-            }
-
-            var pick = S.Catalog._voiceModels.FirstOrDefault(m =>
-                !string.Equals(m.Id, "none", StringComparison.OrdinalIgnoreCase)
-                && m.IsVoiceCloneStep
-                && string.Equals(ConfigurationCatalog.ModelProviderId(m), pid, StringComparison.OrdinalIgnoreCase))
-                ?? S.Catalog._voiceModels.FirstOrDefault(m =>
-                    !string.Equals(m.Id, "none", StringComparison.OrdinalIgnoreCase)
-                    && string.Equals(ConfigurationCatalog.ModelProviderId(m), pid, StringComparison.OrdinalIgnoreCase));
-
-            if (pick is null)
-            {
-                try
-                {
-                    var fromCatalog = SupportedModelCatalog.ForCapability(ModelCapability.Voice)
-                        .Where(e =>
-                            e.Enabled &&
-                            string.Equals(
-                                SupportedModelCatalog.NormalizeProviderId(e.ProviderId),
-                                pid,
-                                StringComparison.OrdinalIgnoreCase))
-                        .OrderByDescending(e => e.IsVoiceCloneStep)
-                        .FirstOrDefault();
-                    if (fromCatalog is not null)
-                    {
-                        pick = SupportedModelCatalog.ToDto(fromCatalog);
-                        if (!S.Catalog._voiceModels.Any(m => string.Equals(m.Id, pick.Id, StringComparison.OrdinalIgnoreCase)))
-                            S.Catalog._voiceModels.Add(pick);
-                    }
-                }
-                catch { /* ignore */ }
-            }
-
+            var pick = FindVoiceModelForProvider(pid) ?? TryAddVoiceModelFromCatalog(pid);
             if (pick is not null)
                 _voiceModel = pick.Id;
             // else leave as-is — no invented model id
         }
 
+        private bool VoiceCloneModelAlreadyMatchesProvider(string pid)
+        {
+            var currentProvider = ResolveProviderIdForModel(_voiceModel, CapVoice, preferVideoReview: false);
+            if (IsCoverageModelOff(_voiceModel) ||
+                !string.Equals(currentProvider, pid, StringComparison.OrdinalIgnoreCase))
+                return false;
+            var cur = S.Catalog._voiceModels.FirstOrDefault(m => string.Equals(m.Id, _voiceModel, StringComparison.OrdinalIgnoreCase));
+            if (cur is { IsVoiceCloneStep: true })
+                return true;
+            // Prefer clone-step over TTS-only when switching within same provider.
+            return false;
+        }
+
+        private SupportedModelDto? FindVoiceModelForProvider(string pid) =>
+            S.Catalog._voiceModels.FirstOrDefault(m =>
+                !string.Equals(m.Id, "none", StringComparison.OrdinalIgnoreCase)
+                && m.IsVoiceCloneStep
+                && string.Equals(ConfigurationCatalog.ModelProviderId(m), pid, StringComparison.OrdinalIgnoreCase))
+            ?? S.Catalog._voiceModels.FirstOrDefault(m =>
+                !string.Equals(m.Id, "none", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(ConfigurationCatalog.ModelProviderId(m), pid, StringComparison.OrdinalIgnoreCase));
+
+        private SupportedModelDto? TryAddVoiceModelFromCatalog(string pid)
+        {
+            try
+            {
+                var fromCatalog = SupportedModelCatalog.ForCapability(ModelCapability.Voice)
+                    .Where(e =>
+                        e.Enabled &&
+                        string.Equals(
+                            SupportedModelCatalog.NormalizeProviderId(e.ProviderId),
+                            pid,
+                            StringComparison.OrdinalIgnoreCase))
+                    .OrderByDescending(e => e.IsVoiceCloneStep)
+                    .FirstOrDefault();
+                if (fromCatalog is null)
+                    return null;
+                var pick = SupportedModelCatalog.ToDto(fromCatalog);
+                if (!S.Catalog._voiceModels.Any(m => string.Equals(m.Id, pick.Id, StringComparison.OrdinalIgnoreCase)))
+                    S.Catalog._voiceModels.Add(pick);
+                return pick;
+            }
+            catch { return null; }
+        }
+
+        private static bool IsCoverageModelOff(string modelId) =>
+            string.IsNullOrWhiteSpace(modelId)
+            || modelId.Equals("none", StringComparison.OrdinalIgnoreCase)
+            || modelId.Equals(ModelDisabled, StringComparison.OrdinalIgnoreCase);
 
         /// <summary>After saving a music-provider key, pick a matching music model from the catalog.</summary>
         internal void EnsureMusicModelForProvider(string providerId)
         {
             var pid = SupportedModelCatalog.NormalizeProviderId(providerId);
             var currentProvider = ResolveProviderIdForModel(_audioModel, CapAudio, preferVideoReview: false);
-            var off = string.IsNullOrWhiteSpace(_audioModel)
-                      || _audioModel.Equals("none", StringComparison.OrdinalIgnoreCase)
-                      || _audioModel.Equals(ModelDisabled, StringComparison.OrdinalIgnoreCase);
-            if (!off && string.Equals(currentProvider, pid, StringComparison.OrdinalIgnoreCase))
+            if (!IsCoverageModelOff(_audioModel) && string.Equals(currentProvider, pid, StringComparison.OrdinalIgnoreCase))
                 return;
 
-            var pick = S.Catalog._audioModels.FirstOrDefault(m =>
-                !string.Equals(m.Id, "none", StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(ConfigurationCatalog.ModelProviderId(m), pid, StringComparison.OrdinalIgnoreCase));
-            if (pick is null)
-            {
-                // Last resort: catalog static (provider must still exist in models_catalog.json).
-                try
-                {
-                    var fromCatalog = SupportedModelCatalog.ForCapability(ModelCapability.Audio)
-                        .FirstOrDefault(e =>
-                            e.Enabled &&
-                            string.Equals(
-                                SupportedModelCatalog.NormalizeProviderId(e.ProviderId),
-                                pid,
-                                StringComparison.OrdinalIgnoreCase));
-                    if (fromCatalog is not null)
-                    {
-                        pick = SupportedModelCatalog.ToDto(fromCatalog);
-                        if (!S.Catalog._audioModels.Any(m => string.Equals(m.Id, pick.Id, StringComparison.OrdinalIgnoreCase)))
-                            S.Catalog._audioModels.Add(pick);
-                    }
-                }
-                catch { /* ignore */ }
-            }
+            var pick = FindMusicModelForProvider(pid) ?? TryAddMusicModelFromCatalog(pid);
             if (pick is not null)
             {
                 _audioModel = pick.Id;
                 _enableBackgroundMusic = true;
             }
+        }
+
+        private SupportedModelDto? FindMusicModelForProvider(string pid) =>
+            S.Catalog._audioModels.FirstOrDefault(m =>
+                !string.Equals(m.Id, "none", StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(ConfigurationCatalog.ModelProviderId(m), pid, StringComparison.OrdinalIgnoreCase));
+
+        private SupportedModelDto? TryAddMusicModelFromCatalog(string pid)
+        {
+            // Last resort: catalog static (provider must still exist in models_catalog.json).
+            try
+            {
+                var fromCatalog = SupportedModelCatalog.ForCapability(ModelCapability.Audio)
+                    .FirstOrDefault(e =>
+                        e.Enabled &&
+                        string.Equals(
+                            SupportedModelCatalog.NormalizeProviderId(e.ProviderId),
+                            pid,
+                            StringComparison.OrdinalIgnoreCase));
+                if (fromCatalog is null)
+                    return null;
+                var pick = SupportedModelCatalog.ToDto(fromCatalog);
+                if (!S.Catalog._audioModels.Any(m => string.Equals(m.Id, pick.Id, StringComparison.OrdinalIgnoreCase)))
+                    S.Catalog._audioModels.Add(pick);
+                return pick;
+            }
+            catch { return null; }
         }
 
     }

@@ -811,23 +811,11 @@ public static class SupportedModelCatalog
         if (hit is not null) return hit;
 
         // Same id under a compatible capability (chat/vision share many models).
-        if (!string.IsNullOrWhiteSpace(modelId))
-        {
-            hit = Find(modelId);
-            if (hit is not null)
-            {
-                if (hit.Capability == capability) return hit;
-                if (capability is ModelCapability.Chat or ModelCapability.Vision
-                    && hit.Capability is ModelCapability.Chat or ModelCapability.Vision)
-                    return hit;
-            }
-        }
+        if (TryCompatibleCapabilityHit(modelId, capability) is { } compatible)
+            return compatible;
 
-        if (!string.IsNullOrWhiteSpace(fallbackId))
-        {
-            hit = Find(fallbackId, capability) ?? Find(fallbackId);
-            if (hit is not null) return hit;
-        }
+        if (TryFallbackHit(fallbackId, capability) is { } fallback)
+            return fallback;
 
         // Catalog is SSoT — never invent synthetic models or pick an arbitrary "first" model.
         var label = string.IsNullOrWhiteSpace(modelId) ? "(none)" : modelId.Trim();
@@ -835,6 +823,24 @@ public static class SupportedModelCatalog
             $"Model '{label}' is not in models_catalog.json for {capability}. " +
             "Open Settings → Studio coverage and choose a catalog model for this job. " +
             "Do not rely on code defaults.");
+    }
+
+    private static SupportedModelEntry? TryCompatibleCapabilityHit(string? modelId, ModelCapability capability)
+    {
+        if (string.IsNullOrWhiteSpace(modelId)) return null;
+        var hit = Find(modelId);
+        if (hit is null) return null;
+        if (hit.Capability == capability) return hit;
+        if (capability is ModelCapability.Chat or ModelCapability.Vision
+            && hit.Capability is ModelCapability.Chat or ModelCapability.Vision)
+            return hit;
+        return null;
+    }
+
+    private static SupportedModelEntry? TryFallbackHit(string? fallbackId, ModelCapability capability)
+    {
+        if (string.IsNullOrWhiteSpace(fallbackId)) return null;
+        return Find(fallbackId, capability) ?? Find(fallbackId);
     }
 
     /// <summary>
@@ -1037,29 +1043,38 @@ public static class SupportedModelCatalog
                 return hit.Id;
         }
 
-        if (!Enum.TryParse<ModelCapability>(capabilityId.Replace("-", ""), true, out var cap))
-        {
-            cap = capabilityId.ToLowerInvariant() switch
-            {
-                "video" => ModelCapability.Video,
-                "image" => ModelCapability.Image,
-                "chat" or "planning" => ModelCapability.Chat,
-                "vision" => ModelCapability.Vision,
-                "audio" or "music" => ModelCapability.Audio,
-                "voice" => ModelCapability.Voice,
-                "lipsync" or "lip-sync" => ModelCapability.LipSync,
-                VideoReviewCapabilityId or "videoreview" => ModelCapability.Chat,
-                _ => ModelCapability.Chat,
-            };
-        }
-
-        if (string.Equals(capabilityId, VideoReviewCapabilityId, StringComparison.OrdinalIgnoreCase))
-        {
-            var review = Entries.FirstOrDefault(e => e.Enabled && !e.Deprecated && e.SupportsVideoReview);
-            if (review is not null) return review.Id;
-        }
+        var cap = ParseCapabilityId(capabilityId);
+        if (TryVideoReviewDefault(capabilityId) is { } reviewId)
+            return reviewId;
 
         return ForCapability(cap).FirstOrDefault()?.Id;
+    }
+
+    private static ModelCapability ParseCapabilityId(string capabilityId)
+    {
+        if (Enum.TryParse<ModelCapability>(capabilityId.Replace("-", ""), true, out var cap))
+            return cap;
+
+        return capabilityId.ToLowerInvariant() switch
+        {
+            "video" => ModelCapability.Video,
+            "image" => ModelCapability.Image,
+            "chat" or "planning" => ModelCapability.Chat,
+            "vision" => ModelCapability.Vision,
+            "audio" or "music" => ModelCapability.Audio,
+            "voice" => ModelCapability.Voice,
+            "lipsync" or "lip-sync" => ModelCapability.LipSync,
+            VideoReviewCapabilityId or "videoreview" => ModelCapability.Chat,
+            _ => ModelCapability.Chat,
+        };
+    }
+
+    private static string? TryVideoReviewDefault(string capabilityId)
+    {
+        if (!string.Equals(capabilityId, VideoReviewCapabilityId, StringComparison.OrdinalIgnoreCase))
+            return null;
+        var review = Entries.FirstOrDefault(e => e.Enabled && !e.Deprecated && e.SupportsVideoReview);
+        return review?.Id;
     }
 
     /// <summary>First enabled catalog voice model marked <see cref="SupportedModelEntry.IsVoiceCloneStep"/>.</summary>

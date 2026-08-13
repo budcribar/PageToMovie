@@ -246,29 +246,52 @@ public sealed class FakeGrokVideoClient : IVideoClient
         var mid = Path.Combine(fixtures, "clip_5s.mp4");
         var merge = Path.Combine(fixtures, "clip_merge_10s.mp4");
 
-        if (string.Equals(videoMode, "LoadLight", StringComparison.OrdinalIgnoreCase))
-        {
-            if (File.Exists(light)) return light;
-            if (File.Exists(mid)) return mid;
-            if (File.Exists(merge)) return merge;
-        }
+        if (TryLoadLightFixture(videoMode, light, mid, merge, out var lightPath))
+            return lightPath;
 
-        // Prefer scene-varied 3s clips for multi-shot soaks
-        if (Directory.Exists(fixtures) && durationSeconds > 0 && durationSeconds <= 4)
-        {
-            var scenes = Directory.GetFiles(fixtures, "clip_scene_*_3s.mp4");
-            if (scenes.Length > 0)
-                return scenes[Math.Abs(roundRobin) % scenes.Length];
-        }
+        if (TrySceneVariedClip(fixtures, durationSeconds, roundRobin, out var scenePath))
+            return scenePath;
 
-        string preferred;
+        var preferred = PreferredByDuration(durationSeconds, light, mid, merge);
+        return FirstExisting(preferred, merge, mid, light, fixtures);
+    }
+
+    private static bool TryLoadLightFixture(
+        string? videoMode, string light, string mid, string merge, out string path)
+    {
+        path = "";
+        if (!string.Equals(videoMode, "LoadLight", StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (File.Exists(light)) { path = light; return true; }
+        if (File.Exists(mid)) { path = mid; return true; }
+        if (File.Exists(merge)) { path = merge; return true; }
+        return false;
+    }
+
+    private static bool TrySceneVariedClip(
+        string fixtures, int durationSeconds, int roundRobin, out string path)
+    {
+        path = "";
+        if (!Directory.Exists(fixtures) || durationSeconds <= 0 || durationSeconds > 4)
+            return false;
+        var scenes = Directory.GetFiles(fixtures, "clip_scene_*_3s.mp4");
+        if (scenes.Length == 0)
+            return false;
+        path = scenes[Math.Abs(roundRobin) % scenes.Length];
+        return true;
+    }
+
+    private static string PreferredByDuration(int durationSeconds, string light, string mid, string merge)
+    {
         if (durationSeconds <= 2)
-            preferred = light;
-        else if (durationSeconds <= 6)
-            preferred = File.Exists(mid) ? mid : merge;
-        else
-            preferred = merge;
+            return light;
+        if (durationSeconds <= 6)
+            return File.Exists(mid) ? mid : merge;
+        return merge;
+    }
 
+    private static string FirstExisting(string preferred, string merge, string mid, string light, string fixtures)
+    {
         if (File.Exists(preferred)) return preferred;
         if (File.Exists(merge)) return merge;
         if (File.Exists(mid)) return mid;

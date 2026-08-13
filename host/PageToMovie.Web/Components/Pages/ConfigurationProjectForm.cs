@@ -86,13 +86,7 @@ public partial class Configuration
             S._message = null;
             try
             {
-                try { S.Keys._userSettings = await S.Engine.GetUserSettingsAsync(); }
-                catch (Exception)
-                {
-                    // User settings are optional; continue loading project config without them.
-                    System.Diagnostics.Debug.WriteLine("User settings unavailable; continuing project load.");
-                }
-
+                await TryLoadUserSettingsAsync();
                 if (string.IsNullOrWhiteSpace(S._projectId))
                 {
                     S._cfg = null;
@@ -103,55 +97,7 @@ public partial class Configuration
                 S._cfg = dto?.Config;
                 _projectDir = dto?.ProjectDir ?? $"projects/{S._projectId}";
                 if (S._cfg is null) return;
-                S.Media._uiTheme = ThemeState.Normalize(GetStr("ui_theme", S.Media._uiTheme));
-                _preferredVideoEditor = GetStr("preferred_video_editor", "ClipChamp");
-                _blueprintFile = GetStr("blueprint_file", _blueprintFile);
-                S.Coverage._modelName = GetStr("model_name", S.Coverage._modelName);
-                S.Coverage._imageModel = GetStr("image_model_name", S.Coverage._imageModel);
-                S.Coverage._planningModel = GetStr("planning_model_name", S.Coverage._planningModel);
-                S.Coverage._visionModel = GetStr("vision_model_name", S.Coverage._visionModel);
-                S.Coverage._qualityModel = GetStr("quality_model_name", S.Coverage._qualityModel);
-                S.Coverage._audioModel = GetStr("audio_model_name", S.Coverage._audioModel);
-                S.Coverage._voiceModel = GetStr("voice_model_name", S.Coverage._voiceModel);
-                // Drop ids that are not in the catalog (stale project config).
-                if (!string.IsNullOrWhiteSpace(S.Coverage._modelName) && !S.Catalog._videoModels.Any(m => string.Equals(m.Id, S.Coverage._modelName, StringComparison.OrdinalIgnoreCase)))
-                    S.Coverage._modelName = ConfigurationCatalog.DefaultForCapability("video");
-                if (!string.IsNullOrWhiteSpace(S.Coverage._imageModel) && !S.Catalog._imageModels.Any(m => string.Equals(m.Id, S.Coverage._imageModel, StringComparison.OrdinalIgnoreCase)))
-                    S.Coverage._imageModel = ConfigurationCatalog.DefaultForCapability("image");
-                if (!string.IsNullOrWhiteSpace(S.Coverage._planningModel) && !S.Catalog._planningModels.Any(m => string.Equals(m.Id, S.Coverage._planningModel, StringComparison.OrdinalIgnoreCase)))
-                    S.Coverage._planningModel = ConfigurationCatalog.DefaultForCapability("chat");
-                if (!string.IsNullOrWhiteSpace(S.Coverage._visionModel) && !S.Catalog._visionModels.Any(m => string.Equals(m.Id, S.Coverage._visionModel, StringComparison.OrdinalIgnoreCase)))
-                    S.Coverage._visionModel = ConfigurationCatalog.DefaultForCapability("vision");
-                if (!string.IsNullOrWhiteSpace(S.Coverage._qualityModel) && !S.Catalog._videoReviewModels.Any(m => string.Equals(m.Id, S.Coverage._qualityModel, StringComparison.OrdinalIgnoreCase)))
-                    S.Coverage._qualityModel = ConfigurationCatalog.DefaultQualityModel();
-                if (!string.IsNullOrWhiteSpace(S.Coverage._audioModel)
-                    && !S.Coverage._audioModel.Equals("none", StringComparison.OrdinalIgnoreCase)
-                    && !S.Catalog._audioModels.Any(m => string.Equals(m.Id, S.Coverage._audioModel, StringComparison.OrdinalIgnoreCase)))
-                    S.Coverage._audioModel = "none";
-                if (!string.IsNullOrWhiteSpace(S.Coverage._voiceModel)
-                    && !S.Coverage._voiceModel.Equals("none", StringComparison.OrdinalIgnoreCase)
-                    && !S.Catalog._voiceModels.Any(m => string.Equals(m.Id, S.Coverage._voiceModel, StringComparison.OrdinalIgnoreCase)))
-                    S.Coverage._voiceModel = "none";
-                S.Coverage._enableBackgroundMusic = GetBool("enable_background_music", S.Coverage._enableBackgroundMusic);
-                S.Coverage._backgroundMusicVolumePercent = GetInt("background_music_volume_percent", S.Coverage._backgroundMusicVolumePercent);
-                _aspect = GetStr("aspect_ratio", _aspect);
-                _resolution = GetStr("resolution", _resolution);
-                _durationSeconds = GetInt("duration_seconds", _durationSeconds);
-                _useDurationDefaults = GetBool("use_duration_defaults", _useDurationDefaults);
-                _smartContinuation = GetBool("smart_continuation", _smartContinuation);
-                _mergeAfterClip = GetBool("merge_scene_after_each_clip", _mergeAfterClip);
-                _qaRetry = GetBool("qa_retry_on_fail", _qaRetry);
-                _regenSilent = GetBool("regenerate_silent_clips", _regenSilent);
-                _rebuildWip = GetBool("rebuild_wip_movie_after_scene", _rebuildWip);
-                _qaMaxRetries = GetInt("qa_max_retries", _qaMaxRetries);
-                _qaFrameCount = GetInt("qa_frame_count", _qaFrameCount);
-                _audioGain = GetDouble("composite_audio_gain_db", _audioGain);
-                _wipPath = GetStr("wip_movie_path", _wipPath);
-                _adaptMaxSpeakingCast = GetIntOrNull("adaptation_max_speaking_cast");
-                _adaptMaxDialogueWords = GetIntOrNull("adaptation_max_dialogue_words");
-                _adaptVoMaxSentences = GetIntOrNull("adaptation_vo_max_sentences");
-                _adaptSceneCountMin = GetIntOrNull("adaptation_scene_count_min");
-                _adaptSceneCountMax = GetIntOrNull("adaptation_scene_count_max");
+                ApplyLoadedConfig();
             }
             catch (Exception ex)
             {
@@ -159,6 +105,89 @@ public partial class Configuration
                 S._cfg = null;
             }
             finally { S._busy = false; }
+        }
+
+        private async Task TryLoadUserSettingsAsync()
+        {
+            try { S.Keys._userSettings = await S.Engine.GetUserSettingsAsync(); }
+            catch (Exception)
+            {
+                // User settings are optional; continue loading project config without them.
+                System.Diagnostics.Debug.WriteLine("User settings unavailable; continuing project load.");
+            }
+        }
+
+        private void ApplyLoadedConfig()
+        {
+            ApplyUiAndModelFields();
+            DropStaleCatalogModelIds();
+            ApplyPipelineFields();
+        }
+
+        private void ApplyUiAndModelFields()
+        {
+            S.Media._uiTheme = ThemeState.Normalize(GetStr("ui_theme", S.Media._uiTheme));
+            _preferredVideoEditor = GetStr("preferred_video_editor", "ClipChamp");
+            _blueprintFile = GetStr("blueprint_file", _blueprintFile);
+            S.Coverage._modelName = GetStr("model_name", S.Coverage._modelName);
+            S.Coverage._imageModel = GetStr("image_model_name", S.Coverage._imageModel);
+            S.Coverage._planningModel = GetStr("planning_model_name", S.Coverage._planningModel);
+            S.Coverage._visionModel = GetStr("vision_model_name", S.Coverage._visionModel);
+            S.Coverage._qualityModel = GetStr("quality_model_name", S.Coverage._qualityModel);
+            S.Coverage._audioModel = GetStr("audio_model_name", S.Coverage._audioModel);
+            S.Coverage._voiceModel = GetStr("voice_model_name", S.Coverage._voiceModel);
+        }
+
+        private void DropStaleCatalogModelIds()
+        {
+            // Drop ids that are not in the catalog (stale project config).
+            DropIfUnknown(ref S.Coverage._modelName, S.Catalog._videoModels, ConfigurationCatalog.DefaultForCapability("video"));
+            DropIfUnknown(ref S.Coverage._imageModel, S.Catalog._imageModels, ConfigurationCatalog.DefaultForCapability("image"));
+            DropIfUnknown(ref S.Coverage._planningModel, S.Catalog._planningModels, ConfigurationCatalog.DefaultForCapability("chat"));
+            DropIfUnknown(ref S.Coverage._visionModel, S.Catalog._visionModels, ConfigurationCatalog.DefaultForCapability("vision"));
+            DropIfUnknown(ref S.Coverage._qualityModel, S.Catalog._videoReviewModels, ConfigurationCatalog.DefaultQualityModel());
+            DropIfUnknownOptional(ref S.Coverage._audioModel, S.Catalog._audioModels);
+            DropIfUnknownOptional(ref S.Coverage._voiceModel, S.Catalog._voiceModels);
+        }
+
+        private static void DropIfUnknown(ref string slot, IReadOnlyList<SupportedModelDto> models, string fallback)
+        {
+            var current = slot;
+            if (!string.IsNullOrWhiteSpace(current) && !models.Any(m => string.Equals(m.Id, current, StringComparison.OrdinalIgnoreCase)))
+                slot = fallback;
+        }
+
+        private static void DropIfUnknownOptional(ref string slot, IReadOnlyList<SupportedModelDto> models)
+        {
+            var current = slot;
+            if (!string.IsNullOrWhiteSpace(current)
+                && !current.Equals("none", StringComparison.OrdinalIgnoreCase)
+                && !models.Any(m => string.Equals(m.Id, current, StringComparison.OrdinalIgnoreCase)))
+                slot = "none";
+        }
+
+        private void ApplyPipelineFields()
+        {
+            S.Coverage._enableBackgroundMusic = GetBool("enable_background_music", S.Coverage._enableBackgroundMusic);
+            S.Coverage._backgroundMusicVolumePercent = GetInt("background_music_volume_percent", S.Coverage._backgroundMusicVolumePercent);
+            _aspect = GetStr("aspect_ratio", _aspect);
+            _resolution = GetStr("resolution", _resolution);
+            _durationSeconds = GetInt("duration_seconds", _durationSeconds);
+            _useDurationDefaults = GetBool("use_duration_defaults", _useDurationDefaults);
+            _smartContinuation = GetBool("smart_continuation", _smartContinuation);
+            _mergeAfterClip = GetBool("merge_scene_after_each_clip", _mergeAfterClip);
+            _qaRetry = GetBool("qa_retry_on_fail", _qaRetry);
+            _regenSilent = GetBool("regenerate_silent_clips", _regenSilent);
+            _rebuildWip = GetBool("rebuild_wip_movie_after_scene", _rebuildWip);
+            _qaMaxRetries = GetInt("qa_max_retries", _qaMaxRetries);
+            _qaFrameCount = GetInt("qa_frame_count", _qaFrameCount);
+            _audioGain = GetDouble("composite_audio_gain_db", _audioGain);
+            _wipPath = GetStr("wip_movie_path", _wipPath);
+            _adaptMaxSpeakingCast = GetIntOrNull("adaptation_max_speaking_cast");
+            _adaptMaxDialogueWords = GetIntOrNull("adaptation_max_dialogue_words");
+            _adaptVoMaxSentences = GetIntOrNull("adaptation_vo_max_sentences");
+            _adaptSceneCountMin = GetIntOrNull("adaptation_scene_count_min");
+            _adaptSceneCountMax = GetIntOrNull("adaptation_scene_count_max");
         }
 
 

@@ -259,61 +259,53 @@ public partial class Home
         /// <summary>Strip stack/path noise; keep the actionable sentence.</summary>
         internal static string SanitizeOperatorError(string raw)
         {
+            var s = FirstLineWithoutTypePrefix(raw);
+            return RewriteKnownOperatorError(s) ?? Home.TrimOneLine(s, 280);
+        }
+
+        private static string FirstLineWithoutTypePrefix(string raw)
+        {
             var s = raw.Replace("\r\n", "\n").Trim();
-            // First line only (stacks often follow)
             var nl = s.IndexOf('\n');
             if (nl > 0) s = s[..nl].Trim();
 
-            // Drop leading "System.X: " type prefixes
-            if (s.StartsWith("System.", StringComparison.Ordinal))
-            {
-                var colon = s.IndexOf(": ", StringComparison.Ordinal);
-                if (colon > 0 && colon < 80)
-                    s = s[(colon + 2)..].Trim();
-            }
+            if (!s.StartsWith("System.", StringComparison.Ordinal))
+                return s;
+            var colon = s.IndexOf(": ", StringComparison.Ordinal);
+            if (colon > 0 && colon < 80)
+                s = s[(colon + 2)..].Trim();
+            return s;
+        }
 
-            // Known high-value rewrites (clearer than raw API blobs)
-            if (s.Contains("XAI_API_KEY", StringComparison.OrdinalIgnoreCase) ||
-                s.Contains("API key missing", StringComparison.OrdinalIgnoreCase) ||
-                s.Contains("Connect your AI", StringComparison.OrdinalIgnoreCase))
+        private static string? RewriteKnownOperatorError(string s)
+        {
+            if (ContainsAny(s, "XAI_API_KEY", "API key missing", "Connect your AI"))
                 return "No AI provider connected. Open Configuration to connect your AI provider.";
-
-            if (s.Contains("No page images", StringComparison.OrdinalIgnoreCase) ||
-                s.Contains("Could not extract or render page images", StringComparison.OrdinalIgnoreCase) ||
-                s.Contains("Page render failed", StringComparison.OrdinalIgnoreCase) ||
-                s.Contains("libpdfium", StringComparison.OrdinalIgnoreCase) ||
-                s.Contains("libSkiaSharp", StringComparison.OrdinalIgnoreCase) ||
-                s.Contains("DllNotFoundException", StringComparison.OrdinalIgnoreCase))
+            if (ContainsAny(s, "No page images", "Could not extract or render page images",
+                    "Page render failed", "libpdfium", "libSkiaSharp", "DllNotFoundException"))
                 return "Could not process PDF pages. Check your uploaded file format or try re-uploading.";
-
             if (s.Contains("No PDF and no book_full", StringComparison.OrdinalIgnoreCase))
                 return "No story file found on the server. Re-upload the source file, then import again.";
-
-            if (s.Contains("timeout", StringComparison.OrdinalIgnoreCase) ||
-                s.Contains("timed out", StringComparison.OrdinalIgnoreCase))
+            if (ContainsAny(s, "timeout", "timed out"))
                 return "Story import timed out. Please try importing again.";
-
-            if (s.Contains("could not be decrypted", StringComparison.OrdinalIgnoreCase) ||
-                s.Contains("encryption keys changed", StringComparison.OrdinalIgnoreCase) ||
-                s.Contains("DataProtector", StringComparison.OrdinalIgnoreCase))
+            if (ContainsAny(s, "could not be decrypted", "encryption keys changed", "DataProtector"))
                 return "Saved credentials need to be re-entered. Open Configuration and save your settings again.";
-
-            if (s.Contains("HTTP 401", StringComparison.OrdinalIgnoreCase) ||
-                s.Contains("Unauthorized", StringComparison.OrdinalIgnoreCase) ||
-                s.Contains("Incorrect API key", StringComparison.OrdinalIgnoreCase))
+            if (ContainsAny(s, "HTTP 401", "Unauthorized", "Incorrect API key"))
                 return "Service connection rejected credentials (401). Open Configuration and save valid credentials.";
-
-            if (s.Contains("HTTP 429", StringComparison.OrdinalIgnoreCase) ||
-                s.Contains("rate limit", StringComparison.OrdinalIgnoreCase))
+            if (ContainsAny(s, "HTTP 429", "rate limit"))
                 return "Service rate limit hit. Please wait a minute and try again.";
-
-            if (s.Contains("Could not build a usable screenplay", StringComparison.OrdinalIgnoreCase) ||
-                s.Contains("Book adapt", StringComparison.OrdinalIgnoreCase) ||
-                s.Contains("chunk", StringComparison.OrdinalIgnoreCase) && s.Contains("failed", StringComparison.OrdinalIgnoreCase))
+            if (IsScreenplayBuildError(s))
                 return "Screenplay generation failed after book text was ready. " + Home.TrimOneLine(s, 200);
-
-            return Home.TrimOneLine(s, 280);
+            return null;
         }
+
+        private static bool IsScreenplayBuildError(string s) =>
+            s.Contains("Could not build a usable screenplay", StringComparison.OrdinalIgnoreCase) ||
+            s.Contains("Book adapt", StringComparison.OrdinalIgnoreCase) ||
+            (s.Contains("chunk", StringComparison.OrdinalIgnoreCase) && s.Contains("failed", StringComparison.OrdinalIgnoreCase));
+
+        private static bool ContainsAny(string s, params string[] needles) =>
+            needles.Any(n => s.Contains(n, StringComparison.OrdinalIgnoreCase));
 
     }
 }

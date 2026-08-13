@@ -25,20 +25,8 @@ public sealed class SignalRJobProgressSink : IJobProgressSink
 
         if (!isTerminal)
         {
-            var now = DateTimeOffset.UtcNow;
-            if (_lastBroadcast.TryGetValue(snapshot.JobId, out var last) && (now - last) < MinUpdateInterval)
-            {
-                // Throttled non-terminal update
+            if (ShouldThrottleNonTerminal(snapshot.JobId))
                 return;
-            }
-            _lastBroadcast[snapshot.JobId] = now;
-            if (_lastBroadcast.Count > 1000)
-            {
-                var cutoff = now.AddMinutes(-30);
-                foreach (var kvp in _lastBroadcast)
-                    if (kvp.Value < cutoff)
-                        _lastBroadcast.TryRemove(kvp.Key, out _);
-            }
         }
         else
         {
@@ -52,6 +40,30 @@ public sealed class SignalRJobProgressSink : IJobProgressSink
         if (!string.IsNullOrWhiteSpace(snapshot.UserId))
             await _hub.Clients.Group($"user:{snapshot.UserId}")
                 .SendAsync(JobHubEvents.JobUpdated, snapshot, ct);
+    }
+
+    private bool ShouldThrottleNonTerminal(string jobId)
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (_lastBroadcast.TryGetValue(jobId, out var last) && (now - last) < MinUpdateInterval)
+        {
+            // Throttled non-terminal update
+            return true;
+        }
+
+        _lastBroadcast[jobId] = now;
+        if (_lastBroadcast.Count > 1000)
+            PruneStaleBroadcasts(now);
+
+        return false;
+    }
+
+    private void PruneStaleBroadcasts(DateTimeOffset now)
+    {
+        var cutoff = now.AddMinutes(-30);
+        foreach (var kvp in _lastBroadcast)
+            if (kvp.Value < cutoff)
+                _lastBroadcast.TryRemove(kvp.Key, out _);
     }
 
     public async Task OnJobLogAsync(string message, CancellationToken ct = default)

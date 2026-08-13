@@ -41,62 +41,80 @@ public sealed class ClientVideoStitchService
         foreach (var sn in sceneNumbers.Distinct().OrderBy(x => x))
         {
             ct.ThrowIfCancellationRequested();
-
-            var summary = sceneList?.FirstOrDefault(s => s.SceneNumber == sn);
-
-            // 1. If scene has an explicit user/editor custom override, strictly use the custom scene composite
-            if (summary?.IsUserOverride == true)
-            {
-                urls.Add(_engine.CompositeVideoUrl(projectId, sn));
-                continue;
-            }
-
-            // 2. Standard scene: fetch scene details and prefer atomic clip files for precision
-            SceneDetail? detail = null;
-            try
-            {
-                detail = (await _engine.GetSceneDetailAsync(projectId, sn, ct))?.Scene;
-            }
-            catch
-            {
-                // fall through
-            }
-
-            if (detail?.IsUserOverride == true)
-            {
-                urls.Add(_engine.CompositeVideoUrl(projectId, sn));
-                continue;
-            }
-
-            var clips = detail?.Clips?
-                .Where(c => c.OnDisk)
-                .OrderBy(c => c.ClipNumber)
-                .ToList();
-
-            if (clips is { Count: > 0 })
-            {
-                foreach (var c in clips)
-                {
-                    var fileName = string.IsNullOrWhiteSpace(c.FileName)
-                        ? $"scene_{sn:D2}_clip_{c.ClipNumber:D2}.mp4"
-                        : c.FileName;
-
-                    var local = _media is null
-                        ? null
-                        : await _media.GetLocalBlobUrlAsync(projectId, $"assets/video/{fileName}");
-                    urls.Add(local ?? c.VideoUrl ?? _engine.ClipVideoUrl(projectId, sn, c.ClipNumber));
-                }
-                continue;
-            }
-
-            // Fallback: if no atomic clips on disk for this scene, use composite if available
-            if (summary?.CompositeExists == true || detail?.CompositeExists == true)
-            {
-                urls.Add(_engine.CompositeVideoUrl(projectId, sn));
-            }
+            await AppendSceneMediaUrlsAsync(urls, projectId, sn, sceneList, ct);
         }
 
         return urls;
+    }
+
+    private async Task AppendSceneMediaUrlsAsync(
+        List<string> urls,
+        string projectId,
+        int sn,
+        IReadOnlyList<SceneSummary>? sceneList,
+        CancellationToken ct)
+    {
+        var summary = sceneList?.FirstOrDefault(s => s.SceneNumber == sn);
+
+        // 1. If scene has an explicit user/editor custom override, strictly use the custom scene composite
+        if (summary?.IsUserOverride == true)
+        {
+            urls.Add(_engine.CompositeVideoUrl(projectId, sn));
+            return;
+        }
+
+        // 2. Standard scene: fetch scene details and prefer atomic clip files for precision
+        var detail = await TryGetSceneDetailAsync(projectId, sn, ct);
+
+        if (detail?.IsUserOverride == true)
+        {
+            urls.Add(_engine.CompositeVideoUrl(projectId, sn));
+            return;
+        }
+
+        if (await TryAppendOnDiskClipUrlsAsync(urls, projectId, sn, detail))
+            return;
+
+        // Fallback: if no atomic clips on disk for this scene, use composite if available
+        if (summary?.CompositeExists == true || detail?.CompositeExists == true)
+            urls.Add(_engine.CompositeVideoUrl(projectId, sn));
+    }
+
+    private async Task<SceneDetail?> TryGetSceneDetailAsync(string projectId, int sn, CancellationToken ct)
+    {
+        try
+        {
+            return (await _engine.GetSceneDetailAsync(projectId, sn, ct))?.Scene;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private async Task<bool> TryAppendOnDiskClipUrlsAsync(
+        List<string> urls, string projectId, int sn, SceneDetail? detail)
+    {
+        var clips = detail?.Clips?
+            .Where(c => c.OnDisk)
+            .OrderBy(c => c.ClipNumber)
+            .ToList();
+
+        if (clips is not { Count: > 0 })
+            return false;
+
+        foreach (var c in clips)
+        {
+            var fileName = string.IsNullOrWhiteSpace(c.FileName)
+                ? $"scene_{sn:D2}_clip_{c.ClipNumber:D2}.mp4"
+                : c.FileName;
+
+            var local = _media is null
+                ? null
+                : await _media.GetLocalBlobUrlAsync(projectId, $"assets/video/{fileName}");
+            urls.Add(local ?? c.VideoUrl ?? _engine.ClipVideoUrl(projectId, sn, c.ClipNumber));
+        }
+        return true;
     }
 
     /// <summary>

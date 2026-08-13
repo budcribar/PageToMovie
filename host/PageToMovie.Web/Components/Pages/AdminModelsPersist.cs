@@ -140,12 +140,19 @@ public partial class AdminModelsCatalog
                 throw new ArgumentException("Field path is empty.");
 
             var path = fieldPath.Trim();
+            RejectInformationalProbePath(path);
+            ApplyParsedValueToPath(model, path, ParseLiveJsonNode(liveValue));
+        }
+
+        private static void RejectInformationalProbePath(string path)
+        {
             // Ignore non-data probe rows
             if (path.StartsWith('(') || path is "live_probe" or "pricing_docs" or "docs.extension" or "docs.generation")
                 throw new InvalidOperationException("This probe row is informational and cannot be accepted as a catalog field.");
+        }
 
-            JsonNode valueNode = ParseLiveJsonNode(liveValue);
-
+        private static void ApplyParsedValueToPath(JsonObject model, string path, JsonNode valueNode)
+        {
             var dot = path.IndexOf('.');
             if (dot < 0)
             {
@@ -158,30 +165,40 @@ public partial class AdminModelsCatalog
             if (string.IsNullOrWhiteSpace(parentKey) || string.IsNullOrWhiteSpace(childKey))
                 throw new InvalidOperationException($"Invalid nested field path '{path}'.");
 
+            ApplyNestedChildValue(EnsureNestedObject(model, parentKey), parentKey, childKey, valueNode);
+        }
+
+        private static JsonObject EnsureNestedObject(JsonObject model, string parentKey)
+        {
             if (model[parentKey] is not JsonObject nested)
             {
                 nested = new JsonObject();
                 model[parentKey] = nested;
             }
+            return nested;
+        }
 
+        private static void ApplyNestedChildValue(JsonObject nested, string parentKey, string childKey, JsonNode valueNode)
+        {
             if (childKey == "*")
+                ApplyWildcardLiveValue(nested, parentKey, valueNode);
+            else
+                nested[childKey] = valueNode;
+        }
+
+        private static void ApplyWildcardLiveValue(JsonObject nested, string parentKey, JsonNode valueNode)
+        {
+            // Apply live value to every existing child key; if empty, seed common resolution tiers for video maps.
+            if (nested.Count == 0
+                && parentKey.Contains("Resolution", StringComparison.OrdinalIgnoreCase))
             {
-                // Apply live value to every existing child key; if empty, seed common resolution tiers for video maps.
-                if (nested.Count == 0
-                    && parentKey.Contains("Resolution", StringComparison.OrdinalIgnoreCase))
-                {
-                    foreach (var tier in new[] { "480p", "720p", "1080p" })
-                        nested[tier] = valueNode?.DeepClone() ?? valueNode;
-                }
-                else
-                {
-                    foreach (var key in nested.Select(kv => kv.Key).ToList())
-                        nested[key] = valueNode?.DeepClone() ?? valueNode;
-                }
+                foreach (var tier in new[] { "480p", "720p", "1080p" })
+                    nested[tier] = valueNode?.DeepClone() ?? valueNode;
                 return;
             }
 
-            nested[childKey] = valueNode;
+            foreach (var key in nested.Select(kv => kv.Key).ToList())
+                nested[key] = valueNode?.DeepClone() ?? valueNode;
         }
 
         internal static JsonNode ParseLiveJsonNode(string liveValue)

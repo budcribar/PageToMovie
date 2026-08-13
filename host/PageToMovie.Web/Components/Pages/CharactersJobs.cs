@@ -26,19 +26,25 @@ public partial class Characters
         internal JobSnapshot? _job;
 
 
-        internal bool VoiceJobRunning =>
+        internal bool VoiceJobRunning => ComputeVoiceJobRunning();
+
+        private bool ComputeVoiceJobRunning() =>
             _job is not null &&
             string.Equals(_job.Kind, "voice-preview", StringComparison.OrdinalIgnoreCase) &&
             (_job.Status is JobStatusRunning or JobStatusQueued) &&
             string.Equals(_job.CharKey, S.List._selectedKey, StringComparison.OrdinalIgnoreCase);
 
 
-        internal bool JobRunning =>
+        internal bool JobRunning => ComputeJobRunning();
+
+        private bool ComputeJobRunning() =>
             _job is not null &&
             (_job.Status is JobStatusRunning or JobStatusQueued);
 
 
-        internal bool PlateSortRunning =>
+        internal bool PlateSortRunning => ComputePlateSortRunning();
+
+        private bool ComputePlateSortRunning() =>
             JobRunning &&
             string.Equals(_job?.Kind, "character-plates", StringComparison.OrdinalIgnoreCase);
 
@@ -47,30 +53,44 @@ public partial class Characters
         {
             var kind = job.Kind ?? "";
             if (string.Equals(kind, "cast-extract", StringComparison.OrdinalIgnoreCase))
-                return string.IsNullOrWhiteSpace(job.Message)
-                    ? "Building cast from screenplay…"
-                    : job.Message;
+                return StatusForCastExtract(job);
             if (string.Equals(kind, "character-plates", StringComparison.OrdinalIgnoreCase))
-                return job.Total > 0
-                    ? $"Matching book pictures… ({job.Index} of {job.Total})"
-                    : "Matching book pictures…";
+                return StatusForPlates(job);
             if (string.Equals(kind, "character", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(kind, "character_variants", StringComparison.OrdinalIgnoreCase))
-                return job.Total > 0
-                    ? $"Creating portrait… ({job.Index} of {job.Total})"
-                    : "Creating portrait…";
+                return StatusForPortrait(job);
             if (string.Equals(kind, "plan_looks", StringComparison.OrdinalIgnoreCase))
-            {
-                if (!string.IsNullOrWhiteSpace(job.Message))
-                    return job.Message;
-                return job.Total > 0
-                    ? $"Generating looks for plan… ({job.Index} of {job.Total})"
-                    : "Generating looks for plan…";
-            }
+                return StatusForPlanLooks(job);
             if (string.Equals(kind, "voice-preview", StringComparison.OrdinalIgnoreCase))
-                return "Generating voice sample…";
+                return StatusForVoicePreview();
             return "Working…";
         }
+
+        private static string StatusForCastExtract(JobSnapshot job) =>
+            string.IsNullOrWhiteSpace(job.Message)
+                ? "Building cast from screenplay…"
+                : job.Message;
+
+        private static string StatusForPlates(JobSnapshot job) =>
+            job.Total > 0
+                ? $"Matching book pictures… ({job.Index} of {job.Total})"
+                : "Matching book pictures…";
+
+        private static string StatusForPortrait(JobSnapshot job) =>
+            job.Total > 0
+                ? $"Creating portrait… ({job.Index} of {job.Total})"
+                : "Creating portrait…";
+
+        private static string StatusForPlanLooks(JobSnapshot job)
+        {
+            if (!string.IsNullOrWhiteSpace(job.Message))
+                return job.Message;
+            return job.Total > 0
+                ? $"Generating looks for plan… ({job.Index} of {job.Total})"
+                : "Generating looks for plan…";
+        }
+
+        private static string StatusForVoicePreview() => "Generating voice sample…";
 
 
         internal void OnJobUpdated(JobSnapshot snap)

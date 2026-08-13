@@ -2567,26 +2567,29 @@ public async Task<ProjectsDto?> DeleteProjectAsync(
                 JsonOpts,
                 ct);
             var json = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOpts, ct);
-            var ok = json.ValueKind == JsonValueKind.Object
-                     && json.TryGetProperty("ok", out var okEl)
-                     && okEl.ValueKind == JsonValueKind.True;
-            string? filmId = null;
-            if (json.ValueKind == JsonValueKind.Object && json.TryGetProperty("filmId", out var fid)
-                && fid.ValueKind == JsonValueKind.String)
-                filmId = fid.GetString();
-            string? error = null;
-            if (json.ValueKind == JsonValueKind.Object && json.TryGetProperty("error", out var err)
-                && err.ValueKind == JsonValueKind.String)
-                error = err.GetString();
-            if (!resp.IsSuccessStatusCode && error is null)
-                error = resp.ReasonPhrase ?? $"HTTP {(int)resp.StatusCode}";
-            return (ok, filmId, error);
+            return ReadFilmBuildResponse(json, resp);
         }
         catch (Exception ex)
         {
             return (false, null, ex.Message);
         }
     }
+
+    private static (bool Ok, string? FilmId, string? Error) ReadFilmBuildResponse(
+        JsonElement json, HttpResponseMessage resp)
+    {
+        var ok = json.ValueKind == JsonValueKind.Object && JsonTrue(json, "ok");
+        var filmId = JsonStringIfObjectKind(json, "filmId");
+        var error = JsonStringIfObjectKind(json, "error");
+        if (!resp.IsSuccessStatusCode && error is null)
+            error = resp.ReasonPhrase ?? $"HTTP {(int)resp.StatusCode}";
+        return (ok, filmId, error);
+    }
+
+    private static string? JsonStringIfObjectKind(JsonElement json, string name) =>
+        json.ValueKind == JsonValueKind.Object
+            ? JsonStringIfKind(json, name, JsonValueKind.String)
+            : null;
 
     public async Task<YouTubeStatusDto?> GetYouTubeStatusAsync(CancellationToken ct = default) =>
         await _http.GetFromJsonAsync<YouTubeStatusDto>("/api/youtube/status", JsonOpts, ct);

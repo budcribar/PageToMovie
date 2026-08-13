@@ -269,103 +269,129 @@ public partial class Review
                 _showWipPlayer = true;
                 await RefreshWipMetaAsync();
 
-                if (!string.IsNullOrEmpty(_clientWipUrl) && !_wipStale)
+                if (HasFreshClientWip())
                 {
                     S._message = "Playing WIP";
                     return;
                 }
 
                 await RefreshWipMetaAsync();
-                if (_wipExists && !_wipStale)
+                if (HasFreshServerWip())
                 {
-                    _clientWipUrl = null;
-                    _showWipPlayer = true;
-                    _showScenePlayer = false;
-                    _wipVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                    S._message = "Playing WIP (up to date)";
+                    ShowServerWip();
                     return;
                 }
 
-                var sceneNums = S.List._scenes
-                    .Where(s => s.CompositeExists || s.ClipsOnDisk > 0 || S.MediaFolder.IsConnected || S.MediaFolder.IsSyncing)
-                    .OrderBy(s => s.SceneNumber)
-                    .Select(s => s.SceneNumber)
-                    .ToList();
+                var sceneNums = CollectPlayableSceneNumbers();
                 if (sceneNums.Count == 0)
                 {
-                    S._error = S.MediaFolder.IsConnected
-                        ? "No scene videos were found in your local media folder or on the server."
-                        : "Connect your local media folder to rebuild this movie from your synced clips.";
+                    S._error = MissingWipScenesError();
                     return;
                 }
 
-                _clientStitching = true;
-                S._error = null;
-                _clientStitchStatus = "Collecting scenes…";
-                _showClipPlayer = false;
-                _showScenePlayer = false;
-                _clientSceneUrl = null;
-                _showWipPlayer = true;
-                _clientWipUrl = null;
-                try
-                {
-                    // Revoke the OLD preview before collecting new segments — see the comment in
-                    // EnsureShareableMovieUrlAsync for why revoking after collection can destroy a
-                    // blob the segments list still needs.
-                    await S.Stitch.RevokePreviewUrlAsync();
-                    var meta = await S.Engine.GetWipMovieMetaAsync(S._projectId);
-                    var stale = meta?.StaleScenes?.ToHashSet() ?? new HashSet<int>();
-                    var segs = await S.Stitch.CollectAndMixSceneSegmentInfosAsync(S._projectId, sceneNums, S.List._scenes, stale);
-                    if (segs.Count == 0)
-                    {
-                        S._error = "No scene videos were found";
-                        _showWipPlayer = false;
-                        return;
-                    }
-
-                    _clientStitchStatus = segs.Count == 1
-                        ? "Loading…"
-                        : $"Combining {segs.Count} file(s)…";
-                    var result = await S.Stitch.ConcatAsync(segs.Select(s => s.Url).ToList());
-                    if (!result.Success || string.IsNullOrWhiteSpace(result.Url))
-                    {
-                        S._error = result.Error ?? "Browser stitch failed";
-                        _showWipPlayer = false;
-                        return;
-                    }
-
-                    _clientWipUrl = result.Url;
-                    _wipVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                    S._message = $"Preview ready — {segs.Count} scene(s)";
-
-                    // film_build.v1: full segment EDL + studio.sha256 (non-fatal)
-                    try
-                    {
-                        _clientStitchStatus = "Saving cut timeline…";
-                        var reg = await S.Stitch.RegisterFilmBuildAfterWipStitchAsync(S._projectId, segs, result);
-                        if (reg.Ok && !string.IsNullOrWhiteSpace(reg.FilmId))
-                            S._message = $"Preview ready — {segs.Count} scene(s) · film {reg.FilmId}";
-                    }
-                    catch
-                    {
-                        /* provenance must not block playback */
-                    }
-                }
-                catch (Exception ex)
-                {
-                    S._error = ex.Message;
-                    _showWipPlayer = false;
-                    _clientWipUrl = null;
-                }
-                finally
-                {
-                    _clientStitching = false;
-                    _clientStitchStatus = null;
-                }
+                await StitchWipInBrowserAsync(sceneNums);
             }
             finally
             {
                 S._busy = false;
+            }
+        }
+
+        private bool HasFreshClientWip() =>
+            !string.IsNullOrEmpty(_clientWipUrl) && !_wipStale;
+
+        private bool HasFreshServerWip() =>
+            _wipExists && !_wipStale;
+
+        private void ShowServerWip()
+        {
+            _clientWipUrl = null;
+            _showWipPlayer = true;
+            _showScenePlayer = false;
+            _wipVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            S._message = "Playing WIP (up to date)";
+        }
+
+        private List<int> CollectPlayableSceneNumbers() =>
+            S.List._scenes
+                .Where(s => s.CompositeExists || s.ClipsOnDisk > 0 || S.MediaFolder.IsConnected || S.MediaFolder.IsSyncing)
+                .OrderBy(s => s.SceneNumber)
+                .Select(s => s.SceneNumber)
+                .ToList();
+
+        private string MissingWipScenesError() =>
+            S.MediaFolder.IsConnected
+                ? "No scene videos were found in your local media folder or on the server."
+                : "Connect your local media folder to rebuild this movie from your synced clips.";
+
+        private async Task StitchWipInBrowserAsync(List<int> sceneNums)
+        {
+            _clientStitching = true;
+            S._error = null;
+            _clientStitchStatus = "Collecting scenes…";
+            _showClipPlayer = false;
+            _showScenePlayer = false;
+            _clientSceneUrl = null;
+            _showWipPlayer = true;
+            _clientWipUrl = null;
+            try
+            {
+                // Revoke the OLD preview before collecting new segments — see the comment in
+                // EnsureShareableMovieUrlAsync for why revoking after collection can destroy a
+                // blob the segments list still needs.
+                await S.Stitch.RevokePreviewUrlAsync();
+                var meta = await S.Engine.GetWipMovieMetaAsync(S._projectId);
+                var stale = meta?.StaleScenes?.ToHashSet() ?? new HashSet<int>();
+                var segs = await S.Stitch.CollectAndMixSceneSegmentInfosAsync(S._projectId, sceneNums, S.List._scenes, stale);
+                if (segs.Count == 0)
+                {
+                    S._error = "No scene videos were found";
+                    _showWipPlayer = false;
+                    return;
+                }
+
+                _clientStitchStatus = segs.Count == 1
+                    ? "Loading…"
+                    : $"Combining {segs.Count} file(s)…";
+                var result = await S.Stitch.ConcatAsync(segs.Select(s => s.Url).ToList());
+                if (!result.Success || string.IsNullOrWhiteSpace(result.Url))
+                {
+                    S._error = result.Error ?? "Browser stitch failed";
+                    _showWipPlayer = false;
+                    return;
+                }
+
+                _clientWipUrl = result.Url;
+                _wipVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                S._message = $"Preview ready — {segs.Count} scene(s)";
+                await TryRegisterFilmBuildAsync(segs, result);
+            }
+            catch (Exception ex)
+            {
+                S._error = ex.Message;
+                _showWipPlayer = false;
+                _clientWipUrl = null;
+            }
+            finally
+            {
+                _clientStitching = false;
+                _clientStitchStatus = null;
+            }
+        }
+
+        private async Task TryRegisterFilmBuildAsync(IReadOnlyList<ClientWipSegment> segs, ClientStitchResult result)
+        {
+            // film_build.v1: full segment EDL + studio.sha256 (non-fatal)
+            try
+            {
+                _clientStitchStatus = "Saving cut timeline…";
+                var reg = await S.Stitch.RegisterFilmBuildAfterWipStitchAsync(S._projectId, segs, result);
+                if (reg.Ok && !string.IsNullOrWhiteSpace(reg.FilmId))
+                    S._message = $"Preview ready — {segs.Count} scene(s) · film {reg.FilmId}";
+            }
+            catch
+            {
+                /* provenance must not block playback */
             }
         }
 

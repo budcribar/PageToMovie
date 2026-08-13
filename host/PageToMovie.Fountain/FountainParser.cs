@@ -547,65 +547,88 @@ public static class FountainParser
 
     private static int ConsumeDialogueBlock(string[] lines, int i, ParseResult result)
     {
-        while (i < lines.Length)
-        {
-            var raw = lines[i];
-            var trimmed = raw.TrimEnd().Trim();
-
-            // Empty line: two+ spaces on the "blank" line continues dialogue (Fountain line breaks)
-            if (trimmed.Length == 0)
-            {
-                if (FountainLexer.IsTwoSpaceContinue(raw) &&
-                    i + 1 < lines.Length &&
-                    lines[i + 1].Trim().Length > 0 &&
-                    !LooksLikeNewBlock(lines, i + 1))
-                {
-                    // preserve intentional blank inside dialogue as newline
-                    result.Elements.Add(new Element { Type = ElementType.Dialogue, Text = "" });
-                    i++;
-                    continue;
-                }
-                break;
-            }
-
-            // Parenthetical
-            if (trimmed.StartsWith('(') && trimmed.Contains(')'))
-            {
-                var close = trimmed.IndexOf(')');
-                var inside = trimmed[1..close].Trim();
-                result.Elements.Add(new Element
-                {
-                    Type = ElementType.Parenthetical,
-                    Text = FountainLexer.UnescapeFountain(inside),
-                });
-                var rest = trimmed[(close + 1)..].Trim();
-                if (rest.Length > 0)
-                    result.Elements.Add(new Element { Type = ElementType.Dialogue, Text = FountainLexer.UnescapeFountain(rest) });
-                i++;
-                continue;
-            }
-
-            // Stop at new structural block
-            if (LooksLikeNewBlock(lines, i))
-                break;
-
-            result.Elements.Add(new Element
-            {
-                Type = ElementType.Dialogue,
-                Text = FountainLexer.UnescapeFountain(trimmed),
-            });
-            i++;
-        }
+        while (i < lines.Length && TryConsumeNextDialogueLine(lines, ref i, result))
+        { }
         return i;
+    }
+
+    private static bool TryConsumeNextDialogueLine(string[] lines, ref int i, ParseResult result)
+    {
+        var raw = lines[i];
+        var trimmed = raw.TrimEnd().Trim();
+
+        if (trimmed.Length == 0)
+            return TryAdvancePastDialogueBlank(lines, raw, ref i, result);
+
+        if (TryConsumeParentheticalLine(trimmed, result))
+        {
+            i++;
+            return true;
+        }
+
+        if (LooksLikeNewBlock(lines, i))
+            return false;
+
+        result.Elements.Add(new Element
+        {
+            Type = ElementType.Dialogue,
+            Text = FountainLexer.UnescapeFountain(trimmed),
+        });
+        i++;
+        return true;
+    }
+
+    private static bool TryAdvancePastDialogueBlank(string[] lines, string raw, ref int i, ParseResult result)
+    {
+        if (!TryContinueDialogueAfterBlank(lines, raw, i, result))
+            return false;
+        i++;
+        return true;
+    }
+
+    private static bool TryContinueDialogueAfterBlank(string[] lines, string raw, int i, ParseResult result)
+    {
+        // Empty line: two+ spaces on the "blank" line continues dialogue (Fountain line breaks)
+        if (FountainLexer.IsTwoSpaceContinue(raw) &&
+            i + 1 < lines.Length &&
+            lines[i + 1].Trim().Length > 0 &&
+            !LooksLikeNewBlock(lines, i + 1))
+        {
+            // preserve intentional blank inside dialogue as newline
+            result.Elements.Add(new Element { Type = ElementType.Dialogue, Text = "" });
+            return true;
+        }
+        return false;
+    }
+
+    private static bool TryConsumeParentheticalLine(string trimmed, ParseResult result)
+    {
+        if (!trimmed.StartsWith('(') || !trimmed.Contains(')'))
+            return false;
+
+        var close = trimmed.IndexOf(')');
+        var inside = trimmed[1..close].Trim();
+        result.Elements.Add(new Element
+        {
+            Type = ElementType.Parenthetical,
+            Text = FountainLexer.UnescapeFountain(inside),
+        });
+        var rest = trimmed[(close + 1)..].Trim();
+        if (rest.Length > 0)
+            result.Elements.Add(new Element { Type = ElementType.Dialogue, Text = FountainLexer.UnescapeFountain(rest) });
+        return true;
     }
 
     private static bool LooksLikeNewBlock(string[] lines, int i)
     {
         var trimmed = lines[i].TrimEnd().Trim();
         if (trimmed.Length == 0) return true;
-        var prevBlank = FountainLexer.PrevBlank(lines, i);
-        var nextBlank = FountainLexer.NextBlank(lines, i);
+        if (LooksLikeForcedNewBlock(trimmed)) return true;
+        return LooksLikeAutomaticNewBlock(lines, i, trimmed);
+    }
 
+    private static bool LooksLikeForcedNewBlock(string trimmed)
+    {
         if (trimmed.StartsWith('#')) return true;
         if (trimmed.StartsWith('=') && !trimmed.StartsWith("===")) return true;
         if (FountainRegex.IsMatch(trimmed, @"^={3,}\s*$")) return true;
@@ -615,6 +638,14 @@ public static class FountainParser
         if (trimmed.StartsWith('~')) return true;
         if (IsCentered(trimmed)) return true;
         if (trimmed.StartsWith('>') && !IsCentered(trimmed)) return true;
+        return false;
+    }
+
+    private static bool LooksLikeAutomaticNewBlock(string[] lines, int i, string trimmed)
+    {
+        var prevBlank = FountainLexer.PrevBlank(lines, i);
+        var nextBlank = FountainLexer.NextBlank(lines, i);
+
         if (prevBlank && FountainLexer.IsSceneHeadingStart(trimmed) &&
             (nextBlank || NextIsPageTagOrSynopsis(lines, i)))
             return true;

@@ -121,24 +121,7 @@ public partial class ContributionReview
                 body["autoResolveStrategy"] = strategy;
             var resp = await Http.PostAsJsonAsync($"/api/projects/{target}/sync-origin", body);
             var json = await resp.Content.ReadFromJsonAsync<JsonElement>();
-            var ok = json.TryGetProperty("ok", out var o) && o.GetBoolean();
-            _hasConflicts = json.TryGetProperty("hasConflicts", out var c) && c.GetBoolean();
-            _autoResolvedCount = json.TryGetProperty("autoResolvedCount", out var a) && a.ValueKind == JsonValueKind.Number
-                ? a.GetInt32() : 0;
-            _remainingConflictPaths = new();
-            if (json.TryGetProperty("remainingConflictPaths", out var paths) && paths.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var el in paths.EnumerateArray())
-                {
-                    var s = el.GetString();
-                    if (!string.IsNullOrWhiteSpace(s))
-                        _remainingConflictPaths.Add(s);
-                }
-            }
-            _messageOk = ok && !_hasConflicts;
-            _message = json.TryGetProperty("message", out var m) ? m.GetString() : (ok ? "Synced." : "Problems.");
-            if (_hasConflicts && string.IsNullOrWhiteSpace(strategy))
-                _message += " Pick a strategy below to auto-resolve.";
+            ApplyGitSyncResponse(json, strategy);
             await LoadAsync();
         }
         catch (Exception ex)
@@ -148,6 +131,39 @@ public partial class ContributionReview
             _hasConflicts = false;
         }
         finally { _busy = false; }
+    }
+
+    private void ApplyGitSyncResponse(JsonElement json, string? strategy)
+    {
+        var ok = ReadJsonBool(json, "ok");
+        _hasConflicts = ReadJsonBool(json, "hasConflicts");
+        _autoResolvedCount = ReadJsonInt(json, "autoResolvedCount");
+        _remainingConflictPaths = ReadRemainingConflictPaths(json);
+        _messageOk = ok && !_hasConflicts;
+        _message = json.TryGetProperty("message", out var m) ? m.GetString() : (ok ? "Synced." : "Problems.");
+        if (_hasConflicts && string.IsNullOrWhiteSpace(strategy))
+            _message += " Pick a strategy below to auto-resolve.";
+    }
+
+    private static bool ReadJsonBool(JsonElement json, string name) =>
+        json.TryGetProperty(name, out var v) && v.GetBoolean();
+
+    private static int ReadJsonInt(JsonElement json, string name) =>
+        json.TryGetProperty(name, out var a) && a.ValueKind == JsonValueKind.Number
+            ? a.GetInt32() : 0;
+
+    private static List<string> ReadRemainingConflictPaths(JsonElement json)
+    {
+        var list = new List<string>();
+        if (!json.TryGetProperty("remainingConflictPaths", out var paths) || paths.ValueKind != JsonValueKind.Array)
+            return list;
+        foreach (var el in paths.EnumerateArray())
+        {
+            var s = el.GetString();
+            if (!string.IsNullOrWhiteSpace(s))
+                list.Add(s);
+        }
+        return list;
     }
 
     private sealed class DiffDto

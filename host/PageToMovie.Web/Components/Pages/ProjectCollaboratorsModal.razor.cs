@@ -128,26 +128,7 @@ public sealed partial class ProjectCollaboratorsModal : IDisposable
             if (seq != _searchSeq) return;
             var found = await Engine.SearchUserHandlesAsync(q, cts.Token);
             if (seq != _searchSeq) return;
-
-            // Hide self from the picker
-            var me = (Session.UserId ?? "").Trim();
-            var meHandle = (Session.DisplayHandle ?? "").Trim().TrimStart('@');
-            _suggestions = found
-                .Select(h => h.Trim())
-                .Where(h =>
-                {
-                    var bare = h.TrimStart('@');
-                    if (meHandle.Length > 0 &&
-                        string.Equals(bare, meHandle, StringComparison.OrdinalIgnoreCase))
-                        return false;
-                    if (me.Length > 0 &&
-                        string.Equals(bare, me, StringComparison.OrdinalIgnoreCase))
-                        return false;
-                    return true;
-                })
-                .ToList();
-            _highlight = _suggestions.Count > 0 ? 0 : -1;
-            _searchAttempted = true;
+            ApplyHandleSearchResults(found);
         }
         catch (OperationCanceledException)
         {
@@ -167,6 +148,31 @@ public sealed partial class ProjectCollaboratorsModal : IDisposable
                 _searching = false;
             await InvokeAsync(StateHasChanged);
         }
+    }
+
+    private void ApplyHandleSearchResults(IEnumerable<string> found)
+    {
+        // Hide self from the picker
+        var me = (Session.UserId ?? "").Trim();
+        var meHandle = (Session.DisplayHandle ?? "").Trim().TrimStart('@');
+        _suggestions = found
+            .Select(h => h.Trim())
+            .Where(h => !IsSelfHandle(h, me, meHandle))
+            .ToList();
+        _highlight = _suggestions.Count > 0 ? 0 : -1;
+        _searchAttempted = true;
+    }
+
+    private static bool IsSelfHandle(string h, string me, string meHandle)
+    {
+        var bare = h.TrimStart('@');
+        if (meHandle.Length > 0 &&
+            string.Equals(bare, meHandle, StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (me.Length > 0 &&
+            string.Equals(bare, me, StringComparison.OrdinalIgnoreCase))
+            return true;
+        return false;
     }
 
     private async Task SendInvite()
