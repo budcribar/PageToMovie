@@ -17,6 +17,9 @@ public static class FilmRuntime
 {
     public const int MinMinutes = NaturalRuntime.MinMinutes;
     public const int MaxMinutes = NaturalRuntime.MaxMinutes;
+    private const string NaturalRuntimeMinutesKey = "natural_runtime_minutes";
+    private const string TargetRuntimeMinutesKey = "target_runtime_minutes";
+    private const string RuntimeModeKey = "runtime_mode";
 
     public sealed class Snapshot
     {
@@ -63,8 +66,8 @@ public static class FilmRuntime
             {
                 using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(metaPath, ct).ConfigureAwait(false));
                 var root = doc.RootElement;
-                if (TryInt(root, "natural_runtime_minutes", out var n0)) metaNatural = n0;
-                if (TryInt(root, "target_runtime_minutes", out var t0)) metaTarget = t0;
+                if (TryInt(root, NaturalRuntimeMinutesKey, out var n0)) metaNatural = n0;
+                if (TryInt(root, TargetRuntimeMinutesKey, out var t0)) metaTarget = t0;
                 if (metaTarget is null && TryInt(root, "suggested_total_minutes", out var s0))
                     metaTarget = s0;
                 if (TryInt(root, "text_words", out var w0)) metaWords = w0;
@@ -104,10 +107,10 @@ public static class FilmRuntime
         var cfg = await store.GetConfigAsync(projectId, ct).ConfigureAwait(false);
         int? configTarget = null;
         string? configMode = null;
-        if (cfg.TryGetValue("target_runtime_minutes", out var tr) && tr.ValueKind == JsonValueKind.Number &&
+        if (cfg.TryGetValue(TargetRuntimeMinutesKey, out var tr) && tr.ValueKind == JsonValueKind.Number &&
             tr.TryGetInt32(out var ctm) && ctm > 0)
             configTarget = ctm;
-        if (cfg.TryGetValue("runtime_mode", out var rm) && rm.ValueKind == JsonValueKind.String)
+        if (cfg.TryGetValue(RuntimeModeKey, out var rm) && rm.ValueKind == JsonValueKind.String)
             configMode = rm.GetString();
 
         int target;
@@ -124,7 +127,7 @@ public static class FilmRuntime
             target = ClampMinutes(configTarget.Value);
             mode = string.IsNullOrWhiteSpace(configMode)
                 ? NaturalRuntime.ResolveMode(natural, target)
-                : configMode!.Trim().ToLowerInvariant();
+                : configMode.Trim().ToLowerInvariant();
             source = "config";
         }
         else if (metaTarget is > 0)
@@ -178,9 +181,9 @@ public static class FilmRuntime
 
         using var updateDoc = JsonDocument.Parse(JsonSerializer.Serialize(new Dictionary<string, object?>
         {
-            ["target_runtime_minutes"] = targetMinutes,
-            ["natural_runtime_minutes"] = snap.NaturalMinutes,
-            ["runtime_mode"] = mode,
+            [TargetRuntimeMinutesKey] = targetMinutes,
+            [NaturalRuntimeMinutesKey] = snap.NaturalMinutes,
+            [RuntimeModeKey] = mode,
         }));
         await store.SaveConfigAsync(projectId, updateDoc.RootElement.Clone(), ct).ConfigureAwait(false);
 
@@ -192,10 +195,10 @@ public static class FilmRuntime
             {
                 var node = JsonNode.Parse(await File.ReadAllTextAsync(metaPath, ct).ConfigureAwait(false)) as JsonObject
                            ?? new JsonObject();
-                node["natural_runtime_minutes"] = snap.NaturalMinutes;
-                node["target_runtime_minutes"] = targetMinutes;
+                node[NaturalRuntimeMinutesKey] = snap.NaturalMinutes;
+                node[TargetRuntimeMinutesKey] = targetMinutes;
                 node["suggested_total_minutes"] = targetMinutes; // backward compatible
-                node["runtime_mode"] = mode;
+                node[RuntimeModeKey] = mode;
                 await File.WriteAllTextAsync(
                     metaPath,
                     node.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n",
@@ -227,10 +230,10 @@ public static class FilmRuntime
     {
         naturalMinutes = ClampMinutes(naturalMinutes);
         var target = existingTarget is > 0 ? ClampMinutes(existingTarget.Value) : naturalMinutes;
-        meta["natural_runtime_minutes"] = naturalMinutes;
-        meta["target_runtime_minutes"] = target;
+        meta[NaturalRuntimeMinutesKey] = naturalMinutes;
+        meta[TargetRuntimeMinutesKey] = target;
         meta["suggested_total_minutes"] = target;
-        meta["runtime_mode"] = NaturalRuntime.ResolveMode(naturalMinutes, target);
+        meta[RuntimeModeKey] = NaturalRuntime.ResolveMode(naturalMinutes, target);
     }
 
     private static bool TryInt(JsonElement root, string name, out int value)

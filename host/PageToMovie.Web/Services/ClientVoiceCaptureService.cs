@@ -75,7 +75,7 @@ public sealed class ClientVoiceCaptureService
             {
                 var stitched = await _stitch.ConcatAsync(clipUrls, ct);
                 if (!stitched.Success || string.IsNullOrWhiteSpace(stitched.Url)) continue;
-                sceneVideoUrl = stitched.Url!;
+                sceneVideoUrl = stitched.Url;
             }
 
             // Detect speech windows.

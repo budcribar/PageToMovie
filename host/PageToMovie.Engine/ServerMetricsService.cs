@@ -111,8 +111,8 @@ public sealed class ServerMetricsService : IServerMetricsService
             {
                 var oldest = g
                     .Select(j => j.QueuedAt ?? j.StartedAt)
-                    .Where(t => t is not null)
-                    .Select(t => (long)(now - t!.Value).TotalMilliseconds)
+                    .Where(t => t.HasValue)
+                    .Select(t => (long)(now - t.GetValueOrDefault()).TotalMilliseconds)
                     .DefaultIfEmpty(0)
                     .Max();
                 return new UserQueueDepth
@@ -190,8 +190,8 @@ public sealed class ServerMetricsService : IServerMetricsService
             stats.InFlight = group.Count();
             stats.OldestInFlightAgeMs = group
                 .Select(j => j.StartedAt ?? j.QueuedAt)
-                .Where(t => t is not null)
-                .Select(t => (long)(now - t!.Value).TotalMilliseconds)
+                .Where(t => t.HasValue)
+                .Select(t => (long)(now - t.GetValueOrDefault()).TotalMilliseconds)
                 .DefaultIfEmpty(0)
                 .Max();
         }

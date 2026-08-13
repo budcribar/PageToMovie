@@ -49,7 +49,7 @@ public sealed class JobHubClient : IAsyncDisposable
             {
                 if (!string.IsNullOrWhiteSpace(_session?.Token))
                 {
-                    options.AccessTokenProvider = () => Task.FromResult<string?>(_session!.Token);
+                    options.AccessTokenProvider = () => Task.FromResult<string?>(_session.Token);
                 }
                 options.Headers[AuthHeaderUserId] = userId;
             })

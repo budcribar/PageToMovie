@@ -15,6 +15,49 @@ namespace PageToMovie.Engine;
 /// </summary>
 public sealed class CatalogUpdateProbeService
 {
+    private const string HttpClientName = "catalog-probe";
+    private const string StatusError = "error";
+    private const string StatusNotFound = "not_found";
+    private const string StatusUnchanged = "unchanged";
+    private const string StatusChanged = "changed";
+    private const string FieldModelId = "model_id";
+    private const string UnitImage = "image";
+    private const string CapabilityImage = "Image";
+    private const string ModelsPrefix = "models/";
+    private const string AuthBearer = "Bearer";
+    private const string FormatFourDecimals = "0.####";
+
+    // Provider ids match AiProviderId.ToApiString() where that enum has a member.
+    private const string ProviderOpenAi = "openai";
+    private const string ProviderAnthropic = "anthropic";
+    private const string ProviderGemini = "gemini";
+    private const string ProviderGoogle = "google";
+    private const string ProviderGrok = "grok";
+    private const string ProviderXai = "xai";
+    private const string ProviderFal = "fal";
+    private const string ProviderClaude = "claude";
+
+    private const string XaiModelsUrl = SupportedModelCatalog.XaiApiBase + "/models";
+    private const string AnthropicModelsUrl = SupportedModelCatalog.AnthropicApiBase + "/models";
+    private const string AnthropicModelsListUrl = AnthropicModelsUrl + "?limit=100";
+    private const string GeminiModelsUrl = SupportedModelCatalog.GoogleApiBase + "/models";
+    private const string OpenAiModelsUrl = "https://api.openai.com/v1/models";
+    private const string OpenAiDocsModelsUrl = "https://platform.openai.com/docs/models";
+    private const string FalModelsPricingUrl = "https://api.fal.ai/v1/models/pricing";
+    private const string FalModelsUrl = "https://api.fal.ai/v1/models";
+    private const string FalModelsListUrl = FalModelsUrl + "?limit=50";
+
+    private const string XaiDocsDevelopersBase = "https://docs.x.ai/developers";
+    private const string XaiDocsModelsBase = XaiDocsDevelopersBase + "/models/";
+    private const string XaiDocsGrokImagineVideo = XaiDocsModelsBase + "grok-imagine-video";
+    private const string XaiDocsGrokImagineImageQuality = XaiDocsModelsBase + "grok-imagine-image-quality";
+    private const string XaiDocsGrokImagineImage = XaiDocsModelsBase + "grok-imagine-image";
+    private const string XaiDocsGrok45 = XaiDocsModelsBase + "grok-4.5";
+    private const string XaiDocsGrok4 = XaiDocsModelsBase + "grok-4";
+    private const string XaiDocsVideoExtension = XaiDocsDevelopersBase + "/model-capabilities/video/extension";
+    private const string XaiDocsVideoGeneration = XaiDocsDevelopersBase + "/model-capabilities/video/generation";
+    private const string XaiDocsVideoReferenceToVideo = XaiDocsDevelopersBase + "/model-capabilities/video/reference-to-video";
+
     private readonly IHttpClientFactory _httpFactory;
     private readonly IUserApiKeyProvider? _keyProvider;
 
@@ -33,11 +76,11 @@ public sealed class CatalogUpdateProbeService
         }
         var envKeyName = providerId.ToLowerInvariant() switch
         {
-            "openai" => "OPENAI_API_KEY",
-            "grok" or "xai" => "XAI_API_KEY",
-            "anthropic" or "claude" => "ANTHROPIC_API_KEY",
-            "gemini" or "google" => "GEMINI_API_KEY",
-            "fal" => "FAL_KEY",
+            ProviderOpenAi => "OPENAI_API_KEY",
+            ProviderGrok or ProviderXai => "XAI_API_KEY",
+            ProviderAnthropic or ProviderClaude => "ANTHROPIC_API_KEY",
+            ProviderGemini or ProviderGoogle => "GEMINI_API_KEY",
+            ProviderFal => "FAL_KEY",
             _ => null
         };
         if (envKeyName is not null)
@@ -45,12 +88,12 @@ public sealed class CatalogUpdateProbeService
             var env = Environment.GetEnvironmentVariable(envKeyName);
             if (!string.IsNullOrWhiteSpace(env)) return env.Trim();
         }
-        if (providerId.Equals("gemini", StringComparison.OrdinalIgnoreCase) || providerId.Equals("google", StringComparison.OrdinalIgnoreCase))
+        if (providerId.Equals(ProviderGemini, StringComparison.OrdinalIgnoreCase) || providerId.Equals(ProviderGoogle, StringComparison.OrdinalIgnoreCase))
         {
             var g = Environment.GetEnvironmentVariable("GOOGLE_API_KEY");
             if (!string.IsNullOrWhiteSpace(g)) return g.Trim();
         }
-        if (providerId.Equals("fal", StringComparison.OrdinalIgnoreCase))
+        if (providerId.Equals(ProviderFal, StringComparison.OrdinalIgnoreCase))
         {
             var f = Environment.GetEnvironmentVariable("FAL_API_KEY");
             if (!string.IsNullOrWhiteSpace(f)) return f.Trim();
@@ -88,7 +131,7 @@ public sealed class CatalogUpdateProbeService
                     Field = "(probe)",
                     CatalogValue = null,
                     LiveValue = null,
-                    Status = "error",
+                    Status = StatusError,
                     Message = ex.Message,
                 });
             }
@@ -99,7 +142,7 @@ public sealed class CatalogUpdateProbeService
                 row.Fields.Add(new CatalogFieldProbeResult
                 {
                     Field = "(no probes)",
-                    Status = "not_found",
+                    Status = StatusNotFound,
                     Message = "No automated probe registered for this model yet.",
                 });
             }
@@ -119,9 +162,9 @@ public sealed class CatalogUpdateProbeService
         result.Summary = new CatalogUpdateSummary
         {
             ModelsScanned = result.Models.Count,
-            UnchangedFields = result.Models.SelectMany(m => m.Fields).Count(f => f.Status == "unchanged"),
-            ChangedFields = result.Models.SelectMany(m => m.Fields).Count(f => f.Status == "changed"),
-            NotFoundFields = result.Models.SelectMany(m => m.Fields).Count(f => f.Status is "not_found" or "error"),
+            UnchangedFields = result.Models.SelectMany(m => m.Fields).Count(f => f.Status == StatusUnchanged),
+            ChangedFields = result.Models.SelectMany(m => m.Fields).Count(f => f.Status == StatusChanged),
+            NotFoundFields = result.Models.SelectMany(m => m.Fields).Count(f => f.Status is StatusNotFound or StatusError),
             NewModels = result.NewModels.Count,
         };
         return result;
@@ -141,15 +184,15 @@ public sealed class CatalogUpdateProbeService
                 Field = "pricingLastReviewedAt",
                 CatalogValue = entry.PricingLastReviewedAt,
                 LiveValue = null,
-                Status = "not_found",
+                Status = StatusNotFound,
                 Message = "Last cost review > 90 days ago — re-check vendor pricing.",
             });
         }
 
-        var isFal = string.Equals(provider, "fal", StringComparison.OrdinalIgnoreCase)
+        var isFal = string.Equals(provider, ProviderFal, StringComparison.OrdinalIgnoreCase)
                     || entry.Id.StartsWith("fal-", StringComparison.OrdinalIgnoreCase)
                     || entry.Id.StartsWith("fal-ai/", StringComparison.OrdinalIgnoreCase)
-                    || (entry.EndpointPath?.Contains("fal", StringComparison.OrdinalIgnoreCase) == true);
+                    || (entry.EndpointPath?.Contains(ProviderFal, StringComparison.OrdinalIgnoreCase) == true);
 
         if (isFal)
         {
@@ -157,7 +200,7 @@ public sealed class CatalogUpdateProbeService
             return;
         }
 
-        if (string.Equals(provider, "xai", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(provider, ProviderXai, StringComparison.OrdinalIgnoreCase))
         {
             // P1: pricing from docs pages + existing duration probes for video
             await ProbeXaiPricingAsync(entry, row, ct).ConfigureAwait(false);
@@ -169,23 +212,23 @@ public sealed class CatalogUpdateProbeService
         }
 
         if (entry.Capability is ModelCapability.Chat or ModelCapability.Vision &&
-            string.Equals(provider, "openai", StringComparison.OrdinalIgnoreCase))
+            string.Equals(provider, ProviderOpenAi, StringComparison.OrdinalIgnoreCase))
         {
             await ProbeOpenAiModelExistsAsync(entry, row, userId, ct).ConfigureAwait(false);
             return;
         }
 
         if (entry.Capability is ModelCapability.Chat or ModelCapability.Vision &&
-            (string.Equals(provider, "anthropic", StringComparison.OrdinalIgnoreCase)
-             || string.Equals(provider, "claude", StringComparison.OrdinalIgnoreCase)))
+            (string.Equals(provider, ProviderAnthropic, StringComparison.OrdinalIgnoreCase)
+             || string.Equals(provider, ProviderClaude, StringComparison.OrdinalIgnoreCase)))
         {
             await ProbeAnthropicModelAsync(entry, row, userId, ct).ConfigureAwait(false);
             return;
         }
 
         if (entry.Capability is ModelCapability.Chat or ModelCapability.Vision &&
-            (string.Equals(provider, "google", StringComparison.OrdinalIgnoreCase)
-             || string.Equals(provider, "gemini", StringComparison.OrdinalIgnoreCase)))
+            (string.Equals(provider, ProviderGoogle, StringComparison.OrdinalIgnoreCase)
+             || string.Equals(provider, ProviderGemini, StringComparison.OrdinalIgnoreCase)))
         {
             await ProbeGeminiModelAsync(entry, row, userId, ct).ConfigureAwait(false);
             return;
@@ -196,7 +239,7 @@ public sealed class CatalogUpdateProbeService
         {
             Field = "live_probe",
             CatalogValue = entry.Id,
-            Status = "not_found",
+            Status = StatusNotFound,
             Message = $"No live probe for provider '{provider}' / {entry.Capability}. Review manually.",
             SourceUrl = entry.PricingNotes,
         });
@@ -208,27 +251,26 @@ public sealed class CatalogUpdateProbeService
     /// </summary>
     private async Task ProbeFalPricingAsync(SupportedModelEntry entry, CatalogModelProbeResult row, string? userId, CancellationToken ct)
     {
-        var key = await ResolveKeyAsync(userId, "fal", ct).ConfigureAwait(false);
+        var key = await ResolveKeyAsync(userId, ProviderFal, ct).ConfigureAwait(false);
         var endpointId = ResolveFalEndpointId(entry);
-        const string sourceBase = "https://api.fal.ai/v1/models/pricing";
 
         if (string.IsNullOrWhiteSpace(key))
         {
-            row.Fields.Add(Field("pricing", null, null, "not_found",
+            row.Fields.Add(Field("pricing", null, null, StatusNotFound,
                 "FAL_KEY / FAL_API_KEY not set — cannot fetch live fal pricing.",
-                sourceBase + "?endpoint_id=" + Uri.EscapeDataString(endpointId)));
+                FalModelsPricingUrl + "?endpoint_id=" + Uri.EscapeDataString(endpointId)));
             return;
         }
 
-        var client = _httpFactory.CreateClient("catalog-probe");
-        var url = sourceBase + "?endpoint_id=" + Uri.EscapeDataString(endpointId);
+        var client = _httpFactory.CreateClient(HttpClientName);
+        var url = FalModelsPricingUrl + "?endpoint_id=" + Uri.EscapeDataString(endpointId);
         using var req = new HttpRequestMessage(HttpMethod.Get, url);
         req.Headers.TryAddWithoutValidation("Authorization", "Key " + key.Trim());
         using var resp = await client.SendAsync(req, ct).ConfigureAwait(false);
         var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
         if (!resp.IsSuccessStatusCode)
         {
-            row.Fields.Add(Field("pricing", null, null, "error",
+            row.Fields.Add(Field("pricing", null, null, StatusError,
                 $"fal pricing HTTP {(int)resp.StatusCode}: {Truncate(body, 180)}", url));
             return;
         }
@@ -237,7 +279,7 @@ public sealed class CatalogUpdateProbeService
         if (!doc.RootElement.TryGetProperty("prices", out var prices) || prices.ValueKind != JsonValueKind.Array
             || prices.GetArrayLength() == 0)
         {
-            row.Fields.Add(Field("pricing", null, null, "not_found",
+            row.Fields.Add(Field("pricing", null, null, StatusNotFound,
                 "fal pricing returned no prices[] for this endpoint_id.", url));
             return;
         }
@@ -249,15 +291,15 @@ public sealed class CatalogUpdateProbeService
 
         if (unitPrice is null)
         {
-            row.Fields.Add(Field("unit_price", null, null, "not_found", "unit_price missing in fal response.", url));
+            row.Fields.Add(Field("unit_price", null, null, StatusNotFound, "unit_price missing in fal response.", url));
             return;
         }
 
-        var liveStr = unitPrice.Value.ToString("0.####", CultureInfo.InvariantCulture);
+        var liveStr = unitPrice.Value.ToString(FormatFourDecimals, CultureInfo.InvariantCulture);
         var unitNote = $"unit={unit ?? "?"} currency={currency}";
 
         if (entry.Capability == ModelCapability.Image
-            || string.Equals(unit, "image", StringComparison.OrdinalIgnoreCase))
+            || string.Equals(unit, UnitImage, StringComparison.OrdinalIgnoreCase))
         {
             row.Fields.Add(CompareDouble("imageCostPerImage", entry.ImageCostPerImage, unitPrice.Value, url, unitNote));
             return;
@@ -283,7 +325,7 @@ public sealed class CatalogUpdateProbeService
             }
             else
             {
-                row.Fields.Add(Field("video_price", null, liveStr, "changed",
+                row.Fields.Add(Field("video_price", null, liveStr, StatusChanged,
                     $"Catalog has no video cost fields; fal reports {liveStr} per {unit}.", url));
             }
             return;
@@ -309,7 +351,7 @@ public sealed class CatalogUpdateProbeService
     /// </summary>
     private async Task ProbeXaiPricingAsync(SupportedModelEntry entry, CatalogModelProbeResult row, CancellationToken ct)
     {
-        var client = _httpFactory.CreateClient("catalog-probe");
+        var client = _httpFactory.CreateClient(HttpClientName);
         var docUrl = ResolveXaiDocsUrl(entry);
         string html;
         try
@@ -318,7 +360,7 @@ public sealed class CatalogUpdateProbeService
         }
         catch (Exception ex)
         {
-            row.Fields.Add(Field("pricing_docs", null, null, "error", ex.Message, docUrl));
+            row.Fields.Add(Field("pricing_docs", null, null, StatusError, ex.Message, docUrl));
             return;
         }
 
@@ -335,13 +377,13 @@ public sealed class CatalogUpdateProbeService
             if (inMatch.Success && double.TryParse(inMatch.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var inLive))
                 row.Fields.Add(CompareDouble("inputCostPerMillionTokens", entry.InputCostPerMillionTokens, inLive, docUrl, "parsed Input $/1M"));
             else
-                row.Fields.Add(Field("inputCostPerMillionTokens", entry.InputCostPerMillionTokens?.ToString(CultureInfo.InvariantCulture), null, "not_found",
+                row.Fields.Add(Field("inputCostPerMillionTokens", entry.InputCostPerMillionTokens?.ToString(CultureInfo.InvariantCulture), null, StatusNotFound,
                     "Could not parse Input $/1M from docs.", docUrl));
 
             if (outMatch.Success && double.TryParse(outMatch.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var outLive))
                 row.Fields.Add(CompareDouble("outputCostPerMillionTokens", entry.OutputCostPerMillionTokens, outLive, docUrl, "parsed Output $/1M"));
             else
-                row.Fields.Add(Field("outputCostPerMillionTokens", entry.OutputCostPerMillionTokens?.ToString(CultureInfo.InvariantCulture), null, "not_found",
+                row.Fields.Add(Field("outputCostPerMillionTokens", entry.OutputCostPerMillionTokens?.ToString(CultureInfo.InvariantCulture), null, StatusNotFound,
                     "Could not parse Output $/1M from docs.", docUrl));
             return;
         }
@@ -356,7 +398,7 @@ public sealed class CatalogUpdateProbeService
             if (m.Success && double.TryParse(m.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var imgLive))
                 row.Fields.Add(CompareDouble("imageCostPerImage", entry.ImageCostPerImage, imgLive, docUrl, "parsed $/image"));
             else
-                row.Fields.Add(Field("imageCostPerImage", entry.ImageCostPerImage?.ToString(CultureInfo.InvariantCulture), null, "not_found",
+                row.Fields.Add(Field("imageCostPerImage", entry.ImageCostPerImage?.ToString(CultureInfo.InvariantCulture), null, StatusNotFound,
                     "Could not parse $/image from docs.", docUrl));
             return;
         }
@@ -368,11 +410,12 @@ public sealed class CatalogUpdateProbeService
                 @"(480p|720p|1080p)[^$]{0,40}\$([0-9]+(?:\.[0-9]+)?)",
                 RegexOptions.IgnoreCase);
             var foundTier = false;
-            foreach (Match tm in tierMatches)
+            foreach (var (tm, liveRate) in tierMatches.Cast<Match>()
+                .Select(static m => (m, parsed: double.TryParse(m.Groups[2].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var rate), rate))
+                .Where(static x => x.parsed)
+                .Select(static x => (x.m, x.rate)))
             {
                 var res = tm.Groups[1].Value.ToLowerInvariant();
-                if (!double.TryParse(tm.Groups[2].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var liveRate))
-                    continue;
                 foundTier = true;
                 double? catalog = null;
                 if (entry.VideoCostPerSecondByResolution is { } table)
@@ -404,7 +447,7 @@ public sealed class CatalogUpdateProbeService
                 }
                 else
                 {
-                    row.Fields.Add(Field("videoCostPerSecondByResolution", null, null, "not_found",
+                    row.Fields.Add(Field("videoCostPerSecondByResolution", null, null, StatusNotFound,
                         "Could not parse video $/sec from docs.", docUrl));
                 }
             }
@@ -427,17 +470,17 @@ public sealed class CatalogUpdateProbeService
         var id = entry.Id.ToLowerInvariant();
         // Prefer model-specific docs pages when id matches known products
         if (id.Contains("imagine-video", StringComparison.Ordinal))
-            return "https://docs.x.ai/developers/models/grok-imagine-video";
+            return XaiDocsGrokImagineVideo;
         if (id.Contains("imagine-image-quality", StringComparison.Ordinal) || id.Contains("image-quality", StringComparison.Ordinal))
-            return "https://docs.x.ai/developers/models/grok-imagine-image-quality";
+            return XaiDocsGrokImagineImageQuality;
         if (id.Contains("imagine-image", StringComparison.Ordinal) || entry.Capability == ModelCapability.Image)
-            return "https://docs.x.ai/developers/models/grok-imagine-image";
+            return XaiDocsGrokImagineImage;
         if (id.Contains("grok-4.5", StringComparison.Ordinal) || id.Contains("grok-4-5", StringComparison.Ordinal))
-            return "https://docs.x.ai/developers/models/grok-4.5";
+            return XaiDocsGrok45;
         if (id.Contains("grok-4", StringComparison.Ordinal))
-            return "https://docs.x.ai/developers/models/grok-4";
+            return XaiDocsGrok4;
         // Generic models index — still has pricing tables in HTML
-        return "https://docs.x.ai/developers/models/" + Uri.EscapeDataString(entry.Id);
+        return XaiDocsModelsBase + Uri.EscapeDataString(entry.Id);
     }
 
     private static string Truncate(string s, int max) =>
@@ -445,30 +488,30 @@ public sealed class CatalogUpdateProbeService
 
     private async Task ProbeXaiVideoAsync(SupportedModelEntry entry, CatalogModelProbeResult row, CancellationToken ct)
     {
-        var client = _httpFactory.CreateClient("catalog-probe");
+        var client = _httpFactory.CreateClient(HttpClientName);
         // Public docs — extension duration 2–10, generation 1–15 (as of docs scan)
         string? extHtml = null;
         string? genHtml = null;
         try
         {
             extHtml = await client.GetStringAsync(
-                "https://docs.x.ai/developers/model-capabilities/video/extension", ct).ConfigureAwait(false);
+                XaiDocsVideoExtension, ct).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            row.Fields.Add(Field("docs.extension", null, null, "error", ex.Message,
-                "https://docs.x.ai/developers/model-capabilities/video/extension"));
+            row.Fields.Add(Field("docs.extension", null, null, StatusError, ex.Message,
+                XaiDocsVideoExtension));
         }
 
         try
         {
             genHtml = await client.GetStringAsync(
-                "https://docs.x.ai/developers/model-capabilities/video/generation", ct).ConfigureAwait(false);
+                XaiDocsVideoGeneration, ct).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            row.Fields.Add(Field("docs.generation", null, null, "error", ex.Message,
-                "https://docs.x.ai/developers/model-capabilities/video/generation"));
+            row.Fields.Add(Field("docs.generation", null, null, StatusError, ex.Message,
+                XaiDocsVideoGeneration));
         }
 
         // Extension max: docs say 2–10 seconds
@@ -482,13 +525,13 @@ public sealed class CatalogUpdateProbeService
             {
                 var catalog = entry.MaxExtensionSeconds;
                 row.Fields.Add(CompareInt("maxExtensionSeconds", catalog, liveExtMax,
-                    "https://docs.x.ai/developers/model-capabilities/video/extension"));
+                    XaiDocsVideoExtension));
             }
             else
             {
-                row.Fields.Add(Field("maxExtensionSeconds", entry.MaxExtensionSeconds?.ToString(), null, "not_found",
+                row.Fields.Add(Field("maxExtensionSeconds", entry.MaxExtensionSeconds?.ToString(), null, StatusNotFound,
                     "Could not parse extension duration from docs.",
-                    "https://docs.x.ai/developers/model-capabilities/video/extension"));
+                    XaiDocsVideoExtension));
             }
         }
 
@@ -501,15 +544,15 @@ public sealed class CatalogUpdateProbeService
             if (m.Success && int.TryParse(m.Groups[2].Value, out var liveMax))
             {
                 row.Fields.Add(CompareInt("maxClipDurationSeconds", entry.MaxClipDurationSeconds, liveMax,
-                    "https://docs.x.ai/developers/model-capabilities/video/generation"));
+                    XaiDocsVideoGeneration));
                 row.Fields.Add(CompareInt("absMaxClipDurationSeconds", entry.AbsMaxClipDurationSeconds, liveMax,
-                    "https://docs.x.ai/developers/model-capabilities/video/generation"));
+                    XaiDocsVideoGeneration));
             }
             else
             {
-                row.Fields.Add(Field("maxClipDurationSeconds", entry.MaxClipDurationSeconds?.ToString(), null, "not_found",
+                row.Fields.Add(Field("maxClipDurationSeconds", entry.MaxClipDurationSeconds?.ToString(), null, StatusNotFound,
                     "Could not parse generation duration from docs.",
-                    "https://docs.x.ai/developers/model-capabilities/video/generation"));
+                    XaiDocsVideoGeneration));
             }
         }
 
@@ -517,46 +560,46 @@ public sealed class CatalogUpdateProbeService
         try
         {
             var refHtml = await client.GetStringAsync(
-                "https://docs.x.ai/developers/model-capabilities/video/reference-to-video", ct).ConfigureAwait(false);
+                XaiDocsVideoReferenceToVideo, ct).ConfigureAwait(false);
             var rm = CommonRegex.Match(refHtml, @"maximum of\s+\*?\*?(\d+)\s+reference images", RegexOptions.IgnoreCase);
             if (rm.Success && int.TryParse(rm.Groups[1].Value, out var liveRefs))
             {
                 row.Fields.Add(CompareInt("maxReferenceImages", entry.MaxReferenceImages, liveRefs,
-                    "https://docs.x.ai/developers/model-capabilities/video/reference-to-video"));
+                    XaiDocsVideoReferenceToVideo));
             }
             else
             {
-                row.Fields.Add(Field("maxReferenceImages", entry.MaxReferenceImages?.ToString(), null, "not_found",
+                row.Fields.Add(Field("maxReferenceImages", entry.MaxReferenceImages?.ToString(), null, StatusNotFound,
                     "Could not parse max reference images.",
-                    "https://docs.x.ai/developers/model-capabilities/video/reference-to-video"));
+                    XaiDocsVideoReferenceToVideo));
             }
         }
         catch (Exception ex)
         {
-            row.Fields.Add(Field("maxReferenceImages", entry.MaxReferenceImages?.ToString(), null, "error", ex.Message,
-                "https://docs.x.ai/developers/model-capabilities/video/reference-to-video"));
+            row.Fields.Add(Field("maxReferenceImages", entry.MaxReferenceImages?.ToString(), null, StatusError, ex.Message,
+                XaiDocsVideoReferenceToVideo));
         }
     }
 
     private async Task ProbeOpenAiModelExistsAsync(SupportedModelEntry entry, CatalogModelProbeResult row, string? userId, CancellationToken ct)
     {
-        var key = await ResolveKeyAsync(userId, "openai", ct).ConfigureAwait(false);
+        var key = await ResolveKeyAsync(userId, ProviderOpenAi, ct).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(key))
         {
-            row.Fields.Add(Field("model_id", entry.Id, null, "not_found",
-                "OPENAI_API_KEY not configured — cannot list OpenAI models.", "https://platform.openai.com/docs/models"));
+            row.Fields.Add(Field(FieldModelId, entry.Id, null, StatusNotFound,
+                "OPENAI_API_KEY not configured — cannot list OpenAI models.", OpenAiDocsModelsUrl));
             return;
         }
 
-        var client = _httpFactory.CreateClient("catalog-probe");
-        using var req = new HttpRequestMessage(HttpMethod.Get, "https://api.openai.com/v1/models");
-        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key.Trim());
+        var client = _httpFactory.CreateClient(HttpClientName);
+        using var req = new HttpRequestMessage(HttpMethod.Get, OpenAiModelsUrl);
+        req.Headers.Authorization = new AuthenticationHeaderValue(AuthBearer, key.Trim());
         using var resp = await client.SendAsync(req, ct).ConfigureAwait(false);
         var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
         if (!resp.IsSuccessStatusCode)
         {
-            row.Fields.Add(Field("model_id", entry.Id, null, "error", $"OpenAI models list HTTP {(int)resp.StatusCode}",
-                "https://api.openai.com/v1/models"));
+            row.Fields.Add(Field(FieldModelId, entry.Id, null, StatusError, $"OpenAI models list HTTP {(int)resp.StatusCode}",
+                OpenAiModelsUrl));
             return;
         }
 
@@ -564,34 +607,34 @@ public sealed class CatalogUpdateProbeService
 
         row.Fields.Add(new CatalogFieldProbeResult
         {
-            Field = "model_id",
+            Field = FieldModelId,
             CatalogValue = entry.Id,
             LiveValue = found ? entry.Id : null,
-            Status = found ? "unchanged" : "not_found",
+            Status = found ? StatusUnchanged : StatusNotFound,
             Message = found ? "Present in OpenAI /v1/models." : "Not present in OpenAI /v1/models for this API key.",
-            SourceUrl = "https://api.openai.com/v1/models",
+            SourceUrl = OpenAiModelsUrl,
         });
     }
 
     private async Task ProbeXaiChatExistsAsync(SupportedModelEntry entry, CatalogModelProbeResult row, string? userId, CancellationToken ct)
     {
-        var key = await ResolveKeyAsync(userId, "xai", ct).ConfigureAwait(false);
+        var key = await ResolveKeyAsync(userId, ProviderXai, ct).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(key))
         {
-            row.Fields.Add(Field("model_id", entry.Id, null, "not_found",
-                "XAI_API_KEY not configured — cannot list xAI models.", "https://api.x.ai/v1/models"));
+            row.Fields.Add(Field(FieldModelId, entry.Id, null, StatusNotFound,
+                "XAI_API_KEY not configured — cannot list xAI models.", XaiModelsUrl));
             return;
         }
 
-        var client = _httpFactory.CreateClient("catalog-probe");
-        using var req = new HttpRequestMessage(HttpMethod.Get, "https://api.x.ai/v1/models");
-        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key.Trim());
+        var client = _httpFactory.CreateClient(HttpClientName);
+        using var req = new HttpRequestMessage(HttpMethod.Get, XaiModelsUrl);
+        req.Headers.Authorization = new AuthenticationHeaderValue(AuthBearer, key.Trim());
         using var resp = await client.SendAsync(req, ct).ConfigureAwait(false);
         var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
         if (!resp.IsSuccessStatusCode)
         {
-            row.Fields.Add(Field("model_id", entry.Id, null, "error", $"xAI models list HTTP {(int)resp.StatusCode}",
-                "https://api.x.ai/v1/models"));
+            row.Fields.Add(Field(FieldModelId, entry.Id, null, StatusError, $"xAI models list HTTP {(int)resp.StatusCode}",
+                XaiModelsUrl));
             return;
         }
 
@@ -599,12 +642,12 @@ public sealed class CatalogUpdateProbeService
 
         row.Fields.Add(new CatalogFieldProbeResult
         {
-            Field = "model_id",
+            Field = FieldModelId,
             CatalogValue = entry.Id,
             LiveValue = found ? entry.Id : null,
-            Status = found ? "unchanged" : "not_found",
+            Status = found ? StatusUnchanged : StatusNotFound,
             Message = found ? "Present in xAI /v1/models." : "Not present in xAI /v1/models for this API key.",
-            SourceUrl = "https://api.x.ai/v1/models",
+            SourceUrl = XaiModelsUrl,
         });
     }
 
@@ -670,16 +713,16 @@ public sealed class CatalogUpdateProbeService
 
     private async Task DiscoverFromOpenAiAsync(CatalogUpdateScanResult result, HashSet<string> known, string? userId, CancellationToken ct)
     {
-        var key = await ResolveKeyAsync(userId, "openai", ct).ConfigureAwait(false);
+        var key = await ResolveKeyAsync(userId, ProviderOpenAi, ct).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(key))
         {
             result.DiscoveryNotes.Add("OpenAI: skipped (no OPENAI_API_KEY configured).");
             return;
         }
 
-        var client = _httpFactory.CreateClient("catalog-probe");
-        using var req = new HttpRequestMessage(HttpMethod.Get, "https://api.openai.com/v1/models");
-        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key.Trim());
+        var client = _httpFactory.CreateClient(HttpClientName);
+        using var req = new HttpRequestMessage(HttpMethod.Get, OpenAiModelsUrl);
+        req.Headers.Authorization = new AuthenticationHeaderValue(AuthBearer, key.Trim());
         using var resp = await client.SendAsync(req, ct).ConfigureAwait(false);
         if (!resp.IsSuccessStatusCode)
         {
@@ -700,7 +743,7 @@ public sealed class CatalogUpdateProbeService
             {
                 Id = id,
                 Provider = "OpenAI",
-                ProviderId = "openai",
+                ProviderId = ProviderOpenAi,
                 SuggestedCapability = "Chat",
                 Source = "OpenAI GET /v1/models",
                 LabMode = true,
@@ -712,16 +755,16 @@ public sealed class CatalogUpdateProbeService
 
     private async Task DiscoverFromXaiAsync(CatalogUpdateScanResult result, HashSet<string> known, string? userId, CancellationToken ct)
     {
-        var key = await ResolveKeyAsync(userId, "xai", ct).ConfigureAwait(false);
+        var key = await ResolveKeyAsync(userId, ProviderXai, ct).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(key))
         {
             result.DiscoveryNotes.Add("xAI: skipped (no XAI_API_KEY configured).");
             return;
         }
 
-        var client = _httpFactory.CreateClient("catalog-probe");
-        using var req = new HttpRequestMessage(HttpMethod.Get, "https://api.x.ai/v1/models");
-        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key.Trim());
+        var client = _httpFactory.CreateClient(HttpClientName);
+        using var req = new HttpRequestMessage(HttpMethod.Get, XaiModelsUrl);
+        req.Headers.Authorization = new AuthenticationHeaderValue(AuthBearer, key.Trim());
         using var resp = await client.SendAsync(req, ct).ConfigureAwait(false);
         if (!resp.IsSuccessStatusCode)
         {
@@ -734,9 +777,9 @@ public sealed class CatalogUpdateProbeService
         {
             Id = id,
             Provider = "Xai",
-            ProviderId = "xai",
+            ProviderId = ProviderXai,
             SuggestedCapability = id.Contains("video", StringComparison.OrdinalIgnoreCase) ? "Video"
-                : id.Contains("image", StringComparison.OrdinalIgnoreCase) ? "Image" : "Chat",
+                : id.Contains(UnitImage, StringComparison.OrdinalIgnoreCase) ? CapabilityImage : "Chat",
             Source = "xAI GET /v1/models",
             LabMode = true,
             LabNotes = "Discovered via xAI models list — add as lab and fill limits/costs before production.",
@@ -748,16 +791,16 @@ public sealed class CatalogUpdateProbeService
     /// <summary>P1-A: Anthropic GET /v1/models — existence + optional max token fields.</summary>
     private async Task ProbeAnthropicModelAsync(SupportedModelEntry entry, CatalogModelProbeResult row, string? userId, CancellationToken ct)
     {
-        var key = await ResolveKeyAsync(userId, "anthropic", ct).ConfigureAwait(false);
-        const string url = "https://api.anthropic.com/v1/models";
+        var key = await ResolveKeyAsync(userId, ProviderAnthropic, ct).ConfigureAwait(false);
+        const string url = AnthropicModelsUrl;
         if (string.IsNullOrWhiteSpace(key))
         {
-            row.Fields.Add(Field("model_id", entry.Id, null, "not_found",
+            row.Fields.Add(Field(FieldModelId, entry.Id, null, StatusNotFound,
                 "ANTHROPIC_API_KEY not configured — cannot list Anthropic models.", url));
             return;
         }
 
-        var client = _httpFactory.CreateClient("catalog-probe");
+        var client = _httpFactory.CreateClient(HttpClientName);
         using var req = new HttpRequestMessage(HttpMethod.Get, url);
         req.Headers.TryAddWithoutValidation("x-api-key", key.Trim());
         req.Headers.TryAddWithoutValidation("anthropic-version", "2023-06-01");
@@ -765,7 +808,7 @@ public sealed class CatalogUpdateProbeService
         var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
         if (!resp.IsSuccessStatusCode)
         {
-            row.Fields.Add(Field("model_id", entry.Id, null, "error",
+            row.Fields.Add(Field(FieldModelId, entry.Id, null, StatusError,
                 $"Anthropic models HTTP {(int)resp.StatusCode}", url));
             return;
         }
@@ -788,13 +831,13 @@ public sealed class CatalogUpdateProbeService
 
         if (match is null)
         {
-            row.Fields.Add(Field("model_id", entry.Id, null, "not_found",
+            row.Fields.Add(Field(FieldModelId, entry.Id, null, StatusNotFound,
                 "Not present in Anthropic /v1/models for this API key.", url));
             return;
         }
 
         var liveId = match.Value.TryGetProperty("id", out var lid) ? lid.GetString() : entry.Id;
-        row.Fields.Add(Field("model_id", entry.Id, liveId, "unchanged",
+        row.Fields.Add(Field(FieldModelId, entry.Id, liveId, StatusUnchanged,
             "Present in Anthropic /v1/models.", url));
 
         if (match.Value.TryGetProperty("max_input_tokens", out var mit) && mit.TryGetInt32(out var inTok) && inTok > 0)
@@ -806,18 +849,18 @@ public sealed class CatalogUpdateProbeService
     /// <summary>P1-B: Gemini GET /v1beta/models — existence + input/output token limits.</summary>
     private async Task ProbeGeminiModelAsync(SupportedModelEntry entry, CatalogModelProbeResult row, string? userId, CancellationToken ct)
     {
-        var key = await ResolveKeyAsync(userId, "gemini", ct).ConfigureAwait(false);
-        const string baseUrl = "https://generativelanguage.googleapis.com/v1beta/models";
+        var key = await ResolveKeyAsync(userId, ProviderGemini, ct).ConfigureAwait(false);
+        const string baseUrl = GeminiModelsUrl;
         if (string.IsNullOrWhiteSpace(key))
         {
-            row.Fields.Add(Field("model_id", entry.Id, null, "not_found",
+            row.Fields.Add(Field(FieldModelId, entry.Id, null, StatusNotFound,
                 "GEMINI_API_KEY / GOOGLE_API_KEY not configured — cannot list Gemini models.", baseUrl));
             return;
         }
 
-        var client = _httpFactory.CreateClient("catalog-probe");
-        var modelLeaf = entry.Id.StartsWith("models/", StringComparison.OrdinalIgnoreCase)
-            ? entry.Id["models/".Length..]
+        var client = _httpFactory.CreateClient(HttpClientName);
+        var modelLeaf = entry.Id.StartsWith(ModelsPrefix, StringComparison.OrdinalIgnoreCase)
+            ? entry.Id[ModelsPrefix.Length..]
             : entry.Id;
         var getUrl = $"{baseUrl}/{modelLeaf}?key={Uri.EscapeDataString(key.Trim())}";
 
@@ -827,7 +870,7 @@ public sealed class CatalogUpdateProbeService
         {
             using var doc = JsonDocument.Parse(body);
             var name = doc.RootElement.TryGetProperty("name", out var n) ? n.GetString() : entry.Id;
-            row.Fields.Add(Field("model_id", entry.Id, name, "unchanged", "Present in Gemini models.get.", baseUrl));
+            row.Fields.Add(Field(FieldModelId, entry.Id, name, StatusUnchanged, "Present in Gemini models.get.", baseUrl));
             if (doc.RootElement.TryGetProperty("inputTokenLimit", out var it) && it.TryGetInt32(out var inLim) && inLim > 0)
                 row.Fields.Add(CompareInt("maxInputTokens", entry.MaxInputTokens, inLim, baseUrl));
             if (doc.RootElement.TryGetProperty("outputTokenLimit", out var ot) && ot.TryGetInt32(out var outLim) && outLim > 0)
@@ -840,7 +883,7 @@ public sealed class CatalogUpdateProbeService
         var listBody = await listResp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
         if (!listResp.IsSuccessStatusCode)
         {
-            row.Fields.Add(Field("model_id", entry.Id, null, "error",
+            row.Fields.Add(Field(FieldModelId, entry.Id, null, StatusError,
                 $"Gemini models HTTP {(int)resp.StatusCode}/{(int)listResp.StatusCode}", baseUrl));
             return;
         }
@@ -852,13 +895,13 @@ public sealed class CatalogUpdateProbeService
             {
                 var name = m.TryGetProperty("name", out var nm) ? nm.GetString() : null;
                 if (name is null) continue;
-                var leaf = name.StartsWith("models/", StringComparison.OrdinalIgnoreCase) ? name["models/".Length..] : name;
+                var leaf = name.StartsWith(ModelsPrefix, StringComparison.OrdinalIgnoreCase) ? name[ModelsPrefix.Length..] : name;
                 if (!string.Equals(leaf, entry.Id, StringComparison.OrdinalIgnoreCase)
                     && !string.Equals(name, entry.Id, StringComparison.OrdinalIgnoreCase)
                     && !leaf.StartsWith(entry.Id, StringComparison.OrdinalIgnoreCase))
                     continue;
 
-                row.Fields.Add(Field("model_id", entry.Id, name, "unchanged", "Present in Gemini models.list.", baseUrl));
+                row.Fields.Add(Field(FieldModelId, entry.Id, name, StatusUnchanged, "Present in Gemini models.list.", baseUrl));
                 if (m.TryGetProperty("inputTokenLimit", out var it2) && it2.TryGetInt32(out var inLim2) && inLim2 > 0)
                     row.Fields.Add(CompareInt("maxInputTokens", entry.MaxInputTokens, inLim2, baseUrl));
                 if (m.TryGetProperty("outputTokenLimit", out var ot2) && ot2.TryGetInt32(out var outLim2) && outLim2 > 0)
@@ -867,21 +910,21 @@ public sealed class CatalogUpdateProbeService
             }
         }
 
-        row.Fields.Add(Field("model_id", entry.Id, null, "not_found",
+        row.Fields.Add(Field(FieldModelId, entry.Id, null, StatusNotFound,
             "Not present in Gemini models list for this API key.", baseUrl));
     }
 
     private async Task DiscoverFromAnthropicAsync(CatalogUpdateScanResult result, HashSet<string> known, string? userId, CancellationToken ct)
     {
-        var key = await ResolveKeyAsync(userId, "anthropic", ct).ConfigureAwait(false);
+        var key = await ResolveKeyAsync(userId, ProviderAnthropic, ct).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(key))
         {
             result.DiscoveryNotes.Add("Anthropic: skipped (no ANTHROPIC_API_KEY configured).");
             return;
         }
 
-        var client = _httpFactory.CreateClient("catalog-probe");
-        using var req = new HttpRequestMessage(HttpMethod.Get, "https://api.anthropic.com/v1/models?limit=100");
+        var client = _httpFactory.CreateClient(HttpClientName);
+        using var req = new HttpRequestMessage(HttpMethod.Get, AnthropicModelsListUrl);
         req.Headers.TryAddWithoutValidation("x-api-key", key.Trim());
         req.Headers.TryAddWithoutValidation("anthropic-version", "2023-06-01");
         using var resp = await client.SendAsync(req, ct).ConfigureAwait(false);
@@ -894,13 +937,13 @@ public sealed class CatalogUpdateProbeService
         var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
         var added = AddDiscoveredModels(body, known, result.NewModels, (id, m) =>
         {
-            if (!id.Contains("claude", StringComparison.OrdinalIgnoreCase)) return null;
+            if (!id.Contains(ProviderClaude, StringComparison.OrdinalIgnoreCase)) return null;
             var display = m.TryGetProperty("display_name", out var dn) ? dn.GetString() : id;
             return new CatalogNewModelHint
             {
                 Id = id,
                 Provider = "Anthropic",
-                ProviderId = "anthropic",
+                ProviderId = ProviderAnthropic,
                 SuggestedCapability = "Chat",
                 Source = "Anthropic GET /v1/models",
                 LabMode = true,
@@ -912,15 +955,15 @@ public sealed class CatalogUpdateProbeService
 
     private async Task DiscoverFromGeminiAsync(CatalogUpdateScanResult result, HashSet<string> known, string? userId, CancellationToken ct)
     {
-        var key = await ResolveKeyAsync(userId, "gemini", ct).ConfigureAwait(false);
+        var key = await ResolveKeyAsync(userId, ProviderGemini, ct).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(key))
         {
             result.DiscoveryNotes.Add("Gemini: skipped (no GEMINI_API_KEY / GOOGLE_API_KEY configured).");
             return;
         }
 
-        var client = _httpFactory.CreateClient("catalog-probe");
-        var url = "https://generativelanguage.googleapis.com/v1beta/models?pageSize=100&key="
+        var client = _httpFactory.CreateClient(HttpClientName);
+        var url = GeminiModelsUrl + "?pageSize=100&key="
                   + Uri.EscapeDataString(key.Trim());
         using var resp = await client.GetAsync(url, ct).ConfigureAwait(false);
         if (!resp.IsSuccessStatusCode)
@@ -937,27 +980,27 @@ public sealed class CatalogUpdateProbeService
         {
             var name = m.TryGetProperty("name", out var nm) ? nm.GetString() : null;
             if (string.IsNullOrWhiteSpace(name)) continue;
-            var id = name.StartsWith("models/", StringComparison.OrdinalIgnoreCase)
-                ? name["models/".Length..]
+            var id = name.StartsWith(ModelsPrefix, StringComparison.OrdinalIgnoreCase)
+                ? name[ModelsPrefix.Length..]
                 : name;
             if (known.Contains(id) || known.Contains(name)) continue;
             var methods = m.TryGetProperty("supportedGenerationMethods", out var sgm) ? sgm.ToString() : "";
             if (methods.Contains("embedContent", StringComparison.OrdinalIgnoreCase)
                 && !methods.Contains("generateContent", StringComparison.OrdinalIgnoreCase))
                 continue;
-            if (!id.Contains("gemini", StringComparison.OrdinalIgnoreCase)
+            if (!id.Contains(ProviderGemini, StringComparison.OrdinalIgnoreCase)
                 && !id.Contains("imagen", StringComparison.OrdinalIgnoreCase))
                 continue;
 
             var cap = id.Contains("imagen", StringComparison.OrdinalIgnoreCase)
-                      || id.Contains("image", StringComparison.OrdinalIgnoreCase)
-                ? "Image"
+                      || id.Contains(UnitImage, StringComparison.OrdinalIgnoreCase)
+                ? CapabilityImage
                 : "Chat";
             result.NewModels.Add(new CatalogNewModelHint
             {
                 Id = id,
                 Provider = "Google",
-                ProviderId = "google",
+                ProviderId = ProviderGoogle,
                 SuggestedCapability = cap,
                 Source = "Gemini GET /v1beta/models",
                 LabMode = true,
@@ -972,15 +1015,15 @@ public sealed class CatalogUpdateProbeService
     /// <summary>P1-C: fal GET /v1/models — discover endpoint_ids not in catalog.</summary>
     private async Task DiscoverFromFalAsync(CatalogUpdateScanResult result, HashSet<string> known, string? userId, CancellationToken ct)
     {
-        var key = await ResolveKeyAsync(userId, "fal", ct).ConfigureAwait(false);
+        var key = await ResolveKeyAsync(userId, ProviderFal, ct).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(key))
         {
             result.DiscoveryNotes.Add("fal: skipped (no FAL_KEY / FAL_API_KEY configured).");
             return;
         }
 
-        var client = _httpFactory.CreateClient("catalog-probe");
-        using var req = new HttpRequestMessage(HttpMethod.Get, "https://api.fal.ai/v1/models?limit=50");
+        var client = _httpFactory.CreateClient(HttpClientName);
+        using var req = new HttpRequestMessage(HttpMethod.Get, FalModelsListUrl);
         req.Headers.TryAddWithoutValidation("Authorization", "Key " + key.Trim());
         using var resp = await client.SendAsync(req, ct).ConfigureAwait(false);
         if (!resp.IsSuccessStatusCode)
@@ -1009,18 +1052,18 @@ public sealed class CatalogUpdateProbeService
             }
 
             var cap = category.Contains("video", StringComparison.OrdinalIgnoreCase) ? "Video"
-                : category.Contains("image", StringComparison.OrdinalIgnoreCase) ? "Image"
+                : category.Contains(UnitImage, StringComparison.OrdinalIgnoreCase) ? CapabilityImage
                 : category.Contains("audio", StringComparison.OrdinalIgnoreCase)
                   || category.Contains("music", StringComparison.OrdinalIgnoreCase) ? "Audio"
                 : category.Contains("speech", StringComparison.OrdinalIgnoreCase)
                   || category.Contains("tts", StringComparison.OrdinalIgnoreCase) ? "Voice"
-                : "Image";
+                : CapabilityImage;
 
             result.NewModels.Add(new CatalogNewModelHint
             {
                 Id = id,
                 Provider = "Fal",
-                ProviderId = "fal",
+                ProviderId = ProviderFal,
                 SuggestedCapability = cap,
                 Source = "fal GET /v1/models",
                 LabMode = true,
@@ -1036,35 +1079,35 @@ public sealed class CatalogUpdateProbeService
     {
         if (catalog is null)
         {
-            return Field(field, null, live.ToString(CultureInfo.InvariantCulture), "changed",
+            return Field(field, null, live.ToString(CultureInfo.InvariantCulture), StatusChanged,
                 "Catalog missing; live value available.", url);
         }
         if (catalog.Value == live)
         {
             return Field(field, catalog.Value.ToString(CultureInfo.InvariantCulture),
-                live.ToString(CultureInfo.InvariantCulture), "unchanged", "Matches live docs/API.", url);
+                live.ToString(CultureInfo.InvariantCulture), StatusUnchanged, "Matches live docs/API.", url);
         }
         return Field(field, catalog.Value.ToString(CultureInfo.InvariantCulture),
-            live.ToString(CultureInfo.InvariantCulture), "changed", "Catalog differs from live probe.", url);
+            live.ToString(CultureInfo.InvariantCulture), StatusChanged, "Catalog differs from live probe.", url);
     }
 
     private static CatalogFieldProbeResult CompareDouble(
         string field, double? catalog, double live, string? url, string? note = null)
     {
-        var liveStr = live.ToString("0.####", CultureInfo.InvariantCulture);
+        var liveStr = live.ToString(FormatFourDecimals, CultureInfo.InvariantCulture);
         var msgSuffix = string.IsNullOrWhiteSpace(note) ? "" : " " + note;
         if (catalog is null)
         {
-            return Field(field, null, liveStr, "changed",
+            return Field(field, null, liveStr, StatusChanged,
                 "Catalog missing; live value available." + msgSuffix, url);
         }
         if (Math.Abs(catalog.Value - live) < 0.00005)
         {
-            return Field(field, catalog.Value.ToString("0.####", CultureInfo.InvariantCulture),
-                liveStr, "unchanged", "Matches live docs/API." + msgSuffix, url);
+            return Field(field, catalog.Value.ToString(FormatFourDecimals, CultureInfo.InvariantCulture),
+                liveStr, StatusUnchanged, "Matches live docs/API." + msgSuffix, url);
         }
-        return Field(field, catalog.Value.ToString("0.####", CultureInfo.InvariantCulture),
-            liveStr, "changed", "Catalog differs from live probe." + msgSuffix, url);
+        return Field(field, catalog.Value.ToString(FormatFourDecimals, CultureInfo.InvariantCulture),
+            liveStr, StatusChanged, "Catalog differs from live probe." + msgSuffix, url);
     }
 
     private static CatalogFieldProbeResult Field(

@@ -47,9 +47,9 @@ window.PageToMovieMedia = {
             await this._saveHandleToDbAsync(this._root);
             return { success: true, folderName: this._root.name, fullPath: fullPath || this.getFullPath() || null };
         } catch (err) {
-            if (err && err.name === "AbortError")
+            if (err?.name === "AbortError")
                 return { success: false, error: "Folder selection cancelled." };
-            return { success: false, error: (err && err.message) || "Folder selection failed." };
+            return { success: false, error: err?.message || "Folder selection failed." };
         }
     },
 
@@ -59,12 +59,12 @@ window.PageToMovieMedia = {
                 return handle.path;
             if (typeof handle.fullPath === "string" && handle.fullPath)
                 return handle.fullPath;
-        } catch (_) { /* ignore */ }
+        } catch (e) { if (e) { /* ignore: handle.path/fullPath may throw */ } }
         const prev = this.getFullPath();
         if (!prev) return null;
         const parts = prev.split(/[\\/]/).filter(Boolean);
         const leaf = parts.length ? parts[parts.length - 1] : "";
-        if (leaf && leaf.toLowerCase() === String(handle.name).toLowerCase())
+        if (leaf?.toLowerCase() === String(handle.name).toLowerCase())
             return prev;
         try { localStorage.removeItem("ptm-media-fullpath"); } catch (_) { /* ignore */ }
         return null;
@@ -110,7 +110,8 @@ window.PageToMovieMedia = {
                 req.onsuccess = () => resolve(req.result || null);
                 req.onerror = () => reject(req.error);
             });
-        } catch (_) {
+        } catch (e) {
+            if (e) { /* ignore: IndexedDB unavailable */ }
             return null;
         }
     },
@@ -166,7 +167,7 @@ window.PageToMovieMedia = {
      */
     _ensurePathAsync: async function (relativePath) {
         if (!this._root) throw new Error("Media folder not connected");
-        const parts = relativePath.replace(/\\/g, "/").split("/").filter(Boolean);
+        const parts = relativePath.replaceAll("\\", "/").split("/").filter(Boolean);
         let dir = this._root;
         for (let i = 0; i < parts.length - 1; i++) {
             dir = await dir.getDirectoryHandle(parts[i], { create: true });
@@ -186,7 +187,7 @@ window.PageToMovieMedia = {
             // Leading group tolerates a project-id prefix (e.g. "alice/Buster/assets/video/...")
             // ahead of the clip filename — preserved below so the archived copy lands under the
             // same project's history folder instead of the shared root's.
-            const m = /^(.+\/)?assets\/video\/(scene_\d+_clip_\d+)\.mp4$/i.exec(relativePath.replace(/\\/g, "/"));
+            const m = /^(.+\/)?assets\/video\/(scene_\d+_clip_\d+)\.mp4$/i.exec(relativePath.replaceAll("\\", "/"));
             if (!m) return;
             const { dir, fileName } = await this._ensurePathAsync(relativePath);
             let existing;
@@ -219,7 +220,7 @@ window.PageToMovieMedia = {
      */
     _archiveMusicSegmentAsync: async function (relativePath, takeId) {
         try {
-            const m = /^(.+\/)?assets\/music\/(scene_\d+_seg_\d+)\.wav$/i.exec(relativePath.replace(/\\/g, "/"));
+            const m = /^(.+\/)?assets\/music\/(scene_\d+_seg_\d+)\.wav$/i.exec(relativePath.replaceAll("\\", "/"));
             if (!m) return;
             const { dir, fileName } = await this._ensurePathAsync(relativePath);
             let existing;
@@ -275,7 +276,7 @@ window.PageToMovieMedia = {
             await w.write(buf);
             await w.close();
             // Invalidate cached blob URL for this path
-            const key = relativePath.replace(/\\/g, "/");
+            const key = relativePath.replaceAll("\\", "/");
             if (this._blobUrls[key]) {
                 try { URL.revokeObjectURL(this._blobUrls[key]); } catch (_) { /* */ }
                 delete this._blobUrls[key];
@@ -285,7 +286,7 @@ window.PageToMovieMedia = {
                 success: true,
                 sha256: sha,
                 sizeBytes: buf.byteLength,
-                relativePath: relativePath.replace(/\\/g, "/"),
+                relativePath: relativePath.replaceAll("\\", "/"),
                 folderName: this._root.name,
             };
         } catch (err) {
@@ -352,7 +353,7 @@ window.PageToMovieMedia = {
         try {
             const bin = atob(base64);
             const bytes = new Uint8Array(bin.length);
-            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            for (let i = 0; i < bin.length; i++) bytes[i] = bin.codePointAt(i);
             const blob = new Blob([bytes], { type: mime || "audio/mpeg" });
             return URL.createObjectURL(blob);
         } catch (e) {
@@ -369,7 +370,7 @@ window.PageToMovieMedia = {
     getBlobUrlAsync: async function (relativePath, forceRefresh) {
         if (!this._root) return { success: false, error: "Media folder not connected" };
         try {
-            const key = relativePath.replace(/\\/g, "/");
+            const key = relativePath.replaceAll("\\", "/");
             if (!forceRefresh && this._blobUrls[key]) {
                 return { success: true, url: this._blobUrls[key] };
             }
@@ -422,7 +423,7 @@ window.PageToMovieMedia = {
                     bestMtime = f.lastModified;
                     bestFh = entry;
                 }
-            } catch (_) { /* skip unreadable entry */ }
+            } catch (e) { if (e) { /* skip unreadable entry */ } }
         }
         return bestFh;
     },
@@ -496,7 +497,7 @@ window.PageToMovieMedia = {
         if (!this._root) return { success: false, error: "Media folder not connected" };
         try {
             const prefix = `scene_${String(scene).padStart(2, "0")}_clip_${String(clip).padStart(2, "0")}_`;
-            const parts = dirPrefix.replace(/\\/g, "/").split("/").filter(Boolean);
+            const parts = dirPrefix.replaceAll("\\", "/").split("/").filter(Boolean);
             let histDir = this._root;
             for (const part of parts) {
                 try { histDir = await histDir.getDirectoryHandle(part, { create: false }); }
@@ -556,7 +557,7 @@ window.PageToMovieMedia = {
                 success: true,
                 sha256: sha,
                 sizeBytes: buf.byteLength,
-                relativePath: relativePath.replace(/\\/g, "/"),
+                relativePath: relativePath.replaceAll("\\", "/"),
             };
         } catch (err) {
             return { success: false, error: err.message || String(err) };
@@ -587,7 +588,7 @@ window.PageToMovieMedia = {
             await w.write(buf);
             await w.close();
 
-            const key = toRelativePath.replace(/\\/g, "/");
+            const key = toRelativePath.replaceAll("\\", "/");
             if (this._blobUrls[key]) {
                 try { URL.revokeObjectURL(this._blobUrls[key]); } catch (_) { /* */ }
                 delete this._blobUrls[key];
@@ -629,7 +630,7 @@ window.PageToMovieMedia = {
             const w = await fh.createWritable();
             await w.write(buf);
             await w.close();
-            const key = relativePath.replace(/\\/g, "/");
+            const key = relativePath.replaceAll("\\", "/");
             if (this._blobUrls[key]) {
                 try { URL.revokeObjectURL(this._blobUrls[key]); } catch (_) { /* */ }
                 delete this._blobUrls[key];
@@ -653,14 +654,14 @@ window.PageToMovieMedia = {
         try {
             const bin = atob(base64);
             const buf = new Uint8Array(bin.length);
-            for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+            for (let i = 0; i < bin.length; i++) buf[i] = bin.codePointAt(i);
             const sha = await this._sha256Hex(buf.buffer);
             const { dir, fileName } = await this._ensurePathAsync(relativePath);
             const fh = await dir.getFileHandle(fileName, { create: true });
             const w = await fh.createWritable();
             await w.write(buf);
             await w.close();
-            const key = relativePath.replace(/\\/g, "/");
+            const key = relativePath.replaceAll("\\", "/");
             if (this._blobUrls[key]) {
                 try { URL.revokeObjectURL(this._blobUrls[key]); } catch (_) { /* */ }
                 delete this._blobUrls[key];
@@ -724,7 +725,7 @@ window.PageToMovieMedia = {
         let dir = this._root;
         let base = "";
         if (prefix && String(prefix).trim()) {
-            const parts = String(prefix).replace(/\\/g, "/").split("/").filter(Boolean);
+            const parts = String(prefix).replaceAll("\\", "/").split("/").filter(Boolean);
             for (const part of parts) {
                 dir = await dir.getDirectoryHandle(part, { create: false });
                 base = base ? `${base}/${part}` : part;
@@ -762,7 +763,7 @@ window.PageToMovieMedia = {
         try {
             const f = await handle.getFile();
             if (requireSize && (!f || f.size <= 0)) return;
-            files.push({ relativePath: rel.replace(/\\/g, "/"), name, sizeBytes: f.size });
-        } catch (_) { /* skip */ }
+            files.push({ relativePath: rel.replaceAll("\\", "/"), name, sizeBytes: f.size });
+        } catch (e) { if (e) { /* skip unreadable file */ } }
     },
 };

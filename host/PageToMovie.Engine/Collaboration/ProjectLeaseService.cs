@@ -70,7 +70,9 @@ public sealed class ProjectLeaseService : IProjectLeaseService
         try
         {
             var path = LeasePath(projectId, resourceKey);
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            var leaseDir = Path.GetDirectoryName(path);
+            if (leaseDir is not null)
+                Directory.CreateDirectory(leaseDir);
             var existing = await GetAsync(projectId, resourceKey, ct).ConfigureAwait(false);
             if (existing is not null
                 && !string.Equals(existing.HolderUserId, userId, StringComparison.OrdinalIgnoreCase))

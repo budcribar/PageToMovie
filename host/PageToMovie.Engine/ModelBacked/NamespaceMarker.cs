@@ -6,4 +6,5 @@ namespace PageToMovie.Engine.ModelBacked;
 /// </summary>
 public static class NamespaceMarker
 {
+    public static Type MarkerType => typeof(NamespaceMarker);
 }

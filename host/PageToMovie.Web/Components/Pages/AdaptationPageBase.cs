@@ -8,20 +8,20 @@ namespace PageToMovie.Web.Components.Pages;
 /// <summary>Shared project / job / status logic for Adaptation step pages.</summary>
 public abstract partial class AdaptationPageBase : ComponentBase, IAsyncDisposable
 {
-    [Inject] protected EngineApiClient Engine { get; set; } = null!;
-    [Inject] protected JobHubClient Hub { get; set; } = null!;
-    [Inject] protected NavigationManager Nav { get; set; } = null!;
-    [Inject] protected ActiveProjectState ActiveProject { get; set; } = null!;
+    [Inject] protected EngineApiClient Engine { get; set; } = default;
+    [Inject] protected JobHubClient Hub { get; set; } = default;
+    [Inject] protected NavigationManager Nav { get; set; } = default;
+    [Inject] protected ActiveProjectState ActiveProject { get; set; } = default;
 
-    public bool Busy;
+    public bool Busy { get; set; }
     /// <summary>Short operator-facing label while <see cref="Busy"/> (shown with progress bar).</summary>
-    public string? BusyMessage;
-    public string? Error;
-    public string? Message;
-    public string ProjectId = "";
+    public string? BusyMessage { get; set; }
+    public string? Error { get; set; }
+    public string? Message { get; set; }
+    public string ProjectId { get; set; } = "";
     /// <summary>Display name for the active project (set on Home; read-only here).</summary>
-    public string ProjectLabel = "";
-    public AdaptationStatus? Status;
+    public string ProjectLabel { get; set; } = "";
+    public AdaptationStatus? Status { get; set; }
 
     // ── Domain modules (lazy; own their state) ─────────────────────────────
     private AdaptationJobs? _jobs;
@@ -53,7 +53,7 @@ public abstract partial class AdaptationPageBase : ComponentBase, IAsyncDisposab
                 Error = "No project selected. Create or choose one on Studio.";
                 return;
             }
-            ProjectId = ActiveProject.ProjectId!;
+            ProjectId = ActiveProject.ProjectId;
             ProjectLabel = ActiveProject.Label ?? ProjectId;
 
             try { await Hub.StartAsync(); } catch { /* optional */ }

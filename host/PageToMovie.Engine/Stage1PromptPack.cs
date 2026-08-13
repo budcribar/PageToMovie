@@ -29,7 +29,7 @@ public static class Stage1PromptPack
         }
         catch (InvalidOperationException) when (!string.IsNullOrWhiteSpace(fallbackBody))
         {
-            body = fallbackBody!;
+            body = fallbackBody ?? string.Empty;
         }
 
         return body.Replace("{{TOTAL_RUNTIME_MINUTES}}", totalRuntimeMinutes.ToString());

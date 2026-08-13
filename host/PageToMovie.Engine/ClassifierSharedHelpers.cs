@@ -87,11 +87,12 @@ internal static class ClassifierLabelParser
             {
                 var (key, value) = extract(el);
                 if (!string.IsNullOrWhiteSpace(key) && !string.IsNullOrWhiteSpace(value))
-                    map[key!] = value!;
+                    map[key] = value;
             }
         }
         catch (Exception)
         {
+            // Malformed classifier JSON: return labels parsed before the fault.
             return map;
         }
         return map;
