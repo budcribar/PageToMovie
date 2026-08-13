@@ -23,7 +23,7 @@ public partial class ContributionReview
     internal bool _busy;
     private bool _hasConflicts;
     internal int _autoResolvedCount;
-    private List<string> _remainingConflictPaths = new();
+    internal List<string> _remainingConflictPaths = new();
     private bool _lastSyncWasFromOrigin = true;
 
     private string? OriginId =>

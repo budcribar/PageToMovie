@@ -1117,12 +1117,7 @@ public sealed class CharacterBookPlateService
     {
         if (string.Equals(otherKey, key, StringComparison.OrdinalIgnoreCase))
             return false;
-        foreach (var t in otherToks)
-        {
-            if (TokenHitsOtherNotSelf(name, t, own))
-                return true;
-        }
-        return false;
+        return otherToks.Any(t => TokenHitsOtherNotSelf(name, t, own));
     }
 
     private static bool TokenHitsOtherNotSelf(string name, string t, List<string> own)

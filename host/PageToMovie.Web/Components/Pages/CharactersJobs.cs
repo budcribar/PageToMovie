@@ -62,7 +62,7 @@ public partial class Characters
             if (string.Equals(kind, "plan_looks", StringComparison.OrdinalIgnoreCase))
                 return StatusForPlanLooks(job);
             if (string.Equals(kind, "voice-preview", StringComparison.OrdinalIgnoreCase))
-                return StatusForVoicePreview();
+                return VoicePreviewStatus;
             return "Working…";
         }
 
@@ -90,7 +90,7 @@ public partial class Characters
                 : "Generating looks for plan…";
         }
 
-        private static string StatusForVoicePreview() => "Generating voice sample…";
+        private const string VoicePreviewStatus = "Generating voice sample…";
 
 
         internal void OnJobUpdated(JobSnapshot snap)

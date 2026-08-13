@@ -69,13 +69,7 @@ public sealed class SmartClassifierModelRouter
         return true;
     }
 
-    private static bool HasRequiredKeys(SupportedModelEntry entry)
-    {
-        foreach (var reqKey in entry.RequiredEnvKeys)
-        {
-            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(reqKey)))
-                return false;
-        }
-        return true;
-    }
+    private static bool HasRequiredKeys(SupportedModelEntry entry) =>
+        entry.RequiredEnvKeys.All(reqKey =>
+            !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(reqKey)));
 }
