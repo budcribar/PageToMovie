@@ -321,44 +321,10 @@ public sealed partial class ProjectStore
 
         try
         {
-            var currentRoot = System.Text.Json.Nodes.JsonNode.Parse(await File.ReadAllTextAsync(bpPath).ConfigureAwait(false)) as System.Text.Json.Nodes.JsonObject;
-            var historicalRoot = System.Text.Json.Nodes.JsonNode.Parse(historicalBpStr) as System.Text.Json.Nodes.JsonObject;
-            if (currentRoot is null || historicalRoot is null) return false;
-
-            var currentScenes = currentRoot[StoreLit.Scenes] as System.Text.Json.Nodes.JsonArray;
-            var historicalScenes = historicalRoot[StoreLit.Scenes] as System.Text.Json.Nodes.JsonArray;
-            if (currentScenes is null || historicalScenes is null) return false;
-
-            System.Text.Json.Nodes.JsonObject? targetHistSceneNode = null;
-            foreach (var hNode in historicalScenes)
-            {
-                if (hNode is System.Text.Json.Nodes.JsonObject hObj && ReadJsonNodeInt(hObj[JsonKeys.SceneNumber]) == sceneNumber)
-                {
-                    targetHistSceneNode = hObj.DeepClone() as System.Text.Json.Nodes.JsonObject;
-                    break;
-                }
-            }
-
-            if (targetHistSceneNode is null) return false;
-
-            int targetIndex = -1;
-            for (int i = 0; i < currentScenes.Count; i++)
-            {
-                if (currentScenes[i] is System.Text.Json.Nodes.JsonObject cObj && ReadJsonNodeInt(cObj[JsonKeys.SceneNumber]) == sceneNumber)
-                {
-                    targetIndex = i;
-                    break;
-                }
-            }
-
-            if (targetIndex >= 0)
-            {
-                currentScenes[targetIndex] = targetHistSceneNode;
-            }
-            else
-            {
-                currentScenes.Add(targetHistSceneNode);
-            }
+            var currentJson = await File.ReadAllTextAsync(bpPath).ConfigureAwait(false);
+            if (!TryApplyHistoricalSceneToBlueprint(currentJson, historicalBpStr, sceneNumber, out var currentRoot)
+                || currentRoot is null)
+                return false;
 
             await File.WriteAllTextAsync(bpPath, currentRoot.ToJsonString(JsonOpts)).ConfigureAwait(false);
             InvalidateSceneListCache(projectId);
@@ -399,38 +365,12 @@ public sealed partial class ProjectStore
 
         if (!head.Available || !head.HasUncommittedChanges)
         {
-            if (head.Available && !string.IsNullOrWhiteSpace(head.LastCommitHash))
-                dto.Summary = "Package up to date with last save.";
-            else if (!head.Available)
-                dto.Summary = head.SkipReason ?? "Package history not available.";
+            ApplyCleanGitSummary(dto, head);
             return dto;
         }
 
         var (_, files) = ProjectGitRepositoryService.GetUncommittedStatus(dir);
-        var modScenes = new HashSet<int>();
-        var modClips = new HashSet<string>();
-
-        foreach (var f in files)
-        {
-            var m = CommonRegex.Match(f, @"scene_?(\d+)(?:_clip_?(\d+))?", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-            if (m.Success && int.TryParse(m.Groups[1].Value, out var s))
-            {
-                modScenes.Add(s);
-                if (m.Groups[2].Success && int.TryParse(m.Groups[2].Value, out var c))
-                {
-                    modClips.Add($"{s}-{c}");
-                }
-            }
-            else if (f.EndsWith(StoreLit.BlueprintClipsGrokJson, StringComparison.OrdinalIgnoreCase) ||
-                     f.EndsWith(StoreLit.ScenesJson, StringComparison.OrdinalIgnoreCase) ||
-                     f.EndsWith("screenplay.fountain", StringComparison.OrdinalIgnoreCase) ||
-                     f.EndsWith("cast_seeds.json", StringComparison.OrdinalIgnoreCase) ||
-                     f.EndsWith(StoreLit.ProjectJson, StringComparison.OrdinalIgnoreCase) ||
-                     f.EndsWith(StoreLit.PipelineConfigJson, StringComparison.OrdinalIgnoreCase))
-            {
-                // Text package change without scene token in path
-            }
-        }
+        CollectUncommittedSceneClipKeys(files, out var modScenes, out var modClips);
 
         dto.ModifiedScenes = modScenes.OrderBy(n => n).ToList();
         dto.ModifiedClipKeys = modClips.ToList();
@@ -438,6 +378,30 @@ public sealed partial class ProjectStore
             ? $"{dto.ModifiedScenes.Count} scene(s) modified since last save."
             : "Package has uncommitted changes.";
         return dto;
+    }
+
+    private static void ApplyCleanGitSummary(UncommittedStatusDto dto, ProjectGitStatus head)
+    {
+        if (head.Available && !string.IsNullOrWhiteSpace(head.LastCommitHash))
+            dto.Summary = "Package up to date with last save.";
+        else if (!head.Available)
+            dto.Summary = head.SkipReason ?? "Package history not available.";
+    }
+
+    private static void CollectUncommittedSceneClipKeys(
+        IEnumerable<string> files, out HashSet<int> modScenes, out HashSet<string> modClips)
+    {
+        modScenes = new HashSet<int>();
+        modClips = new HashSet<string>();
+        foreach (var f in files)
+        {
+            var m = CommonRegex.Match(f, @"scene_?(\d+)(?:_clip_?(\d+))?", RegexOptions.IgnoreCase);
+            if (!m.Success || !int.TryParse(m.Groups[1].Value, out var s))
+                continue;
+            modScenes.Add(s);
+            if (m.Groups[2].Success && int.TryParse(m.Groups[2].Value, out var c))
+                modClips.Add($"{s}-{c}");
+        }
     }
 
     /// <summary>
@@ -842,21 +806,8 @@ public sealed partial class ProjectStore
         var result = new List<MusicVersionItem>();
         var activeSidecar = Path.Combine(musicDir, $"scene_{scene:D2}.meta.json");
         var hasActiveSidecar = File.Exists(activeSidecar);
-        if (hasActiveSidecar)
-        {
-            var item = ParseMusicSidecar(activeSidecar, scene, isCurrent: true);
-            if (item is not null) result.Add(item);
-        }
-
-        var historyDir = Path.Combine(musicDir, StoreLit.History);
-        if (Directory.Exists(historyDir))
-        {
-            foreach (var sidecar in Directory.EnumerateFiles(historyDir, $"scene_{scene:D2}_take_*.meta.json"))
-            {
-                var item = ParseMusicSidecar(sidecar, scene, isCurrent: false);
-                if (item is not null) result.Add(item);
-            }
-        }
+        AddMusicSidecarIfPresent(result, activeSidecar, scene, isCurrent: true);
+        AddHistoricalMusicSidecars(result, Path.Combine(musicDir, StoreLit.History), scene);
 
         // Music generated before this take-history feature existed has no sidecar at all — without
         // this, a scene whose audio was clearly generated (HasSceneMusicAsync true) would show zero
@@ -864,43 +815,77 @@ public sealed partial class ProjectStore
         // "legacy" current entry — there is no prior take to compare it against, which is honest:
         // regenerating before this feature existed destroyed whatever came before it.
         if (!hasActiveSidecar && _mediaRegistry is not null)
-        {
-            var registered = await _mediaRegistry.ListForSceneMusicAsync(projectId, scene).ConfigureAwait(false);
-            if (registered.Count > 0)
-            {
-                var activeNames = registered
-                    .Where(r => !r.RelativePath.Contains("/history/", StringComparison.OrdinalIgnoreCase))
-                    .Select(r => Path.GetFileName(r.RelativePath))
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
-                    .ToList();
-                if (activeNames.Count > 0)
-                {
-                    var earliest = registered
-                        .Where(r => activeNames.Contains(Path.GetFileName(r.RelativePath), StringComparer.OrdinalIgnoreCase))
-                        .Select(r => DateTimeOffset.TryParse(r.CreatedAt, System.Globalization.CultureInfo.InvariantCulture,
-                            System.Globalization.DateTimeStyles.RoundtripKind, out var dto) ? dto.UtcDateTime : DateTime.UtcNow)
-                        .DefaultIfEmpty(DateTime.UtcNow)
-                        .Min();
-                    result.Add(new MusicVersionItem
-                    {
-                        TakeId = "legacy",
-                        Scene = scene,
-                        IsCurrent = true,
-                        CreatedAtUtc = earliest,
-                        Model = "",
-                        IsVocal = false,
-                        Prompt = "(generated before take history was added)",
-                        SegmentFileNames = activeNames,
-                        ClientOnly = true,
-                        RelativePaths = activeNames.Select(n => $"assets/music/{n}").ToList(),
-                    });
-                }
-            }
-        }
+            await TryAddLegacyMusicVersionAsync(result, projectId, scene).ConfigureAwait(false);
 
         return result.OrderByDescending(x => x.CreatedAtUtc).ToList();
     }
+
+    private static void AddMusicSidecarIfPresent(
+        List<MusicVersionItem> result, string sidecar, int scene, bool isCurrent)
+    {
+        if (!File.Exists(sidecar))
+            return;
+        var item = ParseMusicSidecar(sidecar, scene, isCurrent);
+        if (item is not null)
+            result.Add(item);
+    }
+
+    private static void AddHistoricalMusicSidecars(List<MusicVersionItem> result, string historyDir, int scene)
+    {
+        if (!Directory.Exists(historyDir))
+            return;
+        foreach (var sidecar in Directory.EnumerateFiles(historyDir, $"scene_{scene:D2}_take_*.meta.json"))
+            AddMusicSidecarIfPresent(result, sidecar, scene, isCurrent: false);
+    }
+
+    private async Task TryAddLegacyMusicVersionAsync(List<MusicVersionItem> result, string projectId, int scene)
+    {
+        if (_mediaRegistry is null)
+            return;
+        var registered = await _mediaRegistry.ListForSceneMusicAsync(projectId, scene).ConfigureAwait(false);
+        if (registered.Count == 0)
+            return;
+        var activeNames = registered
+            .Where(r => !r.RelativePath.Contains("/history/", StringComparison.OrdinalIgnoreCase))
+            .Select(r => Path.GetFileName(r.RelativePath))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (activeNames.Count == 0)
+            return;
+        result.Add(new MusicVersionItem
+        {
+            TakeId = "legacy",
+            Scene = scene,
+            IsCurrent = true,
+            CreatedAtUtc = EarliestRegisteredUtc(registered, activeNames),
+            Model = "",
+            IsVocal = false,
+            Prompt = "(generated before take history was added)",
+            SegmentFileNames = activeNames,
+            ClientOnly = true,
+            RelativePaths = activeNames.Select(n => $"assets/music/{n}").ToList(),
+        });
+    }
+
+    private static DateTime EarliestRegisteredUtc(
+        IReadOnlyList<MediaObjectDto> registered, List<string> activeNames)
+    {
+        return registered
+            .Where(r => activeNames.Contains(Path.GetFileName(r.RelativePath), StringComparer.OrdinalIgnoreCase))
+            .Select(ParseRegistryCreatedUtc)
+            .DefaultIfEmpty(DateTime.UtcNow)
+            .Min();
+    }
+
+    private static DateTime ParseRegistryCreatedUtc(MediaObjectDto r) =>
+        DateTimeOffset.TryParse(
+            r.CreatedAt,
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.RoundtripKind,
+            out var dto)
+            ? dto.UtcDateTime
+            : DateTime.UtcNow;
 
     private static MusicVersionItem? ParseMusicSidecar(string sidecarPath, int scene, bool isCurrent)
     {
@@ -1112,6 +1097,53 @@ public sealed partial class ProjectStore
         return null;
     }
 
+    private static int FindSceneIndexInArray(System.Text.Json.Nodes.JsonArray scenes, int sceneNumber)
+    {
+        for (var i = 0; i < scenes.Count; i++)
+        {
+            if (scenes[i] is System.Text.Json.Nodes.JsonObject cObj &&
+                ReadJsonNodeInt(cObj[JsonKeys.SceneNumber]) == sceneNumber)
+                return i;
+        }
+        return -1;
+    }
+
+    private static void ReplaceOrAddScene(
+        System.Text.Json.Nodes.JsonArray scenes,
+        int sceneNumber,
+        System.Text.Json.Nodes.JsonObject node)
+    {
+        var i = FindSceneIndexInArray(scenes, sceneNumber);
+        if (i >= 0)
+            scenes[i] = node;
+        else
+            scenes.Add(node);
+    }
+
+    private static bool TryApplyHistoricalSceneToBlueprint(
+        string currentJson,
+        string historicalJson,
+        int sceneNumber,
+        out System.Text.Json.Nodes.JsonObject? currentRoot)
+    {
+        currentRoot = System.Text.Json.Nodes.JsonNode.Parse(currentJson) as System.Text.Json.Nodes.JsonObject;
+        var historicalRoot = System.Text.Json.Nodes.JsonNode.Parse(historicalJson) as System.Text.Json.Nodes.JsonObject;
+        if (currentRoot is null || historicalRoot is null)
+            return false;
+
+        var currentScenes = currentRoot[StoreLit.Scenes] as System.Text.Json.Nodes.JsonArray;
+        var historicalScenes = historicalRoot[StoreLit.Scenes] as System.Text.Json.Nodes.JsonArray;
+        if (currentScenes is null || historicalScenes is null)
+            return false;
+
+        var hist = FindSceneObjectInArray(historicalScenes, sceneNumber);
+        if (hist?.DeepClone() is not System.Text.Json.Nodes.JsonObject clone)
+            return false;
+
+        ReplaceOrAddScene(currentScenes, sceneNumber, clone);
+        return true;
+    }
+
     private static void DiffSceneClipFields(
         List<string> changes,
         System.Text.Json.Nodes.JsonObject curScene,
@@ -1254,28 +1286,34 @@ public sealed partial class ProjectStore
             var metaPath = Path.Combine(dir, StoreLit.ProjectJson);
             if (File.Exists(metaPath))
             {
-                var info = await ReadProjectInfoFromDirAsync(dir, idOverride: name, ct).ConfigureAwait(false);
-                if (info is not null)
-                    list.Add(info);
+                await TryAddProjectFromDirAsync(list, dir, name, ct).ConfigureAwait(false);
                 continue;
             }
 
-            // Owner namespace folder — scan children for project.json
-            foreach (var child in Directory.GetDirectories(dir))
-            {
-                ct.ThrowIfCancellationRequested();
-                var slug = Path.GetFileName(child);
-                var childMeta = Path.Combine(child, StoreLit.ProjectJson);
-                if (!File.Exists(childMeta))
-                    continue;
-                var compositeId = $"{name}/{slug}";
-                var info = await ReadProjectInfoFromDirAsync(child, idOverride: compositeId, ct)
-                    .ConfigureAwait(false);
-                if (info is not null)
-                    list.Add(info);
-            }
+            await AddNamespacedProjectsAsync(list, dir, name, ct).ConfigureAwait(false);
         }
         return list.OrderBy(p => p.Id, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private async Task TryAddProjectFromDirAsync(
+        List<ProjectInfo> list, string dir, string idOverride, CancellationToken ct)
+    {
+        var info = await ReadProjectInfoFromDirAsync(dir, idOverride, ct).ConfigureAwait(false);
+        if (info is not null)
+            list.Add(info);
+    }
+
+    private async Task AddNamespacedProjectsAsync(
+        List<ProjectInfo> list, string ownerDir, string ownerName, CancellationToken ct)
+    {
+        foreach (var child in Directory.GetDirectories(ownerDir))
+        {
+            ct.ThrowIfCancellationRequested();
+            var slug = Path.GetFileName(child);
+            if (!File.Exists(Path.Combine(child, StoreLit.ProjectJson)))
+                continue;
+            await TryAddProjectFromDirAsync(list, child, $"{ownerName}/{slug}", ct).ConfigureAwait(false);
+        }
     }
 
     private static async Task<ProjectInfo?> ReadProjectInfoFromDirAsync(
@@ -1549,43 +1587,56 @@ public sealed partial class ProjectStore
             return;
 
         var all = await ListProjectsAsync(ct).ConfigureAwait(false);
-        var siblings = all
-            .Where(p =>
+        foreach (var sib in OwnerSiblingProjects(all, newProjectId, ownerUserId, ActiveProjectId))
+        {
+            if (await TrySeedModelConfigFromSiblingAsync(newProjectId, sib.Id, ct).ConfigureAwait(false))
+                return;
+        }
+    }
+
+    private static IEnumerable<ProjectInfo> OwnerSiblingProjects(
+        IReadOnlyList<ProjectInfo> all, string newProjectId, string ownerUserId, string activeProjectId) =>
+        all.Where(p =>
                 !string.Equals(p.Id, newProjectId, StringComparison.OrdinalIgnoreCase) &&
                 string.Equals(p.OwnerUserId, ownerUserId, StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(p => string.Equals(p.Id, ActiveProjectId, StringComparison.OrdinalIgnoreCase))
-            .ThenBy(p => p.Id, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+            .OrderByDescending(p => string.Equals(p.Id, activeProjectId, StringComparison.OrdinalIgnoreCase))
+            .ThenBy(p => p.Id, StringComparer.OrdinalIgnoreCase);
 
-        foreach (var sib in siblings)
+    private async Task<bool> TrySeedModelConfigFromSiblingAsync(
+        string newProjectId, string siblingId, CancellationToken ct)
+    {
+        Dictionary<string, JsonElement> src;
+        try { src = await GetConfigAsync(siblingId, ct).ConfigureAwait(false); }
+        catch { return false; }
+        if (src.Count == 0)
+            return false;
+        if (ProjectModelSelection.TryGet(src, ProjectModelSelection.PlanningConfigKey, ProjectModelSelection.ChatConfigKey)
+            is not { Length: > 0 })
+            return false;
+
+        var seed = CopyModelConfigSeed(src);
+        if (seed.Count == 0)
+            return false;
+
+        var path = ConfigPath(newProjectId);
+        var json = JsonSerializer.Serialize(seed, JsonDefaults.Indented);
+        await File.WriteAllTextAsync(path, json + "\n", ct).ConfigureAwait(false);
+        InvalidateReadCaches(newProjectId);
+        return true;
+    }
+
+    private static Dictionary<string, object?> CopyModelConfigSeed(Dictionary<string, JsonElement> src)
+    {
+        var seed = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var key in ModelConfigSeedKeys)
         {
-            Dictionary<string, JsonElement> src;
-            try { src = await GetConfigAsync(sib.Id, ct).ConfigureAwait(false); }
-            catch { continue; }
-            if (src.Count == 0) continue;
-
-            // Prefer a sibling that already has script/planning configured.
-            var hasPlanning =
-                ProjectModelSelection.TryGet(src, ProjectModelSelection.PlanningConfigKey, ProjectModelSelection.ChatConfigKey)
-                is { Length: > 0 };
-            if (!hasPlanning)
+            if (!src.TryGetValue(key, out var el))
                 continue;
-
-            var seed = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-            foreach (var key in ModelConfigSeedKeys)
-            {
-                if (!src.TryGetValue(key, out var el)) continue;
-                if (el.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null) continue;
-                seed[key] = el.Deserialize<object>();
-            }
-            if (seed.Count == 0) continue;
-
-            var path = ConfigPath(newProjectId);
-            var json = JsonSerializer.Serialize(seed, JsonDefaults.Indented);
-            await File.WriteAllTextAsync(path, json + "\n", ct).ConfigureAwait(false);
-            InvalidateReadCaches(newProjectId);
-            return;
+            if (el.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
+                continue;
+            seed[key] = el.Deserialize<object>();
         }
+        return seed;
     }
 
     /// <summary>
@@ -4263,70 +4314,16 @@ public sealed partial class ProjectStore
 
     private void ApplyClipFields(System.Text.Json.Nodes.JsonObject clipObj, ClipEditRequest fields, string projectId)
     {
-        IReadOnlyCollection<string>? castKeys = null;
-        try
-        {
-            castKeys = LoadCharacterSeeds(projectId).Keys.ToList();
-        }
-        catch
-        {
-            /* no cast file yet */
-        }
-
-        // Validate the manual duration override against the project's actually-selected video
-        // model, not a hardcoded provider assumption — same config key FilmJobService resolves.
-        string? modelId = null;
-        try
-        {
-            var cfg = GetConfigSync(projectId);
-            if (cfg.TryGetValue("model_name", out var el) && el.ValueKind == JsonValueKind.String)
-                modelId = el.GetString();
-        }
-        catch
-        {
-            /* use default */
-        }
+        var castKeys = TryLoadCastKeys(projectId);
+        var modelId = TryLoadClipVideoModelId(projectId);
         var (durMinSeconds, _, durAbsMaxSeconds) = ClipDurationEstimator.ResolveBoundsForModel(modelId);
 
-        // Stage2 classifiers sometimes emit article/placeholder key variants (e.g.
-        // Character_The_Narrator) that differ from the real cast_seeds.json key
-        // (Character_Narrator) but normalize to the same identity. Canonicalize before
-        // validating/saving so a clip the user never touched doesn't fail to save with
-        // "unknown cast key", and so what's persisted matches the real cast key going forward.
-        if (castKeys is { Count: > 0 })
-        {
-            var byNormalizedKey = castKeys
-                .Where(k => !string.IsNullOrWhiteSpace(k))
-                .GroupBy(Stage2PlannerService.NormalizeCharacterKey)
-                .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
-
-            string Canonicalize(string key) =>
-                byNormalizedKey.TryGetValue(Stage2PlannerService.NormalizeCharacterKey(key), out var real)
-                    ? real
-                    : key;
-
-            if (!string.IsNullOrEmpty(fields.Speaker))
-                fields.Speaker = Canonicalize(fields.Speaker);
-            if (!string.IsNullOrEmpty(fields.PrimarySubject))
-                fields.PrimarySubject = Canonicalize(fields.PrimarySubject);
-            fields.CharactersOnScreen = fields.CharactersOnScreen
-                .Select(Canonicalize)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
-        }
-
+        CanonicalizeClipCastKeys(fields, castKeys);
         ValidateClipEditRequest(fields, castKeys, durMinSeconds, durAbsMaxSeconds);
 
         clipObj[StoreLit.VisualPrompt] = fields.VisualPrompt;
         clipObj["negative_prompt"] = fields.NegativePrompt;
-        // E3: keep or derive stable beat id so regen maps back to screenplay beat
-        if (string.IsNullOrWhiteSpace(clipObj["stage1_beat_id"]?.ToString()))
-        {
-            var kind = string.IsNullOrWhiteSpace(fields.Dialogue) ? "action" : JsonKeys.Dialogue;
-            var body = string.IsNullOrWhiteSpace(fields.Dialogue) ? fields.VisualPrompt : fields.Dialogue;
-            clipObj["stage1_beat_id"] = PageToMovie.Core.Utils.StableBeatId.ForContent(
-                $"S{fields.Scene:D2}", kind, fields.Speaker, body);
-        }
+        EnsureStage1BeatId(clipObj, fields);
         clipObj["primary_subject"] = fields.PrimarySubject;
         clipObj[StoreLit.DurationSeconds] = fields.DurationSeconds;
         clipObj[StoreLit.CharactersOnScreen] = new System.Text.Json.Nodes.JsonArray(
@@ -4336,27 +4333,92 @@ public sealed partial class ProjectStore
         clipObj["color_palette"] = fields.ColorPalette;
         clipObj["film_stock"] = fields.FilmStock;
 
+        ApplyClipAudioPayload(clipObj, fields);
+        SyncClipRootAudioFields(clipObj, fields);
+    }
+
+    private IReadOnlyCollection<string>? TryLoadCastKeys(string projectId)
+    {
+        try { return LoadCharacterSeeds(projectId).Keys.ToList(); }
+        catch { return null; }
+    }
+
+    private string? TryLoadClipVideoModelId(string projectId)
+    {
+        try
+        {
+            var cfg = GetConfigSync(projectId);
+            if (cfg.TryGetValue("model_name", out var el) && el.ValueKind == JsonValueKind.String)
+                return el.GetString();
+        }
+        catch
+        {
+            /* use default */
+        }
+        return null;
+    }
+
+    private static void CanonicalizeClipCastKeys(ClipEditRequest fields, IReadOnlyCollection<string>? castKeys)
+    {
+        if (castKeys is not { Count: > 0 })
+            return;
+        var byNormalizedKey = castKeys
+            .Where(k => !string.IsNullOrWhiteSpace(k))
+            .GroupBy(Stage2PlannerService.NormalizeCharacterKey)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
+        if (!string.IsNullOrEmpty(fields.Speaker))
+            fields.Speaker = CanonicalizeCastKey(fields.Speaker, byNormalizedKey);
+        if (!string.IsNullOrEmpty(fields.PrimarySubject))
+            fields.PrimarySubject = CanonicalizeCastKey(fields.PrimarySubject, byNormalizedKey);
+        fields.CharactersOnScreen = fields.CharactersOnScreen
+            .Select(k => CanonicalizeCastKey(k, byNormalizedKey))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static string CanonicalizeCastKey(string key, Dictionary<string, string> byNormalizedKey) =>
+        byNormalizedKey.TryGetValue(Stage2PlannerService.NormalizeCharacterKey(key), out var real)
+            ? real
+            : key;
+
+    private static void EnsureStage1BeatId(System.Text.Json.Nodes.JsonObject clipObj, ClipEditRequest fields)
+    {
+        if (!string.IsNullOrWhiteSpace(clipObj["stage1_beat_id"]?.ToString()))
+            return;
+        var kind = string.IsNullOrWhiteSpace(fields.Dialogue) ? "action" : JsonKeys.Dialogue;
+        var body = string.IsNullOrWhiteSpace(fields.Dialogue) ? fields.VisualPrompt : fields.Dialogue;
+        clipObj["stage1_beat_id"] = PageToMovie.Core.Utils.StableBeatId.ForContent(
+            $"S{fields.Scene:D2}", kind, fields.Speaker, body);
+    }
+
+    private static void ApplyClipAudioPayload(System.Text.Json.Nodes.JsonObject clipObj, ClipEditRequest fields)
+    {
         if (clipObj[JsonKeys.AudioPayload] is not System.Text.Json.Nodes.JsonObject audio)
         {
             audio = new System.Text.Json.Nodes.JsonObject();
             clipObj[JsonKeys.AudioPayload] = audio;
         }
         audio[JsonKeys.Dialogue] = fields.Dialogue;
-        audio[JsonKeys.Speaker] = string.IsNullOrWhiteSpace(fields.Speaker) ? null : fields.Speaker;
-        audio[StoreLit.Delivery] = string.IsNullOrWhiteSpace(fields.Delivery) ? null : fields.Delivery;
+        audio[JsonKeys.Speaker] = NullIfBlank(fields.Speaker);
+        audio[StoreLit.Delivery] = NullIfBlank(fields.Delivery);
         if (!string.IsNullOrWhiteSpace(fields.PronunciationHint))
             audio["pronunciation_hint"] = fields.PronunciationHint;
+    }
 
-        // Keep root-level fields in sync if present in blueprint JSON
+    private static void SyncClipRootAudioFields(System.Text.Json.Nodes.JsonObject clipObj, ClipEditRequest fields)
+    {
         if (clipObj.ContainsKey(JsonKeys.Dialogue))
             clipObj[JsonKeys.Dialogue] = fields.Dialogue;
         if (clipObj.ContainsKey(JsonKeys.Speaker))
-            clipObj[JsonKeys.Speaker] = string.IsNullOrWhiteSpace(fields.Speaker) ? null : fields.Speaker;
+            clipObj[JsonKeys.Speaker] = NullIfBlank(fields.Speaker);
         if (clipObj.ContainsKey(StoreLit.Delivery))
-            clipObj[StoreLit.Delivery] = string.IsNullOrWhiteSpace(fields.Delivery) ? null : fields.Delivery;
+            clipObj[StoreLit.Delivery] = NullIfBlank(fields.Delivery);
         if (clipObj.ContainsKey(StoreLit.AudioScript))
             clipObj[StoreLit.AudioScript] = fields.Dialogue;
     }
+
+    private static string? NullIfBlank(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value;
 
     /// <summary>
     /// Full clip field editor (Scenes "Edit clip" dialog): visual/negative prompt, dialogue +
@@ -4909,35 +4971,50 @@ public sealed partial class ProjectStore
         try
         {
             using var doc = JsonDocument.Parse(File.ReadAllText(path));
-            // Nested object preferred
             if (doc.RootElement.TryGetProperty("character_plates", out var cp) &&
                 cp.ValueKind == JsonValueKind.Object)
             {
-                state.SortedByCharacter = ReadJsonBool(cp, "sorted_by_character");
-                if (cp.TryGetProperty("sorted_at", out var at) && at.ValueKind == JsonValueKind.String)
-                    state.SortedAt = at.GetString();
-                if (cp.TryGetProperty(StoreLit.Source, out var src) && src.ValueKind == JsonValueKind.String &&
-                    src.GetString() is { Length: > 0 } ss)
-                    state.Source = ss;
-                if (cp.TryGetProperty("characters_updated", out var cu) && cu.TryGetInt32(out var n))
-                    state.CharactersUpdated = n;
-                if (cp.TryGetProperty("method", out var meth) && meth.ValueKind == JsonValueKind.String)
-                    state.Method = meth.GetString();
+                ApplyNestedCharacterPlates(cp, state);
                 return state;
             }
-            if (ReadJsonBool(doc.RootElement, "character_plates_sorted"))
-            {
-                state.SortedByCharacter = true;
-                if (doc.RootElement.TryGetProperty("character_plates_sorted_at", out var at2) &&
-                    at2.ValueKind == JsonValueKind.String)
-                    state.SortedAt = at2.GetString();
-                if (doc.RootElement.TryGetProperty("character_plates_method", out var m2) &&
-                    m2.ValueKind == JsonValueKind.String)
-                    state.Method = m2.GetString();
-            }
+            ApplyLegacyCharacterPlates(doc.RootElement, state);
         }
         catch { /* ignore */ }
         return state;
+    }
+
+    private static void ApplyNestedCharacterPlates(JsonElement cp, CharacterPlatesState state)
+    {
+        state.SortedByCharacter = ReadJsonBool(cp, "sorted_by_character");
+        state.SortedAt = ReadJsonStringIfPresent(cp, "sorted_at");
+        var src = ReadJsonStringIfPresent(cp, StoreLit.Source);
+        if (src is { Length: > 0 })
+            state.Source = src;
+        if (TryReadJsonInt32(cp, "characters_updated", out var n))
+            state.CharactersUpdated = n;
+        state.Method = ReadJsonStringIfPresent(cp, "method");
+    }
+
+    private static void ApplyLegacyCharacterPlates(JsonElement root, CharacterPlatesState state)
+    {
+        if (!ReadJsonBool(root, "character_plates_sorted"))
+            return;
+        state.SortedByCharacter = true;
+        state.SortedAt = ReadJsonStringIfPresent(root, "character_plates_sorted_at");
+        state.Method = ReadJsonStringIfPresent(root, "character_plates_method");
+    }
+
+    private static string? ReadJsonStringIfPresent(JsonElement parent, string name)
+    {
+        if (!parent.TryGetProperty(name, out var el) || el.ValueKind != JsonValueKind.String)
+            return null;
+        return el.GetString();
+    }
+
+    private static bool TryReadJsonInt32(JsonElement parent, string name, out int value)
+    {
+        value = 0;
+        return parent.TryGetProperty(name, out var el) && el.TryGetInt32(out value);
     }
 
     private static bool ReadJsonBool(JsonElement parent, string name)
@@ -6531,23 +6608,49 @@ public sealed partial class ProjectStore
         try
         {
             var cfg = GetConfigSync(projectId);
-            if (cfg.TryGetValue("target_runtime_minutes", out var ctr) &&
-                ctr.ValueKind == JsonValueKind.Number && ctr.TryGetInt32(out var ctm) && ctm > 0)
+            if (TryReadPositiveConfigInt(cfg, "target_runtime_minutes", out var ctm))
             {
                 status.TargetRuntimeMinutes = FilmRuntime.ClampMinutes(ctm);
                 status.SuggestedTotalMinutes = status.TargetRuntimeMinutes;
             }
-            if (cfg.TryGetValue("natural_runtime_minutes", out var cnr) &&
-                cnr.ValueKind == JsonValueKind.Number && cnr.TryGetInt32(out var cnat) && cnat > 0)
+            if (TryReadPositiveConfigInt(cfg, "natural_runtime_minutes", out var cnat))
                 status.NaturalRuntimeMinutes = FilmRuntime.ClampMinutes(cnat);
-            if (cfg.TryGetValue("runtime_mode", out var crm) && crm.ValueKind == JsonValueKind.String &&
-                Enum.TryParse<RuntimeMode>(crm.GetString(), true, out var parsedRmCfg))
+            if (TryReadConfigEnum<RuntimeMode>(cfg, "runtime_mode", out var parsedRmCfg))
                 status.RuntimeMode = parsedRmCfg;
             if (status.RuntimeMode is null &&
                 status.NaturalRuntimeMinutes is int n && status.TargetRuntimeMinutes is int tg)
-                status.RuntimeMode = tg == n ? RuntimeMode.Natural : tg < n ? RuntimeMode.Reduced : RuntimeMode.Custom;
+                status.RuntimeMode = InferRuntimeMode(n, tg);
         }
         catch { /* ignore */ }
+    }
+
+    private static bool TryReadPositiveConfigInt(
+        Dictionary<string, JsonElement> cfg, string key, out int value)
+    {
+        value = 0;
+        return cfg.TryGetValue(key, out var el)
+            && el.ValueKind == JsonValueKind.Number
+            && el.TryGetInt32(out value)
+            && value > 0;
+    }
+
+    private static bool TryReadConfigEnum<T>(
+        Dictionary<string, JsonElement> cfg, string key, out T value)
+        where T : struct, Enum
+    {
+        value = default;
+        return cfg.TryGetValue(key, out var el)
+            && el.ValueKind == JsonValueKind.String
+            && Enum.TryParse(el.GetString(), true, out value);
+    }
+
+    private static RuntimeMode InferRuntimeMode(int natural, int target)
+    {
+        if (target == natural)
+            return RuntimeMode.Natural;
+        if (target < natural)
+            return RuntimeMode.Reduced;
+        return RuntimeMode.Custom;
     }
 
     private static void ResolveReadyForStage1(BookSourceStatus status, string metaPath)
@@ -7226,23 +7329,7 @@ public sealed partial class ProjectStore
                 arr.ValueKind != JsonValueKind.Array)
                 return "WIP manifest invalid — rebuild needed";
 
-            var recorded = new List<(string Name, long Bytes, DateTime Mtime)>();
-            foreach (var el in arr.EnumerateArray())
-            {
-                var name = el.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "";
-                if (name.Length == 0) continue;
-                long bytes = 0;
-                if (el.TryGetProperty("bytes", out var b) && b.TryGetInt64(out var bl))
-                    bytes = bl;
-                var mtime = DateTime.MinValue;
-                if (el.TryGetProperty("mtimeUtc", out var m) &&
-                    m.ValueKind == JsonValueKind.String &&
-                    DateTime.TryParse(m.GetString(), CultureInfo.InvariantCulture,
-                        DateTimeStyles.RoundtripKind, out var mt))
-                    mtime = mt.ToUniversalTime();
-                recorded.Add((name, bytes, mtime));
-            }
-
+            var recorded = ReadRecordedWipSources(arr);
             var current = currentSources
                 .Select(f =>
                 {
@@ -7255,31 +7342,13 @@ public sealed partial class ProjectStore
                 .OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            var curNames = current.Select(c => c.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            var recNames = recSorted.Select(r => r.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var setChange = DescribeWipSourceSetChange(current, recSorted);
+            if (setChange is not null)
+                return setChange;
 
-            var added = curNames.Except(recNames, StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
-            var removed = recNames.Except(curNames, StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
-
-            if (added.Count > 0 || removed.Count > 0)
-            {
-                var parts = new List<string>();
-                if (added.Count > 0)
-                    parts.Add("added " + string.Join(", ", added));
-                if (removed.Count > 0)
-                    parts.Add("removed " + string.Join(", ", removed));
-                return "Scene set changed (" + string.Join("; ", parts) + ")";
-            }
-
-            foreach (var c in current)
-            {
-                var r = recSorted.FirstOrDefault(x =>
-                    string.Equals(x.Name, c.Name, StringComparison.OrdinalIgnoreCase));
-                if (r.Name is null) continue;
-                if (c.Bytes != r.Bytes ||
-                    Math.Abs((c.Mtime - r.Mtime).TotalSeconds) > 1.5)
-                    return $"Source changed: {c.Name}";
-            }
+            var changed = FindChangedWipSource(current, recSorted);
+            if (changed is not null)
+                return changed;
 
             if (current.Count != recSorted.Count)
                 return $"Source count {current.Count} vs last build {recSorted.Count}";
@@ -7290,6 +7359,69 @@ public sealed partial class ProjectStore
         {
             return "WIP manifest unreadable — rebuild needed";
         }
+    }
+
+    private static List<(string Name, long Bytes, DateTime Mtime)> ReadRecordedWipSources(JsonElement arr)
+    {
+        var recorded = new List<(string Name, long Bytes, DateTime Mtime)>();
+        foreach (var el in arr.EnumerateArray())
+        {
+            var entry = ReadWipSourceEntry(el);
+            if (entry is not null)
+                recorded.Add(entry.Value);
+        }
+        return recorded;
+    }
+
+    private static (string Name, long Bytes, DateTime Mtime)? ReadWipSourceEntry(JsonElement el)
+    {
+        var name = el.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "";
+        if (name.Length == 0)
+            return null;
+        long bytes = 0;
+        if (el.TryGetProperty("bytes", out var b) && b.TryGetInt64(out var bl))
+            bytes = bl;
+        var mtime = DateTime.MinValue;
+        if (el.TryGetProperty("mtimeUtc", out var m) &&
+            m.ValueKind == JsonValueKind.String &&
+            DateTime.TryParse(m.GetString(), CultureInfo.InvariantCulture,
+                DateTimeStyles.RoundtripKind, out var mt))
+            mtime = mt.ToUniversalTime();
+        return (name, bytes, mtime);
+    }
+
+    private static string? DescribeWipSourceSetChange(
+        List<(string Name, long Bytes, DateTime Mtime)> current,
+        List<(string Name, long Bytes, DateTime Mtime)> recSorted)
+    {
+        var curNames = current.Select(c => c.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var recNames = recSorted.Select(r => r.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var added = curNames.Except(recNames, StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
+        var removed = recNames.Except(curNames, StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
+        if (added.Count == 0 && removed.Count == 0)
+            return null;
+        var parts = new List<string>();
+        if (added.Count > 0)
+            parts.Add("added " + string.Join(", ", added));
+        if (removed.Count > 0)
+            parts.Add("removed " + string.Join(", ", removed));
+        return "Scene set changed (" + string.Join("; ", parts) + ")";
+    }
+
+    private static string? FindChangedWipSource(
+        List<(string Name, long Bytes, DateTime Mtime)> current,
+        List<(string Name, long Bytes, DateTime Mtime)> recSorted)
+    {
+        foreach (var c in current)
+        {
+            var r = recSorted.FirstOrDefault(x =>
+                string.Equals(x.Name, c.Name, StringComparison.OrdinalIgnoreCase));
+            if (r.Name is null)
+                continue;
+            if (c.Bytes != r.Bytes || Math.Abs((c.Mtime - r.Mtime).TotalSeconds) > 1.5)
+                return $"Source changed: {c.Name}";
+        }
+        return null;
     }
 
     private static bool HasCompositeFile(
