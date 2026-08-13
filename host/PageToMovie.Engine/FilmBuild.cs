@@ -300,8 +300,8 @@ public static class FilmBuildService
     {
         var projectDir = await store.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         var rel = string.IsNullOrWhiteSpace(wipRelativePath) ? "assets/movie_wip.mp4" : wipRelativePath;
-        var full = Path.Combine(projectDir, rel.Replace('/', Path.DirectorySeparatorChar));
-        if (!File.Exists(full)) return null;
+        var full = TryConfineToProjectDir(projectDir, rel);
+        if (full is null || !File.Exists(full)) return null;
         var bytes = await File.ReadAllBytesAsync(full, ct).ConfigureAwait(false);
         if (bytes.Length == 0) return null;
         return await RegisterAsync(
@@ -408,5 +408,43 @@ public static class FilmBuildService
         if (!string.IsNullOrWhiteSpace(studio))
             return FilmBuildPublish.PathExternalRestructured;
         return FilmBuildPublish.PathUnknown;
+    }
+
+    /// <summary>
+    /// Canonicalize <paramref name="relativePath"/> under <paramref name="projectDir"/> and reject
+    /// anything that escapes the project directory (S6549). Matches
+    /// <c>ProjectStore.ConfineToProjectsRoot</c>: <see cref="Path.GetFullPath(string)"/> plus a
+    /// trailing-separator prefix check. Nested relative paths (e.g. <c>assets/movie_wip.mp4</c>)
+    /// stay valid; <c>..</c> and rooted inputs do not.
+    /// </summary>
+    private static string? TryConfineToProjectDir(string projectDir, string relativePath)
+    {
+        if (string.IsNullOrWhiteSpace(relativePath))
+            return null;
+
+        var norm = relativePath.Replace('\\', '/').Trim().TrimStart('/');
+        if (string.IsNullOrWhiteSpace(norm) ||
+            norm.Contains("..", StringComparison.Ordinal) ||
+            Path.IsPathRooted(norm))
+            return null;
+
+        string full;
+        string root;
+        try
+        {
+            root = Path.GetFullPath(projectDir);
+            full = Path.GetFullPath(Path.Combine(root, norm.Replace('/', Path.DirectorySeparatorChar)));
+        }
+        catch
+        {
+            return null;
+        }
+
+        var rootPrefix = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                         + Path.DirectorySeparatorChar;
+        if (!full.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        return full;
     }
 }

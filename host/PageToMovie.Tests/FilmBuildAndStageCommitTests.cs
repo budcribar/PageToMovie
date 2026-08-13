@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Options;
+using PageToMovie.Core.Options;
 using PageToMovie.Engine;
 using Xunit;
 
@@ -53,5 +55,109 @@ public sealed class FilmBuildAndStageCommitTests
         var b = FilmBuildService.HashBytes(new byte[] { 1, 2, 3 });
         Assert.Equal(a, b);
         Assert.Equal(64, a.Length);
+    }
+
+    [Fact]
+    public async Task RegisterFromWipFile_default_path_hashes_wip_under_owner_slug_project()
+    {
+        await using var fx = await WipFixture.CreateAsync();
+        var doc = await FilmBuildService.RegisterFromWipFileAsync(fx.Store, fx.ProjectId);
+        Assert.NotNull(doc);
+        Assert.Equal(FilmBuildService.HashBytes(WipFixture.WipBytes), doc!.Studio.Sha256);
+        Assert.Equal(WipFixture.WipBytes.Length, doc.Studio.ByteLength);
+    }
+
+    [Fact]
+    public async Task RegisterFromWipFile_nested_relative_path_stays_under_project()
+    {
+        await using var fx = await WipFixture.CreateAsync();
+        var nestedDir = Path.Combine(fx.ProjectDir, "assets", "video");
+        Directory.CreateDirectory(nestedDir);
+        var nested = Path.Combine(nestedDir, "cut.mp4");
+        var payload = new byte[] { 7, 7, 7, 7 };
+        await File.WriteAllBytesAsync(nested, payload);
+
+        var doc = await FilmBuildService.RegisterFromWipFileAsync(
+            fx.Store, fx.ProjectId, "assets/video/cut.mp4");
+        Assert.NotNull(doc);
+        Assert.Equal(FilmBuildService.HashBytes(payload), doc!.Studio.Sha256);
+    }
+
+    [Fact]
+    public async Task RegisterFromWipFile_accepts_percent2F_encoded_composite_project_id()
+    {
+        await using var fx = await WipFixture.CreateAsync();
+        Assert.Contains('/', fx.ProjectId, StringComparison.Ordinal);
+        var encoded = fx.ProjectId.Replace("/", "%2F", StringComparison.Ordinal);
+
+        var doc = await FilmBuildService.RegisterFromWipFileAsync(fx.Store, encoded);
+        Assert.NotNull(doc);
+        Assert.Equal(FilmBuildService.HashBytes(WipFixture.WipBytes), doc!.Studio.Sha256);
+    }
+
+    [Theory]
+    [InlineData("../secret.bin")]
+    [InlineData("..\\secret.bin")]
+    [InlineData("../../secret.bin")]
+    [InlineData("assets/../../secret.bin")]
+    [InlineData("%2e%2e/secret.bin")]
+    public async Task RegisterFromWipFile_rejects_path_traversal(string evilRel)
+    {
+        await using var fx = await WipFixture.CreateAsync();
+        var sentinel = Path.Combine(fx.Root, "secret.bin");
+        await File.WriteAllBytesAsync(sentinel, new byte[] { 9, 9, 9, 9 });
+
+        var doc = await FilmBuildService.RegisterFromWipFileAsync(fx.Store, fx.ProjectId, evilRel);
+        Assert.Null(doc);
+        Assert.Equal(new byte[] { 9, 9, 9, 9 }, await File.ReadAllBytesAsync(sentinel));
+    }
+
+    [Fact]
+    public async Task RegisterFromWipFile_rejects_absolute_path_outside_project()
+    {
+        await using var fx = await WipFixture.CreateAsync();
+        var sentinel = Path.Combine(fx.Root, "outside.mp4");
+        await File.WriteAllBytesAsync(sentinel, new byte[] { 8, 8, 8, 8 });
+
+        var doc = await FilmBuildService.RegisterFromWipFileAsync(fx.Store, fx.ProjectId, sentinel);
+        Assert.Null(doc);
+        Assert.False(File.Exists(Path.Combine(fx.ProjectDir, "assets", "movie_wip.film.json")));
+    }
+
+    private sealed class WipFixture : IAsyncDisposable
+    {
+        public static readonly byte[] WipBytes = { 1, 2, 3, 4, 5 };
+
+        public string Root { get; }
+        public ProjectStore Store { get; }
+        public string ProjectId { get; }
+        public string ProjectDir { get; }
+
+        private WipFixture(string root, ProjectStore store, string projectId, string projectDir)
+        {
+            Root = root;
+            Store = store;
+            ProjectId = projectId;
+            ProjectDir = projectDir;
+        }
+
+        public static async Task<WipFixture> CreateAsync()
+        {
+            var root = Path.Combine(Path.GetTempPath(), "ptm_film_wip_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(Path.Combine(root, "projects"));
+            var store = new ProjectStore(Options.Create(new PageToMovieOptions { WorkspaceRoot = root }));
+            var project = await store.CreateProjectAsync("WipBook", ownerUserId: "alice");
+            var projectDir = await store.GetProjectDirAsync(project.Id);
+            var assets = Path.Combine(projectDir, "assets");
+            Directory.CreateDirectory(assets);
+            await File.WriteAllBytesAsync(Path.Combine(assets, "movie_wip.mp4"), WipBytes);
+            return new WipFixture(root, store, project.Id, projectDir);
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            await Task.Yield();
+            try { Directory.Delete(Root, recursive: true); } catch { /* ignore */ }
+        }
     }
 }
