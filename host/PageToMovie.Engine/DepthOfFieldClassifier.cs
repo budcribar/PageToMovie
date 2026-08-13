@@ -82,7 +82,7 @@ public sealed class DepthOfFieldClassifier : BeatChatClassifierBase<DepthOfField
         var dlg = b.GetValueOrDefault("dialogue") ?? "";
 
         sb.AppendLine($"Beat '{id}' (subject: {psub}):");
-        if (!string.IsNullOrWhiteSpace(dlg?.ToString()))
+        if (!string.IsNullOrWhiteSpace(dlg.ToString()))
             sb.AppendLine($"  Spoken: \"{dlg}\"");
         AppendActionProse(sb, action);
     }

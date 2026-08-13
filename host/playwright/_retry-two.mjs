@@ -1,5 +1,5 @@
-import fs from "fs";
-import path from "path";
+import fs from "node:fs";
+import path from "node:path";
 const API = "http://127.0.0.1:5088";
 const PROJECT = "The_Jungle_Book";
 const KEYS = ["Character_Bagheera", "Character_Shere_Khan"];

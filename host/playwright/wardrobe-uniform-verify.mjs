@@ -23,9 +23,9 @@
  *   node wardrobe-uniform-verify.mjs
  */
 import { chromium } from "playwright";
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_URL = (process.env.WEB_URL || "http://localhost:5079").replace(/\/$/, "");
@@ -254,7 +254,9 @@ async function main() {
   if (failed.length > 0) process.exit(1);
 }
 
-main().catch((e) => {
+try {
+  await main();
+} catch (e) {
   console.error(e);
   process.exit(1);
-});
+}

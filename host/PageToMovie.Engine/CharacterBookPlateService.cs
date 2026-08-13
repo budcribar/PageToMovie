@@ -1300,11 +1300,8 @@ public sealed class CharacterBookPlateService
             return false;
 
         // Pixel-level bitmap inspection for image files on disk
-        if (!string.IsNullOrWhiteSpace(r.AbsPath) && File.Exists(r.AbsPath))
-        {
-            if (IsTextOnlyImageFile(r.AbsPath))
-                return true;
-        }
+        if (!string.IsNullOrWhiteSpace(r.AbsPath) && File.Exists(r.AbsPath) && IsTextOnlyImageFile(r.AbsPath))
+            return true;
 
         return false;
     }
@@ -1384,7 +1381,8 @@ public sealed class CharacterBookPlateService
         JsonObject? seedObj = null;
         if (seeds.TryGetValue(charKey, out var el))
         {
-            try { seedObj = JsonNode.Parse(el.GetRawText()) as JsonObject; } catch { }
+            try { seedObj = JsonNode.Parse(el.GetRawText()) as JsonObject; }
+            catch (Exception ex) { _log.LogDebug(ex, "Optional character seed JSON was not an object"); }
         }
 
         var charSeed = seedObj ?? new JsonObject();

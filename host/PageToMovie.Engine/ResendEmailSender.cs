@@ -81,8 +81,7 @@ public sealed class ResendEmailSender : IEmailSender
         }
         catch (Exception ex)
         {
-            _log.LogError(ex, "Resend request failed To={To}", toEmail);
-            throw;
+            throw new HttpRequestException($"Resend request failed To={toEmail}", ex);
         }
 
         var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);

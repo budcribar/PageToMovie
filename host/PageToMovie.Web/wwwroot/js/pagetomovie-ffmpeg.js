@@ -350,8 +350,13 @@ window.PageToMovieFfmpeg = {
             tile.width = tile.height = 128;
             const tg = tile.getContext("2d");
             const img = tg.createImageData(128, 128);
+            let seed = ((w * 73856093) ^ (h * 19349663)) >>> 0;
+            const nextGrain = function () {
+                seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+                return seed & 255;
+            };
             for (let i = 0; i < img.data.length; i += 4) {
-                const v = Math.trunc(Math.random() * 255);
+                const v = nextGrain();
                 img.data[i] = img.data[i + 1] = img.data[i + 2] = v; img.data[i + 3] = 255;
             }
             tg.putImageData(img, 0, 0);
@@ -514,9 +519,9 @@ window.PageToMovieFfmpeg = {
             if (!message) return;
             const m = message.match(/Duration:\s*(\d+):(\d+):(\d+\.\d+)/);
             if (m) {
-                const hrs = parseFloat(m[1]);
-                const mins = parseFloat(m[2]);
-                const secs = parseFloat(m[3]);
+                const hrs = Number.parseFloat(m[1]);
+                const mins = Number.parseFloat(m[2]);
+                const secs = Number.parseFloat(m[3]);
                 durationSec = hrs * 3600 + mins * 60 + secs;
             }
         };
@@ -864,7 +869,9 @@ window.PageToMovieFfmpeg = {
     startWordTeleprompter: function (starts, ends, durationSec) {
         try {
             const el = document.getElementById("tele-text");
-            if (!el || !durationSec) return false;
+            if (!el || !durationSec) {
+                return false;
+            }
             const spans = el.querySelectorAll(".tele-w");
             const n = Math.min(spans.length, (starts || []).length);
             if (n === 0) return false;
@@ -891,9 +898,11 @@ window.PageToMovieFfmpeg = {
             frames.push({ transform: tx, offset: e });
         }
         frames.push({ transform: "translateX(" + (-centers[n - 1]) + "px)", offset: 1 });
-        for (let i = 1; i < frames.length; i++)
-            if (frames[i].offset <= frames[i - 1].offset)
+        for (let i = 1; i < frames.length; i++) {
+            if (frames[i].offset <= frames[i - 1].offset) {
                 frames[i].offset = Math.min(1, frames[i - 1].offset + 0.0001);
+            }
+        }
         return frames;
     },
 
@@ -1148,10 +1157,10 @@ window.PageToMovieFfmpeg = {
         let curStart = null;
         for (const line of String(log).split("\n")) {
             let m = line.match(/silence_start:\s*(-?\d+(?:\.\d+)?)/);
-            if (m) { curStart = Math.max(0, parseFloat(m[1])); continue; }
+            if (m) { curStart = Math.max(0, Number.parseFloat(m[1])); continue; }
             m = line.match(/silence_end:\s*(-?\d+(?:\.\d+)?)/);
             if (m && curStart !== null) {
-                silences.push([curStart, parseFloat(m[1])]);
+                silences.push([curStart, Number.parseFloat(m[1])]);
                 curStart = null;
             }
         }
@@ -1288,7 +1297,6 @@ window.PageToMovieFfmpeg = {
         if (list.length === 0) return { success: true, url: videoUrl }; // nothing to overlay
 
         opts = opts || {};
-        const duck = Math.max(0, Math.min(1, opts.duckVolume != null ? opts.duckVolume : 0.15));
         // muteBase: drop the original clip audio entirely and use the cloned voice as the whole
         // soundtrack (narrator-only scenes) — no bed to duck, so no double voice.
         const muteBase = !!opts.muteBase;

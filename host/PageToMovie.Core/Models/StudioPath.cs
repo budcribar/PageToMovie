@@ -19,10 +19,11 @@ public sealed class StudioPathJsonConverter : JsonConverter<StudioPath>
             var str = reader.GetString();
             return ProjectStudioPaths.Normalize(str);
         }
-        if (reader.TokenType == JsonTokenType.Number)
+        if (reader.TokenType == JsonTokenType.Number &&
+            reader.TryGetInt32(out var val) &&
+            Enum.IsDefined(typeof(StudioPath), val))
         {
-            if (reader.TryGetInt32(out var val) && Enum.IsDefined(typeof(StudioPath), val))
-                return (StudioPath)val;
+            return (StudioPath)val;
         }
         return StudioPath.Full;
     }

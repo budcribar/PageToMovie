@@ -14,8 +14,8 @@ namespace PageToMovie.Web.Components.Pages;
 
 public partial class Login : IDisposable
 {
-    private string _username = "";
-    private string _email = "";
+    private string _username { get; set; } = "";
+    private string _email { get; set; } = "";
     private string _password = "";
     private string _confirmPassword = "";
     private string? _resetToken;
@@ -191,11 +191,18 @@ public partial class Login : IDisposable
         _isSignup = relative.StartsWith("signup", StringComparison.OrdinalIgnoreCase);
     }
 
-    private void OnCultureChanged(System.Globalization.CultureInfo culture) => _ = InvokeAsync(StateHasChanged);
+    private void OnCultureChanged(System.Globalization.CultureInfo _culture) => _ = InvokeAsync(StateHasChanged);
 
     public void Dispose()
     {
-        L.CultureChanged -= OnCultureChanged;
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (disposing)
+            L.CultureChanged -= OnCultureChanged;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
