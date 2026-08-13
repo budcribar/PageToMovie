@@ -29,122 +29,196 @@ public partial class Review
         internal void OnJobUpdated(JobSnapshot snap)
         {
             _job = snap;
-            if (snap.Status is "done" or "partial" or "error" or "cancelled")
+            if (IsTerminalJobStatus(snap.Status))
+                _ = S.InvokeAsync(() => HandleTerminalJobAsync(snap));
+            else
+                _ = S.InvokeAsync(S.StateHasChanged);
+        }
+
+        private static bool IsTerminalJobStatus(string? status) =>
+            status is "done" or "partial" or "error" or "cancelled";
+
+        private async Task HandleTerminalJobAsync(JobSnapshot snap)
+        {
+            await S.List.SoftLoadAsync();
+            if (IsClipAutoReviewDone(snap, out var rs, out var rc))
+                await ApplyClipAutoReviewDoneAsync(rs, rc);
+            else if (IsClipAutoReviewBatchDone(snap))
+                await ApplyClipAutoReviewBatchDoneAsync(snap);
+            else if (IsClipAutoReviewError(snap))
+                ApplyClipAutoReviewError(snap);
+            else if (IsRemuxDone(snap))
+                await ApplyRemuxDoneAsync(snap);
+            else if (IsSceneGenDone(snap, out var genSn, out var genCn))
+                await ApplySceneGenDoneAsync(genSn, genCn);
+            else if (IsYouTubeUpload(snap))
+                await ApplyYouTubeUploadAsync(snap);
+            S.StateHasChanged();
+        }
+
+        private static bool IsClipAutoReviewDone(JobSnapshot snap, out int rs, out int rc)
+        {
+            if (snap.Status == "done" &&
+                string.Equals(snap.Kind, "clip-auto-review", StringComparison.OrdinalIgnoreCase) &&
+                snap.Scene is int scene && snap.Clip is int clip)
             {
-                _ = S.InvokeAsync(async () =>
-                {
-                    await S.List.SoftLoadAsync();
-                    if (snap.Status == "done" &&
-                        string.Equals(snap.Kind, "clip-auto-review", StringComparison.OrdinalIgnoreCase) &&
-                        snap.Scene is int rs && snap.Clip is int rc)
-                    {
-                        try
-                        {
-                            var d = await S.Engine.GetClipAutoReviewDraftAsync(S._projectId, rs, rc);
-                            if (d is not null)
-                                S.AutoReview._drafts[$"S{rs:D2}C{rc:D2}"] = d;
-                            S._message = d is null
-                                ? $"Review finished S{rs:D2}C{rc:D2}"
-                                : $"Review ready S{rs:D2}C{rc:D2}: {d.Suggestion} — Apply suggestions or Pass/Fail";
-                            S._error = null;
-                        }
-                        catch (Exception ex)
-                        {
-                            S._error = ex.Message;
-                        }
-                    }
-                    else if (snap.Status == "done" &&
-                             string.Equals(snap.Kind, "clip-auto-review-batch", StringComparison.OrdinalIgnoreCase))
-                    {
-                        try
-                        {
-                            // Refresh per-clip drafts for selected scene after batch
-                            if (S.List._selectedScene is int sel)
-                            {
-                                for (var c = 1; c <= S.List.ClipCountFor(sel); c++)
-                                {
-                                    var d = await S.Engine.GetClipAutoReviewDraftAsync(S._projectId, sel, c);
-                                    if (d is not null)
-                                        S.AutoReview._drafts[ReviewAutoReview.ClipKey(sel, c)] = d;
-                                }
-                            }
-                            S._message = snap.Message ?? "Batch auto-review finished";
-                            S._error = null;
-                        }
-                        catch (Exception ex)
-                        {
-                            S._error = ex.Message;
-                        }
-                    }
-                    else if (snap.Status == "error" &&
-                             (string.Equals(snap.Kind, "clip-auto-review", StringComparison.OrdinalIgnoreCase) ||
-                              string.Equals(snap.Kind, "clip-auto-review-batch", StringComparison.OrdinalIgnoreCase)))
-                    {
-                        S._error = S.Session.IsAdmin
-                            ? (snap.Error ?? snap.Message ?? "Auto-review failed")
-                            : "Auto-review failed. Try again.";
-                        S._message = null;
-                    }
-                    else if (snap.Status == "done" &&
-                        string.Equals(snap.Kind, "remux", StringComparison.OrdinalIgnoreCase))
-                    {
-                        await S.List.SoftLoadAsync();
-                        await S.Playback.RefreshWipMetaAsync();
-                        if (S.Playback._playWipAfterRemux)
-                        {
-                            S.Playback._playWipAfterRemux = false;
-                            if (S.Playback._wipExists)
-                            {
-                                S.Playback._showWipPlayer = true;
-                                S.Playback._wipVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                                S._message = S.Playback._wipStale
-                                    ? "WIP rebuilt but still marked stale — check clips"
-                                    : "WIP ready — player below";
-                            }
-                        }
-                        else if (S.Playback._playSceneAfterRemux is int playSn)
-                        {
-                            S.Playback._playSceneAfterRemux = null;
-                            S.Playback._playingScene = playSn;
-                            S.Playback._showScenePlayer = true;
-                            S.Playback._sceneVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                            S._message = $"Scene S{playSn:D2} ready — playing";
-                        }
-                        else if (snap.Scene is int sn && sn > 0)
-                        {
-                            S.Playback._playingScene = sn;
-                            S.Playback._showScenePlayer = true;
-                            S.Playback._sceneVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                            S._message = $"Scene S{sn:D2} composite rebuilt — player below";
-                        }
-                    }
-                    else if (snap.Status == "done" &&
-                             string.Equals(snap.Kind, "scene", StringComparison.OrdinalIgnoreCase) &&
-                             snap.Scene is int genSn &&
-                             snap.Clip is int genCn)
-                    {
-                        S._message = $"Clip S{genSn:D2}C{genCn:D2} gen finished — Play scene when you want the updated composite";
-                        if (S.List._selectedScene == genSn)
-                            await S.List.LoadSelectedDetailAsync(genSn);
-                    }
-                    else if (string.Equals(snap.Kind, "youtube_upload", StringComparison.OrdinalIgnoreCase))
-                    {
-                        if (snap.Status == "done")
-                        {
-                            await S.Share.RefreshYouTubeStatusAsync();
-                            S._message = snap.Message ?? "Uploaded to YouTube";
-                            S._error = null;
-                        }
-                        else if (snap.Status == "error")
-                        {
-                            S._error = snap.Error ?? snap.Message ?? "YouTube upload failed";
-                            S._message = null;
-                        }
-                    }
-                    S.StateHasChanged();
-                });
+                rs = scene;
+                rc = clip;
+                return true;
             }
-            else _ = S.InvokeAsync(S.StateHasChanged);
+
+            rs = 0;
+            rc = 0;
+            return false;
+        }
+
+        private static bool IsClipAutoReviewBatchDone(JobSnapshot snap) =>
+            snap.Status == "done" &&
+            string.Equals(snap.Kind, "clip-auto-review-batch", StringComparison.OrdinalIgnoreCase);
+
+        private static bool IsClipAutoReviewError(JobSnapshot snap) =>
+            snap.Status == "error" &&
+            (string.Equals(snap.Kind, "clip-auto-review", StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(snap.Kind, "clip-auto-review-batch", StringComparison.OrdinalIgnoreCase));
+
+        private static bool IsRemuxDone(JobSnapshot snap) =>
+            snap.Status == "done" &&
+            string.Equals(snap.Kind, "remux", StringComparison.OrdinalIgnoreCase);
+
+        private static bool IsSceneGenDone(JobSnapshot snap, out int genSn, out int genCn)
+        {
+            if (snap.Status == "done" &&
+                string.Equals(snap.Kind, "scene", StringComparison.OrdinalIgnoreCase) &&
+                snap.Scene is int scene &&
+                snap.Clip is int clip)
+            {
+                genSn = scene;
+                genCn = clip;
+                return true;
+            }
+
+            genSn = 0;
+            genCn = 0;
+            return false;
+        }
+
+        private static bool IsYouTubeUpload(JobSnapshot snap) =>
+            string.Equals(snap.Kind, "youtube_upload", StringComparison.OrdinalIgnoreCase);
+
+        private async Task ApplyClipAutoReviewDoneAsync(int rs, int rc)
+        {
+            try
+            {
+                var d = await S.Engine.GetClipAutoReviewDraftAsync(S._projectId, rs, rc);
+                if (d is not null)
+                    S.AutoReview._drafts[$"S{rs:D2}C{rc:D2}"] = d;
+                S._message = d is null
+                    ? $"Review finished S{rs:D2}C{rc:D2}"
+                    : $"Review ready S{rs:D2}C{rc:D2}: {d.Suggestion} — Apply suggestions or Pass/Fail";
+                S._error = null;
+            }
+            catch (Exception ex)
+            {
+                S._error = ex.Message;
+            }
+        }
+
+        private async Task ApplyClipAutoReviewBatchDoneAsync(JobSnapshot snap)
+        {
+            try
+            {
+                await RefreshSelectedSceneDraftsAsync();
+                S._message = snap.Message ?? "Batch auto-review finished";
+                S._error = null;
+            }
+            catch (Exception ex)
+            {
+                S._error = ex.Message;
+            }
+        }
+
+        private async Task RefreshSelectedSceneDraftsAsync()
+        {
+            // Refresh per-clip drafts for selected scene after batch
+            if (S.List._selectedScene is not int sel)
+                return;
+            for (var c = 1; c <= S.List.ClipCountFor(sel); c++)
+            {
+                var d = await S.Engine.GetClipAutoReviewDraftAsync(S._projectId, sel, c);
+                if (d is not null)
+                    S.AutoReview._drafts[ReviewAutoReview.ClipKey(sel, c)] = d;
+            }
+        }
+
+        private void ApplyClipAutoReviewError(JobSnapshot snap)
+        {
+            S._error = S.Session.IsAdmin
+                ? (snap.Error ?? snap.Message ?? "Auto-review failed")
+                : "Auto-review failed. Try again.";
+            S._message = null;
+        }
+
+        private async Task ApplyRemuxDoneAsync(JobSnapshot snap)
+        {
+            await S.List.SoftLoadAsync();
+            await S.Playback.RefreshWipMetaAsync();
+            if (S.Playback._playWipAfterRemux)
+                ApplyRemuxPlayWip();
+            else if (S.Playback._playSceneAfterRemux is int playSn)
+                ApplyRemuxPlayScene(playSn);
+            else if (snap.Scene is int sn && sn > 0)
+                ApplyRemuxPlayComposite(sn);
+        }
+
+        private void ApplyRemuxPlayWip()
+        {
+            S.Playback._playWipAfterRemux = false;
+            if (!S.Playback._wipExists)
+                return;
+            S.Playback._showWipPlayer = true;
+            S.Playback._wipVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            S._message = S.Playback._wipStale
+                ? "WIP rebuilt but still marked stale — check clips"
+                : "WIP ready — player below";
+        }
+
+        private void ApplyRemuxPlayScene(int playSn)
+        {
+            S.Playback._playSceneAfterRemux = null;
+            S.Playback._playingScene = playSn;
+            S.Playback._showScenePlayer = true;
+            S.Playback._sceneVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            S._message = $"Scene S{playSn:D2} ready — playing";
+        }
+
+        private void ApplyRemuxPlayComposite(int sn)
+        {
+            S.Playback._playingScene = sn;
+            S.Playback._showScenePlayer = true;
+            S.Playback._sceneVideoKey = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            S._message = $"Scene S{sn:D2} composite rebuilt — player below";
+        }
+
+        private async Task ApplySceneGenDoneAsync(int genSn, int genCn)
+        {
+            S._message = $"Clip S{genSn:D2}C{genCn:D2} gen finished — Play scene when you want the updated composite";
+            if (S.List._selectedScene == genSn)
+                await S.List.LoadSelectedDetailAsync(genSn);
+        }
+
+        private async Task ApplyYouTubeUploadAsync(JobSnapshot snap)
+        {
+            if (snap.Status == "done")
+            {
+                await S.Share.RefreshYouTubeStatusAsync();
+                S._message = snap.Message ?? "Uploaded to YouTube";
+                S._error = null;
+            }
+            else if (snap.Status == "error")
+            {
+                S._error = snap.Error ?? snap.Message ?? "YouTube upload failed";
+                S._message = null;
+            }
         }
 
 

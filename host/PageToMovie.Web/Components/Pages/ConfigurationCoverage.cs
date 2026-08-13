@@ -399,117 +399,161 @@ public partial class Configuration
 
         internal IEnumerable<ProviderKeyStatusDto> ProvidersForCoverage(string coverageId)
         {
-            var models = ModelsForCoverage(coverageId);
+            var ids = CollectCoverageProviderIds(coverageId);
+            var rows = MaterializeCoverageProviderRows(ids);
+            AddMissingCoverageProviderRows(ids, rows);
+            var currentPid = EnsureCurrentCoverageProviderRow(coverageId, rows);
+            return OrderCoverageProviders(rows, currentPid);
+        }
+
+        private HashSet<string> CollectCoverageProviderIds(string coverageId)
+        {
             var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var m in models)
-            {
-                if (string.Equals(m.Id, "none", StringComparison.OrdinalIgnoreCase)) continue;
-                var pid = ConfigurationCatalog.ModelProviderId(m);
-                if (!string.IsNullOrWhiteSpace(pid) && !pid.Equals("none", StringComparison.OrdinalIgnoreCase))
-                    ids.Add(pid);
-            }
-
+            foreach (var m in ModelsForCoverage(coverageId))
+                AddModelProviderId(ids, m);
             if (ids.Count == 0)
-            {
-                foreach (var pr in S.Keys.ProviderRows)
-                {
-                    var ok = coverageId switch
-                    {
-                        CapVideo => pr.SupportsVideoGen || pr.SupportsVideo,
-                        CapImage => pr.SupportsImageGen || pr.SupportsImage,
-                        CapPlanning => pr.SupportsScriptPlanning || pr.SupportsChat,
-                        CapVision => pr.SupportsImageVision || pr.SupportsVision,
-                        CapReview => pr.SupportsVideoReview || pr.SupportsChat,
-                        CapMusic => string.Equals(pr.ProviderId, "fal", StringComparison.OrdinalIgnoreCase)
-                                   || string.Equals(pr.ProviderId, "suno", StringComparison.OrdinalIgnoreCase)
-                                   || string.Equals(pr.ProviderId, "aimusicapi", StringComparison.OrdinalIgnoreCase),
-                        CapVoice => string.Equals(pr.ProviderId, "elevenlabs", StringComparison.OrdinalIgnoreCase)
-                                   || string.Equals(pr.ProviderId, "fal", StringComparison.OrdinalIgnoreCase),
-                        _ => false,
-                    };
-                    if (ok) ids.Add(pr.ProviderId);
-                }
-            }
+                AddFallbackCoverageProviderIds(coverageId, ids);
+            return ids;
+        }
 
+        private static void AddModelProviderId(HashSet<string> ids, SupportedModelDto m)
+        {
+            if (string.Equals(m.Id, "none", StringComparison.OrdinalIgnoreCase))
+                return;
+            var pid = ConfigurationCatalog.ModelProviderId(m);
+            if (!string.IsNullOrWhiteSpace(pid) && !pid.Equals("none", StringComparison.OrdinalIgnoreCase))
+                ids.Add(pid);
+        }
+
+        private void AddFallbackCoverageProviderIds(string coverageId, HashSet<string> ids)
+        {
+            foreach (var pr in S.Keys.ProviderRows)
+            {
+                if (ProviderSupportsCoverage(pr, coverageId))
+                    ids.Add(pr.ProviderId);
+            }
+        }
+
+        private static bool ProviderSupportsCoverage(ProviderKeyStatusDto pr, string coverageId) =>
+            coverageId switch
+            {
+                CapVideo => pr.SupportsVideoGen || pr.SupportsVideo,
+                CapImage => pr.SupportsImageGen || pr.SupportsImage,
+                CapPlanning => pr.SupportsScriptPlanning || pr.SupportsChat,
+                CapVision => pr.SupportsImageVision || pr.SupportsVision,
+                CapReview => pr.SupportsVideoReview || pr.SupportsChat,
+                CapMusic => IsMusicCoverageProvider(pr.ProviderId),
+                CapVoice => IsVoiceCoverageProvider(pr.ProviderId),
+                _ => false,
+            };
+
+        private static bool IsMusicCoverageProvider(string? providerId) =>
+            string.Equals(providerId, "fal", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(providerId, "suno", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(providerId, "aimusicapi", StringComparison.OrdinalIgnoreCase);
+
+        private static bool IsVoiceCoverageProvider(string? providerId) =>
+            string.Equals(providerId, "elevenlabs", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(providerId, "fal", StringComparison.OrdinalIgnoreCase);
+
+        private List<ProviderKeyStatusDto> MaterializeCoverageProviderRows(HashSet<string> ids)
+        {
             // Include any provider id we discovered from models even if ProviderRows lacks it (e.g. OpenAI).
-            var rows = S.Keys.ProviderRows
-                .Select(pr => new ProviderKeyStatusDto
-                {
-                    ProviderId = SupportedModelCatalog.NormalizeProviderId(pr.ProviderId),
-                    DisplayName = pr.DisplayName,
-                    Family = pr.Family,
-                    HasPersonalKey = pr.HasPersonalKey,
-                    MaskedPersonalKey = pr.MaskedPersonalKey,
-                    HasServerKey = pr.HasServerKey,
-                    ActiveSource = pr.ActiveSource,
-                    CapabilitiesSummary = pr.CapabilitiesSummary,
-                    SupportsVideo = pr.SupportsVideo,
-                    SupportsImage = pr.SupportsImage,
-                    SupportsChat = pr.SupportsChat,
-                    SupportsVision = pr.SupportsVision,
-                    SupportsVideoGen = pr.SupportsVideoGen,
-                    SupportsVideoReview = pr.SupportsVideoReview,
-                    SupportsImageGen = pr.SupportsImageGen,
-                    SupportsScriptPlanning = pr.SupportsScriptPlanning,
-                    SupportsImageVision = pr.SupportsImageVision,
-                    RequiredEnvKeys = pr.RequiredEnvKeys,
-                    Notes = pr.Notes,
-                })
+            return S.Keys.ProviderRows
+                .Select(CloneProviderRow)
                 .Where(pr => ids.Contains(pr.ProviderId))
                 .GroupBy(pr => pr.ProviderId, StringComparer.OrdinalIgnoreCase)
                 .Select(g => g.First())
                 .ToList();
+        }
+
+        private static ProviderKeyStatusDto CloneProviderRow(ProviderKeyStatusDto pr) => new()
+        {
+            ProviderId = SupportedModelCatalog.NormalizeProviderId(pr.ProviderId),
+            DisplayName = pr.DisplayName,
+            Family = pr.Family,
+            HasPersonalKey = pr.HasPersonalKey,
+            MaskedPersonalKey = pr.MaskedPersonalKey,
+            HasServerKey = pr.HasServerKey,
+            ActiveSource = pr.ActiveSource,
+            CapabilitiesSummary = pr.CapabilitiesSummary,
+            SupportsVideo = pr.SupportsVideo,
+            SupportsImage = pr.SupportsImage,
+            SupportsChat = pr.SupportsChat,
+            SupportsVision = pr.SupportsVision,
+            SupportsVideoGen = pr.SupportsVideoGen,
+            SupportsVideoReview = pr.SupportsVideoReview,
+            SupportsImageGen = pr.SupportsImageGen,
+            SupportsScriptPlanning = pr.SupportsScriptPlanning,
+            SupportsImageVision = pr.SupportsImageVision,
+            RequiredEnvKeys = pr.RequiredEnvKeys,
+            Notes = pr.Notes,
+        };
+
+        private static void AddMissingCoverageProviderRows(HashSet<string> ids, List<ProviderKeyStatusDto> rows)
+        {
             foreach (var id in ids)
             {
                 if (rows.Any(r => string.Equals(r.ProviderId, id, StringComparison.OrdinalIgnoreCase)))
                     continue;
-                rows.Add(new ProviderKeyStatusDto
-                {
-                    ProviderId = id,
-                    DisplayName = ConfigurationCatalog.FriendlyProviderLabel(id),
-                    ActiveSource = "none",
-                    CapabilitiesSummary = "—",
-                    RequiredEnvKeys = new List<string>(),
-                });
+                rows.Add(StubProviderRow(id));
             }
+        }
 
+        private string EnsureCurrentCoverageProviderRow(string coverageId, List<ProviderKeyStatusDto> rows)
+        {
             // Selected provider (from model) first so the <select> cannot fall back to a random first option.
             var currentModelId = GetCoverageModelId(coverageId);
-            var currentPid = "";
-            if (!string.IsNullOrWhiteSpace(currentModelId)
-                && !string.Equals(currentModelId, "none", StringComparison.OrdinalIgnoreCase))
+            if (string.IsNullOrWhiteSpace(currentModelId)
+                || string.Equals(currentModelId, "none", StringComparison.OrdinalIgnoreCase))
+                return "";
+
+            var currentPid = ResolveProviderIdForModel(
+                currentModelId,
+                CoverageCapabilityName(coverageId),
+                preferVideoReview: coverageId == CapReview);
+            if (!string.IsNullOrWhiteSpace(currentPid)
+                && !rows.Any(r => string.Equals(r.ProviderId, currentPid, StringComparison.OrdinalIgnoreCase)))
             {
-                var cap = coverageId switch
-                {
-                    CapVideo => CapVideo,
-                    CapImage => CapImage,
-                    CapPlanning => "chat",
-                    CapVision => CapVision,
-                    CapReview => "chat",
-                    CapMusic => CapAudio,
-                    CapVoice => CapVoice,
-                    _ => "chat",
-                };
-                currentPid = ResolveProviderIdForModel(currentModelId, cap, preferVideoReview: coverageId == CapReview);
-                if (!string.IsNullOrWhiteSpace(currentPid)
-                    && !rows.Any(r => string.Equals(r.ProviderId, currentPid, StringComparison.OrdinalIgnoreCase)))
-                {
-                    rows.Insert(0, new ProviderKeyStatusDto
-                    {
-                        ProviderId = currentPid,
-                        DisplayName = ConfigurationCatalog.FriendlyProviderLabel(currentPid),
-                        ActiveSource = "none",
-                        CapabilitiesSummary = "—",
-                        RequiredEnvKeys = new List<string>(),
-                    });
-                }
+                rows.Insert(0, StubProviderRow(currentPid));
             }
 
-            return rows
-                .OrderBy(pr => string.Equals(pr.ProviderId, currentPid, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
-                .ThenBy(pr => pr.IsConfigured ? 0 : 1)
-                .ThenBy(pr => ConfigurationCatalog.FriendlyProviderLabel(pr.ProviderId));
+            return currentPid;
         }
+
+        private static string CoverageCapabilityName(string coverageId) => coverageId switch
+        {
+            CapVideo => CapVideo,
+            CapImage => CapImage,
+            CapPlanning => "chat",
+            CapVision => CapVision,
+            CapReview => "chat",
+            CapMusic => CapAudio,
+            CapVoice => CapVoice,
+            _ => "chat",
+        };
+
+        private static ProviderKeyStatusDto StubProviderRow(string id) => new()
+        {
+            ProviderId = id,
+            DisplayName = ConfigurationCatalog.FriendlyProviderLabel(id),
+            ActiveSource = "none",
+            CapabilitiesSummary = "—",
+            RequiredEnvKeys = new List<string>(),
+        };
+
+        private static IEnumerable<ProviderKeyStatusDto> OrderCoverageProviders(
+            List<ProviderKeyStatusDto> rows, string currentPid) =>
+            rows
+                .OrderBy(pr => CurrentProviderSortKey(pr, currentPid))
+                .ThenBy(ConfiguredSortKey)
+                .ThenBy(pr => ConfigurationCatalog.FriendlyProviderLabel(pr.ProviderId));
+
+        private static int CurrentProviderSortKey(ProviderKeyStatusDto pr, string currentPid) =>
+            string.Equals(pr.ProviderId, currentPid, StringComparison.OrdinalIgnoreCase) ? 0 : 1;
+
+        private static int ConfiguredSortKey(ProviderKeyStatusDto pr) =>
+            pr.IsConfigured ? 0 : 1;
 
 
         internal async Task OnCoverageModelChangedAsync(string coverageId, string? modelId)
