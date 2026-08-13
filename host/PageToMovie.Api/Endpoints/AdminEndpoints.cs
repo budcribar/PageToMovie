@@ -1230,7 +1230,7 @@ public static class AdminEndpoints
         // Newly approved, or re-approved with a new local movie (V2 replace) → publish in the background.
         // Publisher no-ops when already on YouTube with no local movie.mp4.
         if (status == DemoCatalogService.DemoStatuses.Public)
-            _ = Task.Run(() => youTubePublisher.PublishAsync(demoId, ct));
+            _ = Task.Run(() => youTubePublisher.PublishAsync(demoId, CancellationToken.None));
 
         return Results.Ok(new { ok = true, demo = ApiEndpointHelpers.DemoAdminDto(d) });
     }
