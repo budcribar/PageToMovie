@@ -61,11 +61,11 @@ public sealed class CameraDirectorClassifier : BeatChatClassifierBase<CameraDire
     protected override string OperationName => "stage2_camera_direction";
     protected override string ErrorLoggerName => "camera_director_classifier";
     protected override string LogNoun => "camera director";
-    protected override string GetSystemPrompt() => SystemPrompt();
+    protected override string GetSystemPrompt() => SystemPromptText;
     protected override string ProgressMessage(int beatCount) =>
         $"AI Camera Director: Directing camera lenses & movement for {beatCount} beats…";
 
-    public static string SystemPrompt() => """
+    public const string SystemPromptText = """
         You are a Virtuoso Film Director and Director of Photography (DP) directing camera composition and movement.
 
         Your task: Given a list of scene beats, assign cinematic camera directives per beat ID based on film grammar and narrative tension.

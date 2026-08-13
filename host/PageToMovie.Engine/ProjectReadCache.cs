@@ -259,20 +259,17 @@ public sealed class ProjectReadCache
             try
             {
                 var root = Path.GetFullPath(projectDir);
-                foreach (var key in _blueprints.Keys.ToArray())
+                foreach (var key in _blueprints.Keys.ToArray()
+                             .Where(k => k.StartsWith(root, StringComparison.OrdinalIgnoreCase)))
                 {
-                    if (key.StartsWith(root, StringComparison.OrdinalIgnoreCase) &&
-                        _blueprints.TryRemove(key, out var old))
+                    if (_blueprints.TryRemove(key, out var old))
                     {
                         try { old.Doc.Dispose(); } catch { /* ignore */ }
                     }
                 }
 
-                foreach (var key in _dirs.Keys.ToArray())
-                {
-                    if (key.StartsWith(root, StringComparison.OrdinalIgnoreCase))
-                        _dirs.TryRemove(key, out _);
-                }
+                foreach (var key in _dirs.Keys.ToArray().Where(k => k.StartsWith(root, StringComparison.OrdinalIgnoreCase)))
+                    _dirs.TryRemove(key, out _);
             }
             catch
             {
@@ -397,7 +394,7 @@ public sealed class ProjectReadCache
         public long Ticks { get; init; }
         public long Length { get; init; }
         public byte[] Utf8 { get; init; } = Array.Empty<byte>();
-        public JsonDocument Doc { get; init; } = null!;
+        public required JsonDocument Doc { get; init; }
     }
 
     private sealed class JsonFileEntry
@@ -405,7 +402,7 @@ public sealed class ProjectReadCache
         public long Ticks { get; init; }
         public long Length { get; init; }
         public byte[] Utf8 { get; init; } = Array.Empty<byte>();
-        public JsonDocument Doc { get; init; } = null!;
+        public required JsonDocument Doc { get; init; }
     }
 
     private sealed class DirEntry

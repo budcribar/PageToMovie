@@ -57,7 +57,9 @@ public static class ProjectXaiArtifactFiles
         if (string.IsNullOrWhiteSpace(entry.Kind))
             throw new ArgumentException("kind required", nameof(entry));
         var path = GetPath(projectDir);
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var dir = Path.GetDirectoryName(path);
+        if (!string.IsNullOrEmpty(dir))
+            Directory.CreateDirectory(dir);
         var doc = TryRead(projectDir) ?? new Dictionary<string, Entry>(StringComparer.OrdinalIgnoreCase);
         entry.UpdatedAt = DateTime.UtcNow.ToString("o");
         doc[entry.Kind] = entry;

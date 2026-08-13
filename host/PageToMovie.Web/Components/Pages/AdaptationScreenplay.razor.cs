@@ -21,7 +21,7 @@ public partial class AdaptationScreenplay
     internal ScreenplayTools Tools => _toolsDomain ??= new ScreenplayTools(this);
 
     /// <summary>Hosted structured editor instance (for Menu actions).</summary>
-    private global::PageToMovie.ScreenplayEditor.Components.ScreenplayEditor? _structuredUi;
+    private global::PageToMovie.ScreenplayEditor.Components.ScreenplayEditor? _structuredUi = null;
 
     /// <summary>Deep link from Film: /adaptation/screenplay?scene=N</summary>
     private int? _pendingSceneFromQuery;

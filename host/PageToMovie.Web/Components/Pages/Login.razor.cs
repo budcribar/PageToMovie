@@ -14,6 +14,7 @@ namespace PageToMovie.Web.Components.Pages;
 
 public partial class Login : IDisposable
 {
+    private const string LoginPath = "/login";
     private string _username = "";
     private string _email = "";
     private string _password = "";
@@ -67,7 +68,7 @@ public partial class Login : IDisposable
         _password = "";
         _confirmPassword = "";
         // Drop token from URL without reloading the whole app if possible
-        try { Nav.NavigateTo("/login", replace: true); } catch { /* ignore */ }
+        try { Nav.NavigateTo(LoginPath, replace: true); } catch { /* ignore */ }
     }
 
     private void BackToSignIn()
@@ -81,7 +82,7 @@ public partial class Login : IDisposable
         _needsResend = false;
         _password = "";
         _confirmPassword = "";
-        try { Nav.NavigateTo("/login", replace: true); } catch { /* ignore */ }
+        try { Nav.NavigateTo(LoginPath, replace: true); } catch { /* ignore */ }
     }
 
     private async Task SubmitForgotAsync()
@@ -148,7 +149,7 @@ public partial class Login : IDisposable
             _confirmPassword = "";
             _isSignup = false;
             _forgotMode = false;
-            try { Nav.NavigateTo("/login", replace: true); } catch { /* ignore */ }
+            try { Nav.NavigateTo(LoginPath, replace: true); } catch { /* ignore */ }
         }
         catch (Exception ex)
         {
@@ -254,7 +255,7 @@ public partial class Login : IDisposable
                             _info = string.IsNullOrWhiteSpace(msg) ? "Email confirmed. You can sign in now." : msg;
                             _isSignup = false;
                             _error = null;
-                            try { Nav.NavigateTo("/login?emailConfirmed=1", replace: true); } catch { /* ignore */ }
+            try { Nav.NavigateTo($"{LoginPath}?emailConfirmed=1", replace: true); } catch { /* ignore */ }
                         }
                         else
                         {
@@ -312,7 +313,7 @@ public partial class Login : IDisposable
             {
                 var path = Uri.UnescapeDataString(ret.ToString());
                 if (path.StartsWith('/') && !path.StartsWith("//", StringComparison.Ordinal))
-                    return path.Split('?', '#')[0]; // never re-open with me= in returnUrl
+                    return path.Split(['?', '#'])[0]; // never re-open with me= in returnUrl
             }
         }
         catch { /* home */ }
@@ -329,8 +330,8 @@ public partial class Login : IDisposable
         _needsResend = false;
         if (_isSignup && !Nav.Uri.EndsWith("/signup", StringComparison.OrdinalIgnoreCase))
             Nav.NavigateTo("/signup", replace: true);
-        else if (!_isSignup && !Nav.Uri.EndsWith("/login", StringComparison.OrdinalIgnoreCase))
-            Nav.NavigateTo("/login", replace: true);
+        else if (!_isSignup && !Nav.Uri.EndsWith(LoginPath, StringComparison.OrdinalIgnoreCase))
+            Nav.NavigateTo(LoginPath, replace: true);
     }
 
     private async Task SubmitAsync()
@@ -410,7 +411,7 @@ public partial class Login : IDisposable
 
             // Await storage write so forceLoad cannot rehydrate a previous user id (e.g. renamed account).
             await Session.SetSessionAsync(
-                resp.Token!,
+                resp.Token,
                 resp.UserId ?? _username.Trim(),
                 resp.Roles,
                 resp.ExpiresAt);

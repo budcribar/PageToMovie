@@ -215,10 +215,10 @@ public sealed class ClientMediaFolderService
                 // own media pages trigger the sync explicitly instead.
                 return;
             }
-            if (string.Equals(r?.Reason, "prompt", StringComparison.OrdinalIgnoreCase))
+            if (r is not null && string.Equals(r.Reason, "prompt", StringComparison.OrdinalIgnoreCase))
             {
                 NeedsReconnect = true;
-                PendingReconnectFolderName = r!.FolderName;
+                PendingReconnectFolderName = r.FolderName;
                 Changed?.Invoke();
             }
         }
@@ -292,7 +292,18 @@ public sealed class ClientMediaFolderService
 
     public async Task SaveJobMediaAsync(JobSnapshot snap)
     {
-        var key = $"{snap.ProjectId}|{snap.ClientRelativePath}";
+        var projectId = snap.ProjectId;
+        var clientUrl = snap.ClientMediaUrl;
+        var relativePath = snap.ClientRelativePath;
+        if (projectId is not { Length: > 0 } pid ||
+            clientUrl is not { Length: > 0 } url0 ||
+            relativePath is not { Length: > 0 } rel ||
+            string.IsNullOrWhiteSpace(pid) ||
+            string.IsNullOrWhiteSpace(url0) ||
+            string.IsNullOrWhiteSpace(rel))
+            return;
+
+        var key = $"{pid}|{rel}";
         lock (_savingKeys)
         {
             if (!_savingKeys.Add(key))
@@ -312,10 +323,10 @@ public sealed class ClientMediaFolderService
                 }
             }
 
-            LastStatus = $"Saving {snap.ClientRelativePath}…";
+            LastStatus = $"Saving {rel}…";
             Changed?.Invoke();
 
-            var url = snap.ClientMediaUrl!;
+            var url = url0;
 
             // Real video-extend (see FilmJobService.GenerateOneClipAsync + PrepareExtendSourceAsync
             // above): this job's video is Grok's combined [continuation-input + new content]
@@ -324,7 +335,7 @@ public sealed class ClientMediaFolderService
             // reintroduce the exact "clip contains pieces of the previous clip" bug this feature
             // exists to fix, so on ANY failure here we surface it and return without saving,
             // rather than silently falling through to save the un-sliced video.
-            var extendKey = $"{snap.ProjectId}|{snap.Scene}|{snap.Clip}";
+            var extendKey = $"{pid}|{snap.Scene}|{snap.Clip}";
             double? extendSourceSec = null;
             lock (_pendingExtendSourceSeconds)
             {
@@ -342,7 +353,7 @@ public sealed class ClientMediaFolderService
                     : null;
                 if (slice is not { Success: true } || string.IsNullOrWhiteSpace(slice.Url))
                 {
-                    LastStatus = $"Video-extend slice failed for {snap.ClientRelativePath} " +
+                    LastStatus = $"Video-extend slice failed for {rel} " +
                                  $"({slice?.Error ?? "duration probe failed"}) — retry the clip.";
                     Changed?.Invoke();
                     return;
@@ -355,8 +366,8 @@ public sealed class ClientMediaFolderService
             // (where to cut) lives once in ClipSilenceTrimmer (Core) — JS only does
             // the ffmpeg I/O. Longer breath tail for speech-style clips; lead trim on clip 2+.
             var clipNum = snap.Clip ?? 1;
-            var isCredits = (snap.ClientRelativePath ?? "").Contains("credits", StringComparison.OrdinalIgnoreCase) ||
-                            (snap.ClientRelativePath ?? "").Contains("sc18", StringComparison.OrdinalIgnoreCase) ||
+            var isCredits = rel.Contains("credits", StringComparison.OrdinalIgnoreCase) ||
+                            rel.Contains("sc18", StringComparison.OrdinalIgnoreCase) ||
                             snap.Scene == 18 ||
                             string.Equals(snap.Kind, "credits", StringComparison.OrdinalIgnoreCase);
             var isMusic = string.Equals(snap.Kind, "music", StringComparison.OrdinalIgnoreCase);
@@ -384,7 +395,7 @@ public sealed class ClientMediaFolderService
                 if (trimmed && !string.IsNullOrWhiteSpace(trimUrl))
                 {
                     trimmedBlobUrl = trimUrl;
-                    urlToSave = trimUrl!;
+                    urlToSave = trimUrl;
                 }
             }
 
@@ -394,7 +405,7 @@ public sealed class ClientMediaFolderService
                 // (snap.ClientRelativePath) is kept separately below for RegisterMediaAsync, since
                 // the server resolves that string under its own already-project-scoped directory
                 // and would double-nest if it also carried this prefix.
-                var clientPath = $"{snap.ProjectId}/{snap.ClientRelativePath}";
+                var clientPath = $"{pid}/{rel}";
                 var saved = await _js.InvokeAsync<JsSaveResult>(
                     "PageToMovieMedia.saveFromUrlAsync",
                     urlToSave,
@@ -402,7 +413,7 @@ public sealed class ClientMediaFolderService
                     null,
                     snap.MusicTakeId);
 
-                if (saved is not { Success: true } || string.IsNullOrWhiteSpace(saved.Sha256))
+                if (saved is not { Success: true, Sha256: { Length: > 0 } sha256 })
                 {
                     LastStatus = saved?.Error ?? "Save failed";
                     Changed?.Invoke();
@@ -411,13 +422,13 @@ public sealed class ClientMediaFolderService
 
                 var scene = snap.Scene;
                 var clip = snap.Clip;
-                await _api.RegisterMediaAsync(snap.ProjectId!, new MediaRegisterRequest
+                await _api.RegisterMediaAsync(pid, new MediaRegisterRequest
                 {
                     // Bare server-side path, NOT saved.RelativePath (which JS echoes back with the
                     // client-only project prefix baked in) — the server keys media_objects on the
                     // bare path within its own already-project-scoped directory.
-                    RelativePath = snap.ClientRelativePath!,
-                    Sha256 = saved.Sha256,
+                    RelativePath = rel,
+                    Sha256 = sha256,
                     SizeBytes = saved.SizeBytes,
                     Kind = isCredits ? "credits" : isMusic ? "music" : isSpeakBatch ? "audio" : "clip",
                     Scene = scene,
@@ -428,7 +439,7 @@ public sealed class ClientMediaFolderService
                     ? ""
                     : $" · silence: {silenceMessage}";
                 LastStatus =
-                    $"Saved {Path.GetFileName(snap.ClientRelativePath)} ({saved.SizeBytes / 1024} KB){sil}";
+                    $"Saved {Path.GetFileName(rel)} ({saved.SizeBytes / 1024} KB){sil}";
                 Changed?.Invoke();
 
                 lock (_savingKeys)
@@ -840,78 +851,78 @@ public sealed class ClientMediaFolderService
 
     private sealed class JsResult
     {
-        public bool Success { get; set; }
-        public string? FolderName { get; set; }
-        public string? FullPath { get; set; }
-        public string? Error { get; set; }
+        public bool Success { get; set; } = false;
+        public string? FolderName { get; set; } = null;
+        public string? FullPath { get; set; } = null;
+        public string? Error { get; set; } = null;
     }
 
     private sealed class JsReconnectResult
     {
-        public bool Success { get; set; }
-        public string? FolderName { get; set; }
+        public bool Success { get; set; } = false;
+        public string? FolderName { get; set; } = null;
         /// <summary>When !Success: "none" (never connected before), "prompt" (needs a user gesture), "denied", or "error".</summary>
-        public string? Reason { get; set; }
-        public string? Error { get; set; }
+        public string? Reason { get; set; } = null;
+        public string? Error { get; set; } = null;
     }
 
     private sealed class JsHistoryResult
     {
-        public bool Success { get; set; }
-        public List<JsHistoryEntry>? Entries { get; set; }
-        public string? Error { get; set; }
+        public bool Success { get; set; } = false;
+        public List<JsHistoryEntry>? Entries { get; set; } = null;
+        public string? Error { get; set; } = null;
     }
 
     private sealed class JsHistoryEntry
     {
-        public string? RelativePath { get; set; }
-        public long TimestampMs { get; set; }
+        public string? RelativePath { get; set; } = null;
+        public long TimestampMs { get; set; } = 0;
     }
 
     private sealed class JsSaveResult
     {
-        public bool Success { get; set; }
-        public string? Sha256 { get; set; }
-        public long SizeBytes { get; set; }
-        public string? RelativePath { get; set; }
-        public string? Error { get; set; }
+        public bool Success { get; set; } = false;
+        public string? Sha256 { get; set; } = null;
+        public long SizeBytes { get; set; } = 0;
+        public string? RelativePath { get; set; } = null;
+        public string? Error { get; set; } = null;
     }
 
     private sealed class JsSilenceAnalysis
     {
-        public bool Success { get; set; }
-        public string? Token { get; set; }
-        public double TotalSec { get; set; }
-        public string? Log { get; set; }
-        public string? Error { get; set; }
+        public bool Success { get; set; } = false;
+        public string? Token { get; set; } = null;
+        public double TotalSec { get; set; } = 0;
+        public string? Log { get; set; } = null;
+        public string? Error { get; set; } = null;
     }
 
     private sealed class JsSilenceEncode
     {
-        public bool Success { get; set; }
-        public string? Url { get; set; }
-        public string? Error { get; set; }
+        public bool Success { get; set; } = false;
+        public string? Url { get; set; } = null;
+        public string? Error { get; set; } = null;
     }
 
     private sealed class JsTrimTailResult
     {
-        public bool Success { get; set; }
-        public string? Url { get; set; }
-        public double SourceDurationSec { get; set; }
-        public double KeptSec { get; set; }
-        public string? Error { get; set; }
+        public bool Success { get; set; } = false;
+        public string? Url { get; set; } = null;
+        public double SourceDurationSec { get; set; } = 0;
+        public double KeptSec { get; set; } = 0;
+        public string? Error { get; set; } = null;
     }
 
     private sealed class JsProbeResult
     {
-        public bool Success { get; set; }
-        public double Seconds { get; set; }
+        public bool Success { get; set; } = false;
+        public double Seconds { get; set; } = 0;
     }
 
     private sealed class JsUploadResult
     {
-        public bool Success { get; set; }
-        public string? Error { get; set; }
+        public bool Success { get; set; } = false;
+        public string? Error { get; set; } = null;
     }
 
     /// <summary>Local blob URLs for a scene's background-music segments (in order), stopping at
@@ -1009,26 +1020,26 @@ public sealed class ClientMediaFolderService
 
     private sealed class JsBytesResult
     {
-        public bool Success { get; set; }
-        public byte[]? Bytes { get; set; }
-        public string? Error { get; set; }
+        public bool Success { get; set; } = false;
+        public byte[]? Bytes { get; set; } = null;
+        public string? Error { get; set; } = null;
     }
 
     private sealed class JsBlobResult
     {
-        public bool Success { get; set; }
-        public string? Url { get; set; }
-        public long SizeBytes { get; set; }
-        public string? Error { get; set; }
+        public bool Success { get; set; } = false;
+        public string? Url { get; set; } = null;
+        public long SizeBytes { get; set; } = 0;
+        public string? Error { get; set; } = null;
     }
 
     private sealed class JsStatResult
     {
-        public bool Success { get; set; }
-        public long SizeBytes { get; set; }
-        public string? Sha256 { get; set; }
-        public long LastModifiedMs { get; set; }
-        public string? Error { get; set; }
+        public bool Success { get; set; } = false;
+        public long SizeBytes { get; set; } = 0;
+        public string? Sha256 { get; set; } = null;
+        public long LastModifiedMs { get; set; } = 0;
+        public string? Error { get; set; } = null;
     }
     /// <summary>
     /// Write bytes into the connected media folder (e.g. voice clone samples).
@@ -1112,30 +1123,30 @@ public sealed class ClientMediaFolderService
     {
         public string RelativePath { get; set; } = "";
         public string Name { get; set; } = "";
-        public long SizeBytes { get; set; }
+        public long SizeBytes { get; set; } = 0;
     }
 
     private sealed class JsSaveBytesResult
     {
-        public bool Success { get; set; }
-        public string? RelativePath { get; set; }
-        public string? Error { get; set; }
-        public long SizeBytes { get; set; }
-        public string? Sha256 { get; set; }
+        public bool Success { get; set; } = false;
+        public string? RelativePath { get; set; } = null;
+        public string? Error { get; set; } = null;
+        public long SizeBytes { get; set; } = 0;
+        public string? Sha256 { get; set; } = null;
     }
 
     private sealed class JsListAudioResult
     {
-        public bool Success { get; set; }
-        public string? Error { get; set; }
-        public List<JsListAudioEntry>? Files { get; set; }
+        public bool Success { get; set; } = false;
+        public string? Error { get; set; } = null;
+        public List<JsListAudioEntry>? Files { get; set; } = null;
     }
 
     private sealed class JsListAudioEntry
     {
-        public string? RelativePath { get; set; }
-        public string? Name { get; set; }
-        public long SizeBytes { get; set; }
+        public string? RelativePath { get; set; } = null;
+        public string? Name { get; set; } = null;
+        public long SizeBytes { get; set; } = 0;
     }
 
 

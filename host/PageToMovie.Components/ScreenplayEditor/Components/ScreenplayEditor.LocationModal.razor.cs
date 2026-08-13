@@ -6,7 +6,7 @@ namespace PageToMovie.ScreenplayEditor.Components;
 
 public partial class ScreenplayEditor_LocationModal : ComponentBase
 {
-    [Inject] private IJSRuntime Js { get; set; } = null!;
+    [Inject] public required IJSRuntime Js { get; set; }
 
     [Parameter]
     public bool IsOpen { get; set; }
@@ -127,12 +127,9 @@ public partial class ScreenplayEditor_LocationModal : ComponentBase
         {
             string upper = name.Trim().ToUpperInvariant();
             Model.LocationProfiles.RemoveAll(l => l.Name.Equals(upper, StringComparison.OrdinalIgnoreCase));
-            foreach (var scene in Model.Scenes)
+            foreach (var scene in Model.Scenes.Where(s => s.Location.Equals(upper, StringComparison.OrdinalIgnoreCase)))
             {
-                if (scene.Location.Equals(upper, StringComparison.OrdinalIgnoreCase))
-                {
-                    scene.Location = "NEW LOCATION";
-                }
+                scene.Location = "NEW LOCATION";
             }
             await OnChanged();
         }

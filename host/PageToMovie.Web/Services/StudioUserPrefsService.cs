@@ -9,6 +9,7 @@ namespace PageToMovie.Web.Services;
 /// </summary>
 public sealed class StudioUserPrefsService
 {
+    private const string PathGenerate = "generate";
     private readonly IJSRuntime _js;
     private readonly AdminSessionService _session;
 
@@ -18,7 +19,7 @@ public sealed class StudioUserPrefsService
         _session = session;
     }
 
-    public string PreferPath { get; private set; } = "generate";
+    public string PreferPath { get; private set; } = PathGenerate;
     public string? EditFocus { get; private set; }
     public bool SkipEditFocus { get; private set; }
     public int? LastRuntimeTargetMin { get; private set; }
@@ -43,7 +44,7 @@ public sealed class StudioUserPrefsService
         {
             var path = await GetAsync("preferPath");
             if (string.Equals(path, "edit", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(path, "generate", StringComparison.OrdinalIgnoreCase))
+                || string.Equals(path, PathGenerate, StringComparison.OrdinalIgnoreCase))
                 PreferPath = path.ToLowerInvariant();
 
             var focus = await GetAsync("editFocus");
@@ -70,7 +71,7 @@ public sealed class StudioUserPrefsService
 
     public async Task SetPreferPathAsync(string path)
     {
-        PreferPath = path is "edit" or "generate" ? path : "generate";
+        PreferPath = path is "edit" or PathGenerate ? path : PathGenerate;
         await SetAsync("preferPath", PreferPath);
     }
 

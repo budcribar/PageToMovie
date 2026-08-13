@@ -81,8 +81,8 @@ public partial class Review
             if (string.IsNullOrWhiteSpace(rawProjectId))
                 return "Untitled Short Film";
 
-            var parts = rawProjectId.Trim().Split('/', '\\');
-            var name = parts.Last().Trim();
+            var parts = rawProjectId.Trim().Split(['/', '\\']);
+            var name = parts[parts.Length - 1].Trim();
 
             if (name.StartsWith("TellTaleHeart", StringComparison.OrdinalIgnoreCase))
                 return "The Tell-Tale Heart";
@@ -240,7 +240,7 @@ public partial class Review
                             acceptedGuidelines: true,
                             madeForKids: _demoMadeForKids,
                             isAiSynthetic: _demoIsAiSynthetic);
-                        if (pub?.Ok == true)
+                        if (pub?.Ok is true)
                         {
                             S.List._activeTab = ReviewTab.Review;
                             S._message = (pub.Message ?? $"“{pub.Demo?.Title ?? title}” sent to YouTube — it appears in the gallery when the upload finishes.") +

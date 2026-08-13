@@ -63,7 +63,7 @@
             <div class="voice-dictation-tips">
                 <div class="voice-dictation-tips__label">Try saying</div>
                 <div class="voice-dictation-tips__chips">
-                    @foreach (var tip in Suggestions!)
+                    @foreach (var tip in Suggestions ?? Array.Empty<string>())
                     {
                         var chip = tip;
                         <button type="button"

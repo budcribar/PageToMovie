@@ -47,18 +47,18 @@ public sealed class ServerLogExportService
 
             // 3. Project Edit Logs, Sidecars & Prompt Files
             var projects = await _projects.ListProjectsAsync(ct).ConfigureAwait(false);
-            foreach (var p in projects)
+            foreach (var id in projects.Select(p => p.Id))
             {
                 try
                 {
-                    var projDir = await _projects.GetProjectDirAsync(p.Id, ct).ConfigureAwait(false);
+                    var projDir = await _projects.GetProjectDirAsync(id, ct).ConfigureAwait(false);
 
                     // edit_log.json
                     var editLogPath = Path.Combine(projDir, "edit_log.json");
                     if (File.Exists(editLogPath))
                     {
                         var content = await File.ReadAllBytesAsync(editLogPath, ct).ConfigureAwait(false);
-                        AddZipFileEntry(zip, $"edit_logs/{p.Id}_edit_log.json", content);
+                        AddZipFileEntry(zip, $"edit_logs/{id}_edit_log.json", content);
                     }
 
                     // artifact_index.json
@@ -66,7 +66,7 @@ public sealed class ServerLogExportService
                     if (File.Exists(artPath))
                     {
                         var content = await File.ReadAllBytesAsync(artPath, ct).ConfigureAwait(false);
-                        AddZipFileEntry(zip, $"artifact_index/{p.Id}_artifact_index.json", content);
+                        AddZipFileEntry(zip, $"artifact_index/{id}_artifact_index.json", content);
                     }
 
                     // video prompts, meta & sidecars
@@ -82,13 +82,13 @@ public sealed class ServerLogExportService
                         {
                             var fn = Path.GetFileName(pf);
                             var content = await File.ReadAllBytesAsync(pf, ct).ConfigureAwait(false);
-                            AddZipFileEntry(zip, $"prompts/{p.Id}/{fn}", content);
+                            AddZipFileEntry(zip, $"prompts/{id}/{fn}", content);
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Failed to collect logs for project {ProjectId}", p.Id);
+                    _logger.LogWarning(ex, "Failed to collect logs for project {ProjectId}", id);
                 }
             }
         }

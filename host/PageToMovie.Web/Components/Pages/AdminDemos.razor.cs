@@ -33,7 +33,7 @@ public partial class AdminDemos
 
     protected override async Task OnInitializedAsync()
     {
-        try { await Session.EnsureHydratedAsync(); } catch { /* */ }
+        try { await Session.EnsureHydratedAsync(); } catch { /* session hydration is best-effort */ }
         HandleYouTubeQuery();
         if (!Session.IsAdmin)
         {

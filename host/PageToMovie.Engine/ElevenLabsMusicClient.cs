@@ -31,7 +31,9 @@ public sealed class ElevenLabsMusicClient : IAudioClient
         _http = http;
         _log = log;
         if (_http.BaseAddress is null)
-            _http.BaseAddress = new Uri(SupportedModelCatalog.ElevenLabsApiBase.TrimEnd('/') + "/");
+            _http.BaseAddress = new Uri(
+                SupportedModelCatalog.ElevenLabsApiBase.TrimEnd(Path.AltDirectorySeparatorChar)
+                + Path.AltDirectorySeparatorChar);
     }
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(ResolveApiKey());

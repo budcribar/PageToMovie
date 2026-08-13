@@ -14,7 +14,7 @@ namespace PageToMovie.Web.Components.Pages;
 
 public partial class Characters_LookPanel
 {
-    [CascadingParameter] public Characters Host { get; set; } = default!;
+    [CascadingParameter] public required Characters Host { get; set; }
     [CascadingParameter] public Characters.CharactersListState? List { get; set; }
 
     [CascadingParameter] public Characters.CharactersJobs? Jobs { get; set; }
