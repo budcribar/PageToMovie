@@ -71,10 +71,10 @@ public sealed class AiActionOverheadClassifier
             null));
     }
 
-    public ActionClassifierEstimation ClassifyNovelAction(string actionDescription, string? parenthetical = null) =>
+    public static ActionClassifierEstimation ClassifyNovelAction(string actionDescription, string? parenthetical = null) =>
         ActionOverheadHeuristic.Classify(actionDescription, parenthetical);
 
-    public ActionClassifierEstimation ClassifyNovelActionHeuristic(string actionDescription, string? parenthetical = null) =>
+    public static ActionClassifierEstimation ClassifyNovelActionHeuristic(string actionDescription, string? parenthetical = null) =>
         ActionOverheadHeuristic.Classify(actionDescription, parenthetical);
 
     private sealed record ActionInput(string ActionDescription, string? Parenthetical)
