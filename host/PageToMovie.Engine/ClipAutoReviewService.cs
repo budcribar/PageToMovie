@@ -381,42 +381,78 @@ public sealed class ClipAutoReviewService
             var root = doc.RootElement;
             if (!root.TryGetProperty("scenes", out var scenes) || scenes.ValueKind != JsonValueKind.Array)
                 return plan;
-            foreach (var s in scenes.EnumerateArray())
-            {
-                if (!s.TryGetProperty("scene_number", out var sn) || !sn.TryGetInt32(out var n) || n != scene)
-                    continue;
-                // Canonical Stage 2 key is veo_clips
-                if ((!s.TryGetProperty("veo_clips", out var clips) || clips.ValueKind != JsonValueKind.Array)
-                    && (!s.TryGetProperty("clips", out clips) || clips.ValueKind != JsonValueKind.Array))
-                    break;
-                foreach (var c in clips.EnumerateArray())
-                {
-                    if (!c.TryGetProperty("clip_number", out var cn) || !cn.TryGetInt32(out var cnum) || cnum != clip)
-                        continue;
-                    plan.VisualPrompt = c.TryGetProperty(VisualPromptKey, out var vp) ? vp.GetString() ?? "" : "";
-                    if (c.TryGetProperty("audio_payload", out var ap) && ap.ValueKind == JsonValueKind.Object)
-                    {
-                        plan.Dialogue = ap.TryGetProperty("dialogue", out var d) ? d.GetString() ?? "" : "";
-                        plan.Speaker = ap.TryGetProperty("speaker", out var sp) ? sp.GetString() ?? "" : "";
-                        plan.Delivery = ap.TryGetProperty("delivery", out var del) ? del.GetString() ?? "" : "";
-                    }
-                    if (c.TryGetProperty("characters_present", out var cp) && cp.ValueKind == JsonValueKind.Array)
-                    {
-                        foreach (var x in cp.EnumerateArray())
-                        {
-                            var k = x.GetString();
-                            if (!string.IsNullOrWhiteSpace(k)) plan.Characters.Add(k);
-                        }
-                    }
-                    return plan;
-                }
-            }
+            var clipEl = FindSceneClip(scenes, scene, clip);
+            if (clipEl is not null)
+                ApplyClipPlanFields(plan, clipEl.Value);
         }
         catch (Exception ex)
         {
             log?.LogDebug(ex, "LoadClipPlan failed");
         }
         return plan;
+    }
+
+    private static JsonElement? FindSceneClip(JsonElement scenes, int scene, int clip)
+    {
+        foreach (var s in scenes.EnumerateArray())
+        {
+            if (!IsSceneNumber(s, scene))
+                continue;
+            if (!TryGetClipsArray(s, out var clips))
+                break;
+            var found = FindClipInArray(clips, clip);
+            if (found is not null)
+                return found;
+        }
+        return null;
+    }
+
+    private static bool IsSceneNumber(JsonElement s, int scene)
+    {
+        if (!s.TryGetProperty("scene_number", out var sn) || !sn.TryGetInt32(out var n) || n != scene)
+            return false;
+        return true;
+    }
+
+    private static bool TryGetClipsArray(JsonElement s, out JsonElement clips)
+    {
+        clips = default;
+        // Canonical Stage 2 key is veo_clips
+        if (s.TryGetProperty("veo_clips", out clips) && clips.ValueKind == JsonValueKind.Array)
+            return true;
+        if (s.TryGetProperty("clips", out clips) && clips.ValueKind == JsonValueKind.Array)
+            return true;
+        return false;
+    }
+
+    private static JsonElement? FindClipInArray(JsonElement clips, int clip)
+    {
+        foreach (var c in clips.EnumerateArray())
+        {
+            if (!c.TryGetProperty("clip_number", out var cn) || !cn.TryGetInt32(out var cnum) || cnum != clip)
+                continue;
+            return c;
+        }
+        return null;
+    }
+
+    private static void ApplyClipPlanFields(ClipPlan plan, JsonElement c)
+    {
+        plan.VisualPrompt = c.TryGetProperty(VisualPromptKey, out var vp) ? vp.GetString() ?? "" : "";
+        if (c.TryGetProperty("audio_payload", out var ap) && ap.ValueKind == JsonValueKind.Object)
+        {
+            plan.Dialogue = ap.TryGetProperty("dialogue", out var d) ? d.GetString() ?? "" : "";
+            plan.Speaker = ap.TryGetProperty("speaker", out var sp) ? sp.GetString() ?? "" : "";
+            plan.Delivery = ap.TryGetProperty("delivery", out var del) ? del.GetString() ?? "" : "";
+        }
+        if (c.TryGetProperty("characters_present", out var cp) && cp.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var x in cp.EnumerateArray())
+            {
+                var k = x.GetString();
+                if (!string.IsNullOrWhiteSpace(k)) plan.Characters.Add(k);
+            }
+        }
     }
 
     private static async Task<string> BuildReviewPromptAsync(
@@ -565,54 +601,9 @@ public sealed class ClipAutoReviewService
             {
                 foreach (var item in arr.EnumerateArray())
                 {
-                    if (item.ValueKind != JsonValueKind.Object) continue;
-                    var layer = GetStr(item, "layer", "clip").ToLowerInvariant();
-                    var field = GetStr(item, "field", "");
-                    if (string.IsNullOrWhiteSpace(field) && item.TryGetProperty("suggested_value", out _))
-                        field = layer == CharacterLayer ? VoiceProfileKey : VisualPromptKey;
-                    var charKey = GetStr(item, "char_key", "") is { Length: > 0 } ck ? ck : null;
-                    if (charKey is null && item.TryGetProperty("charKey", out var ck2))
-                        charKey = ck2.GetString();
-
-                    var suggested = GetStr(item, "suggested_value", "");
-                    if (string.IsNullOrWhiteSpace(suggested))
-                        suggested = GetStr(item, "suggestedValue", "");
-                    if (string.IsNullOrWhiteSpace(suggested)) continue;
-
-                    var current = "";
-                    if (layer == "clip" && field is VisualPromptKey or "prompt")
-                        current = plan.VisualPrompt;
-                    else if (layer == CharacterLayer && charKey is not null &&
-                             profiles.TryGetValue(charKey, out var p))
-                    {
-                        current = field switch
-                        {
-                            "description" => p.Description,
-                            "visual_lock" => p.VisualLock,
-                            VoiceProfileKey => p.VoiceProfile,
-                            _ => "",
-                        };
-                    }
-
-                    var include = true;
-                    if (item.TryGetProperty("include_by_default", out var ib) &&
-                        ib.ValueKind is JsonValueKind.False)
-                        include = false;
-                    if (item.TryGetProperty("includeByDefault", out var ib2) &&
-                        ib2.ValueKind is JsonValueKind.False)
-                        include = false;
-
-                    draft.Suggestions.Add(new ClipAutoReviewSuggestion
-                    {
-                        Layer = layer is CharacterLayer or "scene" ? layer : "clip",
-                        Field = field,
-                        CharKey = charKey,
-                        Label = GetStr(item, "label", field),
-                        CurrentValue = current,
-                        SuggestedValue = suggested,
-                        IncludeByDefault = include,
-                        Rationale = GetStr(item, "rationale", ""),
-                    });
+                    var suggestion = ParseSuggestionItem(item, plan, profiles);
+                    if (suggestion is not null)
+                        draft.Suggestions.Add(suggestion);
                 }
             }
         }
@@ -623,6 +614,85 @@ public sealed class ClipAutoReviewService
         }
 
         return ModelParseResult<ClipAutoReviewDraft>.Success(draft);
+    }
+
+    private static ClipAutoReviewSuggestion? ParseSuggestionItem(
+        JsonElement item,
+        ClipPlan plan,
+        IReadOnlyDictionary<string, ClipVideoPromptBuilder.CharacterProfile> profiles)
+    {
+        if (item.ValueKind != JsonValueKind.Object) return null;
+        var layer = GetStr(item, "layer", "clip").ToLowerInvariant();
+        var field = ResolveSuggestionField(item, layer);
+        var charKey = ResolveSuggestionCharKey(item);
+
+        var suggested = GetStr(item, "suggested_value", "");
+        if (string.IsNullOrWhiteSpace(suggested))
+            suggested = GetStr(item, "suggestedValue", "");
+        if (string.IsNullOrWhiteSpace(suggested)) return null;
+
+        var current = ResolveCurrentValue(layer, field, charKey, plan, profiles);
+        var include = ResolveIncludeByDefault(item);
+
+        return new ClipAutoReviewSuggestion
+        {
+            Layer = layer is CharacterLayer or "scene" ? layer : "clip",
+            Field = field,
+            CharKey = charKey,
+            Label = GetStr(item, "label", field),
+            CurrentValue = current,
+            SuggestedValue = suggested,
+            IncludeByDefault = include,
+            Rationale = GetStr(item, "rationale", ""),
+        };
+    }
+
+    private static string ResolveSuggestionField(JsonElement item, string layer)
+    {
+        var field = GetStr(item, "field", "");
+        if (string.IsNullOrWhiteSpace(field) && item.TryGetProperty("suggested_value", out _))
+            field = layer == CharacterLayer ? VoiceProfileKey : VisualPromptKey;
+        return field;
+    }
+
+    private static string? ResolveSuggestionCharKey(JsonElement item)
+    {
+        var charKey = GetStr(item, "char_key", "") is { Length: > 0 } ck ? ck : null;
+        if (charKey is null && item.TryGetProperty("charKey", out var ck2))
+            charKey = ck2.GetString();
+        return charKey;
+    }
+
+    private static string ResolveCurrentValue(
+        string layer, string field, string? charKey, ClipPlan plan,
+        IReadOnlyDictionary<string, ClipVideoPromptBuilder.CharacterProfile> profiles)
+    {
+        if (layer == "clip" && field is VisualPromptKey or "prompt")
+            return plan.VisualPrompt;
+        if (layer == CharacterLayer && charKey is not null &&
+            profiles.TryGetValue(charKey, out var p))
+        {
+            return field switch
+            {
+                "description" => p.Description,
+                "visual_lock" => p.VisualLock,
+                VoiceProfileKey => p.VoiceProfile,
+                _ => "",
+            };
+        }
+        return "";
+    }
+
+    private static bool ResolveIncludeByDefault(JsonElement item)
+    {
+        var include = true;
+        if (item.TryGetProperty("include_by_default", out var ib) &&
+            ib.ValueKind is JsonValueKind.False)
+            include = false;
+        if (item.TryGetProperty("includeByDefault", out var ib2) &&
+            ib2.ValueKind is JsonValueKind.False)
+            include = false;
+        return include;
     }
 
     internal static IReadOnlyList<ModelValidationIssue> ValidateDraft(ClipAutoReviewDraft draft)

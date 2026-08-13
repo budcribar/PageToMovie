@@ -184,8 +184,60 @@ public sealed class Stage2PlannerService
         // Overlay plate/voice edits from cast_seeds.json when present
         MergeCastSeedsOverlay(_projects, projectId, stage1);
 
-        // AI enrichments (each: chat preferred → retry → heuristic fallback).
-        // All use the Settings Script & planning model — no host option invent defaults.
+        var (classifyMeta, enrichMeta) = await RunStage1EnrichmentsAsync(stage1, onProgress, ct, planningModel)
+            .ConfigureAwait(false);
+
+        var gpv = GetDict(stage1, Keys.GlobalProductionVariables);
+        var locSeeds = GetDict(gpv, "location_seed_tokens");
+        var charSeeds = GetDict(gpv, Keys.CharacterSeedTokens);
+        NormalizeCharPlaceholders(charSeeds);
+
+        var want = ParseSceneRange(scenes);
+        var scenesIn = FilterScenesToRange(GetScenes(stage1), want);
+
+        if (scenesIn.Count == 0)
+            throw new InvalidOperationException("Screenplay has no scenes to plan.");
+
+        onProgress?.Invoke($"Planning {scenesIn.Count} scene(s) @ {resolution}…");
+        var styleLock = CoerceString(gpv.TryGetValue("render_style_lock", out var rsl) ? rsl : null);
+
+        var planned = await PlanScenesInParallelAsync(
+                scenesIn, locSeeds, charSeeds, styleLock,
+                durMinSeconds, durMaxSeconds, durAbsMaxSeconds, durExtensionMaxSeconds, maxSpeakersPerClip,
+                planningModel, onProgress, ct)
+            .ConfigureAwait(false);
+
+        if (planned.Count == 0)
+            throw new InvalidOperationException("Screenplay has no filmable scenes to plan.");
+
+        var outPath = await _projects.FindBlueprintPathAsync(projectId, ct).ConfigureAwait(false)
+            ?? Path.Combine(projectDir, "blueprint.clips.grok.json");
+        BackupExistingBlueprint(outPath, onProgress);
+
+        // Single source of truth for the auto-inserted credits scene's content (title + author + creator site).
+        var creditsVisualPrompt = _projects.BuildCreditsVisualPrompt(projectId);
+
+        var plan = await LoadOrBuildPlanAsync(
+                want, outPath, planned, stage1, gpv, sourceLabel, resolution, scenes,
+                classifyMeta, enrichMeta, creditsVisualPrompt, onProgress, ct)
+            .ConfigureAwait(false);
+
+        return await FinalizeAndWritePlanAsync(
+                plan, stage1, projectId, projectDir, outPath, videoModelId, planningModel,
+                sourceLabel, resolution, scenes, enrichMeta, operationTrace, onProgress, ct)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// AI enrichments (each: chat preferred → retry → heuristic fallback).
+    /// All use the Settings Script & planning model — no host option invent defaults.
+    /// </summary>
+    private async Task<(SilentBeatClassifyResult? ClassifyMeta, Dictionary<string, object?> EnrichMeta)> RunStage1EnrichmentsAsync(
+        Dictionary<string, object?> stage1,
+        Action<string>? onProgress,
+        CancellationToken ct,
+        string planningModel)
+    {
         SilentBeatClassifyResult? classifyMeta = null;
         var enrichMeta = new Dictionary<string, object?>();
         if (_silentBeatClassifier is not null)
@@ -219,160 +271,228 @@ public sealed class Stage2PlannerService
                 .ConfigureAwait(false);
             enrichMeta["extend_hardcut"] = ext.ToMetaDict();
         }
+        return (classifyMeta, enrichMeta);
+    }
 
-        var gpv = GetDict(stage1, Keys.GlobalProductionVariables);
-        var locSeeds = GetDict(gpv, "location_seed_tokens");
-        var charSeeds = GetDict(gpv, Keys.CharacterSeedTokens);
-        NormalizeCharPlaceholders(charSeeds);
+    private static List<Dictionary<string, object?>> FilterScenesToRange(
+        List<Dictionary<string, object?>> scenes,
+        HashSet<int>? want)
+    {
+        return scenes.Where(s => SceneMatchesRange(s, want)).ToList();
+    }
 
-        var want = ParseSceneRange(scenes);
-        var scenesIn = GetScenes(stage1)
-            .Where(s =>
-            {
-                if (want is null) return true;
-                var n = ToInt(s.TryGetValue(JsonKeys.SceneNumber, out var sn) ? sn : 0);
-                return want.Contains(n);
-            })
-            .ToList();
+    private static bool SceneMatchesRange(Dictionary<string, object?> scene, HashSet<int>? want)
+    {
+        if (want is null) return true;
+        var n = ToInt(scene.TryGetValue(JsonKeys.SceneNumber, out var sn) ? sn : 0);
+        return want.Contains(n);
+    }
 
-        if (scenesIn.Count == 0)
-            throw new InvalidOperationException("Screenplay has no scenes to plan.");
-
-        onProgress?.Invoke($"Planning {scenesIn.Count} scene(s) @ {resolution}…");
-        var styleLock = CoerceString(gpv.TryGetValue("render_style_lock", out var rsl) ? rsl : null);
-
-        // Fan out scenes with a small concurrency cap. Within each scene the 9 classifiers
-        // already run via Task.WhenAll; without a scene-level cap that would be 9×N concurrent
-        // chat calls (provider throttling + noisy progress). Degree 2 ≈ 18 peak chat calls.
+    /// <summary>
+    /// Fan out scenes with a small concurrency cap. Within each scene the 9 classifiers
+    /// already run via Task.WhenAll; without a scene-level cap that would be 9×N concurrent
+    /// chat calls (provider throttling + noisy progress). Degree 2 ≈ 18 peak chat calls.
+    /// </summary>
+    private async Task<List<Dictionary<string, object?>>> PlanScenesInParallelAsync(
+        List<Dictionary<string, object?>> scenesIn,
+        Dictionary<string, object?> locSeeds,
+        Dictionary<string, object?> charSeeds,
+        string? styleLock,
+        int durMinSeconds,
+        int durMaxSeconds,
+        int durAbsMaxSeconds,
+        int durExtensionMaxSeconds,
+        int maxSpeakersPerClip,
+        string planningModel,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
         const int maxParallelScenes = 2;
-        var totalScenes = scenesIn.Count;
-        var completedScenes = 0;
-        var plannedBag = new System.Collections.Concurrent.ConcurrentBag<(int SceneNumber, Dictionary<string, object?> Scene)>();
-        using var sceneGate = new SemaphoreSlim(maxParallelScenes);
-        var progressGate = new object();
-
-        void Report(string line)
+        var fanout = new SceneFanoutState
         {
-            lock (progressGate)
-                onProgress?.Invoke(line);
+            TotalScenes = scenesIn.Count,
+            SceneGate = new SemaphoreSlim(maxParallelScenes),
+            ProgressGate = new object(),
+            OnProgress = onProgress,
+            PlannedBag = new System.Collections.Concurrent.ConcurrentBag<(int SceneNumber, Dictionary<string, object?> Scene)>(),
+        };
+        using (fanout.SceneGate)
+        {
+            var sceneTasks = scenesIn.Select(s => PlanOneSceneAsync(
+                    s, locSeeds, charSeeds, styleLock,
+                    durMinSeconds, durMaxSeconds, durAbsMaxSeconds, durExtensionMaxSeconds, maxSpeakersPerClip,
+                    planningModel, fanout, ct))
+                .ToArray();
+            await Task.WhenAll(sceneTasks).ConfigureAwait(false);
         }
 
-        var sceneTasks = scenesIn.Select(async s =>
-        {
-            ct.ThrowIfCancellationRequested();
-            var sn = ToInt(s.TryGetValue(JsonKeys.SceneNumber, out var n) ? n : 0);
-            await sceneGate.WaitAsync(ct).ConfigureAwait(false);
-            try
-            {
-                Report($"Scene {sn} of {totalScenes}…");
-                // All 9 read only from `s` / their own independently-built sceneBeats clone and
-                // return a fresh result — none mutate shared state — so they run concurrently
-                // instead of one round-trip at a time. Each classifier's underlying IChatClient
-                // sets auth per-request now (not on shared HttpClient.DefaultRequestHeaders), so
-                // this fan-out is safe there too.
-                var pacingTask = _beatPacingClassifier is not null
-                    ? _beatPacingClassifier.ClassifyScenePacingAsync(s, BuildSceneBeats(s, durMaxSeconds), line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
-                    : Task.FromResult<Dictionary<string, int>?>(null);
-                var lightingTask = _lightingClassifier is not null
-                    ? _lightingClassifier.ClassifySceneLightingAsync(s, line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
-                    : Task.FromResult<string?>(null);
-                var cameraTask = _cameraClassifier is not null
-                    ? _cameraClassifier.ClassifySceneCameraAsync(s, BuildSceneBeats(s, durMaxSeconds), line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
-                    : Task.FromResult<Dictionary<string, CameraDirective>?>(null);
-                var negativeTask = _negativeClassifier is not null
-                    ? _negativeClassifier.ClassifySceneNegativeAsync(s, line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
-                    : Task.FromResult<string?>(null);
-                var wardrobeTask = _wardrobeClassifier is not null
-                    ? _wardrobeClassifier.ClassifySceneWardrobeAsync(s, UnionCharactersOnScreen(s), line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
-                    : Task.FromResult<Dictionary<string, string>?>(null);
-                var emotionTask = _emotionClassifier is not null
-                    ? _emotionClassifier.ClassifySceneEmotionAsync(s, BuildSceneBeats(s, durMaxSeconds), line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
-                    : Task.FromResult<Dictionary<string, EmotionDirective>?>(null);
-                var soundTask = _soundComposerClassifier is not null
-                    ? _soundComposerClassifier.ClassifySceneSoundDesignAsync(s, BuildSceneBeats(s, durMaxSeconds), line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
-                    : Task.FromResult<Dictionary<string, SoundDesignDirective>?>(null);
-                var dofTask = _dofClassifier is not null
-                    ? _dofClassifier.ClassifySceneDepthOfFieldAsync(s, BuildSceneBeats(s, durMaxSeconds), line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
-                    : Task.FromResult<Dictionary<string, DepthOfFieldDirective>?>(null);
-                var colorTask = _colorGradingClassifier is not null
-                    ? _colorGradingClassifier.ClassifySceneColorGradingAsync(s, line => Report($"  Scene {sn}: {line}"), ct, model: planningModel)
-                    : Task.FromResult<ColorGradingDirective?>(null);
-
-                await Task.WhenAll(
-                    pacingTask, lightingTask, cameraTask, negativeTask, wardrobeTask,
-                    emotionTask, soundTask, dofTask, colorTask).ConfigureAwait(false);
-
-                var plannedScene = PlanScene(
-                    s, locSeeds, charSeeds, styleLock,
-                    pacingTask.Result, lightingTask.Result, cameraTask.Result, negativeTask.Result,
-                    wardrobeTask.Result, emotionTask.Result, soundTask.Result, dofTask.Result, colorTask.Result,
-                    durMinSeconds, durMaxSeconds, durAbsMaxSeconds, durExtensionMaxSeconds, maxSpeakersPerClip);
-                // Skip transition-only phantoms (e.g. FADE IN before first heading)
-                if (plannedScene is null)
-                {
-                    Report($"Scene {sn} of {totalScenes}: skipped (no filmable content)");
-                    return;
-                }
-                if (_shotPlanRefiner is not null)
-                {
-                    await _shotPlanRefiner.RefinePlannedSceneAsync(
-                        plannedScene,
-                        line => Report($"  Scene {sn}: {line}"),
-                        ct,
-                        model: planningModel).ConfigureAwait(false);
-                }
-                plannedBag.Add((sn, plannedScene));
-            }
-            finally
-            {
-                var done = Interlocked.Increment(ref completedScenes);
-                Report($"Planning scenes: {done}/{totalScenes} complete");
-                sceneGate.Release();
-            }
-        }).ToArray();
-
-        await Task.WhenAll(sceneTasks).ConfigureAwait(false);
-
-        var planned = plannedBag
+        return fanout.PlannedBag
             .OrderBy(x => x.SceneNumber)
             .Select(x => x.Scene)
             .ToList();
+    }
 
-        if (planned.Count == 0)
-            throw new InvalidOperationException("Screenplay has no filmable scenes to plan.");
-
-        var outPath = await _projects.FindBlueprintPathAsync(projectId, ct).ConfigureAwait(false)
-            ?? Path.Combine(projectDir, "blueprint.clips.grok.json");
-        if (File.Exists(outPath))
+    private async Task PlanOneSceneAsync(
+        Dictionary<string, object?> s,
+        Dictionary<string, object?> locSeeds,
+        Dictionary<string, object?> charSeeds,
+        string? styleLock,
+        int durMinSeconds,
+        int durMaxSeconds,
+        int durAbsMaxSeconds,
+        int durExtensionMaxSeconds,
+        int maxSpeakersPerClip,
+        string planningModel,
+        SceneFanoutState fanout,
+        CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        var sn = ToInt(s.TryGetValue(JsonKeys.SceneNumber, out var n) ? n : 0);
+        await fanout.SceneGate.WaitAsync(ct).ConfigureAwait(false);
+        try
         {
-            var bak = outPath + $".bak_pre_stage2_{DateTime.Now:yyyyMMdd_HHmmss}";
-            File.Copy(outPath, bak, overwrite: true);
-            onProgress?.Invoke($"Backed up blueprint → {Path.GetFileName(bak)}");
+            fanout.Report($"Scene {sn} of {fanout.TotalScenes}…");
+            var tasks = StartSceneClassifierTasks(s, sn, durMaxSeconds, planningModel, fanout, ct);
+            await Task.WhenAll(
+                tasks.Pacing, tasks.Lighting, tasks.Camera, tasks.Negative, tasks.Wardrobe,
+                tasks.Emotion, tasks.Sound, tasks.Dof, tasks.Color).ConfigureAwait(false);
+
+            var plannedScene = PlanScene(
+                s, locSeeds, charSeeds, styleLock,
+                tasks.Pacing.Result, tasks.Lighting.Result, tasks.Camera.Result, tasks.Negative.Result,
+                tasks.Wardrobe.Result, tasks.Emotion.Result, tasks.Sound.Result, tasks.Dof.Result, tasks.Color.Result,
+                durMinSeconds, durMaxSeconds, durAbsMaxSeconds, durExtensionMaxSeconds, maxSpeakersPerClip);
+            // Skip transition-only phantoms (e.g. FADE IN before first heading)
+            if (plannedScene is null)
+            {
+                fanout.Report($"Scene {sn} of {fanout.TotalScenes}: skipped (no filmable content)");
+                return;
+            }
+            if (_shotPlanRefiner is not null)
+            {
+                await _shotPlanRefiner.RefinePlannedSceneAsync(
+                    plannedScene,
+                    line => fanout.Report($"  Scene {sn}: {line}"),
+                    ct,
+                    model: planningModel).ConfigureAwait(false);
+            }
+            fanout.PlannedBag.Add((sn, plannedScene));
         }
+        finally
+        {
+            var done = Interlocked.Increment(ref fanout.CompletedScenes);
+            fanout.Report($"Planning scenes: {done}/{fanout.TotalScenes} complete");
+            fanout.SceneGate.Release();
+        }
+    }
 
-        // Single source of truth for the auto-inserted credits scene's content (title + author + creator site).
-        var creditsVisualPrompt = _projects.BuildCreditsVisualPrompt(projectId);
+    /// <summary>
+    /// All 9 read only from <c>s</c> / their own independently-built sceneBeats clone and
+    /// return a fresh result — none mutate shared state — so they run concurrently
+    /// instead of one round-trip at a time. Each classifier's underlying IChatClient
+    /// sets auth per-request now (not on shared HttpClient.DefaultRequestHeaders), so
+    /// this fan-out is safe there too.
+    /// </summary>
+    private SceneClassifierTasks StartSceneClassifierTasks(
+        Dictionary<string, object?> s,
+        int sn,
+        int durMaxSeconds,
+        string planningModel,
+        SceneFanoutState fanout,
+        CancellationToken ct)
+    {
+        Action<string> report = line => fanout.Report($"  Scene {sn}: {line}");
+        var pacingTask = _beatPacingClassifier is not null
+            ? _beatPacingClassifier.ClassifyScenePacingAsync(s, BuildSceneBeats(s, durMaxSeconds), report, ct, model: planningModel)
+            : Task.FromResult<Dictionary<string, int>?>(null);
+        var lightingTask = _lightingClassifier is not null
+            ? _lightingClassifier.ClassifySceneLightingAsync(s, report, ct, model: planningModel)
+            : Task.FromResult<string?>(null);
+        var cameraTask = _cameraClassifier is not null
+            ? _cameraClassifier.ClassifySceneCameraAsync(s, BuildSceneBeats(s, durMaxSeconds), report, ct, model: planningModel)
+            : Task.FromResult<Dictionary<string, CameraDirective>?>(null);
+        var negativeTask = _negativeClassifier is not null
+            ? _negativeClassifier.ClassifySceneNegativeAsync(s, report, ct, model: planningModel)
+            : Task.FromResult<string?>(null);
+        var wardrobeTask = _wardrobeClassifier is not null
+            ? _wardrobeClassifier.ClassifySceneWardrobeAsync(s, UnionCharactersOnScreen(s), report, ct, model: planningModel)
+            : Task.FromResult<Dictionary<string, string>?>(null);
+        var emotionTask = _emotionClassifier is not null
+            ? _emotionClassifier.ClassifySceneEmotionAsync(s, BuildSceneBeats(s, durMaxSeconds), report, ct, model: planningModel)
+            : Task.FromResult<Dictionary<string, EmotionDirective>?>(null);
+        var soundTask = _soundComposerClassifier is not null
+            ? _soundComposerClassifier.ClassifySceneSoundDesignAsync(s, BuildSceneBeats(s, durMaxSeconds), report, ct, model: planningModel)
+            : Task.FromResult<Dictionary<string, SoundDesignDirective>?>(null);
+        var dofTask = _dofClassifier is not null
+            ? _dofClassifier.ClassifySceneDepthOfFieldAsync(s, BuildSceneBeats(s, durMaxSeconds), report, ct, model: planningModel)
+            : Task.FromResult<Dictionary<string, DepthOfFieldDirective>?>(null);
+        var colorTask = _colorGradingClassifier is not null
+            ? _colorGradingClassifier.ClassifySceneColorGradingAsync(s, report, ct, model: planningModel)
+            : Task.FromResult<ColorGradingDirective?>(null);
+        return new SceneClassifierTasks(
+            pacingTask, lightingTask, cameraTask, negativeTask, wardrobeTask,
+            emotionTask, soundTask, dofTask, colorTask);
+    }
 
-        Dictionary<string, object?> plan;
+    private static void BackupExistingBlueprint(string outPath, Action<string>? onProgress)
+    {
+        if (!File.Exists(outPath))
+            return;
+        var bak = outPath + $".bak_pre_stage2_{DateTime.Now:yyyyMMdd_HHmmss}";
+        File.Copy(outPath, bak, overwrite: true);
+        onProgress?.Invoke($"Backed up blueprint → {Path.GetFileName(bak)}");
+    }
+
+    private static async Task<Dictionary<string, object?>> LoadOrBuildPlanAsync(
+        HashSet<int>? want,
+        string outPath,
+        List<Dictionary<string, object?>> planned,
+        Dictionary<string, object?> stage1,
+        Dictionary<string, object?> gpv,
+        string sourceLabel,
+        string resolution,
+        string scenes,
+        SilentBeatClassifyResult? classifyMeta,
+        Dictionary<string, object?> enrichMeta,
+        string? creditsVisualPrompt,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
         if (want is not null && File.Exists(outPath))
         {
             try
             {
                 var existingText = await File.ReadAllTextAsync(outPath, ct).ConfigureAwait(false);
                 var existing = GrokChatClient.ParseJsonObject(existingText);
-                plan = MergePlannedScenes(existing, planned, stage1, gpv, sourceLabel, resolution, scenes, classifyMeta, enrichMeta, creditsVisualPrompt);
+                var merged = MergePlannedScenes(existing, planned, stage1, gpv, sourceLabel, resolution, scenes, classifyMeta, enrichMeta, creditsVisualPrompt);
                 onProgress?.Invoke("Merged planned scenes into existing blueprint");
+                return merged;
             }
             catch
             {
-                plan = BuildFullPlan(stage1, gpv, planned, sourceLabel, resolution, scenes, classifyMeta, enrichMeta, creditsVisualPrompt);
+                return BuildFullPlan(stage1, gpv, planned, sourceLabel, resolution, scenes, classifyMeta, enrichMeta, creditsVisualPrompt);
             }
         }
-        else
-        {
-            plan = BuildFullPlan(stage1, gpv, planned, sourceLabel, resolution, scenes, classifyMeta, enrichMeta, creditsVisualPrompt);
-        }
 
+        return BuildFullPlan(stage1, gpv, planned, sourceLabel, resolution, scenes, classifyMeta, enrichMeta, creditsVisualPrompt);
+    }
+
+    private async Task<Stage2PlanResult> FinalizeAndWritePlanAsync(
+        Dictionary<string, object?> plan,
+        Dictionary<string, object?> stage1,
+        string projectId,
+        string projectDir,
+        string outPath,
+        string videoModelId,
+        string planningModel,
+        string sourceLabel,
+        string resolution,
+        string scenes,
+        Dictionary<string, object?> enrichMeta,
+        ModelOperationTraceScope operationTrace,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
         // Heal: a character on-screen in a clip is by definition on-screen in the scene. Union each
         // clip's cast into its scene cast so a model that under-listed the scene cast (e.g. omitting
         // the lead) does not hard-fail the clip⊆scene validation below.
@@ -408,12 +528,7 @@ public sealed class Stage2PlannerService
         // scene downstream (the stitch concatenates one file per veo_clips entry). Throwing here catches
         // the bug during generation, before any video spend, and never touches an already-saved movie.
         var planJson = JsonSerializer.Serialize(plan, JsonWrite);
-        using (var planDoc = System.Text.Json.JsonDocument.Parse(planJson))
-        {
-            if (BlueprintClipValidation.DescribeDuplicates(planDoc.RootElement) is { } dupDesc)
-                throw new InvalidOperationException(
-                    "Shot plan has duplicate clip numbers (each duplicate would double its scene): " + dupDesc);
-        }
+        ThrowIfDuplicateClipNumbers(planJson);
 
         await File.WriteAllTextAsync(outPath, planJson + "\n", ct).ConfigureAwait(false);
         var meta = GetDict(plan, Keys.Stage2Meta);
@@ -433,6 +548,14 @@ public sealed class Stage2PlannerService
             ClipCount = totalClips,
             DurationSeconds = totalDur,
         };
+    }
+
+    private static void ThrowIfDuplicateClipNumbers(string planJson)
+    {
+        using var planDoc = System.Text.Json.JsonDocument.Parse(planJson);
+        if (BlueprintClipValidation.DescribeDuplicates(planDoc.RootElement) is { } dupDesc)
+            throw new InvalidOperationException(
+                "Shot plan has duplicate clip numbers (each duplicate would double its scene): " + dupDesc);
     }
 
     /// <summary>
@@ -716,25 +839,10 @@ public sealed class Stage2PlannerService
         // Moved ahead of coalescing (was computed after) — PrecomputeExtendsFromPrevious needs the
         // same location fallback chain the final per-clip loop uses, and this is scene-only data
         // that doesn't depend on the beat list.
-        var lids = GetList(scene, "location_ids").Select(x => x?.ToString() ?? "").Where(x => x.Length > 0).ToList();
-        var primary = CoerceString(scene.TryGetValue("primary_location_id", out var pl) ? pl : null)
-                      ?? (lids.Count > 0 ? lids[0] : null);
+        var lids = CollectLocationIds(scene);
+        var primary = ResolvePrimaryLocation(scene, lids);
 
-        // Idempotent: monologues already split at fountain import stay; legacy long cues expand here
-        beats = ClipDurationEstimator.ExpandLongDialogueBeats(beats, modelMaxSeconds: maxSeconds);
-        beats = CoalesceSilentPreludeBeats(beats);
-        // Recomputed fresh before each coalescing pass (not carried through) since the beat list's
-        // indices shift as beats get merged — cheap, pure local computation either way. See
-        // PrecomputeExtendsFromPrevious's doc comment for why using each merge group's first beat
-        // is equivalent to the final per-clip ForceNone decision.
-        beats = CoalesceShortMonologueBeats(
-            beats, maxSeconds, effectiveExtensionMax, PrecomputeExtendsFromPrevious(beats, primary, lids));
-        // Two-hander coalescing only when the video model can render >=2 speakers in one clip.
-        // At 1 (e.g. Grok today) each dialogue beat stays its own clip — one speaker per clip,
-        // shot-reverse-shot, which gives the cleanest lip-sync and avoids face morphing.
-        beats = ApplyCrossSpeakerCoalescing(
-            beats, maxSpeakersPerClip, maxSeconds, effectiveExtensionMax,
-            PrecomputeExtendsFromPrevious(beats, primary, lids));
+        beats = ApplyBeatCoalescing(beats, primary, lids, maxSeconds, effectiveExtensionMax, maxSpeakersPerClip);
         var cast = UnionCharactersOnScreen(scene);
 
         // Entire scene was only FADE IN / CUT TO — omit (no empty clip)
@@ -757,17 +865,7 @@ public sealed class Stage2PlannerService
             maxSeconds: maxSeconds,
             absMaxSeconds: absMaxSeconds);
 
-        if (aiPacing is not null && aiPacing.Count > 0)
-        {
-            for (var i = 0; i < beats.Count; i++)
-            {
-                var bid = CoerceString(beats[i].TryGetValue("beat_id", out var bval) ? bval : null) ?? $"b{i + 1}";
-                if (aiPacing.TryGetValue(bid, out var customDur))
-                {
-                    durs[i] = customDur;
-                }
-            }
-        }
+        ApplyAiPacingOverrides(beats, durs, aiPacing);
         var total = durs.Sum();
 
         var sceneWork = new Dictionary<string, object?>(sceneInput)
@@ -778,16 +876,7 @@ public sealed class Stage2PlannerService
             sceneWork["render_style_lock"] = styleLock;
 
         var wardrobe = InitWardrobeState(cast, charSeeds, scene);
-        if (aiWardrobe is not null && aiWardrobe.Count > 0)
-        {
-            foreach (var (k, v) in aiWardrobe)
-            {
-                if (!string.IsNullOrWhiteSpace(v))
-                {
-                    wardrobe[k] = new List<string> { v };
-                }
-            }
-        }
+        ApplyAiWardrobeOverrides(wardrobe, aiWardrobe);
         var clips = new List<object?>();
         var beatMap = new List<object?>();
         var t = 0;
@@ -799,172 +888,370 @@ public sealed class Stage2PlannerService
 
         for (var i = 0; i < beats.Count; i++)
         {
-            var beat = beats[i];
-            var dur = durs[i];
-            var lid = CoerceString(beat.TryGetValue(Keys.LocationId, out var bl) ? bl : null)
-                      ?? primary ?? (lids.Count > 0 ? lids[0] : null);
-            var cont = ForceNone(beat, i, prevBeat, prevLid, lid) ? "none" : "extend_previous";
-            if (string.Equals(CoerceString(beat.TryGetValue(Keys.ActionClass, out var ac) ? ac : null),
-                    Keys.BigAction, StringComparison.OrdinalIgnoreCase))
-                cont = "none";
-            if (prevLid is not null && lid is not null && prevLid != lid)
-                cont = "none";
-
-            var clipCast = ClipCastTokens(sceneWork, beat, charSeeds);
-            var ps = CoerceString(beat.TryGetValue(Keys.PrimarySubject, out var psv) ? psv : null) ?? "";
-            if (ps.StartsWith(JsonKeys.CharacterPrefix, StringComparison.Ordinal) && !clipCast.Contains(ps))
-                clipCast.Insert(0, ps);
-
-            UpdateWardrobeFromBeat(wardrobe, beat, clipCast);
-
-            // Track continuous monologue step
-            var dlg = CoerceString(beat.TryGetValue(JsonKeys.Dialogue, out var dv) ? dv : null);
-            var spk = CoerceString(beat.TryGetValue(JsonKeys.Speaker, out var sv) ? sv : null);
-            if (!string.IsNullOrWhiteSpace(dlg) && !string.IsNullOrWhiteSpace(spk))
-            {
-                if (string.Equals(activeSpeaker, spk, StringComparison.OrdinalIgnoreCase))
-                {
-                    monologueStep++;
-                }
-                else
-                {
-                    activeSpeaker = spk;
-                    monologueStep = 0;
-                }
-            }
-            else
-            {
-                activeSpeaker = null;
-                monologueStep = 0;
-            }
-
-            // Continuity + resolution/fps are owned by ClipVideoPromptBuilder at gen time —
-            // keep blueprint visual_prompt declarative (action/style only).
-            var vp = BuildVisualPrompt(beat, sceneWork, locSeeds, charSeeds, wardrobe, i);
-
-            // AI cinematic lighting/mood token (locks lighting style across the scene's shots) —
-            // previously computed by CinematicLightingClassifier and stored on the scene as
-            // lighting_continuity_token, but never appended to any clip's visual_prompt, so it
-            // never reached the actual video-generation call. Appended here the same way camera/
-            // performance/optics/color directives already are below.
-            if (!string.IsNullOrWhiteSpace(aiLighting))
-                vp = $"{vp} {PromptTags.Wrap("Lighting", PromptTags.SanitizeValue(aiLighting))}";
-
-            // Story-specific negatives only; provider global negatives applied at gen time.
-            var neg = BuildStoryNegativePrompt(beat, wardrobe, clipCast);
-            if (!string.IsNullOrWhiteSpace(aiNegative))
-            {
-                neg = string.IsNullOrWhiteSpace(neg) ? aiNegative : $"{neg}, {aiNegative}";
-            }
-
-            var beatIdStr = CoerceString(beat.TryGetValue("beat_id", out var bi) ? bi : null) ?? $"b{i + 1}";
-            var sourceBeatIds = PageToMovie.Core.Utils.StableBeatId.CollectIds(beat);
-            if (sourceBeatIds.Count == 0 && !string.IsNullOrWhiteSpace(beatIdStr))
-                sourceBeatIds.Add(beatIdStr);
-            string? cameraMoveToken = null;
-            if (aiCamera is not null && aiCamera.TryGetValue(beatIdStr, out var camDir))
-            {
-                if (!string.IsNullOrWhiteSpace(camDir.FramingPrompt))
-                    vp = $"{vp} {PromptTags.Wrap("Camera", PromptTags.SanitizeValue(camDir.FramingPrompt))}";
-                cameraMoveToken = $"{camDir.LensSpec}, {camDir.CameraMovement}";
-            }
-            else if (!string.IsNullOrWhiteSpace(dlg))
-            {
-                var spkDisplay = !string.IsNullOrWhiteSpace(spk) ? DisplayNameForKey(spk, charSeeds) : JsonKeys.Speaker;
-                // OTS only when ≥2 on-screen — solo monologue must not invent a listener.
-                var framing = GetMonologueCameraFraming(monologueStep, spkDisplay, clipCast.Count);
-                vp = $"{vp} {PromptTags.Wrap("Camera", PromptTags.SanitizeValue(framing))}";
-            }
-
-            if (aiEmotion is not null && aiEmotion.TryGetValue(beatIdStr, out var emoDir) &&
-                !string.IsNullOrWhiteSpace(emoDir.ActingPrompt))
-            {
-                vp = $"{vp} {PromptTags.Wrap("Performance", PromptTags.SanitizeValue(emoDir.ActingPrompt))}";
-            }
-
-            if (aiDof is not null && aiDof.TryGetValue(beatIdStr, out var dofDir) &&
-                !string.IsNullOrWhiteSpace(dofDir.Aperture))
-            {
-                vp = $"{vp} {PromptTags.Wrap("Optics", PromptTags.SanitizeValue(dofDir.Aperture))}";
-            }
-
-            if (aiColor is not null && !string.IsNullOrWhiteSpace(aiColor.GradingPrompt))
-            {
-                vp = $"{vp} {aiColor.GradingPrompt}";
-            }
-
-            var actionClassVal = beat.TryGetValue(Keys.ActionClass, out var beatAc) ? beatAc : null;
-            var primaryVal = beat.TryGetValue(Keys.PrimarySubject, out var psub) ? psub : null;
-            var audioPayload = BuildAudioPayload(beat, aiSound is not null && aiSound.TryGetValue(beatIdStr, out var sd) ? sd : null);
-            var speakerForFocus = CoerceString(beat.TryGetValue(JsonKeys.Speaker, out var spkFocus) ? spkFocus : null);
-            var secondarySpeakerForFocus = CoerceString(beat.TryGetValue(Keys.SecondarySpeaker, out var spkFocus2) ? spkFocus2 : null);
-            var focusKeys = ClipVideoPromptBuilder.ResolveFocusKeys(
-                    clipCast,
-                    CoerceString(primaryVal),
-                    speakerForFocus,
-                    CoerceString(actionClassVal),
-                    secondarySpeakerForFocus)
-                .OrderBy(k => k, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-
-            var clipDict = new Dictionary<string, object?>
-            {
-                [JsonKeys.ClipNumber] = i + 1,
-                ["timestamp"] = FormatTs(t, t + dur),
-                ["veo_continuation_source"] = cont,
-                [Keys.LocationId] = lid,
-                ["visual_prompt"] = vp,
-                ["negative_prompt"] = neg,
-                [JsonKeys.AudioPayload] = audioPayload,
-                ["stage1_beat_id"] = beatIdStr,
-                ["stage1_beat_ids"] = sourceBeatIds.Cast<object?>().ToList(),
-                [Keys.PrimarySubject] = primaryVal,
-                // Propagate for gen-time duration (EstimateForClip) — silent big_action etc.
-                [Keys.ActionClass] = actionClassVal,
-                [Keys.CharactersOnScreen] = clipCast.Cast<object?>().ToList(),
-                // Full identity lock at gen; others on-screen get compact "also present" lines
-                ["focus_keys"] = focusKeys.Cast<object?>().ToList(),
-                [Keys.DurationSeconds] = dur,
-            };
-
-            if (aiColor is not null)
-            {
-                if (!string.IsNullOrWhiteSpace(aiColor.FilmStock))
-                    clipDict["film_stock"] = aiColor.FilmStock;
-                if (!string.IsNullOrWhiteSpace(aiColor.ColorPalette))
-                    clipDict["color_palette"] = aiColor.ColorPalette;
-            }
-
-            if (aiDof is not null && aiDof.TryGetValue(beatIdStr, out var dfd))
-            {
-                clipDict["aperture"] = dfd.Aperture;
-                clipDict["focal_plane"] = dfd.FocalPlane;
-                if (!string.IsNullOrWhiteSpace(dfd.RackFocus))
-                    clipDict["rack_focus"] = dfd.RackFocus;
-            }
-
-            if (aiEmotion is not null && aiEmotion.TryGetValue(beatIdStr, out var ed))
-            {
-                clipDict["acting_intensity"] = ed.Intensity;
-                if (!string.IsNullOrWhiteSpace(ed.MicroExpression))
-                    clipDict["micro_expression"] = ed.MicroExpression;
-            }
-
-            if (aiCamera is not null && aiCamera.TryGetValue(beatIdStr, out var cd))
-            {
-                clipDict["shot_scale_hint"] = cd.ShotScale;
-                if (!string.IsNullOrWhiteSpace(cameraMoveToken))
-                    clipDict["camera_movement_token"] = cameraMoveToken;
-            }
-
-            clips.Add(clipDict);
-            beatMap.Add(beatIdStr);
-            t += dur;
-            prevLid = lid;
-            prevBeat = beat;
+            var planned = PlanSingleClip(
+                beats[i], i, durs[i], t, sceneWork, locSeeds, charSeeds, wardrobe, lids, primary,
+                prevBeat, prevLid, activeSpeaker, monologueStep,
+                aiLighting, aiNegative, aiCamera, aiEmotion, aiSound, aiDof, aiColor);
+            clips.Add(planned.Clip);
+            beatMap.Add(planned.BeatId);
+            t += planned.Duration;
+            prevLid = planned.LocationId;
+            prevBeat = beats[i];
+            activeSpeaker = planned.ActiveSpeaker;
+            monologueStep = planned.MonologueStep;
         }
 
         return BaseSceneShell(scene, lids, primary, cast, total, clips, beatMap);
+    }
+
+    private static List<string> CollectLocationIds(Dictionary<string, object?> scene) =>
+        GetList(scene, "location_ids").Select(x => x?.ToString() ?? "").Where(x => x.Length > 0).ToList();
+
+    private static string? ResolvePrimaryLocation(Dictionary<string, object?> scene, List<string> lids) =>
+        CoerceString(scene.TryGetValue("primary_location_id", out var pl) ? pl : null)
+        ?? (lids.Count > 0 ? lids[0] : null);
+
+    /// <summary>
+    /// Idempotent: monologues already split at fountain import stay; legacy long cues expand here.
+    /// Extends-from-previous flags are recomputed fresh before each coalescing pass (not carried
+    /// through) since the beat list's indices shift as beats get merged. See
+    /// <see cref="PrecomputeExtendsFromPrevious"/> for why using each merge group's first beat
+    /// is equivalent to the final per-clip ForceNone decision.
+    /// Two-hander coalescing only when the video model can render >=2 speakers in one clip.
+    /// At 1 each dialogue beat stays its own clip — one speaker per clip, shot-reverse-shot,
+    /// which gives the cleanest lip-sync and avoids face morphing.
+    /// </summary>
+    private static List<Dictionary<string, object?>> ApplyBeatCoalescing(
+        List<Dictionary<string, object?>> beats,
+        string? primary,
+        List<string> lids,
+        int maxSeconds,
+        int effectiveExtensionMax,
+        int maxSpeakersPerClip)
+    {
+        beats = ClipDurationEstimator.ExpandLongDialogueBeats(beats, modelMaxSeconds: maxSeconds);
+        beats = CoalesceSilentPreludeBeats(beats);
+        beats = CoalesceShortMonologueBeats(
+            beats, maxSeconds, effectiveExtensionMax, PrecomputeExtendsFromPrevious(beats, primary, lids));
+        return ApplyCrossSpeakerCoalescing(
+            beats, maxSpeakersPerClip, maxSeconds, effectiveExtensionMax,
+            PrecomputeExtendsFromPrevious(beats, primary, lids));
+    }
+
+    private static void ApplyAiPacingOverrides(
+        List<Dictionary<string, object?>> beats,
+        List<int> durs,
+        Dictionary<string, int>? aiPacing)
+    {
+        if (aiPacing is null || aiPacing.Count == 0)
+            return;
+        for (var i = 0; i < beats.Count; i++)
+        {
+            var bid = ReadBeatString(beats[i], "beat_id") ?? $"b{i + 1}";
+            if (aiPacing.TryGetValue(bid, out var customDur))
+                durs[i] = customDur;
+        }
+    }
+
+    private static void ApplyAiWardrobeOverrides(
+        Dictionary<string, List<string>> wardrobe,
+        Dictionary<string, string>? aiWardrobe)
+    {
+        if (aiWardrobe is null || aiWardrobe.Count == 0)
+            return;
+        foreach (var (k, v) in aiWardrobe)
+        {
+            if (!string.IsNullOrWhiteSpace(v))
+                wardrobe[k] = new List<string> { v };
+        }
+    }
+
+    private static (string? ActiveSpeaker, int MonologueStep) UpdateMonologueTracking(
+        string? dlg,
+        string? spk,
+        string? activeSpeaker,
+        int monologueStep)
+    {
+        if (string.IsNullOrWhiteSpace(dlg) || string.IsNullOrWhiteSpace(spk))
+        {
+            return (null, 0);
+        }
+
+        if (string.Equals(activeSpeaker, spk, StringComparison.OrdinalIgnoreCase))
+            return (activeSpeaker, monologueStep + 1);
+
+        return (spk, 0);
+    }
+
+    private static string ResolveClipContinuation(
+        Dictionary<string, object?> beat,
+        int i,
+        Dictionary<string, object?>? prevBeat,
+        string? prevLid,
+        string? lid)
+    {
+        var cont = ForceNone(beat, i, prevBeat, prevLid, lid) ? "none" : "extend_previous";
+        if (string.Equals(ReadBeatString(beat, Keys.ActionClass),
+                Keys.BigAction, StringComparison.OrdinalIgnoreCase))
+            cont = "none";
+        if (prevLid is not null && lid is not null && prevLid != lid)
+            cont = "none";
+        return cont;
+    }
+
+    private static void EnsurePrimaryInClipCast(List<string> clipCast, string ps)
+    {
+        if (ps.StartsWith(JsonKeys.CharacterPrefix, StringComparison.Ordinal) && !clipCast.Contains(ps))
+            clipCast.Insert(0, ps);
+    }
+
+    private static PlannedClip PlanSingleClip(
+        Dictionary<string, object?> beat,
+        int i,
+        int dur,
+        int t,
+        Dictionary<string, object?> sceneWork,
+        Dictionary<string, object?> locSeeds,
+        Dictionary<string, object?> charSeeds,
+        Dictionary<string, List<string>> wardrobe,
+        List<string> lids,
+        string? primary,
+        Dictionary<string, object?>? prevBeat,
+        string? prevLid,
+        string? activeSpeaker,
+        int monologueStep,
+        string? aiLighting,
+        string? aiNegative,
+        Dictionary<string, CameraDirective>? aiCamera,
+        Dictionary<string, EmotionDirective>? aiEmotion,
+        Dictionary<string, SoundDesignDirective>? aiSound,
+        Dictionary<string, DepthOfFieldDirective>? aiDof,
+        ColorGradingDirective? aiColor)
+    {
+        var lid = ResolveBeatLocation(beat, primary, lids);
+        var cont = ResolveClipContinuation(beat, i, prevBeat, prevLid, lid);
+        var clipCast = ClipCastTokens(sceneWork, beat, charSeeds);
+        var ps = ReadBeatString(beat, Keys.PrimarySubject) ?? "";
+        EnsurePrimaryInClipCast(clipCast, ps);
+
+        UpdateWardrobeFromBeat(wardrobe, beat, clipCast);
+
+        var dlg = ReadBeatString(beat, JsonKeys.Dialogue);
+        var spk = ReadBeatString(beat, JsonKeys.Speaker);
+        (activeSpeaker, monologueStep) = UpdateMonologueTracking(dlg, spk, activeSpeaker, monologueStep);
+
+        // Continuity + resolution/fps are owned by ClipVideoPromptBuilder at gen time —
+        // keep blueprint visual_prompt declarative (action/style only).
+        var vp = BuildVisualPrompt(beat, sceneWork, locSeeds, charSeeds, wardrobe, i);
+        var (vpOut, neg, cameraMoveToken, beatIdStr, sourceBeatIds) = AppendVisualDirectives(
+            vp, beat, wardrobe, clipCast, i, dlg, spk, monologueStep, charSeeds,
+            aiLighting, aiNegative, aiCamera, aiEmotion, aiDof, aiColor);
+        vp = vpOut;
+
+        var actionClassVal = beat.TryGetValue(Keys.ActionClass, out var beatAc) ? beatAc : null;
+        var primaryVal = beat.TryGetValue(Keys.PrimarySubject, out var psub) ? psub : null;
+        var audioPayload = BuildAudioPayload(beat, LookupSoundDesign(aiSound, beatIdStr));
+        var speakerForFocus = ReadBeatString(beat, JsonKeys.Speaker);
+        var secondarySpeakerForFocus = ReadBeatString(beat, Keys.SecondarySpeaker);
+        var focusKeys = ClipVideoPromptBuilder.ResolveFocusKeys(
+                clipCast,
+                CoerceString(primaryVal),
+                speakerForFocus,
+                CoerceString(actionClassVal),
+                secondarySpeakerForFocus)
+            .OrderBy(k => k, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var clipDict = new Dictionary<string, object?>
+        {
+            [JsonKeys.ClipNumber] = i + 1,
+            ["timestamp"] = FormatTs(t, t + dur),
+            ["veo_continuation_source"] = cont,
+            [Keys.LocationId] = lid,
+            ["visual_prompt"] = vp,
+            ["negative_prompt"] = neg,
+            [JsonKeys.AudioPayload] = audioPayload,
+            ["stage1_beat_id"] = beatIdStr,
+            ["stage1_beat_ids"] = sourceBeatIds.Cast<object?>().ToList(),
+            [Keys.PrimarySubject] = primaryVal,
+            // Propagate for gen-time duration (EstimateForClip) — silent big_action etc.
+            [Keys.ActionClass] = actionClassVal,
+            [Keys.CharactersOnScreen] = clipCast.Cast<object?>().ToList(),
+            // Full identity lock at gen; others on-screen get compact "also present" lines
+            ["focus_keys"] = focusKeys.Cast<object?>().ToList(),
+            [Keys.DurationSeconds] = dur,
+        };
+
+        ApplyClipClassifierFields(clipDict, beatIdStr, cameraMoveToken, aiColor, aiDof, aiEmotion, aiCamera);
+        return new PlannedClip(clipDict, beatIdStr, dur, lid, activeSpeaker, monologueStep);
+    }
+
+    private static SoundDesignDirective? LookupSoundDesign(
+        Dictionary<string, SoundDesignDirective>? aiSound, string beatIdStr) =>
+        aiSound is not null && aiSound.TryGetValue(beatIdStr, out var sd) ? sd : null;
+
+    /// <summary>
+    /// AI cinematic lighting/mood token (locks lighting style across the scene's shots) —
+    /// previously computed by CinematicLightingClassifier and stored on the scene as
+    /// lighting_continuity_token, but never appended to any clip's visual_prompt, so it
+    /// never reached the actual video-generation call. Appended here the same way camera/
+    /// performance/optics/color directives already are.
+    /// Story-specific negatives only; provider global negatives applied at gen time.
+    /// </summary>
+    private static (string Vp, string Neg, string? CameraMoveToken, string BeatIdStr, List<string> SourceBeatIds)
+        AppendVisualDirectives(
+            string vp,
+            Dictionary<string, object?> beat,
+            Dictionary<string, List<string>> wardrobe,
+            List<string> clipCast,
+            int i,
+            string? dlg,
+            string? spk,
+            int monologueStep,
+            Dictionary<string, object?> charSeeds,
+            string? aiLighting,
+            string? aiNegative,
+            Dictionary<string, CameraDirective>? aiCamera,
+            Dictionary<string, EmotionDirective>? aiEmotion,
+            Dictionary<string, DepthOfFieldDirective>? aiDof,
+            ColorGradingDirective? aiColor)
+    {
+        if (!string.IsNullOrWhiteSpace(aiLighting))
+            vp = $"{vp} {PromptTags.Wrap("Lighting", PromptTags.SanitizeValue(aiLighting))}";
+
+        var neg = CombineNegative(BuildStoryNegativePrompt(beat, wardrobe, clipCast), aiNegative);
+        var beatIdStr = ReadBeatString(beat, "beat_id") ?? $"b{i + 1}";
+        var sourceBeatIds = PageToMovie.Core.Utils.StableBeatId.CollectIds(beat);
+        if (sourceBeatIds.Count == 0 && !string.IsNullOrWhiteSpace(beatIdStr))
+            sourceBeatIds.Add(beatIdStr);
+
+        string? cameraMoveToken;
+        (vp, cameraMoveToken) = ApplyCameraDirective(
+            vp, aiCamera, beatIdStr, dlg, spk, monologueStep, clipCast, charSeeds);
+        vp = ApplyEmotionDofColorDirectives(vp, aiEmotion, aiDof, aiColor, beatIdStr);
+        return (vp, neg, cameraMoveToken, beatIdStr, sourceBeatIds);
+    }
+
+    private static string CombineNegative(string neg, string? aiNegative)
+    {
+        if (string.IsNullOrWhiteSpace(aiNegative))
+            return neg;
+        return string.IsNullOrWhiteSpace(neg) ? aiNegative : $"{neg}, {aiNegative}";
+    }
+
+    private static (string Vp, string? CameraMoveToken) ApplyCameraDirective(
+        string vp,
+        Dictionary<string, CameraDirective>? aiCamera,
+        string beatIdStr,
+        string? dlg,
+        string? spk,
+        int monologueStep,
+        List<string> clipCast,
+        Dictionary<string, object?> charSeeds)
+    {
+        string? cameraMoveToken = null;
+        if (aiCamera is not null && aiCamera.TryGetValue(beatIdStr, out var camDir))
+        {
+            if (!string.IsNullOrWhiteSpace(camDir.FramingPrompt))
+                vp = $"{vp} {PromptTags.Wrap("Camera", PromptTags.SanitizeValue(camDir.FramingPrompt))}";
+            cameraMoveToken = $"{camDir.LensSpec}, {camDir.CameraMovement}";
+        }
+        else if (!string.IsNullOrWhiteSpace(dlg))
+        {
+            var spkDisplay = !string.IsNullOrWhiteSpace(spk) ? DisplayNameForKey(spk, charSeeds) : JsonKeys.Speaker;
+            // OTS only when ≥2 on-screen — solo monologue must not invent a listener.
+            var framing = GetMonologueCameraFraming(monologueStep, spkDisplay, clipCast.Count);
+            vp = $"{vp} {PromptTags.Wrap("Camera", PromptTags.SanitizeValue(framing))}";
+        }
+        return (vp, cameraMoveToken);
+    }
+
+    private static string ApplyEmotionDofColorDirectives(
+        string vp,
+        Dictionary<string, EmotionDirective>? aiEmotion,
+        Dictionary<string, DepthOfFieldDirective>? aiDof,
+        ColorGradingDirective? aiColor,
+        string beatIdStr)
+    {
+        if (aiEmotion is not null && aiEmotion.TryGetValue(beatIdStr, out var emoDir) &&
+            !string.IsNullOrWhiteSpace(emoDir.ActingPrompt))
+        {
+            vp = $"{vp} {PromptTags.Wrap("Performance", PromptTags.SanitizeValue(emoDir.ActingPrompt))}";
+        }
+
+        if (aiDof is not null && aiDof.TryGetValue(beatIdStr, out var dofDir) &&
+            !string.IsNullOrWhiteSpace(dofDir.Aperture))
+        {
+            vp = $"{vp} {PromptTags.Wrap("Optics", PromptTags.SanitizeValue(dofDir.Aperture))}";
+        }
+
+        if (aiColor is not null && !string.IsNullOrWhiteSpace(aiColor.GradingPrompt))
+            vp = $"{vp} {aiColor.GradingPrompt}";
+
+        return vp;
+    }
+
+    private static void ApplyClipClassifierFields(
+        Dictionary<string, object?> clipDict,
+        string beatIdStr,
+        string? cameraMoveToken,
+        ColorGradingDirective? aiColor,
+        Dictionary<string, DepthOfFieldDirective>? aiDof,
+        Dictionary<string, EmotionDirective>? aiEmotion,
+        Dictionary<string, CameraDirective>? aiCamera)
+    {
+        ApplyColorClipFields(clipDict, aiColor);
+        ApplyDofClipFields(clipDict, aiDof, beatIdStr);
+        ApplyEmotionClipFields(clipDict, aiEmotion, beatIdStr);
+        ApplyCameraClipFields(clipDict, aiCamera, beatIdStr, cameraMoveToken);
+    }
+
+    private static void ApplyColorClipFields(Dictionary<string, object?> clipDict, ColorGradingDirective? aiColor)
+    {
+        if (aiColor is null)
+            return;
+        if (!string.IsNullOrWhiteSpace(aiColor.FilmStock))
+            clipDict["film_stock"] = aiColor.FilmStock;
+        if (!string.IsNullOrWhiteSpace(aiColor.ColorPalette))
+            clipDict["color_palette"] = aiColor.ColorPalette;
+    }
+
+    private static void ApplyDofClipFields(
+        Dictionary<string, object?> clipDict,
+        Dictionary<string, DepthOfFieldDirective>? aiDof,
+        string beatIdStr)
+    {
+        if (aiDof is null || !aiDof.TryGetValue(beatIdStr, out var dfd))
+            return;
+        clipDict["aperture"] = dfd.Aperture;
+        clipDict["focal_plane"] = dfd.FocalPlane;
+        if (!string.IsNullOrWhiteSpace(dfd.RackFocus))
+            clipDict["rack_focus"] = dfd.RackFocus;
+    }
+
+    private static void ApplyEmotionClipFields(
+        Dictionary<string, object?> clipDict,
+        Dictionary<string, EmotionDirective>? aiEmotion,
+        string beatIdStr)
+    {
+        if (aiEmotion is null || !aiEmotion.TryGetValue(beatIdStr, out var ed))
+            return;
+        clipDict["acting_intensity"] = ed.Intensity;
+        if (!string.IsNullOrWhiteSpace(ed.MicroExpression))
+            clipDict["micro_expression"] = ed.MicroExpression;
+    }
+
+    private static void ApplyCameraClipFields(
+        Dictionary<string, object?> clipDict,
+        Dictionary<string, CameraDirective>? aiCamera,
+        string beatIdStr,
+        string? cameraMoveToken)
+    {
+        if (aiCamera is null || !aiCamera.TryGetValue(beatIdStr, out var cd))
+            return;
+        clipDict["shot_scale_hint"] = cd.ShotScale;
+        if (!string.IsNullOrWhiteSpace(cameraMoveToken))
+            clipDict["camera_movement_token"] = cameraMoveToken;
     }
 
     private static Dictionary<string, object?> BaseSceneShell(
@@ -1084,8 +1371,7 @@ public sealed class Stage2PlannerService
         for (var i = 0; i < beats.Count; i++)
         {
             var beat = beats[i];
-            var lid = CoerceString(beat.TryGetValue(Keys.LocationId, out var bl) ? bl : null)
-                      ?? primary ?? (lids.Count > 0 ? lids[0] : null);
+            var lid = ResolveBeatLocation(beat, primary, lids);
             result[i] = !ForceNone(beat, i, prevBeat, prevLid, lid);
             prevBeat = beat;
             prevLid = lid;
@@ -1125,62 +1411,108 @@ public sealed class Stage2PlannerService
         var i = 0;
         while (i < beats.Count)
         {
-            var groupStart = i;
-            var effectiveMax =
-                extendsFromPrevious is not null && groupStart < extendsFromPrevious.Count && extendsFromPrevious[groupStart]
-                    ? (extensionMaxSeconds ?? maxSeconds)
-                    : maxSeconds;
+            var effectiveMax = EffectiveMaxForBeat(extendsFromPrevious, i, maxSeconds, extensionMaxSeconds);
             var cur = new Dictionary<string, object?>(beats[i]);
-            var d1 = CoerceString(cur.TryGetValue(JsonKeys.Dialogue, out var v1) ? v1 : null);
-            var sp1 = CoerceString(cur.TryGetValue(JsonKeys.Speaker, out var s1) ? s1 : null);
-            var del1 = CoerceString(cur.TryGetValue(Keys.Delivery, out var delv1) ? delv1 : null) ?? Keys.SpokenOnCamera;
-            var loc1 = CoerceString(cur.TryGetValue(Keys.LocationId, out var l1) ? l1 : null);
-            var ac1 = CoerceString(cur.TryGetValue(Keys.ActionClass, out var acv1) ? acv1 : null);
+            var d1 = ReadBeatString(cur, JsonKeys.Dialogue);
+            var sp1 = ReadBeatString(cur, JsonKeys.Speaker);
+            var del1 = ReadBeatString(cur, Keys.Delivery) ?? Keys.SpokenOnCamera;
+            var loc1 = ReadBeatString(cur, Keys.LocationId);
+            var ac1 = ReadBeatString(cur, Keys.ActionClass);
 
-            if (!string.IsNullOrWhiteSpace(d1) &&
-                !string.IsNullOrWhiteSpace(sp1) &&
-                !string.Equals(ac1, Keys.BigAction, StringComparison.OrdinalIgnoreCase))
-            {
-                while (i + 1 < beats.Count)
-                {
-                    var next = beats[i + 1];
-                    var d2 = CoerceString(next.TryGetValue(JsonKeys.Dialogue, out var v2) ? v2 : null);
-                    var sp2 = CoerceString(next.TryGetValue(JsonKeys.Speaker, out var s2) ? s2 : null);
-                    var del2 = CoerceString(next.TryGetValue(Keys.Delivery, out var delv2) ? delv2 : null) ?? Keys.SpokenOnCamera;
-                    var loc2 = CoerceString(next.TryGetValue(Keys.LocationId, out var l2) ? l2 : null);
-                    var ac2 = CoerceString(next.TryGetValue(Keys.ActionClass, out var acv2) ? acv2 : null);
-
-                    if (string.IsNullOrWhiteSpace(d2) ||
-                        !string.Equals(sp1, sp2, StringComparison.OrdinalIgnoreCase) ||
-                        !string.Equals(del1, del2, StringComparison.OrdinalIgnoreCase) ||
-                        (!string.IsNullOrEmpty(loc1) && !string.IsNullOrEmpty(loc2) && !string.Equals(loc1, loc2, StringComparison.OrdinalIgnoreCase)) ||
-                        string.Equals(ac2, Keys.BigAction, StringComparison.OrdinalIgnoreCase))
-                    {
-                        break;
-                    }
-
-                    var combinedDlg = $"{d1.Trim()} {d2.Trim()}";
-                    var estCombined = ClipDurationEstimator.EstimateUncapped(combinedDlg, "", JsonKeys.Dialogue, del1);
-                    if (estCombined > effectiveMax)
-                    {
-                        break;
-                    }
-
-                    d1 = combinedDlg;
-                    cur[JsonKeys.Dialogue] = d1;
-
-                    MergeVisualEvent(cur, next);
-                    PageToMovie.Core.Utils.StableBeatId.MergeSourceIds(cur, next);
-
-                    i++;
-                }
-            }
+            if (IsMonologueMergeAnchor(d1, sp1, ac1))
+                i = AbsorbMonologueFollowers(beats, i, cur, ref d1, sp1, del1, loc1, effectiveMax);
 
             result.Add(cur);
             i++;
         }
 
         return result;
+    }
+
+    private static bool IsMonologueMergeAnchor(string? d1, string? sp1, string? ac1) =>
+        !string.IsNullOrWhiteSpace(d1) &&
+        !string.IsNullOrWhiteSpace(sp1) &&
+        !string.Equals(ac1, Keys.BigAction, StringComparison.OrdinalIgnoreCase);
+
+    private static int AbsorbMonologueFollowers(
+        List<Dictionary<string, object?>> beats,
+        int i,
+        Dictionary<string, object?> cur,
+        ref string? d1,
+        string? sp1,
+        string del1,
+        string? loc1,
+        int effectiveMax)
+    {
+        while (i + 1 < beats.Count)
+        {
+            if (!TryAbsorbNextMonologueBeat(beats, i, cur, ref d1, sp1, del1, loc1, effectiveMax))
+                break;
+            i++;
+        }
+        return i;
+    }
+
+    private static int EffectiveMaxForBeat(
+        IReadOnlyList<bool>? extendsFromPrevious,
+        int index,
+        int maxSeconds,
+        int? extensionMaxSeconds) =>
+        extendsFromPrevious is not null && index < extendsFromPrevious.Count && extendsFromPrevious[index]
+            ? (extensionMaxSeconds ?? maxSeconds)
+            : maxSeconds;
+
+    private static bool CanMergeMonologueNext(
+        string? d2,
+        string? sp1,
+        string? sp2,
+        string? del1,
+        string? del2,
+        string? loc1,
+        string? loc2,
+        string? ac2)
+    {
+        if (string.IsNullOrWhiteSpace(d2) ||
+            !string.Equals(sp1, sp2, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(del1, del2, StringComparison.OrdinalIgnoreCase) ||
+            (!string.IsNullOrEmpty(loc1) && !string.IsNullOrEmpty(loc2) && !string.Equals(loc1, loc2, StringComparison.OrdinalIgnoreCase)) ||
+            string.Equals(ac2, Keys.BigAction, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+        return true;
+    }
+
+    private static bool TryAbsorbNextMonologueBeat(
+        List<Dictionary<string, object?>> beats,
+        int i,
+        Dictionary<string, object?> cur,
+        ref string? d1,
+        string? sp1,
+        string del1,
+        string? loc1,
+        int effectiveMax)
+    {
+        var next = beats[i + 1];
+        var d2 = ReadBeatString(next, JsonKeys.Dialogue);
+        var sp2 = ReadBeatString(next, JsonKeys.Speaker);
+        var del2 = ReadBeatString(next, Keys.Delivery) ?? Keys.SpokenOnCamera;
+        var loc2 = ReadBeatString(next, Keys.LocationId);
+        var ac2 = ReadBeatString(next, Keys.ActionClass);
+
+        if (!CanMergeMonologueNext(d2, sp1, sp2, del1, del2, loc1, loc2, ac2))
+            return false;
+
+        var combinedDlg = $"{d1!.Trim()} {d2!.Trim()}";
+        var estCombined = ClipDurationEstimator.EstimateUncapped(combinedDlg, "", JsonKeys.Dialogue, del1);
+        if (estCombined > effectiveMax)
+            return false;
+
+        d1 = combinedDlg;
+        cur[JsonKeys.Dialogue] = d1;
+        MergeVisualEvent(cur, next);
+        PageToMovie.Core.Utils.StableBeatId.MergeSourceIds(cur, next);
+        return true;
     }
 
     /// <summary>
@@ -1237,67 +1569,100 @@ public sealed class Stage2PlannerService
         var i = 0;
         while (i < beats.Count)
         {
-            var effectiveMax =
-                extendsFromPrevious is not null && i < extendsFromPrevious.Count && extendsFromPrevious[i]
-                    ? (extensionMaxSeconds ?? maxSeconds)
-                    : maxSeconds;
+            var effectiveMax = EffectiveMaxForBeat(extendsFromPrevious, i, maxSeconds, extensionMaxSeconds);
             var perLineCap = effectiveMax / 2.0;
             var cur = new Dictionary<string, object?>(beats[i]);
-            var d1 = CoerceString(cur.TryGetValue(JsonKeys.Dialogue, out var v1) ? v1 : null);
-            var sp1 = CoerceString(cur.TryGetValue(JsonKeys.Speaker, out var s1) ? s1 : null);
-            var loc1 = CoerceString(cur.TryGetValue(Keys.LocationId, out var l1) ? l1 : null);
-            var ac1 = CoerceString(cur.TryGetValue(Keys.ActionClass, out var acv1) ? acv1 : null);
-
-            if (i + 1 < beats.Count &&
-                !string.IsNullOrWhiteSpace(d1) &&
-                !string.IsNullOrWhiteSpace(sp1) &&
-                !string.Equals(ac1, Keys.BigAction, StringComparison.OrdinalIgnoreCase))
-            {
-                var next = beats[i + 1];
-                var d2 = CoerceString(next.TryGetValue(JsonKeys.Dialogue, out var v2) ? v2 : null);
-                var sp2 = CoerceString(next.TryGetValue(JsonKeys.Speaker, out var s2) ? s2 : null);
-                var loc2 = CoerceString(next.TryGetValue(Keys.LocationId, out var l2) ? l2 : null);
-                var ac2 = CoerceString(next.TryGetValue(Keys.ActionClass, out var acv2) ? acv2 : null);
-
-                var sameLocationOrEmpty = string.IsNullOrEmpty(loc1) || string.IsNullOrEmpty(loc2) ||
-                    string.Equals(loc1, loc2, StringComparison.OrdinalIgnoreCase);
-
-                if (!string.IsNullOrWhiteSpace(d2) &&
-                    !string.IsNullOrWhiteSpace(sp2) &&
-                    !string.Equals(sp1, sp2, StringComparison.OrdinalIgnoreCase) &&
-                    sameLocationOrEmpty &&
-                    !string.Equals(ac2, Keys.BigAction, StringComparison.OrdinalIgnoreCase))
-                {
-                    var del1 = CoerceString(cur.TryGetValue(Keys.Delivery, out var delv1) ? delv1 : null) ?? Keys.SpokenOnCamera;
-                    var del2 = CoerceString(next.TryGetValue(Keys.Delivery, out var delv2) ? delv2 : null) ?? Keys.SpokenOnCamera;
-                    var est1 = ClipDurationEstimator.EstimateUncapped(d1, "", JsonKeys.Dialogue, del1);
-                    var est2 = ClipDurationEstimator.EstimateUncapped(d2, "", JsonKeys.Dialogue, del2);
-
-                    if (est1 <= perLineCap && est2 <= perLineCap && (est1 + est2) <= effectiveMax)
-                    {
-                        cur[Keys.SecondarySpeaker] = sp2;
-                        cur["secondary_dialogue"] = d2;
-
-                        // Size the merged clip for BOTH lines (was left at the primary's estimate,
-                        // so the second speaker's line got cut). Read the spoken lines back through
-                        // the shared accessor and size with the shared estimator, capped at the same
-                        // effective max used to decide the merge fit.
-                        cur[Keys.DurationSeconds] = ClipDurationEstimator.EstimateSpokenLinesSeconds(
-                            ClipSpokenLines.FromBeat(cur), maxSeconds: effectiveMax);
-
-                        MergeVisualEvent(cur, next);
-                        PageToMovie.Core.Utils.StableBeatId.MergeSourceIds(cur, next);
-
-                        i++;
-                    }
-                }
-            }
+            if (TryMergeCrossSpeakerPair(beats, i, cur, effectiveMax, perLineCap))
+                i++;
 
             result.Add(cur);
             i++;
         }
 
         return result;
+    }
+
+    private static bool TryMergeCrossSpeakerPair(
+        List<Dictionary<string, object?>> beats,
+        int i,
+        Dictionary<string, object?> cur,
+        int effectiveMax,
+        double perLineCap)
+    {
+        if (!IsEligibleCrossSpeakerPrimary(beats, i, cur, out var d1, out var sp1, out var loc1))
+            return false;
+        if (!IsEligibleCrossSpeakerNext(beats[i + 1], sp1, loc1, out var d2, out var sp2))
+            return false;
+        if (!CrossSpeakerPairFitsDuration(cur, beats[i + 1], d1, d2, effectiveMax, perLineCap))
+            return false;
+
+        var next = beats[i + 1];
+        cur[Keys.SecondarySpeaker] = sp2;
+        cur["secondary_dialogue"] = d2;
+
+        // Size the merged clip for BOTH lines (was left at the primary's estimate,
+        // so the second speaker's line got cut). Read the spoken lines back through
+        // the shared accessor and size with the shared estimator, capped at the same
+        // effective max used to decide the merge fit.
+        cur[Keys.DurationSeconds] = ClipDurationEstimator.EstimateSpokenLinesSeconds(
+            ClipSpokenLines.FromBeat(cur), maxSeconds: effectiveMax);
+
+        MergeVisualEvent(cur, next);
+        PageToMovie.Core.Utils.StableBeatId.MergeSourceIds(cur, next);
+        return true;
+    }
+
+    private static bool IsEligibleCrossSpeakerPrimary(
+        List<Dictionary<string, object?>> beats,
+        int i,
+        Dictionary<string, object?> cur,
+        out string? d1,
+        out string? sp1,
+        out string? loc1)
+    {
+        d1 = ReadBeatString(cur, JsonKeys.Dialogue);
+        sp1 = ReadBeatString(cur, JsonKeys.Speaker);
+        loc1 = ReadBeatString(cur, Keys.LocationId);
+        var ac1 = ReadBeatString(cur, Keys.ActionClass);
+        return i + 1 < beats.Count &&
+               !string.IsNullOrWhiteSpace(d1) &&
+               !string.IsNullOrWhiteSpace(sp1) &&
+               !string.Equals(ac1, Keys.BigAction, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsEligibleCrossSpeakerNext(
+        Dictionary<string, object?> next,
+        string? sp1,
+        string? loc1,
+        out string? d2,
+        out string? sp2)
+    {
+        d2 = ReadBeatString(next, JsonKeys.Dialogue);
+        sp2 = ReadBeatString(next, JsonKeys.Speaker);
+        var loc2 = ReadBeatString(next, Keys.LocationId);
+        var ac2 = ReadBeatString(next, Keys.ActionClass);
+        var sameLocationOrEmpty = string.IsNullOrEmpty(loc1) || string.IsNullOrEmpty(loc2) ||
+            string.Equals(loc1, loc2, StringComparison.OrdinalIgnoreCase);
+        return !string.IsNullOrWhiteSpace(d2) &&
+               !string.IsNullOrWhiteSpace(sp2) &&
+               !string.Equals(sp1, sp2, StringComparison.OrdinalIgnoreCase) &&
+               sameLocationOrEmpty &&
+               !string.Equals(ac2, Keys.BigAction, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool CrossSpeakerPairFitsDuration(
+        Dictionary<string, object?> cur,
+        Dictionary<string, object?> next,
+        string? d1,
+        string? d2,
+        int effectiveMax,
+        double perLineCap)
+    {
+        var del1 = ReadBeatString(cur, Keys.Delivery) ?? Keys.SpokenOnCamera;
+        var del2 = ReadBeatString(next, Keys.Delivery) ?? Keys.SpokenOnCamera;
+        var est1 = ClipDurationEstimator.EstimateUncapped(d1, "", JsonKeys.Dialogue, del1);
+        var est2 = ClipDurationEstimator.EstimateUncapped(d2, "", JsonKeys.Dialogue, del2);
+        return est1 <= perLineCap && est2 <= perLineCap && (est1 + est2) <= effectiveMax;
     }
 
     /// <summary>
@@ -1668,13 +2033,21 @@ public sealed class Stage2PlannerService
 
     private static (string Delivery, string Speaker) BeatAudio(Dictionary<string, object?> beat)
     {
-        var nested = beat.TryGetValue("audio", out var a) && a is Dictionary<string, object?> ad ? ad : null;
-        var delivery = NormalizeDelivery(CoerceString(nested?.TryGetValue(Keys.Delivery, out var d) == true ? d
-            : beat.TryGetValue(Keys.Delivery, out var d2) ? d2 : null));
-        var speaker = (CoerceString(nested?.TryGetValue(JsonKeys.Speaker, out var s) == true ? s
-            : beat.TryGetValue(JsonKeys.Speaker, out var s2) ? s2 : null) ?? "").ToLowerInvariant();
+        var nested = NestedAudioDict(beat);
+        var delivery = NormalizeDelivery(ReadBeatAudioField(beat, nested, Keys.Delivery));
+        var speaker = (ReadBeatAudioField(beat, nested, JsonKeys.Speaker) ?? "").ToLowerInvariant();
         return (delivery, speaker);
     }
+
+    private static Dictionary<string, object?>? NestedAudioDict(Dictionary<string, object?> beat) =>
+        beat.TryGetValue("audio", out var a) && a is Dictionary<string, object?> ad ? ad : null;
+
+    private static string? ReadBeatAudioField(
+        Dictionary<string, object?> beat,
+        Dictionary<string, object?>? nested,
+        string key) =>
+        CoerceString(nested?.TryGetValue(key, out var n) == true ? n
+            : beat.TryGetValue(key, out var b) ? b : null);
 
     private static Dictionary<string, object?> BuildAudioPayload(
         Dictionary<string, object?> beat,
@@ -1683,21 +2056,15 @@ public sealed class Stage2PlannerService
         // Prefer normalized separate keys (Stage1Normalizer / Fountain importer)
         Stage1Normalizer.NormalizeBeatAudioKeys(beat);
 
-        var nested = beat.TryGetValue("audio", out var a) && a is Dictionary<string, object?> ad ? ad : null;
-        var delivery = NormalizeDelivery(CoerceString(nested?.TryGetValue(Keys.Delivery, out var d) == true ? d
-            : beat.TryGetValue(Keys.Delivery, out var d2) ? d2 : null) ?? "none");
-        var speaker = CoerceString(nested?.TryGetValue(JsonKeys.Speaker, out var s) == true ? s
-            : beat.TryGetValue(JsonKeys.Speaker, out var s2) ? s2 : null) ?? "";
-        var dialogue = CoerceString(nested?.TryGetValue(JsonKeys.Dialogue, out var dlg) == true ? dlg
-            : beat.TryGetValue(JsonKeys.Dialogue, out var dlg2) ? dlg2 : null) ?? "";
+        var nested = NestedAudioDict(beat);
+        var delivery = NormalizeDelivery(ReadBeatAudioField(beat, nested, Keys.Delivery) ?? "none");
+        var speaker = ReadBeatAudioField(beat, nested, JsonKeys.Speaker) ?? "";
         // Store speech-safe dialogue in the plan (UI + gen see the same text)
-        dialogue = ClipVideoPromptBuilder.SanitizeSpokenDialogue(dialogue);
-        var ambient = CoerceString(nested?.TryGetValue("ambient", out var am) == true ? am
-            : beat.TryGetValue("ambient", out var am2) ? am2 : null) ?? "";
-        var sfx = CoerceString(nested?.TryGetValue("sfx", out var sx) == true ? sx
-            : beat.TryGetValue("sfx", out var sx2) ? sx2 : null) ?? "";
-        var pronHint = CoerceString(nested?.TryGetValue("pronunciation_hint", out var ph) == true ? ph
-            : beat.TryGetValue("pronunciation_hint", out var ph2) ? ph2 : null) ?? "";
+        var dialogue = ClipVideoPromptBuilder.SanitizeSpokenDialogue(
+            ReadBeatAudioField(beat, nested, JsonKeys.Dialogue) ?? "");
+        var ambient = ReadBeatAudioField(beat, nested, "ambient") ?? "";
+        var sfx = ReadBeatAudioField(beat, nested, "sfx") ?? "";
+        var pronHint = ReadBeatAudioField(beat, nested, "pronunciation_hint") ?? "";
 
         var payload = new Dictionary<string, object?>
         {
@@ -1708,6 +2075,15 @@ public sealed class Stage2PlannerService
             ["ambient"] = ambient,
         };
 
+        ApplyPronunciationHint(payload, pronHint, dialogue);
+        ApplySecondaryDialogue(payload, beat);
+        ApplySoundDesignLayers(payload, sd);
+        return payload;
+    }
+
+    private static void ApplyPronunciationHint(
+        Dictionary<string, object?> payload, string pronHint, string dialogue)
+    {
         // A pronunciation hint only earns its place when the word it targets is actually spoken in this
         // beat's dialogue — carrying one onto a silent/no-dialogue beat (or for a word not in the line)
         // just adds noise to the prompt.
@@ -1716,29 +2092,33 @@ public sealed class Stage2PlannerService
         {
             payload["pronunciation_hint"] = pronHint;
         }
+    }
 
+    private static void ApplySecondaryDialogue(
+        Dictionary<string, object?> payload, Dictionary<string, object?> beat)
+    {
         // Cross-speaker two-hander clips (CoalesceCrossSpeakerDialogueBeats) carry a second
         // speaker's line here. Additive only — existing single-speaker readers keep working
         // unmodified since the flat speaker/dialogue keys above are untouched.
-        var secondarySpeaker = CoerceString(beat.TryGetValue(Keys.SecondarySpeaker, out var ss) ? ss : null);
-        var secondaryDialogue = CoerceString(beat.TryGetValue("secondary_dialogue", out var sd2) ? sd2 : null);
-        if (!string.IsNullOrWhiteSpace(secondarySpeaker) && !string.IsNullOrWhiteSpace(secondaryDialogue))
-        {
-            payload[Keys.SecondarySpeaker] = secondarySpeaker;
-            payload["secondary_dialogue"] = ClipVideoPromptBuilder.SanitizeSpokenDialogue(secondaryDialogue);
-        }
+        var secondarySpeaker = ReadBeatString(beat, Keys.SecondarySpeaker);
+        var secondaryDialogue = ReadBeatString(beat, "secondary_dialogue");
+        if (string.IsNullOrWhiteSpace(secondarySpeaker) || string.IsNullOrWhiteSpace(secondaryDialogue))
+            return;
+        payload[Keys.SecondarySpeaker] = secondarySpeaker;
+        payload["secondary_dialogue"] = ClipVideoPromptBuilder.SanitizeSpokenDialogue(secondaryDialogue);
+    }
 
-        if (sd is not null)
-        {
-            if (!string.IsNullOrWhiteSpace(sd.AmbientLayer))
-                payload["ambient_layer"] = sd.AmbientLayer;
-            if (!string.IsNullOrWhiteSpace(sd.FoleyLayer))
-                payload["foley_layer"] = sd.FoleyLayer;
-            if (!string.IsNullOrWhiteSpace(sd.ScoreLayer))
-                payload["score_layer"] = sd.ScoreLayer;
-        }
-
-        return payload;
+    private static void ApplySoundDesignLayers(
+        Dictionary<string, object?> payload, SoundDesignDirective? sd)
+    {
+        if (sd is null)
+            return;
+        if (!string.IsNullOrWhiteSpace(sd.AmbientLayer))
+            payload["ambient_layer"] = sd.AmbientLayer;
+        if (!string.IsNullOrWhiteSpace(sd.FoleyLayer))
+            payload["foley_layer"] = sd.FoleyLayer;
+        if (!string.IsNullOrWhiteSpace(sd.ScoreLayer))
+            payload["score_layer"] = sd.ScoreLayer;
     }
 
     private static string SpeechClause(Dictionary<string, object?> beat)
@@ -2193,6 +2573,49 @@ public sealed class Stage2PlannerService
     {
         null => null, string s => s, _ => v.ToString(),
     };
+
+    private static string? ReadBeatString(Dictionary<string, object?> beat, string key) =>
+        CoerceString(beat.TryGetValue(key, out var v) ? v : null);
+
+    private static string? ResolveBeatLocation(
+        Dictionary<string, object?> beat, string? primary, List<string> lids) =>
+        ReadBeatString(beat, Keys.LocationId)
+        ?? primary ?? (lids.Count > 0 ? lids[0] : null);
+
+    private sealed class SceneFanoutState
+    {
+        public int CompletedScenes;
+        public required int TotalScenes;
+        public required SemaphoreSlim SceneGate;
+        public required object ProgressGate;
+        public Action<string>? OnProgress;
+        public required System.Collections.Concurrent.ConcurrentBag<(int SceneNumber, Dictionary<string, object?> Scene)> PlannedBag;
+
+        public void Report(string line)
+        {
+            lock (ProgressGate)
+                OnProgress?.Invoke(line);
+        }
+    }
+
+    private sealed record SceneClassifierTasks(
+        Task<Dictionary<string, int>?> Pacing,
+        Task<string?> Lighting,
+        Task<Dictionary<string, CameraDirective>?> Camera,
+        Task<string?> Negative,
+        Task<Dictionary<string, string>?> Wardrobe,
+        Task<Dictionary<string, EmotionDirective>?> Emotion,
+        Task<Dictionary<string, SoundDesignDirective>?> Sound,
+        Task<Dictionary<string, DepthOfFieldDirective>?> Dof,
+        Task<ColorGradingDirective?> Color);
+
+    private sealed record PlannedClip(
+        Dictionary<string, object?> Clip,
+        string BeatId,
+        int Duration,
+        string? LocationId,
+        string? ActiveSpeaker,
+        int MonologueStep);
 
     /// <summary>
     /// Catalog provider id for the project's video model. Empty when not yet selected —

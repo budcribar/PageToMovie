@@ -116,29 +116,14 @@ public static class ClipVideoPromptBuilder
         string? fallbackLocationKey = null)
     {
         characters ??= new Dictionary<string, CharacterProfile>(StringComparer.OrdinalIgnoreCase);
-        // Model-aware, not a hardcoded constant: a future model with a larger (or smaller) prompt
-        // budget only needs its models_catalog.json MaxPromptLength updated, never a code change.
-        // Same resolution pattern already proven in FalVideoClient/FilmJobService; VideoPromptHardCapChars
-        // is only the fallback for models with no catalog-specific value set.
-        var selectedVideoModel = string.IsNullOrWhiteSpace(videoModel)
-            ? SupportedModelCatalog.DefaultModelIdForCapability("video")
-            : videoModel;
-        var promptMaxLen = SupportedModelCatalog.ResolveOrDefault(selectedVideoModel, ModelCapability.Video)
-            .MaxPromptLength
-            ?? throw new InvalidOperationException(
-                $"Model has no maxPromptLength in models_catalog.json for video prompt budget.");
+        var promptMaxLen = ResolvePromptMaxLen(videoModel);
 
         // Mode follows actual media inputs, not blueprint cont alone.
         // Cast-change reseed (PR2) clears previousClipVideoPath while blueprint may still say
         // extend_previous — that must be fresh+refs, not continue-without-frame.
-        var hasPrevVideo = !string.IsNullOrWhiteSpace(previousClipVideoPath) &&
-                           File.Exists(previousClipVideoPath);
-        var hasStartFrame = !string.IsNullOrWhiteSpace(startFrameImagePath) &&
-                            File.Exists(startFrameImagePath);
-
-        var mode = hasPrevVideo ? ModeVideoExtend
-            : hasStartFrame ? ModeContinue
-            : "fresh";
+        var hasPrevVideo = HasExistingMedia(previousClipVideoPath);
+        var hasStartFrame = HasExistingMedia(startFrameImagePath);
+        var mode = ResolveGenerationMode(hasPrevVideo, hasStartFrame);
 
         // On-screen cast = plan only (never free-text names from dialogue prose)
         var onScreenKeys = ResolveOnScreenCharacterKeys(clipEl)
@@ -152,25 +137,20 @@ public static class ClipVideoPromptBuilder
             .OrderBy(k => k, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        var rawVisual = clipEl.TryGetProperty("visual_prompt", out var vp)
-            ? (vp.GetString() ?? "").Trim()
-            : "";
+        var rawVisual = ReadVisualPrompt(clipEl);
         var actionText = SanitizeActionText(rawVisual, onScreenKeys);
 
         // Clip location_id, else scene primary_location_id from caller (many clips omit location_id).
         var locationKeyResolved = ResolveClipLocationKey(clipEl) ?? NormalizeLocationKey(fallbackLocationKey);
-        var hasLocationPlate = !string.IsNullOrWhiteSpace(locationKeyResolved) &&
-                               ResolveLocationRefPath(projectDir, locationKeyResolved) is not null;
+        var hasLocationPlate = HasLockedLocationPlate(projectDir, locationKeyResolved);
         // Reserve one IMAGE slot for a locked set plate so multi-cast scenes still keep place identity.
-        var charRefBudget = hasLocationPlate && maxRefs > 1 ? maxRefs - 1 : maxRefs;
+        var charRefBudget = ResolveCharRefBudget(hasLocationPlate, maxRefs);
 
         var refPaths = FindCharacterRefPathsForKeys(onScreenKeys, projectDir, charRefBudget);
         // Fresh gen attaches locked plates when available. Location-only establishing shots
         // (no on-screen cast) still get a set plate if locked — don't require character refs first.
-        var useReferenceImages =
-            string.IsNullOrWhiteSpace(startFrameImagePath) &&
-            !hasPrevVideo &&
-            (refPaths.Count > 0 || hasLocationPlate);
+        var useReferenceImages = ShouldAttachReferenceImages(
+            startFrameImagePath, hasPrevVideo, refPaths.Count, hasLocationPlate);
 
         var imageTagByKey = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         string? locationKey = locationKeyResolved;
@@ -178,39 +158,144 @@ public static class ClipVideoPromptBuilder
         var locationRefAttached = false;
         if (useReferenceImages)
         {
-            var orderedPaths = new List<string>();
-            var n = 0;
-            foreach (var key in onScreenKeys.OrderBy(CharacterRefPriority)
-                         .ThenBy(k => k, StringComparer.OrdinalIgnoreCase))
-            {
-                if (orderedPaths.Count >= charRefBudget) break;
-                var path = ResolveCharacterRefPath(projectDir, key);
-                if (path is null) continue;
-                n++;
-                orderedPaths.Add(path);
-                imageTagByKey[key] = $"<IMAGE_{n}>";
-            }
-
-            // Soft: one location set plate after faces (reserved slot when plate exists).
-            if (!string.IsNullOrWhiteSpace(locationKey) && orderedPaths.Count < maxRefs)
-            {
-                var locPath = ResolveLocationRefPath(projectDir, locationKey);
-                if (locPath is not null)
-                {
-                    n++;
-                    orderedPaths.Add(locPath);
-                    locationImageTag = $"<IMAGE_{n}>";
-                    locationRefAttached = true;
-                }
-            }
-            refPaths = orderedPaths;
+            refPaths = AttachReferenceImages(
+                onScreenKeys, projectDir, charRefBudget, maxRefs, locationKey,
+                imageTagByKey, out locationImageTag, out locationRefAttached);
         }
 
         var style = (styleHead ?? ExtractStyleHead(rawVisual) ?? "").Trim();
         var activeKeys = ResolveFocusKeysForClip(onScreenKeys, clipEl);
         var varBlock = BuildCharacterVariablesBlock(allKeys, characters, imageTagByKey, useReferenceImages, activeKeys);
         var audioBlock = BuildAudioBlock(clipEl, characters);
+        var continuityBlock = BuildContinuityBlock(
+            mode, onScreenKeys, useReferenceImages, previousClipVisualPrompt);
+        var castCountLine = FormatCastCountLine(onScreenKeys);
+        var actionTagged = TagActionWithImageRefs(actionText, imageTagByKey);
 
+        var prompt = FitPromptToVideoBudget(
+            AppendPromptSections(
+                style, varBlock, locationRefAttached, locationImageTag, locationKey,
+                castCountLine, audioBlock, continuityBlock, clipEl, actionTagged),
+            promptMaxLen);
+        IReadOnlyList<string> attached = useReferenceImages ? refPaths : Array.Empty<string>();
+
+        return new PromptBuildResult
+        {
+            Prompt = prompt,
+            ReferenceImagePaths = attached,
+            StartFrameImagePath = startFrameImagePath,
+            Mode = mode,
+            CharacterKeys = allKeys,
+            OnScreenKeys = onScreenKeys,
+            CastCount = onScreenKeys.Count,
+            StyleHead = style,
+            CharacterVariables = varBlock,
+            AudioBlock = audioBlock,
+            ContinuityBlock = continuityBlock,
+            ActionText = actionTagged,
+            CastCountLine = castCountLine,
+            RefsAttachedToApi = useReferenceImages && attached.Count > 0,
+            LocationKey = locationKey,
+            LocationRefAttached = locationRefAttached,
+            LocationImageTag = locationImageTag,
+            PromptLogSummary = FormatPromptLogSummary(
+                mode, allKeys.Count, onScreenKeys.Count, attached.Count,
+                locationRefAttached, locationKey, startFrameImagePath,
+                prompt.Length, previousClipVideoPath),
+        };
+    }
+
+    private static int ResolvePromptMaxLen(string? videoModel)
+    {
+        // Model-aware, not a hardcoded constant: a future model with a larger (or smaller) prompt
+        // budget only needs its models_catalog.json MaxPromptLength updated, never a code change.
+        // Same resolution pattern already proven in FalVideoClient/FilmJobService; VideoPromptHardCapChars
+        // is only the fallback for models with no catalog-specific value set.
+        var selectedVideoModel = string.IsNullOrWhiteSpace(videoModel)
+            ? SupportedModelCatalog.DefaultModelIdForCapability("video")
+            : videoModel;
+        return SupportedModelCatalog.ResolveOrDefault(selectedVideoModel, ModelCapability.Video)
+            .MaxPromptLength
+            ?? throw new InvalidOperationException(
+                $"Model has no maxPromptLength in models_catalog.json for video prompt budget.");
+    }
+
+    private static bool HasExistingMedia(string? path) =>
+        !string.IsNullOrWhiteSpace(path) && File.Exists(path);
+
+    private static string ResolveGenerationMode(bool hasPrevVideo, bool hasStartFrame) =>
+        hasPrevVideo ? ModeVideoExtend
+            : hasStartFrame ? ModeContinue
+            : "fresh";
+
+    private static string ReadVisualPrompt(JsonElement clipEl) =>
+        clipEl.TryGetProperty("visual_prompt", out var vp)
+            ? (vp.GetString() ?? "").Trim()
+            : "";
+
+    private static bool HasLockedLocationPlate(string projectDir, string? locationKey) =>
+        !string.IsNullOrWhiteSpace(locationKey) &&
+        ResolveLocationRefPath(projectDir, locationKey) is not null;
+
+    private static int ResolveCharRefBudget(bool hasLocationPlate, int maxRefs) =>
+        hasLocationPlate && maxRefs > 1 ? maxRefs - 1 : maxRefs;
+
+    private static bool ShouldAttachReferenceImages(
+        string? startFrameImagePath,
+        bool hasPrevVideo,
+        int refPathCount,
+        bool hasLocationPlate) =>
+        string.IsNullOrWhiteSpace(startFrameImagePath) &&
+        !hasPrevVideo &&
+        (refPathCount > 0 || hasLocationPlate);
+
+    private static List<string> AttachReferenceImages(
+        IReadOnlyList<string> onScreenKeys,
+        string projectDir,
+        int charRefBudget,
+        int maxRefs,
+        string? locationKey,
+        Dictionary<string, string> imageTagByKey,
+        out string? locationImageTag,
+        out bool locationRefAttached)
+    {
+        var orderedPaths = new List<string>();
+        var n = 0;
+        foreach (var key in onScreenKeys.OrderBy(CharacterRefPriority)
+                     .ThenBy(k => k, StringComparer.OrdinalIgnoreCase))
+        {
+            if (orderedPaths.Count >= charRefBudget) break;
+            var path = ResolveCharacterRefPath(projectDir, key);
+            if (path is null) continue;
+            n++;
+            orderedPaths.Add(path);
+            imageTagByKey[key] = $"<IMAGE_{n}>";
+        }
+
+        // Soft: one location set plate after faces (reserved slot when plate exists).
+        locationImageTag = null;
+        locationRefAttached = false;
+        if (!string.IsNullOrWhiteSpace(locationKey) && orderedPaths.Count < maxRefs)
+        {
+            var locPath = ResolveLocationRefPath(projectDir, locationKey);
+            if (locPath is not null)
+            {
+                n++;
+                orderedPaths.Add(locPath);
+                locationImageTag = $"<IMAGE_{n}>";
+                locationRefAttached = true;
+            }
+        }
+
+        return orderedPaths;
+    }
+
+    private static string BuildContinuityBlock(
+        string mode,
+        IReadOnlyList<string> onScreenKeys,
+        bool useReferenceImages,
+        string? previousClipVisualPrompt)
+    {
         var continuityBlock = mode switch
         {
             ModeVideoExtend => PromptTags.Wrap("Continuity",
@@ -242,74 +327,131 @@ public static class ClipVideoPromptBuilder
             // prevClean is a re-embedded previous clip's own action text — it may itself already
             // contain Camera/Performance/Optics tags from that clip's construction, so this is a
             // structural wrap (no additional SanitizeValue here; see PromptTags' class doc).
-            continuityBlock =
-                PromptTags.WrapWithNote("PreviousClip", note, "\n" + prevClean + "\n") + "\n\n" + continuityBlock;
+            return PromptTags.WrapWithNote("PreviousClip", note, "\n" + prevClean + "\n") + "\n\n" + continuityBlock;
         }
-        else if (!string.IsNullOrWhiteSpace(previousClipVisualPrompt) && mode == "fresh")
+
+        if (!string.IsNullOrWhiteSpace(previousClipVisualPrompt) && mode == "fresh")
         {
             // Cast-change reseed: no video input, but keep prior clip prose for location/lighting only.
             var prevClean = SanitizeActionText(previousClipVisualPrompt, onScreenKeys);
-            continuityBlock = PromptTags.WrapWithNote("Context",
+            return PromptTags.WrapWithNote("Context",
                 "prior clip in scene — new cast plate refs attached; match location/lighting if still " +
                 "valid; identity from Characters + locked plates only",
                 "\n" + prevClean + "\n") + "\n\n" + continuityBlock;
         }
 
-        var castCountLine = onScreenKeys.Count > 0
-            ? PromptTags.Wrap("CastCount",
-                $"exactly {onScreenKeys.Count} distinct on-screen character identity(ies) only — " +
-                string.Join(", ", onScreenKeys) +
-                ". Do not invent extra people, duplicate faces, or crowd extras not listed.")
-            : "";
+        return continuityBlock;
+    }
 
+    private static string TagActionWithImageRefs(
+        string actionText,
+        IReadOnlyDictionary<string, string> imageTagByKey)
+    {
         var actionTagged = actionText;
         foreach (var (key, tag) in imageTagByKey)
         {
             if (!string.IsNullOrWhiteSpace(key))
                 actionTagged = actionTagged.Replace(key, $"{key} {tag}", StringComparison.OrdinalIgnoreCase);
         }
+        return actionTagged;
+    }
 
+    private static string FormatCastCountLine(IReadOnlyList<string> onScreenKeys) =>
+        onScreenKeys.Count > 0
+            ? PromptTags.Wrap("CastCount",
+                $"exactly {onScreenKeys.Count} distinct on-screen character identity(ies) only — " +
+                string.Join(", ", onScreenKeys) +
+                ". Do not invent extra people, duplicate faces, or crowd extras not listed.")
+            : "";
+
+    private static string FormatPromptLogSummary(
+        string mode,
+        int allKeysCount,
+        int onScreenCount,
+        int attachedCount,
+        bool locationRefAttached,
+        string? locationKey,
+        string? startFrameImagePath,
+        int promptLength,
+        string? previousClipVideoPath) =>
+        $"mode={mode} chars={allKeysCount} onScreen={onScreenCount} " +
+        $"refs={attachedCount} loc={(locationRefAttached ? locationKey : locationKey is null ? "none" : "unlocked")} " +
+        $"startFrame={(startFrameImagePath is null ? "no" : "yes")} " +
+        $"promptLen={promptLength}" +
+        (previousClipVideoPath is { Length: > 0 }
+            ? $" prevVideo={Path.GetFileName(previousClipVideoPath)}"
+            : "");
+
+    private static string AppendPromptSections(
+        string style,
+        string varBlock,
+        bool locationRefAttached,
+        string? locationImageTag,
+        string? locationKey,
+        string castCountLine,
+        string audioBlock,
+        string continuityBlock,
+        JsonElement clipEl,
+        string actionTagged)
+    {
         var sb = new StringBuilder();
-        if (!string.IsNullOrWhiteSpace(style))
-        {
-            sb.AppendLine(style.StartsWith("STYLE", StringComparison.OrdinalIgnoreCase)
-                ? style
-                : "STYLE LOCK: " + style);
-            sb.AppendLine();
-        }
-
-        if (!string.IsNullOrWhiteSpace(varBlock))
-        {
-            sb.AppendLine(varBlock);
-            sb.AppendLine();
-        }
-
-        if (locationRefAttached && !string.IsNullOrWhiteSpace(locationImageTag) &&
-            !string.IsNullOrWhiteSpace(locationKey))
-        {
-            sb.AppendLine(PromptTags.Wrap("SetReference",
-                $"{locationImageTag} is the locked LOCATION / SET plate for {locationKey}. " +
-                "Match architecture, materials, props, depth, and lighting of that plate. " +
-                "Do not invent a different building or landscape. Characters from CHARACTER VARIABLES " +
-                "perform in this set — faces come from character plates, place from this set plate."));
-            sb.AppendLine();
-        }
-
-        if (!string.IsNullOrWhiteSpace(castCountLine))
-        {
-            sb.AppendLine(castCountLine);
-            sb.AppendLine();
-        }
-
-        if (!string.IsNullOrWhiteSpace(audioBlock))
-        {
-            sb.AppendLine(audioBlock);
-            sb.AppendLine();
-        }
-
+        AppendStyleHead(sb, style);
+        AppendOptionalParagraph(sb, varBlock);
+        AppendSetReference(sb, locationRefAttached, locationImageTag, locationKey);
+        AppendOptionalParagraph(sb, castCountLine);
+        AppendOptionalParagraph(sb, audioBlock);
         sb.AppendLine(continuityBlock);
         sb.AppendLine();
         sb.AppendLine(PromptTags.Open("Clip"));
+        AppendClipPacingAndClose(sb, clipEl);
+        sb.Append(actionTagged);
+        // Resolution/frame rate are NOT re-echoed as prompt text here — they're already real,
+        // separate fields in the video API's request payload (GrokVideoClient.SubmitFreshOnceAsync:
+        // "resolution", "duration"), so appending "/ 480p, 24fps" as prose was pure duplication
+        // with no effect on what the API actually renders at.
+        AppendTrailingBlock(sb, BuildNegativeBlock(clipEl));
+        // Embedded house rules (git-owned). Placed after core action so budget strip can drop
+        // them first without cutting CHARACTER VARIABLES / THIS CLIP. Marker: HOUSE RULES:
+        AppendHouseRules(sb);
+        return sb.ToString().Trim();
+    }
+
+    private static void AppendStyleHead(StringBuilder sb, string style)
+    {
+        if (string.IsNullOrWhiteSpace(style)) return;
+        sb.AppendLine(style.StartsWith("STYLE", StringComparison.OrdinalIgnoreCase)
+            ? style
+            : "STYLE LOCK: " + style);
+        sb.AppendLine();
+    }
+
+    private static void AppendOptionalParagraph(StringBuilder sb, string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return;
+        sb.AppendLine(text);
+        sb.AppendLine();
+    }
+
+    private static void AppendSetReference(
+        StringBuilder sb,
+        bool locationRefAttached,
+        string? locationImageTag,
+        string? locationKey)
+    {
+        if (!locationRefAttached ||
+            string.IsNullOrWhiteSpace(locationImageTag) ||
+            string.IsNullOrWhiteSpace(locationKey))
+            return;
+        sb.AppendLine(PromptTags.Wrap("SetReference",
+            $"{locationImageTag} is the locked LOCATION / SET plate for {locationKey}. " +
+            "Match architecture, materials, props, depth, and lighting of that plate. " +
+            "Do not invent a different building or landscape. Characters from CHARACTER VARIABLES " +
+            "perform in this set — faces come from character plates, place from this set plate."));
+        sb.AppendLine();
+    }
+
+    private static void AppendClipPacingAndClose(StringBuilder sb, JsonElement clipEl)
+    {
         // Unlike resolution/fps (pure technical spec, no effect on content — see below), duration
         // genuinely changes how the described action should be PACED: the same camera move/action
         // described for a 12s shot needs to unfold much more gradually than for a 3s one. The API's
@@ -327,73 +469,34 @@ public static class ClipVideoPromptBuilder
         // specified, and CHARACTER VARIABLES listing every on-screen character's Voice profile
         // right above it, that primed the model to invent speech/mouth movement on someone.
         // Branch it so silent beats get an explicit "no dialogue, keep mouths neutral" cue instead.
-        var hasDialogue =
-            clipEl.TryGetProperty(JsonKeys.AudioPayload, out var apForClose) &&
-            apForClose.TryGetProperty("dialogue", out var dlgForClose) &&
-            !string.IsNullOrWhiteSpace(dlgForClose.GetString());
-        sb.AppendLine(hasDialogue
+        sb.AppendLine(ClipHasSpokenDialogue(clipEl)
             ? "End cleanly when the spoken line and primary action finish — " +
               "do not hold a frozen pose or empty silence after dialogue."
             : "Silent beat — no dialogue in this clip. Do not show any on-screen character " +
               "speaking or mouthing words; keep mouths closed/neutral. " +
               "End cleanly when the primary physical action finishes.");
-        sb.Append(actionTagged);
-        // Resolution/frame rate are NOT re-echoed as prompt text here — they're already real,
-        // separate fields in the video API's request payload (GrokVideoClient.SubmitFreshOnceAsync:
-        // "resolution", "duration"), so appending "/ 480p, 24fps" as prose was pure duplication
-        // with no effect on what the API actually renders at.
+    }
 
-        var negBlock = BuildNegativeBlock(clipEl);
-        if (!string.IsNullOrWhiteSpace(negBlock))
-        {
-            sb.AppendLine();
-            sb.AppendLine();
-            sb.Append(negBlock);
-        }
+    private static bool ClipHasSpokenDialogue(JsonElement clipEl) =>
+        clipEl.TryGetProperty(JsonKeys.AudioPayload, out var apForClose) &&
+        apForClose.TryGetProperty("dialogue", out var dlgForClose) &&
+        !string.IsNullOrWhiteSpace(dlgForClose.GetString());
 
-        // Embedded house rules (git-owned). Placed after core action so budget strip can drop
-        // them first without cutting CHARACTER VARIABLES / THIS CLIP. Marker: HOUSE RULES:
+    private static void AppendTrailingBlock(StringBuilder sb, string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return;
+        sb.AppendLine();
+        sb.AppendLine();
+        sb.Append(text);
+    }
+
+    private static void AppendHouseRules(StringBuilder sb)
+    {
         var houseRules = TryLoadClipGenRules();
-        if (!string.IsNullOrWhiteSpace(houseRules))
-        {
-            sb.AppendLine();
-            sb.AppendLine();
-            sb.Append(houseRules.Trim());
-        }
-
-        var prompt = FitPromptToVideoBudget(sb.ToString().Trim(), promptMaxLen);
-        IReadOnlyList<string> attached = useReferenceImages ? refPaths : Array.Empty<string>();
-
-        var summary =
-            $"mode={mode} chars={allKeys.Count} onScreen={onScreenKeys.Count} " +
-            $"refs={attached.Count} loc={(locationRefAttached ? locationKey : locationKey is null ? "none" : "unlocked")} " +
-            $"startFrame={(startFrameImagePath is null ? "no" : "yes")} " +
-            $"promptLen={prompt.Length}" +
-            (previousClipVideoPath is { Length: > 0 }
-                ? $" prevVideo={Path.GetFileName(previousClipVideoPath)}"
-                : "");
-
-        return new PromptBuildResult
-        {
-            Prompt = prompt,
-            ReferenceImagePaths = attached,
-            StartFrameImagePath = startFrameImagePath,
-            Mode = mode,
-            CharacterKeys = allKeys,
-            OnScreenKeys = onScreenKeys,
-            CastCount = onScreenKeys.Count,
-            StyleHead = style,
-            CharacterVariables = varBlock,
-            AudioBlock = audioBlock,
-            ContinuityBlock = continuityBlock,
-            ActionText = actionTagged,
-            CastCountLine = castCountLine,
-            RefsAttachedToApi = useReferenceImages && attached.Count > 0,
-            LocationKey = locationKey,
-            LocationRefAttached = locationRefAttached,
-            LocationImageTag = locationImageTag,
-            PromptLogSummary = summary,
-        };
+        if (string.IsNullOrWhiteSpace(houseRules)) return;
+        sb.AppendLine();
+        sb.AppendLine();
+        sb.Append(houseRules.Trim());
     }
 
     /// <summary>Reads a clip's planned duration_seconds (Stage2-assigned) for the pacing line in
@@ -1192,60 +1295,95 @@ public static class ClipVideoPromptBuilder
         foreach (var key in keys)
         {
             var p = GetCharacterProfile(characters, key);
-            var display = !string.IsNullOrWhiteSpace(p?.DisplayName)
-                ? p.DisplayName
-                : key.Replace(JsonKeys.CharacterPrefix, "").Replace('_', ' ');
-            var tag = useImageTags && imageTagByKey.TryGetValue(key, out var t) ? $" {t}" : "";
-            // Cast profile fields are free-form (admin/AI-authored) — sanitize once here at the
-            // source rather than at each tag-wrap call site below.
-            var desc = PromptTags.SanitizeValue(p?.Description?.Trim());
-            var vlock = PromptTags.SanitizeValue(p?.VisualLock?.Trim());
-            var voice = PromptTags.SanitizeValue(p?.VoiceProfile?.Trim());
             if (p?.VoiceOnly == true || IsVoiceOnlyKey(key, characters))
-            {
-                sb.AppendLine(
-                    $"- {key}{tag} [{display}] VOICE ONLY — not on screen." +
-                    (voice.Length > 0 ? $" {PromptTags.Wrap("Voice", voice)}" : ""));
-                any = true;
-                continue;
-            }
-
-            // Multi-character compaction: non-focus on-screen cast get a short identity line.
-            // Lead with visual_lock (not the general description) when present — it's the field
-            // specifically curated to hold the one identity-critical, must-never-drift trait (e.g.
-            // a distinguishing eye, scar, tattoo). Previously truncated to a fixed char count (first
-            // 60, then 140) — confirmed as a real bug via a live render: Tell-Tale Heart's Old Man
-            // visual_lock ("...must not drift to clear blue or to the Narrator's face...") was cut
-            // mid-word at "must not drift to clear blu[e]" on every clip where he wasn't the shot's
-            // focus, silently dropping the one instruction preventing his signature filmy eye from
-            // rendering as an ordinary clear one. The real prompt-length constraint is the video
-            // API's hard character cap (~4096 chars), already handled end-to-end by
-            // GrokVideoClient's retry-driven ShortenPromptForRetry when the WHOLE built prompt
-            // exceeds it — and that mechanism deliberately keeps the head (identity/action) intact
-            // rather than blindly guillotining one character's identity clause on every appearance.
-            // So: no fixed per-character cap here; let the full text through.
-            var isActive = activeKeys is null || activeKeys.Contains(key);
-            if (!isActive && keys.Count > 1)
-            {
-                var compactSource = vlock.Length > 0 ? vlock : desc;
-                var compact =
-                    $"- {key}{tag} [{display}]: Also present (not shot focus); keep identity consistent: {compactSource}.";
-                if (useImageTags && tag.Length > 0) compact += $" Match reference {tag.Trim()}.";
-                sb.AppendLine(compact);
-                any = true;
-                continue;
-            }
-
-            var line = $"- {key}{tag} [{display}]:";
-            if (desc.Length > 0) line += $" {desc}";
-            if (vlock.Length > 0) line += $" {PromptTags.Wrap("VisualLock", vlock)}";
-            if (voice.Length > 0) line += $" {PromptTags.Wrap("Voice", voice)}";
-            if (useImageTags && tag.Length > 0)
-                line += $" Match appearance of reference {tag.Trim()} exactly.";
-            sb.AppendLine(line);
+                sb.AppendLine(FormatVoiceOnlyLine(key, p, imageTagByKey, useImageTags));
+            else if (IsNonFocusPresent(activeKeys, keys.Count, key))
+                sb.AppendLine(FormatCompactPresentLine(key, p, imageTagByKey, useImageTags));
+            else
+                sb.AppendLine(FormatFocusCharacterLine(key, p, imageTagByKey, useImageTags));
             any = true;
         }
         return any ? sb.ToString().TrimEnd() : "";
+    }
+
+    private static bool IsNonFocusPresent(HashSet<string>? activeKeys, int keyCount, string key)
+    {
+        var isActive = activeKeys is null || activeKeys.Contains(key);
+        return !isActive && keyCount > 1;
+    }
+
+    private static (string Display, string Tag, string Desc, string Vlock, string Voice) ResolveCharacterLineParts(
+        string key,
+        CharacterProfile? p,
+        IReadOnlyDictionary<string, string> imageTagByKey,
+        bool useImageTags)
+    {
+        var display = !string.IsNullOrWhiteSpace(p?.DisplayName)
+            ? p.DisplayName
+            : key.Replace(JsonKeys.CharacterPrefix, "").Replace('_', ' ');
+        var tag = useImageTags && imageTagByKey.TryGetValue(key, out var t) ? $" {t}" : "";
+        // Cast profile fields are free-form (admin/AI-authored) — sanitize once here at the
+        // source rather than at each tag-wrap call site below.
+        var desc = PromptTags.SanitizeValue(p?.Description?.Trim());
+        var vlock = PromptTags.SanitizeValue(p?.VisualLock?.Trim());
+        var voice = PromptTags.SanitizeValue(p?.VoiceProfile?.Trim());
+        return (display, tag, desc, vlock, voice);
+    }
+
+    private static string FormatVoiceOnlyLine(
+        string key,
+        CharacterProfile? p,
+        IReadOnlyDictionary<string, string> imageTagByKey,
+        bool useImageTags)
+    {
+        var (display, tag, _, _, voice) = ResolveCharacterLineParts(key, p, imageTagByKey, useImageTags);
+        return
+            $"- {key}{tag} [{display}] VOICE ONLY — not on screen." +
+            (voice.Length > 0 ? $" {PromptTags.Wrap("Voice", voice)}" : "");
+    }
+
+    private static string FormatCompactPresentLine(
+        string key,
+        CharacterProfile? p,
+        IReadOnlyDictionary<string, string> imageTagByKey,
+        bool useImageTags)
+    {
+        // Multi-character compaction: non-focus on-screen cast get a short identity line.
+        // Lead with visual_lock (not the general description) when present — it's the field
+        // specifically curated to hold the one identity-critical, must-never-drift trait (e.g.
+        // a distinguishing eye, scar, tattoo). Previously truncated to a fixed char count (first
+        // 60, then 140) — confirmed as a real bug via a live render: Tell-Tale Heart's Old Man
+        // visual_lock ("...must not drift to clear blue or to the Narrator's face...") was cut
+        // mid-word at "must not drift to clear blu[e]" on every clip where he wasn't the shot's
+        // focus, silently dropping the one instruction preventing his signature filmy eye from
+        // rendering as an ordinary clear one. The real prompt-length constraint is the video
+        // API's hard character cap (~4096 chars), already handled end-to-end by
+        // GrokVideoClient's retry-driven ShortenPromptForRetry when the WHOLE built prompt
+        // exceeds it — and that mechanism deliberately keeps the head (identity/action) intact
+        // rather than blindly guillotining one character's identity clause on every appearance.
+        // So: no fixed per-character cap here; let the full text through.
+        var (display, tag, desc, vlock, _) = ResolveCharacterLineParts(key, p, imageTagByKey, useImageTags);
+        var compactSource = vlock.Length > 0 ? vlock : desc;
+        var compact =
+            $"- {key}{tag} [{display}]: Also present (not shot focus); keep identity consistent: {compactSource}.";
+        if (useImageTags && tag.Length > 0) compact += $" Match reference {tag.Trim()}.";
+        return compact;
+    }
+
+    private static string FormatFocusCharacterLine(
+        string key,
+        CharacterProfile? p,
+        IReadOnlyDictionary<string, string> imageTagByKey,
+        bool useImageTags)
+    {
+        var (display, tag, desc, vlock, voice) = ResolveCharacterLineParts(key, p, imageTagByKey, useImageTags);
+        var line = $"- {key}{tag} [{display}]:";
+        if (desc.Length > 0) line += $" {desc}";
+        if (vlock.Length > 0) line += $" {PromptTags.Wrap("VisualLock", vlock)}";
+        if (voice.Length > 0) line += $" {PromptTags.Wrap("Voice", voice)}";
+        if (useImageTags && tag.Length > 0)
+            line += $" Match appearance of reference {tag.Trim()} exactly.";
+        return line;
     }
 
     public static CharacterProfile? GetCharacterProfile(
@@ -1266,110 +1404,181 @@ public static class ClipVideoPromptBuilder
             audio.ValueKind != JsonValueKind.Object)
             return "";
 
+        var spoken = ReadSpokenAudioFields(audio);
+        // Stage2/AI-classifier free text — sanitize at the source (see PromptTags class doc).
+        var sfx = ReadSanitizedAudioField(audio, "sfx");
+        var ambient = ReadSanitizedAudioField(audio, "ambient");
+        var score = ReadScoreLayer(audio);
+
+        if (HasNoAudioContent(spoken.Dialogue, sfx, ambient, score))
+            return "";
+
+        var voiceLock = BuildVoiceLock(characters, spoken.Speaker);
+
+        if (!string.IsNullOrWhiteSpace(spoken.Dialogue))
+            return BuildSpokenDialogueAudio(
+                audio, spoken, sfx, ambient, score, voiceLock);
+
+        if (HasAmbientLayers(ambient, sfx, score))
+            return BuildAmbientOnlyAudio(ambient, sfx, score);
+
+        return "";
+    }
+
+    private static (string Speaker, string Dialogue, string SecondarySpeaker, string SecondaryDialogue, string Delivery)
+        ReadSpokenAudioFields(JsonElement audio)
+    {
         // Every spoken line of this clip via the shared accessor so this reader can't diverge from
         // duration sizing / verification: the primary line PLUS any second speaker's line
         // (Stage2PlannerService.CoalesceCrossSpeakerDialogueBeats two-hander — camera pans from
         // speaker to speaker mid-clip).
         var spokenLines = ClipSpokenLines.FromAudioPayload(audio);
-        var speaker = spokenLines.Count > 0 ? spokenLines[0].Speaker : "";
-        var dialogue = spokenLines.Count > 0 ? spokenLines[0].Dialogue : "";
-        var secondarySpeaker = spokenLines.Count > 1 ? spokenLines[1].Speaker : "";
-        var secondaryDialogue = spokenLines.Count > 1 ? spokenLines[1].Dialogue : "";
-        var delivery = Stage2PlannerService.NormalizeDelivery(
-            spokenLines.Count > 0 ? spokenLines[0].Delivery : "none");
-        // Stage2/AI-classifier free text — sanitize at the source (see PromptTags class doc).
-        var sfx = PromptTags.SanitizeValue(audio.TryGetProperty("sfx", out var sx) ? sx.GetString() : null).Trim();
-        var ambient = PromptTags.SanitizeValue(audio.TryGetProperty("ambient", out var am) ? am.GetString() : null).Trim();
-        var score = PromptTags.SanitizeValue(
-            audio.TryGetProperty("score_layer", out var sc) ? sc.GetString() :
-            audio.TryGetProperty("score", out sc) ? sc.GetString() :
-            audio.TryGetProperty("music_layer", out sc) ? sc.GetString() :
-            audio.TryGetProperty("music", out sc) ? sc.GetString() : null).Trim();
+        return (
+            spokenLines.Count > 0 ? spokenLines[0].Speaker : "",
+            spokenLines.Count > 0 ? spokenLines[0].Dialogue : "",
+            spokenLines.Count > 1 ? spokenLines[1].Speaker : "",
+            spokenLines.Count > 1 ? spokenLines[1].Dialogue : "",
+            Stage2PlannerService.NormalizeDelivery(
+                spokenLines.Count > 0 ? spokenLines[0].Delivery : "none"));
+    }
 
-        if (string.IsNullOrWhiteSpace(dialogue) &&
-            string.IsNullOrWhiteSpace(sfx) &&
-            string.IsNullOrWhiteSpace(ambient) &&
-            string.IsNullOrWhiteSpace(score))
-            return "";
+    private static string ReadSanitizedAudioField(JsonElement audio, string name) =>
+        PromptTags.SanitizeValue(audio.TryGetProperty(name, out var el) ? el.GetString() : null).Trim();
 
-        var voiceLock = "";
+    private static string ReadScoreLayer(JsonElement audio)
+    {
+        if (audio.TryGetProperty("score_layer", out var sc))
+            return PromptTags.SanitizeValue(sc.GetString()).Trim();
+        if (audio.TryGetProperty("score", out sc))
+            return PromptTags.SanitizeValue(sc.GetString()).Trim();
+        if (audio.TryGetProperty("music_layer", out sc))
+            return PromptTags.SanitizeValue(sc.GetString()).Trim();
+        if (audio.TryGetProperty("music", out sc))
+            return PromptTags.SanitizeValue(sc.GetString()).Trim();
+        return PromptTags.SanitizeValue(null).Trim();
+    }
+
+    private static bool HasNoAudioContent(string dialogue, string sfx, string ambient, string score) =>
+        string.IsNullOrWhiteSpace(dialogue) &&
+        string.IsNullOrWhiteSpace(sfx) &&
+        string.IsNullOrWhiteSpace(ambient) &&
+        string.IsNullOrWhiteSpace(score);
+
+    private static bool HasAmbientLayers(string ambient, string sfx, string score) =>
+        !string.IsNullOrWhiteSpace(ambient) ||
+        !string.IsNullOrWhiteSpace(sfx) ||
+        !string.IsNullOrWhiteSpace(score);
+
+    private static string BuildVoiceLock(
+        IReadOnlyDictionary<string, CharacterProfile>? characters,
+        string speaker)
+    {
         var prof = GetCharacterProfile(characters, speaker);
-        if (!string.IsNullOrWhiteSpace(speaker) &&
-            prof is not null &&
-            !string.IsNullOrWhiteSpace(prof.VoiceProfile))
+        if (string.IsNullOrWhiteSpace(speaker) ||
+            prof is null ||
+            string.IsNullOrWhiteSpace(prof.VoiceProfile))
+            return "";
+        return " " + PromptTags.Wrap("VoiceLock",
+            $"{speaker}: {PromptTags.SanitizeValue(prof.VoiceProfile)}");
+    }
+
+    private static List<string> CollectAudioLayers(string score, string ambient, string sfx)
+    {
+        var layers = new List<string>();
+        if (!string.IsNullOrWhiteSpace(score)) layers.Add(PromptTags.Wrap("Score", score));
+        if (!string.IsNullOrWhiteSpace(ambient)) layers.Add(PromptTags.Wrap("Ambient", ambient));
+        if (!string.IsNullOrWhiteSpace(sfx)) layers.Add(PromptTags.Wrap("Foley", sfx));
+        return layers;
+    }
+
+    private static string BuildAudioBed(string score, string ambient, string sfx)
+    {
+        var audioBedParts = CollectAudioLayers(score, ambient, sfx);
+        return audioBedParts.Count > 0
+            ? " " + string.Join(" ", audioBedParts)
+            : " Secondary layer = soft room tone / Foley.";
+    }
+
+    private static string BuildPronunciationHintForLine(JsonElement audio, string quote)
+    {
+        var pronHintInPayload = PromptTags.SanitizeValue(
+            audio.TryGetProperty("pronunciation_hint", out var ph) ? ph.GetString() : null);
+        // Only honor a pre-baked hint when its target word is actually in this line; otherwise derive
+        // hints from the dialogue itself (which is inherently limited to words that are spoken).
+        if (!string.IsNullOrWhiteSpace(pronHintInPayload) &&
+            PronunciationResolver.HintAppliesToDialogue(pronHintInPayload, quote))
         {
-            voiceLock = " " + PromptTags.Wrap("VoiceLock",
-                $"{speaker}: {PromptTags.SanitizeValue(prof.VoiceProfile)}");
+            return pronHintInPayload.StartsWith(' ')
+                ? pronHintInPayload
+                : $" {PromptTags.Wrap("Pronunciation", pronHintInPayload)}";
+        }
+        return BuildPronunciationHints(quote);
+    }
+
+    private static string BuildSpokenDialogueAudio(
+        JsonElement audio,
+        (string Speaker, string Dialogue, string SecondarySpeaker, string SecondaryDialogue, string Delivery) spoken,
+        string sfx,
+        string ambient,
+        string score,
+        string voiceLock)
+    {
+        var who = string.IsNullOrWhiteSpace(spoken.Speaker) ? "SPEAKER" : spoken.Speaker.Trim();
+        var isVoiceover = IsVoiceoverDelivery(spoken.Delivery, who);
+        // Full line, speech-safe punctuation (em-dash normalize, !- glue) — same words. Story
+        // dialogue text, sanitized like every other leaf value before it can reach a tag.
+        var quote = PromptTags.SanitizeValue(SanitizeSpokenDialogue(spoken.Dialogue));
+        var openCue = BuildOpenCue(quote);
+        var bed = BuildAudioBed(score, ambient, sfx);
+
+        const string endPause =
+            " After the last word, hold a brief natural pause with a closed mouth (about half a second); do not freeze mid-syllable or trail into empty staring.";
+        var pronHint = BuildPronunciationHintForLine(audio, quote);
+
+        if (isVoiceover)
+        {
+            return PromptTags.Wrap(AudioTag,
+                $"REQUIRED native Grok off-camera voiceover. {who} narrates " +
+                $"exactly: \"{quote}\".{openCue}{endPause}{pronHint} Do not lip-sync on-screen cast to this VO.{bed}{voiceLock}");
         }
 
-        if (!string.IsNullOrWhiteSpace(dialogue))
+        // Two-hander: camera pans from {who} to {who2} mid-clip instead of cutting. Only
+        // applies to the on-camera case — voiceover has no second on-screen mouth to sync.
+        if (!string.IsNullOrWhiteSpace(spoken.SecondarySpeaker) &&
+            !string.IsNullOrWhiteSpace(spoken.SecondaryDialogue))
         {
-            var who = string.IsNullOrWhiteSpace(speaker) ? "SPEAKER" : speaker.Trim();
-            var isVoiceover = delivery is "voiceover_internal" or "internal" or "narration" or "vo" or "thought" ||
-                              (delivery is not "spoken_on_camera" and not "on_camera" && who.Contains("narrator", StringComparison.OrdinalIgnoreCase));
-            // Full line, speech-safe punctuation (em-dash normalize, !- glue) — same words. Story
-            // dialogue text, sanitized like every other leaf value before it can reach a tag.
-            var quote = PromptTags.SanitizeValue(SanitizeSpokenDialogue(dialogue));
-            var open = FirstSpokenToken(quote);
-            var openCue = open.Length > 0
-                ? $" Start speaking immediately with \"{open}\" — do not skip, delay, or swallow the opening word."
-                : " Start speaking immediately with the first word of the line — do not skip the opening.";
-
-            var audioBedParts = new List<string>();
-            if (!string.IsNullOrWhiteSpace(score)) audioBedParts.Add(PromptTags.Wrap("Score", score));
-            if (!string.IsNullOrWhiteSpace(ambient)) audioBedParts.Add(PromptTags.Wrap("Ambient", ambient));
-            if (!string.IsNullOrWhiteSpace(sfx)) audioBedParts.Add(PromptTags.Wrap("Foley", sfx));
-
-            var bed = audioBedParts.Count > 0
-                ? " " + string.Join(" ", audioBedParts)
-                : " Secondary layer = soft room tone / Foley.";
-
-            const string endPause =
-                " After the last word, hold a brief natural pause with a closed mouth (about half a second); do not freeze mid-syllable or trail into empty staring.";
-            var pronHintInPayload = PromptTags.SanitizeValue(
-                audio.TryGetProperty("pronunciation_hint", out var ph) ? ph.GetString() : null);
-            // Only honor a pre-baked hint when its target word is actually in this line; otherwise derive
-            // hints from the dialogue itself (which is inherently limited to words that are spoken).
-            var pronHint = !string.IsNullOrWhiteSpace(pronHintInPayload)
-                           && PronunciationResolver.HintAppliesToDialogue(pronHintInPayload, quote)
-                ? (pronHintInPayload.StartsWith(' ') ? pronHintInPayload : $" {PromptTags.Wrap("Pronunciation", pronHintInPayload)}")
-                : BuildPronunciationHints(quote);
-
-            if (isVoiceover)
-            {
-                return PromptTags.Wrap(AudioTag,
-                    $"REQUIRED native Grok off-camera voiceover. {who} narrates " +
-                    $"exactly: \"{quote}\".{openCue}{endPause}{pronHint} Do not lip-sync on-screen cast to this VO.{bed}{voiceLock}");
-            }
-
-            // Two-hander: camera pans from {who} to {who2} mid-clip instead of cutting. Only
-            // applies to the on-camera case — voiceover has no second on-screen mouth to sync.
-            if (!string.IsNullOrWhiteSpace(secondarySpeaker) && !string.IsNullOrWhiteSpace(secondaryDialogue))
-            {
-                var who2 = secondarySpeaker.Trim();
-                var quote2 = PromptTags.SanitizeValue(SanitizeSpokenDialogue(secondaryDialogue));
-                var pronHint2 = BuildPronunciationHints(quote2);
-                return PromptTags.Wrap(AudioTag,
-                    $"REQUIRED native Grok dialogue. {who} ON CAMERA lip-syncs " +
-                    $"exactly: \"{quote}\".{openCue} Then {who2} ON CAMERA lip-syncs " +
-                    $"exactly: \"{quote2}\".{endPause}{pronHint}{pronHint2} Speech intelligible; never silent.{bed}{voiceLock}");
-            }
-
-            // spoken_on_camera / on_camera (normalized)
+            var who2 = spoken.SecondarySpeaker.Trim();
+            var quote2 = PromptTags.SanitizeValue(SanitizeSpokenDialogue(spoken.SecondaryDialogue));
+            var pronHint2 = BuildPronunciationHints(quote2);
             return PromptTags.Wrap(AudioTag,
                 $"REQUIRED native Grok dialogue. {who} ON CAMERA lip-syncs " +
-                $"exactly: \"{quote}\".{openCue}{endPause}{pronHint} Other mouths closed. Speech intelligible; never silent.{bed}{voiceLock}");
+                $"exactly: \"{quote}\".{openCue} Then {who2} ON CAMERA lip-syncs " +
+                $"exactly: \"{quote2}\".{endPause}{pronHint}{pronHint2} Speech intelligible; never silent.{bed}{voiceLock}");
         }
 
-        if (!string.IsNullOrWhiteSpace(ambient) || !string.IsNullOrWhiteSpace(sfx) || !string.IsNullOrWhiteSpace(score))
-        {
-            var layers = new List<string>();
-            if (!string.IsNullOrWhiteSpace(score)) layers.Add(PromptTags.Wrap("Score", score));
-            if (!string.IsNullOrWhiteSpace(ambient)) layers.Add(PromptTags.Wrap("Ambient", ambient));
-            if (!string.IsNullOrWhiteSpace(sfx)) layers.Add(PromptTags.Wrap("Foley", sfx));
-            return PromptTags.Wrap(AudioTag, $"music/ambient/Foley only — {string.Join("; ", layers)}. No dialogue.");
-        }
-        return "";
+        // spoken_on_camera / on_camera (normalized)
+        return PromptTags.Wrap(AudioTag,
+            $"REQUIRED native Grok dialogue. {who} ON CAMERA lip-syncs " +
+            $"exactly: \"{quote}\".{openCue}{endPause}{pronHint} Other mouths closed. Speech intelligible; never silent.{bed}{voiceLock}");
+    }
+
+    private static bool IsVoiceoverDelivery(string delivery, string who) =>
+        delivery is "voiceover_internal" or "internal" or "narration" or "vo" or "thought" ||
+        (delivery is not "spoken_on_camera" and not "on_camera" &&
+         who.Contains("narrator", StringComparison.OrdinalIgnoreCase));
+
+    private static string BuildOpenCue(string quote)
+    {
+        var open = FirstSpokenToken(quote);
+        return open.Length > 0
+            ? $" Start speaking immediately with \"{open}\" — do not skip, delay, or swallow the opening word."
+            : " Start speaking immediately with the first word of the line — do not skip the opening.";
+    }
+
+    private static string BuildAmbientOnlyAudio(string ambient, string sfx, string score)
+    {
+        var layers = CollectAudioLayers(score, ambient, sfx);
+        return PromptTags.Wrap(AudioTag, $"music/ambient/Foley only — {string.Join("; ", layers)}. No dialogue.");
     }
 
     private static string BuildPronunciationHints(string text)

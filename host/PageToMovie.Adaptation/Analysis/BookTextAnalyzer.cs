@@ -46,53 +46,9 @@ public static class BookTextAnalyzer
         var sparseRatio = sparsePages / (double)Math.Max(bodies.Count, 1);
         var avgChars = chars / (double)Math.Max(pages, 1);
 
-        var garbage = 0.0;
-        var wordList = string.IsNullOrEmpty(plain)
-            ? Array.Empty<string>()
-            : plain.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (chars > 40)
-        {
-            // CA1875: Regex.Count avoids allocating MatchCollection
-            var weird = WeirdChars.Count(plain);
-            garbage += Math.Min(1.0, weird / (double)Math.Max(chars, 1) * 10);
-            if (letterRatio < 0.55) garbage += 0.35;
-            if (letterRatio < 0.4) garbage += 0.35;
-            var badTokens = BadTokens.Count(plain);
-            garbage += Math.Min(0.35, badTokens / (double)Math.Max(words, 1));
-            var garbleHits = GarbleHits.Count(plain);
-            garbage += Math.Min(0.3, garbleHits / (double)Math.Max(words, 1) * 2);
-            // OCR soup: low vowels in longer tokens
-            if (wordList.Length > 8)
-            {
-                // CA1827: Any() would early-out for existence checks; here we need a count ratio
-                var shortJunk = 0;
-                foreach (var w in wordList)
-                {
-                    if (w.Length is < 4 or > 12) continue;
-                    if (!w.Any(c => "aeiouAEIOU".Contains(c))) shortJunk++;
-                }
-                garbage += Math.Min(0.35, shortJunk / (double)wordList.Length);
-            }
-        }
-
-        garbage = Math.Clamp(garbage, 0, 1.5);
-
-        TextQuality quality;
-        if (words < 8 && contentBodies.Count == 0)
-            quality = TextQuality.Empty;
-        else if (garbage >= 0.45 || letterRatio < 0.4)
-            quality = TextQuality.Poor;
-        else if (words < 40 && sparseRatio > 0.6)
-            quality = TextQuality.Good; // picture book clean short text
-        else if (letterRatio >= 0.55 && garbage < 0.35)
-            quality = TextQuality.Good;
-        else
-            quality = TextQuality.Poor;
-
-        var textDensity = sparseRatio > 0.45 || avgChars < 200 ? TextDensity.Sparse : TextDensity.Normal;
-        var bookKind = pages <= 40 && (textDensity == TextDensity.Sparse || words < 800)
-            ? BookKind.PictureBook
-            : words < 15000 ? BookKind.Short : BookKind.Novel;
+        var garbage = Math.Clamp(ComputeGarbageScore(plain, chars, words, letterRatio), 0, 1.5);
+        var quality = ClassifyQuality(words, contentBodies.Count, garbage, letterRatio, sparseRatio);
+        var (textDensity, bookKind) = ClassifyBookKindAndDensity(sparseRatio, avgChars, pages, words);
 
         // Natural film length from adaptation density (speech times staging for short literary
         // work; market delta for novels). Calibrated on a published short-story film of about 17 minutes.
@@ -104,15 +60,7 @@ public static class BookTextAnalyzer
             ? Math.Clamp(pages, 5, 20)
             : 10;
 
-        var notes = new List<string>();
-        if (textDensity == TextDensity.Sparse)
-            notes.Add("Layout is illustration-heavy (normal for picture books) but wording may still be usable.");
-        if (bookKind == BookKind.PictureBook)
-            notes.Add($"Treated as picture book (~{pages} pages). Suggested Stage 1 runtime {suggestedMinutes} min.");
-        if (quality == TextQuality.Poor)
-            notes.Add("Text looks garbled (OCR noise). Prefer Grok vision on page images.");
-        if (quality == TextQuality.Empty)
-            notes.Add("Almost no readable text. Use Grok vision or paste a transcript.");
+        var notes = BuildNotes(textDensity, bookKind, quality, pages, suggestedMinutes);
 
         return new BookTextAnalysis
         {
@@ -132,6 +80,80 @@ public static class BookTextAnalyzer
             SuggestedChunkPages = suggestedChunks,
             Notes = notes,
         };
+    }
+
+    static double ComputeGarbageScore(string plain, int chars, int words, double letterRatio)
+    {
+        var garbage = 0.0;
+        var wordList = string.IsNullOrEmpty(plain)
+            ? Array.Empty<string>()
+            : plain.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (chars > 40)
+        {
+            // CA1875: Regex.Count avoids allocating MatchCollection
+            var weird = WeirdChars.Count(plain);
+            garbage += Math.Min(1.0, weird / (double)Math.Max(chars, 1) * 10);
+            if (letterRatio < 0.55) garbage += 0.35;
+            if (letterRatio < 0.4) garbage += 0.35;
+            var badTokens = BadTokens.Count(plain);
+            garbage += Math.Min(0.35, badTokens / (double)Math.Max(words, 1));
+            var garbleHits = GarbleHits.Count(plain);
+            garbage += Math.Min(0.3, garbleHits / (double)Math.Max(words, 1) * 2);
+            // OCR soup: low vowels in longer tokens
+            if (wordList.Length > 8)
+                garbage += Math.Min(0.35, CountShortJunkWithoutVowels(wordList) / (double)wordList.Length);
+        }
+        return garbage;
+    }
+
+    static int CountShortJunkWithoutVowels(string[] wordList)
+    {
+        // CA1827: Any() would early-out for existence checks; here we need a count ratio
+        var shortJunk = 0;
+        foreach (var w in wordList)
+        {
+            if (w.Length is < 4 or > 12) continue;
+            if (!w.Any(c => "aeiouAEIOU".Contains(c))) shortJunk++;
+        }
+        return shortJunk;
+    }
+
+    static TextQuality ClassifyQuality(int words, int contentBodyCount, double garbage, double letterRatio, double sparseRatio)
+    {
+        if (words < 8 && contentBodyCount == 0)
+            return TextQuality.Empty;
+        if (garbage >= 0.45 || letterRatio < 0.4)
+            return TextQuality.Poor;
+        if (words < 40 && sparseRatio > 0.6)
+            return TextQuality.Good; // picture book clean short text
+        if (letterRatio >= 0.55 && garbage < 0.35)
+            return TextQuality.Good;
+        return TextQuality.Poor;
+    }
+
+    static (TextDensity Density, BookKind Kind) ClassifyBookKindAndDensity(
+        double sparseRatio, double avgChars, int pages, int words)
+    {
+        var textDensity = sparseRatio > 0.45 || avgChars < 200 ? TextDensity.Sparse : TextDensity.Normal;
+        var bookKind = pages <= 40 && (textDensity == TextDensity.Sparse || words < 800)
+            ? BookKind.PictureBook
+            : words < 15000 ? BookKind.Short : BookKind.Novel;
+        return (textDensity, bookKind);
+    }
+
+    static List<string> BuildNotes(
+        TextDensity textDensity, BookKind bookKind, TextQuality quality, int pages, int suggestedMinutes)
+    {
+        var notes = new List<string>();
+        if (textDensity == TextDensity.Sparse)
+            notes.Add("Layout is illustration-heavy (normal for picture books) but wording may still be usable.");
+        if (bookKind == BookKind.PictureBook)
+            notes.Add($"Treated as picture book (~{pages} pages). Suggested Stage 1 runtime {suggestedMinutes} min.");
+        if (quality == TextQuality.Poor)
+            notes.Add("Text looks garbled (OCR noise). Prefer Grok vision on page images.");
+        if (quality == TextQuality.Empty)
+            notes.Add("Almost no readable text. Use Grok vision or paste a transcript.");
+        return notes;
     }
 
     /// <summary>

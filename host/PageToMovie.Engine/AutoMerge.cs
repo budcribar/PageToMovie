@@ -18,76 +18,121 @@ public static class AutoTextMerger
         int i = 0, oi = 0, ti = 0;
         while (i < bas.Count || oi < ours.Count || ti < theirs.Count)
         {
-            while (i < bas.Count && oi < ours.Count && ti < theirs.Count && ours[oi] == bas[i] && theirs[ti] == bas[i])
-            {
-                merged.Add(bas[i]);
-                i++;
-                oi++;
-                ti++;
-            }
+            ConsumeCommonPrefix(bas, ours, theirs, merged, ref i, ref oi, ref ti);
             if (i >= bas.Count && oi >= ours.Count && ti >= theirs.Count) break;
-            var baseStart = i; var bc = new List<string>(); var oc = new List<string>(); var tc = new List<string>();
-            if (i < bas.Count)
-            {
-                int nextSync = -1;
-                for (int bi = i; bi < bas.Count; bi++)
-                {
-                    if (Idx(ours, bas[bi], oi) >= 0 && Idx(theirs, bas[bi], ti) >= 0)
-                    {
-                        nextSync = bi;
-                        break;
-                    }
-                }
-                int baseEnd = nextSync >= 0 ? nextSync : bas.Count;
-                bc.AddRange(bas.Skip(i).Take(Math.Max(0, baseEnd - i)));
-                int oEnd = nextSync >= 0 ? Idx(ours, bas[nextSync], oi) : ours.Count;
-                int tEnd = nextSync >= 0 ? Idx(theirs, bas[nextSync], ti) : theirs.Count;
-                if (oEnd < 0)
-                    oEnd = ours.Count;
-                if (tEnd < 0)
-                    tEnd = theirs.Count;
-                oc.AddRange(ours.Skip(oi).Take(Math.Max(0, oEnd - oi)));
-                tc.AddRange(theirs.Skip(ti).Take(Math.Max(0, tEnd - ti)));
-                i = baseEnd; oi = oEnd; ti = tEnd;
-            }
-            else
-            {
-                oc.AddRange(ours.Skip(oi));
-                oi = ours.Count;
-                tc.AddRange(theirs.Skip(ti));
-                ti = theirs.Count;
-            }
-            if (oc.Count == 0 && tc.Count == 0 && bc.Count == 0) break;
-            if (Eq(oc, tc)) { merged.AddRange(oc); if (!Eq(oc, bc)) auto++; }
-            else if (Eq(oc, bc)) { merged.AddRange(tc); auto++; }
-            else if (Eq(tc, bc)) { merged.AddRange(oc); auto++; }
-            else if (bc.Count == 0 && oc.All(l => !tc.Contains(l))) { merged.AddRange(oc); merged.AddRange(tc); auto++; }
-            else if (bc.Count == oc.Count && bc.Count == tc.Count && TryResolvePerLine(bc, oc, tc, out var perLine))
-            { merged.AddRange(perLine); auto++; }
-            else
-            {
-                switch (strategy)
-                {
-                    case Strategy.PreferOurs: merged.AddRange(oc); auto++; break;
-                    case Strategy.PreferTheirs: merged.AddRange(tc); auto++; break;
-                    case Strategy.Union:
-                        merged.AddRange(oc);
-                        merged.AddRange(tc.Where(l => !oc.Contains(l)));
-                        auto++;
-                        break;
-                    default:
-                        conflicts.Add(new Hunk(baseStart, bc, oc, tc));
-                        merged.Add("<<<<<<< ours");
-                        merged.AddRange(oc);
-                        merged.Add("=======");
-                        merged.AddRange(tc);
-                        merged.Add(">>>>>>> theirs");
-                        break;
-                }
-            }
+            var hunk = CollectDivergentHunk(bas, ours, theirs, ref i, ref oi, ref ti);
+            if (hunk is null) break;
+            ResolveHunk(merged, conflicts, ref auto, hunk.Value.BaseStart, hunk.Value.Bc, hunk.Value.Oc, hunk.Value.Tc, strategy);
         }
         return new MergeOutcome(Join(merged), conflicts.Count > 0, conflicts, auto);
     }
+
+    static void ConsumeCommonPrefix(
+        List<string> bas, List<string> ours, List<string> theirs, List<string> merged,
+        ref int i, ref int oi, ref int ti)
+    {
+        while (i < bas.Count && oi < ours.Count && ti < theirs.Count && ours[oi] == bas[i] && theirs[ti] == bas[i])
+        {
+            merged.Add(bas[i]);
+            i++;
+            oi++;
+            ti++;
+        }
+    }
+
+    static (int BaseStart, List<string> Bc, List<string> Oc, List<string> Tc)? CollectDivergentHunk(
+        List<string> bas, List<string> ours, List<string> theirs,
+        ref int i, ref int oi, ref int ti)
+    {
+        var baseStart = i;
+        var bc = new List<string>();
+        var oc = new List<string>();
+        var tc = new List<string>();
+        if (i < bas.Count)
+            TakeUntilSync(bas, ours, theirs, ref i, ref oi, ref ti, bc, oc, tc);
+        else
+        {
+            oc.AddRange(ours.Skip(oi));
+            oi = ours.Count;
+            tc.AddRange(theirs.Skip(ti));
+            ti = theirs.Count;
+        }
+        if (oc.Count == 0 && tc.Count == 0 && bc.Count == 0) return null;
+        return (baseStart, bc, oc, tc);
+    }
+
+    static void TakeUntilSync(
+        List<string> bas, List<string> ours, List<string> theirs,
+        ref int i, ref int oi, ref int ti,
+        List<string> bc, List<string> oc, List<string> tc)
+    {
+        int nextSync = FindNextSync(bas, ours, theirs, i, oi, ti);
+        int baseEnd = nextSync >= 0 ? nextSync : bas.Count;
+        bc.AddRange(bas.Skip(i).Take(Math.Max(0, baseEnd - i)));
+        int oEnd = nextSync >= 0 ? Idx(ours, bas[nextSync], oi) : ours.Count;
+        int tEnd = nextSync >= 0 ? Idx(theirs, bas[nextSync], ti) : theirs.Count;
+        if (oEnd < 0)
+            oEnd = ours.Count;
+        if (tEnd < 0)
+            tEnd = theirs.Count;
+        oc.AddRange(ours.Skip(oi).Take(Math.Max(0, oEnd - oi)));
+        tc.AddRange(theirs.Skip(ti).Take(Math.Max(0, tEnd - ti)));
+        i = baseEnd; oi = oEnd; ti = tEnd;
+    }
+
+    static int FindNextSync(List<string> bas, List<string> ours, List<string> theirs, int i, int oi, int ti)
+    {
+        for (int bi = i; bi < bas.Count; bi++)
+        {
+            if (Idx(ours, bas[bi], oi) >= 0 && Idx(theirs, bas[bi], ti) >= 0)
+                return bi;
+        }
+        return -1;
+    }
+
+    static void ResolveHunk(
+        List<string> merged, List<Hunk> conflicts, ref int auto,
+        int baseStart, List<string> bc, List<string> oc, List<string> tc,
+        Strategy strategy)
+    {
+        if (Eq(oc, tc)) { merged.AddRange(oc); if (!Eq(oc, bc)) auto++; }
+        else if (Eq(oc, bc)) { merged.AddRange(tc); auto++; }
+        else if (Eq(tc, bc)) { merged.AddRange(oc); auto++; }
+        else if (IsDisjointAddition(bc, oc, tc)) { merged.AddRange(oc); merged.AddRange(tc); auto++; }
+        else if (bc.Count == oc.Count && bc.Count == tc.Count && TryResolvePerLine(bc, oc, tc, out var perLine))
+        { merged.AddRange(perLine); auto++; }
+        else
+            ApplyStrategy(merged, conflicts, ref auto, baseStart, bc, oc, tc, strategy);
+    }
+
+    static bool IsDisjointAddition(List<string> bc, List<string> oc, List<string> tc) =>
+        bc.Count == 0 && oc.All(l => !tc.Contains(l));
+
+    static void ApplyStrategy(
+        List<string> merged, List<Hunk> conflicts, ref int auto,
+        int baseStart, List<string> bc, List<string> oc, List<string> tc,
+        Strategy strategy)
+    {
+        switch (strategy)
+        {
+            case Strategy.PreferOurs: merged.AddRange(oc); auto++; break;
+            case Strategy.PreferTheirs: merged.AddRange(tc); auto++; break;
+            case Strategy.Union:
+                merged.AddRange(oc);
+                merged.AddRange(tc.Where(l => !oc.Contains(l)));
+                auto++;
+                break;
+            default:
+                conflicts.Add(new Hunk(baseStart, bc, oc, tc));
+                merged.Add("<<<<<<< ours");
+                merged.AddRange(oc);
+                merged.Add("=======");
+                merged.AddRange(tc);
+                merged.Add(">>>>>>> theirs");
+                break;
+        }
+    }
+
     static List<string> Split(string? t) => string.IsNullOrEmpty(t) ? new() : t.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n').ToList();
     static string Join(IReadOnlyList<string> lines) => string.Join("\n", lines);
     static bool Eq(IReadOnlyList<string> a, IReadOnlyList<string> b)
@@ -164,68 +209,102 @@ public sealed class AutoProjectMerger : IAutoProjectMerger
     public AutoJsonMergeResult MergeJsonObjects(JsonElement? baseJson, JsonElement oursJson, JsonElement theirsJson, AutoTextMerger.Strategy strategy = AutoTextMerger.Strategy.Auto)
     {
         if (oursJson.ValueKind != JsonValueKind.Object || theirsJson.ValueKind != JsonValueKind.Object)
-        {
-            var r = AutoTextMerger.Merge(baseJson?.GetRawText(), oursJson.GetRawText(), theirsJson.GetRawText(), strategy);
-            using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(r.MergedText) ? "{}" : r.MergedText);
-            return new AutoJsonMergeResult(doc.RootElement.Clone(), r.HasConflicts, r.AutoResolvedCount, r.Conflicts.Select((_, i) => $"hunk[{i}]").ToList());
-        }
+            return MergeNonObjectAsText(baseJson, oursJson, theirsJson, strategy);
         var conflicts = new List<string>(); var auto = 0;
         using var stream = new MemoryStream();
         using (var writer = new Utf8JsonWriter(stream))
         {
             writer.WriteStartObject();
-            var keys = new SortedSet<string>(StringComparer.Ordinal);
-            foreach (var p in oursJson.EnumerateObject()) keys.Add(p.Name);
-            foreach (var p in theirsJson.EnumerateObject()) keys.Add(p.Name);
-            if (baseJson is { ValueKind: JsonValueKind.Object } bObj)
-                foreach (var p in bObj.EnumerateObject()) keys.Add(p.Name);
+            var keys = CollectAllKeys(baseJson, oursJson, theirsJson);
             foreach (var key in keys)
-            {
-                JsonElement baseVal = default;
-                var hasBase = baseJson is { ValueKind: JsonValueKind.Object } bo && bo.TryGetProperty(key, out baseVal);
-                var hasOurs = oursJson.TryGetProperty(key, out var oursVal);
-                var hasTheirs = theirsJson.TryGetProperty(key, out var theirsVal);
-                if (hasOurs && hasTheirs)
-                {
-                    var oursRaw = oursVal.GetRawText();
-                    var theirsRaw = theirsVal.GetRawText();
-                    var baseRaw = hasBase ? baseVal.GetRawText() : null;
-                    if (oursRaw == theirsRaw)
-                    {
-                        W(writer, key, oursVal);
-                        if (!hasBase || oursRaw != baseRaw) auto++;
-                    }
-                    else
-                    {
-                        // Three-way "one side changed" wins over PreferOurs/PreferTheirs.
-                        var useTheirs = hasBase && oursRaw == baseRaw
-                            || (!(hasBase && theirsRaw == baseRaw)
-                                && strategy != AutoTextMerger.Strategy.PreferOurs
-                                && strategy == AutoTextMerger.Strategy.PreferTheirs);
-                        if (useTheirs)
-                        {
-                            W(writer, key, theirsVal);
-                            auto++;
-                        }
-                        else if ((hasBase && theirsRaw == baseRaw) || strategy == AutoTextMerger.Strategy.PreferOurs)
-                        {
-                            W(writer, key, oursVal);
-                            auto++;
-                        }
-                        else
-                        {
-                            conflicts.Add(key);
-                            W(writer, key, oursVal);
-                        }
-                    }
-                }
-                else if (hasOurs) { W(writer, key, oursVal); auto++; }
-                else if (hasTheirs) { W(writer, key, theirsVal); auto++; }
-            }
+                MergeOneProperty(writer, key, baseJson, oursJson, theirsJson, strategy, conflicts, ref auto);
             writer.WriteEndObject();
         }
         using var resultDoc = JsonDocument.Parse(stream.ToArray());
         return new AutoJsonMergeResult(resultDoc.RootElement.Clone(), conflicts.Count > 0, auto, conflicts);
     }
+
+    static AutoJsonMergeResult MergeNonObjectAsText(
+        JsonElement? baseJson, JsonElement oursJson, JsonElement theirsJson, AutoTextMerger.Strategy strategy)
+    {
+        var r = AutoTextMerger.Merge(baseJson?.GetRawText(), oursJson.GetRawText(), theirsJson.GetRawText(), strategy);
+        using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(r.MergedText) ? "{}" : r.MergedText);
+        return new AutoJsonMergeResult(doc.RootElement.Clone(), r.HasConflicts, r.AutoResolvedCount, r.Conflicts.Select((_, i) => $"hunk[{i}]").ToList());
+    }
+
+    static SortedSet<string> CollectAllKeys(JsonElement? baseJson, JsonElement oursJson, JsonElement theirsJson)
+    {
+        var keys = new SortedSet<string>(StringComparer.Ordinal);
+        foreach (var p in oursJson.EnumerateObject()) keys.Add(p.Name);
+        foreach (var p in theirsJson.EnumerateObject()) keys.Add(p.Name);
+        if (baseJson is { ValueKind: JsonValueKind.Object } bObj)
+            foreach (var p in bObj.EnumerateObject()) keys.Add(p.Name);
+        return keys;
+    }
+
+    static void MergeOneProperty(
+        Utf8JsonWriter writer, string key,
+        JsonElement? baseJson, JsonElement oursJson, JsonElement theirsJson,
+        AutoTextMerger.Strategy strategy, List<string> conflicts, ref int auto)
+    {
+        JsonElement baseVal = default;
+        var hasBase = baseJson is { ValueKind: JsonValueKind.Object } bo && bo.TryGetProperty(key, out baseVal);
+        var hasOurs = oursJson.TryGetProperty(key, out var oursVal);
+        var hasTheirs = theirsJson.TryGetProperty(key, out var theirsVal);
+        if (hasOurs && hasTheirs)
+            MergeBothSides(writer, key, oursVal, theirsVal, hasBase, baseVal, strategy, conflicts, ref auto);
+        else if (hasOurs) { W(writer, key, oursVal); auto++; }
+        else if (hasTheirs) { W(writer, key, theirsVal); auto++; }
+    }
+
+    static void MergeBothSides(
+        Utf8JsonWriter writer, string key, JsonElement oursVal, JsonElement theirsVal,
+        bool hasBase, JsonElement baseVal, AutoTextMerger.Strategy strategy,
+        List<string> conflicts, ref int auto)
+    {
+        var oursRaw = oursVal.GetRawText();
+        var theirsRaw = theirsVal.GetRawText();
+        var baseRaw = hasBase ? baseVal.GetRawText() : null;
+        if (oursRaw == theirsRaw)
+            MergeEqualProperty(writer, key, oursVal, hasBase, oursRaw, baseRaw, ref auto);
+        else
+            MergeConflictingProperty(writer, key, oursVal, theirsVal, hasBase, oursRaw, theirsRaw, baseRaw, strategy, conflicts, ref auto);
+    }
+
+    static void MergeEqualProperty(
+        Utf8JsonWriter writer, string key, JsonElement oursVal,
+        bool hasBase, string oursRaw, string? baseRaw, ref int auto)
+    {
+        W(writer, key, oursVal);
+        if (!hasBase || oursRaw != baseRaw) auto++;
+    }
+
+    static void MergeConflictingProperty(
+        Utf8JsonWriter writer, string key, JsonElement oursVal, JsonElement theirsVal,
+        bool hasBase, string oursRaw, string theirsRaw, string? baseRaw,
+        AutoTextMerger.Strategy strategy, List<string> conflicts, ref int auto)
+    {
+        // Three-way "one side changed" wins over PreferOurs/PreferTheirs.
+        var useTheirs = hasBase && oursRaw == baseRaw
+            || (!(hasBase && theirsRaw == baseRaw)
+                && strategy != AutoTextMerger.Strategy.PreferOurs
+                && strategy == AutoTextMerger.Strategy.PreferTheirs);
+        if (useTheirs)
+        {
+            W(writer, key, theirsVal);
+            auto++;
+        }
+        else if ((hasBase && theirsRaw == baseRaw) || strategy == AutoTextMerger.Strategy.PreferOurs)
+        {
+            W(writer, key, oursVal);
+            auto++;
+        }
+        else
+        {
+            conflicts.Add(key);
+            W(writer, key, oursVal);
+        }
+    }
+
     static void W(Utf8JsonWriter w, string n, JsonElement v) { w.WritePropertyName(n); v.WriteTo(w); }
 }

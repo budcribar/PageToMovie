@@ -74,38 +74,29 @@ public sealed class GrokChatClient : IChatClient
         var modeTag = string.IsNullOrWhiteSpace(mode) ? null : mode.Trim();
 
         var entry = PageToMovie.Core.Models.SupportedModelCatalog.Find(model);
-        var targetUrl = entry is not null && !string.IsNullOrWhiteSpace(entry.ApiBase)
-            ? CombineApiUrl(entry.ApiBase, string.IsNullOrWhiteSpace(entry.EndpointPath) ? ChatCompletionsPath : entry.EndpointPath)
-            : CombineApiUrl(ApiBase, ChatCompletionsPath);
-
+        var targetUrl = ResolveChatTargetUrl(entry);
         var mappedEffort = MapReasoningEffort(reasoningEffort);
-
-        Dictionary<string, object?> BuildPayload(bool includeTemperature, bool includeReasoningEffort)
-        {
-            var p = new Dictionary<string, object?>
-            {
-                ["model"] = model,
-                ["messages"] = new object[]
-                {
-                    new Dictionary<string, object?> { ["role"] = "system", ["content"] = systemPrompt },
-                    new Dictionary<string, object?> { ["role"] = "user", ["content"] = userPrompt },
-                },
-            };
-            if (includeTemperature)
-                p["temperature"] = temperature;
-            if (includeReasoningEffort && mappedEffort is not null)
-                p["reasoning_effort"] = mappedEffort;
-            return p;
-        }
 
         // OpenAI's o-series reasoning models (o1, o3-mini, o4-mini, ...) reject `temperature`
         // outright — "Unsupported parameter: 'temperature' is not supported with this model" —
         // they only run at the implicit default. This client is shared OpenAI-compatible plumbing
         // for xAI/OpenAI/Gemini-OpenAI-compat models, so omit the key only for that id pattern.
-        var includeTemperature = !IsOpenAiReasoningModel(model);
-        var includeReasoningEffort = mappedEffort is not null;
+        var state = new ChatCompletionState
+        {
+            SystemPrompt = systemPrompt,
+            UserPrompt = userPrompt,
+            Model = model,
+            Temperature = temperature,
+            Key = key,
+            TargetUrl = targetUrl,
+            MappedEffort = mappedEffort,
+            IncludeTemperature = !IsOpenAiReasoningModel(model),
+            IncludeReasoningEffort = mappedEffort is not null,
+            Stopwatch = Stopwatch.StartNew(),
+            ModeTag = modeTag,
+            Ct = ct,
+        };
 
-        var sw = Stopwatch.StartNew();
         try
         {
             // Transient-retry wraps the existing param-shape self-heal loop. That inner loop
@@ -113,134 +104,187 @@ public sealed class GrokChatClient : IChatClient
             // only retries the whole call on 429, 5xx, or a network/timeout failure, which
             // previously propagated to the caller immediately with zero retries.
             return await AiRetryPolicy.ExecuteWithTransientRetryAsync(
-                DoRequestAsync,
+                attemptNum => DoChatRequestAsync(state, attemptNum),
                 isTransient: AiRetryPolicy.IsTransientChatFailure,
                 maxAttempts: AiRetryPolicy.DefaultTransientMaxAttempts,
                 backoffBaseMs: AiRetryPolicy.DefaultTransientBackoffMs,
-                onRetry: (attemptNum, ex) => LogTransientRetryAsync(attemptNum, ex),
+                onRetry: (attemptNum, ex) => LogChatTransientRetryAsync(state, attemptNum, ex),
                 ct: ct).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not InvalidOperationException)
         {
-            await _telemetry.LogApiCallAsync(new ApiCallTelemetry
-            {
-                Kind = "chat",
-                Mode = modeTag,
-                Endpoint = ChatCompletionsPath,
-                Model = model,
-                DurationMs = sw.ElapsedMilliseconds,
-                SystemPrompt = systemPrompt,
-                UserPrompt = userPrompt,
-                Error = ex.Message,
-                Ok = false,
-            }, ct);
+            await LogChatFailureAsync(state, ex);
             throw;
         }
+    }
 
-        async Task<string> DoRequestAsync(int attemptNum)
+    private static string ResolveChatTargetUrl(SupportedModelEntry? entry) =>
+        entry is not null && !string.IsNullOrWhiteSpace(entry.ApiBase)
+            ? CombineApiUrl(entry.ApiBase, string.IsNullOrWhiteSpace(entry.EndpointPath) ? ChatCompletionsPath : entry.EndpointPath)
+            : CombineApiUrl(ApiBase, ChatCompletionsPath);
+
+    private static Dictionary<string, object?> BuildChatPayload(ChatCompletionState state)
+    {
+        var p = new Dictionary<string, object?>
         {
-            // Up to 3 attempts: models vary on whether they accept temperature, reasoning_effort,
-            // both, or neither — rather than hardcoding a capability matrix per model id, self-heal
-            // by stripping whichever param the API just told us is unsupported and retrying, same
-            // pattern as the single-param retries elsewhere in this client and AnthropicChatClient.
-            for (var attempt = 0; attempt < 3; attempt++)
+            ["model"] = state.Model,
+            ["messages"] = new object[]
             {
-                var payload = BuildPayload(includeTemperature, includeReasoningEffort);
-                using var req = new HttpRequestMessage(HttpMethod.Post, targetUrl)
-                {
-                    Content = JsonContent.Create(payload),
-                };
-                if (!string.IsNullOrWhiteSpace(key))
-                    req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key.Trim());
-                using var resp = await _http.SendAsync(req, ct);
-                var body = await resp.Content.ReadAsStringAsync(ct);
+                new Dictionary<string, object?> { ["role"] = "system", ["content"] = state.SystemPrompt },
+                new Dictionary<string, object?> { ["role"] = "user", ["content"] = state.UserPrompt },
+            },
+        };
+        if (state.IncludeTemperature)
+            p["temperature"] = state.Temperature;
+        if (state.IncludeReasoningEffort && state.MappedEffort is not null)
+            p["reasoning_effort"] = state.MappedEffort;
+        return p;
+    }
 
-                if (!resp.IsSuccessStatusCode && (int)resp.StatusCode == 400 && attempt < 2)
-                {
-                    // Error text varies by provider: OpenAI echoes the request field verbatim
-                    // ("reasoning_effort"), xAI reports it camelCase with no underscore
-                    // ("reasoningEffort", e.g. grok-4.20-reasoning: "does not support parameter
-                    // reasoningEffort") — match both spellings rather than the one we sent.
-                    if (includeReasoningEffort
-                        && (body.Contains("reasoning_effort", StringComparison.OrdinalIgnoreCase)
-                            || body.Contains("reasoningeffort", StringComparison.OrdinalIgnoreCase)))
-                    {
-                        includeReasoningEffort = false;
-                        continue;
-                    }
-                    if (includeTemperature && body.Contains("temperature", StringComparison.OrdinalIgnoreCase))
-                    {
-                        includeTemperature = false;
-                        continue;
-                    }
-                }
+    private async Task<string> DoChatRequestAsync(ChatCompletionState state, int attemptNum)
+    {
+        // Up to 3 attempts: models vary on whether they accept temperature, reasoning_effort,
+        // both, or neither — rather than hardcoding a capability matrix per model id, self-heal
+        // by stripping whichever param the API just told us is unsupported and retrying, same
+        // pattern as the single-param retries elsewhere in this client and AnthropicChatClient.
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            var payload = BuildChatPayload(state);
+            using var req = new HttpRequestMessage(HttpMethod.Post, state.TargetUrl)
+            {
+                Content = JsonContent.Create(payload),
+            };
+            if (!string.IsNullOrWhiteSpace(state.Key))
+                req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", state.Key.Trim());
+            using var resp = await _http.SendAsync(req, state.Ct);
+            var body = await resp.Content.ReadAsStringAsync(state.Ct);
 
-                return await FinishAsync(resp, body, attemptNum);
-            }
+            if (TryHealUnsupportedParam(state, resp, body, attempt))
+                continue;
 
-            throw new InvalidOperationException("Chat parameter retry loop exhausted.");
+            return await FinishChatAsync(state, resp, body, attemptNum);
         }
 
-        async Task LogTransientRetryAsync(int attemptNum, Exception ex)
-        {
-            if (_errorLogger is null) return;
-            var httpStatus = ex is ChatHttpStatusException hse ? hse.StatusCode : (int?)null;
-            await _errorLogger.LogAsync(new GenerationErrorRecord
-            {
-                Stage = "grok_chat_completion",
-                Model = model,
-                ErrorType = httpStatus is not null ? "http_error" : "exception",
-                ErrorMessage = ex.Message,
-                HttpStatus = httpStatus,
-                Attempt = attemptNum,
-                Resolved = false, // this row is the failed attempt; a later attempt may still succeed
-                RequestSummary = $"mode={modeTag}; promptChars={(systemPrompt?.Length ?? 0) + (userPrompt?.Length ?? 0)}",
-            }, ct).ConfigureAwait(false);
-        }
+        throw new InvalidOperationException("Chat parameter retry loop exhausted.");
+    }
 
-        async Task<string> FinishAsync(HttpResponseMessage resp, string body, int attemptNum)
+    private static bool TryHealUnsupportedParam(
+        ChatCompletionState state, HttpResponseMessage resp, string body, int attempt)
+    {
+        if (!resp.IsSuccessStatusCode && (int)resp.StatusCode == 400 && attempt < 2)
         {
-            if (!resp.IsSuccessStatusCode)
+            // Error text varies by provider: OpenAI echoes the request field verbatim
+            // ("reasoning_effort"), xAI reports it camelCase with no underscore
+            // ("reasoningEffort", e.g. grok-4.20-reasoning: "does not support parameter
+            // reasoningEffort") — match both spellings rather than the one we sent.
+            if (state.IncludeReasoningEffort
+                && (body.Contains("reasoning_effort", StringComparison.OrdinalIgnoreCase)
+                    || body.Contains("reasoningeffort", StringComparison.OrdinalIgnoreCase)))
             {
-                await _telemetry.LogApiCallAsync(new ApiCallTelemetry
-                {
-                    Kind = "chat",
-                    Mode = modeTag,
-                    Endpoint = ChatCompletionsPath,
-                    Model = model,
-                    HttpStatus = (int)resp.StatusCode,
-                    DurationMs = sw.ElapsedMilliseconds,
-                    SystemPrompt = systemPrompt,
-                    UserPrompt = userPrompt,
-                    PromptChars = (systemPrompt?.Length ?? 0) + (userPrompt?.Length ?? 0),
-                    Attempt = attemptNum,
-                    Error = Trim(body, 800),
-                    Ok = false,
-                }, ct);
-                throw ChatHttpStatusException.FromResponse(resp,
-                    $"Chat HTTP {(int)resp.StatusCode}: {Trim(body, 800)}");
+                state.IncludeReasoningEffort = false;
+                return true;
             }
+            if (state.IncludeTemperature && body.Contains("temperature", StringComparison.OrdinalIgnoreCase))
+            {
+                state.IncludeTemperature = false;
+                return true;
+            }
+        }
+        return false;
+    }
 
-            using var doc = JsonDocument.Parse(body);
-            var text = ExtractMessageText(doc.RootElement);
+    private async Task LogChatTransientRetryAsync(ChatCompletionState state, int attemptNum, Exception ex)
+    {
+        if (_errorLogger is null) return;
+        var httpStatus = ex is ChatHttpStatusException hse ? hse.StatusCode : (int?)null;
+        await _errorLogger.LogAsync(new GenerationErrorRecord
+        {
+            Stage = "grok_chat_completion",
+            Model = state.Model,
+            ErrorType = httpStatus is not null ? "http_error" : "exception",
+            ErrorMessage = ex.Message,
+            HttpStatus = httpStatus,
+            Attempt = attemptNum,
+            Resolved = false, // this row is the failed attempt; a later attempt may still succeed
+            RequestSummary = $"mode={state.ModeTag}; promptChars={(state.SystemPrompt?.Length ?? 0) + (state.UserPrompt?.Length ?? 0)}",
+        }, state.Ct).ConfigureAwait(false);
+    }
+
+    private async Task<string> FinishChatAsync(
+        ChatCompletionState state, HttpResponseMessage resp, string body, int attemptNum)
+    {
+        if (!resp.IsSuccessStatusCode)
+        {
             await _telemetry.LogApiCallAsync(new ApiCallTelemetry
             {
                 Kind = "chat",
-                Mode = modeTag,
+                Mode = state.ModeTag,
                 Endpoint = ChatCompletionsPath,
-                Model = model,
+                Model = state.Model,
                 HttpStatus = (int)resp.StatusCode,
-                DurationMs = sw.ElapsedMilliseconds,
-                SystemPrompt = systemPrompt,
-                UserPrompt = userPrompt,
-                PromptChars = (systemPrompt?.Length ?? 0) + (userPrompt?.Length ?? 0),
+                DurationMs = state.Stopwatch.ElapsedMilliseconds,
+                SystemPrompt = state.SystemPrompt,
+                UserPrompt = state.UserPrompt,
+                PromptChars = (state.SystemPrompt?.Length ?? 0) + (state.UserPrompt?.Length ?? 0),
                 Attempt = attemptNum,
-                ResponsePreview = text.Length > 2000 ? text[..2000] : text,
-                ResponseChars = text.Length,
-                Ok = true,
-            }, ct);
-            return text;
+                Error = Trim(body, 800),
+                Ok = false,
+            }, state.Ct);
+            throw ChatHttpStatusException.FromResponse(resp,
+                $"Chat HTTP {(int)resp.StatusCode}: {Trim(body, 800)}");
         }
+
+        using var doc = JsonDocument.Parse(body);
+        var text = ExtractMessageText(doc.RootElement);
+        await _telemetry.LogApiCallAsync(new ApiCallTelemetry
+        {
+            Kind = "chat",
+            Mode = state.ModeTag,
+            Endpoint = ChatCompletionsPath,
+            Model = state.Model,
+            HttpStatus = (int)resp.StatusCode,
+            DurationMs = state.Stopwatch.ElapsedMilliseconds,
+            SystemPrompt = state.SystemPrompt,
+            UserPrompt = state.UserPrompt,
+            PromptChars = (state.SystemPrompt?.Length ?? 0) + (state.UserPrompt?.Length ?? 0),
+            Attempt = attemptNum,
+            ResponsePreview = text.Length > 2000 ? text[..2000] : text,
+            ResponseChars = text.Length,
+            Ok = true,
+        }, state.Ct);
+        return text;
+    }
+
+    private async Task LogChatFailureAsync(ChatCompletionState state, Exception ex)
+    {
+        await _telemetry.LogApiCallAsync(new ApiCallTelemetry
+        {
+            Kind = "chat",
+            Mode = state.ModeTag,
+            Endpoint = ChatCompletionsPath,
+            Model = state.Model,
+            DurationMs = state.Stopwatch.ElapsedMilliseconds,
+            SystemPrompt = state.SystemPrompt,
+            UserPrompt = state.UserPrompt,
+            Error = ex.Message,
+            Ok = false,
+        }, state.Ct);
+    }
+
+    private sealed class ChatCompletionState
+    {
+        public required string SystemPrompt;
+        public required string UserPrompt;
+        public required string Model;
+        public required double Temperature;
+        public string? Key;
+        public required string TargetUrl;
+        public string? MappedEffort;
+        public bool IncludeTemperature;
+        public bool IncludeReasoningEffort;
+        public required Stopwatch Stopwatch;
+        public string? ModeTag;
+        public CancellationToken Ct;
     }
 
     public static Dictionary<string, object?> ParseJsonObject(string text)
