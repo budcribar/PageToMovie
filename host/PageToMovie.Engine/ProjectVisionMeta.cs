@@ -100,55 +100,67 @@ public static class ProjectVisionMeta
         try
         {
             using var jd = JsonDocument.Parse(File.ReadAllText(path));
-            var root = jd.RootElement;
-            string? medium = null;
-            string? style = null;
-            string? source = null;
-            string? notes = null;
-
-            if (root.TryGetProperty("visual_medium", out var vm) && vm.ValueKind == JsonValueKind.String)
-                medium = vm.GetString();
-            if (root.TryGetProperty("render_style_lock", out var rsl) && rsl.ValueKind == JsonValueKind.String)
-                style = rsl.GetString();
-            if (root.TryGetProperty("medium_source", out var ms) && ms.ValueKind == JsonValueKind.String)
-                source = ms.GetString();
-            if (root.TryGetProperty("notes", out var n))
-            {
-                if (n.ValueKind == JsonValueKind.String) notes = n.GetString();
-                else if (n.ValueKind == JsonValueKind.Array)
-                    notes = string.Join("; ", n.EnumerateArray().Select(x => x.GetString()).Where(s => !string.IsNullOrWhiteSpace(s)));
-            }
-
-            // Legacy extract_meta: only book_kind
-            if (string.IsNullOrWhiteSpace(medium) &&
-                root.TryGetProperty("book_kind", out var bk) &&
-                bk.ValueKind == JsonValueKind.String)
-            {
-                medium = string.Equals(bk.GetString(), "picture_book", StringComparison.OrdinalIgnoreCase)
-                    ? MediumIllustrated
-                    : MediumPhotoreal;
-                source ??= "import_book_kind";
-            }
-
-            if (string.IsNullOrWhiteSpace(medium) && string.IsNullOrWhiteSpace(style))
-                return null;
-
-            var med = NormalizeMedium(medium ?? MediumPhotoreal);
-            return new Document
-            {
-                VisualMedium = med,
-                RenderStyleLock = string.IsNullOrWhiteSpace(style) ? DefaultStyleLock(med) : style.Trim(),
-                DecidedBy = source is Adaptation or "adaptation_llm" ? Adaptation
-                    : source is "cast_extract" ? "cast_extract"
-                    : "import",
-                Notes = notes,
-                DecidedAt = root.TryGetProperty("prepared_at", out var pa) && pa.ValueKind == JsonValueKind.String
-                    ? pa.GetString()
-                    : null,
-            };
+            return ParseExtractMetaDocument(jd.RootElement);
         }
         catch { return null; }
     }
+
+    private static Document? ParseExtractMetaDocument(JsonElement root)
+    {
+        var medium = ReadOptionalString(root, "visual_medium");
+        var style = ReadOptionalString(root, "render_style_lock");
+        var source = ReadOptionalString(root, "medium_source");
+        var notes = ReadExtractNotes(root);
+        (medium, source) = ApplyLegacyBookKind(root, medium, source);
+
+        if (string.IsNullOrWhiteSpace(medium) && string.IsNullOrWhiteSpace(style))
+            return null;
+
+        var med = NormalizeMedium(medium ?? MediumPhotoreal);
+        return new Document
+        {
+            VisualMedium = med,
+            RenderStyleLock = string.IsNullOrWhiteSpace(style) ? DefaultStyleLock(med) : style.Trim(),
+            DecidedBy = ResolveExtractDecidedBy(source),
+            Notes = notes,
+            DecidedAt = ReadOptionalString(root, "prepared_at"),
+        };
+    }
+
+    private static string? ReadOptionalString(JsonElement root, string name)
+    {
+        if (root.TryGetProperty(name, out var el) && el.ValueKind == JsonValueKind.String)
+            return el.GetString();
+        return null;
+    }
+
+    private static string? ReadExtractNotes(JsonElement root)
+    {
+        if (!root.TryGetProperty("notes", out var n)) return null;
+        if (n.ValueKind == JsonValueKind.String) return n.GetString();
+        if (n.ValueKind != JsonValueKind.Array) return null;
+        return string.Join("; ", n.EnumerateArray().Select(x => x.GetString()).Where(s => !string.IsNullOrWhiteSpace(s)));
+    }
+
+    private static (string? Medium, string? Source) ApplyLegacyBookKind(
+        JsonElement root, string? medium, string? source)
+    {
+        if (!string.IsNullOrWhiteSpace(medium) ||
+            !root.TryGetProperty("book_kind", out var bk) ||
+            bk.ValueKind != JsonValueKind.String)
+            return (medium, source);
+
+        medium = string.Equals(bk.GetString(), "picture_book", StringComparison.OrdinalIgnoreCase)
+            ? MediumIllustrated
+            : MediumPhotoreal;
+        source ??= "import_book_kind";
+        return (medium, source);
+    }
+
+    private static string ResolveExtractDecidedBy(string? source) =>
+        source is Adaptation or "adaptation_llm" ? Adaptation
+        : source is "cast_extract" ? "cast_extract"
+        : "import";
 
     public static void Write(string projectDir, Document doc)
     {

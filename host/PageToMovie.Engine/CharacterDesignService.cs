@@ -1370,49 +1370,53 @@ public sealed class CharacterDesignService
         var charDir = _projects.GetCharactersDir(projectId);
         var k = (kind ?? "").Trim().ToLowerInvariant();
 
-        if (k is "preferred" or "p" or "ref" or "lock" or "locked")
-        {
-            foreach (var name in ProjectStore.CharacterRefFileCandidates(charKey))
-            {
-                var full = Path.Combine(charDir, name);
-                try { if (File.Exists(full)) File.Delete(full); } catch { /* ignore */ }
-            }
-            _projects.UpdateCharacterSeedPlaceholder(projectId, charKey, "");
-            _projects.MarkCharacterChanged(projectId, charKey, "Deleted preferred/locked picture");
-            return;
-        }
-
-        if (k is "variant" or "v")
-        {
-            var i = Math.Clamp(index, 1, 9);
-            var full = Path.Combine(charDir, $"{charKey.ToLowerInvariant()}_variant_0{i}.png");
-            if (!File.Exists(full))
-                throw new InvalidOperationException($"Variant {i} not found.");
-            File.Delete(full);
-            _projects.MarkCharacterChanged(projectId, charKey, $"Deleted variant {i}");
-            return;
-        }
-
-        if (k is "book" or "bookref" or "b")
-        {
-            // Seed paths are 0-based indices into design_reference_images
-            _projects.RemoveCharacterBookRef(projectId, charKey, index);
-            // Also delete common bookref filename if present
-            var prefix = charKey.ToLowerInvariant() + "_bookref_";
-            // index is 0-based in seeds; files are 1-based bookref_1
-            var fileIdx = index + 1;
-            if (Directory.Exists(charDir))
-            {
-                foreach (var fi in new DirectoryInfo(charDir).GetFiles($"{prefix}{fileIdx}.*"))
-                {
-                    try { fi.Delete(); } catch { /* ignore */ }
-                }
-            }
-            _projects.MarkCharacterChanged(projectId, charKey, $"Deleted book picture {index}");
-            return;
-        }
+        if (TryDeletePreferredImage(projectId, charKey, charDir, k)) return;
+        if (TryDeleteVariantImage(projectId, charKey, charDir, k, index)) return;
+        if (TryDeleteBookRefImage(projectId, charKey, charDir, k, index)) return;
 
         throw new InvalidOperationException($"Unknown image kind: {kind}");
+    }
+
+    private bool TryDeletePreferredImage(string projectId, string charKey, string charDir, string k)
+    {
+        if (k is not ("preferred" or "p" or "ref" or "lock" or "locked")) return false;
+        foreach (var name in ProjectStore.CharacterRefFileCandidates(charKey))
+        {
+            var full = Path.Combine(charDir, name);
+            try { if (File.Exists(full)) File.Delete(full); } catch { /* ignore */ }
+        }
+        _projects.UpdateCharacterSeedPlaceholder(projectId, charKey, "");
+        _projects.MarkCharacterChanged(projectId, charKey, "Deleted preferred/locked picture");
+        return true;
+    }
+
+    private bool TryDeleteVariantImage(string projectId, string charKey, string charDir, string k, int index)
+    {
+        if (k is not ("variant" or "v")) return false;
+        var i = Math.Clamp(index, 1, 9);
+        var full = Path.Combine(charDir, $"{charKey.ToLowerInvariant()}_variant_0{i}.png");
+        if (!File.Exists(full))
+            throw new InvalidOperationException($"Variant {i} not found.");
+        File.Delete(full);
+        _projects.MarkCharacterChanged(projectId, charKey, $"Deleted variant {i}");
+        return true;
+    }
+
+    private bool TryDeleteBookRefImage(string projectId, string charKey, string charDir, string k, int index)
+    {
+        if (k is not ("book" or "bookref" or "b")) return false;
+        _projects.RemoveCharacterBookRef(projectId, charKey, index);
+        var prefix = charKey.ToLowerInvariant() + "_bookref_";
+        var fileIdx = index + 1;
+        if (Directory.Exists(charDir))
+        {
+            foreach (var fi in new DirectoryInfo(charDir).GetFiles($"{prefix}{fileIdx}.*"))
+            {
+                try { fi.Delete(); } catch { /* ignore */ }
+            }
+        }
+        _projects.MarkCharacterChanged(projectId, charKey, $"Deleted book picture {index}");
+        return true;
     }
 
     /// <summary>
@@ -1930,24 +1934,38 @@ public sealed class CharacterDesignService
 
     private static List<string> ResolveBookRefPaths(string projectDir, JsonElement seedInfo, int maxRefs)
     {
-        // Only seed-tracked plates; never text-only / sampled paths
+        var rels = CollectSeedTrackedRels(seedInfo);
+        return ResolveExistingBookPaths(projectDir, rels, maxRefs);
+    }
+
+    private static List<string> CollectSeedTrackedRels(JsonElement seedInfo)
+    {
         var rels = new List<string>();
         foreach (var prop in new[] { "design_reference_images", "book_reference_images" })
         {
             if (!seedInfo.TryGetProperty(prop, out var arr) || arr.ValueKind != JsonValueKind.Array)
                 continue;
-            foreach (var x in arr.EnumerateArray())
-            {
-                var s = x.GetString();
-                if (string.IsNullOrWhiteSpace(s)) continue;
-                if (ProjectStore.IsTextOnlyPlatePath(s)) continue;
-                if (!rels.Contains(s, StringComparer.OrdinalIgnoreCase))
-                    rels.Add(s);
-            }
+            AppendUniqueRelsFromArray(arr, rels);
             if (rels.Count > 0)
                 break;
         }
+        return rels;
+    }
 
+    private static void AppendUniqueRelsFromArray(JsonElement arr, List<string> rels)
+    {
+        foreach (var x in arr.EnumerateArray())
+        {
+            var s = x.GetString();
+            if (string.IsNullOrWhiteSpace(s)) continue;
+            if (ProjectStore.IsTextOnlyPlatePath(s)) continue;
+            if (!rels.Contains(s, StringComparer.OrdinalIgnoreCase))
+                rels.Add(s);
+        }
+    }
+
+    private static List<string> ResolveExistingBookPaths(string projectDir, List<string> rels, int maxRefs)
+    {
         var full = new List<string>();
         foreach (var rel in rels)
         {
@@ -1960,7 +1978,6 @@ public sealed class CharacterDesignService
             if (File.Exists(path))
                 full.Add(path);
         }
-
         return full;
     }
 

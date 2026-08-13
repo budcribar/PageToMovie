@@ -125,20 +125,9 @@ public partial class Characters
 
             // Snapshot identity — never re-read S.List._selected after await for the POST.
             var charKey = S.List._selected.Key;
-
-            // No text or medium change → no API
-            var desc = _editDescription ?? "";
-            var vis = _editVisualLock ?? "";
-            var medium = _editVisualMedium;
-            if (string.Equals(desc, _savedLookDescription, StringComparison.Ordinal) &&
-                string.Equals(vis, _savedLookVisualLock, StringComparison.Ordinal) &&
-                medium == _savedLookVisualMedium)
+            if (LookTextUnchanged())
             {
-                if (!silent)
-                {
-                    S._error = null;
-                    S._message = "No look changes.";
-                }
+                NotifyNoLookChanges(silent);
                 return;
             }
 
@@ -155,60 +144,91 @@ public partial class Characters
                 var result = await S.Engine.UpdateCharacterLookAsync(
                     S._projectId,
                     charKey,
-                    description: desc,
-                    visualLock: vis,
+                    description: _editDescription ?? "",
+                    visualLock: _editVisualLock ?? "",
                     scrubWithAi: !silent);
-
-                var stillOnChar = string.Equals(S.List._selectedKey, charKey, StringComparison.OrdinalIgnoreCase);
-                if (stillOnChar && !silent)
-                {
-                    if (!string.IsNullOrWhiteSpace(result.Description))
-                        _editDescription = result.Description;
-                    if (result.VisualLock is not null)
-                        _editVisualLock = result.VisualLock;
-                }
-
-                // Saved thumbnail/icon is the confirmation — no redundant "Saved look" banner.
-
-                // Soft reload on silent is fine but keep editors stable if scrub didn't rewrite.
-                await S.List.SoftReloadAsync();
-                if (stillOnChar &&
-                    string.Equals(S.List._selectedKey, charKey, StringComparison.OrdinalIgnoreCase) &&
-                    S.List._selected is not null)
-                {
-                    if (!silent && !string.IsNullOrWhiteSpace(result.Description))
-                        _editDescription = result.Description;
-                    else if (silent)
-                    {
-                        // Keep what the operator typed; mark as saved baseline
-                    }
-                    else
-                        _editDescription = S.List._selected.Description ?? _editDescription ?? "";
-
-                    if (!silent && result.VisualLock is not null)
-                        _editVisualLock = result.VisualLock;
-                    else if (!silent)
-                        _editVisualLock = S.List._selected.VisualLock ?? _editVisualLock ?? "";
-
-                    _savedLookDescription = _editDescription ?? "";
-                    _savedLookVisualLock = _editVisualLock ?? "";
-                    _savedLookVisualMedium = _editVisualMedium;
-                }
+                await ApplyLookSaveResultAsync(charKey, silent, result);
             }
             catch (Exception ex)
             {
-                if (!silent)
-                {
-                    S._error = ex.Message;
-                    S._message = null;
-                }
-                else throw;
+                HandleLookSaveError(silent, ex);
             }
             finally
             {
                 if (!silent) S._busy = false;
                 _savingLook = false;
             }
+        }
+
+        private bool LookTextUnchanged() =>
+            string.Equals(_editDescription ?? "", _savedLookDescription, StringComparison.Ordinal) &&
+            string.Equals(_editVisualLock ?? "", _savedLookVisualLock, StringComparison.Ordinal) &&
+            _editVisualMedium == _savedLookVisualMedium;
+
+        private void NotifyNoLookChanges(bool silent)
+        {
+            if (silent) return;
+            S._error = null;
+            S._message = "No look changes.";
+        }
+
+        private async Task ApplyLookSaveResultAsync(string charKey, bool silent, UpdateCharacterLookResult result)
+        {
+            var stillOnChar = string.Equals(S.List._selectedKey, charKey, StringComparison.OrdinalIgnoreCase);
+            ApplyImmediateLookEdits(stillOnChar, silent, result);
+            await S.List.SoftReloadAsync();
+            ApplyReloadedLookEdits(charKey, silent, result);
+        }
+
+        private void ApplyImmediateLookEdits(bool stillOnChar, bool silent, UpdateCharacterLookResult result)
+        {
+            if (!stillOnChar || silent) return;
+            if (!string.IsNullOrWhiteSpace(result.Description))
+                _editDescription = result.Description;
+            if (result.VisualLock is not null)
+                _editVisualLock = result.VisualLock;
+        }
+
+        private void ApplyReloadedLookEdits(string charKey, bool silent, UpdateCharacterLookResult result)
+        {
+            if (!string.Equals(S.List._selectedKey, charKey, StringComparison.OrdinalIgnoreCase) ||
+                S.List._selected is null)
+                return;
+
+            _editDescription = ReloadedLookDescription(silent, result);
+            _editVisualLock = ReloadedLookVisualLock(silent, result);
+            _savedLookDescription = _editDescription ?? "";
+            _savedLookVisualLock = _editVisualLock ?? "";
+            _savedLookVisualMedium = _editVisualMedium;
+        }
+
+        private string ReloadedLookDescription(bool silent, UpdateCharacterLookResult result)
+        {
+            if (!silent && !string.IsNullOrWhiteSpace(result.Description))
+                return result.Description ?? "";
+            if (silent)
+                return _editDescription ?? "";
+            return S.List._selected!.Description ?? _editDescription ?? "";
+        }
+
+        private string ReloadedLookVisualLock(bool silent, UpdateCharacterLookResult result)
+        {
+            if (!silent && result.VisualLock is not null)
+                return result.VisualLock;
+            if (!silent)
+                return S.List._selected!.VisualLock ?? _editVisualLock ?? "";
+            return _editVisualLock ?? "";
+        }
+
+        private void HandleLookSaveError(bool silent, Exception ex)
+        {
+            if (!silent)
+            {
+                S._error = ex.Message;
+                S._message = null;
+                return;
+            }
+            throw ex;
         }
 
     }

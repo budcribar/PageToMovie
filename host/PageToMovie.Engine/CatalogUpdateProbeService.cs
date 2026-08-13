@@ -1014,41 +1014,62 @@ public sealed class CatalogUpdateProbeService
         var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
         using var doc = JsonDocument.Parse(body);
         if (!doc.RootElement.TryGetProperty("models", out var models)) return;
+        var added = AddGeminiDiscoveredModels(models, known, result.NewModels);
+        result.DiscoveryNotes.Add($"Gemini: {added} candidate model(s) not in catalog.");
+    }
+
+    private static int AddGeminiDiscoveredModels(
+        JsonElement models, HashSet<string> known, List<CatalogNewModelHint> newModels)
+    {
         var added = 0;
         foreach (var m in models.EnumerateArray())
         {
-            var name = m.TryGetProperty("name", out var nm) ? nm.GetString() : null;
-            if (string.IsNullOrWhiteSpace(name)) continue;
-            var id = name.StartsWith(ModelsPrefix, StringComparison.OrdinalIgnoreCase)
-                ? name[ModelsPrefix.Length..]
-                : name;
-            if (known.Contains(id) || known.Contains(name)) continue;
-            var methods = m.TryGetProperty("supportedGenerationMethods", out var sgm) ? sgm.ToString() : "";
-            if (methods.Contains("embedContent", StringComparison.OrdinalIgnoreCase)
-                && !methods.Contains("generateContent", StringComparison.OrdinalIgnoreCase))
-                continue;
-            if (!id.Contains(ProviderGemini, StringComparison.OrdinalIgnoreCase)
-                && !id.Contains("imagen", StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            var cap = id.Contains("imagen", StringComparison.OrdinalIgnoreCase)
-                      || id.Contains(UnitImage, StringComparison.OrdinalIgnoreCase)
-                ? CapabilityImage
-                : "Chat";
-            result.NewModels.Add(new CatalogNewModelHint
-            {
-                Id = id,
-                Provider = "Google",
-                ProviderId = ProviderGoogle,
-                SuggestedCapability = cap,
-                Source = "Gemini GET /v1beta/models",
-                LabMode = true,
-                LabNotes = "Discovered via Gemini models list — add as lab and fill limits/costs before production.",
-            });
+            var id = GeminiDiscoveryId(m, known);
+            if (id is null || ShouldSkipGeminiDiscovery(m, id)) continue;
+            newModels.Add(MakeGeminiDiscoveryHint(id));
             known.Add(id);
             if (++added >= 25) break;
         }
-        result.DiscoveryNotes.Add($"Gemini: {added} candidate model(s) not in catalog.");
+        return added;
+    }
+
+    private static string? GeminiDiscoveryId(JsonElement m, HashSet<string> known)
+    {
+        var name = m.TryGetProperty("name", out var nm) ? nm.GetString() : null;
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        var id = name.StartsWith(ModelsPrefix, StringComparison.OrdinalIgnoreCase)
+            ? name[ModelsPrefix.Length..]
+            : name;
+        if (known.Contains(id) || known.Contains(name)) return null;
+        return id;
+    }
+
+    private static bool ShouldSkipGeminiDiscovery(JsonElement m, string id)
+    {
+        var methods = m.TryGetProperty("supportedGenerationMethods", out var sgm) ? sgm.ToString() : "";
+        if (methods.Contains("embedContent", StringComparison.OrdinalIgnoreCase)
+            && !methods.Contains("generateContent", StringComparison.OrdinalIgnoreCase))
+            return true;
+        return !id.Contains(ProviderGemini, StringComparison.OrdinalIgnoreCase)
+               && !id.Contains("imagen", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static CatalogNewModelHint MakeGeminiDiscoveryHint(string id)
+    {
+        var cap = id.Contains("imagen", StringComparison.OrdinalIgnoreCase)
+                  || id.Contains(UnitImage, StringComparison.OrdinalIgnoreCase)
+            ? CapabilityImage
+            : "Chat";
+        return new CatalogNewModelHint
+        {
+            Id = id,
+            Provider = "Google",
+            ProviderId = ProviderGoogle,
+            SuggestedCapability = cap,
+            Source = "Gemini GET /v1beta/models",
+            LabMode = true,
+            LabNotes = "Discovered via Gemini models list — add as lab and fill limits/costs before production.",
+        };
     }
 
     /// <summary>P1-C: fal GET /v1/models — discover endpoint_ids not in catalog.</summary>
