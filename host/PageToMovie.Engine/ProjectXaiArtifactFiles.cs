@@ -16,6 +16,7 @@ public static class ProjectXaiArtifactFiles
     public const string KindScreenplayMax = "screenplay.max";
     public const string KindScreenplayDraft = "screenplay.draft";
     public const string KindScreenplayStitch = "screenplay.stitch";
+    public const string KindScreenplayIndex = "screenplay.index";
     public const string KindBookFull = "book_full";
 
     public static string GetPath(string projectDir) => Path.Combine(projectDir, RelativePath);

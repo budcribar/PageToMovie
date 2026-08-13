@@ -1051,6 +1051,21 @@ public sealed class AdaptationStatus
     public string NextStep { get; set; } = "";
     /// <summary>Which optional Book sub-steps (Look / Enrich / Fit length) have been run — for the sub-strip "done" checks.</summary>
     public BookSubstepStatus BookSubsteps { get; set; } = new();
+    /// <summary>Max-master beat sheet counts (Estimate). Null when no index exists yet.</summary>
+    public ScreenplayIndexSummary? Index { get; set; }
+}
+
+/// <summary>Rollup of <c>source/screenplay.index.json</c> for Estimate (counts only for operators).</summary>
+public sealed class ScreenplayIndexSummary
+{
+    public bool HasIndex { get; set; }
+    public int Acts { get; set; }
+    public int Sequences { get; set; }
+    public int SceneCards { get; set; }
+    public int Locations { get; set; }
+    public int SpeakingCast { get; set; }
+    public double? ApproxMinutes { get; set; }
+    public List<string> Warnings { get; set; } = new();
 }
 
 /// <summary>

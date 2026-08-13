@@ -935,10 +935,20 @@ public static string NormalizeText(string text)
             store, projectId, projectDir, book, title, author, minutes, generationTemperature,
             model, bookRegistry, cacheUserId, onProgress, ct).ConfigureAwait(false);
         if (cache.ReusedSave is not null)
+        {
+            await TryBuildAndSaveIndexAsync(
+                projectDir, book, title, author, chat, model,
+                bookFileSessionFactory, cache.BookIdentity, responses, useFakes,
+                onProgress, ct).ConfigureAwait(false);
             return cache.ReusedSave;
+        }
 
         try
         {
+            await TryBuildAndSaveIndexAsync(
+                projectDir, book, title, author, chat, model,
+                bookFileSessionFactory, cache.BookIdentity, responses, useFakes,
+                onProgress, ct).ConfigureAwait(false);
             return await ConvertAndSaveDraftFromBookAsync(
                 store, projectId, projectDir, book, title, author, minutes, generationTemperature,
                 chat, model, cfg, cache, onProgress, ct, errorLogger, jobId,
@@ -1196,6 +1206,97 @@ public static string NormalizeText(string text)
         if (!hSave.Ok) return hSave;
         hSave.Message = "Screenplay draft ready — review and approve";
         return hSave;
+    }
+
+    private static async Task TryBuildAndSaveIndexAsync(
+        string projectDir,
+        string book,
+        string title,
+        string? author,
+        PageToMovie.Core.Abstractions.IChatClient? chat,
+        string model,
+        PageToMovie.Core.Abstractions.IBookFileSessionFactory? bookFileSessionFactory,
+        BookTextIdentity? bookIdentity,
+        XaiResponsesClient? responses,
+        bool useFakes,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
+        if (useFakes || chat is null || !chat.IsConfigured)
+            return;
+        if (!AdaptationService.ShouldBuildIndex(book, model))
+            return;
+        if (File.Exists(ProjectScreenplayIndex.GetPath(projectDir)))
+        {
+            onProgress?.Invoke("Index already on disk — skipping rebuild.");
+            return;
+        }
+
+        try
+        {
+            var bookSession = await TryCreateBookFileSessionAsync(
+                bookFileSessionFactory, bookIdentity, book, model, onProgress, ct)
+                .ConfigureAwait(false);
+            if (bookSession is null && book.Length > BookToIndexConverter.InlineBookMaxChars)
+            {
+                onProgress?.Invoke("Skipping index (no file_id for a long book).");
+                return;
+            }
+
+            IProgress<string>? progress = onProgress is null ? null : new Progress<string>(onProgress);
+            var index = await AdaptationService.BuildIndexAsync(
+                    title, book, chat, model, author, progress, bookSession, ct)
+                .ConfigureAwait(false);
+            await ProjectScreenplayIndex.WriteAsync(projectDir, index, ct).ConfigureAwait(false);
+            await TryUploadIndexFileAsync(projectDir, responses, onProgress, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            onProgress?.Invoke("Index skipped: " + ex.Message);
+        }
+    }
+
+    private static async Task TryUploadIndexFileAsync(
+        string projectDir,
+        XaiResponsesClient? responses,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
+        if (responses is null || !XaiResponsesClient.IsConfigured)
+            return;
+        var path = ProjectScreenplayIndex.GetPath(projectDir);
+        if (!File.Exists(path)) return;
+        try
+        {
+            var text = await File.ReadAllTextAsync(path, ct).ConfigureAwait(false);
+            var sha = ProjectXaiArtifactFiles.Sha256Hex(text);
+            if (ProjectXaiArtifactFiles.TryGetReusable(
+                    projectDir, ProjectXaiArtifactFiles.KindScreenplayIndex, sha, out var hit)
+                && hit is not null)
+            {
+                onProgress?.Invoke($"Reusing screenplay.index file_id={hit.FileId}.");
+                return;
+            }
+
+            onProgress?.Invoke("Uploading screenplay.index.json to xAI Files…");
+            var bytes = System.Text.Encoding.UTF8.GetBytes(text);
+            var upload = await responses.UploadBookBytesAsync(bytes, "screenplay.index.json", ct: ct)
+                .ConfigureAwait(false);
+            ProjectXaiArtifactFiles.Upsert(projectDir, new ProjectXaiArtifactFiles.Entry
+            {
+                Kind = ProjectXaiArtifactFiles.KindScreenplayIndex,
+                Sha256 = sha,
+                FileId = upload.FileId,
+                ExpiresAtUnix = upload.ExpiresAtUnixSeconds,
+                Bytes = bytes.Length,
+                Filename = "screenplay.index.json",
+            });
+            onProgress?.Invoke($"Saved screenplay.index file_id={upload.FileId}.");
+        }
+        catch (Exception ex)
+        {
+            onProgress?.Invoke("Index file_id upload skipped: " + ex.Message);
+        }
     }
 
     private static async Task<PageToMovie.Core.Abstractions.IBookFileSession?> TryCreateBookFileSessionAsync(

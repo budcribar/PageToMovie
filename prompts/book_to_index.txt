@@ -1,0 +1,51 @@
+You index a book into a hierarchical beat sheet so we can write the full Fountain later and trim by sequence.
+
+Return JSON only. No markdown fences. No commentary.
+
+Schema version: screenplay.index.v1
+
+{
+  "schema_version": "screenplay.index.v1",
+  "movie_title": "string",
+  "source_book_title": "string",
+  "acts": [
+    {
+      "id": "act.1",
+      "title": "string",
+      "sequences": [
+        {
+          "id": "seq.telemachus_sparta",
+          "title": "Telemachus in Sparta",
+          "scenes": [
+            {
+              "id": "sc.telemachus_sparta.01",
+              "order": 1,
+              "heading": "INT. MENELAUS HALL - DAY",
+              "location_key": "Loc_MenelausHall",
+              "speaking_cast": ["TELEMACHUS", "MENELAUS"],
+              "beat": "One or two sentences of what happens and why it matters.",
+              "book_anchor_start": "First ~200 characters of the source span this card covers.",
+              "book_anchor_end": "Last ~200 characters of that same span.",
+              "approx_minutes": 2.5
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+
+HARD RULES
+- Cover the ENTIRE book. Missing a major episode is a defect.
+- There is NO scene-count maximum. A long novel may have 80–200 cards. Err long.
+- Do not collapse voyages, underworld, or other set pieces into a single montage card.
+- Every card needs: unique id, order, heading, location_key, beat, book_anchor_start, book_anchor_end.
+- heading is INT./EXT. + a concrete filmable place. DAY/NIGHT optional if unknown.
+- location_key is a stable Loc_* token. Same place = same key.
+- speaking_cast uses ALL-CAPS character tokens. Same person = same token.
+- book anchors must be verbatim excerpts from the attached book (not summaries).
+- Sequence titles name the story unit (Cyclops, Circe, Bow contest), not "chunk 3".
+- Unique ids across acts, sequences, and scenes.
+- approx_minutes is a rough screen time hint, not a cap.
+
+The attached file is the full book. Index that file.

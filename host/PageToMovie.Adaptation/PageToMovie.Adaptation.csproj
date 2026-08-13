@@ -23,6 +23,8 @@
                       LogicalName="PageToMovie.Adaptation.Prompts.embellish_scene.txt" />
     <EmbeddedResource Include="..\..\prompts\trim_scene.txt"
                       LogicalName="PageToMovie.Adaptation.Prompts.trim_scene.txt" />
+    <EmbeddedResource Include="..\..\prompts\book_to_index.txt"
+                      LogicalName="PageToMovie.Adaptation.Prompts.book_to_index.txt" />
   </ItemGroup>
 
 </Project>

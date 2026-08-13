@@ -6236,6 +6236,7 @@ public sealed partial class ProjectStore
             PlanningModel = planningModel,
             NextStep = next,
             BookSubsteps = ReadBookSubsteps(projectId),
+            Index = ProjectScreenplayIndex.TryReadSummary(dir),
         };
     }
 

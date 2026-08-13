@@ -66,6 +66,19 @@ else
                 </div>
             </div>
 
+            @if (ActiveProject.Status?.Index is { HasIndex: true } ix)
+            {
+                <div class="text-muted small text-center mt-2" data-testid="cost-index-counts">
+                    @ix.SceneCards scenes · @ix.Locations locations · @ix.SpeakingCast speaking
+                </div>
+                @if (Session.IsAdmin && ix.Warnings.Count > 0)
+                {
+                    <div class="text-warning small text-center" data-testid="cost-index-warnings">
+                        @string.Join(" · ", ix.Warnings)
+                    </div>
+                }
+            }
+
             @if (!string.IsNullOrWhiteSpace(_shapeMessage))
             {
                 <div class="alert alert-success py-1 px-2 small mt-2 mb-0 d-flex flex-wrap align-items-center gap-2" data-testid="decision-shape-done">

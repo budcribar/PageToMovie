@@ -22,6 +22,9 @@ public static class AdaptationPromptPack
     public const string TrimRelativePath = "prompts/trim_scene.txt";
     public const string TrimEmbeddedLogicalName = "PageToMovie.Adaptation.Prompts.trim_scene.txt";
 
+    public const string BookToIndexRelativePath = "prompts/book_to_index.txt";
+    public const string BookToIndexEmbeddedLogicalName = "PageToMovie.Adaptation.Prompts.book_to_index.txt";
+
     /// <summary>
     /// Injected when no artificial runtime target is set (product default).
     /// Natural = stage fully (max base for later Fit length); no fake padding.
@@ -260,6 +263,9 @@ public static class AdaptationPromptPack
             $"Available: {(string.IsNullOrEmpty(available) ? "(none — rebuild Adaptation with prompts/)" : available)}. " +
             "Or set PAGETOMOVIE_PROMPTS_DIR to a folder with the .txt file.");
     }
+
+    public static Task<string> LoadBookToIndexSystemPromptAsync(CancellationToken ct = default) =>
+        ReadPromptBodyAsync(BookToIndexRelativePath, BookToIndexEmbeddedLogicalName, ct);
 
     private static AdaptationPromptTokens CloneWithRuntime(AdaptationPromptTokens t, int? minutes) =>
         new()

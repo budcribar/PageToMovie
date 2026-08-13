@@ -83,7 +83,34 @@ public sealed class AdaptationService
             AdaptationPromptTokens.Default(totalRuntimeMinutes, visualMedium));
 
     /// <summary>
-    /// Offline / test heuristic path (no chat).
+    /// True for novels that should get a max-master index before / beside Fountain write.
+    /// Short books that fit a single pass skip the extra call.
+    /// </summary>
+    public static bool ShouldBuildIndex(string bookText, string? modelId = null)
+    {
+        bookText = BookToFountainConverter.NormalizeBookText(bookText ?? "");
+        if (bookText.Length >= 60_000) return true;
+        var budget = BookToFountainConverter.ResolvePromptBudget(modelId);
+        return !BookToFountainConverter.FitsSingleShot(bookText, budget);
+    }
+
+    /// <summary>Hierarchical beat sheet from the book (file_id when a book session is available).</summary>
+    public static Task<ScreenplayIndex> BuildIndexAsync(
+        string title,
+        string bookText,
+        IChatClient chat,
+        string model,
+        string? author = null,
+        IProgress<string>? progress = null,
+        IBookFileSession? bookSession = null,
+        CancellationToken ct = default)
+    {
+        Action<string>? onProgress = progress is null ? null : s => progress.Report(s);
+        return BookToIndexConverter.BuildAsync(
+            title, bookText, chat, model, author, onProgress, bookSession, ct);
+    }
+
+    /// <summary>Offline / test heuristic path (no chat).
     /// </summary>
     public static string ConvertHeuristic(string title, string bookText, string? author = null) =>
         BookToFountainConverter.ConvertHeuristic(title, bookText, author);

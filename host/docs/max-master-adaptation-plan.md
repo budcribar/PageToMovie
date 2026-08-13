@@ -158,12 +158,12 @@ This is the cheapest win on today’s 20-chunk path.
 
 ### P2 — Index artifact
 
-- New prompt `prompts/book_to_index.txt` (Adaptation-owned). Book `file_id` only. JSON out, schema-validated (`ValidatedModelOperation`).
-- Persist `screenplay.index.json` next to the book/fountain; SHA + `file_id`.
-- Gate: every card has heading + beat + anchors; unique `id`s; order covers first and last book anchors (source-complete check).
-- **No scene-count max.** Optional warning if card count ≪ chapters (possible collapse) or == 1.
+- [x] Prompt `prompts/book_to_index.txt` (Adaptation-owned). Book `file_id` when available. JSON out, gated in Adaptation.
+- [x] Persist `source/screenplay.index.json`; SHA + `file_id` (`screenplay.index`).
+- [x] Gate: heading + beat + anchors; unique ids; first/last anchors. No scene-count max. Collapse warning if 1 card or cards ≪ chapters.
+- [x] Estimate shows N scenes / locations / speaking (admin sees collapse warnings).
 
-Show the index on Estimate (counts only for non-admin): N scenes, N locations, N speaking cast. Not the 17‑minute lie.
+Short books that fit a single pass skip the extra call. Index is skipped (not fatal) if Files is down on a huge book.
 
 ### P3 — Write from index
 
