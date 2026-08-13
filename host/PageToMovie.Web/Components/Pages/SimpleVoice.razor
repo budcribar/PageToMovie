@@ -33,15 +33,17 @@
     <InlineAlert Message="@_message" Variant="success" CssClass="py-2" data-testid="simple-voice-message" />
 }
 
+@* PickPhase takes StoriesLoading as a changing parameter so the spinner/error/list
+   re-renders when the flag flips (IsFixed cascade would not notify on Host fields). *@
 <CascadingValue Value="this" IsFixed="true">
     @if (_phase == Phase.Pick)
     {
-        <SimpleVoice_PickPhase />
+        <SimpleVoice_PickPhase StoriesLoading="_storiesLoading" />
     }
     else if (!Session.IsLoggedIn)
     {
         @* Record/movie need a session; bounce to pick + sign-in. *@
-        <SimpleVoice_PickPhase />
+        <SimpleVoice_PickPhase StoriesLoading="_storiesLoading" />
     }
     else if (_phase is Phase.Record or Phase.Done)
     {

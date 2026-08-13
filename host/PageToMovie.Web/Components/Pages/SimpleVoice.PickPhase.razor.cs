@@ -12,7 +12,13 @@ using PageToMovie.Web.Services;
 
 namespace PageToMovie.Web.Components.Pages;
 
+/// <summary>
+/// Phase.Pick. <see cref="StoriesLoading"/> is passed as a changing parameter so this
+/// child re-renders when the spinner flips (CascadingValue IsFixed does not notify).
+/// </summary>
 public partial class SimpleVoice_PickPhase
 {
     [CascadingParameter] public required SimpleVoice Host { get; set; }
+
+    [Parameter] public bool StoriesLoading { get; set; }
 }
