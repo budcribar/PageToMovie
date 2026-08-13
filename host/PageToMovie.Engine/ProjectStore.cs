@@ -1760,15 +1760,8 @@ public sealed partial class ProjectStore
     }
 
     private static ProjectInfo? FindExistingFork(
-        IReadOnlyList<ProjectInfo> projects, string sourceId, string forkOwnerSeg)
-    {
-        foreach (var p in projects)
-        {
-            if (IsExistingForkOf(p, sourceId, forkOwnerSeg))
-                return p;
-        }
-        return null;
-    }
+        IReadOnlyList<ProjectInfo> projects, string sourceId, string forkOwnerSeg) =>
+        projects.FirstOrDefault(p => IsExistingForkOf(p, sourceId, forkOwnerSeg));
 
     private static bool IsExistingForkOf(ProjectInfo p, string sourceId, string forkOwnerSeg)
     {
@@ -2039,7 +2032,7 @@ public sealed partial class ProjectStore
         await Task.CompletedTask.ConfigureAwait(false);
     }
 
-    private async Task DeleteProjectDirectoryWithRetryAsync(string dir, string id, CancellationToken ct)
+    private static async Task DeleteProjectDirectoryWithRetryAsync(string dir, string id, CancellationToken ct)
     {
         ClearReadOnlyRecursive(dir);
         var attempts = 0;
