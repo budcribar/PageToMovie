@@ -10,10 +10,26 @@ Pick a story, get a full screenplay (the **max master**), then cut it to 120 min
 
 | Path | Who | Flow |
 |------|-----|------|
-| **Easy Start** | First-time / voice | Pick a public story → record one sample → hear the narrator as you |
+| **[Easy Start](#easy-start)** | First-time / voice | Pick a public story → record one sample → hear the narrator as you |
 | **Full studio** | Making a film | Import book or Fountain → Estimate (length + $) → Cast & locations → Film → Review |
 
 Estimate is two numbers: **what it will cost** and **what you’ve spent**. Fit length cuts the outline; it does not re-adapt.
+
+Guards and phases (Book / Estimate / Film / Review) live in the **[studio state machine](docs/studio-decision-flow.md#4-state-machine)** — code: [`StudioStateMachine.cs`](host/PageToMovie.Core/Models/StudioStateMachine.cs).
+
+## Easy Start
+
+**Route:** `/simple-voice` — “Two steps · story and your voice.”
+
+You do **not** write a screenplay. You pick a library title that someone already filmed and put **Public (Forkable)** on. Pictures stay as they are; only the narrator speaks as you.
+
+1. **Choose a story** — public catalog (no login to browse). Each card is a forkable film; if it has a max master you inherit the full screenplay.
+2. **Sign in** if you have not — pick still requires an account.
+3. **We fork a private copy** for you (video stays on the source; you re-voice).
+4. **Record one sample** (or pick which speaking character if there is no obvious narrator).
+5. **Make movie** — we clone that voice onto the narrator lines and you play the result.
+
+Mark a finished film **Public (Forkable)** in the full studio so it appears here. Easy Start never re-adapts the book.
 
 ## Run
 
@@ -30,7 +46,7 @@ $env:PageToMovie__UseFakes = "false"   # "true" = no xAI spend
 dotnet run --project PageToMovie.Api
 ```
 
-Open **http://127.0.0.1:5088**. Health: `GET /health`.
+Open **http://127.0.0.1:5088**. Health: `GET /health`. Easy Start: **http://127.0.0.1:5088/simple-voice**.
 
 Visual Studio: open `host/PageToMovie.slnx` and start **PageToMovie.Api** only.
 
@@ -50,6 +66,7 @@ flowchart TD
     F --> G["Generate clips<br/>Grok Imagine / Veo / Fal"]
     G --> H["Review + stitch in the browser"]
     H --> I["Play / share / fork the master"]
+    I --> J["Easy Start<br/>new user voices the narrator"]
 ```
 
 1. **Ingest** — text, PDF (vision OCR for picture books), or an existing Fountain.
@@ -59,6 +76,7 @@ flowchart TD
 5. **Shot plan** — book-wide + per-scene classifiers → clip blueprint. Authoritative call list: [`docs/architecture/MODEL_CALL_INVENTORY.md`](docs/architecture/MODEL_CALL_INVENTORY.md).
 6. **Film** — catalog-routed video (Grok Imagine, Veo, Fal) with locked plates.
 7. **Review / export** — advisory vision review; stitch and play in the browser.
+8. **Share** — mark Public (Forkable). The next person uses Easy Start or forks into Estimate.
 
 Look / Enrich are optional polish on the master. Fit length only writes the working `screenplay.fountain`.
 
@@ -72,7 +90,7 @@ Look / Enrich are optional polish on the master. Fit length only writes the work
 | `host/PageToMovie.Adaptation` | Stage‑1: index, write, trim, enrich |
 | `projects/` | Per-film fountain, max, index, cast, clips, WIP |
 | `prompts/` | Product prompts |
-| `docs/` | Architecture and decision flow |
+| `docs/` | Architecture and [state machine](docs/studio-decision-flow.md#4-state-machine) |
 | `host/docs/max-master-adaptation-plan.md` | Full screenplay, cut later |
 
 ## Tests
@@ -93,10 +111,12 @@ Playwright pilot (against a running API): `host/playwright/README.md`.
 
 | Doc | Topic |
 |-----|--------|
-| [`host/README.md`](host/README.md) | API routes, SignalR, YouTube, LoadSim |
 | [`docs/studio-decision-flow.md`](docs/studio-decision-flow.md) | Book → Estimate → Film |
+| [**State machine**](docs/studio-decision-flow.md#4-state-machine) | Phases, guards, Generate vs Edit |
+| [`StudioStateMachine.cs`](host/PageToMovie.Core/Models/StudioStateMachine.cs) | Code: who can open Book / Estimate / Film / Review |
 | [`host/docs/max-master-adaptation-plan.md`](host/docs/max-master-adaptation-plan.md) | Index, write, trim, share |
 | [`docs/architecture/MODEL_CALL_INVENTORY.md`](docs/architecture/MODEL_CALL_INVENTORY.md) | Every model call |
+| [`host/README.md`](host/README.md) | API routes, SignalR, YouTube, LoadSim |
 | [`prompts/README.md`](prompts/README.md) | Prompts and schemas |
 | [`AGENTS.md`](AGENTS.md) | North star for contributors |
 
