@@ -220,7 +220,7 @@ public static class AuthEndpoints
     return Results.Ok(new { ok = true, message = "Password updated. You can sign in." });
 }
 
-    private static IResult PostAuthMediaToken(HttpContext http, IAdminAuthService auth, IUserContext user)
+    private static IResult PostAuthMediaToken(HttpContext http, IAdminAuthService auth)
     {
     if (http.User?.Identity?.IsAuthenticated != true)
         return Results.Json(new { ok = false, error = "Sign in required" }, statusCode: StatusCodes.Status401Unauthorized);
@@ -276,7 +276,7 @@ public static class AuthEndpoints
     return result.Ok ? Results.Ok(result) : Results.NotFound();
 }
 
-    private static async Task<IResult> GetAuthMe(IUserContext user, IUserApiKeyProvider keys, UserDatabaseService userDb)
+    private static async Task<IResult> GetAuthMe(IUserContext user, UserDatabaseService userDb)
     {
     var roles = user.Roles.ToList();
     var personal = false;
