@@ -227,9 +227,12 @@ public static class FilmBuildService
     }
 
     /// <summary>Attach Stage‑1 pins from convert manifest when present.</summary>
-    public static void AttachStage1Provenance(string projectDir, FilmBuildDocument doc)
+    public static async Task AttachStage1ProvenanceAsync(
+        string projectDir,
+        FilmBuildDocument doc,
+        CancellationToken ct = default)
     {
-        var m = ProjectStage1ConvertManifest.TryRead(projectDir);
+        var m = await ProjectStage1ConvertManifest.TryReadAsync(projectDir, ct).ConfigureAwait(false);
         if (m is null) return;
         doc.Provenance.AdaptationVersion = m.AdaptationVersion;
         doc.Provenance.PromptContentSha256 = m.PromptContentSha256;
@@ -279,7 +282,7 @@ public static class FilmBuildService
     {
         var projectDir = await store.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         var doc = Create(projectId, studioSha256, durationSeconds, segments, byteLength, assemblyWhere);
-        AttachStage1Provenance(projectDir, doc);
+        await AttachStage1ProvenanceAsync(projectDir, doc, ct).ConfigureAwait(false);
         await WriteAsync(projectDir, doc, ct).ConfigureAwait(false);
         try
         {
@@ -343,7 +346,7 @@ public static class FilmBuildService
                 segments: null,
                 byteLength: uploadBytes.Length,
                 assemblyWhere: "upload");
-            AttachStage1Provenance(projectDir, doc);
+            await AttachStage1ProvenanceAsync(projectDir, doc, ct).ConfigureAwait(false);
         }
 
         var studioSha = (doc.Studio.Sha256 ?? "").Trim().ToLowerInvariant();

@@ -8,13 +8,13 @@ namespace PageToMovie.Tests;
 public class ClipPromptHistoryTests
 {
     [Fact]
-    public void ListClipPromptHistory_returns_empty_when_no_history_dir()
+    public async Task ListClipPromptHistory_returns_empty_when_no_history_dir()
     {
         var root = Path.Combine(Path.GetTempPath(), "ptm_prompt_hist_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
         try
         {
-            var result = FilmJobService.ListClipPromptHistory(root, scene: 1, clip: 1);
+            var result = await FilmJobService.ListClipPromptHistoryAsync(root, scene: 1, clip: 1);
             Assert.Empty(result);
         }
         finally
@@ -24,7 +24,7 @@ public class ClipPromptHistoryTests
     }
 
     [Fact]
-    public void ListClipPromptHistory_parses_and_sorts_newest_first()
+    public async Task ListClipPromptHistory_parses_and_sorts_newest_first()
     {
         var root = Path.Combine(Path.GetTempPath(), "ptm_prompt_hist_" + Guid.NewGuid().ToString("N"));
         var historyDir = Path.Combine(root, "assets", "video", "history");
@@ -45,7 +45,7 @@ public class ClipPromptHistoryTests
                 Path.Combine(historyDir, $"scene_01_clip_03_{newer}.meta.json"),
                 """{"prompt":"different clip"}""");
 
-            var result = FilmJobService.ListClipPromptHistory(root, scene: 1, clip: 2);
+            var result = await FilmJobService.ListClipPromptHistoryAsync(root, scene: 1, clip: 2);
 
             Assert.Equal(2, result.Count);
             Assert.Equal("newer prompt text", result[0].Prompt);
@@ -59,7 +59,7 @@ public class ClipPromptHistoryTests
     }
 
     [Fact]
-    public void ListClipPromptHistory_skips_unreadable_entries_without_throwing()
+    public async Task ListClipPromptHistory_skips_unreadable_entries_without_throwing()
     {
         var root = Path.Combine(Path.GetTempPath(), "ptm_prompt_hist_" + Guid.NewGuid().ToString("N"));
         var historyDir = Path.Combine(root, "assets", "video", "history");
@@ -69,7 +69,7 @@ public class ClipPromptHistoryTests
             var ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             File.WriteAllText(Path.Combine(historyDir, $"scene_01_clip_01_{ts}.meta.json"), "not valid json{{{");
 
-            var result = FilmJobService.ListClipPromptHistory(root, scene: 1, clip: 1);
+            var result = await FilmJobService.ListClipPromptHistoryAsync(root, scene: 1, clip: 1);
 
             Assert.Empty(result);
         }
