@@ -1137,36 +1137,65 @@ public static class BookToFountainConverter
             --- END FOUNTAIN ---
             """;
 
+        return await ExecuteNormalizationPassAsync(
+            system, fountain, user, chat, model, onProgress, ct, reasoningEffort,
+            mode: ChatCallModes.BookToFountainLocationNormalizeRetry,
+            retryLabel: "Location normalization",
+            promptVersion: "stage1-location-normalize-v1",
+            operationName: "stage1_location_normalize",
+            successMessage: "Location names checked.").ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Shared execute/validate/fallback for location-name and character-name normalization.
+    /// Both passes ask the model to unify aliases or leave genuine differences; neither can
+    /// re-run its candidate finder as a pass/fail signal.
+    /// </summary>
+    private static async Task<string> ExecuteNormalizationPassAsync(
+        string system,
+        string fountain,
+        string user,
+        IChatClient chat,
+        string model,
+        Action<string>? onProgress,
+        CancellationToken ct,
+        string? reasoningEffort,
+        string mode,
+        string retryLabel,
+        string promptVersion,
+        string operationName,
+        string successMessage)
+    {
         try
         {
             var raw = await ExecuteStage1OperationAsync(
                     chat, system, user, model, temperature: 0.1,
-                    mode: ChatCallModes.BookToFountainLocationNormalizeRetry,
-                    retryLabel: "Location normalization", onProgress, ct, reasoningEffort,
-                    promptVersion: "stage1-location-normalize-v1",
+                    mode: mode,
+                    retryLabel: retryLabel, onProgress, ct, reasoningEffort,
+                    promptVersion: promptVersion,
                     correctionInstruction: "Return the complete Fountain screenplay again — valid Fountain formatting throughout.",
                     validate: ValidateNormalizationRepair,
                     deterministicFallback: fountain,
-                    operationName: "stage1_location_normalize").ConfigureAwait(false);
+                    operationName: operationName).ConfigureAwait(false);
             if (raw is null)
             {
-                onProgress?.Invoke("Location normalization failed twice — keeping prior draft.");
+                onProgress?.Invoke($"{retryLabel} failed twice — keeping prior draft.");
                 return fountain;
             }
 
             var repaired = StripBookPageTags(StripFences(raw));
             if (!LooksLikeGoodFountain(repaired))
             {
-                onProgress?.Invoke("Location normalization unusable — keeping prior draft.");
+                onProgress?.Invoke($"{retryLabel} unusable — keeping prior draft.");
                 return fountain;
             }
 
-            onProgress?.Invoke("Location names checked.");
+            onProgress?.Invoke(successMessage);
             return repaired;
         }
         catch (Exception)
         {
-            onProgress?.Invoke("Location normalization failed — keeping prior draft.");
+            onProgress?.Invoke($"{retryLabel} failed — keeping prior draft.");
             return fountain;
         }
     }
@@ -1542,38 +1571,13 @@ public static class BookToFountainConverter
             --- END FOUNTAIN ---
             """;
 
-        try
-        {
-            var raw = await ExecuteStage1OperationAsync(
-                    chat, system, user, model, temperature: 0.1,
-                    mode: ChatCallModes.BookToFountainNameNormalizeRetry,
-                    retryLabel: "Name normalization", onProgress, ct, reasoningEffort,
-                    promptVersion: "stage1-name-normalize-v1",
-                    correctionInstruction: "Return the complete Fountain screenplay again — valid Fountain formatting throughout.",
-                    validate: ValidateNormalizationRepair,
-                    deterministicFallback: fountain,
-                    operationName: "stage1_name_normalize").ConfigureAwait(false);
-            if (raw is null)
-            {
-                onProgress?.Invoke("Name normalization failed twice — keeping prior draft.");
-                return fountain;
-            }
-
-            var repaired = StripBookPageTags(StripFences(raw));
-            if (!LooksLikeGoodFountain(repaired))
-            {
-                onProgress?.Invoke("Name normalization unusable — keeping prior draft.");
-                return fountain;
-            }
-
-            onProgress?.Invoke("Names checked.");
-            return repaired;
-        }
-        catch (Exception)
-        {
-            onProgress?.Invoke("Name normalization failed — keeping prior draft.");
-            return fountain;
-        }
+        return await ExecuteNormalizationPassAsync(
+            system, fountain, user, chat, model, onProgress, ct, reasoningEffort,
+            mode: ChatCallModes.BookToFountainNameNormalizeRetry,
+            retryLabel: "Name normalization",
+            promptVersion: "stage1-name-normalize-v1",
+            operationName: "stage1_name_normalize",
+            successMessage: "Names checked.").ConfigureAwait(false);
     }
 
     // ── split narration (continuous V.O./verse broken by a real blank line) ───────────────

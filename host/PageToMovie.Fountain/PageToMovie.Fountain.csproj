@@ -6,6 +6,12 @@
     <Nullable>enable</Nullable>
     <RootNamespace>PageToMovie.Fountain</RootNamespace>
     <Description>Shared Fountain screenplay lexer + parser. Pure System.Text; no I/O, no other product deps.</Description>
+    <!-- Compiles Core's TimeoutSafeRegex.cs as FountainRegex without a Core project reference. -->
+    <DefineConstants>$(DefineConstants);PAGETOMOVIE_FOUNTAIN</DefineConstants>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\PageToMovie.Core\Utils\TimeoutSafeRegex.cs" Link="TimeoutSafeRegex.cs" />
+  </ItemGroup>
 
 </Project>

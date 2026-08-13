@@ -116,11 +116,16 @@ public sealed class OpenEditorResponse
     public string? Error { get; set; }
 }
 
-public sealed class JobSnapshot
+/// <summary>
+/// Progress fields shared by <see cref="JobSnapshot"/> (API) and <see cref="JobRecord"/> (store).
+/// Status default differs per type (idle vs queued) and is set by the derived constructor.
+/// </summary>
+public abstract class JobProgress
 {
-    /// <summary>Multi-job id. Empty when idle / not yet assigned.</summary>
-    public string? JobId { get; set; }
-    public string Status { get; set; } = "idle"; // idle|running|done|error|cancelled
+    protected JobProgress(string status) => Status = status;
+
+    /// <summary>idle|queued|running|done|error|cancelled|partial — default set by the derived type.</summary>
+    public string Status { get; set; }
     public string? Kind { get; set; }
     public string? Message { get; set; }
     public string? ProjectId { get; set; }
@@ -132,16 +137,8 @@ public sealed class JobSnapshot
     public int Total { get; set; }
     public List<string> Log { get; set; } = new();
     public string? Error { get; set; }
-    public DateTimeOffset? QueuedAt { get; set; }
     public DateTimeOffset? StartedAt { get; set; }
     public DateTimeOffset? FinishedAt { get; set; }
-
-    /// <summary>True when status indicates job processing is finished (done, partial, error, cancelled, idle).</summary>
-    public bool IsFinished => Status is "done" or "partial" or "error" or "cancelled" or "idle";
-
-    /// <summary>True when job completed successfully (done or partial).</summary>
-    public bool IsSuccess => Status is "done" or "partial";
-
     /// <summary>
     /// Same-origin proxy path for client to download gen output (e.g. /api/media/proxy/{token}).
     /// Set when bytes should be saved to the user's media folder instead of server disk.
@@ -149,6 +146,22 @@ public sealed class JobSnapshot
     public string? ClientMediaUrl { get; set; }
     /// <summary>Project-relative path under the client media folder, e.g. assets/video/scene_01_clip_01.mp4.</summary>
     public string? ClientRelativePath { get; set; }
+}
+
+public sealed class JobSnapshot : JobProgress
+{
+    public JobSnapshot() : base("idle") { }
+
+    /// <summary>Multi-job id. Empty when idle / not yet assigned.</summary>
+    public string? JobId { get; set; }
+    public DateTimeOffset? QueuedAt { get; set; }
+
+    /// <summary>True when status indicates job processing is finished (done, partial, error, cancelled, idle).</summary>
+    public bool IsFinished => Status is "done" or "partial" or "error" or "cancelled" or "idle";
+
+    /// <summary>True when job completed successfully (done or partial).</summary>
+    public bool IsSuccess => Status is "done" or "partial";
+
     /// <summary>For Kind="music": one id shared by every segment of the same generation run, so the
     /// client archives all of a take's segments under the same take-history timestamp instead of each
     /// segment computing its own independently (they can be minutes apart — real provider polling
@@ -183,26 +196,12 @@ public static class JobListHelpers
 }
 
 /// <summary>Persisted multi-job record (same fields as snapshot + queue metadata).</summary>
-public sealed class JobRecord
+public sealed class JobRecord : JobProgress
 {
+    public JobRecord() : base("queued") { }
+
     public string JobId { get; set; } = "";
-    public string Status { get; set; } = "queued"; // queued|running|done|error|cancelled
-    public string? Kind { get; set; }
-    public string? Message { get; set; }
-    public string? ProjectId { get; set; }
-    public string? UserId { get; set; }
-    public string? CharKey { get; set; }
-    public int? Scene { get; set; }
-    public int? Clip { get; set; }
-    public int Index { get; set; }
-    public int Total { get; set; }
-    public List<string> Log { get; set; } = new();
-    public string? Error { get; set; }
     public DateTimeOffset QueuedAt { get; set; } = DateTimeOffset.UtcNow;
-    public DateTimeOffset? StartedAt { get; set; }
-    public DateTimeOffset? FinishedAt { get; set; }
-    public string? ClientMediaUrl { get; set; }
-    public string? ClientRelativePath { get; set; }
 
     public JobSnapshot ToSnapshot() => new()
     {
