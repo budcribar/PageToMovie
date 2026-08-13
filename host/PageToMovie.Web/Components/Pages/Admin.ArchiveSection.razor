@@ -109,12 +109,12 @@
                                 <strong>Create draft from book</strong>; use this if a project skipped that step.
                             </p>
                             <p class="small mb-2" data-testid="admin-enrich-status">
-                                @if (Archive._enrichDone is true)
+                                @if (Archive._enrichDone == true)
                                 {
                                     <span class="badge text-bg-success">Enrich already recorded</span>
                                     <span class="text-muted ms-1">You can run it again to re-do the visual pass.</span>
                                 }
-                                else if (Archive._enrichDone is false)
+                                else if (Archive._enrichDone == false)
                                 {
                                     <span class="badge text-bg-warning">Never recorded</span>
                                     <span class="text-muted ms-1">This project has no enrich stamp — Odyssey is in this state.</span>

@@ -263,8 +263,8 @@ public partial class Scenes
         try
         {
             var versions = _musicVersions;
-            var target = versions?.FirstOrDefault(v => string.Equals(v.TakeId, takeId, StringComparison.OrdinalIgnoreCase));
-            if (target is null || versions is null)
+            if (versions is null ||
+                versions.FirstOrDefault(v => string.Equals(v.TakeId, takeId, StringComparison.OrdinalIgnoreCase)) is not { } target)
             {
                 _musicCompareMessage = "Take not found.";
                 return;

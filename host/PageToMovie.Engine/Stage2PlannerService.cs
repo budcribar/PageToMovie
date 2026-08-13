@@ -1042,7 +1042,7 @@ public sealed class Stage2PlannerService
 
         // Continuity + resolution/fps are owned by ClipVideoPromptBuilder at gen time —
         // keep blueprint visual_prompt declarative (action/style only).
-        var vp = BuildVisualPrompt(beat, sceneWork, locSeeds, charSeeds, wardrobe, i);
+        var vp = BuildVisualPrompt(beat, sceneWork, locSeeds, charSeeds, wardrobe);
         var (vpOut, neg, cameraMoveToken, beatIdStr, sourceBeatIds) = AppendVisualDirectives(
             vp, beat, wardrobe, clipCast, i, dlg, spk, monologueStep, charSeeds,
             aiLighting, aiNegative, aiCamera, aiEmotion, aiDof, aiColor);
@@ -1718,8 +1718,7 @@ public sealed class Stage2PlannerService
         Dictionary<string, object?> scene,
         Dictionary<string, object?> locSeeds,
         Dictionary<string, object?> charSeeds,
-        Dictionary<string, List<string>> wardrobe,
-        int clipIndex)
+        Dictionary<string, List<string>> wardrobe)
     {
         var ve = CoerceString(beat.TryGetValue(Keys.VisualEvent, out var vev) ? vev : null) ?? "";
         // Strip accidental technical suffix from beat text (res/fps owned at gen time)
@@ -2623,7 +2622,7 @@ public sealed class Stage2PlannerService
         public int CompletedScenes;
         public required int TotalScenes;
         public required SemaphoreSlim SceneGate;
-        public required object ProgressGate;
+        public required readonly object ProgressGate;
         public Action<string>? OnProgress;
         public required System.Collections.Concurrent.ConcurrentBag<(int SceneNumber, Dictionary<string, object?> Scene)> PlannedBag;
 

@@ -283,7 +283,7 @@ public partial class MainLayout : IDisposable
             }
 
             var login = await Engine.LoginAsync(user, pass);
-            if (login?.Ok is true && !string.IsNullOrWhiteSpace(login.Token))
+            if (login is { Ok: true } && !string.IsNullOrWhiteSpace(login.Token))
                 await ApplyLoginAndStripQueryAsync(login, uri, user);
         }
         catch
@@ -307,7 +307,7 @@ public partial class MainLayout : IDisposable
             if (Session.IsLoggedIn) return;
 
             var login = await Engine.TryDevLoginAsync();
-            if (login?.Ok is true && !string.IsNullOrWhiteSpace(login.Token))
+            if (login is { Ok: true } && !string.IsNullOrWhiteSpace(login.Token))
                 await Session.SetSessionAsync(login.Token, login.UserId, login.Roles, login.ExpiresAt);
         }
         catch
@@ -340,7 +340,7 @@ public partial class MainLayout : IDisposable
                 await Session.ClearAsync();
 
             var login = await Engine.LoginWithOperatorOverrideAsync(secret);
-            if (login?.Ok is true && !string.IsNullOrWhiteSpace(login.Token))
+            if (login is { Ok: true } && !string.IsNullOrWhiteSpace(login.Token))
                 await ApplyLoginAndStripQueryAsync(login, uri, login.UserId ?? AdminToken);
         }
         catch
