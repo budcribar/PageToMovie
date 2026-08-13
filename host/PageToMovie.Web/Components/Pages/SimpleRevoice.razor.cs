@@ -81,69 +81,9 @@ public partial class SimpleRevoice : IAsyncDisposable
             await ActiveProject.RefreshReadinessAsync(Engine);
             _projectId = ActiveProject.ProjectId ?? _projectId;
 
-            // Prefer narrator seed with a stored clone.
-            try
-            {
-                var chars = await Engine.GetCharactersAsync(_projectId);
-                var withVoice = chars?.Characters?
-                    .FirstOrDefault(c =>
-                        !string.IsNullOrWhiteSpace(c.VoiceProviderVoiceId));
-                var narrator = chars?.Characters?
-                    .FirstOrDefault(c =>
-                        string.Equals(c.Key, "Character_Narrator", StringComparison.OrdinalIgnoreCase) ||
-                        (c.Key?.Contains("narrator", StringComparison.OrdinalIgnoreCase) ?? false));
-                if (narrator is not null)
-                    _narratorKey = narrator.Key ?? _narratorKey;
-                else if (withVoice is not null)
-                    _narratorKey = withVoice.Key ?? _narratorKey;
-
-                _hasClone = chars?.Characters?.Any(c =>
-                    string.Equals(c.Key, _narratorKey, StringComparison.OrdinalIgnoreCase) &&
-                    !string.IsNullOrWhiteSpace(c.VoiceProviderVoiceId)) ?? false;
-            }
-            catch
-            {
-                _hasClone = true; // try speak anyway — API will reject if missing
-            }
-
-            var scenes = await Engine.GetScenesAsync(_projectId);
-            if (scenes?.Scenes is { Count: > 0 })
-            {
-                foreach (var s in scenes.Scenes.OrderBy(x => x.SceneNumber))
-                {
-                    var detail = await Engine.GetSceneDetailAsync(_projectId, s.SceneNumber);
-                    if (detail?.Scene?.Clips is not { Count: > 0 } clips) continue;
-                    foreach (var c in clips.OrderBy(x => x.ClipNumber))
-                    {
-                        var speaker = (c.Speaker ?? "").Trim();
-                        var dialogue = (c.Dialogue ?? "").Trim();
-                        var isNarrator = IsNarratorSpeaker(speaker, _narratorKey);
-                        _clips.Add(new ClipRow
-                        {
-                            Scene = s.SceneNumber,
-                            Clip = c.ClipNumber,
-                            Dialogue = dialogue,
-                            Speaker = string.IsNullOrEmpty(speaker) ? null : speaker,
-                            IsNarrator = isNarrator,
-                            VideoUrl = c.OnDisk ? Engine.ClipVideoUrl(_projectId, s.SceneNumber, c.ClipNumber) : null,
-                            Status = isNarrator && dialogue.Length > 0
-                                ? "Queued"
-                                : isNarrator
-                                    ? "Keep · no line"
-                                    : string.IsNullOrEmpty(dialogue)
-                                        ? "Keep · silent"
-                                        : $"Keep · {ShortSpeaker(speaker)}",
-                        });
-                    }
-                }
-            }
-
-            if (_clips.Count == 0)
-                _status = "No clips in this project yet";
-            else if (_narratorClipCount == 0)
-                _status = "No narrator clips to re-voice";
-            else
-                _status = $"{_narratorClipCount} narrator clip(s) · {_keepClipCount} kept as-is";
+            await ResolveNarratorKeyAndCloneAsync();
+            await LoadClipsFromScenesAsync();
+            _status = StatusAfterLoad();
         }
         catch (Exception ex)
         {
@@ -153,6 +93,91 @@ public partial class SimpleRevoice : IAsyncDisposable
         {
             _loading = false;
         }
+    }
+
+    /// <summary>Prefer narrator seed with a stored clone.</summary>
+    private async Task ResolveNarratorKeyAndCloneAsync()
+    {
+        try
+        {
+            var chars = await Engine.GetCharactersAsync(_projectId);
+            var withVoice = chars?.Characters?
+                .FirstOrDefault(HasVoiceProviderId);
+            var narrator = chars?.Characters?
+                .FirstOrDefault(IsNarratorCharacter);
+            if (narrator is not null)
+                _narratorKey = narrator.Key ?? _narratorKey;
+            else if (withVoice is not null)
+                _narratorKey = withVoice.Key ?? _narratorKey;
+
+            _hasClone = chars?.Characters?.Any(HasCloneForNarratorKey) ?? false;
+        }
+        catch
+        {
+            _hasClone = true; // try speak anyway — API will reject if missing
+        }
+    }
+
+    private static bool HasVoiceProviderId(CharacterSummary c) =>
+        !string.IsNullOrWhiteSpace(c.VoiceProviderVoiceId);
+
+    private static bool IsNarratorCharacter(CharacterSummary c) =>
+        string.Equals(c.Key, "Character_Narrator", StringComparison.OrdinalIgnoreCase) ||
+        (c.Key?.Contains("narrator", StringComparison.OrdinalIgnoreCase) ?? false);
+
+    private bool HasCloneForNarratorKey(CharacterSummary c) =>
+        string.Equals(c.Key, _narratorKey, StringComparison.OrdinalIgnoreCase) &&
+        !string.IsNullOrWhiteSpace(c.VoiceProviderVoiceId);
+
+    private async Task LoadClipsFromScenesAsync()
+    {
+        var scenes = await Engine.GetScenesAsync(_projectId);
+        if (scenes?.Scenes is not { Count: > 0 }) return;
+
+        foreach (var s in scenes.Scenes.OrderBy(x => x.SceneNumber))
+        {
+            var detail = await Engine.GetSceneDetailAsync(_projectId, s.SceneNumber);
+            if (detail?.Scene?.Clips is not { Count: > 0 } clips) continue;
+            foreach (var c in clips.OrderBy(x => x.ClipNumber))
+                AddClipRow(s.SceneNumber, c);
+        }
+    }
+
+    private void AddClipRow(int sceneNumber, ClipSummary c)
+    {
+        var speaker = (c.Speaker ?? "").Trim();
+        var dialogue = (c.Dialogue ?? "").Trim();
+        var isNarrator = IsNarratorSpeaker(speaker, _narratorKey);
+        _clips.Add(new ClipRow
+        {
+            Scene = sceneNumber,
+            Clip = c.ClipNumber,
+            Dialogue = dialogue,
+            Speaker = string.IsNullOrEmpty(speaker) ? null : speaker,
+            IsNarrator = isNarrator,
+            VideoUrl = c.OnDisk ? Engine.ClipVideoUrl(_projectId, sceneNumber, c.ClipNumber) : null,
+            Status = InitialClipStatus(isNarrator, dialogue, speaker),
+        });
+    }
+
+    private static string InitialClipStatus(bool isNarrator, string dialogue, string speaker)
+    {
+        if (isNarrator && dialogue.Length > 0)
+            return "Queued";
+        if (isNarrator)
+            return "Keep · no line";
+        if (string.IsNullOrEmpty(dialogue))
+            return "Keep · silent";
+        return $"Keep · {ShortSpeaker(speaker)}";
+    }
+
+    private string StatusAfterLoad()
+    {
+        if (_clips.Count == 0)
+            return "No clips in this project yet";
+        if (_narratorClipCount == 0)
+            return "No narrator clips to re-voice";
+        return $"{_narratorClipCount} narrator clip(s) · {_keepClipCount} kept as-is";
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -181,140 +206,17 @@ public partial class SimpleRevoice : IAsyncDisposable
             if (!MediaFolder.IsConnected)
                 await MediaFolder.TryReconnectAsync();
 
-            var okCount = 0;
-            var failCount = 0;
-            var keepCount = 0;
-            double? estUsd = 0;
+            var counters = new RevoiceCounters();
 
             for (var i = 0; i < _clips.Count; i++)
             {
                 var row = _clips[i];
                 _status = $"Clip {i + 1} of {_clips.Count}: S{row.Scene:D2} C{row.Clip:D2}";
                 StateHasChanged();
-
-                try
-                {
-                    // Only re-voice narrator dialogue. Mom / others / silent clips stay original.
-                    if (!row.WillRevoice)
-                    {
-                        row.Status = string.IsNullOrWhiteSpace(row.Dialogue)
-                            ? "Keep · silent"
-                            : row.IsNarrator
-                                ? "Keep · no line"
-                                : $"Keep · {row.SpeakerLabel}";
-                        keepCount++;
-                        _doneCount = i + 1;
-                        StateHasChanged();
-                        continue;
-                    }
-
-                    row.Status = "Working…";
-                    StateHasChanged();
-
-                    var videoUrl = await ResolveVideoUrlAsync(row);
-                    if (string.IsNullOrWhiteSpace(videoUrl))
-                    {
-                        row.Status = "Skip · no picture";
-                        failCount++;
-                        _doneCount = i + 1;
-                        continue;
-                    }
-
-                    row.Status = "Speaking…";
-                    StateHasChanged();
-                    var speak = await Engine.SpeakVoiceAsync(_projectId, _narratorKey, row.Dialogue);
-                    if (!speak.Ok)
-                    {
-                        row.Status = "Fail · TTS";
-                        _error = speak.Error ?? "Speech failed";
-                        failCount++;
-                        _doneCount = i + 1;
-                        continue;
-                    }
-                    if (speak.EstimatedUsd is { } u) estUsd = (estUsd ?? 0) + u;
-
-                    var audioUrl = await AudioUrlFromSpeakAsync(speak);
-                    if (string.IsNullOrWhiteSpace(audioUrl))
-                    {
-                        row.Status = "Fail · audio";
-                        failCount++;
-                        _doneCount = i + 1;
-                        continue;
-                    }
-
-                    row.Status = "Muxing…";
-                    StateHasChanged();
-                    var mux = await Js.InvokeAsync<FfmpegResult>(
-                        "PageToMovieFfmpeg.replaceVideoAudioAsync", videoUrl, audioUrl);
-                    if (mux is not { Success: true } || string.IsNullOrWhiteSpace(mux.Url))
-                    {
-                        row.Status = "Fail · mux";
-                        failCount++;
-                        _doneCount = i + 1;
-                        if (!string.IsNullOrWhiteSpace(mux?.Error))
-                            _error = mux.Error;
-                        continue;
-                    }
-
-                    var outUrl = mux.Url;
-
-                    // Persist into the client media folder when connected.
-                    if (MediaFolder.IsConnected)
-                    {
-                        try
-                        {
-                            var clientPath = $"{_projectId}/{row.RelativePath}";
-                            var saved = await Js.InvokeAsync<SaveBlobResult>(
-                                "PageToMovieMedia.saveBlobUrlAsync", outUrl, clientPath);
-                            if (saved is { Success: true } && !string.IsNullOrWhiteSpace(saved.Sha256))
-                            {
-                                try
-                                {
-                                    await Engine.RegisterMediaAsync(_projectId, new MediaRegisterRequest
-                                    {
-                                        RelativePath = row.RelativePath,
-                                        Sha256 = saved.Sha256,
-                                        SizeBytes = saved.SizeBytes,
-                                        Kind = "clip",
-                                        Scene = row.Scene,
-                                        Clip = row.Clip,
-                                    });
-                                }
-                                catch { /* non-fatal */ }
-                            }
-                        }
-                        catch { /* keep going — blob still previewable */ }
-                    }
-
-                    if (!string.IsNullOrEmpty(_previewUrl) && _previewUrl.StartsWith("blob:", StringComparison.Ordinal))
-                    {
-                        try { await Js.InvokeVoidAsync("PageToMovieMedia.revokeUrl", _previewUrl); } catch { /* blob URL may already be revoked */ }
-                    }
-                    _previewUrl = outUrl;
-                    _blobUrls.Add(outUrl);
-                    row.Status = "Done";
-                    okCount++;
-                }
-                catch (Exception ex)
-                {
-                    row.Status = "Fail";
-                    _error = ex.Message;
-                    failCount++;
-                }
-
-                _doneCount = i + 1;
-                StateHasChanged();
+                await ProcessRevoiceClipAsync(row, i, counters);
             }
 
-            _done = true;
-            _status = failCount == 0
-                ? $"Done — {okCount} narrator clip(s) re-voiced · {keepCount} kept"
-                : $"Finished with issues — {okCount} re-voiced, {failCount} failed, {keepCount} kept";
-            _message = failCount == 0
-                ? "Narrator lines use your voice. Other speakers (and silent clips) are unchanged. Open Preview to stitch."
-                : "Some narrator clips could not be re-voiced. Fix those (missing video or voice key) and run again.";
-            if (estUsd is > 0)
-                _message += $" · TTS ~${estUsd:0.0000}";
+            ApplyFinishSummary(counters);
         }
         catch (Exception ex)
         {
@@ -325,6 +227,163 @@ public partial class SimpleRevoice : IAsyncDisposable
         {
             _busy = false;
         }
+    }
+
+    private async Task ProcessRevoiceClipAsync(ClipRow row, int i, RevoiceCounters counters)
+    {
+        try
+        {
+            // Only re-voice narrator dialogue. Mom / others / silent clips stay original.
+            if (!row.WillRevoice)
+            {
+                HandleKeepClip(row, i, counters);
+                return;
+            }
+
+            if (!await SpeakAndMuxNarratorClipAsync(row, i, counters))
+                return;
+        }
+        catch (Exception ex)
+        {
+            row.Status = "Fail";
+            _error = ex.Message;
+            counters.Fail++;
+        }
+
+        _doneCount = i + 1;
+        StateHasChanged();
+    }
+
+    private void HandleKeepClip(ClipRow row, int i, RevoiceCounters counters)
+    {
+        row.Status = KeepClipStatus(row);
+        counters.Keep++;
+        _doneCount = i + 1;
+        StateHasChanged();
+    }
+
+    private static string KeepClipStatus(ClipRow row)
+    {
+        if (string.IsNullOrWhiteSpace(row.Dialogue))
+            return "Keep · silent";
+        if (row.IsNarrator)
+            return "Keep · no line";
+        return $"Keep · {row.SpeakerLabel}";
+    }
+
+    private async Task<bool> SpeakAndMuxNarratorClipAsync(ClipRow row, int i, RevoiceCounters counters)
+    {
+        row.Status = "Working…";
+        StateHasChanged();
+
+        var videoUrl = await ResolveVideoUrlAsync(row);
+        if (string.IsNullOrWhiteSpace(videoUrl))
+            return MarkRevoiceFail(row, i, counters, "Skip · no picture");
+
+        row.Status = "Speaking…";
+        StateHasChanged();
+        var speak = await Engine.SpeakVoiceAsync(_projectId, _narratorKey, row.Dialogue);
+        if (!speak.Ok)
+        {
+            _error = speak.Error ?? "Speech failed";
+            return MarkRevoiceFail(row, i, counters, "Fail · TTS");
+        }
+        if (speak.EstimatedUsd is { } u) counters.EstUsd = (counters.EstUsd ?? 0) + u;
+
+        var audioUrl = await AudioUrlFromSpeakAsync(speak);
+        if (string.IsNullOrWhiteSpace(audioUrl))
+            return MarkRevoiceFail(row, i, counters, "Fail · audio");
+
+        row.Status = "Muxing…";
+        StateHasChanged();
+        var mux = await Js.InvokeAsync<FfmpegResult>(
+            "PageToMovieFfmpeg.replaceVideoAudioAsync", videoUrl, audioUrl);
+        if (mux is not { Success: true } || string.IsNullOrWhiteSpace(mux.Url))
+            return MarkMuxFail(row, i, counters, mux);
+
+        var outUrl = mux.Url!;
+        await TrySaveMuxedClipToMediaFolderAsync(row, outUrl);
+        await TryRevokePreviewUrlAsync();
+        _previewUrl = outUrl;
+        _blobUrls.Add(outUrl);
+        row.Status = "Done";
+        counters.Ok++;
+        return true;
+    }
+
+    private bool MarkRevoiceFail(ClipRow row, int i, RevoiceCounters counters, string status)
+    {
+        row.Status = status;
+        counters.Fail++;
+        _doneCount = i + 1;
+        return false;
+    }
+
+    private bool MarkMuxFail(ClipRow row, int i, RevoiceCounters counters, FfmpegResult? mux)
+    {
+        if (!string.IsNullOrWhiteSpace(mux?.Error))
+            _error = mux.Error;
+        return MarkRevoiceFail(row, i, counters, "Fail · mux");
+    }
+
+    private async Task TrySaveMuxedClipToMediaFolderAsync(ClipRow row, string outUrl)
+    {
+        if (!MediaFolder.IsConnected) return;
+        try
+        {
+            var clientPath = $"{_projectId}/{row.RelativePath}";
+            var saved = await Js.InvokeAsync<SaveBlobResult>(
+                "PageToMovieMedia.saveBlobUrlAsync", outUrl, clientPath);
+            if (saved is { Success: true } && !string.IsNullOrWhiteSpace(saved.Sha256))
+                await TryRegisterSavedMediaAsync(row, saved);
+        }
+        catch { /* keep going — blob still previewable */ }
+    }
+
+    private async Task TryRegisterSavedMediaAsync(ClipRow row, SaveBlobResult saved)
+    {
+        try
+        {
+            await Engine.RegisterMediaAsync(_projectId, new MediaRegisterRequest
+            {
+                RelativePath = row.RelativePath,
+                Sha256 = saved.Sha256,
+                SizeBytes = saved.SizeBytes,
+                Kind = "clip",
+                Scene = row.Scene,
+                Clip = row.Clip,
+            });
+        }
+        catch { /* non-fatal */ }
+    }
+
+    private async Task TryRevokePreviewUrlAsync()
+    {
+        if (string.IsNullOrEmpty(_previewUrl) || !_previewUrl.StartsWith("blob:", StringComparison.Ordinal))
+            return;
+        try { await Js.InvokeVoidAsync("PageToMovieMedia.revokeUrl", _previewUrl); }
+        catch { /* blob URL may already be revoked */ }
+    }
+
+    private void ApplyFinishSummary(RevoiceCounters counters)
+    {
+        _done = true;
+        _status = counters.Fail == 0
+            ? $"Done — {counters.Ok} narrator clip(s) re-voiced · {counters.Keep} kept"
+            : $"Finished with issues — {counters.Ok} re-voiced, {counters.Fail} failed, {counters.Keep} kept";
+        _message = counters.Fail == 0
+            ? "Narrator lines use your voice. Other speakers (and silent clips) are unchanged. Open Preview to stitch."
+            : "Some narrator clips could not be re-voiced. Fix those (missing video or voice key) and run again.";
+        if (counters.EstUsd is > 0)
+            _message += $" · TTS ~${counters.EstUsd:0.0000}";
+    }
+
+    private sealed class RevoiceCounters
+    {
+        public int Ok;
+        public int Fail;
+        public int Keep;
+        public double? EstUsd = 0;
     }
 
     private async Task<string?> ResolveVideoUrlAsync(ClipRow row)

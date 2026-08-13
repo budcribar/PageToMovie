@@ -111,150 +111,255 @@ public sealed class ClipDialogueVerificationService
         bool force = false,
         CancellationToken ct = default)
     {
-        var clipPath = (!string.IsNullOrWhiteSpace(overrideVideoPath) && File.Exists(overrideVideoPath))
-            ? overrideVideoPath
-            : _projects.ResolveClipVideoPath(projectId, sceneNumber, clipNumber);
+        var clipPath = ResolveVerificationClipPath(projectId, sceneNumber, clipNumber, overrideVideoPath);
         var detail = await _projects.GetSceneDetailAsync(projectId, sceneNumber, ct: ct).ConfigureAwait(false);
         var clip = detail?.Clips?.FirstOrDefault(c => c.ClipNumber == clipNumber);
 
-        // Every spoken line of this clip via the shared accessor — a two-hander's second speaker's
-        // line used to be dropped here, so the teacher's answer was never verified and could not
-        // feed the timing/accuracy feedback loop.
         var spokenLines = ClipSpokenLines.FromClip(clip);
         var expectedSpeaker = clip?.Speaker ?? "Unknown";
         var expectedDialogue = BuildExpectedDialogue(clip);
 
-        // If no spoken dialogue planned for this clip, return verified no-speech status immediately
         if (string.IsNullOrWhiteSpace(expectedDialogue))
-        {
-            var noSpeechResult = new ClipDialogueVerificationResult
-            {
-                SceneNumber = sceneNumber,
-                ClipNumber = clipNumber,
-                ExpectedSpeaker = string.IsNullOrWhiteSpace(expectedSpeaker) || string.Equals(expectedSpeaker, "Unknown", StringComparison.OrdinalIgnoreCase) ? "None" : expectedSpeaker,
-                ExpectedDialogue = "",
-                DetectedSpeaker = "None",
-                TranscribedDialogue = "",
-                DialogueAccuracyScore = 1.0,
-                SpeakerMatch = true,
-                Status = "no_speech",
-                SummaryNote = "No spoken dialogue planned for this clip.",
-                VerifiedAt = DateTime.UtcNow,
-            };
-            await SaveVerificationAsync(projectId, noSpeechResult, ct).ConfigureAwait(false);
-            return noSpeechResult;
-        }
+            return await BuildNoSpeechResultAsync(projectId, sceneNumber, clipNumber, expectedSpeaker, ct).ConfigureAwait(false);
 
-        // Cache Validation: If not forced and no override video path provided, return existing saved verification if clip file & dialogue haven't changed
-        if (!force && string.IsNullOrWhiteSpace(overrideVideoPath))
-        {
-            var existing = await LoadVerificationAsync(projectId, sceneNumber, clipNumber, ct).ConfigureAwait(false);
-            if (existing is not null &&
-                !string.Equals(existing.Status, StatusUnverified, StringComparison.OrdinalIgnoreCase) &&
-                !string.IsNullOrWhiteSpace(clipPath) &&
-                File.Exists(clipPath))
-            {
-                    var videoMTime = File.GetLastWriteTimeUtc(clipPath);
-                    if (existing.VerifiedAt >= videoMTime &&
-                        string.Equals(existing.ExpectedDialogue, expectedDialogue, StringComparison.Ordinal) &&
-                        string.Equals(existing.ExpectedSpeaker, expectedSpeaker, StringComparison.OrdinalIgnoreCase))
-                    {
-                        _log.LogInformation("Dialogue verification for {Project} S{Scene} C{Clip} is up-to-date (cached)", projectId, sceneNumber, clipNumber);
-                        return existing;
-                    }
-            }
-        }
+        var cached = await TryLoadCachedVerificationAsync(
+            projectId, sceneNumber, clipNumber, clipPath, expectedDialogue, expectedSpeaker,
+            force, overrideVideoPath, ct).ConfigureAwait(false);
+        if (cached is not null)
+            return cached;
 
         if (!IsConfigured)
         {
             _log.LogWarning("Vision/Gemini client not configured — skipping dialogue verification for {Project} S{Scene} C{Clip}", projectId, sceneNumber, clipNumber);
-            var unverified = new ClipDialogueVerificationResult
-            {
-                SceneNumber = sceneNumber,
-                ClipNumber = clipNumber,
-                ExpectedSpeaker = expectedSpeaker,
-                ExpectedDialogue = expectedDialogue,
-                Status = StatusUnverified,
-                SummaryNote = "Google Gemini key (GEMINI_API_KEY) required for native MP4 video & audio dialogue verification. Please set key in Configuration.",
-                VerifiedAt = DateTime.UtcNow,
-            };
-            await SaveVerificationAsync(projectId, unverified, ct).ConfigureAwait(false);
-            return unverified;
+            return await SaveUnverifiedAsync(projectId, sceneNumber, clipNumber, expectedSpeaker, expectedDialogue,
+                "Google Gemini key (GEMINI_API_KEY) required for native MP4 video & audio dialogue verification. Please set key in Configuration.",
+                ct).ConfigureAwait(false);
         }
 
-        var mediaToPass = new List<string>();
+        var media = await CollectMediaAndCharGuidesAsync(
+            projectId, clipPath, clip, spokenLines, expectedSpeaker, keyframePaths, ct).ConfigureAwait(false);
+        if (media.MediaToPass.Count == 0)
+            return await SaveUnverifiedAsync(projectId, sceneNumber, clipNumber, expectedSpeaker, expectedDialogue,
+                "Clip video file (.mp4) not found on server disk. Please generate video clips for this scene first.",
+                ct).ConfigureAwait(false);
 
-        // Attach actual MP4 clip file so Gemini can evaluate video lip sync + audio track
-        if (!string.IsNullOrWhiteSpace(clipPath) && File.Exists(clipPath))
+        var prompt = BuildVerificationPrompt(expectedSpeaker, media.ExpectedSpeakerDisplayName, expectedDialogue, media.CharGuides);
+
+        try
         {
-            mediaToPass.Add(clipPath);
+            var responseJson = await RunDialogueModelCallAsync(projectId, prompt, media.MediaToPass, ct).ConfigureAwait(false);
+            var result = await ParseAndNormalizeResultAsync(
+                responseJson, sceneNumber, clipNumber, expectedSpeaker, media.ExpectedSpeakerDisplayName,
+                expectedDialogue, clip, clipPath, ct).ConfigureAwait(false);
+            await SaveVerificationAsync(projectId, result, ct).ConfigureAwait(false);
+            _log.LogInformation("Automated dialogue verification completed for {Project} S{Scene} C{Clip}: {Status} ({Score:P0})", projectId, sceneNumber, clipNumber, result.Status, result.DialogueAccuracyScore);
+            return result;
         }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Dialogue verification failed for {Project} S{Scene} C{Clip}", projectId, sceneNumber, clipNumber);
+            return await SaveUnverifiedAsync(projectId, sceneNumber, clipNumber, expectedSpeaker, expectedDialogue,
+                $"Verification error: {ex.Message}", ct).ConfigureAwait(false);
+        }
+    }
 
-        // Collect character reference portraits for characters in this scene
+    private string? ResolveVerificationClipPath(
+        string projectId, int sceneNumber, int clipNumber, string? overrideVideoPath)
+    {
+        if (!string.IsNullOrWhiteSpace(overrideVideoPath) && File.Exists(overrideVideoPath))
+            return overrideVideoPath;
+        return _projects.ResolveClipVideoPath(projectId, sceneNumber, clipNumber);
+    }
+
+    private async Task<ClipDialogueVerificationResult> BuildNoSpeechResultAsync(
+        string projectId, int sceneNumber, int clipNumber, string expectedSpeaker, CancellationToken ct)
+    {
+        var noSpeechResult = new ClipDialogueVerificationResult
+        {
+            SceneNumber = sceneNumber,
+            ClipNumber = clipNumber,
+            ExpectedSpeaker = NoSpeechExpectedSpeaker(expectedSpeaker),
+            ExpectedDialogue = "",
+            DetectedSpeaker = "None",
+            TranscribedDialogue = "",
+            DialogueAccuracyScore = 1.0,
+            SpeakerMatch = true,
+            Status = "no_speech",
+            SummaryNote = "No spoken dialogue planned for this clip.",
+            VerifiedAt = DateTime.UtcNow,
+        };
+        await SaveVerificationAsync(projectId, noSpeechResult, ct).ConfigureAwait(false);
+        return noSpeechResult;
+    }
+
+    private static string NoSpeechExpectedSpeaker(string expectedSpeaker)
+    {
+        if (string.IsNullOrWhiteSpace(expectedSpeaker) ||
+            string.Equals(expectedSpeaker, "Unknown", StringComparison.OrdinalIgnoreCase))
+            return "None";
+        return expectedSpeaker;
+    }
+
+    private async Task<ClipDialogueVerificationResult?> TryLoadCachedVerificationAsync(
+        string projectId, int sceneNumber, int clipNumber, string? clipPath,
+        string expectedDialogue, string expectedSpeaker,
+        bool force, string? overrideVideoPath, CancellationToken ct)
+    {
+        if (force || !string.IsNullOrWhiteSpace(overrideVideoPath))
+            return null;
+
+        var existing = await LoadVerificationAsync(projectId, sceneNumber, clipNumber, ct).ConfigureAwait(false);
+        if (!IsUsableCachedVerification(existing, clipPath))
+            return null;
+
+        var videoMTime = File.GetLastWriteTimeUtc(clipPath!);
+        if (existing!.VerifiedAt < videoMTime ||
+            !string.Equals(existing.ExpectedDialogue, expectedDialogue, StringComparison.Ordinal) ||
+            !string.Equals(existing.ExpectedSpeaker, expectedSpeaker, StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        _log.LogInformation("Dialogue verification for {Project} S{Scene} C{Clip} is up-to-date (cached)", projectId, sceneNumber, clipNumber);
+        return existing;
+    }
+
+    private static bool IsUsableCachedVerification(ClipDialogueVerificationResult? existing, string? clipPath) =>
+        existing is not null &&
+        !string.Equals(existing.Status, StatusUnverified, StringComparison.OrdinalIgnoreCase) &&
+        !string.IsNullOrWhiteSpace(clipPath) &&
+        File.Exists(clipPath);
+
+    private async Task<ClipDialogueVerificationResult> SaveUnverifiedAsync(
+        string projectId, int sceneNumber, int clipNumber,
+        string expectedSpeaker, string expectedDialogue, string summaryNote, CancellationToken ct)
+    {
+        var result = new ClipDialogueVerificationResult
+        {
+            SceneNumber = sceneNumber,
+            ClipNumber = clipNumber,
+            ExpectedSpeaker = expectedSpeaker,
+            ExpectedDialogue = expectedDialogue,
+            Status = StatusUnverified,
+            SummaryNote = summaryNote,
+            VerifiedAt = DateTime.UtcNow,
+        };
+        await SaveVerificationAsync(projectId, result, ct).ConfigureAwait(false);
+        return result;
+    }
+
+    private sealed class DialogueMediaContext
+    {
+        public required List<string> MediaToPass { get; init; }
+        public required List<string> CharGuides { get; init; }
+        public required string ExpectedSpeakerDisplayName { get; init; }
+    }
+
+    private async Task<DialogueMediaContext> CollectMediaAndCharGuidesAsync(
+        string projectId,
+        string? clipPath,
+        ClipSummary? clip,
+        IReadOnlyList<ClipSpokenLines.SpokenLine> spokenLines,
+        string expectedSpeaker,
+        IReadOnlyList<string>? keyframePaths,
+        CancellationToken ct)
+    {
+        var mediaToPass = new List<string>();
+        if (!string.IsNullOrWhiteSpace(clipPath) && File.Exists(clipPath))
+            mediaToPass.Add(clipPath);
+
         var charSummaryList = _projects.ListCharacters(projectId);
-        var sceneChars = clip?.CharactersOnScreen is { Count: > 0 } ? clip.CharactersOnScreen : new List<string> { expectedSpeaker };
-        // Every speaking character (primary + any second speaker) must have its reference portrait
-        // attached so the vision pass can match each line's face.
-        var extraSpeakers = spokenLines.Select(l => l.Speaker)
-            .Append(expectedSpeaker)
-            .Where(s => !string.IsNullOrWhiteSpace(s)
-                        && !sceneChars.Any(c => string.Equals(c, s, StringComparison.OrdinalIgnoreCase)))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        var sceneChars = clip?.CharactersOnScreen is { Count: > 0 }
+            ? clip.CharactersOnScreen
+            : new List<string> { expectedSpeaker };
+        var extraSpeakers = CollectExtraSpeakers(spokenLines, expectedSpeaker, sceneChars);
         if (extraSpeakers.Count > 0)
             sceneChars = sceneChars.Concat(extraSpeakers).ToList();
 
         var charGuides = new List<string>();
-        int mediaIndex = 1; // Index 1 is the MP4 video clip
+        var mediaIndex = 1; // Index 1 is the MP4 video clip
 
         var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         foreach (var cName in sceneChars)
-        {
-            var charObj = charSummaryList.FirstOrDefault(c => string.Equals(c.Key, cName, StringComparison.OrdinalIgnoreCase) || string.Equals(c.DisplayName, cName, StringComparison.OrdinalIgnoreCase));
-            if (charObj?.PreferredUrl is { Length: > 0 } url)
-            {
-                var localRef = Path.Combine(projectDir, url.TrimStart('/'));
-                if (File.Exists(localRef))
-                {
-                    mediaToPass.Add(localRef);
-                    mediaIndex++;
-                    var desc = !string.IsNullOrWhiteSpace(charObj.Description) ? $" ({charObj.Description})" : "";
-                    var nameLabel = charObj.DisplayName ?? charObj.Key;
-                    charGuides.Add($"- Attached Image #{mediaIndex}: Character '{nameLabel}' (Key: '{charObj.Key}'){desc}");
-                }
-            }
-        }
+            TryAddCharacterGuide(FindCharacter(charSummaryList, cName), projectDir, mediaToPass, charGuides, ref mediaIndex);
 
-        // Include passed keyframe images as supplementary input
         if (keyframePaths is { Count: > 0 })
-        {
             mediaToPass.AddRange(keyframePaths.Where(File.Exists));
-        }
 
-        if (mediaToPass.Count == 0)
+        var expectedCharObj = FindCharacter(charSummaryList, expectedSpeaker);
+        return new DialogueMediaContext
         {
-            var result = new ClipDialogueVerificationResult
-            {
-                SceneNumber = sceneNumber,
-                ClipNumber = clipNumber,
-                ExpectedSpeaker = expectedSpeaker,
-                ExpectedDialogue = expectedDialogue,
-                Status = StatusUnverified,
-                SummaryNote = "Clip video file (.mp4) not found on server disk. Please generate video clips for this scene first.",
-                VerifiedAt = DateTime.UtcNow,
-            };
-            await SaveVerificationAsync(projectId, result, ct).ConfigureAwait(false);
-            return result;
-        }
+            MediaToPass = mediaToPass,
+            CharGuides = charGuides,
+            ExpectedSpeakerDisplayName = expectedCharObj?.DisplayName ?? expectedSpeaker,
+        };
+    }
 
+    private static List<string> CollectExtraSpeakers(
+        IReadOnlyList<ClipSpokenLines.SpokenLine> spokenLines,
+        string expectedSpeaker,
+        IReadOnlyList<string> sceneChars)
+    {
+        var extras = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var line in spokenLines)
+            ConsiderExtraSpeaker(line.Speaker, sceneChars, extras, seen);
+        ConsiderExtraSpeaker(expectedSpeaker, sceneChars, extras, seen);
+        return extras;
+    }
+
+    private static void ConsiderExtraSpeaker(
+        string s, IReadOnlyList<string> sceneChars, List<string> extras, HashSet<string> seen)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return;
+        if (ContainsIgnoreCase(sceneChars, s)) return;
+        if (!seen.Add(s)) return;
+        extras.Add(s);
+    }
+
+    private static bool ContainsIgnoreCase(IEnumerable<string> items, string value)
+    {
+        foreach (var c in items)
+        {
+            if (string.Equals(c, value, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
+    }
+
+    private static CharacterSummary? FindCharacter(IReadOnlyList<CharacterSummary> list, string name)
+    {
+        foreach (var c in list)
+        {
+            if (string.Equals(c.Key, name, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(c.DisplayName, name, StringComparison.OrdinalIgnoreCase))
+                return c;
+        }
+        return null;
+    }
+
+    private static void TryAddCharacterGuide(
+        CharacterSummary? charObj, string projectDir,
+        List<string> mediaToPass, List<string> charGuides, ref int mediaIndex)
+    {
+        if (charObj?.PreferredUrl is not { Length: > 0 } url)
+            return;
+        var localRef = Path.Combine(projectDir, url.TrimStart('/'));
+        if (!File.Exists(localRef))
+            return;
+        mediaToPass.Add(localRef);
+        mediaIndex++;
+        var desc = !string.IsNullOrWhiteSpace(charObj.Description) ? $" ({charObj.Description})" : "";
+        var nameLabel = charObj.DisplayName ?? charObj.Key;
+        charGuides.Add($"- Attached Image #{mediaIndex}: Character '{nameLabel}' (Key: '{charObj.Key}'){desc}");
+    }
+
+    private static string BuildVerificationPrompt(
+        string expectedSpeaker, string expectedSpeakerDisplayName, string expectedDialogue, List<string> charGuides)
+    {
         var guideText = charGuides.Count > 0
             ? "CHARACTER REFERENCE PORTRAITS (MATCH FACES IN VIDEO TO THESE ATTACHED IMAGES):\n" + string.Join("\n", charGuides)
             : "No character reference portraits attached.";
 
-        var expectedCharObj = charSummaryList.FirstOrDefault(c => string.Equals(c.Key, expectedSpeaker, StringComparison.OrdinalIgnoreCase) || string.Equals(c.DisplayName, expectedSpeaker, StringComparison.OrdinalIgnoreCase));
-        var expectedSpeakerDisplayName = expectedCharObj?.DisplayName ?? expectedSpeaker;
-
-        var prompt = $@"
+        return $@"
 You are an automated film quality assurance inspector evaluating a generated movie clip.
 
 EXPECTED SCRIPT:
@@ -281,141 +386,138 @@ Return ONLY a JSON object:
 }}
 Status options: 'verified' (dialogue & speaker match), 'mismatch' (dialogue incorrect), 'speaker_swap' (wrong character speaking), 'no_speech' (no spoken dialogue heard).
 ".Trim();
+    }
 
-        try
+    private async Task<string> RunDialogueModelCallAsync(
+        string projectId, string prompt, List<string> mediaToPass, CancellationToken ct)
+    {
+        var cfg = await _projects.GetConfigAsync(projectId, ct).ConfigureAwait(false);
+        var targetModel = ProjectModelSelection.RequireVideoReview(cfg, "Dialogue verification");
+        var entry = SupportedModelCatalog.Find(targetModel)
+                ?? throw new InvalidOperationException(
+                    $"Dialogue verification: model '{targetModel}' missing from catalog.");
+
+        var hasVideoFile = mediaToPass.Any(IsVideoMediaPath);
+
+        if (hasVideoFile && !entry.SupportsVideoReview)
         {
-            string targetModel;
-            SupportedModelEntry entry;
-            var cfg = await _projects.GetConfigAsync(projectId, ct).ConfigureAwait(false);
-            targetModel = ProjectModelSelection.RequireVideoReview(cfg, "Dialogue verification");
-            entry = SupportedModelCatalog.Find(targetModel)
-                    ?? throw new InvalidOperationException(
-                        $"Dialogue verification: model '{targetModel}' missing from catalog.");
-
-            var hasVideoFile = mediaToPass.Any(p => p.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase) || p.EndsWith(".mov", StringComparison.OrdinalIgnoreCase));
-
-            string responseJson;
-            // Prefer the project-selected model. If it cannot take video and Gemini is available
-            // as the selected provider's path, still require catalog SupportVideoReview on selection —
-            // do not silently swap to a hard-coded Gemini id.
-            if (hasVideoFile && !entry.SupportsVideoReview)
-            {
-                throw new InvalidOperationException(
-                    "Dialogue verification: the selected Video review model does not support native video. " +
-                    "Open Settings and choose a video-review-capable model (e.g. Gemini with SupportsVideoReview).");
-            }
-            if (hasVideoFile && entry.SupportsVideoReview && _gemini is not null && _gemini.IsConfigured
-                && string.Equals(entry.ProviderId, "gemini", StringComparison.OrdinalIgnoreCase))
-            {
-                responseJson = await _gemini.CompleteWithImagesAsync(prompt, mediaToPass, model: targetModel, ct: ct).ConfigureAwait(false);
-            }
-            else
-            {
-                responseJson = await _vision.CompleteWithImagesAsync(prompt, mediaToPass, model: targetModel, ct: ct).ConfigureAwait(false);
-            }
-            var cleanJson = ExtractJson(responseJson);
-
-            using var doc = JsonDocument.Parse(cleanJson);
-            var root = doc.RootElement;
-
-            var detected = GetJsonString(root, "detectedSpeaker", "detected_speaker", "speaker");
-            var transcribed = GetJsonString(root, "transcribedDialogue", "transcribed_dialogue", "dialogue", "transcript", "spoken_dialogue");
-            var accuracyOpt = GetJsonDouble(root, "dialogueAccuracyScore", "dialogue_accuracy_score", "accuracy_score", "accuracy");
-            var accuracy = accuracyOpt ?? CalculateAccuracyScore(expectedDialogue, transcribed);
-            var speakerMatch = GetJsonBool(root, "speakerMatch", "speaker_match");
-            var status = GetJsonString(root, "status");
-            if (string.IsNullOrWhiteSpace(status)) status = "verified";
-            var summary = GetJsonString(root, "summaryNote", "summary_note", "summary", "notes");
-
-            // Normalize speaker names to prevent false speaker_swap when Key vs DisplayName differ
-            static string CleanSpkName(string? s)
-            {
-                if (string.IsNullOrWhiteSpace(s)) return "";
-                var clean = s.Trim().ToLowerInvariant()
-                    .Replace("character_", "")
-                    .Replace("character", "")
-                    .Replace("_", " ")
-                    .Replace("the ", "");
-                return CommonRegex.Replace(clean, @"\s+", " ").Trim();
-            }
-
-            var cleanDetected = CleanSpkName(detected);
-            var cleanExpectedKey = CleanSpkName(expectedSpeaker);
-            var cleanExpectedDisp = CleanSpkName(expectedSpeakerDisplayName);
-
-            if (!string.IsNullOrWhiteSpace(cleanDetected) && (cleanDetected == cleanExpectedKey || cleanDetected == cleanExpectedDisp))
-            {
-                speakerMatch = true;
-                if (string.Equals(status, "speaker_swap", StringComparison.OrdinalIgnoreCase))
-                {
-                    status = accuracy >= 0.5 ? "verified" : "mismatch";
-                }
-            }
-
-            // Deterministic validation: if dialogue was expected but transcribed audio is empty, enforce mismatch (0%)
-            if (!string.IsNullOrWhiteSpace(expectedDialogue) && string.IsNullOrWhiteSpace(transcribed))
-            {
-                accuracy = 0.0;
-                status = "mismatch";
-                summary = $"Expected: '{expectedDialogue}' | Heard: (no audio/speech detected) (0% match)";
-            }
-            else if (!string.IsNullOrWhiteSpace(expectedDialogue))
-            {
-                var computedAcc = CalculateAccuracyScore(expectedDialogue, transcribed);
-                if (computedAcc < accuracy) accuracy = computedAcc;
-                if (accuracy < 0.5 && string.Equals(status, "verified", StringComparison.OrdinalIgnoreCase))
-                {
-                    status = "mismatch";
-                }
-            }
-
-            var estSec = clip?.DurationSeconds > 0 ? (double)clip.DurationSeconds : ClipDurationEstimator.Estimate(expectedDialogue, "", "dialogue", "none");
-            var (speechSec, actionSec) = ClipDurationEstimator.EstimateBreakdown(expectedDialogue, clip?.VisualPrompt ?? "", "", clip?.Delivery ?? "none");
-            var durationProbe = new MediaDurationProbe(Microsoft.Extensions.Options.Options.Create(new PageToMovie.Core.Options.PageToMovieOptions()), Microsoft.Extensions.Logging.Abstractions.NullLogger<MediaDurationProbe>.Instance);
-            var actualSec = await durationProbe.TryProbeSecondsAsync(clipPath, ct).ConfigureAwait(false) ?? 0.0;
-
-            var result = new ClipDialogueVerificationResult
-            {
-                SceneNumber = sceneNumber,
-                ClipNumber = clipNumber,
-                ExpectedSpeaker = expectedSpeaker,
-                ExpectedDialogue = expectedDialogue,
-                DetectedSpeaker = detected,
-                TranscribedDialogue = transcribed,
-                DialogueAccuracyScore = Math.Round(accuracy, 2),
-                SpeakerMatch = speakerMatch,
-                Status = status,
-                SummaryNote = summary,
-                EstimatedDurationSeconds = Math.Round(estSec, 1),
-                WordCount = ClipDurationEstimator.CountWords(expectedDialogue),
-                SyllableCount = ClipDurationEstimator.CountSyllables(expectedDialogue),
-                SpeechDurationSeconds = speechSec,
-                ActionDurationSeconds = actionSec,
-                ActualDurationSeconds = Math.Round(actualSec, 1),
-                VerifiedAt = DateTime.UtcNow,
-            };
-            result.SpeechTruncated = LooksTruncated(result);
-
-            await SaveVerificationAsync(projectId, result, ct).ConfigureAwait(false);
-            _log.LogInformation("Automated dialogue verification completed for {Project} S{Scene} C{Clip}: {Status} ({Score:P0})", projectId, sceneNumber, clipNumber, status, accuracy);
-            return result;
+            throw new InvalidOperationException(
+                "Dialogue verification: the selected Video review model does not support native video. " +
+                "Open Settings and choose a video-review-capable model (e.g. Gemini with SupportsVideoReview).");
         }
-        catch (Exception ex)
+        if (ShouldUseGeminiVideo(hasVideoFile, entry))
+            return await _gemini!.CompleteWithImagesAsync(prompt, mediaToPass, model: targetModel, ct: ct).ConfigureAwait(false);
+        return await _vision.CompleteWithImagesAsync(prompt, mediaToPass, model: targetModel, ct: ct).ConfigureAwait(false);
+    }
+
+    private static bool IsVideoMediaPath(string p) =>
+        p.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase) || p.EndsWith(".mov", StringComparison.OrdinalIgnoreCase);
+
+    private bool ShouldUseGeminiVideo(bool hasVideoFile, SupportedModelEntry entry) =>
+        hasVideoFile && entry.SupportsVideoReview && _gemini is not null && _gemini.IsConfigured
+        && string.Equals(entry.ProviderId, "gemini", StringComparison.OrdinalIgnoreCase);
+
+    private async Task<ClipDialogueVerificationResult> ParseAndNormalizeResultAsync(
+        string responseJson,
+        int sceneNumber,
+        int clipNumber,
+        string expectedSpeaker,
+        string expectedSpeakerDisplayName,
+        string expectedDialogue,
+        ClipSummary? clip,
+        string? clipPath,
+        CancellationToken ct)
+    {
+        var cleanJson = ExtractJson(responseJson);
+        using var doc = JsonDocument.Parse(cleanJson);
+        var root = doc.RootElement;
+
+        var detected = GetJsonString(root, "detectedSpeaker", "detected_speaker", "speaker");
+        var transcribed = GetJsonString(root, "transcribedDialogue", "transcribed_dialogue", "dialogue", "transcript", "spoken_dialogue");
+        var accuracyOpt = GetJsonDouble(root, "dialogueAccuracyScore", "dialogue_accuracy_score", "accuracy_score", "accuracy");
+        var accuracy = accuracyOpt ?? CalculateAccuracyScore(expectedDialogue, transcribed);
+        var speakerMatch = GetJsonBool(root, "speakerMatch", "speaker_match");
+        var status = GetJsonString(root, "status");
+        if (string.IsNullOrWhiteSpace(status)) status = "verified";
+        var summary = GetJsonString(root, "summaryNote", "summary_note", "summary", "notes");
+
+        (speakerMatch, status) = NormalizeSpeakerMatch(
+            detected, expectedSpeaker, expectedSpeakerDisplayName, speakerMatch, status, accuracy);
+        (accuracy, status, summary) = ApplyAccuracyGuards(expectedDialogue, transcribed, accuracy, status, summary);
+
+        var estSec = clip?.DurationSeconds > 0 ? (double)clip.DurationSeconds : ClipDurationEstimator.Estimate(expectedDialogue, "", "dialogue", "none");
+        var (speechSec, actionSec) = ClipDurationEstimator.EstimateBreakdown(expectedDialogue, clip?.VisualPrompt ?? "", "", clip?.Delivery ?? "none");
+        var durationProbe = new MediaDurationProbe(Microsoft.Extensions.Options.Options.Create(new PageToMovie.Core.Options.PageToMovieOptions()), Microsoft.Extensions.Logging.Abstractions.NullLogger<MediaDurationProbe>.Instance);
+        var actualSec = await durationProbe.TryProbeSecondsAsync(clipPath, ct).ConfigureAwait(false) ?? 0.0;
+
+        var result = new ClipDialogueVerificationResult
         {
-            _log.LogWarning(ex, "Dialogue verification failed for {Project} S{Scene} C{Clip}", projectId, sceneNumber, clipNumber);
-            var failedResult = new ClipDialogueVerificationResult
-            {
-                SceneNumber = sceneNumber,
-                ClipNumber = clipNumber,
-                ExpectedSpeaker = expectedSpeaker,
-                ExpectedDialogue = expectedDialogue,
-                Status = StatusUnverified,
-                SummaryNote = $"Verification error: {ex.Message}",
-                VerifiedAt = DateTime.UtcNow,
-            };
-            await SaveVerificationAsync(projectId, failedResult, ct).ConfigureAwait(false);
-            return failedResult;
+            SceneNumber = sceneNumber,
+            ClipNumber = clipNumber,
+            ExpectedSpeaker = expectedSpeaker,
+            ExpectedDialogue = expectedDialogue,
+            DetectedSpeaker = detected,
+            TranscribedDialogue = transcribed,
+            DialogueAccuracyScore = Math.Round(accuracy, 2),
+            SpeakerMatch = speakerMatch,
+            Status = status,
+            SummaryNote = summary,
+            EstimatedDurationSeconds = Math.Round(estSec, 1),
+            WordCount = ClipDurationEstimator.CountWords(expectedDialogue),
+            SyllableCount = ClipDurationEstimator.CountSyllables(expectedDialogue),
+            SpeechDurationSeconds = speechSec,
+            ActionDurationSeconds = actionSec,
+            ActualDurationSeconds = Math.Round(actualSec, 1),
+            VerifiedAt = DateTime.UtcNow,
+        };
+        result.SpeechTruncated = LooksTruncated(result);
+        return result;
+    }
+
+    private static string CleanSpkName(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return "";
+        var clean = s.Trim().ToLowerInvariant()
+            .Replace("character_", "")
+            .Replace("character", "")
+            .Replace("_", " ")
+            .Replace("the ", "");
+        return CommonRegex.Replace(clean, @"\s+", " ").Trim();
+    }
+
+    private static (bool SpeakerMatch, string Status) NormalizeSpeakerMatch(
+        string detected, string expectedSpeaker, string expectedSpeakerDisplayName,
+        bool speakerMatch, string status, double accuracy)
+    {
+        var cleanDetected = CleanSpkName(detected);
+        var cleanExpectedKey = CleanSpkName(expectedSpeaker);
+        var cleanExpectedDisp = CleanSpkName(expectedSpeakerDisplayName);
+
+        if (string.IsNullOrWhiteSpace(cleanDetected) ||
+            (cleanDetected != cleanExpectedKey && cleanDetected != cleanExpectedDisp))
+            return (speakerMatch, status);
+
+        speakerMatch = true;
+        if (string.Equals(status, "speaker_swap", StringComparison.OrdinalIgnoreCase))
+            status = accuracy >= 0.5 ? "verified" : "mismatch";
+        return (speakerMatch, status);
+    }
+
+    private static (double Accuracy, string Status, string Summary) ApplyAccuracyGuards(
+        string expectedDialogue, string transcribed, double accuracy, string status, string summary)
+    {
+        if (!string.IsNullOrWhiteSpace(expectedDialogue) && string.IsNullOrWhiteSpace(transcribed))
+        {
+            return (0.0, "mismatch", $"Expected: '{expectedDialogue}' | Heard: (no audio/speech detected) (0% match)");
         }
+        if (string.IsNullOrWhiteSpace(expectedDialogue))
+            return (accuracy, status, summary);
+
+        var computedAcc = CalculateAccuracyScore(expectedDialogue, transcribed);
+        if (computedAcc < accuracy) accuracy = computedAcc;
+        if (accuracy < 0.5 && string.Equals(status, "verified", StringComparison.OrdinalIgnoreCase))
+            status = "mismatch";
+        return (accuracy, status, summary);
     }
 
     /// <summary>

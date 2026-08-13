@@ -36,16 +36,9 @@ public sealed class SceneMusicCompositionService
             return false;
         }
 
-        var bpPath = Path.Combine(projectDir, "blueprint.clips.grok.json");
-        if (!File.Exists(bpPath))
-        {
-            bpPath = Path.Combine(projectDir, "assets", "blueprint.clips.grok.json");
-            if (!File.Exists(bpPath))
-            {
-                _log.LogWarning("blueprint.clips.grok.json not found under {Dir}", projectDir);
-                return false;
-            }
-        }
+        var bpPath = ResolveBlueprintPath(projectDir);
+        if (bpPath is null)
+            return false;
 
         var jsonText = await File.ReadAllTextAsync(bpPath, ct).ConfigureAwait(false);
         var rootNode = JsonNode.Parse(jsonText);
@@ -55,37 +48,8 @@ public sealed class SceneMusicCompositionService
             return false;
         }
 
-        // 1. Gather screenplay context
-        var screenplayContext = "";
-        var fountainPath = Path.Combine(projectDir, "screenplay.fountain");
-        if (File.Exists(fountainPath))
-        {
-            screenplayContext = await File.ReadAllTextAsync(fountainPath, ct).ConfigureAwait(false);
-        }
-        else
-        {
-            var bookPath = Path.Combine(projectDir, "book_full.txt");
-            if (File.Exists(bookPath))
-            {
-                screenplayContext = await File.ReadAllTextAsync(bookPath, ct).ConfigureAwait(false);
-            }
-        }
-
-        if (screenplayContext.Length > 8000)
-        {
-            screenplayContext = screenplayContext[..8000] + "\n...(truncated)";
-        }
-
-        // 2. Build scene summaries for prompt
-        var sceneSummaries = new List<object>();
-        foreach (var sNode in scenesArray)
-        {
-            if (sNode is not JsonObject sObj) continue;
-            var sn = sObj["scene_number"]?.GetValue<int>() ?? 0;
-            var slug = sObj["slugline"]?.GetValue<string>() ?? sObj["heading"]?.GetValue<string>() ?? "";
-            var text = sObj["content"]?.GetValue<string>() ?? sObj["script_text"]?.GetValue<string>() ?? "";
-            sceneSummaries.Add(new { scene_number = sn, slugline = slug, summary = text });
-        }
+        var screenplayContext = await LoadScreenplayContextAsync(projectDir, ct).ConfigureAwait(false);
+        var sceneSummaries = BuildSceneSummaries(scenesArray);
 
         var model = string.IsNullOrWhiteSpace(userModel)
             ? throw new InvalidOperationException(
@@ -118,17 +82,86 @@ public sealed class SceneMusicCompositionService
             return false;
         }
 
-        // Clean JSON markdown codeblocks if present
-        var cleanedJson = responseText.Trim();
-        if (cleanedJson.StartsWith("```"))
+        var cleanedJson = StripJsonMarkdown(responseText);
+        var scoreMap = TryParseScoreMap(cleanedJson);
+        if (scoreMap is null)
+            return false;
+
+        var modifiedCount = ApplyScoresToScenes(scenesArray, scoreMap);
+
+        var options = new JsonSerializerOptions { WriteIndented = true };
+        var updatedJson = rootNode.ToJsonString(options);
+        await File.WriteAllTextAsync(bpPath, updatedJson, ct).ConfigureAwait(false);
+
+        _log.LogInformation("Successfully augmented {Count} scenes with music scores in {Path}", modifiedCount, bpPath);
+        return true;
+    }
+
+    private string? ResolveBlueprintPath(string projectDir)
+    {
+        var bpPath = Path.Combine(projectDir, "blueprint.clips.grok.json");
+        if (File.Exists(bpPath))
+            return bpPath;
+
+        bpPath = Path.Combine(projectDir, "assets", "blueprint.clips.grok.json");
+        if (File.Exists(bpPath))
+            return bpPath;
+
+        _log.LogWarning("blueprint.clips.grok.json not found under {Dir}", projectDir);
+        return null;
+    }
+
+    private static async Task<string> LoadScreenplayContextAsync(string projectDir, CancellationToken ct)
+    {
+        var screenplayContext = "";
+        var fountainPath = Path.Combine(projectDir, "screenplay.fountain");
+        if (File.Exists(fountainPath))
         {
-            var match = CommonRegex.Match(cleanedJson, @"```(?:json)?\s*([\s\S]*?)\s*```", RegexOptions.IgnoreCase);
-            if (match.Success)
+            screenplayContext = await File.ReadAllTextAsync(fountainPath, ct).ConfigureAwait(false);
+        }
+        else
+        {
+            var bookPath = Path.Combine(projectDir, "book_full.txt");
+            if (File.Exists(bookPath))
             {
-                cleanedJson = match.Groups[1].Value.Trim();
+                screenplayContext = await File.ReadAllTextAsync(bookPath, ct).ConfigureAwait(false);
             }
         }
 
+        if (screenplayContext.Length > 8000)
+            screenplayContext = screenplayContext[..8000] + "\n...(truncated)";
+
+        return screenplayContext;
+    }
+
+    private static List<object> BuildSceneSummaries(JsonArray scenesArray)
+    {
+        var sceneSummaries = new List<object>();
+        foreach (var sNode in scenesArray)
+        {
+            if (sNode is not JsonObject sObj) continue;
+            var sn = sObj["scene_number"]?.GetValue<int>() ?? 0;
+            var slug = sObj["slugline"]?.GetValue<string>() ?? sObj["heading"]?.GetValue<string>() ?? "";
+            var text = sObj["content"]?.GetValue<string>() ?? sObj["script_text"]?.GetValue<string>() ?? "";
+            sceneSummaries.Add(new { scene_number = sn, slugline = slug, summary = text });
+        }
+        return sceneSummaries;
+    }
+
+    private static string StripJsonMarkdown(string responseText)
+    {
+        var cleanedJson = responseText.Trim();
+        if (!cleanedJson.StartsWith("```"))
+            return cleanedJson;
+
+        var match = CommonRegex.Match(cleanedJson, @"```(?:json)?\s*([\s\S]*?)\s*```", RegexOptions.IgnoreCase);
+        if (match.Success)
+            cleanedJson = match.Groups[1].Value.Trim();
+        return cleanedJson;
+    }
+
+    private Dictionary<int, MusicScoreInfo>? TryParseScoreMap(string cleanedJson)
+    {
         Dictionary<int, MusicScoreInfo>? scoreMap = null;
         try
         {
@@ -142,52 +175,47 @@ public sealed class SceneMusicCompositionService
                 foreach (var (k, v) in rawMap)
                 {
                     if (int.TryParse(k, out var snKey))
-                    {
                         scoreMap[snKey] = v;
-                    }
                 }
             }
         }
         catch (Exception ex)
         {
             _log.LogWarning(ex, "Failed to parse music score JSON map from LLM response");
-            return false;
+            return null;
         }
 
         if (scoreMap is null || scoreMap.Count == 0)
         {
             _log.LogWarning("No scene music scores were parsed from response");
-            return false;
+            return null;
         }
 
-        // 3. Non-destructively augment scenesArray
+        return scoreMap;
+    }
+
+    private static int ApplyScoresToScenes(JsonArray scenesArray, Dictionary<int, MusicScoreInfo> scoreMap)
+    {
         var modifiedCount = 0;
         foreach (var sNode in scenesArray)
         {
             if (sNode is not JsonObject sObj) continue;
             var sn = sObj["scene_number"]?.GetValue<int>() ?? 0;
-            if (sn > 0 && scoreMap.TryGetValue(sn, out var info))
+            if (sn <= 0 || !scoreMap.TryGetValue(sn, out var info))
+                continue;
+
+            var scoreObj = new JsonObject
             {
-                var scoreObj = new JsonObject
-                {
-                    ["prompt"] = info.Prompt ?? "",
-                    ["genre"] = info.Genre ?? "",
-                    ["mood"] = info.Mood ?? "",
-                    ["tempo"] = info.Tempo ?? ""
-                };
+                ["prompt"] = info.Prompt ?? "",
+                ["genre"] = info.Genre ?? "",
+                ["mood"] = info.Mood ?? "",
+                ["tempo"] = info.Tempo ?? ""
+            };
 
-                sObj["music_score"] = scoreObj;
-                sObj["music_prompt"] = info.Prompt ?? "";
-                modifiedCount++;
-            }
+            sObj["music_score"] = scoreObj;
+            sObj["music_prompt"] = info.Prompt ?? "";
+            modifiedCount++;
         }
-
-        // 4. Save updated blueprint to disk
-        var options = new JsonSerializerOptions { WriteIndented = true };
-        var updatedJson = rootNode.ToJsonString(options);
-        await File.WriteAllTextAsync(bpPath, updatedJson, ct).ConfigureAwait(false);
-
-        _log.LogInformation("Successfully augmented {Count} scenes with music scores in {Path}", modifiedCount, bpPath);
-        return true;
+        return modifiedCount;
     }
 }
