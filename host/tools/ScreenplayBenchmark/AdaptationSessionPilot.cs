@@ -68,6 +68,86 @@ public static class AdaptationSessionPilot
         public string? FountainFileShaAlt { get; set; }
     }
 
+    private sealed class PilotRunState
+    {
+        public XaiResponsesClient Client { get; }
+        public SessionRecord Session { get; }
+        public string SessionPath { get; }
+        public string Model { get; }
+        public double Temperature { get; }
+        public double JudgeTemperature { get; }
+        public int TargetRuntimeMinutes { get; }
+        public string WorkspaceRoot { get; }
+        public string OutDir { get; }
+        public string BookSlug { get; }
+        public string BookSha256 { get; }
+        public List<string> Paragraphs { get; }
+        public string IndexedBookPath { get; }
+        public int DurMinSeconds { get; }
+        public int DurMaxSeconds { get; }
+        public int DurAbsMaxSeconds { get; }
+        public int SceneMin { get; }
+        public int SceneMax { get; }
+        public CancellationToken Ct { get; }
+        public Dictionary<string, (long Input, long Output, long Cached)> TokensByModel { get; } = new();
+        public long TotalRequestBytes { get; set; }
+        public string LastResponseId { get; set; } = "";
+
+        public PilotRunState(
+            XaiResponsesClient client,
+            SessionRecord session,
+            string sessionPath,
+            string model,
+            double temperature,
+            double judgeTemperature,
+            int targetRuntimeMinutes,
+            string workspaceRoot,
+            string outDir,
+            string bookSlug,
+            string bookSha256,
+            List<string> paragraphs,
+            string indexedBookPath,
+            int durMinSeconds,
+            int durMaxSeconds,
+            int durAbsMaxSeconds,
+            int sceneMin,
+            int sceneMax,
+            CancellationToken ct)
+        {
+            Client = client;
+            Session = session;
+            SessionPath = sessionPath;
+            Model = model;
+            Temperature = temperature;
+            JudgeTemperature = judgeTemperature;
+            TargetRuntimeMinutes = targetRuntimeMinutes;
+            WorkspaceRoot = workspaceRoot;
+            OutDir = outDir;
+            BookSlug = bookSlug;
+            BookSha256 = bookSha256;
+            Paragraphs = paragraphs;
+            IndexedBookPath = indexedBookPath;
+            DurMinSeconds = durMinSeconds;
+            DurMaxSeconds = durMaxSeconds;
+            DurAbsMaxSeconds = durAbsMaxSeconds;
+            SceneMin = sceneMin;
+            SceneMax = sceneMax;
+            Ct = ct;
+        }
+
+        public void TrackGeneration(XaiResponsesClient.SessionTurnResult result)
+        {
+            TotalRequestBytes += result.RequestBytesSent;
+            TrackUsage(TokensByModel, Model, result.UsageJson);
+        }
+    }
+
+    private sealed class DualAttachRunState
+    {
+        public Dictionary<string, (long Input, long Output, long Cached)> TokensByModelAlt { get; } = new();
+        public int TotalBytesAlt { get; set; }
+    }
+
     /// <summary>Bump when <see cref="BuildIndexedBookText"/> or what gets uploaded changes shape.</summary>
     private const int CurrentUploadFormatVersion = 2;
 
@@ -94,20 +174,8 @@ public static class AdaptationSessionPilot
             return 1;
         }
 
-        if (!UsesXaiResponsesApi(model, out var modelError))
-        {
-            Console.WriteLine($"❌ Error: {modelError}");
-            return 1;
-        }
-        foreach (var candidateJudge in new[] { judgeModel, judgeModel2 })
-        {
-            if (!string.IsNullOrWhiteSpace(candidateJudge) && !UsesXaiResponsesApi(candidateJudge, out var judgeError))
-            {
-                Console.WriteLine($"❌ Error: {judgeError}");
-                Console.WriteLine("   This pilot's file-attached judge calls currently use the xAI Responses API; choose an enabled xAI chat judge.");
-                return 1;
-            }
-        }
+        var modelValidationExit = ValidateModelsAndJudges(model, judgeModel, judgeModel2);
+        if (modelValidationExit is { } exitCode) return exitCode;
 
         // Resolved once per run from the actual target video model — never a hardcoded constant.
         // Different video models have different max clip lengths; ResolveBoundsForModel falls back
@@ -151,35 +219,139 @@ public static class AdaptationSessionPilot
         await File.WriteAllTextAsync(indexedBookPath, indexedBookText, ct).ConfigureAwait(false);
 
         var sessionPath = Path.Combine(outDir, "session.json");
-        var session = LoadSession(sessionPath);
-        var totalRequestBytes = 0;
-        var tokensByModel = new Dictionary<string, (long Input, long Output, long Cached)>();
+        var session = await EnsureBookSessionUploadedAsync(
+            client, sessionPath, indexedBookPath, paragraphs.Count, bookSha256, model, promptRevision, ct)
+            .ConfigureAwait(false);
 
+        InvalidateSessionOnSettingsChange(
+            session, sessionPath, outDir, model, promptRevision, temperature, judgeTemperature, targetRuntimeMinutes);
+        session.Model = model;
+        session.PromptRevision = promptRevision;
+        session.Temperature = temperature;
+        session.JudgeTemperature = judgeTemperature;
+        session.TargetRuntimeMinutes = targetRuntimeMinutes;
+        SaveSession(sessionPath, session);
+        Console.WriteLine($"🌡️  temperature={temperature} judge_temperature={judgeTemperature} target_runtime_minutes={targetRuntimeMinutes}");
+
+        var (sceneMin, sceneMax) = TargetSceneBand(targetRuntimeMinutes);
+        var state = new PilotRunState(
+            client, session, sessionPath, model, temperature, judgeTemperature, targetRuntimeMinutes,
+            workspaceRoot, outDir, bookSlug, bookSha256, paragraphs, indexedBookPath,
+            durMinSeconds, durMaxSeconds, durAbsMaxSeconds, sceneMin, sceneMax, ct);
+
+        var beatPlanJson = await RunBeatPlanStageAsync(state).ConfigureAwait(false);
+        var castLocationJson = await RunCastLocationsStageAsync(state, beatPlanJson).ConfigureAwait(false);
+        var fountainText = await RunFountainStageAsync(state, beatPlanJson, castLocationJson).ConfigureAwait(false);
+        fountainText = await RunFountainRepairLoopAsync(state, fountainText).ConfigureAwait(false);
+
+        if (dualAttachAll)
+        {
+            await RunDualAttachFullPipelineAsync(
+                client, session, sessionPath, model, temperature, judgeModel, judgeModel2, judgeTemperature,
+                beatPlanJson, workspaceRoot, targetRuntimeMinutes, sceneMin, sceneMax, paragraphs.Count, outDir,
+                durMinSeconds, durMaxSeconds, durAbsMaxSeconds, ct)
+                .ConfigureAwait(false);
+        }
+
+        var edlJson = await RunEdlStageAsync(state, fountainText, castLocationJson).ConfigureAwait(false);
+        var clipPlanJson = clipShotPlan
+            ? await RunChainedClipShotPlanStageAsync(state, edlJson, fountainText, beatPlanJson).ConfigureAwait(false)
+            : null;
+
+        if (dualAttachClipPlan)
+            await RunDualAttachClipPlanExperimentAsync(state, edlJson, fountainText, beatPlanJson, castLocationJson)
+                .ConfigureAwait(false);
+
+        var audioJson = await RunAudioPlanStageAsync(state, edlJson, clipPlanJson).ConfigureAwait(false);
+
+        // ---- Stage 7 (optional): one or two independent, book-attached LLM judges ----
+        // Unlike the existing multi-model peer-judge path (ScreenplayJudgmentRubric.BuildPrompt,
+        // Program.cs), which embeds the FULL book text in every judge call for every judge model on
+        // every run, each judge here attaches the book file directly (small, cached-hit-friendly)
+        // rather than inlining it. Deliberately an independent CompleteWithFilesAsync — NOT a
+        // continuation of the generation session — so a judge never inherits chain memory/bias from
+        // having produced the content itself. judgeModel2 supplies a second independent xAI judge.
+        var judgeResults = await RunJudgesAsync(
+            client, new[] { judgeModel, judgeModel2 }, new[] { session.FileId }, fountainText, judgeTemperature,
+            outDir, "judge_review", "Stage 7",
+            (r, m) => { state.TotalRequestBytes += r.RequestBytesSent; TrackUsage(state.TokensByModel, m, r.UsageJson); },
+            ct).ConfigureAwait(false);
+
+        var citationWarnings = ValidateParagraphCitations(edlJson, paragraphs.Count);
+        var citingScenesByParagraph = BuildCitingScenesByParagraph(edlJson, paragraphs.Count);
+        await WriteAnnotatedBookAsync(state, citingScenesByParagraph).ConfigureAwait(false);
+
+        return await FinalizeChainedRunAsync(
+            state, fountainText, edlJson, castLocationJson, audioJson, clipPlanJson, clipShotPlan, judgeResults)
+            .ConfigureAwait(false);
+    }
+
+    private static int? ValidateModelsAndJudges(string model, string? judgeModel, string? judgeModel2)
+    {
+        if (!UsesXaiResponsesApi(model, out var modelError))
+        {
+            Console.WriteLine($"❌ Error: {modelError}");
+            return 1;
+        }
+        foreach (var candidateJudge in new[] { judgeModel, judgeModel2 })
+        {
+            if (!string.IsNullOrWhiteSpace(candidateJudge) && !UsesXaiResponsesApi(candidateJudge, out var judgeError))
+            {
+                Console.WriteLine($"❌ Error: {judgeError}");
+                Console.WriteLine("   This pilot's file-attached judge calls currently use the xAI Responses API; choose an enabled xAI chat judge.");
+                return 1;
+            }
+        }
+        return null;
+    }
+
+    private static async Task<SessionRecord> EnsureBookSessionUploadedAsync(
+        XaiResponsesClient client,
+        string sessionPath,
+        string indexedBookPath,
+        int paragraphCount,
+        string bookSha256,
+        string model,
+        string promptRevision,
+        CancellationToken ct)
+    {
+        var session = LoadSession(sessionPath);
         if (session is not null && session.BookSha256 == bookSha256 && !IsExpired(session.ExpiresAtUnixSeconds) &&
             session.UploadFormatVersion == CurrentUploadFormatVersion)
         {
             Console.WriteLine($"📎 Reusing uploaded book: file_id={session.FileId} (no re-upload — proves the no-double-upload rule)");
-        }
-        else
-        {
-            if (session is not null && session.UploadFormatVersion != CurrentUploadFormatVersion)
-                Console.WriteLine($"⚠️  Upload format changed (v{session.UploadFormatVersion?.ToString() ?? "none"} -> v{CurrentUploadFormatVersion}) — forcing a fresh upload.");
-            Console.WriteLine($"📤 Uploading paragraph-indexed book ({paragraphs.Count} paragraphs, first and only upload for this session)...");
-            var upload = await client.UploadBookAsync(indexedBookPath, ct: ct).ConfigureAwait(false);
-            session = new SessionRecord
-            {
-                Model = model,
-                PromptRevision = promptRevision,
-                BookSha256 = bookSha256,
-                FileId = upload.FileId,
-                ExpiresAtUnixSeconds = upload.ExpiresAtUnixSeconds,
-                CreatedAtUtc = DateTime.UtcNow.ToString("O"),
-                UploadFormatVersion = CurrentUploadFormatVersion,
-            };
-            SaveSession(sessionPath, session);
-            Console.WriteLine($"   file_id={upload.FileId} bytes={upload.Bytes} expires_at={upload.ExpiresAtUnixSeconds}");
+            return session;
         }
 
+        if (session is not null && session.UploadFormatVersion != CurrentUploadFormatVersion)
+            Console.WriteLine($"⚠️  Upload format changed (v{session.UploadFormatVersion?.ToString() ?? "none"} -> v{CurrentUploadFormatVersion}) — forcing a fresh upload.");
+        Console.WriteLine($"📤 Uploading paragraph-indexed book ({paragraphCount} paragraphs, first and only upload for this session)...");
+        var upload = await client.UploadBookAsync(indexedBookPath, ct: ct).ConfigureAwait(false);
+        session = new SessionRecord
+        {
+            Model = model,
+            PromptRevision = promptRevision,
+            BookSha256 = bookSha256,
+            FileId = upload.FileId,
+            ExpiresAtUnixSeconds = upload.ExpiresAtUnixSeconds,
+            CreatedAtUtc = DateTime.UtcNow.ToString("O"),
+            UploadFormatVersion = CurrentUploadFormatVersion,
+        };
+        SaveSession(sessionPath, session);
+        Console.WriteLine($"   file_id={upload.FileId} bytes={upload.Bytes} expires_at={upload.ExpiresAtUnixSeconds}");
+        return session;
+    }
+
+    private static void InvalidateSessionOnSettingsChange(
+        SessionRecord session,
+        string sessionPath,
+        string outDir,
+        string model,
+        string promptRevision,
+        double temperature,
+        double judgeTemperature,
+        int targetRuntimeMinutes)
+    {
         // A model, prompt revision, temperature, or target-runtime change invalidates every cached generation stage (not just
         // the ones that differ) — a cached beat plan built for a 10-minute target is wrong context
         // for a 16-minute request, and reusing an unknown/different-temperature artifact alongside
@@ -199,119 +371,119 @@ public static class AdaptationSessionPilot
             session.StageResponseIds.Clear();
             InvalidateDualAttachArtifactCache(outDir, session);
         }
-        session.Model = model;
-        session.PromptRevision = promptRevision;
-        session.Temperature = temperature;
-        session.JudgeTemperature = judgeTemperature;
-        session.TargetRuntimeMinutes = targetRuntimeMinutes;
-        SaveSession(sessionPath, session);
-        Console.WriteLine($"🌡️  temperature={temperature} judge_temperature={judgeTemperature} target_runtime_minutes={targetRuntimeMinutes}");
+    }
 
+    private static async Task<string> RunBeatPlanStageAsync(PilotRunState state)
+    {
         // ---- Stage 1: source-grounded beat plan (first turn — attaches the file) ----
-        var (sceneMin, sceneMax) = TargetSceneBand(targetRuntimeMinutes);
-        string beatPlanJson;
-        string lastResponseId;
-        var beatPlanPath = Path.Combine(outDir, "adaptation_plan.json");
-        if (session.StageResponseIds.TryGetValue("beat_plan", out var cachedBeatResp) && File.Exists(beatPlanPath))
+        var beatPlanPath = Path.Combine(state.OutDir, "adaptation_plan.json");
+        if (state.Session.StageResponseIds.TryGetValue("beat_plan", out var cachedBeatResp) && File.Exists(beatPlanPath))
         {
             Console.WriteLine("♻️  Stage 1 (beat plan): reusing cached artifact.");
-            beatPlanJson = await File.ReadAllTextAsync(beatPlanPath, ct).ConfigureAwait(false);
-            lastResponseId = cachedBeatResp;
-        }
-        else
-        {
-            Console.WriteLine("🧭 Stage 1: source-grounded beat plan...");
-            var beatInstruction = BuildBeatPlanInstruction(targetRuntimeMinutes, sceneMin, sceneMax);
-            var result = await client.StartSessionAsync(model, session.FileId, beatInstruction, ct, temperature).ConfigureAwait(false);
-            totalRequestBytes += result.RequestBytesSent;
-            TrackUsage(tokensByModel, model, result.UsageJson);
-            beatPlanJson = ExtractJson(result.OutputText);
-            await File.WriteAllTextAsync(beatPlanPath, PrettyJson(beatPlanJson), ct).ConfigureAwait(false);
-            lastResponseId = result.ResponseId;
-            session.StageResponseIds["beat_plan"] = lastResponseId;
-            SaveSession(sessionPath, session);
-            Console.WriteLine($"   response_id={lastResponseId} request_bytes={result.RequestBytesSent} (book NOT resent)");
+            state.LastResponseId = cachedBeatResp;
+            return await File.ReadAllTextAsync(beatPlanPath, state.Ct).ConfigureAwait(false);
         }
 
+        Console.WriteLine("🧭 Stage 1: source-grounded beat plan...");
+        var beatInstruction = BuildBeatPlanInstruction(state.TargetRuntimeMinutes, state.SceneMin, state.SceneMax);
+        var result = await state.Client.StartSessionAsync(
+            state.Model, state.Session.FileId, beatInstruction, state.Ct, state.Temperature).ConfigureAwait(false);
+        state.TrackGeneration(result);
+        var beatPlanJson = ExtractJson(result.OutputText);
+        await File.WriteAllTextAsync(beatPlanPath, PrettyJson(beatPlanJson), state.Ct).ConfigureAwait(false);
+        state.LastResponseId = result.ResponseId;
+        state.Session.StageResponseIds["beat_plan"] = state.LastResponseId;
+        SaveSession(state.SessionPath, state.Session);
+        Console.WriteLine($"   response_id={state.LastResponseId} request_bytes={result.RequestBytesSent} (book NOT resent)");
+        return beatPlanJson;
+    }
+
+    private static async Task<string> RunCastLocationsStageAsync(PilotRunState state, string beatPlanJson)
+    {
         // ---- Stage 2: cast, wardrobe, and locations (derived from the beat plan, BEFORE Fountain) ----
         // Reordered from the original design (which derived these AFTER the EDL) so the Fountain
         // stage can be handed already-established identities/places instead of being asked to both
         // invent and write them — this is what actually lets the shared book_to_fountain.txt's
         // CAST LOOKS & VOICES / LOCATIONS sections shrink to "apply consistently" rather than
         // "figure out and invent." Variants are tied to beat IDs here (no scene IDs exist yet).
-        string castLocationJson;
-        var castLocationPath = Path.Combine(outDir, "cast_and_locations.json");
-        if (session.StageResponseIds.TryGetValue("cast_locations", out var cachedClResp) && File.Exists(castLocationPath))
+        var castLocationPath = Path.Combine(state.OutDir, "cast_and_locations.json");
+        if (state.Session.StageResponseIds.TryGetValue("cast_locations", out var cachedClResp) && File.Exists(castLocationPath))
         {
             Console.WriteLine("♻️  Stage 2 (cast/wardrobe/locations): reusing cached artifact.");
-            castLocationJson = await File.ReadAllTextAsync(castLocationPath, ct).ConfigureAwait(false);
-            lastResponseId = cachedClResp;
+            state.LastResponseId = cachedClResp;
+            return await File.ReadAllTextAsync(castLocationPath, state.Ct).ConfigureAwait(false);
         }
-        else
+
+        Console.WriteLine("\uD83E\uDDD1\u200D\uD83C\uDFA4 Stage 2: cast, wardrobe, and locations...");
+        var instruction = BuildCastLocationsInstruction(beatPlanJson);
+        var result = await state.Client.ContinueSessionAsync(
+            state.Model, state.LastResponseId, instruction, state.Ct, state.Temperature).ConfigureAwait(false);
+        state.TrackGeneration(result);
+        var castLocationJson = ExtractJson(result.OutputText);
+        state.LastResponseId = result.ResponseId;
+
+        // Corrective retry: a real Call of the Wild run showed the model can occasionally
+        // deviate from the instructed {"cast_seeds":{...},"location_bible":{...}} shape (e.g.
+        // a bare array of characters, no location_bible at all) — no exception, just missing
+        // data. ExtractJson/ParseCastAndLocationKeys were hardened to no longer corrupt what
+        // DOES come back, but a defensive parse can't recover data the model never produced;
+        // asking it to look at its own output and reformat can. One retry, same session (cheap
+        // follow-up, not a resend of the book), before accepting whatever's available.
+        for (var attempt = 1; attempt < CastLocationsMaxAttempts && !HasValidCastLocationsShape(castLocationJson); attempt++)
         {
-            Console.WriteLine("\uD83E\uDDD1\u200D\uD83C\uDFA4 Stage 2: cast, wardrobe, and locations...");
-            var instruction = BuildCastLocationsInstruction(beatPlanJson);
-            var result = await client.ContinueSessionAsync(model, lastResponseId, instruction, ct, temperature).ConfigureAwait(false);
-            totalRequestBytes += result.RequestBytesSent;
-            TrackUsage(tokensByModel, model, result.UsageJson);
-            castLocationJson = ExtractJson(result.OutputText);
-            lastResponseId = result.ResponseId;
-
-            // Corrective retry: a real Call of the Wild run showed the model can occasionally
-            // deviate from the instructed {"cast_seeds":{...},"location_bible":{...}} shape (e.g.
-            // a bare array of characters, no location_bible at all) — no exception, just missing
-            // data. ExtractJson/ParseCastAndLocationKeys were hardened to no longer corrupt what
-            // DOES come back, but a defensive parse can't recover data the model never produced;
-            // asking it to look at its own output and reformat can. One retry, same session (cheap
-            // follow-up, not a resend of the book), before accepting whatever's available.
-            for (var attempt = 1; attempt < CastLocationsMaxAttempts && !HasValidCastLocationsShape(castLocationJson); attempt++)
-            {
-                Console.WriteLine(
-                    $"   ⚠️  Response missing cast_seeds/location_bible — requesting a corrected reformat (attempt {attempt + 1}/{CastLocationsMaxAttempts})...");
-                var retryResult = await client.ContinueSessionAsync(
-                    model, lastResponseId, CastLocationsCorrectionInstruction, ct, temperature).ConfigureAwait(false);
-                totalRequestBytes += retryResult.RequestBytesSent;
-                TrackUsage(tokensByModel, model, retryResult.UsageJson);
-                castLocationJson = ExtractJson(retryResult.OutputText);
-                lastResponseId = retryResult.ResponseId;
-            }
-            if (!HasValidCastLocationsShape(castLocationJson))
-                Console.WriteLine("   ⚠️  Cast/locations still incomplete after retry — proceeding with what's available (validator will flag any gaps).");
-
-            await File.WriteAllTextAsync(castLocationPath, PrettyJson(castLocationJson), ct).ConfigureAwait(false);
-            session.StageResponseIds["cast_locations"] = lastResponseId;
-            SaveSession(sessionPath, session);
-            Console.WriteLine($"   response_id={lastResponseId} request_bytes={result.RequestBytesSent} (book NOT resent)");
+            Console.WriteLine(
+                $"   ⚠️  Response missing cast_seeds/location_bible — requesting a corrected reformat (attempt {attempt + 1}/{CastLocationsMaxAttempts})...");
+            var retryResult = await state.Client.ContinueSessionAsync(
+                state.Model, state.LastResponseId, CastLocationsCorrectionInstruction, state.Ct, state.Temperature)
+                .ConfigureAwait(false);
+            state.TrackGeneration(retryResult);
+            castLocationJson = ExtractJson(retryResult.OutputText);
+            state.LastResponseId = retryResult.ResponseId;
         }
+        if (!HasValidCastLocationsShape(castLocationJson))
+            Console.WriteLine("   ⚠️  Cast/locations still incomplete after retry — proceeding with what's available (validator will flag any gaps).");
 
+        await File.WriteAllTextAsync(castLocationPath, PrettyJson(castLocationJson), state.Ct).ConfigureAwait(false);
+        state.Session.StageResponseIds["cast_locations"] = state.LastResponseId;
+        SaveSession(state.SessionPath, state.Session);
+        Console.WriteLine($"   response_id={state.LastResponseId} request_bytes={result.RequestBytesSent} (book NOT resent)");
+        return castLocationJson;
+    }
+
+    private static async Task<string> RunFountainStageAsync(
+        PilotRunState state, string beatPlanJson, string castLocationJson)
+    {
         // ---- Stage 3: Fountain screenplay (fed the approved beat plan AND cast/locations) ----
-        var fountainPath = Path.Combine(outDir, "screenplay.fountain");
-        string fountainText;
-        if (session.StageResponseIds.TryGetValue("fountain", out var cachedFountainResp) && File.Exists(fountainPath))
+        var fountainPath = Path.Combine(state.OutDir, "screenplay.fountain");
+        if (state.Session.StageResponseIds.TryGetValue("fountain", out var cachedFountainResp) && File.Exists(fountainPath))
         {
             Console.WriteLine("♻️  Stage 3 (Fountain): reusing cached artifact.");
-            fountainText = await File.ReadAllTextAsync(fountainPath, ct).ConfigureAwait(false);
-            lastResponseId = cachedFountainResp;
-        }
-        else
-        {
-            Console.WriteLine("🎬 Stage 3: Fountain screenplay...");
-            var fountainInstruction = BuildFountainInstruction(workspaceRoot, targetRuntimeMinutes, beatPlanJson, castLocationJson);
-            var result = await client.ContinueSessionAsync(model, lastResponseId, fountainInstruction, ct, temperature).ConfigureAwait(false);
-            totalRequestBytes += result.RequestBytesSent;
-            TrackUsage(tokensByModel, model, result.UsageJson);
-            fountainText = StripFences(result.OutputText);
-            await File.WriteAllTextAsync(fountainPath, fountainText, ct).ConfigureAwait(false);
-            lastResponseId = result.ResponseId;
-            session.StageResponseIds["fountain"] = lastResponseId;
-            SaveSession(sessionPath, session);
-            Console.WriteLine($"   response_id={lastResponseId} request_bytes={result.RequestBytesSent} (book NOT resent)");
+            state.LastResponseId = cachedFountainResp;
+            return await File.ReadAllTextAsync(fountainPath, state.Ct).ConfigureAwait(false);
         }
 
+        Console.WriteLine("🎬 Stage 3: Fountain screenplay...");
+        var fountainInstruction = BuildFountainInstruction(
+            state.WorkspaceRoot, state.TargetRuntimeMinutes, beatPlanJson, castLocationJson);
+        var result = await state.Client.ContinueSessionAsync(
+            state.Model, state.LastResponseId, fountainInstruction, state.Ct, state.Temperature).ConfigureAwait(false);
+        state.TrackGeneration(result);
+        var fountainText = StripFences(result.OutputText);
+        await File.WriteAllTextAsync(fountainPath, fountainText, state.Ct).ConfigureAwait(false);
+        state.LastResponseId = result.ResponseId;
+        state.Session.StageResponseIds["fountain"] = state.LastResponseId;
+        SaveSession(state.SessionPath, state.Session);
+        Console.WriteLine($"   response_id={state.LastResponseId} request_bytes={result.RequestBytesSent} (book NOT resent)");
+        return fountainText;
+    }
+
+    private static async Task<string> RunFountainRepairLoopAsync(PilotRunState state, string fountainText)
+    {
         // ---- Stage 4: validate + repair Fountain (local gate, cap 2 repairs) ----
+        var fountainPath = Path.Combine(state.OutDir, "screenplay.fountain");
         for (var attempt = 0; attempt < 2; attempt++)
         {
-            var findings = AdaptationPackageValidator.ValidateFountainOnly(fountainText, sceneMin, sceneMax);
+            var findings = AdaptationPackageValidator.ValidateFountainOnly(fountainText, state.SceneMin, state.SceneMax);
             if (findings.Count == 0)
             {
                 Console.WriteLine("✅ Stage 4: Fountain passes local validation.");
@@ -324,56 +496,49 @@ public static class AdaptationSessionPilot
                 string.Join("\n", findings.Select(f => $"- {f}")) +
                 "\n\nReturn the corrected FULL Fountain screenplay only (no markdown fences, no commentary), " +
                 "fixing exactly these issues. Do not change anything else that already works.";
-            var repairResult = await client.ContinueSessionAsync(model, lastResponseId, repairInstruction, ct, temperature).ConfigureAwait(false);
-            totalRequestBytes += repairResult.RequestBytesSent;
-            TrackUsage(tokensByModel, model, repairResult.UsageJson);
+            var repairResult = await state.Client.ContinueSessionAsync(
+                state.Model, state.LastResponseId, repairInstruction, state.Ct, state.Temperature).ConfigureAwait(false);
+            state.TrackGeneration(repairResult);
             fountainText = StripFences(repairResult.OutputText);
-            var attemptPath = Path.Combine(outDir, $"screenplay.repair{attempt + 1}.fountain");
-            await File.WriteAllTextAsync(attemptPath, fountainText, ct).ConfigureAwait(false);
-            lastResponseId = repairResult.ResponseId;
-            session.StageResponseIds["fountain"] = lastResponseId;
-            SaveSession(sessionPath, session);
+            var attemptPath = Path.Combine(state.OutDir, $"screenplay.repair{attempt + 1}.fountain");
+            await File.WriteAllTextAsync(attemptPath, fountainText, state.Ct).ConfigureAwait(false);
+            state.LastResponseId = repairResult.ResponseId;
+            state.Session.StageResponseIds["fountain"] = state.LastResponseId;
+            SaveSession(state.SessionPath, state.Session);
         }
-        await File.WriteAllTextAsync(fountainPath, fountainText, ct).ConfigureAwait(false);
+        await File.WriteAllTextAsync(fountainPath, fountainText, state.Ct).ConfigureAwait(false);
+        return fountainText;
+    }
 
-        // ---- EXPERIMENT (optional, --dual-attach-all): re-run stages 2 onward as a fully independent,
-        // non-chained pipeline — its own cast/locations, its own Fountain, its own EDL, clip plan,
-        // audio plan, and judge — each an independent CompleteWithFilesAsync call attaching only the
-        // files it needs, never previous_response_id. Never mixes chained-pipeline artifacts into the
-        // dual-attach ones, so the two full pipelines are a fair side-by-side comparison.
-        if (dualAttachAll)
-        {
-            await RunDualAttachFullPipelineAsync(
-                client, session, sessionPath, model, temperature, judgeModel, judgeModel2, judgeTemperature,
-                beatPlanJson, workspaceRoot, targetRuntimeMinutes, sceneMin, sceneMax, paragraphs.Count, outDir,
-                durMinSeconds, durMaxSeconds, durAbsMaxSeconds, ct)
-                .ConfigureAwait(false);
-        }
-
+    private static async Task<string> RunEdlStageAsync(
+        PilotRunState state, string fountainText, string castLocationJson)
+    {
         // ---- Stage 5: EDL / shot plan (validates against the pre-established cast/location keys) ----
-        string edlJson;
-        var edlPath = Path.Combine(outDir, "edit_decision_list.json");
-        if (session.StageResponseIds.TryGetValue("edl", out var cachedEdlResp) && File.Exists(edlPath))
+        var edlPath = Path.Combine(state.OutDir, "edit_decision_list.json");
+        if (state.Session.StageResponseIds.TryGetValue("edl", out var cachedEdlResp) && File.Exists(edlPath))
         {
             Console.WriteLine("♻️  Stage 5 (EDL): reusing cached artifact.");
-            edlJson = await File.ReadAllTextAsync(edlPath, ct).ConfigureAwait(false);
-            lastResponseId = cachedEdlResp;
-        }
-        else
-        {
-            Console.WriteLine("🎞️  Stage 5: EDL / shot plan...");
-            var edlInstruction = BuildEdlInstruction(fountainText, castLocationJson);
-            var result = await client.ContinueSessionAsync(model, lastResponseId, edlInstruction, ct, temperature).ConfigureAwait(false);
-            totalRequestBytes += result.RequestBytesSent;
-            TrackUsage(tokensByModel, model, result.UsageJson);
-            edlJson = ExtractJson(result.OutputText);
-            await File.WriteAllTextAsync(edlPath, PrettyJson(edlJson), ct).ConfigureAwait(false);
-            lastResponseId = result.ResponseId;
-            session.StageResponseIds["edl"] = lastResponseId;
-            SaveSession(sessionPath, session);
-            Console.WriteLine($"   response_id={lastResponseId} request_bytes={result.RequestBytesSent} (book NOT resent)");
+            state.LastResponseId = cachedEdlResp;
+            return await File.ReadAllTextAsync(edlPath, state.Ct).ConfigureAwait(false);
         }
 
+        Console.WriteLine("🎞️  Stage 5: EDL / shot plan...");
+        var edlInstruction = BuildEdlInstruction(fountainText, castLocationJson);
+        var result = await state.Client.ContinueSessionAsync(
+            state.Model, state.LastResponseId, edlInstruction, state.Ct, state.Temperature).ConfigureAwait(false);
+        state.TrackGeneration(result);
+        var edlJson = ExtractJson(result.OutputText);
+        await File.WriteAllTextAsync(edlPath, PrettyJson(edlJson), state.Ct).ConfigureAwait(false);
+        state.LastResponseId = result.ResponseId;
+        state.Session.StageResponseIds["edl"] = state.LastResponseId;
+        SaveSession(state.SessionPath, state.Session);
+        Console.WriteLine($"   response_id={state.LastResponseId} request_bytes={result.RequestBytesSent} (book NOT resent)");
+        return edlJson;
+    }
+
+    private static async Task<string> RunChainedClipShotPlanStageAsync(
+        PilotRunState state, string edlJson, string fountainText, string beatPlanJson)
+    {
         // ---- Stage 5.5 (optional): clip-level shot plan, batched by scene group ----
         // Only runs with --clip-shot-plan. Expands each EDL scene into 2-7 short clips (camera
         // directive, performance intensity/note, exact dialogue-or-VO fragment, per-clip sound),
@@ -381,177 +546,171 @@ public static class AdaptationSessionPilot
         // mechanism as every other stage. This is what the real product's Stage2PlannerService/
         // ClipVideoPromptBuilder does at much greater depth (~15 classifiers); this is a deliberately
         // trimmed version scoped for benchmarking, not product parity.
-        string? clipPlanJson = null;
-        if (clipShotPlan)
+        var clipPlanPath = Path.Combine(state.OutDir, "clip_shot_plan.json");
+        if (state.Session.StageResponseIds.TryGetValue("clip_plan", out var cachedClipResp) && File.Exists(clipPlanPath))
         {
-            var clipPlanPath = Path.Combine(outDir, "clip_shot_plan.json");
-            if (session.StageResponseIds.TryGetValue("clip_plan", out var cachedClipResp) && File.Exists(clipPlanPath))
-            {
-                Console.WriteLine("♻️  Stage 5.5 (clip shot plan): reusing cached artifact.");
-                clipPlanJson = await File.ReadAllTextAsync(clipPlanPath, ct).ConfigureAwait(false);
-                lastResponseId = cachedClipResp;
-            }
-            else
-            {
-                Console.WriteLine("🎥 Stage 5.5: clip-level shot plan (batched)...");
-                var edlScenes = ParseEdlSceneElements(edlJson);
-                var fountainScenes = SplitFountainIntoScenes(fountainText);
-                if (fountainScenes.Count != edlScenes.Count)
-                {
-                    Console.WriteLine(
-                        $"   ⚠️ EDL has {edlScenes.Count} scenes but Fountain split into {fountainScenes.Count} — " +
-                        "batching by the smaller count; see the final reconciliation warning.");
-                }
-                var sceneCount = Math.Min(edlScenes.Count, fountainScenes.Count);
-                var batchSize = ComputeSafeBatchSize(
-                    LookupMaxOutputTokens(workspaceRoot, model), ClipPlanEstimatedTokensPerScene);
-                var batchJsonTexts = new List<string>();
-                for (var batchStart = 0; batchStart < sceneCount; batchStart += batchSize)
-                {
-                    var batchEnd = Math.Min(batchStart + batchSize, sceneCount);
-                    var edlSlice = "{\"scenes\":[" +
-                        string.Join(",", edlScenes.GetRange(batchStart, batchEnd - batchStart).Select(e => e.GetRawText())) +
-                        "]}";
-                    var fountainExcerpt = string.Join("\n\n", fountainScenes.GetRange(batchStart, batchEnd - batchStart));
-                    var instruction = BuildClipPlanInstruction(PrettyJson(edlSlice), fountainExcerpt, beatPlanJson, durMaxSeconds);
-                    var result = await client.ContinueSessionAsync(model, lastResponseId, instruction, ct, temperature).ConfigureAwait(false);
-                    totalRequestBytes += result.RequestBytesSent;
-                    TrackUsage(tokensByModel, model, result.UsageJson);
-                    batchJsonTexts.Add(ExtractJson(result.OutputText));
-                    lastResponseId = result.ResponseId;
-                    session.StageResponseIds["clip_plan"] = lastResponseId;
-                    SaveSession(sessionPath, session);
-                    Console.WriteLine(
-                        $"   batch [scenes {batchStart + 1}-{batchEnd}] response_id={lastResponseId} " +
-                        $"request_bytes={result.RequestBytesSent} (book NOT resent)");
-                }
-                clipPlanJson = RecomputeClipDurations(
-                    MergeScenesBatches(batchJsonTexts), durMinSeconds, durMaxSeconds, durAbsMaxSeconds);
-                await File.WriteAllTextAsync(clipPlanPath, PrettyJson(clipPlanJson), ct).ConfigureAwait(false);
-            }
+            Console.WriteLine("♻️  Stage 5.5 (clip shot plan): reusing cached artifact.");
+            state.LastResponseId = cachedClipResp;
+            return await File.ReadAllTextAsync(clipPlanPath, state.Ct).ConfigureAwait(false);
         }
 
+        Console.WriteLine("🎥 Stage 5.5: clip-level shot plan (batched)...");
+        var edlScenes = ParseEdlSceneElements(edlJson);
+        var fountainScenes = SplitFountainIntoScenes(fountainText);
+        if (fountainScenes.Count != edlScenes.Count)
+        {
+            Console.WriteLine(
+                $"   ⚠️ EDL has {edlScenes.Count} scenes but Fountain split into {fountainScenes.Count} — " +
+                "batching by the smaller count; see the final reconciliation warning.");
+        }
+        var sceneCount = Math.Min(edlScenes.Count, fountainScenes.Count);
+        var batchSize = ComputeSafeBatchSize(
+            LookupMaxOutputTokens(state.WorkspaceRoot, state.Model), ClipPlanEstimatedTokensPerScene);
+        var batchJsonTexts = new List<string>();
+        for (var batchStart = 0; batchStart < sceneCount; batchStart += batchSize)
+        {
+            var batchEnd = Math.Min(batchStart + batchSize, sceneCount);
+            var edlSlice = "{\"scenes\":[" +
+                string.Join(",", edlScenes.GetRange(batchStart, batchEnd - batchStart).Select(e => e.GetRawText())) +
+                "]}";
+            var fountainExcerpt = string.Join("\n\n", fountainScenes.GetRange(batchStart, batchEnd - batchStart));
+            var instruction = BuildClipPlanInstruction(
+                PrettyJson(edlSlice), fountainExcerpt, beatPlanJson, state.DurMaxSeconds);
+            var result = await state.Client.ContinueSessionAsync(
+                state.Model, state.LastResponseId, instruction, state.Ct, state.Temperature).ConfigureAwait(false);
+            state.TrackGeneration(result);
+            batchJsonTexts.Add(ExtractJson(result.OutputText));
+            state.LastResponseId = result.ResponseId;
+            state.Session.StageResponseIds["clip_plan"] = state.LastResponseId;
+            SaveSession(state.SessionPath, state.Session);
+            Console.WriteLine(
+                $"   batch [scenes {batchStart + 1}-{batchEnd}] response_id={state.LastResponseId} " +
+                $"request_bytes={result.RequestBytesSent} (book NOT resent)");
+        }
+        var clipPlanJson = RecomputeClipDurations(
+            MergeScenesBatches(batchJsonTexts), state.DurMinSeconds, state.DurMaxSeconds, state.DurAbsMaxSeconds);
+        await File.WriteAllTextAsync(clipPlanPath, PrettyJson(clipPlanJson), state.Ct).ConfigureAwait(false);
+        return clipPlanJson;
+    }
+
+    private static async Task RunDualAttachClipPlanExperimentAsync(
+        PilotRunState state,
+        string edlJson,
+        string fountainText,
+        string beatPlanJson,
+        string castLocationJson)
+    {
         // ---- EXPERIMENT (optional, --dual-attach-clip-plan): same clip-plan task, but with no
         // previous_response_id chaining at all — both the book and the approved Fountain are attached
         // directly by file_id on every independent batch call, with an explicit layout hint (the EDL's
         // own source_paragraphs / scene_id) telling the model where to look in each. Produces a
         // separate artifact and separate cost total so it can be compared against the chained Stage
         // 5.5 result above on both quality and actual billed tokens — see PrintCostSummary.
-        if (dualAttachClipPlan)
+        var dualAttachTokens = new Dictionary<string, (long Input, long Output, long Cached)>();
+        var dualAttachBytes = 0;
+
+        var fountainTaggedText = BuildSceneTaggedFountainText(fountainText);
+        var fountainSha256 = Convert.ToHexStringLower(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(fountainTaggedText)));
+        if (state.Session.FountainFileId is null || state.Session.FountainFileSha256 != fountainSha256)
         {
-            var dualAttachTokens = new Dictionary<string, (long Input, long Output, long Cached)>();
-            var dualAttachBytes = 0;
-
-            var fountainTaggedText = BuildSceneTaggedFountainText(fountainText);
-            var fountainSha256 = Convert.ToHexStringLower(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(fountainTaggedText)));
-            if (session.FountainFileId is null || session.FountainFileSha256 != fountainSha256)
-            {
-                Console.WriteLine("📤 [experiment] Uploading scene-tagged Fountain for dual-attach test...");
-                var fountainTaggedPath = Path.Combine(outDir, "fountain_tagged.txt");
-                await File.WriteAllTextAsync(fountainTaggedPath, fountainTaggedText, ct).ConfigureAwait(false);
-                var fUpload = await client.UploadBookAsync(fountainTaggedPath, ct: ct).ConfigureAwait(false);
-                session.FountainFileId = fUpload.FileId;
-                session.FountainFileSha256 = fountainSha256;
-                SaveSession(sessionPath, session);
-                Console.WriteLine($"   fountain_file_id={fUpload.FileId} bytes={fUpload.Bytes}");
-            }
-            else
-            {
-                Console.WriteLine($"📎 [experiment] Reusing uploaded Fountain: fountain_file_id={session.FountainFileId}");
-            }
-
-            var dualAttachPath = Path.Combine(outDir, "clip_shot_plan_dualattach.json");
-            Console.WriteLine("🧪 [experiment] Clip-level shot plan (dual-attach, no chaining)...");
-            var edlScenesForDual = ParseEdlSceneElements(edlJson);
-            var dualBatchSize = ComputeSafeBatchSize(
-                LookupMaxOutputTokens(workspaceRoot, model), ClipPlanEstimatedTokensPerScene);
-            var dualBatchJsonTexts = new List<string>();
-            for (var batchStart = 0; batchStart < edlScenesForDual.Count; batchStart += dualBatchSize)
-            {
-                var batchEnd = Math.Min(batchStart + dualBatchSize, edlScenesForDual.Count);
-                var edlSlice = "{\"scenes\":[" +
-                    string.Join(",", edlScenesForDual.GetRange(batchStart, batchEnd - batchStart).Select(e => e.GetRawText())) +
-                    "]}";
-                var instruction = BuildDualAttachClipPlanInstruction(PrettyJson(edlSlice), castLocationJson, beatPlanJson, durMaxSeconds);
-                var result = await client.CompleteWithFilesAsync(
-                    model, new[] { session.FileId, session.FountainFileId! }, instruction, ct, temperature).ConfigureAwait(false);
-                dualAttachBytes += result.RequestBytesSent;
-                TrackUsage(dualAttachTokens, model, result.UsageJson);
-                dualBatchJsonTexts.Add(ExtractJson(result.OutputText));
-                Console.WriteLine(
-                    $"   [experiment] batch [scenes {batchStart + 1}-{batchEnd}] response_id={result.ResponseId} " +
-                    $"request_bytes={result.RequestBytesSent} (independent call, no chain)");
-            }
-            var dualAttachJson = RecomputeClipDurations(
-                MergeScenesBatches(dualBatchJsonTexts), durMinSeconds, durMaxSeconds, durAbsMaxSeconds);
-            await File.WriteAllTextAsync(dualAttachPath, PrettyJson(dualAttachJson), ct).ConfigureAwait(false);
-
-            Console.WriteLine($"🧪 [experiment] Dual-attach bytes sent: {dualAttachBytes} (vs. chained clip-plan stage above)");
-            PrintCostSummary(
-                workspaceRoot, dualAttachTokens, outDir, "_dualattach_clipplan",
-                dualAttachBytes, new FileInfo(indexedBookPath).Length,
-                bookResent: false); // re-attached by file_id, not resent as bytes — see PrintCostSummary doc
-        }
-
-        // ---- Stage 6: audio plan (batched — a 68-scene unbatched call was observed to silently
-        // truncate, with the model itself appending a "scenes_CONTINUED": [] marker acknowledging it
-        // ran out of room; only 9 of 68 scenes got audio coverage. Same fix as the clip-plan stage.) ----
-        string audioJson;
-        var audioPath = Path.Combine(outDir, "audio_plan.json");
-        if (session.StageResponseIds.TryGetValue("audio_plan", out var cachedAudioResp) && File.Exists(audioPath))
-        {
-            Console.WriteLine("♻️  Stage 6 (audio plan): reusing cached artifact.");
-            audioJson = await File.ReadAllTextAsync(audioPath, ct).ConfigureAwait(false);
-            lastResponseId = cachedAudioResp;
+            Console.WriteLine("📤 [experiment] Uploading scene-tagged Fountain for dual-attach test...");
+            var fountainTaggedPath = Path.Combine(state.OutDir, "fountain_tagged.txt");
+            await File.WriteAllTextAsync(fountainTaggedPath, fountainTaggedText, state.Ct).ConfigureAwait(false);
+            var fUpload = await state.Client.UploadBookAsync(fountainTaggedPath, ct: state.Ct).ConfigureAwait(false);
+            state.Session.FountainFileId = fUpload.FileId;
+            state.Session.FountainFileSha256 = fountainSha256;
+            SaveSession(state.SessionPath, state.Session);
+            Console.WriteLine($"   fountain_file_id={fUpload.FileId} bytes={fUpload.Bytes}");
         }
         else
         {
-            Console.WriteLine("🎵 Stage 6: audio plan (batched)...");
-            var edlScenesForAudio = ParseEdlSceneElements(edlJson);
-            var audioBatchSize = ComputeSafeBatchSize(
-                LookupMaxOutputTokens(workspaceRoot, model), AudioPlanEstimatedTokensPerScene);
-            var audioBatchJsonTexts = new List<string>();
-            for (var batchStart = 0; batchStart < edlScenesForAudio.Count; batchStart += audioBatchSize)
-            {
-                var batchEnd = Math.Min(batchStart + audioBatchSize, edlScenesForAudio.Count);
-                var sliceScenes = edlScenesForAudio.GetRange(batchStart, batchEnd - batchStart);
-                var edlSlice = "{\"scenes\":[" + string.Join(",", sliceScenes.Select(e => e.GetRawText())) + "]}";
-                var sceneIdsInBatch = sliceScenes
-                    .Select(e => e.TryGetProperty("scene_id", out var sid) ? sid.GetString() ?? "" : "")
-                    .Where(id => id.Length > 0).ToHashSet();
-                var clipIntensityJson = ExtractClipIntensitySummary(clipPlanJson, sceneIdsInBatch);
-                var instruction = BuildAudioPlanInstruction(PrettyJson(edlSlice), clipIntensityJson);
-                var result = await client.ContinueSessionAsync(model, lastResponseId, instruction, ct, temperature).ConfigureAwait(false);
-                totalRequestBytes += result.RequestBytesSent;
-                TrackUsage(tokensByModel, model, result.UsageJson);
-                audioBatchJsonTexts.Add(ExtractJson(result.OutputText));
-                lastResponseId = result.ResponseId;
-                session.StageResponseIds["audio_plan"] = lastResponseId;
-                SaveSession(sessionPath, session);
-                Console.WriteLine(
-                    $"   batch [scenes {batchStart + 1}-{batchEnd}] response_id={lastResponseId} " +
-                    $"request_bytes={result.RequestBytesSent} (book NOT resent)");
-            }
-            audioJson = MergeScenesBatches(audioBatchJsonTexts);
-            await File.WriteAllTextAsync(audioPath, PrettyJson(audioJson), ct).ConfigureAwait(false);
+            Console.WriteLine($"📎 [experiment] Reusing uploaded Fountain: fountain_file_id={state.Session.FountainFileId}");
         }
 
-        // ---- Stage 7 (optional): one or two independent, book-attached LLM judges ----
-        // Unlike the existing multi-model peer-judge path (ScreenplayJudgmentRubric.BuildPrompt,
-        // Program.cs), which embeds the FULL book text in every judge call for every judge model on
-        // every run, each judge here attaches the book file directly (small, cached-hit-friendly)
-        // rather than inlining it. Deliberately an independent CompleteWithFilesAsync — NOT a
-        // continuation of the generation session — so a judge never inherits chain memory/bias from
-        // having produced the content itself. judgeModel2 supplies a second independent xAI judge.
-        var judgeResults = await RunJudgesAsync(
-            client, new[] { judgeModel, judgeModel2 }, new[] { session.FileId }, fountainText, judgeTemperature,
-            outDir, "judge_review", "Stage 7",
-            (r, m) => { totalRequestBytes += r.RequestBytesSent; TrackUsage(tokensByModel, m, r.UsageJson); },
-            ct).ConfigureAwait(false);
+        var dualAttachPath = Path.Combine(state.OutDir, "clip_shot_plan_dualattach.json");
+        Console.WriteLine("🧪 [experiment] Clip-level shot plan (dual-attach, no chaining)...");
+        var edlScenesForDual = ParseEdlSceneElements(edlJson);
+        var dualBatchSize = ComputeSafeBatchSize(
+            LookupMaxOutputTokens(state.WorkspaceRoot, state.Model), ClipPlanEstimatedTokensPerScene);
+        var dualBatchJsonTexts = new List<string>();
+        for (var batchStart = 0; batchStart < edlScenesForDual.Count; batchStart += dualBatchSize)
+        {
+            var batchEnd = Math.Min(batchStart + dualBatchSize, edlScenesForDual.Count);
+            var edlSlice = "{\"scenes\":[" +
+                string.Join(",", edlScenesForDual.GetRange(batchStart, batchEnd - batchStart).Select(e => e.GetRawText())) +
+                "]}";
+            var instruction = BuildDualAttachClipPlanInstruction(
+                PrettyJson(edlSlice), castLocationJson, beatPlanJson, state.DurMaxSeconds);
+            var result = await state.Client.CompleteWithFilesAsync(
+                state.Model, new[] { state.Session.FileId, state.Session.FountainFileId! }, instruction, state.Ct, state.Temperature)
+                .ConfigureAwait(false);
+            dualAttachBytes += result.RequestBytesSent;
+            TrackUsage(dualAttachTokens, state.Model, result.UsageJson);
+            dualBatchJsonTexts.Add(ExtractJson(result.OutputText));
+            Console.WriteLine(
+                $"   [experiment] batch [scenes {batchStart + 1}-{batchEnd}] response_id={result.ResponseId} " +
+                $"request_bytes={result.RequestBytesSent} (independent call, no chain)");
+        }
+        var dualAttachJson = RecomputeClipDurations(
+            MergeScenesBatches(dualBatchJsonTexts), state.DurMinSeconds, state.DurMaxSeconds, state.DurAbsMaxSeconds);
+        await File.WriteAllTextAsync(dualAttachPath, PrettyJson(dualAttachJson), state.Ct).ConfigureAwait(false);
 
+        Console.WriteLine($"🧪 [experiment] Dual-attach bytes sent: {dualAttachBytes} (vs. chained clip-plan stage above)");
+        PrintCostSummary(
+            state.WorkspaceRoot, dualAttachTokens, state.OutDir, "_dualattach_clipplan",
+            dualAttachBytes, new FileInfo(state.IndexedBookPath).Length,
+            bookResent: false); // re-attached by file_id, not resent as bytes — see PrintCostSummary doc
+    }
+
+    private static async Task<string> RunAudioPlanStageAsync(
+        PilotRunState state, string edlJson, string? clipPlanJson)
+    {
+        // ---- Stage 6: audio plan (batched — a 68-scene unbatched call was observed to silently
+        // truncate, with the model itself appending a "scenes_CONTINUED": [] marker acknowledging it
+        // ran out of room; only 9 of 68 scenes got audio coverage. Same fix as the clip-plan stage.) ----
+        var audioPath = Path.Combine(state.OutDir, "audio_plan.json");
+        if (state.Session.StageResponseIds.TryGetValue("audio_plan", out var cachedAudioResp) && File.Exists(audioPath))
+        {
+            Console.WriteLine("♻️  Stage 6 (audio plan): reusing cached artifact.");
+            state.LastResponseId = cachedAudioResp;
+            return await File.ReadAllTextAsync(audioPath, state.Ct).ConfigureAwait(false);
+        }
+
+        Console.WriteLine("🎵 Stage 6: audio plan (batched)...");
+        var edlScenesForAudio = ParseEdlSceneElements(edlJson);
+        var audioBatchSize = ComputeSafeBatchSize(
+            LookupMaxOutputTokens(state.WorkspaceRoot, state.Model), AudioPlanEstimatedTokensPerScene);
+        var audioBatchJsonTexts = new List<string>();
+        for (var batchStart = 0; batchStart < edlScenesForAudio.Count; batchStart += audioBatchSize)
+        {
+            var batchEnd = Math.Min(batchStart + audioBatchSize, edlScenesForAudio.Count);
+            var sliceScenes = edlScenesForAudio.GetRange(batchStart, batchEnd - batchStart);
+            var edlSlice = "{\"scenes\":[" + string.Join(",", sliceScenes.Select(e => e.GetRawText())) + "]}";
+            var sceneIdsInBatch = sliceScenes
+                .Select(e => e.TryGetProperty("scene_id", out var sid) ? sid.GetString() ?? "" : "")
+                .Where(id => id.Length > 0).ToHashSet();
+            var clipIntensityJson = ExtractClipIntensitySummary(clipPlanJson, sceneIdsInBatch);
+            var instruction = BuildAudioPlanInstruction(PrettyJson(edlSlice), clipIntensityJson);
+            var result = await state.Client.ContinueSessionAsync(
+                state.Model, state.LastResponseId, instruction, state.Ct, state.Temperature).ConfigureAwait(false);
+            state.TrackGeneration(result);
+            audioBatchJsonTexts.Add(ExtractJson(result.OutputText));
+            state.LastResponseId = result.ResponseId;
+            state.Session.StageResponseIds["audio_plan"] = state.LastResponseId;
+            SaveSession(state.SessionPath, state.Session);
+            Console.WriteLine(
+                $"   batch [scenes {batchStart + 1}-{batchEnd}] response_id={state.LastResponseId} " +
+                $"request_bytes={result.RequestBytesSent} (book NOT resent)");
+        }
+        var audioJson = MergeScenesBatches(audioBatchJsonTexts);
+        await File.WriteAllTextAsync(audioPath, PrettyJson(audioJson), state.Ct).ConfigureAwait(false);
+        return audioJson;
+    }
+
+    private static Dictionary<int, List<string>> BuildCitingScenesByParagraph(string edlJson, int paragraphCount)
+    {
         // ---- Local, zero-cost: paragraph-citation check + annotated book copy ----
         // The original book file is never touched — this only ever writes a separate output.
-        var citationWarnings = ValidateParagraphCitations(edlJson, paragraphs.Count);
         var citingScenesByParagraph = new Dictionary<int, List<string>>();
         try
         {
@@ -564,7 +723,7 @@ public static class AdaptationSessionPilot
                     var m = ParagraphCitationRegex.Match(p.GetString() ?? "");
                     if (!m.Success) continue;
                     var n = int.Parse(m.Groups[1].Value);
-                    if (n < 1 || n > paragraphs.Count) continue;
+                    if (n < 1 || n > paragraphCount) continue;
                     if (!citingScenesByParagraph.TryGetValue(n, out var list))
                         citingScenesByParagraph[n] = list = new List<string>();
                     if (!list.Contains(sceneId)) list.Add(sceneId);
@@ -572,32 +731,52 @@ public static class AdaptationSessionPilot
             }
         }
         catch { /* citation warnings above already cover parse issues */ }
-        var annotatedBookPath = Path.Combine(outDir, "source_book_annotated.txt");
+        return citingScenesByParagraph;
+    }
+
+    private static async Task WriteAnnotatedBookAsync(
+        PilotRunState state, Dictionary<int, List<string>> citingScenesByParagraph)
+    {
+        var annotatedBookPath = Path.Combine(state.OutDir, "source_book_annotated.txt");
         await File.WriteAllTextAsync(
             annotatedBookPath,
-            $"Annotated from book_sha256: {bookSha256} — {paragraphs.Count} paragraphs — generated {DateTime.UtcNow:O}\n\n" +
-            BuildAnnotatedBookText(paragraphs, citingScenesByParagraph),
-            ct).ConfigureAwait(false);
+            $"Annotated from book_sha256: {state.BookSha256} — {state.Paragraphs.Count} paragraphs — generated {DateTime.UtcNow:O}\n\n" +
+            BuildAnnotatedBookText(state.Paragraphs, citingScenesByParagraph),
+            state.Ct).ConfigureAwait(false);
+    }
 
+    private static async Task<int> FinalizeChainedRunAsync(
+        PilotRunState state,
+        string fountainText,
+        string edlJson,
+        string castLocationJson,
+        string audioJson,
+        string? clipPlanJson,
+        bool clipShotPlan,
+        List<(string JudgeModel, string RelativeFileName)> judgeResults)
+    {
         // ---- Full cross-artifact validation ----
         var report = AdaptationPackageValidator.ValidatePackage(
-            fountainText, edlJson, castLocationJson, audioJson, sceneMin, sceneMax, clipPlanJson);
+            fountainText, edlJson, castLocationJson, audioJson, state.SceneMin, state.SceneMax, clipPlanJson);
+        var citationWarnings = ValidateParagraphCitations(edlJson, state.Paragraphs.Count);
         report.Warnings.AddRange(citationWarnings);
-        var reportPath = Path.Combine(outDir, "validation_report.json");
-        await File.WriteAllTextAsync(reportPath, JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }), ct).ConfigureAwait(false);
+        var reportPath = Path.Combine(state.OutDir, "validation_report.json");
+        await File.WriteAllTextAsync(
+            reportPath, JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }), state.Ct)
+            .ConfigureAwait(false);
 
         Console.WriteLine();
-        Console.WriteLine($"📦 Package: {outDir}");
-        Console.WriteLine($"📶 Total NEW bytes sent across all follow-up stages this run: {totalRequestBytes} (book resent: 0 times)");
+        Console.WriteLine($"📦 Package: {state.OutDir}");
+        Console.WriteLine($"📶 Total NEW bytes sent across all follow-up stages this run: {state.TotalRequestBytes} (book resent: 0 times)");
         PrintCostSummary(
-            workspaceRoot, tokensByModel, outDir, "",
-            totalRequestBytes, new FileInfo(indexedBookPath).Length, bookResent: false);
+            state.WorkspaceRoot, state.TokensByModel, state.OutDir, "",
+            state.TotalRequestBytes, new FileInfo(state.IndexedBookPath).Length, bookResent: false);
         Console.WriteLine(report.Status == "pass"
             ? "✅ Validation: PASS"
             : $"❌ Validation: FAIL — {report.Failures.Count} failure(s), {report.Warnings.Count} warning(s)");
         foreach (var f in report.Failures) Console.WriteLine($"   FAIL: {f}");
         foreach (var w in report.Warnings) Console.WriteLine($"   WARN: {w}");
-        Console.WriteLine($"   scenes={report.SceneCount} target_band=[{sceneMin},{sceneMax}]" +
+        Console.WriteLine($"   scenes={report.SceneCount} target_band=[{state.SceneMin},{state.SceneMax}]" +
             (report.ClipCount is { } cc ? $" clips={cc}" : ""));
 
         var mainArtifacts = new Dictionary<string, string>
@@ -615,9 +794,10 @@ public static class AdaptationSessionPilot
         foreach (var (jm, relPath) in judgeResults)
             mainArtifacts[$"judge_review_{jm.Replace('/', '_').Replace(':', '_')}"] = relPath;
         await WriteAdaptationPackageManifestAsync(
-            outDir, "adaptation_package.json", "chained", bookSlug, bookSha256, model,
+            state.OutDir, "adaptation_package.json", "chained", state.BookSlug, state.BookSha256, state.Model,
             judgeResults.Select(j => j.JudgeModel).ToList(),
-            temperature, judgeTemperature, targetRuntimeMinutes, report, mainArtifacts, ct).ConfigureAwait(false);
+            state.Temperature, state.JudgeTemperature, state.TargetRuntimeMinutes, report, mainArtifacts, state.Ct)
+            .ConfigureAwait(false);
 
         return report.Status == "pass" ? 0 : 2;
     }
@@ -701,6 +881,13 @@ public static class AdaptationSessionPilot
     /// artifact. All outputs use a "_dualattach_full" suffix so they never collide with the main
     /// pipeline's files or with the narrower single-stage --dual-attach-clip-plan experiment.
     /// </summary>
+    private static void TrackDualAttachUsage(
+        DualAttachRunState tracking, XaiResponsesClient.SessionTurnResult r, string modelId)
+    {
+        tracking.TotalBytesAlt += r.RequestBytesSent;
+        TrackUsage(tracking.TokensByModelAlt, modelId, r.UsageJson);
+    }
+
     private static async Task RunDualAttachFullPipelineAsync(
         XaiResponsesClient client,
         SessionRecord session,
@@ -727,90 +914,147 @@ public static class AdaptationSessionPilot
         Console.WriteLine(" EXPERIMENT: full pipeline, dual-attach (no chaining) — stages 2 onward");
         Console.WriteLine("==========================================================================");
 
-        var tokensByModelAlt = new Dictionary<string, (long Input, long Output, long Cached)>();
-        var totalBytesAlt = 0;
-        void Track(XaiResponsesClient.SessionTurnResult r, string modelId)
-        {
-            totalBytesAlt += r.RequestBytesSent;
-            TrackUsage(tokensByModelAlt, modelId, r.UsageJson);
-        }
+        var tracking = new DualAttachRunState();
+        var castLocationJsonAlt = await RunDualAttachCastLocationsStageAsync(
+            client, session, model, temperature, beatPlanJson, outDir, tracking, ct).ConfigureAwait(false);
+        var fountainTextAlt = await RunDualAttachFountainStageAsync(
+            client, session, model, temperature, workspaceRoot, targetRuntimeMinutes, beatPlanJson, castLocationJsonAlt,
+            sceneMin, sceneMax, outDir, tracking, ct).ConfigureAwait(false);
+        await UploadDualAttachFullFountainAsync(
+            client, session, sessionPath, fountainTextAlt, outDir, ct).ConfigureAwait(false);
+        var edlJsonAlt = await RunDualAttachEdlStageAsync(
+            client, session, model, temperature, fountainTextAlt, castLocationJsonAlt, outDir, tracking, ct)
+            .ConfigureAwait(false);
+        var clipPlanJsonAlt = await RunDualAttachClipPlanStageAsync(
+            client, session, model, temperature, beatPlanJson, castLocationJsonAlt, edlJsonAlt, workspaceRoot,
+            durMinSeconds, durMaxSeconds, durAbsMaxSeconds, outDir, tracking, ct).ConfigureAwait(false);
+        var audioJsonAlt = await RunDualAttachAudioPlanStageAsync(
+            client, model, temperature, edlJsonAlt, clipPlanJsonAlt, workspaceRoot, outDir, tracking, ct)
+            .ConfigureAwait(false);
 
+        // ---- Stage 7-alt: one or two independent, book-attached judges — genuinely blind here, since
+        // this call never inherited any sidecar artifacts from conversation memory. ----
+        var judgeResultsAlt = await RunJudgesAsync(
+            client, new[] { judgeModel, judgeModel2 }, new[] { session.FileId, session.FountainFileIdAlt! },
+            fountainTextAlt, judgeTemperature, outDir, "judge_review_dualattach_full", "[full experiment] Stage 7",
+            (r, m) => TrackDualAttachUsage(tracking, r, m), ct).ConfigureAwait(false);
+
+        await FinalizeDualAttachFullPipelineAsync(
+            workspaceRoot, outDir, session, model, temperature, judgeTemperature, targetRuntimeMinutes,
+            sceneMin, sceneMax, paragraphCount, fountainTextAlt, edlJsonAlt, castLocationJsonAlt, audioJsonAlt,
+            clipPlanJsonAlt, judgeResultsAlt, tracking, ct).ConfigureAwait(false);
+    }
+
+    private static async Task<string> RunDualAttachCastLocationsStageAsync(
+        XaiResponsesClient client,
+        SessionRecord session,
+        string model,
+        double temperature,
+        string beatPlanJson,
+        string outDir,
+        DualAttachRunState tracking,
+        CancellationToken ct)
+    {
         // ---- Stage 2-alt: cast, wardrobe, and locations ----
         var castLocationPathAlt = Path.Combine(outDir, "cast_and_locations_dualattach_full.json");
-        string castLocationJsonAlt;
         if (File.Exists(castLocationPathAlt))
         {
             Console.WriteLine("♻️  [full experiment] Stage 2: reusing existing artifact.");
-            castLocationJsonAlt = await File.ReadAllTextAsync(castLocationPathAlt, ct).ConfigureAwait(false);
+            return await File.ReadAllTextAsync(castLocationPathAlt, ct).ConfigureAwait(false);
         }
-        else
+
+        Console.WriteLine("\uD83E\uDDD1\u200D\uD83C\uDFA4 [full experiment] Stage 2: cast, wardrobe, and locations...");
+        var instruction = BuildCastLocationsInstruction(beatPlanJson);
+        var result = await client.CompleteWithFilesAsync(model, new[] { session.FileId }, instruction, ct, temperature)
+            .ConfigureAwait(false);
+        TrackDualAttachUsage(tracking, result, model);
+        var castLocationJsonAlt = ExtractJson(result.OutputText);
+
+        // Corrective retry — see the chained Stage 2's comment for why. No response-id chain
+        // here (dual-attach is independent calls by design), so the correction note is appended
+        // to the original instruction each retry rather than sent as a bare follow-up.
+        for (var attempt = 1; attempt < CastLocationsMaxAttempts && !HasValidCastLocationsShape(castLocationJsonAlt); attempt++)
         {
-            Console.WriteLine("\uD83E\uDDD1\u200D\uD83C\uDFA4 [full experiment] Stage 2: cast, wardrobe, and locations...");
-            var instruction = BuildCastLocationsInstruction(beatPlanJson);
-            var result = await client.CompleteWithFilesAsync(model, new[] { session.FileId }, instruction, ct, temperature).ConfigureAwait(false);
-            Track(result, model);
-            castLocationJsonAlt = ExtractJson(result.OutputText);
-
-            // Corrective retry — see the chained Stage 2's comment for why. No response-id chain
-            // here (dual-attach is independent calls by design), so the correction note is appended
-            // to the original instruction each retry rather than sent as a bare follow-up.
-            for (var attempt = 1; attempt < CastLocationsMaxAttempts && !HasValidCastLocationsShape(castLocationJsonAlt); attempt++)
-            {
-                Console.WriteLine(
-                    $"   ⚠️  [full experiment] Response missing cast_seeds/location_bible — requesting a corrected reformat (attempt {attempt + 1}/{CastLocationsMaxAttempts})...");
-                var correctedInstruction = instruction + "\n\n" + CastLocationsCorrectionInstruction;
-                var retryResult = await client.CompleteWithFilesAsync(
-                    model, new[] { session.FileId }, correctedInstruction, ct, temperature).ConfigureAwait(false);
-                Track(retryResult, model);
-                castLocationJsonAlt = ExtractJson(retryResult.OutputText);
-            }
-            if (!HasValidCastLocationsShape(castLocationJsonAlt))
-                Console.WriteLine("   ⚠️  [full experiment] Cast/locations still incomplete after retry — proceeding with what's available.");
-
-            await File.WriteAllTextAsync(castLocationPathAlt, PrettyJson(castLocationJsonAlt), ct).ConfigureAwait(false);
+            Console.WriteLine(
+                $"   ⚠️  [full experiment] Response missing cast_seeds/location_bible — requesting a corrected reformat (attempt {attempt + 1}/{CastLocationsMaxAttempts})...");
+            var correctedInstruction = instruction + "\n\n" + CastLocationsCorrectionInstruction;
+            var retryResult = await client.CompleteWithFilesAsync(
+                model, new[] { session.FileId }, correctedInstruction, ct, temperature).ConfigureAwait(false);
+            TrackDualAttachUsage(tracking, retryResult, model);
+            castLocationJsonAlt = ExtractJson(retryResult.OutputText);
         }
+        if (!HasValidCastLocationsShape(castLocationJsonAlt))
+            Console.WriteLine("   ⚠️  [full experiment] Cast/locations still incomplete after retry — proceeding with what's available.");
 
+        await File.WriteAllTextAsync(castLocationPathAlt, PrettyJson(castLocationJsonAlt), ct).ConfigureAwait(false);
+        return castLocationJsonAlt;
+    }
+
+    private static async Task<string> RunDualAttachFountainStageAsync(
+        XaiResponsesClient client,
+        SessionRecord session,
+        string model,
+        double temperature,
+        string workspaceRoot,
+        int targetRuntimeMinutes,
+        string beatPlanJson,
+        string castLocationJsonAlt,
+        int sceneMin,
+        int sceneMax,
+        string outDir,
+        DualAttachRunState tracking,
+        CancellationToken ct)
+    {
         // ---- Stage 3-alt: Fountain screenplay ----
         var fountainPathAlt = Path.Combine(outDir, "screenplay_dualattach_full.fountain");
-        string fountainTextAlt;
         if (File.Exists(fountainPathAlt))
         {
             Console.WriteLine("♻️  [full experiment] Stage 3: reusing existing artifact.");
-            fountainTextAlt = await File.ReadAllTextAsync(fountainPathAlt, ct).ConfigureAwait(false);
+            return await File.ReadAllTextAsync(fountainPathAlt, ct).ConfigureAwait(false);
         }
-        else
+
+        Console.WriteLine("🎬 [full experiment] Stage 3: Fountain screenplay...");
+        var instruction = BuildFountainInstruction(workspaceRoot, targetRuntimeMinutes, beatPlanJson, castLocationJsonAlt);
+        var result = await client.CompleteWithFilesAsync(model, new[] { session.FileId }, instruction, ct, temperature)
+            .ConfigureAwait(false);
+        TrackDualAttachUsage(tracking, result, model);
+        var fountainTextAlt = StripFences(result.OutputText);
+
+        // Stage 4-alt: validate + repair (no chain memory — the repair call must restate the
+        // current draft explicitly, unlike the chained pipeline where "what you just returned"
+        // is implicit).
+        for (var attempt = 0; attempt < 2; attempt++)
         {
-            Console.WriteLine("🎬 [full experiment] Stage 3: Fountain screenplay...");
-            var instruction = BuildFountainInstruction(workspaceRoot, targetRuntimeMinutes, beatPlanJson, castLocationJsonAlt);
-            var result = await client.CompleteWithFilesAsync(model, new[] { session.FileId }, instruction, ct, temperature).ConfigureAwait(false);
-            Track(result, model);
-            fountainTextAlt = StripFences(result.OutputText);
-
-            // Stage 4-alt: validate + repair (no chain memory — the repair call must restate the
-            // current draft explicitly, unlike the chained pipeline where "what you just returned"
-            // is implicit).
-            for (var attempt = 0; attempt < 2; attempt++)
+            var findings = AdaptationPackageValidator.ValidateFountainOnly(fountainTextAlt, sceneMin, sceneMax);
+            if (findings.Count == 0)
             {
-                var findings = AdaptationPackageValidator.ValidateFountainOnly(fountainTextAlt, sceneMin, sceneMax);
-                if (findings.Count == 0)
-                {
-                    Console.WriteLine("✅ [full experiment] Stage 4: Fountain passes local validation.");
-                    break;
-                }
-                Console.WriteLine($"🔧 [full experiment] Stage 4: repair attempt {attempt + 1} — {findings.Count} finding(s).");
-                var repairInstruction =
-                    "The following Fountain screenplay has these specific problems:\n" +
-                    string.Join("\n", findings.Select(f => $"- {f}")) +
-                    "\n\nCURRENT FOUNTAIN SCREENPLAY:\n" + fountainTextAlt +
-                    "\n\nReturn the corrected FULL Fountain screenplay only (no markdown fences, no " +
-                    "commentary), fixing exactly these issues. Do not change anything else that already works.";
-                var repairResult = await client.CompleteWithFilesAsync(model, new[] { session.FileId }, repairInstruction, ct, temperature).ConfigureAwait(false);
-                Track(repairResult, model);
-                fountainTextAlt = StripFences(repairResult.OutputText);
+                Console.WriteLine("✅ [full experiment] Stage 4: Fountain passes local validation.");
+                break;
             }
-            await File.WriteAllTextAsync(fountainPathAlt, fountainTextAlt, ct).ConfigureAwait(false);
+            Console.WriteLine($"🔧 [full experiment] Stage 4: repair attempt {attempt + 1} — {findings.Count} finding(s).");
+            var repairInstruction =
+                "The following Fountain screenplay has these specific problems:\n" +
+                string.Join("\n", findings.Select(f => $"- {f}")) +
+                "\n\nCURRENT FOUNTAIN SCREENPLAY:\n" + fountainTextAlt +
+                "\n\nReturn the corrected FULL Fountain screenplay only (no markdown fences, no " +
+                "commentary), fixing exactly these issues. Do not change anything else that already works.";
+            var repairResult = await client.CompleteWithFilesAsync(
+                model, new[] { session.FileId }, repairInstruction, ct, temperature).ConfigureAwait(false);
+            TrackDualAttachUsage(tracking, repairResult, model);
+            fountainTextAlt = StripFences(repairResult.OutputText);
         }
+        await File.WriteAllTextAsync(fountainPathAlt, fountainTextAlt, ct).ConfigureAwait(false);
+        return fountainTextAlt;
+    }
 
+    private static async Task UploadDualAttachFullFountainAsync(
+        XaiResponsesClient client,
+        SessionRecord session,
+        string sessionPath,
+        string fountainTextAlt,
+        string outDir,
+        CancellationToken ct)
+    {
         // Upload this pipeline's OWN Fountain (scene-tagged) — never the chained pipeline's.
         var fountainTaggedTextAlt = BuildSceneTaggedFountainText(fountainTextAlt);
         var fountainShaAlt = Convert.ToHexStringLower(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(fountainTaggedTextAlt)));
@@ -829,99 +1073,152 @@ public static class AdaptationSessionPilot
         {
             Console.WriteLine($"📎 [full experiment] Reusing this pipeline's Fountain upload: {session.FountainFileIdAlt}");
         }
+    }
 
+    private static async Task<string> RunDualAttachEdlStageAsync(
+        XaiResponsesClient client,
+        SessionRecord session,
+        string model,
+        double temperature,
+        string fountainTextAlt,
+        string castLocationJsonAlt,
+        string outDir,
+        DualAttachRunState tracking,
+        CancellationToken ct)
+    {
         // ---- Stage 5-alt: EDL / shot plan ----
         var edlPathAlt = Path.Combine(outDir, "edit_decision_list_dualattach_full.json");
-        string edlJsonAlt;
         if (File.Exists(edlPathAlt))
         {
             Console.WriteLine("♻️  [full experiment] Stage 5: reusing existing artifact.");
-            edlJsonAlt = await File.ReadAllTextAsync(edlPathAlt, ct).ConfigureAwait(false);
-        }
-        else
-        {
-            Console.WriteLine("🎞️  [full experiment] Stage 5: EDL / shot plan...");
-            var instruction = BuildEdlInstruction(fountainTextAlt, castLocationJsonAlt);
-            var result = await client.CompleteWithFilesAsync(model, new[] { session.FileId }, instruction, ct, temperature).ConfigureAwait(false);
-            Track(result, model);
-            edlJsonAlt = ExtractJson(result.OutputText);
-            await File.WriteAllTextAsync(edlPathAlt, PrettyJson(edlJsonAlt), ct).ConfigureAwait(false);
+            return await File.ReadAllTextAsync(edlPathAlt, ct).ConfigureAwait(false);
         }
 
+        Console.WriteLine("🎞️  [full experiment] Stage 5: EDL / shot plan...");
+        var instruction = BuildEdlInstruction(fountainTextAlt, castLocationJsonAlt);
+        var result = await client.CompleteWithFilesAsync(model, new[] { session.FileId }, instruction, ct, temperature)
+            .ConfigureAwait(false);
+        TrackDualAttachUsage(tracking, result, model);
+        var edlJsonAlt = ExtractJson(result.OutputText);
+        await File.WriteAllTextAsync(edlPathAlt, PrettyJson(edlJsonAlt), ct).ConfigureAwait(false);
+        return edlJsonAlt;
+    }
+
+    private static async Task<string> RunDualAttachClipPlanStageAsync(
+        XaiResponsesClient client,
+        SessionRecord session,
+        string model,
+        double temperature,
+        string beatPlanJson,
+        string castLocationJsonAlt,
+        string edlJsonAlt,
+        string workspaceRoot,
+        int durMinSeconds,
+        int durMaxSeconds,
+        int durAbsMaxSeconds,
+        string outDir,
+        DualAttachRunState tracking,
+        CancellationToken ct)
+    {
         // ---- Stage 5.5-alt: clip-level shot plan (batched, book + Fountain both attached) ----
         var clipPlanPathAlt = Path.Combine(outDir, "clip_shot_plan_dualattach_full.json");
-        string clipPlanJsonAlt;
         if (File.Exists(clipPlanPathAlt))
         {
             Console.WriteLine("♻️  [full experiment] Stage 5.5: reusing existing artifact.");
-            clipPlanJsonAlt = await File.ReadAllTextAsync(clipPlanPathAlt, ct).ConfigureAwait(false);
-        }
-        else
-        {
-            Console.WriteLine("🎥 [full experiment] Stage 5.5: clip-level shot plan (batched)...");
-            var edlScenes = ParseEdlSceneElements(edlJsonAlt);
-            var batchSize = ComputeSafeBatchSize(
-                LookupMaxOutputTokens(workspaceRoot, model), ClipPlanEstimatedTokensPerScene);
-            var batchJsonTexts = new List<string>();
-            for (var batchStart = 0; batchStart < edlScenes.Count; batchStart += batchSize)
-            {
-                var batchEnd = Math.Min(batchStart + batchSize, edlScenes.Count);
-                var edlSlice = "{\"scenes\":[" +
-                    string.Join(",", edlScenes.GetRange(batchStart, batchEnd - batchStart).Select(e => e.GetRawText())) +
-                    "]}";
-                var instruction = BuildDualAttachClipPlanInstruction(PrettyJson(edlSlice), castLocationJsonAlt, beatPlanJson, durMaxSeconds);
-                var result = await client.CompleteWithFilesAsync(
-                    model, new[] { session.FileId, session.FountainFileIdAlt! }, instruction, ct, temperature).ConfigureAwait(false);
-                Track(result, model);
-                batchJsonTexts.Add(ExtractJson(result.OutputText));
-                Console.WriteLine($"   [full experiment] clip-plan batch [scenes {batchStart + 1}-{batchEnd}]");
-            }
-            clipPlanJsonAlt = RecomputeClipDurations(
-                MergeScenesBatches(batchJsonTexts), durMinSeconds, durMaxSeconds, durAbsMaxSeconds);
-            await File.WriteAllTextAsync(clipPlanPathAlt, PrettyJson(clipPlanJsonAlt), ct).ConfigureAwait(false);
+            return await File.ReadAllTextAsync(clipPlanPathAlt, ct).ConfigureAwait(false);
         }
 
+        Console.WriteLine("🎥 [full experiment] Stage 5.5: clip-level shot plan (batched)...");
+        var edlScenes = ParseEdlSceneElements(edlJsonAlt);
+        var batchSize = ComputeSafeBatchSize(
+            LookupMaxOutputTokens(workspaceRoot, model), ClipPlanEstimatedTokensPerScene);
+        var batchJsonTexts = new List<string>();
+        for (var batchStart = 0; batchStart < edlScenes.Count; batchStart += batchSize)
+        {
+            var batchEnd = Math.Min(batchStart + batchSize, edlScenes.Count);
+            var edlSlice = "{\"scenes\":[" +
+                string.Join(",", edlScenes.GetRange(batchStart, batchEnd - batchStart).Select(e => e.GetRawText())) +
+                "]}";
+            var instruction = BuildDualAttachClipPlanInstruction(
+                PrettyJson(edlSlice), castLocationJsonAlt, beatPlanJson, durMaxSeconds);
+            var result = await client.CompleteWithFilesAsync(
+                model, new[] { session.FileId, session.FountainFileIdAlt! }, instruction, ct, temperature)
+                .ConfigureAwait(false);
+            TrackDualAttachUsage(tracking, result, model);
+            batchJsonTexts.Add(ExtractJson(result.OutputText));
+            Console.WriteLine($"   [full experiment] clip-plan batch [scenes {batchStart + 1}-{batchEnd}]");
+        }
+        var clipPlanJsonAlt = RecomputeClipDurations(
+            MergeScenesBatches(batchJsonTexts), durMinSeconds, durMaxSeconds, durAbsMaxSeconds);
+        await File.WriteAllTextAsync(clipPlanPathAlt, PrettyJson(clipPlanJsonAlt), ct).ConfigureAwait(false);
+        return clipPlanJsonAlt;
+    }
+
+    private static async Task<string> RunDualAttachAudioPlanStageAsync(
+        XaiResponsesClient client,
+        string model,
+        double temperature,
+        string edlJsonAlt,
+        string clipPlanJsonAlt,
+        string workspaceRoot,
+        string outDir,
+        DualAttachRunState tracking,
+        CancellationToken ct)
+    {
         // ---- Stage 6-alt: audio plan (batched, no files needed — self-contained from the EDL) ----
         var audioPathAlt = Path.Combine(outDir, "audio_plan_dualattach_full.json");
-        string audioJsonAlt;
         if (File.Exists(audioPathAlt))
         {
             Console.WriteLine("♻️  [full experiment] Stage 6: reusing existing artifact.");
-            audioJsonAlt = await File.ReadAllTextAsync(audioPathAlt, ct).ConfigureAwait(false);
+            return await File.ReadAllTextAsync(audioPathAlt, ct).ConfigureAwait(false);
         }
-        else
+
+        Console.WriteLine("🎵 [full experiment] Stage 6: audio plan (batched)...");
+        var edlScenes = ParseEdlSceneElements(edlJsonAlt);
+        var batchSize = ComputeSafeBatchSize(
+            LookupMaxOutputTokens(workspaceRoot, model), AudioPlanEstimatedTokensPerScene);
+        var batchJsonTexts = new List<string>();
+        for (var batchStart = 0; batchStart < edlScenes.Count; batchStart += batchSize)
         {
-            Console.WriteLine("🎵 [full experiment] Stage 6: audio plan (batched)...");
-            var edlScenes = ParseEdlSceneElements(edlJsonAlt);
-            var batchSize = ComputeSafeBatchSize(
-                LookupMaxOutputTokens(workspaceRoot, model), AudioPlanEstimatedTokensPerScene);
-            var batchJsonTexts = new List<string>();
-            for (var batchStart = 0; batchStart < edlScenes.Count; batchStart += batchSize)
-            {
-                var batchEnd = Math.Min(batchStart + batchSize, edlScenes.Count);
-                var sliceScenes = edlScenes.GetRange(batchStart, batchEnd - batchStart);
-                var edlSlice = "{\"scenes\":[" + string.Join(",", sliceScenes.Select(e => e.GetRawText())) + "]}";
-                var sceneIdsInBatch = sliceScenes
-                    .Select(e => e.TryGetProperty("scene_id", out var sid) ? sid.GetString() ?? "" : "")
-                    .Where(id => id.Length > 0).ToHashSet();
-                var clipIntensityJson = ExtractClipIntensitySummary(clipPlanJsonAlt, sceneIdsInBatch);
-                var instruction = BuildAudioPlanInstruction(PrettyJson(edlSlice), clipIntensityJson);
-                var result = await client.CompleteWithFilesAsync(model, Array.Empty<string>(), instruction, ct, temperature).ConfigureAwait(false);
-                Track(result, model);
-                batchJsonTexts.Add(ExtractJson(result.OutputText));
-                Console.WriteLine($"   [full experiment] audio-plan batch [scenes {batchStart + 1}-{batchEnd}] (no files attached)");
-            }
-            audioJsonAlt = MergeScenesBatches(batchJsonTexts);
-            await File.WriteAllTextAsync(audioPathAlt, PrettyJson(audioJsonAlt), ct).ConfigureAwait(false);
+            var batchEnd = Math.Min(batchStart + batchSize, edlScenes.Count);
+            var sliceScenes = edlScenes.GetRange(batchStart, batchEnd - batchStart);
+            var edlSlice = "{\"scenes\":[" + string.Join(",", sliceScenes.Select(e => e.GetRawText())) + "]}";
+            var sceneIdsInBatch = sliceScenes
+                .Select(e => e.TryGetProperty("scene_id", out var sid) ? sid.GetString() ?? "" : "")
+                .Where(id => id.Length > 0).ToHashSet();
+            var clipIntensityJson = ExtractClipIntensitySummary(clipPlanJsonAlt, sceneIdsInBatch);
+            var instruction = BuildAudioPlanInstruction(PrettyJson(edlSlice), clipIntensityJson);
+            var result = await client.CompleteWithFilesAsync(model, Array.Empty<string>(), instruction, ct, temperature)
+                .ConfigureAwait(false);
+            TrackDualAttachUsage(tracking, result, model);
+            batchJsonTexts.Add(ExtractJson(result.OutputText));
+            Console.WriteLine($"   [full experiment] audio-plan batch [scenes {batchStart + 1}-{batchEnd}] (no files attached)");
         }
+        var audioJsonAlt = MergeScenesBatches(batchJsonTexts);
+        await File.WriteAllTextAsync(audioPathAlt, PrettyJson(audioJsonAlt), ct).ConfigureAwait(false);
+        return audioJsonAlt;
+    }
 
-        // ---- Stage 7-alt: one or two independent, book-attached judges — genuinely blind here, since
-        // this call never inherited any sidecar artifacts from conversation memory. ----
-        var judgeResultsAlt = await RunJudgesAsync(
-            client, new[] { judgeModel, judgeModel2 }, new[] { session.FileId, session.FountainFileIdAlt! },
-            fountainTextAlt, judgeTemperature, outDir, "judge_review_dualattach_full", "[full experiment] Stage 7",
-            (r, m) => Track(r, m), ct).ConfigureAwait(false);
-
+    private static async Task FinalizeDualAttachFullPipelineAsync(
+        string workspaceRoot,
+        string outDir,
+        SessionRecord session,
+        string model,
+        double temperature,
+        double judgeTemperature,
+        int targetRuntimeMinutes,
+        int sceneMin,
+        int sceneMax,
+        int paragraphCount,
+        string fountainTextAlt,
+        string edlJsonAlt,
+        string castLocationJsonAlt,
+        string audioJsonAlt,
+        string clipPlanJsonAlt,
+        List<(string JudgeModel, string RelativeFileName)> judgeResultsAlt,
+        DualAttachRunState tracking,
+        CancellationToken ct)
+    {
         // ---- Validation (paragraph citations + full cross-artifact check) ----
         var citationWarningsAlt = ValidateParagraphCitations(edlJsonAlt, paragraphCount);
         var reportAlt = AdaptationPackageValidator.ValidatePackage(
@@ -933,10 +1230,10 @@ public static class AdaptationSessionPilot
 
         Console.WriteLine();
         Console.WriteLine($"📦 [full experiment] Package suffix: _dualattach_full");
-        Console.WriteLine($"📶 [full experiment] Total NEW bytes sent: {totalBytesAlt} (independent calls, no chain)");
+        Console.WriteLine($"📶 [full experiment] Total NEW bytes sent: {tracking.TotalBytesAlt} (independent calls, no chain)");
         PrintCostSummary(
-            workspaceRoot, tokensByModelAlt, outDir, "_dualattach_full",
-            totalBytesAlt, new FileInfo(Path.Combine(outDir, "book_indexed.txt")).Length,
+            workspaceRoot, tracking.TokensByModelAlt, outDir, "_dualattach_full",
+            tracking.TotalBytesAlt, new FileInfo(Path.Combine(outDir, "book_indexed.txt")).Length,
             bookResent: false); // re-attached by file_id, not resent as bytes — see PrintCostSummary doc
         Console.WriteLine(reportAlt.Status == "pass"
             ? "✅ [full experiment] Validation: PASS"
@@ -1172,6 +1469,32 @@ public static class AdaptationSessionPilot
     /// lets the audio-plan stage ground its music arc in the same intensity signal
     /// CharacterEmotionArcClassifier drives acting from in the real product, instead of describing mood
     /// blind to which beat is the actual climax.</summary>
+    private static object BuildClipIntensityEntry(JsonElement clip)
+    {
+        var clipNumber = clip.TryGetProperty("clip_number", out var cn) && cn.ValueKind == JsonValueKind.Number
+            ? cn.GetInt32() : 0;
+        int? intensity = clip.TryGetProperty("performance_intensity", out var pi) && pi.ValueKind == JsonValueKind.Number
+            ? pi.GetInt32() : null;
+        var cueSource = clip.TryGetProperty("dialogue_or_vo", out var dv) && dv.ValueKind == JsonValueKind.String
+            && !string.IsNullOrWhiteSpace(dv.GetString())
+            ? dv.GetString()
+            : (clip.TryGetProperty("visual_description", out var vd) && vd.ValueKind == JsonValueKind.String
+                ? vd.GetString() : null);
+        return new { clip_number = clipNumber, performance_intensity = intensity, cue = TruncateChars(cueSource ?? "", 60) };
+    }
+
+    private static object? BuildSceneClipIntensitySummary(JsonElement scene, HashSet<string> sceneIds)
+    {
+        var sceneId = scene.TryGetProperty("scene_id", out var sid) ? sid.GetString() ?? "" : "";
+        if (sceneId.Length == 0 || !sceneIds.Contains(sceneId)) return null;
+        if (!scene.TryGetProperty("clips", out var clipsEl) || clipsEl.ValueKind != JsonValueKind.Array) return null;
+
+        var clips = new List<object>();
+        foreach (var clip in clipsEl.EnumerateArray())
+            clips.Add(BuildClipIntensityEntry(clip));
+        return new { scene_id = sceneId, clips };
+    }
+
     private static string? ExtractClipIntensitySummary(string? clipPlanJson, HashSet<string> sceneIds)
     {
         if (string.IsNullOrWhiteSpace(clipPlanJson) || sceneIds.Count == 0) return null;
@@ -1182,25 +1505,8 @@ public static class AdaptationSessionPilot
             var scenes = new List<object>();
             foreach (var scene in scenesEl.EnumerateArray())
             {
-                var sceneId = scene.TryGetProperty("scene_id", out var sid) ? sid.GetString() ?? "" : "";
-                if (sceneId.Length == 0 || !sceneIds.Contains(sceneId)) continue;
-                if (!scene.TryGetProperty("clips", out var clipsEl) || clipsEl.ValueKind != JsonValueKind.Array) continue;
-
-                var clips = new List<object>();
-                foreach (var clip in clipsEl.EnumerateArray())
-                {
-                    var clipNumber = clip.TryGetProperty("clip_number", out var cn) && cn.ValueKind == JsonValueKind.Number
-                        ? cn.GetInt32() : 0;
-                    int? intensity = clip.TryGetProperty("performance_intensity", out var pi) && pi.ValueKind == JsonValueKind.Number
-                        ? pi.GetInt32() : null;
-                    var cueSource = clip.TryGetProperty("dialogue_or_vo", out var dv) && dv.ValueKind == JsonValueKind.String
-                        && !string.IsNullOrWhiteSpace(dv.GetString())
-                        ? dv.GetString()
-                        : (clip.TryGetProperty("visual_description", out var vd) && vd.ValueKind == JsonValueKind.String
-                            ? vd.GetString() : null);
-                    clips.Add(new { clip_number = clipNumber, performance_intensity = intensity, cue = TruncateChars(cueSource ?? "", 60) });
-                }
-                scenes.Add(new { scene_id = sceneId, clips });
+                var summary = BuildSceneClipIntensitySummary(scene, sceneIds);
+                if (summary is not null) scenes.Add(summary);
             }
             return scenes.Count > 0 ? JsonSerializer.Serialize(new { scenes }) : null;
         }
@@ -1570,6 +1876,66 @@ public static class AdaptationSessionPilot
         return result;
     }
 
+    private static void WriteRecomputedClipObject(
+        Utf8JsonWriter writer,
+        ExpandedClip expanded,
+        int minSeconds,
+        int maxSeconds,
+        int absMaxSeconds)
+    {
+        var clip = expanded.Source;
+        var visual = clip.TryGetProperty("visual_description", out var v) ? v.GetString() ?? "" : "";
+        var actionClass = clip.TryGetProperty("action_class", out var ac) ? ac.GetString() ?? "" : "";
+        var delivery = clip.TryGetProperty("delivery", out var dl) ? dl.GetString() ?? "none" : "none";
+        var duration = ClipDurationEstimator.Estimate(
+            expanded.Dialogue, visual, actionClass, delivery, minSeconds, maxSeconds, absMaxSeconds);
+        var originalCameraDirective = clip.TryGetProperty("camera_directive", out var cd) ? cd.GetString() ?? "" : "";
+        var cameraDirective = expanded.CameraNudge.Length == 0
+            ? originalCameraDirective
+            : originalCameraDirective + expanded.CameraNudge;
+
+        writer.WriteStartObject();
+        foreach (var clipProp in clip.EnumerateObject())
+        {
+            if (clipProp.NameEquals("estimated_duration_seconds")) continue; // replaced below
+            if (clipProp.NameEquals("dialogue_or_vo")) continue; // replaced below
+            if (clipProp.NameEquals("continuation")) continue; // replaced below
+            if (clipProp.NameEquals("clip_number")) continue; // renumbered below
+            if (clipProp.NameEquals("camera_directive")) continue; // nudged below
+            clipProp.WriteTo(writer);
+        }
+        writer.WriteNumber("clip_number", expanded.ClipNumber);
+        writer.WriteString("dialogue_or_vo", expanded.Dialogue);
+        writer.WriteString("continuation", expanded.Continuation);
+        writer.WriteString("camera_directive", cameraDirective);
+        writer.WriteNumber("estimated_duration_seconds", duration);
+        writer.WriteEndObject();
+    }
+
+    private static void WriteRecomputedSceneObject(
+        Utf8JsonWriter writer,
+        JsonElement scene,
+        int minSeconds,
+        int maxSeconds,
+        int absMaxSeconds)
+    {
+        foreach (var prop in scene.EnumerateObject())
+        {
+            if (prop.NameEquals("clips") && prop.Value.ValueKind == JsonValueKind.Array)
+            {
+                writer.WritePropertyName("clips");
+                writer.WriteStartArray();
+                foreach (var expanded in ExpandClipsInScene(prop.Value, maxSeconds))
+                    WriteRecomputedClipObject(writer, expanded, minSeconds, maxSeconds, absMaxSeconds);
+                writer.WriteEndArray();
+            }
+            else
+            {
+                prop.WriteTo(writer);
+            }
+        }
+    }
+
     private static string RecomputeClipDurations(
         string clipPlanJson, int minSeconds, int maxSeconds, int absMaxSeconds)
     {
@@ -1584,49 +1950,7 @@ public static class AdaptationSessionPilot
             foreach (var scene in scenesEl.EnumerateArray())
             {
                 writer.WriteStartObject();
-                foreach (var prop in scene.EnumerateObject())
-                {
-                    if (prop.NameEquals("clips") && prop.Value.ValueKind == JsonValueKind.Array)
-                    {
-                        writer.WritePropertyName("clips");
-                        writer.WriteStartArray();
-                        foreach (var expanded in ExpandClipsInScene(prop.Value, maxSeconds))
-                        {
-                            var clip = expanded.Source;
-                            var visual = clip.TryGetProperty("visual_description", out var v) ? v.GetString() ?? "" : "";
-                            var actionClass = clip.TryGetProperty("action_class", out var ac) ? ac.GetString() ?? "" : "";
-                            var delivery = clip.TryGetProperty("delivery", out var dl) ? dl.GetString() ?? "none" : "none";
-                            var duration = ClipDurationEstimator.Estimate(
-                                expanded.Dialogue, visual, actionClass, delivery, minSeconds, maxSeconds, absMaxSeconds);
-                            var originalCameraDirective = clip.TryGetProperty("camera_directive", out var cd) ? cd.GetString() ?? "" : "";
-                            var cameraDirective = expanded.CameraNudge.Length == 0
-                                ? originalCameraDirective
-                                : originalCameraDirective + expanded.CameraNudge;
-
-                            writer.WriteStartObject();
-                            foreach (var clipProp in clip.EnumerateObject())
-                            {
-                                if (clipProp.NameEquals("estimated_duration_seconds")) continue; // replaced below
-                                if (clipProp.NameEquals("dialogue_or_vo")) continue; // replaced below
-                                if (clipProp.NameEquals("continuation")) continue; // replaced below
-                                if (clipProp.NameEquals("clip_number")) continue; // renumbered below
-                                if (clipProp.NameEquals("camera_directive")) continue; // nudged below
-                                clipProp.WriteTo(writer);
-                            }
-                            writer.WriteNumber("clip_number", expanded.ClipNumber);
-                            writer.WriteString("dialogue_or_vo", expanded.Dialogue);
-                            writer.WriteString("continuation", expanded.Continuation);
-                            writer.WriteString("camera_directive", cameraDirective);
-                            writer.WriteNumber("estimated_duration_seconds", duration);
-                            writer.WriteEndObject();
-                        }
-                        writer.WriteEndArray();
-                    }
-                    else
-                    {
-                        prop.WriteTo(writer);
-                    }
-                }
+                WriteRecomputedSceneObject(writer, scene, minSeconds, maxSeconds, absMaxSeconds);
                 writer.WriteEndObject();
             }
             writer.WriteEndArray();
