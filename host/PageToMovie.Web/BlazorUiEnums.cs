@@ -284,6 +284,11 @@ public enum KeyboardShortcutKey
 /// </summary>
 public static class BlazorUiEnumExtensions
 {
+    private const string Manual = "manual";
+    private const string Hidden = "hidden";
+    private const string Error = "error";
+    private const string Click = "click";
+
     public static AccordionExpandMode ParseAccordionExpandMode(string? value) =>
             (value ?? "").Trim().ToLowerInvariant() switch
             {
@@ -297,7 +302,7 @@ public static class BlazorUiEnumExtensions
     public static AlertDismissBehavior ParseAlertDismissBehavior(string? value) =>
             (value ?? "").Trim().ToLowerInvariant() switch
             {
-                "manual" => AlertDismissBehavior.Manual,
+                Manual => AlertDismissBehavior.Manual,
                 "auto_dismiss" or "auto" => AlertDismissBehavior.AutoDismiss,
                 "permanent" => AlertDismissBehavior.Permanent,
                 "timer_pause" => AlertDismissBehavior.TimerWithHoverPause,
@@ -339,11 +344,11 @@ public static class BlazorUiEnumExtensions
     public static ComponentDisplayState ParseComponentDisplayState(string? value) =>
             (value ?? "").Trim().ToLowerInvariant() switch
             {
-                "hidden" => ComponentDisplayState.Hidden,
+                Hidden => ComponentDisplayState.Hidden,
                 "visible" => ComponentDisplayState.Visible,
                 "loading" => ComponentDisplayState.Loading,
                 "disabled" => ComponentDisplayState.Disabled,
-                "error" => ComponentDisplayState.Error,
+                Error => ComponentDisplayState.Error,
                 "empty" => ComponentDisplayState.Empty,
                 _ => ComponentDisplayState.Visible
             };
@@ -351,10 +356,10 @@ public static class BlazorUiEnumExtensions
     public static DropdownTriggerMode ParseDropdownTriggerMode(string? value) =>
             (value ?? "").Trim().ToLowerInvariant() switch
             {
-                "click" => DropdownTriggerMode.Click,
+                Click => DropdownTriggerMode.Click,
                 "hover" => DropdownTriggerMode.Hover,
                 "context_menu" => DropdownTriggerMode.ContextMenu,
-                "manual" => DropdownTriggerMode.Manual,
+                Manual => DropdownTriggerMode.Manual,
                 _ => DropdownTriggerMode.Click
             };
 
@@ -457,7 +462,7 @@ public static class BlazorUiEnumExtensions
             {
                 "expanded" => SidebarCollapseMode.Expanded,
                 "collapsed" => SidebarCollapseMode.Collapsed,
-                "hidden" => SidebarCollapseMode.Hidden,
+                Hidden => SidebarCollapseMode.Hidden,
                 "mini_overlay" or "mini" => SidebarCollapseMode.MiniOverlay,
                 "auto" => SidebarCollapseMode.Auto,
                 _ => SidebarCollapseMode.Expanded
@@ -466,7 +471,7 @@ public static class BlazorUiEnumExtensions
     public static TabChangeSource ParseTabChangeSource(string? value) =>
             (value ?? "").Trim().ToLowerInvariant() switch
             {
-                "user_click" or "click" => TabChangeSource.UserClick,
+                "user_click" or Click => TabChangeSource.UserClick,
                 "programmatic" => TabChangeSource.Programmatic,
                 "keyboard" => TabChangeSource.KeyboardNavigation,
                 "url_hash" or "hash" => TabChangeSource.UrlHash,
@@ -515,7 +520,7 @@ public static class BlazorUiEnumExtensions
                 "playing" => VideoPlayerState.Playing,
                 "paused" => VideoPlayerState.Paused,
                 "ended" => VideoPlayerState.Ended,
-                "error" => VideoPlayerState.Error,
+                Error => VideoPlayerState.Error,
                 _ => VideoPlayerState.Idle
             };
 
@@ -548,7 +553,7 @@ public static class BlazorUiEnumExtensions
         {
             SidebarCollapseMode.Expanded => "expanded",
             SidebarCollapseMode.Collapsed => "collapsed",
-            SidebarCollapseMode.Hidden => "hidden",
+            SidebarCollapseMode.Hidden => Hidden,
             SidebarCollapseMode.MiniOverlay => "mini_overlay",
             SidebarCollapseMode.Auto => "auto",
             _ => "expanded"
@@ -556,11 +561,11 @@ public static class BlazorUiEnumExtensions
 
     public static string ToApiString(this ComponentDisplayState state) => state switch
         {
-            ComponentDisplayState.Hidden => "hidden",
+            ComponentDisplayState.Hidden => Hidden,
             ComponentDisplayState.Visible => "visible",
             ComponentDisplayState.Loading => "loading",
             ComponentDisplayState.Disabled => "disabled",
-            ComponentDisplayState.Error => "error",
+            ComponentDisplayState.Error => Error,
             ComponentDisplayState.Empty => "empty",
             _ => "visible"
         };
@@ -622,11 +627,11 @@ public static class BlazorUiEnumExtensions
 
     public static string ToApiString(this AlertDismissBehavior behavior) => behavior switch
         {
-            AlertDismissBehavior.Manual => "manual",
+            AlertDismissBehavior.Manual => Manual,
             AlertDismissBehavior.AutoDismiss => "auto_dismiss",
             AlertDismissBehavior.Permanent => "permanent",
             AlertDismissBehavior.TimerWithHoverPause => "timer_pause",
-            _ => "manual"
+            _ => Manual
         };
 
     public static string ToApiString(this TooltipPlacement placement) => placement switch
@@ -663,11 +668,11 @@ public static class BlazorUiEnumExtensions
 
     public static string ToApiString(this DropdownTriggerMode mode) => mode switch
         {
-            DropdownTriggerMode.Click => "click",
+            DropdownTriggerMode.Click => Click,
             DropdownTriggerMode.Hover => "hover",
             DropdownTriggerMode.ContextMenu => "context_menu",
-            DropdownTriggerMode.Manual => "manual",
-            _ => "click"
+            DropdownTriggerMode.Manual => Manual,
+            _ => Click
         };
 
     public static string ToApiString(this AccordionExpandMode mode) => mode switch
@@ -697,7 +702,7 @@ public static class BlazorUiEnumExtensions
             VideoPlayerState.Playing => "playing",
             VideoPlayerState.Paused => "paused",
             VideoPlayerState.Ended => "ended",
-            VideoPlayerState.Error => "error",
+            VideoPlayerState.Error => Error,
             _ => "idle"
         };
 

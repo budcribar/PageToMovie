@@ -45,7 +45,7 @@ public sealed class GeminiVideoClient : IVideoClient
         _log = log;
         _errorLogger = errorLogger;
         if (_http.BaseAddress is null)
-            _http.BaseAddress = new Uri(ApiBase + "/");
+            _http.BaseAddress = new Uri(ApiBase.TrimEnd('/') + '/');
     }
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(ResolveApiKey());
@@ -89,7 +89,7 @@ public sealed class GeminiVideoClient : IVideoClient
         var instance = new Dictionary<string, object?> { ["prompt"] = prompt };
         if (hasStart)
         {
-            var (mime, b64) = await FileToBase64Async(startFrameImagePath!, ct).ConfigureAwait(false);
+            var (mime, b64) = await FileToBase64Async(startFrameImagePath, ct).ConfigureAwait(false);
             instance["image"] = new Dictionary<string, object?>
             {
                 ["bytesBase64Encoded"] = b64,
@@ -361,7 +361,7 @@ public sealed class GeminiVideoClient : IVideoClient
 
     public async Task DownloadToFileAsync(string url, string destPath, CancellationToken ct)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(destPath)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(destPath));
         // Google file/media download URLs generally need the same API key as the rest of the API.
         // Auth is on the request only (not shared DefaultRequestHeaders).
         using var req = new HttpRequestMessage(HttpMethod.Get, url);

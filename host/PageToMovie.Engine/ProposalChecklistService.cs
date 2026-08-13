@@ -75,7 +75,7 @@ public sealed class ProposalChecklistService
     {
         doc.UpdatedAt = DateTimeOffset.UtcNow;
         var path = ChecklistPath;
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(path));
         File.WriteAllText(path, JsonSerializer.Serialize(doc, JsonOpts) + "\n");
         return doc;
     }
@@ -195,7 +195,7 @@ public sealed class ProposalChecklistService
     {
         ArgumentNullException.ThrowIfNull(req);
         if (!string.IsNullOrWhiteSpace(req.RawProposal) && (req.Items is null || req.Items.Count == 0))
-            return IngestProposal(req.RawProposal!, req.SourceLabel);
+            return IngestProposal(req.RawProposal, req.SourceLabel);
 
         var doc = Load();
         if (!string.IsNullOrWhiteSpace(req.SourceLabel))

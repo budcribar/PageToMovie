@@ -14,6 +14,8 @@ namespace PageToMovie.Web.Components;
 
 public partial class StudioProcessStrip
 {
+    private const string ReviewStep = "review";
+
     /// <summary>setup | book | cast | estimate | film | review</summary>
     [Parameter] public string Active { get; set; } = "book";
 
@@ -65,7 +67,7 @@ public partial class StudioProcessStrip
                 {
                     "cast" => ("simple-voice", "Story", null),
                     "film" => ("simple-voice", "Your voice", null),
-                    "review" => (ActiveProject.CanScenes ? "scenes?simple=1" : null, "Movie",
+                    ReviewStep => (ActiveProject.CanScenes ? "scenes?simple=1" : null, "Movie",
                         ActiveProject.CanScenes ? null : ActiveProject.ScenesBlockedReason),
                     _ => (null, "Back", null),
                 };
@@ -79,7 +81,7 @@ public partial class StudioProcessStrip
                     (BookLocked ? null : "adaptation", "Book", BookLocked ? "Connect API keys in Setup first" : null),
                 "film" => (ActiveProject.CanEstimate ? "cost" : null, "Estimate",
                     ActiveProject.CanEstimate ? null : ActiveProject.EstimateBlockedReason),
-                "review" => (ActiveProject.CanScenes ? "scenes" : "cost", "Film", null),
+                ReviewStep => (ActiveProject.CanScenes ? "scenes" : "cost", "Film", null),
                 _ => (null, "Back", null),
             };
         }
@@ -96,7 +98,7 @@ public partial class StudioProcessStrip
                     "book" or "setup" => ("simple-voice", "Your voice", null),
                     "cast" => (ActiveProject.CanScenes ? "scenes?simple=1" : null, "Movie",
                         ActiveProject.CanScenes ? null : ActiveProject.ScenesBlockedReason),
-                    "film" => (ActiveProject.CanReview ? "review" : null, "Review",
+                    "film" => (ActiveProject.CanReview ? ReviewStep : null, "Review",
                         ActiveProject.CanReview ? null : "Review unlocks after you have a cut"),
                     _ => (null, "Next", null),
                 };
@@ -114,7 +116,7 @@ public partial class StudioProcessStrip
                             : (ActiveProject.CanEstimate
                                 ? "Generate movie on Estimate first"
                                 : ActiveProject.ScenesBlockedReason)),
-                "film" => (ActiveProject.CanReview ? "review" : null, "Review",
+                "film" => (ActiveProject.CanReview ? ReviewStep : null, "Review",
                     ActiveProject.CanReview ? null : "Review unlocks after you have a cut"),
                 _ => (null, "Next", null),
             };

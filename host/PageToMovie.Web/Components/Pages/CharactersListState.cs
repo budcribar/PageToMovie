@@ -122,7 +122,7 @@ public partial class Characters
             var all = CharactersForUi.ToList();
             var byBase = all
                 .Where(c => !string.IsNullOrWhiteSpace(c.VariantOf))
-                .GroupBy(c => c.VariantOf!, StringComparer.OrdinalIgnoreCase)
+                .GroupBy(c => c.VariantOf, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(g => g.Key, g => (IReadOnlyList<CharacterSummary>)g.ToList(), StringComparer.OrdinalIgnoreCase);
             var emitted = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -201,7 +201,7 @@ public partial class Characters
 
 
         /// <summary>Book picture matching is now automated on cast extract.</summary>
-        internal bool NeedsFindCharacters => false;
+        internal static bool NeedsFindCharacters => false;
 
 
         /// <summary>
@@ -223,7 +223,7 @@ public partial class Characters
             {
                 try { await S.Hub.StartAsync(); } catch (Exception hex) { S._error = $"SignalR: {hex.Message}"; }
                 var result = await S.Engine.ExtractCastFromScreenplayAsync(S._projectId, force: true);
-                if (result is null || result.Ok != true)
+                if (result is null || result.Ok is not true)
                 {
                     S._error = result?.Error ?? "Could not start cast extract.";
                     _extractingCast = false;
@@ -516,6 +516,7 @@ public partial class Characters
             }
             catch (Exception)
             {
+                // Keep current editors if a background refresh of the selected character fails.
                 return;
             }
         }

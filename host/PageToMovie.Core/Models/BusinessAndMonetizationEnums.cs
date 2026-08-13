@@ -300,6 +300,8 @@ public enum SupportTicketCategory
 /// </summary>
 public static class BusinessAndMonetizationEnumExtensions
 {
+    private const string CustomApi = "custom";
+
     public static string ToApiString(this SubscriptionTierKind val) => val switch
     {
         SubscriptionTierKind.Free => "free",
@@ -307,8 +309,223 @@ public static class BusinessAndMonetizationEnumExtensions
         SubscriptionTierKind.Professional => "professional",
         SubscriptionTierKind.Team => "team",
         SubscriptionTierKind.Enterprise => "enterprise",
-        SubscriptionTierKind.Custom => "custom",
+        SubscriptionTierKind.Custom => CustomApi,
         _ => "free"
+    };
+
+    public static string ToApiString(this BillingCycleKind val) => val switch
+    {
+        BillingCycleKind.Monthly => "monthly",
+        BillingCycleKind.Annual => "annual",
+        BillingCycleKind.Quarterly => "quarterly",
+        BillingCycleKind.SemiAnnual => "semi_annual",
+        BillingCycleKind.PayAsYouGo => "pay_as_you_go",
+        BillingCycleKind.OneTime => "one_time",
+        _ => "monthly"
+    };
+
+    public static string ToApiString(this CreditPackageKind val) => val switch
+    {
+        CreditPackageKind.StarterPack => "starter_pack",
+        CreditPackageKind.CreatorPack => "creator_pack",
+        CreditPackageKind.StudioPack => "studio_pack",
+        CreditPackageKind.EnterprisePack => "enterprise_pack",
+        CreditPackageKind.CustomTopUp => "custom_top_up",
+        CreditPackageKind.PromotionalGrant => "promotional_grant",
+        _ => "starter_pack"
+    };
+
+    public static string ToApiString(this PaymentGatewayKind val) => val switch
+    {
+        PaymentGatewayKind.Stripe => "stripe",
+        PaymentGatewayKind.PayPal => "paypal",
+        PaymentGatewayKind.Adyen => "adyen",
+        PaymentGatewayKind.Braintree => "braintree",
+        PaymentGatewayKind.ApplePay => "apple_pay",
+        PaymentGatewayKind.GooglePay => "google_pay",
+        PaymentGatewayKind.WireTransfer => "wire_transfer",
+        PaymentGatewayKind.ManualInvoice => "manual_invoice",
+        _ => "stripe"
+    };
+
+    public static string ToApiString(this LicenseTypeKind val) => val switch
+    {
+        LicenseTypeKind.Personal => "personal",
+        LicenseTypeKind.Commercial => "commercial",
+        LicenseTypeKind.RoyaltyFree => "royalty_free",
+        LicenseTypeKind.Exclusive => "exclusive",
+        LicenseTypeKind.Educational => "educational",
+        LicenseTypeKind.NonProfit => "non_profit",
+        LicenseTypeKind.EnterpriseSite => "enterprise_site",
+        _ => "personal"
+    };
+
+    public static string ToApiString(this UsageQuotaKind val) => val switch
+    {
+        UsageQuotaKind.RenderSeconds => "render_seconds",
+        UsageQuotaKind.StorageGigabytes => "storage_gigabytes",
+        UsageQuotaKind.ApiRequests => "api_requests",
+        UsageQuotaKind.AiModelTokens => "ai_model_tokens",
+        UsageQuotaKind.ExportResolution => "export_resolution",
+        UsageQuotaKind.ConcurrentJobs => "concurrent_jobs",
+        _ => "render_seconds"
+    };
+
+    public static string ToApiString(this AffiliateTierKind val) => val switch
+    {
+        AffiliateTierKind.Bronze => "bronze",
+        AffiliateTierKind.Silver => "silver",
+        AffiliateTierKind.Gold => "gold",
+        AffiliateTierKind.Platinum => "platinum",
+        AffiliateTierKind.Diamond => "diamond",
+        AffiliateTierKind.Ambassador => "ambassador",
+        _ => "bronze"
+    };
+
+    public static string ToApiString(this InvoiceStatusKind val) => val switch
+    {
+        InvoiceStatusKind.Draft => "draft",
+        InvoiceStatusKind.Open => "open",
+        InvoiceStatusKind.Paid => "paid",
+        InvoiceStatusKind.Uncollectible => "uncollectible",
+        InvoiceStatusKind.Void => "void",
+        InvoiceStatusKind.PastDue => "past_due",
+        InvoiceStatusKind.Processing => "processing",
+        _ => "open"
+    };
+
+    public static string ToApiString(this TaxExemptionStatus val) => val switch
+    {
+        TaxExemptionStatus.None => "none",
+        TaxExemptionStatus.Exempt => "exempt",
+        TaxExemptionStatus.ReverseCharge => "reverse_charge",
+        TaxExemptionStatus.PendingVerification => "pending_verification",
+        TaxExemptionStatus.DirectPay => "direct_pay",
+        TaxExemptionStatus.Government => "government",
+        _ => "none"
+    };
+
+    public static string ToApiString(this DiscountTypeKind val) => val switch
+    {
+        DiscountTypeKind.Percentage => "percentage",
+        DiscountTypeKind.FixedAmount => "fixed_amount",
+        DiscountTypeKind.CreditGrant => "credit_grant",
+        DiscountTypeKind.FreeTrialDays => "free_trial_days",
+        DiscountTypeKind.TierUpgrade => "tier_upgrade",
+        _ => "percentage"
+    };
+
+    public static string ToApiString(this CouponDurationKind val) => val switch
+    {
+        CouponDurationKind.Once => "once",
+        CouponDurationKind.Repeating => "repeating",
+        CouponDurationKind.Forever => "forever",
+        CouponDurationKind.CustomPeriod => "custom_period",
+        _ => "once"
+    };
+
+    public static string ToApiString(this PaymentMethodKind val) => val switch
+    {
+        PaymentMethodKind.CreditCard => "credit_card",
+        PaymentMethodKind.DebitCard => "debit_card",
+        PaymentMethodKind.BankTransfer => "bank_transfer",
+        PaymentMethodKind.DigitalWallet => "digital_wallet",
+        PaymentMethodKind.Crypto => "crypto",
+        PaymentMethodKind.DirectDebit => "direct_debit",
+        PaymentMethodKind.PurchaseOrder => "purchase_order",
+        _ => "credit_card"
+    };
+
+    public static string ToApiString(this CurrencyCodeKind val) => val switch
+    {
+        CurrencyCodeKind.Usd => "usd",
+        CurrencyCodeKind.Eur => "eur",
+        CurrencyCodeKind.Gbp => "gbp",
+        CurrencyCodeKind.Cad => "cad",
+        CurrencyCodeKind.Aud => "aud",
+        CurrencyCodeKind.Jpy => "jpy",
+        CurrencyCodeKind.Cny => "cny",
+        CurrencyCodeKind.Inr => "inr",
+        CurrencyCodeKind.Brl => "brl",
+        CurrencyCodeKind.Chf => "chf",
+        _ => "usd"
+    };
+
+    public static string ToApiString(this RefundReasonKind val) => val switch
+    {
+        RefundReasonKind.DuplicatePayment => "duplicate_payment",
+        RefundReasonKind.ServiceOutage => "service_outage",
+        RefundReasonKind.CustomerDissatisfaction => "customer_dissatisfaction",
+        RefundReasonKind.AccidentalPurchase => "accidental_purchase",
+        RefundReasonKind.Fraudulent => "fraudulent",
+        RefundReasonKind.SystemError => "system_error",
+        _ => "customer_dissatisfaction"
+    };
+
+    public static string ToApiString(this AccountTierLimitKind val) => val switch
+    {
+        AccountTierLimitKind.MaxProjects => "max_projects",
+        AccountTierLimitKind.MaxStorageGb => "max_storage_gb",
+        AccountTierLimitKind.MaxExportResolution => "max_export_resolution",
+        AccountTierLimitKind.MaxConcurrentRenders => "max_concurrent_renders",
+        AccountTierLimitKind.MaxTeamMembers => "max_team_members",
+        AccountTierLimitKind.MaxMonthlyCredits => "max_monthly_credits",
+        _ => "max_projects"
+    };
+
+    public static string ToApiString(this PartnerIntegrationType val) => val switch
+    {
+        PartnerIntegrationType.Zapier => "zapier",
+        PartnerIntegrationType.Make => "make",
+        PartnerIntegrationType.Slack => "slack",
+        PartnerIntegrationType.Discord => "discord",
+        PartnerIntegrationType.AdobeCreativeCloud => "adobe_creative_cloud",
+        PartnerIntegrationType.Figma => "figma",
+        PartnerIntegrationType.CustomWebhook => "custom_webhook",
+        _ => "zapier"
+    };
+
+    public static string ToApiString(this NotificationPreferenceKind val) => val switch
+    {
+        NotificationPreferenceKind.Email => "email",
+        NotificationPreferenceKind.InApp => "in_app",
+        NotificationPreferenceKind.Push => "push",
+        NotificationPreferenceKind.Sms => "sms",
+        NotificationPreferenceKind.Webhook => "webhook",
+        NotificationPreferenceKind.None => "none",
+        _ => "email"
+    };
+
+    public static string ToApiString(this UserConsentType val) => val switch
+    {
+        UserConsentType.TermsOfService => "terms_of_service",
+        UserConsentType.PrivacyPolicy => "privacy_policy",
+        UserConsentType.MarketingEmail => "marketing_email",
+        UserConsentType.AnalyticsTracking => "analytics_tracking",
+        UserConsentType.CookiePolicy => "cookie_policy",
+        UserConsentType.DataSharing => "data_sharing",
+        _ => "terms_of_service"
+    };
+
+    public static string ToApiString(this SupportTicketPriority val) => val switch
+    {
+        SupportTicketPriority.Low => "low",
+        SupportTicketPriority.Medium => "medium",
+        SupportTicketPriority.High => "high",
+        SupportTicketPriority.Urgent => "urgent",
+        SupportTicketPriority.Critical => "critical",
+        _ => "medium"
+    };
+
+    public static string ToApiString(this SupportTicketCategory val) => val switch
+    {
+        SupportTicketCategory.Billing => "billing",
+        SupportTicketCategory.Technical => "technical",
+        SupportTicketCategory.AccountAccess => "account_access",
+        SupportTicketCategory.FeatureRequest => "feature_request",
+        SupportTicketCategory.BugReport => "bug_report",
+        SupportTicketCategory.Security => "security",
+        _ => "technical"
     };
 
     public static SubscriptionTierKind ParseSubscriptionTierKind(string? s, SubscriptionTierKind defaultValue = SubscriptionTierKind.Free)
@@ -322,21 +539,10 @@ public static class BusinessAndMonetizationEnumExtensions
             "professional" or "pro" => SubscriptionTierKind.Professional,
             "team" => SubscriptionTierKind.Team,
             "enterprise" => SubscriptionTierKind.Enterprise,
-            "custom" => SubscriptionTierKind.Custom,
+            CustomApi => SubscriptionTierKind.Custom,
             _ => Enum.TryParse<SubscriptionTierKind>(s, true, out var r) ? r : defaultValue
         };
     }
-
-    public static string ToApiString(this BillingCycleKind val) => val switch
-    {
-        BillingCycleKind.Monthly => "monthly",
-        BillingCycleKind.Annual => "annual",
-        BillingCycleKind.Quarterly => "quarterly",
-        BillingCycleKind.SemiAnnual => "semi_annual",
-        BillingCycleKind.PayAsYouGo => "pay_as_you_go",
-        BillingCycleKind.OneTime => "one_time",
-        _ => "monthly"
-    };
 
     public static BillingCycleKind ParseBillingCycleKind(string? s, BillingCycleKind defaultValue = BillingCycleKind.Monthly)
     {
@@ -354,17 +560,6 @@ public static class BusinessAndMonetizationEnumExtensions
         };
     }
 
-    public static string ToApiString(this CreditPackageKind val) => val switch
-    {
-        CreditPackageKind.StarterPack => "starter_pack",
-        CreditPackageKind.CreatorPack => "creator_pack",
-        CreditPackageKind.StudioPack => "studio_pack",
-        CreditPackageKind.EnterprisePack => "enterprise_pack",
-        CreditPackageKind.CustomTopUp => "custom_top_up",
-        CreditPackageKind.PromotionalGrant => "promotional_grant",
-        _ => "starter_pack"
-    };
-
     public static CreditPackageKind ParseCreditPackageKind(string? s, CreditPackageKind defaultValue = CreditPackageKind.StarterPack)
     {
         if (string.IsNullOrWhiteSpace(s)) return defaultValue;
@@ -375,24 +570,11 @@ public static class BusinessAndMonetizationEnumExtensions
             "creator_pack" or "creator" => CreditPackageKind.CreatorPack,
             "studio_pack" or "studio" => CreditPackageKind.StudioPack,
             "enterprise_pack" or "enterprise" => CreditPackageKind.EnterprisePack,
-            "custom_top_up" or "custom" => CreditPackageKind.CustomTopUp,
+            "custom_top_up" or CustomApi => CreditPackageKind.CustomTopUp,
             "promotional_grant" or "promo" => CreditPackageKind.PromotionalGrant,
             _ => Enum.TryParse<CreditPackageKind>(s, true, out var r) ? r : defaultValue
         };
     }
-
-    public static string ToApiString(this PaymentGatewayKind val) => val switch
-    {
-        PaymentGatewayKind.Stripe => "stripe",
-        PaymentGatewayKind.PayPal => "paypal",
-        PaymentGatewayKind.Adyen => "adyen",
-        PaymentGatewayKind.Braintree => "braintree",
-        PaymentGatewayKind.ApplePay => "apple_pay",
-        PaymentGatewayKind.GooglePay => "google_pay",
-        PaymentGatewayKind.WireTransfer => "wire_transfer",
-        PaymentGatewayKind.ManualInvoice => "manual_invoice",
-        _ => "stripe"
-    };
 
     public static PaymentGatewayKind ParsePaymentGatewayKind(string? s, PaymentGatewayKind defaultValue = PaymentGatewayKind.Stripe)
     {
@@ -412,18 +594,6 @@ public static class BusinessAndMonetizationEnumExtensions
         };
     }
 
-    public static string ToApiString(this LicenseTypeKind val) => val switch
-    {
-        LicenseTypeKind.Personal => "personal",
-        LicenseTypeKind.Commercial => "commercial",
-        LicenseTypeKind.RoyaltyFree => "royalty_free",
-        LicenseTypeKind.Exclusive => "exclusive",
-        LicenseTypeKind.Educational => "educational",
-        LicenseTypeKind.NonProfit => "non_profit",
-        LicenseTypeKind.EnterpriseSite => "enterprise_site",
-        _ => "personal"
-    };
-
     public static LicenseTypeKind ParseLicenseTypeKind(string? s, LicenseTypeKind defaultValue = LicenseTypeKind.Personal)
     {
         if (string.IsNullOrWhiteSpace(s)) return defaultValue;
@@ -441,17 +611,6 @@ public static class BusinessAndMonetizationEnumExtensions
         };
     }
 
-    public static string ToApiString(this UsageQuotaKind val) => val switch
-    {
-        UsageQuotaKind.RenderSeconds => "render_seconds",
-        UsageQuotaKind.StorageGigabytes => "storage_gigabytes",
-        UsageQuotaKind.ApiRequests => "api_requests",
-        UsageQuotaKind.AiModelTokens => "ai_model_tokens",
-        UsageQuotaKind.ExportResolution => "export_resolution",
-        UsageQuotaKind.ConcurrentJobs => "concurrent_jobs",
-        _ => "render_seconds"
-    };
-
     public static UsageQuotaKind ParseUsageQuotaKind(string? s, UsageQuotaKind defaultValue = UsageQuotaKind.RenderSeconds)
     {
         if (string.IsNullOrWhiteSpace(s)) return defaultValue;
@@ -468,17 +627,6 @@ public static class BusinessAndMonetizationEnumExtensions
         };
     }
 
-    public static string ToApiString(this AffiliateTierKind val) => val switch
-    {
-        AffiliateTierKind.Bronze => "bronze",
-        AffiliateTierKind.Silver => "silver",
-        AffiliateTierKind.Gold => "gold",
-        AffiliateTierKind.Platinum => "platinum",
-        AffiliateTierKind.Diamond => "diamond",
-        AffiliateTierKind.Ambassador => "ambassador",
-        _ => "bronze"
-    };
-
     public static AffiliateTierKind ParseAffiliateTierKind(string? s, AffiliateTierKind defaultValue = AffiliateTierKind.Bronze)
     {
         if (string.IsNullOrWhiteSpace(s)) return defaultValue;
@@ -494,18 +642,6 @@ public static class BusinessAndMonetizationEnumExtensions
             _ => Enum.TryParse<AffiliateTierKind>(s, true, out var r) ? r : defaultValue
         };
     }
-
-    public static string ToApiString(this InvoiceStatusKind val) => val switch
-    {
-        InvoiceStatusKind.Draft => "draft",
-        InvoiceStatusKind.Open => "open",
-        InvoiceStatusKind.Paid => "paid",
-        InvoiceStatusKind.Uncollectible => "uncollectible",
-        InvoiceStatusKind.Void => "void",
-        InvoiceStatusKind.PastDue => "past_due",
-        InvoiceStatusKind.Processing => "processing",
-        _ => "open"
-    };
 
     public static InvoiceStatusKind ParseInvoiceStatusKind(string? s, InvoiceStatusKind defaultValue = InvoiceStatusKind.Open)
     {
@@ -524,17 +660,6 @@ public static class BusinessAndMonetizationEnumExtensions
         };
     }
 
-    public static string ToApiString(this TaxExemptionStatus val) => val switch
-    {
-        TaxExemptionStatus.None => "none",
-        TaxExemptionStatus.Exempt => "exempt",
-        TaxExemptionStatus.ReverseCharge => "reverse_charge",
-        TaxExemptionStatus.PendingVerification => "pending_verification",
-        TaxExemptionStatus.DirectPay => "direct_pay",
-        TaxExemptionStatus.Government => "government",
-        _ => "none"
-    };
-
     public static TaxExemptionStatus ParseTaxExemptionStatus(string? s, TaxExemptionStatus defaultValue = TaxExemptionStatus.None)
     {
         if (string.IsNullOrWhiteSpace(s)) return defaultValue;
@@ -551,16 +676,6 @@ public static class BusinessAndMonetizationEnumExtensions
         };
     }
 
-    public static string ToApiString(this DiscountTypeKind val) => val switch
-    {
-        DiscountTypeKind.Percentage => "percentage",
-        DiscountTypeKind.FixedAmount => "fixed_amount",
-        DiscountTypeKind.CreditGrant => "credit_grant",
-        DiscountTypeKind.FreeTrialDays => "free_trial_days",
-        DiscountTypeKind.TierUpgrade => "tier_upgrade",
-        _ => "percentage"
-    };
-
     public static DiscountTypeKind ParseDiscountTypeKind(string? s, DiscountTypeKind defaultValue = DiscountTypeKind.Percentage)
     {
         if (string.IsNullOrWhiteSpace(s)) return defaultValue;
@@ -576,15 +691,6 @@ public static class BusinessAndMonetizationEnumExtensions
         };
     }
 
-    public static string ToApiString(this CouponDurationKind val) => val switch
-    {
-        CouponDurationKind.Once => "once",
-        CouponDurationKind.Repeating => "repeating",
-        CouponDurationKind.Forever => "forever",
-        CouponDurationKind.CustomPeriod => "custom_period",
-        _ => "once"
-    };
-
     public static CouponDurationKind ParseCouponDurationKind(string? s, CouponDurationKind defaultValue = CouponDurationKind.Once)
     {
         if (string.IsNullOrWhiteSpace(s)) return defaultValue;
@@ -594,22 +700,10 @@ public static class BusinessAndMonetizationEnumExtensions
             "once" => CouponDurationKind.Once,
             "repeating" => CouponDurationKind.Repeating,
             "forever" => CouponDurationKind.Forever,
-            "custom_period" or "custom" => CouponDurationKind.CustomPeriod,
+            "custom_period" or CustomApi => CouponDurationKind.CustomPeriod,
             _ => Enum.TryParse<CouponDurationKind>(s, true, out var r) ? r : defaultValue
         };
     }
-
-    public static string ToApiString(this PaymentMethodKind val) => val switch
-    {
-        PaymentMethodKind.CreditCard => "credit_card",
-        PaymentMethodKind.DebitCard => "debit_card",
-        PaymentMethodKind.BankTransfer => "bank_transfer",
-        PaymentMethodKind.DigitalWallet => "digital_wallet",
-        PaymentMethodKind.Crypto => "crypto",
-        PaymentMethodKind.DirectDebit => "direct_debit",
-        PaymentMethodKind.PurchaseOrder => "purchase_order",
-        _ => "credit_card"
-    };
 
     public static PaymentMethodKind ParsePaymentMethodKind(string? s, PaymentMethodKind defaultValue = PaymentMethodKind.CreditCard)
     {
@@ -627,21 +721,6 @@ public static class BusinessAndMonetizationEnumExtensions
             _ => Enum.TryParse<PaymentMethodKind>(s, true, out var r) ? r : defaultValue
         };
     }
-
-    public static string ToApiString(this CurrencyCodeKind val) => val switch
-    {
-        CurrencyCodeKind.Usd => "usd",
-        CurrencyCodeKind.Eur => "eur",
-        CurrencyCodeKind.Gbp => "gbp",
-        CurrencyCodeKind.Cad => "cad",
-        CurrencyCodeKind.Aud => "aud",
-        CurrencyCodeKind.Jpy => "jpy",
-        CurrencyCodeKind.Cny => "cny",
-        CurrencyCodeKind.Inr => "inr",
-        CurrencyCodeKind.Brl => "brl",
-        CurrencyCodeKind.Chf => "chf",
-        _ => "usd"
-    };
 
     public static CurrencyCodeKind ParseCurrencyCodeKind(string? s, CurrencyCodeKind defaultValue = CurrencyCodeKind.Usd)
     {
@@ -663,17 +742,6 @@ public static class BusinessAndMonetizationEnumExtensions
         };
     }
 
-    public static string ToApiString(this RefundReasonKind val) => val switch
-    {
-        RefundReasonKind.DuplicatePayment => "duplicate_payment",
-        RefundReasonKind.ServiceOutage => "service_outage",
-        RefundReasonKind.CustomerDissatisfaction => "customer_dissatisfaction",
-        RefundReasonKind.AccidentalPurchase => "accidental_purchase",
-        RefundReasonKind.Fraudulent => "fraudulent",
-        RefundReasonKind.SystemError => "system_error",
-        _ => "customer_dissatisfaction"
-    };
-
     public static RefundReasonKind ParseRefundReasonKind(string? s, RefundReasonKind defaultValue = RefundReasonKind.CustomerDissatisfaction)
     {
         if (string.IsNullOrWhiteSpace(s)) return defaultValue;
@@ -690,17 +758,6 @@ public static class BusinessAndMonetizationEnumExtensions
         };
     }
 
-    public static string ToApiString(this AccountTierLimitKind val) => val switch
-    {
-        AccountTierLimitKind.MaxProjects => "max_projects",
-        AccountTierLimitKind.MaxStorageGb => "max_storage_gb",
-        AccountTierLimitKind.MaxExportResolution => "max_export_resolution",
-        AccountTierLimitKind.MaxConcurrentRenders => "max_concurrent_renders",
-        AccountTierLimitKind.MaxTeamMembers => "max_team_members",
-        AccountTierLimitKind.MaxMonthlyCredits => "max_monthly_credits",
-        _ => "max_projects"
-    };
-
     public static AccountTierLimitKind ParseAccountTierLimitKind(string? s, AccountTierLimitKind defaultValue = AccountTierLimitKind.MaxProjects)
     {
         if (string.IsNullOrWhiteSpace(s)) return defaultValue;
@@ -716,18 +773,6 @@ public static class BusinessAndMonetizationEnumExtensions
             _ => Enum.TryParse<AccountTierLimitKind>(s, true, out var r) ? r : defaultValue
         };
     }
-
-    public static string ToApiString(this PartnerIntegrationType val) => val switch
-    {
-        PartnerIntegrationType.Zapier => "zapier",
-        PartnerIntegrationType.Make => "make",
-        PartnerIntegrationType.Slack => "slack",
-        PartnerIntegrationType.Discord => "discord",
-        PartnerIntegrationType.AdobeCreativeCloud => "adobe_creative_cloud",
-        PartnerIntegrationType.Figma => "figma",
-        PartnerIntegrationType.CustomWebhook => "custom_webhook",
-        _ => "zapier"
-    };
 
     public static PartnerIntegrationType ParsePartnerIntegrationType(string? s, PartnerIntegrationType defaultValue = PartnerIntegrationType.Zapier)
     {
@@ -746,17 +791,6 @@ public static class BusinessAndMonetizationEnumExtensions
         };
     }
 
-    public static string ToApiString(this NotificationPreferenceKind val) => val switch
-    {
-        NotificationPreferenceKind.Email => "email",
-        NotificationPreferenceKind.InApp => "in_app",
-        NotificationPreferenceKind.Push => "push",
-        NotificationPreferenceKind.Sms => "sms",
-        NotificationPreferenceKind.Webhook => "webhook",
-        NotificationPreferenceKind.None => "none",
-        _ => "email"
-    };
-
     public static NotificationPreferenceKind ParseNotificationPreferenceKind(string? s, NotificationPreferenceKind defaultValue = NotificationPreferenceKind.Email)
     {
         if (string.IsNullOrWhiteSpace(s)) return defaultValue;
@@ -772,17 +806,6 @@ public static class BusinessAndMonetizationEnumExtensions
             _ => Enum.TryParse<NotificationPreferenceKind>(s, true, out var r) ? r : defaultValue
         };
     }
-
-    public static string ToApiString(this UserConsentType val) => val switch
-    {
-        UserConsentType.TermsOfService => "terms_of_service",
-        UserConsentType.PrivacyPolicy => "privacy_policy",
-        UserConsentType.MarketingEmail => "marketing_email",
-        UserConsentType.AnalyticsTracking => "analytics_tracking",
-        UserConsentType.CookiePolicy => "cookie_policy",
-        UserConsentType.DataSharing => "data_sharing",
-        _ => "terms_of_service"
-    };
 
     public static UserConsentType ParseUserConsentType(string? s, UserConsentType defaultValue = UserConsentType.TermsOfService)
     {
@@ -800,16 +823,6 @@ public static class BusinessAndMonetizationEnumExtensions
         };
     }
 
-    public static string ToApiString(this SupportTicketPriority val) => val switch
-    {
-        SupportTicketPriority.Low => "low",
-        SupportTicketPriority.Medium => "medium",
-        SupportTicketPriority.High => "high",
-        SupportTicketPriority.Urgent => "urgent",
-        SupportTicketPriority.Critical => "critical",
-        _ => "medium"
-    };
-
     public static SupportTicketPriority ParseSupportTicketPriority(string? s, SupportTicketPriority defaultValue = SupportTicketPriority.Medium)
     {
         if (string.IsNullOrWhiteSpace(s)) return defaultValue;
@@ -824,17 +837,6 @@ public static class BusinessAndMonetizationEnumExtensions
             _ => Enum.TryParse<SupportTicketPriority>(s, true, out var r) ? r : defaultValue
         };
     }
-
-    public static string ToApiString(this SupportTicketCategory val) => val switch
-    {
-        SupportTicketCategory.Billing => "billing",
-        SupportTicketCategory.Technical => "technical",
-        SupportTicketCategory.AccountAccess => "account_access",
-        SupportTicketCategory.FeatureRequest => "feature_request",
-        SupportTicketCategory.BugReport => "bug_report",
-        SupportTicketCategory.Security => "security",
-        _ => "technical"
-    };
 
     public static SupportTicketCategory ParseSupportTicketCategory(string? s, SupportTicketCategory defaultValue = SupportTicketCategory.Technical)
     {
@@ -851,6 +853,7 @@ public static class BusinessAndMonetizationEnumExtensions
             _ => Enum.TryParse<SupportTicketCategory>(s, true, out var r) ? r : defaultValue
         };
     }
+
 }
 
 #endregion

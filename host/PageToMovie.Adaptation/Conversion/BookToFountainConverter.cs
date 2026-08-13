@@ -122,6 +122,14 @@ public static class BookToFountainConverter
         into generic modern dialogue (classics, verse, first-person monologues especially).
         """;
 
+    private const string VisionMetaBegin = "---VISION_META---";
+    private const string VisionMetaEnd = "---END_VISION_META---";
+    private const string VisionMetaBeginNl = VisionMetaBegin + "\n";
+    private const string VisionMetaEndNl = "\n" + VisionMetaEnd;
+    private const string FountainJsonPath = "$.fountain";
+    private const string UnusableScreenplayError =
+        "Could not build a usable screenplay from the book. Try again or import a .fountain file.";
+
     private static readonly Regex VagueHeadingRegex = new(@"\b(VARIOUS|MULTIPLE|SEVERAL|ELSEWHERE)\b"
         + @"|\bDIFFERENT\s+(ROOMS?|PLACES?|LOCATIONS?)\b"
         + @"|\b(AROUND|THROUGHOUT)\s+THE\s+(HOUSE|HOME|BUILDING)\b"
@@ -231,8 +239,7 @@ public static class BookToFountainConverter
                 }
                 else
                 {
-                    throw new InvalidOperationException(
-                        "Could not build a usable screenplay from the book. Try again or import a .fountain file.");
+                    throw new InvalidOperationException(UnusableScreenplayError);
                 }
             }
             else
@@ -265,8 +272,7 @@ public static class BookToFountainConverter
                 }
 
                 if (multiGate.HasHardFailure)
-                    throw new InvalidOperationException(
-                        "Could not build a usable screenplay from the book. Try again or import a .fountain file.");
+                    throw new InvalidOperationException(UnusableScreenplayError);
             }
         }
         catch (InvalidOperationException ex) when (LooksLikeGoodFountain(ConvertHeuristic(title, bookText, author)))
@@ -278,18 +284,11 @@ public static class BookToFountainConverter
         }
 
         // Pull production / diagnostic sidecars before repairs (trailers are not Fountain body).
-        AdaptationVisionMeta? visionEarly = null;
-        AdaptationReport? reportEarly = null;
-        var visionMarkerSeen = text.Contains("---VISION_META---", StringComparison.OrdinalIgnoreCase);
-        var visionEndMarkerSeen = text.Contains("---END_VISION_META---", StringComparison.OrdinalIgnoreCase);
+        var visionMarkerSeen = text.Contains(VisionMetaBegin, StringComparison.OrdinalIgnoreCase);
+        var visionEndMarkerSeen = text.Contains(VisionMetaEnd, StringComparison.OrdinalIgnoreCase);
         var reportMarkerSeen = text.Contains(AdaptationReportParser.StartMark, StringComparison.OrdinalIgnoreCase);
         var reportEndMarkerSeen = text.Contains(AdaptationReportParser.EndMark, StringComparison.OrdinalIgnoreCase);
-        {
-            var split = SplitAdaptationTrailers(text);
-            text = split.Fountain;
-            visionEarly = split.Vision;
-            reportEarly = split.Report;
-        }
+        (text, var visionEarly, var reportEarly) = PullTrailersBeforeRepairs(text);
 
         // Generation repairs — no operator hand-edit path
         text = await RepairVagueLocationHeadingsAsync(
@@ -329,8 +328,7 @@ public static class BookToFountainConverter
         // draft with no FADE IN: at all — observed in JungleBook's screenplay.fountain.
         text = EnsureFadeIn(text);
         if (!LooksLikeGoodFountain(text))
-            throw new InvalidOperationException(
-                "Could not build a usable screenplay from the book. Try again or import a .fountain file.");
+            throw new InvalidOperationException(UnusableScreenplayError);
 
         var stillVague = FindVagueLocationHeadings(text);
         if (stillVague.Count > 0)
@@ -367,8 +365,8 @@ public static class BookToFountainConverter
 
         text = NormalizeFountainText(text);
         // In case a repair path re-introduced a trailer (should not), strip again.
-        var lateMarkerSeen = text.Contains("---VISION_META---", StringComparison.OrdinalIgnoreCase);
-        var lateEndMarkerSeen = text.Contains("---END_VISION_META---", StringComparison.OrdinalIgnoreCase);
+        var lateMarkerSeen = text.Contains(VisionMetaBegin, StringComparison.OrdinalIgnoreCase);
+        var lateEndMarkerSeen = text.Contains(VisionMetaEnd, StringComparison.OrdinalIgnoreCase);
         var lateReportMarker = text.Contains(AdaptationReportParser.StartMark, StringComparison.OrdinalIgnoreCase);
         var lateReportEnd = text.Contains(AdaptationReportParser.EndMark, StringComparison.OrdinalIgnoreCase);
         var (fountainOnly, visionLate, reportLate) = SplitAdaptationTrailers(text);
@@ -469,9 +467,9 @@ public static class BookToFountainConverter
             VISION_META ONLY (do not rewrite the screenplay)
             Return ONLY the sidecar block below — no Fountain body, no markdown fences.
 
-            ---VISION_META---
+            {{VisionMetaBegin}}
             {"visual_medium":"live_action|illustrated_picture_book|mixed","render_style_lock":"specific reusable style lock","notes":"brief evidence"}
-            ---END_VISION_META---
+            {{VisionMetaEnd}}
 
             Allowed visual_medium values: live_action, illustrated_picture_book, mixed.
             Pick one based on the book excerpt and screenplay sample.
@@ -499,13 +497,13 @@ public static class BookToFountainConverter
                 ChatCallModes.BookToFountainRetry,
                 "VISION_META repair", onProgress, softCts.Token, reasoningEffort,
                 promptVersion: "stage1-vision-meta-repair-v2",
-                correctionInstruction: "Return only ---VISION_META--- JSON ---END_VISION_META--- with an allowed visual_medium.",
+                correctionInstruction: $"Return only {VisionMetaBegin} JSON {VisionMetaEnd} with an allowed visual_medium.",
                 validate: value =>
                 {
                     var split = SplitVisionMetaTrailer(
-                        value.Contains("---VISION_META---", StringComparison.OrdinalIgnoreCase)
+                        value.Contains(VisionMetaBegin, StringComparison.OrdinalIgnoreCase)
                             ? value
-                            : "---VISION_META---\n" + value.Trim() + "\n---END_VISION_META---");
+                            : VisionMetaBeginNl + value.Trim() + VisionMetaEndNl);
                     var issues = new List<Stage1ValidationIssue>();
                     if (split.Vision is null)
                         issues.Add(new("missing_vision_meta", "A valid VISION_META sidecar is required.", "$.vision_meta"));
@@ -518,11 +516,11 @@ public static class BookToFountainConverter
                 return fountain;
 
             // Model may return sidecar only — attach to the original fountain.
-            var normalized = result.Contains("---VISION_META---", StringComparison.OrdinalIgnoreCase)
+            var normalized = result.Contains(VisionMetaBegin, StringComparison.OrdinalIgnoreCase)
                 ? result
-                : "---VISION_META---\n" + result.Trim() + "\n---END_VISION_META---";
+                : VisionMetaBeginNl + result.Trim() + VisionMetaEndNl;
             var splitResult = SplitVisionMetaTrailer(
-                normalized.Contains("---END_VISION_META---", StringComparison.OrdinalIgnoreCase)
+                normalized.Contains(VisionMetaEnd, StringComparison.OrdinalIgnoreCase)
                     ? (normalized.Contains("Title:", StringComparison.OrdinalIgnoreCase)
                         ? normalized
                         : fountain.TrimEnd() + "\n\n" + normalized)
@@ -533,38 +531,38 @@ public static class BookToFountainConverter
             if (splitResult.Vision is not null && LooksLikeGoodFountain(splitResult.Fountain)
                 && CountSceneHeadings(splitResult.Fountain) >= Math.Max(1, CountSceneHeadings(fountain) / 2))
             {
-                return splitResult.Fountain.TrimEnd() + "\n\n---VISION_META---\n"
+                return splitResult.Fountain.TrimEnd() + "\n\n" + VisionMetaBeginNl
                        + System.Text.Json.JsonSerializer.Serialize(new
                        {
                            visual_medium = splitResult.Vision.VisualMedium,
                            render_style_lock = splitResult.Vision.RenderStyleLock,
                            notes = splitResult.Vision.Notes,
                        })
-                       + "\n---END_VISION_META---\n";
+                       + VisionMetaEndNl + "\n";
             }
 
             // Parse meta from sidecar-only response.
             var metaOnly = SplitVisionMetaTrailer(
-                normalized.Contains("---VISION_META---", StringComparison.OrdinalIgnoreCase)
+                normalized.Contains(VisionMetaBegin, StringComparison.OrdinalIgnoreCase)
                     ? normalized
-                    : "---VISION_META---\n" + normalized + "\n---END_VISION_META---");
+                    : VisionMetaBeginNl + normalized + VisionMetaEndNl);
             if (metaOnly.Vision is null)
             {
                 // Try treating whole result as JSON
-                var wrapped = "---VISION_META---\n" + result.Trim() + "\n---END_VISION_META---";
+                var wrapped = VisionMetaBeginNl + result.Trim() + VisionMetaEndNl;
                 metaOnly = SplitVisionMetaTrailer(wrapped);
             }
             if (metaOnly.Vision is null)
                 return fountain;
 
-            return fountain.TrimEnd() + "\n\n---VISION_META---\n"
+            return fountain.TrimEnd() + "\n\n" + VisionMetaBeginNl
                    + System.Text.Json.JsonSerializer.Serialize(new
                    {
                        visual_medium = metaOnly.Vision.VisualMedium,
                        render_style_lock = metaOnly.Vision.RenderStyleLock,
                        notes = metaOnly.Vision.Notes,
                    })
-                   + "\n---END_VISION_META---\n";
+                   + VisionMetaEndNl + "\n";
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
@@ -605,6 +603,13 @@ public static class BookToFountainConverter
         public void Dispose() { }
     }
 
+    private static (string Fountain, AdaptationVisionMeta? Vision, AdaptationReport? Report)
+        PullTrailersBeforeRepairs(string text)
+    {
+        var split = SplitAdaptationTrailers(text);
+        return (split.Fountain, split.Vision, split.Report);
+    }
+
     /// <summary>
     /// Strip trailing ---VISION_META--- JSON ---END_VISION_META--- written by book-to-Fountain LLM.
     /// Fountain body is the screenplay file; JSON is production medium metadata.
@@ -643,8 +648,8 @@ public static class BookToFountainConverter
         // Then vision meta.
         text = ExtractSidecar(
             text,
-            "---VISION_META---",
-            "---END_VISION_META---",
+            VisionMetaBegin,
+            VisionMetaEnd,
             out var visionJson);
         if (!string.IsNullOrWhiteSpace(visionJson))
         {
@@ -978,7 +983,7 @@ public static class BookToFountainConverter
     private static IReadOnlyList<Stage1ValidationIssue> ValidateNormalizationRepair(string fountain)
     {
         if (!LooksLikeGoodFountain(fountain))
-            return [new Stage1ValidationIssue("invalid_fountain", "The response is not a usable Fountain screenplay.", "$.fountain")];
+            return [new Stage1ValidationIssue("invalid_fountain", "The response is not a usable Fountain screenplay.", FountainJsonPath)];
         return Array.Empty<Stage1ValidationIssue>();
     }
 
@@ -1154,9 +1159,9 @@ public static class BookToFountainConverter
     {
         var issues = new List<Stage1ValidationIssue>();
         if (!LooksLikeGoodFountain(fountain))
-            issues.Add(new("invalid_fountain", "The response is not a usable Fountain screenplay.", "$.fountain"));
+            issues.Add(new("invalid_fountain", "The response is not a usable Fountain screenplay.", FountainJsonPath));
         foreach (var remaining in findRemaining(fountain))
-            issues.Add(new(issueCode, $"Unresolved value: {remaining}", "$.fountain"));
+            issues.Add(new(issueCode, $"Unresolved value: {remaining}", FountainJsonPath));
         return issues;
     }
 
@@ -1194,9 +1199,8 @@ public static class BookToFountainConverter
             if (headingSet.Contains(line) || cueSet.Contains(line)) continue;
             if (SceneHeadingLineRegex.IsMatch(line)) continue;
 
-            foreach (Match m in ProperNounWordRegex.Matches(line))
+            foreach (var word in ProperNounWordRegex.Matches(line).Select(m => m.Value))
             {
-                var word = m.Value;
                 if (ProseNameStopWords.Contains(word)) continue;
                 if (seen.Add(word))
                     yield return word;
@@ -1753,14 +1757,11 @@ public static class BookToFountainConverter
         if (headings.Count < 2)
             return fountain;
 
-        // Unique heading forms + frequency
+        // Unique heading forms
         var forms = headings
             .GroupBy(h => h, StringComparer.OrdinalIgnoreCase)
             .Select(g => g.First())
             .ToList();
-        var freq = headings
-            .GroupBy(h => h, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(g => g.First(), g => g.Count(), StringComparer.OrdinalIgnoreCase);
 
         // locName per heading form
         var locByHeading = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -1985,7 +1986,7 @@ public static class BookToFountainConverter
         fountain = StripBookPageTags(fountain ?? "");
         bookText = NormalizeBookText(bookText ?? "");
         var hasTarget = totalRuntimeMinutes is > 0;
-        var minutes = hasTarget ? Math.Clamp(totalRuntimeMinutes!.Value, 1, 180) : 0;
+        var minutes = hasTarget ? Math.Clamp(totalRuntimeMinutes.Value, 1, 180) : 0;
 
         var fails = new List<string>();
         var scenes = CountSceneHeadings(fountain);
@@ -2437,7 +2438,7 @@ public static class BookToFountainConverter
                 onProgress: null,
                 ct, reasoningEffort,
                 promptVersion: "stage1-book-to-fountain-v2",
-                correctionInstruction: CoverageRetrySuffix(),
+                correctionInstruction: CoverageRetrySuffix,
                 validate: value => ValidatePrimaryPackage(
                     value, bookText, totalMinutes, AdaptPath.Single))
             .ConfigureAwait(false);
@@ -2446,8 +2447,7 @@ public static class BookToFountainConverter
                 "Book adapt timed out or failed after retry. Try again or import a .fountain file.");
 
         if (!LooksLikeGoodFountain(text))
-            throw new InvalidOperationException(
-                "Could not build a usable screenplay from the book. Try again or import a .fountain file.");
+            throw new InvalidOperationException(UnusableScreenplayError);
 
         return text;
     }
@@ -2613,13 +2613,13 @@ public static class BookToFountainConverter
         return gate.Ok
             ? Array.Empty<Stage1ValidationIssue>()
             : gate.Failures.Select(failure =>
-                new Stage1ValidationIssue("stage1_quality", failure, "$.fountain")).ToArray();
+                new Stage1ValidationIssue("stage1_quality", failure, FountainJsonPath)).ToArray();
     }
 
     private static IReadOnlyList<Stage1ValidationIssue> ValidateChunk(string value) =>
         LooksLikeGoodFountain(value)
             ? Array.Empty<Stage1ValidationIssue>()
-            : [new Stage1ValidationIssue("invalid_fountain", "The response is not usable Fountain.", "$.fountain")];
+            : [new Stage1ValidationIssue("invalid_fountain", "The response is not usable Fountain.", FountainJsonPath)];
 
     // ── prompts / continuity ─────────────────────────────────────────────
 
@@ -2748,7 +2748,7 @@ public static class BookToFountainConverter
         - Use NARRATOR and CHARACTER dialogue where the book has narration or speech.
         """;
 
-    private static string CoverageRetrySuffix() => """
+    private const string CoverageRetrySuffix = """
 
 
         IMPORTANT: Previous draft was too short or incomplete for the full book.

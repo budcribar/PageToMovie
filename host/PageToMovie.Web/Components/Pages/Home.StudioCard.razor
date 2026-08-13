@@ -93,7 +93,7 @@
                                         Diff
                                     </a>
                                     <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@Host._busy"
-                                            @onclick="() => Host.Projects.SyncOriginAsync(id, p.ParentProjectId!)">
+                                            @onclick="() => Host.Projects.SyncOriginAsync(id, p.ParentProjectId)">
                                         Sync origin
                                     </button>
                                 }
@@ -206,7 +206,7 @@
                                              || (Host.Projects._historyUrls.TryGetValue(id, out var histUrl) && !string.IsNullOrWhiteSpace(histUrl)))
                                         {
                                             var openUrl = !string.IsNullOrWhiteSpace(Host.Jobs.PackageHistoryUrl)
-                                                ? Host.Jobs.PackageHistoryUrl!
+                                                ? Host.Jobs.PackageHistoryUrl
                                                 : Host.Projects._historyUrls[id];
                                             <button type="button" class="btn btn-sm btn-outline-secondary"
                                                     data-testid="home-package-history-link"

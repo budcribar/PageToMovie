@@ -18,7 +18,7 @@ public static class ProjectAdaptationReport
     {
         ArgumentNullException.ThrowIfNull(report);
         var path = GetPath(projectDir);
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(path));
         var payload = new
         {
             schema_version = "adaptation_report.v1",

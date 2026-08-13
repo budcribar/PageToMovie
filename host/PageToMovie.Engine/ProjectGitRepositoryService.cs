@@ -65,6 +65,7 @@ namespace PageToMovie.Engine
 
         private const string SyncRemoteName = "sync-origin";
         private const string GithubRemoteName = "github-projects";
+        private const string DefaultAuthor = "PageToMovie";
 
         /// <summary>
         /// Video/audio binaries never belong in the project's own Git history — they live in the
@@ -123,7 +124,7 @@ namespace PageToMovie.Engine
                 });
             }
 
-            var who = string.IsNullOrWhiteSpace(author) ? "PageToMovie" : author.Trim();
+            var who = string.IsNullOrWhiteSpace(author) ? DefaultAuthor : author.Trim();
             var signature = new Signature(who, EmailFor(who), DateTimeOffset.UtcNow);
             var commit = repo.Commit(
                 string.IsNullOrWhiteSpace(commitMessage) ? "Project update" : commitMessage,
@@ -228,7 +229,7 @@ namespace PageToMovie.Engine
             repo.CheckoutPaths(targetCommit.Sha, new[] { "*" }, checkoutOpts);
             Commands.Stage(repo, "*");
 
-            var who = string.IsNullOrWhiteSpace(author) ? "PageToMovie" : author.Trim();
+            var who = string.IsNullOrWhiteSpace(author) ? DefaultAuthor : author.Trim();
             var signature = new Signature(who, EmailFor(who), DateTimeOffset.UtcNow);
             var shortHash = targetCommit.Sha.Length >= 8 ? targetCommit.Sha[..8] : targetCommit.Sha;
             var shortMsg = targetCommit.MessageShort;
@@ -320,7 +321,7 @@ namespace PageToMovie.Engine
                     });
                 }
 
-                var signature = new Signature("PageToMovie", "noreply@pagetomovie.local", DateTimeOffset.UtcNow);
+                var signature = new Signature(DefaultAuthor, "noreply@pagetomovie.local", DateTimeOffset.UtcNow);
                 var mergeResult = repo.Merge(remoteBranch.Tip, signature, new MergeOptions
                 {
                     FileConflictStrategy = CheckoutFileConflictStrategy.Normal,
@@ -385,7 +386,7 @@ namespace PageToMovie.Engine
             if (remaining.Count == 0 && autoResolved > 0)
             {
                 Commands.Stage(repo, "*");
-                var signature = new Signature("PageToMovie", "noreply@pagetomovie.local", DateTimeOffset.UtcNow);
+                var signature = new Signature(DefaultAuthor, "noreply@pagetomovie.local", DateTimeOffset.UtcNow);
                 var mergeCommit = repo.Commit(
                     $"Auto-resolved merge from origin ({autoResolved} file(s))",
                     signature, signature);

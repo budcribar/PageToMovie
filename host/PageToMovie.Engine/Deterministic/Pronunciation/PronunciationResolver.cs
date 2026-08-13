@@ -140,11 +140,9 @@ public sealed class PronunciationResolver
         var score = 0;
         if (inferredPart is not null && sense.PartsOfSpeech.Contains(inferredPart, StringComparer.OrdinalIgnoreCase))
             score += 4;
-        foreach (var cue in sense.Cues.Distinct(StringComparer.OrdinalIgnoreCase))
-        {
-            if (CommonRegex.IsMatch(context, $@"\b{Regex.Escape(cue)}\b", RegexOptions.IgnoreCase))
-                score += 2;
-        }
+        foreach (var cue in sense.Cues.Distinct(StringComparer.OrdinalIgnoreCase)
+                     .Where(cue => CommonRegex.IsMatch(context, $@"\b{Regex.Escape(cue)}\b", RegexOptions.IgnoreCase)))
+            score += 2;
         return score;
     }
 

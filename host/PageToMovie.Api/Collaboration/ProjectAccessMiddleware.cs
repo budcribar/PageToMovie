@@ -49,7 +49,6 @@ public sealed class ProjectAccessMiddleware
         var projectIdRaw = Uri.UnescapeDataString(m.Groups["id"].Value);
         // project ids are often owner%2Fname → owner/name
         var projectId = projectIdRaw;
-        var rest = m.Groups["rest"].Value ?? "";
 
         // Skip ACL file bootstrap endpoints that only need auth? Still require access.
         var method = context.Request.Method.ToUpperInvariant();

@@ -120,11 +120,8 @@ public sealed class MediaDurationProbe
         if (_cache.Count <= MaxCacheEntries) return;
 
         // First: drop entries whose backing file is gone — free and always safe.
-        foreach (var k in _cache.Keys)
-        {
-            if (!File.Exists(k))
-                _cache.TryRemove(k, out _);
-        }
+        foreach (var k in _cache.Keys.Where(k => !File.Exists(k)))
+            _cache.TryRemove(k, out _);
 
         // Files that stay on disk (the common case) never get evicted by the pass above, so the
         // cache would otherwise grow unbounded despite the size check. Trim the oldest-by-mtime

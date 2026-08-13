@@ -15,6 +15,8 @@ namespace PageToMovie.Fakes;
 /// </summary>
 public sealed class FakeGrokVideoClient : IVideoClient
 {
+    private const string ExtendPrefix = "extend:";
+
     private readonly PageToMovieOptions _opts;
     private readonly ILogger<FakeGrokVideoClient> _log;
     private readonly ProjectTelemetryService _telemetry;
@@ -60,7 +62,7 @@ public sealed class FakeGrokVideoClient : IVideoClient
         var fixture = ResolveFixturePath(fakes.VideoMode, durationSeconds, Interlocked.Increment(ref _clipRoundRobin));
         // Mark extensions so Download can concat prev + new segment when possible
         if (!string.IsNullOrWhiteSpace(continueFromVideoPath) && File.Exists(continueFromVideoPath))
-            _pending[id] = "extend:" + continueFromVideoPath + "|" + fixture;
+            _pending[id] = ExtendPrefix + continueFromVideoPath + "|" + fixture;
         else
             _pending[id] = fixture;
         _log.LogInformation(
@@ -127,17 +129,17 @@ public sealed class FakeGrokVideoClient : IVideoClient
 
         string? prevPath = null;
         string fixture = token;
-        if (token.StartsWith("extend:", StringComparison.OrdinalIgnoreCase))
+        if (token.StartsWith(ExtendPrefix, StringComparison.OrdinalIgnoreCase))
         {
             var pipe = token.IndexOf('|');
             if (pipe > 0)
             {
-                prevPath = token["extend:".Length..pipe];
+                prevPath = token[ExtendPrefix.Length..pipe];
                 fixture = token[(pipe + 1)..];
             }
             else
             {
-                fixture = token["extend:".Length..];
+                fixture = token[ExtendPrefix.Length..];
             }
         }
 
@@ -146,7 +148,7 @@ public sealed class FakeGrokVideoClient : IVideoClient
                 "Fake video fixture missing. Expected real MP4 under PageToMovie.Fakes/Fixtures/ (clip_tiny_1s.mp4, clip_5s.mp4, clip_merge_10s.mp4).",
                 fixture);
 
-        Directory.CreateDirectory(Path.GetDirectoryName(destPath)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(destPath));
 
         double seconds;
         if (!string.IsNullOrWhiteSpace(prevPath) && File.Exists(prevPath) && await TryConcatAsync(prevPath, fixture, destPath, ct).ConfigureAwait(false))
@@ -295,9 +297,11 @@ public sealed class FakeGrokVideoClient : IVideoClient
     {
         try
         {
+            var ffprobe = FindOnPath("ffprobe");
+            if (ffprobe is null) return null;
             var psi = new ProcessStartInfo
             {
-                FileName = "ffprobe",
+                FileName = ffprobe,
                 Arguments = $"-v error -show_entries format=duration -of default=nw=1:nk=1 \"{path}\"",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -320,13 +324,15 @@ public sealed class FakeGrokVideoClient : IVideoClient
     {
         try
         {
+            var ffmpeg = FindOnPath("ffmpeg");
+            if (ffmpeg is null) return false;
             var list = Path.Combine(Path.GetTempPath(), "ptm-fake-concat-" + Guid.NewGuid().ToString("N")[..8] + ".txt");
             var prevEsc = Path.GetFullPath(prev).Replace("'", "'\\''");
             var nextEsc = Path.GetFullPath(next).Replace("'", "'\\''");
             await File.WriteAllTextAsync(list, $"file '{prevEsc}'\nfile '{nextEsc}'\n", ct).ConfigureAwait(false);
             var psi = new ProcessStartInfo
             {
-                FileName = "ffmpeg",
+                FileName = ffmpeg,
                 Arguments = $"-y -f concat -safe 0 -i \"{list}\" -c copy \"{dest}\"",
                 RedirectStandardError = true,
                 RedirectStandardOutput = true,
@@ -342,5 +348,22 @@ public sealed class FakeGrokVideoClient : IVideoClient
         {
             return false;
         }
+    }
+
+    static string? FindOnPath(string fileName)
+    {
+        var pathEnv = Environment.GetEnvironmentVariable("PATH") ?? "";
+        foreach (var dir in pathEnv.Split(Path.PathSeparator))
+        {
+            if (string.IsNullOrWhiteSpace(dir)) continue;
+            var candidate = Path.Combine(dir.Trim(), fileName);
+            if (File.Exists(candidate)) return candidate;
+            if (OperatingSystem.IsWindows())
+            {
+                var exe = candidate + ".exe";
+                if (File.Exists(exe)) return exe;
+            }
+        }
+        return null;
     }
 }
