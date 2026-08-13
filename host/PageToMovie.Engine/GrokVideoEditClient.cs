@@ -1,6 +1,4 @@
 using System.Diagnostics;
-using System.Net.Http.Headers;
-using System.Net.Http.Json;
 using System.Text.Json;
 using PageToMovie.Core.Models;
 using PageToMovie.Core.Options;
@@ -39,9 +37,7 @@ public sealed class GrokVideoEditClient : IVideoEditClient
         _telemetry = telemetry;
         _log = log;
         _errorLogger = errorLogger;
-        if (_http.BaseAddress is null)
-            _http.BaseAddress = new Uri(
-                ApiBase.TrimEnd(Path.AltDirectorySeparatorChar) + Path.AltDirectorySeparatorChar);
+        ProviderHttpHelpers.EnsureTrailingSlashBaseAddress(_http, ApiBase);
     }
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(ResolveApiKey());
@@ -116,19 +112,10 @@ public sealed class GrokVideoEditClient : IVideoEditClient
                 async _ =>
                 {
                     using var resp = await SendJsonAsync(HttpMethod.Post, "videos/edits", payload, ct);
-                    var body = await resp.Content.ReadAsStringAsync(ct);
-                    if (!resp.IsSuccessStatusCode)
-                        throw ChatHttpStatusException.FromResponse(resp,
-                            $"Grok video edit submit HTTP {(int)resp.StatusCode}: {Trim(body, 400)}");
-
-                    using var doc = JsonDocument.Parse(body);
-                    if (!doc.RootElement.TryGetProperty("request_id", out var rid) ||
-                        rid.GetString() is not { Length: > 0 } id)
-                    {
-                        throw new InvalidOperationException(
-                            $"Grok video edit response missing request_id: {Trim(body, 300)}");
-                    }
-                    return id;
+                    return await ProviderHttpHelpers.ReadRequiredJsonStringAsync(
+                        resp, ct, "request_id",
+                        "Grok video edit submit",
+                        "Grok video edit response missing request_id");
                 },
                 isTransient: AiRetryPolicy.IsTransientChatFailure,
                 maxAttempts: AiRetryPolicy.DefaultTransientMaxAttempts,
@@ -174,8 +161,7 @@ public sealed class GrokVideoEditClient : IVideoEditClient
     {
         // Same budget as full video generation (GrokVideoClient.PollForVideoUrlAsync) — edit
         // processing time is not guaranteed short just because input is capped at 8.7s.
-        var deadline = DateTime.UtcNow.AddSeconds(Math.Max(60, _opts.GrokTimeoutSeconds));
-        var poll = Math.Max(2, _opts.GrokPollSeconds);
+        var (deadline, poll) = VideoClientHelpers.PollWindow(_opts);
         var sw = Stopwatch.StartNew();
         var polls = 0;
 
@@ -192,22 +178,19 @@ public sealed class GrokVideoEditClient : IVideoEditClient
             if (string.Equals(status, "done", StringComparison.OrdinalIgnoreCase))
                 return await HandleEditPollDoneAsync(requestId, root, sw, polls, ct).ConfigureAwait(false);
 
-            if (IsPollFailedOrExpired(status))
+            if (VideoClientHelpers.IsPollFailedOrExpired(status))
                 await HandleEditPollFailedOrExpiredAsync(requestId, root, body, status, sw, polls, ct)
                     .ConfigureAwait(false);
 
             var progress = root.TryGetProperty("progress", out var pr) ? pr.ToString() : null;
-            onProgress?.Invoke(progress is null ? $"status={status}" : $"status={status} ({progress}%)");
+            onProgress?.Invoke(VideoClientHelpers.FormatPollProgress(status, progress));
             await Task.Delay(TimeSpan.FromSeconds(poll), ct);
         }
 
-        await _telemetry.LogOutcomeAsync(null, requestId, VideoJobOutcome.TimedOut, sw.ElapsedMilliseconds, polls, ok: false, $"timed out after {_opts.GrokTimeoutSeconds}s", ct);
-        throw new TimeoutException($"Grok video edit timed out after {_opts.GrokTimeoutSeconds}s");
+        return await VideoClientHelpers.ThrowTimedOutAsync(
+            _telemetry, requestId, sw, polls, _opts.GrokTimeoutSeconds,
+            $"Grok video edit timed out after {_opts.GrokTimeoutSeconds}s", ct);
     }
-
-    private static bool IsPollFailedOrExpired(string? status) =>
-        string.Equals(status, "failed", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(status, "expired", StringComparison.OrdinalIgnoreCase);
 
     private async Task<string> FetchEditPollBodyAsync(string requestId, int polls, Stopwatch sw, CancellationToken ct)
     {
@@ -232,11 +215,7 @@ public sealed class GrokVideoEditClient : IVideoEditClient
     private async Task<string> GetEditPollResponseAsync(string requestId, CancellationToken ct)
     {
         using var resp = await SendAsync(HttpMethod.Get, $"videos/{requestId}", content: null, ct);
-        var b = await resp.Content.ReadAsStringAsync(ct);
-        if (!resp.IsSuccessStatusCode)
-            throw ChatHttpStatusException.FromResponse(resp,
-                $"Grok video edit poll HTTP {(int)resp.StatusCode}: {Trim(b, 400)}");
-        return b;
+        return await ProviderHttpHelpers.ReadSuccessBodyAsync(resp, ct, "Grok video edit poll");
     }
 
     private async Task<string> HandleEditPollDoneAsync(
@@ -256,55 +235,38 @@ public sealed class GrokVideoEditClient : IVideoEditClient
     private async Task HandleEditPollFailedOrExpiredAsync(
         string requestId, JsonElement root, string body, string? status, Stopwatch sw, int polls, CancellationToken ct)
     {
-        var detail = root.TryGetProperty("error", out var err) ? err.ToString() : body;
+        var detail = VideoClientHelpers.PollErrorDetail(root, body);
         await _telemetry.LogOutcomeAsync(
             null,
             requestId,
-            string.Equals(status, "expired", StringComparison.OrdinalIgnoreCase)
-                ? VideoJobOutcome.Expired
-                : VideoJobOutcome.ProviderFailed,
+            VideoClientHelpers.ExpiredOrFailed(status),
             sw.ElapsedMilliseconds,
             polls,
             ok: false,
-            Trim(detail, 500),
+            ProviderHttpHelpers.Trim(detail, 500),
             ct);
-        throw new InvalidOperationException($"Grok video edit job {status}: {Trim(detail, 400)}");
+        throw new InvalidOperationException($"Grok video edit job {status}: {ProviderHttpHelpers.Trim(detail, 400)}");
     }
 
-    public async Task DownloadToFileAsync(string url, string destPath, CancellationToken ct)
-    {
-        var destDir = Path.GetDirectoryName(destPath);
-        if (!string.IsNullOrEmpty(destDir))
-            Directory.CreateDirectory(destDir);
-        using var resp = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
-        resp.EnsureSuccessStatusCode();
-        await using var fs = File.Create(destPath);
-        await resp.Content.CopyToAsync(fs, ct);
-        _log.LogInformation("Downloaded edited clip {Bytes} bytes → {Path}", new FileInfo(destPath).Length, destPath);
-    }
+    public Task DownloadToFileAsync(string url, string destPath, CancellationToken ct) =>
+        ProviderHttpHelpers.DownloadToFileAsync(
+            _http, url, destPath, ct, _log,
+            logMessage: "Downloaded edited clip {Bytes} bytes → {Path}");
 
     /// <summary>Same key source as <see cref="GrokVideoClient"/> — no separate "video-edit key"
     /// concept; edits reuse the existing xAI/Grok key already used for generation.</summary>
     private static string? ResolveApiKey() =>
         ApiKeyScope.Current ?? Environment.GetEnvironmentVariable("XAI_API_KEY");
 
-    private async Task<HttpResponseMessage> SendJsonAsync(
-        HttpMethod method, string uri, object payload, CancellationToken ct)
-    {
-        var content = JsonContent.Create(payload);
-        return await SendAsync(method, uri, content, ct).ConfigureAwait(false);
-    }
+    private Task<HttpResponseMessage> SendJsonAsync(
+        HttpMethod method, string uri, object payload, CancellationToken ct) =>
+        ProviderHttpHelpers.SendJsonAsync(
+            _http, method, uri, payload, ct,
+            req => ProviderHttpHelpers.ApplyBearer(req, ResolveApiKey()));
 
-    private async Task<HttpResponseMessage> SendAsync(
-        HttpMethod method, string uri, HttpContent? content, CancellationToken ct)
-    {
-        using var req = new HttpRequestMessage(method, uri) { Content = content };
-        var key = ResolveApiKey();
-        if (!string.IsNullOrWhiteSpace(key))
-            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key.Trim());
-        return await _http.SendAsync(req, ct).ConfigureAwait(false);
-    }
-
-    private static string Trim(string s, int n) =>
-        s.Length <= n ? s : s[..n];
+    private Task<HttpResponseMessage> SendAsync(
+        HttpMethod method, string uri, HttpContent? content, CancellationToken ct) =>
+        ProviderHttpHelpers.SendAsync(
+            _http, method, uri, content, ct,
+            req => ProviderHttpHelpers.ApplyBearer(req, ResolveApiKey()));
 }

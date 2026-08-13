@@ -1,6 +1,4 @@
 using System.Diagnostics;
-using System.Net.Http.Headers;
-using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using PageToMovie.Core.Models;
@@ -51,8 +49,7 @@ public sealed class GrokVisionClient : IVisionClient
         _telemetry = telemetry;
         _keyProvider = keyProvider;
         _errorLogger = errorLogger;
-        if (_http.BaseAddress is null)
-            _http.BaseAddress = new Uri(ApiBase.TrimEnd(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar) + Path.AltDirectorySeparatorChar);
+        ProviderHttpHelpers.EnsureTrailingSlashBaseAddress(_http, ApiBase);
     }
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(ApiKeyScope.Current ?? Environment.GetEnvironmentVariable("XAI_API_KEY"));
@@ -712,19 +709,13 @@ public sealed class GrokVisionClient : IVisionClient
     private async Task<HttpResponseMessage> SendJsonAsync(
         HttpMethod method, string uri, object payload, CancellationToken ct)
     {
-        // Per-request Bearer — never mutate shared DefaultRequestHeaders (multi-user race).
-        using var req = new HttpRequestMessage(method, uri)
-        {
-            Content = JsonContent.Create(payload),
-        };
-
         var key = await ResolveApiKeyAsync(ct).ConfigureAwait(false);
-        if (!string.IsNullOrWhiteSpace(key))
-            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key.Trim());
-        return await _http.SendAsync(req, ct).ConfigureAwait(false);
+        return await ProviderHttpHelpers.SendJsonAsync(
+            _http, method, uri, payload, ct,
+            req => ProviderHttpHelpers.ApplyBearer(req, key)).ConfigureAwait(false);
     }
 
-    private static string Trim(string s, int n) => s.Length <= n ? s : s[..n];
+    private static string Trim(string s, int n) => ProviderHttpHelpers.Trim(s, n);
 }
 
 public sealed class CharacterClassifyHint
