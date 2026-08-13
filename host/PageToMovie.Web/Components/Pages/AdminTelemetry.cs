@@ -24,7 +24,7 @@ public partial class Admin
         /// <summary>Set when a chart upsert throws after we had real data to draw — surfaced in the UI so failures aren't silent.</summary>
         internal string? _chartWarning;
 
-        internal List<EngineApiClient.GenerationErrorRowDto>? _genErrors;
+        internal List<GenerationErrorRow>? _genErrors;
         internal bool _genErrorsBusy;
         internal string _genErrorTypeFilter = "";
         internal string _genErrorProjectFilter = "";
