@@ -2,12 +2,14 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using PageToMovie.Api.Auth;
+using PageToMovie.Api.Collaboration;
 using PageToMovie.Core.Auth;
 using PageToMovie.Core.Models;
 using PageToMovie.Core.Options;
 using PageToMovie.Core.Utils;
 using PageToMovie.Engine;
 using PageToMovie.Engine.Abstractions;
+using PageToMovie.Engine.Collaboration;
 
 namespace PageToMovie.Api;
 
@@ -145,6 +147,35 @@ internal static class ApiEndpointHelpers
                 overrideNote = onote.GetString();
         }
         return (index, overrideStyle, overrideReason, overrideNote);
+    }
+
+    /// <summary>
+    /// Acquire the cast resource lease for a mutating character endpoint. Returns a 423 result when
+    /// another user holds the lease; null when the caller may proceed (including when user id or
+    /// char key is empty — those call sites skip the lease, matching the previous inline checks).
+    /// </summary>
+    public static async Task<IResult?> TryAcquireCastLeaseAsync(
+        string projectId,
+        string charKey,
+        IProjectLeaseService leases,
+        IUserContext user,
+        CancellationToken ct)
+    {
+        var uid = user.UserId ?? "";
+        if (string.IsNullOrWhiteSpace(uid) || string.IsNullOrWhiteSpace(charKey))
+            return null;
+        var (okLease, lease) = await leases.TryAcquireAsync(
+            projectId, ProjectLeaseKeys.Cast(charKey), uid,
+            CollaborationEndpoints.DefaultLeaseTtl, ct);
+        if (okLease)
+            return null;
+        return Results.Json(new
+        {
+            ok = false,
+            error = "cast_locked",
+            message = $"Cast is locked by {lease.HolderUserId}.",
+            holderUserId = lease.HolderUserId,
+        }, statusCode: StatusCodes.Status423Locked);
     }
 
     public static async Task LogStyleOverrideAsync(

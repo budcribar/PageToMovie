@@ -10,7 +10,6 @@ using PageToMovie.Core.Options;
 using PageToMovie.Core.Utils;
 using PageToMovie.Engine;
 using PageToMovie.Engine.Abstractions;
-using PageToMovie.Engine.Collaboration;
 using PageToMovie.Engine.ModelBacked;
 
 namespace PageToMovie.Api;
@@ -142,20 +141,8 @@ public static class CharacterEndpoints
         body ??= new UpdateCharacterLookRequest();
         if (string.IsNullOrWhiteSpace(charKey))
             return Results.BadRequest(new { ok = false, error = ApiText.CharKeyRequired });
-        var uidLook = user.UserId ?? "";
-        if (!string.IsNullOrWhiteSpace(uidLook))
-        {
-            var (okLease, lease) = await leases.TryAcquireAsync(
-                id, PageToMovie.Engine.Collaboration.ProjectLeaseKeys.Cast(charKey), uidLook,
-                PageToMovie.Api.Collaboration.CollaborationEndpoints.DefaultLeaseTtl, ct);
-            if (!okLease)
-                return Results.Json(new {
-                    ok = false,
-                    error = "cast_locked",
-                    message = $"Cast is locked by {lease.HolderUserId}.",
-                    holderUserId = lease.HolderUserId,
-                }, statusCode: StatusCodes.Status423Locked);
-        }
+        if (await ApiEndpointHelpers.TryAcquireCastLeaseAsync(id, charKey, leases, user, ct) is { } lookLocked)
+            return lookLocked;
 
         var desc = body.Description;
         var vis = body.VisualLock;
@@ -305,20 +292,8 @@ public static class CharacterEndpoints
     {
     try
     {
-        var uid = user.UserId ?? "";
-        if (!string.IsNullOrWhiteSpace(uid) && !string.IsNullOrWhiteSpace(charKey))
-        {
-            var (okLease, lease) = await leases.TryAcquireAsync(
-                id, PageToMovie.Engine.Collaboration.ProjectLeaseKeys.Cast(charKey), uid,
-                PageToMovie.Api.Collaboration.CollaborationEndpoints.DefaultLeaseTtl, ct);
-            if (!okLease)
-                return Results.Json(new {
-                    ok = false,
-                    error = "cast_locked",
-                    message = $"Cast is locked by {lease.HolderUserId}.",
-                    holderUserId = lease.HolderUserId,
-                }, statusCode: StatusCodes.Status423Locked);
-        }
+        if (await ApiEndpointHelpers.TryAcquireCastLeaseAsync(id, charKey, leases, user, ct) is { } variantLocked)
+            return variantLocked;
         var (index, overrideStyle, overrideReason, overrideNote) =
             await ApiEndpointHelpers.ParseCharacterLockBodyAsync(req, defaultIndex: 1, acceptVariantIndexAlias: true);
         var result = await jobService.RunCharacterDesignActionAsync(id, "lock-variant", charKey, index, allowStyleOverride: overrideStyle, ct: ct);
@@ -399,20 +374,8 @@ public static class CharacterEndpoints
     {
     try
     {
-        var uid = user.UserId ?? "";
-        if (!string.IsNullOrWhiteSpace(uid) && !string.IsNullOrWhiteSpace(charKey))
-        {
-            var (okLease, lease) = await leases.TryAcquireAsync(
-                id, PageToMovie.Engine.Collaboration.ProjectLeaseKeys.Cast(charKey), uid,
-                PageToMovie.Api.Collaboration.CollaborationEndpoints.DefaultLeaseTtl, ct);
-            if (!okLease)
-                return Results.Json(new {
-                    ok = false,
-                    error = "cast_locked",
-                    message = $"Cast is locked by {lease.HolderUserId}.",
-                    holderUserId = lease.HolderUserId,
-                }, statusCode: StatusCodes.Status423Locked);
-        }
+        if (await ApiEndpointHelpers.TryAcquireCastLeaseAsync(id, charKey, leases, user, ct) is { } unlockLocked)
+            return unlockLocked;
         var result = await jobService.RunCharacterDesignActionAsync(id, "unlock", charKey, ct: ct);
         return Results.Ok(new { ok = true, message = result, projectId = id, charKey });
     }

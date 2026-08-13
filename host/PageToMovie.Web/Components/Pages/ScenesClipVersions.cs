@@ -113,7 +113,30 @@ public partial class Scenes
             }
         }
 
-        internal async Task SoftDeleteClipVersionAsync(int sceneNumber, int clipNumber, string versionId)
+        internal Task SoftDeleteClipVersionAsync(int sceneNumber, int clipNumber, string versionId) =>
+            MutateAndRefreshTakesAsync(
+                sceneNumber, clipNumber, versionId,
+                (pid, sn, cn, vid) => S.Engine.SoftDeleteClipVersionAsync(pid, sn, cn, vid),
+                "Take deleted. You can restore it from the Trash Bin below.",
+                "Failed to delete take.",
+                "Delete failed");
+
+        internal Task RestoreClipVersionAsync(int sceneNumber, int clipNumber, string versionId) =>
+            MutateAndRefreshTakesAsync(
+                sceneNumber, clipNumber, versionId,
+                (pid, sn, cn, vid) => S.Engine.RestoreClipVersionAsync(pid, sn, cn, vid),
+                "Take restored from Trash Bin.",
+                "Failed to restore take.",
+                "Restore failed");
+
+        private async Task MutateAndRefreshTakesAsync(
+            int sceneNumber,
+            int clipNumber,
+            string versionId,
+            Func<string, int, int, string, Task<EngineApiClient.SceneRevertEnvelope>> mutate,
+            string okMessage,
+            string failFallback,
+            string catchPrefix)
         {
             _promotingVersion = true;
             _clipCompareMessage = null;
@@ -121,10 +144,10 @@ public partial class Scenes
 
             try
             {
-                var res = await S.Engine.SoftDeleteClipVersionAsync(S._projectId, sceneNumber, clipNumber, versionId);
+                var res = await mutate(S._projectId, sceneNumber, clipNumber, versionId);
                 if (res.Ok)
                 {
-                    _clipCompareMessage = "Take deleted. You can restore it from the Trash Bin below.";
+                    _clipCompareMessage = okMessage;
                     var resV = await S.Engine.GetClipVersionsAsync(S._projectId, sceneNumber, clipNumber);
                     _clipVersions = resV?.Versions;
                     var resT = await S.Engine.GetTrashClipVersionsAsync(S._projectId, sceneNumber, clipNumber);
@@ -132,45 +155,12 @@ public partial class Scenes
                 }
                 else
                 {
-                    _clipCompareMessage = res.Error ?? "Failed to delete take.";
+                    _clipCompareMessage = res.Error ?? failFallback;
                 }
             }
             catch (Exception ex)
             {
-                _clipCompareMessage = $"Delete failed: {ex.Message}";
-            }
-            finally
-            {
-                _promotingVersion = false;
-                S.StateHasChanged();
-            }
-        }
-
-        internal async Task RestoreClipVersionAsync(int sceneNumber, int clipNumber, string versionId)
-        {
-            _promotingVersion = true;
-            _clipCompareMessage = null;
-            S.StateHasChanged();
-
-            try
-            {
-                var res = await S.Engine.RestoreClipVersionAsync(S._projectId, sceneNumber, clipNumber, versionId);
-                if (res.Ok)
-                {
-                    _clipCompareMessage = "Take restored from Trash Bin.";
-                    var resV = await S.Engine.GetClipVersionsAsync(S._projectId, sceneNumber, clipNumber);
-                    _clipVersions = resV?.Versions;
-                    var resT = await S.Engine.GetTrashClipVersionsAsync(S._projectId, sceneNumber, clipNumber);
-                    _trashVersions = resT?.Versions;
-                }
-                else
-                {
-                    _clipCompareMessage = res.Error ?? "Failed to restore take.";
-                }
-            }
-            catch (Exception ex)
-            {
-                _clipCompareMessage = $"Restore failed: {ex.Message}";
+                _clipCompareMessage = $"{catchPrefix}: {ex.Message}";
             }
             finally
             {
