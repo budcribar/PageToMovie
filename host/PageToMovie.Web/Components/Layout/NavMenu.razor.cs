@@ -49,6 +49,7 @@ public partial class NavMenu : IDisposable
         private string? _themedProjectId;
 
         private string? _sessionUserId;
+        private Action<CultureInfo>? _onCultureChanged;
 
         protected override async Task OnAfterRenderAsync(bool firstRender)
         {
@@ -153,14 +154,11 @@ public partial class NavMenu : IDisposable
         protected override void OnInitialized()
         {
             MediaFolder.Changed += OnMediaFolderChanged;
-            L.CultureChanged += OnCultureChanged;
+            _onCultureChanged = _ => InvokeAsync(StateHasChanged);
+            L.CultureChanged += _onCultureChanged;
         }
 
         private void OnMediaFolderChanged() => _ = InvokeAsync(StateHasChanged);
-        private void OnCultureChanged(CultureInfo _)
-        {
-            InvokeAsync(StateHasChanged);
-        }
 
         public void Dispose()
         {
@@ -171,7 +169,8 @@ public partial class NavMenu : IDisposable
         protected virtual void Dispose(bool disposing)
         {
             if (!disposing) return;
-            L.CultureChanged -= OnCultureChanged;
+            if (_onCultureChanged is not null)
+                L.CultureChanged -= _onCultureChanged;
             MediaFolder.Changed -= OnMediaFolderChanged;
             Session.Changed -= OnSessionChanged;
             ActiveProject.Changed -= OnProjectChanged;
