@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Net.Http.Json;
 using System.Text.Json;
 using PageToMovie.Core.Models;
 using PageToMovie.Core.Options;
@@ -32,8 +31,7 @@ public sealed class GeminiImageClient : IImageClient
     {
         _http = http;
         _telemetry = telemetry;
-        if (_http.BaseAddress is null)
-            _http.BaseAddress = new Uri(ApiBase.TrimEnd(Path.AltDirectorySeparatorChar) + Path.AltDirectorySeparatorChar);
+        ProviderHttpHelpers.EnsureTrailingSlashBaseAddress(_http, ApiBase);
     }
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(ResolveApiKey());
@@ -178,14 +176,9 @@ public sealed class GeminiImageClient : IImageClient
         try
         {
             // Per-request API key — never mutate shared DefaultRequestHeaders (multi-user race).
-            using var req = new HttpRequestMessage(HttpMethod.Post, endpoint)
-            {
-                Content = JsonContent.Create(payload),
-            };
-            var key = ResolveApiKey();
-            if (!string.IsNullOrWhiteSpace(key))
-                req.Headers.TryAddWithoutValidation("x-goog-api-key", key.Trim());
-            using var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
+            using var resp = await ProviderHttpHelpers.SendJsonAsync(
+                _http, HttpMethod.Post, endpoint, payload, ct,
+                req => ProviderHttpHelpers.ApplyGoogleApiKey(req, ResolveApiKey())).ConfigureAwait(false);
             var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
             if (!resp.IsSuccessStatusCode)
             {
@@ -200,11 +193,11 @@ public sealed class GeminiImageClient : IImageClient
                     PromptChars = prompt.Length,
                     ReferenceImagePaths = refNames.Count > 0 ? refNames : null,
                     RefsAttached = refNames.Count > 0,
-                    Error = Trim(body, 400),
+                    Error = ProviderHttpHelpers.Trim(body, 400),
                     Ok = false,
                 }, ct);
                 throw new InvalidOperationException(
-                    $"Gemini {endpoint} HTTP {(int)resp.StatusCode}: {Trim(body, 400)}");
+                    $"Gemini {endpoint} HTTP {(int)resp.StatusCode}: {ProviderHttpHelpers.Trim(body, 400)}");
             }
 
             var image = ExtractInlineImage(body);
@@ -282,6 +275,4 @@ public sealed class GeminiImageClient : IImageClient
     private static string? ResolveApiKey() =>
         ApiKeyScope.CurrentGemini
         ?? Environment.GetEnvironmentVariable(SupportedModelCatalog.GoogleApiKeyEnv);
-
-    private static string Trim(string s, int n) => s.Length <= n ? s : s[..n];
 }

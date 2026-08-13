@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -113,7 +112,10 @@ public sealed class GrokChatClient : IChatClient
         }
         catch (Exception ex) when (ex is not InvalidOperationException)
         {
-            await LogChatFailureAsync(state, ex);
+            await ChatClientHelpers.LogChatExceptionAsync(
+                _telemetry, ex, "chat", state.ModeTag, ChatCompletionsPath, state.Model,
+                state.Stopwatch.ElapsedMilliseconds, state.SystemPrompt, state.UserPrompt,
+                attempt: null, ct);
             throw;
         }
     }
@@ -155,14 +157,19 @@ public sealed class GrokChatClient : IChatClient
                 Content = JsonContent.Create(payload),
             };
             if (!string.IsNullOrWhiteSpace(state.Key))
-                req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", state.Key.Trim());
+                ProviderHttpHelpers.ApplyBearer(req, state.Key);
             using var resp = await _http.SendAsync(req, state.Ct);
             var body = await resp.Content.ReadAsStringAsync(state.Ct);
 
             if (TryHealUnsupportedParam(state, resp, body, attempt))
                 continue;
 
-            return await FinishChatAsync(state, resp, body, attemptNum);
+            return await ChatClientHelpers.FinishChatResponseAsync(
+                _telemetry, resp, body, "chat", state.ModeTag, ChatCompletionsPath, state.Model,
+                errorModel: null, state.Stopwatch.ElapsedMilliseconds,
+                state.SystemPrompt, state.UserPrompt,
+                (state.SystemPrompt?.Length ?? 0) + (state.UserPrompt?.Length ?? 0),
+                attemptNum, ExtractMessageText, "Chat", state.Ct);
         }
 
         throw new InvalidOperationException("Chat parameter retry loop exhausted.");
@@ -208,67 +215,6 @@ public sealed class GrokChatClient : IChatClient
             Resolved = false, // this row is the failed attempt; a later attempt may still succeed
             RequestSummary = $"mode={state.ModeTag}; promptChars={(state.SystemPrompt?.Length ?? 0) + (state.UserPrompt?.Length ?? 0)}",
         }, state.Ct).ConfigureAwait(false);
-    }
-
-    private async Task<string> FinishChatAsync(
-        ChatCompletionState state, HttpResponseMessage resp, string body, int attemptNum)
-    {
-        if (!resp.IsSuccessStatusCode)
-        {
-            await _telemetry.LogApiCallAsync(new ApiCallTelemetry
-            {
-                Kind = "chat",
-                Mode = state.ModeTag,
-                Endpoint = ChatCompletionsPath,
-                Model = state.Model,
-                HttpStatus = (int)resp.StatusCode,
-                DurationMs = state.Stopwatch.ElapsedMilliseconds,
-                SystemPrompt = state.SystemPrompt,
-                UserPrompt = state.UserPrompt,
-                PromptChars = (state.SystemPrompt?.Length ?? 0) + (state.UserPrompt?.Length ?? 0),
-                Attempt = attemptNum,
-                Error = Trim(body, 800),
-                Ok = false,
-            }, state.Ct);
-            throw ChatHttpStatusException.FromResponse(resp,
-                $"Chat HTTP {(int)resp.StatusCode}: {Trim(body, 800)}");
-        }
-
-        using var doc = JsonDocument.Parse(body);
-        var text = ExtractMessageText(doc.RootElement);
-        await _telemetry.LogApiCallAsync(new ApiCallTelemetry
-        {
-            Kind = "chat",
-            Mode = state.ModeTag,
-            Endpoint = ChatCompletionsPath,
-            Model = state.Model,
-            HttpStatus = (int)resp.StatusCode,
-            DurationMs = state.Stopwatch.ElapsedMilliseconds,
-            SystemPrompt = state.SystemPrompt,
-            UserPrompt = state.UserPrompt,
-            PromptChars = (state.SystemPrompt?.Length ?? 0) + (state.UserPrompt?.Length ?? 0),
-            Attempt = attemptNum,
-            ResponsePreview = text.Length > 2000 ? text[..2000] : text,
-            ResponseChars = text.Length,
-            Ok = true,
-        }, state.Ct);
-        return text;
-    }
-
-    private async Task LogChatFailureAsync(ChatCompletionState state, Exception ex)
-    {
-        await _telemetry.LogApiCallAsync(new ApiCallTelemetry
-        {
-            Kind = "chat",
-            Mode = state.ModeTag,
-            Endpoint = ChatCompletionsPath,
-            Model = state.Model,
-            DurationMs = state.Stopwatch.ElapsedMilliseconds,
-            SystemPrompt = state.SystemPrompt,
-            UserPrompt = state.UserPrompt,
-            Error = ex.Message,
-            Ok = false,
-        }, state.Ct);
     }
 
     private sealed class ChatCompletionState
@@ -374,7 +320,7 @@ public sealed class GrokChatClient : IChatClient
         if (result.TryGetProperty("output_text", out var ot) && ot.GetString() is { Length: > 0 } s)
             return s;
         var raw = result.GetRawText();
-        return raw.Length <= 2000 ? raw : raw[..2000];
+        return ProviderHttpHelpers.Trim(raw, ChatClientHelpers.ResponsePreviewMax);
     }
 
     private static readonly Regex OpenAiReasoningModelRegex = new(@"^o\d", RegexOptions.IgnoreCase | RegexOptions.Compiled, CommonRegex.Timeout);
@@ -399,6 +345,4 @@ public sealed class GrokChatClient : IChatClient
             (_keyProvider is not null ? await _keyProvider.GetKeyAsync(UserApiCallScope.UserId, "grok", ct).ConfigureAwait(false) : null) ??
             Environment.GetEnvironmentVariable(envKey);
     }
-
-    private static string Trim(string s, int n) => s.Length <= n ? s : s[..n];
 }

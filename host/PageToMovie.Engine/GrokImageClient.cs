@@ -1,6 +1,4 @@
 using System.Diagnostics;
-using System.Net.Http.Headers;
-using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -38,8 +36,7 @@ public sealed class GrokImageClient : IImageClient
         _telemetry = telemetry;
         _log = log;
         _errorLogger = errorLogger;
-        if (_http.BaseAddress is null)
-            _http.BaseAddress = new Uri(ApiBase.TrimEnd(Path.AltDirectorySeparatorChar) + Path.AltDirectorySeparatorChar);
+        ProviderHttpHelpers.EnsureTrailingSlashBaseAddress(_http, ApiBase);
     }
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(ResolveApiKey());
@@ -489,9 +486,7 @@ public sealed class GrokImageClient : IImageClient
             "application/json");
         // Per-request Bearer — never mutate shared DefaultRequestHeaders (multi-user race).
         using var req = new HttpRequestMessage(HttpMethod.Post, EndpointEdits) { Content = content };
-        var key = ResolveApiKey();
-        if (!string.IsNullOrWhiteSpace(key))
-            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key.Trim());
+        ProviderHttpHelpers.ApplyBearer(req, ResolveApiKey());
         using var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
         var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
         return (resp.IsSuccessStatusCode, (int)resp.StatusCode, body, AiRetryPolicy.ParseRetryAfter(resp.Headers));
@@ -683,21 +678,13 @@ public sealed class GrokImageClient : IImageClient
     private static string? ResolveApiKey() =>
         ApiKeyScope.Current ?? Environment.GetEnvironmentVariable("XAI_API_KEY");
 
-    private async Task<HttpResponseMessage> SendJsonAsync(
-        HttpMethod method, string uri, object payload, CancellationToken ct)
-    {
-        using var req = new HttpRequestMessage(method, uri)
-        {
-            Content = JsonContent.Create(payload),
-        };
-        var key = ResolveApiKey();
-        if (!string.IsNullOrWhiteSpace(key))
-            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key.Trim());
-        return await _http.SendAsync(req, ct).ConfigureAwait(false);
-    }
+    private Task<HttpResponseMessage> SendJsonAsync(
+        HttpMethod method, string uri, object payload, CancellationToken ct) =>
+        ProviderHttpHelpers.SendJsonAsync(
+            _http, method, uri, payload, ct,
+            req => ProviderHttpHelpers.ApplyBearer(req, ResolveApiKey()));
 
-    private static string Trim(string s, int n) =>
-        s.Length <= n ? s : s[..n];
+    private static string Trim(string s, int n) => ProviderHttpHelpers.Trim(s, n);
 
     Task<IReadOnlyList<byte[]>> IImageClient.GenerateVariantsAsync(
         string prompt,

@@ -1,6 +1,4 @@
 using System.Diagnostics;
-using System.Net.Http.Headers;
-using System.Net.Http.Json;
 using System.Text.Json;
 using PageToMovie.Core.Models;
 using PageToMovie.Core.Options;
@@ -55,8 +53,7 @@ public sealed class AnthropicChatClient : IChatClient, IVisionClient
         _http = http;
         _telemetry = telemetry;
         _errorLogger = errorLogger;
-        if (_http.BaseAddress is null)
-            _http.BaseAddress = new Uri(ApiBase.TrimEnd(Path.AltDirectorySeparatorChar) + Path.AltDirectorySeparatorChar);
+        ProviderHttpHelpers.EnsureTrailingSlashBaseAddress(_http, ApiBase);
     }
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(ResolveApiKey());
@@ -174,15 +171,13 @@ public sealed class AnthropicChatClient : IChatClient, IVisionClient
     /// </summary>
     public Task<string> TranscribePageAsync(
         string imagePath, int page, string model = "", CancellationToken ct = default) =>
-        throw new NotSupportedException(
-            "Book-page transcription is not implemented for Anthropic yet — route this call to Grok.");
+        ChatClientHelpers.TranscribePageNotSupported("Anthropic");
 
     /// <inheritdoc cref="TranscribePageAsync"/>
     public Task<CharacterPageClassification> ClassifyCharactersOnImageAsync(
         string imagePath, int page, IReadOnlyList<CharacterClassifyHint> cast,
         string model = "", CancellationToken ct = default) =>
-        throw new NotSupportedException(
-            "Character-page classification is not implemented for Anthropic yet — route this call to Grok.");
+        ChatClientHelpers.ClassifyCharactersNotSupported("Anthropic");
 
     private async Task<string> SendAsync(
         Dictionary<string, object?> payload,
@@ -204,16 +199,14 @@ public sealed class AnthropicChatClient : IChatClient, IVisionClient
             // Auth on a per-request message, not _http.DefaultRequestHeaders: this client is a
             // singleton shared by every concurrent classifier call, and mutating shared headers
             // per-call is a race (one call's key can leak into or clobber another's in flight).
-            using var req = new HttpRequestMessage(HttpMethod.Post, endpoint)
-            {
-                Content = JsonContent.Create(payload),
-            };
-            if (!string.IsNullOrWhiteSpace(key))
-            {
-                req.Headers.Add("x-api-key", key.Trim());
-                req.Headers.Add("anthropic-version", ApiVersion);
-            }
-            using var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
+            using var resp = await ProviderHttpHelpers.SendJsonAsync(
+                _http, HttpMethod.Post, endpoint, payload, ct,
+                req =>
+                {
+                    if (string.IsNullOrWhiteSpace(key)) return;
+                    req.Headers.Add("x-api-key", key.Trim());
+                    req.Headers.Add("anthropic-version", ApiVersion);
+                }).ConfigureAwait(false);
             var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
             if (!resp.IsSuccessStatusCode)
             {
@@ -248,61 +241,20 @@ public sealed class AnthropicChatClient : IChatClient, IVisionClient
                         retryPayload, model, kind, endpoint, mode,
                         promptForLog, userPromptForLog, promptChars, attemptNum, ct).ConfigureAwait(false);
                 }
-
-                await _telemetry.LogApiCallAsync(new ApiCallTelemetry
-                {
-                    Kind = kind,
-                    Mode = modeTag,
-                    Endpoint = endpoint,
-                    Model = model,
-                    HttpStatus = (int)resp.StatusCode,
-                    DurationMs = sw.ElapsedMilliseconds,
-                    SystemPrompt = promptForLog,
-                    UserPrompt = userPromptForLog,
-                    PromptChars = promptChars,
-                    Attempt = attemptNum,
-                    Error = Trim(body, 800),
-                    Ok = false,
-                }, ct);
-                throw ChatHttpStatusException.FromResponse(resp,
-                    $"Anthropic {endpoint} HTTP {(int)resp.StatusCode}: {Trim(body, 800)}");
             }
 
-            using var doc = JsonDocument.Parse(body);
-            var text = ExtractMessageText(doc.RootElement);
-            await _telemetry.LogApiCallAsync(new ApiCallTelemetry
-            {
-                Kind = kind,
-                Mode = modeTag,
-                Endpoint = endpoint,
-                Model = model,
-                HttpStatus = (int)resp.StatusCode,
-                DurationMs = sw.ElapsedMilliseconds,
-                SystemPrompt = promptForLog,
-                UserPrompt = userPromptForLog,
-                PromptChars = promptChars,
-                Attempt = attemptNum,
-                ResponsePreview = text.Length > 2000 ? text[..2000] : text,
-                ResponseChars = text.Length,
-                Ok = true,
-            }, ct);
-            return text;
+            return await ChatClientHelpers.FinishChatResponseAsync(
+                _telemetry, resp, body, kind, modeTag, endpoint, model,
+                errorModel: null, sw.ElapsedMilliseconds,
+                promptForLog, userPromptForLog, promptChars, attemptNum,
+                ExtractMessageText, $"Anthropic {endpoint}", ct).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not InvalidOperationException)
         {
-            await _telemetry.LogApiCallAsync(new ApiCallTelemetry
-            {
-                Kind = kind,
-                Mode = modeTag,
-                Endpoint = endpoint,
-                Model = model,
-                DurationMs = sw.ElapsedMilliseconds,
-                SystemPrompt = promptForLog,
-                UserPrompt = userPromptForLog,
-                Attempt = attemptNum,
-                Error = ex.Message,
-                Ok = false,
-            }, ct);
+            await ChatClientHelpers.LogChatExceptionAsync(
+                _telemetry, ex, kind, modeTag, endpoint, model,
+                sw.ElapsedMilliseconds, promptForLog, userPromptForLog, attemptNum, ct)
+                .ConfigureAwait(false);
             throw;
         }
     }
@@ -340,8 +292,6 @@ public sealed class AnthropicChatClient : IChatClient, IVisionClient
                 return string.Join("\n", parts);
         }
         var raw = result.GetRawText();
-        return raw.Length <= 2000 ? raw : raw[..2000];
+        return ProviderHttpHelpers.Trim(raw, ChatClientHelpers.ResponsePreviewMax);
     }
-
-    private static string Trim(string s, int n) => s.Length <= n ? s : s[..n];
 }

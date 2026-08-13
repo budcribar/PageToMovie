@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Net.Http.Json;
 using System.Text.Json;
 using PageToMovie.Core.Models;
 using PageToMovie.Core.Options;
@@ -44,8 +43,7 @@ public sealed class GeminiVideoClient : IVideoClient
         _telemetry = telemetry;
         _log = log;
         _errorLogger = errorLogger;
-        if (_http.BaseAddress is null)
-            _http.BaseAddress = new Uri(ApiBase.TrimEnd('/') + '/');
+        ProviderHttpHelpers.EnsureTrailingSlashBaseAddress(_http, ApiBase);
     }
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(ResolveApiKey());
@@ -89,7 +87,7 @@ public sealed class GeminiVideoClient : IVideoClient
         var instance = new Dictionary<string, object?> { ["prompt"] = prompt };
         if (hasStart)
         {
-            var (mime, b64) = await FileToBase64Async(startFrameImagePath, ct).ConfigureAwait(false);
+            var (mime, b64) = await ProviderMediaHelpers.FileToBase64Async(startFrameImagePath!, ct).ConfigureAwait(false);
             instance["image"] = new Dictionary<string, object?>
             {
                 ["bytesBase64Encoded"] = b64,
@@ -135,20 +133,15 @@ public sealed class GeminiVideoClient : IVideoClient
                             PromptChars = prompt.Length,
                             Resolution = resolution,
                             DurationSec = durationSeconds,
-                            Error = Trim(body, 400),
+                            Error = ProviderHttpHelpers.Trim(body, 400),
                             Ok = false,
                         }, ct);
                         throw ChatHttpStatusException.FromResponse(resp,
-                            $"Gemini {endpoint} HTTP {(int)resp.StatusCode}: {Trim(body, 400)}");
+                            $"Gemini {endpoint} HTTP {(int)resp.StatusCode}: {ProviderHttpHelpers.Trim(body, 400)}");
                     }
 
-                    using var doc = JsonDocument.Parse(body);
-                    if (!doc.RootElement.TryGetProperty("name", out var nameEl) ||
-                        nameEl.GetString() is not { Length: > 0 } opName)
-                    {
-                        throw new InvalidOperationException(
-                            $"Gemini predictLongRunning response missing operation name: {Trim(body, 300)}");
-                    }
+                    var opName = ProviderHttpHelpers.RequireJsonString(
+                        body, "name", "Gemini predictLongRunning response missing operation name");
 
                     await _telemetry.LogApiCallAsync(new ApiCallTelemetry
                     {
@@ -195,8 +188,7 @@ public sealed class GeminiVideoClient : IVideoClient
         Action<string>? onProgress,
         CancellationToken ct)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(Math.Max(60, _opts.GrokTimeoutSeconds));
-        var poll = Math.Max(2, _opts.GrokPollSeconds);
+        var (deadline, poll) = VideoClientHelpers.PollWindow(_opts);
         var sw = Stopwatch.StartNew();
         var polls = 0;
         // requestId is the full operation name returned by SubmitGenerationAsync, e.g.
@@ -220,11 +212,8 @@ public sealed class GeminiVideoClient : IVideoClient
                     async _ =>
                     {
                         using var resp = await SendAsync(HttpMethod.Get, opPath, content: null, ct).ConfigureAwait(false);
-                        var b = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-                        if (!resp.IsSuccessStatusCode)
-                            throw ChatHttpStatusException.FromResponse(resp,
-                                $"Gemini operation poll HTTP {(int)resp.StatusCode}: {Trim(b, 400)}");
-                        return b;
+                        return await ProviderHttpHelpers.ReadSuccessBodyAsync(
+                            resp, ct, "Gemini operation poll").ConfigureAwait(false);
                     },
                     isTransient: AiRetryPolicy.IsTransientChatFailure,
                     maxAttempts: AiRetryPolicy.DefaultTransientMaxAttempts,
@@ -246,7 +235,7 @@ public sealed class GeminiVideoClient : IVideoClient
                     HttpStatus = ex is ChatHttpStatusException hse ? hse.StatusCode : null,
                     DurationMs = sw.ElapsedMilliseconds,
                     Attempt = polls,
-                    Error = Trim(ex.Message, 400),
+                    Error = ProviderHttpHelpers.Trim(ex.Message, 400),
                     Ok = false,
                 }, ct);
                 await _telemetry.LogOutcomeAsync(null, requestId, VideoJobOutcome.PollFailed, sw.ElapsedMilliseconds, polls, ok: false, ex.Message, ct);
@@ -270,11 +259,11 @@ public sealed class GeminiVideoClient : IVideoClient
                     DurationMs = sw.ElapsedMilliseconds,
                     Attempt = polls,
                     Mode = "failed",
-                    Error = Trim(detail, 500),
+                    Error = ProviderHttpHelpers.Trim(detail, 500),
                     Ok = false,
                 }, ct);
-                await _telemetry.LogOutcomeAsync(null, requestId, VideoJobOutcome.ProviderFailed, sw.ElapsedMilliseconds, polls, ok: false, Trim(detail, 500), ct);
-                throw new InvalidOperationException($"Gemini video operation failed: {Trim(detail, 400)}");
+                await _telemetry.LogOutcomeAsync(null, requestId, VideoJobOutcome.ProviderFailed, sw.ElapsedMilliseconds, polls, ok: false, ProviderHttpHelpers.Trim(detail, 500), ct);
+                throw new InvalidOperationException($"Gemini video operation failed: {ProviderHttpHelpers.Trim(detail, 400)}");
             }
 
             if (done)
@@ -286,7 +275,7 @@ public sealed class GeminiVideoClient : IVideoClient
                     throw new InvalidOperationException(
                         $"Gemini operation done but no video URI found in response " +
                         $"(schema may differ from expected — see class-level CONFIDENCE NOTE): " +
-                        $"{Trim(body, 500)}");
+                        $"{ProviderHttpHelpers.Trim(body, 500)}");
                 }
                 await _telemetry.LogApiCallAsync(new ApiCallTelemetry
                 {
@@ -307,8 +296,9 @@ public sealed class GeminiVideoClient : IVideoClient
             await Task.Delay(TimeSpan.FromSeconds(poll), ct).ConfigureAwait(false);
         }
 
-        await _telemetry.LogOutcomeAsync(null, requestId, VideoJobOutcome.TimedOut, sw.ElapsedMilliseconds, polls, ok: false, $"timed out after {_opts.GrokTimeoutSeconds}s", ct);
-        throw new TimeoutException($"Gemini video operation timed out after {_opts.GrokTimeoutSeconds}s");
+        return await VideoClientHelpers.ThrowTimedOutAsync(
+            _telemetry, requestId, sw, polls, _opts.GrokTimeoutSeconds,
+            $"Gemini video operation timed out after {_opts.GrokTimeoutSeconds}s", ct);
     }
 
     /// <summary>
@@ -359,20 +349,10 @@ public sealed class GeminiVideoClient : IVideoClient
     /// Grok-only optimization (see <see cref="IVideoEditClient"/>).</summary>
     public (string? FileId, long? ExpiresAtUnixSeconds) TryGetStoredFileReference(string requestId) => (null, null);
 
-    public async Task DownloadToFileAsync(string url, string destPath, CancellationToken ct)
-    {
-        Directory.CreateDirectory(Path.GetDirectoryName(destPath));
-        // Google file/media download URLs generally need the same API key as the rest of the API.
-        // Auth is on the request only (not shared DefaultRequestHeaders).
-        using var req = new HttpRequestMessage(HttpMethod.Get, url);
-        ApplyApiKey(req);
-        using var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct)
-            .ConfigureAwait(false);
-        resp.EnsureSuccessStatusCode();
-        await using var fs = File.Create(destPath);
-        await resp.Content.CopyToAsync(fs, ct).ConfigureAwait(false);
-        _log.LogInformation("Downloaded {Bytes} bytes → {Path}", new FileInfo(destPath).Length, destPath);
-    }
+    public Task DownloadToFileAsync(string url, string destPath, CancellationToken ct) =>
+        ProviderHttpHelpers.DownloadToFileAsync(
+            _http, url, destPath, ct, _log,
+            configureRequest: req => ProviderHttpHelpers.ApplyGoogleApiKey(req, ResolveApiKey()));
 
     /// <summary>
     /// Catalog's <c>DefaultAspectRatio</c> for the requested Veo model, falling back to the
@@ -389,43 +369,19 @@ public sealed class GeminiVideoClient : IVideoClient
             _ => "720p", // Veo's minimum documented resolution tier; 480p is Grok-specific
         };
 
-    private static async Task<(string Mime, string Base64)> FileToBase64Async(string path, CancellationToken ct)
-    {
-        var bytes = await File.ReadAllBytesAsync(path, ct).ConfigureAwait(false);
-        var ext = Path.GetExtension(path).ToLowerInvariant();
-        var mime = ext switch
-        {
-            ".png" => "image/png",
-            ".webp" => "image/webp",
-            ".jpg" or ".jpeg" => "image/jpeg",
-            _ => "image/jpeg",
-        };
-        return (mime, Convert.ToBase64String(bytes));
-    }
-
     private static string? ResolveApiKey() =>
         ApiKeyScope.CurrentGemini
         ?? Environment.GetEnvironmentVariable(SupportedModelCatalog.GoogleApiKeyEnv);
 
-    private static void ApplyApiKey(HttpRequestMessage req)
-    {
-        var key = ResolveApiKey();
-        if (!string.IsNullOrWhiteSpace(key))
-            req.Headers.TryAddWithoutValidation("x-goog-api-key", key.Trim());
-    }
-
-    private async Task<HttpResponseMessage> SendJsonAsync(
+    private Task<HttpResponseMessage> SendJsonAsync(
         HttpMethod method, string uri, object payload, CancellationToken ct) =>
-        await SendAsync(method, uri, JsonContent.Create(payload), ct).ConfigureAwait(false);
+        ProviderHttpHelpers.SendJsonAsync(
+            _http, method, uri, payload, ct,
+            req => ProviderHttpHelpers.ApplyGoogleApiKey(req, ResolveApiKey()));
 
-    private async Task<HttpResponseMessage> SendAsync(
-        HttpMethod method, string uri, HttpContent? content, CancellationToken ct)
-    {
-        // Per-request API key — never mutate shared DefaultRequestHeaders (multi-user race).
-        using var req = new HttpRequestMessage(method, uri) { Content = content };
-        ApplyApiKey(req);
-        return await _http.SendAsync(req, ct).ConfigureAwait(false);
-    }
-
-    private static string Trim(string s, int n) => s.Length <= n ? s : s[..n];
+    private Task<HttpResponseMessage> SendAsync(
+        HttpMethod method, string uri, HttpContent? content, CancellationToken ct) =>
+        ProviderHttpHelpers.SendAsync(
+            _http, method, uri, content, ct,
+            req => ProviderHttpHelpers.ApplyGoogleApiKey(req, ResolveApiKey()));
 }

@@ -1,7 +1,5 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Net.Http.Headers;
-using System.Net.Http.Json;
 using System.Text.Json;
 using PageToMovie.Core.Models;
 using PageToMovie.Core.Options;
@@ -54,8 +52,7 @@ public sealed class GrokVideoClient : IVideoClient
         _telemetry = telemetry;
         _log = log;
         _errorLogger = errorLogger;
-        if (_http.BaseAddress is null)
-            _http.BaseAddress = new Uri(ApiBase.TrimEnd('/') + '/');
+        ProviderHttpHelpers.EnsureTrailingSlashBaseAddress(_http, ApiBase);
     }
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(ResolveApiKey());
@@ -350,19 +347,11 @@ public sealed class GrokVideoClient : IVideoClient
             async _ =>
             {
                 using var extResp = await SendJsonAsync(HttpMethod.Post, "videos/extensions", extPayload, ct);
-                var extBody = await extResp.Content.ReadAsStringAsync(ct);
-                if (!extResp.IsSuccessStatusCode)
-                    throw ChatHttpStatusException.FromResponse(extResp,
-                        $"Grok video extend HTTP {(int)extResp.StatusCode}: {Trim(extBody, 500)}");
-
-                using var extDoc = JsonDocument.Parse(extBody);
-                if (!extDoc.RootElement.TryGetProperty("request_id", out var extRid) ||
-                    extRid.GetString() is not { Length: > 0 } extId)
-                {
-                    throw new InvalidOperationException(
-                        $"Grok extend response missing request_id: {Trim(extBody, 300)}");
-                }
-                return extId;
+                return await ProviderHttpHelpers.ReadRequiredJsonStringAsync(
+                    extResp, ct, "request_id",
+                    "Grok video extend",
+                    "Grok extend response missing request_id",
+                    errorTrim: 500);
             },
             isTransient: AiRetryPolicy.IsTransientChatFailure,
             maxAttempts: AiRetryPolicy.DefaultTransientMaxAttempts,
@@ -427,18 +416,10 @@ public sealed class GrokVideoClient : IVideoClient
             async _ =>
             {
                 using var resp = await SendJsonAsync(HttpMethod.Post, "videos/generations", payload, ct);
-                var body = await resp.Content.ReadAsStringAsync(ct);
-                if (!resp.IsSuccessStatusCode)
-                    throw ChatHttpStatusException.FromResponse(resp,
-                        $"Grok submit HTTP {(int)resp.StatusCode}: {Trim(body, 400)}");
-
-                using var doc = JsonDocument.Parse(body);
-                if (!doc.RootElement.TryGetProperty("request_id", out var rid) ||
-                    rid.GetString() is not { Length: > 0 } id)
-                {
-                    throw new InvalidOperationException($"Grok response missing request_id: {Trim(body, 300)}");
-                }
-                return id;
+                return await ProviderHttpHelpers.ReadRequiredJsonStringAsync(
+                    resp, ct, "request_id",
+                    "Grok submit",
+                    "Grok response missing request_id");
             },
             isTransient: AiRetryPolicy.IsTransientChatFailure,
             maxAttempts: AiRetryPolicy.DefaultTransientMaxAttempts,
@@ -464,8 +445,7 @@ public sealed class GrokVideoClient : IVideoClient
         Action<string>? onProgress,
         CancellationToken ct)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(Math.Max(60, _opts.GrokTimeoutSeconds));
-        var poll = Math.Max(2, _opts.GrokPollSeconds);
+        var (deadline, poll) = VideoClientHelpers.PollWindow(_opts);
         var sw = Stopwatch.StartNew();
         var polls = 0;
         var retriedAnyPoll = false;
@@ -486,24 +466,18 @@ public sealed class GrokVideoClient : IVideoClient
             if (string.Equals(status, "done", StringComparison.OrdinalIgnoreCase))
                 return await HandlePollDoneAsync(requestId, root, sw, polls, retriedAnyPoll, ct).ConfigureAwait(false);
 
-            if (IsPollFailedOrExpired(status))
+            if (VideoClientHelpers.IsPollFailedOrExpired(status))
                 await HandlePollFailedOrExpiredAsync(requestId, root, body, status, sw, polls, ct).ConfigureAwait(false);
 
             var progress = root.TryGetProperty("progress", out var pr) ? pr.ToString() : null;
-            onProgress?.Invoke(FormatPollProgress(status, progress));
+            onProgress?.Invoke(VideoClientHelpers.FormatPollProgress(status, progress));
             await Task.Delay(TimeSpan.FromSeconds(poll), ct);
         }
 
-        await _telemetry.LogOutcomeAsync(null, requestId, VideoJobOutcome.TimedOut, sw.ElapsedMilliseconds, polls, ok: false, $"timed out after {_opts.GrokTimeoutSeconds}s", ct);
-        throw new TimeoutException($"Grok job timed out after {_opts.GrokTimeoutSeconds}s");
+        return await VideoClientHelpers.ThrowTimedOutAsync(
+            _telemetry, requestId, sw, polls, _opts.GrokTimeoutSeconds,
+            $"Grok job timed out after {_opts.GrokTimeoutSeconds}s", ct);
     }
-
-    private static bool IsPollFailedOrExpired(string? status) =>
-        string.Equals(status, "failed", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(status, "expired", StringComparison.OrdinalIgnoreCase);
-
-    private static string FormatPollProgress(string? status, string? progress) =>
-        progress is null ? $"status={status}" : $"status={status} ({progress}%)";
 
     private async Task<(string Body, bool Retried)> PollOnceGetAsync(
         string requestId, int polls, Stopwatch sw, CancellationToken ct)
@@ -524,7 +498,7 @@ public sealed class GrokVideoClient : IVideoClient
                 HttpStatus = ex is ChatHttpStatusException hse ? hse.StatusCode : null,
                 DurationMs = sw.ElapsedMilliseconds,
                 Attempt = polls,
-                Error = Trim(ex.Message, 400),
+                Error = ProviderHttpHelpers.Trim(ex.Message, 400),
                 Ok = false,
             }, ct);
             await _telemetry.LogOutcomeAsync(null, requestId, VideoJobOutcome.PollFailed, sw.ElapsedMilliseconds, polls, ok: false, ex.Message, ct);
@@ -549,11 +523,7 @@ public sealed class GrokVideoClient : IVideoClient
     private async Task<string> GetPollResponseAsync(string requestId, CancellationToken ct)
     {
         using var resp = await SendAsync(HttpMethod.Get, $"videos/{requestId}", content: null, ct);
-        var b = await resp.Content.ReadAsStringAsync(ct);
-        if (!resp.IsSuccessStatusCode)
-            throw ChatHttpStatusException.FromResponse(resp,
-                $"Grok poll HTTP {(int)resp.StatusCode}: {Trim(b, 400)}");
-        return b;
+        return await ProviderHttpHelpers.ReadSuccessBodyAsync(resp, ct, "Grok poll");
     }
 
     private async Task<string> HandlePollDoneAsync(
@@ -612,7 +582,7 @@ public sealed class GrokVideoClient : IVideoClient
     private async Task HandlePollFailedOrExpiredAsync(
         string requestId, JsonElement root, string body, string? status, Stopwatch sw, int polls, CancellationToken ct)
     {
-        var detail = root.TryGetProperty("error", out var err) ? err.ToString() : body;
+        var detail = VideoClientHelpers.PollErrorDetail(root, body);
         await _telemetry.LogApiCallAsync(new ApiCallTelemetry
         {
             Kind = "video_poll",
@@ -622,27 +592,18 @@ public sealed class GrokVideoClient : IVideoClient
             DurationMs = sw.ElapsedMilliseconds,
             Attempt = polls,
             Mode = status,
-            Error = Trim(detail, 500),
+            Error = ProviderHttpHelpers.Trim(detail, 500),
             Ok = false,
         }, ct);
-        await _telemetry.LogOutcomeAsync(null, requestId, string.Equals(status, "expired", StringComparison.OrdinalIgnoreCase) ? VideoJobOutcome.Expired : VideoJobOutcome.ProviderFailed, sw.ElapsedMilliseconds, polls, ok: false, Trim(detail, 500), ct);
-        throw new InvalidOperationException($"Grok job {status}: {Trim(detail, 400)}");
+        await _telemetry.LogOutcomeAsync(null, requestId, VideoClientHelpers.ExpiredOrFailed(status), sw.ElapsedMilliseconds, polls, ok: false, ProviderHttpHelpers.Trim(detail, 500), ct);
+        throw new InvalidOperationException($"Grok job {status}: {ProviderHttpHelpers.Trim(detail, 400)}");
     }
 
     public (string? FileId, long? ExpiresAtUnixSeconds) TryGetStoredFileReference(string requestId) =>
         _fileRefs.TryGetValue(requestId, out var v) ? v : (null, null);
 
-    public async Task DownloadToFileAsync(string url, string destPath, CancellationToken ct)
-    {
-        var destDir = Path.GetDirectoryName(destPath);
-        if (destDir is not null)
-            Directory.CreateDirectory(destDir);
-        using var resp = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
-        resp.EnsureSuccessStatusCode();
-        await using var fs = File.Create(destPath);
-        await resp.Content.CopyToAsync(fs, ct);
-        _log.LogInformation("Downloaded {Bytes} bytes → {Path}", new FileInfo(destPath).Length, destPath);
-    }
+    public Task DownloadToFileAsync(string url, string destPath, CancellationToken ct) =>
+        ProviderHttpHelpers.DownloadToFileAsync(_http, url, destPath, ct, _log);
 
     /// <summary>
     /// Prefer ambient job/request key (multi-user), else process env.
@@ -652,23 +613,15 @@ public sealed class GrokVideoClient : IVideoClient
     private static string? ResolveApiKey() =>
         ApiKeyScope.Current ?? Environment.GetEnvironmentVariable("XAI_API_KEY");
 
-    private async Task<HttpResponseMessage> SendJsonAsync(
-        HttpMethod method, string uri, object payload, CancellationToken ct)
-    {
-        var content = JsonContent.Create(payload);
-        return await SendAsync(method, uri, content, ct).ConfigureAwait(false);
-    }
+    private Task<HttpResponseMessage> SendJsonAsync(
+        HttpMethod method, string uri, object payload, CancellationToken ct) =>
+        ProviderHttpHelpers.SendJsonAsync(
+            _http, method, uri, payload, ct,
+            req => ProviderHttpHelpers.ApplyBearer(req, ResolveApiKey()));
 
-    private async Task<HttpResponseMessage> SendAsync(
-        HttpMethod method, string uri, HttpContent? content, CancellationToken ct)
-    {
-        using var req = new HttpRequestMessage(method, uri) { Content = content };
-        var key = ResolveApiKey();
-        if (!string.IsNullOrWhiteSpace(key))
-            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key.Trim());
-        return await _http.SendAsync(req, ct).ConfigureAwait(false);
-    }
-
-    private static string Trim(string s, int n) =>
-        s.Length <= n ? s : s[..n];
+    private Task<HttpResponseMessage> SendAsync(
+        HttpMethod method, string uri, HttpContent? content, CancellationToken ct) =>
+        ProviderHttpHelpers.SendAsync(
+            _http, method, uri, content, ct,
+            req => ProviderHttpHelpers.ApplyBearer(req, ResolveApiKey()));
 }

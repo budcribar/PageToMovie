@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Net.Http.Json;
 using System.Text.Json;
 using PageToMovie.Core.Models;
 using PageToMovie.Core.Options;
@@ -36,8 +35,7 @@ public sealed class GeminiChatClient : IChatClient, IVisionClient, IGeminiVideoA
         _http = http;
         _telemetry = telemetry;
         _errorLogger = errorLogger;
-        if (_http.BaseAddress is null)
-            _http.BaseAddress = new Uri(ApiBase.TrimEnd('/') + '/');
+        ProviderHttpHelpers.EnsureTrailingSlashBaseAddress(_http, ApiBase);
         if (_http.Timeout < TimeSpan.FromSeconds(180))
             _http.Timeout = TimeSpan.FromSeconds(180);
     }
@@ -153,15 +151,13 @@ public sealed class GeminiChatClient : IChatClient, IVisionClient, IGeminiVideoA
     /// </summary>
     public Task<string> TranscribePageAsync(
         string imagePath, int page, string model = "", CancellationToken ct = default) =>
-        throw new NotSupportedException(
-            "Book-page transcription is not implemented for Gemini yet — route this call to Grok.");
+        ChatClientHelpers.TranscribePageNotSupported("Gemini");
 
     /// <inheritdoc cref="TranscribePageAsync"/>
     public Task<CharacterPageClassification> ClassifyCharactersOnImageAsync(
         string imagePath, int page, IReadOnlyList<CharacterClassifyHint> cast,
         string model = "", CancellationToken ct = default) =>
-        throw new NotSupportedException(
-            "Character-page classification is not implemented for Gemini yet — route this call to Grok.");
+        ChatClientHelpers.ClassifyCharactersNotSupported("Gemini");
 
     private static string NormalizeModelName(string? model)
     {
@@ -196,13 +192,9 @@ public sealed class GeminiChatClient : IChatClient, IVisionClient, IGeminiVideoA
             // Auth on a per-request message, not _http.DefaultRequestHeaders: this client is a
             // singleton shared by every concurrent classifier call, and mutating shared headers
             // per-call is a race (one call's key can leak into or clobber another's in flight).
-            using var req = new HttpRequestMessage(HttpMethod.Post, endpoint)
-            {
-                Content = JsonContent.Create(payload),
-            };
-            if (!string.IsNullOrWhiteSpace(key))
-                req.Headers.Add("x-goog-api-key", key.Trim());
-            using var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
+            using var resp = await ProviderHttpHelpers.SendJsonAsync(
+                _http, HttpMethod.Post, endpoint, payload, ct,
+                req => ProviderHttpHelpers.ApplyGoogleApiKey(req, key)).ConfigureAwait(false);
             var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
             if (!resp.IsSuccessStatusCode)
             {
@@ -221,62 +213,22 @@ public sealed class GeminiChatClient : IChatClient, IVisionClient, IGeminiVideoA
                     retryPayload["generationConfig"] = retryGenConfig;
                     return await SendAsync(retryPayload, model, kind, mode, promptForLog, userPromptForLog, promptChars, attemptNum, ct).ConfigureAwait(false);
                 }
-
-                await _telemetry.LogApiCallAsync(new ApiCallTelemetry
-                {
-                    Kind = kind,
-                    Mode = modeTag,
-                    Endpoint = endpoint,
-                    Model = targetModel,
-                    HttpStatus = (int)resp.StatusCode,
-                    DurationMs = sw.ElapsedMilliseconds,
-                    SystemPrompt = promptForLog,
-                    UserPrompt = userPromptForLog,
-                    PromptChars = promptChars,
-                    Attempt = attemptNum,
-                    Error = Trim(body, 800),
-                    Ok = false,
-                }, ct);
-                throw ChatHttpStatusException.FromResponse(resp,
-                    $"Gemini {endpoint} HTTP {(int)resp.StatusCode}: {Trim(body, 800)}");
             }
 
-            using var doc = JsonDocument.Parse(body);
-            var text = ExtractMessageText(doc.RootElement);
-            await _telemetry.LogApiCallAsync(new ApiCallTelemetry
-            {
-                Kind = kind,
-                Mode = modeTag,
-                Endpoint = endpoint,
-                Model = model,
-                HttpStatus = (int)resp.StatusCode,
-                DurationMs = sw.ElapsedMilliseconds,
-                SystemPrompt = promptForLog,
-                UserPrompt = userPromptForLog,
-                PromptChars = promptChars,
-                Attempt = attemptNum,
-                ResponsePreview = text.Length > 2000 ? text[..2000] : text,
-                ResponseChars = text.Length,
-                Ok = true,
-            }, ct);
+            var text = await ChatClientHelpers.FinishChatResponseAsync(
+                _telemetry, resp, body, kind, modeTag, endpoint, model,
+                errorModel: targetModel, sw.ElapsedMilliseconds,
+                promptForLog, userPromptForLog, promptChars, attemptNum,
+                ExtractMessageText, $"Gemini {endpoint}", ct).ConfigureAwait(false);
             _lastResolvedModel.Value = targetModel;
             return text;
         }
         catch (Exception ex) when (ex is not InvalidOperationException)
         {
-            await _telemetry.LogApiCallAsync(new ApiCallTelemetry
-            {
-                Kind = kind,
-                Mode = modeTag,
-                Endpoint = endpoint,
-                Model = model,
-                DurationMs = sw.ElapsedMilliseconds,
-                SystemPrompt = promptForLog,
-                UserPrompt = userPromptForLog,
-                Attempt = attemptNum,
-                Error = ex.Message,
-                Ok = false,
-            }, ct);
+            await ChatClientHelpers.LogChatExceptionAsync(
+                _telemetry, ex, kind, modeTag, endpoint, model,
+                sw.ElapsedMilliseconds, promptForLog, userPromptForLog, attemptNum, ct)
+                .ConfigureAwait(false);
             throw;
         }
     }
@@ -315,8 +267,6 @@ public sealed class GeminiChatClient : IChatClient, IVisionClient, IGeminiVideoA
             }
         }
         var raw = result.GetRawText();
-        return raw.Length <= 2000 ? raw : raw[..2000];
+        return ProviderHttpHelpers.Trim(raw, ChatClientHelpers.ResponsePreviewMax);
     }
-
-    private static string Trim(string s, int n) => s.Length <= n ? s : s[..n];
 }
