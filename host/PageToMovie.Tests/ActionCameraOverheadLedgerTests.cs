@@ -8,11 +8,9 @@ public class ActionCameraOverheadLedgerTests
     [Fact]
     public void GetOverheadSec_ReturnsEmpiricalBenchmarkValue()
     {
-        var ledger = new ActionCameraOverheadLedger();
-
-        Assert.Equal(1.6, ledger.GetOverheadSec("cam_push_in"));
-        Assert.Equal(2.0, ledger.GetOverheadSec("act_knife_pull"));
-        Assert.Equal(3.1, ledger.GetOverheadSec("act_stabbing"));
+        Assert.Equal(1.6, ActionCameraOverheadLedger.GetOverheadSec("cam_push_in"));
+        Assert.Equal(2.0, ActionCameraOverheadLedger.GetOverheadSec("act_knife_pull"));
+        Assert.Equal(3.1, ActionCameraOverheadLedger.GetOverheadSec("act_stabbing"));
     }
 
     [Fact]

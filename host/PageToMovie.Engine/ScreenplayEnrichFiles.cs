@@ -79,7 +79,7 @@ public static class ScreenplayEnrichFiles
         string label = "xAI Files")
     {
         if (deps.UseFakes) return null;
-        if (deps.Responses is null || !deps.Responses.IsConfigured) return null;
+        if (deps.Responses is null || !XaiResponsesClient.IsConfigured) return null;
         if (!LooksXai(model)) return null;
 
         var fileIds = new List<string>();

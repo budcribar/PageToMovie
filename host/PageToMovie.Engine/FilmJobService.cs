@@ -5630,7 +5630,7 @@ public sealed class FilmJobService
         var wordCount = ExtractClipDialogueWordCount(ctx.ClipEl);
         var camCat = ExtractCameraCategory(ctx.ClipEl);
         var actCat = await ClassifyActionCategoryAsync(built.Prompt ?? "", ctx.Ct).ConfigureAwait(false);
-        double camOverhead = _timingLedger?.GetOverheadSec(camCat, 1.6) ?? 1.6;
+        double camOverhead = _timingLedger is null ? 1.6 : ActionCameraOverheadLedger.GetOverheadSec(camCat, 1.6);
         double netSpeechSec = wordCount > 0 ? (wordCount / ClipDurationEstimator.DialogueWordsPerSecond) : 0.0;
         double measuredActOverhead = Math.Max(0.5, Math.Round(probedSec - camOverhead - netSpeechSec, 2));
         StartTimingTelemetryRecord(
