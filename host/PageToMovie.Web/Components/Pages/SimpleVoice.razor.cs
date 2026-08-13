@@ -36,12 +36,13 @@ public partial class SimpleVoice
     internal string? _error;
     internal string? _message;
     private bool _sessionReady;
+    private EngineApiClient? _boundEngine;
 
     /// <summary>Child phase components mutate host state; ensure shell re-renders (phase switch).</summary>
     internal void Notify() => StateHasChanged();
 
-    /// <summary>Test seam — the injected Engine property name collides with the Engine namespace.</summary>
-    internal void BindEngine(EngineApiClient engine) => Engine = engine;
+    /// <summary>Test seam so LoadStoriesAsync can run without a Blazor renderer.</summary>
+    internal void BindEngine(EngineApiClient engine) => _boundEngine = engine;
 
     /// <summary>
     /// Marshal a paint onto the renderer. Must not be blocked by OnAfterRenderAsync awaiting
@@ -49,6 +50,7 @@ public partial class SimpleVoice
     /// </summary>
     internal async Task PaintAsync()
     {
+        _ = _storiesLoading;
         try
         {
             await InvokeAsync(StateHasChanged);
@@ -102,7 +104,7 @@ public partial class SimpleVoice
         await PaintAsync();
         try
         {
-            var (stories, error) = await Engine.ListForkableProjectsAsync();
+            var (stories, error) = await (_boundEngine ?? Engine).ListForkableProjectsAsync();
             _forkableStories = stories;
             _storiesError = error;
         }
