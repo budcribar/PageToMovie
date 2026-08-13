@@ -724,7 +724,7 @@ public sealed class FilmJobService
     {
         if (string.IsNullOrWhiteSpace(projectId))
             return null;
-        return _telemetry.UseProject(projectId);
+        return ProjectTelemetryService.UseProject(projectId);
     }
 
     private async Task TryFinishCancelledQueuedJobAsync()

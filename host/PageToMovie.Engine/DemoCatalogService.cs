@@ -372,7 +372,7 @@ public sealed class DemoCatalogService
         && !string.Equals(e.Status, DemoStatuses.Rejected, StringComparison.OrdinalIgnoreCase)
         && !string.IsNullOrWhiteSpace(e.YoutubeId);
 
-    public bool CanUserViewVideo(DemoEntry e, string? userId, bool isAdmin)
+    public static bool CanUserViewVideo(DemoEntry e, string? userId, bool isAdmin)
     {
         if (IsPubliclyStreamable(e))
             return true;

@@ -147,7 +147,7 @@ namespace PageToMovie.Engine
         /// <summary>
         /// Reads the text content of a file at a specific Git commit hash.
         /// </summary>
-        public string? GetFileContentAtCommit(string projectPath, string commitHash, string relativeFilePath)
+        public static string? GetFileContentAtCommit(string projectPath, string commitHash, string relativeFilePath)
         {
             if (string.IsNullOrWhiteSpace(projectPath) || !Directory.Exists(projectPath) || !Repository.IsValid(projectPath))
                 return null;
@@ -167,7 +167,7 @@ namespace PageToMovie.Engine
         /// <summary>
         /// Retrieves uncommitted file changes in the project's working directory.
         /// </summary>
-        public (bool HasChanges, List<string> ModifiedFiles) GetUncommittedStatus(string projectPath)
+        public static (bool HasChanges, List<string> ModifiedFiles) GetUncommittedStatus(string projectPath)
         {
             if (string.IsNullOrWhiteSpace(projectPath) || !Directory.Exists(projectPath) || !Repository.IsValid(projectPath))
                 return (false, new List<string>());
@@ -711,7 +711,7 @@ namespace PageToMovie.Engine
         }
 
         private static bool HasDotDotSegment(string fullPath) =>
-            fullPath.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            fullPath.Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.None)
                 .Any(segment => segment == "..");
 
         private static void EnsureGitignore(string projectPath)

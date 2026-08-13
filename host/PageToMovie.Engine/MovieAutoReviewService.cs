@@ -87,7 +87,7 @@ public sealed class MovieAutoReviewService
         if (!_vision.IsConfigured)
             throw new InvalidOperationException("AI service key required for full movie review.");
 
-        using var _telScope = _telemetry.UseProject(projectId);
+        using var _telScope = ProjectTelemetryService.UseProject(projectId);
         _ = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
 
         onProgress?.Invoke(10, "Organizing scene keyframes for full movie review…");

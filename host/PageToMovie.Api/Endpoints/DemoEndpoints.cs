@@ -116,7 +116,7 @@ public static class DemoEndpoints
     var d = await demos.TryGetAsync(demoId, ct);
     if (d is null)
         return Results.NotFound(new { ok = false, error = ApiText.DemoNotFound });
-    if (!demos.CanUserViewVideo(d, user.UserId, user.IsAdmin))
+    if (!DemoCatalogService.CanUserViewVideo(d, user.UserId, user.IsAdmin))
         return Results.NotFound(new { ok = false, error = ApiText.DemoNotFound });
     var count = await upvotes.GetCountAsync(demoId, ct);
     var me = await upvotes.HasUpvotedAsync(demoId, user.UserId, ct);
@@ -259,7 +259,7 @@ public static class DemoEndpoints
     var d = await demos.TryGetAsync(demoId, ct);
     if (d is null)
         return Results.NotFound(new { ok = false, error = "Demo video not found" });
-    if (!demos.CanUserViewVideo(d, user.UserId, user.IsAdmin))
+    if (!DemoCatalogService.CanUserViewVideo(d, user.UserId, user.IsAdmin))
         return Results.NotFound(new { ok = false, error = "Demo video not found" });
 
     // YouTube is the public source of truth — never stream server MP4 once YT id exists.
