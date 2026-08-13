@@ -365,4 +365,28 @@ public class ClientVideoStitchServiceTests
         Assert.Single(urls);
         Assert.Contains("scenes/1/clips/1/video", urls[0]);
     }
+
+    [Fact]
+    public async Task CollectSceneMediaUrlsAsync_UsesCompositeUrl_WhenClipsNotOnDisk()
+    {
+        // Arrange: scene 1 summary indicates composite exists, no individual clips on disk
+        var projectId = "test-project";
+        var handler = new FakeHttpMessageHandler(req => new HttpResponseMessage(HttpStatusCode.NotFound));
+        var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost") };
+        var engineClient = new EngineApiClient(httpClient);
+        var stitchService = new ClientVideoStitchService(null!, engineClient);
+
+        var sceneSummaries = new List<SceneSummary>
+        {
+            new() { SceneNumber = 1, CompositeExists = true, ClipsOnDisk = 0 }
+        };
+
+        // Act
+        var urls = await stitchService.CollectSceneMediaUrlsAsync(projectId, new[] { 1 }, sceneSummaries, staleScenes: null);
+
+        // Assert: Must return composite URL fallback when no individual clips exist
+        Assert.Single(urls);
+        Assert.Contains("scenes/1/composite", urls[0]);
+    }
 }
+
