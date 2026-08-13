@@ -31,7 +31,6 @@ public sealed class ClipAutoReviewService
     private readonly EditLogService _logs;
     private readonly ProjectRulesService _projectRules;
     private readonly ReviewIndexService _reviewIndex;
-    private readonly ProjectTelemetryService _telemetry;
     private readonly ILogger<ClipAutoReviewService> _log;
 
     public ClipAutoReviewService(
@@ -40,7 +39,6 @@ public sealed class ClipAutoReviewService
         EditLogService logs,
         ProjectRulesService projectRules,
         ReviewIndexService reviewIndex,
-        ProjectTelemetryService telemetry,
         ILogger<ClipAutoReviewService> log)
     {
         _projects = projects;
@@ -48,7 +46,6 @@ public sealed class ClipAutoReviewService
         _logs = logs;
         _projectRules = projectRules;
         _reviewIndex = reviewIndex;
-        _telemetry = telemetry;
         _log = log;
     }
 

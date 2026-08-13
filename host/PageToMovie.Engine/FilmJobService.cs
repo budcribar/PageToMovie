@@ -720,7 +720,7 @@ public sealed class FilmJobService
         await work(linked.Token);
     }
 
-    private IDisposable? CreateJobTelemetryScope(string? projectId)
+    private static IDisposable? CreateJobTelemetryScope(string? projectId)
     {
         if (string.IsNullOrWhiteSpace(projectId))
             return null;

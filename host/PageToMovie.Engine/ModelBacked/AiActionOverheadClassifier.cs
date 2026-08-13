@@ -13,7 +13,6 @@ namespace PageToMovie.Engine.ModelBacked;
 /// </summary>
 public sealed class AiActionOverheadClassifier
 {
-    private readonly ActionOverheadHeuristic _heuristic;
     private readonly ValidatedModelOperation<ActionInput, ActionClassifierEstimation>? _pipeline;
 
     public AiActionOverheadClassifier(
@@ -24,7 +23,6 @@ public sealed class AiActionOverheadClassifier
         string? modelOverride = null)
     {
         _ = ledger;
-        _heuristic = new ActionOverheadHeuristic();
         if (chat is null || !chat.IsConfigured)
             return;
 
@@ -32,7 +30,7 @@ public sealed class AiActionOverheadClassifier
             new ActionModelOperation(chat, router, log, modelOverride),
             new ActionResponseParser(),
             new ActionResultValidator(),
-            new ActionFallback(_heuristic),
+            new ActionFallback(),
             new ModelOperationOptions
             {
                 CorrectiveMaxAttempts = 1,
@@ -50,7 +48,7 @@ public sealed class AiActionOverheadClassifier
     {
         var result = await ClassifyNovelActionWithProvenanceAsync(actionDescription, parenthetical, ct)
             .ConfigureAwait(false);
-        return result.Value ?? _heuristic.Classify(actionDescription, parenthetical);
+        return result.Value ?? ActionOverheadHeuristic.Classify(actionDescription, parenthetical);
     }
 
     public Task<ValidatedModelResult<ActionClassifierEstimation>> ClassifyNovelActionWithProvenanceAsync(
@@ -62,7 +60,7 @@ public sealed class AiActionOverheadClassifier
         if (_pipeline is not null && !string.IsNullOrWhiteSpace(input.CombinedText))
             return _pipeline.ExecuteAsync(input, ct);
 
-        var value = _heuristic.Classify(input.ActionDescription, input.Parenthetical);
+        var value = ActionOverheadHeuristic.Classify(input.ActionDescription, input.Parenthetical);
         return Task.FromResult(new ValidatedModelResult<ActionClassifierEstimation>(
             value,
             ModelResultSource.DeterministicFallback,
@@ -74,10 +72,10 @@ public sealed class AiActionOverheadClassifier
     }
 
     public ActionClassifierEstimation ClassifyNovelAction(string actionDescription, string? parenthetical = null) =>
-        _heuristic.Classify(actionDescription, parenthetical);
+        ActionOverheadHeuristic.Classify(actionDescription, parenthetical);
 
     public ActionClassifierEstimation ClassifyNovelActionHeuristic(string actionDescription, string? parenthetical = null) =>
-        _heuristic.Classify(actionDescription, parenthetical);
+        ActionOverheadHeuristic.Classify(actionDescription, parenthetical);
 
     private sealed record ActionInput(string ActionDescription, string? Parenthetical)
     {
@@ -172,11 +170,10 @@ public sealed class AiActionOverheadClassifier
         }
     }
 
-    private sealed class ActionFallback(ActionOverheadHeuristic heuristic)
-        : IDeterministicFallback<ActionInput, ActionClassifierEstimation>
+    private sealed class ActionFallback : IDeterministicFallback<ActionInput, ActionClassifierEstimation>
     {
         public ActionClassifierEstimation Create(ActionInput input, IReadOnlyList<ModelValidationIssue> unresolvedIssues) =>
-            heuristic.Classify(input.ActionDescription, input.Parenthetical);
+            ActionOverheadHeuristic.Classify(input.ActionDescription, input.Parenthetical);
     }
 
     private const string SystemPrompt = """
