@@ -4665,21 +4665,20 @@ public sealed class FilmJobService
         return todo;
     }
 
-    private static bool TryAddSceneGenTodoItem(
+    private static void TryAddSceneGenTodoItem(
         List<(int ClipNum, JsonElement Clip)> todo,
         JsonElement c,
         StartSceneGenRequest req,
         string videoDir)
     {
         var cn = ClipKeying.ClipNumber(c);
-        if (cn <= 0) return false;
+        if (cn <= 0) return;
         if (req.Clip is int onlyClip && onlyClip > 0 && cn != onlyClip)
-            return false;
+            return;
         var path = Path.Combine(videoDir, $"scene_{req.Scene:D2}_clip_{cn:D2}.mp4");
         var missing = !ClipPresentOnServerOrClient(path);
         if (!req.OnlyMissing || missing)
             todo.Add((cn, c.Clone()));
-        return true;
     }
 
     private async Task<(bool RetryOnFail, int MaxRetries)> LoadQaRetryConfigAsync(string projectId, CancellationToken ct)
