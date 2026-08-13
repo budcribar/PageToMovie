@@ -134,16 +134,7 @@ public sealed class RuntimeConfigStore : IRuntimeConfigStore
             }
 
             if (req.Adaptation is { } a)
-            {
-                o.AdaptationDefaults.MaxSpeakingCast = ClampAdaptation(a.MaxSpeakingCast, 1, 40);
-                o.AdaptationDefaults.MaxDialogueWords = ClampAdaptation(a.MaxDialogueWords, 5, 200);
-                o.AdaptationDefaults.VoMaxSentences = ClampAdaptation(a.VoMaxSentences, 1, 10);
-                o.AdaptationDefaults.SceneCountMin = ClampAdaptation(a.SceneCountMin, 1, 500);
-                o.AdaptationDefaults.SceneCountMax = ClampAdaptation(a.SceneCountMax, 1, 500);
-                o.AdaptationDefaults.MinAudioCuesPerScene = ClampAdaptation(a.MinAudioCuesPerScene, 0, 10);
-                o.AdaptationDefaults.MinAudioCuesAtPeak = ClampAdaptation(a.MinAudioCuesAtPeak, 0, 10);
-                o.AdaptationDefaults.BodyWordsPerMinute = ClampAdaptation(a.BodyWordsPerMinute, 50, 400);
-            }
+                ApplyAdaptationDefaults(o.AdaptationDefaults, a);
 
             if (req.UseFakes is bool uf)
                 o.UseFakes = uf;
@@ -166,6 +157,18 @@ public sealed class RuntimeConfigStore : IRuntimeConfigStore
 
     private static int? ClampAdaptation(int? value, int min, int max) =>
         value is int v ? Math.Clamp(v, min, max) : null;
+
+    private static void ApplyAdaptationDefaults(AdaptationDefaultsOptions dest, AdaptationRuntimeDto src)
+    {
+        dest.MaxSpeakingCast = ClampAdaptation(src.MaxSpeakingCast, 1, 40);
+        dest.MaxDialogueWords = ClampAdaptation(src.MaxDialogueWords, 5, 200);
+        dest.VoMaxSentences = ClampAdaptation(src.VoMaxSentences, 1, 10);
+        dest.SceneCountMin = ClampAdaptation(src.SceneCountMin, 1, 500);
+        dest.SceneCountMax = ClampAdaptation(src.SceneCountMax, 1, 500);
+        dest.MinAudioCuesPerScene = ClampAdaptation(src.MinAudioCuesPerScene, 0, 10);
+        dest.MinAudioCuesAtPeak = ClampAdaptation(src.MinAudioCuesAtPeak, 0, 10);
+        dest.BodyWordsPerMinute = ClampAdaptation(src.BodyWordsPerMinute, 50, 400);
+    }
 
     private void TryLoadAndApply()
     {
@@ -196,16 +199,7 @@ public sealed class RuntimeConfigStore : IRuntimeConfigStore
                 o.Fakes.RateLimitEveryN = Math.Max(0, f.RateLimitEveryN);
             }
             if (dto.Adaptation is { } a)
-            {
-                o.AdaptationDefaults.MaxSpeakingCast = ClampAdaptation(a.MaxSpeakingCast, 1, 40);
-                o.AdaptationDefaults.MaxDialogueWords = ClampAdaptation(a.MaxDialogueWords, 5, 200);
-                o.AdaptationDefaults.VoMaxSentences = ClampAdaptation(a.VoMaxSentences, 1, 10);
-                o.AdaptationDefaults.SceneCountMin = ClampAdaptation(a.SceneCountMin, 1, 500);
-                o.AdaptationDefaults.SceneCountMax = ClampAdaptation(a.SceneCountMax, 1, 500);
-                o.AdaptationDefaults.MinAudioCuesPerScene = ClampAdaptation(a.MinAudioCuesPerScene, 0, 10);
-                o.AdaptationDefaults.MinAudioCuesAtPeak = ClampAdaptation(a.MinAudioCuesAtPeak, 0, 10);
-                o.AdaptationDefaults.BodyWordsPerMinute = ClampAdaptation(a.BodyWordsPerMinute, 50, 400);
-            }
+                ApplyAdaptationDefaults(o.AdaptationDefaults, a);
             if (dto.UseFakes is bool uf)
                 o.UseFakes = uf;
             if (dto.ChargeMultiplier is double mult)

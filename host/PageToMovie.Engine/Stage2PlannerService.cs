@@ -1410,30 +1410,24 @@ public sealed class Stage2PlannerService
         List<Dictionary<string, object?>> beats,
         int maxSeconds = ClipDurationEstimator.MaxSeconds,
         int? extensionMaxSeconds = null,
-        IReadOnlyList<bool>? extendsFromPrevious = null)
+        IReadOnlyList<bool>? extendsFromPrevious = null) =>
+        WalkCoalesceGroups(beats, maxSeconds, extensionMaxSeconds, extendsFromPrevious, AbsorbMonologueGroup);
+
+    private static int AbsorbMonologueGroup(
+        List<Dictionary<string, object?>> beats,
+        int i,
+        Dictionary<string, object?> cur,
+        int effectiveMax)
     {
-        if (beats is null || beats.Count < 2) return beats ?? new List<Dictionary<string, object?>>();
+        var d1 = ReadBeatString(cur, JsonKeys.Dialogue);
+        var sp1 = ReadBeatString(cur, JsonKeys.Speaker);
+        var del1 = ReadBeatString(cur, Keys.Delivery) ?? Keys.SpokenOnCamera;
+        var loc1 = ReadBeatString(cur, Keys.LocationId);
+        var ac1 = ReadBeatString(cur, Keys.ActionClass);
 
-        var result = new List<Dictionary<string, object?>>();
-        var i = 0;
-        while (i < beats.Count)
-        {
-            var effectiveMax = EffectiveMaxForBeat(extendsFromPrevious, i, maxSeconds, extensionMaxSeconds);
-            var cur = new Dictionary<string, object?>(beats[i]);
-            var d1 = ReadBeatString(cur, JsonKeys.Dialogue);
-            var sp1 = ReadBeatString(cur, JsonKeys.Speaker);
-            var del1 = ReadBeatString(cur, Keys.Delivery) ?? Keys.SpokenOnCamera;
-            var loc1 = ReadBeatString(cur, Keys.LocationId);
-            var ac1 = ReadBeatString(cur, Keys.ActionClass);
-
-            if (IsMonologueMergeAnchor(d1, sp1, ac1))
-                i = AbsorbMonologueFollowers(beats, i, cur, ref d1, sp1, del1, loc1, effectiveMax);
-
-            result.Add(cur);
-            i++;
-        }
-
-        return result;
+        if (IsMonologueMergeAnchor(d1, sp1, ac1))
+            i = AbsorbMonologueFollowers(beats, i, cur, ref d1, sp1, del1, loc1, effectiveMax);
+        return i;
     }
 
     private static bool IsMonologueMergeAnchor(string? d1, string? sp1, string? ac1) =>
@@ -1568,7 +1562,27 @@ public sealed class Stage2PlannerService
         List<Dictionary<string, object?>> beats,
         int maxSeconds = ClipDurationEstimator.MaxSeconds,
         int? extensionMaxSeconds = null,
-        IReadOnlyList<bool>? extendsFromPrevious = null)
+        IReadOnlyList<bool>? extendsFromPrevious = null) =>
+        WalkCoalesceGroups(beats, maxSeconds, extensionMaxSeconds, extendsFromPrevious, AbsorbCrossSpeakerGroup);
+
+    private static int AbsorbCrossSpeakerGroup(
+        List<Dictionary<string, object?>> beats,
+        int i,
+        Dictionary<string, object?> cur,
+        int effectiveMax)
+    {
+        var perLineCap = effectiveMax / 2.0;
+        if (TryMergeCrossSpeakerPair(beats, i, cur, effectiveMax, perLineCap))
+            i++;
+        return i;
+    }
+
+    private static List<Dictionary<string, object?>> WalkCoalesceGroups(
+        List<Dictionary<string, object?>> beats,
+        int maxSeconds,
+        int? extensionMaxSeconds,
+        IReadOnlyList<bool>? extendsFromPrevious,
+        Func<List<Dictionary<string, object?>>, int, Dictionary<string, object?>, int, int> absorbIntoCurrent)
     {
         if (beats is null || beats.Count < 2) return beats ?? new List<Dictionary<string, object?>>();
 
@@ -1577,11 +1591,8 @@ public sealed class Stage2PlannerService
         while (i < beats.Count)
         {
             var effectiveMax = EffectiveMaxForBeat(extendsFromPrevious, i, maxSeconds, extensionMaxSeconds);
-            var perLineCap = effectiveMax / 2.0;
             var cur = new Dictionary<string, object?>(beats[i]);
-            if (TryMergeCrossSpeakerPair(beats, i, cur, effectiveMax, perLineCap))
-                i++;
-
+            i = absorbIntoCurrent(beats, i, cur, effectiveMax);
             result.Add(cur);
             i++;
         }

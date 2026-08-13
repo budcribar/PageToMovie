@@ -20,6 +20,48 @@ public sealed class ProjectArtifactIndexService
         PropertyNameCaseInsensitive = true,
     };
 
+    private static readonly (string Rel, string Role, bool Required)[] IndexedArtifacts =
+    [
+        // Core narrative
+        ("source/book_full.txt", "Source book / prose text", true),
+        ("source/screenplay.fountain", "Signed/working Fountain screenplay", true),
+        ("source/screenplay_meta.json", "Screenplay sign-off metadata", false),
+        ("source/cast_seeds.json", "Cast seeds (looks, locks, voices)", true),
+        ("source/tell_tale_heart.fountain", "Imported Poe fountain (if used)", false),
+
+        // Project config / state
+        ("project.json", "Project id/title", false),
+        ("project_rules.json", "Approved house rules / style locks", true),
+        ("pipeline_state.json", "Clip reviews, auto-review state, cost_ledger", true),
+        ("pipeline_config.json", "Per-project gen config (model, resolution)", false),
+        ("edit_feedback_log.json", "Human edit / pass-fail log", false),
+        ("blueprint.clips.grok.json", "Stage 2 shot plan / clips", true),
+
+        // Media
+        ("assets/movie_wip.mp4", "Full cut (WIP)", true),
+        ("assets/movie_wip.mp4.sources.json", "WIP concat sources + assembly note", false),
+        ("assets/movie_wip.film.json", "Film build EDL + studio.sha256 (provenance)", false),
+        ("assets/characters", "Locked character plates + variants", true),
+        ("assets/video", "Clips + scene composites + duration sidecars", true),
+        ("assets/video/prompts", "Full prompt .txt + .meta.json per clip", true),
+
+        // Review
+        ("assets/review", "Auto-review drafts, frames, index", true),
+        ("assets/review/index.json", "Per-clip review index (rebuild via batch review)", true),
+        ("assets/review/frames", "Durable auto-review sample frames", false),
+        ("assets/review/final_review.json", "Manual/AI final rubric scores (when filled)", false),
+        ("assets/review/FINAL_REVIEW_TEMPLATE.json", "Rubric template for manual final review", false),
+
+        // Telemetry (live streams + snapshots)
+        ("telemetry/cost_ledger.json", "Cost events snapshot (from pipeline_state)", true),
+        ("telemetry/models.json", "Resolved models/options snapshot", false),
+        ("telemetry/api_calls.jsonl", "Live API call log (full prompts)", false),
+        ("telemetry/media_ops.jsonl", "Optional local media-op log (legacy: ffmpeg.jsonl)", false),
+        // Written by this rebuild — not "required" for readiness (would always be missing mid-scan)
+        ("ARTIFACTS.md", "Human map of this project for Claude/manual review", false),
+        ("artifact_index.json", "Machine-readable artifact presence map", false),
+    ];
+
     private const string AssetsFolder = "assets";
     private readonly ProjectStore _projects;
     private readonly CostReportService _costs;
@@ -65,47 +107,8 @@ public sealed class ProjectArtifactIndexService
         await SnapshotTelemetryAsync(projectId, dir, ct).ConfigureAwait(false);
 
         var entries = new List<ArtifactIndexEntry>();
-        void Add(string rel, string role, bool requiredForManualReview = false) =>
-            AddIndexEntry(entries, dir, rel, role, requiredForManualReview);
-
-        // Core narrative
-        Add("source/book_full.txt", "Source book / prose text", requiredForManualReview: true);
-        Add("source/screenplay.fountain", "Signed/working Fountain screenplay", requiredForManualReview: true);
-        Add("source/screenplay_meta.json", "Screenplay sign-off metadata");
-        Add("source/cast_seeds.json", "Cast seeds (looks, locks, voices)", requiredForManualReview: true);
-        Add("source/tell_tale_heart.fountain", "Imported Poe fountain (if used)");
-
-        // Project config / state
-        Add("project.json", "Project id/title");
-        Add("project_rules.json", "Approved house rules / style locks", requiredForManualReview: true);
-        Add("pipeline_state.json", "Clip reviews, auto-review state, cost_ledger", requiredForManualReview: true);
-        Add("pipeline_config.json", "Per-project gen config (model, resolution)");
-        Add("edit_feedback_log.json", "Human edit / pass-fail log");
-        Add("blueprint.clips.grok.json", "Stage 2 shot plan / clips", requiredForManualReview: true);
-
-        // Media
-        Add("assets/movie_wip.mp4", "Full cut (WIP)", requiredForManualReview: true);
-        Add("assets/movie_wip.mp4.sources.json", "WIP concat sources + assembly note");
-        Add("assets/movie_wip.film.json", "Film build EDL + studio.sha256 (provenance)");
-        Add("assets/characters", "Locked character plates + variants", requiredForManualReview: true);
-        Add("assets/video", "Clips + scene composites + duration sidecars", requiredForManualReview: true);
-        Add("assets/video/prompts", "Full prompt .txt + .meta.json per clip", requiredForManualReview: true);
-
-        // Review
-        Add("assets/review", "Auto-review drafts, frames, index", requiredForManualReview: true);
-        Add("assets/review/index.json", "Per-clip review index (rebuild via batch review)", requiredForManualReview: true);
-        Add("assets/review/frames", "Durable auto-review sample frames");
-        Add("assets/review/final_review.json", "Manual/AI final rubric scores (when filled)");
-        Add("assets/review/FINAL_REVIEW_TEMPLATE.json", "Rubric template for manual final review");
-
-        // Telemetry (live streams + snapshots)
-        Add("telemetry/cost_ledger.json", "Cost events snapshot (from pipeline_state)", requiredForManualReview: true);
-        Add("telemetry/models.json", "Resolved models/options snapshot");
-        Add("telemetry/api_calls.jsonl", "Live API call log (full prompts)", requiredForManualReview: false);
-        Add("telemetry/media_ops.jsonl", "Optional local media-op log (legacy: ffmpeg.jsonl)", requiredForManualReview: false);
-        // Written by this rebuild — not "required" for readiness (would always be missing mid-scan)
-        Add("ARTIFACTS.md", "Human map of this project for Claude/manual review");
-        Add("artifact_index.json", "Machine-readable artifact presence map");
+        foreach (var (rel, role, required) in IndexedArtifacts)
+            AddIndexEntry(entries, dir, rel, role, required);
 
         AddSceneSourceManifests(entries, dir);
 

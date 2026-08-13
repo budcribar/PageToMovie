@@ -112,125 +112,88 @@ public sealed class ProjectRulesService
     /// Upsert style rule from cast extract <c>render_style_lock</c> (derived from Fountain SoT).
     /// Does not overwrite a user-approved style rule (different id / non-system approver).
     /// </summary>
-    public async Task<bool> EnsureStyleRuleFromRenderLockAsync(
+    public Task<bool> EnsureStyleRuleFromRenderLockAsync(
         string projectId,
         string? renderStyleLock,
         string approvedBy = ApproverCastExtract,
-        CancellationToken ct = default)
-    {
-        var text = NormalizeStyleRuleText(renderStyleLock);
-        if (string.IsNullOrWhiteSpace(text))
-            return false;
+        CancellationToken ct = default) =>
+        EnsureSystemRuleFromLockAsync(
+            projectId, renderStyleLock, NormalizeStyleRuleText,
+            StyleRuleId, CategoryStyle, approvedBy, ct);
 
-        var doc = await LoadAsync(projectId, ct).ConfigureAwait(false);
-        var systemOwned = doc.Active.FirstOrDefault(r =>
-            string.Equals(r.Id, StyleRuleId, StringComparison.OrdinalIgnoreCase));
-        if (systemOwned is not null)
-        {
-            if (string.Equals(systemOwned.Text?.Trim(), text, StringComparison.OrdinalIgnoreCase))
-                return false;
-            systemOwned.Text = text;
-            systemOwned.Category = CategoryStyle;
-            systemOwned.ApprovedAt = DateTimeOffset.UtcNow;
-            systemOwned.ApprovedBy = approvedBy;
-            await SaveAsync(projectId, doc, ct).ConfigureAwait(false);
-            return true;
-        }
-
-        // User already has an active style rule they approved — leave it
-        var userStyle = doc.Active.FirstOrDefault(r =>
-            string.Equals(r.Category, CategoryStyle, StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(r.Id, StyleRuleId, StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(r.ApprovedBy, ApproverCastExtract, StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(r.ApprovedBy, ApproverSystem, StringComparison.OrdinalIgnoreCase));
-        if (userStyle is not null)
-            return false;
-
-        // Remove any other auto style duplicates, then add
-        doc.Active.RemoveAll(r =>
-            string.Equals(r.Category, CategoryStyle, StringComparison.OrdinalIgnoreCase) &&
-            (string.Equals(r.ApprovedBy, ApproverCastExtract, StringComparison.OrdinalIgnoreCase) ||
-             string.Equals(r.ApprovedBy, ApproverSystem, StringComparison.OrdinalIgnoreCase)));
-
-        doc.Active.Add(new ProjectRule
-        {
-            Id = StyleRuleId,
-            Text = text,
-            Category = CategoryStyle,
-            ApprovedAt = DateTimeOffset.UtcNow,
-            ApprovedBy = approvedBy,
-            SourceFailCount = 0,
-        });
-        await SaveAsync(projectId, doc, ct).ConfigureAwait(false);
-        return true;
-    }
-
-    public static string NormalizeStyleRuleText(string? renderStyleLock)
-    {
-        var t = (renderStyleLock ?? "").Trim();
-        if (t.Length == 0) return "";
-        // Ensure readable house-rule form
-        if (!t.Contains("STYLE", StringComparison.OrdinalIgnoreCase) &&
-            !t.Contains("picture", StringComparison.OrdinalIgnoreCase) &&
-            !t.Contains("photoreal", StringComparison.OrdinalIgnoreCase) &&
-            !t.Contains("live-action", StringComparison.OrdinalIgnoreCase) &&
-            !t.Contains("CGI", StringComparison.OrdinalIgnoreCase) &&
-            !t.Contains("animated", StringComparison.OrdinalIgnoreCase))
-        {
-            t = "Hold this film’s render medium consistently: " + t;
-        }
-        // Token-accurate now (was raw character count) — see PromptTokenizer. This text is
-        // stored and re-injected into many future prompts, so an accurate budget matters more
-        // here than in a one-shot classifier field.
-        return PromptTokenizer.TruncateToTokens(t, 150);
-    }
+    public static string NormalizeStyleRuleText(string? renderStyleLock) =>
+        NormalizeLockRuleText(
+            renderStyleLock,
+            maxTokens: 150,
+            prefixWhenMissing: "Hold this film’s render medium consistently: ",
+            "STYLE", "picture", "photoreal", "live-action", "CGI", "animated");
 
     /// <summary>
     /// Upsert performance/address convention from cast extract (book-inferred, not a fixed eye recipe).
     /// </summary>
-    public async Task<bool> EnsurePerformanceRuleFromLockAsync(
+    public Task<bool> EnsurePerformanceRuleFromLockAsync(
         string projectId,
         string? performanceLock,
         string approvedBy = ApproverCastExtract,
-        CancellationToken ct = default)
+        CancellationToken ct = default) =>
+        EnsureSystemRuleFromLockAsync(
+            projectId, performanceLock, NormalizePerformanceRuleText,
+            PerformanceRuleId, CategoryPerformance, approvedBy, ct);
+
+    public static string NormalizePerformanceRuleText(string? performanceLock) =>
+        NormalizeLockRuleText(
+            performanceLock,
+            maxTokens: 175,
+            prefixWhenMissing: "PERFORMANCE LOCK: ",
+            "PERFORMANCE", "address", "viewer", "camera", "confessional", "observ");
+
+    private async Task<bool> EnsureSystemRuleFromLockAsync(
+        string projectId,
+        string? rawLock,
+        Func<string?, string> normalize,
+        string ruleId,
+        string category,
+        string approvedBy,
+        CancellationToken ct)
     {
-        var text = NormalizePerformanceRuleText(performanceLock);
+        var text = normalize(rawLock);
         if (string.IsNullOrWhiteSpace(text))
             return false;
 
         var doc = await LoadAsync(projectId, ct).ConfigureAwait(false);
         var systemOwned = doc.Active.FirstOrDefault(r =>
-            string.Equals(r.Id, PerformanceRuleId, StringComparison.OrdinalIgnoreCase));
+            string.Equals(r.Id, ruleId, StringComparison.OrdinalIgnoreCase));
         if (systemOwned is not null)
         {
             if (string.Equals(systemOwned.Text?.Trim(), text, StringComparison.OrdinalIgnoreCase))
                 return false;
             systemOwned.Text = text;
-            systemOwned.Category = CategoryPerformance;
+            systemOwned.Category = category;
             systemOwned.ApprovedAt = DateTimeOffset.UtcNow;
             systemOwned.ApprovedBy = approvedBy;
             await SaveAsync(projectId, doc, ct).ConfigureAwait(false);
             return true;
         }
 
+        // User already has an active rule they approved — leave it
         var userOwned = doc.Active.FirstOrDefault(r =>
-            string.Equals(r.Category, CategoryPerformance, StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(r.Id, PerformanceRuleId, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(r.Category, category, StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(r.Id, ruleId, StringComparison.OrdinalIgnoreCase) &&
             !string.Equals(r.ApprovedBy, ApproverCastExtract, StringComparison.OrdinalIgnoreCase) &&
             !string.Equals(r.ApprovedBy, ApproverSystem, StringComparison.OrdinalIgnoreCase));
         if (userOwned is not null)
             return false;
 
         doc.Active.RemoveAll(r =>
-            string.Equals(r.Category, CategoryPerformance, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(r.Category, category, StringComparison.OrdinalIgnoreCase) &&
             (string.Equals(r.ApprovedBy, ApproverCastExtract, StringComparison.OrdinalIgnoreCase) ||
              string.Equals(r.ApprovedBy, ApproverSystem, StringComparison.OrdinalIgnoreCase)));
 
         doc.Active.Add(new ProjectRule
         {
-            Id = PerformanceRuleId,
+            Id = ruleId,
             Text = text,
-            Category = CategoryPerformance,
+            Category = category,
             ApprovedAt = DateTimeOffset.UtcNow,
             ApprovedBy = approvedBy,
             SourceFailCount = 0,
@@ -239,23 +202,19 @@ public sealed class ProjectRulesService
         return true;
     }
 
-    public static string NormalizePerformanceRuleText(string? performanceLock)
+    /// <summary>
+    /// Token-accurate now (was raw character count) — see PromptTokenizer. This text is
+    /// stored and re-injected into many future prompts, so an accurate budget matters more
+    /// here than in a one-shot classifier field.
+    /// </summary>
+    private static string NormalizeLockRuleText(
+        string? raw, int maxTokens, string prefixWhenMissing, params string[] keywords)
     {
-        var t = (performanceLock ?? "").Trim();
+        var t = (raw ?? "").Trim();
         if (t.Length == 0) return "";
-        if (!t.Contains("PERFORMANCE", StringComparison.OrdinalIgnoreCase) &&
-            !t.Contains("address", StringComparison.OrdinalIgnoreCase) &&
-            !t.Contains("viewer", StringComparison.OrdinalIgnoreCase) &&
-            !t.Contains("camera", StringComparison.OrdinalIgnoreCase) &&
-            !t.Contains("confessional", StringComparison.OrdinalIgnoreCase) &&
-            !t.Contains("observ", StringComparison.OrdinalIgnoreCase))
-        {
-            t = "PERFORMANCE LOCK: " + t;
-        }
-        // Token-accurate now (was raw character count) — see PromptTokenizer. This text is
-        // stored and re-injected into many future prompts, so an accurate budget matters more
-        // here than in a one-shot classifier field.
-        return PromptTokenizer.TruncateToTokens(t, 175);
+        if (!keywords.Any(k => t.Contains(k, StringComparison.OrdinalIgnoreCase)))
+            t = prefixWhenMissing + t;
+        return PromptTokenizer.TruncateToTokens(t, maxTokens);
     }
 
     private async Task<string?> TryReadCastFieldAsync(string projectId, string propertyName, CancellationToken ct = default)

@@ -354,6 +354,35 @@ public static class ClipDurationEstimator
         return speech;
     }
 
+    private readonly record struct BeatEstimateInputs(
+        string Dialogue, string Visual, string ActionClass, string Delivery);
+
+    private static BeatEstimateInputs NormalizeBeatInputs(
+        string? dialogue, string? visualOrAction, string? actionClass, string? delivery)
+    {
+        var dlg = (dialogue ?? "").Trim();
+        var visual = (visualOrAction ?? "").Trim();
+        var ac = (actionClass ?? "").Trim().ToLowerInvariant();
+        var del = (delivery ?? "none").Trim().ToLowerInvariant();
+        if (del.Length == 0) del = "none";
+        return new BeatEstimateInputs(dlg, visual, ac, del);
+    }
+
+    private static double EstimateActionSeconds(in BeatEstimateInputs inputs) =>
+        inputs.Dialogue.Length == 0
+            ? EstimateSilentActionSeconds(inputs.Visual, inputs.ActionClass)
+            : DialogueClipActionOverhead(inputs.Visual, inputs.ActionClass);
+
+    private static (double Speech, double Action, BeatEstimateInputs Inputs) EstimateSpeechAndAction(
+        string? dialogue, string? visualOrAction, string? actionClass, string? delivery)
+    {
+        var inputs = NormalizeBeatInputs(dialogue, visualOrAction, actionClass, delivery);
+        double speech = inputs.Dialogue.Length > 0
+            ? EstimateSpeechSeconds(inputs.Dialogue, inputs.Delivery)
+            : 0;
+        return (speech, EstimateActionSeconds(inputs), inputs);
+    }
+
     /// <summary>
     /// Silent (no-dialogue) clip length derived from the visual/action word count, clamped
     /// per action class. Shared by <see cref="Estimate"/> / <see cref="EstimateBreakdown"/> /
@@ -378,22 +407,7 @@ public static class ClipDurationEstimator
         string actionClass = "",
         string delivery = "none")
     {
-        var dlg = (dialogue ?? "").Trim();
-        var visual = (visualOrAction ?? "").Trim();
-        actionClass = (actionClass ?? "").Trim().ToLowerInvariant();
-        delivery = (delivery ?? "none").Trim().ToLowerInvariant();
-        if (delivery.Length == 0) delivery = "none";
-
-        double speech = 0;
-        if (dlg.Length > 0)
-            speech = EstimateSpeechSeconds(dlg, delivery);
-
-        double action = 0;
-        if (dlg.Length == 0)
-            action = EstimateSilentActionSeconds(visual, actionClass);
-        else
-            action = DialogueClipActionOverhead(visual, actionClass);
-
+        var (speech, action, _) = EstimateSpeechAndAction(dialogue, visualOrAction, actionClass, delivery);
         return (Math.Round(speech, 1), Math.Round(action, 1));
     }
 
@@ -406,24 +420,10 @@ public static class ClipDurationEstimator
         int maxSeconds = MaxSeconds,
         int absMaxSeconds = AbsMaxSeconds)
     {
-        var dlg = (dialogue ?? "").Trim();
-        var visual = (visualOrAction ?? "").Trim();
         // Callers may pass mixed-case labels from JSON / blueprints
-        actionClass = (actionClass ?? "").Trim().ToLowerInvariant();
-        delivery = (delivery ?? "none").Trim().ToLowerInvariant();
-        if (delivery.Length == 0) delivery = "none";
-
-        double speech = 0;
-        if (dlg.Length > 0)
-            speech = EstimateSpeechSeconds(dlg, delivery);
-
-        double action = 0;
-        if (dlg.Length == 0)
-            action = EstimateSilentActionSeconds(visual, actionClass);
-        else
-            // Dialogue clip: calibrated camera/action overhead when the beat names something
-            // specific, else the flat "short visual head" buffer (lip-sync / reaction under the line)
-            action = DialogueClipActionOverhead(visual, actionClass);
+        var (speech, action, inputs) = EstimateSpeechAndAction(dialogue, visualOrAction, actionClass, delivery);
+        var dlg = inputs.Dialogue;
+        actionClass = inputs.ActionClass;
 
         var total = speech + action;
         if (total <= 0)
@@ -455,30 +455,22 @@ public static class ClipDurationEstimator
         string actionClass = "",
         string delivery = "none")
     {
-        var dlg = (dialogue ?? "").Trim();
-        var visual = (visualOrAction ?? "").Trim();
-        actionClass = (actionClass ?? "").Trim().ToLowerInvariant();
-        delivery = (delivery ?? "none").Trim().ToLowerInvariant();
-        if (delivery.Length == 0) delivery = "none";
+        var inputs = NormalizeBeatInputs(dialogue, visualOrAction, actionClass, delivery);
 
         // NOTE: intentionally a words-only speech estimate (no syllable-based max) — this uncapped
         // variant only needs to spot lines that would overflow the model max, so it stays simpler
         // than EstimateSpeechSeconds by design.
         double speech = 0;
-        if (dlg.Length > 0)
+        if (inputs.Dialogue.Length > 0)
         {
-            var words = CountWords(dlg);
+            var words = CountWords(inputs.Dialogue);
             speech = SpeechHeadSeconds + words / DialogueWordsPerSecond + SpeechTailSeconds;
             speech = Math.Max(1.8, speech);
-            if (delivery is "voiceover_internal" or "internal" or "narration" or "vo" or "thought")
+            if (inputs.Delivery is "voiceover_internal" or "internal" or "narration" or "vo" or "thought")
                 speech *= 0.95;
         }
 
-        double action = 0;
-        if (dlg.Length == 0)
-            action = EstimateSilentActionSeconds(visual, actionClass);
-        else
-            action = DialogueClipActionOverhead(visual, actionClass);
+        double action = EstimateActionSeconds(inputs);
 
         var total = speech + action;
         if (total <= 0)

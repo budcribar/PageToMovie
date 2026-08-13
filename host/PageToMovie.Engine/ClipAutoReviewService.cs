@@ -25,6 +25,7 @@ public sealed class ClipAutoReviewService
     private const string VoiceProfileKey = "voice_profile";
     private const string CharacterLayer = "character";
     private const string VisualPromptKey = "visual_prompt";
+    private const string CurrentClipLabel = "CURRENT_CLIP";
 
     private readonly ProjectStore _projects;
     private readonly IVisionClient _vision;
@@ -888,7 +889,7 @@ public sealed class ClipAutoReviewService
         out string ext)
     {
         bytes = Array.Empty<byte>();
-        label = "CURRENT_CLIP";
+        label = CurrentClipLabel;
         ext = "jpg";
         if (frame is null || string.IsNullOrWhiteSpace(frame.Base64))
             return false;
@@ -932,10 +933,10 @@ public sealed class ClipAutoReviewService
     private static string NormalizeClientFrameLabel(string? raw)
     {
         var label = string.IsNullOrWhiteSpace(raw)
-            ? "CURRENT_CLIP"
+            ? CurrentClipLabel
             : raw.Trim().ToUpperInvariant();
-        if (label is not ("PREVIOUS_CLIP_TAIL" or "CURRENT_CLIP"))
-            return "CURRENT_CLIP";
+        if (label is not ("PREVIOUS_CLIP_TAIL" or CurrentClipLabel))
+            return CurrentClipLabel;
         return label;
     }
 

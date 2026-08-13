@@ -496,87 +496,52 @@ public static string NormalizeText(string text)
     /// as the new draft when the scene structure is preserved. Non-destructive to story/dialogue —
     /// see <see cref="AdaptationService.ReskinAsync"/>. Requires an approved/imported draft to exist.
     /// </summary>
-    public static async Task<DraftEditResult> ReskinDraftAsync(
-        ProjectStore store,
-        string projectId,
-        string? visualMedium,
-        PageToMovie.Core.Abstractions.IChatClient chat,
-        string model = "",
-        Action<string>? onProgress = null,
-        CancellationToken ct = default,
-        XaiResponsesClient? responses = null,
-        BookTextRegistryService? bookRegistry = null,
+    public static Task<DraftEditResult> ReskinDraftAsync(
+        ProjectStore store, string projectId, string? visualMedium,
+        PageToMovie.Core.Abstractions.IChatClient chat, string model = "",
+        Action<string>? onProgress = null, CancellationToken ct = default,
+        XaiResponsesClient? responses = null, BookTextRegistryService? bookRegistry = null,
         PageToMovie.Core.Abstractions.IBookFileSessionFactory? bookFileSessions = null,
-        bool useFakes = false)
-    {
-        // Re-skin is a full-length edit — run it on the full-length base so it doesn't operate on an
-        // already-trimmed draft, and update the base so Fit length trims from the re-skinned version.
-        var current = ReadFullLengthSource(store, projectId);
-        if (string.IsNullOrWhiteSpace(current))
-            return new DraftEditResult { Ok = false, Error = "No screenplay draft to re-skin yet." };
-
-        var projectDir = await store.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
-        model = await ResolvePlanningModelAsync(store, projectId, model, "Re-skin screenplay", ct).ConfigureAwait(false);
-        var progress = onProgress is null ? null : new Progress<string>(onProgress);
-        var viaFiles = FilesCompleter(
+        bool useFakes = false) =>
+        RunFullLengthDescriptiveEditAsync(
+            store, projectId, visualMedium, chat, model, onProgress, ct,
             responses, bookRegistry, bookFileSessions, useFakes,
-            projectId, projectDir, current, bookText: null, model, onProgress,
-            ScreenplayEnrichFiles.ReskinInstruction, attachBook: false, label: "Look");
-        var result = await AdaptationService.ReskinAsync(current, visualMedium, chat, model, progress, ct, viaFiles)
-            .ConfigureAwait(false);
-
-        return ApplyDraftEdit(store, projectId, result,
-            appliedMessage: $"Re-applied the look to the screenplay ({result.SceneCountAfter} scenes).",
-            updateBase: true, substep: ProjectStore.BookSubstepKeys.Look);
-    }
+            emptyError: "No screenplay draft to re-skin yet.",
+            planningOp: "Re-skin screenplay",
+            loadBookText: false,
+            instruction: ScreenplayEnrichFiles.ReskinInstruction,
+            attachBook: false,
+            label: "Look",
+            appliedMessage: r => $"Re-applied the look to the screenplay ({r.SceneCountAfter} scenes).",
+            substep: ProjectStore.BookSubstepKeys.Look,
+            run: (current, medium, c, _, m, progress, via, token) =>
+                AdaptationService.ReskinAsync(current, medium, c, m, progress, token, via));
 
     /// <summary>
     /// Enrich the current editable draft's descriptive layer for the stored medium, grounding in the
     /// prepared book text when present, and save it when the scene structure is preserved. Story and
     /// dialogue are untouched — see <see cref="AdaptationService.EmbellishAsync"/>.
     /// </summary>
-    public static async Task<DraftEditResult> EmbellishDraftAsync(
-        ProjectStore store,
-        string projectId,
-        string? visualMedium,
-        PageToMovie.Core.Abstractions.IChatClient chat,
-        string model = "",
-        Action<string>? onProgress = null,
-        CancellationToken ct = default,
-        XaiResponsesClient? responses = null,
-        BookTextRegistryService? bookRegistry = null,
+    public static Task<DraftEditResult> EmbellishDraftAsync(
+        ProjectStore store, string projectId, string? visualMedium,
+        PageToMovie.Core.Abstractions.IChatClient chat, string model = "",
+        Action<string>? onProgress = null, CancellationToken ct = default,
+        XaiResponsesClient? responses = null, BookTextRegistryService? bookRegistry = null,
         PageToMovie.Core.Abstractions.IBookFileSessionFactory? bookFileSessions = null,
-        bool useFakes = false)
-    {
-        // Enrich is a full-length edit — run it on the full-length base and update the base so Fit length
-        // trims from the enriched version (otherwise trimming would discard the enrichment).
-        var current = ReadFullLengthSource(store, projectId);
-        if (string.IsNullOrWhiteSpace(current))
-            return new DraftEditResult { Ok = false, Error = "No screenplay draft to enrich yet." };
-
-        string? bookText = null;
-        var projectDir = await store.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
-        var bookPath = Path.Combine(projectDir, SourceDir, "book_full.txt");
-        if (File.Exists(bookPath))
-        {
-            try { bookText = await File.ReadAllTextAsync(bookPath, ct).ConfigureAwait(false); }
-            catch { /* enrich without grounding */ }
-        }
-
-        model = await ResolvePlanningModelAsync(store, projectId, model, "Enrich screenplay", ct).ConfigureAwait(false);
-        var progress = onProgress is null ? null : new Progress<string>(onProgress);
-        var viaFiles = FilesCompleter(
+        bool useFakes = false) =>
+        RunFullLengthDescriptiveEditAsync(
+            store, projectId, visualMedium, chat, model, onProgress, ct,
             responses, bookRegistry, bookFileSessions, useFakes,
-            projectId, projectDir, current, bookText, model, onProgress,
-            ScreenplayEnrichFiles.EnrichInstruction, attachBook: true, label: "Enrich");
-
-        var result = await AdaptationService.EmbellishAsync(current, visualMedium, chat, bookText, model, progress, ct, viaFiles)
-            .ConfigureAwait(false);
-
-        return ApplyDraftEdit(store, projectId, result,
-            appliedMessage: $"Enriched the screenplay ({result.SceneCountAfter} scenes).",
-            updateBase: true, substep: ProjectStore.BookSubstepKeys.Enrich);
-    }
+            emptyError: "No screenplay draft to enrich yet.",
+            planningOp: "Enrich screenplay",
+            loadBookText: true,
+            instruction: ScreenplayEnrichFiles.EnrichInstruction,
+            attachBook: true,
+            label: "Enrich",
+            appliedMessage: r => $"Enriched the screenplay ({r.SceneCountAfter} scenes).",
+            substep: ProjectStore.BookSubstepKeys.Enrich,
+            run: (current, medium, c, book, m, progress, via, token) =>
+                AdaptationService.EmbellishAsync(current, medium, c, book, m, progress, token, via));
 
     /// <summary>Path to the immutable full-length base (may not exist until the first trim / a max generation).</summary>
     public static string GetMaxBasePath(ProjectStore store, string projectId) =>
@@ -665,6 +630,62 @@ public static string NormalizeText(string text)
         return ApplyDraftEdit(store, projectId, result,
             appliedMessage: $"Trimmed the screenplay toward ~{target} min ({result.SceneCountAfter} scenes).",
             substep: ProjectStore.BookSubstepKeys.FitLength, substepTargetMinutes: target);
+    }
+
+    /// <summary>
+    /// Shared setup for full-length descriptive edits (re-skin / enrich): read the max base,
+    /// optionally ground in book text, resolve the planning model, then run and save.
+    /// </summary>
+    private static async Task<DraftEditResult> RunFullLengthDescriptiveEditAsync(
+        ProjectStore store,
+        string projectId,
+        string? visualMedium,
+        PageToMovie.Core.Abstractions.IChatClient chat,
+        string model,
+        Action<string>? onProgress,
+        CancellationToken ct,
+        XaiResponsesClient? responses,
+        BookTextRegistryService? bookRegistry,
+        PageToMovie.Core.Abstractions.IBookFileSessionFactory? bookFileSessions,
+        bool useFakes,
+        string emptyError,
+        string planningOp,
+        bool loadBookText,
+        string instruction,
+        bool attachBook,
+        string label,
+        Func<AdaptationService.FountainEditResult, string> appliedMessage,
+        string substep,
+        Func<string, string?, PageToMovie.Core.Abstractions.IChatClient, string?, string, IProgress<string>?, Func<string, string, CancellationToken, Task<string?>>?, CancellationToken, Task<AdaptationService.FountainEditResult>> run)
+    {
+        var current = ReadFullLengthSource(store, projectId);
+        if (string.IsNullOrWhiteSpace(current))
+            return new DraftEditResult { Ok = false, Error = emptyError };
+
+        var projectDir = await store.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
+        string? bookText = null;
+        if (loadBookText)
+        {
+            var bookPath = Path.Combine(projectDir, SourceDir, "book_full.txt");
+            if (File.Exists(bookPath))
+            {
+                try { bookText = await File.ReadAllTextAsync(bookPath, ct).ConfigureAwait(false); }
+                catch { /* enrich without grounding */ }
+            }
+        }
+
+        model = await ResolvePlanningModelAsync(store, projectId, model, planningOp, ct).ConfigureAwait(false);
+        var progress = onProgress is null ? null : new Progress<string>(onProgress);
+        var viaFiles = FilesCompleter(
+            responses, bookRegistry, bookFileSessions, useFakes,
+            projectId, projectDir, current, bookText, model, onProgress,
+            instruction, attachBook, label);
+        var result = await run(current, visualMedium, chat, bookText, model, progress, viaFiles, ct)
+            .ConfigureAwait(false);
+
+        return ApplyDraftEdit(store, projectId, result,
+            appliedMessage: appliedMessage(result),
+            updateBase: true, substep: substep);
     }
 
     static Func<string, string, CancellationToken, Task<string?>>? FilesCompleter(
