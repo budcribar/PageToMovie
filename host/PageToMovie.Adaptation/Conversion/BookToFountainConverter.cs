@@ -302,7 +302,7 @@ public static class BookToFountainConverter
             system, text, chat, model, onProgress, ct, reasoningEffort).ConfigureAwait(false);
         text = await RepairGenericNumberedSpeakersAsync(
             system, text, chat, model, onProgress, ct, reasoningEffort).ConfigureAwait(false);
-        // Speaker naming repair only replaces *unnamed* placeholders (FIRST OFFICER, MAN 2);
+        // Speaker naming repair only replaces unnamed placeholders such as FIRST OFFICER or MAN 2;
         // it has no concept of an already-named person's spelling drifting across mentions
         // (cues and prose) — separate problem, same "confirm then merge" shape as location drift.
         text = await RepairNameDriftAsync(
@@ -528,7 +528,7 @@ public static class BookToFountainConverter
                         : fountain.TrimEnd() + "\n\n" + normalized)
                     : fountain.TrimEnd() + "\n\n" + normalized);
 
-            // Prefer: if model returned fountain+meta, use it only when fountain still looks good;
+            // Prefer the model's fountain-plus-meta output only when that fountain still looks good;
             // otherwise append meta onto the original draft.
             if (splitResult.Vision is not null && LooksLikeGoodFountain(splitResult.Fountain)
                 && CountSceneHeadings(splitResult.Fountain) >= Math.Max(1, CountSceneHeadings(fountain) / 2))
@@ -772,8 +772,7 @@ public static class BookToFountainConverter
         string model,
         Action<string>? onProgress,
         CancellationToken ct,
-        string? reasoningEffort = null,
-        double temperature = 0.2)
+        string? reasoningEffort = null)
     {
         var bad = FindVagueLocationHeadings(fountain);
         if (bad.Count == 0 || !chat.IsConfigured)
@@ -851,8 +850,8 @@ public static class BookToFountainConverter
         }
     }
 
-    // ── location drift (same place, different wording — a judgment call, not a string shape;
-    // NormalizeSceneHeadingWording above only collapses a redundant-prefix alias) ────────────
+    // Location drift: same place, different wording — a judgment call, not a string shape.
+    // The wording normalizer above only collapses a redundant-prefix alias.
 
     /// <summary>
     /// Groups unique scene-heading location names that share a distinguishing first word (4+
@@ -2197,16 +2196,9 @@ public static class BookToFountainConverter
         foreach (var unit in units)
         {
             if (current.Length > 0 &&
-                current.Length + unit.Length > softMaxChars &&
-                chunks.Count < maxChunks - 1)
-            {
-                chunks.Add(current.ToString().Trim());
-                current.Clear();
-            }
-            else if (current.Length > 0 &&
-                     current.Length >= idealSize &&
-                     chunks.Count < targetChunks - 1 &&
-                     chunks.Count < maxChunks - 1)
+                chunks.Count < maxChunks - 1 &&
+                (current.Length + unit.Length > softMaxChars ||
+                 (current.Length >= idealSize && chunks.Count < targetChunks - 1)))
             {
                 chunks.Add(current.ToString().Trim());
                 current.Clear();
@@ -2498,7 +2490,7 @@ public static class BookToFountainConverter
                     retryLabel: $"Chunk {i + 1}/{chunks.Count}",
                     onProgress, ct, reasoningEffort,
                     promptVersion: "stage1-book-chunk-v2",
-                    correctionInstruction: RetrySuffix(false),
+                    correctionInstruction: RetrySuffix(),
                     validate: ValidateChunk)
                 .ConfigureAwait(false);
             if (part is null)
@@ -2746,7 +2738,7 @@ public static class BookToFountainConverter
         return sb.ToString();
     }
 
-    private static string RetrySuffix(bool hasPageMarkers) => """
+    private static string RetrySuffix() => """
 
 
         IMPORTANT: Previous output was not valid Fountain for our pipeline.

@@ -10,11 +10,9 @@ public static class YouTubeVideoId
         if (s.Length is >= 10 and <= 12 && s.All(c => char.IsLetterOrDigit(c) || c is '-' or '_'))
             return s.Length == 11 ? s : null;
 
-        if (!Uri.TryCreate(s, UriKind.Absolute, out var uri))
-        {
-            if (!Uri.TryCreate("https://" + s, UriKind.Absolute, out uri))
-                return null;
-        }
+        if (!Uri.TryCreate(s, UriKind.Absolute, out var uri) &&
+            !Uri.TryCreate("https://" + s, UriKind.Absolute, out uri))
+            return null;
 
         var host = uri.Host.Replace("www.", "", StringComparison.OrdinalIgnoreCase);
         if (host.Equals("youtu.be", StringComparison.OrdinalIgnoreCase))

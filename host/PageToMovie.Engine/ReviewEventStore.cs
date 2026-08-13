@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using PageToMovie.Core.Models;
 using PageToMovie.Core.Utils;
@@ -77,7 +78,7 @@ public sealed class ReviewEventStore
     {
         DateTimeOffset ts = DateTimeOffset.UtcNow;
         if (!string.IsNullOrWhiteSpace(entry.Ts) &&
-            DateTimeOffset.TryParse(entry.Ts, out var parsed))
+            DateTimeOffset.TryParse(entry.Ts, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsed))
             ts = parsed.ToUniversalTime();
 
         return AppendAsync(new ReviewLearningEvent

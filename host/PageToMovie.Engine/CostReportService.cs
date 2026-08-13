@@ -110,7 +110,7 @@ public sealed class CostReportService
         if (estimateBasis == "none")
         {
             // A2: post-import / fountain shortcut (before shot plan) — always estimate from screenplay.
-            blueprintClips = await LoadScreenplayDerivedClipsAsync(projectId, cfg, ct).ConfigureAwait(false);
+            blueprintClips = await LoadScreenplayDerivedClipsAsync(projectId, cfg).ConfigureAwait(false);
             if (blueprintClips.Any(s => s.Clips.Count > 0))
                 estimateBasis = "screenplay";
         }
@@ -211,7 +211,7 @@ public sealed class CostReportService
         if ((estimateBasis is "shot_plan" or "screenplay") && clipsOnDisk > 0)
             estimateBasis = "remaining";
 
-        var scenarios = BuildScenarios(blueprintClips, onDisk, cfg, rates, retries, draftRes, heroRes);
+        var scenarios = BuildScenarios(blueprintClips, onDisk, cfg, retries, draftRes, heroRes);
 
         // Non-video scope (model-dependent): cast portraits, optional voice, music, planning.
         var videoModel = GetStr(cfg, "model_name", "");
@@ -856,9 +856,14 @@ public sealed class CostReportService
             prior++;
             if (e.TryGetProperty("ts", out var tsEl) &&
                 tsEl.ValueKind == JsonValueKind.String &&
-                DateTimeOffset.TryParse(tsEl.GetString(), out var parsed))
+                DateTimeOffset.TryParse(
+                    tsEl.GetString(),
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.RoundtripKind,
+                    out var parsed) &&
+                (lastTs is null || parsed > lastTs))
             {
-                if (lastTs is null || parsed > lastTs) lastTs = parsed;
+                lastTs = parsed;
             }
         }
 
@@ -922,7 +927,7 @@ public sealed class CostReportService
         {
             ["kind"] = "image",
             ["category"] = CostCategories.Characters,
-            ["model"] = entry?.Id ?? model,
+            ["model"] = entry.Id,
             ["character"] = character ?? "",
             ["n_images"] = n,
             ["unit_usd"] = unit,
@@ -931,7 +936,7 @@ public sealed class CostReportService
             ["currency"] = "USD",
             ["source"] = "list_rate",
             ["pricing_source"] = isEstimated ? "estimated_fallback" : "model_catalog",
-            ["provider"] = entry?.ProviderId ?? "",
+            ["provider"] = entry.ProviderId,
             ["user_id"] = userId ?? "",
         }, save: true, ct).ConfigureAwait(false);
 
@@ -1008,7 +1013,6 @@ public sealed class CostReportService
         List<BlueprintSceneClips> scenes,
         Dictionary<int, Dictionary<int, bool>> onDisk,
         Dictionary<string, JsonElement> cfg,
-        Dictionary<string, object?> baseRates,
         double retries,
         string draftRes,
         string heroRes)
@@ -1359,9 +1363,8 @@ public sealed class CostReportService
             scenes.ValueKind != JsonValueKind.Array)
             return list;
 
-        var defaultDur = 8.0;
         var cfg = await LoadConfigMapAsync(projectId, ct).ConfigureAwait(false);
-        defaultDur = GetDouble(cfg, "duration_seconds", 8);
+        var defaultDur = GetDouble(cfg, "duration_seconds", 8);
 
         foreach (var s in scenes.EnumerateArray())
         {
@@ -1908,8 +1911,7 @@ public sealed class CostReportService
     /// </summary>
     private async Task<List<BlueprintSceneClips>> LoadScreenplayDerivedClipsAsync(
         string projectId,
-        Dictionary<string, JsonElement> cfg,
-        CancellationToken ct)
+        Dictionary<string, JsonElement> cfg)
     {
         await Task.Yield();
         var list = new List<BlueprintSceneClips>();
@@ -1988,11 +1990,9 @@ public sealed class CostReportService
     {
         var unit = GetDouble(rates, "image_output_quality", 0.05);
         var variants = 3;
-        if (cfg.TryGetValue("cost_estimates", out var ce) && ce.ValueKind == JsonValueKind.Object)
-        {
-            if (ce.TryGetProperty("character_variants", out var cv) && cv.TryGetInt32(out var n) && n > 0)
-                variants = Math.Clamp(n, 1, 6);
-        }
+        if (cfg.TryGetValue("cost_estimates", out var ce) && ce.ValueKind == JsonValueKind.Object &&
+            ce.TryGetProperty("character_variants", out var cv) && cv.TryGetInt32(out var n) && n > 0)
+            variants = Math.Clamp(n, 1, 6);
 
         var chars = _projects.ListCharacters(projectId);
         var onScreen = chars.Where(c => !c.VoiceOnly).ToList();

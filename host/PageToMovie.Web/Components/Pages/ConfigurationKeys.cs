@@ -10,7 +10,7 @@ using PageToMovie.Web.Services;
 
 namespace PageToMovie.Web.Components.Pages;
 
-public partial class Configuration
+public sealed partial class Configuration
 {
     /// <summary>Keys domain for the Configuration page. Owns related UI state and behavior.</summary>
     public sealed class ConfigurationKeys

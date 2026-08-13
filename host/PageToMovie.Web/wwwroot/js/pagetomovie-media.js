@@ -62,7 +62,8 @@ window.PageToMovieMedia = {
         } catch (_) { /* ignore */ }
         const prev = this.getFullPath();
         if (!prev) return null;
-        const leaf = prev.replace(/[\\/]+$/, "").split(/[\\/]/).pop();
+        const parts = prev.split(/[\\/]/).filter(Boolean);
+        const leaf = parts.length ? parts[parts.length - 1] : "";
         if (leaf && leaf.toLowerCase() === String(handle.name).toLowerCase())
             return prev;
         try { localStorage.removeItem("ptm-media-fullpath"); } catch (_) { /* ignore */ }
@@ -505,7 +506,7 @@ window.PageToMovieMedia = {
             const entries = [];
             for await (const [name, handle] of histDir.entries()) {
                 if (handle.kind !== "file" || !name.startsWith(prefix) || !name.endsWith(".mp4")) continue;
-                const ts = parseInt(name.slice(prefix.length, -4), 10);
+                const ts = Number.parseInt(name.slice(prefix.length, -4), 10);
                 if (!Number.isFinite(ts)) continue;
                 entries.push({ relativePath: `${dirPrefix}/${name}`, timestampMs: ts });
             }

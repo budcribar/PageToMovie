@@ -8,7 +8,7 @@ using PageToMovie.Core.Util;
 
 namespace PageToMovie.Web.Components;
 
-public partial class CopyToClipboardButton : IAsyncDisposable, IDisposable
+public sealed partial class CopyToClipboardButton : IAsyncDisposable, IDisposable
 {
     [Parameter] public string Text { get; set; } = "";
     [Parameter] public string Label { get; set; } = "Copy";
@@ -64,10 +64,18 @@ public partial class CopyToClipboardButton : IAsyncDisposable, IDisposable
     {
         if (_resetCts is { } oldCts)
         {
-            try { oldCts.Cancel(); } catch { }
+            try
+            {
+                oldCts.Cancel();
+            }
+            catch (ObjectDisposedException ex)
+            {
+                _ = ex;
+            }
             oldCts.Dispose();
             _resetCts = null;
         }
+        GC.SuppressFinalize(this);
     }
 
     public async ValueTask DisposeAsync()

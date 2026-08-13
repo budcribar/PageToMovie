@@ -156,7 +156,6 @@ public static class BookOcrPlateShortlist
             {
                 if (!IsArtPage(p)) continue;
                 TryAdd(p.Page);
-                if (selected.Count >= maxPlates) break;
             }
         }
 

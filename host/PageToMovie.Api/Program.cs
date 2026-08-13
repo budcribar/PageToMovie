@@ -778,10 +778,10 @@ app.MapPost("/api/auth/forgot-password", async (
             await userDb.NotePasswordResetRequestedAsync(name);
             var user = await userDb.ResolveUserAsync(name)
                        ?? await userDb.GetUserByEmailAsync(name);
-            if (user is not null && !user.IsDisabled && !string.IsNullOrWhiteSpace(user.Email))
+            if (user is not null && !user.IsDisabled && !string.IsNullOrWhiteSpace(user.Email) &&
+                auth is AdminAuthService concrete)
             {
-                if (auth is AdminAuthService concrete)
-                    await concrete.SendPasswordResetEmailAsync(user);
+                await concrete.SendPasswordResetEmailAsync(user);
             }
         }
         catch { /* never leak */ }
@@ -4681,7 +4681,7 @@ app.MapPost("/api/projects/{id}/push", async (
         if (body?.CommitFirst == true)
         {
             commit = await git.CommitProjectStateAsync(
-                dir, user.UserId ?? "PageToMovie", body?.Message ?? "Project update");
+                dir, user.UserId ?? "PageToMovie", body.Message ?? "Project update");
         }
 
         var push = await git.PushProjectAsync(dir, proj.Id);
@@ -6917,7 +6917,14 @@ app.MapPost("/api/projects/{id}/scenes/{scene:int}/clips/{clip:int}/verify-dialo
     {
         if (!string.IsNullOrWhiteSpace(tempFilePath) && File.Exists(tempFilePath))
         {
-            try { File.Delete(tempFilePath); } catch { }
+            try
+            {
+                File.Delete(tempFilePath);
+            }
+            catch (Exception ex)
+            {
+                _ = ex;
+            }
         }
     }
 });
@@ -6980,13 +6987,14 @@ app.MapPost("/api/jobs/scene-music", async (
         var projectId = body?.ProjectId;
         if (string.IsNullOrWhiteSpace(projectId))
             return Results.BadRequest(new { ok = false, error = "projectId required" });
-        if (body is null || body.Scene <= 0)
+        var req = body!;
+        if (req.Scene <= 0)
             return Results.BadRequest(new { ok = false, error = "scene required" });
-        var job = await jobService.StartSceneMusicGenAsync(projectId.Trim(), body.Scene, body.Model, body.IsVocal);
+        var job = await jobService.StartSceneMusicGenAsync(projectId.Trim(), req.Scene, req.Model, req.IsVocal);
         return Results.Accepted($"/api/jobs/{job.JobId}", new
         {
             ok = true,
-            message = $"Queued background music for Scene {body.Scene:D2}",
+            message = $"Queued background music for Scene {req.Scene:D2}",
             job,
         });
     }
@@ -8566,7 +8574,6 @@ app.MapGet("/api/media/proxy/{token}", async (
         if (!resp.IsSuccessStatusCode)
         {
             var code = (int)resp.StatusCode;
-            resp.Dispose();
             return Results.Json(new { ok = false, error = $"Upstream HTTP {code}" }, statusCode: code);
         }
 
@@ -8575,12 +8582,16 @@ app.MapGet("/api/media/proxy/{token}", async (
         // Results.Stream has no completion callback — RegisterForDisposeAsync guarantees resp is
         // disposed once the response body finishes writing, on every exit path (success or client abort).
         httpContext.Response.RegisterForDispose(resp);
+        resp = null;
         return Results.Stream(stream, contentType: ctype, fileDownloadName: "clip.mp4");
     }
     catch (Exception ex)
     {
-        resp?.Dispose();
         return Results.BadRequest(new { ok = false, error = ex.Message });
+    }
+    finally
+    {
+        resp?.Dispose();
     }
 });
 
@@ -8703,7 +8714,6 @@ app.MapPost("/api/demos", async (
         await demos.EnsureUserMayPublishAsync(user.UserId, user.IsAdmin, ct);
 
         DemoCatalogService.DemoEntry entry;
-        var autoPublic = false;
         var replacedExisting = false;
 
         // Item 11: re-publish → attach new movie to existing public demo and V2 YouTube replace.
@@ -8733,7 +8743,6 @@ app.MapPost("/api/demos", async (
             await file.CopyToAsync(ms, ct);
             var bytes = ms.ToArray();
             var sha = MediaRegistryService.HashBytes(bytes);
-            autoPublic = await media.IsTrustedShaAsync(projectId, sha);
 
             await using var stream = new MemoryStream(bytes);
             if (canReplace)
@@ -8777,7 +8786,6 @@ app.MapPost("/api/demos", async (
                 entry = await demos.TryGetAsync(entry.Id, ct) ?? entry;
                 var demoIdForUpload = entry.Id;
                 _ = Task.Run(() => youTubePublisher.PublishAsync(demoIdForUpload, CancellationToken.None));
-                autoPublic = true; // already public / re-pointing gallery
             }
             else
             {
@@ -8856,7 +8864,6 @@ app.MapPost("/api/demos", async (
             entry = await demos.TryGetAsync(entry.Id, ct) ?? entry;
             var demoIdForUpload = entry.Id;
             _ = Task.Run(() => youTubePublisher.PublishAsync(demoIdForUpload, CancellationToken.None));
-            autoPublic = true;
         }
         else
         {
@@ -8874,7 +8881,6 @@ app.MapPost("/api/demos", async (
             // Always push to YouTube — gallery only lists films with a YouTube id.
             var demoIdForUpload = entry.Id;
             _ = Task.Run(() => youTubePublisher.PublishAsync(demoIdForUpload, CancellationToken.None));
-            autoPublic = true;
         }
 
         return Results.Ok(new
@@ -9410,7 +9416,10 @@ app.MapPost("/api/projects/{projectId}/scenes/{sceneKey}/versions", async (
         if (root.TryGetProperty("sceneStateJson", out var s)) sceneStateJson = s.GetString();
         else if (root.TryGetProperty("sceneState", out var s2)) sceneStateJson = s2.GetRawText();
     }
-    catch { }
+    catch (Exception)
+    {
+        note = null;
+    }
 
     var info = await versions.SnapshotAsync(projectId, sceneKey, sceneStateJson, null, note, createdBy, ct);
     return Results.Ok(new { ok = true, version = info });

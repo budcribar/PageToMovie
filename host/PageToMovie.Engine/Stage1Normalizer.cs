@@ -277,8 +277,8 @@ public static class Stage1Normalizer
         var ambient = Get("ambient");
         var sfx = Get("sfx");
 
-        // If still empty, try light cues from visual_event (Fountain importer already does this;
-        // LLM Stage1 may leave ambient/sfx blank).
+        // If still empty, try light cues from the visual event field. The Fountain importer
+        // already does this; Stage 1 model output may leave ambient and sfx blank.
         if (string.IsNullOrWhiteSpace(ambient) && string.IsNullOrWhiteSpace(sfx))
         {
             var ve = CoerceString(beat.TryGetValue(VisualEventKey, out var vev) ? vev : null) ?? "";
@@ -401,14 +401,8 @@ public static class Stage1Normalizer
         return n;
     }
 
-    private static Dictionary<string, object?> GetDict(Dictionary<string, object?> d, string key)
-    {
-        if (d.TryGetValue(key, out var v) && v is Dictionary<string, object?> existing)
-            return existing;
-        var n = new Dictionary<string, object?>();
-        d[key] = n;
-        return n;
-    }
+    private static Dictionary<string, object?> GetDict(Dictionary<string, object?> d, string key) =>
+        GetOrCreateDict(d, key);
 
     private static List<object?> GetList(Dictionary<string, object?> d, string key)
     {

@@ -6,9 +6,9 @@
  *
  *   node jungle-cast-gen.mjs
  */
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const API = (process.env.API_URL || "http://127.0.0.1:5088").replace(/\/$/, "");
@@ -185,7 +185,9 @@ async function main() {
   console.log(JSON.stringify(results, null, 2));
 }
 
-main().catch((e) => {
+try {
+  await main();
+} catch (e) {
   console.error(e);
   process.exit(1);
-});
+}

@@ -514,7 +514,10 @@ public partial class Characters
                     S.Voice.RefreshVoiceClonePlayUrl();
                 }
             }
-            catch { }
+            catch (Exception)
+            {
+                return;
+            }
         }
 
     }

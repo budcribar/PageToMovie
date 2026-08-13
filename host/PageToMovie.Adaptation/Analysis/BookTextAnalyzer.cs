@@ -99,8 +99,8 @@ public static class BookTextAnalyzer
             ? BookKind.PictureBook
             : words < 15000 ? BookKind.Short : BookKind.Novel;
 
-        // Natural film length from adaptation density (speech×staging for short literary;
-        // market δ for novels). Calibrated on TTH ~17 min published film.
+        // Natural film length from adaptation density (speech times staging for short literary
+        // work; market delta for novels). Calibrated on a published short-story film of about 17 minutes.
         var syllables = TextMetrics.CountSyllables(plain);
         var quoteFrac = AdaptationDensity.EstimateQuotedDialogueFraction(plain);
         var runtimeEstimate = AdaptationDensity.EstimateFromStats(bookKind, words, syllables, quoteFrac);

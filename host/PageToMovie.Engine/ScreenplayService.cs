@@ -350,39 +350,8 @@ public static string NormalizeText(string text)
         var sourceDir = Path.Combine(projectDir, "source");
         Directory.CreateDirectory(sourceDir);
 
-        string? best = null;
-        DateTime bestTime = DateTime.MinValue;
-        void Consider(string path)
-        {
-            if (!File.Exists(path)) return;
-            var name = Path.GetFileName(path);
-            if (name.Equals(CanonicalFileName, StringComparison.OrdinalIgnoreCase) ||
-                name.Equals(MaxBaseFileName, StringComparison.OrdinalIgnoreCase))
-                return; // canonical draft / immutable full-length base are not recovery candidates
-            try
-            {
-                var fi = new FileInfo(path);
-                if (fi.Length == 0) return;
-                if (fi.LastWriteTimeUtc >= bestTime)
-                {
-                    bestTime = fi.LastWriteTimeUtc;
-                    best = path;
-                }
-            }
-            catch { /* ignore */ }
-        }
-
-        if (Directory.Exists(sourceDir))
-        {
-            foreach (var f in Directory.EnumerateFiles(sourceDir, "*.fountain"))
-                Consider(f);
-            foreach (var f in Directory.EnumerateFiles(sourceDir, "*.spmd"))
-                Consider(f);
-        }
-        foreach (var f in Directory.EnumerateFiles(projectDir, "*.fountain"))
-            Consider(f);
-
-        if (best is not { } recoveredPath)
+        var recoveredPath = FindNewestRecoverableScreenplay(projectDir, sourceDir);
+        if (recoveredPath is null)
             return false;
 
         var text = NormalizeText(File.ReadAllText(recoveredPath));
@@ -395,6 +364,59 @@ public static string NormalizeText(string text)
         // has reviewed Fountain. Sign-off is an explicit user action.
         WriteMeta(store, projectId, meta);
         return true;
+    }
+
+    /// <summary>
+    /// Newest non-canonical fountain/spmd under source/ or the project root, or null when none exist.
+    /// </summary>
+    private static string? FindNewestRecoverableScreenplay(string projectDir, string sourceDir)
+    {
+        string? best = null;
+        var bestTime = DateTime.MinValue;
+        foreach (var path in EnumerateRecoverableScreenplayFiles(projectDir, sourceDir))
+        {
+            try
+            {
+                var fi = new FileInfo(path);
+                if (fi.Length == 0) continue;
+                if (fi.LastWriteTimeUtc >= bestTime)
+                {
+                    bestTime = fi.LastWriteTimeUtc;
+                    best = path;
+                }
+            }
+            catch (Exception)
+            {
+                continue;
+            }
+        }
+        return best;
+    }
+
+    private static IEnumerable<string> EnumerateRecoverableScreenplayFiles(string projectDir, string sourceDir)
+    {
+        if (Directory.Exists(sourceDir))
+        {
+            foreach (var f in Directory.EnumerateFiles(sourceDir, "*.fountain"))
+            {
+                if (IsRecoverableScreenplayName(f)) yield return f;
+            }
+            foreach (var f in Directory.EnumerateFiles(sourceDir, "*.spmd"))
+            {
+                if (IsRecoverableScreenplayName(f)) yield return f;
+            }
+        }
+        foreach (var f in Directory.EnumerateFiles(projectDir, "*.fountain"))
+        {
+            if (IsRecoverableScreenplayName(f)) yield return f;
+        }
+    }
+
+    private static bool IsRecoverableScreenplayName(string path)
+    {
+        var name = Path.GetFileName(path);
+        return !name.Equals(CanonicalFileName, StringComparison.OrdinalIgnoreCase) &&
+               !name.Equals(MaxBaseFileName, StringComparison.OrdinalIgnoreCase);
     }
 
     public static SaveResult SaveDraft(ProjectStore store, string projectId, string text)

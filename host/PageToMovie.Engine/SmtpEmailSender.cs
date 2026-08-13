@@ -57,8 +57,7 @@ public sealed class SmtpEmailSender : IEmailSender
         }
         catch (Exception ex)
         {
-            _log.LogError(ex, "SMTP send failed To={To}", toEmail);
-            throw;
+            throw new InvalidOperationException($"SMTP send failed To={toEmail}", ex);
         }
     }
 }

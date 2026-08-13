@@ -27,11 +27,7 @@ public partial class AdaptationImport
             _dragOver = true;
         }
 
-        internal void OnDragOver(DragEventArgs e)
-        {
-            if (_importing || S.Busy || S.Jobs.JobRunning || !S.Gate.ImportReady) return;
-            _dragOver = true;
-        }
+        internal void OnDragOver(DragEventArgs e) => OnDragEnter(e);
 
         internal void OnDragLeave(DragEventArgs e) => _dragOver = false;
 
