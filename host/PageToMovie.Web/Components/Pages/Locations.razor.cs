@@ -10,7 +10,7 @@ public partial class Locations : IDisposable
 
     private string _projectId = "";
     private List<LocationSummary> _locations = new();
-    private bool _showUnusedInPlan { get; set; }
+    private bool _showUnusedInPlan = false;
     private string? _selectedKey;
 
     private IEnumerable<LocationSummary> LocationsForUi =>
