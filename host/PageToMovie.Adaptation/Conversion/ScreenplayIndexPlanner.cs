@@ -98,15 +98,6 @@ public static class ScreenplayIndexPlanner
     private static string BatchTitle(string title, int number) =>
         string.IsNullOrWhiteSpace(title) ? $"Batch {number}" : title;
 
-    private static string CombineTitle(string current, string? incoming)
-    {
-        if (string.IsNullOrWhiteSpace(incoming))
-            return current;
-        if (current.Contains(incoming, StringComparison.OrdinalIgnoreCase))
-            return current;
-        return string.IsNullOrWhiteSpace(current) ? incoming : current + " / " + incoming;
-    }
-
     private readonly record struct PackedGroup(
         string Title,
         List<string> SeqIds,
@@ -147,6 +138,15 @@ public static class ScreenplayIndexPlanner
             _cards = null;
             _seqIds = [];
             _title = "";
+        }
+
+        private static string CombineTitle(string current, string? incoming)
+        {
+            if (string.IsNullOrWhiteSpace(incoming))
+                return current;
+            if (current.Contains(incoming, StringComparison.OrdinalIgnoreCase))
+                return current;
+            return string.IsNullOrWhiteSpace(current) ? incoming : current + " / " + incoming;
         }
     }
 }
