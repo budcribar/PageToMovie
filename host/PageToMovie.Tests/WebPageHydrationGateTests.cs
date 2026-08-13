@@ -70,6 +70,24 @@ public class WebPageHydrationGateTests
         Assert.Equal(EngineApiClient.ForkableStoriesTimeoutMessage, page._storiesError);
     }
 
+    /// <summary>
+    /// #95 awaited InvokeAsync(StateHasChanged) from LoadStoriesAsync during
+    /// OnInitializedAsync. The renderer cannot process InvokeAsync until init
+    /// returns, so the HTTP call never started and the 8s timeout never painted.
+    /// LoadStoriesAsync must use sync Notify() — a hanging PaintAsync must not block it.
+    /// </summary>
+    [Fact]
+    public async Task LoadStoriesAsync_does_not_await_InvokeAsync_paint()
+    {
+        var page = new HangPaintHarness(CatalogEngine());
+        var load = page.LoadStoriesAsync();
+        var finished = await Task.WhenAny(load, Task.Delay(TimeSpan.FromSeconds(2)));
+        Assert.Same(load, finished);
+        await load;
+        Assert.False(page._storiesLoading);
+        Assert.Equal(2, page._forkableStories.Count);
+    }
+
     [Theory]
     [InlineData(true, true, "proj-1", true)]
     [InlineData(false, true, "proj-1", false)]
@@ -104,6 +122,14 @@ public class WebPageHydrationGateTests
     private sealed class SimpleVoiceStoriesHarness : SimpleVoice
     {
         public SimpleVoiceStoriesHarness(EngineApiClient engine) => BindEngine(engine);
+    }
+
+    /// <summary>PaintAsync never completes — LoadStoriesAsync must not await it.</summary>
+    private sealed class HangPaintHarness : SimpleVoice
+    {
+        public HangPaintHarness(EngineApiClient engine) => BindEngine(engine);
+
+        internal override Task PaintAsync() => new TaskCompletionSource().Task;
     }
 
     private sealed class ReplyHandler : HttpMessageHandler

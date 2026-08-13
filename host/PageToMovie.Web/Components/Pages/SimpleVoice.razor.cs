@@ -38,17 +38,34 @@ public partial class SimpleVoice
     private bool _sessionReady;
     private EngineApiClient? _boundEngine;
 
-    /// <summary>Child phase components mutate host state; ensure shell re-renders (phase switch).</summary>
-    internal void Notify() => StateHasChanged();
+    /// <summary>
+    /// Queue a render without waiting. Safe from OnInitializedAsync / LoadStoriesAsync.
+    /// Never replace this with <c>await InvokeAsync(StateHasChanged)</c> during init —
+    /// the renderer cannot process InvokeAsync until OnInitializedAsync returns, which
+    /// deadlocks ("Loading stories…" forever; the 8s timeout never appears).
+    /// </summary>
+    internal void Notify()
+    {
+        _ = _storiesLoading; // instance-bound for S2325 (Blazor partial hides StateHasChanged)
+        try
+        {
+            StateHasChanged();
+        }
+        catch (InvalidOperationException)
+        {
+            // No renderer (unit tests).
+        }
+    }
 
     /// <summary>Test seam so LoadStoriesAsync can run without a Blazor renderer.</summary>
     internal void BindEngine(EngineApiClient engine) => _boundEngine = engine;
 
     /// <summary>
-    /// Marshal a paint onto the renderer. Must not be blocked by OnAfterRenderAsync awaiting
-    /// hydrate/resume — that was the production "Loading stories…" hang after a 200.
+    /// Marshal a paint onto the renderer after OnAfterRender has returned
+    /// (hydrate/resume continuation). Safe to await InvokeAsync here.
+    /// Do not call this from OnInitializedAsync or LoadStoriesAsync — that deadlocks.
     /// </summary>
-    internal async Task PaintAsync()
+    internal virtual async Task PaintAsync()
     {
         _ = _storiesLoading;
         try
@@ -101,7 +118,10 @@ public partial class SimpleVoice
     {
         _storiesLoading = true;
         _storiesError = null;
-        await PaintAsync();
+        // Sync StateHasChanged only. Awaiting PaintAsync/InvokeAsync here deadlocks
+        // OnInitializedAsync: the renderer is busy running this method and cannot
+        // process InvokeAsync until it returns, so the HTTP call never starts.
+        Notify();
         try
         {
             var (stories, error) = await (_boundEngine ?? Engine).ListForkableProjectsAsync();
@@ -116,7 +136,7 @@ public partial class SimpleVoice
         finally
         {
             _storiesLoading = false;
-            await PaintAsync();
+            Notify();
         }
     }
 
