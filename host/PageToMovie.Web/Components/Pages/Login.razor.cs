@@ -330,7 +330,7 @@ public partial class Login : IDisposable
             {
                 var path = Uri.UnescapeDataString(ret.ToString());
                 if (path.StartsWith('/') && !path.StartsWith("//", StringComparison.Ordinal))
-                    return path.Split('?', '#')[0]; // never re-open with me= in returnUrl
+                    return path.Split(new[] { '?', '#' }, 2)[0]; // never re-open with me= in returnUrl
             }
         }
         catch { /* home */ }
