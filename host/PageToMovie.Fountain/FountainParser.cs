@@ -547,8 +547,11 @@ public static class FountainParser
 
     private static int ConsumeDialogueBlock(string[] lines, int i, ParseResult result)
     {
-        while (i < lines.Length && TryConsumeNextDialogueLine(lines, ref i, result))
-        { }
+        while (i < lines.Length)
+        {
+            if (!TryConsumeNextDialogueLine(lines, ref i, result))
+                break;
+        }
         return i;
     }
 

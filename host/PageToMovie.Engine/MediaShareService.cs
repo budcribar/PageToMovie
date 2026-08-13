@@ -89,7 +89,7 @@ public sealed class MediaShareService
         }
     }
 
-    private async Task<ShareRecord?> TryReadActiveWipShareAsync(string file, string projectId, CancellationToken ct)
+    private static async Task<ShareRecord?> TryReadActiveWipShareAsync(string file, string projectId, CancellationToken ct)
     {
         try
         {

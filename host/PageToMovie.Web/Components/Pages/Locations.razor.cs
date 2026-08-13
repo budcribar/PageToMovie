@@ -489,7 +489,7 @@ public partial class Locations : IDisposable
         }
         catch (TaskCanceledException)
         {
-            return;
+            // Polling stopped (component disposed or a new poll started).
         }
         catch (Exception ex)
         {

@@ -621,7 +621,7 @@ public sealed class CatalogUpdateProbeService
         row.Fields.Add(Field(field, catalog?.ToString(), null, StatusNotFound, notFoundMessage, url));
     }
 
-    private async Task AddXaiMaxReferenceImagesAsync(
+    private static async Task AddXaiMaxReferenceImagesAsync(
         HttpClient client, SupportedModelEntry entry, CatalogModelProbeResult row, CancellationToken ct)
     {
         // Reference images: multi-image docs historically say 7

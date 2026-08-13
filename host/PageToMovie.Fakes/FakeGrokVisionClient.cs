@@ -91,7 +91,7 @@ public sealed class FakeGrokVisionClient : IVisionClient
         else
         {
             kind = "review";
-            result = AutoReviewFallback();
+            result = AutoReviewFallbackJson;
         }
 
         try
@@ -173,7 +173,7 @@ public sealed class FakeGrokVisionClient : IVisionClient
         return true;
     }
 
-    private static string AutoReviewFallback() =>
+    private const string AutoReviewFallbackJson =
         """
         {
           "suggestion": "unclear",
