@@ -146,7 +146,7 @@ public partial class Scenes
             var needsStitch = !compositeOk || stale;
 
             // Fresh composite on disk — stream it directly (no stitch).
-            if (!needsStitch && compositeOk)
+            if (!needsStitch)
             {
                 _clientSceneUrl = null;
                 _playingScene = sn;

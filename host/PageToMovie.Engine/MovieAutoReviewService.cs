@@ -285,8 +285,7 @@ Return valid JSON with non-generic, specific observations:
         }
         catch (Exception ex)
         {
-            _log.LogWarning(ex, "Error evaluating scene chunk {Range}", rangeStr);
-            throw;
+            throw new InvalidOperationException($"Error evaluating scene chunk {rangeStr}. {ex.Message}", ex);
         }
         finally
         {

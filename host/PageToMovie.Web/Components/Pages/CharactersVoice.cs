@@ -191,7 +191,7 @@ public partial class Characters
                     await S.InvokeAsync(S.StateHasChanged);
                 }
             }
-            catch (TaskCanceledException) { }
+            catch (TaskCanceledException) { /* debounce cancelled */ }
             catch (Exception ex)
             {
                 _voiceSaveHint = "Save failed";
@@ -452,7 +452,7 @@ public partial class Characters
 
         internal async Task CancelVoiceCloneMicAsync()
         {
-            try { await S.Js.InvokeVoidAsync("PageToMovieVoiceCapture.cancel"); } catch { }
+            try { await S.Js.InvokeVoidAsync("PageToMovieVoiceCapture.cancel"); } catch { /* mic already stopped */ }
             _voiceRecRecording = false;
             _voiceCloneHint = "Recording cancelled.";
         }

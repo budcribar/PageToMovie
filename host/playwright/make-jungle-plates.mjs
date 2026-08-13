@@ -12,9 +12,9 @@
  *   projects/The_Jungle_Book/assets/characters/
  */
 import { chromium } from "playwright";
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..", "..");
@@ -225,7 +225,9 @@ async function main() {
   console.log("assets/characters:", ASSETS, manifest.characterAssets.length);
 }
 
-main().catch((e) => {
+try {
+  await main();
+} catch (e) {
   console.error(e);
   process.exit(1);
-});
+}

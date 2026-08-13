@@ -360,12 +360,12 @@ public sealed class ProjectTelemetryService
                 {
                     lastTime = t.Length > 120 ? t[..120] : t;
                     // Sample sparsely: keep first, then every ~8th-ish by counting
-                    if (progressSamples.Count == 0 ||
-                        progressSamples.Count < 8 && progressSamples.Count % 2 == 0)
+                    if ((progressSamples.Count == 0 ||
+                         (progressSamples.Count < 8 && progressSamples.Count % 2 == 0)) &&
+                        (progressSamples.Count == 0 ||
+                         !string.Equals(progressSamples[^1], lastTime, StringComparison.Ordinal)))
                     {
-                        if (progressSamples.Count == 0 ||
-                            !string.Equals(progressSamples[^1], lastTime, StringComparison.Ordinal))
-                            progressSamples.Add(lastTime);
+                        progressSamples.Add(lastTime);
                     }
                     continue;
                 }

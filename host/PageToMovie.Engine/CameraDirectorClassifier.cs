@@ -120,7 +120,7 @@ public sealed class CameraDirectorClassifier : BeatChatClassifierBase<CameraDire
 
         sb.AppendLine($"Beat '{id}' (class: {ac}):");
         AppendSpoken(sb, spk, dlg);
-        if (!string.IsNullOrWhiteSpace(spk2?.ToString()) || !string.IsNullOrWhiteSpace(dlg2?.ToString()))
+        if (!string.IsNullOrWhiteSpace(spk2.ToString()) || !string.IsNullOrWhiteSpace(dlg2.ToString()))
             sb.AppendLine($"  Then spoken ({spk2}): \"{dlg2}\"");
         AppendActionProse(sb, action);
     }

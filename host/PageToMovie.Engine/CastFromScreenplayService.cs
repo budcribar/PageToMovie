@@ -281,10 +281,10 @@ public sealed class CastFromScreenplayService
         // previously produced locations-only cast_seeds.json and dropped 45 characters).
         try
         {
-            if (GetLocationSeedsDict(normalized).Count == 0)
+            if (GetLocationSeedsDict(normalized).Count == 0 &&
+                _projects.MergeLocationSeedsIntoCastFile(projectId))
             {
-                if (_projects.MergeLocationSeedsIntoCastFile(projectId))
-                    onProgress?.Invoke("Merged location seeds from screenplay headings…");
+                onProgress?.Invoke("Merged location seeds from screenplay headings…");
             }
         }
         catch (Exception ex)

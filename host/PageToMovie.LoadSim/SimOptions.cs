@@ -48,35 +48,27 @@ public sealed class SimOptions
     public static SimOptions Parse(string[] args)
     {
         var o = new SimOptions();
-        for (var i = 0; i < args.Length; i++)
+        var i = 0;
+        while (i < args.Length)
         {
-            string Next() => i + 1 < args.Length ? args[++i] : "";
-            switch (args[i])
+            var arg = args[i++];
+            string Next() => i < args.Length ? args[i++] : "";
+            switch (arg)
             {
                 case "--baseUrl": o.BaseUrl = Next().TrimEnd('/'); break;
                 case "--users": o.Users = int.Parse(Next()); break;
                 case "--duration": o.DurationSec = int.Parse(Next()); break;
-                case "--scenario":
-                    var rawSc = Next();
-                    if (Enum.TryParse<LoadSimScenario>(rawSc, ignoreCase: true, out var parsedSc))
-                        o.Scenario = parsedSc;
-                    break;
+                case "--scenario": ApplyScenario(o, Next()); break;
                 case "--project":
                 case "--projectId": o.ProjectId = Next(); break;
                 case "--sourceProject": o.SourceProjectId = Next(); break;
                 case "--workspace":
                 case "--workspaceRoot": o.WorkspaceRoot = Next(); break;
-                case "--prepareSandbox":
-                    // flag form or true/false
-                    if (i + 1 < args.Length && (args[i + 1] is "true" or "false"))
-                        o.PrepareSandbox = bool.Parse(Next());
-                    else
-                        o.PrepareSandbox = true;
-                    break;
-                case "--refreshSandbox": o.RefreshSandbox = true; o.PrepareSandbox = true; break;
+                case "--prepareSandbox": ApplyPrepareSandbox(o, args, ref i); break;
+                case "--refreshSandbox": ApplyRefreshSandbox(o); break;
                 case "--no-prepareSandbox": o.PrepareSandbox = false; break;
                 case "--allowRealProject": o.AllowRealProject = true; break;
-                case "--projectPrefix": o.ProjectId = Next(); o.SharedProject = false; break;
+                case "--projectPrefix": ApplyProjectPrefix(o, Next()); break;
                 case "--sharedProject": o.SharedProject = bool.Parse(Next()); break;
                 case "--thinkTimeMs": o.ThinkTimeMs = int.Parse(Next()); break;
                 case "--genWeight": o.GenWeight = double.Parse(Next()); break;
@@ -96,10 +88,7 @@ public sealed class SimOptions
                 case "--readyTimeoutSec": o.ReadyTimeoutSec = int.Parse(Next()); break;
                 case "--skipReadyBarrier": o.SkipReadyBarrier = true; break;
                 case "--help":
-                case "-h":
-                    PrintHelp();
-                    Environment.Exit(0);
-                    break;
+                case "-h": ShowHelpAndExit(); break;
             }
         }
 
@@ -109,6 +98,43 @@ public sealed class SimOptions
         o.WaitForApiSec = Math.Clamp(o.WaitForApiSec, 0, 600);
         o.ReadyTimeoutSec = Math.Clamp(o.ReadyTimeoutSec, 5, 600);
         return o;
+    }
+
+    private static void ApplyScenario(SimOptions o, string rawSc)
+    {
+        if (Enum.TryParse<LoadSimScenario>(rawSc, ignoreCase: true, out var parsedSc))
+            o.Scenario = parsedSc;
+    }
+
+    private static void ApplyPrepareSandbox(SimOptions o, string[] args, ref int i)
+    {
+        if (i < args.Length && args[i] is "true" or "false")
+        {
+            o.PrepareSandbox = bool.Parse(args[i]);
+            i++;
+        }
+        else
+        {
+            o.PrepareSandbox = true;
+        }
+    }
+
+    private static void ApplyRefreshSandbox(SimOptions o)
+    {
+        o.RefreshSandbox = true;
+        o.PrepareSandbox = true;
+    }
+
+    private static void ApplyProjectPrefix(SimOptions o, string id)
+    {
+        o.ProjectId = id;
+        o.SharedProject = false;
+    }
+
+    private static void ShowHelpAndExit()
+    {
+        PrintHelp();
+        Environment.Exit(0);
     }
 
     public static void PrintHelp()
