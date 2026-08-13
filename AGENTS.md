@@ -20,6 +20,21 @@ Implications for every design/code choice:
 5. **Near-term working mode** — deliberate, manual steps (approve screenplay, cast, rebuild shot plan, gen scene, review, fix product code). Prefer small general pipeline fixes over batch automation or soak scripts that re-gen whole movies.
 6. **Before finishing a task**, ask: *Would a first-time user still get a strong film from a different story without us patching this?* If not, fix the pipeline, not the one project.
 
+### Build the full screenplay — cut later (max master)
+
+**Theory:** it is much easier to **cut** scenes than to **invent** them. We do not know the user's cut (120‑minute feature, miniseries, “just the wanderings”). So we run the expensive adapt **once**, keep a complete master, and every shorter film is a **view**.
+
+Implications:
+
+1. **Max master is the product.** Stage‑1 writes `screenplay.max.fountain` (and its index) covering the **whole book**. Do not collapse to a runtime target during first write. `reduced` / `custom` / Fit Length are **trim** only.
+2. **Err long, not short.** Too many boards is a trim problem. Missing Nekyia / cattle / a chapter is a regenerate problem. Soft scene-band notes are warnings, not generation caps.
+3. **Logical scenes, not 40k text slices.** The master is planned as an **index** (act → sequence → scene cards: heading, loc, cast, beat, book anchors), then **written from those cards** with the book attached by `file_id`. Arbitrary character-count chunks are a transport fallback, not the quality path.
+4. **Reuse, don't re-adapt.** Users download / fork the max Fountain (and index). Changing length or dropping episodes must not re-read Homer. Trim is cheap and reversible (snapshot first).
+5. **One-shot when it fits; index+batched writes for novels.** Short books: one file_id pass. Novels: index (small output) → write sequences in batches (not 175 one-scene calls, not 8 fat text chunks). File_id single-pass that times out may fall back to index+write, not to blind 40k slices.
+6. **Hierarchy makes trim cheap.** Drop a sequence (Telemachus in Sparta) rather than random lines. Estimate / miniseries / 120‑minute cut are filters on the same index.
+
+Canonical plan: [`host/docs/max-master-adaptation-plan.md`](host/docs/max-master-adaptation-plan.md). Aligns with Mary4 D0 (`screenplay.max` as shareable artifact).
+
 ---
 
 ## General solutions only (any book / any cast)
@@ -129,7 +144,8 @@ Our `book_id` is **internal** (SHA of the text). Providers do not know it. The t
 | Call | Today | Cache it as |
 |------|--------|-------------|
 | Enrich | Files path (book + `screenplay.max`); fallback still pastes 40k book + full fountain | Done for Grok; keep fallback last-resort |
-| Stage 1 book → Fountain | Book `file_id` + `previous_response_id` | Done |
+| Stage 1 book → Fountain (primary) | Book `file_id` + `previous_response_id` | Done for Grok when book does not fit inline |
+| Stage 1 merge / loc / name / narration repairs | **Still inlines the full Fountain** | Upload stitch as artifact `file_id`; attach for merge + repairs (see max-master plan) |
 | Look / reskin | Files path (`screenplay.max` file_id); fallback inlines | Done for Grok |
 | Fit length / trim | Files path (`screenplay.max` file_id); fallback inlines | Done for Grok |
 | Cast extract | Files path (book + `screenplay.fountain` file_ids); fallback inlines | Done for Grok |
@@ -419,7 +435,7 @@ When debugging runtime behavior on the live Railway server across coding agent s
 
 ---
 
-*Last updated: 2026-08-12 — provider file cache (don't resend artifacts); product north star; auto-run long-term; general solutions; UI copy principles; ephemeral migration cleanup; server diagnostics; platform architecture & pipeline integrity rules; strict client-side media ownership enforcement; strict operator control for paid AI tests.*
+*Last updated: 2026-08-13 — max-master (full screenplay, cut later); provider file cache; product north star; auto-run long-term; general solutions; UI copy principles; ephemeral migration cleanup; server diagnostics; platform architecture & pipeline integrity rules; strict client-side media ownership enforcement; strict operator control for paid AI tests.*
 
 
 ## Stage‑1 prompt tokens (book → Fountain)

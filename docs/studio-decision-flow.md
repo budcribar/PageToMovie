@@ -23,6 +23,7 @@ Cost is never a hard dollar gate. Preferences bias defaults; the user always cho
 | 8 | **Regen feedback loop** — measure real takes-per-clip and reasons so estimates (and ranges) improve with usage. |
 | 9 | **Two import paths:** book→screenplay *or* **import fountain** (skip write) — both land on the same DecisionCard. |
 | 10 | **Shared projects:** Owner full-film / Editor scene gen; job service; `keyMode` shared\|personal; leases on script, scene, cast, loc; no steal while online. |
+| 11 | **Max master, cut later.** First write is the complete book (`screenplay.max` + scene index). Runtime / miniseries / 120‑minute cuts are trims of that artifact — never a second adapt. See `host/docs/max-master-adaptation-plan.md`. |
 
 
 ---

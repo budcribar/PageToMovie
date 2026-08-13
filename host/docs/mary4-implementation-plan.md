@@ -123,6 +123,8 @@ enrich it once (the expensive steps). Everything downstream is a cheap, non-dest
 base. The **max fountain + embellishment is a canonical artifact** other users can fork and trim to their own
 time/cost needs — a head start that skips book→fountain→embellish generation entirely.
 
+How we *get* that max (index of logical scenes → batched writes, not 40k text chunks): [`max-master-adaptation-plan.md`](max-master-adaptation-plan.md).
+
 **Why this order (user rationale):** trimming is where the user shapes the film to their budget — they may add
 or remove scenes and change dialogue. Cast must therefore extract from the *final edited* screenplay, not any
 earlier draft (see D5).
