@@ -340,7 +340,7 @@ public partial class Admin
         private async Task ImportProjectFromFileAsync(IBrowserFile file)
         {
             // Buffer once — server import + client media extract both need the bytes.
-            await using var upload = file.OpenReadStream(MaxImportBytes, CancellationToken.None);
+            await using var upload = file.OpenReadStream(maxAllowedSize: MaxImportBytes, CancellationToken.None);
             using var ms = new MemoryStream();
             await upload.CopyToAsync(ms, CancellationToken.None);
             ms.Position = 0;
@@ -539,7 +539,7 @@ public partial class Admin
             }
             catch (TaskCanceledException)
             {
-                return;
+                // Enrich timer cancelled with the job.
             }
         }
 
@@ -552,7 +552,7 @@ public partial class Admin
             }
             catch (TaskCanceledException)
             {
-                return;
+                // Enrich poll cancelled with the job.
             }
             catch (Exception ex)
             {

@@ -247,7 +247,7 @@ public sealed class GrokVideoClient : IVideoClient
         var sw = Stopwatch.StartNew();
         try
         {
-            var (requestId, endpoint) = await SubmitOnceAsync(setup, current, ct).ConfigureAwait(false);
+            var requestId = await SubmitOnceAsync(setup, current, ct).ConfigureAwait(false);
             await _telemetry.LogApiCallAsync(BuildSubmitTelemetry(setup, current, attempt + 1, sw, requestId, ok: true, error: null), ct);
             return (requestId, null);
         }
@@ -266,21 +266,19 @@ public sealed class GrokVideoClient : IVideoClient
         }
     }
 
-    private async Task<(string RequestId, string Endpoint)> SubmitOnceAsync(
+    private Task<string> SubmitOnceAsync(
         SubmitSetup setup, string current, CancellationToken ct)
     {
         if (setup.HasContinue)
         {
-            var requestId = await SubmitExtendOnceAsync(
+            return SubmitExtendOnceAsync(
                 current, setup.DurationSeconds, setup.Resolution, setup.Model,
                 setup.VideoUri ?? string.Empty, setup.ContinueFromVideoPath ?? string.Empty, ct);
-            return (requestId, "videos/extensions");
         }
 
-        var freshId = await SubmitFreshOnceAsync(
+        return SubmitFreshOnceAsync(
             current, setup.DurationSeconds, setup.Resolution, setup.Model,
             setup.StartUri, setup.RefObjs, setup.StartFrameImagePath, setup.Refs.Count, ct);
-        return (freshId, "videos/generations");
     }
 
     private ApiCallTelemetry BuildSubmitTelemetry(

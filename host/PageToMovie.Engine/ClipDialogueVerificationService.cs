@@ -315,26 +315,13 @@ public sealed class ClipDialogueVerificationService
         extras.Add(s);
     }
 
-    private static bool ContainsIgnoreCase(IEnumerable<string> items, string value)
-    {
-        foreach (var c in items)
-        {
-            if (string.Equals(c, value, StringComparison.OrdinalIgnoreCase))
-                return true;
-        }
-        return false;
-    }
+    private static bool ContainsIgnoreCase(IEnumerable<string> items, string value) =>
+        items.Any(c => string.Equals(c, value, StringComparison.OrdinalIgnoreCase));
 
-    private static CharacterSummary? FindCharacter(IReadOnlyList<CharacterSummary> list, string name)
-    {
-        foreach (var c in list)
-        {
-            if (string.Equals(c.Key, name, StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(c.DisplayName, name, StringComparison.OrdinalIgnoreCase))
-                return c;
-        }
-        return null;
-    }
+    private static CharacterSummary? FindCharacter(IReadOnlyList<CharacterSummary> list, string name) =>
+        list.FirstOrDefault(c =>
+            string.Equals(c.Key, name, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(c.DisplayName, name, StringComparison.OrdinalIgnoreCase));
 
     private static void TryAddCharacterGuide(
         CharacterSummary? charObj, string projectDir,
@@ -620,16 +607,12 @@ Status options: 'verified' (dialogue & speaker match), 'mismatch' (dialogue inco
         }
         if (root.ValueKind == JsonValueKind.Object)
         {
-            foreach (var prop in root.EnumerateObject())
+            foreach (var prop in root.EnumerateObject().Where(p => JsonPropertyNameMatches(p.Name, names)))
             {
-                foreach (var name in names)
+                if (prop.Value.ValueKind == JsonValueKind.String)
                 {
-                    if (string.Equals(prop.Name.Replace("_", ""), name.Replace("_", ""), StringComparison.OrdinalIgnoreCase) &&
-                        prop.Value.ValueKind == JsonValueKind.String)
-                    {
-                            var val = prop.Value.GetString();
-                            if (!string.IsNullOrWhiteSpace(val)) return val.Trim();
-                    }
+                    var val = prop.Value.GetString();
+                    if (!string.IsNullOrWhiteSpace(val)) return val.Trim();
                 }
             }
         }
@@ -649,11 +632,10 @@ Status options: 'verified' (dialogue & speaker match), 'mismatch' (dialogue inco
         if (root.ValueKind == JsonValueKind.Object)
         {
             foreach (var prop in root.EnumerateObject().Where(p =>
-                         names.Any(name =>
-                             string.Equals(p.Name.Replace("_", ""), name.Replace("_", ""), StringComparison.OrdinalIgnoreCase))))
+                         JsonPropertyNameMatches(p.Name, names) &&
+                         p.Value.ValueKind is JsonValueKind.True or JsonValueKind.False))
             {
-                if (prop.Value.ValueKind is JsonValueKind.True or JsonValueKind.False)
-                    return prop.Value.GetBoolean();
+                return prop.Value.GetBoolean();
             }
         }
         return false;
@@ -668,14 +650,21 @@ Status options: 'verified' (dialogue & speaker match), 'mismatch' (dialogue inco
         }
         if (root.ValueKind == JsonValueKind.Object)
         {
-            foreach (var prop in root.EnumerateObject().Where(p =>
-                         names.Any(name =>
-                             string.Equals(p.Name.Replace("_", ""), name.Replace("_", ""), StringComparison.OrdinalIgnoreCase))))
+            foreach (var val in root.EnumerateObject()
+                         .Where(p => JsonPropertyNameMatches(p.Name, names))
+                         .Select(p => p.Value))
             {
-                if (prop.Value.ValueKind == JsonValueKind.Number && prop.Value.TryGetDouble(out var v))
+                if (val.ValueKind == JsonValueKind.Number && val.TryGetDouble(out var v))
                     return v;
             }
         }
         return null;
+    }
+
+    private static bool JsonPropertyNameMatches(string propName, string[] names)
+    {
+        var compact = propName.Replace("_", "");
+        return names.Any(name =>
+            string.Equals(compact, name.Replace("_", ""), StringComparison.OrdinalIgnoreCase));
     }
 }

@@ -85,7 +85,13 @@ public partial class AdaptationImport
                 _chosenFileName = name;
                 _dragOver = false;
                 const long maxBook = 80 * 1024 * 1024;
-                await using var stream = file.OpenReadStream(maxBook);
+                if (file.Size > maxBook)
+                {
+                    S.Error = $"File too large ({file.Size / (1024.0 * 1024):F0} MB). Max is 80 MB.";
+                    _inputFileKey++;
+                    return;
+                }
+                await using var stream = file.OpenReadStream(maxAllowedSize: maxBook);
                 using var ms = new MemoryStream();
                 await stream.CopyToAsync(ms);
                 bytes = ms.ToArray();
