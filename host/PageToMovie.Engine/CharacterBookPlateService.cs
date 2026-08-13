@@ -1034,8 +1034,24 @@ public sealed class CharacterBookPlateService
         Dictionary<string, List<(BookImageRow Row, double Score)>> scores,
         JsonObject seeds)
     {
-        var animalKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var humanKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        ClassifySeedSpecies(seeds, out var animalKeys, out var humanKeys);
+        if (animalKeys.Count == 0 || humanKeys.Count == 0) return;
+
+        var animalNameHits = CollectAnimalNameHits(seeds, animalKeys);
+        foreach (var hk in humanKeys)
+        {
+            if (!scores.TryGetValue(hk, out var list) || list.Count == 0) continue;
+            scores[hk] = list.Where(x => !PlateFilenameHitsAnimalName(x, animalNameHits)).ToList();
+        }
+    }
+
+    private static void ClassifySeedSpecies(
+        JsonObject seeds,
+        out HashSet<string> animalKeys,
+        out HashSet<string> humanKeys)
+    {
+        animalKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        humanKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var (key, node) in seeds)
         {
             if (node is not JsonObject seed || IsVoiceOnly(key, seed)) continue;
@@ -1047,10 +1063,10 @@ public sealed class CharacterBookPlateService
                      IsHumanishSeed(key, desc))
                 humanKeys.Add(key);
         }
+    }
 
-        if (animalKeys.Count == 0 || humanKeys.Count == 0) return;
-
-        // Animal name tokens from animal cast (Buster, dog, etc.)
+    private static List<string> CollectAnimalNameHits(JsonObject seeds, HashSet<string> animalKeys)
+    {
         var animalNameHits = new List<string>();
         foreach (var ak in animalKeys)
         {
@@ -1063,22 +1079,19 @@ public sealed class CharacterBookPlateService
             }
         }
         animalNameHits.AddRange(new[] { "dog", "puppy", "cat", "kitten", "fox", "bear", "bunny", "rabbit" });
+        return animalNameHits;
+    }
 
-        foreach (var hk in humanKeys)
+    private static bool PlateFilenameHitsAnimalName(
+        (BookImageRow Row, double Score) item, List<string> animalNameHits)
+    {
+        var n = item.Row.Name + " " + (item.Row.PathRel ?? "");
+        foreach (var t in animalNameHits)
         {
-            if (!scores.TryGetValue(hk, out var list) || list.Count == 0) continue;
-            scores[hk] = list.Where(x =>
-            {
-                var n = x.Row.Name + " " + (x.Row.PathRel ?? "");
-                // Human seed must not take plates that name the animal hero in the filename
-                foreach (var t in animalNameHits)
-                {
-                    if (t.Length >= 3 && n.Contains(t, StringComparison.OrdinalIgnoreCase))
-                        return false;
-                }
+            if (t.Length >= 3 && n.Contains(t, StringComparison.OrdinalIgnoreCase))
                 return true;
-            }).ToList();
         }
+        return false;
     }
 
     private static bool IsGenericRoleToken(string t)
@@ -1138,37 +1151,48 @@ public sealed class CharacterBookPlateService
         for (var j = 0; j < Math.Min(3, picks.Count); j++)
         {
             var row = picks[j];
-            if (ProjectStore.IsTextOnlyPlatePath(row.PathRel) || ProjectStore.IsTextOnlyPlatePath(row.Name))
-                continue;
+            if (IsTextOnlyPlate(row)) continue;
             if (copyIntoAssets && File.Exists(row.AbsPath))
-            {
-                var ext = Path.GetExtension(row.AbsPath).ToLowerInvariant();
-                if (string.IsNullOrEmpty(ext)) ext = ".png";
-                var destName = $"{key.ToLowerInvariant()}_bookref_{j + 1}{ext}";
-                var dest = Path.Combine(charsDir, destName);
-                // Avoid writing two slots if somehow same source
-                var srcFp = ContentFingerprint(row);
-                if (srcFp.Length > 0 && usedDest.Contains(srcFp))
-                    continue;
-                try
-                {
-                    var bytes = await File.ReadAllBytesAsync(row.AbsPath, ct).ConfigureAwait(false);
-                    await File.WriteAllBytesAsync(dest, bytes, ct).ConfigureAwait(false);
-                    relPaths.Add(Path.GetRelativePath(projectDir, dest).Replace('\\', '/'));
-                    if (srcFp.Length > 0) usedDest.Add(srcFp);
-                }
-                catch
-                {
-                    if (!ProjectStore.IsTextOnlyPlatePath(row.PathRel))
-                        relPaths.Add(row.PathRel);
-                }
-            }
+                await CopyPlateIntoAssetsAsync(projectDir, charsDir, key, row, j, usedDest, relPaths, ct)
+                    .ConfigureAwait(false);
             else if (!ProjectStore.IsTextOnlyPlatePath(row.PathRel))
-            {
                 relPaths.Add(row.PathRel);
-            }
         }
         return relPaths;
+    }
+
+    private static bool IsTextOnlyPlate(BookImageRow row) =>
+        ProjectStore.IsTextOnlyPlatePath(row.PathRel) || ProjectStore.IsTextOnlyPlatePath(row.Name);
+
+    private static async Task CopyPlateIntoAssetsAsync(
+        string projectDir,
+        string charsDir,
+        string key,
+        BookImageRow row,
+        int j,
+        HashSet<string> usedDest,
+        List<string> relPaths,
+        CancellationToken ct)
+    {
+        var ext = Path.GetExtension(row.AbsPath).ToLowerInvariant();
+        if (string.IsNullOrEmpty(ext)) ext = ".png";
+        var destName = $"{key.ToLowerInvariant()}_bookref_{j + 1}{ext}";
+        var dest = Path.Combine(charsDir, destName);
+        var srcFp = ContentFingerprint(row);
+        if (srcFp.Length > 0 && usedDest.Contains(srcFp))
+            return;
+        try
+        {
+            var bytes = await File.ReadAllBytesAsync(row.AbsPath, ct).ConfigureAwait(false);
+            await File.WriteAllBytesAsync(dest, bytes, ct).ConfigureAwait(false);
+            relPaths.Add(Path.GetRelativePath(projectDir, dest).Replace('\\', '/'));
+            if (srcFp.Length > 0) usedDest.Add(srcFp);
+        }
+        catch
+        {
+            if (!ProjectStore.IsTextOnlyPlatePath(row.PathRel))
+                relPaths.Add(row.PathRel);
+        }
     }
 
     /// <summary>Remove leftover bookref_N from earlier sorts that are no longer referenced.</summary>

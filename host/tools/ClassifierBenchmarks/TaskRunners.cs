@@ -232,26 +232,7 @@ public static class TaskRunners
         using var goldDoc = JsonDocument.Parse(await File.ReadAllTextAsync(goldPath, ct));
         var root = goldDoc.RootElement;
         var curated = root.TryGetProperty(CuratedCategory, out var cEl) && cEl.GetBoolean();
-
-        var samples = new List<(string Id, string Visual, string Dialogue, string Speaker, bool Vo, List<string> Gold)>();
-        foreach (var el in root.GetProperty(LabelsKey).EnumerateArray())
-        {
-            var id = el.TryGetProperty("id", out var idEl) ? idEl.GetString() ?? "" : "";
-            if (id.Length == 0) continue;
-            var visual = el.TryGetProperty(VisualKey, out var vEl) ? vEl.GetString() ?? "" : "";
-            var dialogue = el.TryGetProperty("dialogue", out var dEl) ? dEl.GetString() ?? "" : "";
-            var speaker = el.TryGetProperty("speaker", out var sEl) ? sEl.GetString() ?? "" : "";
-            var vo = el.TryGetProperty("is_voiceover", out var voEl) && voEl.ValueKind == JsonValueKind.True;
-            var gold = new List<string>();
-            if (el.TryGetProperty("gold_keys", out var gk) && gk.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var k in gk.EnumerateArray())
-                    if (k.GetString() is { Length: > 0 } ks)
-                        gold.Add(ks);
-            }
-            samples.Add((id, visual, dialogue, speaker, vo, gold));
-        }
-
+        var samples = LoadOnScreenGoldSamples(root);
         var castKeys = await LoadCastKeysAsync(paths.RepoRoot, projectId, samples, ct);
         var profiles = castKeys.ToDictionary(
             k => k,
@@ -261,19 +242,7 @@ public static class TaskRunners
             },
             StringComparer.OrdinalIgnoreCase);
 
-        var payload = samples.Select(s =>
-        {
-            var h = BaselineOnScreen(s.Visual, s.Dialogue, s.Speaker, s.Vo, profiles);
-            return new Dictionary<string, object?>
-            {
-                ["id"] = s.Id,
-                ["visual_event"] = Trunc(s.Visual, 280),
-                ["dialogue"] = Trunc(s.Dialogue, 120),
-                ["speaker_key"] = s.Speaker,
-                ["is_voiceover"] = s.Vo,
-                ["heuristic_keys"] = h,
-            };
-        }).ToList();
+        var payload = samples.Select(s => BuildOnScreenPayload(s, profiles)).ToList();
 
         var sw = Stopwatch.StartNew();
         var raw = await chat.CompleteAsync(
@@ -284,30 +253,7 @@ public static class TaskRunners
         sw.Stop();
 
         var aiMap = OnScreenCastClassifier.ParseLabels(raw, castKeys);
-        var sampleScores = new List<SampleScore>();
-        double baseSum = 0, aiSum = 0;
-        var hits = 0;
-        foreach (var s in samples)
-        {
-            var h = BaselineOnScreen(s.Visual, s.Dialogue, s.Speaker, s.Vo, profiles);
-            aiMap.TryGetValue(s.Id, out var ak);
-            if (aiMap.ContainsKey(s.Id)) hits++;
-            ak ??= new List<string>();
-            var bScore = OnScreenCastClassifier.SetF1(h, s.Gold);
-            var aScore = OnScreenCastClassifier.SetF1(ak, s.Gold);
-            baseSum += bScore;
-            aiSum += aScore;
-            sampleScores.Add(new SampleScore
-            {
-                Id = s.Id,
-                Visual = Trunc(s.Visual, 220),
-                GoldLabel = string.Join(", ", s.Gold),
-                BaselineLabel = string.Join(", ", h),
-                AiLabel = string.Join(", ", ak),
-                BaselineScore = bScore,
-                AiScore = aScore,
-            });
-        }
+        var (sampleScores, baseSum, aiSum, hits) = ScoreOnScreenSamples(samples, profiles, aiMap);
 
         var n = samples.Count;
         var baseMean = n == 0 ? 0 : baseSum / n;
@@ -332,6 +278,86 @@ public static class TaskRunners
             Note = prompt.Notes,
             Samples = sampleScores,
         };
+    }
+
+    static List<(string Id, string Visual, string Dialogue, string Speaker, bool Vo, List<string> Gold)>
+        LoadOnScreenGoldSamples(JsonElement root)
+    {
+        var samples = new List<(string Id, string Visual, string Dialogue, string Speaker, bool Vo, List<string> Gold)>();
+        foreach (var el in root.GetProperty(LabelsKey).EnumerateArray())
+        {
+            var id = el.TryGetProperty("id", out var idEl) ? idEl.GetString() ?? "" : "";
+            if (id.Length == 0) continue;
+            samples.Add((
+                id,
+                el.TryGetProperty(VisualKey, out var vEl) ? vEl.GetString() ?? "" : "",
+                el.TryGetProperty("dialogue", out var dEl) ? dEl.GetString() ?? "" : "",
+                el.TryGetProperty("speaker", out var sEl) ? sEl.GetString() ?? "" : "",
+                el.TryGetProperty("is_voiceover", out var voEl) && voEl.ValueKind == JsonValueKind.True,
+                ReadGoldKeys(el)));
+        }
+        return samples;
+    }
+
+    static List<string> ReadGoldKeys(JsonElement el)
+    {
+        var gold = new List<string>();
+        if (!el.TryGetProperty("gold_keys", out var gk) || gk.ValueKind != JsonValueKind.Array)
+            return gold;
+        foreach (var k in gk.EnumerateArray())
+        {
+            if (k.GetString() is { Length: > 0 } ks)
+                gold.Add(ks);
+        }
+        return gold;
+    }
+
+    static Dictionary<string, object?> BuildOnScreenPayload(
+        (string Id, string Visual, string Dialogue, string Speaker, bool Vo, List<string> Gold) s,
+        Dictionary<string, ClipVideoPromptBuilder.CharacterProfile> profiles)
+    {
+        var h = BaselineOnScreen(s.Visual, s.Dialogue, s.Speaker, s.Vo, profiles);
+        return new Dictionary<string, object?>
+        {
+            ["id"] = s.Id,
+            ["visual_event"] = Trunc(s.Visual, 280),
+            ["dialogue"] = Trunc(s.Dialogue, 120),
+            ["speaker_key"] = s.Speaker,
+            ["is_voiceover"] = s.Vo,
+            ["heuristic_keys"] = h,
+        };
+    }
+
+    static (List<SampleScore> Scores, double BaseSum, double AiSum, int Hits) ScoreOnScreenSamples(
+        List<(string Id, string Visual, string Dialogue, string Speaker, bool Vo, List<string> Gold)> samples,
+        Dictionary<string, ClipVideoPromptBuilder.CharacterProfile> profiles,
+        Dictionary<string, List<string>> aiMap)
+    {
+        var sampleScores = new List<SampleScore>();
+        double baseSum = 0, aiSum = 0;
+        var hits = 0;
+        foreach (var s in samples)
+        {
+            var h = BaselineOnScreen(s.Visual, s.Dialogue, s.Speaker, s.Vo, profiles);
+            aiMap.TryGetValue(s.Id, out var ak);
+            if (aiMap.ContainsKey(s.Id)) hits++;
+            ak ??= new List<string>();
+            var bScore = OnScreenCastClassifier.SetF1(h, s.Gold);
+            var aScore = OnScreenCastClassifier.SetF1(ak, s.Gold);
+            baseSum += bScore;
+            aiSum += aScore;
+            sampleScores.Add(new SampleScore
+            {
+                Id = s.Id,
+                Visual = Trunc(s.Visual, 220),
+                GoldLabel = string.Join(", ", s.Gold),
+                BaselineLabel = string.Join(", ", h),
+                AiLabel = string.Join(", ", ak),
+                BaselineScore = bScore,
+                AiScore = aScore,
+            });
+        }
+        return (sampleScores, baseSum, aiSum, hits);
     }
 
     static List<string> BaselineOnScreen(

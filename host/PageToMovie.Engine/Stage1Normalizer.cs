@@ -339,41 +339,47 @@ public static class Stage1Normalizer
         if (beat.TryGetValue("audio", out var a) && a is Dictionary<string, object?> ad)
             nested = ad;
 
-        string Get(string key)
-        {
-            if (nested is not null &&
-                nested.TryGetValue(key, out var nv))
-            {
-                var nestedVal = CoerceString(nv);
-                if (!string.IsNullOrWhiteSpace(nestedVal))
-                    return nestedVal.Trim();
-            }
-            if (beat.TryGetValue(key, out var rv))
-            {
-                var beatVal = CoerceString(rv);
-                if (!string.IsNullOrWhiteSpace(beatVal))
-                    return beatVal.Trim();
-            }
-            return "";
-        }
-
-        var ambient = Get("ambient");
-        var sfx = Get("sfx");
-
-        // If still empty, try light cues from the visual event field. The Fountain importer
-        // already does this; Stage 1 model output may leave ambient and sfx blank.
-        if (string.IsNullOrWhiteSpace(ambient) && string.IsNullOrWhiteSpace(sfx))
-        {
-            var ve = CoerceString(beat.TryGetValue(VisualEventKey, out var vev) ? vev : null) ?? "";
-            var inferred = FountainStage1Importer.InferAmbientAndSfx(ve);
-            ambient = inferred.Ambient;
-            sfx = inferred.Sfx;
-        }
+        var ambient = ReadBeatAudioValue(nested, beat, "ambient");
+        var sfx = ReadBeatAudioValue(nested, beat, "sfx");
+        (ambient, sfx) = InferBeatAmbientSfxIfEmpty(beat, ambient, sfx);
 
         beat["ambient"] = ambient;
         beat["sfx"] = sfx;
         beat.Remove("ambient_or_sfx");
+        beat["audio"] = WriteBeatAudioNested(nested, beat, ambient, sfx);
+    }
 
+    private static string ReadBeatAudioValue(
+        Dictionary<string, object?>? nested, Dictionary<string, object?> beat, string key)
+    {
+        if (nested is not null && nested.TryGetValue(key, out var nv))
+        {
+            var nestedVal = CoerceString(nv);
+            if (!string.IsNullOrWhiteSpace(nestedVal))
+                return nestedVal.Trim();
+        }
+        if (beat.TryGetValue(key, out var rv))
+        {
+            var beatVal = CoerceString(rv);
+            if (!string.IsNullOrWhiteSpace(beatVal))
+                return beatVal.Trim();
+        }
+        return "";
+    }
+
+    private static (string Ambient, string Sfx) InferBeatAmbientSfxIfEmpty(
+        Dictionary<string, object?> beat, string ambient, string sfx)
+    {
+        if (!string.IsNullOrWhiteSpace(ambient) || !string.IsNullOrWhiteSpace(sfx))
+            return (ambient, sfx);
+        var ve = CoerceString(beat.TryGetValue(VisualEventKey, out var vev) ? vev : null) ?? "";
+        var inferred = FountainStage1Importer.InferAmbientAndSfx(ve);
+        return (inferred.Ambient, inferred.Sfx);
+    }
+
+    private static Dictionary<string, object?> WriteBeatAudioNested(
+        Dictionary<string, object?>? nested, Dictionary<string, object?> beat, string ambient, string sfx)
+    {
         nested ??= new Dictionary<string, object?>();
         nested["ambient"] = ambient;
         nested["sfx"] = sfx;
@@ -384,7 +390,7 @@ public static class Stage1Normalizer
         if (!nested.ContainsKey("dialogue"))
             nested["dialogue"] = CoerceString(beat.TryGetValue("dialogue", out var dlg) ? dlg : null) ?? "";
         nested.Remove("ambient_or_sfx");
-        beat["audio"] = nested;
+        return nested;
     }
 
     private static string NormLocationType(object? v)

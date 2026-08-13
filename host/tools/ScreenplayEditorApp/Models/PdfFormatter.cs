@@ -151,51 +151,47 @@ public static class PdfFormatter
 
     private static void EmitDialogue(ScreenplayBeat beat, Action<double, string> emitLine, Action emitBlank)
     {
-        var wroteAnything = false;
-
-        if (!string.IsNullOrWhiteSpace(beat.Speaker))
-        {
-            var cue = Norm(beat.Speaker).ToUpperInvariant();
-            if (!string.IsNullOrWhiteSpace(beat.Extension))
-            {
-                cue += $" ({Norm(beat.Extension).Trim('(', ')').ToUpperInvariant()})";
-            }
-            foreach (var line in WrapText(cue, MaxCharsCharacter))
-            {
-                emitLine(CharacterIndent, line);
-            }
-            wroteAnything = true;
-        }
-
-        if (!string.IsNullOrWhiteSpace(beat.Parenthetical))
-        {
-            foreach (var raw in Norm(beat.Parenthetical).Split('\n'))
-            {
-                var paren = raw.Trim();
-                if (paren.Length == 0) continue;
-                if (!paren.StartsWith('(')) paren = "(" + paren;
-                if (!paren.EndsWith(')')) paren += ")";
-                foreach (var line in WrapText(paren, MaxCharsParenthetical))
-                {
-                    emitLine(ParentheticalIndent, line);
-                }
-            }
-            wroteAnything = true;
-        }
-
-        if (!string.IsNullOrWhiteSpace(beat.SpokenText))
-        {
-            foreach (var segment in Norm(beat.SpokenText).Replace("\r\n", "\n").Split('\n'))
-            {
-                foreach (var line in WrapText(segment, MaxCharsDialogue))
-                {
-                    emitLine(DialogueIndent, line);
-                }
-            }
-            wroteAnything = true;
-        }
-
+        var wroteAnything = EmitSpeakerCue(beat, emitLine);
+        if (EmitParentheticals(beat, emitLine)) wroteAnything = true;
+        if (EmitSpokenText(beat, emitLine)) wroteAnything = true;
         if (wroteAnything) emitBlank();
+    }
+
+    private static bool EmitSpeakerCue(ScreenplayBeat beat, Action<double, string> emitLine)
+    {
+        if (string.IsNullOrWhiteSpace(beat.Speaker)) return false;
+        var cue = Norm(beat.Speaker).ToUpperInvariant();
+        if (!string.IsNullOrWhiteSpace(beat.Extension))
+            cue += $" ({Norm(beat.Extension).Trim('(', ')').ToUpperInvariant()})";
+        foreach (var line in WrapText(cue, MaxCharsCharacter))
+            emitLine(CharacterIndent, line);
+        return true;
+    }
+
+    private static bool EmitParentheticals(ScreenplayBeat beat, Action<double, string> emitLine)
+    {
+        if (string.IsNullOrWhiteSpace(beat.Parenthetical)) return false;
+        foreach (var raw in Norm(beat.Parenthetical).Split('\n'))
+        {
+            var paren = raw.Trim();
+            if (paren.Length == 0) continue;
+            if (!paren.StartsWith('(')) paren = "(" + paren;
+            if (!paren.EndsWith(')')) paren += ")";
+            foreach (var line in WrapText(paren, MaxCharsParenthetical))
+                emitLine(ParentheticalIndent, line);
+        }
+        return true;
+    }
+
+    private static bool EmitSpokenText(ScreenplayBeat beat, Action<double, string> emitLine)
+    {
+        if (string.IsNullOrWhiteSpace(beat.SpokenText)) return false;
+        foreach (var segment in Norm(beat.SpokenText).Replace("\r\n", "\n").Split('\n'))
+        {
+            foreach (var line in WrapText(segment, MaxCharsDialogue))
+                emitLine(DialogueIndent, line);
+        }
+        return true;
     }
 
     private static string BuildSceneHeading(ScreenplayScene scene)

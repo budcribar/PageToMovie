@@ -844,63 +844,86 @@ public static class SupportedModelCatalog
     public static List<ProviderKeyStatusDto> BuildProviderKeyRows()
     {
         var groups = Entries
-            .Where(e => e.Enabled && (e.RequiredEnvKeys is { Count: > 0 }
-                        || string.Equals(NormalizeProviderId(e.ProviderId), "fake", StringComparison.OrdinalIgnoreCase)))
+            .Where(IsEnabledKeyProvider)
             .GroupBy(e => NormalizeProviderId(e.ProviderId), StringComparer.OrdinalIgnoreCase);
 
         var rows = new List<ProviderKeyStatusDto>();
         foreach (var group in groups.OrderBy(g => DisplayOrder(g.Key)))
         {
-            var pId = group.Key;
-            if (string.IsNullOrWhiteSpace(pId) || pId is "none") continue;
-            var sample = group.First();
-            var required = group.SelectMany(m => m.RequiredEnvKeys).Where(k => !string.IsNullOrWhiteSpace(k)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            // The fake test vendor is key-free by design (requiredEnvKeys: [] on every fake-* model) —
-            // it must still get a row so GetUserSettingsDtoAsync's "always configured" special-case for
-            // it has a row to apply to. Real providers with zero required keys are still dropped.
-            if (required.Count == 0 && !string.Equals(pId, "fake", StringComparison.OrdinalIgnoreCase)) continue;
-
-            var supportsVideoGen = group.Any(m => m.Capability == ModelCapability.Video);
-            var supportsVideoReview = group.Any(m => m.SupportsVideoReview);
-            var supportsImageGen = group.Any(m => m.Capability == ModelCapability.Image);
-            var supportsScriptPlanning = group.Any(m => m.Capability == ModelCapability.Chat);
-            var supportsImageVision = group.Any(m => m.Capability == ModelCapability.Vision);
-            var supportsAudio = group.Any(m => m.Capability == ModelCapability.Audio);
-            var supportsVoice = group.Any(m => m.Capability == ModelCapability.Voice);
-            var supportsLipSync = group.Any(m => m.Capability == ModelCapability.LipSync);
-
-            var caps = new List<string>();
-            if (supportsVideoGen) caps.Add("Video Gen");
-            if (supportsVideoReview) caps.Add("Video Review");
-            if (supportsImageGen) caps.Add("Image Gen");
-            if (supportsScriptPlanning) caps.Add("Script & Planning");
-            if (supportsImageVision) caps.Add("Image Vision / OCR");
-            if (supportsAudio) caps.Add("Audio / Music");
-            if (supportsVoice) caps.Add("Voice clone / TTS");
-            if (supportsLipSync) caps.Add("Lip-sync");
-
-            rows.Add(new ProviderKeyStatusDto
-            {
-                ProviderId = pId,
-                DisplayName = DisplayNameForProvider(pId, sample),
-                Family = string.IsNullOrWhiteSpace(sample.ProviderName) ? sample.Provider.ToString() : sample.ProviderName,
-                ActiveSource = "none",
-                CapabilitiesSummary = caps.Count > 0 ? string.Join(", ", caps) : "—",
-                SupportsVideo = supportsVideoGen || supportsVideoReview,
-                SupportsImage = supportsImageGen,
-                SupportsChat = supportsScriptPlanning,
-                SupportsVision = supportsImageVision,
-                SupportsVideoGen = supportsVideoGen,
-                SupportsVideoReview = supportsVideoReview,
-                SupportsImageGen = supportsImageGen,
-                SupportsScriptPlanning = supportsScriptPlanning,
-                SupportsImageVision = supportsImageVision,
-                RequiredEnvKeys = required,
-                // Provider cards are for API keys — never dump per-model engineering notes here.
-                Notes = ShortProviderBlurb(),
-            });
+            var row = TryBuildProviderKeyRow(group.Key, group);
+            if (row is not null)
+                rows.Add(row);
         }
         return rows;
+    }
+
+    private static bool IsEnabledKeyProvider(SupportedModelEntry e) =>
+        e.Enabled && (e.RequiredEnvKeys is { Count: > 0 }
+                      || string.Equals(NormalizeProviderId(e.ProviderId), "fake", StringComparison.OrdinalIgnoreCase));
+
+    private static ProviderKeyStatusDto? TryBuildProviderKeyRow(
+        string pId, IEnumerable<SupportedModelEntry> group)
+    {
+        if (string.IsNullOrWhiteSpace(pId) || pId is "none") return null;
+        var sample = group.First();
+        var required = group.SelectMany(m => m.RequiredEnvKeys)
+            .Where(k => !string.IsNullOrWhiteSpace(k))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        // The fake test vendor is key-free by design (requiredEnvKeys: [] on every fake-* model) —
+        // it must still get a row so GetUserSettingsDtoAsync's "always configured" special-case for
+        // it has a row to apply to. Real providers with zero required keys are still dropped.
+        if (required.Count == 0 && !string.Equals(pId, "fake", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        var supportsVideoGen = group.Any(m => m.Capability == ModelCapability.Video);
+        var supportsVideoReview = group.Any(m => m.SupportsVideoReview);
+        var supportsImageGen = group.Any(m => m.Capability == ModelCapability.Image);
+        var supportsScriptPlanning = group.Any(m => m.Capability == ModelCapability.Chat);
+        var supportsImageVision = group.Any(m => m.Capability == ModelCapability.Vision);
+        var supportsAudio = group.Any(m => m.Capability == ModelCapability.Audio);
+        var supportsVoice = group.Any(m => m.Capability == ModelCapability.Voice);
+        var supportsLipSync = group.Any(m => m.Capability == ModelCapability.LipSync);
+        var caps = ProviderCapabilityLabels(
+            supportsVideoGen, supportsVideoReview, supportsImageGen, supportsScriptPlanning,
+            supportsImageVision, supportsAudio, supportsVoice, supportsLipSync);
+
+        return new ProviderKeyStatusDto
+        {
+            ProviderId = pId,
+            DisplayName = DisplayNameForProvider(pId, sample),
+            Family = string.IsNullOrWhiteSpace(sample.ProviderName) ? sample.Provider.ToString() : sample.ProviderName,
+            ActiveSource = "none",
+            CapabilitiesSummary = caps.Count > 0 ? string.Join(", ", caps) : "—",
+            SupportsVideo = supportsVideoGen || supportsVideoReview,
+            SupportsImage = supportsImageGen,
+            SupportsChat = supportsScriptPlanning,
+            SupportsVision = supportsImageVision,
+            SupportsVideoGen = supportsVideoGen,
+            SupportsVideoReview = supportsVideoReview,
+            SupportsImageGen = supportsImageGen,
+            SupportsScriptPlanning = supportsScriptPlanning,
+            SupportsImageVision = supportsImageVision,
+            RequiredEnvKeys = required,
+            // Provider cards are for API keys — never dump per-model engineering notes here.
+            Notes = ShortProviderBlurb(),
+        };
+    }
+
+    private static List<string> ProviderCapabilityLabels(
+        bool videoGen, bool videoReview, bool imageGen, bool scriptPlanning,
+        bool imageVision, bool audio, bool voice, bool lipSync)
+    {
+        var caps = new List<string>();
+        if (videoGen) caps.Add("Video Gen");
+        if (videoReview) caps.Add("Video Review");
+        if (imageGen) caps.Add("Image Gen");
+        if (scriptPlanning) caps.Add("Script & Planning");
+        if (imageVision) caps.Add("Image Vision / OCR");
+        if (audio) caps.Add("Audio / Music");
+        if (voice) caps.Add("Voice clone / TTS");
+        if (lipSync) caps.Add("Lip-sync");
+        return caps;
     }
 
     public static string NormalizeProviderId(string? providerId)
