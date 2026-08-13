@@ -1,0 +1,20 @@
+<Project>
+  <ItemGroup>
+    <Compile Include="..\PageToMovie.Engine\Services\**\*.cs"
+             Link="PageToMovie.Engine\Services\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Remove="..\PageToMovie.Engine\Services\**\*Tests.cs" />
+    <Compile Remove="..\PageToMovie.Engine\Services\**\*Test.cs" />
+    <Compile Remove="..\PageToMovie.Engine\Services\**\SmartScriptBreakdown*.cs" />
+    <Compile Remove="..\PageToMovie.Engine\Services\**\YouTubeUpload*.cs" />
+
+    <Compile Include="..\PageToMovie.Engine\Adaptation\**\*.cs"
+             Link="PageToMovie.Engine\Adaptation\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Remove="..\PageToMovie.Engine\Adaptation\**\*Tests.cs" />
+
+    <Compile Include="..\PageToMovie.Core\Models\**\*.cs"
+             Link="PageToMovie.Core\Models\%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+  <PropertyGroup>
+    <VSTestTestCaseFilter>FullyQualifiedName!~SmartScriptBreakdownTests&amp;FullyQualifiedName!~YouTubeUploadCallbackTests</VSTestTestCaseFilter>
+  </PropertyGroup>
+</Project>

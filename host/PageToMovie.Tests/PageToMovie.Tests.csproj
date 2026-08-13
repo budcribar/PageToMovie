@@ -54,4 +54,12 @@
          Excluded here only to unblock running the rest of the suite for verification. -->
     <Compile Remove="ProjectLeaseServiceTests.cs" />
   </ItemGroup>
+
+  <!-- Phantom tests: no source on GitHub; exclude if dual-compile or stale paths reintroduce them. -->
+  <ItemGroup>
+    <Compile Remove="**\SmartScriptBreakdownTests.cs" />
+    <Compile Remove="**\YouTubeUploadCallbackTests.cs" />
+    <Compile Remove="**/SmartScriptBreakdownTests.cs" />
+    <Compile Remove="**/YouTubeUploadCallbackTests.cs" />
+  </ItemGroup>
 </Project>
