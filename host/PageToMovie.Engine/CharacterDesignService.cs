@@ -24,6 +24,7 @@ public sealed class CharacterDesignService
     private readonly PageToMovieOptions _opts;
     private readonly ILogger<CharacterDesignService> _log;
     private const string DescriptionKey = "description";
+    private const string IllustrationMedium = "illustration";
     private readonly IUserContext? _user;
 
     public CharacterDesignService(
@@ -1060,7 +1061,7 @@ public sealed class CharacterDesignService
 
     private static bool TryResolvePortraitStyleExpectation(string? styleLock, out string expected)
     {
-        expected = "illustration";
+        expected = IllustrationMedium;
         // No project medium → nothing to enforce (ambiguous mixed projects)
         if (string.IsNullOrWhiteSpace(styleLock))
             return false;
@@ -1078,7 +1079,7 @@ public sealed class CharacterDesignService
         if (!hasPhotoCues && !hasIllustCues && !wantIllustrated)
             return false; // style present but medium ambiguous — do not block lock
 
-        expected = hasPhotoCues && !wantIllustrated ? "photoreal" : "illustration";
+        expected = hasPhotoCues && !wantIllustrated ? "photoreal" : IllustrationMedium;
         return true;
     }
 
@@ -1167,7 +1168,7 @@ public sealed class CharacterDesignService
 
         // Extra hard reject: never lock sketch on photoreal projects even if model said pass.
         if (expected == "photoreal" &&
-            gate.Medium is "sketch" or "illustration")
+            gate.Medium is "sketch" or IllustrationMedium)
         {
             throw new InvalidOperationException(
                 $"Cannot lock {charKey}: this look is {gate.Medium}, but the project is live-action / photoreal. " +
@@ -1330,7 +1331,7 @@ public sealed class CharacterDesignService
                 medium = "photoreal";
             if (medium is "drawn" or "drawing" or "cartoon" or "picture-book" or "picture_book"
                 or "illustrated" or "painting" or "painted")
-                medium = "illustration";
+                medium = IllustrationMedium;
             if (medium is "pencil" or "charcoal" or "line-art" or "lineart")
                 medium = "sketch";
             var reason = root.TryGetProperty("reason", out var r) ? (r.GetString() ?? "").Trim() : "";
