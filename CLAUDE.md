@@ -61,12 +61,16 @@ API calls fail. Health check: `GET http://127.0.0.1:5088/health`.
 | Project | Role |
 |---------|------|
 | `PageToMovie.Core` | Shared DTOs/models and `Options` (no logic) |
-| `PageToMovie.Engine` | All product logic: job runner, Stage 1/2 adaptation, ~20 AI classifiers, video prompt building, provider clients, stores |
+| `PageToMovie.Adaptation` | Stage 1 façade (`AdaptationService`): book→Fountain conversion, density/runtime math, Stage 1 prompts, cast-package cross-check. Pure — no `ProjectStore`, paths, or HTTP (architecture-tested boundary; see `AGENTS.md` rule 10). Extracted out of `PageToMovie.Engine` starting 2026-08-03; the Adaptation→project vision-meta mapping now lives directly on `ProjectVisionMeta` in Engine (no separate `BookToFountainConverter` shim class as of 2026-08-13) |
+| `PageToMovie.Fountain` | Fountain screenplay lexer/parser (`FountainParser`, `SpanFountainScanner`) — split out of Engine as its own project |
+| `PageToMovie.Components` | Shared Razor component library (e.g. `LookPanelBase`, `CharacterLookPanel`/`LocationLookPanel`, ScreenplayEditor components) used by `PageToMovie.Web` |
+| `PageToMovie.Engine` | Remaining product logic: job runner (`FilmJobService`), Stage 2 shot planning, ~20 AI classifiers, video prompt building, provider clients, stores. Orchestrates `PageToMovie.Adaptation` for Stage 1 rather than reimplementing it |
 | `PageToMovie.Api` | Minimal-API REST + `/hubs/jobs` SignalR hub; hosts the WASM UI. **`Program.cs` is a large (~4k line) file holding essentially all route registrations** — search it by route path/verb rather than expecting a controller-per-resource layout |
 | `PageToMovie.Web` | Blazor WebAssembly UI (`Components/Pages`) + client-side media tools (ffmpeg.wasm: stitch, silence-trim, frame sampling) |
 | `PageToMovie.Fakes` | Fake `IChatClient`/`IImageClient`/`IVideoClient`/`IVisionClient` implementations + fixtures, swapped in via `PageToMovie:UseFakes` for spend-free dev/soak |
 | `PageToMovie.LoadSim` | Concurrent virtual-user load client (Phase E soak testing) |
 | `PageToMovie.Tests` | xUnit tests; `LiveApi/` subfolder is paid-provider tests gated by `[LiveApiFact]`/`[LiveApiTheory]` (skip cleanly unless both `PAGETOMOVIE_LIVE_API_TESTS` and the provider key are set) |
+| `PageToMovie.UiTests` | C# Microsoft.Playwright browser UI tests (reuses Core/Engine to compute expected results instead of duplicating logic in JS/TS) |
 | `host/tools/*` | Standalone eval CLIs (`ClassifierBenchmarks`, `BeatLabelEval`, `HeuristicAiEval`, `AmbientBlind`, `PlateOcrShortlist`, `CastBlind`) feeding `host/evals/` |
 
 **Key architectural rule:** the API host never spawns native `ffmpeg`. All video compose/trim/frame-sampling
@@ -87,16 +91,23 @@ implementing the relevant interface(s) and register it in the corresponding `Mul
 
 ### The pipeline (book → movie)
 
-Ingestion (`BookPrepareService`) → **Stage 1** screenplay adaptation to Fountain (`BookToFountainConverter`,
-prompt `book_to_fountain.txt`, with automated fixup retries for malformed scene headings/dialogue cues) → cast
-discovery + portrait generation + AI vision style-gate (`CastFromScreenplayService`, `CharacterDesignService`) →
-**Stage 2** shot planning (`Stage2PlannerService`), which runs the screenplay through ~15 specialized AI
-classifiers (see root `README.md` pipeline diagram for the full list: on-screen cast, silent-beat pacing, ambient
-SFX, species/body-type, extend-vs-cut, camera director, lighting, wardrobe continuity, emotion arc, sound design,
-depth of field, color grading, etc.) to produce a frame-accurate `blueprint.clips*.json` shot plan → video
-generation (`ClipVideoPromptBuilder` + `GrokVideoClient`/`GeminiVideoClient`, attaching locked reference images for
-identity consistency) → multi-frame auto-review (`ClipAutoReviewService`: browser samples frames, server runs
-vision QA, key never leaves the API host) → browser stitch/export (ffmpeg.wasm, no server remux).
+Ingestion (`BookPrepareService`) → **Stage 1** screenplay adaptation to Fountain via the `AdaptationService`
+façade in `PageToMovie.Adaptation` (prompt `book_to_fountain.txt`, with automated fixup retries for malformed
+scene headings/dialogue cues) → optional screenplay tools (`AdaptationService.ReskinAsync`/`EmbellishAsync`/
+`TrimAsync` — change visual medium, enrich descriptive prose, or fit a target runtime, all scene-count-preserving
+with fallback to the original on drift) → cast discovery + portrait generation + AI vision style-gate
+(`CastFromScreenplayService`, `CharacterDesignService`) → **Stage 2** shot planning (`Stage2PlannerService`), which
+runs the screenplay through ~15 specialized AI classifiers (see root `README.md` pipeline diagram for the full
+list: on-screen cast, silent-beat pacing, ambient SFX, species/body-type, extend-vs-cut, camera director,
+lighting, wardrobe continuity, emotion arc, sound design, depth of field, color grading, etc.) to produce a
+frame-accurate `blueprint.clips*.json` shot plan → video generation (`ClipVideoPromptBuilder` +
+`MultiProviderVideoClient` routing to `GrokVideoClient`/`GeminiVideoClient`/`FalVideoClient` per the project's
+configured model, attaching locked reference images for identity consistency) → multi-frame auto-review
+(`ClipAutoReviewService`: browser samples frames, server runs vision QA, key never leaves the API host; result is
+advisory — operator still confirms via Apply → Regen) → music plan + score
+(`SceneMusicCompositionService` plans per-scene prompts into the blueprint, `SceneMusicScoringService` +
+`MultiProviderAudioClient` generate against Fal/Suno/AI Music API/ElevenLabs, ffmpeg.wasm ducks/mixes
+client-side) → browser stitch/export (ffmpeg.wasm, no server remux).
 
 Long books are handled by **multi-chunk adapt → stitch → merge** in `BookToFountainConverter` (ordered chunks +
 continuity brief + final merge pass) rather than one giant prompt.

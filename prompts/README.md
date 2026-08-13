@@ -10,6 +10,9 @@ Paths are relative to the **workspace root** (repo root with `host/`, `projects/
 | File | Role |
 |------|------|
 | `book_to_fountain.txt` | **Product path:** book → editable Fountain screenplay |
+| `fountain_reskin.txt` | **Product path:** re-render an existing Fountain draft's descriptive layer for a different visual medium (Screenplay editor "Look" tool) |
+| `embellish_scene.txt` | **Product path:** enrich an existing Fountain draft's descriptive prose, grounded in the book text (Screenplay editor "Enrich" tool) |
+| `trim_scene.txt` | **Product path:** condense an existing Fountain draft toward a target runtime (Screenplay editor "Fit length" tool) |
 | `fountain_to_cast.txt` | **Product path:** Fountain (+ book) → `source/cast_seeds.json` closed cast |
 | `cast_visual_literalize.txt` | Cast post-pass: figurative/idiomatic looks → literal filmable prose |
 | `clip_gen_rules.txt` | **Product path:** house rules composed into clip video prompts |
@@ -23,7 +26,11 @@ Paths are relative to the **workspace root** (repo root with `host/`, `projects/
 | `examples/scene_bible_minimal.json` | Minimal scene-list sample |
 | `examples/clip_plan_minimal.json` | Minimal Stage 2 sample |
 
-Embedded at build (Engine): `book_to_fountain`, `fountain_to_cast`, `cast_visual_literalize`, `clip_gen_rules`, `clip_auto_review`. Edit in git → redeploy. Optional local override: `PAGETOMOVIE_PROMPTS_DIR`.
+Embedded resources at build time via `AdaptationPromptPack` (Stage 1 + screenplay-tool prompts: `book_to_fountain`,
+`fountain_reskin`, `embellish_scene`, `trim_scene` — in `PageToMovie.Adaptation`) and equivalent Engine-side
+loaders (`fountain_to_cast`, `cast_visual_literalize`, `clip_gen_rules`, `clip_auto_review`). Edit in git →
+redeploy (rebuild `PageToMovie.Adaptation` for the Stage 1 group). Optional local override:
+`PAGETOMOVIE_PROMPTS_DIR`.
 
 **Operator flow:** book PDF → prepare text → **Fountain draft** (`book_to_fountain.txt`) → edit → approve → **shot plan (reads Fountain)** → clips.
 Long novels use **multi-chunk adapt → stitch → merge** in `BookToFountainConverter` (ordered book chunks, continuity brief, final merge pass).
@@ -50,5 +57,5 @@ Phase A does **not** auto-run Stage 1/2 LLMs; UI shows a cascade checklist.
 
 - **Scenes** → choose feedback layer on Fail / Regen / Log.
 - **Edit Log** → apply to layer prompts, shared rules, LEARNINGS, or script notes.
-- **Scripts:** `scripts/two_stage_adaptation/` — see `docs/two_stage_adaptation/README.md`.
+- **Scripts:** `scripts/two_stage_adaptation/` — historical/ad-hoc Python helpers, not required to run Film Studio (see `scripts/README.md`). The product path is native: Stage 1 in `PageToMovie.Adaptation`, Stage 2 in `PageToMovie.Engine`'s `Stage2PlannerService`.
 

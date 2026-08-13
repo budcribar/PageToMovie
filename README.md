@@ -75,8 +75,9 @@ More detail: **`host/README.md`**.
 ```mermaid
 flowchart TD
     A["Raw Story Text / PDF / Fountain"] --> B["1 · Text ingestion<br/>BookPrepareService"]
-    B --> C["2 · Stage 1 screenplay<br/>BookToFountainConverter"]
-    C --> D["3 · Cast & locations<br/>CastFromScreenplayService"]
+    B --> C["2 · Stage 1 screenplay<br/>AdaptationService facade (PageToMovie.Adaptation)"]
+    C --> C2["2b · Optional screenplay tools<br/>Look / Enrich / Fit length"]
+    C2 --> D["3 · Cast & locations<br/>CastFromScreenplayService"]
     D --> D2["3b · Looks batch optional<br/>3 variants + LookVariantPicker auto-lock"]
     D2 --> E["4 · Stage 2 shot plan<br/>Stage2PlannerService"]
 
@@ -90,23 +91,31 @@ flowchart TD
     end
 
     E --> E1
-    E4 --> F["5 · Video generation<br/>Grok Imagine / Veo + ref locks"]
+    E4 --> F["5 · Video generation<br/>Grok Imagine / Veo / Fal + ref locks"]
     F --> F2["Action timing learn<br/>ClipDurationEstimator · AiActionOverheadClassifier"]
-    F --> G["6 · Multi-frame auto-review<br/>IVisionClient"]
-    G --> H["7 · Music / audio plan<br/>SceneMusic · Fal Stable Audio"]
-    H --> I["8 · Browser stitch / export<br/>ffmpeg.wasm · client media"]
+    F --> G["6 · Multi-frame auto-review<br/>IVisionClient (advisory)"]
+    G --> H["7 · Music plan + score<br/>SceneMusicComposition → SceneMusicScoring"]
+    H --> I["8 · Browser stitch / export<br/>ClientVideoStitchService · ffmpeg.wasm"]
     I --> J["Playable draft / master"]
 ```
 
 ### 1. Source Text Ingestion (`BookPrepareService`)
 - **Input**: Raw text (`.txt`), PDF book, or existing Fountain screenplay (`.fountain`).
-- **Processing**: Cleans Gutenberg headers/boilerplate, normalizes line breaks, extracts chapter boundaries, and formats source text chunks for adaptation.
+- **Processing**: Cleans Gutenberg headers/boilerplate, normalizes line breaks, and formats source text into page-tagged chunks (`--- PAGE n ---`) for adaptation. For image-only / picture-book PDFs it falls back to page-render + Grok vision OCR (`DecideStrategy` / `TranscribeVisionPagesAsync`) instead of text extraction.
 
-### 2. Stage 1: Screenplay Adaptation (`BookToFountainConverter`)
+### 2. Stage 1: Screenplay Adaptation (`AdaptationService` / `BookToFountainConverter`)
+- **Code home**: the real Stage 1 logic (prompting, chunking, retries, cast-package cross-check) lives in the **`PageToMovie.Adaptation`** project, called through the `AdaptationService` façade (pure — no `ProjectStore`/HTTP). The Adaptation→project vision-meta mapping (`MapVision`/`MapStatus`/`SplitVisionMetaTrailer`) lives directly on `ProjectVisionMeta` in `PageToMovie.Engine` — the old standalone `PageToMovie.Engine.BookToFountainConverter` shim class was removed (2026-08-13) once nothing needed it as a separate type.
 - **AI Engine**: **Grok 4.5 LLM (`book_to_fountain`)**
 - **Action**: Converts raw book prose into a valid **Fountain 1.1** screenplay containing filmable scene headings (`INT.`/`EXT.`), visual action prose, character dialogue, and voiceover (`V.O.`).
 - **Automated AI Recovery**: Verifies screenplay formatting against strict Fountain syntax rules. If scene headings or dialogue cues contain formatting errors, specialized AI fixup passes (`book_to_fountain_locations_retry`, `book_to_fountain_speakers_retry`) resolve errors automatically without human intervention.
-- **Numbered generics**: cues like `SUITOR 1` map to ensemble group seeds (`Character_Suitors`) for membership — not individual portrait keys.
+- **Numbered generics**: a repair pass (`RepairGenericNumberedSpeakersAsync`) renames unstable numbered/ordinal cues (`SUITOR 1`, `MAN 2`, `FIRST OFFICER`) into **distinct proper-name tokens** (`OFFICER REYNOLDS`) — one stable individual portrait key per person, same person always gets the same token. This is separate from true ensemble/plural roles (`CROWD`, `GUESTS`, `VILLAGERS`, …), which are recognized by `CastKindClassifier.GroupTokens` and stay grouped, non-individual seeds.
+
+### 2b. Optional Screenplay Tools — Look / Enrich / Fit Length (`AdaptationService.ReskinAsync` / `EmbellishAsync` / `TrimAsync`)
+- Three optional passes an operator can run on the Stage 1 draft before sign-off, from the Screenplay editor's tool tabs (`AdaptationScreenplay.Tools.cs`):
+  - **Look** (re-skin, `fountain_reskin.txt`) — re-renders the descriptive layer for a different visual medium (e.g. live-action → animation) while preserving dialogue, cues, and scene count/order.
+  - **Enrich** (embellish, `embellish_scene.txt`) — deepens descriptive prose grounded in the original book text; runs scene-by-scene for long drafts (≥8 scenes) so headings can't collapse.
+  - **Fit length** (trim, `trim_scene.txt`) — condenses the screenplay toward a target runtime; may shrink scene count, never grows it.
+- All three enforce a structural guardrail (scene count must not drift unexpectedly) and fall back to the original draft on any violation.
 
 ### 3. Character Discovery & Visual Style Lock (`CastFromScreenplayService` & `CharacterDesignService`)
 - **AI Engine**: **Grok 4.5 LLM (`cast_from_screenplay`)** + **Grok Imagine Image / Gemini Image** + **Grok Vision**
@@ -142,19 +151,26 @@ flowchart TD
 - **Output**: frame-oriented blueprint (`blueprint.clips.*.json`) with `scenes[].veo_clips`.
 - **Deterministic pacing**: silent-prelude coalescing folds short lead-ins so dialogue can start on frame 1.
 - **Action timing** (`ClipDurationEstimator`, `ActionCameraOverheadLedger`, **`AiActionOverheadClassifier`**, `JitBenchmarkService`): word-count + calibrated overhead decides dialogue fit; AI/JIT only for uncalibrated actions. See `host/docs/action-timing-plan.md`.
+- **Full model-call inventory**: the list above is illustrative, not exhaustive — for the authoritative, kept-current table of every AI operation in the pipeline (owner, prompt/schema version, `IModelOperation` lifecycle status) see [`docs/architecture/MODEL_CALL_INVENTORY.md`](docs/architecture/MODEL_CALL_INVENTORY.md). Prefer updating that doc over hand-copying classifier names here.
 
-### 5. Video Generation (`ClipVideoPromptBuilder` & `GrokVideoClient` / `GeminiVideoClient`)
-- **AI Engine**: **Grok Imagine Video / Veo**
+### 5. Video Generation (`ClipVideoPromptBuilder` & `MultiProviderVideoClient`)
+- **AI Engine**: catalog-routed via `MultiProviderVideoClient` — **Grok Imagine Video, Veo (Gemini), or Fal** (`GrokVideoClient` / `GeminiVideoClient` / `FalVideoClient`), chosen per project's configured model, not hardcoded to one provider.
 - **Action**: Constructs prompts incorporating style locks, on-screen cast, visual prose, and locked character/location refs (`<IMAGE_1>`, …).
 - **Identity**: Locked plates attach to the video API for face/set continuity.
 - **Dialogue verification**: `ClipDialogueVerificationService` transcribes rendered audio vs expected line; feeds timing telemetry.
+- **Post-gen editing**: `GrokVideoEditClient` (`IVideoEditClient`) is a separate, optional edit pass on an already-generated clip — not part of the initial generation call.
 
 ### 6. Multi-Frame Auto-Review (`ClipAutoReviewService`)
 - **Browser**: Samples previous-clip tail + current-clip frames with **ffmpeg.wasm**, uploads JPEGs over the authenticated job API.
 - **Server**: Vision review with the provider key (`CompleteWithImagesAsync`) — key never leaves the API host.
-- **Quality Audit**: Character identity, continuity, style; `Pass` / `Fail` with assembly gates for Play stitch / export.
+- **Quality Audit**: Character identity, continuity, style; returns `Pass` / `Fail` / `Unclear` as an **advisory** suggestion — it does not apply edits, trigger regen, or hard-block Play/export itself; the operator confirms via Apply → Regen.
 
-### 7. Browser stitch / export (`PageToMovieFfmpeg` / `ClientVideoStitchService`)
+### 7. Music / Audio Plan (`SceneMusicCompositionService` → `SceneMusicScoringService`)
+- **Planning (once per plan)**: `SceneMusicCompositionService` reads the full screenplay + scene context and non-destructively augments `blueprint.clips.grok.json` with AI-planned `music_score` prompts (genre, mood, tempo) per scene.
+- **Generation-time**: `SceneMusicScoringService` resolves the preplanned prompt (or AI-composes a fallback) and hands it to `MultiProviderAudioClient`, which is catalog-routed across **four** providers — Fal (Stable Audio), Suno, AI Music API, and ElevenLabs Music — not a single fixed vendor.
+- **Mixing**: concat, duck-under-dialogue, and fade happen client-side via `pagetomovie-ffmpeg.js` — the API host never spawns native ffmpeg here either.
+
+### 8. Browser stitch / export (`PageToMovieFfmpeg` / `ClientVideoStitchService`)
 - **Engine**: **ffmpeg.wasm** in the Blazor client (concat, silence trim on gen save, frame sample).
 - **Action**: Combine eligible clips for Play/export; gen clips can live in the user media folder with server-side SHA-256 registry only.
 - **Not used**: native server `ffmpeg`, remux jobs, or bundled `ffmpeg.exe`.
@@ -197,6 +213,7 @@ dotnet test PageToMovie.Tests --filter "Category=LiveApi"
 | `host/docs/` | Multi-user / loadsim soak |
 | `prompts/README.md` | Product prompts and schemas |
 | `docs/learning_loop.md` | Feedback / dirty flags (concept) |
+| `docs/architecture/MODEL_CALL_INVENTORY.md` | Authoritative, kept-current inventory of every AI operation in the pipeline |
 
 ## Config notes
 
