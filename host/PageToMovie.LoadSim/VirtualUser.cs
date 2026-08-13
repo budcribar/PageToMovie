@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
 using System.Text.Json;
 using PageToMovie.Core.Auth;
 
@@ -18,7 +19,6 @@ public sealed class VirtualUser
     private readonly SimOptions _opts;
     private readonly MetricsCollector _metrics;
     private readonly HttpClient _http;
-    private readonly Random _rng;
     private int _sceneCount = 1;
     private int _gensDone;
 
@@ -31,8 +31,10 @@ public sealed class VirtualUser
         _opts = opts;
         _metrics = metrics;
         _http = http;
-        _rng = new Random(HashCode.Combine(index, Environment.TickCount));
     }
+
+    private static double NextUnitInterval() =>
+        RandomNumberGenerator.GetInt32(int.MaxValue) / (double)int.MaxValue;
 
     /// <summary>
     /// HTTP ready: open connection, prove /health, light-warm project paths, discover scenes.
@@ -58,7 +60,7 @@ public sealed class VirtualUser
         {
             var think = _opts.ThinkTimeMs <= 0
                 ? 0
-                : Math.Max(0, _opts.ThinkTimeMs + _rng.Next(-_opts.ThinkTimeMs / 4, _opts.ThinkTimeMs / 4 + 1));
+                : Math.Max(0, _opts.ThinkTimeMs + RandomNumberGenerator.GetInt32(-_opts.ThinkTimeMs / 4, _opts.ThinkTimeMs / 4 + 1));
             if (think > 0)
             {
                 try { await Task.Delay(think, ct); }
@@ -105,7 +107,7 @@ public sealed class VirtualUser
         };
         var total = items.Sum(i => i.W);
         if (total <= 0) return "browse";
-        var r = _rng.NextDouble() * total;
+        var r = NextUnitInterval() * total;
         var acc = 0.0;
         foreach (var (name, w) in items)
         {
@@ -137,7 +139,7 @@ public sealed class VirtualUser
         }
 
         // Capacity samples (any VU, ~10%) so peakApiInFlight/cap appear in results
-        if (_rng.NextDouble() < 0.10)
+        if (NextUnitInterval() < 0.10)
             await SampleCapacityAsync(ct);
     }
 

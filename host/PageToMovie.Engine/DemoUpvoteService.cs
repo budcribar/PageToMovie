@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -65,21 +66,9 @@ public sealed class DemoUpvoteService
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-    /// <summary>
-    /// Bind one <c>$idN</c> parameter per slice entry onto <paramref name="cmd"/> and return the
-    /// comma-joined placeholder list for an <c>IN (...)</c> clause.
-    /// </summary>
-    private static string BindIdParameters(SqliteCommand cmd, List<string> slice)
-    {
-        var names = new List<string>();
-        for (var j = 0; j < slice.Count; j++)
-        {
-            var p = "$id" + j;
-            names.Add(p);
-            cmd.Parameters.AddWithValue(p, slice[j]);
-        }
-        return string.Join(",", names);
-    }
+    /// <summary>Bind the id slice as a JSON array parameter for <c>json_each($ids)</c>.</summary>
+    private static void BindJsonIdList(SqliteCommand cmd, List<string> slice) =>
+        cmd.Parameters.AddWithValue("$ids", JsonSerializer.Serialize(slice));
 
     /// <summary>Idempotent add. Returns true if a new row was inserted.</summary>
     public async Task<bool> TryAddAsync(string demoId, string userId, CancellationToken ct = default)
@@ -234,9 +223,9 @@ public sealed class DemoUpvoteService
         {
             var slice = ids.Skip(i).Take(chunk).ToList();
             using var cmd = conn.CreateCommand();
-            var inClause = BindIdParameters(cmd, slice);
+            BindJsonIdList(cmd, slice);
             cmd.CommandText =
-                $"SELECT demo_id, COUNT(*) FROM demo_upvotes WHERE demo_id IN ({inClause}) GROUP BY demo_id;";
+                "SELECT demo_id, COUNT(*) FROM demo_upvotes WHERE demo_id IN (SELECT value FROM json_each($ids)) GROUP BY demo_id;";
             using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
             while (await r.ReadAsync(ct).ConfigureAwait(false))
             {
@@ -264,9 +253,9 @@ public sealed class DemoUpvoteService
         {
             var slice = ids.Skip(i).Take(chunk).ToList();
             using var cmd = conn.CreateCommand();
-            var inClause = BindIdParameters(cmd, slice);
+            BindJsonIdList(cmd, slice);
             cmd.CommandText =
-                $"SELECT demo_id, COUNT(*) FROM demo_upvotes WHERE demo_id IN ({inClause}) GROUP BY demo_id;";
+                "SELECT demo_id, COUNT(*) FROM demo_upvotes WHERE demo_id IN (SELECT value FROM json_each($ids)) GROUP BY demo_id;";
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
@@ -295,9 +284,9 @@ public sealed class DemoUpvoteService
             var slice = ids.Skip(i).Take(chunk).ToList();
             using var cmd = conn.CreateCommand();
             cmd.Parameters.AddWithValue("$u", userId.Trim());
-            var inClause = BindIdParameters(cmd, slice);
+            BindJsonIdList(cmd, slice);
             cmd.CommandText =
-                $"SELECT demo_id FROM demo_upvotes WHERE user_id = $u AND demo_id IN ({inClause});";
+                "SELECT demo_id FROM demo_upvotes WHERE user_id = $u AND demo_id IN (SELECT value FROM json_each($ids));";
             using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
             while (await r.ReadAsync(ct).ConfigureAwait(false))
                 set.Add(r.GetString(0));
@@ -321,9 +310,9 @@ public sealed class DemoUpvoteService
             var slice = ids.Skip(i).Take(chunk).ToList();
             using var cmd = conn.CreateCommand();
             cmd.Parameters.AddWithValue("$u", userId.Trim());
-            var inClause = BindIdParameters(cmd, slice);
+            BindJsonIdList(cmd, slice);
             cmd.CommandText =
-                $"SELECT demo_id FROM demo_upvotes WHERE user_id = $u AND demo_id IN ({inClause});";
+                "SELECT demo_id FROM demo_upvotes WHERE user_id = $u AND demo_id IN (SELECT value FROM json_each($ids));";
             using var r = cmd.ExecuteReader();
             while (r.Read())
                 set.Add(r.GetString(0));

@@ -126,7 +126,7 @@ public static class ScreenplayEnrichFiles
     static async Task<string?> ResolveBookIdAsync(
         Deps deps, string projectId, string projectDir, string? bookText, CancellationToken ct)
     {
-        var fromManifest = ProjectStage1ConvertManifest.TryRead(projectDir)?.BookId;
+        var fromManifest = (await ProjectStage1ConvertManifest.TryReadAsync(projectDir, ct).ConfigureAwait(false))?.BookId;
         if (!string.IsNullOrWhiteSpace(fromManifest)) return fromManifest;
         if (deps.Registry is null) return null;
         var fromAccess = await deps.Registry.FindBookIdForProjectAsync(projectId, ct).ConfigureAwait(false);

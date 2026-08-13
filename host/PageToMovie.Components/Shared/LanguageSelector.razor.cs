@@ -70,6 +70,13 @@ public partial class LanguageSelector
 
     public void Dispose()
     {
-        Localizer.CultureChanged -= OnCultureChanged;
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (disposing)
+            Localizer.CultureChanged -= OnCultureChanged;
     }
 }

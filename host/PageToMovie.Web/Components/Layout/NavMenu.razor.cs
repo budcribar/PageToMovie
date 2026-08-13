@@ -157,10 +157,17 @@ public partial class NavMenu : IDisposable
         }
 
         private void OnMediaFolderChanged() => _ = InvokeAsync(StateHasChanged);
-        private void OnCultureChanged(System.Globalization.CultureInfo culture) => _ = InvokeAsync(StateHasChanged);
+        private void OnCultureChanged(System.Globalization.CultureInfo _) => _ = InvokeAsync(StateHasChanged);
 
         public void Dispose()
         {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!disposing) return;
             L.CultureChanged -= OnCultureChanged;
             MediaFolder.Changed -= OnMediaFolderChanged;
             Session.Changed -= OnSessionChanged;

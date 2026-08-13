@@ -234,11 +234,9 @@ public sealed class ActiveProjectState
                 screenplayReady = PropBool(sp, "readyForShots", "ReadyForShots")
                     || PropBool(sp, "signed", "Signed");
             }
-            if (root.TryGetProperty("stage1", out var s1) || root.TryGetProperty("Stage1", out s1))
-            {
-                if (PropBool(s1, "present", "Present") && PropInt(s1, "sceneCount", "SceneCount") > 0)
-                    screenplayReady = true;
-            }
+            if ((root.TryGetProperty("stage1", out var s1) || root.TryGetProperty("Stage1", out s1))
+                && PropBool(s1, "present", "Present") && PropInt(s1, "sceneCount", "SceneCount") > 0)
+                screenplayReady = true;
 
             var shotsReady = false;
             var stage2Stale = false;

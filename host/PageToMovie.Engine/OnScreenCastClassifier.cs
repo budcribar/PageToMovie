@@ -235,7 +235,10 @@ JSON only:
                 map[id!] = keys;
             }
         }
-        catch { }
+        catch (Exception)
+        {
+            return map;
+        }
         return map;
     }
 

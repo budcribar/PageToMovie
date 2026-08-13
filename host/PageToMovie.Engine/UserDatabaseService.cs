@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
@@ -536,8 +537,7 @@ public class UserDatabaseService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to initialize SQLite database at {DbPath}", _dbPath);
-                throw;
+                throw new InvalidOperationException($"Failed to initialize SQLite database at {_dbPath}.", ex);
             }
         }
     }
@@ -991,7 +991,7 @@ public class UserDatabaseService
         }
 
         // Rehome project folders + rewrite ownerUserId / project_id references in spend rows.
-        var projectsTouched = RehomeAliasProjectsV6(primaryId, primaryHandle, aliasUserIds, aliasCandidates);
+        var projectsTouched = RehomeAliasProjectsV6(primaryId, aliasUserIds, aliasCandidates);
 
         // Rewrite project_id prefixes in cost tables (alias/slug → primary/slug).
         foreach (var alias in aliasUserIds.Concat(aliasCandidates).Distinct(StringComparer.OrdinalIgnoreCase))
@@ -1005,18 +1005,7 @@ public class UserDatabaseService
             foreach (var table in new[] { "user_api_calls", "generation_errors", "credit_ledger", "video_take_events" })
             {
                 using var up = conn.CreateCommand();
-                up.CommandText = $@"
-                    UPDATE {table}
-                    SET project_id = @new || SUBSTR(project_id, LENGTH(@old) + 1)
-                    WHERE project_id IS NOT NULL
-                      AND (project_id = @oldBare
-                           OR project_id LIKE @oldLike);";
-                // Actually simpler: replace prefix
-                up.CommandText = $@"
-                    UPDATE {table}
-                    SET project_id = @newPrefix || SUBSTR(project_id, @oldLen + 1)
-                    WHERE project_id IS NOT NULL
-                      AND (project_id = @oldSeg OR project_id LIKE @oldPrefixLike);";
+                up.CommandText = RewriteProjectIdPrefixSql(table);
                 up.Parameters.AddWithValue("@newPrefix", newPrefix);
                 up.Parameters.AddWithValue("@oldLen", oldPrefix.Length);
                 up.Parameters.AddWithValue("@oldSeg", oldSeg);
@@ -1038,7 +1027,6 @@ public class UserDatabaseService
     /// </summary>
     private int RehomeAliasProjectsV6(
         string primaryId,
-        string primaryHandle,
         IEnumerable<string> aliasUserIds,
         IEnumerable<string> aliasCandidates)
     {
@@ -1235,10 +1223,43 @@ public class UserDatabaseService
         return null;
     }
 
+    private static string RewriteProjectIdPrefixSql(string table) => table switch
+    {
+        "user_api_calls" =>
+            """
+            UPDATE user_api_calls
+            SET project_id = @newPrefix || SUBSTR(project_id, @oldLen + 1)
+            WHERE project_id IS NOT NULL
+              AND (project_id = @oldSeg OR project_id LIKE @oldPrefixLike);
+            """,
+        "generation_errors" =>
+            """
+            UPDATE generation_errors
+            SET project_id = @newPrefix || SUBSTR(project_id, @oldLen + 1)
+            WHERE project_id IS NOT NULL
+              AND (project_id = @oldSeg OR project_id LIKE @oldPrefixLike);
+            """,
+        "credit_ledger" =>
+            """
+            UPDATE credit_ledger
+            SET project_id = @newPrefix || SUBSTR(project_id, @oldLen + 1)
+            WHERE project_id IS NOT NULL
+              AND (project_id = @oldSeg OR project_id LIKE @oldPrefixLike);
+            """,
+        "video_take_events" =>
+            """
+            UPDATE video_take_events
+            SET project_id = @newPrefix || SUBSTR(project_id, @oldLen + 1)
+            WHERE project_id IS NOT NULL
+              AND (project_id = @oldSeg OR project_id LIKE @oldPrefixLike);
+            """,
+        _ => throw new ArgumentOutOfRangeException(nameof(table), table, "Unsupported table.")
+    };
+
     private static void EnsureColumn(SqliteConnection conn, string table, string column, string typeSql)
     {
         using var check = conn.CreateCommand();
-        check.CommandText = $"PRAGMA table_info({table})";
+        check.CommandText = PragmaTableInfoSql(table);
         using var reader = check.ExecuteReader();
         while (reader.Read())
         {
@@ -1250,7 +1271,7 @@ public class UserDatabaseService
         try
         {
             using var alter = conn.CreateCommand();
-            alter.CommandText = $"ALTER TABLE {table} ADD COLUMN {column} {typeSql}";
+            alter.CommandText = AlterAddColumnSql(table, column, typeSql);
             alter.ExecuteNonQuery();
         }
         catch (SqliteException ex) when (ex.Message.Contains("duplicate column", StringComparison.OrdinalIgnoreCase))
@@ -1258,6 +1279,36 @@ public class UserDatabaseService
             // Race-safe: another process may have added the column between PRAGMA and ALTER.
         }
     }
+
+    private static string PragmaTableInfoSql(string table) => table switch
+    {
+        "users" => "PRAGMA table_info(users)",
+        "user_api_calls" => "PRAGMA table_info(user_api_calls)",
+        _ => throw new ArgumentOutOfRangeException(nameof(table), table, "Unsupported table.")
+    };
+
+    private static string AlterAddColumnSql(string table, string column, string typeSql) => (table, column, typeSql) switch
+    {
+        ("users", "encrypted_gemini_api_key", "TEXT") => "ALTER TABLE users ADD COLUMN encrypted_gemini_api_key TEXT",
+        ("users", "encrypted_anthropic_api_key", "TEXT") => "ALTER TABLE users ADD COLUMN encrypted_anthropic_api_key TEXT",
+        ("users", "encrypted_fal_api_key", "TEXT") => "ALTER TABLE users ADD COLUMN encrypted_fal_api_key TEXT",
+        ("users", "credits_balance_usd", "REAL NOT NULL DEFAULT 0") => "ALTER TABLE users ADD COLUMN credits_balance_usd REAL NOT NULL DEFAULT 0",
+        ("users", "credits_lifetime_granted_usd", "REAL NOT NULL DEFAULT 0") => "ALTER TABLE users ADD COLUMN credits_lifetime_granted_usd REAL NOT NULL DEFAULT 0",
+        ("users", "credits_lifetime_used_usd", "REAL NOT NULL DEFAULT 0") => "ALTER TABLE users ADD COLUMN credits_lifetime_used_usd REAL NOT NULL DEFAULT 0",
+        ("users", "terms_accepted_at", "TEXT") => "ALTER TABLE users ADD COLUMN terms_accepted_at TEXT",
+        ("users", "terms_version", "TEXT") => "ALTER TABLE users ADD COLUMN terms_version TEXT",
+        ("users", "is_disabled", "INTEGER NOT NULL DEFAULT 0") => "ALTER TABLE users ADD COLUMN is_disabled INTEGER NOT NULL DEFAULT 0",
+        ("users", "password_reset_requested_at", "TEXT") => "ALTER TABLE users ADD COLUMN password_reset_requested_at TEXT",
+        ("users", "email", "TEXT") => "ALTER TABLE users ADD COLUMN email TEXT",
+        ("users", "email_confirmed_at", "TEXT") => "ALTER TABLE users ADD COLUMN email_confirmed_at TEXT",
+        ("users", "active_project_id", "TEXT") => "ALTER TABLE users ADD COLUMN active_project_id TEXT",
+        ("user_api_calls", "category", "TEXT") => "ALTER TABLE user_api_calls ADD COLUMN category TEXT",
+        ("user_api_calls", "charge_usd", "REAL") => "ALTER TABLE user_api_calls ADD COLUMN charge_usd REAL",
+        ("user_api_calls", "charge_multiplier", "REAL") => "ALTER TABLE user_api_calls ADD COLUMN charge_multiplier REAL",
+        ("user_api_calls", "attempt", "INTEGER") => "ALTER TABLE user_api_calls ADD COLUMN attempt INTEGER",
+        ("user_api_calls", "outcome", "TEXT") => "ALTER TABLE user_api_calls ADD COLUMN outcome TEXT",
+        _ => throw new ArgumentOutOfRangeException(nameof(column), column, "Unsupported column migration.")
+    };
 
     public async Task<UserEntity?> GetUserByIdAsync(string userId, CancellationToken ct = default)
     {
@@ -1716,7 +1767,7 @@ public class UserDatabaseService
                 while (await r.ReadAsync(ct).ConfigureAwait(false))
                 {
                     var day = r.IsDBNull(0) ? "" : r.GetString(0);
-                    if (!DateTime.TryParse(day, out var d)) continue;
+                    if (!DateTime.TryParse(day, CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)) continue;
                     var weekStart = d.Date.AddDays(-(int)d.DayOfWeek).ToString("yyyy-MM-dd");
                     if (!byWeek.TryGetValue(weekStart, out var list))
                     {
@@ -2210,7 +2261,7 @@ public class UserDatabaseService
                 using var r = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
                 while (await r.ReadAsync(ct).ConfigureAwait(false))
                 {
-                    DateTimeOffset? ts = r.IsDBNull(0) ? null : DateTimeOffset.Parse(r.GetString(0));
+                    DateTimeOffset? ts = r.IsDBNull(0) ? null : DateTimeOffset.Parse(r.GetString(0), CultureInfo.InvariantCulture);
                     raw.Failures.Add(new AiCallFailureRow
                     {
                         Ts = ts,
@@ -2409,7 +2460,11 @@ public class UserDatabaseService
             var legacyEncrypted = GetEncryptedFromEntity(user, providerId);
             if (!string.IsNullOrWhiteSpace(legacyEncrypted))
             {
-                try { return DecryptApiKey(legacyEncrypted); } catch { }
+                try { return DecryptApiKey(legacyEncrypted); }
+                catch (Exception)
+                {
+                    return null;
+                }
             }
         }
 
@@ -2681,7 +2736,7 @@ public class UserDatabaseService
         {
             var id = reader.GetString(0);
             var raw = reader.IsDBNull(1) ? null : reader.GetString(1);
-            if (DateTimeOffset.TryParse(raw, out var when))
+            if (DateTimeOffset.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var when))
                 map[id] = when;
         }
         return map;
@@ -2916,7 +2971,7 @@ public class UserDatabaseService
     {
         Id = reader.GetInt64(0),
         UserId = reader.GetString(1),
-        Ts = DateTimeOffset.TryParse(reader.GetString(2), out var ts) ? ts : DateTimeOffset.UtcNow,
+        Ts = DateTimeOffset.TryParse(reader.GetString(2), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var ts) ? ts : DateTimeOffset.UtcNow,
         Kind = reader.GetString(3),
         AmountUsd = reader.GetDouble(4),
         BalanceAfterUsd = reader.GetDouble(5),
@@ -3201,7 +3256,7 @@ public class UserDatabaseService
                 return null; // already used
             }
         }
-        if (!DateTimeOffset.TryParse(expRaw, out var exp) || exp < DateTimeOffset.UtcNow)
+        if (!DateTimeOffset.TryParse(expRaw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var exp) || exp < DateTimeOffset.UtcNow)
         {
             await tx.RollbackAsync(ct).ConfigureAwait(false);
             return null;
@@ -3323,7 +3378,7 @@ public class UserDatabaseService
         if (reader.FieldCount > 15 && !reader.IsDBNull(15))
         {
             var raw = reader.GetString(15);
-            if (DateTimeOffset.TryParse(raw, out var c)) confirmed = c;
+            if (DateTimeOffset.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var c)) confirmed = c;
         }
         return new UserEntity
         {
@@ -3335,8 +3390,8 @@ public class UserDatabaseService
             EncryptedAnthropicApiKey = reader.IsDBNull(5) ? null : reader.GetString(5),
             EncryptedFalApiKey = reader.IsDBNull(6) ? null : reader.GetString(6),
             Role = reader.GetString(7),
-            CreatedAt = DateTime.TryParse(reader.GetString(8), out var dt) ? dt : DateTime.UtcNow,
-            LastLoginAt = reader.IsDBNull(9) ? null : (DateTime.TryParse(reader.GetString(9), out var ldt) ? ldt : null),
+            CreatedAt = DateTime.TryParse(reader.GetString(8), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var dt) ? dt : DateTime.UtcNow,
+            LastLoginAt = reader.IsDBNull(9) ? null : (DateTime.TryParse(reader.GetString(9), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var ldt) ? ldt : null),
             CreditsBalanceUsd = reader.FieldCount > 10 && !reader.IsDBNull(10) ? reader.GetDouble(10) : 0,
             CreditsLifetimeGrantedUsd = reader.FieldCount > 11 && !reader.IsDBNull(11) ? reader.GetDouble(11) : 0,
             CreditsLifetimeUsedUsd = reader.FieldCount > 12 && !reader.IsDBNull(12) ? reader.GetDouble(12) : 0,

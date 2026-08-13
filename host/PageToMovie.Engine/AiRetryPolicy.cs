@@ -227,7 +227,7 @@ public static class AiRetryPolicy
         {
             RetryBackoffKind.Linear => (long)backoffBaseMs * attempt,
             RetryBackoffKind.Exponential => (long)backoffBaseMs * (1L << Math.Min(attempt - 1, 30)),
-            RetryBackoffKind.Quadratic or _ => (long)backoffBaseMs * attempt * attempt
+            _ => (long)backoffBaseMs * attempt * attempt
         };
         return TimeSpan.FromMilliseconds(Math.Min(DefaultTransientMaxBackoffMs, ms));
     }

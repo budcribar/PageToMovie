@@ -23,14 +23,14 @@ public partial class Cost : IAsyncDisposable
     }
 
     private bool _disposed;
-    private CancellationTokenSource _pageCts = new();
+    private readonly CancellationTokenSource _pageCts = new();
     internal bool _busy;
     private string? _error;
     private string _projectId = "";
     private CostReport? _report;
     private FilmRuntimeDto? _filmRuntime;
     private string _draftRes = "480p";
-    private string _heroRes = "720p";
+    private readonly string _heroRes = "720p";
     private double _retries = 0.5;
 
     private DecisionPhase _phase = DecisionPhase.Card;
@@ -425,7 +425,7 @@ public partial class Cost : IAsyncDisposable
         get
         {
             var target = _filmRuntime?.TargetMinutes ?? 0;
-            if (target <= 0 || _filmRuntime is null) return false;
+            if (target <= 0) return false;
             var natural = _filmRuntime.NaturalMinutes;
             var planMin = _report?.DurationMinutes ?? 0;
             if (planMin > 0 && Math.Abs(target - planMin) >= 1) return true;

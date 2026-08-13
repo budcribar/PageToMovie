@@ -35,7 +35,7 @@ window.PageToMovieExport = {
             a.download = fileName || "PageToMovie_project.zip";
             document.body.appendChild(a);
             a.click();
-            document.body.removeChild(a);
+            a.remove();
             URL.revokeObjectURL(url);
             await this._reportProgress(progressRef, "done", 100, "Download complete");
             return { success: true };
@@ -126,7 +126,7 @@ window.PageToMovieExport = {
                 a.download = suggestedFilename || 'PageToMovie_WIP.mp4';
                 document.body.appendChild(a);
                 a.click();
-                document.body.removeChild(a);
+                a.remove();
                 URL.revokeObjectURL(url);
                 return { success: true, message: 'Movie downloaded via browser fallback.' };
             }
@@ -160,7 +160,7 @@ window.PageToMovieExport = {
             a.download = outputFilename || 'PageToMovie_FullMovie.mp4';
             document.body.appendChild(a);
             a.click();
-            document.body.removeChild(a);
+            a.remove();
             URL.revokeObjectURL(url);
 
             return { success: true, count: clipUrls.length };
@@ -188,7 +188,7 @@ window.PageToMovieExport = {
             document.body.appendChild(ta);
             ta.select();
             const ok = document.execCommand("copy");
-            document.body.removeChild(ta);
+            ta.remove();
             return ok ? { success: true } : { success: false, error: "Copy command failed" };
         } catch (err) {
             return { success: false, error: err.message || String(err) };
@@ -311,7 +311,7 @@ window.PageToMovieExport = {
                 byPath.set(e.name.replace(/\\/g, "/"), e.data);
             }
 
-            const pid = (projectId || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+            const pid = (projectId || "").replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+$/, "");
             const { clientAdded, clientSkipped, mediaError } = await this._mergeLocalMediaFilesAsync(byPath, pid, progressRef);
 
             // Annotate export meta if present (keep projectSchemaVersion; bump package fields)
@@ -344,7 +344,7 @@ window.PageToMovieExport = {
             a.download = fileName || "PageToMovie_project.zip";
             document.body.appendChild(a);
             a.click();
-            document.body.removeChild(a);
+            a.remove();
             URL.revokeObjectURL(url);
 
             const msgParts = [`Downloaded ${fileName || "zip"}`];
@@ -416,7 +416,7 @@ window.PageToMovieExport = {
             const folder = await this._ensureClientMediaFolderAsync();
             if (!folder.success) return folder;
 
-            const targetId = (targetProjectId || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+            const targetId = (targetProjectId || "").replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+$/, "");
             if (!targetId) {
                 return { success: false, error: "Project id required", written: 0 };
             }

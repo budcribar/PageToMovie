@@ -182,8 +182,7 @@ public sealed class AdminAuthService : IAdminAuthService
             }
             catch (Exception ex)
             {
-                _logger?.LogError(ex, "FAILED TO SEND EMAIL CONFIRMATION to {Email}", user.Email);
-                throw;
+                throw new InvalidOperationException($"Failed to send email confirmation to {user.Email}.", ex);
             }
         }
         else
@@ -214,8 +213,7 @@ public sealed class AdminAuthService : IAdminAuthService
             }
             catch (Exception ex)
             {
-                _logger?.LogError(ex, "FAILED TO SEND PASSWORD RESET EMAIL to {Email}", user.Email);
-                throw;
+                throw new InvalidOperationException($"Failed to send password reset email to {user.Email}.", ex);
             }
         }
         else
