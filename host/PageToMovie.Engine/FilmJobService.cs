@@ -3219,59 +3219,7 @@ public sealed class FilmJobService
                 projectId,
                 resolution: resolution,
                 scenes: string.IsNullOrWhiteSpace(req.Scenes) ? "all" : req.Scenes,
-                onProgress: line =>
-                {
-                    _ = AppendLogAsync(line);
-                    _ = UpdateAsync(s =>
-                    {
-                        s.Message = line;
-                        // "Planning N scene(s) @ …"
-                        var mPlan = CommonRegex.Match(
-                            line, @"Planning\s+(\d+)\s+scene", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-                        if (mPlan.Success && int.TryParse(mPlan.Groups[1].Value, out var nScenes) && nScenes > 0)
-                        {
-                            s.Total = Math.Max(s.Total, nScenes);
-                            s.Index = Math.Max(s.Index, 0);
-                            return;
-                        }
-                        // "Planning scenes: 3/29 complete"
-                        var mDone = CommonRegex.Match(
-                            line, @"Planning scenes:\s*(\d+)\s*/\s*(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-                        if (mDone.Success
-                            && int.TryParse(mDone.Groups[1].Value, out var doneN)
-                            && int.TryParse(mDone.Groups[2].Value, out var totN)
-                            && totN > 0)
-                        {
-                            s.Total = Math.Max(s.Total, totN);
-                            s.Index = Math.Max(s.Index, Math.Min(doneN, totN));
-                            return;
-                        }
-                        // "Scene 12 of 29…"
-                        var mOf = CommonRegex.Match(
-                            line, @"Scene\s+(\d+)\s+of\s+(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-                        if (mOf.Success
-                            && int.TryParse(mOf.Groups[1].Value, out var snOf)
-                            && int.TryParse(mOf.Groups[2].Value, out var totOf)
-                            && totOf > 0)
-                        {
-                            s.Total = Math.Max(s.Total, totOf);
-                            // Don't jump Index past completed count — keep "of" as context in Message.
-                            if (s.Index < snOf - 1)
-                                s.Index = Math.Max(s.Index, Math.Min(snOf - 1, totOf));
-                            return;
-                        }
-                        if (line.Contains("Merged", StringComparison.OrdinalIgnoreCase) ||
-                            line.Contains("Backed up", StringComparison.OrdinalIgnoreCase) ||
-                            line.Contains("complete", StringComparison.OrdinalIgnoreCase) &&
-                            !line.Contains("Planning scenes", StringComparison.OrdinalIgnoreCase))
-                        {
-                            if (s.Total > 0)
-                                s.Index = s.Total;
-                            else
-                                s.Index = Math.Max(s.Index, 9);
-                        }
-                    });
-                },
+                onProgress: ReportStage2ProgressLine,
                 ct: ct);
 
             await FinishAsync(
@@ -6758,6 +6706,85 @@ public sealed class FilmJobService
             "Open Characters → lock a book plate or generate + lock a portrait. " +
             "(Only true voice-only roles skip images.)");
     }
+
+    private void ReportStage2ProgressLine(string line)
+    {
+        _ = AppendLogAsync(line);
+        _ = UpdateAsync(s => ApplyStage2Progress(s, line));
+    }
+
+    private static void ApplyStage2Progress(JobSnapshot s, string line)
+    {
+        s.Message = line;
+        if (TryApplyStage2PlanningSceneCount(s, line))
+            return;
+        if (TryApplyStage2PlanningComplete(s, line))
+            return;
+        if (TryApplyStage2SceneOf(s, line))
+            return;
+        ApplyStage2MergedOrComplete(s, line);
+    }
+
+    private static bool TryApplyStage2PlanningSceneCount(JobSnapshot s, string line)
+    {
+        // "Planning N scene(s) @ …"
+        var mPlan = CommonRegex.Match(
+            line, @"Planning\s+(\d+)\s+scene", RegexOptions.IgnoreCase);
+        if (!mPlan.Success || !int.TryParse(mPlan.Groups[1].Value, out var nScenes) || nScenes <= 0)
+            return false;
+        s.Total = Math.Max(s.Total, nScenes);
+        s.Index = Math.Max(s.Index, 0);
+        return true;
+    }
+
+    private static bool TryApplyStage2PlanningComplete(JobSnapshot s, string line)
+    {
+        // "Planning scenes: 3/29 complete"
+        var mDone = CommonRegex.Match(
+            line, @"Planning scenes:\s*(\d+)\s*/\s*(\d+)", RegexOptions.IgnoreCase);
+        if (!mDone.Success
+            || !int.TryParse(mDone.Groups[1].Value, out var doneN)
+            || !int.TryParse(mDone.Groups[2].Value, out var totN)
+            || totN <= 0)
+            return false;
+        s.Total = Math.Max(s.Total, totN);
+        s.Index = Math.Max(s.Index, Math.Min(doneN, totN));
+        return true;
+    }
+
+    private static bool TryApplyStage2SceneOf(JobSnapshot s, string line)
+    {
+        // "Scene 12 of 29…"
+        var mOf = CommonRegex.Match(
+            line, @"Scene\s+(\d+)\s+of\s+(\d+)", RegexOptions.IgnoreCase);
+        if (!mOf.Success
+            || !int.TryParse(mOf.Groups[1].Value, out var snOf)
+            || !int.TryParse(mOf.Groups[2].Value, out var totOf)
+            || totOf <= 0)
+            return false;
+        s.Total = Math.Max(s.Total, totOf);
+        // Don't jump Index past completed count — keep "of" as context in Message.
+        if (s.Index < snOf - 1)
+            s.Index = Math.Max(s.Index, Math.Min(snOf - 1, totOf));
+        return true;
+    }
+
+    private static void ApplyStage2MergedOrComplete(JobSnapshot s, string line)
+    {
+        if (!IsStage2MergedOrCompleteLine(line))
+            return;
+        if (s.Total > 0)
+            s.Index = s.Total;
+        else
+            s.Index = Math.Max(s.Index, 9);
+    }
+
+    private static bool IsStage2MergedOrCompleteLine(string line) =>
+        line.Contains("Merged", StringComparison.OrdinalIgnoreCase) ||
+        line.Contains("Backed up", StringComparison.OrdinalIgnoreCase) ||
+        (line.Contains("complete", StringComparison.OrdinalIgnoreCase) &&
+         !line.Contains("Planning scenes", StringComparison.OrdinalIgnoreCase));
+
     private async Task ReportStage1ProgressAsync(string line)
     {
         // Single UpdateAsync so Index/Total + log stay atomic (no race losing counters).
@@ -6838,18 +6865,18 @@ public sealed class FilmJobService
     private static void ApplyStage1KeywordProgress(JobSnapshot s, string line)
     {
         if (line.Contains("Screenplay ready", StringComparison.OrdinalIgnoreCase))
-            s.Index = s.Total > 0 ? s.Total : 10;
+            s.Index = Stage1CompleteOrFixed(s, 10);
         else if (ContainsAnyIgnoreCase(line, "approving", "Fountain draft saved", "plate", "Attaching"))
-            s.Index = s.Total > 0 ? s.Total : Math.Max(s.Index, 9);
+            s.Index = Stage1CompleteOrFloor(s, 9);
         else if (ContainsAnyIgnoreCase(line, "name-spelling", "Name normalization", "Names checked",
                      "Location names", "Location normalization", "narration", "split V.O."))
-            s.Index = s.Total > 0 ? s.Total : Math.Max(s.Index, 9);
+            s.Index = Stage1CompleteOrFloor(s, 9);
         else if (ContainsAnyIgnoreCase(line, "Merge", "Stitch"))
-            s.Index = s.Total > 0 ? s.Total : Math.Max(s.Index, 8);
+            s.Index = Stage1CompleteOrFloor(s, 8);
         else if (ContainsAnyIgnoreCase(line, "repair", "retry", "Refin"))
-            s.Index = s.Total > 0 ? Math.Max(s.Index, s.Total - 1) : Math.Max(s.Index, 7);
+            s.Index = Stage1NearCompleteOrFloor(s, 7);
         else if (ContainsAnyIgnoreCase(line, "single pass", "Adapting book", "Book split", "multi-chunk"))
-            s.Index = Math.Max(s.Index, s.Total >= 10 ? 4 : 1);
+            s.Index = Stage1EarlyAdaptIndex(s);
         else if (ContainsAnyIgnoreCase(line, "Target runtime", "building Fountain", "Writing screenplay"))
             s.Index = Math.Max(s.Index, 1);
         else if (ContainsAnyIgnoreCase(line, "prepare", "Extract", "Vision", "book text", "Checking book"))
@@ -6857,6 +6884,18 @@ public sealed class FilmJobService
         else if (!IsStage1HeartbeatLine(line))
             s.Index = Math.Max(s.Index, 1);
     }
+
+    private static int Stage1CompleteOrFixed(JobSnapshot s, int whenTotalUnknown) =>
+        s.Total > 0 ? s.Total : whenTotalUnknown;
+
+    private static int Stage1CompleteOrFloor(JobSnapshot s, int floor) =>
+        s.Total > 0 ? s.Total : Math.Max(s.Index, floor);
+
+    private static int Stage1NearCompleteOrFloor(JobSnapshot s, int floor) =>
+        s.Total > 0 ? Math.Max(s.Index, s.Total - 1) : Math.Max(s.Index, floor);
+
+    private static int Stage1EarlyAdaptIndex(JobSnapshot s) =>
+        Math.Max(s.Index, s.Total >= 10 ? 4 : 1);
 
     private async Task AppendLogAsync(string message)
     {

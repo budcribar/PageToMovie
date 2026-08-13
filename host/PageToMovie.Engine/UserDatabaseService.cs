@@ -1432,34 +1432,57 @@ public class UserDatabaseService
 
     private string? ResolveProjectsRootForMigration()
     {
-        foreach (var candidate in new[]
-                 {
-                     _workspaceRoot,
-                     Directory.Exists(ContainerDataDir) ? ContainerDataDir : null,
-                     Directory.Exists(AppContainerDataDir) ? AppContainerDataDir : null,
-                 })
-        {
-            if (string.IsNullOrWhiteSpace(candidate)) continue;
-            var projects = Path.Combine(candidate.Trim(), SqlLit.Projects);
-            if (Directory.Exists(projects))
-                return projects;
-            // Workspace may be repo root with projects/ beside host/
-            if (Directory.Exists(Path.Combine(candidate.Trim(), SqlLit.Projects)))
-                return Path.Combine(candidate.Trim(), SqlLit.Projects);
-        }
+        var fromCandidates = FindProjectsRootAmongCandidates();
+        if (fromCandidates is not null)
+            return fromCandidates;
 
         // Walk up from app base
         try
         {
-            var dir = new DirectoryInfo(AppContext.BaseDirectory);
-            for (var i = 0; i < 8 && dir is not null; i++, dir = dir.Parent)
-            {
-                var projects = Path.Combine(dir.FullName, SqlLit.Projects);
-                if (Directory.Exists(projects))
-                    return projects;
-            }
+            return FindProjectsRootWalkingFromAppBase();
         }
-        catch { /* ignore */ }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private string?[] MigrationProjectsRootCandidates() =>
+    [
+        _workspaceRoot,
+        Directory.Exists(ContainerDataDir) ? ContainerDataDir : null,
+        Directory.Exists(AppContainerDataDir) ? AppContainerDataDir : null,
+    ];
+
+    private string? FindProjectsRootAmongCandidates()
+    {
+        foreach (var candidate in MigrationProjectsRootCandidates())
+        {
+            var found = ExistingProjectsDir(candidate);
+            if (found is not null)
+                return found;
+        }
+
+        return null;
+    }
+
+    private static string? ExistingProjectsDir(string? candidate)
+    {
+        if (string.IsNullOrWhiteSpace(candidate))
+            return null;
+        var projects = Path.Combine(candidate.Trim(), SqlLit.Projects);
+        return Directory.Exists(projects) ? projects : null;
+    }
+
+    private static string? FindProjectsRootWalkingFromAppBase()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        for (var i = 0; i < 8 && dir is not null; i++, dir = dir.Parent)
+        {
+            var projects = Path.Combine(dir.FullName, SqlLit.Projects);
+            if (Directory.Exists(projects))
+                return projects;
+        }
 
         return null;
     }
@@ -2782,69 +2805,96 @@ public class UserDatabaseService
     {
         var user = await GetUserByIdAsync(userId, ct).ConfigureAwait(false);
         var username = user?.Username ?? userId;
-
-        // Fetch all encrypted keys for this user from user_api_keys table
-        var personalKeys = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        using (var conn = new SqliteConnection(ConnectionString))
-        {
-            await conn.OpenAsync(ct).ConfigureAwait(false);
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = $"SELECT provider_id, encrypted_api_key FROM user_api_keys WHERE user_id = {SqlLit.ParamUserId}";
-            cmd.Parameters.AddWithValue(SqlLit.ParamUserId, userId.Trim());
-            using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
-            while (await reader.ReadAsync(ct).ConfigureAwait(false))
-            {
-                var pid = reader.GetString(0);
-                var enc = reader.GetString(1);
-                var plain = DecryptOptional(enc);
-                if (!string.IsNullOrWhiteSpace(plain))
-                {
-                    personalKeys[pid] = plain;
-                }
-            }
-        }
-
-        // Fallback for legacy columns if user_api_keys table hasn't populated them yet
-        if (!personalKeys.ContainsKey("grok") && DecryptOptional(user?.EncryptedXaiApiKey) is { } x) personalKeys["grok"] = x;
-        if (!personalKeys.ContainsKey(ProviderGemini) && DecryptOptional(user?.EncryptedGeminiApiKey) is { } g) personalKeys[ProviderGemini] = g;
-        if (!personalKeys.ContainsKey(ProviderAnthropic) && DecryptOptional(user?.EncryptedAnthropicApiKey) is { } a) personalKeys[ProviderAnthropic] = a;
-        if (!personalKeys.ContainsKey("fal") && DecryptOptional(user?.EncryptedFalApiKey) is { } f) personalKeys["fal"] = f;
-
-        // Dynamically discover providers from models_catalog.json (enabled models + requiredEnvKeys).
+        var personalKeys = await LoadPersonalKeysAsync(userId, ct).ConfigureAwait(false);
+        AddLegacyPersonalKeys(user, personalKeys);
         var providers = SupportedModelCatalog.BuildProviderKeyRows();
-        foreach (var row in providers)
-        {
-            var pId = NormalizeProvider(row.ProviderId);
-            row.ProviderId = pId;
-
-            // Fake test vendor (fakes mode only): key-free but always "configured", so its jobs read
-            // ready — no "Need key", no add-key panel. Never present in real mode.
-            if (string.Equals(pId, "fake", StringComparison.OrdinalIgnoreCase)
-                && SupportedModelCatalog.FakeCatalogEnabled())
-            {
-                row.HasPersonalKey = true;
-                row.MaskedPersonalKey = "fake";
-                row.HasServerKey = true;
-                row.ActiveSource = "fake";
-                continue;
-            }
-
-            personalKeys.TryGetValue(pId, out var personal);
-            var hasPersonal = !string.IsNullOrWhiteSpace(personal);
-            var hasServer = row.RequiredEnvKeys.Any(EnvPresent);
-            row.HasPersonalKey = hasPersonal;
-            row.MaskedPersonalKey = MaskKey(personal);
-            row.HasServerKey = hasServer;
-            // BYOK: "Active" means personal key only; server env is shown but not active spend.
-            row.ActiveSource = hasPersonal ? "personal" : "none";
-        }
-
+        ApplyPersonalKeysToProviderRows(providers, personalKeys);
         return new UserSettingsDto
         {
             UserId = user?.UserId ?? userId,
             Username = username,
             Providers = providers,
         };
+    }
+
+    private async Task<Dictionary<string, string>> LoadPersonalKeysAsync(string userId, CancellationToken ct)
+    {
+        var personalKeys = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        using var conn = new SqliteConnection(ConnectionString);
+        await conn.OpenAsync(ct).ConfigureAwait(false);
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $"SELECT provider_id, encrypted_api_key FROM user_api_keys WHERE user_id = {SqlLit.ParamUserId}";
+        cmd.Parameters.AddWithValue(SqlLit.ParamUserId, userId.Trim());
+        using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await reader.ReadAsync(ct).ConfigureAwait(false))
+        {
+            var pid = reader.GetString(0);
+            var enc = reader.GetString(1);
+            var plain = DecryptOptional(enc);
+            if (!string.IsNullOrWhiteSpace(plain))
+                personalKeys[pid] = plain;
+        }
+
+        return personalKeys;
+    }
+
+    private void AddLegacyPersonalKeys(UserEntity? user, Dictionary<string, string> personalKeys)
+    {
+        TryAddLegacyPersonalKey(personalKeys, "grok", user?.EncryptedXaiApiKey);
+        TryAddLegacyPersonalKey(personalKeys, ProviderGemini, user?.EncryptedGeminiApiKey);
+        TryAddLegacyPersonalKey(personalKeys, ProviderAnthropic, user?.EncryptedAnthropicApiKey);
+        TryAddLegacyPersonalKey(personalKeys, "fal", user?.EncryptedFalApiKey);
+    }
+
+    private void TryAddLegacyPersonalKey(
+        Dictionary<string, string> personalKeys, string providerId, string? encrypted)
+    {
+        if (personalKeys.ContainsKey(providerId))
+            return;
+        if (DecryptOptional(encrypted) is { } plain)
+            personalKeys[providerId] = plain;
+    }
+
+    private static void ApplyPersonalKeysToProviderRows(
+        List<ProviderKeyStatusDto> providers,
+        Dictionary<string, string> personalKeys)
+    {
+        foreach (var row in providers)
+            ApplyPersonalKeyToProviderRow(row, personalKeys);
+    }
+
+    private static void ApplyPersonalKeyToProviderRow(
+        ProviderKeyStatusDto row,
+        Dictionary<string, string> personalKeys)
+    {
+        var pId = NormalizeProvider(row.ProviderId);
+        row.ProviderId = pId;
+
+        // Fake test vendor (fakes mode only): key-free but always "configured", so its jobs read
+        // ready — no "Need key", no add-key panel. Never present in real mode.
+        if (TryMarkFakeProviderRow(row, pId))
+            return;
+
+        personalKeys.TryGetValue(pId, out var personal);
+        var hasPersonal = !string.IsNullOrWhiteSpace(personal);
+        row.HasPersonalKey = hasPersonal;
+        row.MaskedPersonalKey = MaskKey(personal);
+        row.HasServerKey = row.RequiredEnvKeys.Any(EnvPresent);
+        // BYOK: "Active" means personal key only; server env is shown but not active spend.
+        row.ActiveSource = hasPersonal ? "personal" : "none";
+    }
+
+    private static bool TryMarkFakeProviderRow(ProviderKeyStatusDto row, string pId)
+    {
+        if (!string.Equals(pId, "fake", StringComparison.OrdinalIgnoreCase)
+            || !SupportedModelCatalog.FakeCatalogEnabled())
+            return false;
+
+        row.HasPersonalKey = true;
+        row.MaskedPersonalKey = "fake";
+        row.HasServerKey = true;
+        row.ActiveSource = "fake";
+        return true;
     }
 
     public async Task InsertUserAsync(UserEntity user, CancellationToken ct = default)
