@@ -780,17 +780,8 @@ public sealed class ClientMediaFolderService
         if (string.IsNullOrWhiteSpace(projectId))
             return 0;
 
-        if (!IsConnected)
-        {
-            await TryReconnectAsync();
-        }
-
-        if (!IsConnected)
-        {
-            LastStatus = "Connect local media folder to save project videos locally";
-            Changed?.Invoke();
+        if (!await EnsureConnectedForSyncAsync())
             return 0;
-        }
 
         try
         {
@@ -802,36 +793,7 @@ public sealed class ClientMediaFolderService
                 return 0;
             }
 
-            // Smart Double-Lock Pre-Check: skip files that already exist locally with matching size AND
-            // content hash. Each skip/fetch decision is logged (browser console) with its reason so a
-            // file that keeps re-downloading every visit can be pinned to missing / size / hash.
-            var outOfDateFiles = new List<ProjectMediaSyncFile>();
-            var reasons = new List<string>();
-            foreach (var file in syncList.Files)
-            {
-                var (found, localSize) = await StatLocalFileAsync(projectId, file.RelativePath);
-                string? reason = null;
-                if (!found) reason = "missing locally";
-                else if (file.SizeBytes <= 0) reason = "server size unknown";
-                else if (localSize != file.SizeBytes) reason = $"size {localSize} != server {file.SizeBytes}";
-                else if (!string.IsNullOrWhiteSpace(file.Sha256))
-                {
-                    // Size matched — double-check the SHA-256 to catch byte-level content changes.
-                    var (hasSha, localSha, _) = await Sha256LocalFileAsync(projectId, file.RelativePath);
-                    if (!hasSha) reason = "local hash unavailable";
-                    else if (!string.Equals(localSha, file.Sha256, StringComparison.OrdinalIgnoreCase)) reason = "hash differs";
-                }
-
-                if (reason is not null)
-                {
-                    outOfDateFiles.Add(file);
-                    reasons.Add($"{file.RelativePath} — {reason}");
-                }
-            }
-
-            if (reasons.Count > 0)
-                Console.WriteLine($"[media-sync] {projectId}: fetching {reasons.Count}/{syncList.Files.Count} —\n  " + string.Join("\n  ", reasons));
-
+            var outOfDateFiles = await CollectOutOfDateMediaFilesAsync(projectId, syncList.Files);
             if (outOfDateFiles.Count == 0)
             {
                 LastStatus = "All project media files are already up-to-date on local disk.";
@@ -839,53 +801,7 @@ public sealed class ClientMediaFolderService
                 return 0;
             }
 
-            IsSyncing = true;
-            SyncProjectId = projectId;
-            SyncCurrent = 0;
-            SyncTotal = outOfDateFiles.Count;
-            SyncCurrentFile = null;
-
-            LastStatus = $"Syncing {outOfDateFiles.Count} out-of-date media file(s) to local folder…";
-            Changed?.Invoke();
-
-            var count = 0;
-            for (var i = 0; i < outOfDateFiles.Count; i++)
-            {
-                var file = outOfDateFiles[i];
-                SyncCurrent = i + 1;
-                SyncCurrentFile = file.FileName;
-                LastStatus = $"Downloading {file.FileName} to local folder ({SyncCurrent}/{SyncTotal})…";
-                Changed?.Invoke();
-
-                if (string.IsNullOrWhiteSpace(file.StreamUrl))
-                    continue;
-
-                // Client-only prefixed path for the shared local folder; the manifest's bare
-                // file.RelativePath (not saved.RelativePath, echoed back prefixed) is what the
-                // server expects in RegisterMediaAsync below.
-                var clientPath = $"{projectId}/{file.RelativePath}";
-                var saved = await _js.InvokeAsync<JsSaveResult>(
-                    "PageToMovieMedia.saveFromUrlAsync",
-                    file.StreamUrl,
-                    clientPath,
-                    null);
-
-                if (saved is { Success: true } && !string.IsNullOrWhiteSpace(saved.Sha256))
-                {
-                    count++;
-                    await _api.RegisterMediaAsync(projectId, new MediaRegisterRequest
-                    {
-                        RelativePath = file.RelativePath,
-                        Sha256 = saved.Sha256,
-                        SizeBytes = saved.SizeBytes,
-                        Kind = file.IsMp4 ? "clip" : "sidecar",
-                    });
-                }
-            }
-
-            LastStatus = $"Media folder synced: {count} missing/updated file(s) saved on local disk";
-            Changed?.Invoke();
-            return count;
+            return await DownloadOutOfDateMediaAsync(projectId, outOfDateFiles);
         }
         catch (Exception ex)
         {
@@ -899,6 +815,117 @@ public sealed class ClientMediaFolderService
             SyncCurrentFile = null;
             Changed?.Invoke();
         }
+    }
+
+    private async Task<bool> EnsureConnectedForSyncAsync()
+    {
+        if (!IsConnected)
+            await TryReconnectAsync();
+        if (IsConnected)
+            return true;
+        LastStatus = "Connect local media folder to save project videos locally";
+        Changed?.Invoke();
+        return false;
+    }
+
+    private async Task<List<ProjectMediaSyncFile>> CollectOutOfDateMediaFilesAsync(
+        string projectId,
+        IReadOnlyList<ProjectMediaSyncFile> files)
+    {
+        // Smart Double-Lock Pre-Check: skip files that already exist locally with matching size AND
+        // content hash. Each skip/fetch decision is logged (browser console) with its reason so a
+        // file that keeps re-downloading every visit can be pinned to missing / size / hash.
+        var outOfDateFiles = new List<ProjectMediaSyncFile>();
+        var reasons = new List<string>();
+        foreach (var file in files)
+        {
+            var reason = await ClassifyLocalMediaStalenessAsync(projectId, file);
+            if (reason is null)
+                continue;
+            outOfDateFiles.Add(file);
+            reasons.Add($"{file.RelativePath} — {reason}");
+        }
+
+        if (reasons.Count > 0)
+            Console.WriteLine($"[media-sync] {projectId}: fetching {reasons.Count}/{files.Count} —\n  " + string.Join("\n  ", reasons));
+
+        return outOfDateFiles;
+    }
+
+    private async Task<string?> ClassifyLocalMediaStalenessAsync(string projectId, ProjectMediaSyncFile file)
+    {
+        var (found, localSize) = await StatLocalFileAsync(projectId, file.RelativePath);
+        if (!found) return "missing locally";
+        if (file.SizeBytes <= 0) return "server size unknown";
+        if (localSize != file.SizeBytes) return $"size {localSize} != server {file.SizeBytes}";
+        return await ClassifyHashMismatchAsync(projectId, file);
+    }
+
+    private async Task<string?> ClassifyHashMismatchAsync(string projectId, ProjectMediaSyncFile file)
+    {
+        if (string.IsNullOrWhiteSpace(file.Sha256))
+            return null;
+        // Size matched — double-check the SHA-256 to catch byte-level content changes.
+        var (hasSha, localSha, _) = await Sha256LocalFileAsync(projectId, file.RelativePath);
+        if (!hasSha) return "local hash unavailable";
+        if (!string.Equals(localSha, file.Sha256, StringComparison.OrdinalIgnoreCase)) return "hash differs";
+        return null;
+    }
+
+    private async Task<int> DownloadOutOfDateMediaAsync(string projectId, List<ProjectMediaSyncFile> outOfDateFiles)
+    {
+        IsSyncing = true;
+        SyncProjectId = projectId;
+        SyncCurrent = 0;
+        SyncTotal = outOfDateFiles.Count;
+        SyncCurrentFile = null;
+
+        LastStatus = $"Syncing {outOfDateFiles.Count} out-of-date media file(s) to local folder…";
+        Changed?.Invoke();
+
+        var count = 0;
+        for (var i = 0; i < outOfDateFiles.Count; i++)
+        {
+            var file = outOfDateFiles[i];
+            SyncCurrent = i + 1;
+            SyncCurrentFile = file.FileName;
+            LastStatus = $"Downloading {file.FileName} to local folder ({SyncCurrent}/{SyncTotal})…";
+            Changed?.Invoke();
+            if (await TrySaveSyncedMediaFileAsync(projectId, file))
+                count++;
+        }
+
+        LastStatus = $"Media folder synced: {count} missing/updated file(s) saved on local disk";
+        Changed?.Invoke();
+        return count;
+    }
+
+    private async Task<bool> TrySaveSyncedMediaFileAsync(string projectId, ProjectMediaSyncFile file)
+    {
+        if (string.IsNullOrWhiteSpace(file.StreamUrl))
+            return false;
+
+        // Client-only prefixed path for the shared local folder; the manifest's bare
+        // file.RelativePath (not saved.RelativePath, echoed back prefixed) is what the
+        // server expects in RegisterMediaAsync below.
+        var clientPath = $"{projectId}/{file.RelativePath}";
+        var saved = await _js.InvokeAsync<JsSaveResult>(
+            "PageToMovieMedia.saveFromUrlAsync",
+            file.StreamUrl,
+            clientPath,
+            null);
+
+        if (saved is not { Success: true } || string.IsNullOrWhiteSpace(saved.Sha256))
+            return false;
+
+        await _api.RegisterMediaAsync(projectId, new MediaRegisterRequest
+        {
+            RelativePath = file.RelativePath,
+            Sha256 = saved.Sha256,
+            SizeBytes = saved.SizeBytes,
+            Kind = file.IsMp4 ? "clip" : "sidecar",
+        });
+        return true;
     }
 
     private sealed class JsResult

@@ -80,44 +80,73 @@ public static class AuthGate
         if (useFakes || opts.Value.UseFakes)
             return null;
 
-        var allowServer = opts.Value.AllowServerApiKeyFallback;
+        var providers = PersonalKeyProviders(requireVisionKey);
+        if (await HasAnyPersonalProviderKeyAsync(user, userDb, providers).ConfigureAwait(false))
+            return null;
 
-        // Personal keys only (and optional server fallback when explicitly enabled).
-        var providers = requireVisionKey
+        if (opts.Value.AllowServerApiKeyFallback &&
+            await HasServerFallbackKeyAsync(user, keys, providers, requireVisionKey).ConfigureAwait(false))
+            return null;
+
+        return PersonalKeyForbiddenResult(requireVisionKey);
+    }
+
+    private static string[] PersonalKeyProviders(bool requireVisionKey) =>
+        requireVisionKey
             ? new[] { "grok" }
             : new[] { "grok", "openai", "anthropic", "gemini" };
 
+    private static async Task<bool> HasAnyPersonalProviderKeyAsync(
+        IUserContext user,
+        UserDatabaseService userDb,
+        IReadOnlyList<string> providers)
+    {
         foreach (var p in providers)
         {
             try
             {
                 var personal = await userDb.GetDecryptedProviderApiKeyAsync(user.UserId, p).ConfigureAwait(false);
                 if (!string.IsNullOrWhiteSpace(personal))
-                    return null;
+                    return true;
             }
             catch { /* next */ }
         }
 
-        if (allowServer)
+        return false;
+    }
+
+    private static async Task<bool> HasServerFallbackKeyAsync(
+        IUserContext user,
+        IUserApiKeyProvider? keys,
+        IReadOnlyList<string> providers,
+        bool requireVisionKey)
+    {
+        if (keys is not null)
+            return await HasProviderKeySlotAsync(user, keys, providers).ConfigureAwait(false);
+
+        var envKeys = requireVisionKey
+            ? new[] { "XAI_API_KEY" }
+            : new[] { "XAI_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY" };
+        return envKeys.Any(env => !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(env)));
+    }
+
+    private static async Task<bool> HasProviderKeySlotAsync(
+        IUserContext user,
+        IUserApiKeyProvider keys,
+        IReadOnlyList<string> providers)
+    {
+        foreach (var p in providers)
         {
-            if (keys is not null)
-            {
-                foreach (var p in providers)
-                {
-                    if (await keys.HasKeyAsync(user.UserId, p).ConfigureAwait(false) || await keys.HasKeyAsync(null, p).ConfigureAwait(false))
-                        return null;
-                }
-            }
-            else
-            {
-                var envKeys = requireVisionKey
-                    ? new[] { "XAI_API_KEY" }
-                    : new[] { "XAI_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY" };
-                if (envKeys.Any(env => !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(env))))
-                    return null;
-            }
+            if (await keys.HasKeyAsync(user.UserId, p).ConfigureAwait(false) ||
+                await keys.HasKeyAsync(null, p).ConfigureAwait(false))
+                return true;
         }
 
+        return false;
+    }
+
+    private static IResult PersonalKeyForbiddenResult(bool requireVisionKey)
+    {
         var error = requireVisionKey
             ? "Save your personal xAI / Grok API key in Settings before PDF vision OCR. (Server env keys are not used in bring-your-own-key mode.)"
             : "Save a personal API key in Settings (Grok, OpenAI, Anthropic, or Gemini) before generating a screenplay. Server env keys are not used until cost management is enabled.";
