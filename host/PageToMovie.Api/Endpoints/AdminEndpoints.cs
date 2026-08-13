@@ -57,10 +57,6 @@ public static class AdminEndpoints
         app.MapGet("/api/admin/generation-errors", GetAdminGenerationErrors);
         // <summary>Aggregated AI/model-call telemetry (user_api_calls table) for the admin AI-Calls analytics page.</summary>
         app.MapGet("/api/admin/ai-calls", GetAdminAiCalls);
-        // <summary>
-        // Admin: import a project zip (full folder). Multipart field <c>file</c>;
-        // optional form fields <c>projectId</c>, <c>overwrite</c>=true|false.
-        // </summary>
         app.MapPost("/api/admin/projects/import", PostAdminProjectsImport);
         app.MapPost("/api/admin/users/credits", PostAdminUsersCredits);
         // <summary>Admin: set a user's password (forgot-password completion or support).</summary>
@@ -571,7 +567,7 @@ public static class AdminEndpoints
     });
 }
 
-    private static async Task<IResult> GetAdminTimingTelemetryTrend(IUserContext user,
+    private static async Task<IResult> GetAdminTimingTelemetryTrend(
     GlobalTimingCalibrationService calibration)
     {
     var stats = await calibration.GetStatsAsync();
@@ -584,7 +580,7 @@ public static class AdminEndpoints
     });
 }
 
-    private static async Task<IResult> PostAdminTimingTelemetrySeed(IUserContext user,
+    private static async Task<IResult> PostAdminTimingTelemetrySeed(
     GlobalTimingCalibrationService calibration)
     {
     int count = await calibration.SeedDefaultBenchmarksAsync();

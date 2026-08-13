@@ -615,7 +615,6 @@ public static class AdaptationEndpoints
 
     private static async Task<IResult> GetProjectsIdFilmRuntime(string id,
     ProjectStore store,
-    IUserContext user,
     CancellationToken ct)
     {
     try
