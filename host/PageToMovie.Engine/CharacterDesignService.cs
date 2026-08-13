@@ -68,19 +68,121 @@ public sealed class CharacterDesignService
         if (!_images.IsConfigured)
             throw new InvalidOperationException("XAI_API_KEY is not set (required for portrait generation).");
 
+        var ctx = await PrepareVariantGenerationAsync(projectId, charKey, n, seedOptions, onProgress, ct)
+            .ConfigureAwait(false);
+
+        await ScrubAndPersistLookTextAsync(projectId, charKey, ctx, onProgress, ct)
+            .ConfigureAwait(false);
+
+        var (prompt, illustratedMedium) = BuildDesignPrompt(
+            charKey,
+            ctx.Seeds,
+            ctx.HasImageHints,
+            descriptionOverride: ctx.DescForGen,
+            visualLockOverride: ctx.VisForGen,
+            projectRenderStyleLock: ctx.ProjectStyle,
+            wardrobeLockDescription: ctx.WardrobeDescription,
+            hasIdentityRefs: ctx.EditRefs.Count > 0,
+            hasCostumeRef: ctx.CostumeRefPath is not null);
+
+        onProgress?.Invoke(
+            $"design prompt ready ({prompt.Length} chars) · image_provider={ImageApiLimits.ResolveProvider(ctx.ImageProvider, ctx.ImageModel)} max_refs={ctx.MaxRefs}");
+
+        try
+        {
+            SnapshotPreferredIfVariantFile(ctx);
+            var (blobs, mode, editError) = await GenerateVariantImageBlobsAsync(
+                ctx, prompt, illustratedMedium, onProgress, ct);
+            return await SaveAndPackageVariantsAsync(ctx, blobs, mode, editError, onProgress, ct);
+        }
+        finally
+        {
+            DeletePreferredSnapshot(ctx.PreferredSnapshot);
+        }
+    }
+
+    private sealed class VariantGenContext
+    {
+        public string ProjectId { get; set; } = "";
+        public string CharKey { get; set; } = "";
+        public string CharDir { get; set; } = "";
+        public JsonElement Seeds { get; set; }
+        public PageToMovie.Core.Models.StartCharacterVariantsRequest Opts { get; set; } = new();
+        public string ImageModel { get; set; } = "";
+        public string ImageProvider { get; set; } = "";
+        public int MaxRefs { get; set; }
+        public int MaxBook { get; set; }
+        public int N { get; set; }
+        public bool AlreadyLocked { get; set; }
+        public string? PreferredPath { get; set; }
+        public string? CostumeRefPath { get; set; }
+        public JsonElement? WardrobeLock { get; set; }
+        public string? WardrobeLockKey { get; set; }
+        public List<string> EditRefs { get; set; } = new();
+        public LookTweakSlots.Pair? TweakSlots { get; set; }
+        public string? DescForGen { get; set; }
+        public string? VisForGen { get; set; }
+        public string? WardrobeDescription { get; set; }
+        public string? ProjectStyle { get; set; }
+        public string? PreferredSnapshot { get; set; }
+
+        public bool HasImageHints => EditRefs.Count > 0 || CostumeRefPath is not null;
+    }
+
+    private async Task<VariantGenContext> PrepareVariantGenerationAsync(
+        string projectId,
+        string charKey,
+        int n,
+        PageToMovie.Core.Models.StartCharacterVariantsRequest? seedOptions,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
         var projectDir = await _projects.GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         var seeds = _projects.GetCharacterSeed(projectId, charKey)
             ?? throw new InvalidOperationException($"Unknown character seed: {charKey}");
         if (IsVoiceOnly(seeds))
             throw new InvalidOperationException($"{charKey} is voice-only — no portrait variants.");
 
+        var charDir = _projects.GetCharactersDir(projectId);
+        Directory.CreateDirectory(charDir);
+
+        var ctx = await InitVariantGenContextAsync(
+            projectId, charKey, charDir, seeds, seedOptions, ct).ConfigureAwait(false);
+        // Shared uniform lock: reuse (or generate once) a costume-only reference plate so
+        // every character in this wardrobe group renders the identical coat/hat/badge design
+        // instead of each independently re-imagining "civil hat"/"badge" per generate call.
+        ctx.CostumeRefPath = await EnsureCostumeRefIfNeededAsync(
+            projectId, ctx.WardrobeLockKey, ctx.WardrobeLock, ctx.ImageModel, onProgress, ct)
+            .ConfigureAwait(false);
+
+        ApplyPreferredAndVariantCount(ctx, projectId, n);
+        var allBookRefs = ResolveBookRefPaths(projectDir, ctx.Seeds, maxRefs: 12);
+        ctx.EditRefs = ResolveEditRefs(
+            charKey, charDir, ctx.PreferredPath, allBookRefs, ctx.Opts, ctx.MaxRefs, ctx.MaxBook, onProgress);
+        DropOwnPortraitsWhenWardrobeLocked(ctx, onProgress);
+        // Keep operator-selected seed order. Do not promote preferred/locked over book plates
+        // when explicit SeedOrderKeys were sent (Characters UI ranks Book / Preferred / Option tiles).
+        LogSeedModeProgress(ctx, onProgress);
+        // Resolve text for this generate, then AI-scrub (base look + literal) via prompt —
+        // no special-case regex lists for pajamas / nicknames / etc.
+        InitLookTextFromSeeds(ctx);
+        ctx.ProjectStyle = ReadProjectRenderStyleLock(projectDir);
+        ctx.WardrobeDescription = ResolveWardrobeDescription(ctx.WardrobeLock);
+        return ctx;
+    }
+
+    private async Task<VariantGenContext> InitVariantGenContextAsync(
+        string projectId,
+        string charKey,
+        string charDir,
+        JsonElement seeds,
+        PageToMovie.Core.Models.StartCharacterVariantsRequest? seedOptions,
+        CancellationToken ct)
+    {
         var wardrobeLockKey = ProjectStore.GetWardrobeLockKey(seeds);
         var wardrobeLock = !string.IsNullOrWhiteSpace(wardrobeLockKey)
             ? _projects.GetWardrobeLock(projectId, wardrobeLockKey)
             : null;
-
-        var charDir = _projects.GetCharactersDir(projectId);
-        Directory.CreateDirectory(charDir);
 
         var opts = seedOptions ?? new PageToMovie.Core.Models.StartCharacterVariantsRequest
         {
@@ -94,42 +196,90 @@ public sealed class CharacterDesignService
             .ConfigureAwait(false);
         // Catalog maxReferenceImages only (ClampMaxRefs → ImageApiLimits fail-fast).
         var maxRefs = ImageApiLimits.ClampMaxRefs(opts.MaxRefs, imageProvider, imageModel);
-        var maxBook = Math.Clamp(opts.MaxBookHints < 0 ? Math.Max(0, maxRefs - 1) : opts.MaxBookHints, 0, maxRefs);
+        var maxBook = ResolveMaxBook(opts.MaxBookHints, maxRefs);
 
-        // Shared uniform lock: reuse (or generate once) a costume-only reference plate so
-        // every character in this wardrobe group renders the identical coat/hat/badge design
-        // instead of each independently re-imagining "civil hat"/"badge" per generate call.
-        string? costumeRefPath = null;
-        if (wardrobeLock is not null && wardrobeLockKey is not null)
+        return new VariantGenContext
         {
-            costumeRefPath = await EnsureWardrobeReferenceAsync(
-                projectId, wardrobeLockKey, wardrobeLock.Value, imageModel, onProgress, ct)
-                .ConfigureAwait(false);
-        }
+            ProjectId = projectId,
+            CharKey = charKey,
+            CharDir = charDir,
+            Seeds = seeds,
+            Opts = opts,
+            ImageModel = imageModel,
+            ImageProvider = imageProvider,
+            MaxRefs = maxRefs,
+            MaxBook = maxBook,
+            WardrobeLock = wardrobeLock,
+            WardrobeLockKey = wardrobeLockKey,
+        };
+    }
 
-        var preferredPath = ResolvePreferredImagePath(projectId, charKey, charDir);
-        var preferredName = preferredPath is null ? "" : Path.GetFileName(preferredPath);
-        var alreadyLocked = preferredPath is not null &&
-            ProjectStore.CharacterRefFileCandidates(charKey)
-                .Any(c => string.Equals(c, preferredName, StringComparison.OrdinalIgnoreCase));
-        if (n <= 0)
-            n = opts.Count > 0 ? opts.Count : (alreadyLocked ? 1 : 3);
-        n = Math.Clamp(n, 1, 6);
+    private static int ResolveMaxBook(int maxBookHints, int maxRefs) =>
+        Math.Clamp(maxBookHints < 0 ? Math.Max(0, maxRefs - 1) : maxBookHints, 0, maxRefs);
+
+    private async Task<string?> EnsureCostumeRefIfNeededAsync(
+        string projectId,
+        string? wardrobeLockKey,
+        JsonElement? wardrobeLock,
+        string imageModel,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
+        if (wardrobeLock is null || wardrobeLockKey is null)
+            return null;
+        return await EnsureWardrobeReferenceAsync(
+            projectId, wardrobeLockKey, wardrobeLock.Value, imageModel, onProgress, ct)
+            .ConfigureAwait(false);
+    }
+
+    private void ApplyPreferredAndVariantCount(VariantGenContext ctx, string projectId, int n)
+    {
+        ctx.PreferredPath = ResolvePreferredImagePath(projectId, ctx.CharKey, ctx.CharDir);
+        ctx.AlreadyLocked = IsAlreadyLockedPreferred(ctx.CharKey, ctx.PreferredPath);
+        n = ResolveVariantCount(n, ctx.Opts, ctx.AlreadyLocked);
         // Iterative face tweak: one new look, keep the current lock as a sibling to pick from.
-        LookTweakSlots.Pair? tweakSlots = null;
-        if (opts.IterativeEdit)
+        if (!ctx.Opts.IterativeEdit)
         {
-            n = 1;
-            tweakSlots = LookTweakSlots.Allocate(
-                charDir,
-                i => $"{charKey.ToLowerInvariant()}_variant_0{i}.png",
-                preferredPath);
+            ctx.N = n;
+            return;
         }
+        ctx.N = 1;
+        ctx.TweakSlots = LookTweakSlots.Allocate(
+            ctx.CharDir,
+            i => $"{ctx.CharKey.ToLowerInvariant()}_variant_0{i}.png",
+            ctx.PreferredPath);
+    }
 
-        var allBookRefs = ResolveBookRefPaths(projectDir, seeds, maxRefs: 12);
-        var editRefs = ResolveEditRefs(
-            charKey, charDir, preferredPath, allBookRefs, opts, maxRefs, maxBook, onProgress);
+    private static bool IsAlreadyLockedPreferred(string charKey, string? preferredPath)
+    {
+        if (preferredPath is null)
+            return false;
+        var preferredName = Path.GetFileName(preferredPath);
+        return ProjectStore.CharacterRefFileCandidates(charKey)
+            .Any(c => string.Equals(c, preferredName, StringComparison.OrdinalIgnoreCase));
+    }
 
+    private static int ResolveVariantCount(
+        int n,
+        PageToMovie.Core.Models.StartCharacterVariantsRequest opts,
+        bool alreadyLocked)
+    {
+        if (n <= 0)
+            n = DefaultVariantCount(opts, alreadyLocked);
+        return Math.Clamp(n, 1, 6);
+    }
+
+    private static int DefaultVariantCount(
+        PageToMovie.Core.Models.StartCharacterVariantsRequest opts,
+        bool alreadyLocked)
+    {
+        if (opts.Count > 0)
+            return opts.Count;
+        return alreadyLocked ? 1 : 3;
+    }
+
+    private static void DropOwnPortraitsWhenWardrobeLocked(VariantGenContext ctx, Action<string>? onProgress)
+    {
         // Wardrobe-locked characters: face/build from text + wardrobe from the shared costume
         // plate only — never also feed in this character's own previous portrait or candidate
         // variants. Telling the model to "match face but ignore wardrobe" from that photo is a
@@ -144,48 +294,70 @@ public sealed class CharacterDesignService
         // lock + last variant are pre-checked). So "explicit" is the NORMAL path for a routine
         // regenerate here, not a rare deliberate power-user override; respecting it would mean
         // this fix never actually applies to real usage.
-        if (costumeRefPath is not null)
-        {
-            // Allowlist match (locked-ref name or "_variant_N") — NOT a "starts with charKey_"
-            // prefix match. Book plates are legitimate reference art (original book scan pages,
-            // e.g. "page_003_render.png", or the legacy "{charkey}_bookref_N" convention used
-            // by DeleteImage) and must never be stripped here — only this character's own
-            // previously-generated candidate portraits are in scope.
-            var ownRefNames = new HashSet<string>(
-                ProjectStore.CharacterRefFileCandidates(charKey), StringComparer.OrdinalIgnoreCase);
-            var variantPattern = new System.Text.RegularExpressions.Regex(
-                $@"^{System.Text.RegularExpressions.Regex.Escape(charKey.ToLowerInvariant())}_variant_\d+\.",
-                System.Text.RegularExpressions.RegexOptions.IgnoreCase,
-                CommonRegex.Timeout);
-            var removed = editRefs.RemoveAll(p =>
-            {
-                var name = Path.GetFileName(p);
-                return ownRefNames.Contains(name) || variantPattern.IsMatch(name);
-            });
-            if (removed > 0)
-                onProgress?.Invoke(
-                    $"Wardrobe lock active — dropping {removed} of this character's own previous " +
-                    "picture(s) from refs; using text description + shared costume plate only.");
-        }
+        if (ctx.CostumeRefPath is null)
+            return;
 
-        // Keep operator-selected seed order. Do not promote preferred/locked over book plates
-        // when explicit SeedOrderKeys were sent (Characters UI ranks Book / Preferred / Option tiles).
+        // Allowlist match (locked-ref name or "_variant_N") — NOT a "starts with charKey_"
+        // prefix match. Book plates are legitimate reference art (original book scan pages,
+        // e.g. "page_003_render.png", or the legacy "{charkey}_bookref_N" convention used
+        // by DeleteImage) and must never be stripped here — only this character's own
+        // previously-generated candidate portraits are in scope.
 
+        var ownRefNames = new HashSet<string>(
+            ProjectStore.CharacterRefFileCandidates(ctx.CharKey), StringComparer.OrdinalIgnoreCase);
+        var variantPattern = new System.Text.RegularExpressions.Regex(
+            $@"^{System.Text.RegularExpressions.Regex.Escape(ctx.CharKey.ToLowerInvariant())}_variant_\d+\.",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase,
+            CommonRegex.Timeout);
+        var removed = ctx.EditRefs.RemoveAll(p => IsOwnGeneratedPortrait(p, ownRefNames, variantPattern));
+        if (removed > 0)
+            onProgress?.Invoke(
+                $"Wardrobe lock active — dropping {removed} of this character's own previous " +
+                "picture(s) from refs; using text description + shared costume plate only.");
+    }
+
+    private static bool IsOwnGeneratedPortrait(
+        string path,
+        HashSet<string> ownRefNames,
+        System.Text.RegularExpressions.Regex variantPattern)
+    {
+        var name = Path.GetFileName(path);
+        return ownRefNames.Contains(name) || variantPattern.IsMatch(name);
+    }
+
+    private static void LogSeedModeProgress(VariantGenContext ctx, Action<string>? onProgress)
+    {
         onProgress?.Invoke(
-            $"Seed mode={NormalizeSeedMode(opts.SeedMode)} · refs={editRefs.Count}/{maxRefs} · variants={n}" +
-            (editRefs.Count > 0
-                ? $" · files={string.Join(",", editRefs.Select(Path.GetFileName))}"
+            $"Seed mode={NormalizeSeedMode(ctx.Opts.SeedMode)} · refs={ctx.EditRefs.Count}/{ctx.MaxRefs} · variants={ctx.N}" +
+            (ctx.EditRefs.Count > 0
+                ? $" · files={string.Join(",", ctx.EditRefs.Select(Path.GetFileName))}"
                 : ""));
+    }
 
-        // Resolve text for this generate, then AI-scrub (base look + literal) via prompt —
-        // no special-case regex lists for pajamas / nicknames / etc.
-        var descForGen = opts.DescriptionOverride;
-        var visForGen = opts.VisualLockOverride;
-        if (descForGen is null && seeds.TryGetProperty(DescriptionKey, out var d0))
-            descForGen = d0.GetString();
-        if (visForGen is null && seeds.TryGetProperty("visual_lock", out var v0))
-            visForGen = v0.GetString();
+    private static void InitLookTextFromSeeds(VariantGenContext ctx)
+    {
+        ctx.DescForGen = ctx.Opts.DescriptionOverride;
+        ctx.VisForGen = ctx.Opts.VisualLockOverride;
+        if (ctx.DescForGen is null && ctx.Seeds.TryGetProperty(DescriptionKey, out var d0))
+            ctx.DescForGen = d0.GetString();
+        if (ctx.VisForGen is null && ctx.Seeds.TryGetProperty("visual_lock", out var v0))
+            ctx.VisForGen = v0.GetString();
+    }
 
+    private static string? ResolveWardrobeDescription(JsonElement? wardrobeLock)
+    {
+        if (wardrobeLock is { } wl && wl.TryGetProperty(DescriptionKey, out var wd))
+            return wd.GetString();
+        return null;
+    }
+
+    private async Task ScrubAndPersistLookTextAsync(
+        string projectId,
+        string charKey,
+        VariantGenContext ctx,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
         string? planningModel = null;
         var cfg = await _projects.GetConfigAsync(projectId, ct).ConfigureAwait(false);
         planningModel = ProjectModelSelection.RequirePlanning(cfg, "Character design look scrub");
@@ -194,15 +366,15 @@ public sealed class CharacterDesignService
         {
             var (dScrub, vScrub, usedAi) = await _literalize.ScrubLookFieldsAsync(
                 charKey,
-                description: descForGen,
-                visualLock: visForGen,
+                description: ctx.DescForGen,
+                visualLock: ctx.VisForGen,
                 model: planningModel ?? "",
                 onProgress: onProgress,
                 ct: ct).ConfigureAwait(false);
             if (usedAi)
             {
-                descForGen = dScrub;
-                visForGen = vScrub;
+                ctx.DescForGen = dScrub;
+                ctx.VisForGen = vScrub;
                 onProgress?.Invoke("AI scrub applied to look text for this generate");
             }
         }
@@ -211,190 +383,250 @@ public sealed class CharacterDesignService
             _log.LogWarning(ex, "Look AI scrub before portrait gen failed — using raw text");
         }
 
+        PersistLookTextIfRequested(projectId, charKey, ctx, onProgress);
+    }
+
+    private void PersistLookTextIfRequested(
+        string projectId,
+        string charKey,
+        VariantGenContext ctx,
+        Action<string>? onProgress)
+    {
         // Optional persist of (scrubbed) description / visual_lock from Characters UI
-        if (opts.PersistDescription &&
-            (opts.DescriptionOverride is not null || opts.VisualLockOverride is not null ||
-             descForGen is not null || visForGen is not null))
+        if (!ctx.Opts.PersistDescription)
+            return;
+        if (ctx.Opts.DescriptionOverride is null && ctx.Opts.VisualLockOverride is null &&
+            ctx.DescForGen is null && ctx.VisForGen is null)
+            return;
+
+        _projects.UpdateCharacterSeedText(
+            projectId,
+            charKey,
+            description: ctx.DescForGen,
+            visualLock: ctx.VisForGen);
+        ctx.Seeds = _projects.GetCharacterSeed(projectId, charKey) ?? ctx.Seeds;
+        onProgress?.Invoke("Saved scrubbed description / visual lock to cast seeds");
+    }
+
+    private static void SnapshotPreferredIfVariantFile(VariantGenContext ctx)
+    {
+        // If preferred lives in variant_01, snapshot it so we can overwrite variant slots safely
+        if (ctx.PreferredPath is null ||
+            !Path.GetFileName(ctx.PreferredPath).Contains("_variant_", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        ctx.PreferredSnapshot = Path.Combine(
+            ctx.CharDir, $"{ctx.CharKey.ToLowerInvariant()}_preferred_snap.png");
+        File.Copy(ctx.PreferredPath, ctx.PreferredSnapshot, overwrite: true);
+        var i = ctx.EditRefs.FindIndex(p =>
+            string.Equals(p, ctx.PreferredPath, StringComparison.OrdinalIgnoreCase));
+        if (i >= 0) ctx.EditRefs[i] = ctx.PreferredSnapshot;
+    }
+
+    private async Task<(IReadOnlyList<byte[]> Blobs, string Mode, string? EditError)> GenerateVariantImageBlobsAsync(
+        VariantGenContext ctx,
+        string prompt,
+        bool illustratedMedium,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
+        if (!ctx.HasImageHints)
         {
-            _projects.UpdateCharacterSeedText(
-                projectId,
-                charKey,
-                description: descForGen,
-                visualLock: visForGen);
-            seeds = _projects.GetCharacterSeed(projectId, charKey) ?? seeds;
-            onProgress?.Invoke("Saved scrubbed description / visual lock to cast seeds");
+            onProgress?.Invoke("Text-only generation (no preferred image and no book plates)");
+            var textBlobs = await _images.GenerateVariantsAsync(
+                prompt, ctx.N, aspectRatio: "1:1", model: ctx.ImageModel, ct: ct);
+            return (textBlobs, "text_only", null);
         }
 
-        var hasImageHints = editRefs.Count > 0 || costumeRefPath is not null;
-        var projectStyle = ReadProjectRenderStyleLock(projectDir);
-        var wardrobeDescription = wardrobeLock is { } wl && wl.TryGetProperty(DescriptionKey, out var wd)
-            ? wd.GetString()
-            : null;
-        var (prompt, illustratedMedium) = BuildDesignPrompt(
-            charKey,
-            seeds,
-            hasImageHints,
-            descriptionOverride: descForGen,
-            visualLockOverride: visForGen,
-            projectRenderStyleLock: projectStyle,
-            wardrobeLockDescription: wardrobeDescription,
-            hasIdentityRefs: editRefs.Count > 0,
-            hasCostumeRef: costumeRefPath is not null);
+        return await EditVariantImageBlobsAsync(ctx, prompt, illustratedMedium, onProgress, ct);
+    }
 
-        onProgress?.Invoke(
-            $"design prompt ready ({prompt.Length} chars) · image_provider={ImageApiLimits.ResolveProvider(imageProvider, imageModel)} max_refs={maxRefs}");
-        IReadOnlyList<byte[]> blobs;
-        string mode;
-        string? editError = null;
-
-        // If preferred lives in variant_01, snapshot it so we can overwrite variant slots safely
-        string? preferredSnapshot = null;
+    private async Task<(IReadOnlyList<byte[]> Blobs, string Mode, string? EditError)> EditVariantImageBlobsAsync(
+        VariantGenContext ctx,
+        string prompt,
+        bool illustratedMedium,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
+        LogImageEditProgress(ctx, onProgress);
         try
         {
-            if (preferredPath is not null &&
-                Path.GetFileName(preferredPath).Contains("_variant_", StringComparison.OrdinalIgnoreCase))
-            {
-                preferredSnapshot = Path.Combine(
-                    charDir, $"{charKey.ToLowerInvariant()}_preferred_snap.png");
-                File.Copy(preferredPath, preferredSnapshot, overwrite: true);
-                var i = editRefs.FindIndex(p =>
-                    string.Equals(p, preferredPath, StringComparison.OrdinalIgnoreCase));
-                if (i >= 0) editRefs[i] = preferredSnapshot;
-            }
-
-            if (hasImageHints)
-            {
-                var identityLabel = editRefs.Count > 0 ? Path.GetFileName(editRefs[0]) : "(none — costume ref only)";
-                onProgress?.Invoke(
-                    $"Grok image edit with {editRefs.Count} identity hint(s)" +
-                    (costumeRefPath is not null
-                        ? $" + shared costume ref ({Path.GetFileName(costumeRefPath)})"
-                        : "") +
-                    $" [primary={identityLabel}]: " +
-                    string.Join(", ", editRefs.Select(Path.GetFileName)));
-                try
-                {
-                    var primary = editRefs.Take(maxRefs).ToList();
-                    blobs = await _images.EditVariantsAsync(
-                        prompt,
-                        primary,
-                        n,
-                        aspectRatio: "1:1",
-                        model: imageModel,
-                        maxRefs: maxRefs,
-                        costumeRefPath: costumeRefPath,
-                        illustratedMedium: illustratedMedium,
-                        onProgress: onProgress,
-                        ct: ct);
-                    mode = alreadyLocked
-                        ? (primary.Count > 1 ? "preferred_multi" : "preferred_locked")
-                        : (primary.Count > 1 ? "preferred_or_book_multi" : "preferred_or_book");
-                    if (costumeRefPath is not null) mode += "_wardrobe_locked";
-                }
-                catch (Exception ex)
-                {
-                    editError = ex.Message;
-                    // User picked image seeds — never silently invent a different dog from text
-                    // Retry once with preferred-only if multi-ref failed
-                    if (preferredPath is not null && File.Exists(preferredPath) && editRefs.Count > 1)
-                    {
-                        onProgress?.Invoke(
-                            $"Multi-ref edit failed ({ex.Message}); retry preferred-only…");
-                        try
-                        {
-                            blobs = await _images.EditVariantsAsync(
-                                prompt,
-                                new[] { preferredPath },
-                                n,
-                                aspectRatio: "1:1",
-                                model: imageModel,
-                                maxRefs: costumeRefPath is not null ? 2 : 1,
-                                costumeRefPath: costumeRefPath,
-                                illustratedMedium: illustratedMedium,
-                                onProgress: onProgress,
-                                ct: ct);
-                            mode = "preferred_only_retry";
-                        }
-                        catch (Exception ex2)
-                        {
-                            throw new InvalidOperationException(
-                                "Image-guided edit failed (multi-ref and preferred-only). " +
-                                "Not falling back to text-only — that invents a different character. " +
-                                $"Last error: {ex2.Message}", ex2);
-                        }
-                    }
-                    else if (costumeRefPath is not null && editRefs.Count == 0)
-                    {
-                        // Only the shared costume ref was attached (no face ref yet for this
-                        // character) — nothing smaller to retry with.
-                        throw new InvalidOperationException(
-                            "Image-guided edit failed using the shared wardrobe reference. " +
-                            "Not falling back to text-only — that would break uniform consistency " +
-                            $"with the rest of the group. Error: {ex.Message}", ex);
-                    }
-                    else
-                    {
-                        throw new InvalidOperationException(
-                            "Image-guided edit failed. Not falling back to text-only " +
-                            $"(would ignore your selected seeds). Error: {ex.Message}", ex);
-                    }
-                }
-            }
-            else
-            {
-                onProgress?.Invoke("Text-only generation (no preferred image and no book plates)");
-                blobs = await _images.GenerateVariantsAsync(
-                    prompt, n, aspectRatio: "1:1", model: imageModel, ct: ct);
-                mode = "text_only";
-            }
-
-            var paths = new List<string>();
-            for (var i = 0; i < blobs.Count && i < n; i++)
-            {
-                var idx = tweakSlots is { } slots ? slots.Next : i + 1;
-                var fileName = $"{charKey.ToLowerInvariant()}_variant_0{idx}.png";
-                var full = Path.Combine(charDir, fileName);
-                await File.WriteAllBytesAsync(full, blobs[i], ct);
-                paths.Add(full);
-                onProgress?.Invoke($"saved variant {idx}/{n} → {fileName}");
-
-                try
-                {
-                    await _costs.RecordImageGenerationAsync(
-                        projectId, 1, imageModel, quality: true,
-                        character: charKey, userId: CurrentUserId, ct: ct);
-                }
-                catch (Exception costEx)
-                {
-                    _log.LogWarning(costEx, "Could not record image cost");
-                }
-            }
-
-            if (paths.Count < 1)
-                throw new InvalidOperationException($"No variants generated for {charKey}");
-
-            if (opts.IterativeEdit && tweakSlots is { } kept)
-                onProgress?.Invoke($"New look is #{kept.Next} — current lock is #{kept.Previous}. Pick one.");
-
-            return new CharacterDesignResult
-            {
-                CharKey = charKey,
-                Mode = mode,
-                Paths = paths,
-                BookRefs = editRefs.Select(Path.GetFileName).OfType<string>().ToList(),
-                EditError = editError,
-                LockedAsPreferred = false,
-                PreviousVariantIndex = tweakSlots?.Previous,
-                NewVariantIndex = tweakSlots?.Next,
-            };
+            var primary = ctx.EditRefs.Take(ctx.MaxRefs).ToList();
+            var blobs = await _images.EditVariantsAsync(
+                prompt,
+                primary,
+                ctx.N,
+                aspectRatio: "1:1",
+                model: ctx.ImageModel,
+                maxRefs: ctx.MaxRefs,
+                costumeRefPath: ctx.CostumeRefPath,
+                illustratedMedium: illustratedMedium,
+                onProgress: onProgress,
+                ct: ct);
+            var mode = FormatEditSuccessMode(ctx.AlreadyLocked, primary.Count, ctx.CostumeRefPath is not null);
+            return (blobs, mode, null);
         }
-        finally
+        catch (Exception ex)
         {
-            if (preferredSnapshot is not null)
-            {
-                try { File.Delete(preferredSnapshot); } catch { /* ignore */ }
-            }
+            return await RetryOrThrowEditFailureAsync(ctx, prompt, illustratedMedium, ex, onProgress, ct);
         }
+    }
+
+    private static void LogImageEditProgress(VariantGenContext ctx, Action<string>? onProgress)
+    {
+        var identityLabel = ctx.EditRefs.Count > 0 ? Path.GetFileName(ctx.EditRefs[0]) : "(none — costume ref only)";
+        onProgress?.Invoke(
+            $"Grok image edit with {ctx.EditRefs.Count} identity hint(s)" +
+            (ctx.CostumeRefPath is not null
+                ? $" + shared costume ref ({Path.GetFileName(ctx.CostumeRefPath)})"
+                : "") +
+            $" [primary={identityLabel}]: " +
+            string.Join(", ", ctx.EditRefs.Select(Path.GetFileName)));
+    }
+
+    private static string FormatEditSuccessMode(bool alreadyLocked, int primaryCount, bool wardrobeLocked)
+    {
+        var mode = alreadyLocked
+            ? (primaryCount > 1 ? "preferred_multi" : "preferred_locked")
+            : (primaryCount > 1 ? "preferred_or_book_multi" : "preferred_or_book");
+        if (wardrobeLocked) mode += "_wardrobe_locked";
+        return mode;
+    }
+
+    private async Task<(IReadOnlyList<byte[]> Blobs, string Mode, string? EditError)> RetryOrThrowEditFailureAsync(
+        VariantGenContext ctx,
+        string prompt,
+        bool illustratedMedium,
+        Exception ex,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
+        var preferredPath = ctx.PreferredPath;
+        // User picked image seeds — never silently invent a different dog from text
+        // Retry once with preferred-only if multi-ref failed
+        if (preferredPath is not null && File.Exists(preferredPath) && ctx.EditRefs.Count > 1)
+            return await RetryPreferredOnlyEditAsync(
+                ctx, preferredPath, prompt, illustratedMedium, ex, onProgress, ct);
+
+        if (ctx.CostumeRefPath is not null && ctx.EditRefs.Count == 0)
+            // Only the shared costume ref was attached (no face ref yet for this
+            // character) — nothing smaller to retry with.
+            throw new InvalidOperationException(
+                "Image-guided edit failed using the shared wardrobe reference. " +
+                "Not falling back to text-only — that would break uniform consistency " +
+                $"with the rest of the group. Error: {ex.Message}", ex);
+
+        throw new InvalidOperationException(
+            "Image-guided edit failed. Not falling back to text-only " +
+            $"(would ignore your selected seeds). Error: {ex.Message}", ex);
+    }
+
+    private async Task<(IReadOnlyList<byte[]> Blobs, string Mode, string? EditError)> RetryPreferredOnlyEditAsync(
+        VariantGenContext ctx,
+        string preferredPath,
+        string prompt,
+        bool illustratedMedium,
+        Exception ex,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
+        onProgress?.Invoke(
+            $"Multi-ref edit failed ({ex.Message}); retry preferred-only…");
+        try
+        {
+            var blobs = await _images.EditVariantsAsync(
+                prompt,
+                new[] { preferredPath },
+                ctx.N,
+                aspectRatio: "1:1",
+                model: ctx.ImageModel,
+                maxRefs: ctx.CostumeRefPath is not null ? 2 : 1,
+                costumeRefPath: ctx.CostumeRefPath,
+                illustratedMedium: illustratedMedium,
+                onProgress: onProgress,
+                ct: ct);
+            return (blobs, "preferred_only_retry", ex.Message);
+        }
+        catch (Exception ex2)
+        {
+            throw new InvalidOperationException(
+                "Image-guided edit failed (multi-ref and preferred-only). " +
+                "Not falling back to text-only — that invents a different character. " +
+                $"Last error: {ex2.Message}", ex2);
+        }
+    }
+
+    private async Task<CharacterDesignResult> SaveAndPackageVariantsAsync(
+        VariantGenContext ctx,
+        IReadOnlyList<byte[]> blobs,
+        string mode,
+        string? editError,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
+        var paths = await WriteVariantFilesAsync(ctx, blobs, onProgress, ct);
+        if (paths.Count < 1)
+            throw new InvalidOperationException($"No variants generated for {ctx.CharKey}");
+
+        if (ctx.Opts.IterativeEdit && ctx.TweakSlots is { } kept)
+            onProgress?.Invoke($"New look is #{kept.Next} — current lock is #{kept.Previous}. Pick one.");
+
+        return new CharacterDesignResult
+        {
+            CharKey = ctx.CharKey,
+            Mode = mode,
+            Paths = paths,
+            BookRefs = ctx.EditRefs.Select(Path.GetFileName).OfType<string>().ToList(),
+            EditError = editError,
+            LockedAsPreferred = false,
+            PreviousVariantIndex = ctx.TweakSlots?.Previous,
+            NewVariantIndex = ctx.TweakSlots?.Next,
+        };
+    }
+
+    private async Task<List<string>> WriteVariantFilesAsync(
+        VariantGenContext ctx,
+        IReadOnlyList<byte[]> blobs,
+        Action<string>? onProgress,
+        CancellationToken ct)
+    {
+        var paths = new List<string>();
+        for (var i = 0; i < blobs.Count && i < ctx.N; i++)
+        {
+            var idx = ctx.TweakSlots is { } slots ? slots.Next : i + 1;
+            var fileName = $"{ctx.CharKey.ToLowerInvariant()}_variant_0{idx}.png";
+            var full = Path.Combine(ctx.CharDir, fileName);
+            await File.WriteAllBytesAsync(full, blobs[i], ct);
+            paths.Add(full);
+            onProgress?.Invoke($"saved variant {idx}/{ctx.N} → {fileName}");
+            await RecordVariantImageCostAsync(ctx.ProjectId, ctx.CharKey, ctx.ImageModel, ct);
+        }
+        return paths;
+    }
+
+    private async Task RecordVariantImageCostAsync(
+        string projectId,
+        string charKey,
+        string imageModel,
+        CancellationToken ct)
+    {
+        try
+        {
+            await _costs.RecordImageGenerationAsync(
+                projectId, 1, imageModel, quality: true,
+                character: charKey, userId: CurrentUserId, ct: ct);
+        }
+        catch (Exception costEx)
+        {
+            _log.LogWarning(costEx, "Could not record image cost");
+        }
+    }
+
+    private static void DeletePreferredSnapshot(string? preferredSnapshot)
+    {
+        if (preferredSnapshot is null)
+            return;
+        try { File.Delete(preferredSnapshot); } catch { /* ignore */ }
     }
 
     /// <summary>
@@ -412,101 +644,205 @@ public sealed class CharacterDesignService
         Action<string>? onProgress)
     {
         var mode = NormalizeSeedMode(opts.SeedMode);
+        if (mode == "none")
+            return ResolveNoneEditRefs(onProgress);
+        if (mode == "preferred_only")
+            return ResolvePreferredOnlyEditRefs(preferredPath, opts, maxRefs, onProgress);
+        if (mode == "explicit")
+            return ResolveExplicitEditRefs(charKey, charDir, preferredPath, allBookRefs, opts, maxRefs, onProgress);
+        if (mode == "book_hints")
+            return ResolveBookHintsEditRefs(preferredPath, allBookRefs, opts, maxRefs, onProgress);
+        return ResolveAutoEditRefs(preferredPath, allBookRefs, opts, maxRefs, maxBook, onProgress);
+    }
+
+    private static void AddEditRef(List<string> editRefs, string? path, int maxRefs)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return;
+        if (new FileInfo(path).Length < 64) return;
+        if (editRefs.Any(p => string.Equals(p, path, StringComparison.OrdinalIgnoreCase))) return;
+        if (editRefs.Count >= maxRefs) return;
+        editRefs.Add(path);
+    }
+
+    private static List<string> ResolveNoneEditRefs(Action<string>? onProgress)
+    {
+        onProgress?.Invoke("Seed mode=none → text-only (no image refs)");
+        return new List<string>();
+    }
+
+    private static List<string> ResolvePreferredOnlyEditRefs(
+        string? preferredPath,
+        PageToMovie.Core.Models.StartCharacterVariantsRequest opts,
+        int maxRefs,
+        Action<string>? onProgress)
+    {
         var editRefs = new List<string>();
+        if (opts.IncludePreferred)
+            AddEditRef(editRefs, preferredPath, maxRefs);
+        onProgress?.Invoke(
+            preferredPath is null
+                ? "Preferred-only mode but no preferred image"
+                : $"Preferred-only: {Path.GetFileName(preferredPath)}");
+        return editRefs;
+    }
 
-        void Add(string? path)
+    private static List<string> ResolveExplicitEditRefs(
+        string charKey,
+        string charDir,
+        string? preferredPath,
+        List<string> allBookRefs,
+        PageToMovie.Core.Models.StartCharacterVariantsRequest opts,
+        int maxRefs,
+        Action<string>? onProgress)
+    {
+        var editRefs = new List<string>();
+        if (opts.SeedOrderKeys is { Count: > 0 })
+            AddExplicitOrderedKeys(editRefs, charKey, charDir, preferredPath, allBookRefs, opts, maxRefs);
+        else
+            AddExplicitSeparateLists(editRefs, charKey, charDir, preferredPath, allBookRefs, opts, maxRefs);
+        onProgress?.Invoke(
+            editRefs.Count == 0
+                ? "Explicit mode: no valid selections — will text-only"
+                : $"Explicit seeds ({editRefs.Count}/{maxRefs}): {string.Join(", ", editRefs.Select(Path.GetFileName))}");
+        return editRefs;
+    }
+
+    private static void AddExplicitOrderedKeys(
+        List<string> editRefs,
+        string charKey,
+        string charDir,
+        string? preferredPath,
+        List<string> allBookRefs,
+        PageToMovie.Core.Models.StartCharacterVariantsRequest opts,
+        int maxRefs)
+    {
+        foreach (var raw in opts.SeedOrderKeys)
         {
-            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return;
-            if (new FileInfo(path).Length < 64) return;
-            if (editRefs.Any(p => string.Equals(p, path, StringComparison.OrdinalIgnoreCase))) return;
-            if (editRefs.Count >= maxRefs) return;
-            editRefs.Add(path);
+            if (editRefs.Count >= maxRefs) break;
+            AddExplicitOrderKey(
+                editRefs, (raw ?? "").Trim().ToLowerInvariant(),
+                charKey, charDir, preferredPath, allBookRefs, maxRefs);
         }
+    }
 
-        switch (mode)
+    private static void AddExplicitOrderKey(
+        List<string> editRefs,
+        string key,
+        string charKey,
+        string charDir,
+        string? preferredPath,
+        List<string> allBookRefs,
+        int maxRefs)
+    {
+        if (key is "p" or "pref" or "preferred")
         {
-            case "none":
-                onProgress?.Invoke("Seed mode=none → text-only (no image refs)");
-                return editRefs;
-
-            case "preferred_only":
-                if (opts.IncludePreferred)
-                    Add(preferredPath);
-                onProgress?.Invoke(
-                    preferredPath is null
-                        ? "Preferred-only mode but no preferred image"
-                        : $"Preferred-only: {Path.GetFileName(preferredPath)}");
-                return editRefs;
-
-            case "explicit":
-                // Prefer ordered keys from UI (rank 1..N). Fall back to separate lists.
-                if (opts.SeedOrderKeys is { Count: > 0 })
-                {
-                    foreach (var raw in opts.SeedOrderKeys)
-                    {
-                        if (editRefs.Count >= maxRefs) break;
-                        var key = (raw ?? "").Trim().ToLowerInvariant();
-                        if (key is "p" or "pref" or "preferred")
-                        {
-                            Add(preferredPath);
-                            continue;
-                        }
-                        if (key.Length >= 2 && key[0] == 'v' && int.TryParse(key[1..], out var vi) &&
-                            vi is >= 1 and <= 3)
-                        {
-                            Add(Path.Combine(charDir, $"{charKey.ToLowerInvariant()}_variant_0{vi}.png"));
-                            continue;
-                        }
-                        if (key.Length >= 2 && key[0] == 'b' && int.TryParse(key[1..], out var bi) &&
-                            bi >= 0 && bi < allBookRefs.Count)
-                        {
-                            Add(allBookRefs[bi]);
-                        }
-                    }
-                }
-                else
-                {
-                    if (opts.IncludeLockedRef || opts.IncludePreferred)
-                        Add(preferredPath);
-                    foreach (var vi in opts.VariantIndices.Distinct())
-                    {
-                        if (vi is < 1 or > 3) continue;
-                        Add(Path.Combine(charDir, $"{charKey.ToLowerInvariant()}_variant_0{vi}.png"));
-                    }
-                    foreach (var bi in opts.BookRefIndices.Distinct())
-                    {
-                        if (bi < 0 || bi >= allBookRefs.Count) continue;
-                        Add(allBookRefs[bi]);
-                    }
-                }
-                onProgress?.Invoke(
-                    editRefs.Count == 0
-                        ? "Explicit mode: no valid selections — will text-only"
-                        : $"Explicit seeds ({editRefs.Count}/{maxRefs}): {string.Join(", ", editRefs.Select(Path.GetFileName))}");
-                return editRefs;
-
-            case "book_hints":
-                if (opts.IncludePreferred)
-                    Add(preferredPath);
-                foreach (var br in allBookRefs.Take(maxRefs))
-                    Add(br);
-                onProgress?.Invoke(
-                    allBookRefs.Count == 0
-                        ? "Book-hints mode: no plates attached for character"
-                        : $"Book-hints + preferred ({editRefs.Count}): {string.Join(", ", editRefs.Select(Path.GetFileName))}");
-                return editRefs;
-
-            default: // auto
-                if (opts.IncludePreferred)
-                    Add(preferredPath);
-                foreach (var br in allBookRefs.Take(maxBook))
-                    Add(br);
-                onProgress?.Invoke(
-                    editRefs.Count == 0
-                        ? "Auto seeds: none — description only"
-                        : $"Auto seeds ({editRefs.Count}): {string.Join(", ", editRefs.Select(Path.GetFileName))}");
-                return editRefs;
+            AddEditRef(editRefs, preferredPath, maxRefs);
+            return;
         }
+        if (TryParseVariantSeedKey(key, out var vi))
+        {
+            AddEditRef(editRefs, Path.Combine(charDir, $"{charKey.ToLowerInvariant()}_variant_0{vi}.png"), maxRefs);
+            return;
+        }
+        if (TryParseBookSeedKey(key, allBookRefs.Count, out var bi))
+            AddEditRef(editRefs, allBookRefs[bi], maxRefs);
+    }
+
+    private static bool TryParseVariantSeedKey(string key, out int vi)
+    {
+        vi = 0;
+        if (key.Length < 2 || key[0] != 'v' || !int.TryParse(key[1..], out vi))
+            return false;
+        return vi is >= 1 and <= 3;
+    }
+
+    private static bool TryParseBookSeedKey(string key, int bookCount, out int bi)
+    {
+        bi = 0;
+        if (key.Length < 2 || key[0] != 'b' || !int.TryParse(key[1..], out bi))
+            return false;
+        return bi >= 0 && bi < bookCount;
+    }
+
+    private static void AddExplicitSeparateLists(
+        List<string> editRefs,
+        string charKey,
+        string charDir,
+        string? preferredPath,
+        List<string> allBookRefs,
+        PageToMovie.Core.Models.StartCharacterVariantsRequest opts,
+        int maxRefs)
+    {
+        if (opts.IncludeLockedRef || opts.IncludePreferred)
+            AddEditRef(editRefs, preferredPath, maxRefs);
+        AddExplicitVariantIndices(editRefs, charKey, charDir, opts, maxRefs);
+        AddExplicitBookIndices(editRefs, allBookRefs, opts, maxRefs);
+    }
+
+    private static void AddExplicitVariantIndices(
+        List<string> editRefs,
+        string charKey,
+        string charDir,
+        PageToMovie.Core.Models.StartCharacterVariantsRequest opts,
+        int maxRefs)
+    {
+        foreach (var vi in opts.VariantIndices.Distinct())
+        {
+            if (vi is < 1 or > 3) continue;
+            AddEditRef(editRefs, Path.Combine(charDir, $"{charKey.ToLowerInvariant()}_variant_0{vi}.png"), maxRefs);
+        }
+    }
+
+    private static void AddExplicitBookIndices(
+        List<string> editRefs,
+        List<string> allBookRefs,
+        PageToMovie.Core.Models.StartCharacterVariantsRequest opts,
+        int maxRefs)
+    {
+        foreach (var bi in opts.BookRefIndices.Distinct())
+        {
+            if (bi < 0 || bi >= allBookRefs.Count) continue;
+            AddEditRef(editRefs, allBookRefs[bi], maxRefs);
+        }
+    }
+
+    private static List<string> ResolveBookHintsEditRefs(
+        string? preferredPath,
+        List<string> allBookRefs,
+        PageToMovie.Core.Models.StartCharacterVariantsRequest opts,
+        int maxRefs,
+        Action<string>? onProgress)
+    {
+        var editRefs = new List<string>();
+        if (opts.IncludePreferred)
+            AddEditRef(editRefs, preferredPath, maxRefs);
+        foreach (var br in allBookRefs.Take(maxRefs))
+            AddEditRef(editRefs, br, maxRefs);
+        onProgress?.Invoke(
+            allBookRefs.Count == 0
+                ? "Book-hints mode: no plates attached for character"
+                : $"Book-hints + preferred ({editRefs.Count}): {string.Join(", ", editRefs.Select(Path.GetFileName))}");
+        return editRefs;
+    }
+
+    private static List<string> ResolveAutoEditRefs(
+        string? preferredPath,
+        List<string> allBookRefs,
+        PageToMovie.Core.Models.StartCharacterVariantsRequest opts,
+        int maxRefs,
+        int maxBook,
+        Action<string>? onProgress)
+    {
+        var editRefs = new List<string>();
+        if (opts.IncludePreferred)
+            AddEditRef(editRefs, preferredPath, maxRefs);
+        foreach (var br in allBookRefs.Take(maxBook))
+            AddEditRef(editRefs, br, maxRefs);
+        onProgress?.Invoke(
+            editRefs.Count == 0
+                ? "Auto seeds: none — description only"
+                : $"Auto seeds ({editRefs.Count}): {string.Join(", ", editRefs.Select(Path.GetFileName))}");
+        return editRefs;
     }
 
     private static string NormalizeSeedMode(string? mode)
@@ -1280,102 +1616,30 @@ public sealed class CharacterDesignService
         bool hasIdentityRefs = true,
         bool hasCostumeRef = false)
     {
-        var description = !string.IsNullOrWhiteSpace(descriptionOverride)
-            ? descriptionOverride
-            : seedInfo.TryGetProperty(DescriptionKey, out var d) ? d.GetString() ?? "" : "";
-        var visualLock = !string.IsNullOrWhiteSpace(visualLockOverride)
-            ? visualLockOverride
-            : seedInfo.TryGetProperty("visual_lock", out var vlck) ? vlck.GetString() ?? "" : "";
-        var ageBand = seedInfo.TryGetProperty("age_band", out var ab) ? ab.GetString() ?? "" : "";
-        var variantOf = seedInfo.TryGetProperty("variant_of", out var vo) ? vo.GetString() ?? "" : "";
-        var display =
-            seedInfo.TryGetProperty("canonical_given_name", out var cn) && cn.GetString() is { Length: > 0 } cname
-                ? cname
-                : seedInfo.TryGetProperty("voice_label", out var vl) && vl.GetString() is { Length: > 0 } lab
-                    ? lab
-                    : charKey.Replace("Character_", "").Replace("_", " ");
+        var description = ResolveSeedText(descriptionOverride, seedInfo, DescriptionKey);
+        var visualLock = ResolveSeedText(visualLockOverride, seedInfo, "visual_lock");
+        var ageBand = GetSeedString(seedInfo, "age_band");
+        var variantOf = GetSeedString(seedInfo, "variant_of");
+        var display = ResolveCharacterDisplayName(charKey, seedInfo);
 
-        var isAnimalDog = CharacterVisualTextScrubber.IsPrimarilyAnimalCharacter(
-            charKey, ageBand, description, visualLock, "dog");
-        var isAnimalOther =
-            CharacterVisualTextScrubber.IsPrimarilyAnimalCharacter(charKey, ageBand, description, visualLock, "cat") ||
-            CharacterVisualTextScrubber.IsPrimarilyAnimalCharacter(charKey, ageBand, description, visualLock, "rabbit") ||
-            CharacterVisualTextScrubber.IsPrimarilyAnimalCharacter(charKey, ageBand, description, visualLock, "bunny") ||
-            CharacterVisualTextScrubber.IsPrimarilyAnimalCharacter(charKey, ageBand, description, visualLock, "bear") ||
-            CharacterVisualTextScrubber.IsPrimarilyAnimalCharacter(charKey, ageBand, description, visualLock, "fox");
-        var isAnimal = isAnimalDog || isAnimalOther;
-        var isHumanAdult = CharacterVisualTextScrubber.IsHumanAdultCharacter(
-            charKey, ageBand, description, visualLock);
-
+        var species = ClassifyPortraitSpecies(charKey, ageBand, description, visualLock);
         // Illustrated vs photoreal from structured vision_meta / STYLE LOCK — not file type.
         var illustrated = PrefersIllustratedPortraitStyle(
-            projectRenderStyleLock, hasImageHints, isAnimal, hasBookSource: false);
+            projectRenderStyleLock, hasImageHints, species.IsAnimal, hasBookSource: false);
 
-        var speciesClause = "";
-        if (ageBand.StartsWith("child", StringComparison.OrdinalIgnoreCase) ||
-            charKey.EndsWith("_Young", StringComparison.OrdinalIgnoreCase))
-        {
-            speciesClause =
-                "SPECIES/AGE: CHILD human — child proportions, youthful face; not adult, not aged-up. ";
-        }
-        else if (ageBand.StartsWith("teen", StringComparison.OrdinalIgnoreCase) ||
-                 charKey.EndsWith("_Teen", StringComparison.OrdinalIgnoreCase))
-        {
-            speciesClause =
-                "SPECIES/AGE: TEEN human — younger than adult version; not middle-aged. ";
-        }
-        else if (isAnimalDog)
-        {
-            speciesClause = illustrated
-                ? "SPECIES: DOG character (animal), not a human. " +
-                  "Keep the illustrated breed/look from the book art — not a photoreal stock dog. " +
-                  "Natural fur/coat only unless a reference image clearly shows clothing. "
-                : "SPECIES: DOG (animal), not a human. Photoreal coat and anatomy matching the project medium. " +
-                  "Natural fur only unless clothing is part of the locked look. ";
-        }
-        else if (isAnimalOther)
-        {
-            speciesClause = illustrated
-                ? "SPECIES: animal character, not a person. Match the book-art creature; " +
-                  "not photoreal wildlife photography. No costume unless clearly in refs. "
-                : "SPECIES: animal character, not a person. Photoreal anatomy matching the project medium. ";
-        }
-        else if (isHumanAdult)
-        {
-            speciesClause = illustrated
-                ? "SPECIES: HUMAN adult — a person, not an animal. " +
-                  "All characters are rendered as in a children's picture book; not photoreal stock photography. "
-                : "SPECIES: HUMAN adult — a real person, not an animal, not a drawing. " +
-                  "Photoreal skin texture and period wardrobe matching the project medium. ";
-        }
-
-
-        var familyClause = "";
-        if (!string.IsNullOrWhiteSpace(variantOf))
-        {
-            familyClause =
-                $"FAMILY: younger version of {variantOf} " +
-                "(same ethnicity/hair family, recognizable related features). ";
-        }
-
+        var speciesClause = BuildSpeciesClause(species, illustrated, charKey, ageBand);
+        var familyClause = BuildFamilyClause(variantOf);
         // Shared uniform group (see wardrobe_lock_tokens / CharacterDesignService.EnsureWardrobeReferenceAsync):
         // authoritative wardrobe text lives on the group, not repeated/re-invented per character.
-        var wardrobeClause = "";
-        if (!string.IsNullOrWhiteSpace(wardrobeLockDescription))
-        {
-            var wardrobeSafe = CharacterVisualTextScrubber.ScrubVisualProse(wardrobeLockDescription)
-                .Trim().TrimEnd('.');
-            wardrobeClause =
-                $"SHARED UNIFORM (hard constraint — must match every other character in this same " +
-                $"uniform group exactly, not just similar): {wardrobeSafe}. ";
-        }
+        var wardrobeClause = BuildWardrobeClause(wardrobeLockDescription);
 
         // Prompt-time text prep: keep filmable words; image model still gets strong IGNORE rules.
         // Only known human seeds may get "human — not an animal" in cross-species medium rewrites.
+        var disambiguateHuman = species.IsHumanAdult && !species.IsAnimal;
         var descSafe = CharacterVisualTextScrubber.ScrubVisualProse(
-            description, disambiguateCrossSpeciesAsHuman: isHumanAdult && !isAnimal);
+            description, disambiguateCrossSpeciesAsHuman: disambiguateHuman);
         var visualSafe = CharacterVisualTextScrubber.ScrubVisualProse(
-            visualLock, disambiguateCrossSpeciesAsHuman: isHumanAdult && !isAnimal);
+            visualLock, disambiguateCrossSpeciesAsHuman: disambiguateHuman);
 
         // Priority-ordered instructions work better than a long free-form paragraph for Imagine.
         const string ignoreRules =
@@ -1391,98 +1655,258 @@ public sealed class CharacterDesignService
 
         // Honor project render_style_lock (live-action period, picture-book, etc.).
         // Default was always picture-book — wrong for photoreal projects; style lock decides.
-        string styleLock;
+        var styleLock = BuildPortraitStyleLock(projectRenderStyleLock, illustrated);
+        var lookNotes = BuildLookNotes(descSafe, visualSafe);
+
+        if (hasImageHints)
+            return (BuildPromptWithImageHints(
+                display, styleLock, speciesClause, familyClause, wardrobeClause,
+                ignoreRules, outputRules, lookNotes,
+                hasIdentityRefs, hasCostumeRef, species.IsAnimal, illustrated), illustrated);
+        return (BuildPromptWithoutImageHints(
+            display, styleLock, speciesClause, familyClause, wardrobeClause,
+            ignoreRules, outputRules, lookNotes, species.IsAnimal, illustrated), illustrated);
+    }
+
+    private static string ResolveSeedText(string? overrideValue, JsonElement seedInfo, string key)
+    {
+        if (!string.IsNullOrWhiteSpace(overrideValue))
+            return overrideValue!;
+        return seedInfo.TryGetProperty(key, out var d) ? d.GetString() ?? "" : "";
+    }
+
+    private static string GetSeedString(JsonElement seedInfo, string key) =>
+        seedInfo.TryGetProperty(key, out var el) ? el.GetString() ?? "" : "";
+
+    private static string ResolveCharacterDisplayName(string charKey, JsonElement seedInfo)
+    {
+        if (seedInfo.TryGetProperty("canonical_given_name", out var cn) && cn.GetString() is { Length: > 0 } cname)
+            return cname;
+        if (seedInfo.TryGetProperty("voice_label", out var vl) && vl.GetString() is { Length: > 0 } lab)
+            return lab;
+        return charKey.Replace("Character_", "").Replace("_", " ");
+    }
+
+    private readonly record struct PortraitSpeciesFlags(bool IsAnimalDog, bool IsAnimalOther, bool IsHumanAdult)
+    {
+        public bool IsAnimal => IsAnimalDog || IsAnimalOther;
+    }
+
+    private static PortraitSpeciesFlags ClassifyPortraitSpecies(
+        string charKey,
+        string ageBand,
+        string description,
+        string visualLock)
+    {
+        var isAnimalDog = CharacterVisualTextScrubber.IsPrimarilyAnimalCharacter(
+            charKey, ageBand, description, visualLock, "dog");
+        var isAnimalOther =
+            CharacterVisualTextScrubber.IsPrimarilyAnimalCharacter(charKey, ageBand, description, visualLock, "cat") ||
+            CharacterVisualTextScrubber.IsPrimarilyAnimalCharacter(charKey, ageBand, description, visualLock, "rabbit") ||
+            CharacterVisualTextScrubber.IsPrimarilyAnimalCharacter(charKey, ageBand, description, visualLock, "bunny") ||
+            CharacterVisualTextScrubber.IsPrimarilyAnimalCharacter(charKey, ageBand, description, visualLock, "bear") ||
+            CharacterVisualTextScrubber.IsPrimarilyAnimalCharacter(charKey, ageBand, description, visualLock, "fox");
+        var isHumanAdult = CharacterVisualTextScrubber.IsHumanAdultCharacter(
+            charKey, ageBand, description, visualLock);
+        return new PortraitSpeciesFlags(isAnimalDog, isAnimalOther, isHumanAdult);
+    }
+
+    private static string BuildSpeciesClause(
+        PortraitSpeciesFlags species,
+        bool illustrated,
+        string charKey,
+        string ageBand)
+    {
+        if (ageBand.StartsWith("child", StringComparison.OrdinalIgnoreCase) ||
+            charKey.EndsWith("_Young", StringComparison.OrdinalIgnoreCase))
+        {
+            return
+                "SPECIES/AGE: CHILD human — child proportions, youthful face; not adult, not aged-up. ";
+        }
+        if (ageBand.StartsWith("teen", StringComparison.OrdinalIgnoreCase) ||
+            charKey.EndsWith("_Teen", StringComparison.OrdinalIgnoreCase))
+        {
+            return
+                "SPECIES/AGE: TEEN human — younger than adult version; not middle-aged. ";
+        }
+        if (species.IsAnimalDog)
+            return IllustratedOrLive(
+                illustrated,
+                "SPECIES: DOG character (animal), not a human. " +
+                "Keep the illustrated breed/look from the book art — not a photoreal stock dog. " +
+                "Natural fur/coat only unless a reference image clearly shows clothing. ",
+                "SPECIES: DOG (animal), not a human. Photoreal coat and anatomy matching the project medium. " +
+                "Natural fur only unless clothing is part of the locked look. ");
+        if (species.IsAnimalOther)
+            return IllustratedOrLive(
+                illustrated,
+                "SPECIES: animal character, not a person. Match the book-art creature; " +
+                "not photoreal wildlife photography. No costume unless clearly in refs. ",
+                "SPECIES: animal character, not a person. Photoreal anatomy matching the project medium. ");
+        if (species.IsHumanAdult)
+            return IllustratedOrLive(
+                illustrated,
+                "SPECIES: HUMAN adult — a person, not an animal. " +
+                "All characters are rendered as in a children's picture book; not photoreal stock photography. ",
+                "SPECIES: HUMAN adult — a real person, not an animal, not a drawing. " +
+                "Photoreal skin texture and period wardrobe matching the project medium. ");
+        return "";
+    }
+
+    private static string IllustratedOrLive(bool illustrated, string illustratedText, string liveText) =>
+        illustrated ? illustratedText : liveText;
+
+    private static string BuildFamilyClause(string variantOf)
+    {
+        if (string.IsNullOrWhiteSpace(variantOf))
+            return "";
+        return
+            $"FAMILY: younger version of {variantOf} " +
+            "(same ethnicity/hair family, recognizable related features). ";
+    }
+
+    private static string BuildWardrobeClause(string? wardrobeLockDescription)
+    {
+        if (string.IsNullOrWhiteSpace(wardrobeLockDescription))
+            return "";
+        var wardrobeSafe = CharacterVisualTextScrubber.ScrubVisualProse(wardrobeLockDescription)
+            .Trim().TrimEnd('.');
+        return
+            $"SHARED UNIFORM (hard constraint — must match every other character in this same " +
+            $"uniform group exactly, not just similar): {wardrobeSafe}. ";
+    }
+
+    private static string BuildPortraitStyleLock(string? projectRenderStyleLock, bool illustrated)
+    {
         if (!string.IsNullOrWhiteSpace(projectRenderStyleLock))
         {
             var cleaned = projectRenderStyleLock.Trim().TrimEnd('.');
             if (!cleaned.StartsWith("STYLE", StringComparison.OrdinalIgnoreCase))
                 cleaned = "STYLE LOCK: " + cleaned;
-            styleLock = illustrated
+            return illustrated
                 ? $"{cleaned}. Match that illustrated medium exactly — not photoreal stock, not a different art style. "
                 : $"{cleaned}. Photoreal / live-action continuity portrait — natural skin pores and fabric, " +
                   "NOT a sketch, NOT pencil drawing, NOT illustration, NOT cartoon, NOT anime, NOT 3D CGI beauty face. ";
         }
-        else if (illustrated)
+        if (illustrated)
         {
-            styleLock =
+            return
                 "STYLE LOCK (hard): children's picture-book illustration matching the book references — " +
                 "soft painted cartoon / illustrated medium, simplified shapes, gentle shading. " +
                 "NOT photorealistic, NOT live-action photography, NOT stock-photo animal, " +
                 "NOT hyper-detailed fur photography, NOT 3D CGI render. " +
                 "If book plates are attached, copy their line, color, and medium exactly. ";
         }
-        else
-        {
-            styleLock =
-                "STYLE LOCK (hard): photoreal live-action continuity portrait — naturalistic face and wardrobe. " +
-                "NOT a sketch, NOT pencil/charcoal drawing, NOT illustration, NOT cartoon, NOT anime. ";
-        }
+        return
+            "STYLE LOCK (hard): photoreal live-action continuity portrait — naturalistic face and wardrobe. " +
+            "NOT a sketch, NOT pencil/charcoal drawing, NOT illustration, NOT cartoon, NOT anime. ";
+    }
 
+    private static string BuildLookNotes(string descSafe, string visualSafe)
+    {
         var lookBits = new List<string>();
         if (!string.IsNullOrWhiteSpace(descSafe))
             lookBits.Add(descSafe.Trim().TrimEnd('.'));
         if (!string.IsNullOrWhiteSpace(visualSafe))
             lookBits.Add("Hard constraints: " + visualSafe.Trim().TrimEnd('.'));
-        var lookNotes = lookBits.Count > 0
+        return lookBits.Count > 0
             ? string.Join(". ", lookBits) + "."
             : "Match the character identity from context.";
+    }
 
-        if (hasImageHints)
+    private static string BuildPromptWithImageHints(
+        string display,
+        string styleLock,
+        string speciesClause,
+        string familyClause,
+        string wardrobeClause,
+        string ignoreRules,
+        string outputRules,
+        string lookNotes,
+        bool hasIdentityRefs,
+        bool hasCostumeRef,
+        bool isAnimal,
+        bool illustrated)
+    {
+        var matchBody = BuildImageHintMatchBody(hasIdentityRefs, hasCostumeRef, isAnimal, illustrated);
+        var priority1 = BuildImageHintPriority1(hasIdentityRefs, hasCostumeRef);
+        return
+            $"CHARACTER CONTINUITY PORTRAIT of {display}. " +
+            styleLock +
+            priority1 +
+            "Skip any reference that is mostly printed text with no character art. " +
+            "Do not redesign; do not invent a new outfit not clearly visible in the character/costume art. " +
+            matchBody +
+            speciesClause +
+            familyClause +
+            wardrobeClause +
+            "PRIORITY 2 — BASE LOOK ONLY: default everyday appearance for a faceplate/lock. " +
+            (isAnimal
+                ? "If book art shows an animal without clothes, draw no clothes or costumes. "
+                : "Use only default clothes visible in refs; do not add later-story costumes. ") +
+            ignoreRules +
+            $"PRIORITY 3 — TEXT NOTES (secondary hints only): {lookNotes} " +
+            outputRules;
+    }
+
+    private static string BuildImageHintMatchBody(
+        bool hasIdentityRefs,
+        bool hasCostumeRef,
+        bool isAnimal,
+        bool illustrated)
+    {
+        if (!hasIdentityRefs)
+            return "Take ONLY the wardrobe/costume from the attached costume reference; " +
+                  "face, hair, build, and species come from the text description below, never from that image. ";
+        if (hasCostumeRef)
+            // Identity ref AND costume ref both attached: split them explicitly.
+            // Without this, "match ... clothing from the preferred reference photo"
+            // competes with the costume reference and each character's own (possibly
+            // stale/pre-lock) identity photo wins on wardrobe details some of the time.
+            return "Match face, hair, and build from the preferred reference photo/portrait — " +
+                  "but NOT its wardrobe. Coat, hat/cap, and badge come ONLY from the separately " +
+                  "labeled costume reference image below, never from the identity photo, even if " +
+                  "the identity photo shows different or older wardrobe. ";
+        if (isAnimal)
         {
-            var matchBody = !hasIdentityRefs
-                ? "Take ONLY the wardrobe/costume from the attached costume reference; " +
-                  "face, hair, build, and species come from the text description below, never from that image. "
-                : hasCostumeRef
-                    // Identity ref AND costume ref both attached: split them explicitly.
-                    // Without this, "match ... clothing from the preferred reference photo"
-                    // competes with the costume reference and each character's own (possibly
-                    // stale/pre-lock) identity photo wins on wardrobe details some of the time.
-                    ? "Match face, hair, and build from the preferred reference photo/portrait — " +
-                      "but NOT its wardrobe. Coat, hat/cap, and badge come ONLY from the separately " +
-                      "labeled costume reference image below, never from the identity photo, even if " +
-                      "the identity photo shows different or older wardrobe. "
-                    : isAnimal
-                        ? (illustrated
-                            ? "Match species, coat pattern, ears, and face shape from the illustrated book references. "
-                            : "Match species, coat, and face from the attached reference images. ")
-                        : (illustrated
-                            ? "Match face, hair, and default clothing from the preferred illustrated reference. "
-                            : "Match face, hair, and default clothing from the preferred reference photo/portrait. ");
+            return illustrated
+                ? "Match species, coat pattern, ears, and face shape from the illustrated book references. "
+                : "Match species, coat, and face from the attached reference images. ";
+        }
+        return illustrated
+            ? "Match face, hair, and default clothing from the preferred illustrated reference. "
+            : "Match face, hair, and default clothing from the preferred reference photo/portrait. ";
+    }
 
-            var priority1 = hasIdentityRefs
-                ? "PRIORITY 1 — IMAGES: The first attached image is the authoritative identity AND art style. " +
-                  "Further images are the SAME character (markings/style only) or a costume reference " +
-                  "as separately labeled below. " +
-                  "When text and images disagree, trust the images for face/identity" +
-                  (hasCostumeRef
-                      ? " — and trust the separately labeled costume reference (not the identity photo) " +
-                        "for wardrobe/hat/badge, even where they differ. "
-                      : ". ")
-                : "PRIORITY 1 — IMAGE: the attached reference is a COSTUME REFERENCE ONLY (see label below) — " +
+    private static string BuildImageHintPriority1(bool hasIdentityRefs, bool hasCostumeRef)
+    {
+        if (!hasIdentityRefs)
+            return "PRIORITY 1 — IMAGE: the attached reference is a COSTUME REFERENCE ONLY (see label below) — " +
                   "it shows the required wardrobe, not this character's face. This character's face/identity " +
                   "comes entirely from the text description below, not from that image. ";
+        return "PRIORITY 1 — IMAGES: The first attached image is the authoritative identity AND art style. " +
+              "Further images are the SAME character (markings/style only) or a costume reference " +
+              "as separately labeled below. " +
+              "When text and images disagree, trust the images for face/identity" +
+              (hasCostumeRef
+                  ? " — and trust the separately labeled costume reference (not the identity photo) " +
+                    "for wardrobe/hat/badge, even where they differ. "
+                  : ". ");
+    }
 
-            var withHints =
-                $"CHARACTER CONTINUITY PORTRAIT of {display}. " +
-                styleLock +
-                priority1 +
-                "Skip any reference that is mostly printed text with no character art. " +
-                "Do not redesign; do not invent a new outfit not clearly visible in the character/costume art. " +
-                matchBody +
-                speciesClause +
-                familyClause +
-                wardrobeClause +
-                "PRIORITY 2 — BASE LOOK ONLY: default everyday appearance for a faceplate/lock. " +
-                (isAnimal
-                    ? "If book art shows an animal without clothes, draw no clothes or costumes. "
-                    : "Use only default clothes visible in refs; do not add later-story costumes. ") +
-                ignoreRules +
-                $"PRIORITY 3 — TEXT NOTES (secondary hints only): {lookNotes} " +
-                outputRules;
-            return (withHints, illustrated);
-        }
-
-        var noHints =
+    private static string BuildPromptWithoutImageHints(
+        string display,
+        string styleLock,
+        string speciesClause,
+        string familyClause,
+        string wardrobeClause,
+        string ignoreRules,
+        string outputRules,
+        string lookNotes,
+        bool isAnimal,
+        bool illustrated)
+    {
+        return
             $"CHARACTER CONTINUITY PORTRAIT of {display}. " +
             styleLock +
             "BASE LOOK ONLY — default everyday appearance for a faceplate/lock, not a story beat. " +
@@ -1490,14 +1914,18 @@ public sealed class CharacterDesignService
             familyClause +
             wardrobeClause +
             ignoreRules +
-            (isAnimal
-                ? (illustrated
-                    ? "Illustrated animal appearance; clothing only if text clearly states it as the usual look (not 'later'). "
-                    : "Photoreal animal appearance; clothing only if text states it as the usual look. ")
-                : "Default clothes only; skip later-story outfit changes. ") +
+            BuildNoHintsClothingClause(isAnimal, illustrated) +
             $"LOOK: {lookNotes} " +
             outputRules;
-        return (noHints, illustrated);
+    }
+
+    private static string BuildNoHintsClothingClause(bool isAnimal, bool illustrated)
+    {
+        if (!isAnimal)
+            return "Default clothes only; skip later-story outfit changes. ";
+        return illustrated
+            ? "Illustrated animal appearance; clothing only if text clearly states it as the usual look (not 'later'). "
+            : "Photoreal animal appearance; clothing only if text states it as the usual look. ";
     }
 
     private static List<string> ResolveBookRefPaths(string projectDir, JsonElement seedInfo, int maxRefs)
