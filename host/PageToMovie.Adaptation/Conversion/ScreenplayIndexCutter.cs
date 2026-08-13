@@ -54,65 +54,10 @@ public static class ScreenplayIndexCutter
         if (sequences.Count == 0)
             return new CutPlan { KeepAll = true, TargetMinutes = targetMinutes, Reason = "no_index" };
 
-        if (naturalMode || targetMinutes <= 0 || targetMinutes + 0.5 >= total)
-        {
-            return new CutPlan
-            {
-                KeepAll = true,
-                TargetMinutes = targetMinutes,
-                TotalMinutes = total,
-                KeptMinutes = total,
-                KeptSequenceIds = sequences.Select(s => s.Id).ToList(),
-                KeptCards = sequences.SelectMany(s => s.Scenes).ToList(),
-                Reason = naturalMode ? "full_master" : "target_covers_master",
-            };
-        }
+        if (ShouldKeepAll(naturalMode, targetMinutes, total))
+            return KeepAllPlan(sequences, targetMinutes, total, naturalMode);
 
-        var keep = new bool[sequences.Count];
-        var keptMin = 0.0;
-        void Take(int i)
-        {
-            if (keep[i]) return;
-            keep[i] = true;
-            keptMin += SequenceMinutes(sequences[i]);
-        }
-
-        Take(0);
-        if (sequences.Count > 1)
-            Take(sequences.Count - 1);
-
-        for (var i = 1; i < sequences.Count - 1; i++)
-        {
-            var next = SequenceMinutes(sequences[i]);
-            if (keptMin + next <= targetMinutes + 0.75)
-                Take(i);
-        }
-
-        var keptSeq = new List<string>();
-        var dropped = new List<string>();
-        var keptCards = new List<ScreenplayIndexCard>();
-        for (var i = 0; i < sequences.Count; i++)
-        {
-            if (keep[i])
-            {
-                keptSeq.Add(sequences[i].Id);
-                keptCards.AddRange(sequences[i].Scenes);
-            }
-            else
-                dropped.Add(sequences[i].Id);
-        }
-
-        return new CutPlan
-        {
-            KeepAll = dropped.Count == 0,
-            TargetMinutes = targetMinutes,
-            TotalMinutes = total,
-            KeptMinutes = keptMin,
-            KeptSequenceIds = keptSeq,
-            DroppedSequenceIds = dropped,
-            KeptCards = keptCards,
-            Reason = dropped.Count == 0 ? "target_covers_master" : "sequence_cut",
-        };
+        return CutToTarget(sequences, targetMinutes, total);
     }
 
     /// <summary>
@@ -128,40 +73,13 @@ public static class ScreenplayIndexCutter
         var (title, scenes) = SplitScenes(maxFountain);
         if (scenes.Count == 0) return null;
 
-        var keptKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var card in plan.KeptCards)
-        {
-            var h = NormalizeHeading(card.Heading);
-            if (h.Length > 0) keptKeys.Add(h);
-            var loc = NormalizeLocationKey(card.LocationKey);
-            if (loc.Length > 0) keptKeys.Add(loc);
-        }
-
-        var kept = new List<string>();
-        var matched = 0;
-        foreach (var scene in scenes)
-        {
-            var heading = FirstHeading(scene);
-            var norm = NormalizeHeading(heading);
-            var loc = HeadingPlace(heading);
-            if (keptKeys.Contains(norm) || (loc.Length > 0 && keptKeys.Contains(loc)))
-            {
-                kept.Add(scene.Trim());
-                matched++;
-            }
-        }
+        var keptKeys = CollectKeptKeys(plan.KeptCards);
+        var (kept, matched) = MatchKeptScenes(scenes, keptKeys);
 
         if (matched < Math.Max(1, (int)Math.Ceiling(plan.KeptCards.Count * 0.50)))
             return null;
 
-        var sb = new StringBuilder();
-        if (!string.IsNullOrWhiteSpace(title))
-            sb.Append(title.TrimEnd()).Append("\n\n");
-        sb.Append(string.Join("\n\n", kept));
-        var text = sb.ToString().Trim();
-        if (!CommonRegex.IsMatch(text, @"(?im)^(FADE OUT\.|THE END)\s*$"))
-            text += "\n\nFADE OUT.\n\nTHE END\n";
-        return BookToFountainConverter.NormalizeFountainText(text);
+        return AssembleCutFountain(title, kept);
     }
 
     internal static (string Title, List<string> Scenes) SplitScenes(string fountain)
@@ -206,6 +124,114 @@ public static class ScreenplayIndexCutter
         t = CommonRegex.Replace(t, @"([a-z])([A-Z])", "$1 $2");
         t = t.Replace('_', ' ');
         return CommonRegex.Replace(t, @"\s+", " ").Trim().ToUpperInvariant();
+    }
+
+    private static bool ShouldKeepAll(bool naturalMode, int targetMinutes, double total) =>
+        naturalMode || targetMinutes <= 0 || targetMinutes + 0.5 >= total;
+
+    private static CutPlan KeepAllPlan(
+        List<ScreenplayIndexSequence> sequences, int targetMinutes, double total, bool naturalMode) =>
+        new()
+        {
+            KeepAll = true,
+            TargetMinutes = targetMinutes,
+            TotalMinutes = total,
+            KeptMinutes = total,
+            KeptSequenceIds = sequences.Select(s => s.Id).ToList(),
+            KeptCards = sequences.SelectMany(s => s.Scenes).ToList(),
+            Reason = naturalMode ? "full_master" : "target_covers_master",
+        };
+
+    private static CutPlan CutToTarget(List<ScreenplayIndexSequence> sequences, int targetMinutes, double total)
+    {
+        var keep = new bool[sequences.Count];
+        var keptMin = TakeSequence(keep, sequences, 0, 0.0);
+        if (sequences.Count > 1)
+            keptMin = TakeSequence(keep, sequences, sequences.Count - 1, keptMin);
+
+        for (var i = 1; i < sequences.Count - 1; i++)
+        {
+            var next = SequenceMinutes(sequences[i]);
+            if (keptMin + next <= targetMinutes + 0.75)
+                keptMin = TakeSequence(keep, sequences, i, keptMin);
+        }
+
+        var keptSeq = new List<string>();
+        var dropped = new List<string>();
+        var keptCards = new List<ScreenplayIndexCard>();
+        for (var i = 0; i < sequences.Count; i++)
+        {
+            if (keep[i])
+            {
+                keptSeq.Add(sequences[i].Id);
+                keptCards.AddRange(sequences[i].Scenes);
+            }
+            else
+                dropped.Add(sequences[i].Id);
+        }
+
+        return new CutPlan
+        {
+            KeepAll = dropped.Count == 0,
+            TargetMinutes = targetMinutes,
+            TotalMinutes = total,
+            KeptMinutes = keptMin,
+            KeptSequenceIds = keptSeq,
+            DroppedSequenceIds = dropped,
+            KeptCards = keptCards,
+            Reason = dropped.Count == 0 ? "target_covers_master" : "sequence_cut",
+        };
+    }
+
+    private static double TakeSequence(
+        bool[] keep, List<ScreenplayIndexSequence> sequences, int i, double keptMin)
+    {
+        if (keep[i]) return keptMin;
+        keep[i] = true;
+        return keptMin + SequenceMinutes(sequences[i]);
+    }
+
+    private static HashSet<string> CollectKeptKeys(IReadOnlyList<ScreenplayIndexCard> cards)
+    {
+        var keptKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var card in cards)
+        {
+            var h = NormalizeHeading(card.Heading);
+            if (h.Length > 0) keptKeys.Add(h);
+            var loc = NormalizeLocationKey(card.LocationKey);
+            if (loc.Length > 0) keptKeys.Add(loc);
+        }
+        return keptKeys;
+    }
+
+    private static (List<string> Kept, int Matched) MatchKeptScenes(List<string> scenes, HashSet<string> keptKeys)
+    {
+        var kept = new List<string>();
+        var matched = 0;
+        foreach (var scene in scenes)
+        {
+            var heading = FirstHeading(scene);
+            var norm = NormalizeHeading(heading);
+            var loc = HeadingPlace(heading);
+            if (keptKeys.Contains(norm) || (loc.Length > 0 && keptKeys.Contains(loc)))
+            {
+                kept.Add(scene.Trim());
+                matched++;
+            }
+        }
+        return (kept, matched);
+    }
+
+    private static string AssembleCutFountain(string title, List<string> kept)
+    {
+        var sb = new StringBuilder();
+        if (!string.IsNullOrWhiteSpace(title))
+            sb.Append(title.TrimEnd()).Append("\n\n");
+        sb.Append(string.Join("\n\n", kept));
+        var text = sb.ToString().Trim();
+        if (!CommonRegex.IsMatch(text, @"(?im)^(FADE OUT\.|THE END)\s*$"))
+            text += "\n\nFADE OUT.\n\nTHE END\n";
+        return BookToFountainConverter.NormalizeFountainText(text);
     }
 
     private static string HeadingPlace(string? heading) => NormalizeHeading(heading);
