@@ -475,16 +475,25 @@ public sealed partial class ProjectStore
 
         var result = new List<ClipVersionItem>();
         var prefix = $"scene_{scene:D2}_clip_{clip:D2}";
-
         var activeMp4 = Path.Combine(videoDir, $"{prefix}.mp4");
-        var activeSidecar = Path.Combine(videoDir, $"{prefix}.clip.json");
-        if (File.Exists(activeMp4))
-        {
-            var fi = new FileInfo(activeMp4);
-            var item = ParseClipSidecarOrMeta(activeSidecar, activeMp4, scene, clip, take: 1, isCurrent: true, fi.LastWriteTimeUtc);
-            result.Add(item);
-        }
+        AddActiveClipVersion(result, activeMp4, scene, clip);
+        AddHistoricalClipVersions(result, videoDir, prefix, activeMp4, scene, clip);
+        await MergeRegisteredClipVersionsAsync(result, projectId, scene, clip, activeMp4).ConfigureAwait(false);
+        return await Task.FromResult(result.OrderByDescending(x => x.CreatedAtUtc).ToList()).ConfigureAwait(false);
+    }
 
+    private static void AddActiveClipVersion(List<ClipVersionItem> result, string activeMp4, int scene, int clip)
+    {
+        if (!File.Exists(activeMp4))
+            return;
+        var fi = new FileInfo(activeMp4);
+        var activeSidecar = Path.ChangeExtension(activeMp4, StoreLit.ClipJsonSuffix);
+        result.Add(ParseClipSidecarOrMeta(activeSidecar, activeMp4, scene, clip, take: 1, isCurrent: true, fi.LastWriteTimeUtc));
+    }
+
+    private static void AddHistoricalClipVersions(
+        List<ClipVersionItem> result, string videoDir, string prefix, string activeMp4, int scene, int clip)
+    {
         var searchDirs = new[] { videoDir, Path.Combine(videoDir, StoreLit.History) };
         foreach (var sDir in searchDirs)
         {
@@ -495,57 +504,57 @@ public sealed partial class ProjectStore
                 var sidecar = Path.ChangeExtension(mp4, StoreLit.ClipJsonSuffix);
                 if (!File.Exists(sidecar)) sidecar = Path.ChangeExtension(mp4, ".meta.json");
                 var fi = new FileInfo(mp4);
-                var item = ParseClipSidecarOrMeta(sidecar, mp4, scene, clip, take: result.Count + 1, isCurrent: false, fi.LastWriteTimeUtc);
-                result.Add(item);
+                result.Add(ParseClipSidecarOrMeta(sidecar, mp4, scene, clip, take: result.Count + 1, isCurrent: false, fi.LastWriteTimeUtc));
             }
         }
+    }
 
+    private async Task MergeRegisteredClipVersionsAsync(
+        List<ClipVersionItem> result, string projectId, int scene, int clip, string activeMp4)
+    {
         // Takes that synced to the client and were pruned server-side (client-storage is the primary
         // path — see ServerMediaPruningService) have no bytes left to scan for above, only a
         // MediaRegistryService row. Without this, a clip the UI correctly shows as "on disk" (via
         // ClipOnDisk's marker check) would list zero versions here — "Takes (2)" but an empty compare
         // modal. Merge in registry rows the physical scan didn't already find.
-        if (_mediaRegistry is not null)
+        if (_mediaRegistry is null)
+            return;
+        var registered = await _mediaRegistry.ListForClipAsync(projectId, scene, clip).ConfigureAwait(false);
+        if (registered.Count == 0)
+            return;
+
+        var activeRelPath = MediaRegistryService.ClipRelativePath(scene, clip);
+        var hasPhysicalActive = File.Exists(activeMp4);
+        var knownFileNames = new HashSet<string>(result.Select(r => r.Mp4FileName), StringComparer.OrdinalIgnoreCase);
+
+        foreach (var reg in registered)
         {
-            var registered = await _mediaRegistry.ListForClipAsync(projectId, scene, clip).ConfigureAwait(false);
-            if (registered.Count > 0)
+            var fileName = Path.GetFileName(reg.RelativePath);
+            if (knownFileNames.Contains(fileName)) continue;
+
+            var isActive = !hasPhysicalActive &&
+                string.Equals(reg.RelativePath, activeRelPath, StringComparison.OrdinalIgnoreCase);
+            var createdUtc = DateTimeOffset.TryParse(
+                reg.CreatedAt, System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.RoundtripKind, out var dto)
+                ? dto.UtcDateTime
+                : DateTime.UtcNow;
+
+            result.Add(new ClipVersionItem
             {
-                var activeRelPath = MediaRegistryService.ClipRelativePath(scene, clip);
-                var hasPhysicalActive = File.Exists(activeMp4);
-                var knownFileNames = new HashSet<string>(result.Select(r => r.Mp4FileName), StringComparer.OrdinalIgnoreCase);
-
-                foreach (var reg in registered)
-                {
-                    var fileName = Path.GetFileName(reg.RelativePath);
-                    if (knownFileNames.Contains(fileName)) continue;
-
-                    var isActive = !hasPhysicalActive &&
-                        string.Equals(reg.RelativePath, activeRelPath, StringComparison.OrdinalIgnoreCase);
-                    var createdUtc = DateTimeOffset.TryParse(
-                        reg.CreatedAt, System.Globalization.CultureInfo.InvariantCulture,
-                        System.Globalization.DateTimeStyles.RoundtripKind, out var dto)
-                        ? dto.UtcDateTime
-                        : DateTime.UtcNow;
-
-                    result.Add(new ClipVersionItem
-                    {
-                        VersionId = fileName,
-                        Scene = scene,
-                        Clip = clip,
-                        Take = isActive ? 1 : result.Count + 1,
-                        IsCurrent = isActive,
-                        CreatedAtUtc = createdUtc,
-                        Mp4FileName = fileName,
-                        Sha256 = reg.Sha256,
-                        ClientOnly = true,
-                        RelativePath = reg.RelativePath,
-                    });
-                    knownFileNames.Add(fileName);
-                }
-            }
+                VersionId = fileName,
+                Scene = scene,
+                Clip = clip,
+                Take = isActive ? 1 : result.Count + 1,
+                IsCurrent = isActive,
+                CreatedAtUtc = createdUtc,
+                Mp4FileName = fileName,
+                Sha256 = reg.Sha256,
+                ClientOnly = true,
+                RelativePath = reg.RelativePath,
+            });
+            knownFileNames.Add(fileName);
         }
-
-        return await Task.FromResult(result.OrderByDescending(x => x.CreatedAtUtc).ToList()).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -2328,182 +2337,225 @@ public sealed partial class ProjectStore
         var speakerTokens = ReadScreenplaySpeakerTokens(projectId);
         var rows = new List<CharacterSummary>();
         foreach (var (key, info) in seeds)
-        {
-            var voiceOnly = IsVoiceOnly(info);
-            var display = info.TryGetProperty("canonical_given_name", out var cn) &&
-                          cn.GetString() is { Length: > 0 } cname
-                ? cname
-                : (info.TryGetProperty(StoreLit.VoiceLabel, out var vl) && vl.GetString() is { Length: > 0 } lab
-                    ? lab
-                    : key.Replace(JsonKeys.CharacterPrefix, "").Replace("_", " "));
-            var descPreview = info.TryGetProperty(JsonKeys.Description, out var d0) ? d0.GetString() ?? "" : "";
-            var castKindRaw = info.TryGetProperty("cast_kind", out var ck0) ? ck0.GetString() : null;
-            var isGroup = !voiceOnly && CastKindClassifier.IsGroup(key, display, castKindRaw, descPreview);
-            var castKind = voiceOnly ? "voice_only" : (isGroup ? "group" : "individual");
+            rows.Add(BuildCharacterSummary(projectId, projectDir, speakerTokens, key, info));
 
-            var refName = CharacterRefFileName(key);
-            var resolvedRef = voiceOnly ? null : ResolveCharacterRefPath(projectId, key, allowNormalizedFallback: false);
-            var hasRef = resolvedRef is not null;
-            if (hasRef && resolvedRef is not null)
-                refName = Path.GetFileName(resolvedRef);
-
-            // Plates come only from seed design_reference_images (scenes.json / mirrored blueprint).
-            // Never invent plates from free-form book_images or untracked disk bookrefs.
-            var bookRefs = CollectSeedPlatePaths(info);
-
-            var wardrobe = new List<string>();
-            if (info.TryGetProperty("wardrobe_always", out var wa) &&
-                wa.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var x in wa.EnumerateArray())
-                {
-                    var s = x.GetString();
-                    if (!string.IsNullOrWhiteSpace(s))
-                        wardrobe.Add(s);
-                }
-            }
-
-            var bookRefImages = new List<CharacterImageRef>();
-            if (!voiceOnly)
-            {
-                for (var i = 0; i < bookRefs.Count; i++)
-                {
-                    var rel = bookRefs[i].Replace('\\', '/');
-                    var full = ResolveProjectRelativePath(projectDir, rel);
-                    // Same filename under assets/characters if seed path moved
-                    if (full is null || !File.Exists(full))
-                    {
-                        var byName = Path.Combine(projectDir, StoreLit.Assets, StoreLit.Characters, Path.GetFileName(rel));
-                        if (File.Exists(byName))
-                        {
-                            full = byName;
-                            rel = Path.GetRelativePath(projectDir, byName).Replace('\\', '/');
-                        }
-                    }
-                    var exists = full is not null && File.Exists(full);
-                    bookRefImages.Add(new CharacterImageRef
-                    {
-                        Index = i,
-                        RelativePath = rel,
-                        FileName = Path.GetFileName(rel),
-                        Exists = exists,
-                        Url = exists
-                            ? $"/api/projects/{Uri.EscapeDataString(projectId)}/characters/{Uri.EscapeDataString(key)}/bookrefs/{i}"
-                            : null,
-                    });
-                }
-            }
-
-            var variants = new List<CharacterImageRef>();
-            if (!voiceOnly)
-            {
-                for (var idx = 1; idx <= 3; idx++)
-                {
-                    var fileName = $"{key.ToLowerInvariant()}_variant_0{idx}.png";
-                    var full = Path.Combine(projectDir, StoreLit.Assets, StoreLit.Characters, fileName);
-                    var exists = File.Exists(full) && new FileInfo(full).Length > 64;
-                    variants.Add(new CharacterImageRef
-                    {
-                        Index = idx,
-                        RelativePath = $"assets/characters/{fileName}",
-                        FileName = fileName,
-                        Exists = exists,
-                        Url = exists
-                            ? $"/api/projects/{Uri.EscapeDataString(projectId)}/characters/{Uri.EscapeDataString(key)}/variants/{idx}"
-                            : null,
-                    });
-                }
-            }
-
-            var hasPreferred = hasRef;
-            string? preferredLabel = hasRef ? "locked" : null;
-            string? preferredUrl = hasRef
-                ? $"/api/projects/{Uri.EscapeDataString(projectId)}/characters/{Uri.EscapeDataString(key)}/ref"
-                : null;
-            if (!hasPreferred && !voiceOnly)
-            {
-                var v1 = Path.Combine(projectDir, StoreLit.Assets, StoreLit.Characters,
-                    $"{key.ToLowerInvariant()}_variant_01.png");
-                if (File.Exists(v1) && new FileInfo(v1).Length >= 64)
-                {
-                    hasPreferred = true;
-                    preferredLabel = "best so far (variant 1)";
-                    preferredUrl =
-                        $"/api/projects/{Uri.EscapeDataString(projectId)}/characters/{Uri.EscapeDataString(key)}/variants/1";
-                }
-            }
-
-            rows.Add(new CharacterSummary
-            {
-                Key = key,
-                DisplayName = display,
-                Description = info.TryGetProperty(JsonKeys.Description, out var d) ? d.GetString() ?? "" : "",
-                VisualLock = info.TryGetProperty(StoreLit.VisualLock, out var v) ? v.GetString() ?? "" : "",
-                VoiceProfile = info.TryGetProperty(StoreLit.VoiceProfile, out var vp) ? vp.GetString() ?? "" : "",
-                VoiceLabel = info.TryGetProperty(StoreLit.VoiceLabel, out var vlab) ? vlab.GetString() ?? "" : "",
-                SpeciesKind = info.TryGetProperty("species_kind", out var spk) ? spk.GetString() : null,
-                Speaks = speakerTokens.Contains(CastKindClassifier.NormalizeToken(key))
-                    || (!string.IsNullOrWhiteSpace(display) && speakerTokens.Contains(CastKindClassifier.NormalizeToken(display))),
-                HasVoiceCloneSample = File.Exists(GetVoiceCloneSamplePath(projectId, key)),
-                VoiceCloneFileName = File.Exists(GetVoiceCloneSamplePath(projectId, key))
-                    ? Path.GetFileName(GetVoiceCloneSamplePath(projectId, key))
-                    : null,
-                VoiceCloneUrl = File.Exists(GetVoiceCloneSamplePath(projectId, key))
-                    ? $"/api/projects/{Uri.EscapeDataString(projectId)}/characters/{Uri.EscapeDataString(key)}/voice/clone-sample"
-                    : null,
-                VoiceProvider = info.TryGetProperty(StoreLit.VoiceProvider, out var vprov) ? vprov.GetString() : null,
-                VoiceProviderVoiceId = info.TryGetProperty(StoreLit.VoiceProviderVoiceId, out var vpid)
-                    ? vpid.GetString()
-                    : null,
-                VoiceOnly = voiceOnly,
-                IsGroup = isGroup,
-                CastKind = castKind,
-                Locked = voiceOnly
-                    ? !string.IsNullOrWhiteSpace(
-                        info.TryGetProperty(StoreLit.VoiceProfile, out var vpr) ? vpr.GetString() : null)
-                    : hasRef,
-                RefFileName = hasRef ? refName : null,
-                RefUrl = hasRef
-                    ? $"/api/projects/{Uri.EscapeDataString(projectId)}/characters/{Uri.EscapeDataString(key)}/ref"
-                    : null,
-                HasPreferred = hasPreferred,
-                PreferredLabel = preferredLabel,
-                PreferredUrl = preferredUrl,
-                WardrobeAlways = wardrobe,
-                DesignReferenceImages = bookRefs,
-                BookRefs = bookRefImages,
-                Variants = variants,
-                AgeBand = info.TryGetProperty("age_band", out var ab) && Enum.TryParse<VoiceAgeBand>(ab.GetString(), true, out var parsedAb) ? parsedAb : null,
-                VariantOf = info.TryGetProperty("variant_of", out var vo) ? vo.GetString() : null,
-                UsedInPlan = true, // filled below from shot plan
-            });
-        }
-
-        // Mark which seeds appear in the current plan (hide unused in UI; keep seeds on disk).
-        var (planCast, _) = CollectPlanUsageKeys(projectId);
-        if (planCast.Count > 0)
-        {
-            foreach (var r in rows)
-            {
-                r.UsedInPlan = planCast.Contains(r.Key)
-                    || (!string.IsNullOrWhiteSpace(r.VariantOf) && planCast.Contains(r.VariantOf));
-            }
-            var usedBases = new HashSet<string>(
-                rows.Where(r => r.UsedInPlan).Select(r => r.Key),
-                StringComparer.OrdinalIgnoreCase);
-            foreach (var r in rows)
-            {
-                if (!r.UsedInPlan
-                    && !string.IsNullOrWhiteSpace(r.VariantOf)
-                    && usedBases.Contains(r.VariantOf))
-                    r.UsedInPlan = true;
-            }
-        }
+        ApplyPlanUsageToCharacters(projectId, rows);
 
         return rows
             .OrderBy(r => r.Key.EndsWith("_Young") ? 1 : r.Key.EndsWith("_Teen") ? 2 : 0)
             .ThenBy(r => r.DisplayName, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    private static string JsonStr(JsonElement info, string name) =>
+        info.TryGetProperty(name, out var v) ? v.GetString() ?? "" : "";
+
+    private static string? JsonStrOrNull(JsonElement info, string name) =>
+        info.TryGetProperty(name, out var v) ? v.GetString() : null;
+
+    private static VoiceAgeBand? ReadAgeBand(JsonElement info)
+    {
+        if (!info.TryGetProperty("age_band", out var ab))
+            return null;
+        return Enum.TryParse<VoiceAgeBand>(ab.GetString(), true, out var parsedAb) ? parsedAb : null;
+    }
+
+    private static string CastKindLabel(bool voiceOnly, bool isGroup) =>
+        voiceOnly ? "voice_only" : isGroup ? "group" : "individual";
+
+    private static bool CharacterSpeaks(HashSet<string> speakerTokens, string key, string display) =>
+        speakerTokens.Contains(CastKindClassifier.NormalizeToken(key))
+        || (!string.IsNullOrWhiteSpace(display) && speakerTokens.Contains(CastKindClassifier.NormalizeToken(display)));
+
+    private static bool CharacterIsLocked(bool voiceOnly, bool hasRef, JsonElement info)
+    {
+        if (!voiceOnly)
+            return hasRef;
+        return !string.IsNullOrWhiteSpace(
+            info.TryGetProperty(StoreLit.VoiceProfile, out var vpr) ? vpr.GetString() : null);
+    }
+
+    private CharacterSummary BuildCharacterSummary(
+        string projectId,
+        string projectDir,
+        HashSet<string> speakerTokens,
+        string key,
+        JsonElement info)
+    {
+        var voiceOnly = IsVoiceOnly(info);
+        var display = CharacterDisplayName(key, info);
+        var descPreview = JsonStr(info, JsonKeys.Description);
+        var castKindRaw = JsonStrOrNull(info, "cast_kind");
+        var isGroup = !voiceOnly && CastKindClassifier.IsGroup(key, display, castKindRaw, descPreview);
+        var (hasRef, refName, preferred) = ResolveCharacterLook(projectId, projectDir, key, voiceOnly);
+        var bookRefs = CollectSeedPlatePaths(info);
+        var clonePath = GetVoiceCloneSamplePath(projectId, key);
+        var hasClone = File.Exists(clonePath);
+        var charUrl = $"/api/projects/{Uri.EscapeDataString(projectId)}/characters/{Uri.EscapeDataString(key)}";
+
+        return new CharacterSummary
+        {
+            Key = key,
+            DisplayName = display,
+            Description = JsonStr(info, JsonKeys.Description),
+            VisualLock = JsonStr(info, StoreLit.VisualLock),
+            VoiceProfile = JsonStr(info, StoreLit.VoiceProfile),
+            VoiceLabel = JsonStr(info, StoreLit.VoiceLabel),
+            SpeciesKind = JsonStrOrNull(info, "species_kind"),
+            Speaks = CharacterSpeaks(speakerTokens, key, display),
+            HasVoiceCloneSample = hasClone,
+            VoiceCloneFileName = hasClone ? Path.GetFileName(clonePath) : null,
+            VoiceCloneUrl = hasClone ? $"{charUrl}/voice/clone-sample" : null,
+            VoiceProvider = JsonStrOrNull(info, StoreLit.VoiceProvider),
+            VoiceProviderVoiceId = JsonStrOrNull(info, StoreLit.VoiceProviderVoiceId),
+            VoiceOnly = voiceOnly,
+            IsGroup = isGroup,
+            CastKind = CastKindLabel(voiceOnly, isGroup),
+            Locked = CharacterIsLocked(voiceOnly, hasRef, info),
+            RefFileName = hasRef ? refName : null,
+            RefUrl = hasRef ? $"{charUrl}/ref" : null,
+            HasPreferred = preferred.HasPreferred,
+            PreferredLabel = preferred.Label,
+            PreferredUrl = preferred.Url,
+            WardrobeAlways = ReadWardrobeAlways(info),
+            DesignReferenceImages = bookRefs,
+            BookRefs = voiceOnly ? new List<CharacterImageRef>() : CollectBookRefImages(projectId, projectDir, key, bookRefs),
+            Variants = voiceOnly ? new List<CharacterImageRef>() : CollectCharacterVariants(projectId, projectDir, key),
+            AgeBand = ReadAgeBand(info),
+            VariantOf = JsonStrOrNull(info, "variant_of"),
+            UsedInPlan = true, // filled below from shot plan
+        };
+    }
+
+    private static string CharacterDisplayName(string key, JsonElement info)
+    {
+        if (info.TryGetProperty("canonical_given_name", out var cn) &&
+            cn.GetString() is { Length: > 0 } cname)
+            return cname;
+        if (info.TryGetProperty(StoreLit.VoiceLabel, out var vl) && vl.GetString() is { Length: > 0 } lab)
+            return lab;
+        return key.Replace(JsonKeys.CharacterPrefix, "").Replace("_", " ");
+    }
+
+    private static List<string> ReadWardrobeAlways(JsonElement info)
+    {
+        var wardrobe = new List<string>();
+        if (!info.TryGetProperty("wardrobe_always", out var wa) || wa.ValueKind != JsonValueKind.Array)
+            return wardrobe;
+        foreach (var x in wa.EnumerateArray())
+        {
+            var s = x.GetString();
+            if (!string.IsNullOrWhiteSpace(s))
+                wardrobe.Add(s);
+        }
+        return wardrobe;
+    }
+
+    private (bool HasRef, string RefName, (bool HasPreferred, string? Label, string? Url) Preferred)
+        ResolveCharacterLook(string projectId, string projectDir, string key, bool voiceOnly)
+    {
+        var refName = CharacterRefFileName(key);
+        var resolvedRef = voiceOnly ? null : ResolveCharacterRefPath(projectId, key, allowNormalizedFallback: false);
+        var hasRef = resolvedRef is not null;
+        if (hasRef && resolvedRef is not null)
+            refName = Path.GetFileName(resolvedRef);
+
+        var hasPreferred = hasRef;
+        string? preferredLabel = hasRef ? "locked" : null;
+        string? preferredUrl = hasRef
+            ? $"/api/projects/{Uri.EscapeDataString(projectId)}/characters/{Uri.EscapeDataString(key)}/ref"
+            : null;
+        if (!hasPreferred && !voiceOnly)
+        {
+            var v1 = Path.Combine(projectDir, StoreLit.Assets, StoreLit.Characters,
+                $"{key.ToLowerInvariant()}_variant_01.png");
+            if (File.Exists(v1) && new FileInfo(v1).Length >= 64)
+            {
+                hasPreferred = true;
+                preferredLabel = "best so far (variant 1)";
+                preferredUrl =
+                    $"/api/projects/{Uri.EscapeDataString(projectId)}/characters/{Uri.EscapeDataString(key)}/variants/1";
+            }
+        }
+        return (hasRef, refName, (hasPreferred, preferredLabel, preferredUrl));
+    }
+
+    private static List<CharacterImageRef> CollectBookRefImages(
+        string projectId, string projectDir, string key, List<string> bookRefs)
+    {
+        var bookRefImages = new List<CharacterImageRef>();
+        for (var i = 0; i < bookRefs.Count; i++)
+        {
+            var rel = bookRefs[i].Replace('\\', '/');
+            var full = ResolveProjectRelativePath(projectDir, rel);
+            // Same filename under assets/characters if seed path moved
+            if (full is null || !File.Exists(full))
+            {
+                var byName = Path.Combine(projectDir, StoreLit.Assets, StoreLit.Characters, Path.GetFileName(rel));
+                if (File.Exists(byName))
+                {
+                    full = byName;
+                    rel = Path.GetRelativePath(projectDir, byName).Replace('\\', '/');
+                }
+            }
+            var exists = full is not null && File.Exists(full);
+            bookRefImages.Add(new CharacterImageRef
+            {
+                Index = i,
+                RelativePath = rel,
+                FileName = Path.GetFileName(rel),
+                Exists = exists,
+                Url = exists
+                    ? $"/api/projects/{Uri.EscapeDataString(projectId)}/characters/{Uri.EscapeDataString(key)}/bookrefs/{i}"
+                    : null,
+            });
+        }
+        return bookRefImages;
+    }
+
+    private static List<CharacterImageRef> CollectCharacterVariants(string projectId, string projectDir, string key)
+    {
+        var variants = new List<CharacterImageRef>();
+        for (var idx = 1; idx <= 3; idx++)
+        {
+            var fileName = $"{key.ToLowerInvariant()}_variant_0{idx}.png";
+            var full = Path.Combine(projectDir, StoreLit.Assets, StoreLit.Characters, fileName);
+            var exists = File.Exists(full) && new FileInfo(full).Length > 64;
+            variants.Add(new CharacterImageRef
+            {
+                Index = idx,
+                RelativePath = $"assets/characters/{fileName}",
+                FileName = fileName,
+                Exists = exists,
+                Url = exists
+                    ? $"/api/projects/{Uri.EscapeDataString(projectId)}/characters/{Uri.EscapeDataString(key)}/variants/{idx}"
+                    : null,
+            });
+        }
+        return variants;
+    }
+
+    private void ApplyPlanUsageToCharacters(string projectId, List<CharacterSummary> rows)
+    {
+        // Mark which seeds appear in the current plan (hide unused in UI; keep seeds on disk).
+        var (planCast, _) = CollectPlanUsageKeys(projectId);
+        if (planCast.Count == 0)
+            return;
+        foreach (var r in rows)
+        {
+            r.UsedInPlan = planCast.Contains(r.Key)
+                || (!string.IsNullOrWhiteSpace(r.VariantOf) && planCast.Contains(r.VariantOf));
+        }
+        var usedBases = new HashSet<string>(
+            rows.Where(r => r.UsedInPlan).Select(r => r.Key),
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var r in rows)
+        {
+            if (!r.UsedInPlan
+                && !string.IsNullOrWhiteSpace(r.VariantOf)
+                && usedBases.Contains(r.VariantOf))
+                r.UsedInPlan = true;
+        }
     }
 
     /// <summary>
@@ -2518,65 +2570,81 @@ public sealed partial class ProjectStore
 
         var rows = new List<LocationSummary>();
         foreach (var (key, info) in seeds)
-        {
-            var display = info.TryGetProperty(StoreLit.DisplayName, out var dn) && dn.GetString() is { Length: > 0 } dname
-                ? dname
-                : key.Replace('_', ' ').Trim();
-            var desc = info.TryGetProperty(JsonKeys.Description, out var d) ? d.GetString() ?? "" : "";
-            var vlock = info.TryGetProperty(StoreLit.VisualLock, out var v) ? v.GetString() ?? "" : "";
-            if (string.IsNullOrWhiteSpace(desc) && !string.IsNullOrWhiteSpace(vlock))
-                desc = vlock;
-            if (string.IsNullOrWhiteSpace(vlock) && !string.IsNullOrWhiteSpace(desc))
-                vlock = desc;
-            var row = new LocationSummary
-            {
-                Key = key,
-                DisplayName = display,
-                Description = desc,
-                VisualLock = vlock,
-                UsedInPlan = true,
-            };
-            FillLocationPlateStatus(projectId, row);
-            rows.Add(row);
-        }
+            rows.Add(BuildLocationSummary(projectId, key, info));
 
-        // If seeds were name-only stubs, re-derive from fountain prose and fill blanks.
-        if (rows.Count > 0 && rows.All(r =>
-                string.IsNullOrWhiteSpace(r.Description)
-                || r.Description.Equals(r.DisplayName, StringComparison.OrdinalIgnoreCase)
-                || r.Description.Equals(r.Key, StringComparison.OrdinalIgnoreCase)))
-        {
-            var derived = DeriveLocationSeedsFromFountain(projectId);
-            foreach (var row in rows)
-            {
-                if (!derived.TryGetValue(row.Key, out var el)
-                    && !derived.TryGetValue(row.Key.Replace(' ', '_'), out el))
-                {
-                    // match by display name
-                    var hit = derived.FirstOrDefault(kv =>
-                        kv.Value.TryGetProperty(StoreLit.DisplayName, out var dn)
-                        && string.Equals(dn.GetString(), row.DisplayName, StringComparison.OrdinalIgnoreCase));
-                    if (hit.Key is null) continue;
-                    el = hit.Value;
-                }
-                if (el.ValueKind != JsonValueKind.Object) continue;
-                if (el.TryGetProperty(JsonKeys.Description, out var d) && d.GetString() is { Length: > 0 } desc2)
-                    row.Description = desc2;
-                if (el.TryGetProperty(StoreLit.VisualLock, out var v) && v.GetString() is { Length: > 0 } vl2)
-                    row.VisualLock = vl2;
-            }
-        }
-
-        var (_, planLocs) = CollectPlanUsageKeys(projectId);
-        if (planLocs.Count > 0)
-        {
-            foreach (var row in rows)
-                row.UsedInPlan = planLocs.Contains(row.Key);
-        }
+        EnrichStubLocationsFromFountain(projectId, rows);
+        ApplyPlanUsageToLocations(projectId, rows);
 
         return rows
             .OrderBy(r => r.DisplayName, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    private LocationSummary BuildLocationSummary(string projectId, string key, JsonElement info)
+    {
+        var display = info.TryGetProperty(StoreLit.DisplayName, out var dn) && dn.GetString() is { Length: > 0 } dname
+            ? dname
+            : key.Replace('_', ' ').Trim();
+        var desc = JsonStr(info, JsonKeys.Description);
+        var vlock = JsonStr(info, StoreLit.VisualLock);
+        if (string.IsNullOrWhiteSpace(desc) && !string.IsNullOrWhiteSpace(vlock))
+            desc = vlock;
+        if (string.IsNullOrWhiteSpace(vlock) && !string.IsNullOrWhiteSpace(desc))
+            vlock = desc;
+        var row = new LocationSummary
+        {
+            Key = key,
+            DisplayName = display,
+            Description = desc,
+            VisualLock = vlock,
+            UsedInPlan = true,
+        };
+        FillLocationPlateStatus(projectId, row);
+        return row;
+    }
+
+    private static bool LocationDescriptionsAreStubs(List<LocationSummary> rows) =>
+        rows.Count > 0 && rows.All(r =>
+            string.IsNullOrWhiteSpace(r.Description)
+            || r.Description.Equals(r.DisplayName, StringComparison.OrdinalIgnoreCase)
+            || r.Description.Equals(r.Key, StringComparison.OrdinalIgnoreCase));
+
+    private void EnrichStubLocationsFromFountain(string projectId, List<LocationSummary> rows)
+    {
+        // If seeds were name-only stubs, re-derive from fountain prose and fill blanks.
+        if (!LocationDescriptionsAreStubs(rows))
+            return;
+        var derived = DeriveLocationSeedsFromFountain(projectId);
+        foreach (var row in rows)
+            ApplyDerivedLocationText(row, derived);
+    }
+
+    private static void ApplyDerivedLocationText(LocationSummary row, Dictionary<string, JsonElement> derived)
+    {
+        if (!derived.TryGetValue(row.Key, out var el)
+            && !derived.TryGetValue(row.Key.Replace(' ', '_'), out el))
+        {
+            // match by display name
+            var hit = derived.FirstOrDefault(kv =>
+                kv.Value.TryGetProperty(StoreLit.DisplayName, out var dn)
+                && string.Equals(dn.GetString(), row.DisplayName, StringComparison.OrdinalIgnoreCase));
+            if (hit.Key is null) return;
+            el = hit.Value;
+        }
+        if (el.ValueKind != JsonValueKind.Object) return;
+        if (el.TryGetProperty(JsonKeys.Description, out var d) && d.GetString() is { Length: > 0 } desc2)
+            row.Description = desc2;
+        if (el.TryGetProperty(StoreLit.VisualLock, out var v) && v.GetString() is { Length: > 0 } vl2)
+            row.VisualLock = vl2;
+    }
+
+    private void ApplyPlanUsageToLocations(string projectId, List<LocationSummary> rows)
+    {
+        var (_, planLocs) = CollectPlanUsageKeys(projectId);
+        if (planLocs.Count == 0)
+            return;
+        foreach (var row in rows)
+            row.UsedInPlan = planLocs.Contains(row.Key);
     }
 
     /// <summary>
@@ -2622,105 +2690,9 @@ public sealed partial class ProjectStore
             if (locationSeeds is null || locationSeeds.Count == 0) return false;
 
             var castPath = Path.Combine(GetProjectDir(projectId), StoreLit.Source, ScreenplayService.CastSeedsFileName);
-            System.Text.Json.Nodes.JsonObject root;
-            System.Text.Json.Nodes.JsonNode? preservedCharacters = null;
-            System.Text.Json.Nodes.JsonNode? preservedWardrobe = null;
-            System.Text.Json.Nodes.JsonNode? preservedMovieTitle = null;
-            System.Text.Json.Nodes.JsonNode? preservedRender = null;
-            System.Text.Json.Nodes.JsonNode? preservedPerf = null;
-            System.Text.Json.Nodes.JsonNode? preservedSchema = null;
-            var hadCharacters = false;
-
-            if (File.Exists(castPath))
-            {
-                var text = File.ReadAllText(castPath);
-                root = System.Text.Json.Nodes.JsonNode.Parse(text) as System.Text.Json.Nodes.JsonObject
-                       ?? new System.Text.Json.Nodes.JsonObject();
-                // Explicitly clone cast fields before mutation — Odyssey2 export lost 45 characters
-                // when a merge rewrote locations-only JSON after a successful cast extract.
-                preservedCharacters = root[StoreLit.CharacterSeedTokens]?.DeepClone();
-                preservedWardrobe = root[StoreLit.WardrobeLockTokens]?.DeepClone();
-                preservedMovieTitle = root[JsonKeys.MovieTitle]?.DeepClone();
-                preservedRender = root["render_style_lock"]?.DeepClone();
-                preservedPerf = root["performance_lock"]?.DeepClone();
-                preservedSchema = root[StoreLit.SchemaVersion]?.DeepClone();
-                if (preservedCharacters is System.Text.Json.Nodes.JsonObject co && co.Count > 0)
-                    hadCharacters = true;
-            }
-            else
-            {
-                var dir = Path.GetDirectoryName(castPath);
-                if (dir != null) Directory.CreateDirectory(dir);
-                root = new System.Text.Json.Nodes.JsonObject
-                {
-                    [StoreLit.SchemaVersion] = StoreLit.CastSeedsV1,
-                    ["generation"] = new System.Text.Json.Nodes.JsonObject
-                    {
-                        ["method"] = "MergeLocationSeedsIntoCastFile",
-                        ["ts"] = DateTime.Now.ToString(StoreLit.IsoDateTime),
-                    },
-                };
-            }
-
-            var existing = root[StoreLit.LocationSeedTokens] as System.Text.Json.Nodes.JsonObject
-                           ?? new System.Text.Json.Nodes.JsonObject();
-
-            foreach (var (key, val) in locationSeeds)
-            {
-                if (val is not Dictionary<string, object?> incoming) continue;
-                var incomingNode = System.Text.Json.Nodes.JsonNode.Parse(
-                    JsonSerializer.Serialize(incoming)) as System.Text.Json.Nodes.JsonObject;
-                if (incomingNode is null) continue;
-
-                if (existing[key] is not System.Text.Json.Nodes.JsonObject cur)
-                {
-                    existing[key] = incomingNode;
-                    continue;
-                }
-
-                var display = cur[StoreLit.DisplayName]?.GetValue<string>()
-                              ?? incomingNode[StoreLit.DisplayName]?.GetValue<string>()
-                              ?? key;
-                foreach (var field in new[] { JsonKeys.Description, StoreLit.VisualLock })
-                {
-                    var curV = cur[field]?.GetValue<string>() ?? "";
-                    var inV = incomingNode[field]?.GetValue<string>() ?? "";
-                    if (string.IsNullOrWhiteSpace(inV)) continue;
-
-                    var curStub = IsWeakLocationField(curV, display, key);
-                    var inStub = IsWeakLocationField(inV, display, key);
-
-                    // Prefer strong filmable text; never replace strong with Stage‑1 action dump.
-                    if (curStub && !inStub)
-                        cur[field] = inV;
-                    else if (curStub && inStub && inV.Length > curV.Length)
-                        cur[field] = inV;
-                    else if (!curStub && !inStub && inV.Length > curV.Length + 40)
-                        cur[field] = inV; // longer AI set design wins
-                }
-                if (cur[StoreLit.DisplayName] is null && incomingNode[StoreLit.DisplayName] is not null)
-                    cur[StoreLit.DisplayName] = incomingNode[StoreLit.DisplayName].DeepClone();
-                if (cur[StoreLit.LocationType] is null && incomingNode[StoreLit.LocationType] is not null)
-                    cur[StoreLit.LocationType] = incomingNode[StoreLit.LocationType].DeepClone();
-            }
-
-            root[StoreLit.LocationSeedTokens] = existing;
-
-            // Re-apply preserved cast fields so a merge can never produce locations-only JSON.
-            if (preservedCharacters is not null)
-                root[StoreLit.CharacterSeedTokens] = preservedCharacters;
-            if (preservedWardrobe is not null)
-                root[StoreLit.WardrobeLockTokens] = preservedWardrobe;
-            if (preservedMovieTitle is not null)
-                root[JsonKeys.MovieTitle] = preservedMovieTitle;
-            if (preservedRender is not null)
-                root["render_style_lock"] = preservedRender;
-            if (preservedPerf is not null)
-                root["performance_lock"] = preservedPerf;
-            if (preservedSchema is not null)
-                root[StoreLit.SchemaVersion] = preservedSchema;
-            else if (root[StoreLit.SchemaVersion] is null)
-                root[StoreLit.SchemaVersion] = StoreLit.CastSeedsV1;
+            var (root, preserved, hadCharacters) = LoadCastRootForLocationMerge(castPath);
+            MergeIncomingLocationSeeds(root, locationSeeds);
+            RestorePreservedCastFields(root, preserved);
 
             // If we had characters going in, refuse to write a file without them.
             if (hadCharacters &&
@@ -2737,6 +2709,135 @@ public sealed partial class ProjectStore
         {
             return false;
         }
+    }
+
+    private readonly record struct PreservedCastFields(
+        System.Text.Json.Nodes.JsonNode? Characters,
+        System.Text.Json.Nodes.JsonNode? Wardrobe,
+        System.Text.Json.Nodes.JsonNode? MovieTitle,
+        System.Text.Json.Nodes.JsonNode? Render,
+        System.Text.Json.Nodes.JsonNode? Perf,
+        System.Text.Json.Nodes.JsonNode? Schema);
+
+    private static (System.Text.Json.Nodes.JsonObject Root, PreservedCastFields Preserved, bool HadCharacters)
+        LoadCastRootForLocationMerge(string castPath)
+    {
+        if (!File.Exists(castPath))
+        {
+            var dir = Path.GetDirectoryName(castPath);
+            if (dir != null) Directory.CreateDirectory(dir);
+            var created = new System.Text.Json.Nodes.JsonObject
+            {
+                [StoreLit.SchemaVersion] = StoreLit.CastSeedsV1,
+                ["generation"] = new System.Text.Json.Nodes.JsonObject
+                {
+                    ["method"] = "MergeLocationSeedsIntoCastFile",
+                    ["ts"] = DateTime.Now.ToString(StoreLit.IsoDateTime),
+                },
+            };
+            return (created, default, false);
+        }
+
+        var text = File.ReadAllText(castPath);
+        var root = System.Text.Json.Nodes.JsonNode.Parse(text) as System.Text.Json.Nodes.JsonObject
+                   ?? new System.Text.Json.Nodes.JsonObject();
+        // Explicitly clone cast fields before mutation — Odyssey2 export lost 45 characters
+        // when a merge rewrote locations-only JSON after a successful cast extract.
+        var preserved = new PreservedCastFields(
+            root[StoreLit.CharacterSeedTokens]?.DeepClone(),
+            root[StoreLit.WardrobeLockTokens]?.DeepClone(),
+            root[JsonKeys.MovieTitle]?.DeepClone(),
+            root["render_style_lock"]?.DeepClone(),
+            root["performance_lock"]?.DeepClone(),
+            root[StoreLit.SchemaVersion]?.DeepClone());
+        var hadCharacters = preserved.Characters is System.Text.Json.Nodes.JsonObject co && co.Count > 0;
+        return (root, preserved, hadCharacters);
+    }
+
+    private static void MergeIncomingLocationSeeds(
+        System.Text.Json.Nodes.JsonObject root,
+        Dictionary<string, object?> locationSeeds)
+    {
+        var existing = root[StoreLit.LocationSeedTokens] as System.Text.Json.Nodes.JsonObject
+                       ?? new System.Text.Json.Nodes.JsonObject();
+
+        foreach (var (key, val) in locationSeeds)
+        {
+            if (val is not Dictionary<string, object?> incoming) continue;
+            MergeOneLocationSeed(existing, key, incoming);
+        }
+
+        root[StoreLit.LocationSeedTokens] = existing;
+    }
+
+    private static void MergeOneLocationSeed(
+        System.Text.Json.Nodes.JsonObject existing,
+        string key,
+        Dictionary<string, object?> incoming)
+    {
+        var incomingNode = System.Text.Json.Nodes.JsonNode.Parse(
+            JsonSerializer.Serialize(incoming)) as System.Text.Json.Nodes.JsonObject;
+        if (incomingNode is null) return;
+
+        if (existing[key] is not System.Text.Json.Nodes.JsonObject cur)
+        {
+            existing[key] = incomingNode;
+            return;
+        }
+
+        var display = cur[StoreLit.DisplayName]?.GetValue<string>()
+                      ?? incomingNode[StoreLit.DisplayName]?.GetValue<string>()
+                      ?? key;
+        foreach (var field in new[] { JsonKeys.Description, StoreLit.VisualLock })
+            PreferStrongerLocationField(cur, incomingNode, field, display, key);
+        if (cur[StoreLit.DisplayName] is null && incomingNode[StoreLit.DisplayName] is not null)
+            cur[StoreLit.DisplayName] = incomingNode[StoreLit.DisplayName].DeepClone();
+        if (cur[StoreLit.LocationType] is null && incomingNode[StoreLit.LocationType] is not null)
+            cur[StoreLit.LocationType] = incomingNode[StoreLit.LocationType].DeepClone();
+    }
+
+    private static void PreferStrongerLocationField(
+        System.Text.Json.Nodes.JsonObject cur,
+        System.Text.Json.Nodes.JsonObject incomingNode,
+        string field,
+        string display,
+        string key)
+    {
+        var curV = cur[field]?.GetValue<string>() ?? "";
+        var inV = incomingNode[field]?.GetValue<string>() ?? "";
+        if (string.IsNullOrWhiteSpace(inV)) return;
+
+        var curStub = IsWeakLocationField(curV, display, key);
+        var inStub = IsWeakLocationField(inV, display, key);
+
+        // Prefer strong filmable text; never replace strong with Stage‑1 action dump.
+        if (curStub && !inStub)
+            cur[field] = inV;
+        else if (curStub && inStub && inV.Length > curV.Length)
+            cur[field] = inV;
+        else if (!curStub && !inStub && inV.Length > curV.Length + 40)
+            cur[field] = inV; // longer AI set design wins
+    }
+
+    private static void RestorePreservedCastFields(
+        System.Text.Json.Nodes.JsonObject root,
+        PreservedCastFields preserved)
+    {
+        // Re-apply preserved cast fields so a merge can never produce locations-only JSON.
+        if (preserved.Characters is not null)
+            root[StoreLit.CharacterSeedTokens] = preserved.Characters;
+        if (preserved.Wardrobe is not null)
+            root[StoreLit.WardrobeLockTokens] = preserved.Wardrobe;
+        if (preserved.MovieTitle is not null)
+            root[JsonKeys.MovieTitle] = preserved.MovieTitle;
+        if (preserved.Render is not null)
+            root["render_style_lock"] = preserved.Render;
+        if (preserved.Perf is not null)
+            root["performance_lock"] = preserved.Perf;
+        if (preserved.Schema is not null)
+            root[StoreLit.SchemaVersion] = preserved.Schema;
+        else if (root[StoreLit.SchemaVersion] is null)
+            root[StoreLit.SchemaVersion] = StoreLit.CastSeedsV1;
     }
 
     /// <summary>True when location description/lock is empty, name-only, or Stage‑1 heading echo.</summary>
@@ -2808,40 +2909,7 @@ public sealed partial class ProjectStore
                 return (cast, locs);
 
             foreach (var s in scenes.EnumerateArray())
-            {
-                AddStringArray(s, StoreLit.CharactersOnScreen, cast);
-                if (s.TryGetProperty(StoreLit.PrimaryLocationId, out var pl)
-                    && pl.GetString() is { Length: > 0 } pLoc)
-                    locs.Add(pLoc);
-                AddStringArray(s, StoreLit.LocationIds, locs);
-
-                if (s.TryGetProperty(StoreLit.VeoClips, out var clips) && clips.ValueKind == JsonValueKind.Array)
-                {
-                    foreach (var c in clips.EnumerateArray())
-                    {
-                        AddStringArray(c, StoreLit.CharactersOnScreen, cast);
-                        if (c.TryGetProperty(StoreLit.PrimaryLocationId, out var cl)
-                            && cl.GetString() is { Length: > 0 } cLoc)
-                            locs.Add(cLoc);
-                        AddStringArray(c, StoreLit.LocationIds, locs);
-                        // Prompt mentions (clip-local cast not always listed on the scene)
-                        if (c.TryGetProperty(StoreLit.VisualPrompt, out var vp))
-                        {
-                            var text = vp.GetString() ?? "";
-                            foreach (System.Text.RegularExpressions.Match m in
-                                     CommonRegex.Matches(text, @"Character_[A-Za-z0-9_]+"))
-                            {
-                                if (m.Success) cast.Add(m.Value);
-                            }
-                            foreach (System.Text.RegularExpressions.Match m in
-                                     CommonRegex.Matches(text, @"Loc_[A-Za-z0-9_]+"))
-                            {
-                                if (m.Success) locs.Add(m.Value);
-                            }
-                        }
-                    }
-                }
-            }
+                CollectPlanUsageFromScene(s, cast, locs);
         }
         catch
         {
@@ -2849,17 +2917,59 @@ public sealed partial class ProjectStore
         }
 
         return (cast, locs);
+    }
 
-        static void AddStringArray(JsonElement el, string prop, HashSet<string> into)
+    private static void CollectPlanUsageFromScene(JsonElement s, HashSet<string> cast, HashSet<string> locs)
+    {
+        AddJsonStringArray(s, StoreLit.CharactersOnScreen, cast);
+        AddJsonStringProp(s, StoreLit.PrimaryLocationId, locs);
+        AddJsonStringArray(s, StoreLit.LocationIds, locs);
+
+        if (!s.TryGetProperty(StoreLit.VeoClips, out var clips) || clips.ValueKind != JsonValueKind.Array)
+            return;
+        foreach (var c in clips.EnumerateArray())
+            CollectPlanUsageFromClip(c, cast, locs);
+    }
+
+    private static void CollectPlanUsageFromClip(JsonElement c, HashSet<string> cast, HashSet<string> locs)
+    {
+        AddJsonStringArray(c, StoreLit.CharactersOnScreen, cast);
+        AddJsonStringProp(c, StoreLit.PrimaryLocationId, locs);
+        AddJsonStringArray(c, StoreLit.LocationIds, locs);
+        if (!c.TryGetProperty(StoreLit.VisualPrompt, out var vp))
+            return;
+        CollectIdsFromVisualPrompt(vp.GetString() ?? "", cast, locs);
+    }
+
+    private static void CollectIdsFromVisualPrompt(string text, HashSet<string> cast, HashSet<string> locs)
+    {
+        foreach (System.Text.RegularExpressions.Match m in
+                 CommonRegex.Matches(text, @"Character_[A-Za-z0-9_]+"))
         {
-            if (!el.TryGetProperty(prop, out var arr) || arr.ValueKind != JsonValueKind.Array)
-                return;
-            foreach (var x in arr.EnumerateArray())
-            {
-                var k = x.GetString();
-                if (!string.IsNullOrWhiteSpace(k))
-                    into.Add(k);
-            }
+            if (m.Success) cast.Add(m.Value);
+        }
+        foreach (System.Text.RegularExpressions.Match m in
+                 CommonRegex.Matches(text, @"Loc_[A-Za-z0-9_]+"))
+        {
+            if (m.Success) locs.Add(m.Value);
+        }
+    }
+
+    private static void AddJsonStringProp(JsonElement el, string prop, HashSet<string> into)
+    {
+        if (el.TryGetProperty(prop, out var v) && v.GetString() is { Length: > 0 } s)
+            into.Add(s);
+    }
+
+    private static void AddJsonStringArray(JsonElement el, string prop, HashSet<string> into)
+    {
+        if (!el.TryGetProperty(prop, out var arr) || arr.ValueKind != JsonValueKind.Array)
+            return;
+        foreach (var x in arr.EnumerateArray())
+        {
+            var k = x.GetString();
+            if (!string.IsNullOrWhiteSpace(k))
+                into.Add(k);
         }
     }
 
@@ -2872,25 +2982,35 @@ public sealed partial class ProjectStore
         if (bp is null)
             return Array.Empty<string>();
 
-        JsonElement? sceneEl = null;
-        if (bp.RootElement.TryGetProperty(StoreLit.Scenes, out var scenes) &&
-            scenes.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var s in scenes.EnumerateArray())
-            {
-                if (s.TryGetProperty(JsonKeys.SceneNumber, out var sn) && sn.TryGetInt32(out var n) && n == sceneNumber)
-                {
-                    sceneEl = s.Clone();
-                    break;
-                }
-            }
-        }
-
+        var sceneEl = FindSceneElement(bp.RootElement, sceneNumber);
         if (sceneEl is null)
             return Array.Empty<string>();
 
+        var cast = CollectOnScreenCastKeys(sceneEl.Value);
+        // G3 draft: scene plate lock not required
+        if (IsDraftProductionMode(projectId))
+            return new List<string>();
+
+        return FilterUnlockedOnScreenCharacters(projectId, cast);
+    }
+
+    private static JsonElement? FindSceneElement(JsonElement root, int sceneNumber)
+    {
+        if (!root.TryGetProperty(StoreLit.Scenes, out var scenes) ||
+            scenes.ValueKind != JsonValueKind.Array)
+            return null;
+        foreach (var s in scenes.EnumerateArray())
+        {
+            if (s.TryGetProperty(JsonKeys.SceneNumber, out var sn) && sn.TryGetInt32(out var n) && n == sceneNumber)
+                return s.Clone();
+        }
+        return null;
+    }
+
+    private static HashSet<string> CollectOnScreenCastKeys(JsonElement sceneEl)
+    {
         var cast = new HashSet<string>(StringComparer.Ordinal);
-        if (sceneEl.Value.TryGetProperty(StoreLit.CharactersOnScreen, out var cos) &&
+        if (sceneEl.TryGetProperty(StoreLit.CharactersOnScreen, out var cos) &&
             cos.ValueKind == JsonValueKind.Array)
         {
             foreach (var x in cos.EnumerateArray())
@@ -2901,51 +3021,53 @@ public sealed partial class ProjectStore
             }
         }
 
-        // Also scan prompts for Character_* mentions (clip-local cast)
-        if (sceneEl.Value.TryGetProperty(StoreLit.VeoClips, out var clips) &&
-            clips.ValueKind == JsonValueKind.Array)
+        if (!sceneEl.TryGetProperty(StoreLit.VeoClips, out var clips) ||
+            clips.ValueKind != JsonValueKind.Array)
+            return cast;
+        foreach (var c in clips.EnumerateArray())
         {
-            foreach (var c in clips.EnumerateArray())
+            if (!c.TryGetProperty(StoreLit.VisualPrompt, out var vp))
+                continue;
+            var text = vp.GetString() ?? "";
+            foreach (System.Text.RegularExpressions.Match m in
+                     CommonRegex.Matches(text, @"Character_[A-Za-z0-9_]+"))
             {
-                if (!c.TryGetProperty(StoreLit.VisualPrompt, out var vp))
-                    continue;
-                var text = vp.GetString() ?? "";
-                foreach (System.Text.RegularExpressions.Match m in
-                         CommonRegex.Matches(text, @"Character_[A-Za-z0-9_]+"))
-                {
-                    if (m.Success)
-                        cast.Add(m.Value);
-                }
+                if (m.Success)
+                    cast.Add(m.Value);
             }
         }
+        return cast;
+    }
 
+    private List<string> FilterUnlockedOnScreenCharacters(string projectId, HashSet<string> cast)
+    {
         var unlocked = new List<string>();
-        // G3 draft: scene plate lock not required
-        if (IsDraftProductionMode(projectId))
-            return unlocked;
-
         foreach (var key in cast.OrderBy(k => k, StringComparer.OrdinalIgnoreCase))
         {
-            var seed = GetCharacterSeed(projectId, key);
-            if (seed is not null && IsVoiceOnly(seed.Value))
-                continue;
-            // Group / ensemble cast (e.g. "Children", "Crowd") have no single portrait identity —
-            // the operator can't pick one image for them and shouldn't be forced to. The video model
-            // renders group members freely, so a group never requires a locked reference. This mirrors
-            // the client readiness gates, which already skip IsGroup, and uses the same
-            // CastKindClassifier signal so it generalizes across books/casts (not a name hardcode).
-            if (IsGroupSeed(key, seed))
-                continue;
-            // Blueprint may still say Character_Suitor_1 while cast_seeds only has Character_Suitors.
-            // North Star: numbered generics covered by an ensemble group never need a solo plate.
-            if (seed is null && ResolvesToExistingGroupCast(projectId, key))
-                continue;
-            // Unknown seed still counts as needing a lock if mentioned on-screen
-            if (ResolveCharacterRefPath(projectId, key) is null)
+            if (OnScreenCharacterNeedsLock(projectId, key))
                 unlocked.Add(key);
         }
-
         return unlocked;
+    }
+
+    private bool OnScreenCharacterNeedsLock(string projectId, string key)
+    {
+        var seed = GetCharacterSeed(projectId, key);
+        if (seed is not null && IsVoiceOnly(seed.Value))
+            return false;
+        // Group / ensemble cast (e.g. "Children", "Crowd") have no single portrait identity —
+        // the operator can't pick one image for them and shouldn't be forced to. The video model
+        // renders group members freely, so a group never requires a locked reference. This mirrors
+        // the client readiness gates, which already skip IsGroup, and uses the same
+        // CastKindClassifier signal so it generalizes across books/casts (not a name hardcode).
+        if (IsGroupSeed(key, seed))
+            return false;
+        // Blueprint may still say Character_Suitor_1 while cast_seeds only has Character_Suitors.
+        // North Star: numbered generics covered by an ensemble group never need a solo plate.
+        if (seed is null && ResolvesToExistingGroupCast(projectId, key))
+            return false;
+        // Unknown seed still counts as needing a lock if mentioned on-screen
+        return ResolveCharacterRefPath(projectId, key) is null;
     }
 
     // ── Location set plates (step 1: storage + lock; generate/edit later) ─────────
@@ -3397,115 +3519,131 @@ public sealed partial class ProjectStore
         string? voiceProviderVoiceId = null,
         string? voiceCloneProviderId = null)
     {
-        void PatchSeedsObject(System.Text.Json.Nodes.JsonObject seeds)
-        {
-            var (seed, foundKey) = FindSeedByCharKey(seeds, charKey);
-            if (seed is null || foundKey is null)
-            {
-                seed = new System.Text.Json.Nodes.JsonObject();
-                foundKey = charKey;
-                seeds[foundKey] = seed;
-            }
-            if (description is not null)
-                seed[JsonKeys.Description] = CharacterVisualTextScrubber.ScrubVisualProse(description);
-            if (visualLock is not null)
-                seed[StoreLit.VisualLock] = CharacterVisualTextScrubber.ScrubVisualProse(visualLock);
-            if (voiceProfile is not null)
-                seed[StoreLit.VoiceProfile] = voiceProfile.Trim();
-            if (voiceLabel is not null)
-                seed[StoreLit.VoiceLabel] = voiceLabel.Trim();
-            if (voiceCloneSample is not null)
-            {
-                if (string.IsNullOrWhiteSpace(voiceCloneSample))
-                    seed.Remove("voice_clone_sample");
-                else
-                    seed["voice_clone_sample"] = voiceCloneSample.Trim();
-            }
-            if (voiceProvider is not null)
-            {
-                if (string.IsNullOrWhiteSpace(voiceProvider))
-                    seed.Remove(StoreLit.VoiceProvider);
-                else
-                    seed[StoreLit.VoiceProvider] = voiceProvider.Trim();
-            }
-            if (voiceProviderVoiceId is not null)
-            {
-                if (string.IsNullOrWhiteSpace(voiceProviderVoiceId))
-                    seed.Remove(StoreLit.VoiceProviderVoiceId);
-                else
-                    seed[StoreLit.VoiceProviderVoiceId] = voiceProviderVoiceId.Trim();
-            }
-            if (voiceCloneProviderId is not null)
-            {
-                if (string.IsNullOrWhiteSpace(voiceCloneProviderId))
-                    seed.Remove("voice_clone_provider_id");
-                else
-                    seed["voice_clone_provider_id"] = voiceCloneProviderId.Trim();
-            }
-            seeds[foundKey] = seed;
-        }
-
-        void PatchFile(string path, bool createCastShape)
-        {
-            try
-            {
-                System.Text.Json.Nodes.JsonObject root;
-                if (File.Exists(path))
-                {
-                    root = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))
-                           as System.Text.Json.Nodes.JsonObject
-                           ?? new System.Text.Json.Nodes.JsonObject();
-                }
-                else if (createCastShape)
-                {
-                    root = new System.Text.Json.Nodes.JsonObject { [StoreLit.SchemaVersion] = StoreLit.CastSeedsV1 };
-                }
-                else return;
-
-                System.Text.Json.Nodes.JsonObject? seeds;
-                System.Text.Json.Nodes.JsonObject? gpv = null;
-                if (root[StoreLit.CharacterSeedTokens] is System.Text.Json.Nodes.JsonObject direct)
-                {
-                    seeds = direct;
-                }
-                else
-                {
-                    gpv = root[StoreLit.GlobalProductionVariables] as System.Text.Json.Nodes.JsonObject
-                          ?? new System.Text.Json.Nodes.JsonObject();
-                    root[StoreLit.GlobalProductionVariables] = gpv;
-                    seeds = gpv[StoreLit.CharacterSeedTokens] as System.Text.Json.Nodes.JsonObject
-                            ?? new System.Text.Json.Nodes.JsonObject();
-                    gpv[StoreLit.CharacterSeedTokens] = seeds;
-                }
-
-                PatchSeedsObject(seeds);
-                // Bug fix (pre-existing, hit by any brand-new cast_seeds.json write — e.g. the
-                // first voice/clone call for a narration pseudo-character on a project with no
-                // cast_seeds.json yet): a JsonNode instance can only have one parent, so the same
-                // `seeds` object can't be assigned directly to both root and global_production_
-                // variables. Mirror a separate parsed copy instead of the same reference — root[
-                // "character_seed_tokens"] previously threw "node already has a parent" here,
-                // which this method's catch-all silently swallowed, so the whole write was
-                // dropped with no visible error.
-                if (createCastShape && gpv is not null)
-                    root[StoreLit.CharacterSeedTokens] = System.Text.Json.Nodes.JsonNode.Parse(seeds.ToJsonString());
-                Directory.CreateDirectory(Path.GetDirectoryName(path));
-                File.WriteAllText(path, root.ToJsonString(JsonDefaults.Indented) + "\n");
-            }
-            catch
-            {
-                /* non-fatal */
-            }
-        }
-
-        PatchFile(ScreenplayService.GetCastSeedsPath(this, projectId), createCastShape: true);
+        var patch = new CharacterSeedTextPatch(
+            charKey, description, visualLock, voiceProfile, voiceLabel,
+            voiceCloneSample, voiceProvider, voiceProviderVoiceId, voiceCloneProviderId);
+        PatchCharacterSeedFile(ScreenplayService.GetCastSeedsPath(this, projectId), patch, createCastShape: true);
         var bp = FindBlueprintPathSync(projectId);
         if (bp is not null)
-            PatchFile(bp, createCastShape: false);
+            PatchCharacterSeedFile(bp, patch, createCastShape: false);
         var scenesPath = ResolveScenesJsonPath(projectId);
         if (File.Exists(scenesPath))
-            PatchFile(scenesPath, createCastShape: false);
+            PatchCharacterSeedFile(scenesPath, patch, createCastShape: false);
         TriggerAutoGitCommit(projectId, "Update character seeds");
+    }
+
+    private readonly record struct CharacterSeedTextPatch(
+        string CharKey,
+        string? Description,
+        string? VisualLock,
+        string? VoiceProfile,
+        string? VoiceLabel,
+        string? VoiceCloneSample,
+        string? VoiceProvider,
+        string? VoiceProviderVoiceId,
+        string? VoiceCloneProviderId);
+
+    private static void ApplyCharacterSeedTextPatch(
+        System.Text.Json.Nodes.JsonObject seeds,
+        CharacterSeedTextPatch patch)
+    {
+        var (seed, foundKey) = FindSeedByCharKey(seeds, patch.CharKey);
+        if (seed is null || foundKey is null)
+        {
+            seed = new System.Text.Json.Nodes.JsonObject();
+            foundKey = patch.CharKey;
+            seeds[foundKey] = seed;
+        }
+        if (patch.Description is not null)
+            seed[JsonKeys.Description] = CharacterVisualTextScrubber.ScrubVisualProse(patch.Description);
+        if (patch.VisualLock is not null)
+            seed[StoreLit.VisualLock] = CharacterVisualTextScrubber.ScrubVisualProse(patch.VisualLock);
+        if (patch.VoiceProfile is not null)
+            seed[StoreLit.VoiceProfile] = patch.VoiceProfile.Trim();
+        if (patch.VoiceLabel is not null)
+            seed[StoreLit.VoiceLabel] = patch.VoiceLabel.Trim();
+        SetOrRemoveJsonString(seed, "voice_clone_sample", patch.VoiceCloneSample);
+        SetOrRemoveJsonString(seed, StoreLit.VoiceProvider, patch.VoiceProvider);
+        SetOrRemoveJsonString(seed, StoreLit.VoiceProviderVoiceId, patch.VoiceProviderVoiceId);
+        SetOrRemoveJsonString(seed, "voice_clone_provider_id", patch.VoiceCloneProviderId);
+        seeds[foundKey] = seed;
+    }
+
+    private static void SetOrRemoveJsonString(System.Text.Json.Nodes.JsonObject seed, string key, string? value)
+    {
+        if (value is null)
+            return;
+        if (string.IsNullOrWhiteSpace(value))
+            seed.Remove(key);
+        else
+            seed[key] = value.Trim();
+    }
+
+    private static void PatchCharacterSeedFile(string path, CharacterSeedTextPatch patch, bool createCastShape)
+    {
+        try
+        {
+            if (!TryLoadCharacterSeedRoot(path, createCastShape, out var root, out var seeds, out var gpv))
+                return;
+
+            ApplyCharacterSeedTextPatch(seeds, patch);
+            // Bug fix (pre-existing, hit by any brand-new cast_seeds.json write — e.g. the
+            // first voice/clone call for a narration pseudo-character on a project with no
+            // cast_seeds.json yet): a JsonNode instance can only have one parent, so the same
+            // `seeds` object can't be assigned directly to both root and global_production_
+            // variables. Mirror a separate parsed copy instead of the same reference — root[
+            // "character_seed_tokens"] previously threw "node already has a parent" here,
+            // which this method's catch-all silently swallowed, so the whole write was
+            // dropped with no visible error.
+            if (createCastShape && gpv is not null)
+                root[StoreLit.CharacterSeedTokens] = System.Text.Json.Nodes.JsonNode.Parse(seeds.ToJsonString());
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            File.WriteAllText(path, root.ToJsonString(JsonDefaults.Indented) + "\n");
+        }
+        catch
+        {
+            /* non-fatal */
+        }
+    }
+
+    private static bool TryLoadCharacterSeedRoot(
+        string path,
+        bool createCastShape,
+        out System.Text.Json.Nodes.JsonObject root,
+        out System.Text.Json.Nodes.JsonObject seeds,
+        out System.Text.Json.Nodes.JsonObject? gpv)
+    {
+        root = null!;
+        seeds = null!;
+        gpv = null;
+        if (File.Exists(path))
+        {
+            root = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))
+                   as System.Text.Json.Nodes.JsonObject
+                   ?? new System.Text.Json.Nodes.JsonObject();
+        }
+        else if (createCastShape)
+        {
+            root = new System.Text.Json.Nodes.JsonObject { [StoreLit.SchemaVersion] = StoreLit.CastSeedsV1 };
+        }
+        else
+        {
+            return false;
+        }
+
+        if (root[StoreLit.CharacterSeedTokens] is System.Text.Json.Nodes.JsonObject direct)
+        {
+            seeds = direct;
+            return true;
+        }
+
+        gpv = root[StoreLit.GlobalProductionVariables] as System.Text.Json.Nodes.JsonObject
+              ?? new System.Text.Json.Nodes.JsonObject();
+        root[StoreLit.GlobalProductionVariables] = gpv;
+        seeds = gpv[StoreLit.CharacterSeedTokens] as System.Text.Json.Nodes.JsonObject
+                ?? new System.Text.Json.Nodes.JsonObject();
+        gpv[StoreLit.CharacterSeedTokens] = seeds;
+        return true;
     }
 
     /// <summary>
@@ -3881,7 +4019,15 @@ public sealed partial class ProjectStore
         int absMaxSeconds = ClipDurationEstimator.AbsMaxSeconds)
     {
         ArgumentNullException.ThrowIfNull(fields);
+        NormalizeClipEditFields(fields);
+        ValidateClipEditBounds(fields, minSeconds, absMaxSeconds);
+        ValidateClipEditAudio(fields);
+        ValidateClipEditCastKeys(fields, knownCastKeys);
+        AutoIncludeOnScreenCast(fields);
+    }
 
+    private static void NormalizeClipEditFields(ClipEditRequest fields)
+    {
         fields.VisualPrompt = (fields.VisualPrompt ?? "").Trim();
         fields.NegativePrompt = (fields.NegativePrompt ?? "").Trim();
         fields.Dialogue = (fields.Dialogue ?? "").Trim();
@@ -3895,7 +4041,10 @@ public sealed partial class ProjectStore
             .Select(c => c.Trim())
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
 
+    private static void ValidateClipEditBounds(ClipEditRequest fields, int minSeconds, int absMaxSeconds)
+    {
         // Clip number (add path uses this; edit path ignores change)
         if (fields.Clip < 0 || fields.Clip > ClipEditClipNumberMax)
             throw new InvalidOperationException(
@@ -3932,7 +4081,10 @@ public sealed partial class ProjectStore
         if ((fields.FilmStock?.Length ?? 0) > ClipEditFreeTextMaxChars)
             throw new InvalidOperationException(
                 $"Film stock is too long (max {ClipEditFreeTextMaxChars} characters).");
+    }
 
+    private static void ValidateClipEditAudio(ClipEditRequest fields)
+    {
         // Delivery allowlist when set
         if (fields.Delivery.Length > 0 && !AllowedDeliveries.Contains(fields.Delivery))
             throw new InvalidOperationException(
@@ -3953,7 +4105,10 @@ public sealed partial class ProjectStore
         if (fields.Speaker.Length > 0 && fields.Dialogue.Length == 0)
             throw new InvalidOperationException(
                 "Speaker is set but dialogue is empty. Add the line, or set speaker to none.");
+    }
 
+    private static void ValidateClipEditCastKeys(ClipEditRequest fields, IReadOnlyCollection<string>? knownCastKeys)
+    {
         // Cast identity: Character_* keys only (no free-text display names)
         if (fields.Speaker.Length > 0)
             RequireCharacterKey(fields.Speaker, "Speaker");
@@ -3965,21 +4120,23 @@ public sealed partial class ProjectStore
         var cast = knownCastKeys?
             .Where(k => !string.IsNullOrWhiteSpace(k))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        if (cast is { Count: > 0 })
+        if (cast is not { Count: > 0 })
+            return;
+        if (fields.Speaker.Length > 0 && !cast.Contains(fields.Speaker))
+            throw new InvalidOperationException(
+                $"Speaker must be a cast member (unknown key: {fields.Speaker}).");
+        if (fields.PrimarySubject.Length > 0 && !cast.Contains(fields.PrimarySubject))
+            throw new InvalidOperationException(
+                $"Primary subject must be a cast member (unknown key: {fields.PrimarySubject}).");
+        foreach (var ck in fields.CharactersOnScreen.Where(ck => !cast.Contains(ck)))
         {
-            if (fields.Speaker.Length > 0 && !cast.Contains(fields.Speaker))
-                throw new InvalidOperationException(
-                    $"Speaker must be a cast member (unknown key: {fields.Speaker}).");
-            if (fields.PrimarySubject.Length > 0 && !cast.Contains(fields.PrimarySubject))
-                throw new InvalidOperationException(
-                    $"Primary subject must be a cast member (unknown key: {fields.PrimarySubject}).");
-            foreach (var ck in fields.CharactersOnScreen.Where(ck => !cast.Contains(ck)))
-            {
-                throw new InvalidOperationException(
-                    $"On-screen list has unknown cast key: {ck}.");
-            }
+            throw new InvalidOperationException(
+                $"On-screen list has unknown cast key: {ck}.");
         }
+    }
 
+    private static void AutoIncludeOnScreenCast(ClipEditRequest fields)
+    {
         // Auto-include primary + on-camera speaker in on-screen list
         if (fields.PrimarySubject.Length > 0 &&
             !fields.CharactersOnScreen.Any(c =>
@@ -4191,35 +4348,53 @@ public sealed partial class ProjectStore
     public bool DeleteClip(string projectId, int scene, int clip)
     {
         var projectDir = GetProjectDir(projectId);
+        var removedFromBlueprint = TryRemoveClipFromBlueprint(projectId, scene, clip);
+        var deletedVideo = DeleteClipMediaFiles(projectDir, scene, clip);
+
+        if (!removedFromBlueprint && !deletedVideo)
+            throw new InvalidOperationException($"Clip S{scene:D2}C{clip:D2} not found.");
+
+        InvalidateSceneListCache(projectId);
+        InvalidateReadCaches(projectId);
+        return removedFromBlueprint;
+    }
+
+    private bool TryRemoveClipFromBlueprint(string projectId, int scene, int clip)
+    {
         var bpPath = FindBlueprintPathSync(projectId);
-        var removedFromBlueprint = false;
+        if (bpPath is null || !File.Exists(bpPath))
+            return false;
 
-        if (bpPath is not null && File.Exists(bpPath))
+        var (root, scenes) = ParseBlueprintScenes(bpPath);
+        var removed = RemoveClipNode(scenes, scene, clip);
+        if (removed)
+            File.WriteAllText(bpPath, root.ToJsonString(JsonDefaults.Indented) + "\n");
+        return removed;
+    }
+
+    private static bool RemoveClipNode(System.Text.Json.Nodes.JsonArray scenes, int scene, int clip)
+    {
+        foreach (var sNode in scenes)
         {
-            var (root, scenes) = ParseBlueprintScenes(bpPath);
-
-            foreach (var sNode in scenes)
+            if (sNode is not System.Text.Json.Nodes.JsonObject s) continue;
+            if (ReadJsonNodeInt(s[JsonKeys.SceneNumber]) != scene) continue;
+            var clips = s[StoreLit.VeoClips] as System.Text.Json.Nodes.JsonArray
+                        ?? s[StoreLit.Clips] as System.Text.Json.Nodes.JsonArray;
+            if (clips is null) return false;
+            for (var i = 0; i < clips.Count; i++)
             {
-                if (sNode is not System.Text.Json.Nodes.JsonObject s) continue;
-                if (ReadJsonNodeInt(s[JsonKeys.SceneNumber]) != scene) continue;
-                var clips = s[StoreLit.VeoClips] as System.Text.Json.Nodes.JsonArray
-                            ?? s[StoreLit.Clips] as System.Text.Json.Nodes.JsonArray;
-                if (clips is null) break;
-                for (var i = 0; i < clips.Count; i++)
-                {
-                    if (clips[i] is not System.Text.Json.Nodes.JsonObject c) continue;
-                    if (ClipKeying.ClipNumber(c) != clip) continue;
-                    clips.RemoveAt(i);
-                    removedFromBlueprint = true;
-                    break;
-                }
-                break;
+                if (clips[i] is not System.Text.Json.Nodes.JsonObject c) continue;
+                if (ClipKeying.ClipNumber(c) != clip) continue;
+                clips.RemoveAt(i);
+                return true;
             }
-
-            if (removedFromBlueprint)
-                File.WriteAllText(bpPath, root.ToJsonString(JsonDefaults.Indented) + "\n");
+            return false;
         }
+        return false;
+    }
 
+    private static bool DeleteClipMediaFiles(string projectDir, int scene, int clip)
+    {
         var videoPath = Path.Combine(projectDir, StoreLit.Assets, StoreLit.Video, $"scene_{scene:D2}_clip_{clip:D2}.mp4");
         var deletedVideo = false;
         if (File.Exists(videoPath))
@@ -4237,13 +4412,7 @@ public sealed partial class ProjectStore
         var verificationPath = ClipDialogueVerificationService.BuildVerificationPath(projectDir, scene, clip);
         if (File.Exists(verificationPath))
             File.Delete(verificationPath);
-
-        if (!removedFromBlueprint && !deletedVideo)
-            throw new InvalidOperationException($"Clip S{scene:D2}C{clip:D2} not found.");
-
-        InvalidateSceneListCache(projectId);
-        InvalidateReadCaches(projectId);
-        return removedFromBlueprint;
+        return deletedVideo;
     }
 
     /// <summary>
@@ -5055,206 +5224,278 @@ public sealed partial class ProjectStore
 
         try
         {
-        if (bp is null ||
-            !bp.RootElement.TryGetProperty(StoreLit.Scenes, out var scenesEl) ||
-            scenesEl.ValueKind != JsonValueKind.Array)
-        {
-            return Array.Empty<SceneSummary>();
-        }
-
-        var projectDir = await GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
-        var videoDir = Path.Combine(projectDir, StoreLit.Assets, StoreLit.Video);
-        var scenesDir = Path.Combine(projectDir, StoreLit.Assets, StoreLit.Scenes);
-        var videoIndex = await GetVideoIndexWithParentFallbackAsync(projectId, videoDir, ct).ConfigureAwait(false);
-        var scenesIndex = await GetDirIndexAsync(scenesDir, ct).ConfigureAwait(false);
-
-        HashSet<string>? approvedScenes = null;
-        var stateFile = Path.Combine(projectDir, "pipeline_state.json");
-        if (File.Exists(stateFile))
-        {
-            try
+            if (bp is null ||
+                !bp.RootElement.TryGetProperty(StoreLit.Scenes, out var scenesEl) ||
+                scenesEl.ValueKind != JsonValueKind.Array)
             {
-                var stateText = await File.ReadAllTextAsync(stateFile, ct).ConfigureAwait(false);
-                using var stateDoc = JsonDocument.Parse(stateText);
-                if (stateDoc.RootElement.TryGetProperty("scene_review", out var sr) &&
-                    sr.ValueKind == JsonValueKind.Object)
-                {
-                    approvedScenes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                    foreach (var prop in sr.EnumerateObject())
-                    {
-                        if (prop.Value.ValueKind == JsonValueKind.Object &&
-                            prop.Value.TryGetProperty("status", out var stEl) &&
-                            string.Equals(stEl.GetString(), "approved", StringComparison.OrdinalIgnoreCase))
-                        {
-                            approvedScenes.Add(prop.Name);
-                        }
-                    }
-                }
-            }
-            catch { /* non-fatal */ }
-        }
-
-        // Which scenes already have a background-music take — one registry query for the whole list
-        // (rather than a per-scene HasSceneMusicAsync call) drives the overview's Audio-Takes affordance.
-        var musicScenes = new HashSet<int>();
-        if (_mediaRegistry is not null)
-        {
-            foreach (var mo in await _mediaRegistry.ListProjectAsync(projectId, ct).ConfigureAwait(false))
-                if (string.Equals(mo.Kind, StoreLit.Music, StringComparison.OrdinalIgnoreCase) && mo.Scene is int msc)
-                    musicScenes.Add(msc);
-        }
-
-        var rows = new List<SceneSummary>();
-        foreach (var s in scenesEl.EnumerateArray())
-        {
-            if (!s.TryGetProperty(JsonKeys.SceneNumber, out var snEl) || !snEl.TryGetInt32(out var sn))
-                continue;
-
-            var clips = s.TryGetProperty(StoreLit.VeoClips, out var vc) && vc.ValueKind == JsonValueKind.Array
-                ? vc.EnumerateArray().ToList()
-                : new List<JsonElement>();
-            var nClips = clips.Count;
-            var onDisk = 0;
-            foreach (var c in clips)
-            {
-                var cn = ClipKeying.ClipNumber(c);
-                if (cn <= 0) continue;
-                if (ClipOnDisk(videoIndex, sn, cn))
-                    onDisk++;
+                return Array.Empty<SceneSummary>();
             }
 
-            var compositeOk =
-                HasCompositeFile(videoIndex, scenesIndex, sn);
-
-            double? planned = null;
-            if (s.TryGetProperty("total_estimated_duration_seconds", out var dEl))
+            var ctx = await BuildSceneListContextAsync(projectId, ct).ConfigureAwait(false);
+            var rows = new List<SceneSummary>();
+            foreach (var s in scenesEl.EnumerateArray())
             {
-                if (dEl.TryGetDouble(out var dd)) planned = dd;
-                else if (dEl.TryGetInt32(out var di)) planned = di;
+                var row = await TryBuildSceneSummaryAsync(projectId, s, ctx, probeDurations, ct).ConfigureAwait(false);
+                if (row is not null)
+                    rows.Add(row);
             }
 
-            double? actual = null;
-            if (probeDurations && _duration is not null)
-            {
-                var compositePath = ResolveCompositePath(projectId, sn);
-                var clipPaths = new List<string>();
-                foreach (var c in clips)
-                {
-                    var cn = ClipKeying.ClipNumber(c);
-                    if (cn <= 0) continue;
-                    var cp = ResolveClipVideoPath(projectId, sn, cn);
-                    if (cp is not null) clipPaths.Add(cp);
-                }
-                actual = await _duration.GetSceneActualDurationSecondsAsync(compositePath, clipPaths, ct).ConfigureAwait(false);
-            }
-
-            var chars = new List<string>();
-            void AddChar(string? name)
-            {
-                if (!string.IsNullOrWhiteSpace(name) && !chars.Contains(name, StringComparer.OrdinalIgnoreCase))
-                    chars.Add(name);
-            }
-            if (s.TryGetProperty(StoreLit.CharactersOnScreen, out var cos) && cos.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var x in cos.EnumerateArray())
-                    AddChar(x.GetString());
-            }
-            // Scene-level characters_on_screen can lag clip-level casts (e.g. a character who
-            // only appears mid-scene in specific clips) — union in each clip's own list too.
-            foreach (var c in clips)
-            {
-                if (c.TryGetProperty(StoreLit.CharactersOnScreen, out var clipCos) && clipCos.ValueKind == JsonValueKind.Array)
-                {
-                    foreach (var x in clipCos.EnumerateArray())
-                        AddChar(x.GetString());
-                }
-            }
-
-            var locs = new List<string>();
-            if (s.TryGetProperty(StoreLit.LocationIds, out var lids) && lids.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var x in lids.EnumerateArray())
-                {
-                    var name = x.GetString();
-                    if (!string.IsNullOrWhiteSpace(name))
-                        locs.Add(name);
-                }
-            }
-
-            string? primaryLoc = null;
-            if (s.TryGetProperty(StoreLit.PrimaryLocationId, out var pl) &&
-                pl.GetString() is { Length: > 0 } plId)
-            {
-                primaryLoc = plId;
-                if (!locs.Contains(plId, StringComparer.OrdinalIgnoreCase))
-                    locs.Insert(0, plId);
-            }
-
-            var complete = nClips > 0 && onDisk >= nClips;
-            var status = nClips == 0 || onDisk == 0
-                ? "empty"
-                : complete ? "complete" : "partial";
-            var isApproved = approvedScenes?.Contains($"S{sn:D2}") == true;
-
-            var settingText = s.TryGetProperty(StoreLit.Setting, out var set) ? set.GetString() ?? "" : "";
-            var headingText = s.TryGetProperty("scene_heading", out var shd) ? shd.GetString() ?? "" : "";
-            var isCredits = IsCreditsScene(s);
-
-            var staleClipCount = 0;
-            try
-            {
-                var bpPathForStale = FindBlueprintPathSync(projectId);
-                if (onDisk > 0 && bpPathForStale is not null && File.Exists(bpPathForStale)
-                    && s.TryGetProperty(StoreLit.Clips, out var clipsElStale) && clipsElStale.ValueKind == JsonValueKind.Array)
-                {
-                    var bpM = File.GetLastWriteTimeUtc(bpPathForStale);
-                    foreach (var cEl in clipsElStale.EnumerateArray())
-                    {
-                        if (!cEl.TryGetProperty(JsonKeys.ClipNumber, out var cnEl) || !cnEl.TryGetInt32(out var cn2))
-                            continue;
-                        if (!ClipOnDisk(videoIndex, sn, cn2)) continue;
-                        var path = ResolveClipVideoPath(projectId, sn, cn2);
-                        if (path is null || !File.Exists(path)) continue;
-                        if (bpM > File.GetLastWriteTimeUtc(path).AddSeconds(2))
-                            staleClipCount++;
-                    }
-                }
-            }
-            catch { /* soft */ }
-
-            rows.Add(new SceneSummary
-            {
-                SceneNumber = sn,
-                // Credits scenes carry a scene_heading, not a setting — show a clear label instead of a blank cell.
-                Setting = !string.IsNullOrWhiteSpace(settingText) ? settingText
-                    : isCredits ? "END CREDITS"
-                    : headingText,
-                IsCredits = isCredits,
-                ClipCount = nClips,
-                ClipsOnDisk = onDisk,
-                ClipsComplete = complete,
-                StaleClipCount = staleClipCount,
-                HasStaleClips = staleClipCount > 0,
-                PlannedDurationSeconds = planned,
-                ActualDurationSeconds = actual,
-                DurationSeconds = actual ?? planned,
-                CompositeExists = compositeOk,
-                CharactersOnScreen = chars,
-                LocationIds = locs,
-                PrimaryLocationId = primaryLoc,
-                PrimaryLocationLocked = !string.IsNullOrWhiteSpace(primaryLoc) &&
-                    ResolveLocationRefPath(projectId, primaryLoc) is not null,
-                Status = status,
-                IsApproved = isApproved,
-                HasBackgroundMusic = musicScenes.Contains(sn),
-            });
-        }
-
-        return rows.OrderBy(r => r.SceneNumber).ToList();
+            return rows.OrderBy(r => r.SceneNumber).ToList();
         }
         finally
         {
             owned?.Dispose();
+        }
+    }
+
+    private sealed class SceneListContext
+    {
+        public required Dictionary<string, long> VideoIndex { get; init; }
+        public required Dictionary<string, long> ScenesIndex { get; init; }
+        public HashSet<string>? ApprovedScenes { get; init; }
+        public required HashSet<int> MusicScenes { get; init; }
+    }
+
+    private async Task<SceneListContext> BuildSceneListContextAsync(string projectId, CancellationToken ct)
+    {
+        var projectDir = await GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
+        var videoDir = Path.Combine(projectDir, StoreLit.Assets, StoreLit.Video);
+        var scenesDir = Path.Combine(projectDir, StoreLit.Assets, StoreLit.Scenes);
+        return new SceneListContext
+        {
+            VideoIndex = await GetVideoIndexWithParentFallbackAsync(projectId, videoDir, ct).ConfigureAwait(false),
+            ScenesIndex = await GetDirIndexAsync(scenesDir, ct).ConfigureAwait(false),
+            ApprovedScenes = await LoadApprovedSceneKeysAsync(projectDir, ct).ConfigureAwait(false),
+            MusicScenes = await LoadMusicSceneNumbersAsync(projectId, ct).ConfigureAwait(false),
+        };
+    }
+
+    private static async Task<HashSet<string>?> LoadApprovedSceneKeysAsync(string projectDir, CancellationToken ct)
+    {
+        var stateFile = Path.Combine(projectDir, "pipeline_state.json");
+        if (!File.Exists(stateFile))
+            return null;
+        try
+        {
+            var stateText = await File.ReadAllTextAsync(stateFile, ct).ConfigureAwait(false);
+            using var stateDoc = JsonDocument.Parse(stateText);
+            if (!stateDoc.RootElement.TryGetProperty("scene_review", out var sr) ||
+                sr.ValueKind != JsonValueKind.Object)
+                return null;
+            var approved = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var prop in sr.EnumerateObject())
+            {
+                if (prop.Value.ValueKind == JsonValueKind.Object &&
+                    prop.Value.TryGetProperty("status", out var stEl) &&
+                    string.Equals(stEl.GetString(), "approved", StringComparison.OrdinalIgnoreCase))
+                {
+                    approved.Add(prop.Name);
+                }
+            }
+            return approved;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private async Task<HashSet<int>> LoadMusicSceneNumbersAsync(string projectId, CancellationToken ct)
+    {
+        var musicScenes = new HashSet<int>();
+        if (_mediaRegistry is null)
+            return musicScenes;
+        foreach (var mo in await _mediaRegistry.ListProjectAsync(projectId, ct).ConfigureAwait(false))
+        {
+            if (string.Equals(mo.Kind, StoreLit.Music, StringComparison.OrdinalIgnoreCase) && mo.Scene is int msc)
+                musicScenes.Add(msc);
+        }
+        return musicScenes;
+    }
+
+    private async Task<SceneSummary?> TryBuildSceneSummaryAsync(
+        string projectId,
+        JsonElement s,
+        SceneListContext ctx,
+        bool probeDurations,
+        CancellationToken ct)
+    {
+        if (!s.TryGetProperty(JsonKeys.SceneNumber, out var snEl) || !snEl.TryGetInt32(out var sn))
+            return null;
+
+        var clips = SceneClipElements(s);
+        var nClips = clips.Count;
+        var onDisk = CountClipsOnDisk(ctx.VideoIndex, sn, clips);
+        var complete = nClips > 0 && onDisk >= nClips;
+        var (locs, primaryLoc) = CollectSceneLocations(s);
+        var staleClipCount = CountStaleClips(projectId, s, sn, onDisk, ctx.VideoIndex);
+
+        var planned = ReadOptionalDuration(s, "total_estimated_duration_seconds");
+        var actual = await ProbeSceneActualDurationAsync(projectId, sn, clips, probeDurations, ct).ConfigureAwait(false);
+        return new SceneSummary
+        {
+            SceneNumber = sn,
+            Setting = SceneSettingLabel(s),
+            IsCredits = IsCreditsScene(s),
+            ClipCount = nClips,
+            ClipsOnDisk = onDisk,
+            ClipsComplete = complete,
+            StaleClipCount = staleClipCount,
+            HasStaleClips = staleClipCount > 0,
+            PlannedDurationSeconds = planned,
+            ActualDurationSeconds = actual,
+            DurationSeconds = actual ?? planned,
+            CompositeExists = HasCompositeFile(ctx.VideoIndex, ctx.ScenesIndex, sn),
+            CharactersOnScreen = CollectSceneCharacters(s, clips),
+            LocationIds = locs,
+            PrimaryLocationId = primaryLoc,
+            PrimaryLocationLocked = !string.IsNullOrWhiteSpace(primaryLoc) &&
+                ResolveLocationRefPath(projectId, primaryLoc) is not null,
+            Status = SceneStatusLabel(nClips, onDisk, complete),
+            IsApproved = ctx.ApprovedScenes?.Contains($"S{sn:D2}") == true,
+            HasBackgroundMusic = ctx.MusicScenes.Contains(sn),
+        };
+    }
+
+    private static List<JsonElement> SceneClipElements(JsonElement s) =>
+        s.TryGetProperty(StoreLit.VeoClips, out var vc) && vc.ValueKind == JsonValueKind.Array
+            ? vc.EnumerateArray().ToList()
+            : new List<JsonElement>();
+
+    private static int CountClipsOnDisk(Dictionary<string, long> videoIndex, int sn, List<JsonElement> clips)
+    {
+        var onDisk = 0;
+        foreach (var c in clips)
+        {
+            var cn = ClipKeying.ClipNumber(c);
+            if (cn <= 0) continue;
+            if (ClipOnDisk(videoIndex, sn, cn))
+                onDisk++;
+        }
+        return onDisk;
+    }
+
+    private static double? ReadOptionalDuration(JsonElement s, string name)
+    {
+        if (!s.TryGetProperty(name, out var dEl))
+            return null;
+        if (dEl.TryGetDouble(out var dd)) return dd;
+        if (dEl.TryGetInt32(out var di)) return di;
+        return null;
+    }
+
+    private async Task<double?> ProbeSceneActualDurationAsync(
+        string projectId, int sn, List<JsonElement> clips, bool probeDurations, CancellationToken ct)
+    {
+        if (!probeDurations || _duration is null)
+            return null;
+        var compositePath = ResolveCompositePath(projectId, sn);
+        var clipPaths = new List<string>();
+        foreach (var c in clips)
+        {
+            var cn = ClipKeying.ClipNumber(c);
+            if (cn <= 0) continue;
+            var cp = ResolveClipVideoPath(projectId, sn, cn);
+            if (cp is not null) clipPaths.Add(cp);
+        }
+        return await _duration.GetSceneActualDurationSecondsAsync(compositePath, clipPaths, ct).ConfigureAwait(false);
+    }
+
+    private static List<string> CollectSceneCharacters(JsonElement s, List<JsonElement> clips)
+    {
+        var chars = new List<string>();
+        AddUniqueJsonStrings(s, StoreLit.CharactersOnScreen, chars);
+        // Scene-level characters_on_screen can lag clip-level casts (e.g. a character who
+        // only appears mid-scene in specific clips) — union in each clip's own list too.
+        foreach (var c in clips)
+            AddUniqueJsonStrings(c, StoreLit.CharactersOnScreen, chars);
+        return chars;
+    }
+
+    private static void AddUniqueJsonStrings(JsonElement el, string prop, List<string> into)
+    {
+        if (!el.TryGetProperty(prop, out var arr) || arr.ValueKind != JsonValueKind.Array)
+            return;
+        foreach (var x in arr.EnumerateArray())
+        {
+            var name = x.GetString();
+            if (!string.IsNullOrWhiteSpace(name) && !into.Contains(name, StringComparer.OrdinalIgnoreCase))
+                into.Add(name);
+        }
+    }
+
+    private static (List<string> Locs, string? Primary) CollectSceneLocations(JsonElement s)
+    {
+        var locs = JsonStringList(s, StoreLit.LocationIds);
+        string? primaryLoc = null;
+        if (s.TryGetProperty(StoreLit.PrimaryLocationId, out var pl) &&
+            pl.GetString() is { Length: > 0 } plId)
+        {
+            primaryLoc = plId;
+            if (!locs.Contains(plId, StringComparer.OrdinalIgnoreCase))
+                locs.Insert(0, plId);
+        }
+        return (locs, primaryLoc);
+    }
+
+    private static List<string> JsonStringList(JsonElement el, string name)
+    {
+        var list = new List<string>();
+        if (!el.TryGetProperty(name, out var arr) || arr.ValueKind != JsonValueKind.Array)
+            return list;
+        foreach (var x in arr.EnumerateArray())
+        {
+            var s = x.GetString();
+            if (!string.IsNullOrWhiteSpace(s))
+                list.Add(s);
+        }
+        return list;
+    }
+
+    private static string SceneSettingLabel(JsonElement s)
+    {
+        var settingText = JsonStr(s, StoreLit.Setting);
+        var headingText = JsonStr(s, "scene_heading");
+        var isCredits = IsCreditsScene(s);
+        // Credits scenes carry a scene_heading, not a setting — show a clear label instead of a blank cell.
+        if (!string.IsNullOrWhiteSpace(settingText))
+            return settingText;
+        return isCredits ? "END CREDITS" : headingText;
+    }
+
+    private static string SceneStatusLabel(int nClips, int onDisk, bool complete)
+    {
+        if (nClips == 0 || onDisk == 0)
+            return "empty";
+        return complete ? "complete" : "partial";
+    }
+
+    private int CountStaleClips(
+        string projectId, JsonElement s, int sn, int onDisk, Dictionary<string, long> videoIndex)
+    {
+        try
+        {
+            var bpPathForStale = FindBlueprintPathSync(projectId);
+            if (onDisk <= 0 || bpPathForStale is null || !File.Exists(bpPathForStale)
+                || !s.TryGetProperty(StoreLit.Clips, out var clipsElStale) || clipsElStale.ValueKind != JsonValueKind.Array)
+                return 0;
+            var bpM = File.GetLastWriteTimeUtc(bpPathForStale);
+            var staleClipCount = 0;
+            foreach (var cEl in clipsElStale.EnumerateArray())
+            {
+                if (!cEl.TryGetProperty(JsonKeys.ClipNumber, out var cnEl) || !cnEl.TryGetInt32(out var cn2))
+                    continue;
+                if (!ClipOnDisk(videoIndex, sn, cn2)) continue;
+                var path = ResolveClipVideoPath(projectId, sn, cn2);
+                if (path is null || !File.Exists(path)) continue;
+                if (bpM > File.GetLastWriteTimeUtc(path).AddSeconds(2))
+                    staleClipCount++;
+            }
+            return staleClipCount;
+        }
+        catch
+        {
+            return 0;
         }
     }
 
@@ -5268,293 +5509,62 @@ public sealed partial class ProjectStore
 
         try
         {
-        if (bp is null)
-            return null;
-
-        JsonElement? sceneEl = null;
-        if (bp.RootElement.TryGetProperty(StoreLit.Scenes, out var scenesEl) &&
-            scenesEl.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var s in scenesEl.EnumerateArray())
-            {
-                if (s.TryGetProperty(JsonKeys.SceneNumber, out var snEl) &&
-                    snEl.TryGetInt32(out var sn) &&
-                    sn == sceneNumber)
-                {
-                    sceneEl = s.Clone();
-                    break;
-                }
-            }
+            if (bp is null)
+                return null;
+            var sceneEl = FindSceneElement(bp.RootElement, sceneNumber);
+            if (sceneEl is null)
+                return null;
+            return await BuildSceneDetailAsync(projectId, sceneNumber, sceneEl.Value, probeDurations, ct)
+                .ConfigureAwait(false);
         }
+        finally
+        {
+            owned?.Dispose();
+        }
+    }
 
-        if (sceneEl is null)
-            return null;
-
-        var sEl = sceneEl.Value;
+    private async Task<SceneDetail> BuildSceneDetailAsync(
+        string projectId,
+        int sceneNumber,
+        JsonElement sEl,
+        bool probeDurations,
+        CancellationToken ct)
+    {
         var projectDir = await GetProjectDirAsync(projectId, ct).ConfigureAwait(false);
         var videoDir = Path.Combine(projectDir, StoreLit.Assets, StoreLit.Video);
         var scenesDir = Path.Combine(projectDir, StoreLit.Assets, StoreLit.Scenes);
         var videoIndex = await GetVideoIndexWithParentFallbackAsync(projectId, videoDir, ct).ConfigureAwait(false);
         var scenesIndex = await GetDirIndexAsync(scenesDir, ct).ConfigureAwait(false);
 
-        var clips = new List<ClipSummary>();
-        var duplicateClipNumbers = new List<int>();
-        var seenClipNumbers = new HashSet<int>();
-        if (sEl.TryGetProperty(StoreLit.VeoClips, out var vc) && vc.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var c in vc.EnumerateArray())
-            {
-                var cn = ClipKeying.ClipNumber(c);
-                if (cn <= 0) continue;
-
-                // Malformed shot plan: the same clip_number twice would double the scene when stitched
-                // (one file per veo_clips entry). Keep the first, drop the rest so existing movies still
-                // work, and flag it (SceneDetail.DuplicateClipNumbers) so an admin surface can show it
-                // rather than hiding it. The shot-plan write path throws on this at the source.
-                if (!seenClipNumbers.Add(cn))
-                {
-                    if (!duplicateClipNumbers.Contains(cn)) duplicateClipNumbers.Add(cn);
-                    Console.WriteLine($"[blueprint] {projectId} scene {sceneNumber}: duplicate clip_number {cn} in veo_clips — deduped (kept first).");
-                    continue;
-                }
-
-                var fileName = $"scene_{sceneNumber:D2}_clip_{cn:D2}.mp4";
-                var onDisk = ClipOnDisk(videoIndex, sceneNumber, cn);
-                long size = 0;
-                if (onDisk)
-                {
-                    if (videoIndex.TryGetValue(fileName, out var sz))
-                        size = sz;
-                    else
-                    {
-                        var prefix = $"scene_{sceneNumber:D2}_clip_{cn:D2}_take_";
-                        var takeMatch = videoIndex.FirstOrDefault(kv => kv.Key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && kv.Key.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase));
-                        if (!string.IsNullOrEmpty(takeMatch.Key)) size = takeMatch.Value;
-                    }
-                }
-
-                var dialogue = "";
-                string? speaker = null;
-                string? delivery = null;
-                string? pronunciationHint = null;
-                string? secondarySpeaker = null;
-                string? secondaryDialogue = null;
-                var hasAp = c.TryGetProperty(JsonKeys.AudioPayload, out var ap) && ap.ValueKind == JsonValueKind.Object;
-                if (hasAp)
-                {
-                    if (ap.TryGetProperty(JsonKeys.Dialogue, out var d))
-                        dialogue = d.GetString() ?? "";
-                    if (ap.TryGetProperty(JsonKeys.Speaker, out var sp))
-                        speaker = sp.GetString();
-                    if (ap.TryGetProperty(StoreLit.Delivery, out var del))
-                        delivery = del.GetString();
-                    if (ap.TryGetProperty("pronunciation_hint", out var ph))
-                        pronunciationHint = ph.GetString();
-                    // Second speaker's line in a cross-speaker two-hander clip (else absent).
-                    if (ap.TryGetProperty("secondary_speaker", out var ssp))
-                        secondarySpeaker = ssp.GetString();
-                    if (ap.TryGetProperty("secondary_dialogue", out var sdlg))
-                        secondaryDialogue = sdlg.GetString();
-                }
-                if (string.IsNullOrWhiteSpace(dialogue) && c.TryGetProperty(JsonKeys.Dialogue, out var rootD))
-                {
-                    dialogue = rootD.GetString() ?? "";
-                }
-                if (string.IsNullOrWhiteSpace(dialogue) && c.TryGetProperty(StoreLit.AudioScript, out var rootAS))
-                {
-                    dialogue = rootAS.GetString() ?? "";
-                }
-                if (string.IsNullOrWhiteSpace(speaker) && c.TryGetProperty(JsonKeys.Speaker, out var rootSp))
-                {
-                    speaker = rootSp.GetString();
-                }
-                if (string.IsNullOrWhiteSpace(delivery) && c.TryGetProperty(StoreLit.Delivery, out var rootDel))
-                {
-                    delivery = rootDel.GetString();
-                }
-                if (string.IsNullOrWhiteSpace(pronunciationHint) && c.TryGetProperty("pronunciation_hint", out var rootPh))
-                {
-                    pronunciationHint = rootPh.GetString();
-                }
-                // Speech-safe form for operator UI (same helper as video gen payload)
-                dialogue = ClipVideoPromptBuilder.SanitizeSpokenDialogue(dialogue);
-
-                var dur = 0;
-                if (c.TryGetProperty(StoreLit.DurationSeconds, out var dEl) && dEl.TryGetInt32(out var ds))
-                    dur = ds;
-
-                var clipPath = onDisk ? ResolveClipVideoPath(projectId, sceneNumber, cn) : null;
-                var resolvedFileName = clipPath is not null ? Path.GetFileName(clipPath) : fileName;
-
-                double? actualClip = null;
-                if (probeDurations && onDisk && _duration is not null && clipPath is not null)
-                {
-                    actualClip = await _duration.GetDurationSecondsAsync(clipPath, ct).ConfigureAwait(false);
-                }
-
-                var visualPrompt = c.TryGetProperty(StoreLit.VisualPrompt, out var vp) ? vp.GetString() ?? "" : "";
-                visualPrompt = ClipVideoPromptBuilder.SanitizeSpokenQuotesInVisual(visualPrompt);
-
-                var stage1BeatId = c.TryGetProperty("stage1_beat_id", out var s1b) ? s1b.GetString() : null;
-                var stage1BeatIds = c.TryGetProperty("stage1_beat_ids", out var s1bs) &&
-                                    s1bs.ValueKind == JsonValueKind.Array
-                    ? s1bs.EnumerateArray()
-                        .Select(x => x.GetString())
-                        .OfType<string>()
-                        .Where(x => !string.IsNullOrWhiteSpace(x))
-                        .ToList()
-                    : new List<string>();
-                // E3 write-through: fill stable beat id from content when blueprint lacks it
-                if (string.IsNullOrWhiteSpace(stage1BeatId) &&
-                    (!string.IsNullOrWhiteSpace(dialogue) || !string.IsNullOrWhiteSpace(visualPrompt)))
-                {
-                    var kind = string.IsNullOrWhiteSpace(dialogue) ? "action" : JsonKeys.Dialogue;
-                    stage1BeatId = PageToMovie.Core.Utils.StableBeatId.ForContent(
-                        $"S{sceneNumber:D2}", kind, speaker, string.IsNullOrWhiteSpace(dialogue) ? visualPrompt : dialogue);
-                }
-                if (stage1BeatIds.Count == 0 && !string.IsNullOrWhiteSpace(stage1BeatId))
-                    stage1BeatIds.Add(stage1BeatId);
-
-                var dialogueVer = await LoadClipDialogueVerificationAsync(projectDir, sceneNumber, cn, ct).ConfigureAwait(false);
-                var (isStale, staleReason) = EvaluateClipStale(
-                    onDisk, clipPath, dialogueVer, FindBlueprintPathSync(projectId));
-
-                clips.Add(new ClipSummary
-                {
-                    ClipNumber = cn,
-                    Timestamp = c.TryGetProperty("timestamp", out var ts) ? ts.GetString() ?? "" : "",
-                    DurationSeconds = dur,
-                    ActualDurationSeconds = actualClip,
-                    Continuation = c.TryGetProperty("veo_continuation_source", out var cont)
-                        ? cont.GetString() ?? "none"
-                        : "none",
-                    PrimarySubject = c.TryGetProperty("primary_subject", out var ps)
-                        ? ps.GetString() ?? ""
-                        : "",
-                    VisualPrompt = visualPrompt,
-                    NegativePrompt = c.TryGetProperty("negative_prompt", out var np) ? np.GetString() ?? "" : "",
-                    Dialogue = dialogue,
-                    Speaker = speaker,
-                    Delivery = delivery,
-                    SecondarySpeaker = secondarySpeaker,
-                    SecondaryDialogue = string.IsNullOrWhiteSpace(secondaryDialogue)
-                        ? secondaryDialogue
-                        : ClipVideoPromptBuilder.SanitizeSpokenDialogue(secondaryDialogue),
-                    PronunciationHint = pronunciationHint,
-                    CharactersOnScreen = c.TryGetProperty(StoreLit.CharactersOnScreen, out var clipCos) &&
-                                         clipCos.ValueKind == JsonValueKind.Array
-                        ? clipCos.EnumerateArray()
-                            .Select(x => x.GetString())
-                            .Where(x => !string.IsNullOrWhiteSpace(x))
-                            .Select(x => x)
-                            .ToList()
-                        : new List<string>(),
-                    ColorPalette = c.TryGetProperty("color_palette", out var cp) ? cp.GetString() : null,
-                    FilmStock = c.TryGetProperty("film_stock", out var fs) ? fs.GetString() : null,
-                    OnDisk = onDisk,
-                    SizeBytes = size,
-                    FileName = onDisk ? resolvedFileName : null,
-                    VideoUrl = onDisk
-                        ? $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes/{sceneNumber}/clips/{cn}/video"
-                        : null,
-                    DialogueVerification = dialogueVer,
-                    Stage1BeatId = stage1BeatId,
-                    Stage1BeatIds = stage1BeatIds,
-                    IsStale = isStale,
-                    StaleReason = staleReason,
-                });
-            }
-        }
-
+        var (clips, duplicateClipNumbers) = await CollectSceneClipSummariesAsync(
+            projectId, sceneNumber, projectDir, sEl, videoIndex, probeDurations, ct).ConfigureAwait(false);
         clips = clips.OrderBy(c => c.ClipNumber).ToList();
-        var onDiskCount = clips.Count(c => c.OnDisk);
 
+        var planned = ReadOptionalDuration(sEl, "total_estimated_duration_seconds");
+        var actual = await ProbeSceneDetailActualAsync(projectId, sceneNumber, clips, probeDurations, ct)
+            .ConfigureAwait(false);
         var compositeOk = HasCompositeFile(videoIndex, scenesIndex, sceneNumber);
-
-        double? planned = null;
-        if (sEl.TryGetProperty("total_estimated_duration_seconds", out var td))
-        {
-            if (td.TryGetDouble(out var dd)) planned = dd;
-            else if (td.TryGetInt32(out var di)) planned = di;
-        }
-
-        double? actual = null;
-        if (probeDurations && _duration is not null)
-        {
-            var compositePath = ResolveCompositePath(projectId, sceneNumber);
-            var clipPaths = clips
-                .Where(c => c.OnDisk)
-                .Select(c => ResolveClipVideoPath(projectId, sceneNumber, c.ClipNumber))
-                .OfType<string>();
-            actual = await _duration.GetSceneActualDurationSecondsAsync(compositePath, clipPaths, ct).ConfigureAwait(false);
-        }
-
-        var chars = new List<string>();
-        if (sEl.TryGetProperty(StoreLit.CharactersOnScreen, out var cos) && cos.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var x in cos.EnumerateArray())
-            {
-                var name = x.GetString();
-                if (!string.IsNullOrWhiteSpace(name))
-                    chars.Add(name);
-            }
-        }
-
-        var locs = new List<string>();
-        if (sEl.TryGetProperty(StoreLit.LocationIds, out var lids) && lids.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var x in lids.EnumerateArray())
-            {
-                var name = x.GetString();
-                if (!string.IsNullOrWhiteSpace(name))
-                    locs.Add(name);
-            }
-        }
-
-        // Music now lives client-side only (see MediaSyncLocator note on ClipOnDisk) — the
-        // registry row is the source of truth, not a server-side file that no longer exists.
         var hasMusic = _mediaRegistry is not null &&
             await _mediaRegistry.HasSceneMusicAsync(projectId, sceneNumber, ct).ConfigureAwait(false);
-
-        MusicScoreInfo? musicScore = null;
-        if (sEl.TryGetProperty("music_score", out var msEl) && msEl.ValueKind == JsonValueKind.Object)
-        {
-            musicScore = new MusicScoreInfo
-            {
-                Prompt = msEl.TryGetProperty("prompt", out var msp) ? msp.GetString() ?? "" : "",
-                Genre = msEl.TryGetProperty("genre", out var msg) ? msg.GetString() : null,
-                Mood = msEl.TryGetProperty("mood", out var msm) ? msm.GetString() : null,
-                Tempo = msEl.TryGetProperty("tempo", out var mst) ? mst.GetString() : null,
-            };
-        }
-        else if (sEl.TryGetProperty("music_prompt", out var mpEl) && mpEl.ValueKind == JsonValueKind.String)
-        {
-            musicScore = new MusicScoreInfo
-            {
-                Prompt = mpEl.GetString() ?? ""
-            };
-        }
 
         var detail = new SceneDetail
         {
             SceneNumber = sceneNumber,
-            Setting = sEl.TryGetProperty(StoreLit.Setting, out var set) ? set.GetString() ?? "" : "",
+            Setting = JsonStr(sEl, StoreLit.Setting),
             PlannedDurationSeconds = planned,
             ActualDurationSeconds = actual,
             DurationSeconds = actual ?? planned,
             ClipCount = clips.Count,
-            ClipsOnDisk = onDiskCount,
+            ClipsOnDisk = clips.Count(c => c.OnDisk),
             CompositeExists = compositeOk,
             HasBackgroundMusic = hasMusic,
-            MusicScore = musicScore,
+            MusicScore = ReadMusicScore(sEl),
             CompositeUrl = compositeOk
                 ? $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes/{sceneNumber}/composite"
                 : null,
-            CharactersOnScreen = chars,
-            LocationIds = locs,
-            PrimaryLocationId = sEl.TryGetProperty(StoreLit.PrimaryLocationId, out var pl)
-                ? pl.GetString()
-                : null,
+            CharactersOnScreen = JsonStringList(sEl, StoreLit.CharactersOnScreen),
+            LocationIds = JsonStringList(sEl, StoreLit.LocationIds),
+            PrimaryLocationId = JsonStrOrNull(sEl, StoreLit.PrimaryLocationId),
             PrimaryLocationLocked = false,
             Clips = clips,
             DuplicateClipNumbers = duplicateClipNumbers,
@@ -5563,11 +5573,249 @@ public sealed partial class ProjectStore
             detail.PrimaryLocationLocked =
                 ResolveLocationRefPath(projectId, detail.PrimaryLocationId) is not null;
         return detail;
-        }
-        finally
+    }
+
+    private async Task<double?> ProbeSceneDetailActualAsync(
+        string projectId, int sceneNumber, List<ClipSummary> clips, bool probeDurations, CancellationToken ct)
+    {
+        if (!probeDurations || _duration is null)
+            return null;
+        var compositePath = ResolveCompositePath(projectId, sceneNumber);
+        var clipPaths = clips
+            .Where(c => c.OnDisk)
+            .Select(c => ResolveClipVideoPath(projectId, sceneNumber, c.ClipNumber))
+            .OfType<string>();
+        return await _duration.GetSceneActualDurationSecondsAsync(compositePath, clipPaths, ct).ConfigureAwait(false);
+    }
+
+    private static MusicScoreInfo? ReadMusicScore(JsonElement sEl)
+    {
+        if (sEl.TryGetProperty("music_score", out var msEl) && msEl.ValueKind == JsonValueKind.Object)
         {
-            owned?.Dispose();
+            return new MusicScoreInfo
+            {
+                Prompt = JsonStr(msEl, "prompt"),
+                Genre = JsonStrOrNull(msEl, "genre"),
+                Mood = JsonStrOrNull(msEl, "mood"),
+                Tempo = JsonStrOrNull(msEl, "tempo"),
+            };
         }
+        if (sEl.TryGetProperty("music_prompt", out var mpEl) && mpEl.ValueKind == JsonValueKind.String)
+            return new MusicScoreInfo { Prompt = mpEl.GetString() ?? "" };
+        return null;
+    }
+
+    private async Task<(List<ClipSummary> Clips, List<int> Duplicates)> CollectSceneClipSummariesAsync(
+        string projectId,
+        int sceneNumber,
+        string projectDir,
+        JsonElement sEl,
+        Dictionary<string, long> videoIndex,
+        bool probeDurations,
+        CancellationToken ct)
+    {
+        var clips = new List<ClipSummary>();
+        var duplicateClipNumbers = new List<int>();
+        var seenClipNumbers = new HashSet<int>();
+        if (!sEl.TryGetProperty(StoreLit.VeoClips, out var vc) || vc.ValueKind != JsonValueKind.Array)
+            return (clips, duplicateClipNumbers);
+
+        foreach (var c in vc.EnumerateArray())
+        {
+            var cn = ClipKeying.ClipNumber(c);
+            if (cn <= 0) continue;
+
+            // Malformed shot plan: the same clip_number twice would double the scene when stitched
+            // (one file per veo_clips entry). Keep the first, drop the rest so existing movies still
+            // work, and flag it (SceneDetail.DuplicateClipNumbers) so an admin surface can show it
+            // rather than hiding it. The shot-plan write path throws on this at the source.
+            if (!seenClipNumbers.Add(cn))
+            {
+                if (!duplicateClipNumbers.Contains(cn)) duplicateClipNumbers.Add(cn);
+                Console.WriteLine($"[blueprint] {projectId} scene {sceneNumber}: duplicate clip_number {cn} in veo_clips — deduped (kept first).");
+                continue;
+            }
+
+            clips.Add(await BuildClipSummaryAsync(
+                projectId, sceneNumber, projectDir, c, cn, videoIndex, probeDurations, ct).ConfigureAwait(false));
+        }
+        return (clips, duplicateClipNumbers);
+    }
+
+    private async Task<ClipSummary> BuildClipSummaryAsync(
+        string projectId,
+        int sceneNumber,
+        string projectDir,
+        JsonElement c,
+        int cn,
+        Dictionary<string, long> videoIndex,
+        bool probeDurations,
+        CancellationToken ct)
+    {
+        var fileName = $"scene_{sceneNumber:D2}_clip_{cn:D2}.mp4";
+        var onDisk = ClipOnDisk(videoIndex, sceneNumber, cn);
+        var size = ResolveClipSizeOnDisk(videoIndex, fileName, sceneNumber, cn, onDisk);
+        var audio = ParseClipAudio(c);
+        var dur = 0;
+        if (c.TryGetProperty(StoreLit.DurationSeconds, out var dEl) && dEl.TryGetInt32(out var ds))
+            dur = ds;
+
+        var clipPath = onDisk ? ResolveClipVideoPath(projectId, sceneNumber, cn) : null;
+        var resolvedFileName = clipPath is not null ? Path.GetFileName(clipPath) : fileName;
+        double? actualClip = null;
+        if (probeDurations && onDisk && _duration is not null && clipPath is not null)
+            actualClip = await _duration.GetDurationSecondsAsync(clipPath, ct).ConfigureAwait(false);
+
+        var visualPrompt = ClipVideoPromptBuilder.SanitizeSpokenQuotesInVisual(JsonStr(c, StoreLit.VisualPrompt));
+        var (stage1BeatId, stage1BeatIds) = ResolveStage1BeatIds(c, sceneNumber, audio.Dialogue, audio.Speaker, visualPrompt);
+        var dialogueVer = await LoadClipDialogueVerificationAsync(projectDir, sceneNumber, cn, ct).ConfigureAwait(false);
+        var (isStale, staleReason) = EvaluateClipStale(
+            onDisk, clipPath, dialogueVer, FindBlueprintPathSync(projectId));
+
+        return new ClipSummary
+        {
+            ClipNumber = cn,
+            Timestamp = JsonStr(c, "timestamp"),
+            DurationSeconds = dur,
+            ActualDurationSeconds = actualClip,
+            Continuation = JsonStr(c, "veo_continuation_source", "none"),
+            PrimarySubject = JsonStr(c, "primary_subject"),
+            VisualPrompt = visualPrompt,
+            NegativePrompt = JsonStr(c, "negative_prompt"),
+            Dialogue = audio.Dialogue,
+            Speaker = audio.Speaker,
+            Delivery = audio.Delivery,
+            SecondarySpeaker = audio.SecondarySpeaker,
+            SecondaryDialogue = string.IsNullOrWhiteSpace(audio.SecondaryDialogue)
+                ? audio.SecondaryDialogue
+                : ClipVideoPromptBuilder.SanitizeSpokenDialogue(audio.SecondaryDialogue),
+            PronunciationHint = audio.PronunciationHint,
+            CharactersOnScreen = JsonStringList(c, StoreLit.CharactersOnScreen),
+            ColorPalette = JsonStrOrNull(c, "color_palette"),
+            FilmStock = JsonStrOrNull(c, "film_stock"),
+            OnDisk = onDisk,
+            SizeBytes = size,
+            FileName = onDisk ? resolvedFileName : null,
+            VideoUrl = onDisk
+                ? $"/api/projects/{Uri.EscapeDataString(projectId)}/scenes/{sceneNumber}/clips/{cn}/video"
+                : null,
+            DialogueVerification = dialogueVer,
+            Stage1BeatId = stage1BeatId,
+            Stage1BeatIds = stage1BeatIds,
+            IsStale = isStale,
+            StaleReason = staleReason,
+        };
+    }
+
+    private static string JsonStr(JsonElement info, string name, string fallback)
+    {
+        if (!info.TryGetProperty(name, out var v))
+            return fallback;
+        return v.GetString() ?? fallback;
+    }
+
+    private static long ResolveClipSizeOnDisk(
+        Dictionary<string, long> videoIndex, string fileName, int sceneNumber, int cn, bool onDisk)
+    {
+        if (!onDisk)
+            return 0;
+        if (videoIndex.TryGetValue(fileName, out var sz))
+            return sz;
+        var prefix = $"scene_{sceneNumber:D2}_clip_{cn:D2}_take_";
+        var takeMatch = videoIndex.FirstOrDefault(kv =>
+            kv.Key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) &&
+            kv.Key.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase));
+        return string.IsNullOrEmpty(takeMatch.Key) ? 0 : takeMatch.Value;
+    }
+
+    private readonly record struct ClipAudioFields(
+        string Dialogue,
+        string? Speaker,
+        string? Delivery,
+        string? PronunciationHint,
+        string? SecondarySpeaker,
+        string? SecondaryDialogue);
+
+    private static ClipAudioFields ParseClipAudio(JsonElement c)
+    {
+        var dialogue = "";
+        string? speaker = null;
+        string? delivery = null;
+        string? pronunciationHint = null;
+        string? secondarySpeaker = null;
+        string? secondaryDialogue = null;
+        if (c.TryGetProperty(JsonKeys.AudioPayload, out var ap) && ap.ValueKind == JsonValueKind.Object)
+            ApplyAudioPayload(ap, ref dialogue, ref speaker, ref delivery, ref pronunciationHint, ref secondarySpeaker, ref secondaryDialogue);
+        FillClipAudioFallbacks(c, ref dialogue, ref speaker, ref delivery, ref pronunciationHint);
+        dialogue = ClipVideoPromptBuilder.SanitizeSpokenDialogue(dialogue);
+        return new ClipAudioFields(dialogue, speaker, delivery, pronunciationHint, secondarySpeaker, secondaryDialogue);
+    }
+
+    private static void ApplyAudioPayload(
+        JsonElement ap,
+        ref string dialogue,
+        ref string? speaker,
+        ref string? delivery,
+        ref string? pronunciationHint,
+        ref string? secondarySpeaker,
+        ref string? secondaryDialogue)
+    {
+        if (ap.TryGetProperty(JsonKeys.Dialogue, out var d))
+            dialogue = d.GetString() ?? "";
+        if (ap.TryGetProperty(JsonKeys.Speaker, out var sp))
+            speaker = sp.GetString();
+        if (ap.TryGetProperty(StoreLit.Delivery, out var del))
+            delivery = del.GetString();
+        if (ap.TryGetProperty("pronunciation_hint", out var ph))
+            pronunciationHint = ph.GetString();
+        if (ap.TryGetProperty("secondary_speaker", out var ssp))
+            secondarySpeaker = ssp.GetString();
+        if (ap.TryGetProperty("secondary_dialogue", out var sdlg))
+            secondaryDialogue = sdlg.GetString();
+    }
+
+    private static void FillClipAudioFallbacks(
+        JsonElement c,
+        ref string dialogue,
+        ref string? speaker,
+        ref string? delivery,
+        ref string? pronunciationHint)
+    {
+        if (string.IsNullOrWhiteSpace(dialogue) && c.TryGetProperty(JsonKeys.Dialogue, out var rootD))
+            dialogue = rootD.GetString() ?? "";
+        if (string.IsNullOrWhiteSpace(dialogue) && c.TryGetProperty(StoreLit.AudioScript, out var rootAS))
+            dialogue = rootAS.GetString() ?? "";
+        if (string.IsNullOrWhiteSpace(speaker) && c.TryGetProperty(JsonKeys.Speaker, out var rootSp))
+            speaker = rootSp.GetString();
+        if (string.IsNullOrWhiteSpace(delivery) && c.TryGetProperty(StoreLit.Delivery, out var rootDel))
+            delivery = rootDel.GetString();
+        if (string.IsNullOrWhiteSpace(pronunciationHint) && c.TryGetProperty("pronunciation_hint", out var rootPh))
+            pronunciationHint = rootPh.GetString();
+    }
+
+    private static (string? BeatId, List<string> BeatIds) ResolveStage1BeatIds(
+        JsonElement c, int sceneNumber, string dialogue, string? speaker, string visualPrompt)
+    {
+        var stage1BeatId = JsonStrOrNull(c, "stage1_beat_id");
+        var stage1BeatIds = c.TryGetProperty("stage1_beat_ids", out var s1bs) &&
+                            s1bs.ValueKind == JsonValueKind.Array
+            ? s1bs.EnumerateArray()
+                .Select(x => x.GetString())
+                .OfType<string>()
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .ToList()
+            : new List<string>();
+        // E3 write-through: fill stable beat id from content when blueprint lacks it
+        if (string.IsNullOrWhiteSpace(stage1BeatId) &&
+            (!string.IsNullOrWhiteSpace(dialogue) || !string.IsNullOrWhiteSpace(visualPrompt)))
+        {
+            var kind = string.IsNullOrWhiteSpace(dialogue) ? "action" : JsonKeys.Dialogue;
+            stage1BeatId = PageToMovie.Core.Utils.StableBeatId.ForContent(
+                $"S{sceneNumber:D2}", kind, speaker, string.IsNullOrWhiteSpace(dialogue) ? visualPrompt : dialogue);
+        }
+        if (stage1BeatIds.Count == 0 && !string.IsNullOrWhiteSpace(stage1BeatId))
+            stage1BeatIds.Add(stage1BeatId);
+        return (stage1BeatId, stage1BeatIds);
     }
 
     private Task<ClipDialogueVerificationResult?> LoadClipDialogueVerificationAsync(
@@ -5850,52 +6098,9 @@ public sealed partial class ProjectStore
             var missing = new List<string>();
             foreach (var c in rows)
             {
-                // Unused-in-plan seeds don't block readiness (they're hidden from Cast UI by default).
                 if (!c.UsedInPlan)
                     continue;
-                var hasVoice = !string.IsNullOrWhiteSpace(c.VoiceProfile);
-                // Voice-only: need voice profile, no portrait.
-                // Group/chorus: production extras — not shown on Characters UI; never block readiness.
-                if (c.IsGroup)
-                {
-                    ready++;
-                    continue;
-                }
-                if (c.VoiceOnly)
-                {
-                    if (hasVoice)
-                        ready++;
-                    else
-                        missing.Add(c.Key);
-                    continue;
-                }
-
-                // A SILENT non-human seed (animal that never speaks) does NOT require a voice — only a locked
-                // image if it appears on screen. A talking animal (has dialogue) is a speaking role and needs
-                // a voice like any speaker, so it falls through below. Mirrors GetCastNotReadyForVideo so this
-                // readiness gate (Scenes "Cast incomplete" banner + Generate button) agrees with the spend gate.
-                var isNonHuman = c.SpeciesKind is { Length: > 0 } sk
-                    && !sk.Trim().Equals("human", StringComparison.OrdinalIgnoreCase);
-                if (isNonHuman && !c.Speaks && !hasVoice)
-                {
-                    // G3 draft: plates optional even for silent non-humans
-                    if (c.Locked || platesOptional)
-                        ready++;
-                    else
-                        missing.Add(c.Key);
-                    continue;
-                }
-
-                // Locked only — HasPreferred can be unlocked variant_01 and is not enough to spend on video.
-                // G3 draft: require voice (when speaking) but plates optional.
-                if (platesOptional)
-                {
-                    if (hasVoice)
-                        ready++;
-                    else
-                        missing.Add(c.Key);
-                }
-                else if (c.Locked && hasVoice)
+                if (CharacterCountsAsReady(c, platesOptional))
                     ready++;
                 else
                     missing.Add(c.Key);
@@ -5914,6 +6119,37 @@ public sealed partial class ProjectStore
         }
 
         return status;
+    }
+
+    private static bool IsSilentNonHumanWithoutVoice(CharacterSummary c)
+    {
+        var isNonHuman = c.SpeciesKind is { Length: > 0 } sk
+            && !sk.Trim().Equals("human", StringComparison.OrdinalIgnoreCase);
+        return isNonHuman && !c.Speaks && string.IsNullOrWhiteSpace(c.VoiceProfile);
+    }
+
+    private static bool CharacterCountsAsReady(CharacterSummary c, bool platesOptional)
+    {
+        var hasVoice = !string.IsNullOrWhiteSpace(c.VoiceProfile);
+        // Voice-only: need voice profile, no portrait.
+        // Group/chorus: production extras — not shown on Characters UI; never block readiness.
+        if (c.IsGroup)
+            return true;
+        if (c.VoiceOnly)
+            return hasVoice;
+
+        // A SILENT non-human seed (animal that never speaks) does NOT require a voice — only a locked
+        // image if it appears on screen. A talking animal (has dialogue) is a speaking role and needs
+        // a voice like any speaker, so it falls through below. Mirrors GetCastNotReadyForVideo so this
+        // readiness gate (Scenes "Cast incomplete" banner + Generate button) agrees with the spend gate.
+        if (IsSilentNonHumanWithoutVoice(c))
+            return c.Locked || platesOptional;
+
+        // Locked only — HasPreferred can be unlocked variant_01 and is not enough to spend on video.
+        // G3 draft: require voice (when speaking) but plates optional.
+        if (platesOptional)
+            return hasVoice;
+        return c.Locked && hasVoice;
     }
 
     /// <summary>G3/G4 — true when project production_mode is draft (plates optional).</summary>
@@ -6065,99 +6301,146 @@ public sealed partial class ProjectStore
         var bookPath = Path.Combine(source, "book_full.txt");
         var metaPath = Path.Combine(source, "extract_meta.json");
         var imgDir = Path.Combine(source, "book_images");
-
-        string? pdfName = null;
-        if (Directory.Exists(source))
-        {
-            try
-            {
-                // One DirectoryInfo scan (Length already available; avoid re-stat via FileInfo).
-                pdfName = new DirectoryInfo(source).EnumerateFiles()
-                    .Where(f => f.Extension.Equals(".pdf", StringComparison.OrdinalIgnoreCase))
-                    .OrderBy(f => f.Name.Contains("nick", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
-                    .ThenByDescending(f => f.Length)
-                    .Select(f => f.Name)
-                    .FirstOrDefault();
-            }
-            catch { /* ignore */ }
-        }
+        var pdfName = FindSourcePdfName(source);
+        var bookExists = File.Exists(bookPath);
 
         var status = new BookSourceStatus
         {
             PdfExists = !string.IsNullOrEmpty(pdfName),
             PdfName = pdfName,
-            BookTextExists = File.Exists(bookPath),
-            BookTextPath = File.Exists(bookPath) ? bookPath : null,
-            BookTextBytes = File.Exists(bookPath) ? new FileInfo(bookPath).Length : 0,
+            BookTextExists = bookExists,
+            BookTextPath = bookExists ? bookPath : null,
+            BookTextBytes = bookExists ? new FileInfo(bookPath).Length : 0,
+            PageImageCount = CountBookPageImages(imgDir),
         };
 
-        if (Directory.Exists(imgDir))
+        ApplyExtractMeta(status, metaPath);
+        OverlayRuntimeConfig(status, projectId);
+        ResolveReadyForStage1(status, metaPath);
+        FillBookPreview(status, bookPath);
+        UnlockStage1IfScenesExist(status, projectDir);
+        return status;
+    }
+
+    private static string? FindSourcePdfName(string source)
+    {
+        if (!Directory.Exists(source))
+            return null;
+        try
         {
-            try
-            {
-                status.PageImageCount = new DirectoryInfo(imgDir).EnumerateFiles()
-                    .Count(f =>
-                    {
-                        var e = f.Extension.ToLowerInvariant();
-                        return e is ".jpg" or ".jpeg" or ".png" or ".webp";
-                    });
-            }
-            catch { /* ignore */ }
+            // One DirectoryInfo scan (Length already available; avoid re-stat via FileInfo).
+            return new DirectoryInfo(source).EnumerateFiles()
+                .Where(f => f.Extension.Equals(".pdf", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(f => f.Name.Contains("nick", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                .ThenByDescending(f => f.Length)
+                .Select(f => f.Name)
+                .FirstOrDefault();
         }
-
-        if (File.Exists(metaPath))
+        catch
         {
-            try
-            {
-                using var doc = JsonDocument.Parse(File.ReadAllText(metaPath));
-                var root = doc.RootElement;
-                status.TextQuality = root.TryGetProperty("text_quality", out var tq) ? tq.GetString() : null;
-                if (root.TryGetProperty("book_kind", out var bk) && bk.ValueKind == JsonValueKind.String && Enum.TryParse<SourceDocumentType>(bk.GetString(), ignoreCase: true, out var parsedKind))
-                    status.BookKind = parsedKind;
-                status.TextEngine = root.TryGetProperty("text_engine", out var te) && Enum.TryParse<TextEngineKind>(te.GetString(), true, out var parsedTe) ? parsedTe : null;
-                if (root.TryGetProperty("text_words", out var tw) && tw.TryGetInt32(out var words))
-                    status.TextWords = words;
-                if (root.TryGetProperty("suggested_total_minutes", out var sm) && sm.TryGetInt32(out var mins))
-                    status.SuggestedTotalMinutes = mins;
-                if (root.TryGetProperty("natural_runtime_minutes", out var nr) && nr.TryGetInt32(out var nat))
-                    status.NaturalRuntimeMinutes = nat;
-                if (root.TryGetProperty("target_runtime_minutes", out var trm) && trm.TryGetInt32(out var tgt))
-                    status.TargetRuntimeMinutes = tgt;
-                else if (status.SuggestedTotalMinutes is int smv)
-                    status.TargetRuntimeMinutes = smv;
-                if (status.NaturalRuntimeMinutes is null && status.SuggestedTotalMinutes is int smv2)
-                    status.NaturalRuntimeMinutes = smv2;
-                if (root.TryGetProperty("runtime_mode", out var rmode) && rmode.ValueKind == JsonValueKind.String && Enum.TryParse<RuntimeMode>(rmode.GetString(), true, out var parsedRm))
-                    status.RuntimeMode = parsedRm;
-                if (root.TryGetProperty("suggested_chunk_pages", out var sc) && sc.TryGetInt32(out var chunks))
-                    status.SuggestedChunkPages = chunks;
-                if (root.TryGetProperty("ready_for_stage1", out var r) &&
-                    (r.ValueKind is JsonValueKind.True or JsonValueKind.False))
-                    status.ReadyForStage1 = r.GetBoolean();
-
-                if (root.TryGetProperty("analysis", out var an) && an.ValueKind == JsonValueKind.Object)
-                {
-                    if (an.TryGetProperty("garbage_score", out var gs) && gs.TryGetDouble(out var gsv))
-                        status.GarbageScore = gsv;
-                    if (string.IsNullOrEmpty(status.TextQuality) &&
-                        an.TryGetProperty("text_quality", out var atq))
-                        status.TextQuality = atq.GetString();
-                }
-
-                if (root.TryGetProperty("notes", out var notes) && notes.ValueKind == JsonValueKind.Array)
-                {
-                    foreach (var n in notes.EnumerateArray())
-                    {
-                        var s = n.GetString();
-                        if (!string.IsNullOrWhiteSpace(s))
-                            status.Notes.Add(s);
-                    }
-                }
-            }
-            catch { /* ignore */ }
+            return null;
         }
+    }
 
-        // Overlay user retarget from pipeline_config when present.
+    private static int CountBookPageImages(string imgDir)
+    {
+        if (!Directory.Exists(imgDir))
+            return 0;
+        try
+        {
+            return new DirectoryInfo(imgDir).EnumerateFiles()
+                .Count(f =>
+                {
+                    var e = f.Extension.ToLowerInvariant();
+                    return e is ".jpg" or ".jpeg" or ".png" or ".webp";
+                });
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    private static void ApplyExtractMeta(BookSourceStatus status, string metaPath)
+    {
+        if (!File.Exists(metaPath))
+            return;
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(metaPath));
+            ApplyExtractMetaRoot(status, doc.RootElement);
+        }
+        catch { /* ignore */ }
+    }
+
+    private static void ApplyExtractMetaRoot(BookSourceStatus status, JsonElement root)
+    {
+        status.TextQuality = root.TryGetProperty("text_quality", out var tq) ? tq.GetString() : null;
+        ApplyExtractMetaEnums(status, root);
+        ApplyExtractMetaInts(status, root);
+        ApplyExtractMetaAnalysis(status, root);
+        ApplyExtractMetaNotes(status, root);
+    }
+
+    private static void ApplyExtractMetaEnums(BookSourceStatus status, JsonElement root)
+    {
+        if (root.TryGetProperty("book_kind", out var bk) && bk.ValueKind == JsonValueKind.String &&
+            Enum.TryParse<SourceDocumentType>(bk.GetString(), ignoreCase: true, out var parsedKind))
+            status.BookKind = parsedKind;
+        status.TextEngine = root.TryGetProperty("text_engine", out var te) &&
+            Enum.TryParse<TextEngineKind>(te.GetString(), true, out var parsedTe)
+            ? parsedTe
+            : null;
+        if (root.TryGetProperty("runtime_mode", out var rmode) && rmode.ValueKind == JsonValueKind.String &&
+            Enum.TryParse<RuntimeMode>(rmode.GetString(), true, out var parsedRm))
+            status.RuntimeMode = parsedRm;
+        if (root.TryGetProperty("ready_for_stage1", out var r) &&
+            (r.ValueKind is JsonValueKind.True or JsonValueKind.False))
+            status.ReadyForStage1 = r.GetBoolean();
+    }
+
+    private static void ApplyExtractMetaInts(BookSourceStatus status, JsonElement root)
+    {
+        if (root.TryGetProperty("text_words", out var tw) && tw.TryGetInt32(out var words))
+            status.TextWords = words;
+        if (root.TryGetProperty("suggested_total_minutes", out var sm) && sm.TryGetInt32(out var mins))
+            status.SuggestedTotalMinutes = mins;
+        if (root.TryGetProperty("natural_runtime_minutes", out var nr) && nr.TryGetInt32(out var nat))
+            status.NaturalRuntimeMinutes = nat;
+        if (root.TryGetProperty("target_runtime_minutes", out var trm) && trm.TryGetInt32(out var tgt))
+            status.TargetRuntimeMinutes = tgt;
+        else if (status.SuggestedTotalMinutes is int smv)
+            status.TargetRuntimeMinutes = smv;
+        if (status.NaturalRuntimeMinutes is null && status.SuggestedTotalMinutes is int smv2)
+            status.NaturalRuntimeMinutes = smv2;
+        if (root.TryGetProperty("suggested_chunk_pages", out var sc) && sc.TryGetInt32(out var chunks))
+            status.SuggestedChunkPages = chunks;
+    }
+
+    private static void ApplyExtractMetaAnalysis(BookSourceStatus status, JsonElement root)
+    {
+        if (!root.TryGetProperty("analysis", out var an) || an.ValueKind != JsonValueKind.Object)
+            return;
+        if (an.TryGetProperty("garbage_score", out var gs) && gs.TryGetDouble(out var gsv))
+            status.GarbageScore = gsv;
+        if (string.IsNullOrEmpty(status.TextQuality) && an.TryGetProperty("text_quality", out var atq))
+            status.TextQuality = atq.GetString();
+    }
+
+    private static void ApplyExtractMetaNotes(BookSourceStatus status, JsonElement root)
+    {
+        if (!root.TryGetProperty("notes", out var notes) || notes.ValueKind != JsonValueKind.Array)
+            return;
+        foreach (var n in notes.EnumerateArray())
+        {
+            var s = n.GetString();
+            if (!string.IsNullOrWhiteSpace(s))
+                status.Notes.Add(s);
+        }
+    }
+
+    private void OverlayRuntimeConfig(BookSourceStatus status, string projectId)
+    {
         try
         {
             var cfg = GetConfigSync(projectId);
@@ -6170,81 +6453,95 @@ public sealed partial class ProjectStore
             if (cfg.TryGetValue("natural_runtime_minutes", out var cnr) &&
                 cnr.ValueKind == JsonValueKind.Number && cnr.TryGetInt32(out var cnat) && cnat > 0)
                 status.NaturalRuntimeMinutes = FilmRuntime.ClampMinutes(cnat);
-            if (cfg.TryGetValue("runtime_mode", out var crm) && crm.ValueKind == JsonValueKind.String && Enum.TryParse<RuntimeMode>(crm.GetString(), true, out var parsedRmCfg))
+            if (cfg.TryGetValue("runtime_mode", out var crm) && crm.ValueKind == JsonValueKind.String &&
+                Enum.TryParse<RuntimeMode>(crm.GetString(), true, out var parsedRmCfg))
                 status.RuntimeMode = parsedRmCfg;
             if (status.RuntimeMode is null &&
                 status.NaturalRuntimeMinutes is int n && status.TargetRuntimeMinutes is int tg)
                 status.RuntimeMode = tg == n ? RuntimeMode.Natural : tg < n ? RuntimeMode.Reduced : RuntimeMode.Custom;
         }
         catch { /* ignore */ }
+    }
 
+    private static void ResolveReadyForStage1(BookSourceStatus status, string metaPath)
+    {
         // Prefer extract_meta.ready_for_stage1 when present (set by BookPrepareService strategy).
         // Only fall back to heuristics when meta is missing or incomplete.
         var metaReadySet = File.Exists(metaPath) && status.TextQuality is not null;
         if (!status.BookTextExists)
         {
             status.ReadyForStage1 = false;
+            return;
         }
-        else if (!metaReadySet)
+        if (!metaReadySet)
         {
-            if (status.TextQuality is null && status.BookTextBytes > 200)
-            {
-                // No meta yet — allow Stage 1 if plain text looks present (user may have uploaded .txt)
-                status.TextQuality = "unknown";
-                status.ReadyForStage1 = true;
-            }
-            else if (string.Equals(status.TextQuality, "good", StringComparison.OrdinalIgnoreCase) &&
-                     status.GarbageScore < 0.45)
-            {
-                status.ReadyForStage1 = true;
-            }
+            ApplyReadyWhenMetaMissing(status);
+            return;
         }
-        else if (!status.ReadyForStage1 &&
-                 string.Equals(status.TextQuality, "good", StringComparison.OrdinalIgnoreCase) &&
-                 status.GarbageScore < 0.45 &&
-                 status.BookTextBytes > 200)
-        {
-                status.ReadyForStage1 = true;
-                if (status.Notes.All(n => !n.Contains("Stage 1 unlocked", StringComparison.OrdinalIgnoreCase)))
-                    status.Notes.Add(
-                        "Stage 1 unlocked: text quality is good enough (vision still optional for better OCR).");
-        }
+        if (status.ReadyForStage1)
+            return;
+        if (!string.Equals(status.TextQuality, "good", StringComparison.OrdinalIgnoreCase) ||
+            status.GarbageScore >= 0.45 ||
+            status.BookTextBytes <= 200)
+            return;
+        status.ReadyForStage1 = true;
+        if (status.Notes.All(n => !n.Contains("Stage 1 unlocked", StringComparison.OrdinalIgnoreCase)))
+            status.Notes.Add(
+                "Stage 1 unlocked: text quality is good enough (vision still optional for better OCR).");
+    }
 
-        if (status.BookTextExists)
+    private static void ApplyReadyWhenMetaMissing(BookSourceStatus status)
+    {
+        if (status.TextQuality is null && status.BookTextBytes > 200)
         {
-            try
-            {
-                var text = File.ReadAllText(bookPath);
-                status.Preview = text.Length <= 600 ? text : text[..600] + "…";
-                if (status.TextWords is null or 0)
-                {
-                    status.TextWords = text.Split(
-                        WordSplitChars,
-                        StringSplitOptions.RemoveEmptyEntries).Length;
-                }
-            }
-            catch { /* ignore */ }
+            // No meta yet — allow Stage 1 if plain text looks present (user may have uploaded .txt)
+            status.TextQuality = "unknown";
+            status.ReadyForStage1 = true;
+            return;
         }
+        if (string.Equals(status.TextQuality, "good", StringComparison.OrdinalIgnoreCase) &&
+            status.GarbageScore < 0.45)
+        {
+            status.ReadyForStage1 = true;
+        }
+    }
 
+    private static void FillBookPreview(BookSourceStatus status, string bookPath)
+    {
+        if (!status.BookTextExists)
+            return;
+        try
+        {
+            var text = File.ReadAllText(bookPath);
+            status.Preview = text.Length <= 600 ? text : text[..600] + "…";
+            if (status.TextWords is null or 0)
+            {
+                status.TextWords = text.Split(
+                    WordSplitChars,
+                    StringSplitOptions.RemoveEmptyEntries).Length;
+            }
+        }
+        catch { /* ignore */ }
+    }
+
+    private static void UnlockStage1IfScenesExist(BookSourceStatus status, string projectDir)
+    {
         // Re-run path: existing scenes.json + book text is enough even if prepare still flags "not ready"
         try
         {
             var scenesPath = Path.Combine(projectDir, StoreLit.ScenesJson);
-            if (!status.ReadyForStage1 &&
-                status.BookTextExists &&
-                status.BookTextBytes > 200 &&
-                File.Exists(scenesPath) &&
-                new FileInfo(scenesPath).Length > 64)
-            {
-                status.ReadyForStage1 = true;
-                if (status.Notes.All(n => !n.Contains("Re-run Stage 1", StringComparison.OrdinalIgnoreCase)))
-                    status.Notes.Add(
-                        "Re-run Stage 1 enabled: scenes.json already exists and book_full.txt is present.");
-            }
+            if (status.ReadyForStage1 ||
+                !status.BookTextExists ||
+                status.BookTextBytes <= 200 ||
+                !File.Exists(scenesPath) ||
+                new FileInfo(scenesPath).Length <= 64)
+                return;
+            status.ReadyForStage1 = true;
+            if (status.Notes.All(n => !n.Contains("Re-run Stage 1", StringComparison.OrdinalIgnoreCase)))
+                status.Notes.Add(
+                    "Re-run Stage 1 enabled: scenes.json already exists and book_full.txt is present.");
         }
         catch { /* ignore */ }
-
-        return status;
     }
 
     private Stage1Status ReadStage1Status(string projectId)
@@ -6284,56 +6581,64 @@ public sealed partial class ProjectStore
         try
         {
             using var doc = JsonDocument.Parse(File.ReadAllText(bpPath));
-            var root = doc.RootElement;
-            if (root.TryGetProperty(StoreLit.Scenes, out var scenes) && scenes.ValueKind == JsonValueKind.Array)
-            {
-                status.Stage2Scenes = scenes.GetArrayLength();
-                foreach (var s in scenes.EnumerateArray())
-                {
-                    if (s.TryGetProperty(StoreLit.VeoClips, out var vc) && vc.ValueKind == JsonValueKind.Array)
-                        status.Stage2Clips += vc.GetArrayLength();
-                }
-            }
-
-            status.Stage2Ready = status.Stage2Scenes > 0 && status.Stage2Clips > 0;
-
-            if (root.TryGetProperty("stage2_meta", out var meta) && meta.ValueKind == JsonValueKind.Object)
-            {
-                status.LastCompletedAt = meta.TryGetProperty("completed_at", out var ca)
-                    ? ca.GetString()
-                    : meta.TryGetProperty("last_partial_at", out var lp) ? lp.GetString() : null;
-                status.LastRunMessage = meta.TryGetProperty("last_run_message", out var lm)
-                    ? lm.GetString()
-                    : null;
-                if (meta.TryGetProperty("validation_issue_count", out var vic) && vic.TryGetInt32(out var n))
-                    status.ValidationIssueCount = n;
-            }
-
-            if (string.IsNullOrEmpty(status.LastCompletedAt))
-            {
-                try
-                {
-                    status.LastCompletedAt = File.GetLastWriteTime(bpPath).ToString(StoreLit.IsoDateTime);
-                }
-                catch { /* ignore */ }
-            }
-
-            // Stale when Stage 1 bible is newer than blueprint
-            var s1Path = ResolveScenesJsonPath(projectId);
-            if (File.Exists(s1Path) && status.Stage2Ready)
-            {
-                try
-                {
-                    var s1m = File.GetLastWriteTimeUtc(s1Path);
-                    var bpm = File.GetLastWriteTimeUtc(bpPath);
-                    status.Stage2Stale = s1m > bpm.AddSeconds(1);
-                }
-                catch { /* ignore */ }
-            }
+            FillStage2Counts(status, doc.RootElement);
+            ApplyStage2Meta(status, doc.RootElement, bpPath);
+            DetectStage2Stale(status, projectId, bpPath);
         }
         catch { /* ignore */ }
 
         return status;
+    }
+
+    private static void FillStage2Counts(Stage2PlanStatus status, JsonElement root)
+    {
+        if (!root.TryGetProperty(StoreLit.Scenes, out var scenes) || scenes.ValueKind != JsonValueKind.Array)
+            return;
+        status.Stage2Scenes = scenes.GetArrayLength();
+        foreach (var s in scenes.EnumerateArray())
+        {
+            if (s.TryGetProperty(StoreLit.VeoClips, out var vc) && vc.ValueKind == JsonValueKind.Array)
+                status.Stage2Clips += vc.GetArrayLength();
+        }
+        status.Stage2Ready = status.Stage2Scenes > 0 && status.Stage2Clips > 0;
+    }
+
+    private static void ApplyStage2Meta(Stage2PlanStatus status, JsonElement root, string bpPath)
+    {
+        if (root.TryGetProperty("stage2_meta", out var meta) && meta.ValueKind == JsonValueKind.Object)
+        {
+            status.LastCompletedAt = meta.TryGetProperty("completed_at", out var ca)
+                ? ca.GetString()
+                : meta.TryGetProperty("last_partial_at", out var lp) ? lp.GetString() : null;
+            status.LastRunMessage = meta.TryGetProperty("last_run_message", out var lm)
+                ? lm.GetString()
+                : null;
+            if (meta.TryGetProperty("validation_issue_count", out var vic) && vic.TryGetInt32(out var n))
+                status.ValidationIssueCount = n;
+        }
+
+        if (!string.IsNullOrEmpty(status.LastCompletedAt))
+            return;
+        try
+        {
+            status.LastCompletedAt = File.GetLastWriteTime(bpPath).ToString(StoreLit.IsoDateTime);
+        }
+        catch { /* ignore */ }
+    }
+
+    private void DetectStage2Stale(Stage2PlanStatus status, string projectId, string bpPath)
+    {
+        // Stale when Stage 1 bible is newer than blueprint
+        var s1Path = ResolveScenesJsonPath(projectId);
+        if (!File.Exists(s1Path) || !status.Stage2Ready)
+            return;
+        try
+        {
+            var s1m = File.GetLastWriteTimeUtc(s1Path);
+            var bpm = File.GetLastWriteTimeUtc(bpPath);
+            status.Stage2Stale = s1m > bpm.AddSeconds(1);
+        }
+        catch { /* ignore */ }
     }
 
     public string? ResolveCompositePath(string projectId, int sceneNumber)
@@ -6363,35 +6668,8 @@ public sealed partial class ProjectStore
         var result = new WipFreshness();
         var projectDir = GetProjectDir(projectId);
         var videoDir = Path.Combine(projectDir, StoreLit.Assets, StoreLit.Video);
-
-        // Physical path even when file missing (for manifest path)
         var wipFullPath = ResolveWipMovieFullPath(projectId);
-        var wipExists = wipFullPath is not null &&
-                        File.Exists(wipFullPath) &&
-                        new FileInfo(wipFullPath).Length >= 1024;
-
-        if (wipExists)
-        {
-            var fi = new FileInfo(wipFullPath);
-            result.Exists = true;
-            result.Path = Path.GetRelativePath(projectDir, wipFullPath).Replace('\\', '/');
-            result.Bytes = fi.Length;
-            result.UpdatedAt = fi.LastWriteTime.ToString(StoreLit.IsoDateTime);
-        }
-        else
-        {
-            result.Exists = false;
-            result.Path = "assets/movie_wip.mp4";
-            try
-            {
-                var cfg = GetConfigSync(projectId);
-                if (cfg.TryGetValue("wip_movie_path", out var w) &&
-                    w.ValueKind == JsonValueKind.String &&
-                    w.GetString() is { Length: > 0 } s)
-                    result.Path = s.Replace('\\', '/').TrimStart('/');
-            }
-            catch { /* ignore */ }
-        }
+        FillWipExists(result, projectId, projectDir, wipFullPath);
 
         var clipsByScene = IndexExactClipsByScene(videoDir);
         var blueprintScenes = GetBlueprintSceneNumbers(projectId);
@@ -6415,12 +6693,6 @@ public sealed partial class ProjectStore
             return result;
         }
 
-        // Stage 2 blueprint newer than last WIP build → always remux
-        var bpPath = FindBlueprintPathSync(projectId);
-        DateTime? bpMtime = bpPath is not null && File.Exists(bpPath)
-            ? new FileInfo(bpPath).LastWriteTimeUtc
-            : null;
-
         if (result.StaleScenes.Count > 0)
         {
             result.Stale = true;
@@ -6436,98 +6708,164 @@ public sealed partial class ProjectStore
             return result;
         }
 
+        if (TryMarkWipStaleFromBlueprint(result, projectId, wipFullPath, blueprintScenes))
+            return result;
+        if (TryMarkWipStaleFromSources(result, wipFullPath, currentSources))
+            return result;
+
+        result.Stale = false;
+        result.Reason = "Up to date";
+        return result;
+    }
+
+    private void FillWipExists(WipFreshness result, string projectId, string projectDir, string? wipFullPath)
+    {
+        if (wipFullPath is not null &&
+            File.Exists(wipFullPath) &&
+            new FileInfo(wipFullPath).Length >= 1024)
+        {
+            var fi = new FileInfo(wipFullPath);
+            result.Exists = true;
+            result.Path = Path.GetRelativePath(projectDir, wipFullPath).Replace('\\', '/');
+            result.Bytes = fi.Length;
+            result.UpdatedAt = fi.LastWriteTime.ToString(StoreLit.IsoDateTime);
+            return;
+        }
+
+        result.Exists = false;
+        result.Path = "assets/movie_wip.mp4";
+        try
+        {
+            var cfg = GetConfigSync(projectId);
+            if (cfg.TryGetValue("wip_movie_path", out var w) &&
+                w.ValueKind == JsonValueKind.String &&
+                w.GetString() is { Length: > 0 } s)
+                result.Path = s.Replace('\\', '/').TrimStart('/');
+        }
+        catch { /* ignore */ }
+    }
+
+    private bool TryMarkWipStaleFromBlueprint(
+        WipFreshness result, string projectId, string wipFullPath, List<int>? blueprintScenes)
+    {
+        // Stage 2 blueprint newer than last WIP build → always remux
+        var bpPath = FindBlueprintPathSync(projectId);
+        DateTime? bpMtime = bpPath is not null && File.Exists(bpPath)
+            ? new FileInfo(bpPath).LastWriteTimeUtc
+            : null;
         var manifestPath = ClipFileNaming.WipSourcesManifestPath(wipFullPath);
         if (bpMtime is DateTime bpm && File.Exists(manifestPath))
-        {
-            try
-            {
-                using var doc = JsonDocument.Parse(File.ReadAllText(manifestPath));
-                if (doc.RootElement.TryGetProperty("blueprintMtimeUtc", out var bm) &&
-                    bm.ValueKind == JsonValueKind.String &&
-                    DateTime.TryParse(bm.GetString(), CultureInfo.InvariantCulture,
-                        DateTimeStyles.RoundtripKind, out var recordedBp))
-                {
-                    if (bpm > recordedBp.ToUniversalTime().AddSeconds(1))
-                    {
-                        result.Stale = true;
-                        result.Reason = "Stage 2 blueprint changed since last WIP — remux all scenes + rebuild";
-                        return result;
-                    }
-                }
-                else if (doc.RootElement.TryGetProperty("builtAtUtc", out var built) &&
-                         built.ValueKind == JsonValueKind.String &&
-                         DateTime.TryParse(built.GetString(), CultureInfo.InvariantCulture,
-                             DateTimeStyles.RoundtripKind, out var builtAt) &&
-                         bpm > builtAt.ToUniversalTime().AddSeconds(1))
-                {
-                    result.Stale = true;
-                    result.Reason = "Stage 2 blueprint newer than WIP — remux all scenes + rebuild";
-                    return result;
-                }
+            return TryMarkWipStaleFromManifest(result, manifestPath, bpm, blueprintScenes);
 
-                // Scene list in plan vs last build
-                if (doc.RootElement.TryGetProperty("sceneNumbers", out var sns) &&
-                    sns.ValueKind == JsonValueKind.Array &&
-                    blueprintScenes is { Count: > 0 })
-                {
-                    var recorded = sns.EnumerateArray()
-                        .Select(e => e.TryGetInt32(out var n) ? n : 0)
-                        .Where(n => n > 0)
-                        .OrderBy(n => n)
-                        .ToList();
-                    var planned = blueprintScenes.OrderBy(n => n).ToList();
-                    if (!recorded.SequenceEqual(planned))
-                    {
-                        result.Stale = true;
-                        result.Reason = "Stage 2 scene list changed — remux all scenes + rebuild";
-                        return result;
-                    }
-                }
-            }
-            catch { /* fall through */ }
-        }
-        else if (bpMtime is DateTime bpm2)
+        if (bpMtime is DateTime bpm2)
         {
             var wipMtime = new FileInfo(wipFullPath).LastWriteTimeUtc;
             if (bpm2 > wipMtime.AddSeconds(1))
             {
                 result.Stale = true;
                 result.Reason = "Stage 2 blueprint newer than WIP — remux all scenes + rebuild";
-                return result;
+                return true;
             }
         }
+        return false;
+    }
 
+    private static bool TryMarkWipStaleFromManifest(
+        WipFreshness result, string manifestPath, DateTime bpm, List<int>? blueprintScenes)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(manifestPath));
+            if (IsBlueprintNewerThanManifest(doc.RootElement, bpm, out var reason))
+            {
+                result.Stale = true;
+                result.Reason = reason;
+                return true;
+            }
+            if (SceneListChangedSinceManifest(doc.RootElement, blueprintScenes))
+            {
+                result.Stale = true;
+                result.Reason = "Stage 2 scene list changed — remux all scenes + rebuild";
+                return true;
+            }
+        }
+        catch { /* fall through */ }
+        return false;
+    }
+
+    private static bool IsBlueprintNewerThanManifest(JsonElement root, DateTime bpm, out string reason)
+    {
+        reason = "";
+        if (root.TryGetProperty("blueprintMtimeUtc", out var bm) &&
+            bm.ValueKind == JsonValueKind.String &&
+            DateTime.TryParse(bm.GetString(), CultureInfo.InvariantCulture,
+                DateTimeStyles.RoundtripKind, out var recordedBp))
+        {
+            if (bpm > recordedBp.ToUniversalTime().AddSeconds(1))
+            {
+                reason = "Stage 2 blueprint changed since last WIP — remux all scenes + rebuild";
+                return true;
+            }
+            return false;
+        }
+        if (root.TryGetProperty("builtAtUtc", out var built) &&
+            built.ValueKind == JsonValueKind.String &&
+            DateTime.TryParse(built.GetString(), CultureInfo.InvariantCulture,
+                DateTimeStyles.RoundtripKind, out var builtAt) &&
+            bpm > builtAt.ToUniversalTime().AddSeconds(1))
+        {
+            reason = "Stage 2 blueprint newer than WIP — remux all scenes + rebuild";
+            return true;
+        }
+        return false;
+    }
+
+    private static bool SceneListChangedSinceManifest(JsonElement root, List<int>? blueprintScenes)
+    {
+        if (!root.TryGetProperty("sceneNumbers", out var sns) ||
+            sns.ValueKind != JsonValueKind.Array ||
+            blueprintScenes is not { Count: > 0 })
+            return false;
+        var recorded = sns.EnumerateArray()
+            .Select(e => e.TryGetInt32(out var n) ? n : 0)
+            .Where(n => n > 0)
+            .OrderBy(n => n)
+            .ToList();
+        var planned = blueprintScenes.OrderBy(n => n).ToList();
+        return !recorded.SequenceEqual(planned);
+    }
+
+    private static bool TryMarkWipStaleFromSources(
+        WipFreshness result, string wipFullPath, List<string> currentSources)
+    {
         // Manifest: detect added/removed/replaced sources vs last successful WIP build
         var manifestMismatch = CompareWipSourcesManifest(wipFullPath, currentSources);
         if (manifestMismatch is { Length: > 0 })
         {
             result.Stale = true;
             result.Reason = manifestMismatch;
-            return result;
+            return true;
         }
 
         // No manifest (old WIP): fall back to mtime — any source newer than WIP
-        if (!File.Exists(manifestPath))
+        var manifestPath = ClipFileNaming.WipSourcesManifestPath(wipFullPath);
+        if (File.Exists(manifestPath))
+            return false;
+        var wipMtime = new FileInfo(wipFullPath).LastWriteTimeUtc;
+        foreach (var src in currentSources)
         {
-            var wipMtime = new FileInfo(wipFullPath).LastWriteTimeUtc;
-            foreach (var src in currentSources)
+            try
             {
-                try
+                if (new FileInfo(src).LastWriteTimeUtc > wipMtime.AddSeconds(1))
                 {
-                    if (new FileInfo(src).LastWriteTimeUtc > wipMtime.AddSeconds(1))
-                    {
-                        result.Stale = true;
-                        result.Reason = "Sources newer than WIP (no build manifest — rebuild recommended)";
-                        return result;
-                    }
+                    result.Stale = true;
+                    result.Reason = "Sources newer than WIP (no build manifest — rebuild recommended)";
+                    return true;
                 }
-                catch { /* ignore */ }
             }
+            catch { /* ignore */ }
         }
-
-        result.Stale = false;
-        result.Reason = "Up to date";
-        return result;
+        return false;
     }
 
     /// <summary>
@@ -6995,95 +7333,45 @@ public sealed partial class ProjectStore
              k.EndsWith(".client.json", StringComparison.OrdinalIgnoreCase)));
     }
 
-    private Dictionary<string, JsonElement> LoadCharacterSeeds(string projectId)
-    {
-        // Prefer cast_seeds.json, then blueprint.
-        try
-        {
-            foreach (var name in new[] { ScreenplayService.CastSeedsFileName })
-            {
-                var castPath = Path.Combine(GetProjectDir(projectId), StoreLit.Source, name);
-                if (!File.Exists(castPath)) continue;
-                using var doc = JsonDocument.Parse(File.ReadAllText(castPath));
-                var root = doc.RootElement;
-                JsonElement seedEl = default;
-                if (root.TryGetProperty(StoreLit.CharacterSeedTokens, out var s) && s.ValueKind == JsonValueKind.Object)
-                    seedEl = s;
-                else if (root.TryGetProperty(StoreLit.GlobalProductionVariables, out var g) &&
-                         g.TryGetProperty(StoreLit.CharacterSeedTokens, out var s2) &&
-                         s2.ValueKind == JsonValueKind.Object)
-                    seedEl = s2;
-                if (seedEl.ValueKind == JsonValueKind.Object)
-                {
-                    var dict = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
-                    foreach (var p in seedEl.EnumerateObject())
-                        dict[p.Name] = p.Value.Clone();
-                    if (dict.Count > 0)
-                        return dict;
-                }
-            }
-        }
-        catch { /* fall through */ }
-
-        try
-        {
-            using var bp = LoadBlueprintSync(projectId);
-            if (bp is not null &&
-                bp.RootElement.TryGetProperty(StoreLit.GlobalProductionVariables, out var gpv) &&
-                gpv.TryGetProperty(StoreLit.CharacterSeedTokens, out var seeds) &&
-                seeds.ValueKind == JsonValueKind.Object)
-            {
-                var dict = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
-                foreach (var p in seeds.EnumerateObject())
-                    dict[p.Name] = p.Value.Clone();
-                if (dict.Count > 0)
-                    return dict;
-            }
-        }
-        catch { /* fall through */ }
-
-        try
-        {
-            var model = ScreenplayService.TryBuildModelFromProject(this, projectId);
-            if (model is not null &&
-                model.TryGetValue(StoreLit.GlobalProductionVariables, out var gpvObj) &&
-                gpvObj is Dictionary<string, object?> gpv &&
-                gpv.TryGetValue(StoreLit.CharacterSeedTokens, out var charObj) &&
-                charObj is Dictionary<string, object?> charDict &&
-                charDict.Count > 0)
-            {
-                var json = JsonSerializer.Serialize(charDict);
-                using var doc = JsonDocument.Parse(json);
-                var dict = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
-                foreach (var p in doc.RootElement.EnumerateObject())
-                    dict[p.Name] = p.Value.Clone();
-                if (dict.Count > 0)
-                    return dict;
-            }
-        }
-        catch { /* fall through */ }
-
-        var scenesPath = GetScenesPath(projectId);
-        if (!File.Exists(scenesPath))
-            return new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
-
-        using var scenesDoc = JsonDocument.Parse(File.ReadAllText(scenesPath));
-        if (scenesDoc.RootElement.TryGetProperty(StoreLit.GlobalProductionVariables, out var g2) &&
-            g2.TryGetProperty(StoreLit.CharacterSeedTokens, out var s3) &&
-            s3.ValueKind == JsonValueKind.Object)
-        {
-            var dict = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
-            foreach (var p in s3.EnumerateObject())
-                dict[p.Name] = p.Value.Clone();
-            return dict;
-        }
-        return new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
-    }
+    private Dictionary<string, JsonElement> LoadCharacterSeeds(string projectId) =>
+        TryLoadSeedsFromCastFile(projectId, StoreLit.CharacterSeedTokens)
+        ?? TryLoadSeedsFromBlueprintGpv(projectId, StoreLit.CharacterSeedTokens)
+        ?? TryLoadSeedsFromFountainModel(projectId, StoreLit.CharacterSeedTokens)
+        ?? TryLoadSeedsFromScenesGpv(projectId, StoreLit.CharacterSeedTokens, swallowErrors: false)
+        ?? new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// location_seed_tokens from cast_seeds / blueprint / scenes — same precedence as character seeds.
     /// </summary>
-    private Dictionary<string, JsonElement> LoadLocationSeeds(string projectId)
+    private Dictionary<string, JsonElement> LoadLocationSeeds(string projectId) =>
+        TryLoadSeedsFromCastFile(projectId, StoreLit.LocationSeedTokens)
+        ?? TryLoadSeedsFromBlueprintGpv(projectId, StoreLit.LocationSeedTokens)
+        ?? TryLoadSeedsFromFountainModel(projectId, StoreLit.LocationSeedTokens)
+        ?? TryLoadSeedsFromScenesGpv(projectId, StoreLit.LocationSeedTokens, swallowErrors: true)
+        ?? new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
+
+    private static Dictionary<string, JsonElement>? CloneObjectIfAny(JsonElement el)
+    {
+        if (el.ValueKind != JsonValueKind.Object)
+            return null;
+        var dict = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
+        foreach (var p in el.EnumerateObject())
+            dict[p.Name] = p.Value.Clone();
+        return dict.Count > 0 ? dict : null;
+    }
+
+    private static Dictionary<string, JsonElement>? TryReadSeedTokens(JsonElement root, string tokenKey)
+    {
+        if (root.TryGetProperty(tokenKey, out var s) && s.ValueKind == JsonValueKind.Object)
+            return CloneObjectIfAny(s);
+        if (root.TryGetProperty(StoreLit.GlobalProductionVariables, out var g) &&
+            g.TryGetProperty(tokenKey, out var s2) &&
+            s2.ValueKind == JsonValueKind.Object)
+            return CloneObjectIfAny(s2);
+        return null;
+    }
+
+    private Dictionary<string, JsonElement>? TryLoadSeedsFromCastFile(string projectId, string tokenKey)
     {
         try
         {
@@ -7092,84 +7380,79 @@ public sealed partial class ProjectStore
                 var castPath = Path.Combine(GetProjectDir(projectId), StoreLit.Source, name);
                 if (!File.Exists(castPath)) continue;
                 using var doc = JsonDocument.Parse(File.ReadAllText(castPath));
-                var root = doc.RootElement;
-                JsonElement seedEl = default;
-                if (root.TryGetProperty(StoreLit.LocationSeedTokens, out var s) && s.ValueKind == JsonValueKind.Object)
-                    seedEl = s;
-                else if (root.TryGetProperty(StoreLit.GlobalProductionVariables, out var g) &&
-                         g.TryGetProperty(StoreLit.LocationSeedTokens, out var s2) &&
-                         s2.ValueKind == JsonValueKind.Object)
-                    seedEl = s2;
-                if (seedEl.ValueKind == JsonValueKind.Object)
-                {
-                    var dict = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
-                    foreach (var p in seedEl.EnumerateObject())
-                        dict[p.Name] = p.Value.Clone();
-                    if (dict.Count > 0)
-                        return dict;
-                }
+                var dict = TryReadSeedTokens(doc.RootElement, tokenKey);
+                if (dict is { Count: > 0 })
+                    return dict;
             }
         }
         catch { /* fall through */ }
+        return null;
+    }
 
+    private Dictionary<string, JsonElement>? TryLoadSeedsFromBlueprintGpv(string projectId, string tokenKey)
+    {
         try
         {
             using var bp = LoadBlueprintSync(projectId);
             if (bp is not null &&
                 bp.RootElement.TryGetProperty(StoreLit.GlobalProductionVariables, out var gpv) &&
-                gpv.TryGetProperty(StoreLit.LocationSeedTokens, out var seeds) &&
+                gpv.TryGetProperty(tokenKey, out var seeds) &&
                 seeds.ValueKind == JsonValueKind.Object)
             {
-                var dict = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
-                foreach (var p in seeds.EnumerateObject())
-                    dict[p.Name] = p.Value.Clone();
-                if (dict.Count > 0)
-                    return dict;
+                return CloneObjectIfAny(seeds);
             }
         }
         catch { /* fall through */ }
+        return null;
+    }
 
+    private Dictionary<string, JsonElement>? TryLoadSeedsFromFountainModel(string projectId, string tokenKey)
+    {
         try
         {
             var model = ScreenplayService.TryBuildModelFromProject(this, projectId);
             if (model is not null &&
                 model.TryGetValue(StoreLit.GlobalProductionVariables, out var gpvObj) &&
                 gpvObj is Dictionary<string, object?> gpv &&
-                gpv.TryGetValue(StoreLit.LocationSeedTokens, out var locObj) &&
-                locObj is Dictionary<string, object?> locDict &&
-                locDict.Count > 0)
+                gpv.TryGetValue(tokenKey, out var obj) &&
+                obj is Dictionary<string, object?> dictObj &&
+                dictObj.Count > 0)
             {
-                var json = JsonSerializer.Serialize(locDict);
+                var json = JsonSerializer.Serialize(dictObj);
                 using var doc = JsonDocument.Parse(json);
-                var dict = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
-                foreach (var p in doc.RootElement.EnumerateObject())
-                    dict[p.Name] = p.Value.Clone();
-                if (dict.Count > 0)
-                    return dict;
+                return CloneObjectIfAny(doc.RootElement);
             }
         }
         catch { /* fall through */ }
+        return null;
+    }
 
+    private Dictionary<string, JsonElement>? TryLoadSeedsFromScenesGpv(
+        string projectId, string tokenKey, bool swallowErrors)
+    {
         var scenesPath = GetScenesPath(projectId);
         if (!File.Exists(scenesPath))
-            return new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
-
+            return null;
+        if (!swallowErrors)
+            return ReadScenesGpvTokens(scenesPath, tokenKey);
         try
         {
-            using var scenesDoc = JsonDocument.Parse(File.ReadAllText(scenesPath));
-            if (scenesDoc.RootElement.TryGetProperty(StoreLit.GlobalProductionVariables, out var g2) &&
-                g2.TryGetProperty(StoreLit.LocationSeedTokens, out var s3) &&
-                s3.ValueKind == JsonValueKind.Object)
-            {
-                var dict = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
-                foreach (var p in s3.EnumerateObject())
-                    dict[p.Name] = p.Value.Clone();
-                return dict;
-            }
+            return ReadScenesGpvTokens(scenesPath, tokenKey);
         }
-        catch { /* ignore */ }
+        catch
+        {
+            return null;
+        }
+    }
 
-        return new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
+    private static Dictionary<string, JsonElement>? ReadScenesGpvTokens(string scenesPath, string tokenKey)
+    {
+        using var scenesDoc = JsonDocument.Parse(File.ReadAllText(scenesPath));
+        if (scenesDoc.RootElement.TryGetProperty(StoreLit.GlobalProductionVariables, out var g2) &&
+            g2.TryGetProperty(tokenKey, out var s3) &&
+            s3.ValueKind == JsonValueKind.Object)
+            return CloneObjectIfAny(s3) ?? new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
+        return null;
     }
 
     private Dictionary<string, JsonElement> LoadWardrobeLocks(string projectId)

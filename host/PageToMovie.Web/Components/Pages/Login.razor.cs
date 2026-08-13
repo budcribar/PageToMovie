@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Extensions.Primitives;
 using Microsoft.JSInterop;
 using PageToMovie.Core.Models;
 using PageToMovie.Core.Options;
@@ -216,83 +217,10 @@ public partial class Login : IDisposable
             var uri = Nav.ToAbsoluteUri(Nav.Uri);
             var q = QueryHelpers.ParseQuery(uri.Query);
 
-            // Explain failed ?me= bootstrap (never put the secret itself on this page).
-            if (q.TryGetValue("overrideError", out var errVals))
-            {
-                _error = (errVals.FirstOrDefault() ?? "").Trim().ToLowerInvariant() switch
-                {
-                    "short" =>
-                        $"Operator override secret is too short (need at least {AuthOptions.MinOperatorOverrideSecretLength} characters). " +
-                        "Set Railway variable PageToMovie_LOGIN_OVERRIDE to a longer secret, or sign in below with that secret as the password.",
-                    "missing" =>
-                        "Operator override (?me=) was empty. Use ?me=YOUR_SECRET or sign in below.",
-                    "failed" =>
-                        "Operator override failed. Check Railway PageToMovie_LOGIN_OVERRIDE matches your ?me= secret " +
-                        $"(min {AuthOptions.MinOperatorOverrideSecretLength} chars), then try again. " +
-                        "Or sign in with username admin and that secret as the password.",
-                    _ =>
-                        "Could not complete operator login. Sign in below, or fix PageToMovie_LOGIN_OVERRIDE on Railway.",
-                };
-                StateHasChanged();
-            }
-
-            // Flash after confirm redirect
-            if (q.TryGetValue("emailConfirmed", out var confFlash) &&
-                string.Equals(confFlash.FirstOrDefault(), "1", StringComparison.Ordinal))
-            {
-                _info = "Email confirmed. You can sign in now.";
-                _isSignup = false;
-                StateHasChanged();
-            }
-
-            // Email confirmation link: /login?confirmEmail=TOKEN
-            if (q.TryGetValue("confirmEmail", out var confirmVals))
-            {
-                var token = (confirmVals.FirstOrDefault() ?? "").Trim();
-                if (token.Length >= 10)
-                {
-                    _busy = true;
-                    _status = "Confirming email…";
-                    StateHasChanged();
-                    try
-                    {
-                        var (ok, msg) = await Api.ConfirmEmailAsync(token);
-                        if (ok)
-                        {
-                            _info = string.IsNullOrWhiteSpace(msg) ? "Email confirmed. You can sign in now." : msg;
-                            _isSignup = false;
-                            _error = null;
-            try { Nav.NavigateTo($"{LoginPath}?emailConfirmed=1", replace: true); } catch { /* ignore */ }
-                        }
-                        else
-                        {
-                            _error = msg;
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        _error = ex.Message;
-                    }
-                    finally
-                    {
-                        _busy = false;
-                    }
-                }
-            }
-
-            // Password reset link: /login?resetToken=TOKEN
-            if (q.TryGetValue("resetToken", out var resetVals))
-            {
-                var token = (resetVals.FirstOrDefault() ?? "").Trim();
-                if (token.Length >= 10)
-                {
-                    _resetToken = token;
-                    _resetTokenMode = true;
-                    _forgotMode = false;
-                    _isSignup = false;
-                    StateHasChanged();
-                }
-            }
+            ApplyOverrideErrorFromQuery(q);
+            ApplyEmailConfirmedFlash(q);
+            await TryConfirmEmailFromQueryAsync(q);
+            ApplyResetTokenFromQuery(q);
 
             await Session.EnsureHydratedAsync();
             if (Session.IsLoggedIn && !_resetTokenMode)
@@ -308,6 +236,88 @@ public partial class Login : IDisposable
             _checkedSession = true;
             StateHasChanged();
         }
+    }
+
+    private void ApplyOverrideErrorFromQuery(Dictionary<string, StringValues> q)
+    {
+        // Explain failed ?me= bootstrap (never put the secret itself on this page).
+        if (!q.TryGetValue("overrideError", out var errVals))
+            return;
+        _error = (errVals.FirstOrDefault() ?? "").Trim().ToLowerInvariant() switch
+        {
+            "short" =>
+                $"Operator override secret is too short (need at least {AuthOptions.MinOperatorOverrideSecretLength} characters). " +
+                "Set Railway variable PageToMovie_LOGIN_OVERRIDE to a longer secret, or sign in below with that secret as the password.",
+            "missing" =>
+                "Operator override (?me=) was empty. Use ?me=YOUR_SECRET or sign in below.",
+            "failed" =>
+                "Operator override failed. Check Railway PageToMovie_LOGIN_OVERRIDE matches your ?me= secret " +
+                $"(min {AuthOptions.MinOperatorOverrideSecretLength} chars), then try again. " +
+                "Or sign in with username admin and that secret as the password.",
+            _ =>
+                "Could not complete operator login. Sign in below, or fix PageToMovie_LOGIN_OVERRIDE on Railway.",
+        };
+        StateHasChanged();
+    }
+
+    private void ApplyEmailConfirmedFlash(Dictionary<string, StringValues> q)
+    {
+        if (!q.TryGetValue("emailConfirmed", out var confFlash) ||
+            !string.Equals(confFlash.FirstOrDefault(), "1", StringComparison.Ordinal))
+            return;
+        _info = "Email confirmed. You can sign in now.";
+        _isSignup = false;
+        StateHasChanged();
+    }
+
+    private async Task TryConfirmEmailFromQueryAsync(Dictionary<string, StringValues> q)
+    {
+        if (!q.TryGetValue("confirmEmail", out var confirmVals))
+            return;
+        var token = (confirmVals.FirstOrDefault() ?? "").Trim();
+        if (token.Length < 10)
+            return;
+
+        _busy = true;
+        _status = "Confirming email…";
+        StateHasChanged();
+        try
+        {
+            var (ok, msg) = await Api.ConfirmEmailAsync(token);
+            if (ok)
+            {
+                _info = string.IsNullOrWhiteSpace(msg) ? "Email confirmed. You can sign in now." : msg;
+                _isSignup = false;
+                _error = null;
+                try { Nav.NavigateTo($"{LoginPath}?emailConfirmed=1", replace: true); } catch { /* ignore */ }
+            }
+            else
+            {
+                _error = msg;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void ApplyResetTokenFromQuery(Dictionary<string, StringValues> q)
+    {
+        if (!q.TryGetValue("resetToken", out var resetVals))
+            return;
+        var token = (resetVals.FirstOrDefault() ?? "").Trim();
+        if (token.Length < 10)
+            return;
+        _resetToken = token;
+        _resetTokenMode = true;
+        _forgotMode = false;
+        _isSignup = false;
+        StateHasChanged();
     }
 
     private string ResolveReturnUrl()

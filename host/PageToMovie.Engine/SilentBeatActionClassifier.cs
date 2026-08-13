@@ -244,47 +244,83 @@ public sealed class SilentBeatActionClassifier
     internal static List<SilentTarget> CollectSilentBeats(Dictionary<string, object?> stage1)
     {
         var list = new List<SilentTarget>();
-        var scenes = stage1.TryGetValue("scenes", out var sObj) && sObj is List<object?> sl
-            ? sl
-            : new List<object?>();
         var sceneIdx = 0;
-        foreach (var sItem in scenes)
+        foreach (var sItem in DictObjectList(stage1, "scenes"))
         {
             if (sItem is not Dictionary<string, object?> scene) continue;
             sceneIdx++;
-            var setting = scene.TryGetValue("setting", out var st) ? st?.ToString() ?? "" : "";
-            var bookProse = scene.TryGetValue("source_prose", out var sp) ? sp?.ToString() ?? ""
-                : scene.TryGetValue("book_excerpt", out var be) ? be?.ToString() ?? ""
-                : scene.TryGetValue("source_text", out var stx) ? stx?.ToString() ?? "" : "";
-            var beats = scene.TryGetValue("story_beats", out var sb) && sb is List<object?> bl
-                ? bl
-                : new List<object?>();
-            var firstSilent = true;
-            var bi = 0;
-            foreach (var bItem in beats)
-            {
-                if (bItem is not Dictionary<string, object?> beat) continue;
-                bi++;
-                var dlg = beat.TryGetValue("dialogue", out var d) ? d?.ToString()?.Trim() ?? "" : "";
-                var ve = beat.TryGetValue("visual_event", out var v) ? v?.ToString()?.Trim() ?? "" : "";
-                if (!string.IsNullOrWhiteSpace(dlg) || ve.Length == 0)
-                    continue;
-                var isFirst = firstSilent;
-                firstSilent = false;
-                list.Add(new SilentTarget
-                {
-                    Id = $"s{sceneIdx}_b{bi}",
-                    Scene = sceneIdx,
-                    IndexInScene = bi,
-                    Setting = setting,
-                    VisualEvent = ve,
-                    BookProse = bookProse,
-                    IsFirstSilentInScene = isFirst,
-                    Beat = beat,
-                });
-            }
+            CollectSilentBeatsInScene(list, scene, sceneIdx);
         }
         return list;
+    }
+
+    private static void CollectSilentBeatsInScene(
+        List<SilentTarget> list,
+        Dictionary<string, object?> scene,
+        int sceneIdx)
+    {
+        var setting = DictString(scene, "setting");
+        var bookProse = SceneBookProse(scene);
+        var firstSilent = true;
+        var bi = 0;
+        foreach (var bItem in DictObjectList(scene, "story_beats"))
+        {
+            if (bItem is not Dictionary<string, object?> beat) continue;
+            bi++;
+            if (!TryCreateSilentTarget(sceneIdx, bi, setting, bookProse, firstSilent, beat, out var target))
+                continue;
+            firstSilent = false;
+            list.Add(target);
+        }
+    }
+
+    private static List<object?> DictObjectList(Dictionary<string, object?> d, string key) =>
+        d.TryGetValue(key, out var obj) && obj is List<object?> list
+            ? list
+            : new List<object?>();
+
+    private static string DictString(Dictionary<string, object?> d, string key) =>
+        d.TryGetValue(key, out var v) ? v?.ToString() ?? "" : "";
+
+    private static string SceneBookProse(Dictionary<string, object?> scene)
+    {
+        if (scene.TryGetValue("source_prose", out var sp))
+            return sp?.ToString() ?? "";
+        if (scene.TryGetValue("book_excerpt", out var be))
+            return be?.ToString() ?? "";
+        if (scene.TryGetValue("source_text", out var stx))
+            return stx?.ToString() ?? "";
+        return "";
+    }
+
+    private static bool TryCreateSilentTarget(
+        int sceneIdx,
+        int bi,
+        string setting,
+        string bookProse,
+        bool isFirst,
+        Dictionary<string, object?> beat,
+        out SilentTarget target)
+    {
+        var dlg = beat.TryGetValue("dialogue", out var d) ? d?.ToString()?.Trim() ?? "" : "";
+        var ve = beat.TryGetValue("visual_event", out var v) ? v?.ToString()?.Trim() ?? "" : "";
+        if (!string.IsNullOrWhiteSpace(dlg) || ve.Length == 0)
+        {
+            target = null!;
+            return false;
+        }
+        target = new SilentTarget
+        {
+            Id = $"s{sceneIdx}_b{bi}",
+            Scene = sceneIdx,
+            IndexInScene = bi,
+            Setting = setting,
+            VisualEvent = ve,
+            BookProse = bookProse,
+            IsFirstSilentInScene = isFirst,
+            Beat = beat,
+        };
+        return true;
     }
 
     private static List<FlatNeighbor> CollectAllBeatsForNeighbors(Dictionary<string, object?> stage1)
